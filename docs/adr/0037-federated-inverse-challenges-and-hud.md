@@ -1,4 +1,4 @@
-# ADR 0035: Federated Inverse Challenges, Unified Challenge HUD, and Stateless Challenge URLs
+# ADR 0037: Federated Inverse Challenges, Unified Challenge HUD, and Stateless Challenge URLs
 
 ## Status
 

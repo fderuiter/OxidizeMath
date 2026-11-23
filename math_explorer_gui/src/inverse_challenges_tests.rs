@@ -130,11 +130,16 @@ fn test_challenge_hud_wcag_contrast_reset_and_aria_across_themes() {
         assert!(!base_eval.passed, "Unsolved baseline must not start passed");
 
         crate::accessibility::clear_test_announcements();
-        let solved = r#"{"dose_mg":165.0,"use_loading_dose":true,"loading_dose_mg":240.0,"interval_hours":6.0,"bioavailability":0.85,"ke":0.12,"t_max_target":1.5,"volume_l":25.0,"c_mec":4.0,"c_mtc":12.0}"#;
+        let mut solved_cfg: serde_json::Value =
+            serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap();
+        solved_cfg["dose_mg"] = serde_json::json!(165.0);
+        solved_cfg["use_loading_dose"] = serde_json::json!(true);
+        solved_cfg["loading_dose_mg"] = serde_json::json!(240.0);
+        solved_cfg["interval_hours"] = serde_json::json!(6.0);
         fw.active_tool
             .as_mut()
             .unwrap()
-            .try_load_state(solved)
+            .try_load_state(&solved_cfg.to_string())
             .unwrap();
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             fw.show(ctx, "clinical_trials");
@@ -205,7 +210,7 @@ fn test_tampered_challenge_url_clamps_locked_parameters() {
         serde_json::from_str(params.state_json.as_ref().unwrap()).unwrap();
     envelope["config"]["dose_mg"] = serde_json::json!(165.0);
     envelope["config"]["interval_hours"] = serde_json::json!(6.0);
-    envelope["config"]["c_mtc"] = serde_json::json!(95.0);
+    envelope["config"]["mtc"] = serde_json::json!(95.0);
     envelope["config"]["ke"] = serde_json::json!(0.45);
     let tampered_b64 = encode_base64url(envelope.to_string().as_bytes());
     let tampered_hash = format!(
@@ -224,7 +229,7 @@ fn test_tampered_challenge_url_clamps_locked_parameters() {
         serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap();
     assert_eq!(restored_cfg["dose_mg"], serde_json::json!(165.0));
     assert_eq!(restored_cfg["interval_hours"], serde_json::json!(6.0));
-    assert_eq!(restored_cfg["c_mtc"], serde_json::json!(12.0));
+    assert_eq!(restored_cfg["mtc"], serde_json::json!(12.0));
     assert_eq!(restored_cfg["ke"], serde_json::json!(0.12));
     let eval = fw
         .active_tool

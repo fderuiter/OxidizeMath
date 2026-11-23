@@ -1,42 +1,255 @@
-//! Interactive multi-dose pharmacokinetic regimen designer (`PharmacokineticsTool`).
+//! Interactive Pharmacokinetics (ADME) regimen planner for `ClinicalTrialsTab`.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub mod challenge;
+pub mod export;
+pub mod metrics;
 pub mod model;
+pub mod persistence;
+pub mod plot;
+pub mod ui;
 
-use self::model::{
-    PkRegimenState, PkWorkspace, CHALLENGE_PK_THERAPEUTIC_WINDOW, PK_HORIZON_HOURS, PK_SAMPLE_COUNT,
-};
-use crate::accessibility::AccessibleHoverText;
+#[cfg(test)]
+mod tests;
+#[cfg(test)]
+mod ui_tests;
+
+pub use persistence::STARTER_PRESET_JSON;
+
 use crate::framework::{
-    CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool, PaneSidePanel,
+    CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool, ToolStateBounds,
+    TraceSnapshotManager,
 };
 use eframe::egui;
-use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoint, PlotPoints, VLine};
-use std::collections::HashMap;
+use egui_plot::PlotPoint;
 
-/// Interactive clinical dosing tool backed by `PKParameters`, `BatemanModel`, `solve_ka`, and `SuperpositionModel`.
+/// Maximum number of scheduled doses in a multi-dose regimen.
+pub const MAX_DOSES: usize = 64;
+/// Minimum curve sample count across the simulation horizon.
+pub const MIN_SAMPLE_POINTS: usize = 64;
+/// Default curve sample count across the simulation horizon.
+pub const DEFAULT_SAMPLE_POINTS: usize = 501;
+/// Maximum curve sample count across the simulation horizon.
+pub const MAX_SAMPLE_POINTS: usize = 2_000;
+/// Maximum Newton-Raphson iterations when calibrating `ka` from target `T_max`.
+pub const SOLVE_KA_MAX_ITER: usize = 100;
+/// Concentration floor (`mg/L`) used for finite base-10 logarithmic axis projection.
+pub const LOG10_CONC_FLOOR: f64 = 1.0e-4;
+/// Upper slider and state bound for dose amounts (`mg`).
+pub const MAX_DOSE_MG: f64 = 5_000.0;
+/// Lower bound for positive first-order rate constants (`1/h`).
+pub const MIN_RATE: f64 = 0.005;
+/// Upper bound for absorption rate constants (`1/h`).
+pub const MAX_KA: f64 = 10.0;
+/// Upper bound for elimination rate constants (`1/h`).
+pub const MAX_KE: f64 = 2.0;
+/// Lower bound for apparent volume of distribution (`L`).
+pub const MIN_VOLUME_L: f64 = 1.0;
+/// Upper bound for apparent volume of distribution (`L`).
+pub const MAX_VOLUME_L: f64 = 500.0;
+/// Lower bound for dosing interval (`h`).
+pub const MIN_INTERVAL_H: f64 = 1.0;
+/// Upper bound for dosing interval (`h`).
+pub const MAX_INTERVAL_H: f64 = 168.0;
+/// Lower bound for simulation time horizon (`h`).
+pub const MIN_HORIZON_H: f64 = 4.0;
+/// Upper bound for simulation time horizon (`h`).
+pub const MAX_HORIZON_H: f64 = 336.0;
+/// Upper bound for delayed second-pulse lag time (`h`).
+pub const MAX_LAG_H: f64 = 24.0;
+/// Upper bound for target single-dose peak time `T_max` (`h`).
+pub const MAX_TARGET_TMAX_H: f64 = 48.0;
+/// Upper bound for minimum effective concentration (`mg/L`).
+pub const MAX_MEC: f64 = 500.0;
+/// Upper bound for minimum toxic concentration (`mg/L`).
+pub const MAX_MTC: f64 = 1_000.0;
+
+/// Drug entity composition mode (achiral single entity vs chiral enantiomer mixture).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum EntityMode {
+    /// Single chemical entity modeled via `BatemanModel`.
+    SingleEntity,
+    /// Two-isomer chiral mixture modeled via `EnantiomerModel`.
+    Enantiomer,
+}
+
+impl EntityMode {
+    /// Human-readable display label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::SingleEntity => "Single Entity",
+            Self::Enantiomer => "Chiral Enantiomer",
+        }
+    }
+}
+
+/// Oral drug release profile (immediate release vs biphasic extended release).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ReleaseMode {
+    /// Single first-order absorption pulse.
+    ImmediateRelease,
+    /// Biphasic immediate + delayed pulse (`TwoPulseModel`).
+    TwoPulse,
+}
+
+impl ReleaseMode {
+    /// Human-readable display label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ImmediateRelease => "Immediate Release (IR)",
+            Self::TwoPulse => "Biphasic Extended Release (Two-Pulse XR)",
+        }
+    }
+}
+
+/// Strategy for configuring primary absorption rate constant `ka`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum AbsorptionMode {
+    /// Directly specify `ka` via slider.
+    DirectKa,
+    /// Root-solve `ka` from target `T_max` and `ke` via `solve_ka`.
+    SolveFromTMax,
+}
+
+/// Resolved four-way pharmacokinetic formulation variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FormulationKind {
+    /// Single-entity immediate release (`BatemanModel`).
+    SingleImmediate,
+    /// Single-entity biphasic extended release (`TwoPulseModel<BatemanModel>`).
+    SingleTwoPulse,
+    /// Chiral immediate release (`EnantiomerModel`).
+    ChiralImmediate,
+    /// Chiral biphasic extended release (`TwoPulseModel<EnantiomerModel>`).
+    ChiralTwoPulse,
+}
+
+/// Interactive ADME pharmacokinetics and multi-dose regimen planning workbench.
 pub struct PharmacokineticsTool {
-    /// Current oral regimen and patient pharmacokinetic parameters.
-    pub state: PkRegimenState,
+    /// Single-entity vs chiral mixture selector.
+    pub entity_mode: EntityMode,
+    /// Immediate-release vs biphasic extended-release selector.
+    pub release_mode: ReleaseMode,
+    /// Direct `ka` vs root-solved `ka` from `T_max`.
+    pub absorption_mode: AbsorptionMode,
+    /// Maintenance dose amount (`mg`).
+    pub dose_mg: f64,
+    /// Oral bioavailability fraction `F` (`0.0..=1.0`).
+    pub bioavailability: f64,
+    /// Primary (or `d`-isomer) absorption rate `ka` (`1/h`).
+    pub ka: f64,
+    /// Primary (or `d`-isomer) elimination rate `ke` (`1/h`).
+    pub ke: f64,
+    /// Apparent volume of distribution `V_d` (`L`).
+    pub volume_l: f64,
+    /// Target peak time `T_max` (`h`) when `AbsorptionMode::SolveFromTMax` is active.
+    pub target_t_max: f64,
+    /// Whether slot `0` uses a distinct loading dose `loading_dose_mg`.
+    pub use_loading_dose: bool,
+    /// Loading dose administered at `t = 0` (`mg`).
+    pub loading_dose_mg: f64,
+    /// Dosing interval `tau` (`h`).
+    pub interval_hours: f64,
+    /// Total scheduled dose slots (`1..=64`).
+    pub n_doses: usize,
+    /// Sorted 0-based indices of skipped dose slots (`< n_doses`).
+    pub missed_slots: Vec<usize>,
+    /// Total plasma simulation horizon (`h`).
+    pub horizon_hours: f64,
+    /// Number of uniform time samples (`64..=2000`).
+    pub sample_points: usize,
+    /// Second-pulse lag delay (`h`) for `TwoPulseModel`.
+    pub lag_time_hours: f64,
+    /// Fraction of dose released in first pulse (`0.0..=1.0`).
+    pub f1: f64,
+    /// Fraction of dose released in delayed pulse (`0.0..=1.0`).
+    pub f2: f64,
+    /// Fraction of `d`-isomer in chiral mixture (`0.0..=1.0`).
+    pub f_d: f64,
+    /// Fraction of `l`-isomer in chiral mixture (`0.0..=1.0`).
+    pub f_l: f64,
+    /// Absorption rate constant for `l`-isomer (`1/h`).
+    pub ka_l: f64,
+    /// Elimination rate constant for `l`-isomer (`1/h`).
+    pub ke_l: f64,
+    /// Minimum effective concentration (`mg/L`).
+    pub mec: f64,
+    /// Minimum toxic concentration (`mg/L`).
+    pub mtc: f64,
+    /// Toggle base-10 logarithmic Y-axis projection.
+    pub log10_y: bool,
     /// Active inverse challenge ID when running in challenge mode.
     pub active_challenge: Option<&'static str>,
-    /// Preallocated trajectory and scoring workspace.
-    pub workspace: PkWorkspace,
-    /// Cached plot trajectory points (`481` samples).
-    plot_points: Vec<PlotPoint>,
+    /// Preallocated trajectory and scoring workspace for `pk_therapeutic_window`.
+    pub workspace: challenge::PkWorkspace,
     /// Automated and manual plot callouts.
     pub callout_manager: CalloutManager,
+
+    pub(crate) compiled: Option<model::CompiledFormulation>,
+    pub(crate) effective_ka: f64,
+    pub(crate) solver_error: Option<String>,
+    pub(crate) total_points: Vec<PlotPoint>,
+    pub(crate) d_points: Vec<PlotPoint>,
+    pub(crate) l_points: Vec<PlotPoint>,
+    pub(crate) plot_total_points: Vec<PlotPoint>,
+    pub(crate) plot_d_points: Vec<PlotPoint>,
+    pub(crate) plot_l_points: Vec<PlotPoint>,
+    pub(crate) metrics: metrics::PkMetrics,
+    pub(crate) snapshot_manager: TraceSnapshotManager,
+    pub(crate) card_export: export::CardExportState,
+    pub(crate) last_param_summary: String,
+    pub(crate) revision: u64,
 }
 
 impl Default for PharmacokineticsTool {
     fn default() -> Self {
         let mut tool = Self {
-            state: PkRegimenState::default(),
+            entity_mode: EntityMode::SingleEntity,
+            release_mode: ReleaseMode::ImmediateRelease,
+            absorption_mode: AbsorptionMode::DirectKa,
+            dose_mg: 100.0,
+            bioavailability: 0.85,
+            ka: 1.2,
+            ke: 0.10,
+            volume_l: 40.0,
+            target_t_max: 2.5,
+            use_loading_dose: false,
+            loading_dose_mg: 200.0,
+            interval_hours: 12.0,
+            n_doses: 6,
+            missed_slots: Vec::with_capacity(MAX_DOSES),
+            horizon_hours: 72.0,
+            sample_points: DEFAULT_SAMPLE_POINTS,
+            lag_time_hours: 4.0,
+            f1: 0.5,
+            f2: 0.5,
+            f_d: 0.75,
+            f_l: 0.25,
+            ka_l: 1.0,
+            ke_l: 0.06,
+            mec: 1.5,
+            mtc: 5.0,
+            log10_y: false,
             active_challenge: None,
-            workspace: PkWorkspace::default(),
-            plot_points: vec![PlotPoint::new(0.0, 0.0); PK_SAMPLE_COUNT],
+            workspace: challenge::PkWorkspace::default(),
             callout_manager: CalloutManager::new(),
+            compiled: None,
+            effective_ka: 1.2,
+            solver_error: None,
+            total_points: Vec::with_capacity(MAX_SAMPLE_POINTS),
+            d_points: Vec::with_capacity(MAX_SAMPLE_POINTS),
+            l_points: Vec::with_capacity(MAX_SAMPLE_POINTS),
+            plot_total_points: Vec::with_capacity(MAX_SAMPLE_POINTS),
+            plot_d_points: Vec::with_capacity(MAX_SAMPLE_POINTS),
+            plot_l_points: Vec::with_capacity(MAX_SAMPLE_POINTS),
+            metrics: metrics::PkMetrics::default(),
+            snapshot_manager: TraceSnapshotManager::new(),
+            card_export: export::CardExportState::default(),
+            last_param_summary: String::new(),
+            revision: 1,
         };
         tool.recalculate();
         tool
@@ -44,192 +257,68 @@ impl Default for PharmacokineticsTool {
 }
 
 impl PharmacokineticsTool {
-    /// Recomputes `solve_ka`, multi-dose superposition samples, and plot callout positions.
+    /// Resolves the active four-way formulation variant.
+    #[must_use]
+    pub const fn formulation(&self) -> FormulationKind {
+        match (self.entity_mode, self.release_mode) {
+            (EntityMode::SingleEntity, ReleaseMode::ImmediateRelease) => {
+                FormulationKind::SingleImmediate
+            }
+            (EntityMode::SingleEntity, ReleaseMode::TwoPulse) => FormulationKind::SingleTwoPulse,
+            (EntityMode::Enantiomer, ReleaseMode::ImmediateRelease) => {
+                FormulationKind::ChiralImmediate
+            }
+            (EntityMode::Enantiomer, ReleaseMode::TwoPulse) => FormulationKind::ChiralTwoPulse,
+        }
+    }
+
+    /// Formats a concise parameter summary for `TraceSnapshotManager` labels.
+    #[must_use]
+    pub fn param_summary(&self) -> String {
+        let load = if self.use_loading_dose {
+            format!(", D_load={:.0}mg", self.loading_dose_mg)
+        } else {
+            String::new()
+        };
+        let missed = if self.missed_slots.is_empty() {
+            String::new()
+        } else {
+            format!(", missed={:?}", self.missed_slots)
+        };
+        format!(
+            "D={:.0}mg{}, tau={:.0}h, N={}{}",
+            self.dose_mg, load, self.interval_hours, self.n_doses, missed
+        )
+    }
+
+    /// Rebuilds the superposition models and evaluates concentration curves, callouts, and PK metrics.
     pub fn recalculate(&mut self) {
-        self.state.enforce_challenge_locks(self.active_challenge);
-        self.workspace.evaluate(&self.state);
-        let dt = PK_HORIZON_HOURS / (PK_SAMPLE_COUNT - 1) as f64;
-        if self.plot_points.len() != PK_SAMPLE_COUNT {
-            self.plot_points
-                .resize(PK_SAMPLE_COUNT, PlotPoint::new(0.0, 0.0));
+        if self.active_challenge.is_some() {
+            self.enforce_challenge_locks();
         }
-        for (k, slot) in self.plot_points.iter_mut().enumerate() {
-            *slot = PlotPoint::new(k as f64 * dt, self.workspace.concentrations[k]);
+        self.revision = self.revision.wrapping_add(1).max(1);
+        self.last_param_summary = self.param_summary();
+        self.compile_models();
+        self.evaluate_sampled_regimen();
+        if self.active_challenge.is_some() {
+            let state = self.to_challenge_regimen_state();
+            self.workspace.evaluate(&state);
         }
-        self.workspace
-            .sync_callouts(&self.state, &mut self.callout_manager);
-    }
-
-    fn draw_regimen_controls(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut changed = false;
-        ui.group(|ui| {
-            ui.strong("Tunable Dosing Regimen");
-            changed |= ui
-                .add(
-                    egui::Slider::new(&mut self.state.dose_mg, 0.0..=600.0)
-                        .step_by(5.0)
-                        .text("Maintenance Dose D (mg)"),
-                )
-                .accessible_hover_text(
-                    "Recurring oral maintenance dose administered every Δt hours",
-                )
-                .changed();
-            changed |= ui
-                .add(
-                    egui::Slider::new(&mut self.state.interval_hours, 1.0..=24.0)
-                        .step_by(0.5)
-                        .text("Interval Δt (h)"),
-                )
-                .accessible_hover_text("Hours between successive maintenance doses")
-                .changed();
-            changed |= ui
-                .checkbox(
-                    &mut self.state.use_loading_dose,
-                    "Enable Loading Dose D_load at t = 0 h",
-                )
-                .accessible_hover_text(
-                    "Replace the initial t = 0 maintenance dose with a custom bolus",
-                )
-                .changed();
-            ui.add_enabled_ui(self.state.use_loading_dose, |ui| {
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.state.loading_dose_mg, 0.0..=800.0)
-                            .step_by(5.0)
-                            .text("Loading Dose D_load (mg)"),
-                    )
-                    .accessible_hover_text("Initial oral loading dose administered at t = 0 h")
-                    .changed();
-            });
-        });
-        changed
-    }
-
-    fn draw_patient_constants(&mut self, ui: &mut egui::Ui) -> bool {
-        let locked = self.active_challenge.is_some();
-        let mut changed = false;
-        ui.group(|ui| {
-            let header = if locked {
-                "Patient PK & Window (Locked by Challenge)"
-            } else {
-                "Patient PK & Therapeutic Window"
-            };
-            ui.strong(header);
-            ui.add_enabled_ui(!locked, |ui| {
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.state.bioavailability, 0.1..=1.0)
-                            .text("Bioavailability F"),
-                    )
-                    .changed();
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.state.ke, 0.02..=0.5)
-                            .text("Elimination k_e (1/h)"),
-                    )
-                    .changed();
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.state.t_max_target, 0.4..=4.0)
-                            .text("Target T_max (h)"),
-                    )
-                    .changed();
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.state.volume_l, 10.0..=100.0)
-                            .text("Volume V (L)"),
-                    )
-                    .changed();
-                changed |= ui
-                    .add(egui::Slider::new(&mut self.state.c_mec, 0.5..=15.0).text("C_MEC (mg/L)"))
-                    .changed();
-                let min_mtc = (self.state.c_mec + 0.5).min(49.5);
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.state.c_mtc, min_mtc..=50.0)
-                            .text("C_MTC (mg/L)"),
-                    )
-                    .changed();
-            });
-        });
-        changed
-    }
-
-    fn draw_summary_readout(&self, ui: &mut egui::Ui) {
-        let s = &self.workspace.summary;
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.group(|ui| {
-            ui.strong("Solved ADME & Window Readout");
-            ui.label(format!(
-                "solve_ka(T_max={:.2}h) → k_a = {:.4} h⁻¹ (t₁/₂ = {:.2} h)",
-                s.verified_t_max, s.ka, s.elimination_half_life
-            ));
-            ui.label(format!(
-                "Peak C_max = {:.2} mg/L @ {:.1} h | 12–48h Trough = {:.2} mg/L",
-                s.peak_conc.1, s.peak_conc.0, s.steady_trough.1
-            ));
-            let status_color = if s.passed {
-                palette.success
-            } else {
-                palette.warning
-            };
-            ui.colored_label(
-                status_color,
-                format!(
-                    "E_tox = {:.2} mg/L | Sub-MEC φ_sub(12–48h) = {:.1}% | Score = {:.1}/100",
-                    s.e_tox,
-                    s.phi_sub * 100.0,
-                    s.score
-                ),
-            );
-        });
-    }
-
-    fn draw_concentration_plot(&mut self, ui: &mut egui::Ui) {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        Plot::new("pk_superposition_plot")
-            .legend(Legend::default())
-            .x_axis_label("Time (hours)")
-            .y_axis_label("Plasma Concentration C(t) (mg/L)")
-            .show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new("Plasma C(t)", PlotPoints::Borrowed(&self.plot_points))
-                        .color(palette.series_color(0))
-                        .width(2.0_f32),
-                );
-                plot_ui.hline(
-                    HLine::new("C_MEC (Min Effective)", self.state.c_mec)
-                        .color(palette.success)
-                        .width(1.5_f32)
-                        .style(LineStyle::Dashed { length: 6.0_f32 }),
-                );
-                plot_ui.hline(
-                    HLine::new("C_MTC (Min Toxic)", self.state.c_mtc)
-                        .color(palette.error)
-                        .width(1.5_f32)
-                        .style(LineStyle::Dashed { length: 6.0_f32 }),
-                );
-                plot_ui.vline(
-                    VLine::new("Steady Window Start (12h)", 12.0)
-                        .color(palette.muted_text)
-                        .style(LineStyle::Dotted { spacing: 5.0_f32 }),
-                );
-                self.callout_manager.render_on_plot(plot_ui);
-            });
+        self.sync_callouts();
     }
 }
 
 impl InteractiveTool for PharmacokineticsTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
-        self
-    }
-
     fn name(&self) -> &'static str {
-        "Pharmacokinetic Dosing"
+        "Pharmacokinetics (ADME)"
     }
 
     fn domain(&self) -> &'static str {
         "clinical_trials"
+    }
+
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
@@ -237,64 +326,43 @@ impl InteractiveTool for PharmacokineticsTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let dt = PK_HORIZON_HOURS / (PK_SAMPLE_COUNT - 1) as f64;
-        let pts = (0..PK_SAMPLE_COUNT)
-            .map(|k| [k as f64 * dt, self.workspace.concentrations[k]])
-            .collect();
-        vec![("Plasma C(t) (mg/L)".to_string(), pts)]
+        export::collect_export_datasets(self)
+    }
+
+    fn state_bounds(&self) -> ToolStateBounds {
+        ToolStateBounds::DEFAULT
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        self.state.dose_mg.to_bits().hash(&mut h);
-        self.state.use_loading_dose.hash(&mut h);
-        self.state.loading_dose_mg.to_bits().hash(&mut h);
-        self.state.interval_hours.to_bits().hash(&mut h);
-        self.state.bioavailability.to_bits().hash(&mut h);
-        self.state.ke.to_bits().hash(&mut h);
-        self.state.t_max_target.to_bits().hash(&mut h);
-        self.state.volume_l.to_bits().hash(&mut h);
-        self.state.c_mec.to_bits().hash(&mut h);
-        self.state.c_mtc.to_bits().hash(&mut h);
-        self.active_challenge.hash(&mut h);
-        h.finish().max(1)
+        self.compute_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
-        self.state.validate().is_ok()
+        self.check_finite_parameters()
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        self.clamp_all_parameters()
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&self.state).ok()
+        self.serialize_full_state()
+    }
+
+    fn save_recovery_state(&self) -> Option<String> {
+        self.serialize_recovery_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let mut loaded: PkRegimenState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid PK regimen state: {e}"))?;
-        loaded.enforce_challenge_locks(self.active_challenge);
-        loaded.validate()?;
-        self.state = loaded;
-        self.recalculate();
-        Ok(())
+        self.load_pk_state(state, false)
+    }
+
+    fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
+        self.load_pk_state(state, true)
     }
 
     fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
-        match challenge_id {
-            None => {
-                self.active_challenge = None;
-                self.recalculate();
-                Ok(())
-            }
-            Some(CHALLENGE_PK_THERAPEUTIC_WINDOW) => {
-                self.active_challenge = Some(CHALLENGE_PK_THERAPEUTIC_WINDOW);
-                self.recalculate();
-                Ok(())
-            }
-            Some(other) => Err(format!(
-                "Unsupported challenge '{other}' for PharmacokineticsTool"
-            )),
-        }
+        self.set_pk_challenge(challenge_id)
     }
 
     fn active_challenge_id(&self) -> Option<&'static str> {
@@ -302,50 +370,55 @@ impl InteractiveTool for PharmacokineticsTool {
     }
 
     fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
-        self.active_challenge
-            .map(|_| self.workspace.evaluate_challenge())
+        self.eval_pk_challenge()
     }
 
-    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "pk_dosing_controls");
-        let mut changed = false;
-        PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Oral Dosing Regimen");
-            ui.separator();
-            changed |= self.draw_regimen_controls(ui);
-            ui.add_space(6.0);
-            changed |= self.draw_patient_constants(ui);
-            ui.add_space(6.0);
-            self.draw_summary_readout(ui);
-        });
-        if changed {
-            self.recalculate();
-        }
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            ui.heading("48-Hour Multi-Dose Plasma Superposition");
-            self.draw_concentration_plot(ui);
-        });
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        ui::show_pharmacokinetics_inside(self, ui);
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
 impl scientific_metadata::theory::TheoryDescribable for PharmacokineticsTool {
     fn theory_description(&self) -> String {
-        "One-compartment oral Bateman absorption-elimination superposition: C(t) = Σ_j (F·D_j·k_a / (V·(k_a - k_e))) · (e^(-k_e(t - t_j)) - e^(-k_a(t - t_j))) with k_a inverted from T_max = ln(k_a/k_e)/(k_a - k_e) via Newton-Raphson.".to_string()
+        format!(
+            "One-compartment oral ADME Bateman kinetics $C(t) = \\frac{{F D k_a}}{{V_d (k_a - k_e)}}(e^{{-k_e t}} - e^{{-k_a t}})$ with multi-dose linear superposition $C_{{\\Sigma}}(t) = \\sum_{{i}} C(t - t_i)$, biphasic two-pulse release $f_1 C(t) + f_2 C(t - t_{{\\text{{lag}}}})$, and chiral isomer mixtures ($F = {:.2}$, $D = {:.1}$ mg, $k_a = {:.3}\\text{{ h}}^{{-1}}$, $k_e = {:.3}\\text{{ h}}^{{-1}}$, $V_d = {:.1}$ L).",
+            self.bioavailability, self.dose_mg, self.effective_ka, self.ke, self.volume_l
+        )
     }
 
     fn phonetic_description(&self) -> String {
-        "One compartment oral Bateman pharmacokinetics with multi-dose superposition and therapeutic window bounds".to_string()
+        "One-compartment Bateman pharmacokinetics and multi-dose ADME superposition theory".into()
     }
 
     fn theory_citation(&self) -> String {
-        "Rowland & Tozer, Clinical Pharmacokinetics and Pharmacodynamics (2011); Bateman (1910)"
-            .to_string()
+        "Clinical Pharmacokinetics and Pharmacodynamics: Concepts and Applications (Rowland & Tozer, 2011); Über eine Erweiterung der Theorie des radioaktiven Zerfalls (Bateman, 1910)".into()
     }
 
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("dose_mg".into(), "Oral maintenance dose D (mg)".into());
-        map.insert("interval_hours".into(), "Dosing interval Δt (hours)".into());
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert(
+            "Bateman Function".into(),
+            "First-order extravascular absorption and mono-exponential elimination model".into(),
+        );
+        map.insert(
+            "Linear Superposition".into(),
+            "Multi-dose accumulation across maintenance, loading, and missed-dose schedules".into(),
+        );
+        map.insert(
+            "Two-Pulse & Chiral ADME".into(),
+            "Biphasic extended-release pulses and stereoselective d/l-enantiomer plasma curves"
+                .into(),
+        );
         map
     }
 }
@@ -353,44 +426,23 @@ impl scientific_metadata::theory::TheoryDescribable for PharmacokineticsTool {
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "PharmacokineticsTool",
-        display_name: "Pharmacokinetic Dosing",
+        display_name: "Pharmacokinetics (ADME)",
         domain: "clinical_trials",
-        tags: &["pharmacokinetics", "adme", "dosing"],
+        tags: &["adme", "pharmacokinetics", "bateman", "dosing", "enantiomer"],
         build: || Box::new(PharmacokineticsTool::default()),
     }
 }
 
-const STARTER_PK_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Steady-State Oral Dosing Regimen",
-    "domain": "clinical_trials",
-    "timestamp": "2026-11-21T00:00:00Z"
-  },
-  "config": {
-    "dose_mg": 165.0,
-    "use_loading_dose": true,
-    "loading_dose_mg": 240.0,
-    "interval_hours": 6.0,
-    "bioavailability": 0.85,
-    "ke": 0.12,
-    "t_max_target": 1.5,
-    "volume_l": 25.0,
-    "c_mec": 4.0,
-    "c_mtc": 12.0
-  }
-}"#;
-
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
-        id: "pharmacokinetics_oral_starter",
-        title: "Steady-State Oral Dosing Regimen",
-        description: "C(t) = Σ Bateman(t - k·Δt): Multi-dose oral accumulation within [C_MEC, C_MTC].",
+        id: "pharmacokinetics_adme_starter",
+        title: "Pharmacokinetics (ADME)",
+        description: "C(t) = F·D·ka / [Vd(ka - ke)] · (e^(-ke·t) - e^(-ka·t)): Multi-dose ADME regimen planner with therapeutic windows.",
         category: "Pharmacokinetics",
         icon: "💊",
         domain: "clinical_trials",
         tool_name: Some("PharmacokineticsTool"),
-        preset_generator: || STARTER_PK_JSON,
+        preset_generator: || STARTER_PRESET_JSON,
     }
 }
 

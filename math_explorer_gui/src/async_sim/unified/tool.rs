@@ -35,6 +35,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(crate) callout_manager: CalloutManager,
     pub(super) ui_extension: Option<Box<dyn UnifiedUiExtension>>,
+    pub(crate) atlas: Option<crate::async_sim::atlas::ParameterAtlasController>,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -71,13 +72,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .iter()
             .map(|(name, _)| M::parameter_label(name))
             .collect();
-
         let mut callout_manager = CalloutManager::new();
         let ui_extension = M::create_ui_extension();
         if let Some(ext) = &ui_extension {
             ext.sync_callouts(controller.latest_snapshot(), &mut callout_manager);
         }
-
         Self {
             controller,
             params,
@@ -99,6 +98,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             callout_manager,
             ui_extension,
+            atlas: Self::create_optional_atlas(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -347,6 +347,10 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         if let Some(ext) = &self.ui_extension {
             ext.state_revision_salt().hash(&mut h);
         }
+        if let Some(atlas) = &self.atlas {
+            atlas.is_visible().hash(&mut h);
+            atlas.axis_keys().hash(&mut h);
+        }
         self.custom_formula_enabled.hash(&mut h);
         if let Some(ref bar) = self.formula_bar {
             bar.raw_text.hash(&mut h);
@@ -415,6 +419,16 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         self.ui_extension
             .as_ref()
             .and_then(|ext| ext.evaluate_challenge(snap))
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn clamp_parameters(&mut self) -> bool {

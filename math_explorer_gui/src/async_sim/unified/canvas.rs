@@ -144,31 +144,50 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.dirty = false;
     }
 
+    fn render_primary_viewport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        self.refresh_texture_if_dirty(ctx);
+        if let Some(ext) = &self.ui_extension {
+            ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
+        }
+        if let Some(texture) = self.texture.clone() {
+            self.draw_image_plot(ui, ctx, &texture);
+        } else if let Some(custom_data) = self
+            .controller
+            .latest_snapshot()
+            .map(|s| s.custom_data.clone())
+        {
+            self.draw_line_plot(ui, &custom_data);
+        } else {
+            render_empty_plot_guidance(
+                ui,
+                "Simulation ready — click ▶ Run in the side panel to start.",
+            );
+        }
+    }
+
     pub(super) fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         egui::CentralPanel::default().show_inside(ui, |ui| {
             if M::custom_central_panel(ui, self.controller.latest_snapshot()) {
                 return;
             }
-
-            self.refresh_texture_if_dirty(&ctx);
-            if let Some(ext) = &self.ui_extension {
-                ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
+            if !self.is_atlas_visible() {
+                self.render_primary_viewport(ui, &ctx);
+                return;
             }
-
-            if let Some(texture) = self.texture.clone() {
-                self.draw_image_plot(ui, &ctx, &texture);
-            } else if let Some(custom_data) = self
-                .controller
-                .latest_snapshot()
-                .map(|s| s.custom_data.clone())
-            {
-                self.draw_line_plot(ui, &custom_data);
+            let mut teleport = None;
+            if ui.available_width() >= 680.0 {
+                ui.columns(2, |cols| {
+                    self.render_primary_viewport(&mut cols[0], &ctx);
+                    teleport = self.draw_atlas_panel_ui(&mut cols[1]);
+                });
             } else {
-                render_empty_plot_guidance(
-                    ui,
-                    "Simulation ready — click ▶ Run in the side panel to start.",
-                );
+                teleport = self.draw_atlas_panel_ui(ui);
+                ui.separator();
+                self.render_primary_viewport(ui, &ctx);
+            }
+            if let Some(ev) = teleport {
+                self.apply_atlas_teleport(ev, Some(&ctx));
             }
         });
     }

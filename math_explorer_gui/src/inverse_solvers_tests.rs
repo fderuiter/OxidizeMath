@@ -6,7 +6,7 @@
 use crate::async_sim::unified::UnifiedSimRunner;
 use crate::async_sim::{SimCommand, SimulationRunner};
 use crate::framework::InteractiveTool;
-use crate::tabs::clinical_trials::pharmacokinetics::model::{
+use crate::tabs::clinical_trials::pharmacokinetics::challenge::{
     PkRegimenState, PkWorkspace, CHALLENGE_PK_THERAPEUTIC_WINDOW,
 };
 use crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool;
@@ -122,17 +122,17 @@ fn test_ground_truth_pharmacokinetics_solve_ka_superposition_and_zero_alloc() {
     pk_tool
         .apply_challenge(Some(CHALLENGE_PK_THERAPEUTIC_WINDOW))
         .unwrap();
-    pk_tool.state.dose_mg = 165.0;
-    pk_tool.state.interval_hours = 6.0;
-    pk_tool.state.use_loading_dose = false;
+    pk_tool.dose_mg = 165.0;
+    pk_tool.interval_hours = 6.0;
+    pk_tool.use_loading_dose = false;
     pk_tool.recalculate();
     let valid_eval = pk_tool.evaluate_challenge().unwrap();
     assert!(valid_eval.passed);
     assert!((valid_eval.score - 100.0).abs() < 1e-9);
 
     // 3. Toxic regimen fails with E_tox > 0
-    pk_tool.state.dose_mg = 450.0;
-    pk_tool.state.interval_hours = 4.0;
+    pk_tool.dose_mg = 450.0;
+    pk_tool.interval_hours = 4.0;
     pk_tool.recalculate();
     let toxic_eval = pk_tool.evaluate_challenge().unwrap();
     assert!(!toxic_eval.passed);

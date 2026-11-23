@@ -4789,6 +4789,9 @@
   ],
   "crates/domain_physics/src/physics/mri/bloch.rs": [
     {
+      "signature": "impl BlochSimulator { pub fn advance_isochromat_grid < const K : usize > (& mut self , spins : & mut [[Vector3 < f64 > ; K]] , rho : & [f64] , exp_t1 : & [f64] , exp_t2 : & [f64] , delta_b0 : & [f64] , spread_frac : f64 , dt : f64 ,) }"
+    },
+    {
       "signature": "impl BlochSimulator { pub fn new (initial_magnetization : Vector3 < f64 > , m0 : f64) -> Self }"
     },
     {
@@ -4807,6 +4810,26 @@
   "crates/domain_physics/src/physics/mri/mod.rs": [
     {
       "signature": "pub use bloch :: BlochSimulator"
+    },
+    {
+      "signature": "pub use reconstruction :: Fft2dWorkspace"
+    }
+  ],
+  "crates/domain_physics/src/physics/mri/phantom.rs": [
+    {
+      "signature": "pub const MODIFIED_SHEPP_LOGAN_ELLIPSES : [SheppLoganEllipse ; 10] = [SheppLoganEllipse { additive_intensity : 1.0 , semi_axis_x : 0.6900 , semi_axis_y : 0.9200 , center_x : 0.0 , center_y : 0.0 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : - 0.8 , semi_axis_x : 0.6624 , semi_axis_y : 0.8740 , center_x : 0.0 , center_y : - 0.0184 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : - 0.2 , semi_axis_x : 0.1100 , semi_axis_y : 0.3100 , center_x : 0.22 , center_y : 0.0 , rotation_deg : - 18.0 , } , SheppLoganEllipse { additive_intensity : - 0.2 , semi_axis_x : 0.1600 , semi_axis_y : 0.4100 , center_x : - 0.22 , center_y : 0.0 , rotation_deg : 18.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.2100 , semi_axis_y : 0.2500 , center_x : 0.0 , center_y : 0.35 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.0460 , semi_axis_y : 0.0460 , center_x : 0.0 , center_y : 0.10 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.0460 , semi_axis_y : 0.0460 , center_x : 0.0 , center_y : - 0.10 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.0460 , semi_axis_y : 0.0230 , center_x : - 0.08 , center_y : - 0.605 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.0230 , semi_axis_y : 0.0230 , center_x : 0.0 , center_y : - 0.606 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.0230 , semi_axis_y : 0.0460 , center_x : 0.06 , center_y : - 0.605 , rotation_deg : 0.0 , } ,]"
+    },
+    {
+      "signature": "pub fn fill_shepp_logan_grid (rows : usize , cols : usize , out_rho : & mut [f64] , out_t1 : & mut [f64] , out_t2 : & mut [f64] ,)"
+    },
+    {
+      "signature": "pub fn sample_shepp_logan_tissue (x_norm : f64 , y_norm : f64) -> TissueParameters"
+    },
+    {
+      "signature": "pub struct SheppLoganEllipse"
+    },
+    {
+      "signature": "pub struct TissueParameters"
     }
   ],
   "crates/domain_physics/src/physics/mri/proton.rs": [
@@ -4828,10 +4851,46 @@
   ],
   "crates/domain_physics/src/physics/mri/reconstruction.rs": [
     {
+      "signature": "impl Fft2dWorkspace { pub fn cols (& self) -> usize }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn filter_kspace_2d_into (& mut self , density : & DMatrix < Complex < f64 > > , dft_mask : & [f64] , dft_spikes : & [Complex < f64 >] , identity_pass : bool , out_kspace : & mut [Complex < f64 >] , out_image : & mut DMatrix < Complex < f64 > > ,) }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn forward_transposed_in_place (& mut self , density : & mut DMatrix < Complex < f64 > > , out_kspace : & mut [Complex < f64 >] ,) }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn inverse_dft_2d_into (& mut self , k_space : & DMatrix < Complex < f64 > > , out_image : & mut DMatrix < Complex < f64 > > ,) }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn new (rows : usize , cols : usize) -> Self }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn reconstruct_normalized_2d_into (& mut self , k_space : & DMatrix < Complex < f64 > > , out_image : & mut DMatrix < Complex < f64 > > ,) }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn resize (& mut self , rows : usize , cols : usize) }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn rows (& self) -> usize }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn simulate_signal_2d_into (& mut self , density : & DMatrix < Complex < f64 > > , out_k_space : & mut DMatrix < Complex < f64 > > ,) }"
+    },
+    {
+      "signature": "pub fn fftshift_2d_into (src : & DMatrix < Complex < f64 > > , dst : & mut DMatrix < Complex < f64 > >)"
+    },
+    {
+      "signature": "pub fn ifftshift_2d_into (src : & DMatrix < Complex < f64 > > , dst : & mut DMatrix < Complex < f64 > >)"
+    },
+    {
       "signature": "pub fn inverse_dft_2d (k_space : & DMatrix < Complex < f64 > >) -> DMatrix < Complex < f64 > >"
     },
     {
       "signature": "pub fn simulate_signal_2d (density : & DMatrix < Complex < f64 > >) -> DMatrix < Complex < f64 > >"
+    },
+    {
+      "signature": "pub struct Fft2dWorkspace"
     }
   ],
   "crates/domain_physics/src/physics/mri/scanner.rs": [
@@ -5354,6 +5413,9 @@
       "signature": "impl SpinLattice { pub fn evolve (& mut self , steps : usize , temperature : f64 , j_coupling : f64 , h_field : f64) }"
     },
     {
+      "signature": "impl SpinLattice { pub fn evolve_fermi_game (& mut self , steps : usize , temperature : f64 , payoff : & MatrixPayoff) }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn get (& self , x : usize , y : usize) -> i8 }"
     },
     {
@@ -5573,6 +5635,32 @@
       "signature": "pub fn is_universal_constant (name : & str) -> bool"
     }
   ],
+  "crates/math_commons/src/ast/glsl.rs": [
+    {
+      "signature": "impl Expr { pub fn to_glsl_complex (& self) -> Result < String , GlslError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_glsl_complex_with_vars (& self , allowed_vars : & [& str]) -> Result < String , GlslError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_glsl_scalar (& self) -> Result < String , GlslError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_glsl_scalar_with_vars (& self , allowed_vars : & [& str]) -> Result < String , GlslError > }"
+    },
+    {
+      "signature": "pub enum GlslError"
+    },
+    {
+      "signature": "pub fn format_glsl_float (n : f64) -> Result < String , GlslError >"
+    },
+    {
+      "signature": "pub use super :: glsl_helpers :: GLSL_COMPLEX_HELPERS"
+    },
+    {
+      "signature": "pub use super :: glsl_helpers :: GLSL_SCALAR_HELPERS"
+    }
+  ],
   "crates/math_commons/src/ast/latex.rs": [
     {
       "signature": "impl Expr { pub fn to_latex (& self) -> String }"
@@ -5628,6 +5716,18 @@
     },
     {
       "signature": "pub use expr :: is_universal_constant"
+    },
+    {
+      "signature": "pub use glsl :: GLSL_COMPLEX_HELPERS"
+    },
+    {
+      "signature": "pub use glsl :: GLSL_SCALAR_HELPERS"
+    },
+    {
+      "signature": "pub use glsl :: GlslError"
+    },
+    {
+      "signature": "pub use glsl :: format_glsl_float"
     },
     {
       "signature": "pub use lexer :: LexError"
@@ -5767,6 +5867,20 @@
       "signature": "pub fn mapped_gradient (value : f64 , min_val : f64 , max_val : f64) -> [u8 ; 3]"
     }
   ],
+  "crates/math_commons/src/math_kernel/glsl_colormap.rs": [
+    {
+      "signature": "pub const fn glsl_cyclic_cosine_palette_fn () -> & 'static str"
+    },
+    {
+      "signature": "pub const fn glsl_ensure_dark_canvas_contrast_fn () -> & 'static str"
+    },
+    {
+      "signature": "pub const fn glsl_heatmap_color_fn () -> & 'static str"
+    },
+    {
+      "signature": "pub fn glsl_colormap_library () -> String"
+    }
+  ],
   "crates/math_commons/src/math_kernel/types.rs": [
     {
       "signature": "pub fn flatten_2d_index (x : usize , y : usize , width : usize) -> usize"
@@ -5902,7 +6016,13 @@
   ],
   "crates/oxidize_core/src/rng.rs": [
     {
+      "signature": "impl OxidizeRng { pub fn from_seed (seed : u64) -> Self }"
+    },
+    {
       "signature": "impl OxidizeRng { pub fn new (seed : u64) -> Self }"
+    },
+    {
+      "signature": "pub const BASE_SEED : u64 = 0x0001_D1CE_CAFE_BABE"
     },
     {
       "signature": "pub struct OxidizeRng"
@@ -6039,6 +6159,27 @@
     },
     {
       "signature": "pub fn parse_workspace_members (content : & str) -> Result < Vec < String > , String >"
+    },
+    {
+      "signature": "pub use workspace_wasm :: HOST_ONLY_WORKSPACE_PACKAGES"
+    },
+    {
+      "signature": "pub use workspace_wasm :: WasmCrateSpec"
+    },
+    {
+      "signature": "pub use workspace_wasm :: WasmTestTargetKind"
+    },
+    {
+      "signature": "pub use workspace_wasm :: build_wasm_cargo_test_invocations"
+    },
+    {
+      "signature": "pub use workspace_wasm :: discover_wasm_crates"
+    },
+    {
+      "signature": "pub use workspace_wasm :: find_workspace_root"
+    },
+    {
+      "signature": "pub use workspace_wasm :: parse_workspace_members_std"
     }
   ],
   "crates/pure_math/src/error.rs": [
@@ -6646,6 +6787,83 @@
       "signature": "pub trait Integrator { fn integrate < F > (& self , f : F , min : f64 , max : f64 , eps : f64) -> IntegrationResult where F : Fn (f64) -> f64 }"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/momentum_dynamics.rs": [
+    {
+      "signature": "impl HamiltonianLeapfrog2D { pub fn new (mass : f64 , damping : f64) -> Self }"
+    },
+    {
+      "signature": "impl HamiltonianLeapfrog2D { pub fn step_with_kinetic < G , K > (& self , state : & mut PhasePoint2D , grad_fn : & mut G , kinetic_deriv : & mut K , dt : f64 ,) -> Result < () , EvolutionError > where G : FnMut (Vector2 < f64 >) -> Vector2 < f64 > , K : FnMut (f64) -> f64 , }"
+    },
+    {
+      "signature": "impl LangevinBaoab2D { pub fn new (mass : f64 , damping : f64 , temperature : f64) -> Self }"
+    },
+    {
+      "signature": "impl LangevinBaoab2D { pub fn step_with_kinetic < R , G , K > (& self , state : & mut PhasePoint2D , grad_fn : & mut G , kinetic_deriv : & mut K , rng : & mut R , dt : f64 ,) -> Result < () , EvolutionError > where R : RngCore + ? Sized , G : FnMut (Vector2 < f64 >) -> Vector2 < f64 > , K : FnMut (f64) -> f64 , }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn at_rest (q : Vector2 < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn from_velocity (q : Vector2 < f64 > , v : Vector2 < f64 > , mass : f64) -> Self }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn kinetic_energy (& self , mass : f64) -> f64 }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn new (q : Vector2 < f64 > , p : Vector2 < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn reflect_bounds (& mut self , q_min : Vector2 < f64 > , q_max : Vector2 < f64 > , restitution : f64) }"
+    },
+    {
+      "signature": "pub const MAX_DAMPING : f64 = 20.0"
+    },
+    {
+      "signature": "pub const MAX_DT : f64 = 0.1"
+    },
+    {
+      "signature": "pub const MAX_MASS : f64 = 50.0"
+    },
+    {
+      "signature": "pub const MAX_TEMPERATURE : f64 = 50.0"
+    },
+    {
+      "signature": "pub const MIN_DAMPING : f64 = 0.0"
+    },
+    {
+      "signature": "pub const MIN_DT : f64 = 1e-4"
+    },
+    {
+      "signature": "pub const MIN_MASS : f64 = 0.05"
+    },
+    {
+      "signature": "pub const MIN_TEMPERATURE : f64 = 0.0"
+    },
+    {
+      "signature": "pub fn clamp_damping (damping : f64) -> f64"
+    },
+    {
+      "signature": "pub fn clamp_dt (dt : f64) -> f64"
+    },
+    {
+      "signature": "pub fn clamp_mass (mass : f64) -> f64"
+    },
+    {
+      "signature": "pub fn clamp_temperature (temperature : f64) -> f64"
+    },
+    {
+      "signature": "pub struct HamiltonianLeapfrog2D"
+    },
+    {
+      "signature": "pub struct LangevinBaoab2D"
+    },
+    {
+      "signature": "pub struct PhasePoint2D"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/ode/mod.rs": [
     {
       "signature": "impl IntegrationMethod { pub const ALL : [Self ; 3] = [Self :: RungeKutta4 , Self :: Euler , Self :: Heun] }"
@@ -6786,6 +7004,9 @@
       "signature": "impl < T : RealField + Copy , Key > Adam < T , Key > where Key : Eq + std :: hash :: Hash + Clone , { pub fn new (lr : T) -> Result < Self , OptimizationError > }"
     },
     {
+      "signature": "impl < T : RealField + Copy > AdamState2D < T > { pub fn new () -> Self }"
+    },
+    {
       "signature": "impl < T : RealField + Copy > SGD < T > { pub fn new (learning_rate : T) -> Self }"
     },
     {
@@ -6805,6 +7026,9 @@
     },
     {
       "signature": "pub struct AdamState < T >"
+    },
+    {
+      "signature": "pub struct AdamState2D < T >"
     },
     {
       "signature": "pub struct L1RegularizedLeastSquares"
@@ -7201,6 +7425,122 @@
     },
     {
       "signature": "pub struct Theorem12Bounds"
+    },
+    {
+      "signature": "pub use weierstrass :: AffinePointFp"
+    },
+    {
+      "signature": "pub use weierstrass :: ChordStepFp"
+    },
+    {
+      "signature": "pub use weierstrass :: HasseSweepEntry"
+    },
+    {
+      "signature": "pub use weierstrass :: MAX_WEIERSTRASS_PRIME"
+    },
+    {
+      "signature": "pub use weierstrass :: WeierstrassCurveFp"
+    },
+    {
+      "signature": "pub use weierstrass :: mod_inv_fp"
+    },
+    {
+      "signature": "pub use weierstrass :: mod_pow_fp"
+    },
+    {
+      "signature": "pub use weierstrass :: sweep_hasse_bounds"
+    },
+    {
+      "signature": "pub use weierstrass :: tonelli_shanks_fp"
+    }
+  ],
+  "crates/pure_math/src/pure_math/elliptic_curves/weierstrass.rs": [
+    {
+      "signature": "impl AffinePointFp { pub fn coordinates (self) -> Option < (i64 , i64) > }"
+    },
+    {
+      "signature": "impl AffinePointFp { pub fn from_coords (x : i64 , y : i64 , p : i64) -> Self }"
+    },
+    {
+      "signature": "impl AffinePointFp { pub fn is_infinity (self) -> bool }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn a (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn add_points (& self , p1 : AffinePointFp , p2 : AffinePointFp ,) -> Result < AffinePointFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn b (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn cardinality (& self) -> usize }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn chord_step (& self , p1 : AffinePointFp , p2 : AffinePointFp ,) -> Result < ChordStepFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn contains_point (& self , point : AffinePointFp) -> bool }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn discriminant (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn discriminant_factor (p : i64 , a : i64 , b : i64) -> Option < i64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn enumerate_points (& self , out : & mut [AffinePointFp]) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn frobenius_trace (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn hasse_bounds (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn negate_point (& self , point : AffinePointFp) -> Result < AffinePointFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn new (p : i64 , a : i64 , b : i64) -> Result < Self , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn p (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn point_order (& self , point : AffinePointFp) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn scalar_mul (& self , k : i64 , point : AffinePointFp ,) -> Result < AffinePointFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn torsion_orbit (& self , generator : AffinePointFp , out : & mut [AffinePointFp] ,) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "pub const MAX_WEIERSTRASS_PRIME : i64 = 1_000_000_000"
+    },
+    {
+      "signature": "pub enum AffinePointFp"
+    },
+    {
+      "signature": "pub struct WeierstrassCurveFp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: ChordStepFp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: HasseSweepEntry"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: mod_inv_fp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: mod_pow_fp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: sweep_hasse_bounds"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: tonelli_shanks_fp"
     }
   ],
   "crates/pure_math/src/pure_math/graph_theory/dijkstra.rs": [
@@ -7728,6 +8068,9 @@
       "signature": "impl Odds { pub fn from_fractional (numerator : f64 , denominator : f64) -> Result < Self , KellyError > }"
     },
     {
+      "signature": "impl Odds { pub fn from_net_odds (b : f64) -> Result < Self , KellyError > }"
+    },
+    {
       "signature": "impl Odds { pub fn implied_probability (& self) -> f64 }"
     },
     {
@@ -7969,10 +8312,191 @@
       "signature": "pub use num_traits :: ToPrimitive"
     },
     {
+      "signature": "pub use parrondo :: ParrondoEnsemble"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoGame"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoParams"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoPhaseGridConfig"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoPhasePoint"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoReport"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoSchedule"
+    },
+    {
+      "signature": "pub use parrondo :: solve_parrondo_ratchet"
+    },
+    {
       "signature": "pub use tensor :: TransitionTensor"
     },
     {
       "signature": "pub use time_index :: TimeIndex"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/parrondo.rs": [
+    {
+      "signature": "impl ParrondoParams { pub fn canonical () -> Self }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn epsilon (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn modulus (& self) -> usize }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn new (modulus : usize , p_a_base : f64 , p_b0_base : f64 , p_b1_base : f64 , epsilon : f64 ,) -> Result < Self > }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_a (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_a_base (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_b0 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_b0_base (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_b1 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_b1_base (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn win_probability (& self , game : ParrondoGame , residue : usize) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoReport { pub fn is_paradox (& self) -> bool }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn abb () -> Self }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn as_string (& self) -> String }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn parse (spec : & str) -> Result < Self > }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn steps (& self) -> & [ParrondoGame] }"
+    },
+    {
+      "signature": "pub const ALLOWED_MODULI : [usize ; 4] = [3 , 5 , 7 , 9]"
+    },
+    {
+      "signature": "pub const MAX_MODULUS : usize = 9"
+    },
+    {
+      "signature": "pub const MAX_SCHEDULE_LEN : usize = 16"
+    },
+    {
+      "signature": "pub enum ParrondoGame"
+    },
+    {
+      "signature": "pub fn build_game_a_matrix (params : & ParrondoParams) -> DMatrix < f64 >"
+    },
+    {
+      "signature": "pub fn build_game_b_matrix (params : & ParrondoParams) -> DMatrix < f64 >"
+    },
+    {
+      "signature": "pub fn build_mixture_matrix (p_a : & DMatrix < f64 > , p_b : & DMatrix < f64 >) -> Result < DMatrix < f64 > >"
+    },
+    {
+      "signature": "pub fn build_schedule_matrix (p_a : & DMatrix < f64 > , p_b : & DMatrix < f64 > , schedule : & ParrondoSchedule ,) -> Result < DMatrix < f64 > >"
+    },
+    {
+      "signature": "pub fn detailed_balance_violation (transition : & DMatrix < f64 > , pi : & DVector < f64 >) -> f64"
+    },
+    {
+      "signature": "pub fn lazy_stationary_distribution (transition : & DMatrix < f64 >) -> Result < DVector < f64 > >"
+    },
+    {
+      "signature": "pub fn solve_parrondo_ratchet (params : & ParrondoParams , schedule : & ParrondoSchedule ,) -> Result < ParrondoReport >"
+    },
+    {
+      "signature": "pub struct ParrondoParams"
+    },
+    {
+      "signature": "pub struct ParrondoReport"
+    },
+    {
+      "signature": "pub struct ParrondoSchedule"
+    },
+    {
+      "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
+    },
+    {
+      "signature": "pub use ensemble :: ParrondoEnsemble"
+    },
+    {
+      "signature": "pub use ensemble :: ParrondoPhaseGridConfig"
+    },
+    {
+      "signature": "pub use ensemble :: ParrondoPhasePoint"
+    },
+    {
+      "signature": "pub use ensemble :: scan_parrondo_phase_region"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/parrondo/ensemble.rs": [
+    {
+      "signature": "impl ParrondoEnsemble { pub fn mean_trajectory (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn occupancy_counts (& self , modulus : usize) -> & [u64] }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn simulate_mixture (& mut self , params : & ParrondoParams , num_steps : usize , rng : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn simulate_pure_game (& mut self , params : & ParrondoParams , game : ParrondoGame , num_steps : usize , rng : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn simulate_schedule (& mut self , params : & ParrondoParams , schedule : & ParrondoSchedule , num_steps : usize , rng : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn step_game (& mut self , params : & ParrondoParams , game : ParrondoGame , rng : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn step_mixture (& mut self , params : & ParrondoParams , rng : & mut OxidizeRng) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn wealth (& self) -> & [i64] }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn with_capacity (num_walkers : usize , max_steps : usize) -> Result < Self > }"
+    },
+    {
+      "signature": "pub fn scan_parrondo_phase_region (config : & ParrondoPhaseGridConfig , schedule : & ParrondoSchedule ,) -> Result < Vec < ParrondoPhasePoint > >"
+    },
+    {
+      "signature": "pub struct ParrondoEnsemble"
+    },
+    {
+      "signature": "pub struct ParrondoPhaseGridConfig"
+    },
+    {
+      "signature": "pub struct ParrondoPhasePoint"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/tensor.rs": [
@@ -8150,6 +8674,41 @@
       "signature": "pub fn multivariate_linear_regression (features : & DMatrix < f64 > , targets : & DVector < f64 > ,) -> Option < DVector < f64 > >"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/tda/boundary.rs": [
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn clear_column (& mut self , col : usize) }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn col_pivot (& self , col : usize) -> Option < usize > }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn is_cleared (& self , col : usize) -> bool }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn new (num_rows : usize , num_cols : usize) -> Result < Self , TdaError > }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn pivot_col_for_row (& self , row : usize) -> Option < usize > }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn rank (& self) -> usize }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn reduce (& mut self) -> usize }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn set_column_faces (& mut self , col : usize , faces : & [usize]) -> Result < () , TdaError > }"
+    },
+    {
+      "signature": "pub const MAX_INLINE_BOUNDARY_FACES : usize = 3"
+    },
+    {
+      "signature": "pub fn rank_z2_boundary (num_rows : usize , columns : & [Vec < usize >]) -> Result < usize , TdaError >"
+    },
+    {
+      "signature": "pub struct Z2BoundaryWorkspace"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/tda/complex.rs": [
     {
       "signature": "impl SimplicialComplex { pub fn add_simplex (& mut self , simplex : Simplex) -> Result < () , TdaError > }"
@@ -8170,13 +8729,43 @@
       "signature": "impl SimplicialComplex { pub fn new () -> Self }"
     },
     {
+      "signature": "pub const MAX_FILTRATION_TRIANGLES : usize = 100_000"
+    },
+    {
       "signature": "pub fn vietoris_rips_complex (cloud : & PointCloud , radius : f64 ,) -> Result < SimplicialComplex , TdaError >"
+    },
+    {
+      "signature": "pub fn vietoris_rips_complex_nd (cloud : & NdPointCloud , radius : f64 ,) -> Result < SimplicialComplex , TdaError >"
+    },
+    {
+      "signature": "pub fn vietoris_rips_from_distance_matrix (dist : & [Vec < f64 >] , radius : f64 , max_triangles : usize ,) -> Result < (SimplicialComplex , bool) , TdaError >"
     },
     {
       "signature": "pub struct SimplicialComplex"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/tda/core.rs": [
+    {
+      "signature": "impl NdPointCloud { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn distance_matrix (& self) -> Vec < Vec < f64 > > }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn from_point_cloud_2d (cloud : & PointCloud) -> Result < Self , TdaError > }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn new (points : Vec < Vec < f64 > >) -> Result < Self , TdaError > }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn points (& self) -> & [Vec < f64 >] }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn project_2d (& self , axis_x : usize , axis_y : usize) -> Result < PointCloud , TdaError > }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn size (& self) -> usize }"
+    },
     {
       "signature": "impl Point2D { pub fn distance (& self , other : & Point2D) -> f64 }"
     },
@@ -8205,6 +8794,15 @@
       "signature": "impl Simplex { pub fn new (mut vertices : Vec < usize >) -> Result < Self , TdaError > }"
     },
     {
+      "signature": "pub const MAX_TDA_DIMENSION : usize = 32"
+    },
+    {
+      "signature": "pub const MAX_TDA_POINTS : usize = 250"
+    },
+    {
+      "signature": "pub struct NdPointCloud"
+    },
+    {
       "signature": "pub struct Point2D"
     },
     {
@@ -8227,10 +8825,34 @@
   ],
   "crates/pure_math/src/pure_math/statistics/tda/mod.rs": [
     {
+      "signature": "pub use boundary :: Z2BoundaryWorkspace"
+    },
+    {
+      "signature": "pub use boundary :: rank_z2_boundary"
+    },
+    {
+      "signature": "pub use complex :: MAX_FILTRATION_TRIANGLES"
+    },
+    {
       "signature": "pub use complex :: SimplicialComplex"
     },
     {
       "signature": "pub use complex :: vietoris_rips_complex"
+    },
+    {
+      "signature": "pub use complex :: vietoris_rips_complex_nd"
+    },
+    {
+      "signature": "pub use complex :: vietoris_rips_from_distance_matrix"
+    },
+    {
+      "signature": "pub use core :: MAX_TDA_DIMENSION"
+    },
+    {
+      "signature": "pub use core :: MAX_TDA_POINTS"
+    },
+    {
+      "signature": "pub use core :: NdPointCloud"
     },
     {
       "signature": "pub use core :: Point2D"
@@ -8257,7 +8879,22 @@
       "signature": "pub use persistence :: PersistenceInterval"
     },
     {
+      "signature": "pub use persistence :: RipsInterval"
+    },
+    {
+      "signature": "pub use persistence :: RipsPersistenceResult"
+    },
+    {
       "signature": "pub use persistence :: compute_persistence"
+    },
+    {
+      "signature": "pub use persistence :: compute_rips_persistence"
+    },
+    {
+      "signature": "pub use persistence :: compute_rips_persistence_from_distances"
+    },
+    {
+      "signature": "pub use persistence :: compute_rips_persistence_nd"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/tda/persistence.rs": [
@@ -8292,13 +8929,43 @@
       "signature": "impl PersistenceInterval { pub fn persistence (& self) -> f64 }"
     },
     {
+      "signature": "impl RipsInterval { pub fn is_alive_at (& self , epsilon : f64) -> bool }"
+    },
+    {
+      "signature": "impl RipsInterval { pub fn persistence (& self) -> f64 }"
+    },
+    {
+      "signature": "impl RipsInterval { pub fn to_persistence_interval (& self) -> Result < PersistenceInterval , TdaError > }"
+    },
+    {
+      "signature": "impl RipsPersistenceResult { pub fn betti_numbers_at (& self , epsilon : f64) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl RipsPersistenceResult { pub fn to_barcode (& self) -> Result < PersistenceBarcode , TdaError > }"
+    },
+    {
       "signature": "pub fn compute_persistence (cloud : & PointCloud , radii : & [f64] ,) -> Result < PersistenceBarcode , TdaError >"
+    },
+    {
+      "signature": "pub fn compute_rips_persistence (cloud : & PointCloud) -> Result < RipsPersistenceResult , TdaError >"
+    },
+    {
+      "signature": "pub fn compute_rips_persistence_from_distances (dist : & [Vec < f64 >] ,) -> Result < RipsPersistenceResult , TdaError >"
+    },
+    {
+      "signature": "pub fn compute_rips_persistence_nd (cloud : & NdPointCloud ,) -> Result < RipsPersistenceResult , TdaError >"
     },
     {
       "signature": "pub struct PersistenceBarcode"
     },
     {
       "signature": "pub struct PersistenceInterval"
+    },
+    {
+      "signature": "pub struct RipsInterval"
+    },
+    {
+      "signature": "pub struct RipsPersistenceResult"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/zip_regression/core.rs": [
