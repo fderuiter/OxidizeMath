@@ -197,14 +197,17 @@ pub(crate) fn select_touched_policy_members(
         return workspace_members.to_vec();
     }
 
+    let any_md_staged = all_staged.iter().any(|p| p.ends_with(".md"));
     let mut touched = Vec::new();
     for member in workspace_members {
         let prefix = format!("{member}/");
         let manifest = format!("{member}/Cargo.toml");
-        let is_touched = all_staged.iter().any(|p| {
-            p == &manifest
-                || (p.starts_with(&prefix) && (p.ends_with(".rs") || p.ends_with("/Cargo.toml")))
-        });
+        let is_touched = (any_md_staged && member == "crates/markdown_tests")
+            || all_staged.iter().any(|p| {
+                p == &manifest
+                    || (p.starts_with(&prefix)
+                        && (p.ends_with(".rs") || p.ends_with(".md") || p.ends_with("/Cargo.toml")))
+            });
         if is_touched {
             touched.push(member.clone());
         }
@@ -316,6 +319,27 @@ mod tests {
         assert_eq!(
             select_touched_policy_members(&["verification_whitelist.toml".to_string()], &members),
             members
+        );
+
+        let full_members = vec![
+            "crates/diagnostics".to_string(),
+            "crates/domain_physics".to_string(),
+            "crates/markdown_tests".to_string(),
+            "math_explorer_gui".to_string(),
+        ];
+        assert_eq!(
+            select_touched_policy_members(
+                &["crates/diagnostics/README.md".to_string()],
+                &full_members
+            ),
+            vec![
+                "crates/diagnostics".to_string(),
+                "crates/markdown_tests".to_string()
+            ]
+        );
+        assert_eq!(
+            select_touched_policy_members(&["docs/README.md".to_string()], &full_members),
+            vec!["crates/markdown_tests".to_string()]
         );
     }
 

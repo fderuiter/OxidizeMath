@@ -5,10 +5,7 @@ pub(crate) mod format;
 #[path = "data_table_poi.rs"]
 mod poi_view;
 
-pub use format::{
-    TableSeriesRef, format_pois_csv, format_pois_tsv, format_table_value, format_tsv,
-    series_share_x,
-};
+pub(crate) use format::{TableSeriesRef, format_table_value, format_tsv, series_share_x};
 
 use egui::{
     Align, Align2, Color32, Context, FontId, Id, Key, Modifiers, Rect, RichText, ScrollArea, Sense,
@@ -442,18 +439,6 @@ fn render_header_row(ui: &mut Ui, cols: &[(String, Color32)], width: f32) {
             resp.clone().on_hover_text(name);
         }
     }
-}
-
-/// Render the closeable, virtualized Data Table modal for a plot when `*open` is `true`.
-pub fn show_data_table_modal(
-    ctx: &Context,
-    plot_id: Id,
-    window_title: &str,
-    open: &mut bool,
-    state: &mut DataTableState,
-    datasets: &[(String, Vec<[f64; 2]>, Color32)],
-) {
-    show_data_table_modal_with_pois(ctx, plot_id, window_title, open, state, datasets, &[]);
 }
 
 /// Render the Data Table modal with both `Series Data` and `Critical Points` views.

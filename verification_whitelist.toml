@@ -94,4 +94,9 @@ reason = "infrastructure"
 path = "math_explorer_gui/src/"
 reason = "tests"
 
+[[unused_dependencies]]
+crate = "crates/oxidize_core"
+dependency = "getrandom"
+reason = "Activates the getrandom js backend feature on wasm32-unknown-unknown for rand without direct Rust imports"
+
 
