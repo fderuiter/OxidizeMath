@@ -28,11 +28,14 @@ Adding inverse-problem metadata directly onto `PresetMetadata` or `PresetWrapper
    - Extend `ShareUrlParams` in `url_state::codec` with `challenge: Option<String>` supporting `#tab=<slug>&tool=<id>&challenge=<id>&state=<base64url>` as well as baseline `#tab=<slug>&challenge=<id>` links within the existing `4,096`-byte JSON and `8,192`-byte fragment caps.
    - During URL hydration, invoke `(meta.clamp_locked_state)(...)` before applying state so tampered locked fields in shared URLs are deterministically clamped back to canonical `ChallengeMetadata` values.
 
-4. **Zero-Heap-Allocation Preallocated Scoring**:
-   - Preallocate trajectory arrays, `SuperpositionModel` dose-time schedules, `DVector<f64>` 64x64 dose grids, and scalar LBM bounce-back force accumulators outside hot loops so `VerifiedEngine::run_verified` executes with zero dynamic heap allocations under `VerifiedAllocator`.
+4. **Zero-Heap-Allocation Preallocated Scoring and Reference Twins**:
+   - Preallocate trajectory arrays, `SuperpositionModel` dose-time schedules, `DVector<f64>` 64x64 dose grids, scalar LBM bounce-back force accumulators, `RadarPipeline` `true_trace_mm` plus 24-slot physical beam-delay rings, lockstep `NetworkPropagationTool` `baseline_model` twins, `MriKSpaceRunner` NRMSE/acceleration reductions, and 16-target `RotationCurveExplorer` residual buffers outside hot loops so `VerifiedEngine::run_verified` executes with zero dynamic heap allocations under `VerifiedAllocator`.
+
+5. **Expanded Flagship Studio Challenge Catalog**:
+   - Extend per-studio `challenge.rs` modules across `quantum` (`quantum_barrier_50_split` on `WaveSimulator`), `mri` (`mri_kspace_radial_cs` on `MriKSpaceStudio`), `medical` (`radar_cough_zero_miss` on `RadarGatingTool`), `epidemiology` (`epidemiology_hub_vaccination` and `epidemiology_bridge_quarantine` on `NetworkPropagationTool`, extending [ADR 0039](./0039-network-epidemic-containment-primitives.md)), and `astrophysics` (`astrophysics_mystery_halo_fit` on `RotationCurveExplorer`, extending [ADR 0040](./0040-galactic-dynamics-and-astrophysics-tab.md)).
 
 ## Consequences
 
-- Learners can launch inverse challenges from a dedicated **Inverse Challenges** tab in `StarterGallery` or share stateless `#tab=...&challenge=<id>` links without server-side state.
+- Learners can launch inverse challenges across seven interactive domains (`quantum`, `mri`, `clinical_trials`, `fluid_dynamics`, `medical`, `epidemiology`, and `astrophysics`) from the **Inverse Challenges** tab in `StarterGallery` or share stateless `#tab=...&challenge=<id>` links without server-side state.
 - All forward `StarterPresetMetadata` entries and `PresetWrapper` files remain 100% backward-compatible with ADR 0022.
-- Domain physics and pharmacokinetic solvers gain direct interactive coverage and zero-allocation regression tests.
+- Domain physics, epidemic network, galactic dynamics, and pharmacokinetic solvers gain direct interactive residual scoring and zero-allocation regression tests.

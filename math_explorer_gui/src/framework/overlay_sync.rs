@@ -1,7 +1,48 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::SimulationFramework;
+use super::{InteractiveTool, SimulationFramework};
 use eframe::egui;
+
+#[derive(Clone, Copy)]
+pub(super) struct UntrackedUrlDigestCache {
+    pub(super) tool_name: &'static str,
+    pub(super) checked_untracked_rev: u64,
+    pub(super) url_digest: u64,
+}
+
+#[derive(Default)]
+pub(super) struct FrameworkRevisionCache {
+    pub(super) framework_revision: u64,
+    pub(super) untracked_tool_revision: u64,
+    pub(super) untracked_url_digest: std::cell::Cell<Option<UntrackedUrlDigestCache>>,
+    pub(super) active_tool_json:
+        std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
+    pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
+    pub(super) last_snapshot_source_datasets: Vec<(String, egui_plot::SharedPoints)>,
+    pub(super) last_plot_capture_hash: Option<(&'static str, u64)>,
+}
+
+pub(super) fn sample_tool_animation_frames<T: InteractiveTool + ?Sized>(
+    tool: &mut T,
+    num_frames: usize,
+) -> Vec<egui_plot::export::DatasetFrame> {
+    let count = num_frames.max(1);
+    let mut frames = Vec::with_capacity(count);
+    for _ in 0..count {
+        tool.step_simulation();
+        let ds = tool.export_datasets();
+        if !ds.is_empty() {
+            frames.push(ds);
+        }
+    }
+    if frames.is_empty() {
+        let ds = tool.export_datasets();
+        if !ds.is_empty() {
+            frames = egui_plot::export::sample_progressive_frames(&ds, count);
+        }
+    }
+    frames
+}
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct FrameworkSyncState {
@@ -201,6 +242,7 @@ impl SimulationFramework {
             instance_id: next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: super::FrameworkRevisionCache::default(),
+            atlas_host: super::atlas_host::FrameworkAtlasHost::default(),
         };
 
         if !framework.available_tools.is_empty() {

@@ -26,6 +26,9 @@ fn test_pure_math_leaf_wrappers_preserve_source_chain() {
 
     let opt = OptimizationError::from(EvolutionError::BoundsError);
     assert!(opt.source().is_some());
+
+    let pricing = MarketPricingError::from(AnalysisError::ConvergenceError(0.25));
+    assert!(pricing.source().is_some());
 }
 
 #[test]
@@ -35,6 +38,10 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         CopulaError::NotSymmetric.into(),
         Glicko2Error::EmptyMatchResults.into(),
         KellyError::InvalidOdds { value: 0.5 }.into(),
+        MarketPricingError::NoArbitrage {
+            reciprocal_sum: 1.05,
+        }
+        .into(),
         MarkovError::from(sample_math_err()).into(),
         NumberTheoryError::ModuloError.into(),
         OuError::InvalidTimeStep { value: 0.0 }.into(),
@@ -49,6 +56,11 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         OptimizationError::from(EvolutionError::ConversionError).into(),
         StochasticError::InvalidReactionIndex(3).into(),
         TensorError::SingularMetric.into(),
+        TopologyCodecError::PayloadTooLarge {
+            actual: 3_000_000,
+            max: 2_097_152,
+        }
+        .into(),
         TransformError::EmptyInput.into(),
         sample_math_err().into(),
         EvalError::UnknownVariable("x".to_string()).into(),
@@ -76,6 +88,8 @@ fn propagate_pure_math_question_mark(trigger_err: bool) -> std::result::Result<f
         })?;
     }
     let _: f64 = Ok::<f64, KellyError>(0.25)?;
+    let _: f64 = Ok::<f64, MarketPricingError>(0.5)?;
+    let _: f64 = Ok::<f64, TopologyCodecError>(0.75)?;
     Ok(1.0)
 }
 

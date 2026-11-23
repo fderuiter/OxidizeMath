@@ -349,6 +349,7 @@ fn test_contact_network_import_containment_zero_alloc_and_export() {
     tool.import_contact_topology("ring.dot", dot)
         .expect("DOT contact network imports cleanly");
     assert_eq!(tool.model.num_nodes(), 5);
+    assert_eq!(tool.baseline_model.num_nodes(), 5);
     assert_eq!(tool.model.edges().len(), 6);
     assert!(tool.has_finite_parameters());
     assert_eq!(tool.toggle_node_vaccination(2), Ok(true));
@@ -362,7 +363,7 @@ fn test_contact_network_import_containment_zero_alloc_and_export() {
         .unwrap_or_else(|e| e.into_inner());
     verified_engine::engine::VerifiedEngine::run_verified(|| {
         let _ = compute_network_analytics(&tool.model);
-        tool.model.step_with_rng(&mut tool.rng);
+        tool.step_models_lockstep();
     });
     drop(_guard);
 
@@ -384,4 +385,106 @@ fn test_contact_network_import_containment_zero_alloc_and_export() {
         .import_contact_topology("ring.csv", &csv)
         .expect("CSV contact network imports");
     assert_eq!(tool_csv.model.num_nodes(), 5);
+}
+
+fn apply_optimal_epi_interventions(tool: &mut NetworkPropagationTool, vax: bool, budget: usize) {
+    let p0 = tool.model.patient_zero().unwrap();
+    if vax {
+        assert!(tool.toggle_edge_quarantine(0).is_err());
+        let mut hubs: Vec<usize> = (0..tool.model.num_nodes())
+            .filter(|&n| tool.model.states()[n] == NodeState::Susceptible)
+            .collect();
+        hubs.sort_by_key(|&n| {
+            let adj_p0 = usize::from(tool.model.adjacency()[p0].contains(&n));
+            std::cmp::Reverse((adj_p0, tool.model.active_degree(n)))
+        });
+        for &h in hubs.iter().take(budget) {
+            assert_eq!(tool.toggle_node_vaccination(h), Ok(true));
+        }
+    } else {
+        let sus = (0..tool.model.num_nodes())
+            .find(|&n| tool.model.states()[n] == NodeState::Susceptible)
+            .unwrap();
+        assert!(tool.toggle_node_vaccination(sus).is_err());
+        let mut edges: Vec<usize> = (0..tool.model.edges().len()).collect();
+        edges.sort_by_key(|&e_idx| {
+            let [u, v] = tool.model.edges()[e_idx];
+            let touches_p0 = usize::from(u == p0 || v == p0);
+            std::cmp::Reverse((
+                touches_p0,
+                tool.model.active_degree(u) + tool.model.active_degree(v),
+            ))
+        });
+        for &e_idx in edges.iter().take(budget) {
+            assert_eq!(tool.toggle_edge_quarantine(e_idx), Ok(true));
+        }
+    }
+}
+
+#[test]
+fn test_epi_challenges_lockstep_zero_alloc_twin_and_budget_clamping() {
+    use super::challenge::{
+        CHALLENGE_EPI_BRIDGE_QUARANTINE, CHALLENGE_EPI_BUDGET, CHALLENGE_EPI_HUB_VACCINATION,
+    };
+    use crate::starter_gallery::find_challenge_metadata;
+
+    for id in [
+        CHALLENGE_EPI_HUB_VACCINATION,
+        CHALLENGE_EPI_BRIDGE_QUARANTINE,
+    ] {
+        let meta = find_challenge_metadata(id).expect("registered");
+        let mut tool = NetworkPropagationTool::default();
+        tool.apply_challenge(Some(id)).expect("challenge applies");
+        assert!(tool
+            .import_contact_topology("blocked.dot", "graph G { 0 -- 1; }")
+            .is_err());
+        tool.try_load_state(&meta.generate_baseline_state())
+            .expect("baseline loads");
+        assert!(!tool.evaluate_challenge().expect("eval").passed);
+
+        apply_optimal_epi_interventions(
+            &mut tool,
+            id == CHALLENGE_EPI_HUB_VACCINATION,
+            CHALLENGE_EPI_BUDGET,
+        );
+        {
+            let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            verified_engine::engine::VerifiedEngine::run_verified(|| {
+                for _ in 0..90 {
+                    tool.step_models_lockstep();
+                }
+                let _ = tool.counterfactual_infections_averted();
+            });
+        }
+        let solved = tool.evaluate_challenge().expect("eval");
+        assert!(solved.passed, "Expected {id} to pass, got {solved:?}");
+    }
+
+    let hub_meta = find_challenge_metadata(CHALLENGE_EPI_HUB_VACCINATION).unwrap();
+    let tampered = r#"{"num_nodes":120,"beta":0.01,"gamma":0.9,"seed":42,"budget":20,"vaccinated_nodes":[1,2,3,4,5,6,7,8],"quarantined_edges":[0,1]}"#;
+    let clamped = hub_meta.clamp_state_json(tampered).expect("clamped");
+    let parsed: NetPropState = serde_json::from_str(&clamped).unwrap();
+    assert_eq!(parsed.num_nodes, 72);
+    assert_eq!(parsed.seed, 20261121);
+    assert_eq!(parsed.budget, 5);
+    assert!(parsed.vaccinated_nodes.len() <= 5);
+    assert!(parsed.quarantined_edges.is_empty());
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen_test::wasm_bindgen_test]
+fn wasm_epi_challenges_lockstep_twin_roundtrip() {
+    use super::challenge::CHALLENGE_EPI_HUB_VACCINATION;
+    use crate::starter_gallery::find_challenge_metadata;
+
+    let meta = find_challenge_metadata(CHALLENGE_EPI_HUB_VACCINATION).expect("registered");
+    let mut tool = NetworkPropagationTool::default();
+    tool.apply_challenge(Some(CHALLENGE_EPI_HUB_VACCINATION))
+        .expect("applied");
+    tool.try_load_state(&meta.generate_baseline_state())
+        .expect("loaded");
+    assert_eq!(tool.counterfactual_infections_averted(), 0);
+    assert!(!tool.evaluate_challenge().expect("eval").passed);
 }

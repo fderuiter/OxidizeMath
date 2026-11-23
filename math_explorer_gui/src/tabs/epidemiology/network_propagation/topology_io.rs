@@ -80,6 +80,9 @@ impl NetworkPropagationTool {
         &mut self,
         doc: &GraphTopologyDocument,
     ) -> Result<(), String> {
+        if self.is_challenge_locked() {
+            return Err("Contact topology import is locked during an active challenge.".into());
+        }
         let n = doc.nodes.len();
         if n == 0 || n > MAX_TOPOLOGY_NODES {
             return Err(format!(
@@ -111,16 +114,27 @@ impl NetworkPropagationTool {
         let n = custom.positions.len();
         let mut states = vec![NodeState::Susceptible; n];
         states[0] = NodeState::Infected;
-        let Ok(mut rebuilt) = NetworkEpidemicModel::builder()
-            .num_nodes(n)
-            .parameters(self.model.beta(), self.model.gamma())
-            .positions(custom.positions)
-            .adjacency(custom.adjacency)
-            .states(states)
-            .build()
-        else {
+        let (Ok(mut rebuilt), Ok(unmitigated)) = (
+            NetworkEpidemicModel::builder()
+                .num_nodes(n)
+                .parameters(self.model.beta(), self.model.gamma())
+                .positions(custom.positions.clone())
+                .adjacency(custom.adjacency.clone())
+                .states(states.clone())
+                .build(),
+            NetworkEpidemicModel::builder()
+                .num_nodes(n)
+                .parameters(self.model.beta(), self.model.gamma())
+                .positions(custom.positions)
+                .adjacency(custom.adjacency)
+                .states(states)
+                .build(),
+        ) else {
             return;
         };
+        self.rng = oxidize_core::rng::OxidizeRng::new(self.seed);
+        self.baseline_rng = oxidize_core::rng::OxidizeRng::new(self.seed);
+        self.baseline_model = unmitigated;
         self.vaccinated_nodes
             .retain(|&node| rebuilt.set_node_vaccinated(node, true).is_ok());
         let edges = rebuilt.edges().to_vec();
@@ -152,10 +166,11 @@ impl NetworkPropagationTool {
 
     pub(super) fn render_topology_import_controls(&mut self, ui: &mut egui::Ui) {
         self.poll_topology_import_channel(ui.ctx());
+        let locked = self.is_challenge_locked();
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.horizontal_wrapped(|ui| {
             if ui
-                .button("📂 Import Contact Network")
+                .add_enabled(!locked, egui::Button::new("📂 Import Contact Network"))
                 .accessible_hover_text(
                     "Import a .dot, .graphml, or .csv/.tsv contact graph for containment analysis",
                 )
@@ -172,7 +187,7 @@ impl NetworkPropagationTool {
             }
             if self.topology_ui.custom.is_some()
                 && ui
-                    .small_button("↺ Seeded Graph")
+                    .add_enabled(!locked, egui::Button::new("↺ Seeded Graph").small())
                     .accessible_hover_text("Restore procedural geometric contact network")
                     .clicked()
             {

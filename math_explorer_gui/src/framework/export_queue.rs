@@ -371,3 +371,7 @@ pub(crate) mod deferred_export_tests;
 #[cfg(test)]
 #[path = "deferred_export_audit_tests.rs"]
 mod deferred_export_audit_tests;
+
+#[cfg(test)]
+#[path = "deferred_topology_audit_tests.rs"]
+mod deferred_topology_audit_tests;

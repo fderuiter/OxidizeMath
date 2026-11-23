@@ -2,6 +2,7 @@
 
 mod analytics;
 mod canvas;
+pub mod challenge;
 mod controls;
 mod presets;
 mod state;
@@ -9,6 +10,7 @@ mod state;
 mod tests;
 mod topology_io;
 
+#[cfg(test)]
 pub(crate) use analytics::compute_network_analytics;
 
 use crate::framework::InteractiveTool;
@@ -40,6 +42,8 @@ pub enum ContainmentMode {
 pub struct NetworkPropagationTool {
     pub(super) model: NetworkEpidemicModel,
     pub(super) rng: oxidize_core::rng::OxidizeRng,
+    pub(super) baseline_model: NetworkEpidemicModel,
+    pub(super) baseline_rng: oxidize_core::rng::OxidizeRng,
     pub(super) seed: u64,
     pub(super) budget: usize,
     pub(super) vaccinated_nodes: Vec<usize>,
@@ -47,8 +51,10 @@ pub struct NetworkPropagationTool {
     pub(super) interaction_mode: ContainmentMode,
     pub(super) focused_node: usize,
     pub(super) focused_edge: usize,
+    #[cfg(test)]
     pub(super) canvas_id: Option<egui::Id>,
     pub(super) is_running: bool,
+    pub(super) active_challenge: Option<&'static str>,
     pub(super) revision: u64,
     topology_ui: NetPropTopologyUi,
     #[cfg(test)]
@@ -59,9 +65,13 @@ impl Default for NetworkPropagationTool {
     fn default() -> Self {
         let mut rng = oxidize_core::rng::OxidizeRng::new(DEFAULT_NETWORK_SEED);
         let model = NetworkEpidemicModel::new_with_rng(50, 0.05, 0.02, &mut rng);
+        let mut baseline_rng = oxidize_core::rng::OxidizeRng::new(DEFAULT_NETWORK_SEED);
+        let baseline_model = NetworkEpidemicModel::new_with_rng(50, 0.05, 0.02, &mut baseline_rng);
         Self {
             model,
             rng,
+            baseline_model,
+            baseline_rng,
             seed: DEFAULT_NETWORK_SEED,
             budget: DEFAULT_CONTAINMENT_BUDGET,
             vaccinated_nodes: Vec::new(),
@@ -69,8 +79,10 @@ impl Default for NetworkPropagationTool {
             interaction_mode: ContainmentMode::VaccinateNode,
             focused_node: 0,
             focused_edge: 0,
+            #[cfg(test)]
             canvas_id: None,
             is_running: false,
+            active_challenge: None,
             revision: 1,
             topology_ui: NetPropTopologyUi::default(),
             #[cfg(test)]
@@ -120,6 +132,7 @@ impl NetworkPropagationTool {
                 .is_some_and(|&[u, v]| self.model.set_edge_quarantined(u, v, true).is_ok())
         });
         self.is_running = false;
+        self.rebuild_baseline_twin();
         self.clamp_focus_indices();
         #[cfg(test)]
         {
@@ -161,6 +174,9 @@ impl NetworkPropagationTool {
     }
 
     pub(crate) fn toggle_node_vaccination(&mut self, node: usize) -> Result<bool, String> {
+        if !self.allows_vaccination() {
+            return Err("Node vaccination is locked during edge quarantine challenge".into());
+        }
         if node >= self.model.num_nodes() {
             return Err(format!("Node {node} is out of range"));
         }
@@ -193,6 +209,9 @@ impl NetworkPropagationTool {
     }
 
     pub(crate) fn toggle_edge_quarantine(&mut self, edge_idx: usize) -> Result<bool, String> {
+        if !self.allows_quarantine() {
+            return Err("Edge quarantine is locked during hub vaccination challenge".into());
+        }
         let &[u, v] = self
             .model
             .edges()
@@ -224,9 +243,9 @@ impl NetworkPropagationTool {
     pub(crate) fn step_once(&mut self) {
         if self.is_running {
             self.is_running = false;
-            self.bump_revision();
         }
-        self.model.step_with_rng(&mut self.rng);
+        self.step_models_lockstep();
+        self.bump_revision();
         #[cfg(test)]
         {
             self.sim_steps = self.sim_steps.saturating_add(1);
@@ -236,6 +255,11 @@ impl NetworkPropagationTool {
     #[cfg(test)]
     pub(crate) fn sim_steps(&self) -> u64 {
         self.sim_steps
+    }
+
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.canvas_id
     }
 }
 
@@ -268,9 +292,6 @@ impl InteractiveTool for NetworkPropagationTool {
     fn reset_default_topology(&mut self) {
         self.reset_to_seeded_graph();
     }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
-    }
     fn has_finite_parameters(&self) -> bool {
         let n_ok = if self.topology_ui.custom.is_some() {
             (1..=500).contains(&self.model.num_nodes())
@@ -290,6 +311,7 @@ impl InteractiveTool for NetworkPropagationTool {
         self.vaccinated_nodes.hash(&mut h);
         self.quarantined_edges.hash(&mut h);
         self.is_running.hash(&mut h);
+        self.active_challenge.hash(&mut h);
         h.finish().max(1)
     }
     fn save_state(&self) -> Option<String> {
@@ -336,6 +358,8 @@ impl InteractiveTool for NetworkPropagationTool {
         self.vaccinated_nodes = vax_sorted;
         self.quarantined_edges = edge_sorted;
         self.is_running = s.is_running;
+        self.rebuild_baseline_twin();
+        self.enforce_challenge_locks();
         self.clamp_focus_indices();
         #[cfg(test)]
         {
@@ -345,10 +369,26 @@ impl InteractiveTool for NetworkPropagationTool {
         Ok(())
     }
 
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_epi_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<crate::framework::ChallengeEvaluation> {
+        self.eval_epi_challenge()
+    }
+
+    fn step_simulation(&mut self) {
+        self.step_once();
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             if self.is_running {
-                self.model.step_with_rng(&mut self.rng);
+                self.step_models_lockstep();
                 #[cfg(test)]
                 {
                     self.sim_steps = self.sim_steps.saturating_add(1);
@@ -380,27 +420,5 @@ inventory::submit! {
         domain: "epidemiology",
         tags: &["containment", "r0", "vaccination", "quarantine", "contact network", "sir"],
         build: || Box::new(NetworkPropagationTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for NetworkPropagationTool {
-    fn theory_description(&self) -> String {
-        let summary = compute_network_analytics(&self.model);
-        format!(
-            "Stochastic contact network epidemic propagation and containment: per-contact transmission $\\beta = {:.2}$, recovery $\\gamma = {:.2}$, residual heterogeneous reproduction number $R_0 = \\frac{{\\beta}}{{\\gamma}}\\frac{{\\langle k^2 \\rangle - \\langle k \\rangle}}{{\\langle k \\rangle}} = {:.2}$, and branching extinction probability $P_{{ext}} = {:.2}$ under vertex vaccination and symmetric edge quarantine.",
-            self.model.beta(),
-            self.model.gamma(),
-            summary.effective_r0,
-            summary.extinction_probability,
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Network epidemic propagation, hub vaccination, and edge quarantine theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Epidemic processes in complex networks (Pastor-Satorras et al., 2015); Networks (Newman, 2010); Vulnerability in graphs (Barefoot et al., 1987)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
     }
 }

@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::deferred_topology_audit_tests::verify_topology_capability;
 use super::*;
 use crate::accessibility::{all_announcements, clear_test_announcements, with_live_region};
 use crate::tabs::geometry_topology::export_utils::{
@@ -8,7 +9,7 @@ use crate::tabs::geometry_topology::export_utils::{
 use eframe::egui;
 use std::collections::HashSet;
 
-fn run_deferred_export_frame(
+pub(super) fn run_deferred_export_frame(
     framework: &mut SimulationFramework,
     format: ExportFormat,
     open_modal: bool,
@@ -106,10 +107,86 @@ fn verify_shader_capability(
     true
 }
 
+fn verify_dataset_only_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
+    let mut framework = SimulationFramework::new("__audit_dataset_only__");
+    framework.active_tool = Some(tool);
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Csv, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Success,
+        "Deferred CSV failed for {meta_name}: {:?}",
+        framework.export_status_message
+    );
+    let csv = framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .unwrap_or_else(|| panic!("Missing CSV content for {meta_name}"));
+    assert!(
+        csv.starts_with("Dataset,X,Y\n") && csv.lines().count() >= 2,
+        "Invalid CSV content for {meta_name}: {csv}"
+    );
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Json, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Success,
+        "Deferred JSON failed for {meta_name}: {:?}",
+        framework.export_status_message
+    );
+    let json = framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .unwrap_or_else(|| panic!("Missing JSON content for {meta_name}"));
+    assert!(
+        json.contains("\"dataset\":") && !json.contains("NaN"),
+        "Invalid JSON content for {meta_name}: {json}"
+    );
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Png, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Warning,
+        "Expected Warning on PNG export for dataset_only tool {meta_name}"
+    );
+}
+
+fn verify_non_figure_tool(
+    meta_id: &str,
+    tool: Box<dyn InteractiveTool>,
+    caps: ExportCapabilities,
+    dataset_only_tool_count: &mut usize,
+    unsupported_tool_count: &mut usize,
+) {
+    assert!(
+        !caps.figure_disabled_reason.is_empty(),
+        "{meta_id} disables figure export without an explanatory reason"
+    );
+    if caps.dataset {
+        *dataset_only_tool_count += 1;
+        assert!(
+            caps.dataset_disabled_reason.is_empty(),
+            "{meta_id} advertises dataset export but has non-empty disabled reason"
+        );
+        verify_dataset_only_tool(meta_id, tool);
+    } else {
+        if !caps.topology {
+            *unsupported_tool_count += 1;
+        }
+        assert!(
+            !caps.dataset_disabled_reason.is_empty(),
+            "{meta_id} disables dataset export without an explanatory reason"
+        );
+    }
+}
+
 #[derive(Default)]
 struct AuditCounts {
     plot: usize,
     raster: usize,
+    dataset_only: usize,
     unsupported: usize,
     solid_3d: usize,
     splat_3d: usize,
@@ -138,12 +215,13 @@ impl AuditCounts {
             self.non_topology += 1;
         }
         if !caps.figure {
-            if !caps.topology {
-                self.unsupported += 1;
-            }
-            assert!(!caps.dataset, "{meta_id} must disable dataset export");
-            assert!(!caps.dataset_disabled_reason.is_empty());
-            assert!(!caps.figure_disabled_reason.is_empty());
+            verify_non_figure_tool(
+                meta_id,
+                tool,
+                caps,
+                &mut self.dataset_only,
+                &mut self.unsupported,
+            );
             return;
         }
         if caps.dataset {
@@ -161,18 +239,75 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         counts.record_tool(meta.id, (meta.build)());
     }
-    assert_eq!(counts.plot, 58, "Expected 58 Plot dataset+figure tools");
+    assert_eq!(counts.plot, 65, "Expected 65 Plot dataset+figure tools");
     assert_eq!(counts.raster, 7, "Expected 7 raster figure tools");
+    assert_eq!(
+        counts.dataset_only, 0,
+        "Expected 0 dataset-only registered tools"
+    );
     assert_eq!(
         counts.unsupported, 9,
         "Expected 9 non-figure, non-topology tools"
     );
     assert_eq!(counts.topology, 7, "Expected 7 graph topology tools");
-    assert_eq!(counts.non_topology, 72, "Expected 72 non-topology tools");
+    assert_eq!(counts.non_topology, 79, "Expected 79 non-topology tools");
     assert_eq!(counts.solid_3d, 6, "Expected 6 solid 3D geometric tools");
     assert_eq!(counts.splat_3d, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(counts.shader, 3, "Expected 3 analytical GLSL shader tools");
-    assert_eq!(counts.non_shader, 76, "Expected 76 non-shader tools");
+    assert_eq!(counts.non_shader, 83, "Expected 83 non-shader tools");
+}
+
+#[derive(Default)]
+struct DatasetOnlyFixtureTool;
+
+impl scientific_metadata::theory::TheoryDescribable for DatasetOnlyFixtureTool {
+    fn theory_description(&self) -> String {
+        "Dataset-only fixture".into()
+    }
+    fn phonetic_description(&self) -> String {
+        "Dataset-only fixture".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Fixture".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+impl InteractiveTool for DatasetOnlyFixtureTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+    fn name(&self) -> &'static str {
+        "DatasetOnlyFixture"
+    }
+    fn domain(&self) -> &'static str {
+        "financial_math"
+    }
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::dataset_only()
+    }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        vec![("FixtureSeries".into(), vec![[0.0, 1.0], [1.0, 2.0]])]
+    }
+    fn show_inside(&mut self, _ui: &mut egui::Ui) {}
+}
+
+#[test]
+fn test_dataset_only_capability_profile_exports_csv_json_and_warns_on_png() {
+    let tool: Box<dyn InteractiveTool> = Box::new(DatasetOnlyFixtureTool);
+    let caps = tool.export_capabilities();
+    let (mut dataset_only_count, mut unsupported_count) = (0usize, 0usize);
+    verify_non_figure_tool(
+        "DatasetOnlyFixtureTool",
+        tool,
+        caps,
+        &mut dataset_only_count,
+        &mut unsupported_count,
+    );
+    assert_eq!(dataset_only_count, 1);
+    assert_eq!(unsupported_count, 0);
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
@@ -282,105 +417,4 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         .as_deref()
         .expect("3DGS PLY bytes recorded");
     assert!(splat_ply.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
-}
-
-fn verify_topology_capability(
-    meta_id: &str,
-    tool: &dyn InteractiveTool,
-    caps: ExportCapabilities,
-) -> bool {
-    if !caps.topology {
-        assert!(
-            !caps.topology_disabled_reason.is_empty(),
-            "{meta_id} disables topology export without an explanatory reason"
-        );
-        return false;
-    }
-    assert!(
-        caps.topology_disabled_reason.is_empty(),
-        "{meta_id} advertises topology export but has non-empty disabled reason"
-    );
-    let doc = tool
-        .export_topology_document()
-        .unwrap_or_else(|| panic!("{meta_id} must implement export_topology_document"))
-        .unwrap_or_else(|e| panic!("{meta_id} topology generation failed: {e}"));
-    assert!(!doc.name.is_empty(), "{meta_id} emitted unnamed topology");
-    true
-}
-
-fn verify_single_topology_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
-    let mut fw = SimulationFramework::new("__audit_topology__");
-    fw.active_tool = Some(tool);
-    for (fmt, marker) in [
-        (ExportFormat::TopologyDot, "graph "),
-        (ExportFormat::TopologyGraphMl, "<graphml"),
-        (ExportFormat::TopologyTikz, "\\begin{tikzpicture}"),
-        (ExportFormat::TopologySvg, "<svg"),
-        (ExportFormat::TopologyCsv, "source,target,weight"),
-    ] {
-        clear_test_announcements();
-        run_deferred_export_frame(&mut fw, fmt, false);
-        assert_eq!(
-            fw.export_status_severity,
-            ExportStatusSeverity::Success,
-            "{meta_id} failed {fmt:?}: {:?}",
-            fw.export_status_message
-        );
-        let text = fw
-            .export_queue
-            .last_exported_content
-            .as_deref()
-            .unwrap_or_else(|| panic!("{meta_id} missing content for {fmt:?}"));
-        assert!(
-            text.contains(marker),
-            "{meta_id} {fmt:?} missing {marker:?}: {text}"
-        );
-        assert!(all_announcements()
-            .iter()
-            .any(|(msg, prio)| msg.contains("saved successfully") && prio == "polite"));
-    }
-
-    let ctx = egui::Context::default();
-    clear_test_announcements();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        fw.queue_topology_clipboard_export(ExportFormat::TopologyDot);
-        fw.show(ctx, "audit_topology_clip");
-    });
-    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-    let clip = fw
-        .export_queue
-        .last_clipboard_content
-        .as_deref()
-        .expect("clipboard topology recorded");
-    assert!(clip.contains("graph "));
-}
-
-#[test]
-fn test_all_seven_topology_tools_deferred_exports_and_clipboard() {
-    let topology_ids = [
-        "GraphEditorTool",
-        "AlgorithmVisualizerTool",
-        "NetworkMetricsTool",
-        "NetworkPropagationTool",
-        "NeuralNetworkVizTool",
-        "FractranMachineTool",
-        "BraessNetworkParadoxTool",
-    ];
-    for id in topology_ids {
-        let meta = inventory::iter::<crate::framework::ToolMetadata>
-            .into_iter()
-            .find(|m| m.id == id)
-            .unwrap_or_else(|| panic!("Missing registered topology tool {id}"));
-        verify_single_topology_tool_exports(id, (meta.build)());
-    }
-
-    let mut editor = crate::tabs::graph_theory::graph_editor::GraphEditorTool::default();
-    editor
-        .try_load_state(
-            r#"{"node_positions":{"0":[120.0,140.0],"1":[240.0,80.0],"2":[240.0,200.0],"3":[360.0,140.0]},"edges":[[0,1,1.0],[1,3,1.0],[0,2,1.0],[2,3,1.0],[1,2,0.0]],"next_node_id":4,"congestion":{"enabled":true,"source_node":0,"sink_node":3,"total_demand":1.0,"shortcut_enabled":true}}"#,
-        )
-        .expect("valid Braess-enabled GraphEditorTool state");
-    let caps = editor.export_capabilities();
-    assert!(caps.dataset && caps.figure && caps.topology);
-    verify_single_topology_tool_exports("GraphEditorTool(Braess)", Box::new(editor));
 }
