@@ -52,8 +52,7 @@ pub(super) fn canonical_workspace_root() -> Option<PathBuf> {
     cwd.ancestors()
         .take(64)
         .find(|dir| {
-            std::fs::read_to_string(dir.join("Cargo.toml"))
-                .is_ok_and(|m| has_workspace_header(&m))
+            std::fs::read_to_string(dir.join("Cargo.toml")).is_ok_and(|m| has_workspace_header(&m))
         })
         .map(Path::to_path_buf)
 }
@@ -109,13 +108,21 @@ pub(super) fn validate_picked_repo_path(path: &Path) -> Result<String, String> {
     if trimmed.is_empty() || has_traversal_sequence(trimmed) {
         return Err("Selected directory path is empty or contains traversal segments.".to_string());
     }
-    let meta = std::fs::symlink_metadata(path)
-        .map_err(|err| format!("Selected path cannot be accessed ({}): {}", path.display(), err))?;
+    let meta = std::fs::symlink_metadata(path).map_err(|err| {
+        format!(
+            "Selected path cannot be accessed ({}): {}",
+            path.display(),
+            err
+        )
+    })?;
     if meta.file_type().is_symlink() {
         return Err("Selected codebase path must not be a symbolic link.".to_string());
     }
     if !meta.is_dir() {
-        return Err(format!("Selected path is not a directory: {}", path.display()));
+        return Err(format!(
+            "Selected path is not a directory: {}",
+            path.display()
+        ));
     }
     let canonical = path
         .canonicalize()
@@ -215,7 +222,9 @@ impl VirtualFileSystem for RootedVfs {
             match self.resolve_confined(&path) {
                 Ok(resolved) => std::fs::read_to_string(resolved),
                 Err(err) => {
-                    let clean = path.trim_start_matches("./").trim_start_matches(['/', '\\']);
+                    let clean = path
+                        .trim_start_matches("./")
+                        .trim_start_matches(['/', '\\']);
                     if clean == "traceability.toml"
                         && matches!(err.kind(), std::io::ErrorKind::NotFound)
                     {
@@ -266,25 +275,8 @@ pub(super) async fn execute_workspace_scan<V: VirtualFileSystem>(
     vfs: V,
     base_dir: String,
 ) -> Result<oxidize_core::traceability::TraceabilityReport, String> {
-    let code_dirs = [
-        format!("{base_dir}math_explorer/src"),
-        format!("{base_dir}math_explorer_gui/src/tabs"),
-    ];
-    let papers_dir = format!("{base_dir}papers");
-    let crate_base = format!("{base_dir}crates");
-    let engine = oxidize_core::traceability::TraceabilityEngine::new(vfs);
-
-    let mut crate_dirs = Vec::new();
-    if let Ok(crates) = engine.vfs.list_dir(&crate_base).await {
-        for crate_name in crates {
-            crate_dirs.push(format!("{crate_base}/{crate_name}/src"));
-        }
-    }
-
-    let mut all_dirs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
-    all_dirs.extend(crate_dirs.iter().map(String::as_str));
-    engine
-        .scan_repository(&all_dirs, &papers_dir, false)
+    oxidize_core::traceability::TraceabilityEngine::new(vfs)
+        .scan_workspace(&base_dir, false)
         .await
         .map_err(|e| e.to_string())
 }

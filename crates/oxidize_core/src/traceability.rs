@@ -1,8 +1,10 @@
 mod analysis;
 mod cache;
+mod manifest;
 mod runner;
 
 pub use cache::{AstCache, CachedRustFile};
+pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
 pub use runner::{
     check_and_print_traceability_errors, discover_workspace_code_dirs,
     print_traceability_dashboard, run_workspace_traceability,
@@ -244,6 +246,39 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         Ok(())
     }
 
+    /// Discovers workspace code directories (`math_explorer/src`, `math_explorer_gui/src/tabs`,
+    /// and `crates/*/src`) and the `papers` directory relative to `base_dir`.
+    pub async fn discover_workspace_dirs(&self, base_dir: &str) -> (Vec<String>, String) {
+        let prefix = if base_dir.is_empty() || base_dir.ends_with('/') {
+            base_dir.to_string()
+        } else {
+            format!("{base_dir}/")
+        };
+        let mut code_dirs = vec![
+            format!("{prefix}math_explorer/src"),
+            format!("{prefix}math_explorer_gui/src/tabs"),
+        ];
+        let crate_base = format!("{prefix}crates");
+        if let Ok(mut crates) = self.vfs.list_dir(&crate_base).await {
+            crates.sort();
+            for crate_name in crates {
+                code_dirs.push(format!("{crate_base}/{crate_name}/src"));
+            }
+        }
+        (code_dirs, format!("{prefix}papers"))
+    }
+
+    /// Scans all discovered workspace code directories and `papers` under `base_dir`.
+    pub async fn scan_workspace(
+        &self,
+        base_dir: &str,
+        auto_fix: bool,
+    ) -> Result<TraceabilityReport, std::io::Error> {
+        let (code_dirs, papers_dir) = self.discover_workspace_dirs(base_dir).await;
+        let all_dirs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
+        self.scan_repository(&all_dirs, &papers_dir, auto_fix).await
+    }
+
     #[allow(missing_docs)]
     pub async fn scan_repository(
         &self,
@@ -409,8 +444,9 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         }
         active_files.insert(norm_file_path.clone());
 
-        let submodules = collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
-        let dir_path = module_child_dir(&norm_file_path);
+        let submodules =
+            analysis::collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
+        let dir_path = analysis::module_child_dir(&norm_file_path);
         for submodule in submodules {
             let path1 = crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}.rs"));
             let path2 =
@@ -424,42 +460,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         }
         Ok(())
     }
-}
-
-#[derive(Default)]
-struct SubmoduleCollector {
-    submodules: Vec<String>,
-}
-
-impl<'ast> syn::visit::Visit<'ast> for SubmoduleCollector {
-    fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
-        if node.content.is_none() {
-            self.submodules.push(node.ident.to_string());
-        }
-        syn::visit::visit_item_mod(self, node);
-    }
-}
-
-fn collect_external_submodules(ast: Option<&syn::File>) -> Vec<String> {
-    let Some(ast) = ast else {
-        return Vec::new();
-    };
-    let mut collector = SubmoduleCollector::default();
-    syn::visit::Visit::visit_file(&mut collector, ast);
-    collector.submodules
-}
-
-fn module_child_dir(norm_file_path: &str) -> String {
-    let mut dir_parts: Vec<&str> = norm_file_path.split('/').collect();
-    let is_mod_rs = norm_file_path.ends_with("mod.rs")
-        || norm_file_path.ends_with("lib.rs")
-        || norm_file_path.ends_with("main.rs");
-    if is_mod_rs {
-        dir_parts.pop();
-    } else if let Some(stem) = dir_parts.pop().map(|s| s.strip_suffix(".rs").unwrap_or(s)) {
-        dir_parts.push(stem);
-    }
-    dir_parts.join("/")
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]

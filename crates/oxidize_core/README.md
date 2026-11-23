@@ -14,7 +14,7 @@ The `oxidize_core` crate provides shared runtime primitives and static verificat
 - **`mesh`**: Indexed 3D geometry primitives (`Point3D`, `Mesh`) and Wavefront OBJ serialization (`export_mesh_to_obj_string`).
 - **`path_utils`**: Cross-platform forward-slash path normalization helpers (`normalize_path`, `strip_and_normalize`, `join_and_normalize`).
 - **`rng`**: Deterministic pseudo-random number generator (`OxidizeRng`) backed by ChaCha8, enforcing workspace reproducible simulation policies.
-- **`traceability`**: Literature citation scanner, shared `syn` AST cache (`AstCache`), and `TraceabilityEngine` / `TraceabilityReport` auditing `papers/` bindings.
+- **`traceability`**: Literature citation scanner, shared `syn` AST cache (`AstCache`), `TraceabilityEngine` / `TraceabilityReport`, and precomputed manifest schemas (`TraceabilityManifestPayload`, `VerificationCertificate`) auditing `papers/` bindings.
 - **`vfs`**: Asynchronous virtual file system layer (`VirtualFileSystem`, `NativeVfs`, `WasmVfs`, `DefaultVfs`) abstracting asset access across native and browser environments.
 - **`workspace`**: Cargo workspace member discovery and manifest parsing utilities (`get_workspace_members`, `parse_workspace_members`).
 

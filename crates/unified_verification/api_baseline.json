@@ -6013,10 +6013,16 @@
   ],
   "crates/oxidize_core/src/traceability.rs": [
     {
+      "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub async fn discover_workspace_dirs (& self , base_dir : & str) -> (Vec < String > , String) }"
+    },
+    {
       "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub async fn scan_repository (& self , code_dirs : & [& str] , papers_dir : & str , auto_fix : bool ,) -> Result < TraceabilityReport , std :: io :: Error > }"
     },
     {
       "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub async fn scan_repository_with_cache (& self , code_dirs : & [& str] , papers_dir : & str , auto_fix : bool , cache : & mut AstCache ,) -> Result < TraceabilityReport , std :: io :: Error > }"
+    },
+    {
+      "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub async fn scan_workspace (& self , base_dir : & str , auto_fix : bool ,) -> Result < TraceabilityReport , std :: io :: Error > }"
     },
     {
       "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub fn extract_citations (content : & str) -> Vec < String > }"
@@ -6038,6 +6044,12 @@
     },
     {
       "signature": "pub use cache :: CachedRustFile"
+    },
+    {
+      "signature": "pub use manifest :: TraceabilityManifestPayload"
+    },
+    {
+      "signature": "pub use manifest :: VerificationCertificate"
     },
     {
       "signature": "pub use runner :: check_and_print_traceability_errors"
@@ -6088,6 +6100,14 @@
     },
     {
       "signature": "pub struct CachedRustFile"
+    }
+  ],
+  "crates/oxidize_core/src/traceability/manifest.rs": [
+    {
+      "signature": "pub struct TraceabilityManifestPayload"
+    },
+    {
+      "signature": "pub struct VerificationCertificate"
     }
   ],
   "crates/oxidize_core/src/traceability/runner.rs": [

@@ -91,6 +91,48 @@ pub(super) fn finalize_report_orphans(report: &mut TraceabilityReport) {
     report.unlinked_code.dedup();
     report.invalid_links.sort();
     report.invalid_links.dedup();
+    report.unverified_modules.sort();
+    report.unverified_modules.dedup();
+    report.invalid_tiers.sort();
+    report.invalid_tiers.dedup();
+    report.vacuous_bypasses.sort();
+    report.vacuous_bypasses.dedup();
+}
+
+#[derive(Default)]
+struct SubmoduleCollector {
+    submodules: Vec<String>,
+}
+
+impl<'ast> syn::visit::Visit<'ast> for SubmoduleCollector {
+    fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
+        if node.content.is_none() {
+            self.submodules.push(node.ident.to_string());
+        }
+        syn::visit::visit_item_mod(self, node);
+    }
+}
+
+pub(super) fn collect_external_submodules(ast: Option<&syn::File>) -> Vec<String> {
+    let Some(ast) = ast else {
+        return Vec::new();
+    };
+    let mut collector = SubmoduleCollector::default();
+    syn::visit::Visit::visit_file(&mut collector, ast);
+    collector.submodules
+}
+
+pub(super) fn module_child_dir(norm_file_path: &str) -> String {
+    let mut dir_parts: Vec<&str> = norm_file_path.split('/').collect();
+    let is_mod_rs = norm_file_path.ends_with("mod.rs")
+        || norm_file_path.ends_with("lib.rs")
+        || norm_file_path.ends_with("main.rs");
+    if is_mod_rs {
+        dir_parts.pop();
+    } else if let Some(stem) = dir_parts.pop().map(|s| s.strip_suffix(".rs").unwrap_or(s)) {
+        dir_parts.push(stem);
+    }
+    dir_parts.join("/")
 }
 
 pub(super) fn collect_valid_citations(
