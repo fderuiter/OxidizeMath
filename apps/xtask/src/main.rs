@@ -49,6 +49,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-duplicates" => gates::check_duplicates(),
         "check-api-drift" => gates::check_api_drift(),
         "check-profiles" => gates::check_profiles(),
+        "check-release-tag" => gates::check_release_tag(rest),
         "check-staged-duplicates" => gates::check_staged_duplicates(),
         "check-markdown-links" => check_markdown_links(),
         "check-vulnerabilities" => gates::check_vulnerabilities(),
@@ -81,6 +82,9 @@ fn print_help() {
         "  check-markdown-links     - Check all internal relative markdown documentation links"
     );
     println!("  check-profiles           - Verify Cargo release profile invariants");
+    println!(
+        "  check-release-tag        - Verify git release tag parity and WiX pre-release mapping"
+    );
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
     println!(
@@ -174,169 +178,7 @@ fn test_features(args: &[String]) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::gates::unified_verification_bin;
-    use crate::markdown_links::{collect_md_files, extract_md_links};
-    use std::process::Command;
-
-    fn local_hooks_path(dir: &Path) -> Option<String> {
-        let out = Command::new("git")
-            .current_dir(dir)
-            .args(["config", "--local", "--get", "core.hooksPath"])
-            .output()
-            .expect("failed to execute git config");
-        out.status
-            .success()
-            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
-    }
-
-    #[test]
-    fn test_git_hooks_path_configuration() {
-        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let before = local_hooks_path(&ws_root);
-
-        let temp_dir = env::temp_dir().join(format!("xtask_hook_test_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&temp_dir);
-        fs::create_dir_all(temp_dir.join(".githooks")).expect("failed to create temp .githooks");
-        let pre_commit = temp_dir.join(".githooks/pre-commit");
-        let pre_push = temp_dir.join(".githooks/pre-push");
-        fs::write(&pre_commit, "#!/bin/sh\nexit 0\n").expect("failed to write pre-commit");
-        fs::write(&pre_push, "#!/bin/sh\nexit 0\n").expect("failed to write pre-push");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            for hook in [&pre_commit, &pre_push] {
-                let mut perms = fs::metadata(hook).unwrap().permissions();
-                perms.set_mode(0o644);
-                fs::set_permissions(hook, perms).unwrap();
-            }
-        }
-
-        let init_status = Command::new("git")
-            .current_dir(&temp_dir)
-            .arg("init")
-            .status()
-            .expect("failed to execute git init");
-        assert!(init_status.success());
-
-        configure_git_hooks_in_dir(&temp_dir);
-
-        assert_eq!(local_hooks_path(&temp_dir).as_deref(), Some(".githooks"));
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            for hook in [&pre_commit, &pre_push] {
-                let mode = fs::metadata(hook).unwrap().permissions().mode() & 0o777;
-                assert_eq!(mode, 0o755, "Hook {} should be set to 0755", hook.display());
-            }
-        }
-
-        let _ = fs::remove_dir_all(&temp_dir);
-        assert_eq!(
-            local_hooks_path(&ws_root),
-            before,
-            "Workspace core.hooksPath must not be mutated by tests"
-        );
-    }
-
-    #[test]
-    fn test_unified_verification_uses_dev_profile() {
-        let bin = unified_verification_bin();
-        let components: Vec<String> = bin
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy().to_string())
-            .collect();
-        assert!(
-            components.iter().any(|c| c == "debug"),
-            "Expected debug profile path, got {}",
-            bin.display()
-        );
-        assert!(
-            !components.iter().any(|c| c == "release"),
-            "Did not expect release profile path, got {}",
-            bin.display()
-        );
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_git_hooks_executable() {
-        use std::os::unix::fs::PermissionsExt;
-        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        for rel in [".githooks/pre-commit", ".githooks/pre-push"] {
-            let hook_path = ws_root.join(rel);
-            assert!(hook_path.exists(), "Expected hook file {rel} to exist");
-            let metadata = fs::metadata(&hook_path).expect("failed to read metadata");
-            assert_ne!(
-                metadata.permissions().mode() & 0o111,
-                0,
-                "{rel} should be executable"
-            );
-        }
-    }
-
-    #[test]
-    fn test_xtask_helpers() {
-        print_help();
-        assert_eq!(extract_md_links("[d](README.md)"), vec!["README.md"]);
-        let mut md = Vec::new();
-        collect_md_files(Path::new("."), &mut md);
-        assert!(!md.is_empty());
-        check_markdown_links();
-    }
-
-    #[test]
-    fn test_verification_gates() {
-        let output = Command::new("cargo")
-            .args(["run", "-p", "xtask", "--", "--help"])
-            .output()
-            .expect("failed to execute xtask --help");
-        assert!(output.status.success());
-        let help = String::from_utf8_lossy(&output.stdout);
-        for cmd in [
-            "check-api-drift",
-            "check-benches",
-            "check-duplicates",
-            "check-profiles",
-            "lint-workflows",
-            "check-docs",
-            "check-cargo-docs",
-            "smoke-examples",
-            "traceability",
-            "lint-all",
-            "lint-push",
-            "lint-staged",
-            "check-entropy",
-            "check-vulnerabilities",
-            "compile-papers",
-            "test-policy-audit",
-            "test-wasm",
-            "verify-records",
-            "verify-suite",
-            "regenerate-baseline",
-        ] {
-            assert!(help.contains(cmd), "Missing help entry for {cmd}");
-        }
-        assert!(!help.contains("Tectonic"));
-    }
-
-    #[test]
-    fn test_ci_scoped_change_path_filters() {
-        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let ci_yaml = fs::read_to_string(ws_root.join(".github/workflows/ci.yml"))
-            .expect("failed to read ci.yml")
-            .replace("\r\n", "\n");
-        let root_toml =
-            fs::read_to_string(ws_root.join("Cargo.toml")).expect("failed to read Cargo.toml");
-        let (step, blocks) = crate::ci_filter_tests::extract_detect_changes_step(&ci_yaml);
-        crate::ci_filter_tests::assert_detect_changes_invariants(&ci_yaml, &step);
-        crate::ci_filter_tests::assert_workspace_members_parity(&blocks, &root_toml);
-        crate::ci_filter_tests::assert_scoped_triggers_and_skips(&blocks);
-    }
-}
+mod tests;
 
 #[cfg(test)]
 mod ci_filter_tests;
-#[cfg(test)]
-mod ci_parity_tests;

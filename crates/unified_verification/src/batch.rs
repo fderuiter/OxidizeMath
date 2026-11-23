@@ -320,9 +320,10 @@ pub(crate) fn run_batch_staged_for_paths_in_dir(
 
     let escalate = all_staged.iter().any(|p| is_root_escalation_path(p));
     let touched_members = select_touched_members(all_staged, workspace_members);
+    let readme_staged = all_staged.iter().any(|p| p == "README.md");
     let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
 
-    if !workspace_members.is_empty() && (escalate || !touched_members.is_empty()) {
+    if !workspace_members.is_empty() && (escalate || !touched_members.is_empty() || readme_staged) {
         let profile_targets = if escalate {
             workspace_members
         } else {

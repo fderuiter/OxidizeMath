@@ -24,7 +24,7 @@ We split local Git guardrails into two 100% offline version-controlled tiers und
    - A new version-controlled `.githooks/pre-push` hook invokes `cargo run -p xtask -- lint-push`, resolving pushed commits against remote tracking refs (falling back to `origin/main` or `main`), running reverse-dependent host Clippy, conditional reverse-dependent `wasm32-unknown-unknown` Clippy across web-reachable crates, and full workspace `unified_verification traceability` offline.
    - `cargo run -p xtask -- setup` configures `core.hooksPath` to `.githooks` and ensures executable `0755` permissions on both `.githooks/pre-commit` and `.githooks/pre-push`.
 3. **Workspace-Relative `OUT_DIR` Staging in Build Scripts**:
-   - `math_explorer_gui/build.rs` (`build_stage.rs`) stages `src/tabs/` and compile-time embedded assets (`sw.js`, `Verification_Certificate.json`, `references.bib`) into `OUT_DIR` using content-guarded writes (`write_if_changed`) and emits generated modules referencing `env!("OUT_DIR")` instead of `env!("CARGO_MANIFEST_DIR")`.
+   - Alongside static `src/tabs/mod.rs` tab module declarations, `math_explorer_gui/build.rs` (`build_stage.rs`) stages compile-time embedded assets (`sw.js`, `Verification_Certificate.json`, `references.bib`) into `OUT_DIR` and writes `generated_tabs.rs` using content-guarded writes (`write_if_changed`), replacing `env!("CARGO_MANIFEST_DIR")` compile-time includes with `env!("OUT_DIR")` and runtime `std::env::var("CARGO_MANIFEST_DIR")` lookups in tests.
    - `crates/markdown_tests/build.rs` stages workspace `.md` files into `OUT_DIR/staged_md/` with `write_if_changed` and generates `#[doc = include_str!(concat!(env!("OUT_DIR"), ...))]` doctest modules without referencing `CARGO_MANIFEST_DIR`.
 
 ```text

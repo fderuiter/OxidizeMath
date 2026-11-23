@@ -15,17 +15,19 @@ fn main() {
     // Tell cargo to rerun if the build script, manifest, or tabs directory changes
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/tabs");
+    println!("cargo:rerun-if-changed=src/tabs/mod.rs");
     println!("cargo:rerun-if-changed=Cargo.toml");
 
     build_stage::stage_gui_inputs_to_out_dir(out_path);
 
     let mut discovered_tabs = Vec::new();
-    let mut generated_mods = String::new();
+    let mut local_tab_gates = Vec::new();
 
-    // 1. Scan local tabs in src/tabs
+    // 1. Scan local tabs in src/tabs and verify static declarations in src/tabs/mod.rs
     let tabs_dir = Path::new("src/tabs");
     if tabs_dir.exists() {
-        scan_local_tabs(tabs_dir, &mut discovered_tabs, &mut generated_mods);
+        scan_local_tabs(tabs_dir, &mut discovered_tabs, &mut local_tab_gates);
+        validate_static_tab_modules(&tabs_dir.join("mod.rs"), &local_tab_gates);
     }
 
     // 2. Scan external path dependencies for tabs
@@ -34,20 +36,15 @@ fn main() {
     // Sort by order, then by instantiation string
     discovered_tabs.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
 
-    let generated_code = render_generated_tabs_code(&discovered_tabs, &generated_mods);
+    let generated_code = render_generated_tabs_code(&discovered_tabs);
     build_stage::write_if_changed(&dest_path, generated_code.as_bytes());
 
     // 3. Generate deterministic precomputed traceability snapshot for static web builds
     build_snapshot::generate_traceability_snapshot(out_path);
 }
 
-fn render_generated_tabs_code(
-    discovered_tabs: &[(String, Option<String>, i32)],
-    generated_mods: &str,
-) -> String {
-    let mut generated_code = String::from(generated_mods);
-
-    generated_code.push_str("\n#[allow(clippy::vec_init_then_push)]\n");
+fn render_generated_tabs_code(discovered_tabs: &[(String, Option<String>, i32)]) -> String {
+    let mut generated_code = String::from("#[allow(clippy::vec_init_then_push)]\n");
     generated_code
         .push_str("fn tab_constructors() -> Vec<fn() -> Box<dyn crate::tabs::ExplorerTab>> {\n");
     generated_code.push_str(
@@ -81,7 +78,7 @@ fn render_generated_tabs_code(
 fn scan_local_tabs(
     tabs_dir: &Path,
     discovered_tabs: &mut Vec<(String, Option<String>, i32)>,
-    generated_mods: &mut String,
+    local_tab_gates: &mut Vec<(String, Option<String>)>,
 ) {
     let mut entries: Vec<_> = fs::read_dir(tabs_dir)
         .unwrap()
@@ -112,7 +109,7 @@ fn scan_local_tabs(
             );
         }
 
-        register_local_tab(&path, &file_name, is_dir, discovered_tabs, generated_mods);
+        register_local_tab(&path, &file_name, is_dir, discovered_tabs, local_tab_gates);
     }
 }
 
@@ -121,7 +118,7 @@ fn register_local_tab(
     file_name: &str,
     is_dir: bool,
     discovered_tabs: &mut Vec<(String, Option<String>, i32)>,
-    generated_mods: &mut String,
+    local_tab_gates: &mut Vec<(String, Option<String>)>,
 ) {
     let mod_name = if is_dir {
         file_name.to_string()
@@ -148,17 +145,69 @@ fn register_local_tab(
     let content = fs::read_to_string(&target_file).unwrap();
     if let Some(s_name) = extract_struct_name(&content) {
         let (feature, order) = extract_metadata(&content);
-
-        if let Some(feat) = &feature {
-            generated_mods.push_str(&format!("#[cfg(feature = \"{}\")]\n", feat));
-        }
-        generated_mods.push_str(&format!(
-            "pub mod {} {{\n    include!(concat!(env!(\"OUT_DIR\"), \"/\", \"{}\"));\n}}\n",
-            mod_name, rel_path_str
-        ));
-
+        local_tab_gates.push((mod_name.clone(), feature.clone()));
         let instantiation = format!("{}::{}::default()", mod_name, s_name);
         discovered_tabs.push((instantiation, feature, order));
+    }
+}
+
+fn parse_static_tab_declarations(
+    tabs_mod_content: &str,
+) -> std::collections::HashMap<String, Option<String>> {
+    let mut declared = std::collections::HashMap::new();
+    let mut pending_feature: Option<String> = None;
+
+    for raw_line in tabs_mod_content.lines() {
+        let trimmed = raw_line.split("//").next().unwrap_or("").trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("#[cfg(feature = \"") {
+            if let Some(feat) = rest.strip_suffix("\")]") {
+                pending_feature = Some(feat.to_string());
+                continue;
+            }
+        }
+        if trimmed.starts_with("#[") {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("pub mod ") {
+            if let Some(mod_name) = rest.strip_suffix(';') {
+                declared.insert(mod_name.trim().to_string(), pending_feature.take());
+                continue;
+            }
+        }
+        pending_feature = None;
+    }
+
+    declared
+}
+
+fn validate_static_tab_modules(tabs_mod_path: &Path, local_tab_gates: &[(String, Option<String>)]) {
+    let content = fs::read_to_string(tabs_mod_path).unwrap_or_else(|err| {
+        panic!("Failed to read {}: {err}", tabs_mod_path.display());
+    });
+    let declared = parse_static_tab_declarations(&content);
+
+    for (mod_name, expected_feature) in local_tab_gates {
+        let Some(actual_feature) = declared.get(mod_name) else {
+            let gate_hint = expected_feature
+                .as_deref()
+                .map(|f| format!("#[cfg(feature = \"{f}\")]\n"))
+                .unwrap_or_default();
+            panic!(
+                "Local ExplorerTab module `{mod_name}` is missing a static declaration in `{}`.\nAdd:\n{gate_hint}pub mod {mod_name};",
+                tabs_mod_path.display()
+            );
+        };
+        assert_eq!(
+            actual_feature,
+            expected_feature,
+            "Feature gate mismatch for `pub mod {mod_name};` in `{}`: expected {:?}, found {:?}",
+            tabs_mod_path.display(),
+            expected_feature,
+            actual_feature
+        );
     }
 }
 

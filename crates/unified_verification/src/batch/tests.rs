@@ -154,7 +154,12 @@ fn test_staged_markdown_fence_policy_and_staged_rs_citation_gate() {
 
     fs::write(
         "crates/domain_physics/src/lib.rs",
-        "#![doc = include_str!(\"../README.md\")]\n/// Bad cite [cite:nonexistent_paper]\n#[verified]\npub fn f(x: f64) -> f64 { assert!(x.is_finite()); x }\n",
+        concat!(
+            "#![doc = include_str!(\"../README.md\")]\n",
+            "/// Bad cite [cite",
+            ":nonexistent_paper]\n",
+            "#[verified]\npub fn f(x: f64) -> f64 { assert!(x.is_finite()); x }\n",
+        ),
     )
     .unwrap();
     let rs_staged = vec!["crates/domain_physics/src/lib.rs".to_string()];
@@ -168,7 +173,12 @@ fn test_staged_markdown_fence_policy_and_staged_rs_citation_gate() {
 
     fs::write(
         "crates/domain_physics/src/lib.rs",
-        "#![doc = include_str!(\"../README.md\")]\n/// Valid cite [cite:quantum]\n#[verified]\npub fn f(x: f64) -> f64 { assert!(x.is_finite()); x }\n",
+        concat!(
+            "#![doc = include_str!(\"../README.md\")]\n",
+            "/// Valid cite [cite",
+            ":quantum]\n",
+            "#[verified]\npub fn f(x: f64) -> f64 { assert!(x.is_finite()); x }\n",
+        ),
     )
     .unwrap();
     assert!(
