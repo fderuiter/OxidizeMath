@@ -30,6 +30,12 @@ impl OdePreset {
 /// Maximum allowed integration step count for ODE solvers.
 pub const MAX_ODE_STEPS: usize = 200_000;
 
+/// Maximum interactive parametric UV grid resolution for 3D surface tools (`120`).
+pub const MAX_INTERACTIVE_SURFACE_RESOLUTION: usize = 120;
+
+/// Maximum interactive 2D vector and conformal-contour grid density (`100`).
+pub const MAX_INTERACTIVE_GRID_SIZE: usize = 100;
+
 /// Computes a bounded ODE integration step count when `dt` and `total_time` are finite,
 /// strictly positive, and require at most [`MAX_ODE_STEPS`] steps.
 #[must_use]
