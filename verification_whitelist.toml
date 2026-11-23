@@ -156,8 +156,6 @@ allowlist = [
     "docs/adr/0044-unify-build-time-traceability-engine.md",
     "docs/adr/0045-spatial-brush-kit-and-field-sculpting.md",
     "docs/adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md",
-    "docs/adr/0047-feature-gate-core-ast-tools-and-unify-crates.md",
-    "docs/adr/0047-glicko2-copula-ou-workbenches-and-kelly-net-odds.md",
 ]
 
 [[unused_dependencies]]
