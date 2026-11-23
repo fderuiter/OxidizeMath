@@ -243,8 +243,8 @@ fn assert_rust_toolchain_pin_parity(root: &Path, ci_yaml: &Value) {
         }
     }
     assert_eq!(
-        toolchain_step_count, 5,
-        "Expected five dtolnay/rust-toolchain steps across ci.yml Rust jobs"
+        toolchain_step_count, 6,
+        "Expected six dtolnay/rust-toolchain steps across ci.yml Rust jobs"
     );
 }
 
@@ -258,7 +258,7 @@ fn find_job_cargo_cache_step<'a>(ci_yaml: &'a Value, job: &str) -> &'a Value {
 }
 
 fn assert_ci_cache_scoping_and_seeding(ci_yaml: &Value) {
-    for job in ["pre-flight", "feature-matrix", "package"] {
+    for job in ["pre-flight", "feature-matrix", "package", "publish-release"] {
         let cache_step = find_job_cargo_cache_step(ci_yaml, job);
         assert!(
             cache_step["with"].get("extra-files").is_none(),
@@ -429,16 +429,32 @@ fn test_workspace_build_script_outputs_emit_rerun_directives() {
     let exe = std::env::current_exe().expect("current_exe should resolve");
     let build_root = locate_build_root(&exe);
 
-    if let Some(gui_output) =
-        find_latest_build_output(&build_root, "math_explorer_gui", "generated_tabs.rs")
+    if let Some(md_output) =
+        find_latest_build_output(&build_root, "markdown_tests", "generated_tests.rs")
     {
+        let md_rerun = parse_rerun_directives(&md_output);
+        for expected in ["build.rs", "../../Cargo.toml"] {
+            assert!(
+                md_rerun.contains(expected),
+                "markdown_tests output missing cargo:rerun-if-changed={expected}"
+            );
+        }
+    }
+
+    if let Some(gui_output) = find_latest_build_output(
+        &build_root,
+        "math_explorer_gui",
+        "traceability_manifest.json",
+    ) {
         let gui_rerun = parse_rerun_directives(&gui_output);
         for expected in [
-            "src/tabs",
-            "Cargo.toml",
+            "build.rs",
+            "build_snapshot.rs",
+            "src/tabs/mod.rs",
+            "../traceability.toml",
+            "../papers",
             "../crates/federated_registry/src",
             "../crates/oxidize_core/src",
-            "../math_explorer/src",
             "../crates/math_commons/src",
             "../crates/scientific_metadata/src",
             "../crates/diagnostics/src",
@@ -446,6 +462,19 @@ fn test_workspace_build_script_outputs_emit_rerun_directives() {
             assert!(
                 gui_rerun.contains(expected),
                 "math_explorer_gui output missing cargo:rerun-if-changed={expected}"
+            );
+        }
+        for excluded in [
+            "Cargo.toml",
+            "../crates/unified_verification/src",
+            "../crates/markdown_tests/src",
+            "../crates/verified_engine/src",
+            "../crates/verified_engine_macros/src",
+            "../apps/xtask/src",
+        ] {
+            assert!(
+                !gui_rerun.contains(excluded),
+                "math_explorer_gui output must not watch unrelated crate {excluded}"
             );
         }
     }

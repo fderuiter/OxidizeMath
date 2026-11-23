@@ -36,6 +36,7 @@ PRODUCTION_CSP = (
 CHROMIUM_LAUNCH_ARGS = [
     "--no-sandbox",
     "--disable-dev-shm-usage",
+    "--proxy-bypass-list=<-loopback>",
     "--enable-webgl",
     "--use-gl=angle",
     "--use-angle=swiftshader",
@@ -151,12 +152,7 @@ async function runWbgAndOptionalUnit(cfg) {
 
 async function runSuite() {
     try {
-        const cfgResp = await fetch("./runner_config.json");
-        if (!cfgResp.ok) {
-            throw new Error("Failed to load runner_config.json: HTTP " + cfgResp.status);
-        }
-        const cfg = await cfgResp.json();
-        const passed = await runWbgAndOptionalUnit(cfg);
+        const passed = await runWbgAndOptionalUnit(RUNNER_CONFIG);
         outputEl.setAttribute("data-test-status", passed ? "ok" : "failed");
     } catch (err) {
         const detail = err && err.stack ? err.stack : String(err);
@@ -262,23 +258,30 @@ class ReusableThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPSe
 
 
 class WasmTestRequestHandler(http.server.SimpleHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def do_GET(self) -> None:
         parsed = urllib.parse.urlsplit(self.path)
-        if parsed.path == "/__test_vfs_fixture.txt":
-            body = b"oxidize-wasm-vfs-ok\n"
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        if parsed.path == "/__missing_vfs_fixture_404.txt":
-            self.send_response(404)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(b"not found")
-            return
-        super().do_GET()
+        try:
+            if parsed.path == "/__test_vfs_fixture.txt":
+                body = b"oxidize-wasm-vfs-ok\n"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if parsed.path == "/__missing_vfs_fixture_404.txt":
+                body = b"not found"
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            super().do_GET()
+        except OSError:
+            pass
 
     def end_headers(self) -> None:
         self.send_header("Content-Security-Policy", PRODUCTION_CSP)
@@ -879,6 +882,12 @@ def _launch_chromium_suite(out_dir: Path) -> tuple[str | None, str, list[str], l
                         rendered_output = page.locator("#output").inner_text()
                     finally:
                         browser.close()
+                if (
+                    attempt < 2
+                    and status != "ok"
+                    and "Runner fatal error: TypeError: Failed to fetch" in rendered_output
+                ):
+                    continue
                 break
             except PlaywrightError as exc:
                 if attempt < 2 and any(
@@ -961,9 +970,9 @@ def _run_chromium_wbg_suite(
             "unit_ignore_patches": _build_unit_ignore_patches(unit_pool, selected_unit),
             "binary_label": wasm_path.name,
         }
-        (out_dir / "runner_config.json").write_text(json.dumps(runner_cfg), encoding="utf-8")
         (out_dir / "index.html").write_text(INDEX_HTML, encoding="utf-8")
-        (out_dir / "runner.js").write_text(RUNNER_JS, encoding="utf-8")
+        runner_js = f"const RUNNER_CONFIG = {json.dumps(runner_cfg)};\n" + RUNNER_JS
+        (out_dir / "runner.js").write_text(runner_js, encoding="utf-8")
 
         status, rendered_output, csp_errors, page_errors = _launch_chromium_suite(out_dir)
 

@@ -5,8 +5,69 @@
 //! of external crate dependencies while dynamically discovering every WebAssembly-compatible
 //! workspace crate.
 
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+#[path = "workspace_wasm_json.rs"]
+mod workspace_wasm_json;
+
+pub use workspace_wasm_json::extract_wasm_test_executables_from_cargo_json;
+
+/// Typed error returned when discovering or parsing Cargo workspace manifests.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WorkspaceError {
+    /// Manifest TOML or array syntax could not be parsed.
+    InvalidManifestSyntax(String),
+    /// Manifest does not contain a `[workspace]` table.
+    MissingWorkspaceSection,
+    /// `[workspace]` table does not contain a `members` array.
+    MissingMembersArray,
+    /// Failed to read a manifest file from disk.
+    ManifestIo {
+        /// Path to the manifest that failed to read.
+        path: String,
+        /// Underlying OS error description.
+        reason: String,
+    },
+    /// Member `Cargo.toml` is missing `[package]` or `package.name`.
+    MissingPackageField {
+        /// Path to the member manifest.
+        path: String,
+        /// Name of the missing TOML key or table.
+        field: &'static str,
+    },
+    /// Cargo JSON output contained no `.wasm` test executable artifacts.
+    NoWasmTestArtifacts,
+}
+
+impl fmt::Display for WorkspaceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidManifestSyntax(reason) => {
+                write!(f, "Failed to parse Cargo.toml: {reason}")
+            }
+            Self::MissingWorkspaceSection => {
+                write!(f, "Could not find [workspace] section in Cargo.toml")
+            }
+            Self::MissingMembersArray => {
+                write!(f, "Could not find workspace.members array in Cargo.toml")
+            }
+            Self::ManifestIo { path, reason } => write!(f, "Failed to read {path}: {reason}"),
+            Self::MissingPackageField { path, field } => {
+                write!(f, "Missing {field} in {path}")
+            }
+            Self::NoWasmTestArtifacts => {
+                write!(
+                    f,
+                    "No wasm32 test executable artifacts found in Cargo JSON output"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for WorkspaceError {}
 
 /// Host-only workspace packages excluded from `wasm32-unknown-unknown` test execution.
 pub const HOST_ONLY_WORKSPACE_PACKAGES: &[&str] =
@@ -151,9 +212,9 @@ fn parse_quoted_array_items(array_body: &str) -> Vec<String> {
 }
 
 /// Parses `workspace.members` from a `Cargo.toml` string using only the Rust standard library.
-pub fn parse_workspace_members_std(content: &str) -> Result<Vec<String>, String> {
+pub fn parse_workspace_members_std(content: &str) -> Result<Vec<String>, WorkspaceError> {
     let ws_body = extract_section_body(content, "workspace")
-        .ok_or_else(|| "Could not find [workspace] section in Cargo.toml".to_string())?;
+        .ok_or(WorkspaceError::MissingWorkspaceSection)?;
     for (idx, line) in ws_body.lines().enumerate() {
         if let Some((key, rest)) = line.split_once('=')
             && key.trim() == "members"
@@ -162,16 +223,20 @@ pub fn parse_workspace_members_std(content: &str) -> Result<Vec<String>, String>
                 .chain(ws_body.lines().skip(idx + 1))
                 .collect::<Vec<_>>()
                 .join("\n");
-            let open = tail
-                .find('[')
-                .ok_or_else(|| "Malformed workspace.members array".to_string())?;
-            let close = tail[open + 1..]
-                .find(']')
-                .ok_or_else(|| "Unterminated workspace.members array".to_string())?;
+            let open = tail.find('[').ok_or_else(|| {
+                WorkspaceError::InvalidManifestSyntax(
+                    "Malformed workspace.members array".to_string(),
+                )
+            })?;
+            let close = tail[open + 1..].find(']').ok_or_else(|| {
+                WorkspaceError::InvalidManifestSyntax(
+                    "Unterminated workspace.members array".to_string(),
+                )
+            })?;
             return Ok(parse_quoted_array_items(&tail[open + 1..open + 1 + close]));
         }
     }
-    Err("Could not find workspace.members array in Cargo.toml".to_string())
+    Err(WorkspaceError::MissingMembersArray)
 }
 
 fn parse_key_string(section_body: &str, target_key: &str) -> Option<String> {
@@ -203,22 +268,35 @@ fn is_proc_macro_manifest(content: &str) -> bool {
 }
 
 /// Discovers all `wasm32-unknown-unknown`-compatible crates under `workspace_root`.
-pub fn discover_wasm_crates(workspace_root: &Path) -> Result<Vec<WasmCrateSpec>, String> {
+pub fn discover_wasm_crates(workspace_root: &Path) -> Result<Vec<WasmCrateSpec>, WorkspaceError> {
     let root_manifest = workspace_root.join("Cargo.toml");
-    let root_toml = fs::read_to_string(&root_manifest)
-        .map_err(|e| format!("Failed to read {}: {e}", root_manifest.display()))?;
+    let root_toml = fs::read_to_string(&root_manifest).map_err(|e| WorkspaceError::ManifestIo {
+        path: root_manifest.display().to_string(),
+        reason: e.to_string(),
+    })?;
     let members = parse_workspace_members_std(&root_toml)?;
 
     let mut specs = Vec::with_capacity(members.len());
     for member in members {
         let member_dir = workspace_root.join(&member);
         let manifest_path = member_dir.join("Cargo.toml");
-        let manifest = fs::read_to_string(&manifest_path)
-            .map_err(|e| format!("Failed to read {}: {e}", manifest_path.display()))?;
-        let pkg_body = extract_section_body(&manifest, "package")
-            .ok_or_else(|| format!("Missing [package] in {}", manifest_path.display()))?;
-        let package_name = parse_key_string(&pkg_body, "name")
-            .ok_or_else(|| format!("Missing package.name in {}", manifest_path.display()))?;
+        let manifest =
+            fs::read_to_string(&manifest_path).map_err(|e| WorkspaceError::ManifestIo {
+                path: manifest_path.display().to_string(),
+                reason: e.to_string(),
+            })?;
+        let pkg_body = extract_section_body(&manifest, "package").ok_or_else(|| {
+            WorkspaceError::MissingPackageField {
+                path: manifest_path.display().to_string(),
+                field: "[package]",
+            }
+        })?;
+        let package_name = parse_key_string(&pkg_body, "name").ok_or_else(|| {
+            WorkspaceError::MissingPackageField {
+                path: manifest_path.display().to_string(),
+                field: "package.name",
+            }
+        })?;
 
         if HOST_ONLY_WORKSPACE_PACKAGES.contains(&package_name.as_str())
             || is_proc_macro_manifest(&manifest)
@@ -305,129 +383,4 @@ pub fn build_wasm_no_run_json_invocations(
         .filter(|c| c.execution_runtime() == runtime)
         .collect();
     build_cargo_test_group_invocations(&filtered, true)
-}
-
-fn decode_json_string_at(line: &str, start_quote: usize) -> Option<(String, usize)> {
-    let bytes = line.as_bytes();
-    if bytes.get(start_quote) != Some(&b'"') {
-        return None;
-    }
-    let mut out = String::new();
-    let mut chars = line[start_quote + 1..].char_indices();
-    while let Some((rel_idx, ch)) = chars.next() {
-        if ch == '"' {
-            return Some((out, start_quote + 1 + rel_idx + 1));
-        }
-        if ch != '\\' {
-            out.push(ch);
-            continue;
-        }
-        let (_, esc) = chars.next()?;
-        match esc {
-            '"' | '\\' | '/' => out.push(esc),
-            'b' => out.push('\u{0008}'),
-            'f' => out.push('\u{000C}'),
-            'n' => out.push('\n'),
-            'r' => out.push('\r'),
-            't' => out.push('\t'),
-            'u' => {
-                let mut hex = String::with_capacity(4);
-                for _ in 0..4 {
-                    hex.push(chars.next()?.1);
-                }
-                let code = u32::from_str_radix(&hex, 16).ok()?;
-                out.push(char::from_u32(code)?);
-            }
-            _ => return None,
-        }
-    }
-    None
-}
-
-fn extract_top_level_json_string_field(line: &str, target_key: &str) -> Option<String> {
-    let bytes = line.as_bytes();
-    let mut depth = 0usize;
-    let mut idx = 0usize;
-    while idx < bytes.len() {
-        match bytes[idx] {
-            b'{' | b'[' => {
-                depth += 1;
-                idx += 1;
-            }
-            b'}' | b']' => {
-                depth = depth.saturating_sub(1);
-                idx += 1;
-            }
-            b'"' => {
-                let (decoded, next_idx) = decode_json_string_at(line, idx)?;
-                idx = next_idx;
-                if depth == 1 && decoded == target_key {
-                    while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-                        idx += 1;
-                    }
-                    if bytes.get(idx) == Some(&b':') {
-                        idx += 1;
-                        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-                            idx += 1;
-                        }
-                        if bytes.get(idx) == Some(&b'"') {
-                            let (val, _) = decode_json_string_at(line, idx)?;
-                            return Some(val);
-                        }
-                        return None;
-                    }
-                }
-            }
-            _ => idx += 1,
-        }
-    }
-    None
-}
-
-fn line_has_test_profile_true(line: &str) -> bool {
-    let Some(prof_pos) = line.find("\"profile\"") else {
-        return false;
-    };
-    let tail = &line[prof_pos..];
-    let Some(open) = tail.find('{') else {
-        return false;
-    };
-    let Some(close) = tail[open..].find('}') else {
-        return false;
-    };
-    let profile_obj = &tail[open..=open + close];
-    let compact: String = profile_obj
-        .chars()
-        .filter(|c| !c.is_ascii_whitespace())
-        .collect();
-    compact.contains("\"test\":true")
-}
-
-/// Extracts compiled `.wasm` test executable paths from `cargo test --no-run --message-format=json` stdout.
-pub fn extract_wasm_test_executables_from_cargo_json(stdout: &str) -> Result<Vec<PathBuf>, String> {
-    let mut artifacts = Vec::new();
-    for raw_line in stdout.lines() {
-        let line = raw_line.trim();
-        if !line.starts_with('{') {
-            continue;
-        }
-        let Some(reason) = extract_top_level_json_string_field(line, "reason") else {
-            continue;
-        };
-        if reason != "compiler-artifact" || !line_has_test_profile_true(line) {
-            continue;
-        }
-        if let Some(exe) = extract_top_level_json_string_field(line, "executable")
-            && exe.ends_with(".wasm")
-        {
-            let path = PathBuf::from(exe);
-            if !artifacts.contains(&path) {
-                artifacts.push(path);
-            }
-        }
-    }
-    if artifacts.is_empty() {
-        return Err("No wasm32 test executable artifacts found in Cargo JSON output".to_string());
-    }
-    Ok(artifacts)
 }
