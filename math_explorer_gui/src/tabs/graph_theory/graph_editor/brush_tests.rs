@@ -35,7 +35,8 @@ fn test_signed_edge_brushes_hub_stamp_and_sever_stroke_publish_to_bus() {
     assert!(g2.edges.iter().any(|&(_, _, w)| (w + 1.75).abs() < 1e-9));
 
     // 3. Sever edges intersecting vertical cut line near hub -> spokes
-    let severed = tool.sever_edges_along_segment(Pos2::new(235.0, 120.0), Pos2::new(235.0, 280.0), true);
+    let severed =
+        tool.sever_edges_along_segment(Pos2::new(235.0, 120.0), Pos2::new(235.0, 280.0), true);
     assert!(severed >= 1);
     let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
     let g3 = read_shared_graph(&ctx).expect("sever stroke published");

@@ -1,5 +1,9 @@
 # Architecture Decision Record: Decoupling Mathematical Models and Citation Databases
 
+## Status
+
+Accepted
+
 ## Context
 Previously, pure mathematical simulation routines and the global, thread-safe citation database were heavily coupled under `math_commons` through macro-driven dynamic registration side-effects during metadata retrieval. This introduced unnecessary runtime state tracking and lock contention into headless computational tasks, while also requiring computational threads to link against global state.
 

@@ -141,59 +141,52 @@ fn record_segment_y_int(
     }
 }
 
-#[inline(always)]
-fn skip_flat_plateau(pts: &[PlotPoint], i: usize, sy: f64, p0_x: f64, want_y_ints: bool) -> usize {
-    let min_pos = f64::from_bits(1);
-    let (x_lo, x_hi) = if !want_y_ints {
-        (-f64::MAX, f64::MAX)
-    } else if p0_x > 0.0 {
-        (min_pos, f64::MAX)
-    } else if p0_x < 0.0 {
-        (-f64::MAX, -min_pos)
-    } else {
-        return 0;
-    };
-    let (chunks, _) = pts[i..].as_chunks::<8>();
-    let n_chunks = chunks.len();
-    let mut k = 0_usize;
-    while k < n_chunks {
-        let c = &chunks[k];
-        let ok = (c[0].y == sy)
-            & (c[0].x >= x_lo)
-            & (c[0].x <= x_hi)
-            & (c[1].y == sy)
-            & (c[1].x >= x_lo)
-            & (c[1].x <= x_hi)
-            & (c[2].y == sy)
-            & (c[2].x >= x_lo)
-            & (c[2].x <= x_hi)
-            & (c[3].y == sy)
-            & (c[3].x >= x_lo)
-            & (c[3].x <= x_hi)
-            & (c[4].y == sy)
-            & (c[4].x >= x_lo)
-            & (c[4].x <= x_hi)
-            & (c[5].y == sy)
-            & (c[5].x >= x_lo)
-            & (c[5].x <= x_hi)
-            & (c[6].y == sy)
-            & (c[6].x >= x_lo)
-            & (c[6].x <= x_hi)
-            & (c[7].y == sy)
-            & (c[7].x >= x_lo)
-            & (c[7].x <= x_hi);
-        if !ok {
-            break;
-        }
-        k += 1;
-    }
-    k * 8
-}
-
 pub(crate) struct SingleLineScan {
     pub(crate) roots: Vec<f64>,
     pub(crate) y_ints: Vec<f64>,
     pub(crate) extrema: Vec<([f64; 2], bool)>,
+}
+
+fn skip_plateau_chunks(
+    pts: &[PlotPoint],
+    start_idx: usize,
+    y_val: f64,
+    want_y_ints: bool,
+    p0_x: f64,
+) -> Option<(usize, PlotPoint)> {
+    let (x_min, x_max) = if !want_y_ints {
+        (f64::MIN, f64::MAX)
+    } else if p0_x > 0.0 {
+        (f64::from_bits(1), f64::MAX)
+    } else if p0_x < 0.0 {
+        (f64::MIN, -f64::from_bits(1))
+    } else {
+        return None;
+    };
+    macro_rules! ok_pt {
+        ($p:expr) => {
+            ($p.y == y_val) & ($p.x >= x_min) & ($p.x <= x_max)
+        };
+    }
+    let (chunks, _) = pts[start_idx..].as_chunks::<8>();
+    let mut skipped = 0usize;
+    let mut tail = PlotPoint { x: 0.0, y: 0.0 };
+    for &[a0, a1, a2, a3, a4, a5, a6, a7] in chunks {
+        if !(ok_pt!(a0)
+            & ok_pt!(a1)
+            & ok_pt!(a2)
+            & ok_pt!(a3)
+            & ok_pt!(a4)
+            & ok_pt!(a5)
+            & ok_pt!(a6)
+            & ok_pt!(a7))
+        {
+            break;
+        }
+        skipped += 8;
+        tail = a7;
+    }
+    (skipped > 0).then_some((start_idx + skipped, tail))
 }
 
 /// Fused single-pass streaming scan for $y = 0$ roots, $x = 0$ intercepts, and local extrema.
@@ -217,16 +210,17 @@ pub(crate) fn scan_single_line_all(
     let (mut mode, mut prev, mut start, mut second, mut last) = (0u8, dummy, dummy, dummy, dummy);
     let mut i = 1;
     while i < n {
-        if mode == 2 {
-            let jump = skip_flat_plateau(pts, i, start.y, p0.x, want_y_ints);
-            if jump > 0 {
-                i += jump;
-                last = pts[i - 1];
-                p0 = last;
-                if i >= n {
-                    break;
-                }
+        if p0_fin
+            && (mode == 0 || mode == 2)
+            && n - i >= 8
+            && let Some((next_i, tail)) = skip_plateau_chunks(pts, i, p0.y, want_y_ints, p0.x)
+        {
+            if mode == 2 {
+                last = tail;
             }
+            p0 = tail;
+            i = next_i;
+            continue;
         }
         let idx = i - 1;
         let p1 = pts[i];

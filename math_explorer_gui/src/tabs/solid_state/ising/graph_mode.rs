@@ -94,7 +94,10 @@ impl IsingModelTool {
         feature = "pure_math"
     ))]
     pub(crate) fn graph_spin_count(&self) -> Option<usize> {
-        self.graph_mode.system.as_ref().map(GraphSpinSystem::num_nodes)
+        self.graph_mode
+            .system
+            .as_ref()
+            .map(GraphSpinSystem::num_nodes)
     }
 
     pub(super) fn refresh_graph_metrics(&mut self) -> bool {
@@ -195,66 +198,6 @@ impl IsingModelTool {
         );
     }
 
-    pub(super) fn draw_parameter_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if ui
-            .add(
-                egui::Slider::new(&mut self.temperature, 0.1..=10.0)
-                    .text("Temperature (T) - K (relative)"),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .temperature = self.temperature;
-        }
-        ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
-
-        if ui
-            .add(
-                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .j_coupling = self.j_coupling;
-            if !self.refresh_graph_metrics() {
-                self.request_metric_refresh(ctx);
-            }
-        }
-        ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
-
-        if ui
-            .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .h_field = self.h_field;
-            if !self.refresh_graph_metrics() {
-                self.request_metric_refresh(ctx);
-            }
-        }
-
-        ui.separator();
-        if ui
-            .add(
-                egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
-                    .text("Simulation Speed (Steps/Frame)")
-                    .logarithmic(true),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .steps_per_frame = self.steps_per_frame;
-        }
-    }
-
     pub(super) fn render_graph_spin_canvas(&self, ui: &mut egui::Ui) -> bool {
         let (Some(sys), Some(graph)) = (&self.graph_mode.system, &self.graph_mode.active_graph)
         else {
@@ -277,7 +220,14 @@ impl IsingModelTool {
         });
 
         let palette = SemanticPalette::from_visuals(ui.visuals());
-        paint_spin_graph(&painter, response.rect, graph, sys, self.j_coupling, &palette);
+        paint_spin_graph(
+            &painter,
+            response.rect,
+            graph,
+            sys,
+            self.j_coupling,
+            &palette,
+        );
         crate::accessibility::paint_canvas_focus_ring(ui, &response);
         true
     }

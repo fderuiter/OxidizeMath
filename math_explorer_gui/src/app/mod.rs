@@ -2,7 +2,10 @@ pub mod data_bus;
 pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+#[cfg(target_os = "macos")]
+mod macos_menu_view;
 pub mod palette;
+mod pane_clone;
 mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
@@ -40,6 +43,8 @@ mod tests_multi_pane_a11y;
 #[cfg(test)]
 mod tests_multi_pane_plot_live;
 #[cfg(test)]
+mod tests_pane_clone_sync;
+#[cfg(test)]
 mod tests_pane_isolation;
 #[cfg(test)]
 mod tests_secondary_menus;
@@ -75,6 +80,7 @@ pub use state::{AppState, SplitLayoutMode};
 pub use theme::{
     contrast_ratio, contrasting_text_color, relative_luminance, SemanticPalette, ThemeMode,
 };
+pub use viewport::compare_sync::ComparisonSyncConfig;
 pub use viewport::ViewportLayout;
 
 use crate::command_palette::CommandPalette;
@@ -111,6 +117,7 @@ pub struct MathExplorerApp {
     tab_state_cache: state::TabStateCache,
     last_frame_had_input: bool,
     pending_focus_prune: bool,
+    pub compare_sync: ComparisonSyncConfig,
     pub(super) url_sync: crate::url_state::UrlSyncController,
     pub data_bus: data_bus::WorkspaceDataBus,
 }
@@ -119,6 +126,7 @@ impl Default for MathExplorerApp {
     #[allow(clippy::vec_init_then_push)]
     fn default() -> Self {
         crate::accessibility::ensure_plot_live_bridge();
+        crate::framework::ensure_custom_fit_bridge();
         let tabs: Vec<Box<dyn ExplorerTab>> = crate::tabs::instantiate_tabs();
 
         Self {
@@ -147,6 +155,7 @@ impl Default for MathExplorerApp {
             tab_state_cache: state::TabStateCache::default(),
             last_frame_had_input: false,
             pending_focus_prune: false,
+            compare_sync: ComparisonSyncConfig::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
             data_bus: data_bus::WorkspaceDataBus::default(),
         }
@@ -154,11 +163,6 @@ impl Default for MathExplorerApp {
 }
 
 impl MathExplorerApp {
-    /// Swaps the primary and secondary pane active tabs and their per-pane states immediately.
-    pub fn swap_panes(&mut self) {
-        self.swap_pane_pair(0, 1);
-    }
-
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
         theme::init_startup_theme(&mut app, cc);
@@ -168,42 +172,6 @@ impl MathExplorerApp {
         macos_menu::setup_macos_menu(&app);
 
         app
-    }
-
-    /// Sets the assigned tab index for a specific pane.
-    pub fn set_pane_tab(&mut self, pane_idx: usize, tab_idx: usize) {
-        if pane_idx < self.pane_tabs.len() && tab_idx < self.tabs.len() {
-            self.pane_tabs[pane_idx] = tab_idx;
-            if pane_idx == 0 {
-                self.selected_tab = tab_idx;
-            } else if pane_idx == 1 {
-                self.secondary_tab = tab_idx;
-            }
-            self.on_pane_tab_assigned(pane_idx, tab_idx);
-        }
-    }
-
-    /// Sets the authoritative viewport layout preset and synchronizes legacy layout mode.
-    pub fn set_layout(&mut self, layout: ViewportLayout) {
-        self.viewport_layout = layout;
-        self.sync_layout();
-        if !self.pane_tabs.is_empty() {
-            self.pane_tabs[0] = self.selected_tab;
-        }
-        if layout != ViewportLayout::Single && self.pane_tabs.len() > 1 {
-            self.pane_tabs[1] = self.secondary_tab;
-        }
-        self.prune_inactive_pane_slots(layout.pane_count());
-    }
-
-    /// Synchronizes legacy `split_layout_mode` with current `viewport_layout`.
-    pub fn sync_layout(&mut self) {
-        self.split_layout_mode = match self.viewport_layout {
-            ViewportLayout::Single => SplitLayoutMode::Single,
-            ViewportLayout::SplitHorizontal => SplitLayoutMode::Horizontal,
-            ViewportLayout::SplitVertical => SplitLayoutMode::Vertical,
-            ViewportLayout::QuadGrid => SplitLayoutMode::Single,
-        };
     }
 
     /// Extracts current application state into an `AppState` struct.
@@ -380,6 +348,7 @@ impl eframe::App for MathExplorerApp {
         }
 
         self.poll_share_shortcut_and_clipboard(ctx);
+        self.poll_duplicate_pane_shortcut(ctx);
 
         // Fetch new events
         let new_events = crate::telemetry::poll_app_telemetry();

@@ -45,7 +45,11 @@ pub(super) fn segments_intersect_or_near(a: Pos2, b: Pos2, c: Pos2, d: Pos2, tol
 
 impl GraphEditorTool {
     #[cfg(test)]
-    pub(crate) fn with_brush_config(mode: EditorMode, hub_spokes: usize, brush_weight: f64) -> Self {
+    pub(crate) fn with_brush_config(
+        mode: EditorMode,
+        hub_spokes: usize,
+        brush_weight: f64,
+    ) -> Self {
         Self {
             mode,
             hub_spokes,
@@ -88,6 +92,10 @@ impl GraphEditorTool {
             }
             slot.2 = signed_weight;
             self.rebuild_graph();
+            self.braess.sync_with_edges(&self.edges);
+            if self.braess.config.enabled {
+                self.recompute_braess();
+            }
             self.bump_revision();
             return true;
         }
@@ -96,6 +104,10 @@ impl GraphEditorTool {
         if let (Some(&u_idx), Some(&v_idx)) = (self.node_indices.get(&u), self.node_indices.get(&v))
         {
             self.graph.add_edge(u_idx, v_idx, signed_weight);
+        }
+        self.braess.sync_with_edges(&self.edges);
+        if self.braess.config.enabled {
+            self.recompute_braess();
         }
         self.bump_revision();
         true
@@ -117,9 +129,7 @@ impl GraphEditorTool {
         let existing_nearby: Vec<usize> = self
             .node_positions
             .iter()
-            .filter_map(|(&id, &p)| {
-                (id != hub_id && (p - center).length() <= 115.0).then_some(id)
-            })
+            .filter_map(|(&id, &p)| (id != hub_id && (p - center).length() <= 115.0).then_some(id))
             .collect();
 
         for i in 0..spokes {
@@ -167,6 +177,10 @@ impl GraphEditorTool {
             }
             self.edges = to_keep;
             self.rebuild_graph();
+            self.braess.sync_with_edges(&self.edges);
+            if self.braess.config.enabled {
+                self.recompute_braess();
+            }
             self.bump_revision();
         }
         severed

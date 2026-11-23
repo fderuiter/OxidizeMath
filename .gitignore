@@ -24,3 +24,5 @@ temp/
 *.log
 papers/output/
 dist/
+__pycache__/
+*.py[cod]

@@ -11,12 +11,15 @@ use math_explorer::pure_math::graph_theory::{
 use petgraph::graph::NodeIndex;
 use std::collections::{BTreeMap, HashMap};
 
+pub mod braess;
+mod braess_host;
 mod brushes;
 mod bus_sync;
 mod canvas;
 mod keyboard;
 mod snapshot;
 
+pub use braess::{AffineLatency, BraessCongestionConfig, BraessCongestionLab};
 #[allow(unused_imports)]
 pub use keyboard::{TRANSLATE_STEP_NORMAL, TRANSLATE_STEP_SHIFT};
 #[allow(unused_imports)]
@@ -34,13 +37,14 @@ pub(crate) enum EditorMode {
     Remove,
 }
 
+/// Interactive graph editor with tactile signed brushes and Braess congestion routing laboratory.
 pub struct GraphEditorTool {
     graph: Graph<Pos2, f64>,
     node_indices: HashMap<usize, NodeIndex>,
     node_positions: BTreeMap<usize, Pos2>,
     selected_node: Option<usize>,
     next_node_id: usize,
-    edges: Vec<(usize, usize, f64)>,
+    pub(crate) edges: Vec<(usize, usize, f64)>,
     dragged_node: Option<usize>,
     mode: EditorMode,
     brush_weight: f64,
@@ -56,6 +60,8 @@ pub struct GraphEditorTool {
     canvas_id: Option<egui::Id>,
     pub(crate) revision: u64,
     pub(crate) last_published_revision: u64,
+    /// Hosted Braess's paradox congestion routing laboratory.
+    pub braess: BraessCongestionLab,
 }
 
 impl Default for GraphEditorTool {
@@ -82,6 +88,7 @@ impl Default for GraphEditorTool {
             canvas_id: None,
             revision: 0,
             last_published_revision: 0,
+            braess: BraessCongestionLab::default(),
         }
     }
 }
@@ -94,24 +101,20 @@ impl InteractiveTool for GraphEditorTool {
     fn name(&self) -> &'static str {
         "Graph Editor"
     }
-
     fn domain(&self) -> &'static str {
         "graph_theory"
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        if self.braess.config.enabled {
+            crate::framework::ExportCapabilities::plot()
+        } else {
+            crate::framework::ExportCapabilities::none()
+        }
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        self.revision.hash(&mut h);
-        self.node_positions.len().hash(&mut h);
-        self.edges.len().hash(&mut h);
-        self.selected_node.hash(&mut h);
-        self.next_node_id.hash(&mut h);
-        h.finish().max(1)
+        self.compute_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -149,19 +152,19 @@ impl InteractiveTool for GraphEditorTool {
 
         ui.separator();
         self.show_undo_redo_toolbar(ui);
-
         ui.separator();
         self.render_mode_instructions(ui);
-
         ui.separator();
         self.show_clear_button(ui);
-
         ui.separator();
         self.show_layout_toolbar(ui);
-
         ui.separator();
         ui.label(format!("Nodes: {}", self.node_positions.len()));
         ui.label(format!("Edges: {}", self.edges.len()));
+        ui.separator();
+
+        let action = self.braess.show_sidebar(ui, &mut self.edges);
+        self.apply_braess_action(action);
         self.sync_workspace_bus(ui.ctx());
     }
 
@@ -201,9 +204,7 @@ impl InteractiveTool for GraphEditorTool {
                     self.dragged_node = None;
                 }
             }
-            EditorMode::ExcitatoryBrush
-            | EditorMode::InhibitoryBrush
-            | EditorMode::SeverStroke => {
+            EditorMode::ExcitatoryBrush | EditorMode::InhibitoryBrush | EditorMode::SeverStroke => {
                 self.dragged_node = None;
                 self.handle_brush_or_sever_drag(ctx);
             }
@@ -231,16 +232,17 @@ impl InteractiveTool for GraphEditorTool {
                     self.bump_revision();
                 }
             }
-            EditorMode::AddEdge
-            | EditorMode::ExcitatoryBrush
-            | EditorMode::InhibitoryBrush => {
+            EditorMode::AddEdge if self.braess.config.enabled => {
+                self.click_add_edge();
+            }
+            EditorMode::AddEdge | EditorMode::ExcitatoryBrush | EditorMode::InhibitoryBrush => {
                 self.handle_edge_click_selection();
             }
             EditorMode::HubStamp => {
                 self.stamp_hub_at(pos);
             }
             EditorMode::Remove | EditorMode::SeverStroke => {
-                self.handle_remove_click();
+                self.click_remove();
             }
         }
     }
@@ -251,9 +253,11 @@ impl InteractiveTool for GraphEditorTool {
 }
 
 impl GraphEditorTool {
+    /// Returns true if an undo snapshot is available.
     pub fn can_undo(&self) -> bool {
         !self.undo_stack.is_empty()
     }
+    /// Returns true if a redo snapshot is available.
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
     }
@@ -279,23 +283,6 @@ impl GraphEditorTool {
             }
         }
         self.selected_node = None;
-    }
-
-    fn handle_remove_click(&mut self) {
-        if let Some(clicked_id) = self.hovered_node {
-            self.push_undo_snapshot();
-            self.node_positions.remove(&clicked_id);
-            self.node_indices.remove(&clicked_id);
-            self.edges
-                .retain(|&(u, v, _)| u != clicked_id && v != clicked_id);
-            self.rebuild_graph();
-            self.bump_revision();
-        } else if let Some(edge_idx) = self.hovered_edge {
-            self.push_undo_snapshot();
-            self.edges.remove(edge_idx);
-            self.rebuild_graph();
-            self.bump_revision();
-        }
     }
 
     fn show_undo_redo_toolbar(&mut self, ui: &mut egui::Ui) {
@@ -324,7 +311,6 @@ impl GraphEditorTool {
                     self.undo();
                 }
             }
-
             if ui
                 .add_enabled(can_redo, egui::Button::new("↪ Redo"))
                 .accessible_hover_text(
@@ -340,7 +326,6 @@ impl GraphEditorTool {
                 }
             }
         });
-
         if !bridge.active {
             self.consume_toolbar_undo_redo(ui, m);
         }
@@ -358,9 +343,13 @@ impl GraphEditorTool {
             self.node_indices.clear();
             self.node_positions.clear();
             self.edges.clear();
+            self.braess.edge_latencies.clear();
             self.selected_node = None;
             self.next_node_id = 0;
             self.bump_revision();
+            if self.braess.config.enabled {
+                self.recompute_braess();
+            }
         }
     }
 
@@ -368,7 +357,6 @@ impl GraphEditorTool {
         ui.label("Auto Layout:");
         ui.horizontal(|ui| {
             let bounds = (100.0, 100.0, 700.0, 500.0);
-
             if ui
                 .button("⭕ Circular")
                 .accessible_hover_text("Arrange nodes in a circle")
@@ -379,7 +367,6 @@ impl GraphEditorTool {
                 let layout = circular_layout(&self.graph, bounds);
                 self.apply_layout(&layout);
             }
-
             if ui
                 .button("▦ Grid")
                 .accessible_hover_text("Arrange nodes in a grid layout")
@@ -390,7 +377,6 @@ impl GraphEditorTool {
                 let layout = grid_layout(&self.graph, bounds);
                 self.apply_layout(&layout);
             }
-
             if ui
                 .button("🧲 Force-Directed")
                 .accessible_hover_text("Arrange nodes using force-directed physics")
@@ -414,7 +400,7 @@ impl GraphEditorTool {
         self.bump_revision();
     }
 
-    fn rebuild_graph(&mut self) {
+    pub(crate) fn rebuild_graph(&mut self) {
         self.graph = Graph::new();
         self.node_indices.clear();
         for (&id, &pos) in &self.node_positions {

@@ -1,9 +1,20 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+#[path = "sir/atlas.rs"]
+pub mod atlas;
 mod metrics;
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
+use atlas::{default_sir_atlas_axes, is_default_sir_atlas_axes, SIR_ATLAS_AXIS_PAIRS};
+#[cfg(test)]
+pub use atlas::{SirCartographer, SirRegime};
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::epidemiology::compartmental::SIRModel;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 const MIN_SIR_DURATION: f64 = 10.0;
 const MAX_SIR_DURATION: f64 = 365.0;
@@ -28,6 +39,10 @@ struct SirStateRef<'a> {
     show_network_overlay: bool,
     #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
     snapshot_manager: &'a TraceSnapshotManager,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    atlas_visible: bool,
+    #[serde(skip_serializing_if = "is_default_sir_atlas_axes")]
+    atlas_axes: [String; 2],
 }
 
 #[derive(serde::Serialize)]
@@ -51,8 +66,13 @@ struct SirState {
     show_network_overlay: bool,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
+    #[serde(default)]
+    atlas_visible: bool,
+    #[serde(default = "default_sir_atlas_axes")]
+    atlas_axes: [String; 2],
 }
 
+#[allow(missing_docs)]
 pub struct SirTool {
     pub(crate) n: f64,
     pub(crate) i0: f64,
@@ -60,6 +80,7 @@ pub struct SirTool {
     pub(crate) gamma: f64,
     pub(crate) duration: f64,
     pub(crate) show_network_overlay: bool,
+    pub(crate) atlas: ParameterAtlasController,
 
     // Cached plot data (full-resolution trajectories for metrics and exports)
     pub(crate) s_points: Vec<PlotPoint>,
@@ -71,8 +92,8 @@ pub struct SirTool {
     pub(crate) display_r: std::sync::Arc<Vec<PlotPoint>>,
 
     pub(crate) snapshot_manager: TraceSnapshotManager,
-    sensitivity_engine: crate::sensitivity::SensitivityEngine,
-    last_param_summary: String,
+    pub(super) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(super) last_param_summary: String,
     revision: u64,
 }
 
@@ -85,6 +106,7 @@ impl Default for SirTool {
             gamma: 0.1,
             duration: 100.0,
             show_network_overlay: true,
+            atlas: ParameterAtlasController::new(SIR_ATLAS_AXIS_PAIRS.to_vec()),
             s_points: vec![],
             i_points: vec![],
             r_points: vec![],
@@ -102,6 +124,7 @@ impl Default for SirTool {
 }
 
 impl SirTool {
+    #[allow(missing_docs)]
     pub fn param_summary(&self) -> String {
         format!(
             r"\beta={:.2}, \gamma={:.2}, N={:.0}",
@@ -109,60 +132,55 @@ impl SirTool {
         )
     }
 
+    fn record_history_and_recalculate(&mut self) {
+        let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+        let series = vec![
+            TraceSeries::new("Susceptible", to_pairs(&self.s_points)),
+            TraceSeries::new("Infected", to_pairs(&self.i_points)),
+            TraceSeries::new("Recovered", to_pairs(&self.r_points)),
+        ];
+        self.snapshot_manager
+            .push_history_run(&self.last_param_summary, series);
+        self.recalculate();
+    }
+
     fn render_parameter_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let bounds = self.theory_parameters();
+        let get_b = |k: &str, min: f64, max: f64, step: f64| {
+            bounds
+                .get(k)
+                .cloned()
+                .unwrap_or(ParameterConstraint { min, max, step })
+        };
+        let cn = get_b("N", 100.0, 100_000.0, 100.0);
+        let cb = get_b("beta", 0.0, 5.0, 0.02);
+        let cg = get_b("gamma", 0.0, 1.0, 0.01);
+        let cd = get_b("duration", MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0);
+
         let mut changed = false;
         changed |= ui
-            .add(egui::Slider::new(&mut self.n, 100.0..=100_000.0).text("Population (N)"))
+            .add(egui::Slider::new(&mut self.n, cn.min..=cn.max).text("Population (N)"))
+            .changed();
+        let i0_max = (self.n * 0.5).max(1.0);
+        self.i0 = self.i0.min(i0_max);
+        changed |= ui
+            .add(egui::Slider::new(&mut self.i0, 1.0..=i0_max).text("Initial Infected (I0)"))
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.i0, 1.0..=self.n / 2.0).text("Initial Infected (I0)"))
+            .add(
+                egui::Slider::new(&mut self.beta, cb.min..=cb.max).text("Transmission Rate (beta)"),
+            )
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.beta, 0.0..=5.0).text("Transmission Rate (beta)"))
+            .add(egui::Slider::new(&mut self.gamma, cg.min..=cg.max).text("Recovery Rate (gamma)"))
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.gamma, 0.0..=1.0).text("Recovery Rate (gamma)"))
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.duration, 10.0..=365.0).text("Duration (days)"))
+            .add(egui::Slider::new(&mut self.duration, cd.min..=cd.max).text("Duration (days)"))
             .changed();
         changed
     }
 
-    fn evaluate_sensitivity(&mut self, ui: &mut egui::Ui) {
-        let params = [
-            ("N", self.n),
-            ("I0", self.i0),
-            ("beta", self.beta),
-            ("gamma", self.gamma),
-        ];
-        let duration_bits = crate::sensitivity::canonical_f64_bits(self.duration);
-
-        self.sensitivity_engine
-            .compute_with_context(&params, &duration_bits, |p_map| {
-                let n = p_map.get("N").copied().unwrap_or(1000.0).max(1.0);
-                let i0 = p_map.get("I0").copied().unwrap_or(10.0).clamp(0.0, n);
-                let beta = p_map.get("beta").copied().unwrap_or(0.5).max(0.0);
-                let gamma = p_map.get("gamma").copied().unwrap_or(0.1).max(0.0001);
-
-                if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
-                    let dt = 0.2;
-                    let steps = 250;
-                    let mut max_i: f64 = 0.0;
-                    for _ in 0..steps {
-                        max_i = max_i.max(model.state().i);
-                        model.step(dt);
-                    }
-                    max_i
-                } else {
-                    0.0
-                }
-            });
-
-        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "sir_tool");
-    }
-
-    fn recalculate(&mut self) {
+    pub(crate) fn recalculate(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1);
         self.s_points.clear();
         self.i_points.clear();
@@ -175,8 +193,6 @@ impl SirTool {
         if !self.duration.is_finite() || self.duration <= 0.0 {
             return;
         }
-
-        // Ensure parameters are valid before passing to model
         let n = self.n.max(1.0);
         let i0 = self.i0.clamp(0.0, n);
         let beta = self.beta.max(0.0);
@@ -198,14 +214,12 @@ impl SirTool {
             {
                 return;
             }
-
             for i in 0..=steps {
                 let t = i as f64 * dt;
                 let state = model.state();
                 self.s_points.push(PlotPoint::new(t, state.s));
                 self.i_points.push(PlotPoint::new(t, state.i));
                 self.r_points.push(PlotPoint::new(t, state.r));
-
                 model.step(dt);
             }
             let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
@@ -216,6 +230,7 @@ impl SirTool {
     }
 
     fn load_sir_state(&mut self, state: &str, preserve_snapshots: bool) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let s: SirState =
             serde_json::from_str(state).map_err(|e| format!("Invalid SIR state: {e}"))?;
         if ![s.n, s.i0, s.beta, s.gamma, s.duration]
@@ -229,6 +244,9 @@ impl SirTool {
         {
             return Err("SIR parameters out of bounds".into());
         }
+        self.atlas
+            .set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1])?;
+        self.atlas.set_visible(s.atlas_visible);
         self.n = s.n;
         self.i0 = s.i0;
         self.beta = s.beta;
@@ -244,7 +262,7 @@ impl SirTool {
 }
 
 impl InteractiveTool for SirTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+    fn theory(&self) -> &dyn TheoryDescribable {
         self
     }
     fn name(&self) -> &'static str {
@@ -255,7 +273,6 @@ impl InteractiveTool for SirTool {
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut h);
         self.n.to_bits().hash(&mut h);
@@ -266,6 +283,8 @@ impl InteractiveTool for SirTool {
         self.show_network_overlay.hash(&mut h);
         self.snapshot_manager.len().hash(&mut h);
         self.snapshot_manager.history_len().hash(&mut h);
+        self.atlas.is_visible().hash(&mut h);
+        self.atlas.axis_keys().hash(&mut h);
         h.finish().max(1)
     }
 
@@ -307,6 +326,7 @@ impl InteractiveTool for SirTool {
     }
 
     fn save_state(&self) -> Option<String> {
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&SirStateRef {
             n: self.n,
             i0: self.i0,
@@ -315,6 +335,8 @@ impl InteractiveTool for SirTool {
             duration: self.duration,
             show_network_overlay: self.show_network_overlay,
             snapshot_manager: &self.snapshot_manager,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
@@ -331,7 +353,6 @@ impl InteractiveTool for SirTool {
     }
 
     fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
-        self.state_bounds().validate_json(state)?;
         self.load_sir_state(state, true)
     }
 
@@ -341,6 +362,11 @@ impl InteractiveTool for SirTool {
 
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
 
@@ -354,46 +380,29 @@ impl InteractiveTool for SirTool {
         ui.vertical(|ui| {
             ui.heading("Parameters");
             if self.render_parameter_controls(ui) {
-                let to_pairs =
-                    |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-                let series = vec![
-                    TraceSeries::new("Susceptible", to_pairs(&self.s_points)),
-                    TraceSeries::new("Infected", to_pairs(&self.i_points)),
-                    TraceSeries::new("Recovered", to_pairs(&self.r_points)),
-                ];
-                self.snapshot_manager
-                    .push_history_run(&self.last_param_summary, series);
-                self.recalculate();
+                self.record_history_and_recalculate();
             }
-
             metrics::render_epidemic_metrics(ui, self);
-
+            self.render_sir_readouts_and_atlas(ui);
             ui.add_space(8.0);
             let param_summary = self.param_summary();
             let current_len = self.snapshot_manager.len();
-            let s_points = &self.s_points;
-            let i_points = &self.i_points;
-            let r_points = &self.r_points;
-
+            let (s_pts, i_pts, r_pts) = (&self.s_points, &self.i_points, &self.r_points);
             if self.snapshot_manager.render_ui(ui, move || {
                 let label = format!("Baseline {}", current_len + 1);
                 let to_pairs =
                     |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
                 let series = vec![
-                    TraceSeries::new("Susceptible", to_pairs(s_points)),
-                    TraceSeries::new("Infected", to_pairs(i_points)),
-                    TraceSeries::new("Recovered", to_pairs(r_points)),
+                    TraceSeries::new("Susceptible", to_pairs(s_pts)),
+                    TraceSeries::new("Infected", to_pairs(i_pts)),
+                    TraceSeries::new("Recovered", to_pairs(r_pts)),
                 ];
                 Some((label, param_summary, series))
             }) {
                 self.revision = self.revision.wrapping_add(1).max(1);
             }
-
-            self.evaluate_sensitivity(ui);
-
-            ui.separator();
+            metrics::evaluate_sensitivity(ui, self);
             let net_trace = crate::app::data_bus::read_epidemic_trace(ui.ctx());
-            metrics::render_network_overlay_controls(ui, self, net_trace.as_deref());
             metrics::render_simulation_plot(ui, self, net_trace.as_deref());
         });
     }
@@ -411,7 +420,7 @@ inventory::submit! {
     }
 }
 
-impl scientific_metadata::theory::TheoryDescribable for SirTool {
+impl TheoryDescribable for SirTool {
     fn theory_description(&self) -> String {
         let r0 = self.beta / self.gamma;
         format!(
@@ -422,11 +431,26 @@ impl scientific_metadata::theory::TheoryDescribable for SirTool {
     fn phonetic_description(&self) -> String {
         "Kermack-McKendrick SIR compartmental epidemic model theory".into()
     }
+
     fn theory_citation(&self) -> String {
         "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into()
     }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
+
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        HashMap::new()
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        [
+            ("N", 100.0, 100_000.0, 100.0),
+            ("I0", 1.0, 50_000.0, 1.0),
+            ("beta", 0.0, 5.0, 0.02),
+            ("gamma", 0.0, 1.0, 0.01),
+            ("duration", MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0),
+        ]
+        .into_iter()
+        .map(|(k, min, max, step)| (k.to_string(), ParameterConstraint { min, max, step }))
+        .collect()
     }
 }
 

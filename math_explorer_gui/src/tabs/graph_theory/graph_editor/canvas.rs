@@ -30,13 +30,32 @@ impl GraphEditorTool {
         });
     }
 
-    pub(super) fn render_mode_instructions(&self, ui: &mut egui::Ui) {
+    pub(super) fn render_mode_instructions(&mut self, ui: &mut egui::Ui) {
         match self.mode {
             EditorMode::AddNode => {
                 ui.label("Click empty space to add a node. Drag nodes to move them.");
             }
             EditorMode::AddEdge => {
-                ui.label("Click two nodes to connect them with weight +|w|.");
+                if self.braess.config.enabled {
+                    ui.label("Click a node to select it, then another to add a directed edge.");
+                    ui.horizontal(|ui| {
+                        ui.label("New edge:");
+                        ui.add(
+                            egui::DragValue::new(&mut self.braess.new_edge_a)
+                                .speed(0.1)
+                                .range(0.0..=20.0)
+                                .prefix("a="),
+                        );
+                        ui.add(
+                            egui::DragValue::new(&mut self.braess.new_edge_b)
+                                .speed(0.1)
+                                .range(0.0..=20.0)
+                                .prefix("b="),
+                        );
+                    });
+                } else {
+                    ui.label("Click two nodes to connect them with weight +|w|.");
+                }
             }
             EditorMode::ExcitatoryBrush => {
                 ui.label("Drag across nodes or edges to paint excitatory (+w) couplings.");
@@ -66,16 +85,27 @@ impl GraphEditorTool {
             if let (Some(&pos_u), Some(&pos_v)) =
                 (self.node_positions.get(&u), self.node_positions.get(&v))
             {
-                let is_cut_hover = matches!(self.mode, EditorMode::Remove | EditorMode::SeverStroke)
-                    && self.hovered_edge == Some(i);
+                if super::braess_host::should_draw_congestion_edge(
+                    self.braess.config.enabled,
+                    &self.mode,
+                    self.hovered_edge,
+                    i,
+                ) {
+                    self.braess
+                        .draw_congestion_edge(painter, palette, text_color, i, pos_u, pos_v);
+                    continue;
+                }
+                let is_cut_hover =
+                    matches!(self.mode, EditorMode::Remove | EditorMode::SeverStroke)
+                        && self.hovered_edge == Some(i);
                 let color = if is_cut_hover || weight < 0.0 {
                     palette.error
                 } else {
                     palette.graph_edge
                 };
-                let stroke_width =
-                    (2.0_f32 + (weight.abs() as f32 - 1.0_f32).clamp(0.0_f32, 2.0_f32) * 0.4_f32)
-                        .max(2.0_f32);
+                let stroke_width = (2.0_f32
+                    + (weight.abs() as f32 - 1.0_f32).clamp(0.0_f32, 2.0_f32) * 0.4_f32)
+                    .max(2.0_f32);
                 painter.line_segment([pos_u, pos_v], (stroke_width, color));
 
                 let mid_point = pos_u + (pos_v - pos_u) * 0.5_f32;
@@ -90,6 +120,43 @@ impl GraphEditorTool {
         }
     }
 
+    fn draw_graph_nodes(
+        &self,
+        painter: &egui::Painter,
+        palette: &crate::app::SemanticPalette,
+        window_stroke: egui::Stroke,
+    ) {
+        let node_radius = 15.0_f32;
+        for (&id, &pos) in &self.node_positions {
+            let is_selected = self.selected_node == Some(id) || self.last_brushed_node == Some(id);
+            let is_hovered = self.hovered_node == Some(id);
+
+            let fill_color = if self.mode == EditorMode::Remove && is_hovered {
+                palette.error
+            } else if is_selected {
+                palette.success
+            } else {
+                palette.series_color(0)
+            };
+
+            painter.circle(pos, node_radius, fill_color, window_stroke);
+            let label = if self.braess.config.enabled && id == self.braess.config.source_node {
+                format!("{id}:s")
+            } else if self.braess.config.enabled && id == self.braess.config.sink_node {
+                format!("{id}:t")
+            } else {
+                id.to_string()
+            };
+            painter.text(
+                pos,
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::proportional(14.0_f32),
+                crate::app::contrasting_text_color(fill_color),
+            );
+        }
+    }
+
     pub(super) fn draw_graph_canvas(
         &mut self,
         ui: &mut egui::Ui,
@@ -98,7 +165,6 @@ impl GraphEditorTool {
     ) {
         self.sync_workspace_bus(ui.ctx());
         self.configure_canvas_focus(ui, response);
-        let node_radius = 15.0_f32;
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let text_color = ui.visuals().text_color();
         let window_stroke = ui.visuals().window_stroke();
@@ -116,26 +182,10 @@ impl GraphEditorTool {
             ));
         }
 
-        for (&id, &pos) in &self.node_positions {
-            let is_selected = self.selected_node == Some(id) || self.last_brushed_node == Some(id);
-            let is_hovered = self.hovered_node == Some(id);
-
-            let fill_color = if self.mode == EditorMode::Remove && is_hovered {
-                palette.error
-            } else if is_selected {
-                palette.success
-            } else {
-                palette.series_color(0)
-            };
-
-            painter.circle(pos, node_radius, fill_color, window_stroke);
-            painter.text(
-                pos,
-                egui::Align2::CENTER_CENTER,
-                id.to_string(),
-                egui::FontId::proportional(14.0_f32),
-                crate::app::contrasting_text_color(fill_color),
-            );
+        self.draw_graph_nodes(painter, &palette, window_stroke);
+        if self.braess.config.enabled {
+            self.braess
+                .draw_canvas_banner(painter, response.rect, &palette);
         }
     }
 

@@ -62,47 +62,45 @@ pub(super) fn render_epidemic_metrics(ui: &mut egui::Ui, tool: &SirTool) {
     }
 }
 
-/// Renders the live empirical network overlay toggle and heterogeneous R₀ badge.
-pub(super) fn render_network_overlay_controls(
+/// Renders the live empirical network overlay toggle and heterogeneous R₀ badge inline.
+fn render_network_overlay_controls(
     ui: &mut egui::Ui,
     tool: &mut SirTool,
     net_trace: Option<&crate::app::EpidemicTraceSignal>,
 ) {
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-    ui.horizontal_wrapped(|ui| {
-        let resp = ui
-            .checkbox(
-                &mut tool.show_network_overlay,
-                "Overlay Network Epidemic Trace",
-            )
-            .on_hover_text(
-                "Plot live empirical S(t), I(t), and R(t) trajectories streamed from Network Propagation.",
-            );
-        if resp.changed() {
-            let status = if tool.show_network_overlay {
-                "SIR Model: Network epidemic overlay enabled"
-            } else {
-                "SIR Model: Network epidemic overlay hidden"
-            };
-            crate::accessibility::announce_live_status(ui.ctx(), status);
-        }
-        if let Some(trace) = net_trace {
-            ui.label(
-                egui::RichText::new(format!(
-                    "Network rev #{} (N={}, R₀_het={:.2})",
-                    trace.revision, trace.population, trace.heterogeneous_r0
-                ))
-                .small()
-                .color(palette.info),
-            );
+    let resp = ui
+        .checkbox(
+            &mut tool.show_network_overlay,
+            "Overlay Network Epidemic Trace",
+        )
+        .on_hover_text(
+            "Plot live empirical S(t), I(t), and R(t) trajectories streamed from Network Propagation.",
+        );
+    if resp.changed() {
+        let status = if tool.show_network_overlay {
+            "SIR Model: Network epidemic overlay enabled"
         } else {
-            ui.label(
-                egui::RichText::new("No active Network Propagation stream")
-                    .small()
-                    .color(palette.muted_text),
-            );
-        }
-    });
+            "SIR Model: Network epidemic overlay hidden"
+        };
+        crate::accessibility::announce_live_status(ui.ctx(), status);
+    }
+    if let Some(trace) = net_trace {
+        ui.label(
+            egui::RichText::new(format!(
+                "Network rev #{} (N={}, R₀_het={:.2})",
+                trace.revision, trace.population, trace.heterogeneous_r0
+            ))
+            .small()
+            .color(palette.info),
+        );
+    } else {
+        ui.label(
+            egui::RichText::new("No active Network Propagation stream")
+                .small()
+                .color(palette.muted_text),
+        );
+    }
 }
 
 fn render_empirical_overlay_lines(
@@ -148,18 +146,20 @@ fn render_empirical_overlay_lines(
     );
 }
 
-/// Renders the SIR simulation plot and CSV dataset import header.
+/// Renders the SIR simulation plot, CSV dataset import header, and inline network overlay toggle.
 pub(super) fn render_simulation_plot(
     ui: &mut egui::Ui,
-    tool: &SirTool,
+    tool: &mut SirTool,
     net_trace: Option<&crate::app::EpidemicTraceSignal>,
 ) {
     let plot_id = ui.make_persistent_id("sir_plot");
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.heading("Simulation");
         if ui.button("Import Dataset (CSV)").clicked() {
             egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
         }
+        ui.separator();
+        render_network_overlay_controls(ui, tool, net_trace);
     });
 
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
@@ -197,4 +197,39 @@ pub(super) fn render_simulation_plot(
         }
         tool.snapshot_manager.render_on_plot(plot_ui);
     });
+}
+
+/// Evaluates and renders local parameter sensitivities for [`SirTool`].
+pub(super) fn evaluate_sensitivity(ui: &mut egui::Ui, tool: &mut SirTool) {
+    use math_explorer::epidemiology::compartmental::SIRModel;
+
+    let params = [
+        ("N", tool.n),
+        ("I0", tool.i0),
+        ("beta", tool.beta),
+        ("gamma", tool.gamma),
+    ];
+    let duration_bits = crate::sensitivity::canonical_f64_bits(tool.duration);
+
+    tool.sensitivity_engine
+        .compute_with_context(&params, &duration_bits, |p_map| {
+            let n = p_map.get("N").copied().unwrap_or(1000.0).max(1.0);
+            let i0 = p_map.get("I0").copied().unwrap_or(10.0).clamp(0.0, n);
+            let beta = p_map.get("beta").copied().unwrap_or(0.5).max(0.0);
+            let gamma = p_map.get("gamma").copied().unwrap_or(0.1).max(0.0001);
+
+            if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
+                let dt = 0.2;
+                let mut max_i: f64 = 0.0;
+                for _ in 0..250 {
+                    max_i = max_i.max(model.state().i);
+                    model.step(dt);
+                }
+                max_i
+            } else {
+                0.0
+            }
+        });
+
+    crate::sensitivity::render_sensitivity_panel_ui(ui, &tool.sensitivity_engine, "sir_tool");
 }
