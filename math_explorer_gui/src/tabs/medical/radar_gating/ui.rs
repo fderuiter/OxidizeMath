@@ -3,6 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::canvas::show_room_canvas;
+use super::challenge::GEOGRAPHIC_MISS_CEILING_MM;
 use super::pipeline::RadarPipeline;
 use super::state::{
     RadarGatingState, MAX_SAMPLES_PER_CHIRP, MAX_SNAPSHOTS, MAX_SWEEP_BINS, MIN_SAMPLES_PER_CHIRP,
@@ -10,9 +11,11 @@ use super::state::{
 };
 use super::RadarGatingTool;
 use crate::app::theme::SemanticPalette;
-use crate::framework::{bounded_drag_value, PaneSidePanel, PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    bounded_drag_value, CalloutManager, PaneSidePanel, PlaybackAction, PlaybackTransport,
+};
 use eframe::egui::{self, Color32, RichText};
-use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, VLine};
+use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints, VLine};
 use math_explorer::physics::medical::radar_gating::BeamState;
 
 /// Renders the complete `RadarGatingTool` side panel and central visualization workspace.
@@ -38,16 +41,24 @@ pub fn show_tool_inside(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
 }
 
 fn render_side_controls(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
+    let locked = tool.is_challenge_locked();
     ui.heading("60 GHz MIMO Radar Gating");
     render_transport_and_status(tool, ui);
     ui.separator();
-    let rf_changed = render_rf_and_music_controls(&mut tool.state, ui);
+    let rf_changed = ui
+        .add_enabled_ui(!locked, |ui| {
+            render_rf_and_music_controls(&mut tool.state, ui)
+        })
+        .inner;
     ui.separator();
-    let gating_changed = render_respiratory_and_gating_controls(&mut tool.state, ui);
+    let gating_changed = render_respiratory_and_gating_controls(&mut tool.state, locked, ui);
     ui.separator();
     render_fault_and_interlock_controls(tool, ui);
 
     if gating_changed {
+        if locked {
+            RadarGatingTool::enforce_challenge_locks_on_state(&mut tool.state);
+        }
         tool.pipeline.rebuild_all(&tool.state);
     } else if rf_changed {
         tool.pipeline.refresh_spectra_only(&tool.state);
@@ -81,10 +92,11 @@ fn render_transport_and_status(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
         ui.label(RichText::new(badge_text).strong().color(badge_color));
     });
     ui.label(format!(
-        "Duty Cycle: {:.1}% | Step: {:.1} us | Frame: {:.2} ms",
+        "Duty: {:.1}% (Phys {:.1}%) | Misses: {} | Step: {:.1} us",
         tool.pipeline.duty_cycle_percent(),
+        tool.pipeline.physical_duty_cycle_percent(),
+        tool.pipeline.geographic_miss_frames,
         tool.pipeline.last_step_us,
-        tool.last_frame_ms
     ));
     ui.label(format!(
         "Peaks — Coarse FFT: {} | MUSIC: {} (c/2B = {:.2} cm)",
@@ -191,65 +203,78 @@ fn drag_usize_row(
     edited
 }
 
-fn labeled_f64_drag(
-    ui: &mut egui::Ui,
-    label: &str,
-    value: &mut f64,
-    range: std::ops::RangeInclusive<f64>,
-    speed: f64,
-) -> bool {
-    ui.horizontal(|ui| {
-        ui.label(label);
-        ui.add(bounded_drag_value(value, range, speed)).changed()
-    })
-    .inner
-}
-
-fn render_respiratory_and_gating_controls(state: &mut RadarGatingState, ui: &mut egui::Ui) -> bool {
+fn render_locked_respiratory_rows(state: &mut RadarGatingState, ui: &mut egui::Ui) -> bool {
     let mut changed = false;
-    ui.label(RichText::new("Respiratory & Kalman Gating").strong());
-    changed |= labeled_f64_drag(
+    changed |= drag_f64_row(
         ui,
         "Breath Amp (mm):",
         &mut state.breath_amplitude_mm,
         1.0..=15.0,
         0.25,
     );
-    changed |= labeled_f64_drag(
+    changed |= drag_f64_row(
         ui,
         "Breath Period (s):",
         &mut state.breath_period_s,
         1.5..=12.0,
         0.2,
     );
-    changed |= labeled_f64_drag(
-        ui,
-        "Gate Threshold (mm):",
-        &mut state.gating_threshold_mm,
-        -12.0..=12.0,
-        0.2,
-    );
-    changed |= labeled_f64_drag(
-        ui,
-        "Hysteresis (mm):",
-        &mut state.gating_hysteresis_mm,
-        0.1..=5.0,
-        0.1,
-    );
-    changed |= labeled_f64_drag(
+    changed |= drag_f64_row(
         ui,
         "LINAC Latency (ms):",
         &mut state.system_latency_ms,
         0.0..=250.0,
         5.0,
     );
-    changed |= labeled_f64_drag(
+    changed |= drag_f64_row(
         ui,
         "Static Clutter:",
         &mut state.static_clutter_gain,
         0.0..=3.0,
         0.05,
     );
+    changed
+}
+
+fn render_respiratory_and_gating_controls(
+    state: &mut RadarGatingState,
+    locked: bool,
+    ui: &mut egui::Ui,
+) -> bool {
+    let mut changed = false;
+    ui.label(RichText::new("Respiratory & Kalman Gating").strong());
+    ui.add_enabled_ui(!locked, |ui| {
+        changed |= render_locked_respiratory_rows(state, ui);
+    });
+    changed |= drag_f64_row(
+        ui,
+        "Kalman Q (proc):",
+        &mut state.kalman_process_var,
+        1.0e-8..=1.0,
+        1.0e-4,
+    );
+    changed |= drag_f64_row(
+        ui,
+        "Kalman R (meas):",
+        &mut state.kalman_meas_var,
+        1.0e-9..=1.0,
+        1.0e-5,
+    );
+    changed |= drag_f64_row(
+        ui,
+        "Gate Threshold (mm):",
+        &mut state.gating_threshold_mm,
+        -12.0..=12.0,
+        0.2,
+    );
+    changed |= drag_f64_row(
+        ui,
+        "Hysteresis (mm):",
+        &mut state.gating_hysteresis_mm,
+        0.1..=5.0,
+        0.05,
+    );
+    changed |= drag_usize_row(ui, "Clutter Window:", &mut state.clutter_window, 4, 64, 1.0);
     changed
 }
 
@@ -265,7 +290,13 @@ fn render_fault_and_interlock_controls(tool: &mut RadarGatingTool, ui: &mut egui
         } else {
             "Inject Static Reflector"
         };
-        if ui.button(clutter_label).clicked() {
+        if ui
+            .add_enabled(
+                !tool.is_challenge_locked(),
+                egui::Button::new(clutter_label),
+            )
+            .clicked()
+        {
             tool.pipeline.extra_clutter_active = !tool.pipeline.extra_clutter_active;
             let _ = tool.step_gating();
         }
@@ -288,18 +319,24 @@ fn render_fault_and_interlock_controls(tool: &mut RadarGatingTool, ui: &mut egui
 }
 
 fn render_central_workspace(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
-    let interaction = show_room_canvas(
-        ui,
-        &mut tool.state,
-        &tool.pipeline.spectra,
-        &mut tool.selected_target,
-        &mut tool.dragging_target,
-    );
+    let locked = tool.is_challenge_locked();
+    let interaction = ui
+        .add_enabled_ui(!locked, |ui| {
+            show_room_canvas(
+                ui,
+                &mut tool.state,
+                &tool.pipeline.spectra,
+                &mut tool.selected_target,
+                &mut tool.dragging_target,
+            )
+        })
+        .inner;
     tool.focused_canvas = interaction.focused_id;
-    if interaction.state_changed {
+    if !locked && interaction.state_changed {
         tool.pipeline.refresh_spectra_only(&tool.state);
     }
 
+    tool.sync_radar_callouts();
     ui.add_space(4.0);
     let remaining_h = ui.available_height().max(260.0);
     let plot_h = (remaining_h * 0.48).max(125.0);
@@ -309,6 +346,7 @@ fn render_central_workspace(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
         ui,
         &tool.state,
         &tool.pipeline,
+        &mut tool.callout_manager,
         ui.available_height().max(125.0),
     );
 }
@@ -366,12 +404,13 @@ fn render_gating_timeline_plot(
     ui: &mut egui::Ui,
     state: &RadarGatingState,
     pipeline: &RadarPipeline,
+    callouts: &mut CalloutManager,
     height: f32,
 ) {
     let palette = SemanticPalette::from_visuals(ui.visuals());
     let thresh = state.gating_threshold_mm;
     let hyst = state.gating_hysteresis_mm;
-    let active_scaled = scale_gate_strip(&pipeline.beam_active_trace, 4.0, -9.0);
+    let phys_scaled = scale_gate_strip(&pipeline.physical_beam_trace, 4.0, -9.0);
     let hold_scaled = scale_gate_strip(&pipeline.beam_hold_trace, 2.5, 7.0);
     let interlock_scaled = scale_gate_strip(&pipeline.interlock_trace, 4.0, 10.0);
 
@@ -381,6 +420,15 @@ fn render_gating_timeline_plot(
         .x_axis_label("Simulation Time (s)")
         .y_axis_label("Displacement (mm) & Gate Windows")
         .show(ui, |plot_ui| {
+            plot_ui.line(
+                Line::new(
+                    "Ground-Truth z_true (mm)",
+                    PlotPoints::from(pipeline.true_trace_mm.clone()),
+                )
+                .color(palette.accent)
+                .style(LineStyle::Dashed { length: 6.0 })
+                .width(1.9_f32),
+            );
             plot_ui.line(
                 Line::new(
                     "Unwrapped + Surface Chest (mm)",
@@ -398,7 +446,7 @@ fn render_gating_timeline_plot(
                 .width(2.2_f32),
             );
             plot_ui.line(
-                Line::new("BeamActive Window", PlotPoints::from(active_scaled))
+                Line::new("Delayed Physical Beam ON", PlotPoints::from(phys_scaled))
                     .color(palette.success)
                     .width(2.0_f32),
             );
@@ -412,8 +460,13 @@ fn render_gating_timeline_plot(
                     .color(palette.error)
                     .width(2.2_f32),
             );
+            plot_ui.hline(
+                HLine::new("Miss Ceiling (-1.20 mm)", GEOGRAPHIC_MISS_CEILING_MM)
+                    .color(palette.error),
+            );
             plot_ui.hline(HLine::new("Gate ON (T - H)", thresh - hyst).color(palette.success));
             plot_ui.hline(HLine::new("Gate OFF (T + H)", thresh + hyst).color(palette.warning));
+            callouts.render_on_plot(plot_ui);
         });
 }
 

@@ -6,7 +6,9 @@ use super::kspace_types::{
     MriKSpaceToolState, StudioBrushMode, MAX_STUDIO_STROKES,
 };
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
-use crate::framework::{ExportCapabilities, InteractionContext, InteractiveTool};
+use crate::framework::{
+    CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractionContext, InteractiveTool,
+};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -31,6 +33,8 @@ pub struct MriKSpaceTool {
     pub(crate) last_high_contrast: Option<bool>,
     pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) theory: MriKSpaceTheory,
+    pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) callout_manager: CalloutManager,
 }
 
 impl Default for MriKSpaceTool {
@@ -62,6 +66,8 @@ impl Default for MriKSpaceTool {
             last_high_contrast: None,
             focused_canvas: None,
             theory: MriKSpaceTheory,
+            active_challenge: None,
+            callout_manager: CalloutManager::new(),
         }
     }
 }
@@ -69,6 +75,9 @@ impl Default for MriKSpaceTool {
 impl MriKSpaceTool {
     /// Synchronizes `self.config` into `self.params` and sends a custom worker command.
     pub fn sync_and_notify(&mut self, action: &'static str) {
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut self.config);
+        }
         self.params
             .write()
             .unwrap_or_else(|e| e.into_inner())
@@ -100,7 +109,10 @@ impl MriKSpaceTool {
 
     /// Restores factory defaults and resets the background worker cleanly.
     pub fn reset(&mut self) {
-        let target_state = MriKSpaceToolState::default();
+        let mut target_state = MriKSpaceToolState::default();
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut target_state);
+        }
         self.config = target_state.clone();
         self.params
             .write()
@@ -123,6 +135,14 @@ impl MriKSpaceTool {
 
     /// Applies a brush stroke at grid coordinates `(cx, cy)` and dispatches `SimCommand::ApplyBrush`.
     pub fn apply_brush_at_grid(&mut self, mode: StudioBrushMode, cx: i32, cy: i32) {
+        if self.is_challenge_locked()
+            && !matches!(
+                mode,
+                StudioBrushMode::KSpaceMaskErase | StudioBrushMode::KSpaceMaskPaint
+            )
+        {
+            return;
+        }
         let n = self.config.grid_size as i32;
         let clamped_x = cx.clamp(0, n - 1);
         let clamped_y = cy.clamp(0, n - 1);
@@ -290,6 +310,7 @@ impl InteractiveTool for MriKSpaceTool {
         self.config.camera.yaw.to_bits().hash(&mut h);
         self.config.camera.zoom.to_bits().hash(&mut h);
         self.config.strokes.hash(&mut h);
+        self.active_challenge.hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         h.finish().max(1)
     }
@@ -306,6 +327,9 @@ impl InteractiveTool for MriKSpaceTool {
         parsed.validate()?;
         let target_worker = parsed.state.unwrap_or(SimWorkerState::Ready);
         parsed.state = Some(target_worker);
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut parsed);
+        }
         self.config = parsed.clone();
         self.params
             .write()
@@ -348,6 +372,18 @@ impl InteractiveTool for MriKSpaceTool {
         self.config.selected_voxel[1] = self.config.selected_voxel[1].min(max_v);
         self.sync_and_notify("sync_config");
         true
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_kspace_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.eval_kspace_challenge()
     }
 
     #[cfg(test)]

@@ -172,7 +172,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 }
 
-#[allow(missing_docs)]
+/// Asynchronous worker runner driving a [`UnifiedModel`] with shared parameters, sculpt state, and formulas.
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,
@@ -183,7 +183,7 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
 }
 
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    #[allow(missing_docs)]
+    /// Creates a [`UnifiedSimRunner`] backed by `params` with empty sculpt and formula slots.
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
         Self::with_shared(
             params,

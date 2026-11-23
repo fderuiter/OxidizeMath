@@ -3,6 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod canvas;
+pub mod challenge;
 pub mod pipeline;
 pub mod spectra;
 pub mod state;
@@ -10,12 +11,15 @@ pub mod state;
 mod tests;
 pub mod ui;
 
-use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
+use crate::framework::{
+    CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool, ToolStateBounds,
+};
 use eframe::egui;
 use math_explorer::physics::medical::radar_gating::BeamState;
 use pipeline::RadarPipeline;
 use state::RadarGatingState;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 /// Interactive 60 GHz MIMO FMCW super-resolution and Kalman respiratory gating twin.
 pub struct RadarGatingTool {
@@ -33,6 +37,10 @@ pub struct RadarGatingTool {
     pub focused_canvas: Option<egui::Id>,
     /// Last rendered frame wall-clock duration in milliseconds.
     pub last_frame_ms: f64,
+    /// Active inverse challenge identifier, if any.
+    pub(crate) active_challenge: Option<&'static str>,
+    /// Plot callout overlay manager for `z_true` and clinical miss ceiling markers.
+    pub(crate) callout_manager: CalloutManager,
 }
 
 impl Default for RadarGatingTool {
@@ -47,6 +55,8 @@ impl Default for RadarGatingTool {
             dragging_target: None,
             focused_canvas: None,
             last_frame_ms: 0.0,
+            active_challenge: None,
+            callout_manager: CalloutManager::new(),
         }
     }
 }
@@ -61,6 +71,10 @@ impl RadarGatingTool {
     pub fn reset_simulation(&mut self) {
         self.playing = false;
         self.pipeline.extra_clutter_active = false;
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut self.state);
+            self.pipeline.scheduled_cough_enabled = true;
+        }
         self.pipeline.rebuild_all(&self.state);
     }
 
@@ -116,14 +130,32 @@ impl InteractiveTool for RadarGatingTool {
         RadarGatingState::STATE_BOUNDS
     }
 
+    fn state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.state.bandwidth_ghz.to_bits().hash(&mut h);
+        self.state.kalman_process_var.to_bits().hash(&mut h);
+        self.state.kalman_meas_var.to_bits().hash(&mut h);
+        self.state.gating_threshold_mm.to_bits().hash(&mut h);
+        self.state.gating_hysteresis_mm.to_bits().hash(&mut h);
+        self.state.system_latency_ms.to_bits().hash(&mut h);
+        self.state.rng_seed.hash(&mut h);
+        self.pipeline.total_frames.hash(&mut h);
+        self.active_challenge.hash(&mut h);
+        h.finish().max(1)
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&self.state).ok()
     }
 
     fn try_load_state(&mut self, raw: &str) -> Result<(), String> {
         self.state_bounds().validate_json(raw)?;
-        let loaded: RadarGatingState =
+        let mut loaded: RadarGatingState =
             serde_json::from_str(raw).map_err(|e| format!("Invalid RadarGatingTool state: {e}"))?;
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut loaded);
+            self.pipeline.scheduled_cough_enabled = true;
+        }
         loaded.validate_bounds()?;
         self.state = loaded;
         self.pipeline.rebuild_all(&self.state);
@@ -143,8 +175,33 @@ impl InteractiveTool for RadarGatingTool {
             .state
             .sweep_bins
             .clamp(state::MIN_SWEEP_BINS, state::MAX_SWEEP_BINS);
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut self.state);
+        }
         self.pipeline.rebuild_all(&self.state);
         true
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_radar_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.eval_radar_challenge()
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
@@ -164,6 +221,10 @@ impl InteractiveTool for RadarGatingTool {
             (
                 "MUSIC Super-Resolution Pseudospectrum".to_string(),
                 self.pipeline.spectra.music_pseudospectrum.clone(),
+            ),
+            (
+                "Ground-Truth Chest Displacement z_true (mm)".to_string(),
+                self.pipeline.true_trace_mm.clone(),
             ),
             (
                 "Chest Unwrapped Displacement (mm)".to_string(),

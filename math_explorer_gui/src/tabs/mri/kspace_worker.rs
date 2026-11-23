@@ -241,7 +241,8 @@ impl SimulationRunner for MriKSpaceRunner {
 
         let sr = sel_voxel[0].min(self.size.saturating_sub(1));
         let sc = sel_voxel[1].min(self.size.saturating_sub(1));
-        let sidx = sr * self.size + sc;
+        let sidx = flatten_2d_index(sc, sr, self.size);
+        let (nrmse_pct, acceleration_r) = self.compute_kspace_metrics();
         let structured = MriKSpaceSnapshot {
             grid_size: self.size,
             current_time: self.current_time,
@@ -252,6 +253,8 @@ impl SimulationRunner for MriKSpaceRunner {
             kspace_rgba,
             recon_rgba: recon_rgba.clone(),
             recon_mag: self.recon_mag.clone(),
+            nrmse_pct,
+            acceleration_r,
             selected_spins: self.spins[sidx],
             selected_net_m: self.net_voxel_spin(sel_voxel),
             selected_tissue: [
@@ -294,5 +297,32 @@ impl SimulationRunner for MriKSpaceRunner {
                 "Non-finite voxel spin or reconstructed k-space magnitude encountered.",
             )
         })
+    }
+}
+
+impl MriKSpaceRunner {
+    /// Computes zero-allocation `(nrmse_pct, acceleration_r)` against `self.rho` and `self.kspace_mask`.
+    #[must_use]
+    pub fn compute_kspace_metrics(&self) -> (f64, f64) {
+        let total = self.rho.len();
+        let mut err_sq = 0.0_f64;
+        let mut ref_sq = 0.0_f64;
+        for (&recon, &truth) in self.recon_mag.iter().zip(&self.rho) {
+            let diff = recon - truth;
+            err_sq += diff * diff;
+            ref_sq += truth * truth;
+        }
+        let nrmse_pct = if ref_sq > 1.0e-12 {
+            100.0 * (err_sq / ref_sq).sqrt()
+        } else {
+            0.0
+        };
+        let sampled: f64 = self.kspace_mask.iter().map(|&m| m.clamp(0.0, 1.0)).sum();
+        let acceleration_r = if total == 0 {
+            1.0
+        } else {
+            (total as f64) / sampled.max(1.0)
+        };
+        (nrmse_pct, acceleration_r)
     }
 }
