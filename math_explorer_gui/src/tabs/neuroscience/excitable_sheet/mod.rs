@@ -46,7 +46,8 @@ impl Default for ExcitableSheetTool {
         let cfg = ExcitableSheetState::default();
         let sheet = ExcitableSheet2D::new_default();
         let cable = HodgkinHuxleyCable::new_default();
-        let lead_bridge = LeadIntegratorBridge::new(DEFAULT_SHEET_DIM, DEFAULT_SHEET_DIM, cfg.leads);
+        let lead_bridge =
+            LeadIntegratorBridge::new(DEFAULT_SHEET_DIM, DEFAULT_SHEET_DIM, cfg.leads);
         let mut tool = Self {
             last_valid_cfg: cfg.clone(),
             cfg,
@@ -79,7 +80,8 @@ impl ExcitableSheetTool {
         self.sheet.system.kinetics =
             FitzHughNagumoKinetics::new(self.cfg.a, self.cfg.b, self.cfg.epsilon, self.cfg.i_ext);
         self.sheet.set_diffusion_u(self.cfg.d_u);
-        self.cable.set_diffusion_v((self.cfg.d_u * 2.4).clamp(0.1, 3.0));
+        self.cable
+            .set_diffusion_v((self.cfg.d_u * 2.4).clamp(0.1, 3.0));
         self.lead_bridge.sync_leads(self.cfg.leads);
     }
 

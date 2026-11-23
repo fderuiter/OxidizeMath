@@ -1,5 +1,9 @@
 # ADR 0007: Gaussian Opacity Evaluation Optimization
 
+## Status
+
+Accepted
+
 ## Context
 In `crates/domain_ai/src/ai/gaussian_splatting/rendering.rs`, `evaluate_gaussian_opacity` is invoked frequently during rasterization iterations. Calculating exponentiation (`power.exp()`) when `power` falls below active opacity limits (or is positive) introduces unnecessary floating-point exponentiation overhead.
 

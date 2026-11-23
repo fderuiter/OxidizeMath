@@ -107,6 +107,7 @@ theory_verification!(
         BASE_SCORE = 1.0;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(
             BASE_SCORE,
             1.0,

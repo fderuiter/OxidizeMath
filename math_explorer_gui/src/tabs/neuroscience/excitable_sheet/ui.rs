@@ -29,7 +29,11 @@ impl ExcitableSheetTool {
 
     fn render_transport_row(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
-            let run_lbl = if self.cfg.running { "⏸ Pause" } else { "▶ Run" };
+            let run_lbl = if self.cfg.running {
+                "⏸ Pause"
+            } else {
+                "▶ Run"
+            };
             if ui
                 .button(run_lbl)
                 .accessible_hover_text("Toggle real-time tissue electrophysiology stepping")
@@ -48,7 +52,9 @@ impl ExcitableSheetTool {
             }
             if ui
                 .button("⚡ Defibrillate")
-                .accessible_hover_text("Deliver synchronous whole-sheet defibrillation shock (Key D)")
+                .accessible_hover_text(
+                    "Deliver synchronous whole-sheet defibrillation shock (Key D)",
+                )
                 .clicked()
             {
                 self.trigger_defibrillation();
@@ -61,7 +67,9 @@ impl ExcitableSheetTool {
         ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Dual-Edge Collision")
-                .accessible_hover_text("Launch opposing planar wavefronts that annihilate on collision")
+                .accessible_hover_text(
+                    "Launch opposing planar wavefronts that annihilate on collision",
+                )
                 .clicked()
             {
                 self.apply_scenario(ScenarioPreset::DualEdgeCollision);
@@ -69,7 +77,9 @@ impl ExcitableSheetTool {
             }
             if ui
                 .button("S1-S2 Spiral")
-                .accessible_hover_text("Launch planar S1 wave with timed S2 pulse in vulnerable tail")
+                .accessible_hover_text(
+                    "Launch planar S1 wave with timed S2 pulse in vulnerable tail",
+                )
                 .clicked()
             {
                 self.apply_scenario(ScenarioPreset::S1S2SpiralInduction);
@@ -77,7 +87,9 @@ impl ExcitableSheetTool {
             }
             if ui
                 .button("Pin Scar Rotor")
-                .accessible_hover_text("Initialize central zero-flux ischemic scar with anchored rotor")
+                .accessible_hover_text(
+                    "Initialize central zero-flux ischemic scar with anchored rotor",
+                )
                 .clicked()
             {
                 self.apply_scenario(ScenarioPreset::ScarPinnedRotor);
@@ -85,7 +97,9 @@ impl ExcitableSheetTool {
             }
             if ui
                 .button("Ablate to Edge")
-                .accessible_hover_text("Extend insulating catheter ablation line from scar to boundary")
+                .accessible_hover_text(
+                    "Extend insulating catheter ablation line from scar to boundary",
+                )
                 .clicked()
             {
                 self.sheet.ablate_scar_to_boundary();

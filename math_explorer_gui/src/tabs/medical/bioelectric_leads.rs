@@ -105,7 +105,8 @@ impl BioelectricLeadTool {
     }
 
     fn rebuild_field_and_sample(&mut self) {
-        if self.cfg.ablated_to_edge && self.cfg.preset == BioelectricPresetKind::ScarPinningAblation {
+        if self.cfg.ablated_to_edge && self.cfg.preset == BioelectricPresetKind::ScarPinningAblation
+        {
             self.voltage.fill(-1.2);
         } else {
             synthesize_bioelectric_preset_sheet(
@@ -197,59 +198,17 @@ impl BioelectricLeadTool {
                 .map(|(idx, &(_, v))| {
                     let ux = idx as f32 / (self.history.len() - 1) as f32;
                     let uy = 0.5 - 0.42 * (v[k] / peak).clamp(-1.0, 1.0) as f32;
-                    egui::pos2(strip.left() + ux * strip.width(), strip.top() + uy * strip.height())
+                    egui::pos2(
+                        strip.left() + ux * strip.width(),
+                        strip.top() + uy * strip.height(),
+                    )
                 })
                 .collect();
             painter.add(egui::Shape::line(pts, Stroke::new(1.8_f32, col)));
         }
     }
-}
 
-impl InteractiveTool for BioelectricLeadTool {
-    fn name(&self) -> &'static str {
-        "Bioelectric 3-Lead Dipole Mapper"
-    }
-
-    fn domain(&self) -> &'static str {
-        "medical"
-    }
-
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
-        self
-    }
-
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            let lbl = if self.cfg.running { "⏸ Pause" } else { "▶ Animate" };
-            if ui
-                .button(lbl)
-                .accessible_hover_text("Toggle dipole wave animation")
-                .clicked()
-            {
-                self.cfg.running = !self.cfg.running;
-                self.revision = self.revision.wrapping_add(1);
-            }
-            if ui.button("Ablate Isthmus").clicked() {
-                self.cfg.ablated_to_edge = !self.cfg.ablated_to_edge;
-                self.rebuild_scars_from_cfg();
-                self.rebuild_field_and_sample();
-                self.revision = self.revision.wrapping_add(1);
-            }
-        });
-        ui.separator();
-        ui.label("Shared Clinical Presets:");
-        for (kind, tag) in [
-            (BioelectricPresetKind::DualEdgeCollision, "Dual-Edge Collision"),
-            (BioelectricPresetKind::S1S2SpiralInduction, "S1-S2 Spiral"),
-            (BioelectricPresetKind::ScarPinningAblation, "Scar Rotor"),
-            (BioelectricPresetKind::WholeSheetDefibrillation, "Defibrillation"),
-        ] {
-            if ui.selectable_label(self.cfg.preset == kind, tag).clicked() {
-                self.apply_shared_preset(kind);
-                self.cfg.running = true;
-            }
-        }
-        ui.separator();
+    fn render_lead_controls(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             for (i, tag) in [(0, "Lead 1"), (1, "Lead 2"), (2, "Lead 3")] {
                 if ui.selectable_label(self.active_lead == i, tag).clicked() {
@@ -273,6 +232,65 @@ impl InteractiveTool for BioelectricLeadTool {
         {
             self.revision = self.revision.wrapping_add(1);
         }
+    }
+}
+
+impl InteractiveTool for BioelectricLeadTool {
+    fn name(&self) -> &'static str {
+        "Bioelectric 3-Lead Dipole Mapper"
+    }
+
+    fn domain(&self) -> &'static str {
+        "medical"
+    }
+
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+
+    fn show_ui(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            let lbl = if self.cfg.running {
+                "⏸ Pause"
+            } else {
+                "▶ Animate"
+            };
+            if ui
+                .button(lbl)
+                .accessible_hover_text("Toggle dipole wave animation")
+                .clicked()
+            {
+                self.cfg.running = !self.cfg.running;
+                self.revision = self.revision.wrapping_add(1);
+            }
+            if ui.button("Ablate Isthmus").clicked() {
+                self.cfg.ablated_to_edge = !self.cfg.ablated_to_edge;
+                self.rebuild_scars_from_cfg();
+                self.rebuild_field_and_sample();
+                self.revision = self.revision.wrapping_add(1);
+            }
+        });
+        ui.separator();
+        ui.label("Shared Clinical Presets:");
+        for (kind, tag) in [
+            (
+                BioelectricPresetKind::DualEdgeCollision,
+                "Dual-Edge Collision",
+            ),
+            (BioelectricPresetKind::S1S2SpiralInduction, "S1-S2 Spiral"),
+            (BioelectricPresetKind::ScarPinningAblation, "Scar Rotor"),
+            (
+                BioelectricPresetKind::WholeSheetDefibrillation,
+                "Defibrillation",
+            ),
+        ] {
+            if ui.selectable_label(self.cfg.preset == kind, tag).clicked() {
+                self.apply_shared_preset(kind);
+                self.cfg.running = true;
+            }
+        }
+        ui.separator();
+        self.render_lead_controls(ui);
     }
 
     fn draw(&mut self, ui: &mut egui::Ui, response: &egui::Response, painter: &egui::Painter) {
@@ -383,8 +401,8 @@ impl InteractiveTool for BioelectricLeadTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
-        let parsed: BioelectricLeadState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid BioelectricLead JSON: {e}"))?;
+        let parsed: BioelectricLeadState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid BioelectricLead JSON: {e}"))?;
         parsed.validate()?;
         self.cfg = parsed;
         self.dipole.set_leads(self.cfg.leads);

@@ -174,7 +174,8 @@ impl ExcitableSheetTool {
             }
             if i.key_pressed(egui::Key::S) {
                 let (cx, cy) = self.cursor_grid;
-                self.sheet.paint_scar_disc(cx, cy, self.cfg.brush_radius, true);
+                self.sheet
+                    .paint_scar_disc(cx, cy, self.cfg.brush_radius, true);
                 self.cable.paint_scar(cx, self.cfg.brush_radius, true);
                 moved = true;
             }
@@ -214,12 +215,11 @@ impl ExcitableSheetTool {
     pub fn apply_scenario(&mut self, scenario: ScenarioPreset) {
         self.cfg.scenario = scenario;
         self.cfg.ablated_to_edge = false;
-        let (leads, bipolar) =
-            super::dipole_bridge::LeadIntegratorBridge::shared_preset_leads(
-                scenario,
-                DEFAULT_SHEET_DIM,
-                DEFAULT_SHEET_DIM,
-            );
+        let (leads, bipolar) = super::dipole_bridge::LeadIntegratorBridge::shared_preset_leads(
+            scenario,
+            DEFAULT_SHEET_DIM,
+            DEFAULT_SHEET_DIM,
+        );
         self.cfg.leads = leads;
         self.cfg.readout_bipolar = bipolar;
         self.lead_bridge.sync_leads(leads);
@@ -253,7 +253,8 @@ impl ExcitableSheetTool {
             let y = start.1 + (end.1 - start.1) * t;
             match self.cfg.brush_mode {
                 BrushMode::InjectCurrent => {
-                    self.sheet.paint_current_disc(x, y, r, self.cfg.brush_current);
+                    self.sheet
+                        .paint_current_disc(x, y, r, self.cfg.brush_current);
                     self.sheet.pulse_voltage_disc(x, y, r * 0.7, 1.85);
                     self.cable.paint_brush(x, r, self.cfg.brush_current * 8.0);
                     self.cable.pulse_compartment_range(
@@ -264,7 +265,8 @@ impl ExcitableSheetTool {
                 }
                 BrushMode::ClampVoltage => {
                     let target_2d = self.cfg.clamp_voltage.clamp(-2.0, 2.2);
-                    self.sheet.paint_voltage_clamp_disc(x, y, r, target_2d, true);
+                    self.sheet
+                        .paint_voltage_clamp_disc(x, y, r, target_2d, true);
                     self.cable.paint_clamp(x, r, self.cfg.clamp_voltage, true);
                 }
                 BrushMode::PaintScar => {
@@ -318,14 +320,10 @@ impl ExcitableSheetTool {
         radius_px: f32,
     ) -> Option<usize> {
         let r2 = radius_px * radius_px;
-        self.cfg
-            .leads
-            .iter()
-            .enumerate()
-            .find_map(|(i, l)| {
-                let p = Self::grid_to_screen(l.x, l.y, sheet_rect);
-                (p.distance_sq(pos) <= r2).then_some(i)
-            })
+        self.cfg.leads.iter().enumerate().find_map(|(i, l)| {
+            let p = Self::grid_to_screen(l.x, l.y, sheet_rect);
+            (p.distance_sq(pos) <= r2).then_some(i)
+        })
     }
 
     pub(super) fn move_lead_to(&mut self, idx: usize, gx: f64, gy: f64) {

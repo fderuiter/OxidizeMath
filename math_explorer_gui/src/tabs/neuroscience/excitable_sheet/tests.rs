@@ -92,7 +92,9 @@ fn test_excitable_sheet_lead_movement_and_dual_exports() {
     tool.cfg.colormap = ColormapMode::Perceptual;
     let img_perceptual = tool.export_raster_image().expect("raster export");
     tool.cfg.colormap = ColormapMode::HighContrast;
-    let img_hc = tool.export_raster_image().expect("high-contrast raster export");
+    let img_hc = tool
+        .export_raster_image()
+        .expect("high-contrast raster export");
     assert_eq!(img_perceptual.size, [384, 384]);
     assert_ne!(img_perceptual.pixels, img_hc.pixels);
 }
@@ -124,9 +126,7 @@ fn test_excitable_sheet_keyboard_hh_cable_mode_and_finite_guard() {
         },
         |ctx| tool.show(ctx),
     );
-    if let Some(id) = tool.focused_canvas.or_else(|| {
-        ctx.memory(|m| m.focused())
-    }) {
+    if let Some(id) = tool.focused_canvas.or_else(|| ctx.memory(|m| m.focused())) {
         ctx.memory_mut(|m| m.request_focus(id));
     }
     let mut key_in = RawInput {

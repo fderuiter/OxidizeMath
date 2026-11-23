@@ -231,9 +231,13 @@ impl ExcitableSheetTool {
         }
 
         let cur = Self::grid_to_screen(self.cursor_grid.0, self.cursor_grid.1, sheet_rect);
-        let r_px = (self.cfg.brush_radius as f32 / DEFAULT_SHEET_DIM as f32)
-            * sheet_rect.width().max(4.0);
-        painter.circle_stroke(cur, r_px.max(4.0), Stroke::new(1.4_f32, palette.node_stroke));
+        let r_px =
+            (self.cfg.brush_radius as f32 / DEFAULT_SHEET_DIM as f32) * sheet_rect.width().max(4.0);
+        painter.circle_stroke(
+            cur,
+            r_px.max(4.0),
+            Stroke::new(1.4_f32, palette.node_stroke),
+        );
     }
 
     fn paint_three_lead_traces(

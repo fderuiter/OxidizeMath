@@ -1,5 +1,9 @@
 # ADR 0016: Shared Elemental Activation Kernel Module
 
+## Status
+
+Accepted
+
 ## Context
 In `crates/domain_ai`, mathematical activation functions were previously duplicated across `crates/domain_ai/src/ai/activations.rs` (which applied ReLU in place on dynamic matrices via `x.max(0.0)`) and `crates/domain_ai/src/ai/deep_learning_theory/calculus.rs` (which applied ReLU out of place on vectors via `if v > 0.0 { v } else { 0.0 }`, along with derivatives and other activations). This duplication caused separate unit tests, redundancy in core mathematical logic, and potential risk of subtle mathematical divergence.
 

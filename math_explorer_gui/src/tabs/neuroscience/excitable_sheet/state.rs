@@ -185,12 +185,36 @@ impl ExcitableSheetState {
 
     /// Clamps any out-of-range scalar parameters back into stable bounds.
     pub fn clamp_in_place(&mut self) {
-        self.a = if self.a.is_finite() { self.a.clamp(0.1, 1.5) } else { 0.7 };
-        self.b = if self.b.is_finite() { self.b.clamp(0.1, 1.5) } else { 0.8 };
-        self.epsilon = if self.epsilon.is_finite() { self.epsilon.clamp(0.01, 0.2) } else { 0.06 };
-        self.i_ext = if self.i_ext.is_finite() { self.i_ext.clamp(-1.0, 2.0) } else { 0.0 };
-        self.d_u = if self.d_u.is_finite() { self.d_u.clamp(0.05, 1.2) } else { 0.5 };
-        self.dt = if self.dt.is_finite() { self.dt.clamp(0.01, 0.2) } else { 0.15 };
+        self.a = if self.a.is_finite() {
+            self.a.clamp(0.1, 1.5)
+        } else {
+            0.7
+        };
+        self.b = if self.b.is_finite() {
+            self.b.clamp(0.1, 1.5)
+        } else {
+            0.8
+        };
+        self.epsilon = if self.epsilon.is_finite() {
+            self.epsilon.clamp(0.01, 0.2)
+        } else {
+            0.06
+        };
+        self.i_ext = if self.i_ext.is_finite() {
+            self.i_ext.clamp(-1.0, 2.0)
+        } else {
+            0.0
+        };
+        self.d_u = if self.d_u.is_finite() {
+            self.d_u.clamp(0.05, 1.2)
+        } else {
+            0.5
+        };
+        self.dt = if self.dt.is_finite() {
+            self.dt.clamp(0.01, 0.2)
+        } else {
+            0.15
+        };
         self.steps_per_frame = self.steps_per_frame.clamp(1, 16);
         self.brush_radius = self.brush_radius.clamp(0.5, 16.0);
         self.brush_current = self.brush_current.clamp(-3.0, 5.0);
