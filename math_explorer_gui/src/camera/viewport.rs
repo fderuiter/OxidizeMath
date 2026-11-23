@@ -17,6 +17,34 @@ pub struct Plot3DViewport<'a> {
     helper_text: Option<&'a str>,
 }
 
+fn base_3d_plot(
+    id_source: egui::Id,
+    plot_height: f32,
+    x_half: f64,
+    y_half: f64,
+) -> egui_plot::Plot<'static> {
+    egui_plot::Plot::new(id_source)
+        .height(plot_height)
+        .data_aspect(1.0)
+        .allow_2d_analysis(false)
+        .allow_csv_import(false)
+        .show_x(false)
+        .show_y(false)
+        .show_axes(false)
+        .show_grid(false)
+        .allow_drag(false)
+        .allow_zoom(false)
+        .allow_axis_zoom_drag(false)
+        .allow_scroll(false)
+        .allow_boxed_zoom(false)
+        .allow_double_click_reset(false)
+        .show_navigation_controls(false)
+        .show_toolbar(false)
+        .show_settings_button(false)
+        .default_x_bounds(-x_half, x_half)
+        .default_y_bounds(-y_half, y_half)
+}
+
 impl<'a> Plot3DViewport<'a> {
     /// Creates a 3D viewport with locked symmetric half-extent in projected plot units.
     #[must_use]
@@ -61,25 +89,8 @@ impl<'a> Plot3DViewport<'a> {
         let y_half = self.half_extent;
 
         let mut captured_plot_id = None;
-        let mut plot = egui_plot::Plot::new(self.id_source)
-            .plot_key(self.plot_key)
-            .height(plot_height)
-            .data_aspect(1.0)
-            .allow_2d_analysis(false)
-            .allow_csv_import(false)
-            .show_x(false)
-            .show_y(false)
-            .show_axes(false)
-            .show_grid(false)
-            .allow_drag(false)
-            .allow_zoom(false)
-            .allow_axis_zoom_drag(false)
-            .allow_scroll(false)
-            .allow_boxed_zoom(false)
-            .allow_double_click_reset(false)
-            .show_navigation_controls(false)
-            .default_x_bounds(-x_half, x_half)
-            .default_y_bounds(-y_half, y_half);
+        let mut plot =
+            base_3d_plot(self.id_source, plot_height, x_half, y_half).plot_key(self.plot_key);
         if let Some(title) = self.title {
             plot = plot.title(title);
         }
