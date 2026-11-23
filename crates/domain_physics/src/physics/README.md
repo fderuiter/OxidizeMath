@@ -91,10 +91,10 @@ graph TD
 ```
 
 ### Submodules
-- **[astrophysics](astrophysics)**: Galaxy properties, orbital mechanics.
+- **[astrophysics](astrophysics)**: Dwarf-galaxy scaling laws, dark-matter rotation curves, symplectic Galactic & Paczyński-Wiita relativistic orbits (`3 R_s` ISCO capture), and closed-form Schwarzschild / NFW / Burkert gravitational thin-lens shear Jacobians.
 - **[chaos](chaos)**: Non-linear dynamics, Lorenz attractors, Lyapunov exponents.
 - **[fluid_dynamics](fluid_dynamics)**: Lattice Boltzmann, potential flow.
-- **[high_energy](high_energy)**: Particle physics interactions.
+- **[high_energy](high_energy)**: Special & general relativity (`SchwarzschildBlackHole` horizon, photon sphere, ISCO, gravitational time dilation), Lorentz kinematics, and synchrotron radiation.
 - **[medical](medical)**: Dose calculation and radiation modeling.
 - **[mri](mri)**: Bloch simulators, spin dynamics.
 - **[nuclear](nuclear)**: Liquid drop model, decays, shell model.
