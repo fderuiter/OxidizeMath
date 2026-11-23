@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test isosurface.
 #[cfg(test)]
 mod tests {
     use domain_applied::applied::isosurface::{Mesh, Point3D, VoxelGrid, extract_isosurface};

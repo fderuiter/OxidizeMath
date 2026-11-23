@@ -12,11 +12,10 @@ mod gizmo;
 mod interaction;
 mod projection;
 pub mod scene;
-mod viewport;
 
+pub use crate::plot3d_viewport::Plot3DViewport;
 pub use projection::CAMERA_3D_PERSPECTIVE_DISTANCE;
 pub use scene::Scene3DBuilder;
-pub use viewport::Plot3DViewport;
 
 const fn default_angle() -> f32 {
     0.5_f32
@@ -275,6 +274,9 @@ impl Camera3D {
     }
 }
 
+#[cfg(test)]
+#[path = "../camera_gizmo_tests.rs"]
+mod gizmo_tests;
 #[cfg(test)]
 mod scene_tests;
 #[cfg(test)]

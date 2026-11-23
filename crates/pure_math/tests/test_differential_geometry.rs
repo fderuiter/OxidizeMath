@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test differential geometry.
 use nalgebra::Point3;
 use pure_math::pure_math::analysis::pde::{PdeClassification, SecondOrderLinearPde2D};
 use pure_math::pure_math::differential_geometry::heat_equation::HeatEquationSolver;

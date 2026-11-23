@@ -56,13 +56,23 @@ fn test_min_and_max_arity_errors_complex_domain_and_latex() {
     let rvars = HashMap::new();
     let cvars = HashMap::from([("z".to_string(), Complex64::new(1.0, 2.0))]);
 
-    for (src, func, found) in [
-        ("min()", Func::Min, 0),
-        ("min(1)", Func::Min, 1),
-        ("max()", Func::Max, 0),
-        ("max(1)", Func::Max, 1),
+    for (src, func, args) in [
+        ("min()", Func::Min, vec![]),
+        ("min(1)", Func::Min, vec![Expr::Number(1.0)]),
+        ("max()", Func::Max, vec![]),
+        ("max(1)", Func::Max, vec![Expr::Number(1.0)]),
     ] {
-        let expr = parse(src).unwrap();
+        let found = args.len();
+        assert!(matches!(
+            parse(src),
+            Err(ParseError::WrongArgumentCount {
+                func: f,
+                expected: 2,
+                found: n,
+                ..
+            }) if f == func && n == found
+        ));
+        let expr = Expr::function(func, args);
         assert_eq!(
             expr.eval(&rvars),
             Err(EvalError::WrongArgumentCount {

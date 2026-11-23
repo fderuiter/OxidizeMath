@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test game theory.
 use domain_applied::applied::game_theory::equilibrium::{
     BestResponseCorrespondence, BoxSet, ConvexSet, is_fixed_point,
 };

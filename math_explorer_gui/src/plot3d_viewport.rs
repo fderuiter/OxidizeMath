@@ -4,9 +4,9 @@
 
 use eframe::egui;
 
-use super::{Camera3D, CAMERA_3D_HELPER_TEXT};
+use crate::camera::{Camera3D, CAMERA_3D_HELPER_TEXT};
 
-/// Shared 3D viewport wrapper around `egui_plot::Plot` that hides frozen 2D axes/grid,
+/// Shared 3D viewport wrapper around `egui_plot::Plot` that activates `scene_3d_mode`,
 /// disables 2D pan/zoom gestures, locks symmetric viewport bounds so `Camera3D::zoom`
 /// never gets cancelled by auto-bounds, and delegates 3D gestures to [`Camera3D`].
 pub struct Plot3DViewport<'a> {
@@ -15,6 +15,35 @@ pub struct Plot3DViewport<'a> {
     title: Option<String>,
     half_extent: f64,
     helper_text: Option<&'a str>,
+}
+
+fn base_3d_plot(
+    id_source: egui::Id,
+    plot_height: f32,
+    x_half: f64,
+    y_half: f64,
+) -> egui_plot::Plot<'static> {
+    egui_plot::Plot::new(id_source)
+        .height(plot_height)
+        .data_aspect(1.0)
+        .scene_3d_mode(true)
+        .allow_2d_analysis(false)
+        .allow_csv_import(false)
+        .show_x(false)
+        .show_y(false)
+        .show_axes(false)
+        .show_grid(false)
+        .allow_drag(false)
+        .allow_zoom(false)
+        .allow_axis_zoom_drag(false)
+        .allow_scroll(false)
+        .allow_boxed_zoom(false)
+        .allow_double_click_reset(false)
+        .show_navigation_controls(false)
+        .show_toolbar(false)
+        .show_settings_button(false)
+        .default_x_bounds(-x_half, x_half)
+        .default_y_bounds(-y_half, y_half)
 }
 
 impl<'a> Plot3DViewport<'a> {
@@ -38,6 +67,24 @@ impl<'a> Plot3DViewport<'a> {
         self
     }
 
+    /// Computes `(plot_height, x_half, y_half)` for an available container size and half-extent.
+    #[must_use]
+    pub fn compute_half_extents(
+        avail: egui::Vec2,
+        half_extent: f64,
+        has_helper: bool,
+    ) -> (f32, f64, f64) {
+        let clamped_half = half_extent.max(0.1);
+        let label_reserve = if has_helper { 24.0_f32 } else { 0.0_f32 };
+        let plot_height = (avail.y - label_reserve).max(64.0_f32);
+        let aspect = if plot_height > 0.0_f32 {
+            (avail.x / plot_height).max(1.0_f32) as f64
+        } else {
+            1.0
+        };
+        (plot_height, clamped_half * aspect, clamped_half)
+    }
+
     /// Renders the locked 3D plot, processes [`Camera3D`] gestures, and draws optional helper copy.
     pub fn show<'p, R>(
         self,
@@ -46,40 +93,12 @@ impl<'a> Plot3DViewport<'a> {
         build_fn: impl FnOnce(&mut egui_plot::PlotUi<'p>) -> R,
     ) -> egui_plot::PlotResponse<R> {
         let avail = ui.available_size_before_wrap();
-        let label_reserve = if self.helper_text.is_some() {
-            24.0_f32
-        } else {
-            0.0_f32
-        };
-        let plot_height = (avail.y - label_reserve).max(64.0_f32);
-        let aspect = if plot_height > 0.0_f32 {
-            (avail.x / plot_height).max(1.0_f32) as f64
-        } else {
-            1.0
-        };
-        let x_half = self.half_extent * aspect;
-        let y_half = self.half_extent;
+        let (plot_height, x_half, y_half) =
+            Self::compute_half_extents(avail, self.half_extent, self.helper_text.is_some());
 
         let mut captured_plot_id = None;
-        let mut plot = egui_plot::Plot::new(self.id_source)
-            .plot_key(self.plot_key)
-            .height(plot_height)
-            .data_aspect(1.0)
-            .allow_2d_analysis(false)
-            .allow_csv_import(false)
-            .show_x(false)
-            .show_y(false)
-            .show_axes(false)
-            .show_grid(false)
-            .allow_drag(false)
-            .allow_zoom(false)
-            .allow_axis_zoom_drag(false)
-            .allow_scroll(false)
-            .allow_boxed_zoom(false)
-            .allow_double_click_reset(false)
-            .show_navigation_controls(false)
-            .default_x_bounds(-x_half, x_half)
-            .default_y_bounds(-y_half, y_half);
+        let mut plot =
+            base_3d_plot(self.id_source, plot_height, x_half, y_half).plot_key(self.plot_key);
         if let Some(title) = self.title {
             plot = plot.title(title);
         }

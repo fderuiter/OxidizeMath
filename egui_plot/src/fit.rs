@@ -3,6 +3,8 @@
 
 mod custom;
 #[cfg(test)]
+mod domain_shift_tests;
+#[cfg(test)]
 mod tests;
 
 pub use custom::{

@@ -751,6 +751,87 @@ async function fetchWasmWithProgress(source, hooks, signal, recordStreamError) {
     });
 }
 
+function attachAssetPath(promise, assetPath) {
+    return promise.then(
+        (value) => value,
+        (error) => Promise.reject({ __startupAssetFailure: true, error, assetPath }),
+    );
+}
+
+function createStartupProgressProxy(boot, onTransferActivity) {
+    let activeHooks = null;
+    let cancelled = false;
+    let transferComplete = false;
+    let maxInFlightBytes = 0;
+    let bufferedEvent = null;
+
+    function normalizeProgressEvent(event) {
+        const rawCurrent =
+            event && Number.isFinite(event.current) && event.current > 0
+                ? Math.floor(event.current)
+                : 0;
+        const rawTotal =
+            event && Number.isFinite(event.total) && event.total > 0
+                ? Math.floor(event.total)
+                : 0;
+        if (rawTotal > 0 && rawCurrent >= rawTotal) {
+            transferComplete = true;
+            maxInFlightBytes = Math.max(maxInFlightBytes, rawTotal);
+            return { current: rawTotal, total: rawTotal };
+        }
+        maxInFlightBytes = Math.max(maxInFlightBytes, rawCurrent);
+        return { current: maxInFlightBytes, total: rawTotal };
+    }
+
+    return {
+        attach(hooksInstance) {
+            if (cancelled) {
+                hooksInstance?.cancelPendingAnnouncements?.();
+                return;
+            }
+            activeHooks = hooksInstance || null;
+            if (activeHooks && bufferedEvent !== null) {
+                const pending = bufferedEvent;
+                bufferedEvent = null;
+                activeHooks.onProgress?.(pending);
+            }
+        },
+        isCancelled() {
+            return cancelled;
+        },
+        isTransferComplete() {
+            return transferComplete;
+        },
+        onProgress(event) {
+            if (cancelled) {
+                return;
+            }
+            const normalized = normalizeProgressEvent(event);
+            if (typeof onTransferActivity === 'function') {
+                onTransferActivity(normalized);
+            }
+            if (activeHooks) {
+                activeHooks.onProgress?.(normalized);
+                return;
+            }
+            bufferedEvent = normalized;
+            if (transferComplete) {
+                boot?.enterPhase?.('compile', 'Compiling WebAssembly module');
+            } else {
+                boot?.recordProgress?.(`Downloading WebAssembly (${normalized.current} bytes)`);
+            }
+        },
+        cancelPendingAnnouncements() {
+            cancelled = true;
+            bufferedEvent = null;
+            activeHooks?.cancelPendingAnnouncements?.();
+        },
+        isSettled() {
+            return activeHooks ? Boolean(activeHooks.isSettled?.()) : false;
+        },
+    };
+}
+
 async function bootstrap() {
     markBootInitialized();
     bindFallbackReloadButton();
@@ -796,8 +877,14 @@ async function bootstrap() {
         }
     };
 
+    const stallTimeoutMs = resolveFallbackTimeout('stall_timeout_ms', FALLBACK_STALL_TIMEOUT_MS);
+    const compileTimeoutMs = resolveFallbackTimeout(
+        'compile_timeout_ms',
+        FALLBACK_COMPILE_TIMEOUT_MS,
+    );
+
     let hooks = null;
-    let currentAssetPath = INITIALIZER_PATH;
+    let currentAssetPath = WASM_PATH;
     let capturedStreamError = null;
     const recordStreamError = (streamErr) => {
         if (streamErr && !capturedStreamError) {
@@ -805,63 +892,56 @@ async function bootstrap() {
         }
     };
 
+    const hooksProxy = createStartupProgressProxy(boot, (progress) => {
+        if (progress.total > 0 && progress.current >= progress.total) {
+            armLocalFallbackTimer(compileTimeoutMs, 'Compiling WebAssembly module');
+        } else {
+            armLocalFallbackTimer(stallTimeoutMs, WASM_PATH);
+        }
+    });
+
     try {
-        boot?.enterPhase?.('transfer', `Loading ${assetBaseName(INITIALIZER_PATH)}`);
-        armLocalFallbackTimer(
-            resolveFallbackTimeout('stall_timeout_ms', FALLBACK_STALL_TIMEOUT_MS),
+        boot?.enterPhase?.('transfer', `Downloading ${assetBaseName(WASM_PATH)}`);
+        armLocalFallbackTimer(stallTimeoutMs, WASM_PATH);
+
+        const initializerTask = attachAssetPath(
+            import(INITIALIZER_PATH).then((initializerModule) => {
+                if (!hooksProxy.isCancelled() && !capturedStreamError && !isBootAborted(signal)) {
+                    const createInitializer = initializerModule?.default;
+                    hooks = typeof createInitializer === 'function' ? createInitializer() : null;
+                    hooks?.onStart?.();
+                    hooksProxy.attach(hooks);
+                }
+                return initializerModule;
+            }),
             INITIALIZER_PATH,
         );
-
-        const initializerModule = await import(INITIALIZER_PATH);
-        if (isBootAborted(signal)) {
-            clearLocalFallbackTimer();
-            return;
-        }
-
-        const createInitializer = initializerModule?.default;
-        hooks = typeof createInitializer === 'function' ? createInitializer() : null;
-        hooks?.onStart?.();
-
-        currentAssetPath = MODULE_PATH;
-        boot?.enterPhase?.('transfer', `Loading ${assetBaseName(MODULE_PATH)}`);
-        armLocalFallbackTimer(
-            resolveFallbackTimeout('stall_timeout_ms', FALLBACK_STALL_TIMEOUT_MS),
-            MODULE_PATH,
+        const bindingsTask = attachAssetPath(import(MODULE_PATH), MODULE_PATH);
+        const wasmResponseTask = attachAssetPath(
+            fetchWasmWithProgress(WASM_PATH, hooksProxy, signal, recordStreamError),
+            WASM_PATH,
         );
 
-        const bindings = await import(MODULE_PATH);
+        const [, bindings, wasmResponse] = await Promise.all([
+            initializerTask,
+            bindingsTask,
+            wasmResponseTask,
+        ]);
         if (isBootAborted(signal)) {
             clearLocalFallbackTimer();
             return;
         }
 
-        const init = bindings.default;
+        currentAssetPath = MODULE_PATH;
+        const init = bindings?.default;
         if (typeof init !== 'function') {
             throw new Error('WebAssembly module initializer export is missing.');
         }
 
         currentAssetPath = WASM_PATH;
-        boot?.enterPhase?.('transfer', `Downloading ${assetBaseName(WASM_PATH)}`);
-        armLocalFallbackTimer(
-            resolveFallbackTimeout('stall_timeout_ms', FALLBACK_STALL_TIMEOUT_MS),
-            WASM_PATH,
-        );
-
-        const wasmResponse = await fetchWasmWithProgress(
-            WASM_PATH,
-            hooks,
-            signal,
-            recordStreamError,
-        );
-        if (isBootAborted(signal)) {
-            clearLocalFallbackTimer();
-            return;
+        if (hooksProxy.isTransferComplete()) {
+            armLocalFallbackTimer(compileTimeoutMs, 'Compiling WebAssembly module');
         }
-
-        armLocalFallbackTimer(
-            resolveFallbackTimeout('compile_timeout_ms', FALLBACK_COMPILE_TIMEOUT_MS),
-            'Compiling WebAssembly module',
-        );
 
         const wasm = await init({ module_or_path: wasmResponse });
         clearLocalFallbackTimer();
@@ -886,43 +966,58 @@ async function bootstrap() {
         window.dispatchEvent(
             new CustomEvent('TrunkApplicationStarted', { detail: { wasm } }),
         );
-    } catch (error) {
+    } catch (caught) {
         clearLocalFallbackTimer();
+        hooksProxy.cancelPendingAnnouncements();
         hooks?.cancelPendingAnnouncements?.();
 
-        const effectiveError = capturedStreamError || error;
+        const unwrappedError =
+            caught && caught.__startupAssetFailure ? caught.error : caught;
+        const failedAssetPath = capturedStreamError
+            ? WASM_PATH
+            : (caught && caught.__startupAssetFailure && caught.assetPath) || currentAssetPath;
+        const effectiveError = capturedStreamError || unwrappedError;
+
         if (
             !capturedStreamError &&
             isBootAborted(signal) &&
-            (error === (signal && signal.reason) || (error && error.name === 'AbortError'))
+            (unwrappedError === (signal && signal.reason) ||
+                (unwrappedError && unwrappedError.name === 'AbortError'))
         ) {
             return;
         }
         if (!window.__mathExplorerBoot && isBootAborted(signal)) {
             return;
         }
+        if (localAbort && !localAbort.signal.aborted) {
+            try {
+                localAbort.abort(effectiveError);
+            } catch (_) {
+                localAbort.abort();
+            }
+        }
 
         console.error('Failed to bootstrap Math Explorer WebAssembly bundle:', effectiveError);
 
         const activeBoot = window.__mathExplorerBoot;
-        const enrichedDetail = enrichAssetError(effectiveError, currentAssetPath);
+        const enrichedDetail = enrichAssetError(effectiveError, failedAssetPath);
         if (
             activeBoot &&
             typeof activeBoot.showError === 'function' &&
             typeof activeBoot.classifyError === 'function'
         ) {
-            const category = activeBoot.classifyError(effectiveError, currentAssetPath);
+            const category = activeBoot.classifyError(effectiveError, failedAssetPath);
             activeBoot.showError(category, enrichedDetail);
-            if (lookupResourceHttpStatus(currentAssetPath) === 0) {
+            if (lookupResourceHttpStatus(failedAssetPath) === 0) {
                 window.setTimeout(() => {
-                    const lateDetail = enrichAssetError(effectiveError, currentAssetPath);
+                    const lateDetail = enrichAssetError(effectiveError, failedAssetPath);
                     if (lateDetail !== enrichedDetail) {
                         activeBoot.showError('network', lateDetail);
                     }
                 }, 0);
             }
         } else {
-            showBootstrapRecovery(effectiveError, currentAssetPath);
+            showBootstrapRecovery(effectiveError, failedAssetPath);
         }
     }
 }

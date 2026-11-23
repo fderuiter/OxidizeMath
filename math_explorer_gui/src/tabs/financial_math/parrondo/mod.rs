@@ -6,17 +6,17 @@ mod state;
 mod tests;
 mod ui;
 
-pub use state::{KellyEdgeBadge, ParrondoViewMode};
 use state::ParrondoToolState;
+pub use state::{KellyEdgeBadge, ParrondoViewMode};
 
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::markov::parrondo::{
-    ALLOWED_MODULI, MAX_MODULUS, ParrondoEnsemble, ParrondoGame, ParrondoParams,
-    ParrondoPhaseGridConfig, ParrondoPhasePoint, ParrondoReport, ParrondoSchedule,
-    scan_parrondo_phase_region, solve_parrondo_ratchet,
+    scan_parrondo_phase_region, solve_parrondo_ratchet, ParrondoEnsemble, ParrondoGame,
+    ParrondoParams, ParrondoPhaseGridConfig, ParrondoPhasePoint, ParrondoReport, ParrondoSchedule,
+    ALLOWED_MODULI, MAX_MODULUS,
 };
 use oxidize_core::rng::OxidizeRng;
 use scientific_metadata::theory::TheoryDescribable;

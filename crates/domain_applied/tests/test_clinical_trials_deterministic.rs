@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test clinical trials deterministic.
 use domain_applied::applied::clinical_trials::design::{
     AllocationStrategy, BlockRandomizer, Group, SimpleRandomizer,
 };

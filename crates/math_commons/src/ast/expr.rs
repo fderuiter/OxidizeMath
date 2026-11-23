@@ -96,7 +96,7 @@ pub enum Func {
 }
 
 impl Func {
-    /// Returns the exact argument count required by this function.
+    /// Returns the required (or minimum, for variadic `min`/`max`) argument count.
     #[must_use]
     pub const fn arity(&self) -> usize {
         match self {
@@ -118,6 +118,15 @@ impl Func {
             | Self::Atan
             | Self::Step
             | Self::Rect => 1,
+        }
+    }
+
+    /// Returns `true` when `count` arguments are valid for this function.
+    #[must_use]
+    pub const fn accepts_arity(&self, count: usize) -> bool {
+        match self {
+            Self::Min | Self::Max => count >= 2,
+            _ => count == self.arity(),
         }
     }
 
