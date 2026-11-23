@@ -43,8 +43,8 @@ pub enum CanvasInteractionMode {
 #[serde(deny_unknown_fields)]
 pub struct MorphogenesisToolState {
     /// Active reaction kinetics model (`Schnakenberg` when omitted).
-    #[serde(default)]
-    pub kinetics: MorphogenesisKinetics,
+    #[serde(default, alias = "kinetics")]
+    pub kinetics_mode: MorphogenesisKinetics,
     /// Schnakenberg activator production rate `a` (`0.0..=1.0`).
     #[serde(default = "default_schnakenberg_a")]
     pub a: f64,

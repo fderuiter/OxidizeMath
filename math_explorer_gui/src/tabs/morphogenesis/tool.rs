@@ -341,7 +341,7 @@ impl InteractiveTool for MorphogenesisTool {
             .clone();
         let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&MorphogenesisToolState {
-            kinetics: p.kinetics,
+            kinetics_mode: p.kinetics,
             a: p.a,
             b: p.b,
             f: p.f,
@@ -372,7 +372,7 @@ impl InteractiveTool for MorphogenesisTool {
         let (target_state, next_pending) = parsed.resolve_target_state(self.pending_initial_start);
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.kinetics = parsed.kinetics;
+            p.kinetics = parsed.kinetics_mode;
             p.a = parsed.a;
             p.b = parsed.b;
             p.f = parsed.f;

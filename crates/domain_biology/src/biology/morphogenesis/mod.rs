@@ -65,7 +65,6 @@
 //! println!("Concentration of Activator at center: {:.4}", u_center);
 //! ```
 
-pub mod gray_scott;
 #[allow(missing_docs)]
 pub mod reaction;
 #[allow(missing_docs)]
@@ -76,8 +75,7 @@ pub mod state;
 use crate::biology::diffusion::{FiniteDifference1D, SpatialDiffusion};
 use pure_math::pure_math::analysis::ode::{OdeSystem, TimeStepper};
 
-pub use gray_scott::GrayScottKinetics;
-pub use reaction::{ReactionKinetics, SchnakenbergKinetics};
+pub use reaction::{GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics};
 pub use solvers::{FusedEulerSolver, StandardSolverAdapter, TuringDynamics, TuringSolverStrategy};
 pub use state::TuringState;
 

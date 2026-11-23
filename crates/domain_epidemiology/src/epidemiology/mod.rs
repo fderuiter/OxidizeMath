@@ -80,6 +80,7 @@ pub mod stochastic;
 
 // Re-exports for easier access
 pub use compartmental::{SEIRModel, SEIRState, SIRModel, SIRState};
+pub use networks::NetworkModelError;
 
 /// Error types for epidemiology modules.
 pub use crate::error;

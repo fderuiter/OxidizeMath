@@ -71,6 +71,9 @@ impl MorphogenesisKinetics {
     }
 }
 
+/// Compatibility alias for [`MorphogenesisKinetics`] used by Lenia and preset callers.
+pub type MorphogenesisKineticsMode = MorphogenesisKinetics;
+
 /// Default Gray-Scott feed rate `F` (Pearson mitosis regime).
 pub const DEFAULT_GRAY_SCOTT_F: f64 = 0.0367;
 /// Default Gray-Scott kill rate `k` (Pearson mitosis regime).
@@ -99,7 +102,7 @@ pub const fn default_auto_dt() -> bool {
 #[serde(deny_unknown_fields)]
 pub struct MorphogenesisPresetConfig {
     /// Active reaction kinetics family (`Schnakenberg` when omitted).
-    #[serde(default)]
+    #[serde(default, alias = "kinetics_mode")]
     pub kinetics: MorphogenesisKinetics,
     /// Reaction kinetic parameter `a` (Schnakenberg).
     pub a: f64,

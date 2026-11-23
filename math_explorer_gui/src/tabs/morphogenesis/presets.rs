@@ -372,7 +372,7 @@ impl MorphogenesisTool {
             target_state != SimWorkerState::Running && self.pending_initial_start;
         let (xk, yk) = self.atlas.axis_keys();
         let preset_state = MorphogenesisToolState {
-            kinetics,
+            kinetics_mode: kinetics,
             a,
             b,
             f,

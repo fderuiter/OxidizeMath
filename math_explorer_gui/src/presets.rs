@@ -35,8 +35,8 @@ pub mod configs;
 
 pub use configs::{
     checked_ode_step_count, default_auto_dt, default_gray_scott_f, default_gray_scott_k,
-    MorphogenesisKinetics, MorphogenesisPresetConfig, OdePreset, ReplicatorPresetConfig,
-    DEFAULT_GRAY_SCOTT_F, DEFAULT_GRAY_SCOTT_K, MAX_INTERACTIVE_GRID_SIZE,
+    MorphogenesisKinetics, MorphogenesisKineticsMode, MorphogenesisPresetConfig, OdePreset,
+    ReplicatorPresetConfig, DEFAULT_GRAY_SCOTT_F, DEFAULT_GRAY_SCOTT_K, MAX_INTERACTIVE_GRID_SIZE,
     MAX_INTERACTIVE_SURFACE_RESOLUTION, MAX_ODE_STEPS,
 };
 
