@@ -7,6 +7,8 @@ use crate::gates::{
 };
 use crate::markdown_links::{check_markdown_links_for_files_in_dir, check_markdown_links_in_dir};
 pub(crate) use graph::load_workspace_crates;
+#[cfg(test)]
+pub(crate) use graph::parse_workspace_members;
 use graph::{expand_reverse_dependents, is_root_config_escalation};
 use snapshot::{GitSnapshotEnv, sync_index_snapshot};
 use std::collections::{BTreeMap, HashSet};

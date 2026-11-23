@@ -1,4 +1,4 @@
-# ADR 0037: Staged Git Index Snapshot Isolation and Dependency-Graph Pre-Commit Gates
+# ADR 0038: Staged Git Index Snapshot Isolation and Dependency-Graph Pre-Commit Gates
 
 ## Status
 
@@ -28,7 +28,7 @@ Following ADR 0034, `cargo run -p xtask -- lint-staged` accelerated local commit
    - Escalate staged edits to root manifests, lockfiles, toolchain configs, or lint configs to workspace-wide `HOST_CLIPPY_ARGS` and `WASM_CLIPPY_ARGS` from `apps/xtask/src/gates.rs`.
 
 4. **Expanded Offline Static Gates and Single Workflow Dispatch:**
-   - Expand `unified_verification batch-staged` to enforce `check-profiles`, `check-docs`, single-parse `AstCache` clone detection (`check-duplicates`), and in-process `traceability` alongside file-length, entropy, and policy-audit checks while keeping `check-vulnerabilities`, `check-api-drift`, and `verify-records` deferred to `xtask lint-all`.
+   - Expand `unified_verification batch-staged` to enforce `verify-records --staged`, `check-profiles`, `check-docs`, single-parse `AstCache` clone detection (`check-duplicates`), and in-process `traceability` alongside file-length, entropy, and policy-audit checks while keeping `check-vulnerabilities` and `check-api-drift` deferred to `xtask lint-all`.
    - Escalate `xtask` Markdown link validation to scan all repository `.md` files in the snapshot whenever tracked paths are deleted or renamed, and execute `lint-workflows` once from `xtask` when `.github/` paths are staged (removing the duplicate call in `crates/unified_verification/src/batch.rs`).
 
 ## Verification Commands
@@ -47,5 +47,5 @@ cargo run -p xtask -- lint-all
 ## Consequences
 
 - **Positive:** Pre-commit verification evaluates the exact staged commit snapshot regardless of unstaged working-tree edits or current working directory, reuses warm Cargo artifacts across runs, catches reverse-dependent and `wasm32` breakages across all 17 web crates, and blocks profile, documentation, clone, traceability, and broken-link regressions offline before commit creation.
-- **Positive:** Eliminates duplicate `.github/` workflow linting during pre-commit hooks while preserving sub-minute incremental commit ergonomics by keeping OSV network checks, API baseline drift, and ADR checks in `xtask lint-all`.
+- **Positive:** Eliminates duplicate `.github/` workflow linting during pre-commit hooks while preserving sub-minute incremental commit ergonomics by keeping OSV network checks and API baseline drift in `xtask lint-all`.
 - **Neutral:** `<target_dir>/lint-staged-snapshot` maintains a lightweight checkout-sized mirror inside Cargo's gitignored `target/` directory.

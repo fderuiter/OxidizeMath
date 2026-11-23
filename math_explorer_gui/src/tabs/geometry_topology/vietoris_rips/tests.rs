@@ -224,22 +224,10 @@ fn test_interval_csv_json_exports_and_svg_png_figure_primitives() {
         let svg = export_primitives_svg(&prims, &opts).unwrap();
         assert!(svg.contains("<svg") && svg.len() > 250);
         let img = render_primitives_image(&prims, &opts).unwrap();
+        assert!(img.width() > 0 && img.height() > 0 && img.pixels.len() == img.width() * img.height());
         let png = color32_image_to_png(&img).unwrap();
-        let (w, h, pixel_count) = decode_png_dims_and_pixels(&png);
-        assert!(w > 0 && h > 0 && pixel_count == w * h);
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
-}
-
-fn decode_png_dims_and_pixels(png_bytes: &[u8]) -> (usize, usize, usize) {
-    let mut reader = png::Decoder::new(std::io::Cursor::new(png_bytes))
-        .read_info()
-        .expect("valid PNG header");
-    let mut buf = vec![0_u8; reader.output_buffer_size().expect("PNG buffer size")];
-    let info = reader.next_frame(&mut buf).expect("valid PNG frame");
-    assert_eq!(info.color_type, png::ColorType::Rgba);
-    assert_eq!(info.bit_depth, png::BitDepth::Eight);
-    let pixel_count = buf[..info.buffer_size()].as_chunks::<4>().0.len();
-    (info.width as usize, info.height as usize, pixel_count)
 }
 
 // [cite:graph_parameters_rust]

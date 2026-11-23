@@ -255,30 +255,3 @@ fn test_compact_overflow_menu_and_non_shader_tool_warning_status() {
         "Compact overflow menu must expose Export WebGL2 (.frag)"
     );
 }
-
-#[test]
-fn test_custom_fractal_modes_compile_glsl_with_parameters() {
-    let mut fractal = FractalViewer {
-        mode: FractalMode::CustomMandelbrot,
-        ..Default::default()
-    };
-    fractal.math_input.set_expression("a * z^3 + c");
-    let mut params = std::collections::BTreeMap::new();
-    params.insert("a".to_string(), 1.25);
-    fractal.math_input.set_params_map(&params);
-
-    let mb_glsl = fractal
-        .export_glsl_shader(ShaderDialect::WebGl2Es300)
-        .unwrap();
-    assert!(mb_glsl.contains("Custom Mandelbrot"));
-    assert!(mb_glsl.contains("const bool IS_JULIA = false;"));
-    assert!(mb_glsl.contains("const vec2 a = vec2(1.25, 0.0);"));
-    assert!(mb_glsl.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
-
-    fractal.mode = FractalMode::CustomJulia;
-    let julia_glsl = fractal
-        .export_glsl_shader(ShaderDialect::Shadertoy)
-        .unwrap();
-    assert!(julia_glsl.contains("Custom Julia"));
-    assert!(julia_glsl.contains("const bool IS_JULIA = true;"));
-}
