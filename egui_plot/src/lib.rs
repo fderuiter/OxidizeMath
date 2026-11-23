@@ -61,7 +61,7 @@ pub use crate::{
         render_primitives_image,
     },
     fit::{
-        CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, FitResult, FitType,
+        CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, FitError, FitResult, FitType,
         MAX_FIT_PARAMS, fit_custom_evaluator, fit_model_with_axes,
     },
     fit_overlay::{

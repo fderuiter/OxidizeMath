@@ -706,6 +706,7 @@ fn accent_combining_mark(cmd: &str) -> Option<char> {
         "hat" => Some('\u{0302}'),
         "bar" | "overline" => Some('\u{0304}'),
         "dot" => Some('\u{0307}'),
+        "ddot" => Some('\u{0308}'),
         "tilde" => Some('\u{0303}'),
         _ => None,
     }
@@ -1988,7 +1989,7 @@ mod tests {
         assert!(!delim_job.text.contains('.'));
 
         let accent_job = parse_latex_with_font(
-            r"-\vec{\mu}\cdot\vec{B} + \hat{z} + \bar{g}_{Na} + \dot{x} + \tilde{\psi}",
+            r"-\vec{\mu}\cdot\vec{B} + \hat{z} + \bar{g}_{Na} + \dot{x} + \ddot{\mathbf{x}} + \tilde{\psi}",
             font,
             Color32::WHITE,
         );
@@ -1996,6 +1997,7 @@ mod tests {
         assert!(accent_job.text.contains("z\u{0302}"));
         assert!(accent_job.text.contains("g\u{0304}Na"));
         assert!(accent_job.text.contains("x\u{0307}"));
+        assert!(accent_job.text.contains("x\u{0308}"));
         assert!(accent_job.text.contains("ψ\u{0303}"));
     }
 

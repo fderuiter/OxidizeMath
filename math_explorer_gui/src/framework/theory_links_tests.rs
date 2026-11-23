@@ -51,6 +51,7 @@ impl UnifiedModel for DummyUnifiedEquationModel {
             pixels: std::sync::Arc::new(std::sync::RwLock::new(vec![eframe::egui::Color32::BLACK])),
             custom_data: Vec::new(),
             structured_data: None,
+            sonification: crate::audio::SonificationFrame::default(),
         }
     }
     fn parameters() -> HashMap<String, ParameterConstraint> {
@@ -113,6 +114,13 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
     assert!(!glicko_links.is_empty());
     assert_eq!(glicko_links[0].paper_name, "graph_parameters_rust.tex");
 
+    let astro_links = resolve_portal_paper_links("GalacticOrbitSimulator", "astrophysics");
+    assert!(!astro_links.is_empty());
+    assert_eq!(
+        astro_links[0].paper_name,
+        "dwarf_galaxy_empirical_dependencies.tex"
+    );
+
     let cera_ext = resolve_citation_reference_links(
         "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)",
     );
@@ -136,9 +144,9 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
 
 fn assert_clean_portal_output(tool_id: &str, out: &egui::FullOutput) -> usize {
     const FORBIDDEN_RAW_TEX: &[&str] = &[
-        r"\hbar", r"\langle", r"\rangle", r"\vec", r"\hat", r"\bar", r"\dot", r"\tilde",
+        r"\hbar", r"\langle", r"\rangle", r"\vec", r"\hat", r"\bar", r"\dot", r"\ddot", r"\tilde",
         r"\mathbb", r"\left", r"\right", r"\frac", r"\text", r"\mathrm", r"\mathbf", r"\AA",
-        r"\deg", r"\dots", r"\pmod", "──",
+        r"\deg", r"\dots", r"\pmod", "──", "ddot",
     ];
     let ak = out
         .platform_output
