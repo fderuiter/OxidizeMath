@@ -6542,6 +6542,218 @@
       "signature": "pub fn helmholtz_free_energy (_ : f64 , _ : f64) -> f64"
     }
   ],
+  "crates/domain_physics/src/physics/stat_mech/interface_growth/kpz_1d.rs": [
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn deposit_mound (& mut self , _ : usize , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn heights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn heights_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn interface_width (& self) -> f64 }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn mean_height (& self) -> f64 }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn new (_ : usize , _ : InterfaceGrowthParams) -> Self }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn params (& self) -> InterfaceGrowthParams }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn reset_flat (& mut self) }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn set_params (& mut self , _ : InterfaceGrowthParams) }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn step (& mut self , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn step_n (& mut self , _ : & mut OxidizeRng , _ : usize) }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn steps (& self) -> u64 }"
+    },
+    {
+      "signature": "impl InterfaceGrowth1D { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct InterfaceGrowth1D"
+    },
+    {
+      "signature": "pub struct InterfaceGrowthParams"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/interface_growth/kpz_2d.rs": [
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn deposit_mound (& mut self , _ : usize , _ : usize , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn heights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn heights_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn interface_width (& self) -> f64 }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn mean_height (& self) -> f64 }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn new (_ : usize , _ : usize , _ : InterfaceGrowthParams) -> Self }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn params (& self) -> InterfaceGrowthParams }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn reset_flat (& mut self) }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn set_params (& mut self , _ : InterfaceGrowthParams) }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn step (& mut self , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn step_n (& mut self , _ : & mut OxidizeRng , _ : usize) }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn steps (& self) -> u64 }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl InterfaceGrowth2D { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct InterfaceGrowth2D"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/interface_growth/mod.rs": [
+    {
+      "signature": "pub use kpz_1d :: InterfaceGrowth1D"
+    },
+    {
+      "signature": "pub use kpz_1d :: InterfaceGrowthParams"
+    },
+    {
+      "signature": "pub use kpz_2d :: InterfaceGrowth2D"
+    },
+    {
+      "signature": "pub use scaling :: EW_ALPHA_1D"
+    },
+    {
+      "signature": "pub use scaling :: EW_BETA_1D"
+    },
+    {
+      "signature": "pub use scaling :: EW_DYNAMIC_Z_1D"
+    },
+    {
+      "signature": "pub use scaling :: InterfaceGrowthKind"
+    },
+    {
+      "signature": "pub use scaling :: InterfaceScalingTelemetry"
+    },
+    {
+      "signature": "pub use scaling :: KPZ_ALPHA_1D"
+    },
+    {
+      "signature": "pub use scaling :: KPZ_BETA_1D"
+    },
+    {
+      "signature": "pub use scaling :: KPZ_DYNAMIC_Z_1D"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/interface_growth/scaling.rs": [
+    {
+      "signature": "impl InterfaceGrowthKind { pub fn scaling_exponents (self , _ : usize) -> (f64 , f64 , f64) }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn capacity (& self) -> usize }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn fit_growth_exponent_beta (& self , _ : f64 , _ : f64) -> Option < (f64 , f64) > }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn recompute_family_vicsek (& mut self , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn record_ew_1d (& mut self , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn record_kpz_1d (& mut self , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn record_sample (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn rescaled_times (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn rescaled_widths (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn times (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl InterfaceScalingTelemetry { pub fn widths (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub const EW_ALPHA_1D : f64"
+    },
+    {
+      "signature": "pub const EW_BETA_1D : f64"
+    },
+    {
+      "signature": "pub const EW_DYNAMIC_Z_1D : f64"
+    },
+    {
+      "signature": "pub const KPZ_ALPHA_1D : f64"
+    },
+    {
+      "signature": "pub const KPZ_BETA_1D : f64"
+    },
+    {
+      "signature": "pub const KPZ_DYNAMIC_Z_1D : f64"
+    },
+    {
+      "signature": "pub enum InterfaceGrowthKind"
+    },
+    {
+      "signature": "pub fn fit_log_log_slope (_ : & [f64] , _ : & [f64] , _ : f64 , _ : f64 ,) -> Option < (f64 , f64) >"
+    },
+    {
+      "signature": "pub struct InterfaceScalingTelemetry"
+    }
+  ],
   "crates/domain_physics/src/physics/stat_mech/ising.rs": [
     {
       "signature": "impl SpinLattice { pub fn evolve (& mut self , _ : usize , _ : f64 , _ : f64 , _ : f64) }"
@@ -6589,6 +6801,138 @@
   "crates/domain_physics/src/physics/stat_mech/mod.rs": [
     {
       "signature": "pub const KB : f64"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/phase_field/mod.rs": [
+    {
+      "signature": "pub use solver :: LIFSHITZ_SLYOZOV_EXPONENT"
+    },
+    {
+      "signature": "pub use solver :: MODEL_A_COARSENING_EXPONENT"
+    },
+    {
+      "signature": "pub use solver :: PhaseFieldModel"
+    },
+    {
+      "signature": "pub use solver :: PhaseFieldParams"
+    },
+    {
+      "signature": "pub use solver :: PhaseFieldSolver2D"
+    },
+    {
+      "signature": "pub use telemetry :: PhaseFieldTelemetry"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/phase_field/solver.rs": [
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn free_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn mean_concentration (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn new (_ : usize , _ : usize , _ : f64 , _ : PhaseFieldParams) -> Self }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn new_spinodal (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : & mut OxidizeRng , _ : PhaseFieldParams ,) -> Self }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn paint_droplet (& mut self , _ : usize , _ : usize , _ : usize , _ : f64 , _ : bool ,) }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn params (& self) -> PhaseFieldParams }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn refresh_telemetry (& mut self) -> RadialSpectrumSummary }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn reseed_spinodal (& mut self , _ : f64 , _ : f64 , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn set_params (& mut self , _ : PhaseFieldParams) }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn step (& mut self , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn step_n (& mut self , _ : & mut OxidizeRng , _ : usize) }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn steps (& self) -> u64 }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn telemetry (& self) -> & PhaseFieldTelemetry }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PhaseFieldSolver2D { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub const LIFSHITZ_SLYOZOV_EXPONENT : f64"
+    },
+    {
+      "signature": "pub const MODEL_A_COARSENING_EXPONENT : f64"
+    },
+    {
+      "signature": "pub enum PhaseFieldModel"
+    },
+    {
+      "signature": "pub struct PhaseFieldParams"
+    },
+    {
+      "signature": "pub struct PhaseFieldSolver2D"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/phase_field/telemetry.rs": [
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn fit_coarsening_slope (& self , _ : f64 , _ : f64) -> Option < (f64 , f64) > }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn free_energy_history (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn k_bins (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn k_max_history (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn k_moment_history (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn latest_summary (& self) -> RadialSpectrumSummary }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn s_k (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn times (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhaseFieldTelemetry { pub fn update_from_field (& mut self , _ : & mut SemiImplicitSpectral2D , _ : & [f64] , _ : f64 , _ : f64 ,) -> RadialSpectrumSummary }"
+    },
+    {
+      "signature": "pub struct PhaseFieldTelemetry"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/quantum_stats.rs": [
@@ -9273,6 +9617,102 @@
     },
     {
       "signature": "pub trait BoundaryCondition { fn evaluate_boundary (& self , _ : f64 , _ : f64) -> f64 }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/spde/mod.rs": [
+    {
+      "signature": "pub use noise :: SpatialNoiseBuffer"
+    },
+    {
+      "signature": "pub use spectral_2d :: ConservedBiharmonicParams"
+    },
+    {
+      "signature": "pub use spectral_2d :: RadialSpectrumSummary"
+    },
+    {
+      "signature": "pub use spectral_2d :: ReactionBiharmonicParams"
+    },
+    {
+      "signature": "pub use spectral_2d :: SemiImplicitSpectral2D"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/spde/noise.rs": [
+    {
+      "signature": "impl SpatialNoiseBuffer { pub fn fill_conserved_flux_1d_neumann (& mut self , _ : & mut OxidizeRng , _ : usize , _ : f64 , _ : f64 ,) -> & [f64] }"
+    },
+    {
+      "signature": "impl SpatialNoiseBuffer { pub fn fill_conserved_flux_1d_periodic (& mut self , _ : & mut OxidizeRng , _ : usize , _ : f64 , _ : f64 ,) -> & [f64] }"
+    },
+    {
+      "signature": "impl SpatialNoiseBuffer { pub fn fill_conserved_flux_2d_periodic (& mut self , _ : & mut OxidizeRng , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) -> & [f64] }"
+    },
+    {
+      "signature": "impl SpatialNoiseBuffer { pub fn fill_gaussian (& mut self , _ : & mut OxidizeRng , _ : usize , _ : f64) -> & [f64] }"
+    },
+    {
+      "signature": "impl SpatialNoiseBuffer { pub fn fill_gaussian_into (& self , _ : & mut OxidizeRng , _ : & mut [f64] , _ : f64) }"
+    },
+    {
+      "signature": "impl SpatialNoiseBuffer { pub fn new_1d (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl SpatialNoiseBuffer { pub fn new_2d (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl SpatialNoiseBuffer { pub fn resize_1d (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl SpatialNoiseBuffer { pub fn resize_2d (& mut self , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl SpatialNoiseBuffer { pub fn slice (& self , _ : usize) -> & [f64] }"
+    },
+    {
+      "signature": "pub struct SpatialNoiseBuffer"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/spde/spectral_2d.rs": [
+    {
+      "signature": "impl SemiImplicitSpectral2D { pub fn compute_radial_structure_factor (& mut self , _ : & [f64] , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [usize] ,) -> RadialSpectrumSummary }"
+    },
+    {
+      "signature": "impl SemiImplicitSpectral2D { pub fn dx (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SemiImplicitSpectral2D { pub fn dy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SemiImplicitSpectral2D { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl SemiImplicitSpectral2D { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SemiImplicitSpectral2D { pub fn radial_bin_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl SemiImplicitSpectral2D { pub fn set_grid_spacing (& mut self , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl SemiImplicitSpectral2D { pub fn step_conserved_biharmonic (& mut self , _ : & mut [f64] , _ : & [f64] , _ : Option < & [f64] > , _ : ConservedBiharmonicParams ,) }"
+    },
+    {
+      "signature": "impl SemiImplicitSpectral2D { pub fn step_reaction_biharmonic (& mut self , _ : & mut [f64] , _ : & [f64] , _ : Option < & [f64] > , _ : ReactionBiharmonicParams ,) }"
+    },
+    {
+      "signature": "impl SemiImplicitSpectral2D { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct ConservedBiharmonicParams"
+    },
+    {
+      "signature": "pub struct RadialSpectrumSummary"
+    },
+    {
+      "signature": "pub struct ReactionBiharmonicParams"
+    },
+    {
+      "signature": "pub struct SemiImplicitSpectral2D"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/wave.rs": [

@@ -84,6 +84,8 @@ pub mod greens;
 pub mod heat;
 #[allow(missing_docs)]
 pub mod laplace;
+/// Zero-allocation stochastic PDE noise generators and semi-implicit 2D spectral solvers.
+pub mod spde;
 #[allow(missing_docs)]
 pub mod wave;
 /// Zero-allocation 2D Verlet wave tank, biharmonic Chladni plate, 2D FFT spectra, and sand drift.
