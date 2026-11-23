@@ -1,4 +1,4 @@
-# ADR 0043: 2D FitzHugh-Nagumo Excitable Sheet, 1D Hodgkin-Huxley Cable, and 3-Lead Bioelectric Dipole Integration
+# ADR 0044: 2D FitzHugh-Nagumo Excitable Sheet, 1D Hodgkin-Huxley Cable, and 3-Lead Bioelectric Dipole Integration
 
 Date: 2026-11-21
 
