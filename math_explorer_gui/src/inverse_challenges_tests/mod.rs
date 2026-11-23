@@ -3,6 +3,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+mod studio_tests;
+
 use crate::app::{MathExplorerApp, SemanticPalette, ThemeMode};
 use crate::framework::{ChallengeMetadata, SimulationFramework};
 use crate::starter_gallery::{
@@ -42,19 +44,25 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .map(ChallengeMetadata::to_card)
         .collect();
     assert!(
-        cards.len() >= 8,
-        "Expected at least 8 registered ChallengeMetadata entries, got {}",
+        cards.len() >= 14,
+        "Expected at least 14 registered ChallengeMetadata entries, got {}",
         cards.len()
     );
     for required_id in [
         "bloch_pi_inversion",
         "bloch_hahn_spin_echo",
+        "mri_kspace_radial_cs",
         "pk_therapeutic_window",
         "win_ratio_severity_reversal",
         "copula_heavy_tail_kelly",
         "hmm_trellis_branch_rescue",
         "lbm_low_drag_fairing",
         "imrt_oar_sparing",
+        "radar_cough_zero_miss",
+        "quantum_barrier_50_split",
+        "epidemiology_hub_vaccination",
+        "epidemiology_bridge_quarantine",
+        "astrophysics_mystery_halo_fit",
     ] {
         let meta = find_challenge_metadata(required_id)
             .unwrap_or_else(|| panic!("Missing ChallengeMetadata '{required_id}'"));
@@ -65,11 +73,14 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         assert!(clamped.len() <= MAX_DECODED_URL_STATE_BYTES);
     }
 
-    assert_eq!(get_challenge_cards_for_domain("mri").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("quantum").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("mri").len(), 3);
     assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 2);
     assert_eq!(get_challenge_cards_for_domain("financial_math").len(), 2);
     assert_eq!(get_challenge_cards_for_domain("fluid_dynamics").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("medical").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("medical").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("epidemiology").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("astrophysics").len(), 1);
 
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -173,12 +184,18 @@ fn test_stateless_challenge_urls_within_size_budget() {
     for (slug, challenge_id) in [
         ("mri", "bloch_pi_inversion"),
         ("mri", "bloch_hahn_spin_echo"),
+        ("mri", "mri_kspace_radial_cs"),
         ("clinical_trials", "pk_therapeutic_window"),
         ("clinical_trials", "win_ratio_severity_reversal"),
         ("financial_math", "copula_heavy_tail_kelly"),
         ("financial_math", "hmm_trellis_branch_rescue"),
         ("fluid_dynamics", "lbm_low_drag_fairing"),
         ("medical", "imrt_oar_sparing"),
+        ("medical", "radar_cough_zero_miss"),
+        ("quantum", "quantum_barrier_50_split"),
+        ("epidemiology", "epidemiology_hub_vaccination"),
+        ("epidemiology", "epidemiology_bridge_quarantine"),
+        ("astrophysics", "astrophysics_mystery_halo_fit"),
     ] {
         let bare_hash = format!("#tab={slug}&challenge={challenge_id}");
         let parsed = parse_share_location(&bare_hash, "").unwrap().unwrap();
@@ -248,7 +265,6 @@ fn test_tampered_challenge_url_clamps_locked_parameters() {
 }
 
 #[test]
-#[cfg(all(feature = "pure_math", feature = "applied", feature = "physics"))]
 fn test_callout_manager_adopted_by_at_least_five_tools() {
     use crate::async_sim::unified::UnifiedSimTool;
     use crate::framework::{CalloutManager, InteractiveTool};

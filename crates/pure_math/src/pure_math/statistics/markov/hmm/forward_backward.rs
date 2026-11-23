@@ -6,48 +6,47 @@ use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;
 
 impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
-    /// Computes P(observations) using the forward algorithm.
+    /// Computes $\ln P(Y_1, \dots, Y_T)$ by accumulating the log conditional scaling factors
+    /// $\sum_{t=0}^{T-1} \ln s_t = -\sum_{t=0}^{T-1} \ln c_t$ ($c_t = 1 / s_t$).
+    #[verified_engine::verified]
+    pub fn log_likelihood(&self, observations: &[usize]) -> Result<T> {
+        let (_, scaling_factors) = self.forward_probabilities(observations)?;
+        let zero = T::zero();
+        let neg_inf = T::from_f64(f64::NEG_INFINITY)
+            .or_else(T::min_value)
+            .unwrap_or_else(|| zero.ln());
+        let mut log_prob = zero;
+        for &s_t in &scaling_factors {
+            if s_t <= zero {
+                return Ok(neg_inf);
+            }
+            log_prob += s_t.ln();
+        }
+        Ok(log_prob)
+    }
+
+    /// Computes $P(Y_1, \dots, Y_T)$ using the scaled forward algorithm.
     ///
     /// # Mathematical Background
     ///
-    /// Define α(t, i) = P(Y₁, ..., Yₜ, Xₜ = i), the probability of observing
-    /// the first t observations and being in state i at time t.
-    ///
-    /// Recursion:
-    /// - α(1, i) = πᵢ · Bᵢ,y₁
-    /// - α(t+1, j) = Σᵢ α(t, i) · Aᵢⱼ · Bⱼ,yₜ₊₁
-    ///
-    /// Then P(Y₁, ..., Yₜ) = Σᵢ α(T, i).
-    ///
-    /// # Arguments
-    ///
-    /// * `observations` - Sequence of observation indices
-    ///
-    /// # Returns
-    ///
-    /// The probability of the observation sequence.
+    /// With conditional scaling factors $s_t = P(Y_t \mid Y_{1:t-1})$, the exact observation
+    /// likelihood is $P(Y_{1:T}) = \prod_{t=0}^{T-1} s_t = \exp\!\left(\sum_{t=0}^{T-1} \ln s_t\right)$.
     #[verified_engine::verified]
     pub fn forward(&self, observations: &[usize]) -> Result<T> {
-        let (_, scaling_factors) = self.forward_probabilities(observations)?;
-        let one = T::one();
-        Ok(scaling_factors.iter().fold(one, |acc, &c| acc * c))
+        let ll = self.log_likelihood(observations)?;
+        if ll.is_finite() {
+            Ok(ll.exp())
+        } else {
+            Ok(T::zero())
+        }
     }
 
-    /// Computes log P(observations) from the forward scaling factors to avoid underflow.
+    /// Computes $\ln P(Y_1, \dots, Y_T)$ from the forward scaling factors to avoid underflow.
     ///
-    /// Returns `-infinity` (`T::zero().ln()`) when the observation sequence has zero likelihood.
+    /// Returns `-infinity` when the observation sequence has zero likelihood.
     #[verified_engine::verified]
     pub fn forward_log_likelihood(&self, observations: &[usize]) -> Result<T> {
-        let (_, scaling_factors) = self.forward_probabilities(observations)?;
-        let zero = T::zero();
-        let mut log_likelihood = zero;
-        for &c in &scaling_factors {
-            if c <= zero {
-                return Ok(zero.ln());
-            }
-            log_likelihood += c.ln();
-        }
-        Ok(log_likelihood)
+        self.log_likelihood(observations)
     }
 
     /// Computes forward probabilities α(t, i) for all t and i.
@@ -156,7 +155,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         let one = T::one();
         let zero = T::zero();
 
-        // Initialize: β(T, i) = 1
+        // Initialize: β(T, i) = 1 / s_T
         let last_scale = scaling_factors[t_max - 1];
         let init_beta = if last_scale > zero {
             one / last_scale
