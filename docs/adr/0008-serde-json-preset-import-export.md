@@ -1,5 +1,9 @@
 # 8. Serde JSON Simulation Preset Import/Export Architecture
 
+## Status
+
+Accepted
+
 ## Context
 Math Explorer simulation tools previously hardcoded default parameter values inside enums and UI callbacks. Users had no standard mechanism to serialize simulation state to portable files or import saved parameter configurations across sessions or peers.
 

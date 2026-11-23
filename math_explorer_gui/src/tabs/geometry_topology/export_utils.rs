@@ -29,19 +29,6 @@ pub fn surface_to_mesh_scaled(
     )
 }
 
-/// Builds a triangle [`Mesh`] for `surface` over explicit `(u_range, v_range)` parameter domains.
-#[cfg(test)]
-#[must_use]
-pub fn surface_to_mesh_with_domain(
-    surface: &dyn ParametricSurface,
-    u_range: (f64, f64),
-    v_range: (f64, f64),
-    u_res: usize,
-    v_res: usize,
-) -> Mesh {
-    surface_to_mesh_with_domain_scaled(surface, u_range, v_range, u_res, v_res, 1.0)
-}
-
 /// Builds a seam- and pole-welded triangle [`Mesh`] over explicit `(u_range, v_range)` domains,
 /// scaled by `scale_mm` physical millimeters.
 #[must_use]
