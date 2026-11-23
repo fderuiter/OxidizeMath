@@ -1,4 +1,4 @@
-# ADR 0039: Local Win Ratio and Clinical Cohort Workbench
+# ADR 0040: Local Win Ratio and Clinical Cohort Workbench
 
 ## Status
 Accepted
