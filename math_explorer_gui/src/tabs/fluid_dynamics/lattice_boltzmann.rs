@@ -1,11 +1,16 @@
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
+use super::lbm_fairing::{
+    decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y,
+    LBM_HEIGHT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0, LBM_U_IN, LBM_WIDTH,
+};
+use super::lbm_fairing_ui::LbmUiExtension;
+use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool, UnifiedUiExtension};
 use crate::async_sim::{SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use eframe::egui::Color32;
 use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    BgkCollision, LatticeBoltzmannD2Q9,
+    compute_drag_coefficient, BgkCollision, LatticeBoltzmannD2Q9,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
@@ -17,6 +22,70 @@ pub struct LbmUnified {
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
+}
+
+impl LbmUnified {
+    /// Re-initializes equilibrium populations via `init_equilibrium` and restores
+    /// open inlet columns (`x < 2`) plus the protected `R_core = 4` structural core,
+    /// while preserving user-sculpted obstacle cells elsewhere on the grid.
+    pub fn reset_equilibrium_preserving_obstacles(&mut self, params: &HashMap<String, f64>) {
+        let viscosity = params
+            .get("viscosity")
+            .copied()
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .unwrap_or(0.02);
+        self.solver.collision_model.tau = 3.0 * viscosity + 0.5;
+        self.solver.init_equilibrium();
+        let width = self.solver.width();
+        let height = self.solver.height();
+        for y in 0..height {
+            for x in 0..width {
+                if x < LBM_INLET_COLS {
+                    self.solver.set_obstacle(x, y, false);
+                } else {
+                    let dx = x as i32 - LBM_CORE_X;
+                    let dy = y as i32 - LBM_CORE_Y;
+                    if dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS {
+                        self.solver.set_obstacle(x, y, true);
+                    }
+                }
+            }
+        }
+        self.solver
+            .set_inlet(0, 0, LBM_INLET_COLS, height, LBM_U_IN, 0.0);
+        self.diverged = false;
+        self.diagnostic_report = None;
+        self.step_count = 0;
+    }
+
+    fn apply_mask(&mut self, mask: &[bool; LBM_CELL_COUNT], params: &HashMap<String, f64>) {
+        for y in 0..LBM_HEIGHT.min(self.solver.height()) {
+            for x in 0..LBM_WIDTH.min(self.solver.width()) {
+                self.solver
+                    .set_obstacle(x, y, mask[flatten_2d_index(x, y, LBM_WIDTH)]);
+            }
+        }
+        self.reset_equilibrium_preserving_obstacles(params);
+    }
+
+    fn solid_and_core_status(&self) -> (usize, bool) {
+        let mut n_solid = 0_usize;
+        let mut core_intact = true;
+        for y in 0..self.solver.height() {
+            for x in 0..self.solver.width() {
+                let obs = self.solver.is_obstacle(x, y);
+                if obs {
+                    n_solid += 1;
+                }
+                let dx = x as i32 - LBM_CORE_X;
+                let dy = y as i32 - LBM_CORE_Y;
+                if dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS && !obs {
+                    core_intact = false;
+                }
+            }
+        }
+        (n_solid, core_intact)
+    }
 }
 
 impl FiniteStateGuard for LbmUnified {
@@ -90,6 +159,14 @@ impl UnifiedModel for LbmUnified {
         }
     }
 
+    fn reset_model(&mut self, params: &HashMap<String, f64>) {
+        self.reset_equilibrium_preserving_obstacles(params);
+    }
+
+    fn create_ui_extension() -> Option<Box<dyn UnifiedUiExtension>> {
+        Some(Box::new(LbmUiExtension::default()))
+    }
+
     fn step(&mut self, params: &HashMap<String, f64>) {
         if self.diverged {
             return;
@@ -147,21 +224,30 @@ impl UnifiedModel for LbmUnified {
             }
         }
 
+        let (f_drag, f_lift) = self.solver.hydrodynamic_forces();
+        let c_d = compute_drag_coefficient(f_drag, LBM_RHO_0, LBM_U_IN, LBM_REF_DIAMETER);
+        let (n_solid, core_intact) = self.solid_and_core_status();
+
         StateSnapshot {
             width,
             height,
             pixels: Arc::new(std::sync::RwLock::new(pixels)),
-            custom_data: Vec::new(),
+            custom_data: vec![
+                f_drag,
+                f_lift,
+                c_d,
+                n_solid as f64,
+                f64::from(u8::from(core_intact)),
+                self.step_count as f64,
+            ],
             structured_data: None,
         }
     }
 
-    fn process_command(&mut self, cmd: SimCommand, _params: &HashMap<String, f64>) {
+    fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
         match cmd {
             SimCommand::Reset => {
-                self.diverged = false;
-                self.diagnostic_report = None;
-                self.step_count = 0;
+                self.reset_equilibrium_preserving_obstacles(params);
             }
             SimCommand::ApplyBrush {
                 cx,
@@ -173,7 +259,7 @@ impl UnifiedModel for LbmUnified {
                 let height = self.solver.height() as i32;
                 for y in (cy - r)..=(cy + r) {
                     for x in (cx - r)..=(cx + r) {
-                        if x >= 0
+                        if x >= LBM_INLET_COLS as i32
                             && x < width
                             && y >= 0
                             && y < height
@@ -190,6 +276,18 @@ impl UnifiedModel for LbmUnified {
             }
             SimCommand::Custom(ref action) if action == "Clear Obstacles" => {
                 self.solver.clear_obstacles();
+            }
+            SimCommand::Custom(ref action) => {
+                if let Some(stamp) = FairingStamp::from_command(action) {
+                    let mut mask = [false; LBM_CELL_COUNT];
+                    stamp.write_mask(&mut mask);
+                    self.apply_mask(&mask, params);
+                } else if let Some(hex) = action.strip_prefix("MaskHex:") {
+                    let mut mask = [false; LBM_CELL_COUNT];
+                    if decode_mask_hex(hex, &mut mask).is_ok() {
+                        self.apply_mask(&mask, params);
+                    }
+                }
             }
             _ => {}
         }
