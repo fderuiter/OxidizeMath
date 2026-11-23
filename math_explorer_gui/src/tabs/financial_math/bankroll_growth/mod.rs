@@ -17,6 +17,7 @@ use state::{
 
 #[cfg(test)]
 use math_explorer::pure_math::statistics::kelly::BankrollFraction;
+pub(crate) use simulation::homogeneous_slate_growth_rate;
 #[cfg(test)]
 use simulation::settle_bet;
 
@@ -123,6 +124,15 @@ impl BankrollGrowthTool {
         self.recalculate();
     }
 
+    /// Evaluates one Full-Kelly wager outcome from `bankroll` using the tool's active `(probability, odds)`.
+    #[cfg(test)]
+    pub fn evaluate_full_kelly_bet(&self, bankroll: f64, win: bool) -> Result<f64, String> {
+        let p = UnitInterval::new(self.probability).map_err(|e| format!("Error: {e}"))?;
+        let o = Odds::from_net_odds(self.odds).map_err(|e| format!("Error: {e}"))?;
+        let fk = kelly_fraction(&p, &o).map_err(|e| format!("Error: {e}"))?;
+        Ok(settle_bet(bankroll, &fk, o.net_profit_multiplier(), win))
+    }
+
     fn apply_validated_state(&mut self, s: BankrollState) {
         self.initial_bankroll = s.initial_bankroll;
         self.probability = s.probability;
@@ -155,6 +165,23 @@ impl InteractiveTool for BankrollGrowthTool {
 
     fn domain(&self) -> &'static str {
         "financial_math"
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        [
+            self.initial_bankroll,
+            self.probability,
+            self.odds,
+            self.stake_multiplier,
+            self.push_probability,
+            self.half_win_probability,
+            self.half_loss_probability,
+            self.drawdown_alpha,
+            self.drawdown_beta,
+            self.ensemble_lab.custom_fraction,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
     }
 
     fn observables(&self) -> Vec<(&'static str, f64)> {
@@ -291,7 +318,7 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "initial_bankroll": 5000.0,
     "probability": 0.6,
-    "odds": 2.5,
+    "odds": 1.5,
     "num_bets": 150
   }
 }"#;

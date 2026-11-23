@@ -1,7 +1,7 @@
-# ADR 0047: Zero-Allocation Multi-State, Portfolio, and Drawdown-Constrained Kelly Convex Solvers
+# ADR 20261123: Zero-Allocation Multi-State, Portfolio, and Drawdown-Constrained Kelly Convex Solvers
 
 ## Status
-Accepted (extends [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md))
+Accepted (extends [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md) and [ADR 20261123](20261123-glicko2-copula-ou-workbenches-and-kelly-net-odds.md))
 
 ## Context
 Previously, `pure_math::statistics::kelly` modeled only binary two-outcome wagers (`+b` win, `-1` loss) with heuristic fractional (`half_kelly`, `quarter_kelly`) sizing, and `math_explorer_gui/src/tabs/financial_math/bet_size.rs` carried `#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]` suppressions inside a monolithic file. Quantitative wagering and portfolio allocation require exact expected log-wealth maximization over integer push spreads (`+b, 0, -1`), Asian quarter-line split handicaps (`+b, +b/2, 0, -1/2, -1`), mutually exclusive `N`-way markets, simultaneous `K`-game independent slates, and Busseti-Ryu-Boyd martingale drawdown constraints—all executing with zero heap allocations inside `VerifiedEngine::run_verified`.
@@ -14,7 +14,7 @@ Previously, `pure_math::statistics::kelly` modeled only binary two-outcome wager
    - Implement projected FISTA + Barzilai-Borwein simplex solver `solve_simultaneous_slate` (`MAX_SLATE_WAGERS = 64`) using exact state convolution for $K \le 10$ and 128-node 1D Frullani/Gamma Laplace quadrature ($O(Q \cdot K)$) for $K > 10$ via caller-supplied `SlateScratch`.
    - Implement Busseti, Ryu, and Boyd (2016) martingale drawdown solvers (`DrawdownConstraint` with $\lambda = \ln(\beta) / \ln(\alpha)$, $\mathbb{E}[R^{-\lambda}] \le 1$) across binary, push, quarter-line, and simultaneous slate models.
 2. **Decomposed Financial Math GUI Tools**:
-   - Split `bet_size` and `bankroll_growth` into directory submodules (`state`, `simulation`, `ui`, `mod`, `tests`), removing `too_many_lines` and `cognitive_complexity` suppressions while preserving exact JSON backward compatibility for existing `InteractiveTool` presets, URL states, `stake_multiplier` Challenge HUD observables, and `CalloutManager` plot pins.
+   - Split `bet_size` and `bankroll_growth` into directory submodules (`state`, `results`, `export`, `simulation`, `ui`, `mod`, `tests`), removing `too_many_lines` and `cognitive_complexity` suppressions while preserving exact JSON backward compatibility for existing `InteractiveTool` presets, URL states, cached `PlotPoint` growth curves, formula-safe CSV/Markdown sizing exports, `stake_multiplier` Challenge HUD observables, and `CalloutManager` plot pins.
    - Extend `BankrollEnsembleLab` and `BankrollGrowthTool` with push settlement, quarter-line and simultaneous slate trajectories, and drawdown-constrained curves.
 
 ## Consequences

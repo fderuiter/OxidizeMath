@@ -2,6 +2,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod export;
+mod plot;
 mod results;
 mod state;
 #[cfg(test)]
@@ -16,21 +18,33 @@ use state::{
 };
 pub use state::{BetSizingMode, MarketRowConfig, OddsFormat, UI_MAX_MARKET_ROWS};
 
-use crate::framework::InteractiveTool;
+use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
+use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::kelly::{
     DrawdownConstraint, MarketScratch, Odds, SlateScratch,
 };
+use std::sync::mpsc::Receiver;
+
+/// Computed strategy row in the Kelly sizing table and CSV/Markdown exports.
+#[derive(Debug, Clone)]
+pub(crate) struct KellyStrategyRow {
+    pub label: String,
+    pub fraction: f64,
+    pub bet_amount: f64,
+    pub growth_rate: f64,
+    pub ev_per_unit: f64,
+}
 
 /// Interactive multi-state and portfolio Kelly bet size calculator.
 pub struct BetSizeCalculatorTool {
-    pub(super) probability_input: f64,
-    pub(super) odds_format: OddsFormat,
-    pub(super) decimal_odds: f64,
-    pub(super) american_odds: f64,
-    pub(super) fractional_numerator: f64,
-    pub(super) fractional_denominator: f64,
-    pub(super) bankroll: f64,
+    pub(crate) probability_input: f64,
+    pub(crate) odds_format: OddsFormat,
+    pub(crate) decimal_odds: f64,
+    pub(crate) american_odds: f64,
+    pub(crate) fractional_numerator: f64,
+    pub(crate) fractional_denominator: f64,
+    pub(crate) bankroll: f64,
     pub(super) mode: BetSizingMode,
     pub(super) push_probability_pct: f64,
     pub(super) ql_full_win_pct: f64,
@@ -48,11 +62,23 @@ pub struct BetSizeCalculatorTool {
     pub(super) drawdown_beta: f64,
     pub(super) market_scratch: MarketScratch,
     pub(super) slate_scratch: SlateScratch,
+    pub(crate) growth_curve_points: Vec<PlotPoint>,
+    pub(crate) quarter_marker: Vec<PlotPoint>,
+    pub(crate) half_marker: Vec<PlotPoint>,
+    pub(crate) full_marker: Vec<PlotPoint>,
+    pub(crate) drawdown_marker: Vec<PlotPoint>,
+    pub(crate) zero_line_points: [PlotPoint; 2],
+    pub(crate) strategy_rows: Vec<KellyStrategyRow>,
+    pub(crate) ev_per_unit: Option<f64>,
+    pub(super) summary_line: Option<String>,
+    pub(crate) calc_error: Option<String>,
+    pub(crate) save_rx: Option<Receiver<Result<String, String>>>,
+    pub(crate) io_status: Option<(String, bool)>,
 }
 
 impl Default for BetSizeCalculatorTool {
     fn default() -> Self {
-        Self {
+        let mut tool = Self {
             probability_input: 55.0,
             odds_format: OddsFormat::Decimal,
             decimal_odds: 2.0,
@@ -77,7 +103,21 @@ impl Default for BetSizeCalculatorTool {
             drawdown_beta: DEFAULT_DRAWDOWN_BETA,
             market_scratch: MarketScratch::new(),
             slate_scratch: SlateScratch::new(),
-        }
+            growth_curve_points: Vec::with_capacity(121),
+            quarter_marker: Vec::with_capacity(1),
+            half_marker: Vec::with_capacity(1),
+            full_marker: Vec::with_capacity(1),
+            drawdown_marker: Vec::with_capacity(1),
+            zero_line_points: [PlotPoint::new(0.0, 0.0), PlotPoint::new(0.25, 0.0)],
+            strategy_rows: Vec::with_capacity(8),
+            ev_per_unit: None,
+            summary_line: None,
+            calc_error: None,
+            save_rx: None,
+            io_status: None,
+        };
+        tool.recalculate();
+        tool
     }
 }
 
@@ -89,6 +129,7 @@ impl BetSizeCalculatorTool {
         self.push_probability_pct = 10.0;
         self.odds_format = OddsFormat::American;
         self.american_odds = -110.0;
+        self.recalculate();
     }
 
     /// Configures the canonical `-2.75` Asian quarter-line at `-110` (`44%` FW, `12%` HW, `44%` FL).
@@ -101,6 +142,7 @@ impl BetSizeCalculatorTool {
         self.ql_full_loss_pct = 44.0;
         self.odds_format = OddsFormat::American;
         self.american_odds = -110.0;
+        self.recalculate();
     }
 
     /// Configures the canonical 3-way market (`[50%, 28%, 22%]` at decimal `[2.20, 4.00, 3.20]`).
@@ -108,6 +150,7 @@ impl BetSizeCalculatorTool {
         self.mode = BetSizingMode::MutuallyExclusive;
         self.market_outcome_count = 3;
         self.market_rows = default_market_rows();
+        self.recalculate();
     }
 
     /// Configures the canonical 10-game simultaneous slate (`p = 58%`, even-money `b = 1.0`).
@@ -117,9 +160,10 @@ impl BetSizeCalculatorTool {
         self.slate_win_pct = 58.0;
         self.slate_push_pct = 0.0;
         self.slate_net_odds = 1.0;
+        self.recalculate();
     }
 
-    pub(super) fn active_odds(&self) -> Result<Odds, math_explorer::error::KellyError> {
+    pub(crate) fn active_odds(&self) -> Result<Odds, math_explorer::error::KellyError> {
         match self.odds_format {
             OddsFormat::Decimal => Odds::new(self.decimal_odds),
             OddsFormat::American => Odds::from_american(self.american_odds),
@@ -183,6 +227,7 @@ impl BetSizeCalculatorTool {
         self.slate_net_odds = s.slate_net_odds;
         self.drawdown_alpha = s.drawdown_alpha;
         self.drawdown_beta = s.drawdown_beta;
+        self.recalculate();
     }
 }
 
@@ -199,8 +244,35 @@ impl InteractiveTool for BetSizeCalculatorTool {
         "financial_math"
     }
 
-    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot()
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        let scalars = [
+            self.probability_input,
+            self.decimal_odds,
+            self.american_odds,
+            self.fractional_numerator,
+            self.fractional_denominator,
+            self.bankroll,
+            self.push_probability_pct,
+            self.ql_full_win_pct,
+            self.ql_half_win_pct,
+            self.ql_push_pct,
+            self.ql_half_loss_pct,
+            self.ql_full_loss_pct,
+            self.slate_win_pct,
+            self.slate_push_pct,
+            self.slate_net_odds,
+            self.drawdown_alpha,
+            self.drawdown_beta,
+        ];
+        scalars.iter().all(|v| v.is_finite())
+            && self
+                .market_rows
+                .iter()
+                .all(|r| r.probability_pct.is_finite() && r.decimal_odds.is_finite())
     }
 
     fn save_state(&self) -> Option<String> {
@@ -232,14 +304,18 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
     fn theory_description(&self) -> String {
+        let net_b = self
+            .active_odds()
+            .map(|o| o.net_profit_multiplier())
+            .unwrap_or(self.decimal_odds - 1.0);
         format!(
-            "Multi-state convex Kelly criterion allocation maximizing expected logarithmic growth $\\mathbb{{E}}[\\ln(1 + f^\\top X)]$ subject to Busseti-Ryu-Boyd drawdown risk bounds $\\mathbb{{E}}[R^{{-\\lambda}}] \\le 1$ (win probability $p = {:.1}\\%$, decimal odds $d = {:.2}$).",
-            self.probability_input, self.decimal_odds
+            "Multi-state convex Kelly criterion allocation maximizing expected logarithmic growth $\\mathbb{{E}}[\\ln(1 + f^\\top X)]$ subject to Busseti-Ryu-Boyd drawdown risk bounds $\\mathbb{{E}}[R^{{-\\lambda}}] \\le 1$ (win probability $p = {:.1}\\%$, net odds $b = {:.2}$).",
+            self.probability_input, net_b
         )
     }
 
     fn phonetic_description(&self) -> String {
-        "Multi-state convex Kelly criterion optimal bet sizing theory".into()
+        "Multi-state convex Kelly criterion optimal bet sizing and expected logarithmic growth rate theory".into()
     }
 
     fn theory_citation(&self) -> String {
@@ -247,7 +323,16 @@ impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
     }
 
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
+        let mut map = std::collections::HashMap::new();
+        map.insert(
+            "Expected Growth Rate g(f)".into(),
+            "Asymptotic logarithmic wealth growth per wager across stake fraction f".into(),
+        );
+        map.insert(
+            "Drawdown-Constrained Kelly".into(),
+            "Busseti-Ryu-Boyd martingale bound E[R^-lambda] <= 1".into(),
+        );
+        map
     }
 }
 

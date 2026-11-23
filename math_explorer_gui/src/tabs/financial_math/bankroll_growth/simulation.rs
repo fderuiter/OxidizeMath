@@ -105,7 +105,7 @@ fn ln_factorial(n: usize) -> f64 {
     acc
 }
 
-fn finite_slate_growth_rate(wager: &PushWager, k: usize, game_f: f64) -> f64 {
+pub(crate) fn homogeneous_slate_growth_rate(wager: &PushWager, k: usize, game_f: f64) -> f64 {
     if game_f <= 0.0 {
         return 0.0;
     }
@@ -407,7 +407,7 @@ impl BankrollGrowthTool {
         let act_per_game = active_total / (k as f64);
         self.kelly_f_star = total_fk;
         self.active_fraction = active_total;
-        self.active_growth_rate = finite_slate_growth_rate(&pw, k, act_per_game);
+        self.active_growth_rate = homogeneous_slate_growth_rate(&pw, k, act_per_game);
         let rc_per_game = dc
             .and_then(|c| {
                 solve_drawdown_constrained_slate(&wagers[..k], c, &mut self.slate_scratch).ok()
