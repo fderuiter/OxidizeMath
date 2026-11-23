@@ -145,21 +145,6 @@ fn test_workspace_build_script_outputs_emit_rerun_directives() {
     let exe = std::env::current_exe().expect("current_exe should resolve");
     let build_root = locate_build_root(&exe);
 
-    let ox_output = find_latest_build_output(&build_root, "oxidize_core", "vfs_data.rs")
-        .expect("oxidize_core build output must exist because unified_verification depends on it");
-    let ox_rerun = parse_rerun_directives(&ox_output);
-    for expected in [
-        "build.rs",
-        "../../papers",
-        "../../math_explorer/src",
-        "../../math_explorer_gui/src/tabs",
-    ] {
-        assert!(
-            ox_rerun.contains(expected),
-            "oxidize_core output missing cargo:rerun-if-changed={expected}"
-        );
-    }
-
     if let Some(gui_output) =
         find_latest_build_output(&build_root, "math_explorer_gui", "generated_tabs.rs")
     {

@@ -8,12 +8,17 @@ const fn default_annotations_enabled() -> bool {
     true
 }
 
+const fn default_tube_radius() -> f64 {
+    super::export::DEFAULT_TUBE_RADIUS
+}
+
 #[derive(serde::Serialize)]
 struct AttractorSaveState {
     sigma: f64,
     rho: f64,
     beta: f64,
     dt: f64,
+    tube_radius: f64,
     simulation_speed: usize,
     execution_state: SolverExecutionState,
     show_annotations: bool,
@@ -33,6 +38,8 @@ struct AttractorState {
     rho: f64,
     beta: f64,
     dt: f64,
+    #[serde(default = "default_tube_radius")]
+    tube_radius: f64,
     simulation_speed: usize,
     #[serde(default)]
     execution_state: Option<SolverExecutionState>,
@@ -63,8 +70,13 @@ impl AttractorPlotter {
             .iter()
             .zip(DEFAULT_FLOW_EXPRS.iter())
             .any(|(a, b)| a != b);
-        let custom_exprs = (self.mode == AttractorMode::Custom || nondefault_exprs)
-            .then(|| [expr_vec[0].clone(), expr_vec[1].clone(), expr_vec[2].clone()]);
+        let custom_exprs = (self.mode == AttractorMode::Custom || nondefault_exprs).then(|| {
+            [
+                expr_vec[0].clone(),
+                expr_vec[1].clone(),
+                expr_vec[2].clone(),
+            ]
+        });
         let custom_params = if self.mode == AttractorMode::Custom {
             self.flow_bank.params_map()
         } else {
@@ -75,6 +87,7 @@ impl AttractorPlotter {
             rho: self.system.rho,
             beta: self.system.beta,
             dt: self.dt,
+            tube_radius: self.tube_radius,
             simulation_speed: self.simulation_speed,
             execution_state: self.execution_state,
             show_annotations: self.show_annotations,
@@ -95,6 +108,9 @@ impl AttractorPlotter {
             || !s.beta.is_finite()
             || !s.dt.is_finite()
             || s.dt <= 0.0
+            || !s.tube_radius.is_finite()
+            || !(super::export::MIN_TUBE_RADIUS..=super::export::MAX_TUBE_RADIUS)
+                .contains(&s.tube_radius)
             || !(1..=super::MAX_SIMULATION_SPEED).contains(&s.simulation_speed)
             || s.custom_params.values().any(|v| !v.is_finite())
         {
@@ -117,6 +133,7 @@ impl AttractorPlotter {
         self.system.rho = s.rho;
         self.system.beta = s.beta;
         self.dt = s.dt;
+        self.tube_radius = s.tube_radius;
         self.simulation_speed = s.simulation_speed;
         self.show_annotations = s.show_annotations;
         self.camera.apply_pose(camera);
