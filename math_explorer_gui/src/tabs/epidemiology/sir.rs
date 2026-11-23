@@ -396,6 +396,8 @@ impl InteractiveTool for SirTool {
                 }
                 metrics::render_epidemic_metrics(ui, self);
                 self.render_sir_readouts_and_atlas(ui);
+                ui.separator();
+                metrics::render_simulation_plot(ui, self);
                 ui.add_space(8.0);
                 let param_summary = self.param_summary();
                 let current_len = self.snapshot_manager.len();
@@ -414,8 +416,6 @@ impl InteractiveTool for SirTool {
                     self.revision = self.revision.wrapping_add(1).max(1);
                 }
                 self.evaluate_sensitivity(ui);
-                ui.separator();
-                metrics::render_simulation_plot(ui, self);
             });
         });
     }

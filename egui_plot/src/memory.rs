@@ -60,6 +60,14 @@ pub struct PlotMemory {
     #[cfg_attr(feature = "serde", serde(default = "default_true"))]
     pub show_y_labels: bool,
 
+    /// Visibility of hover crosshairs, point tooltips, and keyboard point focus popups.
+    #[cfg_attr(feature = "serde", serde(default = "default_true"))]
+    pub show_hover: bool,
+
+    /// Whether the docked plot action header bar is collapsed.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub toolbar_collapsed: bool,
+
     /// Clamp grid lines to actual data range.
     #[cfg_attr(feature = "serde", serde(default))]
     pub clamp_grid: bool,
@@ -200,6 +208,8 @@ mod serde_tests {
             grid_density: 10.0,
             show_x_labels: true,
             show_y_labels: false,
+            show_hover: false,
+            toolbar_collapsed: true,
             clamp_grid: true,
             show_grid: Vec2b::new(true, false),
             show_settings_modal: false,
@@ -213,6 +223,8 @@ mod serde_tests {
         assert_eq!(mem_decoded.callouts, memory.callouts);
         assert_eq!(mem_decoded.log_y, memory.log_y);
         assert_eq!(mem_decoded.show_y_labels, memory.show_y_labels);
+        assert_eq!(mem_decoded.show_hover, memory.show_hover);
+        assert_eq!(mem_decoded.toolbar_collapsed, memory.toolbar_collapsed);
         assert_eq!(
             mem_decoded.last_right_click_coord,
             memory.last_right_click_coord
