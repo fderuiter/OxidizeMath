@@ -91,6 +91,7 @@ mod tests {
             crate::tabs::medical::beam_profiling::BeamProfilingTool,
             crate::tabs::medical::dose::DoseCalculationTool,
             crate::tabs::medical::radar_gating::RadarGatingTool,
+            crate::tabs::chaos::hamiltonian::HamiltonianChaosLab,
             crate::tabs::relativity::inspector::ChristoffelInspectorTool,
             crate::tabs::relativity::playground::GeodesicPlaygroundTool,
         );
