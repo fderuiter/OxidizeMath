@@ -103,3 +103,30 @@ fn test_plateau_extrema_and_fused_line_scan() {
     assert!((scan.extrema[1].point[0] - 5.5).abs() < 1e-12);
     assert!((scan.extrema[1].point[1] + 2.0).abs() < 1e-12);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_plateau_crossing_y_intercept_and_nan_break() {
+    let mut cross_pts = vec![[-30.0, 1.0]];
+    for x in -29..=29 {
+        if x != 0 {
+            cross_pts.push([x as f64, 4.0]);
+        }
+    }
+    cross_pts.push([30.0, 1.0]);
+    let scan = scan_line_pois(&cross_pts, true, true);
+    assert_eq!(scan.y_intercepts.len(), 1);
+    assert!((scan.y_intercepts[0] - 4.0).abs() < 1e-9);
+    assert_eq!(scan.extrema.len(), 1);
+    assert!(scan.extrema[0].is_max);
+    assert!(scan.extrema[0].point[0].abs() < 1e-9);
+
+    let mut nan_plateau: Vec<[f64; 2]> = (-25..=-1).map(|x| [x as f64, 3.0]).collect();
+    nan_plateau.insert(0, [-26.0, 0.0]);
+    nan_plateau[12] = [-14.0, f64::NAN];
+    nan_plateau.push([0.0, 3.0]);
+    let nan_scan = scan_line_pois(&nan_plateau, true, true);
+    assert!(nan_scan.extrema.is_empty());
+    assert_eq!(nan_scan.y_intercepts.len(), 1);
+    assert!((nan_scan.y_intercepts[0] - 3.0).abs() < 1e-9);
+}

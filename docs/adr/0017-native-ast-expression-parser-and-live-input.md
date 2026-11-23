@@ -1,5 +1,9 @@
 # ADR 0017: Native AST Expression Pratt Parser and Live Input Integration
 
+## Status
+
+Accepted
+
 ## Context
 In mathematical exploration and visualization tools, users frequently require dynamic equation inputs for ODE solving ($y' = f(t, y)$) and complex conformal mapping ($w = f(z)$) rather than relying solely on pre-compiled hardcoded equations. External expression parsing crates can introduce substantial dependencies or incompatible WASM build targets (`wasm32-unknown-unknown`). Additionally, a unified parser needs to support implicit multiplication (e.g., $2x$, $2(x+1)$, $k y \sin(t)$), equation prefix notation ($y' = \dots$, $w = \dots$), robust recursion depth bounds against stack exhaustion, and LaTeX formula generation for interactive formula previews.
 

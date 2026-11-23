@@ -134,27 +134,33 @@ fn fast_forward_plateau<P: PointSeries + ?Sized>(
     pts: &P,
     n: usize,
     mut i: usize,
-    start_y: f64,
     want_y_intercepts: bool,
     p0: &mut [f64; 2],
-    last: &mut [f64; 2],
+    tracker: &mut PlateauTracker,
 ) -> usize {
+    let flat_y = p0[1];
+    let (x_min, x_max) = if !want_y_intercepts {
+        (f64::MIN, f64::MAX)
+    } else if p0[0] > 1e-12 {
+        ((1e-12_f64).next_up(), f64::MAX)
+    } else if p0[0] < -1e-12 {
+        (f64::MIN, (-1e-12_f64).next_down())
+    } else {
+        return i;
+    };
     let start_i = i;
     while i < n {
         let p = pts.point_at(i);
-        let x_ok = if want_y_intercepts {
-            p[0] > 1e-12 && p[0] <= f64::MAX
-        } else {
-            p[0].abs() <= f64::MAX
-        };
-        if p[1] != start_y || !x_ok {
+        if p[1] != flat_y || p[0] < x_min || p[0] > x_max {
             break;
         }
         i += 1;
     }
     if i > start_i {
         let end_p = pts.point_at(i - 1);
-        *last = end_p;
+        if tracker.mode == 2 {
+            tracker.last = end_p;
+        }
         *p0 = end_p;
     }
     i
@@ -176,16 +182,8 @@ pub fn scan_line_pois<P: PointSeries + ?Sized>(
     let mut tracker = PlateauTracker::new();
     let mut i = 1usize;
     while i < n {
-        if tracker.mode == 2 && p0_fin && (!want_y_intercepts || p0[0] > 1e-12) {
-            i = fast_forward_plateau(
-                pts,
-                n,
-                i,
-                tracker.start[1],
-                want_y_intercepts,
-                &mut p0,
-                &mut tracker.last,
-            );
+        if p0_fin && (tracker.mode == 0 || tracker.mode == 2) {
+            i = fast_forward_plateau(pts, n, i, want_y_intercepts, &mut p0, &mut tracker);
             if i >= n {
                 break;
             }

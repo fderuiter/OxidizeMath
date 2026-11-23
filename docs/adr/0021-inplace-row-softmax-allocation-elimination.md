@@ -1,5 +1,9 @@
 # ADR 0021: In-Place Row Softmax Allocation Elimination
 
+## Status
+
+Accepted
+
 ## Context
 In `crates/domain_ai/src/ai/activations.rs`, `softmax_row_wise` previously executed `row.map` to compute exponentiated values and `exps.map` to normalize probabilities across each row of the matrix. In `nalgebra`, `DVector::map` allocates a new heap buffer on each invocation. For an $M \times N$ matrix, this resulted in $2 \times M$ transient dynamic heap allocations during evaluation. In iterative multi-head attention and transformer layers, these per-row allocations caused substantial memory fragmentation and heap allocation churn in inner loops.
 

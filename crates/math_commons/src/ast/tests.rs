@@ -2,6 +2,7 @@
 use super::*;
 use num_complex::Complex64;
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 #[test]
@@ -469,9 +470,10 @@ fn test_rk4_sub_microsecond_throughput() {
         t += dt;
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start = Instant::now();
-    let steps = 1_000;
-    for _ in 0..steps {
+    for _ in 0..1_000 {
         let k1 = expr.eval_2d(t, y, &params);
         let k2 = expr.eval_2d(t + 0.5 * dt, y + 0.5 * dt * k1, &params);
         let k3 = expr.eval_2d(t + 0.5 * dt, y + 0.5 * dt * k2, &params);
@@ -479,15 +481,13 @@ fn test_rk4_sub_microsecond_throughput() {
         y += (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
         t += dt;
     }
-    let elapsed = start.elapsed();
-
-    // Verify finite numerical solution
     assert!(y.is_finite());
-    // 1,000 RK4 steps = 4,000 function evaluations.
-    // Must complete fast (well under 5 milliseconds total, meaning ~1 microsecond per step).
-    assert!(
-        elapsed.as_millis() < 50,
-        "RK4 1,000 steps took {:?}, expected < 50ms",
-        elapsed
-    );
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed.as_millis() < 50,
+            "RK4 1,000 steps took {elapsed:?}, expected < 50ms"
+        );
+    }
 }
