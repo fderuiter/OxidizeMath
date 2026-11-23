@@ -5,8 +5,10 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod braess;
+pub mod braess_atlas;
 mod braess_ui;
 pub mod parrondo;
+pub mod parrondo_atlas;
 mod parrondo_ui;
 
 /// Interactive Paradox Lab tab hosting Parrondo's ratchet and Braess's congestion paradox.
@@ -117,9 +119,11 @@ mod tests {
 
         let mut local = ParadoxLabTab::default();
         assert!(local.select_tool_by_name("ParrondoParadoxTool"));
-        assert_eq!(local.active_tool_id(), Some("ParrondoParadoxTool"));
+        assert_eq!(local.active_tool_id(), Some("ParrondoJumpRatchetTool"));
         assert!(local.select_tool_by_name("BraessNetworkParadoxTool"));
         assert_eq!(local.active_tool_id(), Some("BraessNetworkParadoxTool"));
+        assert!(local.select_tool_by_name("ParrondoJumpRatchetTool"));
+        assert_eq!(local.active_tool_id(), Some("ParrondoJumpRatchetTool"));
     }
 
     #[test]
