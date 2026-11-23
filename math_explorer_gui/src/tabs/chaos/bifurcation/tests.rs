@@ -75,7 +75,10 @@ fn test_bifurcation_custom_1d_map_zero_alloc_and_state_roundtrip() {
     tool.math_input.set_params_map(&pmap);
     tool.recompute();
     assert!(!tool.points.is_empty());
-    assert!(tool.points.iter().all(|pt| pt.x.is_finite() && pt.y.is_finite()));
+    assert!(tool
+        .points
+        .iter()
+        .all(|pt| pt.x.is_finite() && pt.y.is_finite()));
 
     // Verify transient syntax error keeps last valid cascade points
     let prev_len = tool.points.len();

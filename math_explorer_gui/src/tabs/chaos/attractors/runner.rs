@@ -232,9 +232,27 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
+        let v = self.system.state.vec;
+        let (dx, dy, dz) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            match (p.mode, p.custom_flow.as_deref()) {
+                (AttractorMode::Custom, Some(job)) => {
+                    let rhs = job.eval_rhs(v);
+                    (rhs.x, rhs.y, rhs.z)
+                }
+                _ => (
+                    self.system.sigma * (v.y - v.x),
+                    v.x * (self.system.rho - v.z) - v.y,
+                    v.x * v.y - self.system.beta * v.z,
+                ),
+            }
+        };
+        let diverged = matches!(self.execution_state, SolverExecutionState::Diverged { .. });
+        let sonification =
+            crate::audio::mappings::attractor_frame([v.x, v.y, v.z], [dx, dy, dz], diverged);
         let snapshot = AttractorSnapshot {
             history: self.history.clone(),
-            current_vec: self.system.state.vec,
+            current_vec: v,
             step_count: self.step_count,
             execution_state: self.execution_state,
         };
@@ -242,13 +260,9 @@ impl SimulationRunner for AttractorRunner {
             width: 0,
             height: 0,
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
-            custom_data: vec![
-                self.system.state.vec.x,
-                self.system.state.vec.y,
-                self.system.state.vec.z,
-                self.step_count as f64,
-            ],
+            custom_data: vec![v.x, v.y, v.z, self.step_count as f64],
             structured_data: Some(Box::new(snapshot)),
+            sonification,
         }
     }
 

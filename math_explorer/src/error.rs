@@ -1,6 +1,6 @@
 //! Unified feature-gated error re-exports across all OxidizeMath domains.
 
-pub use math_commons::error::{MathError, MathResult};
+pub use math_commons::error::{FitError, MathError, MathResult};
 
 #[cfg(feature = "ai")]
 pub use domain_ai::error::AIError;
