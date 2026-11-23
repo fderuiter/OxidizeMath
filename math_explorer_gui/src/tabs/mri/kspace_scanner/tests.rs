@@ -298,15 +298,15 @@ fn test_three_starter_presets_and_plot_raster_exports() {
     for (title, preset_json) in [
         (
             "Keyhole Contrast Preservation",
-            crate::starter_gallery::PRESET_MRI_KSPACE_KEYHOLE,
+            super::theory::PRESET_MRI_KSPACE_KEYHOLE,
         ),
         (
             "Cartesian 2x Nyquist Ghosting",
-            crate::starter_gallery::PRESET_MRI_KSPACE_NYQUIST_GHOSTING,
+            super::theory::PRESET_MRI_KSPACE_NYQUIST_GHOSTING,
         ),
         (
             "Lorenz Chaotic Compressed Sensing",
-            crate::starter_gallery::PRESET_MRI_KSPACE_LORENZ_CS,
+            super::theory::PRESET_MRI_KSPACE_LORENZ_CS,
         ),
     ] {
         tab.framework

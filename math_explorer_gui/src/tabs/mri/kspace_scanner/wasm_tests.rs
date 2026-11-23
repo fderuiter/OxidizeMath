@@ -35,7 +35,7 @@ fn wasm_mri_kspace_full_reconstruction_and_lorenz_preset() {
     assert_eq!(tool.recon.sampled_bins, KSPACE_LEN);
     assert!(tool.recon.normalized_l2_error < 1e-5);
 
-    tool.import_preset_json(crate::starter_gallery::PRESET_MRI_KSPACE_LORENZ_CS)
+    tool.import_preset_json(super::theory::PRESET_MRI_KSPACE_LORENZ_CS)
         .expect("Lorenz compressed sensing preset should import on wasm32");
     assert!(tool.recon.sampled_bins > 0 && tool.recon.sampled_bins < KSPACE_LEN);
     assert!(tool.export_raster_image().is_some());

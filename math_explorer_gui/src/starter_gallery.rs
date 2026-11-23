@@ -344,42 +344,6 @@ pub const PRESET_MRI_BLOCH_RELAXATION: &str = r#"{
   }
 }"#;
 
-/// JSON preset envelope for MRI 2D k-Space Keyhole Contrast Preservation.
-pub const PRESET_MRI_KSPACE_KEYHOLE: &str = r#"{
-  "metadata": { "schema_version": "1.0", "title": "MRI 2D k-Space - Keyhole Contrast Preservation", "domain": "mri", "timestamp": "2026-11-21T00:00:00Z" },
-  "config": {
-    "tr_s": 1.8, "te_s": 0.065, "t1_scale": 1.0, "t2_scale": 1.0,
-    "phantom": "SheppLogan", "trajectory": "FullCartesian", "mask_filter": "Keyhole",
-    "brush_mode": "Erase", "brush_radius": 3, "cartesian_stride": 2, "radial_spokes": 24,
-    "spiral_turns": 14.0, "lorenz_steps": 1800, "lorenz_rho": 28.0,
-    "cutoff_radius": 10, "random_keep_ratio": 0.35, "rng_seed": 42, "turing_steps": 120
-  }
-}"#;
-
-/// JSON preset envelope for MRI 2D k-Space Cartesian 2x Nyquist Ghosting.
-pub const PRESET_MRI_KSPACE_NYQUIST_GHOSTING: &str = r#"{
-  "metadata": { "schema_version": "1.0", "title": "MRI 2D k-Space - Cartesian 2x Nyquist Ghosting", "domain": "mri", "timestamp": "2026-11-21T00:00:00Z" },
-  "config": {
-    "tr_s": 1.6, "te_s": 0.055, "t1_scale": 1.0, "t2_scale": 1.0,
-    "phantom": "SheppLogan", "trajectory": "CartesianLines", "mask_filter": "TrajectoryOnly",
-    "brush_mode": "Paint", "brush_radius": 2, "cartesian_stride": 2, "radial_spokes": 24,
-    "spiral_turns": 14.0, "lorenz_steps": 1800, "lorenz_rho": 28.0,
-    "cutoff_radius": 10, "random_keep_ratio": 0.35, "rng_seed": 42, "turing_steps": 120
-  }
-}"#;
-
-/// JSON preset envelope for MRI 2D k-Space Lorenz Chaotic Compressed Sensing on Turing Spots.
-pub const PRESET_MRI_KSPACE_LORENZ_CS: &str = r#"{
-  "metadata": { "schema_version": "1.0", "title": "MRI 2D k-Space - Lorenz Chaotic Compressed Sensing", "domain": "mri", "timestamp": "2026-11-21T00:00:00Z" },
-  "config": {
-    "tr_s": 2.0, "te_s": 0.08, "t1_scale": 1.0, "t2_scale": 1.0,
-    "phantom": "TuringMorphogenesis", "trajectory": "LorenzChaotic", "mask_filter": "TrajectoryOnly",
-    "brush_mode": "Erase", "brush_radius": 3, "cartesian_stride": 2, "radial_spokes": 24,
-    "spiral_turns": 14.0, "lorenz_steps": 2200, "lorenz_rho": 28.0,
-    "cutoff_radius": 10, "random_keep_ratio": 0.35, "rng_seed": 77, "turing_steps": 180
-  }
-}"#;
-
 /// JSON preset envelope for Favoritism Sibling Rivalry Strategy.
 pub const PRESET_FAVORITISM_SIBLING_RIVALRY: &str = r#"{
   "metadata": {
@@ -479,11 +443,19 @@ pub fn get_starter_cards_for_domain(
     cards
 }
 
+#[path = "starter_gallery/challenges.rs"]
+pub mod challenges;
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
-pub use root_host::show_starter_gallery_overlay;
+pub use challenges::{
+    challenge_matches_domain, find_challenge_metadata, get_challenge_cards_for_domain,
+    ChallengeCard, ChallengeMetadata, GallerySelection,
+};
 pub(crate) use root_host::{
     begin_root_starter_gallery_scope, flush_deferred_starter_galleries, try_defer_starter_gallery,
+};
+pub use root_host::{
+    show_starter_gallery_overlay, show_starter_gallery_with_challenges, StarterGalleryTab,
 };
 
 #[cfg(test)]
