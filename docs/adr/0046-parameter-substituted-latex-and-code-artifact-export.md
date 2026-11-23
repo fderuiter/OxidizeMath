@@ -1,4 +1,4 @@
-# ADR 0045: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
+# ADR 0046: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
 
 ## Status
 
