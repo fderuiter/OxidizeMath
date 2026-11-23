@@ -429,16 +429,32 @@ fn test_workspace_build_script_outputs_emit_rerun_directives() {
     let exe = std::env::current_exe().expect("current_exe should resolve");
     let build_root = locate_build_root(&exe);
 
-    if let Some(gui_output) =
-        find_latest_build_output(&build_root, "math_explorer_gui", "generated_tabs.rs")
+    if let Some(md_output) =
+        find_latest_build_output(&build_root, "markdown_tests", "generated_tests.rs")
     {
+        let md_rerun = parse_rerun_directives(&md_output);
+        for expected in ["build.rs", "../../Cargo.toml"] {
+            assert!(
+                md_rerun.contains(expected),
+                "markdown_tests output missing cargo:rerun-if-changed={expected}"
+            );
+        }
+    }
+
+    if let Some(gui_output) = find_latest_build_output(
+        &build_root,
+        "math_explorer_gui",
+        "traceability_manifest.json",
+    ) {
         let gui_rerun = parse_rerun_directives(&gui_output);
         for expected in [
-            "src/tabs",
-            "Cargo.toml",
+            "build.rs",
+            "build_snapshot.rs",
+            "src/tabs/mod.rs",
+            "../traceability.toml",
+            "../papers",
             "../crates/federated_registry/src",
             "../crates/oxidize_core/src",
-            "../math_explorer/src",
             "../crates/math_commons/src",
             "../crates/scientific_metadata/src",
             "../crates/diagnostics/src",
@@ -446,6 +462,19 @@ fn test_workspace_build_script_outputs_emit_rerun_directives() {
             assert!(
                 gui_rerun.contains(expected),
                 "math_explorer_gui output missing cargo:rerun-if-changed={expected}"
+            );
+        }
+        for excluded in [
+            "Cargo.toml",
+            "../crates/unified_verification/src",
+            "../crates/markdown_tests/src",
+            "../crates/verified_engine/src",
+            "../crates/verified_engine_macros/src",
+            "../apps/xtask/src",
+        ] {
+            assert!(
+                !gui_rerun.contains(excluded),
+                "math_explorer_gui output must not watch unrelated crate {excluded}"
             );
         }
     }
