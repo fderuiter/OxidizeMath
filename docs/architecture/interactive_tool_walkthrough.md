@@ -38,9 +38,12 @@ Follow these four steps to implement and register a new simulation tool.
 Create a new file in `math_explorer_gui/src/tabs/<domain>/<tool_name>.rs`. Define your model state struct with `Default`:
 
 ```rust,ignore
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::framework::InteractiveTool;
 use eframe::egui;
-use math_explorer_gui::framework::InteractiveTool;
-use scientific_metadata::theory::TheoryDescribable;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use std::collections::HashMap;
 
 pub struct HarmonicOscillatorTool {
     mass: f32,
@@ -65,27 +68,81 @@ impl Default for HarmonicOscillatorTool {
 
 ### Step 2: Implement the `TheoryDescribable` Trait
 
-Each tool must link to theoretical documentation. Implement `TheoryDescribable` on your tool struct:
+Each tool must expose verified theoretical descriptions, accessible phonetic descriptions, literature citations, and parameter metadata via [`TheoryDescribable`](../../crates/scientific_metadata/src/theory.rs):
 
 ```rust,ignore
 impl TheoryDescribable for HarmonicOscillatorTool {
-    fn theory_title(&self) -> &'static str {
-        "Damped Harmonic Oscillator"
+    fn theory_description(&self) -> String {
+        format!(
+            "Second-order linear damped harmonic oscillator with mass m = {:.2} kg, spring stiffness k = {:.2} N/m, and viscous damping c = {:.2} N·s/m.",
+            self.mass, self.spring_k, self.damping
+        )
     }
 
-    fn theory_description(&self) -> &'static str {
-        "Models standard second-order linear differential equation with damping and Hooke's restoring force."
+    fn phonetic_description(&self) -> String {
+        "Damped harmonic oscillator governed by Hooke's restoring force and linear viscous damping"
+            .to_string()
     }
 
-    fn theory_equations(&self) -> &'static [&'static str] {
-        &["m * x''(t) + c * x'(t) + k * x(t) = 0"]
+    fn theory_citation(&self) -> String {
+        "Landau, L. D., & Lifshitz, E. M. (1976). Mechanics (3rd ed.). Butterworth-Heinemann."
+            .to_string()
+    }
+
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        map.insert("mass".to_string(), "Inertial mass m (kg)".to_string());
+        map.insert(
+            "spring_k".to_string(),
+            "Hookean spring stiffness k (N/m)".to_string(),
+        );
+        map.insert(
+            "damping".to_string(),
+            "Linear viscous damping coefficient c (N·s/m)".to_string(),
+        );
+        map
+    }
+
+    fn theory_latex_equation(&self) -> Option<String> {
+        Some(r"m \ddot{x}(t) + c \dot{x}(t) + k x(t) = 0".to_string())
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        let mut params = HashMap::new();
+        params.insert(
+            "mass".to_string(),
+            ParameterConstraint {
+                min: 0.1,
+                max: 10.0,
+                step: 0.1,
+            },
+        );
+        params.insert(
+            "spring_k".to_string(),
+            ParameterConstraint {
+                min: 0.1,
+                max: 50.0,
+                step: 0.5,
+            },
+        );
+        params.insert(
+            "damping".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 2.0,
+                step: 0.05,
+            },
+        );
+        params
     }
 }
 ```
 
 ### Step 3: Implement the `InteractiveTool` Trait
 
-Implement `InteractiveTool`. Provide `name()`, `domain()`, `theory()`, validated state serialization (`save_state()` and `try_load_state()` using `#[serde(deny_unknown_fields)]`), parameter controls in `show_ui()`, and canvas rendering in `draw()`:
+Implement `InteractiveTool`. Provide `name()`, `domain()`, `theory()`, validated state serialization (`save_state()` and `try_load_state()` using `#[serde(deny_unknown_fields)]`), parameter controls in `show_ui()`, and canvas rendering in `draw()`.
+
+Note that the display frame loop invokes `show()` -> `show_ui()` and `draw()` (never `step_simulation()`). Interactive controls advance state inside `show_ui()` (or background workers), whereas `step_simulation()` is an optional offscreen hook invoked **only** during multi-frame GIF animation export (`InteractiveTool::sample_animation_frames` and raster GIF export), after which the framework restores the tool's saved state:
 
 ```rust,ignore
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -94,6 +151,15 @@ struct HarmonicOscillatorState {
     mass: f32,
     spring_k: f32,
     damping: f32,
+}
+
+impl HarmonicOscillatorTool {
+    fn advance_step(&mut self, dt: f32) {
+        let acceleration =
+            (-self.spring_k * self.position - self.damping * self.velocity) / self.mass;
+        self.velocity += acceleration * dt;
+        self.position += self.velocity * dt;
+    }
 }
 
 impl InteractiveTool for HarmonicOscillatorTool {
@@ -144,10 +210,15 @@ impl InteractiveTool for HarmonicOscillatorTool {
         ui.add(egui::Slider::new(&mut self.spring_k, 0.1..=50.0).text("Spring Constant k"));
         ui.add(egui::Slider::new(&mut self.damping, 0.0..=2.0).text("Damping c"));
 
-        if ui.button("Reset Position").clicked() {
-            self.position = 1.0;
-            self.velocity = 0.0;
-        }
+        ui.horizontal(|ui| {
+            if ui.button("Step").clicked() {
+                self.advance_step(0.05);
+            }
+            if ui.button("Reset Position").clicked() {
+                self.position = 1.0;
+                self.velocity = 0.0;
+            }
+        });
     }
 
     fn draw(&mut self, _ui: &mut egui::Ui, response: &egui::Response, painter: &egui::Painter) {
@@ -160,11 +231,9 @@ impl InteractiveTool for HarmonicOscillatorTool {
         painter.circle_filled(bob_pos, 15.0, egui::Color32::from_rgb(50, 150, 250));
     }
 
+    /// Invoked exclusively during offscreen multi-frame GIF animation export (`sample_animation_frames`).
     fn step_simulation(&mut self) {
-        let dt = 0.016;
-        let acceleration = (-self.spring_k * self.position - self.damping * self.velocity) / self.mass;
-        self.velocity += acceleration * dt;
-        self.position += self.velocity * dt;
+        self.advance_step(0.05);
     }
 }
 ```
@@ -191,7 +260,7 @@ const STARTER_PRESET_JSON: &str = r#"{
 }"#;
 
 inventory::submit! {
-    math_explorer_gui::framework::ToolMetadata {
+    crate::framework::ToolMetadata {
         id: "HarmonicOscillatorTool",
         display_name: "Harmonic Oscillator",
         domain: "physics",
@@ -201,7 +270,7 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    math_explorer_gui::starter_gallery::StarterPresetMetadata {
+    crate::starter_gallery::StarterPresetMetadata {
         id: "harmonic_oscillator_starter",
         title: "Underdamped Harmonic Oscillator",
         description: "m·x'' + c·x' + k·x = 0: Damped Hookean spring-mass oscillation.",
@@ -214,7 +283,7 @@ inventory::submit! {
 }
 ```
 
-Then register the module inside `math_explorer_gui/src/tabs/mod.rs` (or your domain module).
+Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing domain tab's `math_explorer_gui/src/tabs/<domain>/mod.rs` so the module compiles and registers with `inventory` (only new top-level `ExplorerTab` domains declare `pub mod <domain>;` in `math_explorer_gui/src/tabs/mod.rs` and submit a `TabDescriptor` via `inventory::submit!`).
 
 ## Event Handling Hooks
 

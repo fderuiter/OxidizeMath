@@ -42,6 +42,8 @@ pub mod mri;
 pub mod neuroscience;
 #[cfg(feature = "pure_math")]
 pub mod number_theory;
+#[cfg(feature = "applied")]
+pub mod paradox_lab;
 #[cfg(feature = "physics")]
 pub mod quantum;
 #[cfg(feature = "physics")]
@@ -175,6 +177,7 @@ pub trait ExplorerTab {
             | "Clinical Trials"
             | "Favoritism"
             | "Game Theory"
+            | "Paradox Lab"
             | "Traceability Portal" => "Applied Math",
 
             "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
@@ -259,6 +262,7 @@ pub trait ExplorerTab {
             "MRI Physics" => "mri",
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
+            "Paradox Lab" => "paradox_lab",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",
@@ -382,7 +386,7 @@ mod tests {
             feature = "epidemiology",
             feature = "physics"
         ))]
-        assert_eq!(tabs.len(), 23, "All 23 GUI domain tabs must register");
+        assert_eq!(tabs.len(), 24, "All 24 GUI domain tabs must register");
     }
 
     #[test]

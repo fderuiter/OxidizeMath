@@ -79,20 +79,21 @@ classDiagram
 
 ##  Contributing
 
-Follow these steps to add a new visualization module (e.g., for `fluid_dynamics`).
+Follow these steps to add a new visualization tab or simulation tool to `math_explorer_gui`.
 
-### 1. Create the Module
-You can create a single file `src/tabs/fluid_dynamics.rs` or a directory `src/tabs/fluid_dynamics/mod.rs` for complex modules.
+### 1. Create the Tab Module
+Create either a single file `src/tabs/<tab_name>.rs` or a directory `src/tabs/<tab_name>/mod.rs` implementing `ExplorerTab` and `Default`:
 
 **Example `src/tabs/fluid_dynamics.rs`:**
 
-```text
+```rust,ignore
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 #[derive(Default)]
 pub struct FluidDynamicsTab {
-    // State goes here
     velocity: f64,
 }
 
@@ -113,7 +114,7 @@ impl ExplorerTab for FluidDynamicsTab {
 ### 2. Register the Module
 In `src/tabs/mod.rs`, declare your feature-gated module:
 
-```text
+```rust,ignore
 #[cfg(feature = "physics")]
 pub mod fluid_dynamics;
 ```
@@ -121,7 +122,7 @@ pub mod fluid_dynamics;
 ### 3. Submit to Inventory
 In `src/tabs/fluid_dynamics.rs` (or `mod.rs`), register a static [`TabDescriptor`](src/tabs/mod.rs):
 
-```text
+```rust,ignore
 inventory::submit! {
     TabDescriptor {
         id: "fluid_dynamics",
@@ -130,6 +131,9 @@ inventory::submit! {
     }
 }
 ```
+
+### 4. Adding Interactive Tools Within a Domain Tab
+Most multi-tool domain tabs wrap `SimulationFramework::new("<domain>")` and discover individual tools via `inventory::submit!`. To add a new simulation tool (implementing `InteractiveTool` and `TheoryDescribable`) inside an existing domain folder (`src/tabs/<domain>/<tool>.rs`), declare `pub mod <tool>;` in `src/tabs/<domain>/mod.rs` and follow the step-by-step [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_walkthrough.md).
 
 ### Design Principles
 

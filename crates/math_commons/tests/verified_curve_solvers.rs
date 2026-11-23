@@ -47,8 +47,24 @@ fn test_curve_fitting_and_poi_solvers_zero_heap_allocations() {
 
     VerifiedEngine::run_verified(|| {
         verify_zero_alloc_fits(&xs, &ys_sin, &poly_pts, &exp_pts, &logistic_pts);
+        verify_zero_alloc_shifted_calendar_fits();
         verify_zero_alloc_poi(&xs, &ys_sin, &poly_pts, &logistic_pts);
     });
+}
+
+fn verify_zero_alloc_shifted_calendar_fits() {
+    let mut cal_exp = [[0.0_f64; 2]; 32];
+    let mut cal_sin = [[0.0_f64; 2]; 32];
+    for i in 0..32 {
+        let x = 1880.0 + (i as f64) * 4.0;
+        cal_exp[i] = [x, 2.0 * (-0.35 * (x - 1880.0)).exp()];
+        cal_sin[i] = [x, 1.4 * (0.12 * (x - 1880.0) + 0.7).sin() + 0.35];
+    }
+    let exp_fit = fit_model(&cal_exp, FitModel::Exponential, false).expect("shifted exp");
+    assert!(exp_fit.r_squared > 0.9999);
+    assert!((exp_fit.eval(1880.0) - 2.0).abs() < 1e-6);
+    let sin_fit = fit_model(&cal_sin, FitModel::Sinusoidal, false).expect("shifted sin");
+    assert!(sin_fit.r_squared > 0.999);
 }
 
 fn verify_zero_alloc_fits(
