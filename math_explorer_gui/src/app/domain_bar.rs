@@ -253,6 +253,11 @@ pub fn render_domain_switcher_bar(
     ctx: &egui::Context,
     ui: &mut egui::Ui,
 ) {
+    let nav_id = ui.unique_id();
+    ctx.accesskit_node_builder(nav_id, |builder| {
+        builder.set_role(egui::accesskit::Role::Navigation);
+        builder.set_label("Academic Domains");
+    });
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
 
@@ -356,14 +361,13 @@ fn render_active_path_label(
     if let Some(active_dom) = active_domain {
         if ui.available_width() > 200.0 {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Active: {} › {}",
-                        active_dom.name(),
-                        active_tab_name
-                    ))
-                    .weak(),
-                );
+                let text = format!("Active: {} › {}", active_dom.name(), active_tab_name);
+                let resp = ui.label(egui::RichText::new(&text).weak());
+                ui.ctx().accesskit_node_builder(resp.id, |builder| {
+                    builder.set_role(egui::accesskit::Role::Heading);
+                    builder.set_level(1);
+                    builder.set_label(text);
+                });
             });
         }
     }

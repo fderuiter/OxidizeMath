@@ -60,6 +60,53 @@ mod tests {
             canvas_tag.contains("tabindex=\"0\""),
             "Canvas tag must contain tabindex=\"0\", found: {canvas_tag}"
         );
+        assert!(
+            !canvas_tag.contains("role=\"application\""),
+            "Canvas tag must omit role=\"application\" so AccessKit DOM landmarks are discoverable: {canvas_tag}"
+        );
+    }
+
+    #[test]
+    fn test_accesskit_dom_root_and_speech_opt_in_contracts() {
+        const RELOAD_JS: &str = include_str!("../reload.js");
+        const MAIN_RS: &str = include_str!("main.rs");
+        const WEBGL_RECOVERY_RS: &str = include_str!("webgl_recovery.rs");
+        const GUI_CARGO_TOML: &str = include_str!("../Cargo.toml");
+        const ROOT_CARGO_TOML: &str = include_str!("../../Cargo.toml");
+
+        let canvas_pos = INDEX_HTML
+            .find("id=\"the_canvas_id\"")
+            .expect("#the_canvas_id must exist");
+        let ak_pos = INDEX_HTML
+            .find("id=\"accesskit_dom_root\"")
+            .expect("#accesskit_dom_root must exist beside #the_canvas_id");
+        assert!(
+            canvas_pos < ak_pos,
+            "#accesskit_dom_root must be mounted beside and after #the_canvas_id"
+        );
+        assert!(
+            INDEX_HTML.contains(".accesskit-dom-overlay")
+                && INDEX_HTML.contains("pointer-events: none;"),
+            "index.html must style .accesskit-dom-overlay with pointer-events: none"
+        );
+        assert!(
+            RELOAD_JS.contains(
+                "announce('Math Explorer ready. Interactive simulation workspace loaded.', 'polite')"
+            ),
+            "reload.js markBootComplete must announce startup readiness once to #aria-live-polite"
+        );
+        assert!(
+            MAIN_RS.contains("attach_web_runner_accesskit(&runner)")
+                && WEBGL_RECOVERY_RS.contains("attach_web_runner_accesskit(&new_runner)")
+                && WEBGL_RECOVERY_RS.contains("clear_accesskit_dom_root()"),
+            "main.rs and webgl_recovery.rs must wire AccessKit DOM sync and context-loss teardown"
+        );
+        assert!(
+            !GUI_CARGO_TOML.contains("\"web_screen_reader\"")
+                && !ROOT_CARGO_TOML.contains("\"web_screen_reader\"")
+                && ROOT_CARGO_TOML.contains("eframe = { path = \"patches/eframe\" }"),
+            "Cargo manifests must disable default web_screen_reader and patch eframe via patches/eframe"
+        );
     }
 
     #[test]

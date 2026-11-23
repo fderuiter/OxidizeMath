@@ -18,11 +18,25 @@ fn reset_startup_dom() -> (web_sys::Window, web_sys::Document) {
         let _ = root.remove_attribute("data-boot-failed");
     }
     let body = doc.body().expect("document body must exist");
-    for id in ["loading_indicator", "the_canvas_id", "error_container"] {
+    for id in [
+        "loading_indicator",
+        "the_canvas_id",
+        "accesskit_dom_root",
+        "error_container",
+        "aria-live-polite",
+    ] {
         if let Some(el) = doc.get_element_by_id(id) {
             el.remove();
         }
     }
+
+    let polite = doc.create_element("div").unwrap();
+    polite.set_id("aria-live-polite");
+    let _ = polite.set_attribute("aria-live", "polite");
+    polite.set_inner_html(
+        "<span id=\"aria-live-polite-slot-0\"></span><span id=\"aria-live-polite-slot-1\"></span>",
+    );
+    let _ = body.append_child(&polite);
 
     let loading = doc.create_element("div").unwrap();
     loading.set_id("loading_indicator");
@@ -33,6 +47,10 @@ fn reset_startup_dom() -> (web_sys::Window, web_sys::Document) {
     canvas.set_id("the_canvas_id");
     let _ = canvas.set_attribute("tabindex", "0");
     let _ = body.append_child(&canvas);
+
+    let ak_root = doc.create_element("div").unwrap();
+    ak_root.set_id("accesskit_dom_root");
+    let _ = body.append_child(&ak_root);
 
     let err_box = doc.create_element("div").unwrap();
     err_box.set_id("error_container");
@@ -306,4 +324,46 @@ fn wasm_lenia_studio_stepping_exports_and_url_roundtrip() {
         .position(|t| t.name() == "Morphogenesis")
         .unwrap();
     assert_eq!(restored.tabs[bio_idx].active_tool_id(), Some("LeniaTool"));
+}
+
+#[wasm_bindgen_test]
+fn wasm_finish_startup_announces_ready_once_and_context_loss_clears_accesskit_dom() {
+    use crate::accessibility::READY_ANNOUNCEMENT;
+
+    let (window, doc) = reset_startup_dom();
+    doc.get_element_by_id("aria-live-polite-slot-1")
+        .unwrap()
+        .set_text_content(Some(READY_ANNOUNCEMENT));
+    let ak_root = doc.get_element_by_id("accesskit_dom_root").unwrap();
+    ak_root.set_inner_html("<button data-ak-id=\"1\">Test</button>");
+
+    let canvas = doc
+        .get_element_by_id("the_canvas_id")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlCanvasElement>()
+        .unwrap();
+    let runner = eframe::WebRunner::new();
+    finish_wasm_startup(&doc, Some(&window), &canvas, runner, Ok(()));
+
+    let s0 = doc
+        .get_element_by_id("aria-live-polite-slot-0")
+        .and_then(|el| el.text_content())
+        .unwrap_or_default();
+    let s1 = doc
+        .get_element_by_id("aria-live-polite-slot-1")
+        .and_then(|el| el.text_content())
+        .unwrap_or_default();
+    assert_eq!(s0, "");
+    assert_eq!(s1, READY_ANNOUNCEMENT);
+
+    let init = web_sys::EventInit::new();
+    init.set_cancelable(true);
+    let lost_event = web_sys::Event::new_with_event_init_dict("webglcontextlost", &init).unwrap();
+    let _ = canvas.dispatch_event(&lost_event).unwrap();
+    assert_eq!(
+        ak_root.child_element_count(),
+        0,
+        "webglcontextlost must clear #accesskit_dom_root"
+    );
+    canvas.remove();
 }

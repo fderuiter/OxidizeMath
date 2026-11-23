@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use eframe::egui;
+use eframe::egui::{self, WidgetText};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct CountingWidgetText<'a>(&'a str, &'a AtomicUsize);
@@ -61,6 +61,14 @@ fn test_announcement_dispatch_on_native() {
         )
     );
 
+    clear_test_announcements();
+    super::live_region::reset_startup_ready_flag();
+    announce_startup_ready_once();
+    announce_startup_ready_once();
+    assert_eq!(
+        all_announcements(),
+        vec![(READY_ANNOUNCEMENT.to_string(), "polite".to_string())]
+    );
     clear_test_announcements();
     assert!(all_announcements().is_empty());
     assert_eq!(with_live_region(|r| r.active_slot), 0);
@@ -154,6 +162,188 @@ fn test_accessible_hover_text_focus_escape_preserves_focus() {
     assert!(all_announcements().is_empty());
 }
 
+#[test]
+fn test_speech_narration_opt_in_volume_and_cancel() {
+    super::speech::reset_test_speech_state();
+    assert!(!is_speech_enabled());
+    speak_if_enabled("Silent while opt-in is false");
+    assert!(super::speech::test_speech_log().0.is_empty());
+
+    sync_speech_settings(true, 0.65);
+    assert!(is_speech_enabled());
+    assert!((speech_volume() - 0.65).abs() < 1e-6);
+
+    speak_if_enabled("Active narration");
+    let (utterances, cancels) = super::speech::test_speech_log();
+    assert_eq!(utterances.len(), 1);
+    assert_eq!(utterances[0].0, "Active narration");
+    assert!((utterances[0].1 - 0.65).abs() < 1e-6);
+    assert_eq!(cancels, 0);
+
+    stop_speech();
+    assert_eq!(super::speech::test_speech_log().1, 1);
+    assert!(super::speech::take_frame_speech_suppression());
+    assert!(!super::speech::take_frame_speech_suppression());
+
+    sync_speech_settings(false, 0.65);
+    assert!(!is_speech_enabled());
+    assert_eq!(super::speech::test_speech_log().1, 2);
+}
+
+fn summarize_projected_store(
+    store: &AccessKitTreeStore,
+    screen: egui::Rect,
+) -> (bool, bool, bool, bool) {
+    let (mut landmark, mut heading, mut control, mut vis) = (false, false, false, false);
+    for nid in store.node_ids() {
+        let Some(spec) = store.build_dom_spec(nid, screen, 1.0) else {
+            continue;
+        };
+        landmark |= matches!(spec.role, Some("region" | "navigation" | "main"));
+        heading |= spec.role == Some("heading");
+        control |= matches!(spec.tag, "button" | "input" | "textarea")
+            || matches!(
+                spec.role,
+                Some("checkbox" | "radio" | "separator" | "slider" | "spinbutton")
+            );
+        vis |= matches!(spec.role, Some("graphics-document" | "img")) || spec.tag == "figure";
+    }
+    (landmark, heading, control, vis)
+}
+
+#[test]
+fn test_accesskit_tree_store_projects_all_tabs_and_tools_landmarks_headings_and_controls() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let mut app = crate::app::MathExplorerApp::default();
+    let mut frame = eframe::Frame::_new_kittest();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 900.0));
+    let mut store = AccessKitTreeStore::new();
+    let mut total_visualizations = 0usize;
+
+    for tab_idx in 0..app.tabs.len() {
+        app.selected_tab = tab_idx;
+        if !app.pane_tabs.is_empty() {
+            app.pane_tabs[0] = tab_idx;
+        }
+        let tool_ids: Vec<&'static str> = app.tabs[tab_idx]
+            .framework()
+            .map(|fw| fw.available_tools.iter().map(|m| m.id).collect())
+            .unwrap_or_else(|| vec![""]);
+
+        for tool_id in tool_ids {
+            if !tool_id.is_empty() {
+                let _ = app.tabs[tab_idx].select_tool_by_name(tool_id);
+            }
+            let out = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(screen),
+                    ..Default::default()
+                },
+                |c| eframe::App::update(&mut app, c, &mut frame),
+            );
+            let ak = out.platform_output.accesskit_update.as_ref().unwrap();
+            store.apply_update(ak);
+            assert!(store.root_id().is_some());
+            let (has_landmark, has_heading, has_control, has_vis) =
+                summarize_projected_store(&store, screen);
+            total_visualizations += usize::from(has_vis);
+            assert!(
+                has_landmark && has_heading && has_control,
+                "Tab {} tool '{tool_id}' missing landmarks/headings/controls",
+                app.tabs[tab_idx].name()
+            );
+        }
+    }
+    assert!(total_visualizations >= 20);
+    store.clear();
+    assert!(store.is_empty());
+}
+
+struct DummyTheory;
+
+impl math_explorer::scientific_metadata::theory::TheoryDescribable for DummyTheory {
+    fn theory_description(&self) -> String {
+        "Logistic map r*x*(1-x)".to_string()
+    }
+
+    fn phonetic_description(&self) -> String {
+        "Logistic map r times x times 1 minus x".to_string()
+    }
+
+    fn theory_citation(&self) -> String {
+        "May (1976)".to_string()
+    }
+
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+#[test]
+fn test_speech_state_roundtrip_and_theory_hover_silence_by_default() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    super::speech::reset_test_speech_state();
+    let mut app = crate::app::MathExplorerApp::default();
+    assert!(!app.speech_enabled);
+    assert!((app.speech_volume - 1.0).abs() < 1e-6);
+    assert!(!is_speech_enabled());
+
+    let ctx = egui::Context::default();
+    let screen_rect = Some(egui::Rect::from_min_size(
+        egui::Pos2::ZERO,
+        egui::vec2(800.0, 600.0),
+    ));
+    let mut btn_id = egui::Id::NULL;
+    for focus_now in [false, true] {
+        if focus_now {
+            ctx.memory_mut(|m| m.request_focus(btn_id));
+        }
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect,
+                focused: focus_now,
+                ..Default::default()
+            },
+            |c| {
+                assert!(!c.options(|o| o.screen_reader));
+                egui::CentralPanel::default().show(c, |ui| {
+                    btn_id = ui
+                        .button("📖 Theory")
+                        .accessible_theory_hover(&DummyTheory)
+                        .id;
+                });
+            },
+        );
+    }
+    assert!(
+        super::speech::test_speech_log().0.is_empty(),
+        "Theory descriptions must stay silent when Speech Narration is disabled"
+    );
+
+    app.speech_enabled = true;
+    app.speech_volume = 0.42;
+    let saved = app.get_app_state();
+    let mut restored = crate::app::MathExplorerApp::default();
+    saved.apply(&mut restored);
+    assert!(restored.speech_enabled);
+    assert!((restored.speech_volume - 0.42).abs() < 1e-6);
+    assert!(is_speech_enabled());
+    assert!((speech_volume() - 0.42).abs() < 1e-6);
+    super::speech::reset_test_speech_state();
+}
+
 #[cfg(target_arch = "wasm32")]
-#[path = "accessibility_wasm_tests.rs"]
-mod wasm_tests;
+mod wasm_tests {
+    use super::*;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn wasm_accessibility_root_reexports_operate_cleanly() {
+        clear_accesskit_dom_root();
+        let runner = eframe::WebRunner::new();
+        attach_web_runner_accesskit(&runner);
+        runner.destroy();
+    }
+}

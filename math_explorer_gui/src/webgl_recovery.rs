@@ -180,6 +180,7 @@ fn on_context_lost(event: &web_sys::Event, runtime_rc: &Rc<RefCell<RecoveryRunti
     if let Some(runner) = runner_to_destroy {
         runner.destroy();
     }
+    accessibility::clear_accesskit_dom_root();
 
     bind_download_button(&doc, runtime_rc);
     if !notify_js_begin_recovery(window.as_ref(), &envelope_json, &filename, storage_blocked) {
@@ -197,6 +198,7 @@ fn spawn_runner_restart(
 ) {
     wasm_bindgen_futures::spawn_local(async move {
         let new_runner = eframe::WebRunner::new();
+        accessibility::attach_web_runner_accesskit(&new_runner);
         let ctx_slot: Rc<RefCell<Option<eframe::egui::Context>>> = Rc::new(RefCell::new(None));
         let ctx_slot_init = Rc::clone(&ctx_slot);
 
@@ -205,11 +207,14 @@ fn spawn_runner_restart(
                 canvas,
                 eframe::WebOptions::default(),
                 Box::new(move |cc| {
-                    cc.egui_ctx.options_mut(|o| o.screen_reader = true);
+                    cc.egui_ctx.options_mut(|o| o.screen_reader = false);
                     let mut app = MathExplorerApp::new(cc);
                     if let Some(ref snap) = snapshot {
                         app.restore_recovery_snapshot(snap, &cc.egui_ctx);
                     }
+                    cc.egui_ctx
+                        .options_mut(|o| o.screen_reader = app.speech_enabled);
+                    accessibility::sync_speech_settings(app.speech_enabled, app.speech_volume);
                     *ctx_slot_init.borrow_mut() = Some(cc.egui_ctx.clone());
                     Ok(Box::new(app))
                 }),

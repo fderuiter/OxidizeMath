@@ -61,7 +61,7 @@ where
 }
 
 pub fn collect_rs_files() -> Vec<std::path::PathBuf> {
-    crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git"])
+    crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git", "patches"])
 }
 
 pub fn parse_coverage(cov_json: &serde_json::Value) -> (f64, f64) {

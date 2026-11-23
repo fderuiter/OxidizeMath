@@ -816,6 +816,11 @@
                 canvas.style.display = 'none';
             }
 
+            const accesskitRoot = document.getElementById('accesskit_dom_root');
+            if (accesskitRoot) {
+                accesskitRoot.textContent = '';
+            }
+
             const errorContainer = document.getElementById('error_container');
             if (errorContainer) {
                 errorContainer.setAttribute('data-error-category', resolvedCategory);
@@ -965,7 +970,7 @@
     }
 
     function markBootComplete() {
-        if (bootFailed) {
+        if (bootFailed || bootCompleted) {
             return;
         }
         bootCompleted = true;
@@ -975,6 +980,7 @@
         if (root) {
             root.setAttribute('data-boot-initialized', 'true');
         }
+        announce('Math Explorer ready. Interactive simulation workspace loaded.', 'polite');
         registerAppShellServiceWorker();
     }
 
@@ -1125,6 +1131,9 @@
             return currentPhase;
         },
         markBootComplete: markBootComplete,
+        isBootCompleted: function () {
+            return bootCompleted;
+        },
         isBootFailed: isBootFailed,
         abortController: bootAbortController,
         getAbortSignal: function () {

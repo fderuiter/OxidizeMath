@@ -33,6 +33,12 @@ from playwright.sync_api import (
     expect,
     sync_playwright,
 )
+from playwright_a11y_checks import (
+    READY_ANNOUNCEMENT,
+    assert_accesskit_dom_semantics,
+    assert_ready_announced_once_in_dom,
+    run_accesskit_dom_speech_and_webgl_recovery_check,
+)
 
 CONTAINER_SAFE_ARGS = [
     "--no-sandbox",
@@ -496,6 +502,7 @@ def run_compressed_progress_and_aria_check(
             "WebAssembly download 50% complete.",
             "WebAssembly download 75% complete.",
             "Download complete. Compiling WebAssembly module.",
+            READY_ANNOUNCEMENT,
         ]
         indices: list[int] = []
         for milestone in required_sequence:
@@ -508,6 +515,11 @@ def run_compressed_progress_and_aria_check(
             raise AssertionError(
                 f"[{scenario}] Polite ARIA milestones announced out of order: {polite_log}"
             )
+        if polite_log.count(READY_ANNOUNCEMENT) != 1:
+            raise AssertionError(
+                f"[{scenario}] Expected single ready announcement {READY_ANNOUNCEMENT!r}, got {polite_log}"
+            )
+        assert_ready_announced_once_in_dom(page, scenario)
 
         assert_zero_csp_violations(scenario, csp_violations)
         if console_errors:
@@ -778,6 +790,12 @@ def run_happy_path_check(
         canvas = page.locator("#the_canvas_id")
         expect(canvas).to_be_visible()
         expect(canvas).to_be_focused()
+        if canvas.get_attribute("role") is not None:
+            raise AssertionError(
+                f"[happy_path] #the_canvas_id must omit role attribute, got {canvas.get_attribute('role')!r}"
+            )
+        assert_ready_announced_once_in_dom(page, "happy_path")
+        assert_accesskit_dom_semantics(page, "happy_path")
 
         box = canvas.bounding_box()
         if not box or box["width"] < 800 or box["height"] < 500:
@@ -1327,6 +1345,18 @@ def run_smoke_suite(
                     webgl_pool,
                     "happy_path",
                     lambda b: run_happy_path_check(b, base_url, csp, screenshot_dir),
+                )
+
+                run_with_crash_retry(
+                    webgl_pool,
+                    "a11y_dom_speech_and_webgl_recovery",
+                    lambda b: run_accesskit_dom_speech_and_webgl_recovery_check(
+                        b,
+                        base_url,
+                        attach_csp_observer,
+                        assert_zero_csp_violations,
+                        screenshot_dir,
+                    ),
                 )
 
                 run_with_crash_retry(

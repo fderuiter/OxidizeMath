@@ -66,6 +66,7 @@ fn test_collect_rs_files_and_unverified_modules() {
         assert!(f.extension().and_then(|s| s.to_str()) == Some("rs"));
         let p_str = crate::whitelist::lossy_slash_path(f);
         assert!(!p_str.contains("/target/"));
+        assert!(!p_str.contains("patches/"));
         if p_str.contains("egui_plot/src/file_io.rs") {
             saw_egui_plot = true;
         }

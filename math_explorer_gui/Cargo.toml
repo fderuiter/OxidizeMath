@@ -61,7 +61,7 @@ physics = ["math_explorer/physics", "math_explorer/ai", "math_explorer/biology",
 
 [dependencies]
 federated_registry = { path = "../crates/federated_registry" }
-eframe = { workspace = true }
+eframe = { workspace = true, default-features = false }
 egui_plot = { version = "0.34.1", features = ["serde"] }
 nalgebra = { workspace = true }
 oxidize_core = { path = "../crates/oxidize_core" }
@@ -101,17 +101,25 @@ web-sys = { workspace = true, features = [
     "BiquadFilterType",
     "CssStyleDeclaration",
     "Document",
+    "DomRect",
     "DynamicsCompressorNode",
     "Element",
     "ErrorEvent",
     "Event",
     "EventInit",
+    "EventTarget",
+    "FocusEvent",
     "GainNode",
     "History",
     "HtmlCanvasElement",
     "HtmlElement",
+    "HtmlInputElement",
+    "HtmlTextAreaElement",
+    "KeyboardEvent",
+    "KeyboardEventInit",
     "Location",
     "MediaQueryList",
+    "MouseEvent",
     "Node",
     "NodeList",
     "OscillatorNode",
@@ -119,6 +127,8 @@ web-sys = { workspace = true, features = [
     "PeriodicWave",
     "PeriodicWaveOptions",
     "Response",
+    "SpeechSynthesis",
+    "SpeechSynthesisUtterance",
     "StereoPannerNode",
     "Storage",
     "Window",

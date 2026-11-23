@@ -348,6 +348,10 @@ mod tests {
             "egui_plot/src/file_io.rs",
             "egui_plot/src/export.rs",
             "egui_plot/src/export_modal.rs",
+            "math_explorer_gui/src/main.rs",
+            "math_explorer_gui/src/accessibility/mod.rs",
+            "math_explorer_gui/src/accessibility/live_region.rs",
+            "math_explorer_gui/src/accessibility/speech.rs",
         ] {
             let path = ws_root.join(rel);
             let src = fs::read_to_string(&path).expect("egui_plot source must be readable");

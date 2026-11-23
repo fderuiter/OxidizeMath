@@ -45,6 +45,10 @@ fn default_quad_split_ratios() -> (f32, f32) {
     (0.5, 0.5)
 }
 
+fn default_speech_volume() -> f32 {
+    crate::accessibility::DEFAULT_SPEECH_VOLUME
+}
+
 pub(super) fn has_frame_input(ctx: &egui::Context) -> bool {
     ctx.input(|i| {
         i.pointer.any_down()
@@ -118,6 +122,10 @@ pub struct AppState {
     pub show_diagnostics_panel: bool,
     #[serde(default)]
     pub theme: ThemeMode,
+    #[serde(default)]
+    pub speech_enabled: bool,
+    #[serde(default = "default_speech_volume")]
+    pub speech_volume: f32,
     pub tab_states: HashMap<String, SharedTabJson>,
     #[serde(default)]
     pub split_layout_mode: SplitLayoutMode,
@@ -154,6 +162,8 @@ impl Default for AppState {
             show_errors: true,
             show_diagnostics_panel: false,
             theme: ThemeMode::Dark,
+            speech_enabled: false,
+            speech_volume: crate::accessibility::DEFAULT_SPEECH_VOLUME,
             tab_states: HashMap::new(),
             split_layout_mode: SplitLayoutMode::Single,
             secondary_tab: 1,
@@ -216,6 +226,8 @@ impl AppState {
             show_errors: app.show_errors,
             show_diagnostics_panel: app.show_diagnostics_panel,
             theme: app.theme,
+            speech_enabled: app.speech_enabled,
+            speech_volume: super::speech_prefs::clamp_speech_volume(app.speech_volume),
             tab_states,
             split_layout_mode,
             secondary_tab: app.secondary_tab,
@@ -263,6 +275,9 @@ impl AppState {
         app.show_errors = self.show_errors;
         app.show_diagnostics_panel = self.show_diagnostics_panel;
         app.theme = self.theme;
+        app.speech_enabled = self.speech_enabled;
+        app.speech_volume = super::speech_prefs::clamp_speech_volume(self.speech_volume);
+        crate::accessibility::sync_speech_settings(app.speech_enabled, app.speech_volume);
         app.split_layout_mode = self.split_layout_mode;
         app.split_ratio = self.split_ratio.clamp(0.20, 0.80);
         app.quad_split_ratios = (

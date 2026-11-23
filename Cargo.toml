@@ -21,6 +21,7 @@ members = [
     "crates/unified_verification",
     "egui_plot"
 ]
+exclude = ["patches/eframe"]
 resolver = "2"
 
 [workspace.package]
@@ -42,7 +43,7 @@ arboard = "3.4"
 chrono = "0.4"
 console_error_panic_hook = "0.1.7"
 dashu = { version = "0.4.4", features = ["num-traits_v02"] }
-eframe = "0.33.3"
+eframe = { version = "0.33.3", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 futures = "0.3"
 getrandom = { version = "0.2.17", features = ["js"] }
 inventory = "0.3.24"
@@ -78,6 +79,7 @@ web-sys = { version = "0.3.107", features = ["Window", "Document", "History", "L
 
 
 [patch.crates-io]
+eframe = { path = "patches/eframe" }
 egui_plot = { path = "egui_plot" }
 
 [workspace.dependencies.criterion]

@@ -89,9 +89,17 @@ export default function mathExplorerInitializer() {
         }
     }
 
+    function isStartupSettledOrFailed() {
+        if (isStartupFailed()) {
+            return true;
+        }
+        const boot = typeof window !== 'undefined' ? window.__mathExplorerBoot : null;
+        return Boolean(boot && typeof boot.isBootCompleted === 'function' && boot.isBootCompleted());
+    }
+
     function drainNextPoliteAnnouncement() {
         politeTimerId = null;
-        if (isStartupFailed()) {
+        if (isStartupSettledOrFailed()) {
             pendingPoliteMessages = [];
             return;
         }
@@ -112,7 +120,7 @@ export default function mathExplorerInitializer() {
         if (!message) {
             return;
         }
-        if (isStartupFailed()) {
+        if (isStartupSettledOrFailed()) {
             clearPendingPoliteAnnouncements();
             return;
         }

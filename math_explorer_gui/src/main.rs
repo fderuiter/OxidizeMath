@@ -262,6 +262,7 @@ fn finish_wasm_startup(
         Ok(()) => {
             mark_boot_initialized(doc);
             notify_js_boot_complete(window);
+            let _ = accessibility::announce_startup_ready_once();
 
             if let Some(loading) = doc.get_element_by_id("loading_indicator") {
                 let _ = loading.set_attribute("aria-busy", "false");
@@ -333,6 +334,7 @@ fn main() {
         };
 
         let runner = eframe::WebRunner::new();
+        accessibility::attach_web_runner_accesskit(&runner);
         let web_options = eframe::WebOptions::default();
 
         let start_res = runner
@@ -340,8 +342,11 @@ fn main() {
                 canvas.clone(),
                 web_options,
                 Box::new(|cc| {
-                    cc.egui_ctx.options_mut(|o| o.screen_reader = true);
-                    Ok(Box::new(MathExplorerApp::new(cc)))
+                    cc.egui_ctx.options_mut(|o| o.screen_reader = false);
+                    let app = MathExplorerApp::new(cc);
+                    cc.egui_ctx
+                        .options_mut(|o| o.screen_reader = app.speech_enabled);
+                    Ok(Box::new(app))
                 }),
             )
             .await;

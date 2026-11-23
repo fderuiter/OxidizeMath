@@ -57,6 +57,30 @@
             height: 100%;
         }
 
+        .accesskit-dom-overlay {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 2;
+        }
+
+        .accesskit-dom-overlay * {
+            position: absolute;
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: transparent;
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
         .sr-only {
             position: absolute;
             width: 1px;
@@ -1194,8 +1218,9 @@
         <p id="webgl_recovery_subtitle" class="loading-subtitle">Waiting for your browser to restore WebGL rendering. Your workspace is preserved.</p>
     </div>
 
-    <canvas id="the_canvas_id" tabindex="0" role="application" aria-label="Math Explorer Application">
+    <canvas id="the_canvas_id" tabindex="0" aria-label="Math Explorer Application">
         Math Explorer interactive scientific simulation and mathematical visualization canvas. Your browser does not support the HTML5 canvas element or WebGL.
     </canvas>
+    <div id="accesskit_dom_root" class="accesskit-dom-overlay"></div>
 </body>
 </html>

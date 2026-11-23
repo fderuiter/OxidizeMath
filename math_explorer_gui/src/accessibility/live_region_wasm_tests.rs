@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "tests"))]
+
 use super::*;
 use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -25,6 +27,7 @@ fn wasm_accessibility_bridge_creates_and_alternates_dom_live_regions() {
     if let Some(existing) = doc.get_element_by_id("aria-live-assertive") {
         existing.remove();
     }
+    reset_startup_ready_flag();
 
     init_accessibility_bridge();
 
@@ -43,16 +46,17 @@ fn wasm_accessibility_bridge_creates_and_alternates_dom_live_regions() {
         Some("assertive")
     );
 
-    announce_status("Polite announcement A");
-    let first_polite = slot_pair_texts(&doc, "aria-live-polite");
+    assert!(announce_startup_ready_once());
+    assert!(!announce_startup_ready_once());
+    let ready_slots = slot_pair_texts(&doc, "aria-live-polite");
     assert!(
-        first_polite == ("Polite announcement A".to_string(), String::new())
-            || first_polite == (String::new(), "Polite announcement A".to_string())
+        ready_slots == (READY_ANNOUNCEMENT.to_string(), String::new())
+            || ready_slots == (String::new(), READY_ANNOUNCEMENT.to_string())
     );
 
     announce_status("Polite announcement B");
     let second_polite = slot_pair_texts(&doc, "aria-live-polite");
-    if first_polite.0.is_empty() {
+    if ready_slots.0.is_empty() {
         assert_eq!(
             second_polite,
             ("Polite announcement B".to_string(), String::new())

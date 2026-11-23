@@ -202,6 +202,12 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 
+    let menu_nav_id = ui.unique_id();
+    ctx.accesskit_node_builder(menu_nav_id, |builder| {
+        builder.set_role(egui::accesskit::Role::Navigation);
+        builder.set_label("Application Menu");
+    });
+
     egui::MenuBar::new().ui(ui, |ui| {
         let cmd_str = if cfg!(target_os = "macos") {
             "Cmd+"
@@ -360,6 +366,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 app.theme.apply_to_context(ctx);
                 ui.close();
             }
+            render_appearance_speech_controls(app, ctx, ui);
         });
 
         ui.menu_button("Help", |ui| {
@@ -373,4 +380,44 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
     });
 
     app.session_manager.render_toast(ui);
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn render_appearance_speech_controls(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+) {
+    use crate::accessibility::AccessibleHoverText;
+
+    ui.separator();
+    let toggle_resp = ui
+        .checkbox(&mut app.speech_enabled, "Speech Narration")
+        .accessible_hover_text("Enable optional spoken widget and theory descriptions");
+    if toggle_resp.changed() {
+        ctx.options_mut(|o| o.screen_reader = app.speech_enabled);
+        crate::accessibility::sync_speech_settings(app.speech_enabled, app.speech_volume);
+    }
+
+    let mut pct = (f64::from(app.speech_volume.clamp(0.0, 1.0)) * 100.0).round();
+    let slider = egui::Slider::new(&mut pct, 0.0..=100.0)
+        .step_by(1.0)
+        .suffix("%")
+        .text("Speech Volume");
+    if ui
+        .add(slider)
+        .accessible_hover_text("Independent speech narration volume")
+        .changed()
+    {
+        app.speech_volume = (pct as f32 / 100.0).clamp(0.0, 1.0);
+        crate::accessibility::sync_speech_settings(app.speech_enabled, app.speech_volume);
+    }
+
+    if ui
+        .button("⏹ Stop Speech")
+        .accessible_hover_text("Immediately cancel active speech synthesis utterances")
+        .clicked()
+    {
+        crate::accessibility::stop_speech();
+    }
 }

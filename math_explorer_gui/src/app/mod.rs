@@ -14,6 +14,7 @@ mod pane_slots;
 pub(crate) mod session;
 mod share_link;
 pub mod shared_json;
+pub(crate) mod speech_prefs;
 mod state;
 pub(crate) mod state_history;
 pub mod theme;
@@ -94,6 +95,9 @@ pub struct MathExplorerApp {
     pub show_starter_gallery: bool,
     pub theme: ThemeMode,
     pub(super) last_synced_theme: Option<ThemeMode>,
+    pub speech_enabled: bool,
+    pub speech_volume: f32,
+    pub(super) last_synced_speech: Option<(bool, u32)>,
     pub command_palette: CommandPalette,
     pub session_manager: WorkspaceSessionManager,
     pub viewport_layout: ViewportLayout,
@@ -133,6 +137,12 @@ impl Default for MathExplorerApp {
             show_starter_gallery: false,
             theme: ThemeMode::Dark,
             last_synced_theme: Some(ThemeMode::Dark),
+            speech_enabled: false,
+            speech_volume: crate::accessibility::DEFAULT_SPEECH_VOLUME,
+            last_synced_speech: Some((
+                false,
+                crate::accessibility::DEFAULT_SPEECH_VOLUME.to_bits(),
+            )),
             command_palette: CommandPalette::default(),
             session_manager: WorkspaceSessionManager::new(),
             viewport_layout: ViewportLayout::Single,
@@ -156,6 +166,7 @@ impl MathExplorerApp {
         let mut app = Self::default();
         theme::init_startup_theme(&mut app, cc);
         app.hydrate_from_browser_url(&cc.egui_ctx);
+        speech_prefs::init_startup_speech(&mut app, &cc.egui_ctx);
 
         #[cfg(target_os = "macos")]
         macos_menu::setup_macos_menu(&app);
@@ -236,6 +247,7 @@ impl eframe::App for MathExplorerApp {
         });
 
         theme::sync_frame_theme(self, ctx, frame);
+        speech_prefs::sync_frame_speech(self, ctx, frame);
 
         crate::accessibility::ensure_plot_live_bridge();
         crate::accessibility::sync_context_live_messages(ctx, true);
@@ -448,6 +460,7 @@ impl eframe::App for MathExplorerApp {
         macos_menu::sync_macos_edit_menu(self);
         crate::framework::record_focused_widget_type_from_output(ctx);
         theme::sync_frame_theme(self, ctx, frame);
+        speech_prefs::sync_frame_speech(self, ctx, frame);
         self.tick_url_sync(ctx);
     }
 

@@ -76,6 +76,10 @@ fn hash_app_chrome_fields(app: &MathExplorerApp, hasher: &mut impl Hasher) {
         ThemeMode::HighContrast => 2,
     };
     theme_disc.hash(hasher);
+    app.speech_enabled.hash(hasher);
+    super::speech_prefs::clamp_speech_volume(app.speech_volume)
+        .to_bits()
+        .hash(hasher);
     app.active_focused_pane().hash(hasher);
 }
 
@@ -153,6 +157,8 @@ struct LiveChromeSnapshot {
     show_diagnostics_panel: bool,
     show_starter_gallery: bool,
     theme: ThemeMode,
+    speech_enabled: bool,
+    speech_volume: f32,
     focused_pane: usize,
     primary_overlays: HashMap<String, (bool, bool)>,
     secondary_overlays: [Option<(String, bool, bool)>; MAX_SECONDARY_PANES],
@@ -185,6 +191,8 @@ impl LiveChromeSnapshot {
             show_diagnostics_panel: app.show_diagnostics_panel,
             show_starter_gallery: app.show_starter_gallery,
             theme: app.theme,
+            speech_enabled: app.speech_enabled,
+            speech_volume: app.speech_volume,
             focused_pane: app.active_focused_pane(),
             primary_overlays,
             secondary_overlays,
@@ -198,6 +206,9 @@ impl LiveChromeSnapshot {
         app.show_diagnostics_panel = self.show_diagnostics_panel;
         app.show_starter_gallery = self.show_starter_gallery;
         app.theme = self.theme;
+        app.speech_enabled = self.speech_enabled;
+        app.speech_volume = self.speech_volume;
+        crate::accessibility::sync_speech_settings(app.speech_enabled, app.speech_volume);
         if app.viewport_layout == ViewportLayout::Single {
             app.focused_pane = 0;
         } else {
