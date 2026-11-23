@@ -199,11 +199,6 @@ impl Default for BifurcationDiagram {
 }
 
 impl BifurcationDiagram {
-    #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     #[inline]
     pub(crate) fn eval_active_map(&self, r: f64, x: f64) -> f64 {
         match self.map_mode {
@@ -221,6 +216,11 @@ impl BifurcationDiagram {
     pub(crate) fn reset_live_orbit(&mut self) {
         self.selected_r = self.probe_r;
         self.recompute_coupled_views();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 
     fn build_state_json(&self, include_hover_r: bool) -> Option<String> {

@@ -20,7 +20,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`high_energy`**: General-relativistic black-hole and wormhole metrics (`SchwarzschildBlackHole`, `KerrEquatorialMetric`, `MorrisThorneWormhole`), special-relativistic `FourVector` Lorentz boosts and Doppler beaming factors (`relativistic_doppler_factor`, `apparent_transverse_beta`), synchrotron and inverse-Compton radiation (`synchrotron_power`), relativistic shock hydrodynamics, and Li-Ma photon counting significance (`li_ma_significance`).
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
 - **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, and zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`).
-- **`optics`**: Geometric ray tracing, refractive boundary equations, and closed-form Fraunhofer wave diffraction (complemented by full-field 2D time-domain multi-slit and refractive-lens wave tank simulation in `pure_math::analysis::pde::wave_2d`).
+- **`optics`**: Graded-index and negative-index refractive media (`refraction`), RK4 Hamiltonian ray tracing and caustic envelope detection (`caustics`), and calibrated optical detector models (`sensing`), complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`.
 
 ---
 

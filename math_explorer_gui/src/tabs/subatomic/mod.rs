@@ -81,7 +81,7 @@ impl ExplorerTab for SubatomicPhysicsTab {
 inventory::submit! {
     TabDescriptor {
         id: "subatomic",
-        order: 18,
+        order: 19,
         build: || Box::new(SubatomicPhysicsTab::default()),
     }
 }
