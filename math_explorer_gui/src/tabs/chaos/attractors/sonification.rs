@@ -61,11 +61,17 @@ impl AttractorPlotter {
             .build(LorenzState::new(v.x, v.y, v.z));
         let dt = self.dt.clamp(0.001, 0.05);
         let substeps = self.simulation_speed.clamp(1, super::MAX_SIMULATION_SPEED);
+        let custom_job = (self.mode == super::AttractorMode::Custom)
+            .then(|| super::CompiledFlowJob::from_bank(&self.flow_bank));
         let mut out = Vec::with_capacity(count);
         for _ in 0..count {
             let mut bad = false;
             for _ in 0..substeps {
-                sys.step(dt);
+                if let Some(ref job) = custom_job {
+                    sys.state.vec = job.rk4_step(sys.state.vec, dt);
+                } else {
+                    sys.step(dt);
+                }
                 let sv = sys.state.vec;
                 if !sv.x.is_finite() || !sv.y.is_finite() || !sv.z.is_finite() {
                     bad = true;

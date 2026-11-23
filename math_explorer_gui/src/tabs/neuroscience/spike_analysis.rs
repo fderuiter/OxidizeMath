@@ -52,7 +52,10 @@ struct SpikeAnalysisState {
     simulation_speed: usize,
     #[serde(default)]
     is_running: bool,
-    #[serde(default, skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
     audio: crate::audio::AcousticSettings,
 }
 
@@ -90,7 +93,10 @@ impl InteractiveTool for SpikeAnalysisTool {
         self.update_audio_settings(settings);
     }
 
-    fn sample_sonification_frames(&mut self, frame_count: usize) -> Vec<crate::audio::SonificationFrame> {
+    fn sample_sonification_frames(
+        &mut self,
+        frame_count: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
         self.render_wav_frames(frame_count)
     }
 
@@ -245,8 +251,9 @@ impl SpikeAnalysisTool {
                     .show(ui, |plot_ui| {
                         if !self.isis.is_empty() {
                             let bars = self.compute_histogram(20);
-                            plot_ui
-                                .bar_chart(BarChart::new("ISI Distribution", bars).color(bar_color));
+                            plot_ui.bar_chart(
+                                BarChart::new("ISI Distribution", bars).color(bar_color),
+                            );
                         }
                     });
             });

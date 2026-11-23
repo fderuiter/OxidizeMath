@@ -313,6 +313,44 @@ fn test_preset_json_and_share_url_roundtrip_keeps_startup_muted() {
     }
 }
 
+#[test]
+fn test_custom_attractor_flow_preserves_acoustic_settings_and_wav_energy() {
+    let mut plotter = AttractorPlotter {
+        mode: crate::tabs::chaos::attractors::AttractorMode::Custom,
+        ..Default::default()
+    };
+    plotter.set_acoustic_settings(AcousticSettings {
+        gain: 0.77,
+        pitch_scale: 1.3,
+    });
+    plotter
+        .flow_bank
+        .set_expressions(&["sin(y) - b * x", "sin(z) - b * y", "sin(x) - b * z"]);
+    plotter.on_slider_changed();
+
+    let saved = plotter.save_state().expect("save custom attractor state");
+    let mut restored = AttractorPlotter::default();
+    restored
+        .try_load_state(&saved)
+        .expect("load custom attractor state");
+    assert_eq!(
+        restored.mode,
+        crate::tabs::chaos::attractors::AttractorMode::Custom
+    );
+    assert!((restored.acoustic_settings().gain - 0.77).abs() < 1e-5);
+    assert!((restored.acoustic_settings().pitch_scale - 1.3).abs() < 1e-5);
+
+    let frames = restored.sample_sonification_frames(32);
+    let wav = synthesize_wav_16bit(
+        &frames,
+        restored.acoustic_settings(),
+        DEFAULT_WAV_SAMPLE_RATE,
+        0.35,
+        0xCAFE,
+    );
+    assert!(wav_acoustic_energy(&wav) > 0.5);
+}
+
 #[cfg(target_arch = "wasm32")]
 mod wasm_integration_tests {
     use super::*;

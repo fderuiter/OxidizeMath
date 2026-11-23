@@ -39,7 +39,10 @@ use crate::framework::InteractiveTool;
 #[serde(deny_unknown_fields)]
 struct PrimeSpiralState {
     grid_size: usize,
-    #[serde(default, skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
     audio: crate::audio::AcousticSettings,
 }
 
@@ -74,7 +77,10 @@ impl InteractiveTool for PrimeSpiralWidget {
         self.audio_settings = settings.sanitized();
     }
 
-    fn sample_sonification_frames(&mut self, frame_count: usize) -> Vec<crate::audio::SonificationFrame> {
+    fn sample_sonification_frames(
+        &mut self,
+        frame_count: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
         self.render_wav_frames(frame_count)
     }
 

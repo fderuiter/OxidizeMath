@@ -1,22 +1,26 @@
 // [cite:quantum_mechanics]
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
+use crate::async_sim::unified::{
+    CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool,
+};
 use crate::async_sim::{SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoints};
-use scientific_metadata::theory::ParameterConstraint;
 use math_explorer::physics::quantum::{
     construct_1d_hamiltonian, evolve_state_in_place, gaussian_wavepacket, time_evolution_operator,
     QuantumOperator, QuantumState,
 };
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
+use scientific_metadata::theory::ParameterConstraint;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[path = "wave_sim/sonification.rs"]
 mod sonification;
+
+const DEFAULT_CUSTOM_POTENTIAL: &str = "a * exp(-x^2)";
 
 pub struct WaveData {
     pub time: f64,
@@ -38,6 +42,7 @@ pub struct WaveUnified {
     n_points: usize,
     x_min: f64,
     x_max: f64,
+    last_formula: Option<CompiledFormulaPayload>,
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
@@ -48,7 +53,10 @@ impl FiniteStateGuard for WaveUnified {
         if self.diverged {
             return false;
         }
-        self.psi.vector.iter().all(|c| c.re.is_finite() && c.im.is_finite())
+        self.psi
+            .vector
+            .iter()
+            .all(|c| c.re.is_finite() && c.im.is_finite())
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -89,6 +97,7 @@ impl UnifiedModel for WaveUnified {
             n_points,
             x_min,
             x_max,
+            last_formula: None,
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
@@ -117,7 +126,12 @@ impl UnifiedModel for WaveUnified {
         evolve_state_in_place(&mut self.psi, &self.propagator, &mut self.scratch);
         self.time += dt;
 
-        if !self.psi.vector.iter().all(|c| c.re.is_finite() && c.im.is_finite()) {
+        if !self
+            .psi
+            .vector
+            .iter()
+            .all(|c| c.re.is_finite() && c.im.is_finite())
+        {
             self.diverged = true;
             self.diagnostic_report = Some(DiagnosticReport::new(
                 self.time,
@@ -130,7 +144,12 @@ impl UnifiedModel for WaveUnified {
 
         self.psi.normalize_in_place();
 
-        if !self.psi.vector.iter().all(|c| c.re.is_finite() && c.im.is_finite()) {
+        if !self
+            .psi
+            .vector
+            .iter()
+            .all(|c| c.re.is_finite() && c.im.is_finite())
+        {
             self.diverged = true;
             self.diagnostic_report = Some(DiagnosticReport::new(
                 self.time,
@@ -147,7 +166,8 @@ impl UnifiedModel for WaveUnified {
             .iter()
             .map(|&p| if p.is_finite() { p } else { 0.0 })
             .collect();
-        let safe_potential: Vec<f64> = self.potential
+        let safe_potential: Vec<f64> = self
+            .potential
             .iter()
             .map(|&v| if v.is_finite() { v } else { 0.0 })
             .collect();
@@ -199,9 +219,22 @@ impl UnifiedModel for WaveUnified {
 
     fn parameters() -> HashMap<String, ParameterConstraint> {
         let mut map = HashMap::new();
-        // 0.0 for Infinite Well, 1.0 for Harmonic Oscillator
-        map.insert("potential_type".to_string(), ParameterConstraint { min: 0.0, max: 1.0, step: 1.0 });
-        map.insert("dt".to_string(), ParameterConstraint { min: 0.001, max: 0.1, step: 0.005 });
+        map.insert(
+            "potential_type".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 1.0,
+                step: 1.0,
+            },
+        );
+        map.insert(
+            "dt".to_string(),
+            ParameterConstraint {
+                min: 0.001,
+                max: 0.1,
+                step: 0.005,
+            },
+        );
         map
     }
 
@@ -223,6 +256,36 @@ impl UnifiedModel for WaveUnified {
         }
     }
 
+    fn formula_spec() -> Option<UnifiedFormulaSpec> {
+        Some(UnifiedFormulaSpec {
+            lhs_label: "V(x)",
+            default_expr: DEFAULT_CUSTOM_POTENTIAL,
+            axes: &["x"],
+            presets: &[
+                ("Gaussian Barrier", "a * exp(-x^2)"),
+                ("Double Well", "0.08 * x^4 - a * x^2 + 3.0"),
+                ("Periodic Lattice", "a * cos(2 * x)^2"),
+                ("Tilted Harmonic", "0.3 * x^2 + a * x"),
+            ],
+            param_range: -8.0..=12.0,
+            param_default: 4.0,
+        })
+    }
+
+    fn apply_compiled_formula(
+        &mut self,
+        formula: Option<&CompiledFormulaPayload>,
+        params: &HashMap<String, f64>,
+    ) {
+        self.last_formula = formula.cloned();
+        if self.last_formula.is_some() {
+            self.rebuild_custom_hamiltonian();
+        } else {
+            let potential_type = *params.get("potential_type").unwrap_or(&0.0);
+            self.rebuild_preset_hamiltonian(potential_type);
+        }
+    }
+
     fn name() -> &'static str {
         "Wave Simulator"
     }
@@ -238,15 +301,13 @@ impl UnifiedModel for WaveUnified {
                     ui.colored_label(psi_color, "━ |ψ(x)|² (Probability Density)");
                     ui.colored_label(potential_color, "━ V(x) (Potential Barrier)");
 
-                    let mut psi_points = Vec::new();
-                    let mut v_points = Vec::new();
+                    let mut psi_points = Vec::with_capacity(wave_data.x_axis.len());
+                    let mut v_points = Vec::with_capacity(wave_data.x_axis.len());
 
                     for i in 0..wave_data.x_axis.len() {
                         let x = wave_data.x_axis[i];
-                        let p = wave_data.prob_density[i];
-                        let v = wave_data.potential[i];
-                        psi_points.push([x, p]);
-                        v_points.push([x, v * 0.2]); // Scale potential for display
+                        psi_points.push([x, wave_data.prob_density[i]]);
+                        v_points.push([x, wave_data.potential[i] * 0.2]);
                     }
 
                     Plot::new("quantum_plot")
@@ -285,6 +346,46 @@ impl WaveUnified {
         }
     }
 
+    fn rebuild_custom_hamiltonian(&mut self) {
+        if self.x_axis.len() < 2 {
+            return;
+        }
+        let dx = (self.x_max - self.x_min) / (self.n_points as f64 - 1.0);
+        if let Some(ref payload) = self.last_formula {
+            let p = &payload.params[..payload.param_len];
+            for (i, &x) in self.x_axis.iter().enumerate() {
+                let raw_v = payload.compiled.eval_1d(x, p);
+                self.potential[i] = if raw_v.is_finite() {
+                    raw_v.clamp(-1e4, 1e4)
+                } else {
+                    0.0
+                };
+            }
+        } else {
+            for (i, &x) in self.x_axis.iter().enumerate() {
+                self.potential[i] = 4.0 * (-x * x).exp();
+            }
+        }
+        self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
+        self.cached_dt = None;
+    }
+
+    fn rebuild_preset_hamiltonian(&mut self, potential_type: f64) {
+        if self.x_axis.len() < 2 {
+            return;
+        }
+        let dx = (self.x_max - self.x_min) / (self.n_points as f64 - 1.0);
+        for (i, &x) in self.x_axis.iter().enumerate() {
+            self.potential[i] = if potential_type < 0.5 {
+                0.0
+            } else {
+                0.5 * x * x
+            };
+        }
+        self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
+        self.cached_dt = None;
+    }
+
     fn init_system(&mut self, potential_type: f64) {
         let dx = (self.x_max - self.x_min) / (self.n_points as f64 - 1.0);
         self.x_axis = (0..self.n_points)
@@ -292,25 +393,16 @@ impl WaveUnified {
             .collect();
 
         self.potential = DVector::zeros(self.n_points);
-        for (i, &x) in self.x_axis.iter().enumerate() {
-            let v = if potential_type < 0.5 {
-                0.0 // InfiniteWell
-            } else {
-                0.5 * x * x // HarmonicOscillator
-            };
-            self.potential[i] = v;
+        if self.last_formula.is_some() {
+            self.rebuild_custom_hamiltonian();
+        } else {
+            self.rebuild_preset_hamiltonian(potential_type);
         }
-
-        self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
         self.propagator = QuantumOperator::new(DMatrix::zeros(self.n_points, self.n_points));
         self.cached_dt = None;
         self.scratch = DVector::from_element(self.n_points, Complex::new(0.0, 0.0));
 
-        let x0 = -2.0;
-        let k0 = 5.0;
-        let sigma = 0.5;
-
-        self.psi = gaussian_wavepacket(&self.x_axis, x0, k0, sigma);
+        self.psi = gaussian_wavepacket(&self.x_axis, -2.0, 5.0, 0.5);
         self.time = 0.0;
     }
 }
@@ -327,7 +419,7 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for WaveUnified {
     fn theory_description(&self) -> String {
-        "Time-dependent 1D Schrödinger wave packet evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ for infinite well and harmonic oscillator potentials.".to_string()
+        "Time-dependent 1D Schrödinger wave packet evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ for infinite well, harmonic oscillator, and custom $V(x)$ potentials.".to_string()
     }
     fn phonetic_description(&self) -> String {
         "Time-dependent one-dimensional Schrodinger wave packet simulation".to_string()
@@ -339,11 +431,12 @@ impl scientific_metadata::theory::TheoryDescribable for WaveUnified {
         let mut map = HashMap::new();
         map.insert(
             "potential_type".to_string(),
-            "Selects between an infinite square well (V = 0 inside walls) and a quadratic harmonic potential V(x) = 0.5 x².".to_string(),
+            "Selects between an infinite square well, quadratic harmonic potential V(x) = 0.5 x², or a custom compiled V(x) barrier.".to_string(),
         );
         map.insert(
             "dt".to_string(),
-            "Integration time step Δt controlling unitary wave-packet propagation per tick.".to_string(),
+            "Integration time step Δt controlling unitary wave-packet propagation per tick."
+                .to_string(),
         );
         map
     }
@@ -376,65 +469,5 @@ inventory::submit! {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use math_explorer::physics::quantum::evolve_state;
-
-    #[test]
-    fn test_wave_unified_dt_caching_and_trajectory_parity() {
-        let mut params = HashMap::new();
-        params.insert("potential_type".to_string(), 0.0);
-        params.insert("dt".to_string(), 0.05);
-
-        let mut sim = WaveUnified::new(&params);
-        sim.n_points = 20;
-        sim.init_system(0.0);
-        assert_eq!(sim.cached_dt, None);
-        assert_eq!(sim.scratch.len(), 20);
-
-        let mut expected_psi = sim.psi.clone();
-        for _ in 0..3 {
-            sim.step(&params);
-            expected_psi = evolve_state(&expected_psi, &sim.hamiltonian, 0.05, 1.0).normalize();
-        }
-        assert_eq!(sim.cached_dt, Some(0.05));
-        let ptr_before = sim.propagator.matrix.as_ptr();
-        sim.step(&params);
-        expected_psi = evolve_state(&expected_psi, &sim.hamiltonian, 0.05, 1.0).normalize();
-        assert_eq!(sim.propagator.matrix.as_ptr(), ptr_before);
-        assert!((&sim.psi.vector - &expected_psi.vector).norm() < 1e-12);
-
-        params.insert("dt".to_string(), 0.02);
-        sim.step(&params);
-        expected_psi = evolve_state(&expected_psi, &sim.hamiltonian, 0.02, 1.0).normalize();
-        assert_eq!(sim.cached_dt, Some(0.02));
-        assert!((&sim.psi.vector - &expected_psi.vector).norm() < 1e-12);
-    }
-
-    #[test]
-    fn test_wave_unified_reset_invalidates_propagator_on_potential_change() {
-        let mut params = HashMap::new();
-        params.insert("potential_type".to_string(), 0.0);
-        params.insert("dt".to_string(), 0.04);
-
-        let mut sim = WaveUnified::new(&params);
-        sim.n_points = 20;
-        sim.init_system(0.0);
-        sim.step(&params);
-        assert_eq!(sim.cached_dt, Some(0.04));
-        let well_propagator = sim.propagator.matrix.clone();
-
-        params.insert("potential_type".to_string(), 1.0);
-        sim.process_command(SimCommand::Reset, &params);
-        assert_eq!(sim.cached_dt, None);
-        assert_eq!(sim.step_count, 0);
-        assert_eq!(sim.time, 0.0);
-
-        let init_psi = sim.psi.clone();
-        sim.step(&params);
-        assert_eq!(sim.cached_dt, Some(0.04));
-        assert_ne!(sim.propagator.matrix, well_propagator);
-        let expected = evolve_state(&init_psi, &sim.hamiltonian, 0.04, 1.0).normalize();
-        assert!((&sim.psi.vector - &expected.vector).norm() < 1e-12);
-    }
-}
+#[path = "wave_sim/tests.rs"]
+mod tests;

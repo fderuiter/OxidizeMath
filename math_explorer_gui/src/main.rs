@@ -8,6 +8,8 @@ pub mod audio;
 #[allow(missing_docs)]
 pub mod camera;
 #[cfg(test)]
+mod camera_3d_optout_tests;
+#[cfg(test)]
 mod canvas_accessibility_tests;
 #[allow(missing_docs)]
 pub mod command_palette;
