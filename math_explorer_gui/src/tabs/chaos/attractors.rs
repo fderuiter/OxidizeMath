@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::{
     Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
@@ -10,6 +11,12 @@ use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSy
 use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+#[path = "attractors/atlas.rs"]
+pub mod atlas;
+use atlas::ATTRACTOR_ATLAS_AXIS_PAIRS;
+#[cfg(test)]
+pub use atlas::{lorenz_hopf_threshold, AttractorCartographer};
 
 #[path = "attractors/flow.rs"]
 pub mod flow;
@@ -60,6 +67,7 @@ pub struct AttractorPlotter {
     pub(crate) audio_settings: crate::audio::AcousticSettings,
     pub(crate) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
+    pub(crate) atlas: ParameterAtlasController,
 }
 
 impl Default for AttractorPlotter {
@@ -108,6 +116,7 @@ impl Default for AttractorPlotter {
                 false,
             ),
             invariants_cache: invariants::CachedAttractorInvariants::default(),
+            atlas: ParameterAtlasController::new(ATTRACTOR_ATLAS_AXIS_PAIRS.to_vec()),
         }
     }
 }

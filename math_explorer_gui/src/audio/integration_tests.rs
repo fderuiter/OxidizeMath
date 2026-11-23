@@ -351,6 +351,37 @@ fn test_custom_attractor_flow_preserves_acoustic_settings_and_wav_energy() {
     assert!(wav_acoustic_energy(&wav) > 0.5);
 }
 
+#[test]
+fn test_attractor_atlas_audio_revision_and_hh_paused_sync() {
+    let mut plotter = AttractorPlotter::default();
+    let rev0 = plotter.state_revision();
+    plotter.set_acoustic_settings(AcousticSettings {
+        gain: 0.64,
+        pitch_scale: 1.4,
+    });
+    let rev_audio = plotter.state_revision();
+    assert_ne!(rev0, rev_audio);
+    plotter.atlas.set_visible(true);
+    let _ = plotter.atlas.set_axis_keys("rho", "beta");
+    let rev_atlas = plotter.state_revision();
+    assert_ne!(rev_audio, rev_atlas);
+
+    let saved = plotter.save_state().expect("save atlas+audio state");
+    let mut restored = AttractorPlotter::default();
+    restored
+        .try_load_state(&saved)
+        .expect("restore atlas+audio state");
+    assert!(restored.atlas.is_visible());
+    assert_eq!(restored.atlas.axis_keys(), ("rho", "beta"));
+    assert!((restored.acoustic_settings().gain - 0.64).abs() < 1e-5);
+
+    let mut hh = HodgkinHuxleyUnified::new(&HashMap::from([("i_ext".to_string(), 0.0)]));
+    let frame_before = hh.sonification_frame().expect("hh frame");
+    hh.sync_parameters(&HashMap::from([("i_ext".to_string(), 35.0)]));
+    let frame_after = hh.sonification_frame().expect("hh frame after sync");
+    assert_ne!(frame_before, frame_after);
+}
+
 #[cfg(target_arch = "wasm32")]
 mod wasm_integration_tests {
     use super::*;

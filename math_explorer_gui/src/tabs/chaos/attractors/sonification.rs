@@ -7,7 +7,6 @@ use super::{AttractorMode, AttractorPlotter, CompiledFlowJob};
 use crate::audio::mappings::attractor_frame;
 use crate::audio::SonificationFrame;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
-use std::hash::{Hash, Hasher};
 
 impl AttractorPlotter {
     #[inline]
@@ -34,45 +33,6 @@ impl AttractorPlotter {
             }
         };
         attractor_frame([v.x, v.y, v.z], deriv, false)
-    }
-
-    pub(super) fn compute_state_revision(&self) -> u64 {
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.mode as u8).hash(&mut h);
-        for bar in self.flow_bank.bars() {
-            bar.raw_text.hash(&mut h);
-        }
-        for &pv in self.flow_bank.param_slice() {
-            pv.to_bits().hash(&mut h);
-        }
-        self.system.sigma.to_bits().hash(&mut h);
-        self.system.rho.to_bits().hash(&mut h);
-        self.system.beta.to_bits().hash(&mut h);
-        self.dt.to_bits().hash(&mut h);
-        self.tube_radius.to_bits().hash(&mut h);
-        self.simulation_speed.hash(&mut h);
-        self.max_points.hash(&mut h);
-        self.is_paused().hash(&mut h);
-        self.diverged().hash(&mut h);
-        self.show_annotations.hash(&mut h);
-        for offset in &self.fixed_callout_offsets {
-            let x_bits = if offset.x == 0.0 {
-                0
-            } else {
-                offset.x.to_bits()
-            };
-            let y_bits = if offset.y == 0.0 {
-                0
-            } else {
-                offset.y.to_bits()
-            };
-            x_bits.hash(&mut h);
-            y_bits.hash(&mut h);
-        }
-        self.camera.hash_state(&mut h);
-        self.audio_settings.gain.to_bits().hash(&mut h);
-        self.audio_settings.pitch_scale.to_bits().hash(&mut h);
-        h.finish().max(1)
     }
 
     pub(super) fn render_wav_frames(&self, frame_count: usize) -> Vec<SonificationFrame> {
