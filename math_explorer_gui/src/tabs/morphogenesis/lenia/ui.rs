@@ -87,9 +87,13 @@ impl LeniaTool {
         } else {
             SimWorkerState::Ready
         };
+        let canvas_focused = self
+            .focused_canvas
+            .is_some_and(|id| ui.ctx().memory(|m| m.has_focus(id)));
         if let Some(action) =
             PlaybackTransport::from_worker_state("lenia_transport", "Lenia Studio", transport_state)
                 .can_reset(true)
+                .allow_space_shortcut(!canvas_focused)
                 .show(ui)
         {
             match action {
@@ -163,6 +167,7 @@ impl LeniaTool {
         ) != (prev.0, prev.1, prev.2, prev.3, &prev.4)
         {
             self.sync_engine_parameters();
+            let _ = self.reseed_if_extinct_entering_viable();
         }
     }
 

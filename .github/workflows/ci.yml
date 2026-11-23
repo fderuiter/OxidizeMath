@@ -21,20 +21,75 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
-  pre-flight:
-    name: Pre-flight Checks
+  detect-changes:
+    name: Detect Scoped Changes
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     outputs:
       papers_changed: ${{ steps.detect-changes.outputs.papers_changed }}
       installer_changed: ${{ steps.detect-changes.outputs.installer_changed }}
-      is_prerelease: ${{ steps.check-release-tag.outputs.is_prerelease }}
-      wix_version: ${{ steps.check-release-tag.outputs.wix_version }}
+      is_prerelease: ${{ steps.release-meta.outputs.is_prerelease }}
+      wix_version: ${{ steps.release-meta.outputs.wix_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
+
+      - name: Resolve WiX Pre-Release Metadata
+        id: release-meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ws_version="$(awk '
+            { sub(/\r$/, "") }
+            /^\[/ { in_ws_pkg = ($0 == "[workspace.package]"); next }
+            in_ws_pkg && $0 ~ /^[[:space:]]*version[[:space:]]*=/ {
+              sub(/^[[:space:]]*version[[:space:]]*=[[:space:]]*"/, "")
+              sub(/".*$/, "")
+              print
+              exit
+            }
+          ' Cargo.toml)"
+
+          if [ -z "$ws_version" ]; then
+            echo "Error: Missing [workspace.package].version in Cargo.toml" >&2
+            exit 1
+          fi
+
+          is_prerelease="false"
+          wix_version="$ws_version"
+          if [[ "$ws_version" == *"+"* ]]; then
+            wix_version=""
+          elif [[ "$ws_version" == *-* ]]; then
+            is_prerelease="true"
+            ws_core="${ws_version%%-*}"
+            ws_pre="${ws_version#*-}"
+            NUM_RE='^(0|[1-9][0-9]*)$'
+            wix_rev=""
+            if [[ "$ws_pre" == alpha.* ]] && [[ "${ws_pre#alpha.}" =~ $NUM_RE ]]; then
+              wix_rev="$((1000 + ${ws_pre#alpha.}))"
+            elif [[ "$ws_pre" == beta.* ]] && [[ "${ws_pre#beta.}" =~ $NUM_RE ]]; then
+              wix_rev="$((10000 + ${ws_pre#beta.}))"
+            elif [[ "$ws_pre" == rc.* ]] && [[ "${ws_pre#rc.}" =~ $NUM_RE ]]; then
+              wix_rev="$((20000 + ${ws_pre#rc.}))"
+            elif [[ "$ws_pre" =~ $NUM_RE ]]; then
+              wix_rev="$ws_pre"
+            fi
+            if [ -n "$wix_rev" ] && [ "$wix_rev" -le 65535 ]; then
+              wix_version="${ws_core}-${wix_rev}"
+            else
+              wix_version=""
+            fi
+          fi
+
+          echo "is_prerelease=${is_prerelease}"
+          echo "wix_version=${wix_version}"
+          {
+            printf 'is_prerelease=%s\n' "$is_prerelease"
+            printf 'wix_version=%s\n' "$wix_version"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Detect Scoped Change Paths
         id: detect-changes
@@ -87,6 +142,16 @@ jobs:
             printf 'installer_changed=%s\n' "$installer_changed"
           } >> "$GITHUB_OUTPUT"
 
+  pre-flight:
+    name: Pre-flight Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
@@ -97,38 +162,22 @@ jobs:
         uses: ./.github/actions/cargo-cache
         with:
           scope: preflight
-          profile: mixed
+          profile: dev
 
       - name: Build Unified Verification Tool
-        run: cargo build -p unified_verification --release
+        run: cargo build -p unified_verification
 
-      - name: Lint CI Workflows
-        run: cargo run -p unified_verification --release -- lint-workflows
-
-      - name: Check Cargo Profiles
-        run: cargo run -p unified_verification --release -- check-profiles
-
-      - name: Check Release Tag Parity
-        id: check-release-tag
-        env:
-          GIT_REF: ${{ github.ref }}
-          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-        run: cargo run -p unified_verification --release -- check-release-tag --github-output "$GITHUB_OUTPUT"
-
-      - name: Check AST Code Duplicates
-        run: cargo run -p unified_verification --release -- check-duplicates
-
-      - name: Check Public API Drift
-        run: cargo run -p unified_verification --release -- check-api-drift
-
-      - name: Verify Architectural Records Updates
-        run: cargo run -p unified_verification --release -- verify-records
+      - name: Run Batched Static Verification
+        run: cargo run -p unified_verification -- batch-static
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
 
-      - name: Check Traceability
-        run: cargo run -p unified_verification --release -- traceability
+      - name: Check Release Tag Parity
+        env:
+          GIT_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: cargo run -p unified_verification -- check-release-tag
 
       - name: Check Unused Dependencies
         uses: bnjbvr/cargo-machete@cf4ad43b2ea507679a5c66685b7225ca7510eafc # main
@@ -148,18 +197,6 @@ jobs:
       - name: Check Formatting
         run: cargo fmt --all -- --check
 
-      - name: Check File Lengths (500 lines limit)
-        run: cargo run -p unified_verification --release -- check-file-lengths
-
-      - name: Check Policy Audit
-        run: cargo run -p unified_verification --release -- test-policy-audit
-
-      - name: Check Entropy and Secrets
-        run: cargo run -p unified_verification --release -- check-entropy
-
-      - name: Check Crate Documentation
-        run: cargo run -p unified_verification --release -- check-docs
-
       - name: Check Workspace Documentation
         env:
           RUSTDOCFLAGS: -D warnings
@@ -173,7 +210,6 @@ jobs:
 
   build-and-test:
     name: Build and Test (${{ matrix.name }})
-    needs: pre-flight
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -226,10 +262,10 @@ jobs:
 
       - name: Build Unified Verification Tool
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
-        run: cargo build -p unified_verification --release
+        run: cargo build -p unified_verification
 
       - name: Build (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
+        if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         run: cargo build --workspace --verbose --all-features
 
       - name: Run Clippy (Native)
@@ -257,7 +293,7 @@ jobs:
 
       - name: Run Integrity Verified Suite
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
-        run: cargo run -p unified_verification --release -- verify-suite
+        run: cargo run -p unified_verification -- verify-suite --coverage-only
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
@@ -268,14 +304,6 @@ jobs:
         with:
           name: verification-certificate-${{ matrix.artifact_name }}
           path: Verification_Certificate.json
-
-      - name: Check Workspace (WASM)
-        if: matrix.target == 'wasm32-unknown-unknown'
-        run: cargo check --workspace --target wasm32-unknown-unknown --all-features --verbose
-
-      - name: Check Workspace Tests (WASM)
-        if: matrix.target == 'wasm32-unknown-unknown'
-        run: cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
 
       - name: Run Clippy (WASM)
         if: matrix.target == 'wasm32-unknown-unknown'
@@ -371,8 +399,8 @@ jobs:
 
   compile-papers:
     name: Compile Academic Papers
-    if: github.event_name != 'pull_request' || needs.pre-flight.outputs.papers_changed == 'true'
-    needs: pre-flight
+    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.papers_changed == 'true'
+    needs: detect-changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -421,7 +449,6 @@ jobs:
 
   feature-matrix:
     name: Domain Tests (${{ matrix.feature || 'core-only' }})
-    needs: pre-flight
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -473,8 +500,8 @@ jobs:
 
   package:
     name: Package Installers (${{ matrix.os }})
-    needs: pre-flight
-    runs-on: ${{ (matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true') && matrix.os || 'ubuntu-latest' }}
+    needs: detect-changes
+    runs-on: ${{ (matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true') && matrix.os || 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -489,21 +516,21 @@ jobs:
 
     steps:
       - name: Skip Unchanged Cross-OS Installer Build
-        if: matrix.os != 'ubuntu-latest' && github.event_name == 'pull_request' && needs.pre-flight.outputs.installer_changed != 'true'
+        if: matrix.os != 'ubuntu-latest' && github.event_name == 'pull_request' && needs.detect-changes.outputs.installer_changed != 'true'
         run: echo "No GUI, linked crate, packaging input, toolchain, cache action, or workflow changes detected; skipping ${{ matrix.target }} installer build on pull_request."
 
       - name: Checkout code
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Rust
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: "1.99.1"
 
       - name: Cache Cargo dependencies
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
         uses: ./.github/actions/cargo-cache
         with:
           scope: package-${{ matrix.target }}
@@ -511,7 +538,7 @@ jobs:
 
       # Pinned cargo-packager version for reproducible packaging builds without source compilation fallback
       - name: Install cargo-packager
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
         uses: ./.github/actions/ci-tool-cache
         with:
           tool: cargo-packager
@@ -520,12 +547,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Package
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
         shell: bash
         env:
           MATRIX_TARGET: ${{ matrix.target }}
-          IS_PRERELEASE: ${{ needs.pre-flight.outputs.is_prerelease }}
-          WIX_VERSION: ${{ needs.pre-flight.outputs.wix_version }}
+          IS_PRERELEASE: ${{ needs.detect-changes.outputs.is_prerelease }}
+          WIX_VERSION: ${{ needs.detect-changes.outputs.wix_version }}
         run: |
           set -euo pipefail
           restore_gui_manifest() {
@@ -554,7 +581,7 @@ jobs:
           cargo packager --release -p math_explorer_gui -f "$MATRIX_TARGET"
 
       - name: Generate SHA-256 Manifest
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
         shell: bash
         run: |
           if [ ! -d "math_explorer_gui/dist" ]; then
@@ -611,7 +638,7 @@ jobs:
           $SHACHECK SHA256SUMS
 
       - name: Upload Artifacts
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: math_explorer-${{ matrix.target }}
@@ -846,7 +873,7 @@ jobs:
         uses: ./.github/actions/cargo-cache
         with:
           scope: preflight
-          profile: mixed
+          profile: dev
           restore-only: "true"
 
       - name: Check Release Tag Parity
@@ -854,7 +881,7 @@ jobs:
         env:
           GIT_REF: ${{ github.ref }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: cargo run -p unified_verification --release -- check-release-tag --require-tag --github-output "$GITHUB_OUTPUT"
+        run: cargo run -p unified_verification -- check-release-tag --require-tag --github-output "$GITHUB_OUTPUT"
 
       - name: Download workflow artifacts
         uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9

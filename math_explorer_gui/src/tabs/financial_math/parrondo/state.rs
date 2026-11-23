@@ -139,6 +139,20 @@ impl TheoryDescribable for ParrondoParadoxTool {
         );
         map
     }
+
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        let c = |min, max, step| ParameterConstraint { min, max, step };
+        std::collections::HashMap::from([
+            ("p_a_base".to_string(), c(0.40, 0.60, 0.002)),
+            ("p_a".to_string(), c(0.42, 0.51, 0.002)),
+            ("p_b0_base".to_string(), c(0.05, 0.45, 0.005)),
+            ("p_b1_base".to_string(), c(0.55, 0.95, 0.005)),
+            ("epsilon".to_string(), c(-0.02, 0.05, 0.001)),
+        ])
+    }
 }
 
 inventory::submit! {
