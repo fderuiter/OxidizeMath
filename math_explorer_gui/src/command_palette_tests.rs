@@ -22,7 +22,8 @@ fn mock_tabs() -> Vec<Box<dyn crate::tabs::ExplorerTab>> {
 fn test_fuzzy_match_score() {
     assert!(fuzzy_match_score("Quantum / Spin Visualization", "quantum").is_some());
     assert!(fuzzy_match_score("Quantum / Spin Visualization", "spin").is_some());
-    assert!(fuzzy_match_score("Quantum / Spin Visualization", "qspin").is_some());
+    assert!(fuzzy_match_score("Quantum / Spin Visualization", "spin vis").is_some());
+    assert!(fuzzy_match_score("Quantum / Spin Visualization", "qspin").is_none());
     assert!(fuzzy_match_score("Quantum / Spin Visualization", "nonexistent").is_none());
 }
 

@@ -2,37 +2,111 @@
 
 use eframe::egui;
 
-include!(concat!(env!("OUT_DIR"), "/generated_tabs.rs"));
+#[cfg(feature = "ai")]
+pub mod ai;
+#[cfg(feature = "pure_math")]
+pub mod algorithmic_information;
+#[cfg(feature = "pure_math")]
+pub mod analysis;
+#[cfg(feature = "physics")]
+pub mod astrophysics;
+#[cfg(feature = "applied")]
+pub mod battery_degradation;
+#[cfg(feature = "applied")]
+pub mod cannibalism;
+#[cfg(feature = "physics")]
+pub mod chaos;
+#[cfg(feature = "climate")]
+pub mod climate;
+#[cfg(feature = "applied")]
+pub mod clinical_trials;
+#[cfg(feature = "pure_math")]
+pub mod elliptic_curves;
+#[cfg(feature = "epidemiology")]
+pub mod epidemiology;
+#[cfg(feature = "applied")]
+pub mod favoritism;
+#[cfg(feature = "pure_math")]
+pub mod financial_math;
+#[cfg(feature = "physics")]
+pub mod fluid_dynamics;
+#[cfg(feature = "applied")]
+pub mod game_theory;
+#[cfg(feature = "pure_math")]
+pub mod geometry_topology;
+#[cfg(feature = "pure_math")]
+pub mod graph_theory;
+#[cfg(feature = "pure_math")]
+pub mod linear_algebra;
+#[cfg(feature = "physics")]
+pub mod medical;
+#[cfg(feature = "biology")]
+pub mod morphogenesis;
+#[cfg(feature = "physics")]
+pub mod mri;
+#[cfg(feature = "biology")]
+pub mod neuroscience;
+#[cfg(feature = "pure_math")]
+pub mod number_theory;
+#[cfg(feature = "applied")]
+pub mod paradox_lab;
+#[cfg(feature = "physics")]
+pub mod quantum;
+#[cfg(feature = "physics")]
+pub mod relativity;
+#[cfg(feature = "physics")]
+pub mod solid_state;
+pub mod traceability;
+
+/// Static registration descriptor for a GUI domain tab collected via [`inventory`].
+#[derive(Clone, Copy)]
+pub struct TabDescriptor {
+    /// Canonical module and URL slug used as a deterministic secondary sort key.
+    pub id: &'static str,
+    /// Primary navigation bar sort priority (lower numbers appear first; default `100`).
+    pub order: i32,
+    /// Constructor returning a boxed default instance of the tab.
+    pub build: fn() -> Box<dyn ExplorerTab>,
+}
+
+inventory::collect!(TabDescriptor);
+
+fn sorted_tab_descriptors() -> Vec<&'static TabDescriptor> {
+    let mut descriptors: Vec<&'static TabDescriptor> =
+        inventory::iter::<TabDescriptor>.into_iter().collect();
+    descriptors.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.id.cmp(b.id)));
+    descriptors
+}
+
+/// Instantiates all enabled GUI tabs in deterministic `(order, id)` navigation order.
+pub fn instantiate_tabs() -> Vec<Box<dyn ExplorerTab>> {
+    sorted_tab_descriptors()
+        .into_iter()
+        .map(|d| (d.build)())
+        .collect()
+}
+
+/// Instantiates a single enabled GUI tab by its deterministic `(order, id)` index.
+pub fn instantiate_tab(index: usize) -> Option<Box<dyn ExplorerTab>> {
+    sorted_tab_descriptors().get(index).map(|d| (d.build)())
+}
 
 /// A trait for defining a tab in the Math Explorer application.
 ///
 /// This trait serves as the primary extension point for the GUI. Each mathematical domain
-/// (e.g., MRI Physics, Game Theory) should implement this trait as a standalone struct.
+/// (e.g., MRI Physics, Game Theory) implements this trait as a standalone struct.
 ///
-/// # Automated Plugin Discovery
+/// # Static Inventory Registration
 ///
-/// The `math_explorer_gui` application uses an automated build-time plugin discovery mechanism.
-/// To add a new tab to the GUI, you simply need to create a new module file in the `src/tabs` directory
-/// (or in any workspace dependency), and implement the `ExplorerTab` trait for your struct.
-///
-/// You MUST NOT manually edit `app.rs` or `tabs/mod.rs` to register your new tab. The `build.rs` script
-/// will automatically scan for the `impl ExplorerTab for YourStruct` pattern and generate the necessary
-/// inclusion and instantiation logic.
-///
-/// ## Configuration Attributes
-///
-/// You can configure how your tab is built and displayed by adding special magic comments at the top of your module file:
-///
-/// - `// @explorer_feature = "feature_name"`: Tells the build script that this tab should only be included if the specified Cargo feature is enabled.
-/// - `// @explorer_order = 10`: Defines the order in which this tab appears in the navigation bar. Lower numbers appear first.
+/// To add a new tab to `math_explorer_gui`:
+/// 1. Declare a feature-gated `pub mod your_tab;` item in `src/tabs/mod.rs`.
+/// 2. Implement [`ExplorerTab`] and [`Default`] on your tab struct.
+/// 3. Register a [`TabDescriptor`] via `inventory::submit!`.
 ///
 /// # Example
 ///
-/// ```rust,no_run
-/// // @explorer_feature = "pure_math"
-/// // @explorer_order = 1
-///
-/// use math_explorer_gui::tabs::ExplorerTab;
+/// ```rust,ignore
+/// use crate::tabs::{ExplorerTab, TabDescriptor};
 /// use eframe::egui;
 ///
 /// #[derive(Default)]
@@ -53,6 +127,14 @@ include!(concat!(env!("OUT_DIR"), "/generated_tabs.rs"));
 ///             }
 ///             ui.label(format!("Count: {}", self.counter));
 ///         });
+///     }
+/// }
+///
+/// inventory::submit! {
+///     TabDescriptor {
+///         id: "my_tab",
+///         order: 100,
+///         build: || Box::new(MyTab::default()),
 ///     }
 /// }
 /// ```
@@ -86,6 +168,7 @@ pub trait ExplorerTab {
         match self.name() {
             "Algorithmic Information"
             | "Analysis & Calculus"
+            | "Elliptic Curves"
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
@@ -106,6 +189,7 @@ pub trait ExplorerTab {
             | "Favoritism"
             | "Game Theory"
             | "Paradox Lab"
+            | "Population Structure"
             | "Traceability Portal" => "Applied Math",
 
             "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
@@ -178,6 +262,7 @@ pub trait ExplorerTab {
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
             "Clinical Trials" => "clinical_trials",
+            "Elliptic Curves" => "elliptic_curves",
             "Epidemiology" => "epidemiology",
             "Favoritism" => "favoritism",
             "Financial Math" => "financial_math",
@@ -193,6 +278,7 @@ pub trait ExplorerTab {
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
             "Paradox Lab" => "paradox_lab",
+            "Population Structure" => "cannibalism",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",
@@ -203,11 +289,6 @@ pub trait ExplorerTab {
     /// Active `InteractiveTool` identifier for `#tool=<id>` share links (`None` for single-view tabs).
     fn active_tool_id(&self) -> Option<&'static str> {
         self.framework().and_then(|fw| fw.active_tool_id())
-    }
-
-    /// Active inverse `ChallengeMetadata` identifier for `#challenge=<id>` share links.
-    fn active_challenge_id(&self) -> Option<&'static str> {
-        self.framework().and_then(|fw| fw.active_challenge_id())
     }
 
     /// Deterministic parameter-only revision token for 300 ms debounced URL sync.
@@ -282,72 +363,4 @@ pub trait ExplorerTab {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
-    use std::collections::HashSet;
-    use std::fs;
-    use std::path::Path;
-
-    fn read_build_script_output(out_dir: &Path) -> String {
-        let parent_dir = out_dir
-            .parent()
-            .expect("OUT_DIR must have a parent build directory");
-        let build_output_path = [
-            parent_dir.join("output"),
-            parent_dir.join("run").join("stdout"),
-        ]
-        .into_iter()
-        .find(|p| p.is_file())
-        .expect("Cargo build script output file must exist");
-        fs::read_to_string(&build_output_path)
-            .expect("Cargo build script output file must be readable")
-    }
-
-    #[test]
-    fn test_build_script_emits_rerun_directives_for_tabs_and_path_deps() {
-        let out_dir = Path::new(env!("OUT_DIR"));
-        let generated_tabs = fs::read_to_string(out_dir.join("generated_tabs.rs"))
-            .expect("OUT_DIR/generated_tabs.rs must be generated by build.rs");
-        assert!(
-            generated_tabs.contains("pub fn instantiate_tabs()"),
-            "generated_tabs.rs should define instantiate_tabs"
-        );
-
-        let build_output = read_build_script_output(out_dir);
-        let rerun_paths: HashSet<&str> = build_output
-            .lines()
-            .filter_map(|line| line.strip_prefix("cargo:rerun-if-changed="))
-            .collect();
-
-        for path in &rerun_paths {
-            assert!(!path.trim().is_empty(), "rerun directive must not be empty");
-            assert!(
-                !path.contains('\\'),
-                "rerun path must use forward slashes: {path}"
-            );
-        }
-
-        for expected in [
-            "build.rs",
-            "src/tabs",
-            "Cargo.toml",
-            "../crates/federated_registry/src",
-            "../crates/oxidize_core/src",
-            "../math_explorer/src",
-            "../crates/math_commons/src",
-            "../crates/scientific_metadata/src",
-            "../crates/diagnostics/src",
-            "../crates/federated_registry/src/lib.rs",
-            "../crates/oxidize_core/src/lib.rs",
-            "../math_explorer/src/lib.rs",
-            "../crates/math_commons/src/lib.rs",
-            "../crates/math_commons/src/ast",
-            "../crates/scientific_metadata/src/lib.rs",
-            "../crates/diagnostics/src/lib.rs",
-        ] {
-            assert!(
-                rerun_paths.contains(expected),
-                "Missing expected cargo:rerun-if-changed={expected} in math_explorer_gui output"
-            );
-        }
-    }
-}
+mod tests;

@@ -18,10 +18,10 @@ Previously, [`crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs
 
 2. **Factorizations, Norms, Conditioning Metrics, and QR-Backed FreeSurfer GLM:**
    - Added `MatrixNorm` (`One`, `Infinity`, `Frobenius`, `Spectral`), `matrix_norm`, `qr_decomposition`, `cholesky_decomposition`, `svd_decomposition`, `condition_number`, `QrFactors`, and `SvdFactors` in [`decomposition.rs`](../../crates/pure_math/src/pure_math/algebra/linear_algebra/decomposition.rs) and re-exported them from [`linear_algebra/mod.rs`](../../crates/pure_math/src/pure_math/algebra/linear_algebra/mod.rs).
-   - Rewrote `estimate_beta` and `t_statistic` in [`glm.rs`](../../crates/domain_applied/src/applied/freesurfer/glm.rs) to solve $R \hat{\beta} = Q^T Y$ via Householder QR and evaluate contrast variance scaling $c^T (X^T X)^{-1} c = \|R^{-T} c\|_2^2$ via forward substitution on $R^T w = c$ without forming $X^T X$.
+   - Rewrote `estimate_beta` and `t_statistic` in [`glm.rs`](../../crates/domain_applied/src/applied/freesurfer/glm.rs) to solve $R \hat{\beta} = Q^T Y$ via Householder QR and evaluate contrast variance scaling $c^T (X^T X)^{-1} c = \|R^{-T} c\|_2^2$ via forward substitution on $R^T w = c$ without forming $X^T X$, returning typed `EngineeringError` diagnostics.
 
-3. **Auto-Discovered `LinearAlgebraTab` and `ConditioningWorkbenchTool`:**
-   - Added [`math_explorer_gui/src/tabs/linear_algebra/mod.rs`](../../math_explorer_gui/src/tabs/linear_algebra/mod.rs) (`// @explorer_feature = "pure_math"`, `#tab=linear_algebra` slug, `"Pure Math"` academic domain) registering `ConditioningWorkbenchTool` (`"LinearAlgebraConditioningTool"`) and four starter gallery presets covering Läuchli catastrophic cancellation, Vandermonde polynomial regression, collinear Ridge stabilization, and non-negative spectral unmixing.
+3. **Static Inventory `LinearAlgebraTab` and `ConditioningWorkbenchTool`:**
+   - Added [`math_explorer_gui/src/tabs/linear_algebra/mod.rs`](../../math_explorer_gui/src/tabs/linear_algebra/mod.rs) (feature-gated under `pure_math` in [`tabs/mod.rs`](../../math_explorer_gui/src/tabs/mod.rs) and registered via `TabDescriptor`, `#tab=linear_algebra` slug, `"Pure Math"` academic domain) registering `ConditioningWorkbenchTool` (`"LinearAlgebraConditioningTool"`) and four starter gallery presets covering Läuchli catastrophic cancellation, Vandermonde polynomial regression, collinear Ridge stabilization, and non-negative spectral unmixing.
 
 ## Consequences
 
