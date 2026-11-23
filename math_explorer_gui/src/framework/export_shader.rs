@@ -2,10 +2,17 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::export_queue::format_clipboard_error;
 use super::export_ui::export_action_button;
 use super::*;
 use eframe::egui;
+
+fn format_clipboard_error(err: &str) -> String {
+    if err.contains("Export CSV") {
+        format!("Clipboard unavailable: {err}")
+    } else {
+        format!("Clipboard unavailable ({err}). Please use Export CSV to save to disk.")
+    }
+}
 
 impl SimulationFramework {
     /// Queues a direct GLSL fragment shader clipboard copy for deferred end-of-frame dispatch.

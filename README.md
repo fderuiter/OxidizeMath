@@ -59,6 +59,7 @@ cargo run --release --package math_explorer_gui
 *   **Physics / Chaos:** Attractor Plotter (Lorenz, Rossler, Double Pendulum), Bifurcation Diagrams, and Fractal Generator.
 *   **Physics / Quantum:** Schrödinger Solver, Wavefunction Evolution, and Clebsch-Gordan Calculator.
 *   **Physics / Solid State:** Crystal Lattice Viewer (FCC, BCC, SC).
+*   **Game Theory:** Evolutionary Replicator Dynamics and Bayesian Glicko-2 Tournament Simulator ($r \pm 2\,\text{RD}$ confidence bands, $\sigma$ volatility shifts, Swiss & Round-Robin pairings, and frozen-vs-sequential drift).
 
 
 ### Deep Dive: Modules

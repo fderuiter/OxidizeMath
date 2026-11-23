@@ -1,4 +1,4 @@
-# ADR 0037: Playback Timeline Scrubbing, Ring Buffers, and Twin Chaotic Trajectories
+# ADR 0038: Playback Timeline Scrubbing, Ring Buffers, and Twin Chaotic Trajectories
 
 ## Status
 
