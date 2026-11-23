@@ -1,6 +1,8 @@
 use super::*;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimRunner};
-use crate::tabs::chaos::attractors::{AttractorRunner, AttractorSharedParams};
+use crate::tabs::chaos::attractors::{
+    default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
+};
 use crate::tabs::morphogenesis::{
     MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
 };
@@ -59,6 +61,8 @@ fn test_attractor_k1_bit_exact_backward_and_forward_scrub() {
         dt: 0.01,
         simulation_speed: 5,
         max_points: 60,
+        mode: AttractorMode::Lorenz,
+        custom_flow: None,
     }));
     let mut runner = AttractorRunner::from_params(Arc::clone(&params));
     let mut ring = CheckpointRing::new(1);
@@ -96,6 +100,45 @@ fn test_attractor_k1_bit_exact_backward_and_forward_scrub() {
     for (a, e) in runner.history.iter().zip(direct_85.history.iter()) {
         assert_eq!(a.x.to_bits(), e.x.to_bits());
     }
+}
+
+#[test]
+fn test_attractor_custom_flow_checkpoint_and_substep_replay() {
+    let bank = default_flow_bank();
+    let job = Arc::new(CompiledFlowJob::from_bank(&bank));
+    let params = Arc::new(RwLock::new(AttractorSharedParams {
+        sigma: 10.0,
+        rho: 28.0,
+        beta: 8.0 / 3.0,
+        dt: 0.015,
+        simulation_speed: 5,
+        max_points: 50,
+        mode: AttractorMode::Custom,
+        custom_flow: Some(job),
+    }));
+    let mut runner = AttractorRunner::from_params(Arc::clone(&params));
+    let mut ring = CheckpointRing::new(4);
+    ring.reset_and_seed(&runner);
+    step_with_ring(&mut runner, &mut ring, 20);
+
+    let mut direct_11 = AttractorRunner::from_params(Arc::clone(&params));
+    for _ in 0..11 {
+        direct_11.step_once();
+    }
+    ring.seek_to_step(&mut runner, 11);
+    assert_eq!(runner.step_count, 11);
+    assert_eq!(
+        runner.system.state.vec.x.to_bits(),
+        direct_11.system.state.vec.x.to_bits()
+    );
+    assert_eq!(
+        runner.system.state.vec.y.to_bits(),
+        direct_11.system.state.vec.y.to_bits()
+    );
+    assert_eq!(
+        runner.system.state.vec.z.to_bits(),
+        direct_11.system.state.vec.z.to_bits()
+    );
 }
 
 #[test]

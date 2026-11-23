@@ -15,6 +15,7 @@ theory_verification!(
     module = "battery_degradation",
     constants = {},
     test = {
+        use approx::assert_relative_eq;
         let model = model::PowerLawModel::standard();
         assert_relative_eq!(
             model.capacity(

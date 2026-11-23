@@ -3,7 +3,7 @@ use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::kelly::{
-    kelly_fraction, variants, BankrollFraction, UnitInterval, Odds,
+    kelly_fraction, variants, BankrollFraction, Odds, UnitInterval,
 };
 use rand::Rng;
 
@@ -70,9 +70,12 @@ impl BankrollGrowthTool {
                         let mut hk_bankroll = self.initial_bankroll;
                         let mut qk_bankroll = self.initial_bankroll;
 
-                        self.full_kelly_points.push(PlotPoint::new(0.0, fk_bankroll));
-                        self.half_kelly_points.push(PlotPoint::new(0.0, hk_bankroll));
-                        self.quarter_kelly_points.push(PlotPoint::new(0.0, qk_bankroll));
+                        self.full_kelly_points
+                            .push(PlotPoint::new(0.0, fk_bankroll));
+                        self.half_kelly_points
+                            .push(PlotPoint::new(0.0, hk_bankroll));
+                        self.quarter_kelly_points
+                            .push(PlotPoint::new(0.0, qk_bankroll));
 
                         for i in 1..=self.num_bets {
                             let win = rng.r#gen::<f64>() < p.value();
@@ -92,9 +95,12 @@ impl BankrollGrowthTool {
                             update_bankroll(&mut hk_bankroll, &hk);
                             update_bankroll(&mut qk_bankroll, &qk);
 
-                            self.full_kelly_points.push(PlotPoint::new(i as f64, fk_bankroll));
-                            self.half_kelly_points.push(PlotPoint::new(i as f64, hk_bankroll));
-                            self.quarter_kelly_points.push(PlotPoint::new(i as f64, qk_bankroll));
+                            self.full_kelly_points
+                                .push(PlotPoint::new(i as f64, fk_bankroll));
+                            self.half_kelly_points
+                                .push(PlotPoint::new(i as f64, hk_bankroll));
+                            self.quarter_kelly_points
+                                .push(PlotPoint::new(i as f64, qk_bankroll));
                         }
                     }
                     (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
@@ -122,7 +128,9 @@ struct BankrollState {
 }
 
 impl InteractiveTool for BankrollGrowthTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Bankroll Growth"
     }
@@ -166,7 +174,6 @@ impl InteractiveTool for BankrollGrowthTool {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
             self.show_ui(ui);
@@ -250,7 +257,6 @@ impl InteractiveTool for BankrollGrowthTool {
 
 // [cite:clinical_trials_statistics]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "BankrollGrowthTool",
@@ -269,13 +275,26 @@ impl scientific_metadata::theory::TheoryDescribable for BankrollGrowthTool {
             self.initial_bankroll, self.probability, self.odds, f_kelly
         )
     }
-    fn phonetic_description(&self) -> String { "Kelly criterion bankroll growth and geometric compounding theory".into() }
-    fn theory_citation(&self) -> String { "A New Interpretation of Information Rate (Kelly, 1956); The Kelly Capital Growth Investment Criterion (MacLean et al., 2011)".into() }
+    fn phonetic_description(&self) -> String {
+        "Kelly criterion bankroll growth and geometric compounding theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A New Interpretation of Information Rate (Kelly, 1956); The Kelly Capital Growth Investment Criterion (MacLean et al., 2011)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Full Kelly".into(), "Maximizes expected logarithmic growth rate".into());
-        map.insert("Half Kelly".into(), "Reduces variance and drawdowns by half while retaining 75% of growth rate".into());
-        map.insert("Quarter Kelly".into(), "Conservative wagering for high volatility protection".into());
+        map.insert(
+            "Full Kelly".into(),
+            "Maximizes expected logarithmic growth rate".into(),
+        );
+        map.insert(
+            "Half Kelly".into(),
+            "Reduces variance and drawdowns by half while retaining 75% of growth rate".into(),
+        );
+        map.insert(
+            "Quarter Kelly".into(),
+            "Conservative wagering for high volatility protection".into(),
+        );
         map
     }
 }

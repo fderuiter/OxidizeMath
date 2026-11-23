@@ -1,5 +1,5 @@
 use super::*;
-use crate::tabs::chaos::attractors::{AttractorRunner, AttractorSharedParams};
+use crate::tabs::chaos::attractors::{AttractorMode, AttractorRunner, AttractorSharedParams};
 use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTab};
 use std::sync::RwLock;
 use wasm_bindgen::JsCast;
@@ -76,6 +76,8 @@ async fn wasm_attractor_running_slice_and_seek_pauses_cleanly() {
         dt: 0.01,
         simulation_speed: 5,
         max_points: 200,
+        mode: AttractorMode::Lorenz,
+        custom_flow: None,
     }));
     let mut controller = SimulationController::new(AttractorRunner::from_params(params));
     controller.send_command(SimCommand::Start).unwrap();

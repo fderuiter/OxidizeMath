@@ -261,19 +261,16 @@ pub fn run_doc_audit(args: &[String]) -> bool {
         println!("Running in strict mode (all crates must satisfy full architecture headings).");
     }
 
-    let (is_root, members) = oxidize_core::workspace::get_workspace_members();
+    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
     if members.is_empty() {
         eprintln!("[!] No workspace members discovered.");
         return false;
     }
 
-    let base_dir = if !is_root && Path::new("../../Cargo.toml").exists() {
-        Path::new("../../")
-    } else {
-        Path::new("")
-    };
-
-    let candidate = base_dir.join(crate::whitelist::WHITELIST_FILE_NAME);
+    let candidate = crate::manifest_cache::resolve_workspace_path_from(
+        workspace_root,
+        crate::whitelist::WHITELIST_FILE_NAME,
+    );
     let allowlist = if strict_mode {
         HashSet::new()
     } else {
@@ -285,18 +282,13 @@ pub fn run_doc_audit(args: &[String]) -> bool {
     let mut report = AuditReport::new();
 
     for member in &members {
-        let crate_dir = base_dir.join(member);
+        let crate_dir = crate::manifest_cache::resolve_workspace_path_from(workspace_root, member);
         let is_allowlisted = allowlist.contains(member) || staging_mode;
 
         let crate_report = audit_crate(member, &crate_dir, is_allowlisted);
         report.extend(crate_report.violations);
     }
 
-    let workspace_root = if base_dir.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        base_dir
-    };
     report.extend(facade_imports::audit_facade_import_hygiene(workspace_root));
 
     if report.is_success() {
