@@ -21,6 +21,8 @@ pub mod atlas;
 pub mod evolution_kinetics_tool;
 /// UI rendering for [`evolution_kinetics_tool::EvolutionKineticsTool`].
 pub mod evolution_kinetics_ui;
+#[cfg(test)]
+mod legacy_runner;
 /// Continuous 2D FFT Lenia Studio tool and canvas.
 pub mod lenia;
 /// Vogel golden-angle phyllotaxis and nutrient-coupled L-system tool.
