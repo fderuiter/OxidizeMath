@@ -137,21 +137,15 @@ impl Wave2DSolver {
     /// Writes the time-averaged intensity profile $I(y)$ along the detector screen into `out`.
     #[verified_engine::verified]
     pub fn read_detector_profile(&self, det_x: usize, out: &mut [f64]) {
-        assert!(
-            out.len() >= self.height,
-            "Output buffer shorter than grid height"
+        masks::read_detector_profile_into(
+            &self.detector_accum,
+            self.detector_samples,
+            &self.energy_ema,
+            self.width,
+            self.height,
+            det_x,
+            out,
         );
-        if self.detector_samples > 0 {
-            let inv = 1.0 / (self.detector_samples as f64);
-            for (dst, &acc) in out.iter_mut().zip(self.detector_accum.iter()) {
-                *dst = acc * inv;
-            }
-        } else {
-            let col = det_x.min(self.width - 1);
-            for (y, dst) in out.iter_mut().enumerate().take(self.height) {
-                *dst = self.energy_ema[flatten_2d_index(col, y, self.width)];
-            }
-        }
     }
 
     /// Injects a smooth 2D Gaussian displacement pulse centered at normalized `(cx_norm, cy_norm)`.

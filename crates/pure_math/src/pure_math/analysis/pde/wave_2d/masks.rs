@@ -68,7 +68,7 @@ pub(super) fn max_wave_speed_scale(wave_speed_mask: &[f64]) -> f64 {
 }
 
 /// Evaluates localized spot or line-source forcing acceleration at grid cell `(x, y)`.
-#[verified_engine::verified]
+#[inline]
 pub(super) fn driver_force_at(
     width: usize,
     height: usize,
@@ -306,4 +306,32 @@ pub fn clamped_beam_eigenfunction(mode: usize, xi: f64) -> f64 {
     let sigma = (beta.cosh() - beta.cos()) / (beta.sinh() - beta.sin());
     let bx = beta * x;
     (bx.cosh() - bx.cos()) - sigma * (bx.sinh() - bx.sin())
+}
+
+/// Reads time-averaged detector column intensity (or fallback `energy_ema`) into `out`.
+#[verified_engine::verified]
+pub(super) fn read_detector_profile_into(
+    detector_accum: &[f64],
+    detector_samples: usize,
+    energy_ema: &[f64],
+    width: usize,
+    height: usize,
+    det_x: usize,
+    out: &mut [f64],
+) {
+    assert!(
+        out.len() >= height,
+        "Output buffer shorter than grid height"
+    );
+    if detector_samples > 0 {
+        let inv = 1.0 / (detector_samples as f64);
+        for (dst, &acc) in out.iter_mut().zip(detector_accum.iter()) {
+            *dst = acc * inv;
+        }
+    } else {
+        let col = det_x.min(width - 1);
+        for (y, dst) in out.iter_mut().enumerate().take(height) {
+            *dst = energy_ema[flatten_2d_index(col, y, width)];
+        }
+    }
 }

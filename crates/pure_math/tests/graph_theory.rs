@@ -70,12 +70,103 @@ fn test_vertex_cover() {
 
 #[test]
 #[verified_engine::verified]
-fn test_treewidth_placeholder() {
-    let mut g: Graph<(), ()> = Graph::new();
-    let n1 = g.add_node(());
-    let n2 = g.add_node(());
-    g.add_edge(n1, n2, ());
-    assert_eq!(treewidth(&g), 0);
+fn test_treewidth_exact_families_and_zero_allocation() {
+    use pure_math::pure_math::graph_theory::parameters::treewidth::{
+        TreewidthScratch, treewidth_in_place,
+    };
+    use verified_engine::engine::VerifiedEngine;
+
+    // Empty and edgeless graphs -> 0
+    let g_empty: Graph<(), ()> = Graph::new();
+    assert_eq!(treewidth(&g_empty), 0);
+    let mut g_edgeless: Graph<(), ()> = Graph::new();
+    for _ in 0..4 {
+        g_edgeless.add_node(());
+    }
+    assert_eq!(treewidth(&g_edgeless), 0);
+
+    // Non-trivial trees -> 1
+    let mut tree: Graph<(), ()> = Graph::new();
+    let tn: Vec<_> = (0..6).map(|_| tree.add_node(())).collect();
+    tree.add_edge(tn[0], tn[1], ());
+    tree.add_edge(tn[0], tn[2], ());
+    tree.add_edge(tn[1], tn[3], ());
+    tree.add_edge(tn[1], tn[4], ());
+    tree.add_edge(tn[2], tn[5], ());
+    assert_eq!(treewidth(&tree), 1);
+
+    // Cycle C_5 -> 2
+    let mut c5: Graph<(), ()> = Graph::new();
+    let cn: Vec<_> = (0..5).map(|_| c5.add_node(())).collect();
+    for i in 0..5 {
+        c5.add_edge(cn[i], cn[(i + 1) % 5], ());
+    }
+    assert_eq!(treewidth(&c5), 2);
+
+    // Complete graph K_4 -> 3
+    let mut k4: Graph<(), ()> = Graph::new();
+    let kn: Vec<_> = (0..4).map(|_| k4.add_node(())).collect();
+    for i in 0..4 {
+        for j in (i + 1)..4 {
+            k4.add_edge(kn[i], kn[j], ());
+        }
+    }
+    assert_eq!(treewidth(&k4), 3);
+
+    // Wheel graph W_7 (center + 6-ring) -> 3
+    let mut w7: Graph<(), ()> = Graph::new();
+    let wn: Vec<_> = (0..7).map(|_| w7.add_node(())).collect();
+    for i in 1..=6 {
+        w7.add_edge(wn[0], wn[i], ());
+        w7.add_edge(wn[i], wn[if i == 6 { 1 } else { i + 1 }], ());
+    }
+    let (tw_w7, _) = VerifiedEngine::run_verified(|| treewidth(&w7));
+    assert_eq!(tw_w7, 3);
+
+    // 30-vertex path (|V| > 24 min-fill fallback) -> 1 with zero post-init allocations
+    let mut p30: Graph<(), ()> = Graph::new();
+    let pn: Vec<_> = (0..30).map(|_| p30.add_node(())).collect();
+    for i in 0..29 {
+        p30.add_edge(pn[i], pn[i + 1], ());
+    }
+    let mut scratch = TreewidthScratch::with_capacity(30);
+    let (tw_p30, _) = VerifiedEngine::run_verified(|| treewidth_in_place(&p30, &mut scratch));
+    assert_eq!(tw_p30, 1);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_treewidth_beyond_degeneracy_petersen_and_grid4x4() {
+    use verified_engine::engine::VerifiedEngine;
+
+    // Petersen graph: 10 vertices, 3-regular (degeneracy == 3), exact treewidth == 4.
+    let mut petersen: Graph<(), ()> = Graph::new();
+    let v: Vec<_> = (0..10).map(|_| petersen.add_node(())).collect();
+    for i in 0..5 {
+        petersen.add_edge(v[i], v[(i + 1) % 5], ());
+        petersen.add_edge(v[i], v[i + 5], ());
+        petersen.add_edge(v[5 + i], v[5 + ((i + 2) % 5)], ());
+    }
+    assert_eq!(degeneracy(&petersen), 3);
+    let (tw_petersen, _) = VerifiedEngine::run_verified(|| treewidth(&petersen));
+    assert_eq!(tw_petersen, 4);
+
+    // 4x4 grid: 16 vertices, degeneracy == 2, exact treewidth == 4.
+    let mut grid: Graph<(), ()> = Graph::new();
+    let gv: Vec<_> = (0..16).map(|_| grid.add_node(())).collect();
+    for r in 0..4 {
+        for c in 0..4 {
+            let idx = r * 4 + c;
+            if c + 1 < 4 {
+                grid.add_edge(gv[idx], gv[idx + 1], ());
+            }
+            if r + 1 < 4 {
+                grid.add_edge(gv[idx], gv[idx + 4], ());
+            }
+        }
+    }
+    let (tw_grid, _) = VerifiedEngine::run_verified(|| treewidth(&grid));
+    assert_eq!(tw_grid, 4);
 }
 
 #[test]

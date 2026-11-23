@@ -35,6 +35,8 @@ use super::fused_stepper::StencilOperators;
 
 /// Configuration enums, parameter structs, and analytic reference formulas.
 pub mod config;
+/// Boundary-accurate square plate and circular Bessel drumhead eigenmode evaluators.
+pub mod eigenmodes;
 /// Mask construction utilities for sponge layers, slits, lenses, and plate clamps.
 pub mod masks;
 /// Chladni sand particle drift and 2D Marching-Squares nodal contour extraction.
@@ -45,11 +47,18 @@ pub mod probes;
 pub mod spectral;
 
 #[cfg(test)]
+mod eigenmode_tests;
+#[cfg(test)]
 mod tests;
 
 pub use config::{
     BoundaryMode2D, DriverConfig2D, MAX_BIHARMONIC_NUMBER, MAX_COURANT_NUMBER, MAX_VERLET_SUBSTEPS,
     Wave2DMedium, Wave2DParams, analytic_clamped_square_omega, young_double_slit_fringe_spacing,
+};
+pub use eigenmodes::{
+    BESSEL_JN_ZEROS, Eigenmode2D, PinConstraint2D, PlateEigenmodeKind, bessel_jn, bessel_jn_zero,
+    circular_drumhead_eigenfrequency_hz, evaluate_eigenmode_amplitude, lorentzian_modal_response,
+    populate_eigenmodes, snap_to_mode_antinode, square_plate_eigenfrequency_hz,
 };
 pub use masks::{
     apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_point_clamp,
@@ -160,7 +169,6 @@ impl Wave2DSolver {
     pub fn modal_field(&self) -> &[f64] {
         &self.modal_field
     }
-
     /// Initializes a stationary displacement field ($u(0) = \text{values}, u_t(0) = 0$).
     #[verified_engine::verified]
     pub fn set_stationary_displacement(&mut self, values: &[f64]) {
@@ -176,7 +184,6 @@ impl Wave2DSolver {
         self.last_dt = 0.0;
         self.stationary_start = true;
     }
-
     /// Clears wave displacement, energy envelope, and detector accumulators while keeping masks.
     #[verified_engine::verified]
     pub fn clear_wave_state(&mut self) {
@@ -192,7 +199,6 @@ impl Wave2DSolver {
         self.last_dt = 0.0;
         self.stationary_start = false;
     }
-
     /// Resets all masks (`wall_mask = 1`, `sponge_mask = 0`, `wave_speed_mask = 1`) and clears state.
     #[verified_engine::verified]
     pub fn reset_all(&mut self) {
@@ -201,7 +207,6 @@ impl Wave2DSolver {
         self.wave_speed_mask.fill(1.0);
         self.clear_wave_state();
     }
-
     /// Resets only the time-integrated detector intensity accumulator.
     #[verified_engine::verified]
     pub fn reset_detector(&mut self) {
