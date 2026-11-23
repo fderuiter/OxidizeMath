@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test transformer architecture.
 use domain_ai::ai::transformer::traits::NormalizationLayer;
 use domain_ai::ai::transformer::{EncoderLayer, FeedForward, MultiHeadAttention};
 use nalgebra::DMatrix;

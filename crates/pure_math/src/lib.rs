@@ -52,3 +52,8 @@ pub mod __doctest_facade {
     pub use petgraph;
     pub use rand;
 }
+
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;

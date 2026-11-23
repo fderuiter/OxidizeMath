@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test quantum.
 use approx::assert_relative_eq;
 use domain_physics::physics::quantum::{
     QuantumOperator, QuantumState, construct_1d_hamiltonian, dft_operator, evolve_state,
