@@ -296,7 +296,6 @@ impl CausticsRayBenchTool {
             Some(&summary),
         );
         crate::accessibility::lock_canvas_arrow_keys(ui, &response);
-        self.focused_canvas = response.has_focus().then_some(response.id);
         self.handle_bench_input(ui, &response, rect);
 
         painter.rect_filled(rect, 4.0_f32, Color32::BLACK);

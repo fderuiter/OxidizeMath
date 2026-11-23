@@ -82,6 +82,7 @@ impl Error {
             Self::HighEnergy(err) => Some(err),
             Self::Nuclear(err) => Some(err),
             Self::Radar(err) => Some(err),
+            Self::Sandpile(err) => Some(err),
             Self::SolidState(err) => Some(err),
             Self::StandardModel(err) => Some(err),
             Self::StatMech(err) => Some(err),

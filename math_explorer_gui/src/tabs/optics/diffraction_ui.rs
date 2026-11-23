@@ -256,7 +256,6 @@ impl FraunhoferDiffractionTool {
         if response.clicked() {
             response.request_focus();
         }
-        self.focused_canvas = response.has_focus().then_some(response.id);
         self.handle_screen_keyboard(ui, &response);
 
         if let Some(tex) = &self.texture {

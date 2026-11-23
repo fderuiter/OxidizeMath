@@ -92,7 +92,6 @@ pub struct CausticsRayBenchTool {
     pub(crate) state: CausticsRayBenchState,
     pub(crate) workspace: RayFanWorkspace,
     pub(crate) caustics: CausticEnvelopeBuffer,
-    pub(super) focused_canvas: Option<egui::Id>,
     pub(super) revision: u64,
 }
 
@@ -102,7 +101,6 @@ impl Default for CausticsRayBenchTool {
             state: CausticsRayBenchState::default(),
             workspace: RayFanWorkspace::new(MAX_RAYS, MAX_PTS_PER_RAY),
             caustics: CausticEnvelopeBuffer::new(512, 64, -BENCH_EXTENT, BENCH_EXTENT),
-            focused_canvas: None,
             revision: 1,
         };
         tool.recompute();
@@ -391,9 +389,6 @@ impl InteractiveTool for CausticsRayBenchTool {
     }
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds {

@@ -9,7 +9,7 @@ Accepted
 `domain_physics::physics::optics` previously exposed only two scalar sensing formulas (`sensing::lambertian_intensity` and `sensing::lws_range_resolution`) with a placeholder `DUMMY = 1.0` verification constant and `optics = "graph_parameters_rust.tex"` in `traceability.toml`. Delivering an interactive geometric and physical optics laboratory across desktop and `wasm32-unknown-unknown` requires:
 
 1. **Zero dynamic heap allocations** inside interactive ray-fan integration, caustic envelope extraction, and Fraunhofer diffraction profile sampling under `VerifiedAllocator::lock_allocations()` (NASA Power of 10 Rule 3).
-2. **Reuse of existing verified math kernels** (`pure_math::analysis::ode::{ArrayState, OdeSystem, RungeKutta4}` for graded-index eikonal integration, `pure_math::special_functions::bessel::bessel_j` for circular Airy patterns, and `math_commons::math_kernel::colormap` for WCAG-compliant rendering) with zero new Cargo dependencies and `< 3 MiB` Brotli / `< 3.5 MiB` Gzip compressed WASM bundle size across the 28-tab workspace.
+2. **Reuse of existing verified math kernels** (`pure_math::analysis::ode::{ArrayState, OdeSystem, RungeKutta4}` for graded-index eikonal integration, `pure_math::special_functions::bessel::bessel_j` for circular Airy patterns, and `math_commons::math_kernel::colormap` for WCAG-compliant rendering) with zero new Cargo dependencies and `< 4 MiB` compressed WASM bundle size across the 28-tab workspace.
 3. **Auto-discovered GUI plugin integration** (`Optics & Caustics` tab under academic domain `Physics`, URL slug `optics`) without manual edits to `math_explorer_gui/src/app/mod.rs`.
 
 ## Decision

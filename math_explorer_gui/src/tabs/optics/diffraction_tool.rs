@@ -72,7 +72,6 @@ pub struct FraunhoferDiffractionTool {
     pub(crate) profile: FraunhoferProfileBuffer,
     pub(super) screen_pixels: Vec<Color32>,
     pub(super) texture: Option<egui::TextureHandle>,
-    pub(super) focused_canvas: Option<egui::Id>,
     pub(super) revision: u64,
 }
 
@@ -83,7 +82,6 @@ impl Default for FraunhoferDiffractionTool {
             profile: FraunhoferProfileBuffer::new(PROFILE_SAMPLES, 36),
             screen_pixels: vec![Color32::BLACK; SCREEN_SIDE * SCREEN_SIDE],
             texture: None,
-            focused_canvas: None,
             revision: 1,
         };
         tool.recompute();
@@ -269,9 +267,6 @@ impl InteractiveTool for FraunhoferDiffractionTool {
     }
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds {
