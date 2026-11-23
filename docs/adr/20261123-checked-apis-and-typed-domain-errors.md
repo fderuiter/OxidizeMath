@@ -1,7 +1,7 @@
-# ADR 0047: Checked Companion APIs, Typed Domain Errors, and Human-Readable Diagnostics
+# ADR 20261123: Checked Companion APIs, Typed Domain Errors, and Human-Readable Diagnostics
 
 ## Status
-Accepted (extends [ADR 0027](0027-enforce-workspace-clippy-lints.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
+Accepted (extends [ADR 0027](0027-enforce-workspace-clippy-lints.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 20261123](20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
 
 ## Context
 [`math_explorer`](../../math_explorer/src/lib.rs) exposes a unified scientific computing SDK across `math_commons`, `pure_math`, and six `domain_*` crates. Four error-handling inconsistencies undermined downstream programmatic error recovery, NASA Power of 10 zero-allocation guarantees, and diagnostic readability:
@@ -22,6 +22,6 @@ Accepted (extends [ADR 0027](0027-enforce-workspace-clippy-lints.md), [ADR 0034]
    - Replace all `write!(f, "{:?}", self)` `Display` implementations and `MathError::DimensionMismatch`'s `{:?}` field formatting with explicit `#[error("...")]` sentences, verified across all `28` facade error enums in [`math_explorer/tests/error_formatting.rs`](../../math_explorer/tests/error_formatting.rs).
 
 ## Consequences
-- **Positive**: Zero public library signatures in [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json) or [`crates/math_commons/src/primitives.rs`](../../crates/math_commons/src/primitives.rs) return `Result` with `String`, `&'static str`, or `()`, and zero `#[allow(clippy::result_unit_err)]` suppressions remain.
+- **Positive**: Zero targeted public library signatures across the migrated modules or [`crates/math_commons/src/primitives.rs`](../../crates/math_commons/src/primitives.rs) return `Result` with `String`, `&'static str`, or `()`, and zero `#[allow(clippy::result_unit_err)]` suppressions remain.
 - **Positive**: Hot-path bounds, integer, and solver failures construct stack-only `Copy` / scalar payloads with zero heap allocations inside `VerifiedEngine::run_verified`, while `Display` and `Diagnostic::metadata` emit clean sentences when surfaced to UI consumers.
 - **Neutral**: Existing panicking `new` constructors, operator traits (`Div`), algebraic traits (`Monoid`, `Field`), and inner `domain_climate` layer kernels remain intact for ergonomic trusted-input call sites, with `api_baseline.json` updated to record the expanded checked API surface.

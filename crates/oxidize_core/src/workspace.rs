@@ -116,6 +116,7 @@ pub fn get_workspace_members_from_paths(primary: &Path, fallback: &Path) -> (boo
 }
 
 /// Parses the `workspace.members` array from a TOML string.
+#[cfg(feature = "ast-analysis")]
 pub fn parse_workspace_members(content: &str) -> Result<Vec<String>, WorkspaceError> {
     let table = content
         .parse::<toml::Table>()
@@ -133,6 +134,66 @@ pub fn parse_workspace_members(content: &str) -> Result<Vec<String>, WorkspaceEr
         .collect();
 
     Ok(members)
+}
+
+#[cfg(not(feature = "ast-analysis"))]
+fn validate_toml_bracket_balance(content: &str) -> Result<(), WorkspaceError> {
+    let mut bracket_depth: i32 = 0;
+    let mut in_double = false;
+    let mut in_single = false;
+    let mut in_comment = false;
+    let mut escaped = false;
+
+    for ch in content.chars() {
+        if ch == '\n' {
+            in_comment = false;
+            escaped = false;
+            continue;
+        }
+        if in_comment {
+            continue;
+        }
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && in_double {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' && !in_single {
+            in_double = !in_double;
+        } else if ch == '\'' && !in_double {
+            in_single = !in_single;
+        } else if !in_double && !in_single {
+            if ch == '#' {
+                in_comment = true;
+            } else if ch == '[' {
+                bracket_depth += 1;
+            } else if ch == ']' {
+                bracket_depth -= 1;
+                if bracket_depth < 0 {
+                    return Err(WorkspaceError::InvalidManifestSyntax(
+                        "unmatched ']'".to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
+    if in_double || in_single || bracket_depth != 0 {
+        return Err(WorkspaceError::InvalidManifestSyntax(
+            "malformed TOML syntax".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Parses the `workspace.members` array from a TOML string.
+#[cfg(not(feature = "ast-analysis"))]
+pub fn parse_workspace_members(content: &str) -> Result<Vec<String>, WorkspaceError> {
+    validate_toml_bracket_balance(content)?;
+    parse_workspace_members_std(content)
 }
 
 #[cfg(test)]
