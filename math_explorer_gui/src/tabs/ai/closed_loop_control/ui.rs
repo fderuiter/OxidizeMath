@@ -75,7 +75,7 @@ fn render_transport_and_telemetry(tool: &mut ClosedLoopControlTool, ui: &mut egu
         Some(PlaybackAction::Reset) => {
             tool.rebuild_simulation();
         }
-        None => {}
+        Some(PlaybackAction::StepBack | PlaybackAction::ScrubTo(_)) | None => {}
     }
 
     let palette = SemanticPalette::from_visuals(ui.visuals());

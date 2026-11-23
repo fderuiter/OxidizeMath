@@ -1,4 +1,4 @@
-# ADR 0046: Zero-Allocation Discretized Q-Learning Helpers and Unified Closed-Loop Control Workbench
+# ADR 20261123: Zero-Allocation Discretized Q-Learning Helpers and Unified Closed-Loop Control Workbench
 
 ## Status
 
