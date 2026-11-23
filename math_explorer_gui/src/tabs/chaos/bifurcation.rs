@@ -82,6 +82,7 @@ pub struct BifurcationDiagram {
     pub(crate) map_mode: BifurcationMapMode,
     pub(crate) r_min: f64,
     pub(crate) r_max: f64,
+    pub(crate) probe_r: f64,
     pub(crate) steps: usize,
     pub(crate) x0: f64,
     pub(crate) selected_r: f64,
@@ -129,6 +130,7 @@ impl Default for BifurcationDiagram {
             map_mode: BifurcationMapMode::Logistic,
             r_min,
             r_max,
+            probe_r: 3.50,
             steps,
             x0: default_x0(),
             selected_r: default_selected_r(),
@@ -243,6 +245,10 @@ impl BifurcationDiagram {
             self.selected_r = default_selected_r();
         }
         self.selected_r = self.selected_r.clamp(self.r_min, self.r_max);
+        if !self.probe_r.is_finite() {
+            self.probe_r = 3.50;
+        }
+        self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
         if !self.orbit_x0.is_finite() {
             self.orbit_x0 = default_orbit_x0();
         }

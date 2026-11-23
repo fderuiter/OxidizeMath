@@ -397,6 +397,7 @@ impl SimulationRunner for LorenzRegimeMapRunner {
             pixels: Arc::new(RwLock::new(self.pixels.clone())),
             custom_data: vec![self.active.beta],
             structured_data: Some(Box::new(meta)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

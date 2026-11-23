@@ -104,6 +104,7 @@ impl BifurcationDiagram {
         self.map_mode = s.map_mode;
         self.r_min = s.r_min;
         self.r_max = s.r_max;
+        self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
         self.steps = s.steps;
         self.x0 = s.x0;
         self.selected_r = s.selected_r.clamp(s.r_min, s.r_max);

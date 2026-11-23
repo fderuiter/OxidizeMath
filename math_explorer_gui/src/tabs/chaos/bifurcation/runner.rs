@@ -330,6 +330,7 @@ impl SimulationRunner for BifurcationRunner {
                 self.next_step_idx as f64,
             ],
             structured_data: Some(Box::new(snap)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

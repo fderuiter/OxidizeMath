@@ -117,7 +117,20 @@ impl BifurcationDiagram {
                 self.dirty = true;
             }
             self.draw_lyapunov_controls(ui);
+            self.draw_audio_probe(ui);
         });
+    }
+
+    fn draw_audio_probe(&mut self, ui: &mut egui::Ui) {
+        self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
+        ui.separator();
+        let _ = ui.add(
+            AnimatedSlider::new(&mut self.probe_r, self.r_min..=self.r_max)
+                .text("Sweep r (Audio)")
+                .id_salt("bifurcation_probe_r"),
+        );
+        let frame = crate::audio::mappings::bifurcation_frame(self.probe_r);
+        crate::audio::render_sonification_panel(ui, "bifurcation", &frame, false);
     }
 
     fn draw_inspector_plots(&self, ui: &mut egui::Ui, palette: &crate::app::SemanticPalette) {
@@ -207,6 +220,7 @@ impl BifurcationDiagram {
                     plot_ui.vline(
                         VLine::new("Selected r", self.selected_r).color(palette.series_color(3)),
                     );
+                    plot_ui.vline(VLine::new("Audio Probe r", self.probe_r).color(palette.warning));
                     if plot_ui.response().clicked() && !plot_ui.response().dragged() {
                         clicked_r = plot_ui.pointer_coordinate().map(|c| c.x);
                     }
