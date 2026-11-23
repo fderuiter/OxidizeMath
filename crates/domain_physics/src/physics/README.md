@@ -94,7 +94,7 @@ graph TD
 - **[astrophysics](astrophysics)**: Galaxy properties, orbital mechanics.
 - **[chaos](chaos)**: Non-linear dynamics, Lorenz attractors, Lyapunov exponents.
 - **[fluid_dynamics](fluid_dynamics)**: Lattice Boltzmann, potential flow.
-- **[high_energy](high_energy)**: Particle physics interactions.
+- **[high_energy](high_energy)**: Black hole geodesics, relativistic jet Doppler beaming, shock waves, and high-energy radiation.
 - **[medical](medical)**: Dose calculation and radiation modeling.
 - **[mri](mri)**: Bloch simulators, spin dynamics.
 - **[nuclear](nuclear)**: Liquid drop model, decays, shell model.

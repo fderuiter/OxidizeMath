@@ -1,10 +1,11 @@
 //! Schwarzschild spacetime metric, orbital potentials, Flamm paraboloid, and twin clock dilation.
 
-use std::f64::consts::PI;
-
 use math_commons::constants::{C, G};
-use nalgebra::{SMatrix, SVector};
-use pure_math::pure_math::tensor::{StaticMetric, TensorError};
+use nalgebra::{SMatrix, SVector, Vector4};
+use pure_math::pure_math::tensor::{
+    GeodesicStepStatus, LorentzianConnection4D, SchwarzschildConnection4D, StaticMetric,
+    TensorError,
+};
 
 use crate::error::HighEnergyError;
 use crate::physics::high_energy::observer::calculate_lorentz_factor;
@@ -169,6 +170,160 @@ impl SchwarzschildBlackHole {
         let gamma = calculate_lorentz_factor(local_velocity_m_s)?;
         Ok(grav / gamma)
     }
+
+    /// Returns the closed-form stack-allocated [`SchwarzschildConnection4D`] for this black hole.
+    ///
+    /// # Errors
+    /// Returns [`HighEnergyError::InvalidMass`] if `self.mass` is invalid.
+    #[verified_engine::verified]
+    pub fn connection_4d(&self) -> Result<SchwarzschildConnection4D, HighEnergyError> {
+        let rs = self.schwarzschild_radius()?;
+        SchwarzschildConnection4D::new(rs)
+            .map_err(|_| HighEnergyError::InvalidMass { mass: self.mass })
+    }
+
+    /// Critical photon capture impact parameter $b_{\text{crit}} = \frac{3\sqrt{3}}{2} R_s \approx 2.598076\,R_s$.
+    ///
+    /// Null geodesics with $b < b_{\text{crit}}$ plunge into the horizon; rays with $b > b_{\text{crit}}$
+    /// scatter back to infinity after strong-field lensing near $r_{\text{ph}} = 1.5 R_s$.
+    ///
+    /// # Errors
+    /// Returns [`HighEnergyError::InvalidMass`] if `self.mass` is invalid.
+    #[verified_engine::verified]
+    pub fn critical_impact_parameter(&self) -> Result<f64, HighEnergyError> {
+        eval_critical_impact_parameter(self.schwarzschild_radius()?)
+    }
+
+    /// Dimensionless specific angular momentum $\ell_{\text{ISCO}} = \sqrt{3}\,R_s$ of the ISCO at $r = 3 R_s$.
+    ///
+    /// # Errors
+    /// Returns [`HighEnergyError::InvalidMass`] if `self.mass` is invalid.
+    #[verified_engine::verified]
+    pub fn isco_specific_angular_momentum(&self) -> Result<f64, HighEnergyError> {
+        Ok(3.0_f64.sqrt() * self.schwarzschild_radius()?)
+    }
+
+    /// Local static-shell orbital speed $\beta_{\text{shell}}(r) = \sqrt{\frac{R_s}{2(r - R_s)}}$
+    /// of a circular timelike geodesic at radius $r > 1.5 R_s$ ($\beta_{\text{shell}} = 0.5$ at ISCO $r = 3 R_s$).
+    ///
+    /// # Errors
+    /// Returns [`HighEnergyError::InvalidRadius`] if `r <= 1.5 R_s` or `r` is non-finite.
+    #[verified_engine::verified]
+    pub fn circular_shell_beta(&self, r: f64) -> Result<f64, HighEnergyError> {
+        let rs = self.schwarzschild_radius()?;
+        let r_ph = 1.5 * rs;
+        if !r.is_finite() || r <= r_ph {
+            return Err(HighEnergyError::InvalidRadius {
+                radius: r,
+                limit: r_ph,
+            });
+        }
+        Ok((rs / (2.0 * (r - rs))).sqrt())
+    }
+
+    /// Evaluates conserved Killing energy $e = (1 - R_s/r) u^0$ and azimuthal angular momentum
+    /// $\ell = r^2 \sin^2\theta\,u^\varphi$ along an affine geodesic.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn killing_invariants(&self, pos: &Vector4<f64>, vel: &Vector4<f64>) -> (f64, f64) {
+        let Ok(rs) = self.schwarzschild_radius() else {
+            return (0.0, 0.0);
+        };
+        let r = pos[1];
+        let sin_t = pos[2].sin();
+        let energy = (1.0 - rs / r) * vel[0];
+        let ang_mom = r * r * sin_t * sin_t * vel[3];
+        (energy, ang_mom)
+    }
+
+    /// Advances a 4D geodesic state `(pos, vel)` by one affine step `d_lambda` purely on the stack
+    /// using [`SchwarzschildConnection4D`], subdividing near $r < 2.5 R_s$ to keep Killing drift $< 10^{-6}$.
+    #[verified_engine::verified]
+    pub fn step_geodesic_rk4(
+        &self,
+        pos: &mut Vector4<f64>,
+        vel: &mut Vector4<f64>,
+        d_lambda: f64,
+    ) -> GeodesicStepStatus {
+        let Ok(conn) = self.connection_4d() else {
+            return GeodesicStepStatus::HaltedSingularity;
+        };
+        if !d_lambda.is_finite() || !conn.is_outside_horizon(pos) {
+            return GeodesicStepStatus::HaltedSingularity;
+        }
+        let rs = conn.schwarzschild_radius;
+        let max_local_h = if pos[1] < 1.35 * rs {
+            0.002 * rs
+        } else if pos[1] < 3.0 * rs {
+            0.005 * rs
+        } else {
+            0.10 * rs
+        };
+        let substeps = ((d_lambda / max_local_h).ceil() as usize).clamp(1, 64);
+        let h = d_lambda / (substeps as f64);
+        let mut p_cur = *pos;
+        let mut v_cur = *vel;
+        let mut metric_norm = 0.0;
+        let mut s = 0;
+        while s < substeps {
+            let Some((pn, vn, norm)) = rk4_single_stage(&conn, &p_cur, &v_cur, h) else {
+                return GeodesicStepStatus::HaltedSingularity;
+            };
+            p_cur = pn;
+            v_cur = vn;
+            metric_norm = norm;
+            s += 1;
+        }
+        *pos = p_cur;
+        *vel = v_cur;
+        GeodesicStepStatus::Advanced { metric_norm }
+    }
+}
+
+#[verified_engine::verified]
+fn rk4_single_stage(
+    conn: &SchwarzschildConnection4D,
+    pos: &Vector4<f64>,
+    vel: &Vector4<f64>,
+    h: f64,
+) -> Option<(Vector4<f64>, Vector4<f64>, f64)> {
+    let a1 = conn.geodesic_acceleration(pos, vel).ok()?;
+    let p2 = *pos + 0.5 * h * (*vel);
+    let v2 = *vel + 0.5 * h * a1;
+    if !conn.is_outside_horizon(&p2) {
+        return None;
+    }
+    let a2 = conn.geodesic_acceleration(&p2, &v2).ok()?;
+    let p3 = *pos + 0.5 * h * v2;
+    let v3 = *vel + 0.5 * h * a2;
+    if !conn.is_outside_horizon(&p3) {
+        return None;
+    }
+    let a3 = conn.geodesic_acceleration(&p3, &v3).ok()?;
+    let p4 = *pos + h * v3;
+    let v4 = *vel + h * a3;
+    if !conn.is_outside_horizon(&p4) {
+        return None;
+    }
+    let a4 = conn.geodesic_acceleration(&p4, &v4).ok()?;
+    let next_pos = *pos + (h / 6.0) * (*vel + 2.0 * v2 + 2.0 * v3 + v4);
+    let next_vel = *vel + (h / 6.0) * (a1 + 2.0 * a2 + 2.0 * a3 + a4);
+    if !conn.is_outside_horizon(&next_pos) {
+        return None;
+    }
+    let norm = conn.interval_norm(&next_pos, &next_vel).ok()?;
+    Some((next_pos, next_vel, norm))
+}
+
+#[verified_engine::verified]
+fn eval_critical_impact_parameter(r_s: f64) -> Result<f64, HighEnergyError> {
+    if !r_s.is_finite() || r_s <= 0.0 {
+        return Err(HighEnergyError::InvalidRadius {
+            radius: r_s,
+            limit: 0.0,
+        });
+    }
+    Ok(1.5 * 3.0_f64.sqrt() * r_s)
 }
 
 #[verified_engine::verified]
@@ -232,6 +387,15 @@ pub fn photon_sphere_radius(r_s: f64) -> Result<f64, HighEnergyError> {
     eval_photon_sphere_radius(r_s)
 }
 
+/// Computes the critical photon capture impact parameter $b_{\text{crit}} = \frac{3\sqrt{3}}{2} R_s$.
+///
+/// # Errors
+/// Returns [`HighEnergyError::InvalidRadius`] if `r_s <= 0.0` or `r_s` is non-finite.
+#[verified_engine::verified]
+pub fn critical_impact_parameter(r_s: f64) -> Result<f64, HighEnergyError> {
+    eval_critical_impact_parameter(r_s)
+}
+
 /// Evaluates the Schwarzschild radial effective potential
 /// $V_{\text{eff}}(r) = \frac{1}{2}(1 - \frac{R_s}{r})(\kappa + \frac{\ell^2}{r^2})$.
 ///
@@ -273,25 +437,10 @@ pub fn combined_clock_rate(
 impl StaticMetric<4> for SchwarzschildBlackHole {
     #[verified_engine::verified]
     fn metric_at(&self, point: &SVector<f64, 4>) -> Result<SMatrix<f64, 4, 4>, TensorError> {
-        let rs = self
-            .schwarzschild_radius()
+        let conn = self
+            .connection_4d()
             .map_err(|_| TensorError::SingularMetric)?;
-        if !point.iter().all(|v| v.is_finite()) {
-            return Err(TensorError::SingularMetric);
-        }
-        let r = point[1];
-        let theta = point[2];
-        if r <= rs {
-            return Err(TensorError::SingularMetric);
-        }
-        let f = 1.0 - rs / r;
-        let sin_t = theta.sin();
-        let mut g = SMatrix::<f64, 4, 4>::zeros();
-        g[(0, 0)] = -f;
-        g[(1, 1)] = 1.0 / f;
-        g[(2, 2)] = r * r;
-        g[(3, 3)] = r * r * sin_t * sin_t;
-        Ok(g)
+        conn.metric_tensor(point)
     }
 
     #[verified_engine::verified]
@@ -299,25 +448,10 @@ impl StaticMetric<4> for SchwarzschildBlackHole {
         &self,
         point: &SVector<f64, 4>,
     ) -> Result<SMatrix<f64, 4, 4>, TensorError> {
-        let rs = self
-            .schwarzschild_radius()
+        let conn = self
+            .connection_4d()
             .map_err(|_| TensorError::SingularMetric)?;
-        if !point.iter().all(|v| v.is_finite()) {
-            return Err(TensorError::SingularMetric);
-        }
-        let r = point[1];
-        let sin_t = point[2].sin();
-        if r <= rs || sin_t.abs() <= 1e-12 {
-            return Err(TensorError::SingularMetric);
-        }
-        let f = 1.0 - rs / r;
-        let inv_r2 = 1.0 / (r * r);
-        let mut g_inv = SMatrix::<f64, 4, 4>::zeros();
-        g_inv[(0, 0)] = -1.0 / f;
-        g_inv[(1, 1)] = f;
-        g_inv[(2, 2)] = inv_r2;
-        g_inv[(3, 3)] = inv_r2 / (sin_t * sin_t);
-        Ok(g_inv)
+        conn.inverse_metric_tensor(point)
     }
 
     #[verified_engine::verified]
@@ -325,53 +459,17 @@ impl StaticMetric<4> for SchwarzschildBlackHole {
         &self,
         point: &SVector<f64, 4>,
     ) -> Result<[SMatrix<f64, 4, 4>; 4], TensorError> {
-        let rs = self
-            .schwarzschild_radius()
+        let conn = self
+            .connection_4d()
             .map_err(|_| TensorError::SingularMetric)?;
-        if !point.iter().all(|v| v.is_finite()) {
-            return Err(TensorError::SingularMetric);
-        }
-        let r = point[1];
-        let (sin_t, cos_t) = point[2].sin_cos();
-        if r <= rs || sin_t.abs() <= 1e-12 {
-            return Err(TensorError::SingularMetric);
-        }
-
-        let mut gamma = [SMatrix::<f64, 4, 4>::zeros(); 4];
-        let denom_r = 2.0 * r * (r - rs);
-        let g0_01 = rs / denom_r;
-        gamma[0][(0, 1)] = g0_01;
-        gamma[0][(1, 0)] = g0_01;
-
-        gamma[1][(0, 0)] = (rs * (r - rs)) / (2.0 * r * r * r);
-        gamma[1][(1, 1)] = -g0_01;
-        gamma[1][(2, 2)] = -(r - rs);
-        gamma[1][(3, 3)] = -(r - rs) * sin_t * sin_t;
-
-        let inv_r = 1.0 / r;
-        gamma[2][(1, 2)] = inv_r;
-        gamma[2][(2, 1)] = inv_r;
-        gamma[2][(3, 3)] = -sin_t * cos_t;
-
-        let cot_t = cos_t / sin_t;
-        gamma[3][(1, 3)] = inv_r;
-        gamma[3][(3, 1)] = inv_r;
-        gamma[3][(2, 3)] = cot_t;
-        gamma[3][(3, 2)] = cot_t;
-        Ok(gamma)
+        conn.christoffel_tensors(point)
     }
 
     #[verified_engine::verified]
     fn is_regular_at(&self, point: &SVector<f64, 4>) -> bool {
-        let Ok(rs) = self.schwarzschild_radius() else {
+        let Ok(conn) = self.connection_4d() else {
             return false;
         };
-        let r = point[1];
-        let theta = point[2];
-        point.iter().all(|v| v.is_finite())
-            && r > 1.02 * rs
-            && theta > 1e-4
-            && theta < PI - 1e-4
-            && theta.sin() > 1e-4
+        conn.is_outside_horizon(point)
     }
 }

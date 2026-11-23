@@ -2,15 +2,16 @@
 
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_3, FRAC_PI_4};
 
-use nalgebra::{SMatrix, SVector};
+use nalgebra::{DVector, SMatrix, SVector, Vector4};
 use verified_engine::allocator::{lock_allocations, unlock_allocations};
 use verified_engine::metrics::{disable_verification, enable_verification};
 
 use crate::pure_math::analysis::ode::{ArrayState, RungeKutta4};
 
 use super::{
-    GeodesicState, GeodesicStepStatus, GeodesicSystem, StaticMetric, StaticRiemannianMetric,
-    TensorError, TwoSphereMetric, static_christoffel_symbols,
+    GeodesicState, GeodesicStepStatus, GeodesicSystem, LorentzianConnection4D,
+    SchwarzschildConnection4D, StaticMetric, StaticRiemannianMetric, TensorError, TwoSphereMetric,
+    christoffel_symbols, static_christoffel_symbols,
 };
 
 #[test]
@@ -103,4 +104,64 @@ fn two_sphere_pole_singularity_halts_cleanly_without_nan() {
         TwoSphereMetric::new(0.0),
         Err(TensorError::SingularMetric)
     ));
+}
+
+#[test]
+#[verified_engine::verified]
+fn schwarzschild_connection_4d_matches_christoffel_symbols_at_3_rs_within_1e_10() {
+    let rs = 2.0;
+    let conn = SchwarzschildConnection4D::new(rs).expect("valid Schwarzschild connection");
+    let pt = Vector4::new(0.5, 3.0 * rs, FRAC_PI_2, 1.1);
+    let dpt = DVector::from_vec(vec![pt[0], pt[1], pt[2], pt[3]]);
+
+    let closed_form = conn.christoffel_tensors(&pt).expect("closed-form gammas");
+    let fd_gammas = christoffel_symbols(&conn, &dpt).expect("finite-difference gammas");
+
+    for mu in 0..4 {
+        for alpha in 0..4 {
+            for beta in 0..4 {
+                let diff = (closed_form[mu][(alpha, beta)] - fd_gammas[mu][(alpha, beta)]).abs();
+                assert!(
+                    diff < 1e-10,
+                    "Gamma^{mu}_{{{alpha},{beta}}} mismatch at r=3 Rs: diff={diff}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[verified_engine::verified]
+fn schwarzschild_connection_4d_avoids_horizon_stencil_breakdown_and_zero_allocs() {
+    let rs = 1.0;
+    let conn = SchwarzschildConnection4D::new(rs).expect("valid Schwarzschild connection");
+    // Within h = 1e-5 of r = R_s, central difference steps across r - h <= R_s and fails.
+    let near_horizon = Vector4::new(0.0, rs + 5.0e-6, FRAC_PI_2, 0.0);
+    let near_dvec = DVector::from_vec(vec![0.0, rs + 5.0e-6, FRAC_PI_2, 0.0]);
+    assert!(christoffel_symbols(&conn, &near_dvec).is_err());
+
+    let exact_near = conn
+        .christoffel_tensors(&near_horizon)
+        .expect("closed-form succeeds near horizon");
+    let delta_r = near_horizon[1] - rs;
+    let expected_g0_01 = rs / (2.0 * near_horizon[1] * delta_r);
+    assert!((exact_near[0][(0, 1)] - expected_g0_01).abs() / expected_g0_01 < 1e-14);
+
+    let coords = Vector4::new(0.0, 3.0 * rs, FRAC_PI_2, 0.0);
+    let vel = Vector4::new(2.0_f64.sqrt(), 0.0, 0.0, 1.0 / (3.0 * 3.0_f64.sqrt() * rs));
+    enable_verification();
+    lock_allocations();
+    let mut acc_sum = 0.0;
+    for _ in 0..1_000 {
+        let acc = conn
+            .geodesic_acceleration(&coords, &vel)
+            .expect("zero-alloc geodesic acceleration");
+        let norm = conn
+            .interval_norm(&coords, &vel)
+            .expect("zero-alloc interval norm");
+        acc_sum += acc[1] + norm;
+    }
+    unlock_allocations();
+    disable_verification();
+    assert!(acc_sum.is_finite());
 }

@@ -95,13 +95,21 @@ pub mod statistics;
 // Re-export constants to match original API
 pub use math_commons::constants::{C, G, SIGMA_T, SOLAR_MASS};
 
-// Re-export SchwarzschildBlackHole and relativistic geodesic types/helpers
+// Re-export SchwarzschildBlackHole, geodesic bundle, and jet beaming helpers
 pub use general_relativity::{
-    GeodesicKind, KerrEquatorialMetric, MorrisThorneWormhole, SchwarzschildBlackHole,
-    combined_clock_rate, effective_potential, flamm_paraboloid_z, photon_sphere_radius,
+    GeodesicKind, GeodesicTrajectoryState, KerrEquatorialMetric, MAX_GEODESIC_TRAJECTORIES,
+    MorrisThorneWormhole, NewtonianOrbitState, SchwarzschildBlackHole, SchwarzschildGeodesicBundle,
+    combined_clock_rate, critical_impact_parameter, effective_potential, flamm_paraboloid_z,
+    newtonian_periapsis_radius, photon_sphere_radius,
 };
-
-// Re-export Error type
+pub use observer::{
+    apparent_superluminal_beta, calculate_lorentz_factor_from_beta, relativistic_doppler_factor,
+};
+pub use radiation::{
+    JetKnotConfig, JetKnotObservables, accretion_ring_beaming_factor,
+    accretion_ring_flux_asymmetry, beamed_synchrotron_flux_factor, evaluate_jet_knot_observables,
+    twin_jet_flux_asymmetry,
+};
 
 // [cite:dwarf_galaxy_empirical_dependencies]
 // [cite:general_relativity_geodesics]
@@ -111,10 +119,28 @@ use pure_math::theory_verification;
 theory_verification!(
     module = "high_energy",
     constants = {
-        DUMMY = 1.0;
+        CRITICAL_IMPACT_RATIO = 2.598_076_211_353_316;
+        ISCO_SHELL_BETA = 0.5;
+        RELATIVISTIC_SHOCK_COMPRESSION = 7.0;
     },
     test = {
         use approx::assert_relative_eq;
-        assert_relative_eq!(DUMMY, 1.0, epsilon = math_commons::registry::TOLERANCE_FAST);
+
+        let bh = SchwarzschildBlackHole::from_schwarzschild_radius(1.0).unwrap();
+        assert_relative_eq!(
+            bh.critical_impact_parameter().unwrap(),
+            CRITICAL_IMPACT_RATIO,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
+        assert_relative_eq!(
+            bh.circular_shell_beta(3.0).unwrap(),
+            ISCO_SHELL_BETA,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
+        assert_relative_eq!(
+            fluid_dynamics::shock_compression_ratio(4.0 / 3.0).unwrap(),
+            RELATIVISTIC_SHOCK_COMPRESSION,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
     }
 );

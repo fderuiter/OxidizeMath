@@ -13,6 +13,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`chaos`**: Deterministic chaotic systems, including the Lorenz attractor, double pendulum, and Lyapunov exponent analyzers.
 - **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, and Schrödinger wave equation solvers.
 - **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), and zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`).
+- **`high_energy`**: Schwarzschild, equatorial Kerr, and Morris-Thorne spacetime metrics, zero-allocation stack-based geodesic ray/plunge bundles (`SchwarzschildGeodesicBundle`), Lorentz boosts, relativistic twin-jet Doppler beaming, shock compression, and Li & Ma gamma-ray detection significance (`evaluate_jet_knot_observables`).
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
@@ -81,6 +82,38 @@ let mut disk = GalacticDiskSystem::from_galaxy_model(
 disk.step_n_leapfrog(2.0, 20);
 assert!(disk.relative_energy_drift() < 1.0e-3);
 assert!(disk.relative_angular_momentum_drift() < 1.0e-11);
+```
+
+### Tracing Schwarzschild Geodesics and Relativistic Jet Doppler Beaming
+
+Advance pre-allocated null lensing fans and sub-ISCO plunges alongside coupled shock-compressed jet beaming and Li & Ma significance:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::high_energy::{
+    JetKnotConfig, SchwarzschildGeodesicBundle, evaluate_jet_knot_observables,
+};
+
+let mut bundle = SchwarzschildGeodesicBundle::new(1.0, 8, 128)?;
+bundle.seed_photon_lensing_fan(8, 2.60, 17.45, 0.8);
+let _ = bundle.step_n_verified(0.01, 4_000);
+assert!(bundle.max_killing_drift() < 1.0e-6);
+
+let obs = evaluate_jet_knot_observables(&JetKnotConfig {
+    bulk_beta: 0.9,
+    viewing_angle_rad: 15.0_f64.to_radians(),
+    disk_r_over_rs: 3.0,
+    disk_inclination_rad: 90.0_f64.to_radians(),
+    electron_index_p: 2.4,
+    electron_gamma: 1.0e3,
+    upstream_u_b: 1.0e-3,
+    adiabatic_index: 4.0 / 3.0,
+    intrinsic_signal_counts: 1.0,
+    background_counts_off: 40.0,
+    exposure_ratio: 1.0,
+})?;
+assert!((obs.jet_flux_asymmetry - 18_855.15).abs() < 0.1);
+# Ok::<(), math_explorer::error::HighEnergyError>(())
 ```
 
 ---

@@ -40,6 +40,7 @@ pub mod christoffel;
 #[allow(missing_docs)]
 pub mod differentiation;
 pub mod geodesic;
+pub mod lorentzian;
 #[allow(missing_docs)]
 pub mod metric;
 pub mod static_metric;
@@ -48,6 +49,7 @@ pub mod types;
 // Re-exports for convenience
 pub use christoffel::christoffel_symbols;
 pub use geodesic::{GeodesicState, GeodesicStepStatus, GeodesicSystem};
+pub use lorentzian::{LorentzianConnection4D, SchwarzschildConnection4D};
 pub use metric::{Metric, RiemannianMetric};
 pub use static_metric::{
     StaticMetric, StaticRiemannianMetric, TwoSphereMetric, static_christoffel_symbols,
@@ -55,6 +57,9 @@ pub use static_metric::{
 pub use types::{ContravariantVector, CovariantVector, TensorError};
 
 // [cite:graph_parameters_rust]
+// Note: `papers/tensors.tex` proves SU(2) Clebsch-Gordan coupling of irreducible spherical
+// tensor operators rather than Lorentzian metric connections; curved-spacetime Christoffel
+// symbols and geodesic equations are derived in `papers/general_relativity_geodesics.tex`.
 // [cite:tensors]
 // [cite:general_relativity_geodesics]
 

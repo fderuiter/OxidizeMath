@@ -10,14 +10,19 @@
 //! - [`MorrisThorneWormhole`] (`StaticMetric<3>`): horizon-free traversable wormhole in proper
 //!   radial coordinates $(ct, l, \varphi)$ with isometric 3D embedding diagrams.
 
+pub mod geodesic_bundle;
 pub mod kerr;
 pub mod schwarzschild;
 pub mod wormhole;
 
+pub use geodesic_bundle::{
+    GeodesicTrajectoryState, MAX_GEODESIC_TRAJECTORIES, NewtonianOrbitState,
+    SchwarzschildGeodesicBundle, newtonian_periapsis_radius,
+};
 pub use kerr::KerrEquatorialMetric;
 pub use schwarzschild::{
-    GeodesicKind, SchwarzschildBlackHole, combined_clock_rate, effective_potential,
-    flamm_paraboloid_z, photon_sphere_radius,
+    GeodesicKind, SchwarzschildBlackHole, combined_clock_rate, critical_impact_parameter,
+    effective_potential, flamm_paraboloid_z, photon_sphere_radius,
 };
 pub use wormhole::MorrisThorneWormhole;
 

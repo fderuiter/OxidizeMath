@@ -259,3 +259,60 @@ fn test_weak_field_light_deflection_matches_2_rs_over_b() {
     let expected = 2.0 * rs / b;
     assert_relative_eq!(delta_phi, expected, max_relative = 0.04);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_64_mixed_geodesic_bundle_zero_alloc_and_killing_drift() {
+    let mut bundle = SchwarzschildGeodesicBundle::new(1.0, 64, 128).unwrap();
+    bundle.seed_mixed_ensemble(64);
+    assert_eq!(bundle.trajectories().len(), 64);
+
+    let (calls, ops) = bundle.step_n_verified(0.01, 200);
+    assert!(calls > 0 && ops > 0);
+    let drift = bundle.max_killing_drift();
+    assert!(drift < 1e-6, "Killing drift exceeded 1e-6: {drift}");
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_photon_ring_deflection_6_51_rad_and_critical_impact_parameter() {
+    let bh = SchwarzschildBlackHole::from_schwarzschild_radius(1.0).unwrap();
+    assert_relative_eq!(
+        bh.critical_impact_parameter().unwrap(),
+        1.5 * 3.0_f64.sqrt(),
+        epsilon = 1e-12
+    );
+    assert_relative_eq!(bh.circular_shell_beta(3.0).unwrap(), 0.5, epsilon = 1e-12);
+
+    let mut bundle = SchwarzschildGeodesicBundle::new(1.0, 8, 256).unwrap();
+    bundle.seed_photon_lensing_fan(8, 2.60, 17.45, 0.8);
+    let _ = bundle.step_n_verified(0.01, 4_000);
+    let deflection = bundle
+        .probe_photon_deflection_rad()
+        .expect("b = 2.60 > b_crit must scatter back to infinity");
+    assert_relative_eq!(deflection, 6.51, epsilon = 0.03);
+    assert!(bundle.max_killing_drift() < 1e-6);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_sub_isco_plunge_37_03_proper_time_vs_2_88_newtonian_periapsis() {
+    assert_relative_eq!(
+        newtonian_periapsis_radius(3.0, 0.99),
+        2.8829,
+        epsilon = 1e-3
+    );
+
+    let mut bundle = SchwarzschildGeodesicBundle::new(1.0, 2, 256).unwrap();
+    bundle.seed_timelike_isco_comparison(3.0, 0.99, 0.001);
+    let _ = bundle.step_n_verified(0.005, 4_096);
+    let _ = bundle.step_n_verified(0.005, 4_096);
+
+    let tr = &bundle.trajectories()[0];
+    assert!(
+        tr.halted_horizon,
+        "sub-ISCO particle must plunge to horizon"
+    );
+    assert_relative_eq!(tr.affine_elapsed, 37.03, epsilon = 0.5);
+    assert_relative_eq!(bundle.newtonian_state().min_radius, 2.883, epsilon = 0.01);
+}
