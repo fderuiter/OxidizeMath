@@ -8,6 +8,11 @@ homepage = "https://github.com/fderuiter/OxidizeMath"
 license = "AGPL-3.0-or-later"
 build = "build.rs"
 
+[[bin]]
+name = "math_explorer_gui"
+path = "src/main.rs"
+bench = false
+
 [package.metadata.packager]
 product-name = "Math Explorer"
 identifier = "com.jules.mathexplorer"
