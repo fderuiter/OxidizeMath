@@ -115,6 +115,7 @@ pub mod analysis;
 pub mod conservation;
 pub mod lattice_boltzmann;
 pub mod potential_flow;
+pub mod potential_flow_streamlines;
 pub mod regimes;
 pub mod solver;
 pub mod turbulence;

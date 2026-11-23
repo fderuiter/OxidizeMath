@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod atlas;
 mod atlas_bridge;
+pub mod contours;
 pub mod counterfactual;
 mod counterfactual_tool;
 mod dataflow;

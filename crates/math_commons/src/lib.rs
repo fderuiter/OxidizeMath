@@ -8,6 +8,8 @@ extern crate alloc;
 #[allow(missing_docs)]
 pub mod ast;
 pub mod constants;
+#[cfg(feature = "std")]
+pub mod contours;
 #[allow(missing_docs)]
 pub mod error;
 pub mod fit;

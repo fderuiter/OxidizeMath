@@ -246,6 +246,9 @@ fn render_tool_svg_with_fallback(
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<String, String> {
+    if let Some(custom_svg) = tool.export_custom_svg(options) {
+        return custom_svg;
+    }
     let mut preloaded_prims = None;
     if let Some(raster) = valid_raster_image(tool) {
         let plot_prims = tool.export_plot_primitives();

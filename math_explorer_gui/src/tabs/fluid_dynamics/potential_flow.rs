@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::potential_flow_streamlines::{default_show_streamlines, default_streamline_count};
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{
     BrushMode, CalloutManager, CalloutSpec, InteractionContext, InteractiveTool,
@@ -47,10 +48,12 @@ pub struct PotentialFlowTool {
     pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) active_drag_element: Option<usize>,
     pub(crate) show_streamlines: bool,
+    pub(crate) streamline_count: usize,
     pub(crate) show_stagnation_points: bool,
     pub(crate) cached_polylines: Vec<Vec<[f64; 2]>>,
     pub(crate) cached_stagnation: Vec<[f64; 2]>,
     pub(crate) cached_view_range: f64,
+    pub(crate) cached_streamline_count: usize,
     pub(crate) callout_manager: CalloutManager,
     pub(crate) high_contrast: bool,
     pub(crate) origins: Vec<PlotPoint>,
@@ -141,11 +144,13 @@ impl Default for PotentialFlowTool {
             new_element_angle: 0.0,
             brush_kit: Self::default_flow_brush_kit(),
             active_drag_element: None,
-            show_streamlines: true,
+            show_streamlines: default_show_streamlines(),
+            streamline_count: default_streamline_count(),
             show_stagnation_points: true,
             cached_polylines: Vec::new(),
             cached_stagnation: Vec::new(),
             cached_view_range: 10.0,
+            cached_streamline_count: default_streamline_count(),
             callout_manager: CalloutManager::new(),
             high_contrast: false,
             origins: Vec::new(),
@@ -199,6 +204,7 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn has_finite_parameters(&self) -> bool {
         (2..=crate::presets::MAX_INTERACTIVE_GRID_SIZE).contains(&self.grid_size)
+            && (2..=64).contains(&self.streamline_count)
             && self.view_range.is_finite()
             && (FLOW_VIEW_MIN..=FLOW_VIEW_MAX).contains(&self.view_range)
             && self.new_element_strength.is_finite()
@@ -219,6 +225,14 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.load_state_json(state)
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.build_export_datasets()
     }
 
     #[cfg(test)]
@@ -251,7 +265,9 @@ impl InteractiveTool for PotentialFlowTool {
         self.high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
             == crate::app::ThemeMode::HighContrast;
         self.draw_controls(ui);
-        if (self.cached_view_range - self.view_range).abs() > 1e-9 {
+        if (self.cached_view_range - self.view_range).abs() > 1e-9
+            || self.cached_streamline_count != self.streamline_count
+        {
             self.refresh_streamline_cache();
         }
         self.reconcile_arrows();
@@ -316,6 +332,12 @@ impl PotentialFlowTool {
             }
             ui.separator();
             ui.checkbox(&mut self.show_streamlines, "Show Streamlines (ψ)");
+            if self.show_streamlines {
+                ui.add(
+                    egui::Slider::new(&mut self.streamline_count, 4..=48)
+                        .text("Streamline Density"),
+                );
+            }
             ui.checkbox(&mut self.show_stagnation_points, "Show Stagnation Points");
             let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
             let clamped_grid = self.grid_size.clamp(2, max_grid);
@@ -405,64 +427,6 @@ inventory::submit! {
         domain: "fluid_dynamics",
         tags: &["laplace", "irrotational", "incompressible", "streamlines", "vortex"],
         build: || Box::new(PotentialFlowTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for PotentialFlowTool {
-    fn theory_description(&self) -> String {
-        "Two-dimensional incompressible irrotational potential flow governed by Laplace's equation $\\nabla^2 \\phi = 0$ for velocity potential $\\phi$, where fluid velocity is given by $\\vec{V} = \\nabla \\phi = (u, v)$ with linear superposition of elementary solutions.".into()
-    }
-    fn phonetic_description(&self) -> String {
-        "Incompressible irrotational potential flow and Laplace equation theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Elementary Fluid Dynamics (Acheson, 1990); An Introduction to Fluid Dynamics (Batchelor, 1967)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "Uniform".into(),
-            "Uniform freestream flow phi = U (x cos(alpha) + y sin(alpha))".into(),
-        );
-        map.insert(
-            "Source/Sink".into(),
-            "Radial flow phi = (m / 2 pi) ln(r)".into(),
-        );
-        map.insert(
-            "Vortex".into(),
-            "Circulation flow phi = (Gamma / 2 pi) theta".into(),
-        );
-        map.insert(
-            "Doublet".into(),
-            "Source-sink dipole limit phi = (mu / 2 pi) cos(theta) / r".into(),
-        );
-        map
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "vector_field",
-        title: "Vector Field",
-        description: "ψ = U·y·(1 - R²/r²): Potential streamlines and 2D velocity vector field past a cylinder.",
-        category: "Fluid Mechanics",
-        icon: "🌊",
-        domain: "fluid_dynamics",
-        tool_name: Some("PotentialFlowTool"),
-        preset_generator: || crate::starter_gallery::PRESET_VECTOR_FIELD,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "source_sink",
-        title: "Source-Sink Pair",
-        description: "ψ = (q/2π)·(θ₁ - θ₂): Superposition of equal source and sink singularities.",
-        category: "Fluid Mechanics",
-        icon: "🔄",
-        domain: "fluid_dynamics",
-        tool_name: Some("PotentialFlowTool"),
-        preset_generator: || crate::starter_gallery::PRESET_SOURCE_SINK,
     }
 }
 

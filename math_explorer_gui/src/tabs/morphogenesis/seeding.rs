@@ -146,6 +146,7 @@ impl MorphogenesisTool {
             self.worker = BackgroundWorker::new(runner);
             self.branch_engine.clear();
             self.stepped_pixels = None;
+            self.stepped_u_grid = None;
             self.step_runner = None;
             self.dirty = true;
         } else {

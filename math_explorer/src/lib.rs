@@ -5,7 +5,8 @@ pub mod prelude;
 
 pub use diagnostics;
 pub use math_commons::{
-    ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
+    ast, constants, contours, fit, math_kernel, poi, primitives, registry, series, stochastic,
+    wigner,
 };
 pub use scientific_metadata;
 pub use verified_engine;

@@ -9,17 +9,17 @@ use math_explorer::physics::fluid_dynamics::potential_flow::{FlowElement, Vortex
 use std::f64::consts::PI;
 
 const CONTOUR_GRID_N: usize = 48;
-const NUM_CONTOUR_LEVELS: usize = 15;
 
 impl PotentialFlowTool {
     pub(crate) fn refresh_streamline_cache(&mut self) {
         self.cached_view_range = self.view_range;
+        self.cached_streamline_count = self.streamline_count;
         self.cached_stagnation = self.detect_stagnation_points();
         let segments = self.compute_streamline_segments();
         self.cached_polylines = chain_segments_into_polylines(&segments);
     }
 
-    pub(super) fn populate_arrow_buffers(
+    pub(crate) fn populate_arrow_buffers(
         &self,
         origins: &mut Vec<PlotPoint>,
         tips: &mut Vec<PlotPoint>,
@@ -239,8 +239,9 @@ impl PotentialFlowTool {
             return Vec::new();
         }
         let span = max_psi - min_psi;
-        let mut levels: Vec<f64> = (1..=NUM_CONTOUR_LEVELS)
-            .map(|k| min_psi + span * (k as f64) / ((NUM_CONTOUR_LEVELS + 1) as f64))
+        let level_count = self.streamline_count.clamp(2, 64);
+        let mut levels: Vec<f64> = (1..=level_count)
+            .map(|k| min_psi + span * (k as f64) / ((level_count + 1) as f64))
             .collect();
         for &[sx, sy] in &self.cached_stagnation {
             if let Some(psi_s) = self.sample_psi(sx, sy, None) {

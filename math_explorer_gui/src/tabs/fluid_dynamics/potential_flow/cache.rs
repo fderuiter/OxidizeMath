@@ -1,5 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::super::potential_flow_streamlines::{
+    default_show_streamlines, default_streamline_count,
+};
 use super::{
     ElementType, PotentialFlowTool, SerializedFlowElement, FLOW_ANGLE_MAX, FLOW_ANGLE_MIN,
     FLOW_POS_MAX, FLOW_POS_MIN, FLOW_STRENGTH_MAX, FLOW_STRENGTH_MIN, FLOW_VIEW_MAX, FLOW_VIEW_MIN,
@@ -8,6 +11,10 @@ use std::hash::{Hash as _, Hasher as _};
 
 const fn default_element_strength() -> f64 {
     10.0
+}
+
+const fn default_show_stagnation() -> bool {
+    true
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -26,11 +33,18 @@ struct PotentialFlowState {
     new_element_y: f64,
     #[serde(default)]
     new_element_angle: f64,
+    #[serde(default = "default_show_streamlines")]
+    show_streamlines: bool,
+    #[serde(default = "default_streamline_count")]
+    streamline_count: usize,
+    #[serde(default = "default_show_stagnation")]
+    show_stagnation_points: bool,
 }
 
 impl PotentialFlowState {
     fn is_valid(&self) -> bool {
         (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_size)
+            && (2..=64).contains(&self.streamline_count)
             && self.view_range.is_finite()
             && (FLOW_VIEW_MIN..=FLOW_VIEW_MAX).contains(&self.view_range)
             && self.new_element_strength.is_finite()
@@ -73,6 +87,9 @@ impl PotentialFlowTool {
             new_element_x: self.new_element_x,
             new_element_y: self.new_element_y,
             new_element_angle: self.new_element_angle,
+            show_streamlines: self.show_streamlines,
+            streamline_count: self.streamline_count,
+            show_stagnation_points: self.show_stagnation_points,
         })
         .ok()
     }
@@ -96,6 +113,9 @@ impl PotentialFlowTool {
         self.new_element_x = loaded.new_element_x;
         self.new_element_y = loaded.new_element_y;
         self.new_element_angle = loaded.new_element_angle;
+        self.show_streamlines = loaded.show_streamlines;
+        self.streamline_count = loaded.streamline_count;
+        self.show_stagnation_points = loaded.show_stagnation_points;
         self.rebuild_field();
         Ok(())
     }
@@ -114,6 +134,9 @@ impl PotentialFlowTool {
     pub(crate) fn compute_state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.field_geometry_key().hash(&mut h);
+        self.show_streamlines.hash(&mut h);
+        self.streamline_count.hash(&mut h);
+        self.show_stagnation_points.hash(&mut h);
         (self.selected_element_type as u8).hash(&mut h);
         canonical_bits(self.new_element_strength).hash(&mut h);
         canonical_bits(self.new_element_x).hash(&mut h);

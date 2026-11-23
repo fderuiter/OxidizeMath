@@ -237,6 +237,7 @@ impl super::MorphogenesisTool {
             .worker
             .send_command(crate::async_sim::SimCommand::ApplyBrushStroke(stroke));
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.step_runner = None;
         self.dirty = true;
         if let Some(c) = ctx {
@@ -260,6 +261,7 @@ impl super::MorphogenesisTool {
                     .worker
                     .send_command(crate::async_sim::SimCommand::Custom("stamp_maze".into()));
                 self.stepped_pixels = None;
+                self.stepped_u_grid = None;
                 self.step_runner = None;
                 self.dirty = true;
                 ctx.request_repaint();
@@ -274,6 +276,7 @@ impl super::MorphogenesisTool {
                     .worker
                     .send_command(crate::async_sim::SimCommand::ClearObstacles);
                 self.stepped_pixels = None;
+                self.stepped_u_grid = None;
                 self.step_runner = None;
                 self.dirty = true;
                 ctx.request_repaint();

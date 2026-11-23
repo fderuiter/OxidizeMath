@@ -10,6 +10,7 @@ pub mod lbm_fairing;
 pub mod lbm_fairing_ui;
 pub mod potential_flow;
 mod potential_flow_brush;
+pub mod potential_flow_streamlines;
 pub mod turbulence;
 pub mod turbulence_atlas;
 

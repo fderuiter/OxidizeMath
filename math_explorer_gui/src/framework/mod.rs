@@ -364,6 +364,14 @@ pub trait InteractiveTool {
         None
     }
 
+    /// Optional hook for tools to supply a custom standalone SVG document (e.g. millimeter fabrication or pure vector isolines).
+    fn export_custom_svg(
+        &self,
+        _options: &egui_plot::export::ExportOptions,
+    ) -> Option<Result<String, String>> {
+        None
+    }
+
     /// Optional cold-path hook to build a watertight 3D triangle [`oxidize_core::mesh::Mesh`] for `.stl`, `.ply`, and `.obj` exports.
     fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
         None
@@ -386,7 +394,6 @@ pub trait InteractiveTool {
             self.name()
         ))
     }
-
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 

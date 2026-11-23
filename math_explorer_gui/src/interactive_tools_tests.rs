@@ -80,6 +80,9 @@ mod tests {
             ctx,
         );
         exercise_interactive_tool::<
+            crate::tabs::geometry_topology::fabrication_studio::FabricationStudioTool,
+        >(ctx);
+        exercise_interactive_tool::<
             crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool,
         >(ctx);
         exercise_interactive_tool::<crate::tabs::climate::cera::CeraTool>(ctx);

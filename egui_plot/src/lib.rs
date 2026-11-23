@@ -65,9 +65,12 @@ pub use crate::{
         show_export_modal,
     },
     export_primitives::{
-        ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
-        export_primitives_svg, export_raster_gif, export_raster_svg, get_last_plot_primitives,
-        has_finite_shared_dataset_points, render_primitives_image, shared_datasets_to_primitives,
+        ExportPrimitive, FabricationBedPreset, FabricationBedTransform, FabricationPolyline,
+        FabricationSvgOptions, MAX_FABRICATION_BED_MM, MIN_FABRICATION_BED_MM,
+        append_last_plot_primitives, clear_last_plot_primitives, export_domain_fabrication_svg,
+        export_fabrication_svg, export_primitives_svg, export_raster_gif, export_raster_svg,
+        get_last_plot_primitives, has_finite_shared_dataset_points, render_primitives_image,
+        shared_datasets_to_primitives,
     },
     fit::{
         CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, FitError, FitResult, FitType,

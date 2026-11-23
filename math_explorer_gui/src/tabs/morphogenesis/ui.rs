@@ -86,6 +86,7 @@ impl MorphogenesisTool {
             self.pixels.resize(num_pixels, egui::Color32::BLACK);
         }
         self.pixels.copy_from_slice(&image.pixels);
+        self.refresh_cached_u_grid(num_pixels);
 
         let texture_opts = egui::TextureOptions::NEAREST;
         if let Some(texture) = &mut self.texture {

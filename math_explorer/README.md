@@ -16,7 +16,7 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
 
 - **Core Always-On Modules**:
   - `error` & `prelude`: Unified `MathError`, `MathResult`, bounded numeric primitives (`PositiveFloat`, `NonNegativeFloat`, `UnitInterval`), and `Diagnostic` traits.
-  - `ast`, `constants`, `fit`, `math_kernel`, `poi`, `primitives`, `registry`, `series`, `wigner`: Expression parsing/compilation, zero-allocation curve fitting and critical-point solvers, physical constants, tolerances, and Clebsch-Gordan coefficients.
+  - `ast`, `constants`, `contours`, `fit`, `math_kernel`, `poi`, `primitives`, `registry`, `series`, `wigner`: Expression parsing/compilation, 2D marching-squares contours and streamline tracing, zero-allocation curve fitting and critical-point solvers, physical constants, tolerances, and Clebsch-Gordan coefficients.
   - `verified_engine` & `scientific_metadata`: Zero-allocation runtime verification harness (`VerifiedEngine`), `#[verified]`, `#[derive(Theory)]`, and `#[embed_theory]`.
 - **Feature-Gated Domain Modules**:
   - **`ai`**: Artificial Intelligence primitives, including Transformer components (Attention, Encoder/Decoder), Reinforcement Learning, NeRF-Diffusion, and Self-Calibration loops.

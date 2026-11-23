@@ -37,6 +37,7 @@ impl MorphogenesisTool {
             .unwrap_or_else(|e| e.into_inner())
             .heatmap_mode = mode;
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.dirty = true;
     }
 
@@ -48,6 +49,7 @@ impl MorphogenesisTool {
         self.sync_branch_engine_from_local();
         self.respawn_worker_from_local();
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.dirty = true;
     }
 
@@ -68,6 +70,7 @@ impl MorphogenesisTool {
             .send_command(SimCommand::Custom(format!("fork:{delta}")));
         self.sync_branch_engine_from_local();
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.dirty = true;
         true
     }
@@ -82,6 +85,7 @@ impl MorphogenesisTool {
         let _ = self.worker.send_command(SimCommand::Custom("swap".into()));
         self.sync_branch_engine_from_local();
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.dirty = true;
         true
     }
@@ -94,6 +98,7 @@ impl MorphogenesisTool {
             .worker
             .send_command(SimCommand::Custom("clear_fork".into()));
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.dirty = true;
         had
     }
@@ -235,6 +240,7 @@ impl MorphogenesisTool {
         self.sync_branch_engine_from_local();
         self.respawn_worker_from_local();
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.dirty = true;
         Ok(())
     }

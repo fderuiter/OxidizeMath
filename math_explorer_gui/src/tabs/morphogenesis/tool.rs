@@ -36,8 +36,10 @@ pub struct MorphogenesisTool {
     pub(crate) height: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) pixels: Vec<egui::Color32>,
+    pub(crate) cached_u_grid: Vec<f64>,
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    pub(crate) stepped_u_grid: Option<(usize, usize, Vec<f64>)>,
     pub(crate) step_runner: Option<MorphogenesisKineticsRunner>,
     pub(crate) local_runner: MorphogenesisKineticsRunner,
     pub(crate) pending_initial_start: bool,
@@ -83,8 +85,10 @@ impl Default for MorphogenesisTool {
             height,
             texture: None,
             pixels: Vec::new(),
+            cached_u_grid: Vec::new(),
             dirty: true,
             stepped_pixels: None,
+            stepped_u_grid: None,
             step_runner: None,
             local_runner,
             pending_initial_start: true,
@@ -142,6 +146,7 @@ impl MorphogenesisTool {
         self.worker = BackgroundWorker::new(runner);
         self.branch_engine.clear();
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
@@ -166,6 +171,7 @@ impl MorphogenesisTool {
         self.worker
             .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
@@ -197,6 +203,17 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         self.export_morpho_twin_datasets()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.extract_isoline_primitives()
+    }
+
+    fn export_custom_svg(
+        &self,
+        options: &egui_plot::export::ExportOptions,
+    ) -> Option<Result<String, String>> {
+        self.export_isoline_svg(options)
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {

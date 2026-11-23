@@ -21,6 +21,7 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 - **`graph_theory`**: Network graph structures, centrality metrics, structural parameters (`degeneracy`, 2-approx `vertex_cover`, and exact bitmask branch-and-bound elimination `treewidth` for `|V| <= 24` with preallocated min-fill fallback), traversal and combinatorial optimization solvers (`dijkstra`, `bfs`, `dfs`, zero-allocation Edmonds-Karp `max_flow_min_cut`, and Kruskal `minimum_spanning_tree`), and deterministic `.dot`, `.graphml`, and `.csv` graph interchange codecs.
 - **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck), rating systems (Glicko-2, venue-adjusted sports Elo), calibrated 2D match score grids (Maher Poisson, Karlis-Ntzoufras bivariate Poisson, Dixon-Coles MLE), Kelly criterion decision models, and zero-allocation bookmaker market pricing (`market_pricing` for Multiplicative, Additive, Power, and Shin devigging, `+EV`, arbitrage, Dutching, middles, and hedging).
 - **`special_functions`**: Classical mathematical functions (Bessel functions, Legendre polynomials).
+- **`tilings`**: Aperiodic 2D tilings (`PenroseP2`, `PenroseP3`, `EinsteinHat`, `EinsteinSpectre`) with shared interior edge deduplication for vector fabrication.
 
 ---
 

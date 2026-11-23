@@ -83,6 +83,8 @@ impl MorphogenesisTool {
             self.step_lockstep(5);
             let snap = crate::async_sim::SimulationRunner::get_snapshot(&self.local_runner);
             self.field_stream.record_snapshot(&snap);
+            self.stepped_u_grid = super::contours::snapshot_u_slice(&snap)
+                .map(|u| (snap.width, snap.height, u.to_vec()));
             return;
         }
         let runner = self.step_runner.get_or_insert_with(|| {
@@ -101,6 +103,8 @@ impl MorphogenesisTool {
         self.field_stream.record_snapshot(&snap);
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+        self.stepped_u_grid =
+            super::contours::snapshot_u_slice(&snap).map(|u| (snap.width, snap.height, u.to_vec()));
     }
 
     pub(crate) fn export_morpho_raster_image(&self) -> Option<egui::ColorImage> {
