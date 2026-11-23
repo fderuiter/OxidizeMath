@@ -5079,7 +5079,68 @@
       "signature": "pub fn specific_enthalpy (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
     }
   ],
-  "crates/domain_physics/src/physics/high_energy/general_relativity.rs": [
+  "crates/domain_physics/src/physics/high_energy/general_relativity/kerr.rs": [
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn ergosphere_radius (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn frame_dragging_omega (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn from_mass_and_chi (_ : f64 , _ : f64) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn new (_ : f64 , _ : f64) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn outer_horizon_radius (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct KerrEquatorialMetric"
+    }
+  ],
+  "crates/domain_physics/src/physics/high_energy/general_relativity/mod.rs": [
+    {
+      "signature": "pub use kerr :: KerrEquatorialMetric"
+    },
+    {
+      "signature": "pub use schwarzschild :: GeodesicKind"
+    },
+    {
+      "signature": "pub use schwarzschild :: SchwarzschildBlackHole"
+    },
+    {
+      "signature": "pub use schwarzschild :: combined_clock_rate"
+    },
+    {
+      "signature": "pub use schwarzschild :: effective_potential"
+    },
+    {
+      "signature": "pub use schwarzschild :: flamm_paraboloid_z"
+    },
+    {
+      "signature": "pub use schwarzschild :: photon_sphere_radius"
+    },
+    {
+      "signature": "pub use wormhole :: MorrisThorneWormhole"
+    }
+  ],
+  "crates/domain_physics/src/physics/high_energy/general_relativity/schwarzschild.rs": [
+    {
+      "signature": "impl GeodesicKind { pub fn kappa (self) -> f64 }"
+    },
+    {
+      "signature": "impl SchwarzschildBlackHole { pub fn combined_clock_rate (& self , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildBlackHole { pub fn effective_potential (& self , _ : f64 , _ : f64 , _ : GeodesicKind ,) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildBlackHole { pub fn flamm_paraboloid_z (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildBlackHole { pub fn from_schwarzschild_radius (_ : f64) -> Result < Self , HighEnergyError > }"
+    },
     {
       "signature": "impl SchwarzschildBlackHole { pub fn gravitational_time_dilation (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
     },
@@ -5090,15 +5151,74 @@
       "signature": "impl SchwarzschildBlackHole { pub fn new (_ : f64) -> Result < Self , HighEnergyError > }"
     },
     {
+      "signature": "impl SchwarzschildBlackHole { pub fn photon_sphere_radius (& self) -> Result < f64 , HighEnergyError > }"
+    },
+    {
       "signature": "impl SchwarzschildBlackHole { pub fn schwarzschild_radius (& self) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "pub enum GeodesicKind"
+    },
+    {
+      "signature": "pub fn combined_clock_rate (_ : & SchwarzschildBlackHole , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn effective_potential (_ : f64 , _ : f64 , _ : f64 , _ : GeodesicKind ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn flamm_paraboloid_z (_ : f64 , _ : f64) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn photon_sphere_radius (_ : f64) -> Result < f64 , HighEnergyError >"
     },
     {
       "signature": "pub struct SchwarzschildBlackHole"
     }
   ],
+  "crates/domain_physics/src/physics/high_energy/general_relativity/wormhole.rs": [
+    {
+      "signature": "impl MorrisThorneWormhole { pub fn areal_radius (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl MorrisThorneWormhole { pub fn effective_potential (& self , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl MorrisThorneWormhole { pub fn embedding_xyz (& self , _ : f64 , _ : f64) -> Result < [f64 ; 3] , HighEnergyError > }"
+    },
+    {
+      "signature": "impl MorrisThorneWormhole { pub fn embedding_z (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl MorrisThorneWormhole { pub fn new (_ : f64) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "pub struct MorrisThorneWormhole"
+    }
+  ],
   "crates/domain_physics/src/physics/high_energy/mod.rs": [
     {
+      "signature": "pub use general_relativity :: GeodesicKind"
+    },
+    {
+      "signature": "pub use general_relativity :: KerrEquatorialMetric"
+    },
+    {
+      "signature": "pub use general_relativity :: MorrisThorneWormhole"
+    },
+    {
       "signature": "pub use general_relativity :: SchwarzschildBlackHole"
+    },
+    {
+      "signature": "pub use general_relativity :: combined_clock_rate"
+    },
+    {
+      "signature": "pub use general_relativity :: effective_potential"
+    },
+    {
+      "signature": "pub use general_relativity :: flamm_paraboloid_z"
+    },
+    {
+      "signature": "pub use general_relativity :: photon_sphere_radius"
     },
     {
       "signature": "pub use math_commons :: constants :: C"
@@ -7374,10 +7494,16 @@
   ],
   "crates/oxidize_core/src/traceability.rs": [
     {
+      "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub async fn discover_workspace_dirs (& self , _ : & str) -> (Vec < String > , String) }"
+    },
+    {
       "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub async fn scan_repository (& self , _ : & [& str] , _ : & str , _ : bool ,) -> Result < TraceabilityReport , std :: io :: Error > }"
     },
     {
       "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub async fn scan_repository_with_cache (& self , _ : & [& str] , _ : & str , _ : bool , _ : & mut AstCache ,) -> Result < TraceabilityReport , std :: io :: Error > }"
+    },
+    {
+      "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub async fn scan_workspace (& self , _ : & str , _ : bool ,) -> Result < TraceabilityReport , std :: io :: Error > }"
     },
     {
       "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub fn extract_citations (_ : & str) -> Vec < String > }"
@@ -7399,6 +7525,12 @@
     },
     {
       "signature": "pub use cache :: CachedRustFile"
+    },
+    {
+      "signature": "pub use manifest :: TraceabilityManifestPayload"
+    },
+    {
+      "signature": "pub use manifest :: VerificationCertificate"
     },
     {
       "signature": "pub use runner :: check_and_print_traceability_errors"
@@ -7452,6 +7584,14 @@
     },
     {
       "signature": "pub struct CachedRustFile"
+    }
+  ],
+  "crates/oxidize_core/src/traceability/manifest.rs": [
+    {
+      "signature": "pub struct TraceabilityManifestPayload"
+    },
+    {
+      "signature": "pub struct VerificationCertificate"
     }
   ],
   "crates/oxidize_core/src/traceability/runner.rs": [
@@ -11338,6 +11478,44 @@
       "signature": "pub fn covariant_derivative_covariant < F > (_ : F , _ : & impl Metric , _ : & DVector < f64 > ,) -> Result < Rank2Tensor , TensorError > where F : Fn (& DVector < f64 >) -> CovariantVector ,"
     }
   ],
+  "crates/pure_math/src/pure_math/tensor/geodesic.rs": [
+    {
+      "signature": "impl < M : StaticMetric < N > , const N : usize > GeodesicSystem < M , N > { pub fn into_metric (self) -> M }"
+    },
+    {
+      "signature": "impl < M : StaticMetric < N > , const N : usize > GeodesicSystem < M , N > { pub fn is_halted < S : GeodesicState < N > > (& self , _ : & S) -> bool }"
+    },
+    {
+      "signature": "impl < M : StaticMetric < N > , const N : usize > GeodesicSystem < M , N > { pub fn metric (& self) -> & M }"
+    },
+    {
+      "signature": "impl < M : StaticMetric < N > , const N : usize > GeodesicSystem < M , N > { pub fn metric_norm < S : GeodesicState < N > > (& self , _ : & S) -> Result < f64 , TensorError > }"
+    },
+    {
+      "signature": "impl < M : StaticMetric < N > , const N : usize > GeodesicSystem < M , N > { pub fn new (_ : M) -> Self }"
+    },
+    {
+      "signature": "impl < M : StaticMetric < N > , const N : usize > GeodesicSystem < M , N > { pub fn step_rk4 < S > (& self , _ : & mut RungeKutta4 < S > , _ : f64 , _ : & mut S , _ : f64 ,) -> GeodesicStepStatus where S : GeodesicState < N > , Self : OdeSystem < S > , }"
+    },
+    {
+      "signature": "pub enum GeodesicStepStatus"
+    },
+    {
+      "signature": "pub struct GeodesicSystem < M , const N : usize >"
+    },
+    {
+      "signature": "pub trait GeodesicState < const N : usize > : VectorOperations"
+    },
+    {
+      "signature": "pub trait GeodesicState < const N : usize > { fn from_pos_vel (_ : & SVector < f64 , N > , _ : & SVector < f64 , N >) -> Self }"
+    },
+    {
+      "signature": "pub trait GeodesicState < const N : usize > { fn split_pos_vel (& self) -> (SVector < f64 , N > , SVector < f64 , N >) }"
+    },
+    {
+      "signature": "pub trait GeodesicState < const N : usize > { fn zero_all (& mut self) }"
+    }
+  ],
   "crates/pure_math/src/pure_math/tensor/metric.rs": [
     {
       "signature": "impl < F > RiemannianMetric < F > where F : Fn (& DVector < f64 >) -> DMatrix < f64 > , { pub fn new (_ : F) -> Self }"
@@ -11366,10 +11544,31 @@
       "signature": "pub use christoffel :: christoffel_symbols"
     },
     {
+      "signature": "pub use geodesic :: GeodesicState"
+    },
+    {
+      "signature": "pub use geodesic :: GeodesicStepStatus"
+    },
+    {
+      "signature": "pub use geodesic :: GeodesicSystem"
+    },
+    {
       "signature": "pub use metric :: Metric"
     },
     {
       "signature": "pub use metric :: RiemannianMetric"
+    },
+    {
+      "signature": "pub use static_metric :: StaticMetric"
+    },
+    {
+      "signature": "pub use static_metric :: StaticRiemannianMetric"
+    },
+    {
+      "signature": "pub use static_metric :: TwoSphereMetric"
+    },
+    {
+      "signature": "pub use static_metric :: static_christoffel_symbols"
     },
     {
       "signature": "pub use types :: ContravariantVector"
@@ -11379,6 +11578,41 @@
     },
     {
       "signature": "pub use types :: TensorError"
+    }
+  ],
+  "crates/pure_math/src/pure_math/tensor/static_metric.rs": [
+    {
+      "signature": "impl < F , const N : usize > StaticRiemannianMetric < F , N > where F : Fn (& SVector < f64 , N >) -> Result < SMatrix < f64 , N , N > , TensorError > , { pub fn new (_ : F) -> Self }"
+    },
+    {
+      "signature": "impl TwoSphereMetric { pub fn new (_ : f64) -> Result < Self , TensorError > }"
+    },
+    {
+      "signature": "pub fn static_christoffel_symbols < M : StaticMetric < N > + ? Sized , const N : usize > (_ : & M , _ : & SVector < f64 , N > ,) -> Result < [SMatrix < f64 , N , N > ; N] , TensorError >"
+    },
+    {
+      "signature": "pub struct StaticRiemannianMetric < F , const N : usize >"
+    },
+    {
+      "signature": "pub struct TwoSphereMetric"
+    },
+    {
+      "signature": "pub trait StaticMetric < const N : usize >"
+    },
+    {
+      "signature": "pub trait StaticMetric < const N : usize > { fn christoffel_at (& self , _ : & SVector < f64 , N > ,) -> Result < [SMatrix < f64 , N , N > ; N] , TensorError > where Self : Sized , }"
+    },
+    {
+      "signature": "pub trait StaticMetric < const N : usize > { fn inverse_metric_at (& self , _ : & SVector < f64 , N > ,) -> Result < SMatrix < f64 , N , N > , TensorError > }"
+    },
+    {
+      "signature": "pub trait StaticMetric < const N : usize > { fn is_regular_at (& self , _ : & SVector < f64 , N >) -> bool }"
+    },
+    {
+      "signature": "pub trait StaticMetric < const N : usize > { fn metric_at (& self , _ : & SVector < f64 , N >) -> Result < SMatrix < f64 , N , N > , TensorError > }"
+    },
+    {
+      "signature": "pub trait StaticMetric < const N : usize > { fn metric_norm (& self , _ : & SVector < f64 , N > , _ : & SVector < f64 , N > ,) -> Result < f64 , TensorError > }"
     }
   ],
   "crates/pure_math/src/pure_math/tensor/types.rs": [

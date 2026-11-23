@@ -97,10 +97,18 @@ pub fn populate_torus_ray_segments(
 fn boundary_hit_time(coord: f64, dir: f64, p_f: f64) -> f64 {
     if dir > 1e-9 {
         let gap = (p_f - coord).max(0.0);
-        if gap <= 1e-9 { p_f / dir } else { gap / dir }
+        if gap <= 1e-9 {
+            p_f / dir
+        } else {
+            gap / dir
+        }
     } else if dir < -1e-9 {
         let gap = coord.max(0.0);
-        if gap <= 1e-9 { p_f / (-dir) } else { gap / (-dir) }
+        if gap <= 1e-9 {
+            p_f / (-dir)
+        } else {
+            gap / (-dir)
+        }
     } else {
         f64::INFINITY
     }
@@ -137,10 +145,7 @@ impl TorusViewport {
         );
         let inf_size = Vec2::new(92.0_f32, 22.0_f32);
         let infinity_rect = Rect::from_min_size(
-            Pos2::new(
-                rect.right() - inf_size.x - 10.0_f32,
-                rect.top() + 6.0_f32,
-            ),
+            Pos2::new(rect.right() - inf_size.x - 10.0_f32, rect.top() + 6.0_f32),
             inf_size,
         );
         Self {
@@ -214,8 +219,14 @@ fn paint_torus_backdrop(
     let mut idx = step;
     while idx < model.p {
         let f = idx as f32;
-        painter.line_segment([vp.to_screen(f, 0.0_f32), vp.to_screen(f, vp.p_f)], grid_stroke);
-        painter.line_segment([vp.to_screen(0.0_f32, f), vp.to_screen(vp.p_f, f)], grid_stroke);
+        painter.line_segment(
+            [vp.to_screen(f, 0.0_f32), vp.to_screen(f, vp.p_f)],
+            grid_stroke,
+        );
+        painter.line_segment(
+            [vp.to_screen(0.0_f32, f), vp.to_screen(vp.p_f, f)],
+            grid_stroke,
+        );
         idx += step;
     }
     painter.line_segment(
@@ -226,12 +237,28 @@ fn paint_torus_backdrop(
         Stroke::new(0.8_f32, palette.muted_text.gamma_multiply(0.35_f32)),
     );
     painter.text(
-        Pos2::new(response.rect.left() + 10.0_f32, response.rect.top() + 8.0_f32),
+        Pos2::new(
+            response.rect.left() + 10.0_f32,
+            response.rect.top() + 8.0_f32,
+        ),
         egui::Align2::LEFT_TOP,
-        format!("Torus F_{0} x F_{0}  (y^2 = x^3 + {1}x + {2})", model.p, model.a, model.b),
+        format!(
+            "Torus F_{0} x F_{0}  (y^2 = x^3 + {1}x + {2})",
+            model.p, model.a, model.b
+        ),
         egui::FontId::proportional(13.0_f32),
         ui.visuals().text_color(),
     );
+    paint_infinity_badge(painter, vp, model, palette, ui.visuals().text_color());
+}
+
+fn paint_infinity_badge(
+    painter: &egui::Painter,
+    vp: &TorusViewport,
+    model: &TorusCanvasModel<'_>,
+    palette: &SemanticPalette,
+    text_color: Color32,
+) {
     let inf_stroke = if model.point_p.is_infinity() || model.point_q.is_infinity() {
         palette.accent
     } else {
@@ -249,7 +276,7 @@ fn paint_torus_backdrop(
         egui::Align2::CENTER_CENTER,
         "Identity O",
         egui::FontId::proportional(11.5_f32),
-        ui.visuals().text_color(),
+        text_color,
     );
 }
 
@@ -330,9 +357,13 @@ fn paint_curve_elements(
     if let Some(step) = model.chord {
         paint_reflection_and_sum(painter, vp, &step, palette, text_color);
     }
-    paint_labeled_point(painter, vp, model.point_p, "P", palette.accent, text_color, 6.2_f32);
-    paint_labeled_point(painter, vp, model.point_q, "Q", palette.series[1], text_color, 5.6_f32);
-    paint_labeled_point(painter, vp, model.scalar_kp, "[k]P", palette.series[4], text_color, 5.2_f32);
+    for (pt, label, col, rad) in [
+        (model.point_p, "P", palette.accent, 6.2_f32),
+        (model.point_q, "Q", palette.series[1], 5.6_f32),
+        (model.scalar_kp, "[k]P", palette.series[4], 5.2_f32),
+    ] {
+        paint_labeled_point(painter, vp, pt, label, col, text_color, rad);
+    }
 }
 
 fn paint_reflection_and_sum(
@@ -356,9 +387,25 @@ fn paint_reflection_and_sum(
                 Stroke::new(1.6_f32, palette.success),
             );
         }
-        paint_labeled_point(painter, vp, step.neg_sum, "-R", palette.muted_text, text_color, 4.8_f32);
+        paint_labeled_point(
+            painter,
+            vp,
+            step.neg_sum,
+            "-R",
+            palette.muted_text,
+            text_color,
+            4.8_f32,
+        );
     }
-    paint_labeled_point(painter, vp, step.sum, "P+Q", palette.success, text_color, 6.5_f32);
+    paint_labeled_point(
+        painter,
+        vp,
+        step.sum,
+        "P+Q",
+        palette.success,
+        text_color,
+        6.5_f32,
+    );
 }
 
 fn paint_labeled_point(
@@ -371,9 +418,10 @@ fn paint_labeled_point(
     radius: f32,
 ) {
     let pos = match point {
-        AffinePointFp::Infinity => {
-            Pos2::new(vp.infinity_rect.left() - 6.0_f32, vp.infinity_rect.center().y)
-        }
+        AffinePointFp::Infinity => Pos2::new(
+            vp.infinity_rect.left() - 6.0_f32,
+            vp.infinity_rect.center().y,
+        ),
         AffinePointFp::Finite { x, y } => vp.to_screen(x as f32, y as f32),
     };
     painter.circle_filled(pos, radius, color);

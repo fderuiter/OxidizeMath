@@ -1,6 +1,7 @@
 pub(crate) mod dependencies;
 pub(crate) mod doctests;
 pub(crate) mod lint_policy;
+pub(crate) mod missing_docs;
 
 pub use crate::whitelist::DeadCodeEntry;
 use crate::whitelist::{PathMatchOptions, ROOT_ONLY_WHITELIST_CANDIDATES, VerificationWhitelist};
@@ -222,6 +223,7 @@ struct MemberAuditContext<'a> {
     member_dir: &'a Path,
     whitelist: &'a VerificationWhitelist,
     check_clippy_bypasses: bool,
+    check_missing_docs: bool,
     max_fn_lines: usize,
 }
 
@@ -232,6 +234,7 @@ fn audit_member_sources(
     cache: &mut oxidize_core::traceability::AstCache,
 ) -> bool {
     let mut success = true;
+    let mut matched_missing_docs_keys = HashSet::new();
     for path in crate::utils::collect_rs_files_filtered(&[ctx.member_dir], &["target"]) {
         let file_path = crate::whitelist::lossy_slash_path(&path);
         if let Some(ast) = cache.get_or_load_fs(&path).and_then(|e| e.ast.as_ref()) {
@@ -245,6 +248,17 @@ fn audit_member_sources(
                 success = false;
             }
 
+            if ctx.check_missing_docs
+                && !missing_docs::audit_file_missing_docs(
+                    ast,
+                    &file_path,
+                    ctx.whitelist,
+                    &mut matched_missing_docs_keys,
+                )
+            {
+                success = false;
+            }
+
             if ctx.check_clippy_bypasses {
                 let mut clippy_visitor =
                     lint_policy::ClippyBypassVisitor::new(file_path, ctx.max_fn_lines);
@@ -254,6 +268,15 @@ fn audit_member_sources(
                 }
             }
         }
+    }
+    if ctx.check_missing_docs
+        && !missing_docs::check_stale_member_missing_docs_caps(
+            ctx.member_dir,
+            ctx.whitelist,
+            &matched_missing_docs_keys,
+        )
+    {
+        success = false;
     }
     success
 }
@@ -277,6 +300,8 @@ fn audit_single_member(
 
     let mut success = manifest_cache.check_manifest_lints_once(member, &cargo_toml_path, &parsed);
     let check_clippy_bypasses = !lint_policy::is_vendored_egui_plot_exempt(member, &parsed);
+    let check_missing_docs =
+        !missing_docs::is_vendored_missing_docs_exempt(member, &parsed, whitelist);
     let expected_deps = collect_expected_dependencies(&parsed);
     let package_name = manifest_package_name(&parsed);
     let mut dep_visitor = DependencyVisitor::new(expected_deps.clone());
@@ -286,6 +311,7 @@ fn audit_single_member(
         member_dir: &member_dir,
         whitelist,
         check_clippy_bypasses,
+        check_missing_docs,
         max_fn_lines,
     };
     if !audit_member_sources(&ctx, &mut dep_visitor, &mut visited_md, cache) {
@@ -411,5 +437,7 @@ pub(crate) fn run_policy_audit_with_whitelist_and_caches(
 
 #[cfg(test)]
 mod dep_doctest_tests;
+#[cfg(test)]
+mod missing_docs_tests;
 #[cfg(test)]
 mod tests;

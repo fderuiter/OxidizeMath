@@ -192,12 +192,46 @@ impl SIRModelBuilder {
 
 impl SIRModel<RungeKutta4<SIRState>> {
     /// Returns a new builder for the SIRModel.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use domain_epidemiology::__doctest_facade as math_explorer;
+    /// use math_explorer::epidemiology::compartmental::SIRModel;
+    /// use math_explorer::error::EpidemiologyError;
+    ///
+    /// // Missing required parameters returns EpidemiologyError::MissingParameter
+    /// let incomplete = SIRModel::builder().n(1000.0).build();
+    /// assert!(matches!(incomplete, Err(EpidemiologyError::MissingParameter { .. })));
+    ///
+    /// let model = SIRModel::builder()
+    ///     .n(1000.0)
+    ///     .i0(10.0)
+    ///     .beta(0.4)
+    ///     .gamma(0.1)
+    ///     .build()
+    ///     .unwrap();
+    /// assert_eq!(model.state().s, 990.0);
+    /// ```
     #[verified_engine::verified]
     pub fn builder() -> SIRModelBuilder {
         SIRModelBuilder::default()
     }
 
     /// Constructs a new SIRModel with the given parameters using RungeKutta4.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use domain_epidemiology::__doctest_facade as math_explorer;
+    /// use math_explorer::epidemiology::compartmental::SIRModel;
+    ///
+    /// let mut model = SIRModel::new(1000.0, 5.0, 0.5, 0.1).unwrap();
+    /// model.step(0.5);
+    /// let st = model.state();
+    /// assert!((st.s + st.i + st.r - 1000.0).abs() < 1e-9);
+    /// assert!(st.i > 5.0);
+    /// ```
     #[verified_engine::verified]
     pub fn new(
         n: f64,

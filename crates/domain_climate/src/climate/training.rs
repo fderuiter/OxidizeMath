@@ -17,7 +17,7 @@ pub struct CeraTrainer<
     P: PredictorModel + Trainable<f32>,
     O: Optimizer<f32>,
 > {
-    #[allow(missing_docs)]
+    /// Mutable reference to the [`Cera`] model being optimized.
     pub model: &'a mut Cera<A, P>,
     /// The optimizer strategy (e.g., SGD, Adam).
     pub optimizer: O,
@@ -174,6 +174,38 @@ impl<
     /// # Returns
     ///
     /// A vector of average loss values per epoch.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use domain_climate::__doctest_facade as math_explorer;
+    /// use math_explorer::climate::cera::Cera;
+    /// use math_explorer::climate::config::CeraConfig;
+    /// use math_explorer::climate::training::CeraTrainer;
+    /// use math_explorer::nalgebra::DMatrix;
+    ///
+    /// let config = CeraConfig {
+    ///     learning_rate: 0.01,
+    ///     lambda_pred: 0.2,
+    ///     lambda_emd: 0.1,
+    ///     epochs: 2,
+    ///     batch_size: 2,
+    ///     in_channels: 2,
+    ///     latent_channels: 3,
+    ///     aligned_channels: 2,
+    ///     num_levels: 4,
+    ///     output_size: 2,
+    /// };
+    /// let mut model = Cera::new(config).unwrap();
+    /// let control_inputs = DMatrix::from_element(8, 2, 0.5_f32);
+    /// let control_targets = DMatrix::from_element(2, 2, 0.25_f32);
+    /// let warm_inputs = DMatrix::from_element(8, 2, 0.8_f32);
+    ///
+    /// let mut trainer = CeraTrainer::new(&mut model);
+    /// let losses = trainer.train(&control_inputs, &control_targets, &warm_inputs);
+    /// assert_eq!(losses.len(), 2);
+    /// assert!(losses.iter().all(|loss| loss.is_finite()));
+    /// ```
     #[verified_engine::verified]
     pub fn train(
         &mut self,
