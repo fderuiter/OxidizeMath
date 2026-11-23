@@ -57,7 +57,32 @@ impl StateSnapshot {
     }
 }
 
+fn plot_datasets_signature(datasets: &[(String, Vec<[f64; 2]>)]) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    datasets.len().hash(&mut hasher);
+    for (name, pts) in datasets {
+        name.hash(&mut hasher);
+        pts.len().hash(&mut hasher);
+        (pts.as_ptr() as usize).hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+type CapturedDatasets = Vec<(String, Vec<[f64; 2]>)>;
+
 impl SimulationFramework {
+    fn refresh_snapshot_datasets_only(&mut self) {
+        if let Some(snap) = &mut self.last_valid_snapshot {
+            if !self.current_valid_plot_datasets.is_empty()
+                && inspect_datasets_for_divergence(&self.current_valid_plot_datasets).is_ok()
+            {
+                snap.plot_datasets = self.current_valid_plot_datasets.clone();
+                snap.enforce_memory_budget();
+            }
+        }
+    }
+
     /// Caches a valid parameter-only state snapshot before each simulation step/frame.
     /// Memory footprint is strictly bounded to remain at or below 2 megabytes per tool.
     pub fn cache_valid_snapshot(&mut self) {
@@ -68,24 +93,29 @@ impl SimulationFramework {
             return;
         };
         if !tool.has_finite_parameters() {
-            if let Some(snap) = &mut self.last_valid_snapshot {
-                if !self.current_valid_plot_datasets.is_empty()
-                    && inspect_datasets_for_divergence(&self.current_valid_plot_datasets).is_ok()
-                {
-                    snap.plot_datasets = self.current_valid_plot_datasets.clone();
-                    snap.enforce_memory_budget();
-                }
-            }
+            self.refresh_snapshot_datasets_only();
             return;
         }
-        let name = tool.name();
-        let rev = tool.state_revision();
+        let (name, rev) = (tool.name(), tool.state_revision());
         let reuse_cached_state = rev > 0
             && self
                 .rev_cache
                 .last_snapshot_rev
                 .is_some_and(|(n, r)| n == name && r == rev)
             && self.last_valid_snapshot.is_some();
+
+        let current_sig = (!self.current_valid_plot_datasets.is_empty())
+            .then(|| plot_datasets_signature(&self.current_valid_plot_datasets));
+        if reuse_cached_state
+            && current_sig.is_some()
+            && self.rev_cache.last_snapshot_plot_sig == current_sig
+        {
+            if let Some(snap) = &mut self.last_valid_snapshot {
+                snap.step_index = self.step_counter;
+                snap.timestamp = crate::web_io::PlatformInstant::now();
+            }
+            return;
+        }
 
         let tool_state = if reuse_cached_state {
             self.last_valid_snapshot
@@ -106,6 +136,7 @@ impl SimulationFramework {
                 datasets = exported;
             }
         }
+        self.rev_cache.last_snapshot_plot_sig = current_sig;
 
         let mut snapshot = StateSnapshot {
             tool_state,
@@ -117,40 +148,65 @@ impl SimulationFramework {
         self.last_valid_snapshot = Some(snapshot);
     }
 
-    /// Inspects active tool parameters via `has_finite_parameters` and output plot datasets for `NaN`/`Inf`.
-    /// Enforces latency under 1 millisecond per frame without calling `InteractiveTool::save_state`.
-    pub fn inspect_runtime_state(&mut self) -> Result<(), DiagnosticReport> {
-        let plot_datasets = egui_plot::get_last_plot_datasets();
-        let mut check_result = inspect_datasets_for_divergence(&plot_datasets);
+    fn check_captured_or_tool_divergence(
+        &self,
+    ) -> Result<(bool, CapturedDatasets), DiagnosticReport> {
+        let has_plot_datasets = match egui_plot::check_last_plot_datasets_finite() {
+            Ok(present) => present,
+            Err((series_name, axis, idx, bad_val)) => {
+                return Err(DiagnosticReport::new(
+                    0.0,
+                    idx,
+                    format!("{series_name}.{axis}"),
+                    format!(
+                        "Non-finite floating-point value ({bad_val}) encountered in plot dataset '{series_name}' at point index {idx}."
+                    ),
+                ));
+            }
+        };
         let mut tool_datasets = Vec::new();
-
-        if check_result.is_ok() {
-            if let Some(tool) = &self.active_tool {
-                if !tool.has_finite_parameters() {
-                    check_result = Err(DiagnosticReport::new(
-                        self.start_time.elapsed().as_secs_f64(),
-                        self.step_counter,
-                        "state",
-                        "Non-finite floating-point state encountered in active tool parameters.",
-                    ));
-                } else if plot_datasets.is_empty() && tool.state_revision() == 0 {
-                    tool_datasets = tool.export_datasets();
-                    if !tool_datasets.is_empty() {
-                        check_result = inspect_datasets_for_divergence(&tool_datasets);
-                    }
+        if let Some(tool) = &self.active_tool {
+            if !tool.has_finite_parameters() {
+                return Err(DiagnosticReport::new(
+                    self.start_time.elapsed().as_secs_f64(),
+                    self.step_counter,
+                    "state",
+                    "Non-finite floating-point state encountered in active tool parameters.",
+                ));
+            }
+            if !has_plot_datasets && tool.state_revision() == 0 {
+                tool_datasets = tool.export_datasets();
+                if !tool_datasets.is_empty() {
+                    inspect_datasets_for_divergence(&tool_datasets)?;
                 }
             }
         }
+        Ok((has_plot_datasets, tool_datasets))
+    }
 
-        match check_result {
-            Ok(()) => {
+    /// Inspects active tool parameters via `has_finite_parameters` and output plot datasets for `NaN`/`Inf`.
+    /// Enforces latency under 1 millisecond per frame without calling `InteractiveTool::save_state`.
+    pub fn inspect_runtime_state(&mut self) -> Result<(), DiagnosticReport> {
+        match self.check_captured_or_tool_divergence() {
+            Ok((has_plot_datasets, tool_datasets)) => {
                 if !self.is_diverged {
                     let active_name = self.active_tool.as_ref().map(|t| t.name());
-                    if !plot_datasets.is_empty() {
-                        self.current_valid_plot_datasets = plot_datasets;
+                    if has_plot_datasets {
+                        let capture_hash = egui_plot::last_plot_capture_hash();
+                        let same_capture = active_name.is_some_and(|name| {
+                            self.rev_cache.last_plot_capture_hash == Some((name, capture_hash))
+                        }) && !self.current_valid_plot_datasets.is_empty()
+                            && self.sync_state.datasets_owner_tool == active_name;
+                        if !same_capture {
+                            self.current_valid_plot_datasets = egui_plot::get_last_plot_datasets();
+                            if let Some(name) = active_name {
+                                self.rev_cache.last_plot_capture_hash = Some((name, capture_hash));
+                            }
+                        }
                         self.sync_state.datasets_owner_tool = active_name;
                     } else if !tool_datasets.is_empty() {
                         self.current_valid_plot_datasets = tool_datasets;
+                        self.rev_cache.last_plot_capture_hash = None;
                         self.sync_state.datasets_owner_tool = active_name;
                     }
                     self.step_counter += 1;

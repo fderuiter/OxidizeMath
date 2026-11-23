@@ -376,7 +376,10 @@ pub fn build_wave_datasets(wave_data: &WaveData) -> Vec<(String, Vec<[f64; 2]>)>
         ),
         ("Potential V(x) (scaled)".to_string(), v_points),
         (
-            format!("Kinetic Energy E0 = {:.2} (scaled)", wave_data.kinetic_energy),
+            format!(
+                "Kinetic Energy E0 = {:.2} (scaled)",
+                wave_data.kinetic_energy
+            ),
             vec![[x_start, e0_y], [x_end, e0_y]],
         ),
     ]

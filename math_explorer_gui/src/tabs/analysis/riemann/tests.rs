@@ -120,3 +120,69 @@ fn test_riemann_exp_guard_and_state_bounds() {
         .try_load_state(r#"{"preset":"EToX","min_x":-55.0,"max_x":50.0,"steps":50}"#)
         .is_err());
 }
+
+#[test]
+fn test_riemann_custom_compiled_expr_and_transient_edit_guard() {
+    let mut tool = RiemannIntegrationTool {
+        preset: FunctionPreset::Custom,
+        min_x: -1.0,
+        max_x: 1.0,
+        steps: 100,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("a * rect(x)");
+    let mut params = BTreeMap::new();
+    params.insert("a".to_string(), 2.0);
+    tool.math_input.set_params_map(&params);
+    tool.recalculate();
+    assert!((tool.result - 2.0).abs() < 0.05, "got {}", tool.result);
+
+    // Transient invalid syntax keeps last valid compiled quadrature finite
+    tool.math_input.set_expression("a * rect(x) +");
+    tool.recalculate();
+    assert!(tool.has_finite_parameters());
+    assert!((tool.result - 2.0).abs() < 0.05);
+    assert!(tool.import_preset_json(STARTER_PRESET_JSON).is_ok());
+}
+
+#[test]
+fn test_riemann_clenshaw_curtis_error_estimate_and_state_roundtrip() {
+    let mut trap = RiemannIntegrationTool {
+        preset: FunctionPreset::SinX,
+        quadrature_method: QuadratureMethod::Trapezoidal,
+        min_x: 0.0,
+        max_x: std::f64::consts::PI,
+        steps: 10,
+        ..Default::default()
+    };
+    trap.recalculate();
+    assert!(trap.error_estimate > 1e-3);
+
+    let mut cc = RiemannIntegrationTool {
+        preset: FunctionPreset::Custom,
+        quadrature_method: QuadratureMethod::ClenshawCurtis,
+        cc_tolerance: 1e-10,
+        min_x: 0.0,
+        max_x: std::f64::consts::PI,
+        steps: 16,
+        ..Default::default()
+    };
+    cc.math_input.set_expression("sin(k * x)");
+    let mut params = BTreeMap::new();
+    params.insert("k".to_string(), 1.0);
+    cc.math_input.set_params_map(&params);
+    cc.recalculate();
+
+    assert!((cc.result - 2.0).abs() < 1e-9, "CC result = {}", cc.result);
+    assert!(cc.error_estimate <= 1e-8);
+    assert!(cc.error_estimate < trap.error_estimate);
+
+    let saved = cc.save_state().expect("save state");
+    assert!(saved.len() < 4096);
+    let mut restored = RiemannIntegrationTool::default();
+    restored.try_load_state(&saved).expect("load state");
+    assert_eq!(restored.quadrature_method, QuadratureMethod::ClenshawCurtis);
+    assert!((restored.cc_tolerance - 1e-10).abs() < 1e-15);
+    assert!((restored.result - 2.0).abs() < 1e-9);
+}
+

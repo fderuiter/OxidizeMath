@@ -13,9 +13,9 @@ mod tests;
 #[path = "wave_sim/ui.rs"]
 mod ui;
 
-pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 #[cfg(test)]
 pub use presets::wave_parameter_label;
+pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};

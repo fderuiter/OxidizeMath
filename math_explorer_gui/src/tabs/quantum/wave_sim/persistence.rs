@@ -179,8 +179,8 @@ impl WaveSimulatorTool {
     }
 
     pub(crate) fn deserialize_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: WaveSimState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid WaveSimulator state: {e}"))?;
+        let parsed: WaveSimState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid WaveSimulator state: {e}"))?;
         let preset = parsed.validate()?;
 
         self.preset = preset;

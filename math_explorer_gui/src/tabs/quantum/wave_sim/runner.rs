@@ -228,8 +228,8 @@ impl WaveRunner {
         self.cached_dt = None;
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
-        let safe_x0 = if cfg.x0.is_finite() { cfg.x0 } else { DEFAULT_X0 };
-        let safe_k0 = if cfg.k0.is_finite() { cfg.k0 } else { DEFAULT_K0 };
+        let safe_x0 = cfg.x0.is_finite().then_some(cfg.x0).unwrap_or(DEFAULT_X0);
+        let safe_k0 = cfg.k0.is_finite().then_some(cfg.k0).unwrap_or(DEFAULT_K0);
         let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
@@ -290,7 +290,9 @@ impl WaveRunner {
         if obs.barrier_prob >= BARRIER_TRANSIT_THRESHOLD || classical_past_barrier {
             self.entered_barrier = true;
         }
-        if self.entered_barrier && !self.wall_arrived && obs.barrier_prob < BARRIER_TRANSIT_THRESHOLD
+        if self.entered_barrier
+            && !self.wall_arrived
+            && obs.barrier_prob < BARRIER_TRANSIT_THRESHOLD
         {
             if obs.right_wall_prob < WALL_ARRIVAL_THRESHOLD {
                 self.latched_transmission = Some(obs.transmission);
@@ -379,12 +381,8 @@ impl WaveRunner {
     #[must_use]
     pub fn build_wave_data(&self) -> WaveData {
         let prob_density = self.psi.probability_density();
-        let obs = compute_tunneling_observables(
-            &self.x_axis,
-            &prob_density,
-            self.x_left,
-            self.x_right,
-        );
+        let obs =
+            compute_tunneling_observables(&self.x_axis, &prob_density, self.x_left, self.x_right);
         let safe_prob: Vec<f64> = prob_density
             .iter()
             .map(|&p| if p.is_finite() { p } else { 0.0 })

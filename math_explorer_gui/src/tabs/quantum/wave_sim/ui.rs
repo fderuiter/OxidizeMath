@@ -139,9 +139,8 @@ impl WaveSimulatorTool {
             crate::reflective_ui::render_formula_with_export(ui, latex_eq, Some(plain_eq));
         } else if self.math_input.ui(ui) {
             if self.math_input.raw_text.len() > MAX_CUSTOM_EXPR_BYTES {
-                let bounded =
-                    truncate_utf8_bytes(&self.math_input.raw_text, MAX_CUSTOM_EXPR_BYTES)
-                        .to_string();
+                let bounded = truncate_utf8_bytes(&self.math_input.raw_text, MAX_CUSTOM_EXPR_BYTES)
+                    .to_string();
                 self.math_input.set_expression(&bounded);
             }
             self.bump_revision();
@@ -247,12 +246,20 @@ impl WaveSimulatorTool {
         crate::reflective_ui::render_copyable_metric(
             ui,
             "Transmission T(t)",
-            &format!("{:.1}% ({:.4})", wave_data.transmission * 100.0, wave_data.transmission),
+            &format!(
+                "{:.1}% ({:.4})",
+                wave_data.transmission * 100.0,
+                wave_data.transmission
+            ),
         );
         crate::reflective_ui::render_copyable_metric(
             ui,
             "Reflection R(t)",
-            &format!("{:.1}% ({:.4})", wave_data.reflection * 100.0, wave_data.reflection),
+            &format!(
+                "{:.1}% ({:.4})",
+                wave_data.reflection * 100.0,
+                wave_data.reflection
+            ),
         );
         ui.small(format!(
             "Barrier Interior B(t): {:.1}% ([{:.2}, {:.2}])",
@@ -359,7 +366,10 @@ fn render_wave_plot(ui: &mut egui::Ui, wave_data: &WaveData) {
             );
             plot_ui.line(
                 Line::new(
-                    format!("Kinetic Energy E0 = {:.2} (scaled)", wave_data.kinetic_energy),
+                    format!(
+                        "Kinetic Energy E0 = {:.2} (scaled)",
+                        wave_data.kinetic_energy
+                    ),
                     PlotPoints::new(vec![[x_start, e0_scaled], [x_end, e0_scaled]]),
                 )
                 .style(LineStyle::Dashed { length: 6.0_f32 })

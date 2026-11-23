@@ -1,84 +1,42 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-//! ODE model definitions and evaluation helpers.
+//! ODE model definitions and zero-allocation `CompiledExpr` evaluation helpers.
 
 use super::OdeSolverTool;
+use crate::framework::math_input::{
+    CoupledExpressionBank, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS,
+};
 use crate::presets::OdePreset;
-use math_commons::ast::Expr;
+use math_commons::ast::CompiledExpr;
 use math_explorer::pure_math::analysis::ode::{
     Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
 };
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
-pub(super) struct AstContext<'a>(pub(super) Option<&'a Expr>);
-
-impl Hash for AstContext<'_> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        let Some(root) = self.0 else {
-            0_u8.hash(state);
-            return;
-        };
-        1_u8.hash(state);
-        let mut stack: [Option<&Expr>; 64] = [None; 64];
-        stack[0] = Some(root);
-        let mut top = 1_usize;
-        for _ in 0..256 {
-            if top == 0 {
-                break;
-            }
-            top -= 1;
-            if let Some(node) = stack[top] {
-                push_and_hash_expr_node(node, &mut stack, &mut top, state);
-            }
-        }
-    }
-}
-
-fn push_and_hash_expr_node<'a, H: Hasher>(
-    node: &'a Expr,
-    stack: &mut [Option<&'a Expr>; 64],
-    top: &mut usize,
-    state: &mut H,
-) {
-    match node {
-        Expr::Number(n) => {
-            1_u8.hash(state);
-            crate::sensitivity::canonical_f64_bits(*n).hash(state);
-        }
-        Expr::Variable(v) => {
-            2_u8.hash(state);
-            v.hash(state);
-        }
-        Expr::Binary { op, left, right } => {
-            3_u8.hash(state);
-            op.hash(state);
-            if *top + 2 <= stack.len() {
-                stack[*top] = Some(right);
-                stack[*top + 1] = Some(left);
-                *top += 2;
-            }
-        }
-        Expr::Unary { op, expr } => {
-            4_u8.hash(state);
-            op.hash(state);
-            if *top < stack.len() {
-                stack[*top] = Some(expr);
-                *top += 1;
-            }
-        }
-        Expr::Function { func, args } => {
-            5_u8.hash(state);
-            func.hash(state);
-            args.len().hash(state);
-            for arg in args.iter().rev() {
-                if *top < stack.len() {
-                    stack[*top] = Some(arg);
-                    *top += 1;
-                }
-            }
-        }
-    }
+/// Default coupled 2-state ODE bank (`y' = f(t, y, v)`, `v' = g(t, y, v)`).
+#[must_use]
+pub fn default_coupled_ode_bank() -> CoupledExpressionBank {
+    CoupledExpressionBank::new(
+        &["t", "y", "v"],
+        &[("y'", "v"), ("v'", "-k * y - c * v")],
+    )
+    .with_param_range(-5.0..=5.0, 1.0)
+    .with_initial_params(&[("k", 1.0), ("c", 0.2)])
+    .with_system_presets(vec![
+        ("Damped Harmonic Oscillator", vec!["v", "-k * y - c * v"]),
+        (
+            "Lotka-Volterra Predator-Prey",
+            vec!["a * y - b * y * v", "d * y * v - g * v"],
+        ),
+        (
+            "Van der Pol Oscillator",
+            vec!["v", "mu * (1 - y^2) * v - y"],
+        ),
+        (
+            "Duffing Forced Oscillator",
+            vec!["v", "-c * v - a * y - b * y^3 + f * cos(w * t)"],
+        ),
+    ])
 }
 
 #[derive(Clone, Debug)]
@@ -132,21 +90,147 @@ impl OdeSystem<VecState> for LogisticGrowthOde {
     }
 }
 
+/// Zero-allocation compiled bytecode ODE specification for scalar `y' = f(t, y)` and
+/// coupled `(y', v') = (f(t, y, v), g(t, y, v))` custom systems.
 #[derive(Clone, Debug)]
-pub struct DynamicAstOde {
-    pub expr: Expr,
-    pub params: HashMap<String, f64>,
+pub enum CustomOdeSpec {
+    /// Scalar 1st-order ODE `y' = f(t, y)`.
+    Scalar {
+        expr: CompiledExpr,
+        params: [f64; MAX_SYNTHESIZED_PARAMS],
+        param_len: usize,
+    },
+    /// Coupled 2-state ODE `y' = f(t, y, v), v' = g(t, y, v)`.
+    Coupled {
+        dy: CompiledExpr,
+        dv: CompiledExpr,
+        params: [f64; MAX_SYNTHESIZED_PARAMS],
+        param_len: usize,
+    },
 }
 
-impl OdeSystem<VecState> for DynamicAstOde {
+impl CustomOdeSpec {
+    /// Builds a scalar [`CustomOdeSpec`] from a [`MathExpressionInputBar`] with `(t, y)` axes.
+    #[must_use]
+    pub fn from_scalar_bar(
+        bar: &MathExpressionInputBar,
+        param_k: f64,
+        param_r: f64,
+        param_cap_k: f64,
+    ) -> Option<Self> {
+        let expr = bar.active_compiled()?.clone();
+        let names = expr.param_names();
+        if names.len() > MAX_SYNTHESIZED_PARAMS {
+            return None;
+        }
+        let mut params = [0.0; MAX_SYNTHESIZED_PARAMS];
+        let bar_slice = bar.param_slice();
+        for (idx, name) in names.iter().enumerate() {
+            params[idx] = match name.as_str() {
+                "k" => param_k,
+                "r" => param_r,
+                "cap_k" | "K" => param_cap_k,
+                _ => bar_slice.get(idx).copied().unwrap_or(1.0),
+            };
+        }
+        Some(Self::Scalar {
+            param_len: names.len(),
+            expr,
+            params,
+        })
+    }
+
+    /// Builds a coupled 2-state [`CustomOdeSpec`] from a [`CoupledExpressionBank`] with `(t, y, v)` axes.
+    #[must_use]
+    pub fn from_coupled_bank(bank: &CoupledExpressionBank) -> Option<Self> {
+        let compiled = bank.active_compiled();
+        let dy = compiled.first()?.clone();
+        let dv = compiled.get(1)?.clone();
+        let slice = bank.param_slice();
+        if slice.len() > MAX_SYNTHESIZED_PARAMS {
+            return None;
+        }
+        let mut params = [0.0; MAX_SYNTHESIZED_PARAMS];
+        params[..slice.len()].copy_from_slice(slice);
+        Some(Self::Coupled {
+            dy,
+            dv,
+            params,
+            param_len: slice.len(),
+        })
+    }
+
+    /// Returns whether this custom ODE integrates a second state component `v(t)`.
+    #[must_use]
+    pub const fn is_coupled(&self) -> bool {
+        matches!(self, Self::Coupled { .. })
+    }
+
+    /// Clones this spec while overriding named parameter slots from `p_map` (for sensitivity sweeps).
+    #[must_use]
+    pub fn with_param_overrides(&self, p_map: &HashMap<String, f64>) -> Self {
+        let mut cloned = self.clone();
+        match &mut cloned {
+            Self::Scalar {
+                expr,
+                params,
+                param_len,
+            } => {
+                for (idx, name) in expr.param_names().iter().take(*param_len).enumerate() {
+                    if let Some(&val) = p_map.get(name) {
+                        params[idx] = val;
+                    }
+                }
+            }
+            Self::Coupled {
+                dy,
+                params,
+                param_len,
+                ..
+            } => {
+                for (idx, name) in dy.param_names().iter().take(*param_len).enumerate() {
+                    if let Some(&val) = p_map.get(name) {
+                        params[idx] = val;
+                    }
+                }
+            }
+        }
+        cloned
+    }
+}
+
+impl OdeSystem<VecState> for CustomOdeSpec {
     fn derivative(&self, t: f64, state: &VecState) -> VecState {
         let mut out = VecState(vec![0.0; state.0.len()]);
         self.derivative_in_place(t, state, &mut out);
         out
     }
+
     fn derivative_in_place(&self, t: f64, state: &VecState, out: &mut VecState) {
-        let y = state.0[0];
-        out.0[0] = self.expr.eval_2d(t, y, &self.params);
+        match self {
+            Self::Scalar {
+                expr,
+                params,
+                param_len,
+            } => {
+                let y = state.0[0];
+                out.0[0] = expr.eval_2d(t, y, &params[..*param_len]);
+            }
+            Self::Coupled {
+                dy,
+                dv,
+                params,
+                param_len,
+            } => {
+                let y = state.0[0];
+                let v = state.0.get(1).copied().unwrap_or(0.0);
+                let p = &params[..*param_len];
+                out.0[0] = dy.eval_3d(t, y, v, p);
+                if out.0.len() > 1 {
+                    out.0[1] = dv.eval_3d(t, y, v, p);
+                }
+            }
+        }
     }
 }
 
@@ -156,7 +240,7 @@ pub fn eval_ode_final_state(
     dt: f64,
     total_time: f64,
     p_map: &HashMap<String, f64>,
-    custom_expr: Option<&Expr>,
+    custom_spec: Option<&CustomOdeSpec>,
 ) -> f64 {
     let Some(steps) = crate::presets::checked_ode_step_count(dt, total_time) else {
         return f64::NAN;
@@ -181,11 +265,12 @@ pub fn eval_ode_final_state(
             step_model(init, LogisticGrowthOde { r, cap_k }, method, steps, dt)
         }
         OdePreset::Custom => {
-            if let Some(expr) = custom_expr {
-                let init = VecState(vec![y0]);
-                let dynamics = DynamicAstOde {
-                    expr: expr.clone(),
-                    params: p_map.clone(),
+            if let Some(spec) = custom_spec {
+                let dynamics = spec.with_param_overrides(p_map);
+                let init = if dynamics.is_coupled() {
+                    VecState(vec![y0, v0])
+                } else {
+                    VecState(vec![y0])
                 };
                 step_model(init, dynamics, method, steps, dt)
             } else {
@@ -233,16 +318,27 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
             OdePreset::Exponential => "First-order linear ordinary differential equation describing exponential growth or decay proportional to current quantity.".into(),
             OdePreset::HarmonicOscillator => "Second-order ordinary differential equation modeling simple harmonic motion under a Hooke's law restoring force.".into(),
             OdePreset::LogisticGrowth => "Nonlinear ordinary differential equation modeling density-dependent population growth with an environmental carrying capacity.".into(),
+            OdePreset::Custom if self.custom_coupled => "Coupled two-state ordinary differential equation system: y' = f(t, y, v), v' = g(t, y, v)".into(),
             OdePreset::Custom => "Custom user-defined ordinary differential equation: y' = f(t, y)".into(),
         }
     }
-    fn phonetic_description(&self) -> String { "Ordinary differential equations theory".into() }
+    fn phonetic_description(&self) -> String {
+        "Ordinary differential equations theory".into()
+    }
     fn theory_citation(&self) -> String {
         match self.preset {
-            OdePreset::Exponential => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
-            OdePreset::HarmonicOscillator => "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into(),
-            OdePreset::LogisticGrowth => "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into(),
-            OdePreset::Custom => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
+            OdePreset::Exponential => {
+                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
+            }
+            OdePreset::HarmonicOscillator => {
+                "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into()
+            }
+            OdePreset::LogisticGrowth => {
+                "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into()
+            }
+            OdePreset::Custom => {
+                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
+            }
         }
     }
     fn theory_latex_equation(&self) -> Option<String> {
@@ -256,10 +352,22 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Exponential".into(), "First-order linear ODE representing exponential growth or decay".into());
-        map.insert("Harmonic Oscillator".into(), "Second-order linear ODE representing simple harmonic motion".into());
-        map.insert("Logistic Growth".into(), "Nonlinear first-order ODE modeling population growth with carrying capacity".into());
-        map.insert("Custom".into(), "Custom user-defined ordinary differential equation".into());
+        map.insert(
+            "Exponential".into(),
+            "First-order linear ODE representing exponential growth or decay".into(),
+        );
+        map.insert(
+            "Harmonic Oscillator".into(),
+            "Second-order linear ODE representing simple harmonic motion".into(),
+        );
+        map.insert(
+            "Logistic Growth".into(),
+            "Nonlinear first-order ODE modeling population growth with carrying capacity".into(),
+        );
+        map.insert(
+            "Custom".into(),
+            "Custom user-defined scalar or coupled ordinary differential equation".into(),
+        );
         map
     }
 }

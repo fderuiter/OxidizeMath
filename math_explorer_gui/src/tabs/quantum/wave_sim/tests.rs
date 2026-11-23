@@ -102,7 +102,10 @@ fn test_rectangular_barrier_tunneling_benchmarks_and_pre_wall_latch() {
             "Expected T_scatter within {target_t:.2} +/- 0.02 for V0={v0}, got {latched_pre_wall:.6}"
         );
         let snap_pre = runner.build_wave_data();
-        assert!((snap_pre.reflection + snap_pre.barrier_prob + snap_pre.transmission - 1.0).abs() < 1e-9);
+        assert!(
+            (snap_pre.reflection + snap_pre.barrier_prob + snap_pre.transmission - 1.0).abs()
+                < 1e-9
+        );
 
         // Continue past right-wall bounce (t = 2.60) and verify latched value stays frozen
         for _ in 0..80 {
