@@ -39,7 +39,7 @@ impl SetupOptions {
     }
 }
 
-/// Configures `core.hooksPath` to `.githooks` and ensures `.githooks/pre-commit` is executable.
+/// Configures `core.hooksPath` to `.githooks` and ensures `.githooks/pre-commit` and `.githooks/pre-push` are executable.
 pub(crate) fn configure_git_hooks_in_dir(repo_dir: &Path) {
     println!("\n--- Configuring Git Hooks ---");
     let status = Command::new("git")
@@ -51,37 +51,38 @@ pub(crate) fn configure_git_hooks_in_dir(repo_dir: &Path) {
         exit(1);
     }
 
-    let hook_path = repo_dir.join(".githooks/pre-commit");
-    if hook_path.exists() {
-        #[cfg(unix)]
-        ensure_hook_executable(&hook_path);
-        println!("Git core.hooksPath configured to .githooks");
-    } else {
-        eprintln!(
-            "Warning: Expected hook script not found at {}.",
-            hook_path.display()
-        );
-    }
+    ensure_hook_executable(&repo_dir.join(".githooks/pre-commit"), "Pre-commit");
+    ensure_hook_executable(&repo_dir.join(".githooks/pre-push"), "Pre-push");
+    println!("Git core.hooksPath configured to .githooks");
 }
 
-#[cfg(unix)]
-fn ensure_hook_executable(hook_path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    if let Ok(metadata) = fs::metadata(hook_path) {
-        let mut perms = metadata.permissions();
-        if perms.mode() & 0o111 == 0 {
-            perms.set_mode(0o755);
-            if let Err(e) = fs::set_permissions(hook_path, perms) {
-                eprintln!(
-                    "Warning: Failed to set executable permissions on {}: {}",
-                    hook_path.display(),
-                    e
-                );
-            } else {
-                println!("Pre-commit hook permissions set to executable (0755).");
+fn ensure_hook_executable(hook_path: &Path, label: &str) {
+    if !hook_path.exists() {
+        eprintln!(
+            "Warning: Expected {label} hook script not found at {}.",
+            hook_path.display()
+        );
+    } else {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(metadata) = fs::metadata(hook_path) {
+                let mut perms = metadata.permissions();
+                if perms.mode() & 0o111 == 0 {
+                    perms.set_mode(0o755);
+                    if let Err(e) = fs::set_permissions(hook_path, perms) {
+                        eprintln!(
+                            "Warning: Failed to set executable permissions on {}: {}",
+                            hook_path.display(),
+                            e
+                        );
+                    } else {
+                        println!("{label} hook permissions set to executable (0755).");
+                    }
+                } else {
+                    println!("{label} hook executable permissions verified.");
+                }
             }
-        } else {
-            println!("Pre-commit hook executable permissions verified.");
         }
     }
 }

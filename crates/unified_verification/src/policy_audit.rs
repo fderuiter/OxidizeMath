@@ -2,6 +2,7 @@ pub(crate) mod dependencies;
 pub(crate) mod doctests;
 pub(crate) mod lint_policy;
 pub(crate) mod missing_docs;
+pub(crate) mod staged_member;
 
 pub use crate::whitelist::DeadCodeEntry;
 use crate::whitelist::{PathMatchOptions, ROOT_ONLY_WHITELIST_CANDIDATES, VerificationWhitelist};
@@ -36,15 +37,15 @@ fn attr_suppresses_dead_code(attr: &syn::Attribute) -> bool {
     .is_some()
 }
 
-struct DeadCodeVisitor<'a> {
+pub(super) struct DeadCodeVisitor<'a> {
     file_path: &'a str,
     allowed: &'a [DeadCodeEntry],
-    has_unauthorized: bool,
+    pub(super) has_unauthorized: bool,
     violations: Vec<String>,
 }
 
 impl<'a> DeadCodeVisitor<'a> {
-    fn new(file_path: &'a str, allowed: &'a [DeadCodeEntry]) -> Self {
+    pub(super) fn new(file_path: &'a str, allowed: &'a [DeadCodeEntry]) -> Self {
         Self {
             file_path,
             allowed,
@@ -451,6 +452,25 @@ pub(crate) fn run_policy_audit_with_whitelist_and_caches(
     }
 
     success
+}
+
+pub(crate) fn audit_staged_markdown_fences(staged_md_paths: &[String]) -> bool {
+    let resolved = if lint_policy::cwd_is_member_crate_dir() {
+        crate::whitelist::find_whitelist_path()
+    } else {
+        crate::whitelist::resolve_whitelist_path(ROOT_ONLY_WHITELIST_CANDIDATES)
+    };
+    let whitelist_path =
+        resolved.unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
+    let whitelist = match crate::whitelist::load_whitelist_strict(None, &[whitelist_path]) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("[!] {}", err);
+            return false;
+        }
+    };
+    let max_fn_lines = lint_policy::load_too_many_lines_threshold();
+    doctests::audit_staged_markdown_fences_with_whitelist(staged_md_paths, &whitelist, max_fn_lines)
 }
 
 #[cfg(test)]

@@ -23,14 +23,18 @@ fn test_git_hooks_path_configuration() {
     let temp_dir = env::temp_dir().join(format!("xtask_hook_test_{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(temp_dir.join(".githooks")).expect("failed to create temp .githooks");
-    let hook_file = temp_dir.join(".githooks/pre-commit");
-    fs::write(&hook_file, "#!/bin/sh\nexit 0\n").expect("failed to write temp hook");
+    let pre_commit = temp_dir.join(".githooks/pre-commit");
+    let pre_push = temp_dir.join(".githooks/pre-push");
+    fs::write(&pre_commit, "#!/bin/sh\nexit 0\n").expect("failed to write pre-commit");
+    fs::write(&pre_push, "#!/bin/sh\nexit 0\n").expect("failed to write pre-push");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&hook_file).unwrap().permissions();
-        perms.set_mode(0o644);
-        fs::set_permissions(&hook_file, perms).unwrap();
+        for hook in [&pre_commit, &pre_push] {
+            let mut perms = fs::metadata(hook).unwrap().permissions();
+            perms.set_mode(0o644);
+            fs::set_permissions(hook, perms).unwrap();
+        }
     }
 
     let init_status = Command::new("git")
@@ -46,8 +50,10 @@ fn test_git_hooks_path_configuration() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mode = fs::metadata(&hook_file).unwrap().permissions().mode();
-        assert_ne!(mode & 0o111, 0, "Temp hook should be made executable");
+        for hook in [&pre_commit, &pre_push] {
+            let mode = fs::metadata(hook).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o755, "Hook {} should be set to 0755", hook.display());
+        }
     }
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -79,15 +85,17 @@ fn test_unified_verification_uses_dev_profile() {
 
 #[test]
 #[cfg(unix)]
-fn test_pre_commit_hook_executable() {
+fn test_git_hooks_executable() {
     use std::os::unix::fs::PermissionsExt;
-    let hook_path = Path::new(".githooks/pre-commit");
-    if hook_path.exists() {
-        let metadata = fs::metadata(hook_path).expect("failed to read metadata");
+    let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for rel in [".githooks/pre-commit", ".githooks/pre-push"] {
+        let hook_path = ws_root.join(rel);
+        assert!(hook_path.exists(), "Expected hook file {rel} to exist");
+        let metadata = fs::metadata(&hook_path).expect("failed to read metadata");
         assert_ne!(
             metadata.permissions().mode() & 0o111,
             0,
-            "Hook should be executable"
+            "{rel} should be executable"
         );
     }
 }
@@ -122,6 +130,7 @@ fn test_verification_gates() {
         "smoke-examples",
         "traceability",
         "lint-all",
+        "lint-push",
         "lint-staged",
         "check-entropy",
         "check-vulnerabilities",

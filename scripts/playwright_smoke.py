@@ -378,18 +378,6 @@ def verify_stamped_dist_artifacts(dist_dir: Path) -> tuple[int, int, int]:
     return wasm_size, br_size, gz_size
 
 
-def attach_unrouted_abort_guard(page: Page, watched_suffixes: tuple[str, ...]) -> list[str]:
-    aborted: list[str] = []
-    page.on(
-        "requestfailed",
-        lambda req: aborted.append(f"{req.url}: {req.failure}")
-        if req.failure == "net::ERR_ABORTED"
-        and any(req.url.split("?")[0].endswith(s) for s in watched_suffixes)
-        else None,
-    )
-    return aborted
-
-
 def install_telemetry_probe(page: Page, dist_dir: Path) -> None:
     reload_bytes = STARTUP_TELEMETRY_PROBE_JS + (dist_dir / "reload.js").read_bytes()
     page.route(
@@ -399,6 +387,24 @@ def install_telemetry_probe(page: Page, dist_dir: Path) -> None:
             content_type="text/javascript",
             body=reload_bytes,
         ),
+    )
+
+
+def attach_unrouted_script_abort_observer(page: Page, aborted_unrouted: list[str]) -> None:
+    page.on(
+        "requestfailed",
+        lambda req: aborted_unrouted.append(f"{req.url}: {req.failure}")
+        if req.failure == "net::ERR_ABORTED"
+        and any(
+            req.url.split("?")[0].endswith(s)
+            for s in (
+                "/reload.js",
+                "/initializer.js",
+                "/bootstrap.js",
+                "/math_explorer_gui.js",
+            )
+        )
+        else None,
     )
 
 
@@ -414,10 +420,9 @@ def run_truncated_stream_check(
     try:
         page = context.new_page()
         csp_violations: list[str] = []
+        aborted_unrouted: list[str] = []
         attach_csp_observer(page, csp_violations)
-        aborted_unrouted = attach_unrouted_abort_guard(
-            page, ("/bootstrap.js", "/initializer.js", "/math_explorer_gui.js")
-        )
+        attach_unrouted_script_abort_observer(page, aborted_unrouted)
         install_telemetry_probe(page, dist_dir)
 
         page.goto(f"{base_url}/?wasm_mode={wasm_mode}", wait_until="domcontentloaded")
@@ -486,9 +491,8 @@ def run_compressed_progress_and_aria_check(
             lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
         )
         page.on("pageerror", lambda exc: page_errors.append(str(exc)))
-        aborted_unrouted = attach_unrouted_abort_guard(
-            page, ("/bootstrap.js", "/initializer.js", "/math_explorer_gui.js")
-        )
+        aborted_unrouted: list[str] = []
+        attach_unrouted_script_abort_observer(page, aborted_unrouted)
         install_telemetry_probe(page, dist_dir)
 
         page.goto(f"{base_url}/?wasm_mode={wasm_mode}", wait_until="domcontentloaded")
@@ -577,17 +581,6 @@ def run_internal_error_and_fallback_compile_checks(
 
         return _fulfill
 
-    def _attach_unrouted_abort_guard(page: Page, watched_suffixes: tuple[str, ...]) -> list[str]:
-        aborted: list[str] = []
-        page.on(
-            "requestfailed",
-            lambda req: aborted.append(f"{req.url}: {req.failure}")
-            if req.failure == "net::ERR_ABORTED"
-            and any(req.url.split("?")[0].endswith(s) for s in watched_suffixes)
-            else None,
-        )
-        return aborted
-
     captured_shot = False
     for trap_msg in internal_messages:
         loader_stub = (
@@ -604,11 +597,9 @@ def run_internal_error_and_fallback_compile_checks(
             try:
                 pg = ctx.new_page()
                 csp_violations: list[str] = []
+                aborted_unrouted: list[str] = []
                 attach_csp_observer(pg, csp_violations)
-                watched = ("/bootstrap.js", "/initializer.js") + (
-                    () if use_fallback else ("/reload.js",)
-                )
-                aborted_unrouted = _attach_unrouted_abort_guard(pg, watched)
+                attach_unrouted_script_abort_observer(pg, aborted_unrouted)
                 if use_fallback:
                     pg.route(
                         "**/reload.js*",
@@ -649,10 +640,9 @@ def run_internal_error_and_fallback_compile_checks(
     try:
         pg = ctx.new_page()
         csp_violations = []
+        aborted_unrouted = []
         attach_csp_observer(pg, csp_violations)
-        aborted_unrouted = _attach_unrouted_abort_guard(
-            pg, ("/bootstrap.js", "/initializer.js", "/math_explorer_gui.js")
-        )
+        attach_unrouted_script_abort_observer(pg, aborted_unrouted)
         pg.route(
             "**/reload.js*",
             lambda route: route.fulfill(

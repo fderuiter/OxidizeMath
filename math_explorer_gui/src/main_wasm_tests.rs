@@ -244,8 +244,8 @@ fn step_wasm_lenia_gif_frames(
     raw: &eframe::egui::RawInput,
     framework: &mut crate::framework::SimulationFramework,
 ) {
-    assert_eq!(framework.active_gif_progress(), Some((0, 3)));
-    for expected in [Some((1, 3)), Some((2, 3)), None] {
+    assert_eq!(framework.active_gif_progress(), Some((0, 5)));
+    for expected in [Some((1, 5)), Some((2, 5)), Some((3, 5)), Some((4, 5)), None] {
         let _ = ctx.run(raw.clone(), |ctx| framework.show(ctx, "biology"));
         assert_eq!(framework.active_gif_progress(), expected);
     }
@@ -293,7 +293,7 @@ fn wasm_lenia_studio_stepping_exports_and_url_roundtrip() {
     let mut framework = SimulationFramework::new("biology");
     framework.export_options.width = 160;
     framework.export_options.height = 120;
-    framework.export_gif_frames = 3;
+    framework.export_gif_frames = 5;
     assert!(framework.select_tool_by_name("LeniaTool"));
     let fast_preset = PRESET_LENIA_HYDROGEMINIUM.replace("\"grid_size\": 128", "\"grid_size\": 32");
     framework

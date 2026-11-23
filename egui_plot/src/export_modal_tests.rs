@@ -469,7 +469,7 @@ fn wasm_standalone_modal_encodes_at_most_one_gif_frame_per_repaint_tick() {
             aspect_ratio: AspectRatioOption::Free,
             ..Default::default()
         },
-        gif_frames: 4,
+        gif_frames: 5,
         ..Default::default()
     };
     let config = ExportModalConfig {
@@ -499,15 +499,10 @@ fn wasm_standalone_modal_encodes_at_most_one_gif_frame_per_repaint_tick() {
     let (down, up) = click_input(gif_pos);
     let _ = step(down, &mut state);
     let _ = step(up, &mut state);
-    assert_eq!(state.gif_job.progress(), Some((0, 4)));
-
-    let _ = step(screen_input(), &mut state);
-    assert_eq!(state.gif_job.progress(), Some((1, 4)));
-    let _ = step(screen_input(), &mut state);
-    assert_eq!(state.gif_job.progress(), Some((2, 4)));
-    let _ = step(screen_input(), &mut state);
-    assert_eq!(state.gif_job.progress(), Some((3, 4)));
-    let _ = step(screen_input(), &mut state);
+    for completed in 0..5 {
+        assert_eq!(state.gif_job.progress(), Some((completed, 5)));
+        let _ = step(screen_input(), &mut state);
+    }
     assert_eq!(state.gif_job.progress(), None);
     assert_eq!(
         state.status_message.as_deref(),

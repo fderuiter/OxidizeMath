@@ -132,7 +132,7 @@ async function runWbgAndOptionalUnit(cfg) {
     }
 
     let unitPassed = true;
-    if (cfg.run_unit) {
+    if (cfg.run_unit && wbgPassed) {
         if (typeof wasm.main !== "function") {
             throw new Error("Expected exported main(argc, argv) function in unit test target");
         }
