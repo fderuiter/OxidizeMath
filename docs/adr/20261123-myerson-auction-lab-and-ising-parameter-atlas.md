@@ -1,4 +1,4 @@
-# ADR 0046: Myerson Mechanism-Design Auction Lab and Analytical Ising / Fermi Spatial Parameter Atlas
+# ADR 20261123: Myerson Mechanism-Design Auction Lab and Analytical Ising / Fermi Spatial Parameter Atlas
 
 ## Status
 
@@ -20,7 +20,7 @@ Accepted (2026-11-23)
    - Extend `RegimeCartographer` in [`math_explorer_gui/src/async_sim/atlas/mod.rs`](../../math_explorer_gui/src/async_sim/atlas/mod.rs) with `extra_overlay_contours` rendered via `SemanticPalette` tokens, and add `O(1)` analytical `IsingCartographer` in [`math_explorer_gui/src/tabs/solid_state/ising/atlas.rs`](../../math_explorer_gui/src/tabs/solid_state/ising/atlas.rs) covering `(T, S)` spatial dilemma survival (with `T = R`, `S = P`, and `2R + 2S = T` boundary contours exposing the `75.0%` Prisoner's Dilemma defector freeze) and `(temperature, h_field)` / `(temperature, j_coupling)` slices (with exact Onsager $T_c(J) = \frac{2|J|}{\ln(1 + \sqrt{2})}$).
    - Remove the `* |J|` temperature scaling bug in `IsingRunner` and `IsingModelTool`, add `SpinLattice::staggered_magnetization`, `SpinLattice::evolve_fermi_game_with_mutation` (`mutation_prob` clamped to `[0.0, 0.05]`), and `SpinLattice::reset_uniform_with_seed` in [`crates/domain_physics/src/physics/stat_mech/ising.rs`](../../crates/domain_physics/src/physics/stat_mech/ising.rs), and auto-reseed absorbed `-1` `FermiGame` lattices on preset switches and `(T, S)` atlas teleports.
    - Persist `mutation_rate`, `defector_sea`, `droplet_seeds` (`<= 32` circular disks), and `atlas` slice selection in `IsingState` (`#[serde(deny_unknown_fields)]`, `<= 4,096` JSON bytes), and register `2` `solid_state` inverse challenges (`ising_critical_droplet_nucleation` and `fermi_prisoners_dilemma_nucleation`) evaluated by zero-allocation `IsingChallengeWorkspace`.
-   - Guard `AstVisitor::process_fn_attrs` in [`crates/oxidize_core/src/ast_visitor.rs`](../../crates/oxidize_core/src/ast_visitor.rs) so `#[doc = ...]` attributes extract `[cite:...]` citations without misparsing Rustdoc code examples containing `#[verified]` or `#[embed_theory(...)]` during build-time `traceability_manifest.json` generation.
+   - Guard `AstVisitor::inspect_fn_attr` in [`crates/oxidize_core/src/ast_visitor.rs`](../../crates/oxidize_core/src/ast_visitor.rs) so `#[doc = ...]` attributes extract `[cite:...]` citations without misparsing Rustdoc code examples containing `#[verified]` or `#[embed_theory(...)]` during build-time `traceability_manifest.json` generation.
 
 ## Consequences
 

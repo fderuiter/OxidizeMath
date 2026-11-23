@@ -267,6 +267,13 @@ impl InteractiveTool for MyersonAuctionTool {
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut h);
+        self.url_state_revision().hash(&mut h);
+        self.snapshot_manager.len().hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn url_state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
         self.uniform_min.to_bits().hash(&mut h);
         self.uniform_max.to_bits().hash(&mut h);
         self.exp_rate.to_bits().hash(&mut h);
@@ -279,7 +286,8 @@ impl InteractiveTool for MyersonAuctionTool {
         self.reserve_price.to_bits().hash(&mut h);
         self.focal_valuation.to_bits().hash(&mut h);
         self.candidate_bid.to_bits().hash(&mut h);
-        self.snapshot_manager.len().hash(&mut h);
+        self.mc_samples.hash(&mut h);
+        self.mc_seed.hash(&mut h);
         self.atlas.is_visible().hash(&mut h);
         self.atlas.axis_keys().hash(&mut h);
         h.finish().max(1)
@@ -420,7 +428,7 @@ inventory::submit! {
         id: "MyersonAuctionTool",
         display_name: "Myerson Optimal Auction",
         domain: "game_theory",
-        tags: &["auction", "mechanism_design", "myerson", "bayes_nash"],
+        tags: &["auction", "mechanism design", "myerson", "bayes nash", "reserve price", "vickrey"],
         build: || Box::new(MyersonAuctionTool::default()),
     }
 }

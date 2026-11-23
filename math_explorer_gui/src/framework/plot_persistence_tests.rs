@@ -268,8 +268,8 @@ fn test_preset_starter_and_reset_clear_manual_bounds() {
         .unwrap()
         .export_preset_json()
         .expect("export preset");
-    fw.apply_preset_json(&preset_env)
-        .expect("apply preset resets manual bounds");
+    fw.import_url_preset_json(Some("MockToolA"), Some(&preset_env))
+        .expect("import preset resets manual bounds");
     let after_preset = &fw.saved_plot_states["Mock Tool A"]["shared_canvas"];
     assert_eq!(after_preset.bounds, None);
     assert_eq!(after_preset.auto_bounds, None);

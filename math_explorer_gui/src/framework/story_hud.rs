@@ -302,7 +302,7 @@ impl SimulationFramework {
         if let Some(tool) = &mut self.active_tool {
             tool.sync_callouts(step.callouts);
         }
-        let step_state = self.active_tool.as_ref().and_then(|t| t.save_state());
+        let step_state = self.active_tool.as_ref().and_then(|t| t.save_url_state());
         if self.challenge_hud.sandbox.formula.is_empty() {
             if let Some((obs, _)) = self
                 .active_tool
@@ -346,7 +346,7 @@ impl SimulationFramework {
         if let Some(tool) = &mut self.active_tool {
             tool.sync_callouts(challenge.callouts);
         }
-        let initial_state = self.active_tool.as_ref().and_then(|t| t.save_state());
+        let initial_state = self.active_tool.as_ref().and_then(|t| t.save_url_state());
         self.challenge_hud
             .sandbox
             .set_formula(challenge.predicate_expr);
