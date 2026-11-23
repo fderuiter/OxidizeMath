@@ -1,0 +1,30 @@
+#!/bin/sh
+# Version-controlled pre-push hook
+
+for profile in "$HOME/.bash_profile" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [ -f "$profile" ]; then
+        . "$profile" >/dev/null 2>&1 || true
+    fi
+done
+
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -d "$HOME/.cargo/bin" ]; then
+        export PATH="$PATH:$HOME/.cargo/bin"
+    fi
+fi
+
+PUSH_REFS=""
+if [ ! -t 0 ]; then
+    PUSH_REFS="$(cat)"
+fi
+
+echo "Running pre-push verification check..."
+PRE_PUSH_REFS="$PUSH_REFS" cargo run -p xtask -- lint-push --hook "$@" </dev/null
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "Pre-push checks failed! Push blocked."
+    exit 1
+fi
+
+exit 0

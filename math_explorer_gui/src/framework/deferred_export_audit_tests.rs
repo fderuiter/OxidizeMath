@@ -232,7 +232,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
 fn assert_expected_capability_counts(counts: [usize; 8]) {
     let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
-    let expected_plot = if has_surface_morpho { 71 } else { 70 };
+    let expected_plot = if has_surface_morpho { 74 } else { 73 };
     let expected_solid = if has_surface_morpho { 8 } else { 7 };
     let expected_non_shader = if has_surface_morpho { 86 } else { 85 };
     assert_eq!(
@@ -241,7 +241,7 @@ fn assert_expected_capability_counts(counts: [usize; 8]) {
     );
     assert_eq!(raster, 8, "Expected 8 raster figure tools");
     assert_eq!(dataset_only, 0, "Expected 0 dataset-only registered tools");
-    assert_eq!(unsupported, 12, "Expected 12 non-figure tools");
+    assert_eq!(unsupported, 9, "Expected 9 non-figure tools");
     assert_eq!(
         solid_3d, expected_solid,
         "Expected {expected_solid} solid 3D geometric tools"

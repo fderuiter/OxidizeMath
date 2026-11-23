@@ -60,10 +60,12 @@ impl AlgorithmVisualizerTool {
             }
 
             let summary = format!(
-                "Focused Node {}, Start Node {}",
+                "Focused Node {}, Start Node {}, Step {}/{}",
                 self.focused_node,
                 self.start_node
-                    .map_or_else(|| "None".to_string(), |id| id.to_string())
+                    .map_or_else(|| "None".to_string(), |id| id.to_string()),
+                self.animation_step,
+                self.total_steps()
             );
             register_canvas_accessibility(
                 ui,
@@ -82,6 +84,7 @@ impl AlgorithmVisualizerTool {
                 &visuals,
                 response.has_focus(),
             );
+            self.draw_mode_banner(&painter, response.rect, &visuals);
         });
     }
 
@@ -104,10 +107,26 @@ impl AlgorithmVisualizerTool {
         });
         if let Some(id) = clicked_node {
             self.focused_node = id;
-            self.start_node = Some(id);
-            self.run_algorithm();
-            response.request_focus();
-            announce_live_status(ctx, format!("Start node set to Node {id}"));
+            let shift = ctx.input(|i| i.modifiers.shift);
+            if shift
+                && self.selected_algorithm == Algorithm::MaxFlowMinCut
+                && Some(id) != self.start_node
+            {
+                self.sink_node = Some(id);
+                self.bump_revision();
+                self.run_algorithm();
+                response.request_focus();
+                announce_live_status(ctx, format!("Sink node set to Node {id}"));
+            } else {
+                self.start_node = Some(id);
+                if self.sink_node == Some(id) {
+                    self.sink_node = self.effective_sink_node(Some(id));
+                }
+                self.bump_revision();
+                self.run_algorithm();
+                response.request_focus();
+                announce_live_status(ctx, format!("Start node set to Node {id}"));
+            }
         }
     }
 
@@ -142,8 +161,121 @@ impl AlgorithmVisualizerTool {
         });
         if activate {
             self.start_node = Some(self.focused_node);
+            if self.sink_node == Some(self.focused_node) {
+                self.sink_node = self.effective_sink_node(self.start_node);
+            }
+            self.bump_revision();
             self.run_algorithm();
             announce_live_status(ctx, format!("Start node set to Node {}", self.focused_node));
+        }
+    }
+
+    pub(super) fn classify_edge_visual(
+        &self,
+        edge_idx: usize,
+        palette: &crate::app::SemanticPalette,
+    ) -> (egui::Color32, f32, String) {
+        let (_, _, weight) = self.edges[edge_idx];
+        match self.selected_algorithm {
+            Algorithm::Dijkstra | Algorithm::Bfs | Algorithm::Dfs => {
+                if self.is_edge_highlighted_at_step(edge_idx) {
+                    (palette.success, 3.2, format!("{weight:.1}"))
+                } else {
+                    (palette.graph_edge, 2.0, format!("{weight:.1}"))
+                }
+            }
+            Algorithm::MaxFlowMinCut => self.classify_flow_edge_visual(edge_idx, weight, palette),
+            Algorithm::MinimumSpanningTree => {
+                self.classify_mst_edge_visual(edge_idx, weight, palette)
+            }
+        }
+    }
+
+    fn classify_flow_edge_visual(
+        &self,
+        edge_idx: usize,
+        cap: f64,
+        palette: &crate::app::SemanticPalette,
+    ) -> (egui::Color32, f32, String) {
+        let Some(flow_data) = &self.flow_data else {
+            return (palette.graph_edge, 2.0, format!("{cap:.1}"));
+        };
+        if self.animation_step == 0 {
+            return (palette.graph_edge, 2.0, format!("0.0/{cap:.1}"));
+        }
+        let cut_step = flow_data.steps.len() + 1;
+        if self.animation_step >= cut_step {
+            let f = flow_data
+                .edge_flows
+                .get(edge_idx)
+                .copied()
+                .unwrap_or(0.0)
+                .abs();
+            if flow_data.cut_edge_indices.contains(&edge_idx) {
+                return (palette.error, 4.0, format!("CUT {f:.1}/{cap:.1}"));
+            }
+            let col = if f > 1e-6 {
+                palette.success
+            } else {
+                palette.graph_edge
+            };
+            return (
+                col,
+                if f > 1e-6 { 3.0 } else { 1.8 },
+                format!("{f:.1}/{cap:.1}"),
+            );
+        }
+        let step_idx = self.animation_step - 1;
+        let f = flow_data
+            .step_edge_flows
+            .get(step_idx)
+            .and_then(|v| v.get(edge_idx))
+            .copied()
+            .unwrap_or(0.0)
+            .abs();
+        let on_active_aug = flow_data.steps[step_idx].edge_indices.contains(&edge_idx);
+        let col = if on_active_aug {
+            palette.accent
+        } else if f > 1e-6 {
+            palette.success
+        } else {
+            palette.graph_edge
+        };
+        let width = if on_active_aug {
+            3.8
+        } else if f > 1e-6 {
+            2.8
+        } else {
+            1.8
+        };
+        (col, width, format!("{f:.1}/{cap:.1}"))
+    }
+
+    fn classify_mst_edge_visual(
+        &self,
+        edge_idx: usize,
+        weight: f64,
+        palette: &crate::app::SemanticPalette,
+    ) -> (egui::Color32, f32, String) {
+        let Some(mst) = &self.mst_data else {
+            return (palette.graph_edge, 2.0, format!("{weight:.1}"));
+        };
+        let shown = self.animation_step.min(mst.steps.len());
+        if shown > 0 && mst.steps[shown - 1].edge_index == edge_idx {
+            let col = if mst.steps[shown - 1].accepted {
+                palette.accent
+            } else {
+                palette.error
+            };
+            return (col, 3.8, format!("{weight:.1}"));
+        }
+        let accepted = mst.steps[..shown]
+            .iter()
+            .any(|s| s.edge_index == edge_idx && s.accepted);
+        if accepted {
+            (palette.success, 3.2, format!("{weight:.1}"))
+        } else {
+            (palette.graph_edge, 1.8, format!("{weight:.1}"))
         }
     }
 
@@ -154,39 +286,116 @@ impl AlgorithmVisualizerTool {
         visuals: &egui::Visuals,
     ) {
         let palette = crate::app::SemanticPalette::from_visuals(visuals);
-        for &(u, v, weight) in &self.edges {
-            if let (Some(&pos_u), Some(&pos_v)) =
+        for (idx, &(u, v, _)) in self.edges.iter().enumerate() {
+            let (Some(&pos_u), Some(&pos_v)) =
                 (self.node_positions.get(&u), self.node_positions.get(&v))
-            {
-                let screen_pos_u = to_screen.transform_pos(pos_u);
-                let screen_pos_v = to_screen.transform_pos(pos_v);
-                let u_visited = self
-                    .visit_order
-                    .iter()
-                    .take(self.animation_step)
-                    .any(|&id| id == u);
-                let v_visited = self
-                    .visit_order
-                    .iter()
-                    .take(self.animation_step)
-                    .any(|&id| id == v);
-                let color = if u_visited && v_visited {
-                    palette.success
-                } else {
-                    palette.graph_edge
-                };
-                painter.line_segment([screen_pos_u, screen_pos_v], (2.0, color));
+            else {
+                continue;
+            };
+            let screen_u = to_screen.transform_pos(pos_u);
+            let screen_v = to_screen.transform_pos(pos_v);
+            let (color, width, label) = self.classify_edge_visual(idx, &palette);
+            painter.line_segment([screen_u, screen_v], (width, color));
+            if self.directed {
+                draw_canvas_arrowhead(painter, screen_u, screen_v, width, color);
+            }
+            let mid_point = screen_u + (screen_v - screen_u) * 0.5;
+            painter.text(
+                mid_point + egui::vec2(0.0, -8.0),
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::proportional(11.5),
+                visuals.text_color(),
+            );
+        }
+    }
 
-                let mid_point = screen_pos_u + (screen_pos_v - screen_pos_u) * 0.5;
-                painter.text(
-                    mid_point,
-                    egui::Align2::CENTER_CENTER,
-                    format!("{:.1}", weight),
-                    egui::FontId::proportional(12.0),
-                    visuals.text_color(),
-                );
+    pub(super) fn classify_node_visual(
+        &self,
+        id: usize,
+        palette: &crate::app::SemanticPalette,
+    ) -> (egui::Color32, String) {
+        if self.selected_algorithm == Algorithm::MaxFlowMinCut {
+            return self.classify_flow_node_visual(id, palette);
+        }
+        if self.selected_algorithm == Algorithm::MinimumSpanningTree {
+            return self.classify_mst_node_visual(id, palette);
+        }
+        let is_start = self.start_node == Some(id);
+        let visit_index = self.visit_order.iter().position(|&vid| vid == id);
+        let is_visited = visit_index.is_some_and(|idx| idx < self.animation_step);
+        let is_current = visit_index.is_some_and(|idx| {
+            idx == self.animation_step.saturating_sub(1) && self.animation_step > 0
+        });
+        let fill_color = if is_start {
+            palette.accent
+        } else if is_current {
+            palette.error
+        } else if is_visited {
+            palette.success
+        } else {
+            palette.series_color(0)
+        };
+        let label = if self.selected_algorithm == Algorithm::Dijkstra && is_visited {
+            self.distances
+                .get(&id)
+                .map_or_else(|| id.to_string(), |dist| format!("{dist:.1}"))
+        } else {
+            id.to_string()
+        };
+        (fill_color, label)
+    }
+
+    fn classify_flow_node_visual(
+        &self,
+        id: usize,
+        palette: &crate::app::SemanticPalette,
+    ) -> (egui::Color32, String) {
+        let sink = self.effective_sink_node(self.start_node);
+        let lbl = if self.start_node == Some(id) {
+            format!("{id}:s")
+        } else if sink == Some(id) {
+            format!("{id}:t")
+        } else {
+            id.to_string()
+        };
+        if let Some(flow) = &self.flow_data {
+            if self.animation_step > flow.steps.len() && self.animation_step > 0 {
+                let col = if flow.source_side_nodes.contains(&id) {
+                    palette.accent
+                } else {
+                    palette.series_color(2)
+                };
+                return (col, lbl);
             }
         }
+        let col = if self.start_node == Some(id) {
+            palette.accent
+        } else if sink == Some(id) {
+            palette.warning
+        } else {
+            palette.series_color(0)
+        };
+        (col, lbl)
+    }
+
+    fn classify_mst_node_visual(
+        &self,
+        id: usize,
+        palette: &crate::app::SemanticPalette,
+    ) -> (egui::Color32, String) {
+        let covered = self.mst_data.as_ref().is_some_and(|mst| {
+            let shown = self.animation_step.min(mst.steps.len());
+            mst.steps[..shown]
+                .iter()
+                .any(|s| s.accepted && (s.u == id || s.v == id))
+        });
+        let col = if covered {
+            palette.success
+        } else {
+            palette.series_color(0)
+        };
+        (col, id.to_string())
     }
 
     fn draw_nodes(
@@ -200,23 +409,7 @@ impl AlgorithmVisualizerTool {
         let palette = crate::app::SemanticPalette::from_visuals(visuals);
         for (&id, &pos) in &self.node_positions {
             let screen_pos = to_screen.transform_pos(pos);
-            let is_start = self.start_node == Some(id);
-            let visit_index = self.visit_order.iter().position(|&vid| vid == id);
-            let is_visited = visit_index.is_some_and(|idx| idx < self.animation_step);
-            let is_current = visit_index.is_some_and(|idx| {
-                idx == self.animation_step.saturating_sub(1) && self.animation_step > 0
-            });
-
-            let fill_color = if is_start {
-                palette.accent
-            } else if is_current {
-                palette.error
-            } else if is_visited {
-                palette.success
-            } else {
-                palette.series_color(0)
-            };
-
+            let (fill_color, label) = self.classify_node_visual(id, &palette);
             painter.circle(
                 screen_pos,
                 node_radius,
@@ -226,20 +419,66 @@ impl AlgorithmVisualizerTool {
             if canvas_focused && self.focused_node == id {
                 painter.circle_stroke(screen_pos, node_radius + 4.0_f32, (2.5_f32, palette.accent));
             }
-            let label = if self.selected_algorithm == Algorithm::Dijkstra && is_visited {
-                self.distances
-                    .get(&id)
-                    .map_or_else(|| id.to_string(), |dist| format!("{:.1}", dist))
-            } else {
-                id.to_string()
-            };
             painter.text(
                 screen_pos,
                 egui::Align2::CENTER_CENTER,
                 label,
-                egui::FontId::proportional(12.0),
+                egui::FontId::proportional(11.5),
                 crate::app::contrasting_text_color(fill_color),
             );
         }
     }
+
+    fn draw_mode_banner(&self, painter: &egui::Painter, rect: egui::Rect, visuals: &egui::Visuals) {
+        let palette = crate::app::SemanticPalette::from_visuals(visuals);
+        let text = match self.selected_algorithm {
+            Algorithm::MaxFlowMinCut => self.flow_data.as_ref().map(|f| {
+                format!(
+                    "Edmonds-Karp Max-Flow = {:.2} | s-t Min-Cut Capacity = {:.2} ({} cut edges)",
+                    f.max_flow,
+                    f.min_cut_capacity,
+                    f.cut_edge_indices.len()
+                )
+            }),
+            Algorithm::MinimumSpanningTree => self.mst_data.as_ref().map(|m| {
+                format!(
+                    "Kruskal MST Total Weight = {:.2} ({} tree edges, {} component(s))",
+                    m.total_weight,
+                    m.tree_edge_indices.len(),
+                    m.component_count
+                )
+            }),
+            _ => None,
+        };
+        if let Some(msg) = text {
+            painter.text(
+                rect.min + egui::vec2(14.0, 18.0),
+                egui::Align2::LEFT_CENTER,
+                msg,
+                egui::FontId::proportional(13.0),
+                palette.accent,
+            );
+        }
+    }
 }
+
+fn draw_canvas_arrowhead(
+    painter: &egui::Painter,
+    from: Pos2,
+    to: Pos2,
+    width: f32,
+    color: egui::Color32,
+) {
+    let dir = to - from;
+    let len = dir.length();
+    if len <= 34.0 {
+        return;
+    }
+    let unit = dir / len;
+    let tip = to - unit * 16.0;
+    let perp = egui::vec2(-unit.y, unit.x);
+    painter.line_segment([tip, tip - unit * 8.0 + perp * 4.5], (width, color));
+    painter.line_segment([tip, tip - unit * 8.0 - perp * 4.5], (width, color));
+}
+
+// [cite:graph_parameters_rust]
