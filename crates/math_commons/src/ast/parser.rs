@@ -1,4 +1,5 @@
 //! Pratt parser for mathematical expressions with implicit multiplication and recursion bounds.
+// [cite:math_commons]
 
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use super::lexer::{LexError, Span, Token, TokenKind, tokenize};

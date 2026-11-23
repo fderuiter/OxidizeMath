@@ -1,3 +1,4 @@
+// [cite:math_commons]
 use super::*;
 use num_complex::Complex64;
 use std::collections::HashMap;

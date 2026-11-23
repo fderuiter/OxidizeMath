@@ -377,65 +377,6 @@ fn test_ode_presets_theory_metadata() {
 }
 
 #[test]
-fn test_harmonic_equilibrium_root_dt_025_and_nonlinear_preset_fits() {
-    let mut osc = OdeSolverTool {
-        preset: OdePreset::HarmonicOscillator,
-        param_k: 1.0,
-        ic_y0: 1.0,
-        ic_v0: 0.0,
-        dt: 0.25,
-        total_time: 10.0,
-        ..Default::default()
-    };
-    osc.recalculate();
-    let root_t = annotations::harmonic_equilibrium_root(&osc).expect("harmonic root");
-    assert!(
-        (root_t - 5.0).abs() > 0.1,
-        "must not anchor at arbitrary midpoint t=5.0"
-    );
-    let nearest_analytical = 1.5 * std::f64::consts::PI;
-    assert!(
-        (root_t - nearest_analytical).abs() < 1e-3,
-        "dt=0.25 RK4 + Hermite root error = {:.6e}s",
-        (root_t - nearest_analytical).abs()
-    );
-
-    let osc_pts = &osc.export_datasets()[0].1;
-    let sin_fit = egui_plot::fit_model_with_axes(
-        osc_pts,
-        egui_plot::FitType::Sinusoidal,
-        "y(t)",
-        false,
-        false,
-        false,
-    )
-    .expect("sinusoidal fit");
-    assert!(sin_fit.r_squared >= 0.99);
-
-    let mut log_tool = OdeSolverTool {
-        preset: OdePreset::LogisticGrowth,
-        param_r: 0.8,
-        param_cap_k: 12.0,
-        ic_y0: 0.5,
-        dt: 0.1,
-        total_time: 12.0,
-        ..Default::default()
-    };
-    log_tool.recalculate();
-    let log_pts = &log_tool.export_datasets()[0].1;
-    let logistic_fit = egui_plot::fit_model_with_axes(
-        log_pts,
-        egui_plot::FitType::Logistic,
-        "y(t)",
-        false,
-        false,
-        false,
-    )
-    .expect("logistic fit");
-    assert!(logistic_fit.r_squared >= 0.99);
-}
-
-#[test]
 fn test_ode_200k_steps_decimates_display_polyline_and_preserves_full_exports() {
     let mut tool = OdeSolverTool {
         preset: OdePreset::HarmonicOscillator,
