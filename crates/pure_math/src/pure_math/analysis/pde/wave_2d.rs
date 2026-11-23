@@ -35,6 +35,8 @@ use super::fused_stepper::StencilOperators;
 
 /// Configuration enums, parameter structs, and analytic reference formulas.
 pub mod config;
+/// Boundary-accurate square plate and circular Bessel drumhead eigenmode evaluators.
+pub mod eigenmodes;
 /// Mask construction utilities for sponge layers, slits, lenses, and plate clamps.
 pub mod masks;
 /// Chladni sand particle drift and 2D Marching-Squares nodal contour extraction.
@@ -45,11 +47,18 @@ pub mod probes;
 pub mod spectral;
 
 #[cfg(test)]
+mod eigenmode_tests;
+#[cfg(test)]
 mod tests;
 
 pub use config::{
     BoundaryMode2D, DriverConfig2D, MAX_BIHARMONIC_NUMBER, MAX_COURANT_NUMBER, MAX_VERLET_SUBSTEPS,
     Wave2DMedium, Wave2DParams, analytic_clamped_square_omega, young_double_slit_fringe_spacing,
+};
+pub use eigenmodes::{
+    BESSEL_JN_ZEROS, Eigenmode2D, PinConstraint2D, PlateEigenmodeKind, bessel_jn, bessel_jn_zero,
+    circular_drumhead_eigenfrequency_hz, evaluate_eigenmode_amplitude, lorentzian_modal_response,
+    populate_eigenmodes, snap_to_mode_antinode, square_plate_eigenfrequency_hz,
 };
 pub use masks::{
     apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_point_clamp,
@@ -162,7 +171,6 @@ impl Wave2DSolver {
     pub fn modal_field(&self) -> &[f64] {
         &self.modal_field
     }
-
     /// Initializes a stationary displacement field ($u(0) = \text{values}, u_t(0) = 0$).
     #[verified_engine::verified]
     pub fn set_stationary_displacement(&mut self, values: &[f64]) {
@@ -178,7 +186,6 @@ impl Wave2DSolver {
         self.last_dt = 0.0;
         self.stationary_start = true;
     }
-
     /// Clears wave displacement, energy envelope, and detector accumulators while keeping masks.
     #[verified_engine::verified]
     pub fn clear_wave_state(&mut self) {
@@ -194,7 +201,6 @@ impl Wave2DSolver {
         self.last_dt = 0.0;
         self.stationary_start = false;
     }
-
     /// Resets all masks (`wall_mask = 1`, `sponge_mask = 0`, `wave_speed_mask = 1`) and clears state.
     #[verified_engine::verified]
     pub fn reset_all(&mut self) {
@@ -203,7 +209,6 @@ impl Wave2DSolver {
         self.wave_speed_mask.fill(1.0);
         self.clear_wave_state();
     }
-
     /// Resets only the time-integrated detector intensity accumulator.
     #[verified_engine::verified]
     pub fn reset_detector(&mut self) {
@@ -287,7 +292,6 @@ impl Wave2DSolver {
         substeps
     }
 
-    #[verified_engine::verified]
     fn compute_laplacian_pass(&mut self, boundary: BoundaryMode2D) {
         let w = self.width;
         let h = self.height;
@@ -299,7 +303,7 @@ impl Wave2DSolver {
         }
     }
 
-    #[verified_engine::verified]
+    #[inline]
     fn eval_cell_laplacian(&self, x: usize, y: usize, idx: usize, boundary: BoundaryMode2D) -> f64 {
         let w = self.width;
         let h = self.height;
@@ -318,7 +322,7 @@ impl Wave2DSolver {
         self.ops.central_diff_2nd_2d(curr, left, right, up, down)
     }
 
-    #[verified_engine::verified]
+    #[inline]
     fn eval_boundary_laplacian(
         &self,
         x: usize,
@@ -326,44 +330,20 @@ impl Wave2DSolver {
         idx: usize,
         boundary: BoundaryMode2D,
     ) -> f64 {
-        let w = self.width;
-        let h = self.height;
-        match boundary {
-            BoundaryMode2D::Dirichlet | BoundaryMode2D::Sponge => 0.0,
-            BoundaryMode2D::Clamped => {
-                let corner = (x == 0 || x == w - 1) && (y == 0 || y == h - 1);
-                if corner {
-                    0.0
-                } else if x == 0 {
-                    2.0 * self.u_curr[flatten_2d_index(1, y, w)] * self.ops.inv_dx_sq
-                } else if x == w - 1 {
-                    2.0 * self.u_curr[flatten_2d_index(w - 2, y, w)] * self.ops.inv_dx_sq
-                } else if y == 0 {
-                    2.0 * self.u_curr[flatten_2d_index(x, 1, w)] * self.ops.inv_dy_sq
-                } else {
-                    2.0 * self.u_curr[flatten_2d_index(x, h - 2, w)] * self.ops.inv_dy_sq
-                }
-            }
-            BoundaryMode2D::Neumann => {
-                if self.wall_mask[idx] <= 0.5 {
-                    return 0.0;
-                }
-                let xl = if x > 0 { x - 1 } else { 1 };
-                let xr = if x + 1 < w { x + 1 } else { w - 2 };
-                let yu = if y > 0 { y - 1 } else { 1 };
-                let yd = if y + 1 < h { y + 1 } else { h - 2 };
-                self.ops.central_diff_2nd_2d(
-                    self.u_curr[idx],
-                    self.u_curr[flatten_2d_index(xl, y, w)],
-                    self.u_curr[flatten_2d_index(xr, y, w)],
-                    self.u_curr[flatten_2d_index(x, yu, w)],
-                    self.u_curr[flatten_2d_index(x, yd, w)],
-                )
-            }
-        }
+        masks::eval_boundary_laplacian_2d(
+            &self.u_curr,
+            &self.wall_mask,
+            &self.ops,
+            self.width,
+            self.height,
+            x,
+            y,
+            idx,
+            boundary,
+        )
     }
 
-    #[verified_engine::verified]
+    #[inline]
     fn eval_biharmonic_at(&self, x: usize, y: usize, idx: usize, boundary: BoundaryMode2D) -> f64 {
         let w = self.width;
         let h = self.height;
@@ -384,7 +364,6 @@ impl Wave2DSolver {
         )
     }
 
-    #[verified_engine::verified]
     fn verlet_substep(&mut self, params: &Wave2DParams, driver: &DriverConfig2D, dt: f64) {
         let w = self.width;
         let h = self.height;
@@ -415,7 +394,7 @@ impl Wave2DSolver {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[verified_engine::verified]
+    #[inline]
     fn advance_single_cell(
         &self,
         x: usize,
@@ -451,7 +430,6 @@ impl Wave2DSolver {
         (2.0 * curr - (1.0 - gamma) * prev + dt_sq * accel) / (1.0 + gamma)
     }
 
-    #[verified_engine::verified]
     fn accumulate_detector_column(&mut self, det_x: usize) {
         let col = det_x.min(self.width - 1);
         for y in 0..self.height {
