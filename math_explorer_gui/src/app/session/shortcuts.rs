@@ -130,16 +130,6 @@ impl MathExplorerApp {
         {
             return true;
         }
-        if let Some(fid) = ctx.memory(|m| m.focused()) {
-            if self
-                .tabs
-                .get(self.selected_tab)
-                .and_then(|t| t.focused_canvas_id())
-                == Some(fid)
-            {
-                return false;
-            }
-        }
         crate::framework::is_text_edit_focused(ctx)
     }
 }

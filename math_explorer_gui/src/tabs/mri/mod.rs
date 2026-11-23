@@ -6,6 +6,8 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 
 pub mod challenge;
+pub mod counterfactual;
+mod counterfactual_tool;
 pub mod kspace_bloch_view;
 pub mod kspace_phantom;
 pub mod kspace_runner;
@@ -21,6 +23,7 @@ pub mod theory;
 pub mod tool;
 pub mod ui;
 
+pub use counterfactual::*;
 #[cfg(test)]
 pub use kspace_tool::MriKSpaceTool;
 pub use runner::sanitize_mri_time_scale;
@@ -117,10 +120,6 @@ impl ExplorerTab for MriTab {
         if !self.try_load_legacy_state(state) {
             self.framework.load_state(state);
         }
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
     }
 
     fn select_tool_by_name(&mut self, name: &str) -> bool {

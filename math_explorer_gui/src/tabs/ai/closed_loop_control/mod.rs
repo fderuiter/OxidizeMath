@@ -154,10 +154,6 @@ impl InteractiveTool for ClosedLoopControlTool {
         ui::show_tool_inside(self, ui);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     fn has_finite_parameters(&self) -> bool {
         self.state.is_finite()
     }

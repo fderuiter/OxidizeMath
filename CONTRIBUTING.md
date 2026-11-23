@@ -12,7 +12,7 @@ When you submit a PR, you aren't just merging code; you are merging knowledge. E
 
 Before implementing new features or making structural changes, review our centralized architecture documentation:
 
-- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 18 crates.
+- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 20 crates.
 - [CERA Framework Guide](docs/architecture/cera_framework.md): Climate-invariant encoding, representation alignment, and modeling pipelines.
 - [Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md): NASA Power of 10 Rule 3 enforcement and `VerifiedEngine` runtime rules.
 - [Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md): Step-by-step tutorial to implement and register simulation tabs.
@@ -72,7 +72,7 @@ If any scoped check fails, `.githooks/pre-commit` exits with a non-zero status a
 
 ### Automated Activation
 
-Running the workspace setup command installs the `wasm32-unknown-unknown` target, compiles the codebase, executes tests, configures `core.hooksPath` to `.githooks`, and validates executable permissions on Unix platforms:
+Running the workspace setup command configures `core.hooksPath` to `.githooks` and validates executable permissions first, then adds the `wasm32-unknown-unknown` target, warns if optional browser tools are missing (pass `--web` to enforce them or `--hooks-only` to configure hooks only), and runs `cargo check --workspace` (unless `--check-only` is passed):
 
 ```bash
 cargo run -p xtask -- setup
@@ -131,7 +131,7 @@ cargo run -p unified_verification --release -- verify-suite
   ```
   If this command returns nothing or an unexpected path, configure it by running:
   ```bash
-  cargo run -p xtask -- setup
+  cargo run -p xtask -- setup --hooks-only
   # or manually:
   git config core.hooksPath .githooks
   ```
