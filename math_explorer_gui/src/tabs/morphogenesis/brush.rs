@@ -237,7 +237,13 @@ pub(crate) fn apply_brush_sim_command<K: MorphoSpatialKinetics, D: SpatialDiffus
             system.kinetics.clear_spatial_mask();
         }
         SimCommand::ApplyBrushCells { cells, mode } => {
-            apply_morpho_cells_to_system(system, width, height, cells, MorphoBrushMode::from_code(*mode));
+            apply_morpho_cells_to_system(
+                system,
+                width,
+                height,
+                cells,
+                MorphoBrushMode::from_code(*mode),
+            );
         }
         SimCommand::ApplyBrush {
             cx,
@@ -350,4 +356,3 @@ impl MorphogenesisTool {
         }
     }
 }
-

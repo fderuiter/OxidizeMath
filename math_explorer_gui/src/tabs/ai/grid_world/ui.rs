@@ -49,61 +49,73 @@ impl GridWorldTool {
         }
     }
 
+    fn draw_playback_buttons(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("▶ Step")
+                .accessible_hover_text("Advance the agent by one step")
+                .clicked()
+            {
+                self.step_agent();
+            }
+            let (label, hover) = if self.is_playing {
+                ("⏸ Pause", "Pause continuous Q-learning playback")
+            } else {
+                ("▶ Play", "Start continuous Q-learning playback")
+            };
+            if ui.button(label).accessible_hover_text(hover).clicked() {
+                self.is_playing = !self.is_playing;
+                if self.is_playing {
+                    self.last_tick = crate::web_io::PlatformInstant::now();
+                }
+            }
+        });
+        if ui
+            .button("▶ Train (100 Episodes)")
+            .accessible_hover_text("Train the agent for 100 episodes instantly")
+            .clicked()
+        {
+            self.train_batch();
+        }
+        if ui
+            .button("↻ Reset Agent")
+            .accessible_hover_text("Clear the Q-table and reset the agent's knowledge")
+            .clicked()
+        {
+            self.reset_agent();
+        }
+    }
+
+    fn draw_hyperparameter_sliders(&mut self, ui: &mut egui::Ui) {
+        ui.heading("RL Hyperparameters");
+        let mut hp_changed = ui
+            .add(egui::Slider::new(&mut self.learning_rate, 0.01..=1.0).text("Learning Rate (α)"))
+            .changed();
+        hp_changed |= ui
+            .add(
+                egui::Slider::new(&mut self.discount_factor, 0.0..=1.0).text("Discount Factor (γ)"),
+            )
+            .changed();
+        hp_changed |= ui
+            .add(
+                egui::Slider::new(&mut self.exploration_rate, 0.0..=1.0)
+                    .text("Exploration Rate (ε)"),
+            )
+            .changed();
+        if hp_changed {
+            self.sync_agent_hyperparameters();
+        }
+        ui.add(egui::Slider::new(&mut self.playback_speed, 1.0..=20.0).text("Speed (Hz)"));
+    }
+
     pub(super) fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "grid_world_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Controls");
             ui.separator();
-            ui.horizontal_wrapped(|ui| {
-                if ui
-                    .button("▶ Step")
-                    .accessible_hover_text("Advance the agent by one step")
-                    .clicked()
-                {
-                    self.step_agent();
-                }
-                let (label, hover) = if self.is_playing {
-                    ("⏸ Pause", "Pause continuous Q-learning playback")
-                } else {
-                    ("▶ Play", "Start continuous Q-learning playback")
-                };
-                if ui.button(label).accessible_hover_text(hover).clicked() {
-                    self.is_playing = !self.is_playing;
-                    if self.is_playing {
-                        self.last_tick = crate::web_io::PlatformInstant::now();
-                    }
-                }
-            });
-            if ui
-                .button("▶ Train (100 Episodes)")
-                .accessible_hover_text("Train the agent for 100 episodes instantly")
-                .clicked()
-            {
-                self.train_batch();
-            }
-            if ui
-                .button("↻ Reset Agent")
-                .accessible_hover_text("Clear the Q-table and reset the agent's knowledge")
-                .clicked()
-            {
-                self.reset_agent();
-            }
+            self.draw_playback_buttons(ui);
             ui.separator();
-            ui.heading("RL Hyperparameters");
-            let mut hp_changed = ui
-                .add(egui::Slider::new(&mut self.learning_rate, 0.01..=1.0).text("Learning Rate (α)"))
-                .changed();
-            hp_changed |= ui
-                .add(egui::Slider::new(&mut self.discount_factor, 0.0..=1.0).text("Discount Factor (γ)"))
-                .changed();
-            hp_changed |= ui
-                .add(egui::Slider::new(&mut self.exploration_rate, 0.0..=1.0).text("Exploration Rate (ε)"))
-                .changed();
-            if hp_changed {
-                self.sync_agent_hyperparameters();
-            }
-            ui.add(egui::Slider::new(&mut self.playback_speed, 1.0..=20.0).text("Speed (Hz)"));
-
+            self.draw_hyperparameter_sliders(ui);
             self.draw_brush_controls(ui);
         });
     }

@@ -1,7 +1,5 @@
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::{
-    decode_u8_grid, InteractionContext, InteractiveTool, RasterBrushState,
-};
+use crate::framework::{decode_u8_grid, InteractionContext, InteractiveTool, RasterBrushState};
 use eframe::egui;
 use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
@@ -152,8 +150,7 @@ impl IsingModelTool {
             .total_trials
             .store(0, Ordering::Relaxed);
         let params = Arc::clone(&self.params);
-        self.worker
-            .reset_or_respawn(|| Self::build_runner(&params));
+        self.worker.reset_or_respawn(|| Self::build_runner(&params));
         self.stepped_pixels = None;
         self.pending_ode_resync = true;
         self.sync_metrics_from_latest();
@@ -481,7 +478,7 @@ inventory::submit! {
         id: "IsingModelTool",
         display_name: "Ising Model",
         domain: "solid_state",
-        tags: &[],
+        tags: &["ferromagnetism", "metropolis", "monte carlo", "curie", "phase transition"],
         build: || Box::new(IsingModelTool::default()),
     }
 }

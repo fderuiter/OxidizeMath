@@ -123,13 +123,9 @@ fn generate_ising_pinned_domain_wall_preset() -> &'static str {
                     }
                 }
             }
-            let rle = crate::framework::encode_u8_grid(
-                DEFAULT_ISING_SIZE,
-                DEFAULT_ISING_SIZE,
-                &pins,
-                2,
-            )
-            .expect("valid Ising pinned RLE");
+            let rle =
+                crate::framework::encode_u8_grid(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, &pins, 2)
+                    .expect("valid Ising pinned RLE");
             serde_json::json!({
                 "metadata": {
                     "schema_version": "1.0",

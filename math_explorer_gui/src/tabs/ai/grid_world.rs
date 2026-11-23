@@ -1,4 +1,6 @@
-use crate::framework::{encode_u8_grid, InputMode, InteractiveTool, RasterBrushState, RasterBrushStroke};
+use crate::framework::{
+    encode_u8_grid, InputMode, InteractiveTool, RasterBrushState, RasterBrushStroke,
+};
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_commons::primitives::UnitInterval;
@@ -34,13 +36,7 @@ pub enum GridBrushMode {
 
 impl GridBrushMode {
     /// All selectable GridWorld sculpting modes in UI display order.
-    pub const ALL: [Self; 5] = [
-        Self::Wall,
-        Self::Trap,
-        Self::Start,
-        Self::Goal,
-        Self::Empty,
-    ];
+    pub const ALL: [Self; 5] = [Self::Wall, Self::Trap, Self::Start, Self::Goal, Self::Empty];
 
     /// User-facing label for side-panel sculpting controls.
     #[must_use]
@@ -411,7 +407,7 @@ inventory::submit! {
         id: "GridWorldTool",
         display_name: "Grid World (RL)",
         domain: "ai",
-        tags: &[],
+        tags: &["reinforcement learning", "q-learning", "bellman", "mdp", "policy", "epsilon-greedy"],
         build: || Box::new(GridWorldTool::default()),
     }
 }

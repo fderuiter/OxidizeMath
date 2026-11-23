@@ -1,8 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
-use super::brush::{
-    apply_mask_rle_to_kinetics, apply_morpho_cells_to_system, MorphoBrushMode,
+use super::brush::{apply_mask_rle_to_kinetics, apply_morpho_cells_to_system, MorphoBrushMode};
+pub(crate) use super::kinetics::apply_uniform_noise;
+pub use super::kinetics::{
+    MorphogenesisKineticsAdapter, MorphogenesisKineticsState, MorphogenesisSharedParams,
 };
 use super::sculpt::{apply_stroke_to_morpho_system, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
@@ -12,10 +14,6 @@ use crate::async_sim::{
 };
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-pub(crate) use super::kinetics::apply_uniform_noise;
-pub use super::kinetics::{
-    MorphogenesisKineticsAdapter, MorphogenesisKineticsState, MorphogenesisSharedParams,
-};
 use crate::presets::MorphogenesisKineticsMode;
 use math_explorer::biology::diffusion::{MaskedFiniteDifference2D, ReactionCellRole};
 use math_explorer::biology::morphogenesis::TuringSystem;

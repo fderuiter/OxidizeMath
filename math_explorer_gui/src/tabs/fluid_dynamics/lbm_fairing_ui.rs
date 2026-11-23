@@ -8,6 +8,7 @@ use super::lbm_fairing::{
     CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY, LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X,
     LBM_CORE_Y, LBM_HEIGHT, LBM_INLET_COLS, LBM_MIN_SOLID_CELLS, LBM_WIDTH,
 };
+use super::lbm_presets::stamp_disk_into_fairing_mask;
 use crate::accessibility::{
     announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
     register_canvas_accessibility, AccessibleHoverText,
@@ -180,7 +181,11 @@ impl LbmUiExtension {
             ];
             for stamp in stamps {
                 let tip = format!("Apply {} obstacle profile and reset LBM", stamp.label());
-                if ui.button(stamp.label()).accessible_hover_text(tip).clicked() {
+                if ui
+                    .button(stamp.label())
+                    .accessible_hover_text(tip)
+                    .clicked()
+                {
                     cmds = self.apply_stamp(stamp, CHALLENGE_LBM_VISCOSITY);
                     let m = &self.evaluator.latest;
                     let pct = 100.0 * m.c_d / m.c_d_cylinder.max(1e-9);
@@ -222,7 +227,9 @@ impl LbmUiExtension {
             "Fairing Readout: F_D = {:.4}, F_L = {:.4}, C_D = {:.3} (Cyl = {:.3})",
             m.f_drag, m.f_lift, m.c_d, m.c_d_cylinder
         ));
-        if let Some(s) = latest_snapshot.filter(|s| s.custom_data.len() >= 6 && s.custom_data[5] >= 20.0) {
+        if let Some(s) =
+            latest_snapshot.filter(|s| s.custom_data.len() >= 6 && s.custom_data[5] >= 20.0)
+        {
             ui.small(format!(
                 "Live Stream: F_D = {:.4}, F_L = {:.4}, C_D = {:.3}",
                 s.custom_data[0], s.custom_data[1], s.custom_data[2]
@@ -230,9 +237,16 @@ impl LbmUiExtension {
         }
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let geom_ok = m.n_solid >= LBM_MIN_SOLID_CELLS && m.core_intact;
-        let geom_color = if geom_ok { palette.success } else { palette.warning };
+        let geom_color = if geom_ok {
+            palette.success
+        } else {
+            palette.warning
+        };
         let core_txt = if m.core_intact { "Intact" } else { "Breached" };
-        let msg = format!("Solid Cells: {} (min {LBM_MIN_SOLID_CELLS}) | Core R=4: {core_txt}", m.n_solid);
+        let msg = format!(
+            "Solid Cells: {} (min {LBM_MIN_SOLID_CELLS}) | Core R=4: {core_txt}",
+            m.n_solid
+        );
         ui.colored_label(geom_color, msg);
         cmds
     }
@@ -354,31 +368,14 @@ impl UnifiedUiExtension for LbmUiExtension {
     }
 
     fn on_brush(&mut self, cx: i32, cy: i32, r: i32, is_obstacle: bool) -> bool {
-        let mut any_changed = false;
-        for y in (cy - r)..=(cy + r) {
-            for x in (cx - r)..=(cx + r) {
-                if x >= LBM_INLET_COLS as i32
-                    && x < LBM_WIDTH as i32
-                    && y >= 0
-                    && y < LBM_HEIGHT as i32
-                    && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r
-                {
-                    let dx = x - LBM_CORE_X;
-                    let dy = y - LBM_CORE_Y;
-                    if !is_obstacle
-                        && self.active_challenge.is_some()
-                        && dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS
-                    {
-                        continue;
-                    }
-                    let idx = flatten_2d_index(x as usize, y as usize, LBM_WIDTH);
-                    if self.mask[idx] != is_obstacle {
-                        self.mask[idx] = is_obstacle;
-                        any_changed = true;
-                    }
-                }
-            }
-        }
+        let any_changed = stamp_disk_into_fairing_mask(
+            &mut self.mask,
+            cx,
+            cy,
+            r,
+            is_obstacle,
+            self.active_challenge.is_some(),
+        );
         if any_changed {
             self.evaluator
                 .evaluate_mask_in_place(&self.mask, CHALLENGE_LBM_VISCOSITY);
@@ -471,7 +468,11 @@ impl UnifiedUiExtension for LbmUiExtension {
                 .stroke(egui::Stroke::new(1.5_f32, palette.warning)),
         );
         let cursor = [self.cursor_x as f64 + 0.5, self.cursor_y as f64 + 0.5];
-        plot_ui.points(Points::new("Sculpt Cursor", vec![cursor]).radius(5.0_f32).color(palette.accent));
+        plot_ui.points(
+            Points::new("Sculpt Cursor", vec![cursor])
+                .radius(5.0_f32)
+                .color(palette.accent),
+        );
         let resp = plot_ui.response().clone();
         self.handle_sculpt_keys_ctx(ctx, &resp)
     }

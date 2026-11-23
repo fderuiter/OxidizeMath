@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::framework::{
-    BrushStencil, InteractiveTool, RasterBrushStroke, SymmetryMode, generate_brush_cells,
+    generate_brush_cells, BrushStencil, InteractiveTool, RasterBrushStroke, SymmetryMode,
 };
 use crate::url_state::{encode_share_fragment, parse_share_location};
 use eframe::egui::Context;
@@ -37,12 +37,9 @@ fn test_lbm_unified_persists_airfoil_across_save_load_reset_and_url() {
     assert!(saved.contains("obstacles_rle"));
 
     // Verify URL share roundtrip within URL_JSON_BOUNDS:
-    let fragment = encode_share_fragment(
-        "fluid_dynamics",
-        Some("LatticeBoltzmannTool"),
-        Some(&saved),
-    )
-    .expect("encode LBM URL fragment");
+    let fragment =
+        encode_share_fragment("fluid_dynamics", Some("LatticeBoltzmannTool"), Some(&saved))
+            .expect("encode LBM URL fragment");
     let decoded_url = parse_share_location(&fragment, "")
         .expect("decode LBM URL fragment")
         .expect("present share params");

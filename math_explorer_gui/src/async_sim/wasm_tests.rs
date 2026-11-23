@@ -1,6 +1,6 @@
 use super::*;
 use crate::tabs::chaos::attractors::{AttractorMode, AttractorRunner, AttractorSharedParams};
-use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTab};
+use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTool};
 use std::sync::RwLock;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
@@ -49,7 +49,7 @@ async fn wasm_worker_checkpoint_step_stepback_seek_and_reset() {
         high_contrast: false,
         mask_rle: None,
     }));
-    let runner = MorphogenesisTab::create_runner(&params, 20, 20);
+    let runner = MorphogenesisTool::create_runner(&params, 20, 20);
     let mut controller = SimulationController::new(runner);
     assert_eq!(controller.timeline_metadata().unwrap().stride, 16);
 

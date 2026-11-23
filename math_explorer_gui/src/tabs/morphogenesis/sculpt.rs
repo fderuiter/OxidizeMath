@@ -180,7 +180,9 @@ impl super::MorphogenesisTool {
                     build_maze_rle(self.width, self.height);
                 let _ = self
                     .worker
-                    .send_command(crate::async_sim::SimCommand::Custom("stamp_maze".to_string()));
+                    .send_command(crate::async_sim::SimCommand::Custom(
+                        "stamp_maze".to_string(),
+                    ));
                 self.dirty = true;
                 ctx.request_repaint();
             }
@@ -222,12 +224,14 @@ impl super::MorphogenesisTool {
             *rle = encode_rle_mask(&bytes);
             rle.clone()
         };
-        let _ = self.worker.send_command(
-            crate::async_sim::SimCommand::SyncSculptState(crate::async_sim::SculptStatePayload {
-                rle_mask,
-                sparse_potential: Vec::new(),
-            }),
-        );
+        let _ = self
+            .worker
+            .send_command(crate::async_sim::SimCommand::SyncSculptState(
+                crate::async_sim::SculptStatePayload {
+                    rle_mask,
+                    sparse_potential: Vec::new(),
+                },
+            ));
         self.stepped_pixels = None;
         self.step_runner = None;
         self.dirty = true;

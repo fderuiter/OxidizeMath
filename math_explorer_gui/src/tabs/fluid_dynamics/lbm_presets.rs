@@ -3,6 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::lattice_boltzmann::{LbmUnified, LBM_HEIGHT, LBM_WIDTH};
+use super::lbm_fairing::{LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y, LBM_INLET_COLS};
 use crate::async_sim::unified::UnifiedSimTool;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
@@ -10,6 +11,42 @@ use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
+
+pub(super) fn stamp_disk_into_fairing_mask(
+    mask: &mut [bool; LBM_CELL_COUNT],
+    cx: i32,
+    cy: i32,
+    r: i32,
+    is_obstacle: bool,
+    lock_core: bool,
+) -> bool {
+    let mut any_changed = false;
+    for y in (cy - r)..=(cy + r) {
+        for x in (cx - r)..=(cx + r) {
+            if x >= LBM_INLET_COLS as i32
+                && x < LBM_WIDTH as i32
+                && y >= 0
+                && y < LBM_HEIGHT as i32
+                && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r
+            {
+                let dx = x - LBM_CORE_X;
+                let dy = y - LBM_CORE_Y;
+                if !is_obstacle
+                    && lock_core
+                    && dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS
+                {
+                    continue;
+                }
+                let idx = flatten_2d_index(x as usize, y as usize, LBM_WIDTH);
+                if mask[idx] != is_obstacle {
+                    mask[idx] = is_obstacle;
+                    any_changed = true;
+                }
+            }
+        }
+    }
+    any_changed
+}
 
 pub(super) fn lbm_parameters() -> HashMap<String, ParameterConstraint> {
     let c = |min, max, step| ParameterConstraint { min, max, step };
@@ -49,7 +86,7 @@ inventory::submit! {
         id: "LatticeBoltzmannTool",
         display_name: "Lattice Boltzmann (Demo)",
         domain: "fluid_dynamics",
-        tags: &[],
+        tags: &["lbm", "d2q9", "bgk", "vortex street", "navier-stokes", "fluid"],
         build: || Box::new(UnifiedSimTool::<LbmUnified>::new()),
     }
 }

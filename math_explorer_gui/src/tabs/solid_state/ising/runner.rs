@@ -339,7 +339,12 @@ impl SimulationRunner for IsingRunner {
         let palette = theme.palette();
         let mut spins_vec = Vec::with_capacity(width * height);
         let mut pixels = Vec::with_capacity(width * height);
-        for (&s, &pin) in self.lattice.spins().iter().zip(self.lattice.pinned().iter()) {
+        for (&s, &pin) in self
+            .lattice
+            .spins()
+            .iter()
+            .zip(self.lattice.pinned().iter())
+        {
             let encoded = if pin { s.saturating_mul(2) } else { s };
             spins_vec.push(encoded);
             pixels.push(ising_spin_color(encoded, &palette));

@@ -95,12 +95,8 @@ fn test_morphogenesis_mask_rle_persistence_url_share_and_clear() {
         .validate_json(&saved)
         .expect("Morphogenesis masked state fits URL_JSON_BOUNDS");
 
-    let fragment = encode_share_fragment(
-        "Morphogenesis",
-        Some("MorphogenesisTool"),
-        Some(&saved),
-    )
-    .expect("URL fragment encode");
+    let fragment = encode_share_fragment("Morphogenesis", Some("MorphogenesisTool"), Some(&saved))
+        .expect("URL fragment encode");
     let decoded_share = parse_share_location(&fragment, "")
         .expect("URL fragment decode")
         .expect("present share params");
