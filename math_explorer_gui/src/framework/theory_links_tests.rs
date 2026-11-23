@@ -153,6 +153,16 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
         .any(|e| e.url == "https://doi.org/10.1007/s40065-022-00360-6"));
 }
 
+#[test]
+fn test_win_ratio_workbench_portal_paper_links() {
+    let win_ratio_links = resolve_portal_paper_links("WinRatioWorkbenchTool", "clinical_trials");
+    assert!(!win_ratio_links.is_empty());
+    assert_eq!(win_ratio_links[0].paper_name, "win_ratio.tex");
+    assert!(win_ratio_links
+        .iter()
+        .any(|l| l.paper_name == "clinical_trials_statistics.tex"));
+}
+
 fn assert_clean_portal_output(tool_id: &str, out: &egui::FullOutput) -> usize {
     const FORBIDDEN_RAW_TEX: &[&str] = &[
         r"\hbar", r"\langle", r"\rangle", r"\vec", r"\hat", r"\bar", r"\dot", r"\ddot", r"\tilde",

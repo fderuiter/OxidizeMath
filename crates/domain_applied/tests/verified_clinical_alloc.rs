@@ -1,7 +1,5 @@
 //! Zero-allocation runtime verification and statistical tests for `evaluate_tiers` and `log_rank_test`.
 
-#![allow(missing_docs)]
-
 use domain_applied::applied::clinical_trials::design::{
     BlockRandomizer, Group, Patient, StratifiedRandomizer,
 };

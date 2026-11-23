@@ -20,7 +20,7 @@ This module is part of the `math_explorer` core library. To use it, include the 
 
 ```toml
 [dependencies]
-math_explorer = { path = "path/to/math_explorer" }
+math_explorer = { path = "path/to/math_explorer", features = ["applied"] }
 ```
 
 ---
@@ -30,7 +30,7 @@ math_explorer = { path = "path/to/math_explorer" }
 You can see this model in action by running the standalone, fully executable example:
 
 ```bash
-cargo run --release --package math_explorer --example grpo_demo
+cargo run --release --package math_explorer --features applied --example grpo_demo
 ```
 
 *(See `math_explorer/examples/grpo_demo.rs` for implementation details)*
