@@ -10021,6 +10021,21 @@
       "signature": "impl BankrollFraction { pub fn value (& self) -> f64 }"
     },
     {
+      "signature": "impl DrawdownConstraint { pub fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn gamma (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn lambda (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn new (_ : f64 , _ : f64) -> Result < Self , KellyError > }"
+    },
+    {
       "signature": "impl Odds { pub fn from_american (_ : f64) -> Result < Self , KellyError > }"
     },
     {
@@ -10042,7 +10057,25 @@
       "signature": "impl Odds { pub fn value (& self) -> f64 }"
     },
     {
+      "signature": "pub const EXACT_CONVOLUTION_MAX_WAGERS : usize"
+    },
+    {
+      "signature": "pub const LAPLACE_QUADRATURE_NODES : usize"
+    },
+    {
+      "signature": "pub const MAX_MARKET_OUTCOMES : usize"
+    },
+    {
+      "signature": "pub const MAX_SLATE_WAGERS : usize"
+    },
+    {
+      "signature": "pub const PROBABILITY_SUM_TOLERANCE : f64"
+    },
+    {
       "signature": "pub struct BankrollFraction"
+    },
+    {
+      "signature": "pub struct DrawdownConstraint"
     },
     {
       "signature": "pub struct Odds"
@@ -10074,12 +10107,94 @@
       "signature": "pub mod variants { pub fn quarter_kelly (_ : & UnitInterval , _ : & Odds ,) -> Result < BankrollFraction , KellyError > }"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/kelly/drawdown.rs": [
+    {
+      "signature": "pub fn drawdown_constrained_kelly (_ : & UnitInterval , _ : & Odds , _ : & DrawdownConstraint ,) -> Result < BankrollFraction , KellyError >"
+    },
+    {
+      "signature": "pub fn drawdown_constrained_push_kelly (_ : & PushWager , _ : & DrawdownConstraint ,) -> Result < BankrollFraction , KellyError >"
+    },
+    {
+      "signature": "pub fn drawdown_constrained_quarter_line_kelly (_ : & QuarterLineWager , _ : & DrawdownConstraint ,) -> Result < BankrollFraction , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_drawdown_constrained_slate (_ : & [SlateWager] , _ : & DrawdownConstraint , _ : & mut SlateScratch ,) -> Result < SlateSolution , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_drawdown_constrained_slate_with_mode (_ : & [SlateWager] , _ : & DrawdownConstraint , _ : SlateEvalMode , _ : & mut SlateScratch ,) -> Result < SlateSolution , KellyError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/market.rs": [
+    {
+      "signature": "impl MarketAllocation { pub fn expected_growth_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketAllocation { pub fn expected_value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketAllocation { pub fn kkt_residual (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketAllocation { pub fn reserve_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketAllocation { pub fn stakes (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl MarketAllocation { pub fn total_fraction (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketOutcome { pub fn gross_return (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketOutcome { pub fn new (_ : UnitInterval , _ : Odds) -> Self }"
+    },
+    {
+      "signature": "impl MarketOutcome { pub fn odds (& self) -> Odds }"
+    },
+    {
+      "signature": "impl MarketOutcome { pub fn probability (& self) -> UnitInterval }"
+    },
+    {
+      "signature": "impl MarketScratch { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "pub fn solve_mutually_exclusive_market (_ : & [MarketOutcome] , _ : & mut MarketScratch ,) -> Result < MarketAllocation , KellyError >"
+    },
+    {
+      "signature": "pub struct MarketAllocation"
+    },
+    {
+      "signature": "pub struct MarketOutcome"
+    },
+    {
+      "signature": "pub struct MarketScratch"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/kelly/mod.rs": [
     {
       "signature": "pub use core :: BankrollFraction"
     },
     {
+      "signature": "pub use core :: DrawdownConstraint"
+    },
+    {
+      "signature": "pub use core :: EXACT_CONVOLUTION_MAX_WAGERS"
+    },
+    {
+      "signature": "pub use core :: LAPLACE_QUADRATURE_NODES"
+    },
+    {
+      "signature": "pub use core :: MAX_MARKET_OUTCOMES"
+    },
+    {
+      "signature": "pub use core :: MAX_SLATE_WAGERS"
+    },
+    {
       "signature": "pub use core :: Odds"
+    },
+    {
+      "signature": "pub use core :: PROBABILITY_SUM_TOLERANCE"
     },
     {
       "signature": "pub use core :: UnitInterval"
@@ -10098,6 +10213,242 @@
     },
     {
       "signature": "pub use criterion :: variants"
+    },
+    {
+      "signature": "pub use drawdown :: drawdown_constrained_kelly"
+    },
+    {
+      "signature": "pub use drawdown :: drawdown_constrained_push_kelly"
+    },
+    {
+      "signature": "pub use drawdown :: drawdown_constrained_quarter_line_kelly"
+    },
+    {
+      "signature": "pub use drawdown :: solve_drawdown_constrained_slate"
+    },
+    {
+      "signature": "pub use drawdown :: solve_drawdown_constrained_slate_with_mode"
+    },
+    {
+      "signature": "pub use market :: MarketAllocation"
+    },
+    {
+      "signature": "pub use market :: MarketOutcome"
+    },
+    {
+      "signature": "pub use market :: MarketScratch"
+    },
+    {
+      "signature": "pub use market :: solve_mutually_exclusive_market"
+    },
+    {
+      "signature": "pub use push :: PushOutcome"
+    },
+    {
+      "signature": "pub use push :: PushWager"
+    },
+    {
+      "signature": "pub use push :: push_expected_growth_rate"
+    },
+    {
+      "signature": "pub use push :: push_expected_value"
+    },
+    {
+      "signature": "pub use push :: push_kelly_fraction"
+    },
+    {
+      "signature": "pub use quarter_line :: QuarterLineOutcome"
+    },
+    {
+      "signature": "pub use quarter_line :: QuarterLineWager"
+    },
+    {
+      "signature": "pub use quarter_line :: quarter_line_expected_growth_rate"
+    },
+    {
+      "signature": "pub use quarter_line :: quarter_line_expected_value"
+    },
+    {
+      "signature": "pub use quarter_line :: quarter_line_growth_derivative"
+    },
+    {
+      "signature": "pub use quarter_line :: quarter_line_kelly_fraction"
+    },
+    {
+      "signature": "pub use slate :: SlateSolution"
+    },
+    {
+      "signature": "pub use slate :: solve_simultaneous_slate"
+    },
+    {
+      "signature": "pub use slate :: solve_simultaneous_slate_with_mode"
+    },
+    {
+      "signature": "pub use slate_eval :: MAX_CONVOLUTION_STATES"
+    },
+    {
+      "signature": "pub use slate_eval :: SlateEvalMode"
+    },
+    {
+      "signature": "pub use slate_eval :: SlateScratch"
+    },
+    {
+      "signature": "pub use slate_eval :: SlateWager"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/push.rs": [
+    {
+      "signature": "impl PushWager { pub fn from_win_and_push (_ : f64 , _ : f64 , _ : Odds) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl PushWager { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : Odds) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl PushWager { pub fn odds (& self) -> Odds }"
+    },
+    {
+      "signature": "impl PushWager { pub fn p_loss (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PushWager { pub fn p_push (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PushWager { pub fn p_win (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PushWager { pub fn sample_outcome (& self , _ : f64) -> PushOutcome }"
+    },
+    {
+      "signature": "impl PushWager { pub fn settle (& self , _ : f64 , _ : & BankrollFraction , _ : PushOutcome) -> f64 }"
+    },
+    {
+      "signature": "pub enum PushOutcome"
+    },
+    {
+      "signature": "pub fn push_expected_growth_rate (_ : & PushWager , _ : & BankrollFraction) -> f64"
+    },
+    {
+      "signature": "pub fn push_expected_value (_ : & PushWager) -> f64"
+    },
+    {
+      "signature": "pub fn push_kelly_fraction (_ : & PushWager) -> Result < BankrollFraction , KellyError >"
+    },
+    {
+      "signature": "pub struct PushWager"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/quarter_line.rs": [
+    {
+      "signature": "impl QuarterLineWager { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : Odds ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn odds (& self) -> Odds }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn p_full_loss (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn p_full_win (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn p_half_loss (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn p_half_win (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn p_push (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn sample_outcome (& self , _ : f64) -> QuarterLineOutcome }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn settle (& self , _ : f64 , _ : & BankrollFraction , _ : QuarterLineOutcome ,) -> f64 }"
+    },
+    {
+      "signature": "pub enum QuarterLineOutcome"
+    },
+    {
+      "signature": "pub fn quarter_line_expected_growth_rate (_ : & QuarterLineWager , _ : & BankrollFraction ,) -> f64"
+    },
+    {
+      "signature": "pub fn quarter_line_expected_value (_ : & QuarterLineWager) -> f64"
+    },
+    {
+      "signature": "pub fn quarter_line_growth_derivative (_ : & QuarterLineWager , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn quarter_line_kelly_fraction (_ : & QuarterLineWager ,) -> Result < BankrollFraction , KellyError >"
+    },
+    {
+      "signature": "pub struct QuarterLineWager"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/slate.rs": [
+    {
+      "signature": "impl SlateSolution { pub fn drawdown_expectation (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn eval_mode_used (& self) -> SlateEvalMode }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn expected_growth_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn expected_value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn kkt_residual (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn stakes (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn total_fraction (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn solve_simultaneous_slate (_ : & [SlateWager] , _ : & mut SlateScratch ,) -> Result < SlateSolution , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_simultaneous_slate_with_mode (_ : & [SlateWager] , _ : SlateEvalMode , _ : & mut SlateScratch ,) -> Result < SlateSolution , KellyError >"
+    },
+    {
+      "signature": "pub struct SlateSolution"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/slate_eval.rs": [
+    {
+      "signature": "impl SlateScratch { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn binary (_ : UnitInterval , _ : Odds) -> Self }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn expected_value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn from_push (_ : PushWager) -> Self }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn from_quarter_line (_ : QuarterLineWager) -> Self }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn sample_net_return (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn state_count (& self) -> usize }"
+    },
+    {
+      "signature": "pub const MAX_CONVOLUTION_STATES : usize"
+    },
+    {
+      "signature": "pub enum SlateEvalMode"
+    },
+    {
+      "signature": "pub struct SlateScratch"
+    },
+    {
+      "signature": "pub struct SlateWager"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/ctmc/mod.rs": [

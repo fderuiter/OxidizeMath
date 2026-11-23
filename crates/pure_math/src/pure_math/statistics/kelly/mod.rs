@@ -1,208 +1,105 @@
-//! # Kelly Criterion for Optimal Bet Sizing
+//! # Kelly Criterion & Multi-State Convex Portfolio Sizing
 //!
-//! This module implements the Kelly Criterion, a formula for optimal bet sizing
-//! that maximizes the expected logarithmic growth rate of wealth.
+//! Optimal bankroll allocation maximizing expected logarithmic wealth growth across
+//! isolated binary wagers, three-state push spreads, five-state Asian quarter-lines,
+//! mutually exclusive `N`-way markets, simultaneous independent `K`-game slates, and
+//! Busseti-Ryu-Boyd martingale drawdown constraints.
 //!
-//! ## Overview
+//! ## Formulations
 //!
-//! The Kelly Criterion answers the question: **"What fraction of my bankroll should I bet?"**
-//! given known probabilities and odds. It provides a mathematically optimal strategy
-//! that maximizes long-term wealth growth while avoiding ruin.
+//! - **Binary Kelly (`core`, `criterion`)**:
+//!   `f* = (b * p - q) / b`, `g(f) = p * ln(1 + b * f) + q * ln(1 - f)`.
+//! - **Three-State Push Kelly (`push`)**:
+//!   `EV = b * p_win - p_loss`, `f* = (b * p_win - p_loss) / (b * (1 - p_push))`.
+//! - **Five-State Asian Quarter-Line Kelly (`quarter_line`)**:
+//!   Payoffs `{+b, +b/2, 0, -1/2, -1}` solved via bracketed [`crate::pure_math::analysis::roots::Bisection`]
+//!   on the strictly decreasing log-growth derivative `g'(f) = 0`.
+//! - **Mutually Exclusive Markets (`market`)**:
+//!   Exact Smoczynski-Tomkins (2010) active-set pruning with reserve rate
+//!   `r(S) = (1 - sum_{i in S} p_i) / (1 - sum_{i in S} 1 / O_i)`.
+//! - **Simultaneous Independent Slates (`slate`, `slate_eval`)**:
+//!   Maximizes `E[ln(1 + sum_i f_i X_i)]` over `f_i >= 0, sum_i f_i <= 1` via restarted
+//!   FISTA / Barzilai-Borwein steps using exact state convolution (`K <= 10`) and `O(Q * K)`
+//!   one-dimensional Frullani / Gamma Laplace quadrature (`K > 10`).
+//! - **Martingale Drawdown Risk Bounds (`drawdown`)**:
+//!   Enforces `E[R^(-lambda)] <= 1` with `lambda = ln(beta) / ln(alpha)` so
+//!   `P(inf_{t >= 1} W_t / W_0 <= alpha) <= beta` across single wagers and concurrent slates.
 //!
-//! ## Mathematical Framework
-//!
-//! ### The Kelly Formula
-//!
-//! For a binary outcome (win/loss) with:
-//! - **p** = probability of winning
-//! - **q** = 1 - p = probability of losing
-//! - **b** = net profit multiplier (odds - 1)
-//!
-//! The optimal bet fraction is:
-//!
-//! ```text
-//! f* = (bp - q) / b
-//! ```
-//!
-//! ### Interpretation
-//!
-//! - **f* > 0**: Positive edge, bet f* of bankroll
-//! - **f* = 0**: No edge, don't bet
-//! - **f* < 0**: Negative edge, don't bet (or bet the other side)
-//!
-//! ### Expected Growth Rate
-//!
-//! The logarithmic growth rate for fraction f is:
-//!
-//! ```text
-//! g(f) = p ln(1 + bf) + q ln(1 - f)
-//! ```
-//!
-//! The Kelly fraction f* maximizes g(f).
-//!
-//! ### Fractional Kelly
-//!
-//! Many practitioners use **fractional Kelly** to reduce volatility:
-//!
-//! - **Quarter-Kelly** (f*/4): Very conservative, ~94% of growth with 6% of variance
-//! - **Half-Kelly** (f*/2): Popular compromise, ~75% of growth with 25% of variance
-//! - **Full Kelly** (f*): Maximum growth but high volatility
-//!
-//! ## Why Kelly Works
-//!
-//! The Kelly Criterion has several optimal properties:
-//!
-//! 1. **Maximizes long-term growth**: Geometric mean return is maximized
-//! 2. **Minimizes time to goal**: Reaches any wealth goal in minimum expected time
-//! 3. **Never risks ruin**: For f ≤ f*, probability of ruin is zero
-//! 4. **Information-theoretic**: Related to Shannon entropy and channel capacity
-//!
-//! ## Applications
-//!
-//! - **Gambling**: Blackjack, sports betting, poker
-//! - **Trading**: Position sizing in stocks, options, forex
-//! - **Investing**: Portfolio allocation with edge estimates
-//! - **Venture Capital**: Investment sizing with success probabilities
-//!
-//! ## Example: Basic Usage
+//! ## Example: Binary, Push, Market, and Drawdown-Constrained Kelly
 //!
 //! ```rust
 //! # use pure_math::__doctest_facade as math_explorer;
 //! use math_explorer::pure_math::statistics::kelly::{
-//!     kelly_fraction, expected_value, UnitInterval, Odds
+//!     DrawdownConstraint, MarketOutcome, MarketScratch, Odds, PushWager, UnitInterval,
+//!     drawdown_constrained_kelly, kelly_fraction, push_expected_value, push_kelly_fraction,
+//!     solve_mutually_exclusive_market,
 //! };
 //!
-//! // You estimate 55% chance of winning at even money odds
+//! // 1. Classic binary wager (55% at even money => 10% Kelly, 2.69% at alpha=0.70, beta=0.10)
 //! let prob = UnitInterval::new(0.55).unwrap();
-//! let odds = Odds::new(2.0).unwrap();
+//! let even_odds = Odds::from_net_odds(1.0).unwrap();
+//! assert!((kelly_fraction(&prob, &even_odds).unwrap().value() - 0.10).abs() < 1e-12);
+//! let dc = DrawdownConstraint::new(0.70, 0.10).unwrap();
+//! assert!((drawdown_constrained_kelly(&prob, &even_odds, &dc).unwrap().value() - 0.0269).abs() < 1e-4);
 //!
-//! // Check if there's an edge
-//! let ev = expected_value(&prob, &odds);
-//! println!("Expected value per $1 bet: ${:.3}", ev);
+//! // 2. Whole-number -3 pushable spread at -110 (50% win, 10% push, 40% loss)
+//! let spread_odds = Odds::from_american(-110.0).unwrap();
+//! let spread = PushWager::new(0.50, 0.10, 0.40, spread_odds).unwrap();
+//! assert!((push_expected_value(&spread) - 3.0 / 55.0).abs() < 1e-12);
+//! assert!((push_kelly_fraction(&spread).unwrap().value() - 1.0 / 15.0).abs() < 1e-12);
 //!
-//! // Compute optimal Kelly fraction
-//! let kelly = kelly_fraction(&prob, &odds).unwrap();
-//! println!("Optimal Kelly bet: {:.1}% of bankroll", kelly.value() * 100.0);
-//!
-//! // Calculate actual bet amount
-//! let bankroll = 10000.0;
-//! let bet_amount = kelly.bet_amount(bankroll).unwrap();
-//! println!("Bet amount: ${:.2}", bet_amount);
+//! // 3. 3-way mutually exclusive market via Smoczynski-Tomkins active-set pruning
+//! let market = [
+//!     MarketOutcome::new(UnitInterval::new(0.50).unwrap(), Odds::new(2.20).unwrap()),
+//!     MarketOutcome::new(UnitInterval::new(0.28).unwrap(), Odds::new(4.00).unwrap()),
+//!     MarketOutcome::new(UnitInterval::new(0.22).unwrap(), Odds::new(3.20).unwrap()),
+//! ];
+//! let mut scratch = MarketScratch::new();
+//! let alloc = solve_mutually_exclusive_market(&market, &mut scratch).unwrap();
+//! assert_eq!(alloc.stakes()[2], 0.0);
 //! ```
-//!
-//! ## Example: Fractional Kelly
-//!
-//! ```rust
-//! # use pure_math::__doctest_facade as math_explorer;
-//! use math_explorer::pure_math::statistics::kelly::{
-//!     kelly_fraction, fractional_kelly, expected_growth_rate,
-//!     UnitInterval, Odds, variants
-//! };
-//!
-//! let prob = UnitInterval::new(0.55).unwrap();
-//! let odds = Odds::new(2.0).unwrap();
-//!
-//! // Compare growth rates for different strategies
-//! let full = kelly_fraction(&prob, &odds).unwrap();
-//! let half = variants::half_kelly(&prob, &odds).unwrap();
-//! let quarter = variants::quarter_kelly(&prob, &odds).unwrap();
-//!
-//! println!("Full Kelly: {:.3}, growth: {:.4}",
-//!     full.value(), expected_growth_rate(&prob, &odds, &full));
-//! println!("Half Kelly: {:.3}, growth: {:.4}",
-//!     half.value(), expected_growth_rate(&prob, &odds, &half));
-//! println!("Quarter Kelly: {:.3}, growth: {:.4}",
-//!     quarter.value(), expected_growth_rate(&prob, &odds, &quarter));
-//! ```
-//!
-//! ## Example: Converting Odds Formats
-//!
-//! ```rust
-//! # use pure_math::__doctest_facade as math_explorer;
-//! use math_explorer::pure_math::statistics::kelly::Odds;
-//!
-//! // American odds
-//! let underdog = Odds::from_american(200.0).unwrap(); // +200
-//! println!("Decimal odds: {:.2}", underdog.value());
-//!
-//! let favorite = Odds::from_american(-150.0).unwrap(); // -150
-//! println!("Decimal odds: {:.2}", favorite.value());
-//!
-//! // Fractional odds
-//! let odds_5_to_2 = Odds::from_fractional(5.0, 2.0).unwrap();
-//! println!("Decimal odds: {:.2}", odds_5_to_2.value());
-//!
-//! // Implied probability (bookmaker's edge)
-//! println!("Implied prob: {:.1}%", odds_5_to_2.implied_probability() * 100.0);
-//! ```
-//!
-//! ## Example: Realistic Sports Betting
-//!
-//! ```rust
-//! # use pure_math::__doctest_facade as math_explorer;
-//! use math_explorer::pure_math::statistics::kelly::{
-//!     kelly_fraction, expected_value, UnitInterval, Odds, variants
-//! };
-//!
-//! // You've modeled a game and think Team A has 52% win probability
-//! // The sportsbook offers -110 odds (American) on Team A
-//! let your_prob = UnitInterval::new(0.52).unwrap();
-//! let odds = Odds::from_american(-110.0).unwrap();
-//!
-//! let ev = expected_value(&your_prob, &odds);
-//! if ev > 0.0 {
-//!     println!("You have a {:.2}% edge!", ev * 100.0);
-//!
-//!     let full_kelly = kelly_fraction(&your_prob, &odds).unwrap();
-//!     let half_kelly = variants::half_kelly(&your_prob, &odds).unwrap();
-//!
-//!     println!("Full Kelly: {:.2}% of bankroll", full_kelly.value() * 100.0);
-//!     println!("Half Kelly: {:.2}% of bankroll", half_kelly.value() * 100.0);
-//!
-//!     // Most professional bettors use fractional Kelly for risk management
-//!     let recommended = half_kelly;
-//!     let bankroll = 5000.0;
-//!     println!("Recommended bet: ${:.2}",
-//!         recommended.bet_amount(bankroll).unwrap());
-//! } else {
-//!     println!("No edge - don't bet!");
-//! }
-//! ```
-//!
-//! ## Important Caveats
-//!
-//! 1. **Requires accurate probabilities**: Garbage in, garbage out
-//! 2. **High volatility**: Full Kelly can have large drawdowns (~50%)
-//! 3. **Assumes accurate bankroll tracking**: Must update after each bet
-//! 4. **Independent trials**: Assumes outcomes are independent
-//! 5. **Unlimited betting**: Assumes you can always bet the exact fraction
-//!
-//! ## Risk Management
-//!
-//! Common strategies to manage Kelly risk:
-//!
-//! - **Use fractional Kelly** (1/2 or 1/4) for lower variance
-//! - **Cap maximum bet** at some percentage (e.g., 5% of bankroll)
-//! - **Use confidence intervals** on your probability estimates
-//! - **Separate bankrolls** for different strategies/markets
 //!
 //! ## References
 //!
-//! - Kelly, J. L. (1956). *A New Interpretation of Information Rate*.
-//!   Bell System Technical Journal, 35(4), 917-926.
-//! - Thorp, E. O. (1969). *Optimal Gambling Systems for Favorable Games*.
-//!   Review of the International Statistical Institute, 37(3), 273-293.
-//! - Poundstone, W. (2005). *Fortune's Formula: The Untold Story of the
-//!   Scientific Betting System That Beat the Casinos and Wall Street*.
-//!   Hill and Wang.
+//! - Kelly, J. L. (1956). *A New Interpretation of Information Rate*. Bell System Technical Journal, 35(4), 917-926.
+//! - Smoczynski, P., & Tomkins, D. (2010). *An Explicit Formula for Optimally Betting on Horse Races*.
+//!   Journal of Applied Probability, 47(2), 341-349.
+//! - Busseti, E., Ryu, E. K., & Boyd, S. (2016). *Risk-Constrained Kelly Gambling*.
+//!   Journal of Investing, 25(3), 118-134 (arXiv:1603.06183).
 
 pub mod core;
 pub mod criterion;
+pub mod drawdown;
+pub mod market;
+pub mod push;
+pub mod quarter_line;
+pub mod slate;
+pub mod slate_eval;
 
-// Re-export main types and functions
-pub use core::{BankrollFraction, Odds, UnitInterval};
+#[cfg(test)]
+mod tests;
+
+pub use core::{
+    BankrollFraction, DrawdownConstraint, EXACT_CONVOLUTION_MAX_WAGERS, LAPLACE_QUADRATURE_NODES,
+    MAX_MARKET_OUTCOMES, MAX_SLATE_WAGERS, Odds, PROBABILITY_SUM_TOLERANCE, UnitInterval,
+};
 pub use criterion::{
     expected_growth_rate, expected_value, fractional_kelly, kelly_fraction, variants,
 };
+pub use drawdown::{
+    drawdown_constrained_kelly, drawdown_constrained_push_kelly,
+    drawdown_constrained_quarter_line_kelly, solve_drawdown_constrained_slate,
+    solve_drawdown_constrained_slate_with_mode,
+};
+pub use market::{MarketAllocation, MarketOutcome, MarketScratch, solve_mutually_exclusive_market};
+pub use push::{
+    PushOutcome, PushWager, push_expected_growth_rate, push_expected_value, push_kelly_fraction,
+};
+pub use quarter_line::{
+    QuarterLineOutcome, QuarterLineWager, quarter_line_expected_growth_rate,
+    quarter_line_expected_value, quarter_line_growth_derivative, quarter_line_kelly_fraction,
+};
+pub use slate::{SlateSolution, solve_simultaneous_slate, solve_simultaneous_slate_with_mode};
+pub use slate_eval::{MAX_CONVOLUTION_STATES, SlateEvalMode, SlateScratch, SlateWager};
 
 // [cite:clinical_trials_statistics]

@@ -50,6 +50,31 @@ pub enum KellyError {
     #[error("Invalid bankroll: {value} (must be positive)")]
     #[allow(missing_docs)]
     InvalidBankroll { value: f64 },
+    /// Outcome probabilities for a complete multi-state wager do not sum to 1.0.
+    #[error("Invalid probability distribution: sum={sum} (must equal 1.0)")]
+    #[allow(missing_docs)]
+    InvalidProbabilityDistribution { sum: f64 },
+    /// Mutually exclusive market outcome probabilities exceed 1.0.
+    #[error("Invalid mutually exclusive market probabilities: sum={sum} (must be <= 1.0)")]
+    #[allow(missing_docs)]
+    InvalidMarketProbabilitySum { sum: f64 },
+    /// Empty market or simultaneous slate provided.
+    #[error("Portfolio or market must contain at least one wager")]
+    EmptyPortfolio,
+    /// Market or simultaneous slate exceeds preallocated scratch capacity.
+    #[error("Portfolio size {count} exceeds maximum supported capacity {max}")]
+    #[allow(missing_docs)]
+    PortfolioTooLarge { count: usize, max: usize },
+    /// Invalid Busseti-Ryu-Boyd drawdown floor `alpha` or risk tolerance `beta`.
+    #[error(
+        "Invalid drawdown bounds: alpha={alpha}, beta={beta} (both must lie strictly in (0, 1))"
+    )]
+    #[allow(missing_docs)]
+    InvalidDrawdownBounds { alpha: f64, beta: f64 },
+    /// Numerical root or convex solver failed to reach target residual within iteration cap.
+    #[error("Kelly solver failed to converge after {iterations} iterations (residual={residual})")]
+    #[allow(missing_docs)]
+    ConvergenceFailed { iterations: usize, residual: f64 },
 }
 
 #[derive(Debug, Clone, PartialEq)]

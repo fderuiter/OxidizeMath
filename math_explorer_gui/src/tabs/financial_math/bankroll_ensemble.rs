@@ -1,8 +1,8 @@
-//! Interactive Volatility Drag and Non-Ergodic Bankroll Ensemble Laboratory.
+//! Interactive Volatility Drag, Push Settlement, and Drawdown-Constrained Ensemble Laboratory.
 //!
-//! Demonstrates the divergence between ensemble-average expected wealth `E[W_t]`
-//! and time-average / typical median wealth `W_median(t) = W_0 * exp(t * g(f))`
-//! under overbetting (`f > 2 * f*`) using preallocated zero-allocation buffers.
+//! Demonstrates the divergence between ensemble-average expected wealth `E[W_t]`,
+//! typical median wealth `W_median(t) = W_0 * exp(t * g(f))` under overbetting (`f > 2 * f*`),
+//! and Busseti-Ryu-Boyd drawdown-constrained trajectories using preallocated buffers.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -11,7 +11,9 @@ use crate::framework::CalloutManager;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::kelly::{
-    expected_growth_rate, expected_value, kelly_fraction, BankrollFraction, Odds, UnitInterval,
+    drawdown_constrained_push_kelly, push_expected_growth_rate, push_expected_value,
+    push_kelly_fraction, BankrollFraction, DrawdownConstraint, Odds, PushOutcome, PushWager,
+    UnitInterval,
 };
 use oxidize_core::rng::{OxidizeRng, BASE_SEED};
 use rand::Rng;
@@ -28,7 +30,7 @@ pub const DEFAULT_CUSTOM_FRACTION: f64 = 0.30;
 /// Active view mode inside [`super::bankroll_growth::BankrollGrowthTool`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BankrollLabMode {
-    /// Classic Full / Half / Quarter Kelly compounding trajectories.
+    /// Classic Full / Half / Quarter / Drawdown-Constrained Kelly compounding trajectories.
     #[default]
     KellyStrategies,
     /// Interactive non-ergodic volatility-drag and overbetting ruin laboratory.
@@ -44,7 +46,7 @@ pub enum VolatilityHypothesis {
     TypicalShrinksDiverges,
 }
 
-/// Preallocated simulator and UI controller for Kelly volatility-drag experiments.
+/// Preallocated simulator and UI controller for Kelly volatility-drag and drawdown experiments.
 pub struct BankrollEnsembleLab {
     /// Custom wager fraction `f` clamped to `0.0..=0.95`.
     pub custom_fraction: f64,
@@ -58,16 +60,23 @@ pub struct BankrollEnsembleLab {
     pub median_points: Vec<PlotPoint>,
     /// Empirical median trajectory across `ENSEMBLE_PATH_COUNT` stochastic paths.
     pub empirical_median_points: Vec<PlotPoint>,
+    /// Empirical median trajectory under the Busseti-Ryu-Boyd drawdown-constrained fraction.
+    pub drawdown_median_points: Vec<PlotPoint>,
     path_wealths: Vec<f64>,
+    drawdown_path_wealths: Vec<f64>,
     scratch_sort: Vec<f64>,
-    /// Latest logarithmic growth rate $g(f)$ from `expected_growth_rate`.
+    /// Latest logarithmic growth rate $g(f)$.
     pub last_growth_rate: f64,
     /// Latest optimal Kelly fraction $f^*$ when positive edge exists.
     pub last_f_star: Option<f64>,
+    /// Latest Busseti-Ryu-Boyd risk-constrained Kelly fraction when active.
+    pub last_drawdown_f: Option<f64>,
     /// Latest terminal expected wealth `E[W_T]`.
     pub last_expected_terminal: f64,
     /// Latest terminal median wealth $W_{\text{median}}(T)$.
     pub last_median_terminal: f64,
+    /// Latest terminal empirical median wealth for the drawdown-constrained strategy.
+    pub last_drawdown_terminal: f64,
     /// Whether `f > 2 * f*` (or `g(f) < 0` despite positive edge), flagging ruin.
     pub is_ruin_zone: bool,
 }
@@ -88,12 +97,16 @@ impl BankrollEnsembleLab {
             expected_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
             median_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
             empirical_median_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
+            drawdown_median_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
             path_wealths: vec![0.0; ENSEMBLE_PATH_COUNT],
+            drawdown_path_wealths: vec![0.0; ENSEMBLE_PATH_COUNT],
             scratch_sort: Vec::with_capacity(ENSEMBLE_PATH_COUNT),
             last_growth_rate: 0.0,
             last_f_star: None,
+            last_drawdown_f: None,
             last_expected_terminal: 0.0,
             last_median_terminal: 0.0,
+            last_drawdown_terminal: 0.0,
             is_ruin_zone: false,
         }
     }
@@ -114,12 +127,34 @@ impl BankrollEnsembleLab {
         }
     }
 
-    /// Evaluates analytical curves and stochastic ensemble paths with zero heap allocations.
+    /// Evaluates binary analytical curves and ensemble paths with zero heap allocations.
     pub fn evaluate_in_place(
         &mut self,
         initial_bankroll: f64,
         p: &UnitInterval,
         o: &Odds,
+        num_bets: usize,
+        seed_counter: u64,
+    ) {
+        let Ok(wager) = PushWager::from_win_and_push(p.value(), 0.0, *o) else {
+            return;
+        };
+        let dc = DrawdownConstraint::new(0.70, 0.10).ok();
+        self.evaluate_push_and_drawdown_in_place(
+            initial_bankroll,
+            &wager,
+            dc.as_ref(),
+            num_bets,
+            seed_counter,
+        );
+    }
+
+    /// Evaluates three-state push settlements and drawdown-constrained ensemble paths with zero allocations.
+    pub fn evaluate_push_and_drawdown_in_place(
+        &mut self,
+        initial_bankroll: f64,
+        wager: &PushWager,
+        constraint: Option<&DrawdownConstraint>,
         num_bets: usize,
         seed_counter: u64,
     ) {
@@ -131,26 +166,22 @@ impl BankrollEnsembleLab {
             return;
         };
 
-        let ev = expected_value(p, o);
-        let g = expected_growth_rate(p, o, &frac);
-        let f_star = kelly_fraction(p, o).ok().map(|fk| fk.value());
+        let ev = push_expected_value(wager);
+        let g = push_expected_growth_rate(wager, &frac);
+        let f_star = push_kelly_fraction(wager).ok().map(|fk| fk.value());
+        let f_rc = constraint
+            .and_then(|dc| drawdown_constrained_push_kelly(wager, dc).ok())
+            .map(|fr| fr.value());
         self.last_growth_rate = g;
         self.last_f_star = f_star;
+        self.last_drawdown_f = f_rc;
         self.is_ruin_zone = f_star.is_some_and(|fs| f_clamped > 2.0 * fs);
 
-        self.expected_points.clear();
-        self.median_points.clear();
-        self.empirical_median_points.clear();
-        self.path_wealths.fill(w0);
-
-        self.expected_points.push(PlotPoint::new(0.0, w0));
-        self.median_points.push(PlotPoint::new(0.0, w0));
-        self.empirical_median_points.push(PlotPoint::new(0.0, w0));
-
+        self.reset_trajectory_buffers(w0);
         let mut rng = OxidizeRng::from_seed(BASE_SEED ^ seed_counter.wrapping_mul(0x9E37_79B9));
-        let net_b = o.net_profit_multiplier();
         let step_ev_factor = (1.0 + f_clamped * ev).max(0.0);
         let mut ew = w0;
+        let rc_frac = f_rc.unwrap_or(0.0);
 
         for t in 1..=steps {
             ew = (ew * step_ev_factor).max(0.0);
@@ -159,38 +190,54 @@ impl BankrollEnsembleLab {
             } else {
                 0.0
             };
-            let emp_med = self.step_ensemble_median(&mut rng, p.value(), f_clamped, net_b);
+            let (emp_med, rc_med) = self.step_ensemble_medians(&mut rng, wager, f_clamped, rc_frac);
             let x = t as f64;
             self.expected_points.push(PlotPoint::new(x, ew));
             self.median_points.push(PlotPoint::new(x, w_med));
             self.empirical_median_points
                 .push(PlotPoint::new(x, emp_med));
+            self.drawdown_median_points.push(PlotPoint::new(x, rc_med));
         }
 
         self.last_expected_terminal = self.expected_points.last().map_or(w0, |pt| pt.y);
         self.last_median_terminal = self.median_points.last().map_or(w0, |pt| pt.y);
+        self.last_drawdown_terminal = self.drawdown_median_points.last().map_or(w0, |pt| pt.y);
     }
 
-    fn step_ensemble_median(
+    fn reset_trajectory_buffers(&mut self, w0: f64) {
+        self.expected_points.clear();
+        self.median_points.clear();
+        self.empirical_median_points.clear();
+        self.drawdown_median_points.clear();
+        self.path_wealths.fill(w0);
+        self.drawdown_path_wealths.fill(w0);
+
+        self.expected_points.push(PlotPoint::new(0.0, w0));
+        self.median_points.push(PlotPoint::new(0.0, w0));
+        self.empirical_median_points.push(PlotPoint::new(0.0, w0));
+        self.drawdown_median_points.push(PlotPoint::new(0.0, w0));
+    }
+
+    fn step_ensemble_medians(
         &mut self,
         rng: &mut OxidizeRng,
-        win_prob: f64,
-        f_clamped: f64,
-        net_b: f64,
-    ) -> f64 {
-        for w in &mut self.path_wealths {
-            let bet = *w * f_clamped;
-            if rng.r#gen::<f64>() < win_prob {
-                *w = (*w + bet * net_b).max(0.0);
-            } else {
-                *w = (*w - bet).max(0.0);
-            }
+        wager: &PushWager,
+        f_custom: f64,
+        f_rc: f64,
+    ) -> (f64, f64) {
+        let net_b = wager.odds().net_profit_multiplier();
+        for (w, w_rc) in self
+            .path_wealths
+            .iter_mut()
+            .zip(self.drawdown_path_wealths.iter_mut())
+        {
+            let outcome = wager.sample_outcome(rng.r#gen::<f64>());
+            *w = settle_raw_push(*w, f_custom, net_b, outcome);
+            *w_rc = settle_raw_push(*w_rc, f_rc, net_b, outcome);
         }
-        self.scratch_sort.clear();
-        self.scratch_sort.extend_from_slice(&self.path_wealths);
-        self.scratch_sort.sort_by(f64::total_cmp);
-        let mid = self.scratch_sort.len() / 2;
-        0.5 * (self.scratch_sort[mid - 1] + self.scratch_sort[mid])
+        let emp_med = median_from_slice(&self.path_wealths, &mut self.scratch_sort);
+        let rc_med = median_from_slice(&self.drawdown_path_wealths, &mut self.scratch_sort);
+        (emp_med, rc_med)
     }
 
     /// Synchronizes automated `CalloutManager` overlays for `expected_growth_rate` and ruin.
@@ -371,6 +418,14 @@ impl BankrollEnsembleLab {
                 med_color,
                 format!("W_median({num_bets}): {:.4}", self.last_median_terminal),
             );
+            if let Some(frc) = self.last_drawdown_f {
+                ui.separator();
+                ui.label(format!(
+                    "Risk-Constrained (f={:.2}%): {:.2}",
+                    frc * 100.0,
+                    self.last_drawdown_terminal
+                ));
+            }
         });
     }
 
@@ -395,9 +450,33 @@ impl BankrollEnsembleLab {
                 )
                 .color(palette.series_color(5)),
             );
+            plot_ui.line(
+                Line::new(
+                    "Drawdown-Constrained Median",
+                    &self.drawdown_median_points[..],
+                )
+                .color(palette.series_color(2)),
+            );
             self.callout_manager.render_on_plot(plot_ui);
         });
     }
+}
+
+fn settle_raw_push(wealth: f64, frac: f64, net_b: f64, outcome: PushOutcome) -> f64 {
+    let stake = wealth * frac;
+    match outcome {
+        PushOutcome::Win => (wealth + stake * net_b).max(0.0),
+        PushOutcome::Push => wealth.max(0.0),
+        PushOutcome::Loss => (wealth - stake).max(0.0),
+    }
+}
+
+fn median_from_slice(values: &[f64], scratch: &mut Vec<f64>) -> f64 {
+    scratch.clear();
+    scratch.extend_from_slice(values);
+    scratch.sort_by(f64::total_cmp);
+    let mid = scratch.len() / 2;
+    0.5 * (scratch[mid - 1] + scratch[mid])
 }
 
 // [cite:clinical_trials_statistics]

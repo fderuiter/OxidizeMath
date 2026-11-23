@@ -200,6 +200,51 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors
     assert_pure_math_eighteen_errors();
 }
 
+#[cfg(feature = "pure_math")]
+#[test]
+fn pure_math_facade_exports_multi_state_and_drawdown_kelly_solvers() {
+    use math_explorer::pure_math::statistics::kelly::{
+        DrawdownConstraint, MarketOutcome, MarketScratch, Odds, PushWager, QuarterLineWager,
+        SlateScratch, SlateWager, UnitInterval, drawdown_constrained_kelly, push_kelly_fraction,
+        quarter_line_kelly_fraction, solve_drawdown_constrained_slate,
+        solve_mutually_exclusive_market, solve_simultaneous_slate,
+    };
+
+    let odds_110 = Odds::from_american(-110.0).unwrap();
+    let pw = PushWager::new(0.50, 0.10, 0.40, odds_110).unwrap();
+    assert!((push_kelly_fraction(&pw).unwrap().value() - 1.0 / 15.0).abs() < 1e-12);
+
+    let ql = QuarterLineWager::new(0.44, 0.12, 0.0, 0.0, 0.44, odds_110).unwrap();
+    assert!(quarter_line_kelly_fraction(&ql).unwrap().value() > 0.017);
+
+    let mkt = [
+        MarketOutcome::new(UnitInterval::new(0.50).unwrap(), Odds::new(2.20).unwrap()),
+        MarketOutcome::new(UnitInterval::new(0.28).unwrap(), Odds::new(4.00).unwrap()),
+        MarketOutcome::new(UnitInterval::new(0.22).unwrap(), Odds::new(3.20).unwrap()),
+    ];
+    let mut m_scratch = MarketScratch::new();
+    let alloc = solve_mutually_exclusive_market(&mkt, &mut m_scratch).unwrap();
+    assert_eq!(alloc.stakes()[2], 0.0);
+
+    let p = UnitInterval::new(0.58).unwrap();
+    let even = Odds::from_net_odds(1.0).unwrap();
+    let slate = [SlateWager::binary(p, even); 10];
+    let mut s_scratch = SlateScratch::new();
+    let s_sol = solve_simultaneous_slate(&slate, &mut s_scratch).unwrap();
+    assert!(s_sol.total_fraction() < 1.0);
+
+    let dc = DrawdownConstraint::new(0.70, 0.10).unwrap();
+    let p_55 = UnitInterval::new(0.55).unwrap();
+    assert!(
+        drawdown_constrained_kelly(&p_55, &even, &dc)
+            .unwrap()
+            .value()
+            < 0.10
+    );
+    let rc_sol = solve_drawdown_constrained_slate(&slate, &dc, &mut s_scratch).unwrap();
+    assert!((rc_sol.total_fraction() - 0.4148979).abs() < 1e-6);
+}
+
 #[cfg(feature = "ai")]
 #[test]
 fn ai_facade_exports_adam_and_ai_error_without_internal_crate_imports() {
