@@ -1,11 +1,13 @@
 //! Reusable egui mathematical expression input bar with live syntax validation, LaTeX preview,
 //! coordinate scope validation, `CompiledExpr` bytecode caching, and `AnimatedSlider` synthesis.
 
+pub mod coupled;
 pub mod params;
 
 #[cfg(test)]
 mod tests;
 
+pub use coupled::CoupledExpressionBank;
 pub use params::{ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
 
 use eframe::egui;
@@ -332,6 +334,14 @@ impl MathExpressionInputBar {
         });
 
         changed
+    }
+
+    /// Renders only the synthesized parameter sliders under a scoped `id_salt`.
+    pub fn sliders_ui(&mut self, ui: &mut egui::Ui, id_salt: &str) -> bool {
+        if !self.scope_enabled {
+            return false;
+        }
+        ui.push_id(id_salt, |ui| self.slider_bank.ui(ui)).inner
     }
 }
 

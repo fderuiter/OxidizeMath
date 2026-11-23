@@ -2,7 +2,7 @@ use super::*;
 use crate::utils::test_utils::{CurrentDirGuard, TempTestDir};
 use std::fs;
 
-fn write_member_crate(root: &Path, member: &str, lib_source: &str) -> String {
+pub(super) fn write_member_crate(root: &Path, member: &str, lib_source: &str) -> String {
     let member_dir = root.join(member);
     let src_dir = member_dir.join("src");
     fs::create_dir_all(&src_dir).unwrap();
@@ -17,10 +17,10 @@ fn write_member_crate(root: &Path, member: &str, lib_source: &str) -> String {
 
 fn scan_clippy_snippet(source: &str) -> bool {
     let ast = syn::parse_file(source).expect("valid Rust snippet");
-    let mut visitor = lint_policy::ClippyBypassVisitor {
-        file_path: "crates/sample/src/lib.rs".to_string(),
-        has_unauthorized: false,
-    };
+    let mut visitor = lint_policy::ClippyBypassVisitor::new(
+        "crates/sample/src/lib.rs".to_string(),
+        lint_policy::DEFAULT_TOO_MANY_LINES_THRESHOLD,
+    );
     visitor.visit_file(&ast);
     visitor.has_unauthorized
 }
@@ -251,9 +251,11 @@ fn test_item_clippy_all_rejected_while_fn_too_many_lines_allowed() {
     assert!(scan_clippy_snippet(
         "#[cfg_attr(test, allow(clippy::all))]\nimpl S {}\npub struct S;"
     ));
-    assert!(!scan_clippy_snippet(
-        "#[allow(clippy::too_many_lines)]\npub fn allowed_fn() {}"
-    ));
+    let long_fn = format!(
+        "#[allow(clippy::too_many_lines)]\npub fn allowed_fn() {{\n{}}}\n",
+        "    let _ = 0;\n".repeat(60)
+    );
+    assert!(!scan_clippy_snippet(&long_fn));
     assert!(!scan_clippy_snippet(
         "#[allow(clippy::cognitive_complexity)]\npub fn complex_fn() {}"
     ));
@@ -320,6 +322,48 @@ fn test_vendored_egui_plot_lints_exemption_conditions() {
         &[vendored.as_str()],
         &whitelist_file
     ));
+}
+
+#[test]
+fn test_clippy_groups_impl_trait_macros_and_short_fn_rejected() {
+    for group in [
+        "pedantic",
+        "nursery",
+        "restriction",
+        "complexity",
+        "correctness",
+        "suspicious",
+        "style",
+        "perf",
+        "cargo",
+    ] {
+        assert!(scan_clippy_snippet(&format!(
+            "#![allow(clippy::{group})]\npub fn f() {{}}"
+        )));
+        assert!(scan_clippy_snippet(&format!(
+            "#[expect(clippy::{group})]\npub fn f() {{}}"
+        )));
+    }
+    assert!(scan_clippy_snippet(
+        "pub struct S;\n#[allow(clippy::too_many_lines)]\nimpl S { pub fn f() {} }"
+    ));
+    assert!(scan_clippy_snippet(
+        "#[expect(clippy::cognitive_complexity)]\npub trait T { fn f(&self); }"
+    ));
+    assert!(scan_clippy_snippet(
+        "macro_rules! m { () => { #[allow(unused_imports, clippy::all)] mod sub {} }; }"
+    ));
+    assert!(scan_clippy_snippet(
+        "macro_rules! m { () => { #[allow(clippy::too_many_lines)] impl S {} }; }"
+    ));
+    assert!(scan_clippy_snippet(
+        "#[allow(clippy::too_many_lines)]\npub fn one_liner() {}"
+    ));
+    let exact_sixty = format!(
+        "#[allow(clippy::too_many_lines)]\npub fn sixty_lines() {{\n{}}}",
+        "    let _ = 1;\n".repeat(58)
+    );
+    assert!(scan_clippy_snippet(&exact_sixty));
 }
 
 #[test]

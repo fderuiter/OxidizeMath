@@ -3,13 +3,16 @@
 use super::OdeSolverTool;
 use crate::framework::{CalloutManager, TraceSnapshotManager};
 use crate::presets::OdePreset;
-use math_commons::ast::CompiledExpr;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 
 fn default_annotations_enabled() -> bool {
     true
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 fn default_ode_custom_params(k: f64, r: f64, cap_k: f64) -> BTreeMap<String, f64> {
@@ -39,6 +42,19 @@ fn sync_one_legacy_param(
     }
 }
 
+fn format_named_param_summary(names: &[String], vals: &[f64], dt: f64) -> String {
+    if names.is_empty() {
+        return format!(r"\Delta t={dt:.2}");
+    }
+    let mut parts: Vec<String> = names
+        .iter()
+        .zip(vals)
+        .map(|(name, val)| format!("{name}={val:.2}"))
+        .collect();
+    parts.push(format!(r"\Delta t={dt:.2}"));
+    parts.join(", ")
+}
+
 #[derive(serde::Serialize)]
 struct OdeStateRef<'a> {
     preset: Option<OdePreset>,
@@ -50,8 +66,14 @@ struct OdeStateRef<'a> {
     ic_y0: f64,
     ic_v0: f64,
     custom_expr: &'a str,
+    #[serde(skip_serializing_if = "is_false")]
+    custom_coupled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    coupled_exprs: Option<[&'a str; 2]>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    coupled_params: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
     snapshot_manager: &'a TraceSnapshotManager,
     callout_manager: &'a CalloutManager,
@@ -71,8 +93,14 @@ struct OdeRecoveryStateRef<'a> {
     ic_y0: f64,
     ic_v0: f64,
     custom_expr: &'a str,
+    #[serde(skip_serializing_if = "is_false")]
+    custom_coupled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    coupled_exprs: Option<[&'a str; 2]>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    coupled_params: BTreeMap<String, f64>,
     callout_manager: &'a CalloutManager,
     method: IntegrationMethod,
     comparison_mode: bool,
@@ -94,7 +122,13 @@ struct OdeState {
     #[serde(default)]
     custom_expr: String,
     #[serde(default)]
+    custom_coupled: bool,
+    #[serde(default)]
+    coupled_exprs: Option<[String; 2]>,
+    #[serde(default)]
     custom_params: BTreeMap<String, f64>,
+    #[serde(default)]
+    coupled_params: BTreeMap<String, f64>,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
     #[serde(default)]
@@ -161,24 +195,19 @@ impl OdeSolverTool {
     }
 
     pub(crate) fn custom_param_summary(&self) -> String {
-        let names = self.math_input.active_param_names();
-        let vals = self.math_input.param_slice();
-        if names.is_empty() {
-            return format!(r"\Delta t={:.2}", self.dt);
-        }
-        let mut parts: Vec<String> = names
-            .iter()
-            .zip(vals)
-            .map(|(name, val)| format!("{name}={val:.2}"))
-            .collect();
-        parts.push(format!(r"\Delta t={:.2}", self.dt));
-        parts.join(", ")
+        format_named_param_summary(
+            self.math_input.active_param_names(),
+            self.math_input.param_slice(),
+            self.dt,
+        )
     }
 
-    pub(crate) fn custom_compiled_ode(&self) -> Option<(&CompiledExpr, &[f64])> {
-        self.math_input
-            .active_compiled()
-            .map(|compiled| (compiled, self.math_input.param_slice()))
+    pub(crate) fn coupled_param_summary(&self) -> String {
+        format_named_param_summary(
+            self.coupled_bank.param_names(),
+            self.coupled_bank.param_slice(),
+            self.dt,
+        )
     }
 
     pub(crate) fn compute_state_revision(&self) -> u64 {
@@ -199,6 +228,14 @@ impl OdeSolverTool {
         for &val in param_slice {
             val.to_bits().hash(&mut hasher);
         }
+        self.custom_coupled.hash(&mut hasher);
+        self.coupled_bank.raw_text(0).hash(&mut hasher);
+        self.coupled_bank.raw_text(1).hash(&mut hasher);
+        let coupled_slice = self.coupled_bank.param_slice();
+        coupled_slice.len().hash(&mut hasher);
+        for &v in coupled_slice {
+            v.to_bits().hash(&mut hasher);
+        }
         self.comparison_mode.hash(&mut hasher);
         self.show_annotations.hash(&mut hasher);
         self.snapshot_manager.len().hash(&mut hasher);
@@ -206,13 +243,45 @@ impl OdeSolverTool {
         self.callout_manager.len().hash(&mut hasher);
         hasher.finish().max(1)
     }
+}
+
+struct CustomSerializationMaps<'a> {
+    coupled_exprs: Option<[&'a str; 2]>,
+    custom_params: BTreeMap<String, f64>,
+    coupled_params: BTreeMap<String, f64>,
+}
+
+impl OdeSolverTool {
+    fn custom_serialization_maps(&self) -> CustomSerializationMaps<'_> {
+        if self.preset != OdePreset::Custom {
+            return CustomSerializationMaps {
+                coupled_exprs: None,
+                custom_params: BTreeMap::new(),
+                coupled_params: BTreeMap::new(),
+            };
+        }
+        if self.custom_coupled {
+            let exprs = Some([self.coupled_bank.raw_text(0), self.coupled_bank.raw_text(1)]);
+            CustomSerializationMaps {
+                coupled_exprs: exprs,
+                custom_params: BTreeMap::new(),
+                coupled_params: self.coupled_bank.params_map(),
+            }
+        } else {
+            CustomSerializationMaps {
+                coupled_exprs: None,
+                custom_params: self.math_input.params_map(),
+                coupled_params: BTreeMap::new(),
+            }
+        }
+    }
 
     pub(crate) fn serialize_full_state(&self) -> Option<String> {
-        let custom_params = if self.preset == OdePreset::Custom {
-            self.math_input.params_map()
-        } else {
-            BTreeMap::new()
-        };
+        let CustomSerializationMaps {
+            coupled_exprs,
+            custom_params,
+            coupled_params,
+        } = self.custom_serialization_maps();
         serde_json::to_string(&OdeStateRef {
             preset: Some(self.preset),
             dt: self.dt,
@@ -223,7 +292,10 @@ impl OdeSolverTool {
             ic_y0: self.ic_y0,
             ic_v0: self.ic_v0,
             custom_expr: &self.math_input.raw_text,
+            custom_coupled: self.custom_coupled,
+            coupled_exprs,
             custom_params,
+            coupled_params,
             snapshot_manager: &self.snapshot_manager,
             callout_manager: &self.callout_manager,
             method: self.method,
@@ -234,11 +306,11 @@ impl OdeSolverTool {
     }
 
     pub(crate) fn serialize_recovery_state(&self) -> Option<String> {
-        let custom_params = if self.preset == OdePreset::Custom {
-            self.math_input.params_map()
-        } else {
-            BTreeMap::new()
-        };
+        let CustomSerializationMaps {
+            coupled_exprs,
+            custom_params,
+            coupled_params,
+        } = self.custom_serialization_maps();
         serde_json::to_string(&OdeRecoveryStateRef {
             preset: Some(self.preset),
             dt: self.dt,
@@ -249,7 +321,10 @@ impl OdeSolverTool {
             ic_y0: self.ic_y0,
             ic_v0: self.ic_v0,
             custom_expr: &self.math_input.raw_text,
+            custom_coupled: self.custom_coupled,
+            coupled_exprs,
             custom_params,
+            coupled_params,
             callout_manager: &self.callout_manager,
             method: self.method,
             comparison_mode: self.comparison_mode,
@@ -265,15 +340,7 @@ impl OdeSolverTool {
     ) -> Result<(), String> {
         let s: OdeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {e}"))?;
-        if !are_serialized_ode_params_valid(&s) {
-            return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
-        }
-        if crate::presets::checked_ode_step_count(s.dt, s.total_time).is_none() {
-            return Err(format!(
-                "ODE step count (total_time / dt) exceeds maximum allowed limit ({})",
-                crate::presets::MAX_ODE_STEPS
-            ));
-        }
+        validate_deserialized_ode_state(&s)?;
         self.apply_deserialized_ode_state(s, preserve_snapshots);
         self.recalculate();
         Ok(())
@@ -294,6 +361,7 @@ impl OdeSolverTool {
             .unwrap_or(s.param_cap_k);
         self.ic_y0 = s.ic_y0;
         self.ic_v0 = s.ic_v0;
+        self.custom_coupled = s.custom_coupled;
         let mut merged_params =
             default_ode_custom_params(self.param_k, self.param_r, self.param_cap_k);
         for (k, &v) in &s.custom_params {
@@ -304,6 +372,12 @@ impl OdeSolverTool {
         }
         self.math_input.set_params_map(&merged_params);
         self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
+        if let Some([e0, e1]) = s.coupled_exprs {
+            self.coupled_bank.set_expressions(&[e0, e1]);
+        }
+        if !s.coupled_params.is_empty() {
+            self.coupled_bank.set_params_map(&s.coupled_params);
+        }
         if !preserve_snapshots {
             self.snapshot_manager = s.snapshot_manager;
         }
@@ -335,8 +409,11 @@ impl OdeSolverTool {
     pub(crate) fn build_current_trace_series(&self) -> Vec<crate::framework::TraceSeries> {
         let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
         let mut series = vec![crate::framework::TraceSeries::new("y(t)", plot_points_y)];
-        if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-            series.push(crate::framework::TraceSeries::new("y'(t)", plot_points_v));
+        if self.has_second_state() && !plot_points_v.is_empty() {
+            series.push(crate::framework::TraceSeries::new(
+                self.second_state_label(),
+                plot_points_v,
+            ));
         }
         series
     }
@@ -348,8 +425,8 @@ impl OdeSolverTool {
         } else {
             let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
             datasets.push(("y(t)".to_string(), plot_points_y));
-            if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-                datasets.push(("y'(t)".to_string(), plot_points_v));
+            if self.has_second_state() && !plot_points_v.is_empty() {
+                datasets.push((self.second_state_label().to_string(), plot_points_v));
             }
         }
         datasets.extend(self.snapshot_manager.export_datasets());
@@ -362,15 +439,26 @@ impl OdeSolverTool {
     }
 }
 
-fn are_serialized_ode_params_valid(s: &OdeState) -> bool {
-    s.dt.is_finite()
-        && s.dt > 0.0
-        && s.total_time.is_finite()
-        && s.total_time > 0.0
-        && s.param_k.is_finite()
-        && s.param_r.is_finite()
-        && s.param_cap_k.is_finite()
-        && s.ic_y0.is_finite()
-        && s.ic_v0.is_finite()
-        && s.custom_params.values().all(|v| v.is_finite())
+fn validate_deserialized_ode_state(s: &OdeState) -> Result<(), String> {
+    if !s.dt.is_finite()
+        || s.dt <= 0.0
+        || !s.total_time.is_finite()
+        || s.total_time <= 0.0
+        || !s.param_k.is_finite()
+        || !s.param_r.is_finite()
+        || !s.param_cap_k.is_finite()
+        || !s.ic_y0.is_finite()
+        || !s.ic_v0.is_finite()
+        || !s.custom_params.values().all(|v| v.is_finite())
+        || !s.coupled_params.values().all(|v| v.is_finite())
+    {
+        return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
+    }
+    if crate::presets::checked_ode_step_count(s.dt, s.total_time).is_none() {
+        return Err(format!(
+            "ODE step count (total_time / dt) exceeds maximum allowed limit ({})",
+            crate::presets::MAX_ODE_STEPS
+        ));
+    }
+    Ok(())
 }
