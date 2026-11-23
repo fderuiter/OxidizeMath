@@ -11,6 +11,7 @@ use super::{Camera3D, CAMERA_3D_HELPER_TEXT};
 /// never gets cancelled by auto-bounds, and delegates 3D gestures to [`Camera3D`].
 pub struct Plot3DViewport<'a> {
     id_source: egui::Id,
+    plot_key: String,
     title: Option<String>,
     half_extent: f64,
     helper_text: Option<&'a str>,
@@ -47,9 +48,10 @@ impl<'a> Plot3DViewport<'a> {
     /// Creates a 3D viewport with locked symmetric half-extent in projected plot units.
     #[must_use]
     pub fn new(id_source: impl egui_plot::PlotIdSource, half_extent: f64) -> Self {
-        let (id_source, title) = id_source.into_plot_id_and_title();
+        let (id_source, plot_key, title) = id_source.into_plot_id_key_and_title();
         Self {
             id_source,
+            plot_key,
             title,
             half_extent: half_extent.max(0.1),
             helper_text: Some(CAMERA_3D_HELPER_TEXT),
@@ -86,7 +88,8 @@ impl<'a> Plot3DViewport<'a> {
         let y_half = self.half_extent;
 
         let mut captured_plot_id = None;
-        let mut plot = base_3d_plot(self.id_source, plot_height, x_half, y_half);
+        let mut plot =
+            base_3d_plot(self.id_source, plot_height, x_half, y_half).plot_key(self.plot_key);
         if let Some(title) = self.title {
             plot = plot.title(title);
         }
