@@ -3,9 +3,9 @@
 use super::imrt::{
     DoseState, ImrtWorkspace, BASELINE_IMRT_ANGLES_DEG, BASELINE_IMRT_WEIGHTS, CHALLENGE_IMRT_BETA,
     CHALLENGE_IMRT_OAR_LIMIT_GY, CHALLENGE_IMRT_OAR_SPARING, CHALLENGE_IMRT_PRESCRIPTION_GY,
-    IMRT_BEAM_COUNT, IMRT_GRID_DIM, IMRT_OAR_CENTER, IMRT_OAR_RADIUS_CM, IMRT_PHANTOM_SIZE_CM,
-    IMRT_TUMOR_CENTER, IMRT_TUMOR_RADIUS_CM,
+    IMRT_BEAM_COUNT, IMRT_GRID_DIM, IMRT_PHANTOM_SIZE_CM,
 };
+use super::imrt_pareto::ImrtParetoController;
 use crate::accessibility::{announce_live_status, AccessibleHoverText};
 use crate::app::SemanticPalette;
 use crate::framework::{
@@ -13,7 +13,6 @@ use crate::framework::{
 };
 use eframe::egui;
 use egui::{Color32, ColorImage, TextureOptions};
-use egui_plot::{Plot, PlotImage, PlotPoint, Polygon};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKernel};
@@ -38,6 +37,8 @@ pub struct DoseCalculationTool {
     pub active_challenge: Option<&'static str>,
     /// Preallocated zero-allocation 4-beam IMRT workspace.
     pub imrt_workspace: ImrtWorkspace,
+    /// Constrained L-BFGS-B solver and Pareto trade-off curve controller.
+    pub pareto_controller: ImrtParetoController,
     /// Automated and manual plot callouts.
     pub callout_manager: CalloutManager,
     high_contrast: bool,
@@ -58,6 +59,7 @@ impl Default for DoseCalculationTool {
             oar_limit_gy: CHALLENGE_IMRT_OAR_LIMIT_GY,
             active_challenge: None,
             imrt_workspace: ImrtWorkspace::default(),
+            pareto_controller: ImrtParetoController::default(),
             callout_manager: CalloutManager::new(),
             high_contrast: false,
             texture: None,
@@ -233,32 +235,14 @@ impl DoseCalculationTool {
             s.cost_j, s.baseline_cost_j, s.tumor_mean_gy, s.oar_max_gy.0, self.oar_limit_gy
         );
         ui.colored_label(color, summary);
+        changed |= self.pareto_controller.draw_controls(
+            ui,
+            &self.imrt_workspace,
+            &mut self.beam_weights,
+            self.prescription_gy,
+            self.oar_limit_gy,
+        );
         changed
-    }
-
-    fn draw_contour_overlays(&self, palette: &SemanticPalette, plot_ui: &mut egui_plot::PlotUi) {
-        if !self.imrt_mode {
-            return;
-        }
-        let ring = |c: [f64; 2], r: f64| -> Vec<[f64; 2]> {
-            (0..32)
-                .map(|k| {
-                    let a = std::f64::consts::TAU * (k as f64) / 32.0;
-                    [c[0] + r * a.cos(), c[1] + r * a.sin()]
-                })
-                .collect()
-        };
-        let ptv = Polygon::new(
-            "PTV Target (D_Rx)",
-            ring(IMRT_TUMOR_CENTER, IMRT_TUMOR_RADIUS_CM),
-        )
-        .fill_color(Color32::TRANSPARENT)
-        .stroke(egui::Stroke::new(2.0_f32, palette.success));
-        let oar = Polygon::new("OAR (D_lim)", ring(IMRT_OAR_CENTER, IMRT_OAR_RADIUS_CM))
-            .fill_color(Color32::TRANSPARENT)
-            .stroke(egui::Stroke::new(2.0_f32, palette.error));
-        plot_ui.polygon(ptv);
-        plot_ui.polygon(oar);
     }
 }
 
@@ -401,29 +385,15 @@ impl InteractiveTool for DoseCalculationTool {
         if changed {
             self.refresh_model();
         }
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            if self.texture.is_none() {
-                self.recompute_texture(&ctx);
-            }
-            let palette = SemanticPalette::from_visuals(ui.visuals());
-            if let Some(texture) = self.texture.clone() {
-                Plot::new("dose_heatmap")
-                    .data_aspect(1.0)
-                    .view_aspect(1.0)
-                    .show_grid(false)
-                    .show_axes([true, true])
-                    .show(ui, |plot_ui| {
-                        plot_ui.image(PlotImage::new(
-                            "dose_field",
-                            texture.id(),
-                            PlotPoint::new(0.0, 0.0),
-                            [IMRT_PHANTOM_SIZE_CM as f32, IMRT_PHANTOM_SIZE_CM as f32],
-                        ));
-                        self.draw_contour_overlays(&palette, plot_ui);
-                        self.callout_manager.render_on_plot(plot_ui);
-                    });
-            }
-        });
+        if self.texture.is_none() {
+            self.recompute_texture(&ctx);
+        }
+        self.pareto_controller.draw_central_panels(
+            parent_ui,
+            self.imrt_mode,
+            self.texture.clone(),
+            &mut self.callout_manager,
+        );
     }
 }
 

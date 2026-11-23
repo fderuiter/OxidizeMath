@@ -8,7 +8,8 @@ use math_commons::error::{
     EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
 };
 use pure_math::error::{
-    AnalysisError, EvolutionError, LinearAlgebraError, PureMathError, TransformError,
+    AnalysisError, EvolutionError, LinearAlgebraError, OptimizationError, PureMathError,
+    TransformError,
 };
 use std::collections::HashMap;
 use thiserror::Error;
@@ -86,6 +87,13 @@ impl From<KalmanError> for PhysicsError {
 impl From<EvolutionError> for PhysicsError {
     #[verified_engine::verified]
     fn from(err: EvolutionError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<OptimizationError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: OptimizationError) -> Self {
         Self::PureMath(PureMathError::from(err))
     }
 }

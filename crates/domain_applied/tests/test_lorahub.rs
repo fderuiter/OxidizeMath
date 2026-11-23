@@ -52,3 +52,46 @@ fn test_lorahub_objective() {
     let score = ensemble.evaluate_objective(&weights, mock_loss, alpha);
     assert!((score - 10.2).abs() < math_commons::registry::TOLERANCE_FAST);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_lorahub_weight_optimization_fista_and_nelder_mead() {
+    use domain_applied::applied::lorahub::strategies::{
+        L1RegularizationStrategy, LinearCombinationStrategy,
+    };
+    use pure_math::pure_math::analysis::optimization::{NelderMeadConfig, ProximalConfig};
+
+    let mut m1 = LoraStateDict::new();
+    m1.insert("w".to_string(), DMatrix::from_vec(2, 1, vec![1.0, 0.0]));
+    let mut m2 = LoraStateDict::new();
+    m2.insert("w".to_string(), DMatrix::from_vec(2, 1, vec![0.0, 1.0]));
+    let mut m3 = LoraStateDict::new();
+    m3.insert("w".to_string(), DMatrix::from_vec(2, 1, vec![0.2, -0.1]));
+
+    let mut target = LoraStateDict::new();
+    target.insert("w".to_string(), DMatrix::from_vec(2, 1, vec![0.8, -0.6]));
+
+    let ensemble = LoraEnsemble::with_strategies(
+        vec![m1, m2, m3],
+        LinearCombinationStrategy,
+        L1RegularizationStrategy::new(0.05),
+    );
+    let fista_sol = ensemble
+        .optimize_target_fista(&target, 0.05, &ProximalConfig::default())
+        .expect("fista target match");
+    assert!((fista_sol.x[0] - 0.75).abs() < 0.1);
+    assert!((fista_sol.x[1] + 0.55).abs() < 0.1);
+    assert!(fista_sol.x[2].abs() < 1e-4);
+
+    let nm_sol = ensemble
+        .optimize_weights(
+            |w| (w[0] - 0.7).powi(2) + (w[1] + 0.4).powi(2) + w[2] * w[2],
+            &[0.0, 0.0, 0.0],
+            1.5,
+            &NelderMeadConfig::default(),
+        )
+        .expect("nelder-mead weights");
+    assert!((nm_sol.weights[0] - 0.69).abs() < 0.05);
+    assert!((nm_sol.weights[1] + 0.39).abs() < 0.05);
+    assert!(nm_sol.weights[2].abs() < 0.03);
+}

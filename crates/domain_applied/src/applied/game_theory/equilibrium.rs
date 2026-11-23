@@ -1,4 +1,8 @@
+use crate::error::AppliedError;
 use nalgebra::DVector;
+use pure_math::pure_math::analysis::optimization::{
+    BoxBounds, ConstrainedSolution, ProjectedGradientConfig, ProjectedGradientSolver,
+};
 
 /// Represents a compact, convex subset of Euclidean space.
 ///
@@ -60,6 +64,84 @@ impl BoxSet {
             min_bounds: DVector::from_vec(min_vals),
             max_bounds: DVector::from_vec(max_vals),
         }
+    }
+
+    /// Converts this strategy [`BoxSet`] into a validated [`BoxBounds`] constraint.
+    #[verified_engine::verified]
+    pub fn to_box_bounds(&self) -> Result<BoxBounds, AppliedError> {
+        Ok(BoxBounds::new(
+            self.min_bounds.clone(),
+            self.max_bounds.clone(),
+        )?)
+    }
+
+    /// Projects `point` onto $[min, max]^n$ in-place with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn project_in_place(&self, point: &mut DVector<f64>) {
+        assert_eq!(point.len(), self.min_bounds.len());
+        for i in 0..point.len() {
+            let low = self.min_bounds[i].min(self.max_bounds[i]);
+            let high = self.min_bounds[i].max(self.max_bounds[i]);
+            point[i] = point[i].clamp(low, high);
+        }
+    }
+
+    /// Returns the Euclidean projection $P_{\text{Box}}(\text{point})$ onto this strategy box.
+    #[verified_engine::verified]
+    pub fn project(&self, point: &DVector<f64>) -> DVector<f64> {
+        let mut projected = point.clone();
+        self.project_in_place(&mut projected);
+        projected
+    }
+
+    /// Computes a fixed point $x^* = P_{\text{Box}}(\phi(x^*))$ via Krasnoselskii-Mann
+    /// damped projected iteration $x_{k+1} = P_{\text{Box}}((1 - \alpha) x_k + \alpha \phi(x_k))$.
+    #[verified_engine::verified]
+    pub fn find_projected_fixed_point<F>(
+        &self,
+        mut response_map: F,
+        initial: &DVector<f64>,
+        damping: f64,
+        max_iterations: usize,
+        tolerance: f64,
+    ) -> Result<DVector<f64>, AppliedError>
+    where
+        F: FnMut(&DVector<f64>) -> DVector<f64>,
+    {
+        let bounds = self.to_box_bounds()?;
+        let mut x = bounds.project(initial);
+        let mut next = DVector::zeros(x.len());
+        let alpha = damping.clamp(1e-3, 1.0);
+        for _ in 0..max_iterations {
+            let br = response_map(&x);
+            let mut max_step = 0.0_f64;
+            for i in 0..x.len() {
+                let proj_br = br[i].clamp(bounds.lower[i], bounds.upper[i]);
+                let candidate = (1.0 - alpha) * x[i] + alpha * proj_br;
+                max_step = max_step.max((candidate - x[i]).abs());
+                next[i] = candidate;
+            }
+            x.copy_from(&next);
+            if max_step <= tolerance {
+                break;
+            }
+        }
+        Ok(x)
+    }
+
+    /// Minimizes a smooth potential game objective over this [`BoxSet`] via [`ProjectedGradientSolver`].
+    #[verified_engine::verified]
+    pub fn minimize_potential<F>(
+        &self,
+        potential_and_grad: F,
+        initial: &DVector<f64>,
+        config: &ProjectedGradientConfig,
+    ) -> Result<ConstrainedSolution, AppliedError>
+    where
+        F: FnMut(&DVector<f64>, &mut DVector<f64>) -> f64,
+    {
+        let bounds = self.to_box_bounds()?;
+        Ok(ProjectedGradientSolver::new(*config).solve(potential_and_grad, &bounds, initial)?)
     }
 }
 
@@ -155,5 +237,28 @@ mod tests {
 
         // x=1 => f(1)=0.5. 1 is NOT in {y | |y-0.5| < eps}. False.
         assert!(!is_fixed_point(&correspondence, &point_one));
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_box_set_projection_and_projected_equilibrium() {
+        let box_set = BoxSet::new(vec![0.0, 0.0], vec![1.0, 1.0]);
+        let outside = DVector::from_vec(vec![-0.4, 1.7]);
+        let projected = box_set.project(&outside);
+        assert!((projected[0] - 0.0).abs() < 1e-12);
+        assert!((projected[1] - 1.0).abs() < 1e-12);
+        assert!(box_set.contains(&projected));
+
+        let eq = box_set
+            .find_projected_fixed_point(
+                |x| DVector::from_vec(vec![1.5 - 0.5 * x[1], 0.8 - 0.25 * x[0]]),
+                &DVector::from_vec(vec![0.1, 0.9]),
+                0.6,
+                200,
+                1e-9,
+            )
+            .expect("fixed point");
+        assert!((eq[0] - 1.0).abs() < 1e-6);
+        assert!((eq[1] - 0.55).abs() < 1e-6);
     }
 }

@@ -306,6 +306,84 @@ impl RootFinder for NewtonRaphson {
     }
 }
 
+/// Strategy for derivative-free 1D scalar minimization on a bounded interval `[min, max]`.
+pub trait OneDimMinimizer {
+    /// Finds a local minimizer `(x_min, f_min)` of `f` over `[min, max]`.
+    ///
+    /// # Errors
+    /// Returns [`AnalysisError::InvalidParameters`] if the interval is invalid or non-finite,
+    /// or [`AnalysisError::ConvergenceError`] if convergence is not reached within `max_iterations`.
+    #[verified_engine::verified]
+    fn minimize<F>(&self, f: F, min: f64, max: f64) -> Result<(f64, f64), AnalysisError>
+    where
+        F: FnMut(f64) -> f64;
+}
+
+/// Brent's derivative-free 1D scalar minimizer combining golden-section search
+/// with successive parabolic interpolation.
+///
+/// # Examples
+///
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::analysis::roots::{BrentMinimizer, OneDimMinimizer};
+///
+/// let solver = BrentMinimizer::default();
+/// let (x_min, f_min) = solver.minimize(|x| (x - 1.75) * (x - 1.75) + 3.0, -2.0, 5.0).unwrap();
+/// assert!((x_min - 1.75).abs() < math_explorer::registry::TOLERANCE_FAST);
+/// assert!((f_min - 3.0).abs() < math_explorer::registry::TOLERANCE_FAST);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BrentMinimizer {
+    /// Maximum number of iterations before returning a convergence error.
+    pub max_iterations: usize,
+    /// Relative/absolute interval tolerance for convergence.
+    pub tolerance: f64,
+}
+
+impl BrentMinimizer {
+    /// Creates a new Brent 1D minimizer.
+    #[verified_engine::verified]
+    pub fn new(max_iterations: usize, tolerance: f64) -> Self {
+        Self {
+            max_iterations,
+            tolerance,
+        }
+    }
+}
+
+impl Default for BrentMinimizer {
+    #[verified_engine::verified]
+    fn default() -> Self {
+        Self {
+            max_iterations: math_commons::registry::MAX_ITERATIONS,
+            tolerance: math_commons::registry::TOLERANCE_FAST,
+        }
+    }
+}
+
+impl OneDimMinimizer for BrentMinimizer {
+    #[verified_engine::verified]
+    fn minimize<F>(&self, f: F, min: f64, max: f64) -> Result<(f64, f64), AnalysisError>
+    where
+        F: FnMut(f64) -> f64,
+    {
+        if !min.is_finite() || !max.is_finite() || min >= max || self.tolerance <= 0.0 {
+            return Err(AnalysisError::InvalidParameters(
+                "BrentMinimizer requires finite bounds with min < max and tolerance > 0".into(),
+            ));
+        }
+        let rel_tol = self.tolerance.sqrt().min(1e-7);
+        super::optimization::derivative_free::brent_minimize_core(
+            f,
+            min,
+            max,
+            self.max_iterations,
+            rel_tol,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,5 +435,20 @@ mod tests {
         // x^2 + 1 = 0 has no real roots. And signs are always positive.
         let result = solver.find_root(|x| x * x + 1.0, -2.0, 2.0);
         assert!(matches!(result, Err(AnalysisError::InvalidParameters(_))));
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_brent_minimizer_quartic_and_trig() -> Result<(), AnalysisError> {
+        let solver = BrentMinimizer::default();
+        let (x_q, f_q) =
+            solver.minimize(|x| (x - 2.25).powi(2) + 0.1 * (x - 2.25).powi(4), -3.0, 6.0)?;
+        assert!((x_q - 2.25).abs() < 1e-5);
+        assert!(f_q.abs() < 1e-10);
+
+        let (x_c, f_c) = solver.minimize(f64::cos, 2.0, 4.5)?;
+        assert!((x_c - std::f64::consts::PI).abs() < math_commons::registry::TOLERANCE_FAST);
+        assert!((f_c + 1.0).abs() < math_commons::registry::TOLERANCE_FAST);
+        Ok(())
     }
 }

@@ -289,6 +289,15 @@ impl LossLandscapeTool {
             self.sculpt_bumps.clear();
             self.reset_arena();
         }
+        let domain = self.domain_bounds();
+        if super::barriers::draw_box_barrier_controls(
+            ui,
+            domain,
+            &mut self.arena_config.box_barriers_enabled,
+            &mut self.arena_config.barrier_bounds,
+        ) {
+            self.reset_arena();
+        }
     }
 
     fn draw_racers_and_camera_ui(&mut self, ui: &mut egui::Ui) {

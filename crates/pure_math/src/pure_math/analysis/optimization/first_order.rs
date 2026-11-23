@@ -1,74 +1,20 @@
-//! Optimization Algorithms.
-//!
-//! Provides structures and traits for mathematical optimization problems.
+//! First-order stochastic and adaptive gradient optimizers (`SGD`, `Adam`).
 
-use super::evolution::{EvolutionEngine, EvolutionError};
+use super::super::evolution::{EvolutionEngine, EvolutionError};
+use super::{OptimizationError, Optimizer};
 use nalgebra::{DMatrix, DVector, RealField, Vector2};
 use rand::RngCore;
 use std::collections::HashMap;
-use thiserror::Error;
 
-/// Errors that can occur during optimization.
-#[derive(Debug, Clone, PartialEq, Error)]
-pub enum OptimizationError {
-    #[error("Failed to convert numerical value")]
-    #[allow(missing_docs)]
-    ConversionError,
-    /// Wrapped evolution engine error preserving causal source.
-    #[error("Evolution solver error: {0}")]
-    Evolution(#[from] EvolutionError),
-}
-
-#[allow(missing_docs)]
-pub struct L1RegularizedLeastSquares {
-    lambda: f64,
-}
-
-impl L1RegularizedLeastSquares {
-    #[allow(missing_docs)]
-    #[verified_engine::verified]
-    pub fn new(lambda: f64) -> Self {
-        Self { lambda }
-    }
-
-    #[allow(missing_docs)]
-    #[verified_engine::verified]
-    pub fn cost(&mut self, a: &DMatrix<f64>, x: &DVector<f64>, y: &DVector<f64>) -> f64 {
-        let residual = y - (a * x);
-        let l2_term = 0.5 * residual.norm_squared();
-        let l1_term = x.iter().map(|v| v.abs()).sum::<f64>();
-
-        l2_term + self.lambda * l1_term
-    }
-}
-
-/// Strategy for updating parameters.
-/// Reimplemented via the Unified EvolutionEngine.
-pub trait Optimizer<T: RealField + Copy, Key = u64> {
-    #[allow(missing_docs)]
-    fn update_matrix(
-        &mut self,
-        key: Key,
-        param: &mut DMatrix<T>,
-        grad: &DMatrix<T>,
-    ) -> Result<(), OptimizationError>;
-    #[allow(missing_docs)]
-    fn update_vector(
-        &mut self,
-        key: Key,
-        param: &mut DVector<T>,
-        grad: &DVector<T>,
-    ) -> Result<(), OptimizationError>;
-}
-
-#[allow(missing_docs)]
+/// Stochastic Gradient Descent optimizer with configurable learning rate.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SGD<T> {
-    #[allow(missing_docs)]
+    /// Step size multiplier applied to gradients during parameter updates.
     pub learning_rate: T,
 }
 
 impl<T: RealField + Copy> SGD<T> {
-    #[allow(missing_docs)]
+    /// Creates a new `SGD` optimizer with the specified `learning_rate`.
     #[verified_engine::verified]
     pub fn new(learning_rate: T) -> Self {
         Self { learning_rate }
@@ -187,8 +133,7 @@ impl<T: RealField + Copy, Key> Optimizer<T, Key> for SGD<T> {
         grad: &DVector<T>,
     ) -> Result<(), OptimizationError> {
         assert_eq!(param.len(), grad.len());
-        let lr = T::from_f64(0.01).unwrap_or(self.learning_rate);
-        sgd_step_slice(param.as_mut_slice(), grad.as_slice(), lr);
+        sgd_step_slice(param.as_mut_slice(), grad.as_slice(), self.learning_rate);
         Ok(())
     }
 
@@ -200,19 +145,18 @@ impl<T: RealField + Copy, Key> Optimizer<T, Key> for SGD<T> {
         grad: &DMatrix<T>,
     ) -> Result<(), OptimizationError> {
         assert_eq!(param.shape(), grad.shape());
-        let lr = T::from_f64(0.01).unwrap_or(self.learning_rate);
-        sgd_step_slice(param.as_mut_slice(), grad.as_slice(), lr);
+        sgd_step_slice(param.as_mut_slice(), grad.as_slice(), self.learning_rate);
         Ok(())
     }
 }
 
-#[allow(missing_docs)]
+/// Dynamic matrix moment accumulators for `Adam` parameter updates.
 pub struct AdamState<T> {
-    #[allow(missing_docs)]
+    /// First moment accumulator (exponentially decaying gradient mean).
     pub m: DMatrix<T>,
-    #[allow(missing_docs)]
+    /// Second raw moment accumulator (exponentially decaying squared gradient).
     pub v: DMatrix<T>,
-    #[allow(missing_docs)]
+    /// 1-indexed optimization step counter.
     pub t: i32,
 }
 
@@ -246,20 +190,20 @@ impl<T: RealField + Copy> AdamState2D<T> {
     }
 }
 
-#[allow(missing_docs)]
+/// Adaptive Moment Estimation (`Adam`) first-order optimizer.
 pub struct Adam<T, Key>
 where
     Key: Eq + std::hash::Hash,
 {
-    #[allow(missing_docs)]
+    /// Base step size learning rate.
     pub learning_rate: T,
-    #[allow(missing_docs)]
+    /// Exponential decay factor for first moment estimates.
     pub beta1: T,
-    #[allow(missing_docs)]
+    /// Exponential decay factor for second moment estimates.
     pub beta2: T,
-    #[allow(missing_docs)]
+    /// Numerical stability term added to denominator.
     pub epsilon: T,
-    #[allow(missing_docs)]
+    /// Per-parameter moment state table.
     pub states: HashMap<Key, AdamState<T>>,
 }
 
@@ -267,7 +211,7 @@ impl<T: RealField + Copy, Key> Adam<T, Key>
 where
     Key: Eq + std::hash::Hash + Clone,
 {
-    #[allow(missing_docs)]
+    /// Creates a new `Adam` optimizer with standard `(0.9, 0.999, 1e-8)` defaults.
     #[verified_engine::verified]
     pub fn new(lr: T) -> Result<Self, OptimizationError> {
         Ok(Self {
@@ -279,7 +223,7 @@ where
         })
     }
 
-    #[allow(missing_docs)]
+    /// Returns or initializes the moment state associated with `key`.
     #[verified_engine::verified]
     pub fn get_state(&mut self, key: Key, shape: (usize, usize)) -> &mut AdamState<T> {
         self.states.entry(key).or_insert_with(|| AdamState {
@@ -414,54 +358,14 @@ where
     }
 }
 
-/// Identifies the type of parameter being updated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ParamType {
-    #[allow(missing_docs)]
-    Weight,
-    #[allow(missing_docs)]
-    Bias,
-}
-
-/// Adapter Trait for model optimizers.
-pub trait ModelOptimizer<T: RealField + Copy>: Optimizer<T, (usize, ParamType)> {}
-
-impl<T: RealField + Copy, O> ModelOptimizer<T> for O where O: Optimizer<T, (usize, ParamType)> {}
-
-/// Defines a Trainable Model that can perform forward passes and handle backpropagation.
-pub trait Trainable<T: nalgebra::RealField + Copy = f64> {
-    /// Performs a forward pass through the network.
-    /// Returns the logits (pre-softmax outputs).
-    #[verified_engine::verified]
-    fn forward(&self, x: &nalgebra::DVector<T>) -> nalgebra::DVector<T>;
-
-    /// Performs the backward pass and updates parameters.
-    ///
-    /// # Arguments
-    /// * `x` - Input vector.
-    /// * `loss_grad` - Gradient of the loss with respect to the output logits (dJ/dz).
-    /// * `optimizer` - The optimizer strategy to update parameters.
-    ///
-    /// # Errors
-    /// Returns an `OptimizationError` if the parameter updates fail during optimization.
-    #[verified_engine::verified]
-    fn backward_update(
-        &mut self,
-        x: &nalgebra::DVector<T>,
-        loss_grad: &nalgebra::DVector<T>,
-        optimizer: &mut dyn ModelOptimizer<T>,
-    ) -> Result<(), OptimizationError>;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_adam_optimizer_respects_configured_learning_rate() {
+    fn test_adam_and_sgd_respect_configured_learning_rate() {
         let mut low_lr = Adam::<f64, usize>::new(0.001).expect("low adam");
         let mut high_lr = Adam::<f64, usize>::new(0.05).expect("high adam");
-
         let mut p_low = DMatrix::from_element(2, 2, 1.0_f64);
         let mut p_high = DMatrix::from_element(2, 2, 1.0_f64);
         let grad = DMatrix::from_element(2, 2, 0.5_f64);
@@ -470,20 +374,15 @@ mod tests {
         high_lr
             .update_matrix(0, &mut p_high, &grad)
             .expect("high lr");
+        assert!(((1.0 - p_high[(0, 0)]).abs() / (1.0 - p_low[(0, 0)]).abs() - 50.0).abs() < 1e-6);
 
-        let delta_low = (1.0 - p_low[(0, 0)]).abs();
-        let delta_high = (1.0 - p_high[(0, 0)]).abs();
-        assert!((delta_high / delta_low - 50.0).abs() < 1e-6);
-
-        let mut v_low = DVector::from_element(2, 1.0);
-        let mut v_high = DVector::from_element(2, 1.0);
-        let v_grad = DVector::from_element(2, 0.5);
-        low_lr
-            .update_vector(1, &mut v_low, &v_grad)
-            .expect("low vec");
-        high_lr
-            .update_vector(1, &mut v_high, &v_grad)
-            .expect("high vec");
-        assert!(((1.0 - v_high[0]).abs() / (1.0 - v_low[0]).abs() - 50.0).abs() < 1e-6);
+        let mut sgd = SGD::new(0.25_f64);
+        let mut mat = DMatrix::from_element(2, 2, 2.0_f64);
+        let mut vec = DVector::from_element(3, 1.5_f64);
+        let v_grad = DVector::from_element(3, 0.4_f64);
+        Optimizer::<f64, usize>::update_matrix(&mut sgd, 0, &mut mat, &grad).expect("sgd mat");
+        Optimizer::<f64, usize>::update_vector(&mut sgd, 1, &mut vec, &v_grad).expect("sgd vec");
+        assert!((mat[(0, 0)] - 1.875).abs() < 1e-12);
+        assert!((vec[0] - 1.4).abs() < 1e-12);
     }
 }

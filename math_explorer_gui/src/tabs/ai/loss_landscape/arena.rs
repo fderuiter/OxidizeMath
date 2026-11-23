@@ -84,6 +84,13 @@ pub struct ArenaConfig {
     pub spawn: [f64; 2],
     pub slingshot_velocity: [f64; 2],
     pub enabled_racers: [bool; 5],
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub box_barriers_enabled: bool,
+    #[serde(
+        default = "super::barriers::default_barrier_bounds",
+        skip_serializing_if = "super::barriers::is_default_barrier_bounds"
+    )]
+    pub barrier_bounds: [f64; 4],
 }
 
 impl Default for ArenaConfig {
@@ -99,6 +106,8 @@ impl Default for ArenaConfig {
             spawn: [0.4, 2.4],
             slingshot_velocity: [0.8, -0.6],
             enabled_racers: [true; 5],
+            box_barriers_enabled: false,
+            barrier_bounds: super::barriers::DEFAULT_BARRIER_BOUNDS,
         }
     }
 }
@@ -123,6 +132,7 @@ impl ArenaConfig {
                 .slingshot_velocity
                 .iter()
                 .all(|v| v.is_finite() && v.abs() <= 200.0)
+            && super::barriers::are_barrier_bounds_valid(&self.barrier_bounds)
     }
 
     pub fn clamp_in_place(&mut self) {
@@ -154,52 +164,11 @@ impl ArenaConfig {
                 0.0
             };
         }
+        super::barriers::clamp_barrier_bounds(&mut self.barrier_bounds);
     }
 }
 
-pub struct TrailRing {
-    buf: Box<[[f64; 2]; MAX_TRAIL_POINTS]>,
-    start: usize,
-    len: usize,
-}
-
-impl Default for TrailRing {
-    fn default() -> Self {
-        Self {
-            buf: Box::new([[0.0; 2]; MAX_TRAIL_POINTS]),
-            start: 0,
-            len: 0,
-        }
-    }
-}
-
-impl TrailRing {
-    #[inline]
-    pub fn clear(&mut self) {
-        (self.start, self.len) = (0, 0);
-    }
-
-    #[inline]
-    pub fn push(&mut self, pt: [f64; 2]) {
-        if self.len < MAX_TRAIL_POINTS {
-            self.buf[(self.start + self.len) % MAX_TRAIL_POINTS] = pt;
-            self.len += 1;
-        } else {
-            self.buf[self.start] = pt;
-            self.start = (self.start + 1) % MAX_TRAIL_POINTS;
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        self.len
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = [f64; 2]> + '_ {
-        (0..self.len).map(move |i| self.buf[(self.start + i) % MAX_TRAIL_POINTS])
-    }
-}
+pub use super::barriers::TrailRing;
 
 pub struct RacerTrack {
     pub kind: RacerKind,
@@ -252,11 +221,16 @@ impl ParticleArena {
         eval: SurfaceEvaluator<'_>,
         bounds: (f64, f64, f64, f64),
     ) {
+        let active = super::barriers::effective_arena_bounds(
+            bounds,
+            cfg.box_barriers_enabled,
+            cfg.barrier_bounds,
+        );
         let mass = clamp_mass(cfg.mass);
         let quad_h = QuadraticHamiltonian::new(mass);
         let q0 = Vector2::new(
-            cfg.spawn[0].clamp(bounds.0, bounds.1),
-            cfg.spawn[1].clamp(bounds.2, bounds.3),
+            cfg.spawn[0].clamp(active.0, active.1),
+            cfg.spawn[1].clamp(active.2, active.3),
         );
         let p0 = Vector2::new(cfg.slingshot_velocity[0], cfg.slingshot_velocity[1]) * mass;
         let raw_pot = eval.evaluate(q0.x, q0.y);
@@ -317,9 +291,14 @@ impl ParticleArena {
         let (temperature, dt) = (clamp_temperature(cfg.temperature), clamp_dt(cfg.dt));
         let lr = cfg.learning_rate.clamp(LR_MIN, LR_MAX);
         let restitution = cfg.restitution.clamp(0.0, 1.0);
+        let active = super::barriers::effective_arena_bounds(
+            bounds,
+            cfg.box_barriers_enabled,
+            cfg.barrier_bounds,
+        );
         let (q_min, q_max) = (
-            Vector2::new(bounds.0, bounds.2),
-            Vector2::new(bounds.1, bounds.3),
+            Vector2::new(active.0, active.2),
+            Vector2::new(active.1, active.3),
         );
 
         let quad_h = QuadraticHamiltonian::new(mass);
@@ -353,6 +332,7 @@ impl ParticleArena {
             restitution,
             q_min,
             q_max,
+            project_first_order: cfg.box_barriers_enabled,
             #[cfg(feature = "physics")]
             chaotic_drive,
         };
@@ -389,6 +369,7 @@ struct StepScalars<'a> {
     restitution: f64,
     q_min: Vector2<f64>,
     q_max: Vector2<f64>,
+    project_first_order: bool,
     #[cfg(feature = "physics")]
     chaotic_drive: Vector2<f64>,
 }
@@ -401,25 +382,27 @@ fn step_racer(racer: &mut RacerTrack, s: &mut StepSolvers<'_>, sc: &StepScalars<
             let mut g = grad_fn(prev);
             let _ = s.sgd.step(&mut racer.phase.q, &mut g, s.rng, sc.lr);
             racer.phase.p = (racer.phase.q - prev) * (sc.mass / sc.dt);
-            racer
-                .phase
-                .reflect_bounds(sc.q_min, sc.q_max, sc.restitution);
+            super::barriers::enforce_sgd_bounds(
+                &mut racer.phase,
+                sc.q_min,
+                sc.q_max,
+                sc.restitution,
+                sc.project_first_order,
+            );
             racer.kinetic_energy = 0.0;
         }
         RacerKind::Adam => {
             let g = grad_fn(racer.phase.q);
             let mut aux = (g, &mut racer.adam_state);
             let _ = s.adam.step(&mut racer.phase.q, &mut aux, s.rng, sc.lr);
-            let raw_q = racer.phase.q;
-            racer
-                .phase
-                .reflect_bounds(sc.q_min, sc.q_max, sc.restitution);
-            if (racer.phase.q.x - raw_q.x).abs() > 1e-12 {
-                racer.adam_state.m.x *= -sc.restitution;
-            }
-            if (racer.phase.q.y - raw_q.y).abs() > 1e-12 {
-                racer.adam_state.m.y *= -sc.restitution;
-            }
+            super::barriers::enforce_adam_bounds(
+                &mut racer.phase,
+                &mut racer.adam_state,
+                sc.q_min,
+                sc.q_max,
+                sc.restitution,
+                sc.project_first_order,
+            );
             racer.kinetic_energy = 0.0;
         }
         RacerKind::HamiltonianLeapfrog | RacerKind::LangevinThermal | RacerKind::LorenzChaotic => {

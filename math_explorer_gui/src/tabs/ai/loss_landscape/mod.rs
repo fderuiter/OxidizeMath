@@ -3,6 +3,7 @@
 //! 3D and 2D Hamiltonian Loss Landscape Arena (`LossLandscapeTool`).
 
 pub mod arena;
+pub mod barriers;
 mod canvas;
 pub mod data;
 pub mod evaluator;
@@ -275,6 +276,7 @@ impl LossLandscapeTool {
         }
         let (w0, w1, b0, b1) = surface.default_bounds();
         (self.w_min, self.w_max, self.b_min, self.b_max) = (w0, w1, b0, b1);
+        self.arena_config.barrier_bounds = barriers::default_barrier_for_domain((w0, w1, b0, b1));
         self.sculpt_bumps.clear();
         let (spawn, vel, lr, damp, temp) = match surface {
             LandscapeSurface::LinearMse => ([0.4, 2.4], [0.8, -0.6], 0.03, 0.45, 0.6),

@@ -98,12 +98,11 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
         "game_theory" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
-        "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" => &["clinical_trials_statistics"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
-        "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
         "ai" => &["graph_parameters_rust"],
+        "optimization" => &["lorahub", "pure_math", "advanced_linear_algebra"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         "relativity" => &[
             "general_relativity_geodesics",
