@@ -180,6 +180,7 @@ fn test_morphogenesis_tool_state_envelope_roundtrip() {
         state: None,
         paused: None,
         pending_initial_start: false,
+        mask_rle: Vec::new(),
         atlas_visible: false,
         atlas_axes: default_morpho_atlas_axes(),
     };

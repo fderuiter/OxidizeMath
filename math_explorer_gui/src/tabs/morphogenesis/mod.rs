@@ -8,6 +8,7 @@ pub mod atlas;
 pub mod lenia;
 pub mod presets;
 pub mod runner;
+pub mod sculpt;
 mod seeding;
 pub mod tool;
 pub mod ui;
