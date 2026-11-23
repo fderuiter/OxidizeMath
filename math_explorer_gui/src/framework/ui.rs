@@ -83,8 +83,15 @@ impl SimulationFramework {
 
                     ui.separator();
                     ui.heading("Citations");
-                    render_theory_summary_with_export(ui, &theory.theory_citation(), None)
+                    let citation_text = theory.theory_citation();
+                    render_theory_summary_with_export(ui, &citation_text, None)
                         .accessible_hover_text("Academic citations");
+                    super::theory_links::render_portal_links_for_framework(
+                        self,
+                        ui,
+                        tool.as_ref(),
+                        &citation_text,
+                    );
 
                     let mut entries: Vec<(String, String)> = theory
                         .available_descriptions()
@@ -247,13 +254,32 @@ impl SimulationFramework {
         &mut self,
         ctx: &egui::Context,
         id_source: &str,
-        mut is_open: bool,
+        is_open: bool,
         selected: Option<crate::starter_gallery::StarterCard>,
     ) {
-        if let Some(card) = selected {
-            let _ = self.launch_starter_card(&card);
-            is_open = false;
-            ctx.request_repaint();
+        let sel = selected.map(crate::starter_gallery::GallerySelection::Starter);
+        self.apply_starter_gallery_selection(ctx, id_source, is_open, sel);
+    }
+
+    pub(crate) fn apply_starter_gallery_selection(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+        mut is_open: bool,
+        selected: Option<crate::starter_gallery::GallerySelection>,
+    ) {
+        match selected {
+            Some(crate::starter_gallery::GallerySelection::Starter(card)) => {
+                let _ = self.launch_starter_card(&card);
+                is_open = false;
+                ctx.request_repaint();
+            }
+            Some(crate::starter_gallery::GallerySelection::Challenge(ch)) => {
+                let _ = self.launch_challenge_by_id(ch.id, Some(ctx));
+                is_open = false;
+                ctx.request_repaint();
+            }
+            None => {}
         }
         self.show_starter_gallery = is_open;
         self.sync_starter_gallery_state(ctx, id_source);
@@ -263,28 +289,40 @@ impl SimulationFramework {
         if !self.show_starter_gallery {
             return;
         }
-        let cards = if crate::starter_gallery::is_root_starter_gallery_scope_active(ctx) {
-            crate::starter_gallery::get_all_starter_cards_with_tools(&self.available_tools)
-        } else {
-            crate::starter_gallery::get_starter_cards_for_domain(id_source, &self.available_tools)
-        };
+        let (cards, challenges) =
+            if crate::starter_gallery::is_root_starter_gallery_scope_active(ctx) {
+                (
+                    crate::starter_gallery::get_all_starter_cards_with_tools(&self.available_tools),
+                    crate::starter_gallery::get_all_challenge_cards(),
+                )
+            } else {
+                (
+                    crate::starter_gallery::get_starter_cards_for_domain(
+                        id_source,
+                        &self.available_tools,
+                    ),
+                    crate::starter_gallery::get_challenge_cards_for_domain(id_source),
+                )
+            };
         let modal_source = format!("{id_source}_{}", self.instance_id);
         if crate::starter_gallery::try_defer_starter_gallery(
             ctx,
             id_source,
             &modal_source,
             cards.clone(),
+            challenges.clone(),
         ) {
             return;
         }
         let mut is_open = self.show_starter_gallery;
-        let selected = crate::starter_gallery::show_starter_gallery_overlay(
+        let selected = crate::starter_gallery::show_starter_gallery_with_challenges(
             ctx,
             &modal_source,
             &cards,
+            &challenges,
             &mut is_open,
         );
-        self.apply_starter_gallery_outcome(ctx, id_source, is_open, selected);
+        self.apply_starter_gallery_selection(ctx, id_source, is_open, selected);
     }
 
     #[allow(missing_docs)]
@@ -348,9 +386,11 @@ impl SimulationFramework {
         self.sync_overlays_before_frame(&ctx, id_source);
 
         self.show_export_action_bar(ui, id_source);
+        self.show_challenge_hud(ui, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
 
+        self.begin_plot_scope(&ctx);
         if !self.is_diverged {
             self.cache_valid_snapshot();
             if let Some(tool) = &mut self.active_tool {
@@ -358,6 +398,7 @@ impl SimulationFramework {
             }
             let _ = self.inspect_runtime_state();
             if self.is_diverged {
+                crate::audio::notify_solver_diverged();
                 ctx.request_repaint();
             }
         } else if let Some(tool) = &mut self.active_tool {
@@ -369,6 +410,7 @@ impl SimulationFramework {
             }
             tool.show_inside(ui);
         }
+        self.end_plot_scope(&ctx);
 
         if !interactive_input
             && crate::reflective_ui::slider::live_sweep_mutation_count(&ctx) > sweep_mut_before

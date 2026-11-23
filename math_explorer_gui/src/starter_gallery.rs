@@ -1,6 +1,7 @@
 //! Starter Template Gallery component providing guided empty-state cards
 //! for simulation tabs and instant preset model execution.
 
+#[cfg(test)]
 use crate::framework::ToolMetadata;
 #[cfg(test)]
 use eframe::egui;
@@ -264,6 +265,70 @@ pub const PRESET_HAWK_DOVE: &str = r#"{
   }
 }"#;
 
+/// JSON preset envelope for Glicko-2 Swiss Upset & Volatility Spike.
+pub const PRESET_GLICKO2_SWISS_UPSET: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Glicko-2 Tournament - Swiss Upset & Volatility Spike",
+    "domain": "game_theory",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "tau": 0.6,
+    "draw_probability": 0.15,
+    "pairing_mode": "Swiss",
+    "target_rounds": 5,
+    "rng_seed": 42,
+    "players": [
+      {"name": "GM Vega", "rating": 1820.0, "rd": 65.0, "volatility": 0.06, "inactive": false},
+      {"name": "IM Kestrel", "rating": 1710.0, "rd": 80.0, "volatility": 0.06, "inactive": false},
+      {"name": "FM Orion", "rating": 1615.0, "rd": 95.0, "volatility": 0.06, "inactive": false},
+      {"name": "CM Lyra", "rating": 1520.0, "rd": 140.0, "volatility": 0.07, "inactive": false},
+      {"name": "Nova Prodigy", "rating": 1440.0, "rd": 240.0, "volatility": 0.09, "inactive": false}
+    ],
+    "periods": [
+      {"matches": [{"player_a": 0, "player_b": 1, "score_a": 0.0}, {"player_a": 2, "player_b": 3, "score_a": 0.5}], "bye_player": 4},
+      {"matches": [{"player_a": 1, "player_b": 4, "score_a": 0.0}, {"player_a": 0, "player_b": 2, "score_a": 0.0}], "bye_player": 3},
+      {"matches": [{"player_a": 4, "player_b": 0, "score_a": 1.0}, {"player_a": 2, "player_b": 3, "score_a": 0.5}], "bye_player": 1}
+    ]
+  }
+}"#;
+
+/// JSON preset envelope for Glicko-2 Round-Robin Frozen vs. Sequential Drift.
+pub const PRESET_GLICKO2_ROUND_ROBIN_DRIFT: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Glicko-2 Tournament - Round-Robin Frozen vs. Sequential Drift",
+    "domain": "game_theory",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "tau": 0.5,
+    "draw_probability": 0.1,
+    "pairing_mode": "RoundRobin",
+    "target_rounds": 3,
+    "rng_seed": 108,
+    "players": [
+      {"name": "Alpha", "rating": 1500.0, "rd": 260.0, "volatility": 0.06, "inactive": false},
+      {"name": "Bravo", "rating": 1500.0, "rd": 260.0, "volatility": 0.06, "inactive": false},
+      {"name": "Charlie", "rating": 1500.0, "rd": 260.0, "volatility": 0.06, "inactive": false},
+      {"name": "Delta", "rating": 1500.0, "rd": 260.0, "volatility": 0.06, "inactive": false}
+    ],
+    "periods": [
+      {
+        "matches": [
+          {"player_a": 0, "player_b": 1, "score_a": 1.0},
+          {"player_a": 0, "player_b": 2, "score_a": 1.0},
+          {"player_a": 0, "player_b": 3, "score_a": 0.0},
+          {"player_a": 1, "player_b": 2, "score_a": 1.0},
+          {"player_a": 1, "player_b": 3, "score_a": 0.5},
+          {"player_a": 2, "player_b": 3, "score_a": 0.0}
+        ]
+      }
+    ]
+  }
+}"#;
+
 /// JSON preset envelope for MRI Physics Bloch Precession & Relaxation.
 pub const PRESET_MRI_BLOCH_RELAXATION: &str = r#"{
   "metadata": {
@@ -334,116 +399,26 @@ pub const PRESET_FAVORITISM_SIBLING_RIVALRY: &str = r#"{
   }
 }"#;
 
-fn domains_match(a: &str, b: &str) -> bool {
-    a == b || (a == "biology" && b == "morphogenesis") || (a == "morphogenesis" && b == "biology")
-}
-
-fn preset_to_card(p: &StarterPresetMetadata) -> StarterCard {
-    StarterCard {
-        id: p.id,
-        title: p.title,
-        description: p.description,
-        category: p.category,
-        icon: p.icon,
-        domain: p.domain,
-        tool_name: p.tool_name,
-        preset_json: Some((p.preset_generator)()),
-    }
-}
-
-fn fallback_card_for_tool(meta: &'static ToolMetadata) -> StarterCard {
-    StarterCard {
-        id: meta.id,
-        title: meta.display_name,
-        description: "Interactive simulation tool for mathematical exploration and analysis.",
-        category: meta.domain,
-        icon: "🔬",
-        domain: meta.domain,
-        tool_name: Some(meta.id),
-        preset_json: None,
-    }
-}
-
-fn append_missing_tool_fallbacks(
-    cards: &mut Vec<StarterCard>,
-    domain_filter: Option<&str>,
-    tools: &[&'static ToolMetadata],
-) {
-    let matching_tool_count = tools
-        .iter()
-        .filter(|m| domain_filter.is_none_or(|d| domains_match(m.domain, d)))
-        .count();
-    for &meta in tools {
-        if domain_filter.is_some_and(|d| !domains_match(meta.domain, d)) {
-            continue;
-        }
-        let has_card = cards.iter().any(|c| {
-            c.tool_name == Some(meta.id)
-                || c.tool_name == Some(meta.display_name)
-                || (c.tool_name.is_none()
-                    && domains_match(c.domain, meta.domain)
-                    && matching_tool_count == 1)
-        });
-        if !has_card {
-            cards.push(fallback_card_for_tool(meta));
-        }
-    }
-}
-
-/// Returns curated starter cards for `domain`, plus per-tool fallback cards for any tool in `available_tools` lacking a preset.
-pub fn get_starter_cards_for_domain(
-    domain: &str,
-    available_tools: &[&'static ToolMetadata],
-) -> Vec<StarterCard> {
-    let mut cards: Vec<StarterCard> = inventory::iter::<StarterPresetMetadata>
-        .into_iter()
-        .filter(|p| domains_match(p.domain, domain))
-        .map(preset_to_card)
-        .collect();
-
-    append_missing_tool_fallbacks(&mut cards, Some(domain), available_tools);
-    cards.sort_by_key(|c| (c.title, c.id));
-    cards
-}
-
-/// Returns all registered starter cards across every domain, generating per-tool fallback cards for any registered tool lacking a preset.
-pub fn get_all_starter_cards() -> Vec<StarterCard> {
-    let all_tools: Vec<&'static ToolMetadata> =
-        inventory::iter::<ToolMetadata>.into_iter().collect();
-    get_all_starter_cards_with_tools(&all_tools)
-}
-
-/// Returns all registered starter cards across domains plus per-tool fallback cards for `extra_tools`.
-pub fn get_all_starter_cards_with_tools(extra_tools: &[&'static ToolMetadata]) -> Vec<StarterCard> {
-    let mut cards: Vec<StarterCard> = inventory::iter::<StarterPresetMetadata>
-        .into_iter()
-        .map(preset_to_card)
-        .collect();
-    let mut tools: Vec<&'static ToolMetadata> =
-        inventory::iter::<ToolMetadata>.into_iter().collect();
-    for &extra in extra_tools {
-        if !tools
-            .iter()
-            .any(|t| t.id == extra.id && t.domain == extra.domain)
-        {
-            tools.push(extra);
-        }
-    }
-    append_missing_tool_fallbacks(&mut cards, None, &tools);
-    cards.sort_by_key(|c| (c.title, c.id));
-    cards
-}
-
+#[path = "starter_gallery/challenges.rs"]
+pub mod challenges;
 #[path = "starter_gallery/filter_ui.rs"]
 pub mod filter_ui;
-pub use filter_ui::{card_academic_domain, filter_starter_cards};
-
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
-pub use root_host::show_starter_gallery_overlay;
+pub use challenges::{
+    challenge_matches_domain, find_challenge_metadata, get_all_challenge_cards,
+    get_challenge_cards_for_domain, ChallengeCard, ChallengeMetadata, GallerySelection,
+};
+pub use filter_ui::{
+    card_academic_domain, filter_challenge_cards, filter_starter_cards, get_all_starter_cards,
+    get_all_starter_cards_with_tools, get_starter_cards_for_domain,
+};
 pub(crate) use root_host::{
     begin_root_starter_gallery_scope, flush_deferred_starter_galleries,
     is_root_starter_gallery_scope_active, try_defer_starter_gallery,
+};
+pub use root_host::{
+    show_starter_gallery_overlay, show_starter_gallery_with_challenges, StarterGalleryTab,
 };
 
 #[cfg(test)]

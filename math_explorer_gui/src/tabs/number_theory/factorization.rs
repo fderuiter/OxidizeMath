@@ -75,103 +75,151 @@ impl InteractiveTool for FactorizationTool {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Large Number Factorization and Primality Testing");
             ui.label("Enter an integer to test for primality and find its prime factors.");
             ui.add_space(10.0);
 
-            ui.horizontal(|ui| {
-                ui.label("Number:");
-                let response =
-                    ui.add(egui::TextEdit::singleline(&mut self.input_text).hint_text("e.g. 42"));
-                egui_plot::commands::CommandRegistryData::register(
+            self.render_input_row(ui);
+            self.render_chord_presets_row(ui);
+            ui.add_space(12.0);
+            self.render_results_and_sonification(ui);
+        });
+    }
+}
+
+impl FactorizationTool {
+    fn analyze_current_input(&mut self) {
+        self.results = Some(match self.input_text.trim().parse::<u64>() {
+            Ok(num) => factorize_bounded(num),
+            Err(_) => Err("Please enter a valid positive integer (max 64-bit).".to_string()),
+        });
+    }
+
+    fn render_input_row(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Number:");
+            let response =
+                ui.add(egui::TextEdit::singleline(&mut self.input_text).hint_text("e.g. 42"));
+            egui_plot::commands::CommandRegistryData::register(
+                ui.ctx(),
+                "Analyze Factorization",
+                "Analyze the number for primality and calculate its prime factors",
+                egui_plot::commands::CommandTrigger::Key(egui::Key::Enter),
+                false,
+                "Factorization Tool",
+            );
+            let dispatched = egui_plot::commands::CommandRegistryData::take_dispatched(
+                ui.ctx(),
+                "Analyze Factorization",
+                "Factorization Tool",
+            );
+            let enter_pressed =
+                response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if enter_pressed {
+                egui_plot::emit_plot_live_message(
                     ui.ctx(),
-                    "Analyze Factorization",
-                    "Analyze the number for primality and calculate its prime factors",
-                    egui_plot::commands::CommandTrigger::Key(egui::Key::Enter),
+                    "Action executed: Analyze Factorization".to_string(),
                     false,
-                    "Factorization Tool",
                 );
-                let dispatched = egui_plot::commands::CommandRegistryData::take_dispatched(
-                    ui.ctx(),
-                    "Analyze Factorization",
-                    "Factorization Tool",
-                );
-                let enter_pressed =
-                    response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if enter_pressed {
-                    egui_plot::emit_plot_live_message(
-                        ui.ctx(),
-                        "Action executed: Analyze Factorization".to_string(),
-                        false,
-                    );
-                }
+            }
+            if ui
+                .button("▶ Analyze")
+                .accessible_hover_text(
+                    "Analyze the number for primality and calculate its prime factors",
+                )
+                .clicked()
+                || enter_pressed
+                || dispatched
+            {
+                self.analyze_current_input();
+            }
+        });
+    }
 
+    fn render_chord_presets_row(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Just-Intonation Chords:");
+            for (label, n_str) in [
+                ("12 (2²×3)", "12"),
+                ("60 (2²×3×5)", "60"),
+                ("180 (2²×3²×5)", "180"),
+                ("210 (2×3×5×7)", "210"),
+            ] {
                 if ui
-                    .button("▶ Analyze")
-                    .accessible_hover_text(
-                        "Analyze the number for primality and calculate its prime factors",
-                    )
+                    .small_button(label)
+                    .accessible_hover_text(format!("Factorize {n_str} into a prime harmonic chord"))
                     .clicked()
-                    || enter_pressed
-                    || dispatched
                 {
-                    self.results = Some(match self.input_text.trim().parse::<u64>() {
-                        Ok(num) => factorize_bounded(num),
-                        Err(_) => {
-                            Err("Please enter a valid positive integer (max 64-bit).".to_string())
-                        }
-                    });
-                }
-            });
-
-            ui.add_space(15.0);
-
-            if let Some(ref res) = self.results {
-                match res {
-                    Ok((num, prime_check, factors)) => {
-                        ui.group(|ui| {
-                            ui.label(egui::RichText::new(format!("Analysis for {}", num)).strong());
-                            ui.add_space(5.0);
-
-                            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-                            ui.horizontal(|ui| {
-                                ui.label("Is Prime:");
-                                if *prime_check {
-                                    ui.label(egui::RichText::new("Yes").color(palette.success));
-                                } else {
-                                    ui.label(egui::RichText::new("No").color(palette.error));
-                                }
-                            });
-
-                            ui.add_space(5.0);
-                            ui.label("Prime Factors:");
-                            if factors.is_empty() {
-                                ui.label("None (less than 2)");
-                            } else {
-                                let mut factor_strings = Vec::new();
-                                for (p, e) in factors {
-                                    if *e == 1 {
-                                        factor_strings.push(format!("{}", p));
-                                    } else {
-                                        factor_strings.push(format!("{}^{}", p, e));
-                                    }
-                                }
-                                ui.label(factor_strings.join(" × "));
-                            }
-                        });
-                    }
-                    Err(err_msg) => {
-                        let err_color =
-                            crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
-                        ui.label(egui::RichText::new(err_msg).color(err_color));
-                    }
+                    self.input_text = n_str.to_string();
+                    self.analyze_current_input();
                 }
             }
         });
     }
+
+    fn render_results_and_sonification(&mut self, ui: &mut egui::Ui) {
+        let mut chord_frame = crate::audio::SonificationFrame::silent();
+        if let Some(ref res) = self.results {
+            match res {
+                Ok((num, prime_check, factors)) => {
+                    chord_frame = crate::audio::mappings::prime_chord_frame(
+                        factors,
+                        crate::audio::WaveformPreset::JustHarmonic,
+                    );
+                    render_factorization_summary(ui, *num, *prime_check, factors);
+                }
+                Err(err_msg) => {
+                    let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
+                    ui.label(egui::RichText::new(err_msg).color(err_color));
+                }
+            }
+            ui.add_space(10.0);
+        }
+        crate::audio::render_sonification_panel(ui, "factorization", &chord_frame, false);
+    }
+}
+
+fn render_factorization_summary(
+    ui: &mut egui::Ui,
+    num: u64,
+    prime_check: bool,
+    factors: &[(u64, u32)],
+) {
+    ui.group(|ui| {
+        ui.label(egui::RichText::new(format!("Analysis for {num}")).strong());
+        ui.add_space(5.0);
+
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        ui.horizontal(|ui| {
+            ui.label("Is Prime:");
+            if prime_check {
+                ui.label(egui::RichText::new("Yes").color(palette.success));
+            } else {
+                ui.label(egui::RichText::new("No").color(palette.error));
+            }
+        });
+
+        ui.add_space(5.0);
+        ui.label("Prime Factors & Just-Intonation Ratios:");
+        if factors.is_empty() {
+            ui.label("None (less than 2)");
+        } else {
+            let parts: Vec<String> = factors
+                .iter()
+                .map(|&(p, e)| {
+                    let ratio = crate::audio::mappings::just_intonation_ratio(p);
+                    if e == 1 {
+                        format!("{p} ({ratio:.3}×)")
+                    } else {
+                        format!("{p}^{e} ({ratio:.3}×)")
+                    }
+                })
+                .collect();
+            ui.label(parts.join(" × "));
+        }
+    });
 }
 
 // [cite:algorithmic_information_rust]

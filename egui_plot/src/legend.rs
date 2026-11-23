@@ -436,12 +436,18 @@ fn render_legend_frame_contents(
     if let Some(focus_on_item) = focus_on_item {
         handle_focus_on_legend_item(ui.ctx(), &focus_on_item, entries);
     }
-    response_union.context_menu(|ui| {
-        if ui.button("Import CSV").clicked() {
-            crate::export::trigger_import_csv_for_plot(ui.ctx(), target_plot_id);
-            ui.close();
-        }
+    let allow_csv = ui.ctx().data(|d| {
+        d.get_temp::<bool>(target_plot_id.with("allow_csv_import"))
+            .unwrap_or(true)
     });
+    if allow_csv {
+        response_union.context_menu(|ui| {
+            if ui.button("Import CSV").clicked() {
+                crate::export::trigger_import_csv_for_plot(ui.ctx(), target_plot_id);
+                ui.close();
+            }
+        });
+    }
     response_union
 }
 

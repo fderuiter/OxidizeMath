@@ -2,13 +2,15 @@
 
 #[path = "curvature_heatmap/cache.rs"]
 mod cache;
+#[path = "curvature_export.rs"]
+mod curvature_export;
 #[path = "curvature_heatmap/presets.rs"]
 mod presets;
 #[path = "curvature_heatmap_ui.rs"]
 mod ui;
 
 use super::custom_surface::{CustomSurfaceSandbox, SurfaceType};
-use crate::framework::{Camera3D, InteractiveTool, Scene3DBuilder};
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
 use std::collections::BTreeMap;
 
@@ -115,6 +117,40 @@ impl CurvatureHeatmap {
     }
 }
 
+fn validate_curvature_radii_and_res(loaded: &CurvatureHeatmapState) -> Result<(), String> {
+    if !loaded.sphere_radius.is_finite() || !(0.1..=5.0).contains(&loaded.sphere_radius) {
+        return Err(format!(
+            "sphere_radius out of range: {}",
+            loaded.sphere_radius
+        ));
+    }
+    if !loaded.torus_major_radius.is_finite() || !(1.0..=5.0).contains(&loaded.torus_major_radius) {
+        return Err(format!(
+            "torus_major_radius out of range: {}",
+            loaded.torus_major_radius
+        ));
+    }
+    if !loaded.torus_minor_radius.is_finite() || !(0.1..=2.0).contains(&loaded.torus_minor_radius) {
+        return Err(format!(
+            "torus_minor_radius out of range: {}",
+            loaded.torus_minor_radius
+        ));
+    }
+    if !loaded.klein_radius.is_finite() || !(0.5..=5.0).contains(&loaded.klein_radius) {
+        return Err(format!(
+            "klein_radius out of range: {}",
+            loaded.klein_radius
+        ));
+    }
+    let max_res = math_commons::registry::MAX_GRID_SIZE;
+    if !(10..=max_res).contains(&loaded.u_resolution)
+        || !(10..=max_res).contains(&loaded.v_resolution)
+    {
+        return Err("Resolution out of valid range".to_string());
+    }
+    Ok(())
+}
+
 impl InteractiveTool for CurvatureHeatmap {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -126,6 +162,18 @@ impl InteractiveTool for CurvatureHeatmap {
 
     fn domain(&self) -> &'static str {
         "geometry_topology"
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        Some(self.build_colored_mesh_3d())
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        Some(self.build_colored_mesh_3d().map(|cm| cm.mesh))
     }
 
     fn state_revision(&self) -> u64 {
@@ -178,13 +226,7 @@ impl InteractiveTool for CurvatureHeatmap {
         self.state_bounds().validate_json(state)?;
         let loaded: CurvatureHeatmapState =
             serde_json::from_str(state).map_err(|e| format!("Invalid curvature state: {e}"))?;
-        validate_curvature_radii(&loaded)?;
-        let max_schema = math_commons::registry::MAX_GRID_SIZE;
-        if !(10..=max_schema).contains(&loaded.u_resolution)
-            || !(10..=max_schema).contains(&loaded.v_resolution)
-        {
-            return Err("Resolution out of valid range".to_string());
-        }
+        validate_curvature_radii_and_res(&loaded)?;
         let camera = Camera3D::from_preset_fields(
             loaded.camera,
             loaded.pitch,
@@ -229,34 +271,6 @@ impl InteractiveTool for CurvatureHeatmap {
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
-}
-
-fn validate_curvature_radii(loaded: &CurvatureHeatmapState) -> Result<(), String> {
-    if !loaded.sphere_radius.is_finite() || !(0.1..=5.0).contains(&loaded.sphere_radius) {
-        return Err(format!(
-            "sphere_radius out of range: {}",
-            loaded.sphere_radius
-        ));
-    }
-    if !loaded.torus_major_radius.is_finite() || !(1.0..=5.0).contains(&loaded.torus_major_radius) {
-        return Err(format!(
-            "torus_major_radius out of range: {}",
-            loaded.torus_major_radius
-        ));
-    }
-    if !loaded.torus_minor_radius.is_finite() || !(0.1..=2.0).contains(&loaded.torus_minor_radius) {
-        return Err(format!(
-            "torus_minor_radius out of range: {}",
-            loaded.torus_minor_radius
-        ));
-    }
-    if !loaded.klein_radius.is_finite() || !(0.5..=5.0).contains(&loaded.klein_radius) {
-        return Err(format!(
-            "klein_radius out of range: {}",
-            loaded.klein_radius
-        ));
-    }
-    Ok(())
 }
 
 // [cite:graph_parameters_rust]

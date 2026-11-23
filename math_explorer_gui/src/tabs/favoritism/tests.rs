@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
-use eframe::egui;
+use eframe::egui::{self, CentralPanel, Frame};
 
 fn active_favoritism_state(tab: &FavoritismTab) -> FavoritismToolState {
     let json = tab
@@ -98,7 +98,11 @@ fn test_favoritism_single_tool_hides_framework_sidebar_and_exports_data_and_png(
             screen_rect: Some(screen_rect),
             ..Default::default()
         },
-        |ctx| tab.show(ctx, &mut frame),
+        |ctx| {
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        },
     );
 
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
@@ -120,7 +124,9 @@ fn test_favoritism_single_tool_hides_framework_sidebar_and_exports_data_and_png(
             },
             |ctx| {
                 tab.framework.queue_export(fmt);
-                tab.show(ctx, &mut frame);
+                CentralPanel::default()
+                    .frame(Frame::NONE)
+                    .show(ctx, |ui| tab.show_inside(ui, &mut frame));
             },
         );
         assert_eq!(
@@ -146,7 +152,11 @@ fn click_button_by_label(ctx: &egui::Context, tab: &mut FavoritismTab, label_sub
             screen_rect: Some(screen_rect),
             ..Default::default()
         },
-        |ctx| tab.show(ctx, &mut frame),
+        |ctx| {
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        },
     );
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
     let bounds = ak
@@ -179,7 +189,11 @@ fn click_button_by_label(ctx: &egui::Context, tab: &mut FavoritismTab, label_sub
             ],
             ..Default::default()
         },
-        |ctx| tab.show(ctx, &mut frame),
+        |ctx| {
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        },
     );
 }
 
@@ -235,7 +249,11 @@ fn test_favoritism_reset_live_region_theory_and_preset_io() {
     click_button_by_label(&ctx, &mut tab, "Theory");
     assert!(tab.framework.show_theory_portal);
     let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+    });
     assert!(
         scientific_metadata::citation_registry::CitationRegistry::get("Favoritism")
             .is_some_and(|c| c.contains("Unified Favoritism Theory"))

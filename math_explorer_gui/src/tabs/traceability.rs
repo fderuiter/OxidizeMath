@@ -13,7 +13,9 @@ mod web_snapshot;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use scanner::execute_workspace_scan;
+pub(crate) use web_snapshot::embedded_traceability_report;
 use web_snapshot::PaperStatus;
+pub use web_snapshot::{paper_tex_url, render_paper_links};
 
 pub struct TraceabilityTab {
     papers: HashMap<String, PaperStatus>,

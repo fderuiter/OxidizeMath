@@ -232,6 +232,49 @@ impl CommandRegistryData {
         triggered
     }
 
+    /// Registers `Ctrl+Shift+I` (`Import CSV`) and `Ctrl+V` (`Paste CSV / TSV`) in `CMD_REGISTRY`.
+    pub fn register_csv_import_commands(ctx: &Context) {
+        Self::register(
+            ctx,
+            "Import CSV",
+            "Import a CSV or TSV file as a 2D plot overlay",
+            CommandTrigger::Shortcut(Modifiers::COMMAND | Modifiers::SHIFT, Key::I),
+            false,
+            "Plot Data",
+        );
+        Self::register(
+            ctx,
+            "Paste CSV / TSV",
+            "Paste spreadsheet or delimited rows from clipboard onto focused plot",
+            CommandTrigger::Shortcut(Modifiers::COMMAND, Key::V),
+            false,
+            "Plot Data",
+        );
+    }
+
+    /// Checks and consumes `Ctrl+Shift+I` / `Cmd+Shift+I` to trigger CSV file import.
+    pub fn check_import_csv_shortcut(ctx: &Context, ui: &Ui) -> bool {
+        let cmd_shift = Self::register_and_check(
+            ctx,
+            "Import CSV",
+            "Import a CSV or TSV file as a 2D plot overlay",
+            CommandTrigger::Shortcut(Modifiers::COMMAND | Modifiers::SHIFT, Key::I),
+            false,
+            "Plot Data",
+            Some(ui),
+            None,
+        );
+        if cmd_shift {
+            return true;
+        }
+        let ctrl_shift = egui::KeyboardShortcut::new(Modifiers::CTRL | Modifiers::SHIFT, Key::I);
+        if ui.input_mut(|i| i.consume_shortcut(&ctrl_shift)) {
+            crate::emit_plot_live_message(ctx, "Action executed: Import CSV".to_owned(), false);
+            return true;
+        }
+        false
+    }
+
     /// Registers `Alt+ArrowRight` and `Alt+ArrowLeft` critical point commands in `CMD_REGISTRY`.
     pub fn register_poi_navigation(ctx: &Context) {
         Self::register(

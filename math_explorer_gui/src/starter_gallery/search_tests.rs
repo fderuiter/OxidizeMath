@@ -91,4 +91,17 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
 
     let disjoint = filter_starter_cards(&all_cards, "turing", Some(AcademicDomain::Climate));
     assert!(disjoint.is_empty());
+
+    let all_challenges = get_all_challenge_cards();
+    assert!(all_challenges.len() >= 5);
+    let physics_challenges =
+        filter_challenge_cards(&all_challenges, "", Some(AcademicDomain::Physics));
+    assert!(!physics_challenges.is_empty());
+    assert!(physics_challenges
+        .iter()
+        .all(|c| card_academic_domain(c.domain) == AcademicDomain::Physics));
+    let bloch = filter_challenge_cards(&all_challenges, "bloch", Some(AcademicDomain::Physics));
+    assert!(bloch.iter().any(|c| c.id.contains("bloch")));
+    let no_ai_challenges = filter_challenge_cards(&all_challenges, "", Some(AcademicDomain::Ai));
+    assert!(no_ai_challenges.is_empty());
 }

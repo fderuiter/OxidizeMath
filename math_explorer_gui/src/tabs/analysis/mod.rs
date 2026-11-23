@@ -3,6 +3,7 @@
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+pub mod chladni_wave_tank;
 pub mod complex_mapping;
 pub mod ode;
 pub mod riemann;

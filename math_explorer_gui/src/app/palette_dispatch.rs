@@ -5,7 +5,7 @@
 use super::{MathExplorerApp, ThemeMode, ViewportLayout};
 use crate::command_palette::{PaletteAction, PaletteSelection};
 use crate::framework::ExportFormat;
-use crate::starter_gallery::StarterCard;
+use crate::starter_gallery::{ChallengeCard, GallerySelection, StarterCard};
 use eframe::egui;
 
 impl MathExplorerApp {
@@ -26,38 +26,86 @@ impl MathExplorerApp {
             return;
         }
         let cards = crate::starter_gallery::get_all_starter_cards();
-        let selected = crate::starter_gallery::show_starter_gallery_overlay(
+        let challenges = crate::starter_gallery::get_all_challenge_cards();
+        let selected = crate::starter_gallery::show_starter_gallery_with_challenges(
             ctx,
             "global_workspace",
             &cards,
+            &challenges,
             &mut self.show_starter_gallery,
         );
-        if let Some(card) = selected {
+        if let Some(selection) = selected {
             self.show_starter_gallery = false;
             let pane = self.active_focused_pane();
-            self.launch_starter_card_in_pane(ctx, pane, card);
+            self.launch_gallery_selection_in_pane(ctx, pane, selection);
         }
     }
 
-    /// Routes a root-hoisted per-pane `StarterGallery` outcome, switching tabs if a cross-domain card was chosen.
-    pub(crate) fn apply_deferred_starter_gallery_outcome(
+    /// Routes a root-hoisted per-pane `StarterGallery` selection, switching tabs if a cross-domain card or challenge was chosen.
+    pub(crate) fn apply_deferred_starter_gallery_selection(
         &mut self,
         ctx: &egui::Context,
         pane_idx: usize,
         id_source: &str,
         is_open: bool,
-        selected: Option<StarterCard>,
+        selected: Option<GallerySelection>,
     ) {
-        let Some(card) = selected else {
+        let Some(selection) = selected else {
             if let Some(tab) = self.pane_tab_mut(pane_idx) {
-                tab.apply_starter_gallery_outcome(ctx, id_source, is_open, None);
+                tab.apply_starter_gallery_selection(ctx, id_source, is_open, None);
             }
             return;
         };
         if let Some(tab) = self.pane_tab_mut(pane_idx) {
-            tab.apply_starter_gallery_outcome(ctx, id_source, false, None);
+            tab.apply_starter_gallery_selection(ctx, id_source, false, None);
         }
-        self.launch_starter_card_in_pane(ctx, pane_idx, card);
+        self.launch_gallery_selection_in_pane(ctx, pane_idx, selection);
+    }
+
+    fn launch_gallery_selection_in_pane(
+        &mut self,
+        ctx: &egui::Context,
+        pane_idx: usize,
+        selection: GallerySelection,
+    ) {
+        match selection {
+            GallerySelection::Starter(card) => {
+                self.launch_starter_card_in_pane(ctx, pane_idx, card)
+            }
+            GallerySelection::Challenge(ch) => {
+                self.launch_challenge_card_in_pane(ctx, pane_idx, ch)
+            }
+        }
+    }
+
+    fn launch_challenge_card_in_pane(
+        &mut self,
+        ctx: &egui::Context,
+        pane_idx: usize,
+        ch: ChallengeCard,
+    ) {
+        if self.tabs.is_empty() {
+            return;
+        }
+        let target_tab = crate::command_palette::resolve_domain_tab_index(&self.tabs, ch.domain);
+        let cur_tab = if pane_idx == 0 {
+            self.active_primary_tab_index()
+        } else {
+            self.pane_tabs.get(pane_idx).copied().unwrap_or(0)
+        };
+        if cur_tab != target_tab {
+            self.select_pane_tab(ctx, pane_idx, target_tab);
+        }
+        if let Some(tab) = self.pane_tab_mut(pane_idx) {
+            let slug = tab.url_slug();
+            tab.apply_starter_gallery_selection(
+                ctx,
+                slug,
+                false,
+                Some(GallerySelection::Challenge(ch)),
+            );
+        }
+        self.clear_active_pane_caches();
     }
 
     /// Switches `pane_idx` to the domain tab owning `card` and applies its tool and preset configuration.
@@ -297,12 +345,11 @@ impl MathExplorerApp {
             }
             A::PlotFitQuadratic => dispatch_plot_ui_action(
                 ctx,
-                DispatchedPlotUiAction::SetFit(Some(FitType::Polynomial(2))),
+                DispatchedPlotUiAction::SetFit(Some(FitType::Quadratic)),
             ),
-            A::PlotFitCubic => dispatch_plot_ui_action(
-                ctx,
-                DispatchedPlotUiAction::SetFit(Some(FitType::Polynomial(3))),
-            ),
+            A::PlotFitCubic => {
+                dispatch_plot_ui_action(ctx, DispatchedPlotUiAction::SetFit(Some(FitType::Cubic)))
+            }
             A::PlotFitExponential => dispatch_plot_ui_action(
                 ctx,
                 DispatchedPlotUiAction::SetFit(Some(FitType::Exponential)),

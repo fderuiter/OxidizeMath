@@ -12,13 +12,13 @@ Simulation models implement standardized time-stepping interfaces and energy con
 
 - **`chaos`**: Deterministic chaotic systems, including the Lorenz attractor, double pendulum, and Lyapunov exponent analyzers.
 - **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, and Schrödinger wave equation solvers.
-- **`astrophysics`**: N-body gravitational simulations, Keplerian orbital mechanics, and stellar structure models.
+- **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), and zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`).
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
 - **`stat_mech`**: Ising spin lattices and canonical ensemble thermodynamic calculations.
-- **`optics`**: Geometric ray tracing, refractive boundary equations, and wave diffraction.
+- **`optics`**: Geometric ray tracing, refractive boundary equations, and closed-form Fraunhofer wave diffraction (complemented by full-field 2D time-domain multi-slit and refractive-lens wave tank simulation in `pure_math::analysis::pde::wave_2d`).
 
 ---
 
@@ -47,6 +47,40 @@ lorenz.step(0.01);
 
 let updated_vec = lorenz.state.vec;
 assert!(updated_vec.x != 10.0 || updated_vec.y != 10.0);
+```
+
+### Decomposing Dwarf-Galaxy Rotation Curves and Symplectic Disk Orbits
+
+Evaluate Tillaboev (2025) scaling regressions, compare cored (`BurkertCore`) and cuspy (`NfwCusp`) dark-matter halos against Keplerian falloff, and advance zero-allocation leapfrog orbits:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::astrophysics::{
+    GalacticDiskSystem, HaloProfile, Mpc, OrbitPopulationConfig, TypeCode10,
+    baryons_from_distance, decompose_rotation_curve,
+};
+
+let baryons = baryons_from_distance(&TypeCode10, Mpc(12.0), 0.6, 0.8);
+let keplerian = decompose_rotation_curve(8.0, &baryons, &HaloProfile::BaryonicOnly);
+let burkert = HaloProfile::BurkertCore {
+    virial_mass_solar: 1.0e10,
+    core_radius_kpc: 2.2,
+    concentration: 12.0,
+};
+let dark_halo = decompose_rotation_curve(8.0, &baryons, &burkert);
+assert!(dark_halo.v_circ_kms > keplerian.v_circ_kms);
+
+let mut disk = GalacticDiskSystem::from_galaxy_model(
+    &TypeCode10,
+    Mpc(12.0),
+    0.6,
+    0.8,
+    burkert,
+    OrbitPopulationConfig::default(),
+);
+disk.step_n_leapfrog(2.0, 20);
+assert!(disk.relative_energy_drift() < 1.0e-3);
+assert!(disk.relative_angular_momentum_drift() < 1.0e-11);
 ```
 
 ---
