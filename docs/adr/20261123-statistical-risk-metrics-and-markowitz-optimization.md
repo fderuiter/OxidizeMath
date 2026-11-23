@@ -1,7 +1,7 @@
-# ADR 0047: Zero-Allocation Statistical Risk Metrics, Active-Set Markowitz Optimization, and Financial Math Workbenches
+# ADR 20261123: Zero-Allocation Statistical Risk Metrics, Active-Set Markowitz Optimization, and Financial Math Workbenches
 
 ## Status
-Accepted (extends [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
+Accepted (extends [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 20261123](20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
 
 ## Context
 `FinancialMathTab` ([`math_explorer_gui/src/tabs/financial_math/mod.rs`](../../math_explorer_gui/src/tabs/financial_math/mod.rs)) previously exposed single-asset Kelly capital sizing (`BetSizeCalculatorTool`), binary compounding (`BankrollGrowthTool`), and Parrondo games (`ParrondoParadoxTool`) without coherent tail-risk quantiles (`VaR` / `CVaR`), underwater drawdown recovery diagnostics, risk-adjusted performance ratios (`Sharpe`, `Sortino`, `Calmar`), or multi-asset mean-variance portfolio optimization. In addition, `BetSizeCalculatorTool` disabled dataset and figure exports, and `BankrollEnsembleLab` plotted only analytical mean and asymptotic median curves without empirical percentile fan bands or terminal downside tail loss.
@@ -15,7 +15,7 @@ Accepted (extends [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md)
    - Provide analytical Merton two-fund Lagrangian solvers (`unconstrained_min_variance`, `unconstrained_target_return`, `unconstrained_tangency`, `unconstrained_frontier_in_place`) alongside primal-dual active-set quadratic-programming solvers (`long_only_*` and upper-bounded `constrained_*`) for global minimum-variance (`GMV`), efficient frontiers, and maximum-Sharpe tangency allocations with zero heap allocations under `VerifiedAllocator`.
    - Re-export `RiskError` and `PortfolioError` (`Copy`, zero-allocation error enums) through `pure_math`, `domain_applied`, and `math_explorer::error::MathExplorerError`.
 3. **Upgraded & New `FinancialMathTab` Workbenches (`math_explorer_gui`)**:
-   - Gate [`math_explorer_gui/src/tabs/financial_math/mod.rs`](../../math_explorer_gui/src/tabs/financial_math/mod.rs) under `// @explorer_feature = "applied"` (which transitively enables `pure_math`).
+   - Gate [`math_explorer_gui/src/tabs/financial_math/mod.rs`](../../math_explorer_gui/src/tabs/financial_math/mod.rs) under `// @explorer_feature = "pure_math"` (`// @explorer_order = 24`) with `markowitz` gated under `#[cfg(feature = "applied")]`.
    - Split and upgrade [`bankroll_ensemble`](../../math_explorer_gui/src/tabs/financial_math/bankroll_ensemble/mod.rs), [`bankroll_growth`](../../math_explorer_gui/src/tabs/financial_math/bankroll_growth/mod.rs), and [`bet_size`](../../math_explorer_gui/src/tabs/financial_math/bet_size/mod.rs) with 5th–95th and 25th–75th percentile polygon fan bands, underwater curves, terminal 95% `VaR` / `CVaR` callouts, logarithmic growth curve $g(f)$, and `ExportCapabilities::plot()`.
    - Register [`TailRiskDrawdownTool`](../../math_explorer_gui/src/tabs/financial_math/tail_risk/mod.rs) and [`MarkowitzFrontierTool`](../../math_explorer_gui/src/tabs/financial_math/markowitz/mod.rs) with `StarterPresetMetadata` cards, strict `#[serde(deny_unknown_fields)]` URL state, `SemanticPalette` theming, `PlatformInstant::now()`, `AccessKit` canvas descriptors, and CSV/JSON/PNG/SVG exports.
 

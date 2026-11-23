@@ -59,26 +59,35 @@ impl BetSizeCalculatorTool {
         self.fractional_numerator = s.fractional_numerator;
         self.fractional_denominator = s.fractional_denominator;
         self.bankroll = s.bankroll;
-        self.recompute_curve();
+        self.recalculate();
         Ok(())
     }
 }
 
 impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
     fn theory_description(&self) -> String {
+        let net_b = self
+            .active_odds()
+            .map(|o| o.net_profit_multiplier())
+            .unwrap_or(self.decimal_odds - 1.0);
         format!(
-            "Kelly criterion optimal capital fraction: $f^* = \\frac{{b p - q}}{{b}}$ maximizing logarithmic growth $g(f) = p \\ln(1 + b f) + q \\ln(1 - f)$ at probability $p = {:.1}\\%$ and decimal payoff $d = {:.2}$.",
-            self.probability_input, self.decimal_odds
+            "Kelly criterion optimal wagering fraction $f^* = \\frac{{b p - q}}{{b}}$ and logarithmic growth rate $g(f) = p \\ln(1 + b f) + q \\ln(1 - f)$ where $p = {:.1}\\%$, $q = 1 - p$, and net odds $b = {:.2}$.",
+            self.probability_input, net_b
         )
     }
     fn phonetic_description(&self) -> String {
-        "Kelly criterion optimal capital sizing and logarithmic growth curve".into()
+        "Kelly criterion optimal bet sizing and expected logarithmic growth rate theory".into()
     }
     fn theory_citation(&self) -> String {
         "A New Interpretation of Information Rate (Kelly, 1956)".into()
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
+        let mut map = std::collections::HashMap::new();
+        map.insert(
+            "Expected Growth Rate g(f)".into(),
+            "Asymptotic logarithmic wealth growth per wager across stake fraction f".into(),
+        );
+        map
     }
 }
 

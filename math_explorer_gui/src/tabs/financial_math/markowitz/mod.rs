@@ -234,6 +234,13 @@ impl InteractiveTool for MarkowitzFrontierTool {
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
+    fn has_finite_parameters(&self) -> bool {
+        self.risk_free_rate.is_finite()
+            && self.max_asset_weight.is_finite()
+            && self.expected_returns.iter().all(|v| v.is_finite())
+            && self.volatilities.iter().all(|v| v.is_finite())
+            && self.upper_correlations.iter().all(|v| v.is_finite())
+    }
     fn observables(&self) -> Vec<(&'static str, f64)> {
         self.collect_observables()
     }

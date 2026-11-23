@@ -218,6 +218,14 @@ impl InteractiveTool for TailRiskDrawdownTool {
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
+    fn has_finite_parameters(&self) -> bool {
+        self.annual_volatility.is_finite()
+            && self.annual_drift.is_finite()
+            && self.tail_shock_prob.is_finite()
+            && self.tail_shock_scale.is_finite()
+            && self.confidence_level.is_finite()
+            && self.risk_free_rate.is_finite()
+    }
     fn observables(&self) -> Vec<(&'static str, f64)> {
         self.collect_observables()
     }

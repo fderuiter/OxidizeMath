@@ -5,7 +5,8 @@
 use super::super::bankroll_ensemble::BankrollLabMode;
 use super::{is_default_stake_multiplier, BankrollGrowthTool};
 use crate::accessibility::{
-    paint_canvas_focus_ring, register_canvas_accessibility, AccessibleHoverText,
+    announce_live_status, paint_canvas_focus_ring, register_canvas_accessibility,
+    AccessibleHoverText,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -19,7 +20,7 @@ fn to_pairs(pts: &[PlotPoint]) -> Vec<[f64; 2]> {
 fn polyline(name: &str, pts: &[PlotPoint], color: egui::Color32, width: f32) -> ExportPrimitive {
     ExportPrimitive::Polyline {
         name: name.to_string(),
-        points: to_pairs(pts),
+        points: to_pairs(pts).into(),
         color,
         stroke_width: width,
         closed: false,
@@ -120,6 +121,7 @@ impl BankrollGrowthTool {
                 .clicked()
             {
                 self.rerun_simulation();
+                announce_live_status(ui.ctx(), "Recomputed Kelly bankroll growth paths");
                 *changed = false;
             }
             if ui
@@ -130,6 +132,7 @@ impl BankrollGrowthTool {
                 .clicked()
             {
                 self.reset_defaults();
+                announce_live_status(ui.ctx(), "Reset bankroll growth parameters to defaults");
                 *changed = false;
             }
             ui.small(format!(

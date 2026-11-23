@@ -238,13 +238,13 @@ fn solve_risk_tolerance(
 ) -> Result<([f64; MAX_PORTFOLIO_ASSETS], f64), PortfolioError> {
     let n = spec.asset_count;
     let mut c = [0.0_f64; MAX_PORTFOLIO_ASSETS];
-    for i in 0..n {
-        c[i] = -gamma * spec.expected_returns[i];
+    for (ci, &ret_i) in c[..n].iter_mut().zip(&spec.expected_returns[..n]) {
+        *ci = -gamma * ret_i;
     }
     let w = solve_box_simplex_qp(spec, &c, ub)?;
     let mut ret = 0.0_f64;
-    for i in 0..n {
-        ret += w[i] * spec.expected_returns[i];
+    for (&wi, &ret_i) in w[..n].iter().zip(&spec.expected_returns[..n]) {
+        ret += wi * ret_i;
     }
     Ok((w, ret))
 }

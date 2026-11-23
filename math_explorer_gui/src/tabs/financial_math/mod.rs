@@ -1,10 +1,13 @@
-// @explorer_feature = "applied"
+// @explorer_feature = "pure_math"
+// @explorer_order = 24
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod bankroll_ensemble;
 pub mod bankroll_growth;
 pub mod bet_size;
+pub mod correlated_risk;
+#[cfg(feature = "applied")]
 pub mod markowitz;
 pub mod parrondo;
 pub mod tail_risk;

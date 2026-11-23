@@ -132,6 +132,15 @@ impl BankrollGrowthTool {
         self.recalculate();
     }
 
+    /// Evaluates one Full-Kelly wager outcome from `bankroll` using the tool's active `(probability, odds)`.
+    #[cfg(test)]
+    pub fn evaluate_full_kelly_bet(&self, bankroll: f64, win: bool) -> Result<f64, String> {
+        let p = UnitInterval::new(self.probability).map_err(|e| format!("Error: {e}"))?;
+        let o = Odds::from_net_odds(self.odds).map_err(|e| format!("Error: {e}"))?;
+        let fk = kelly_fraction(&p, &o).map_err(|e| format!("Error: {e}"))?;
+        Ok(settle_bet(bankroll, &fk, o.net_profit_multiplier(), win))
+    }
+
     fn clear_trajectories(&mut self) {
         self.full_kelly_points.clear();
         self.half_kelly_points.clear();
@@ -228,6 +237,12 @@ impl InteractiveTool for BankrollGrowthTool {
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
+    fn has_finite_parameters(&self) -> bool {
+        self.initial_bankroll.is_finite()
+            && self.probability.is_finite()
+            && self.odds.is_finite()
+            && self.stake_multiplier.is_finite()
+    }
 
     fn observables(&self) -> Vec<(&'static str, f64)> {
         if self.error_msg.is_some() {
@@ -283,7 +298,7 @@ inventory::submit! {
         id: "BankrollGrowthTool",
         display_name: "Bankroll Growth",
         domain: "financial_math",
-        tags: &[],
+        tags: &["kelly", "kelly criterion", "compounding", "wealth", "drawdown"],
         build: || Box::new(BankrollGrowthTool::default()),
     }
 }

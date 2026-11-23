@@ -3,12 +3,12 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-#[cfg(any(feature = "applied", feature = "physics"))]
+#[cfg(any(feature = "pure_math", feature = "applied", feature = "physics"))]
 use super::{GoalChallengeMetadata, PresetStoryMetadata, StoryStep};
-#[cfg(any(feature = "applied", feature = "physics"))]
+#[cfg(any(feature = "pure_math", feature = "applied", feature = "physics"))]
 use crate::framework::CalloutSpec;
 
-#[cfg(any(feature = "applied", feature = "physics"))]
+#[cfg(any(feature = "pure_math", feature = "applied", feature = "physics"))]
 const fn pin(
     tag: &'static str,
     target_point: [f64; 2],
@@ -23,7 +23,7 @@ const fn pin(
     }
 }
 
-#[cfg(feature = "applied")]
+#[cfg(feature = "pure_math")]
 mod kelly_packs {
     use super::*;
 

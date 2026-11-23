@@ -320,7 +320,7 @@ impl TailRiskDrawdownTool {
             if pts.len() >= 2 {
                 prims.push(ExportPrimitive::Polyline {
                     name: name.to_string(),
-                    points: to_pairs(pts),
+                    points: to_pairs(pts).into(),
                     color,
                     stroke_width: 2.0,
                     closed: false,

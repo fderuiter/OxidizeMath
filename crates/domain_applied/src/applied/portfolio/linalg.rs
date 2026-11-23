@@ -19,8 +19,9 @@ pub(crate) fn cholesky_16(
     for i in 0..n {
         for j in 0..=i {
             let mut sum = cov[i][j];
-            for k in 0..j {
-                sum -= l[i][k] * l[j][k];
+            let (row_i, row_j) = (l[i], l[j]);
+            for (&lik, &ljk) in row_i[..j].iter().zip(&row_j[..j]) {
+                sum -= lik * ljk;
             }
             if i == j {
                 if !sum.is_finite() || sum <= diag_tol {
@@ -72,8 +73,8 @@ pub(crate) fn build_allocation(
         let wi = weights[i];
         exp_ret += wi * spec.expected_returns[i];
         let mut row_dot = 0.0_f64;
-        for j in 0..n {
-            row_dot += spec.covariance[i][j] * weights[j];
+        for (&cov_ij, &wj) in spec.covariance[i][..n].iter().zip(&weights[..n]) {
+            row_dot += cov_ij * wj;
         }
         var += wi * row_dot;
     }

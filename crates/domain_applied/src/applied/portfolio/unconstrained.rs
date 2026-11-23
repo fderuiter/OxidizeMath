@@ -53,8 +53,11 @@ pub fn unconstrained_min_variance(
         return Err(PortfolioError::NotPositiveDefinite);
     }
     let mut weights = [0.0_f64; MAX_PORTFOLIO_ASSETS];
-    for i in 0..spec.asset_count {
-        weights[i] = inv.inv_ones[i] / inv.c;
+    for (wi, &one_i) in weights[..spec.asset_count]
+        .iter_mut()
+        .zip(&inv.inv_ones[..spec.asset_count])
+    {
+        *wi = one_i / inv.c;
     }
     Ok(build_allocation(spec, &weights, risk_free_rate))
 }
@@ -84,8 +87,12 @@ pub fn unconstrained_target_return(
     let lambda_mu = (inv.c * target_return - inv.a) / inv.discriminant;
     let lambda_one = (inv.b - inv.a * target_return) / inv.discriminant;
     let mut weights = [0.0_f64; MAX_PORTFOLIO_ASSETS];
-    for i in 0..spec.asset_count {
-        weights[i] = lambda_mu * inv.inv_mu[i] + lambda_one * inv.inv_ones[i];
+    for ((wi, &mu_i), &one_i) in weights[..spec.asset_count]
+        .iter_mut()
+        .zip(&inv.inv_mu[..spec.asset_count])
+        .zip(&inv.inv_ones[..spec.asset_count])
+    {
+        *wi = lambda_mu * mu_i + lambda_one * one_i;
     }
     Ok(build_allocation(spec, &weights, risk_free_rate))
 }
@@ -107,9 +114,13 @@ pub fn unconstrained_tangency(
         return Err(PortfolioError::NoExcessReturnTangency);
     }
     let mut weights = [0.0_f64; MAX_PORTFOLIO_ASSETS];
-    for i in 0..spec.asset_count {
-        let z_i = inv.inv_mu[i] - risk_free_rate * inv.inv_ones[i];
-        weights[i] = z_i / denom;
+    for ((wi, &mu_i), &one_i) in weights[..spec.asset_count]
+        .iter_mut()
+        .zip(&inv.inv_mu[..spec.asset_count])
+        .zip(&inv.inv_ones[..spec.asset_count])
+    {
+        let z_i = mu_i - risk_free_rate * one_i;
+        *wi = z_i / denom;
     }
     Ok(build_allocation(spec, &weights, risk_free_rate))
 }

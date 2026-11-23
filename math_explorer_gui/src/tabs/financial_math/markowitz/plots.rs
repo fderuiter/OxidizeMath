@@ -424,7 +424,7 @@ impl MarkowitzFrontierTool {
         if self.unc_frontier_pts.len() >= 2 {
             prims.push(ExportPrimitive::Polyline {
                 name: "Unconstrained Lagrangian Frontier".into(),
-                points: to_pairs(&self.unc_frontier_pts),
+                points: to_pairs(&self.unc_frontier_pts).into(),
                 color: pal.series[1],
                 stroke_width: 1.8,
                 closed: false,
@@ -434,7 +434,7 @@ impl MarkowitzFrontierTool {
         if self.con_frontier_pts.len() >= 2 {
             prims.push(ExportPrimitive::Polyline {
                 name: "Constrained Active-Set Frontier".into(),
-                points: to_pairs(&self.con_frontier_pts),
+                points: to_pairs(&self.con_frontier_pts).into(),
                 color: pal.series[0],
                 stroke_width: 2.4,
                 closed: false,
@@ -444,7 +444,7 @@ impl MarkowitzFrontierTool {
         if !self.asset_pts.is_empty() {
             prims.push(ExportPrimitive::Points {
                 name: "Individual Assets".into(),
-                points: to_pairs(&self.asset_pts),
+                points: to_pairs(&self.asset_pts).into(),
                 color: pal.accent,
                 radius: 4.5,
             });
