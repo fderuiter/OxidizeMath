@@ -257,3 +257,62 @@ fn test_preset_challenge_and_step_url_codec_roundtrip_and_bounds() {
     assert!(parse_share_location("#tab=chaos&preset=a&step=999", "").is_err());
     assert!(parse_share_location("#tab=chaos&preset=", "").is_err());
 }
+
+#[test]
+fn test_shared_url_clamps_high_res_surface_and_flow_grids_to_interactive_caps() {
+    let curv_json = crate::presets::serialize_compact_preset_envelope(
+        "Curvature",
+        "geometry_topology",
+        serde_json::json!({
+            "surface_type": "Torus",
+            "curvature_type": "Gaussian",
+            "sphere_radius": 1.0,
+            "torus_major_radius": 2.0,
+            "torus_minor_radius": 0.5,
+            "klein_radius": 2.0,
+            "u_resolution": 1000,
+            "v_resolution": 1000,
+            "pitch": 0.5,
+            "yaw": 0.5,
+            "zoom": 1.0
+        }),
+    )
+    .unwrap();
+    let curv_frag = encode_share_fragment(
+        "geometry_topology",
+        Some("CurvatureHeatmap"),
+        Some(&curv_json),
+    )
+    .unwrap();
+    let parsed_curv = parse_share_location(&curv_frag, "").unwrap().unwrap();
+    let curv_cfg: serde_json::Value =
+        serde_json::from_str(parsed_curv.state_json.as_deref().unwrap()).unwrap();
+    assert_eq!(curv_cfg["config"]["u_resolution"], 120);
+    assert_eq!(curv_cfg["config"]["v_resolution"], 120);
+
+    let flow_json = crate::presets::serialize_compact_preset_envelope(
+        "Flow",
+        "fluid_dynamics",
+        serde_json::json!({
+            "elements": [{"element_type": "Uniform", "strength": 10.0, "x": 0.0, "y": 0.0, "angle": 0.0}],
+            "grid_size": 1000,
+            "view_range": 10.0
+        }),
+    )
+    .unwrap();
+    let flow_frag = encode_share_fragment(
+        "fluid_dynamics",
+        Some("PotentialFlowTool"),
+        Some(&flow_json),
+    )
+    .unwrap();
+    let mut app = crate::app::MathExplorerApp::default();
+    assert_eq!(
+        app.apply_share_location_strings(&flow_frag, "", None),
+        Ok(true)
+    );
+    let parsed_flow = parse_share_location(&flow_frag, "").unwrap().unwrap();
+    let flow_cfg: serde_json::Value =
+        serde_json::from_str(parsed_flow.state_json.as_deref().unwrap()).unwrap();
+    assert_eq!(flow_cfg["config"]["grid_size"], 100);
+}
