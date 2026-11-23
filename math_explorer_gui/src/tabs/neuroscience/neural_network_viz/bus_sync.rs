@@ -62,6 +62,8 @@ impl NeuralNetworkVizTool {
 
         let n = clamped.nodes.len().max(1);
         self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
+        self.prev_ring_v = [-65.0; 5];
+        self.sonification = crate::audio::SonificationFrame::silent();
         if clamped.nodes.is_empty() {
             self.positions = vec![[0.0, 0.0]];
             self.weights = vec![vec![0.0]];

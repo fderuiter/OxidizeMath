@@ -1,4 +1,4 @@
-# ADR 0040: `WorkspaceDataBus` Cross-Domain Graph Coupling and Zero-Allocation Graph Solvers
+# ADR 0041: `WorkspaceDataBus` Cross-Domain Graph Coupling and Zero-Allocation Graph Solvers
 
 ## Status
 Accepted (extends [ADR 0009](0009-reusable-graph-layout-algorithms.md), [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0022](0022-unify-preset-state-serialization.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -26,8 +26,9 @@ Accepted (extends [ADR 0009](0009-reusable-graph-layout-algorithms.md), [ADR 001
 3. **Zero-Allocation CSR Domain Solvers and Bounded Persistence**:
    - Add [`GraphSpinSystem`](../../crates/domain_physics/src/physics/stat_mech/graph_ising.rs) (`math_explorer::physics::stat_mech::GraphSpinSystem`) and [`GraphReplicatorSystem`](../../crates/domain_applied/src/applied/game_theory/evolutionary/graph_replicator.rs) (`math_explorer::applied::game_theory::evolutionary::GraphReplicatorSystem`) backed by compressed sparse row (CSR) adjacency arrays and pre-allocated scratch buffers so `evolve`, `metropolis_step`, `frustrated_edge_count`, and `step` execute with zero heap allocations under `VerifiedAllocator` and `OxidizeRng`.
    - Enforce `#[serde(deny_unknown_fields)]`, finite-coordinate/weight checks, and [`ToolStateBounds`](../../math_explorer_gui/src/framework/state_bounds.rs) / [`URL_JSON_BOUNDS`](../../math_explorer_gui/src/url_state/codec.rs) caps on serialized `WorkspaceDataBus` payloads in `.mws` workspace sessions and `#state=` share URLs.
+   - Extend [`Sample2D`](../../crates/math_commons/src/series.rs) and [`PointSeries`](../../crates/math_commons/src/series.rs) with chunked branchless `flat_run_len` / `advance_flat_run` methods (`as_chunks` on `[f64; 2]` and `egui_plot::PlotPoint` slices) so fused critical-point plateau scanning (`scan_line_pois`) sustains sub-5ms linear throughput on 200k-point plateaus even under unoptimized `cargo-llvm-cov` coverage instrumentation.
 
 ## Consequences
 - **Positive**: Users can sculpt signed networks once in `GraphEditorTool` and immediately observe structural invariants, heterogeneous epidemic thresholds, excitatory-inhibitory spiking dynamics, geometric spin frustration, and spatial cooperation clusters across split or quad panes.
 - **Positive**: `SpinLattice`, `ExplorerTab`, `InteractiveTool`, and `federated_registry` contracts remain completely unchanged, while `GraphSpinSystem` and `GraphReplicatorSystem` maintain strict zero-allocation hot-loop guarantees verified by `VerifiedAllocator`.
-- **Neutral**: Real-time Web Audio sonification remains out of scope, and oversized topologies above per-domain interactive budgets (`32` Hodgkin-Huxley neurons, `500` epidemic/game nodes, `1000` spins) deterministically clamp to induced leading subgraphs with accessible warning banners.
+- **Neutral**: Coupled `NeuralNetworkVizTool` circuits reset and update their Web Audio `SonificationFrame` across shared-graph topology updates, and oversized topologies above per-domain interactive budgets (`32` Hodgkin-Huxley neurons, `500` epidemic/game nodes, `1000` spins) deterministically clamp to induced leading subgraphs with accessible warning banners.

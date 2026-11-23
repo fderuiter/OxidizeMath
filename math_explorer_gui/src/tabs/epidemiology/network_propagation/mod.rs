@@ -411,34 +411,30 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
-        });
-    }
-
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.sync_from_bus(&ctx);
 
-        if self.is_running {
-            self.model.step_with_rng(&mut self.rng);
-            self.trace_step = self.trace_step.saturating_add(1);
-            self.record_trace_sample();
-            #[cfg(test)]
-            {
-                self.sim_steps = self.sim_steps.saturating_add(1);
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            if self.is_running {
+                self.model.step_with_rng(&mut self.rng);
+                self.trace_step = self.trace_step.saturating_add(1);
+                self.record_trace_sample();
+                #[cfg(test)]
+                {
+                    self.sim_steps = self.sim_steps.saturating_add(1);
+                }
+                ctx.request_repaint();
             }
-            ctx.request_repaint();
-        }
 
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.set_max_width(290.0);
-                self.draw_controls_column(ui);
-            });
-            ui.separator();
-            ui.vertical(|ui| {
-                self.draw_graph_column(ui);
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_max_width(290.0);
+                    self.draw_controls_column(ui);
+                });
+                ui.separator();
+                ui.vertical(|ui| {
+                    self.draw_graph_column(ui);
+                });
             });
         });
 

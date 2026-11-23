@@ -29,6 +29,66 @@ impl From<[f64; 2]> for PlotPoint {
     }
 }
 
+impl math_commons::series::Sample2D for PlotPoint {
+    #[inline(always)]
+    fn sample_x(&self) -> f64 {
+        self.x
+    }
+
+    #[inline(always)]
+    fn sample_y(&self) -> f64 {
+        self.y
+    }
+
+    #[inline(always)]
+    fn flat_run_len(slice: &[Self], flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let (chunks, rem) = slice.as_chunks::<8>();
+        let mut count = 0usize;
+        for c in chunks {
+            let y_ok = (c[0].y == flat_y)
+                & (c[1].y == flat_y)
+                & (c[2].y == flat_y)
+                & (c[3].y == flat_y)
+                & (c[4].y == flat_y)
+                & (c[5].y == flat_y)
+                & (c[6].y == flat_y)
+                & (c[7].y == flat_y);
+            let x_ok = (c[0].x >= x_min)
+                & (c[0].x <= x_max)
+                & (c[1].x >= x_min)
+                & (c[1].x <= x_max)
+                & (c[2].x >= x_min)
+                & (c[2].x <= x_max)
+                & (c[3].x >= x_min)
+                & (c[3].x <= x_max)
+                & (c[4].x >= x_min)
+                & (c[4].x <= x_max)
+                & (c[5].x >= x_min)
+                & (c[5].x <= x_max)
+                & (c[6].x >= x_min)
+                & (c[6].x <= x_max)
+                & (c[7].x >= x_min)
+                & (c[7].x <= x_max);
+            if !(y_ok & x_ok) {
+                for pt in c {
+                    if !((pt.y == flat_y) & (pt.x >= x_min) & (pt.x <= x_max)) {
+                        return count;
+                    }
+                    count += 1;
+                }
+            }
+            count += 8;
+        }
+        for pt in rem {
+            if !((pt.y == flat_y) & (pt.x >= x_min) & (pt.x <= x_max)) {
+                break;
+            }
+            count += 1;
+        }
+        count
+    }
+}
+
 impl PlotPoint {
     #[inline(always)]
     pub fn new(x: impl Into<f64>, y: impl Into<f64>) -> Self {
