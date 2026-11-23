@@ -3507,6 +3507,12 @@
   ],
   "crates/domain_epidemiology/src/epidemiology/networks.rs": [
     {
+      "signature": "impl NetworkEpidemicModel { pub fn active_degree (& self , node : usize) -> usize }"
+    },
+    {
+      "signature": "impl NetworkEpidemicModel { pub fn active_degree_moments (& self) -> (f64 , f64) }"
+    },
+    {
       "signature": "impl NetworkEpidemicModel { pub fn adjacency (& self) -> & [Vec < usize >] }"
     },
     {
@@ -3514,6 +3520,12 @@
     },
     {
       "signature": "impl NetworkEpidemicModel { pub fn builder () -> NetworkEpidemicModelBuilder }"
+    },
+    {
+      "signature": "impl NetworkEpidemicModel { pub fn edges (& self) -> & [[usize ; 2]] }"
+    },
+    {
+      "signature": "impl NetworkEpidemicModel { pub fn effective_r0 (& self) -> f64 }"
     },
     {
       "signature": "impl NetworkEpidemicModel { pub fn gamma (& self) -> f64 }"
@@ -3525,6 +3537,9 @@
       "signature": "impl NetworkEpidemicModel { pub fn initialize_geometric_graph_with_rng < R : Rng > (& mut self , rng : & mut R) }"
     },
     {
+      "signature": "impl NetworkEpidemicModel { pub fn is_edge_quarantined (& self , u : usize , v : usize) -> bool }"
+    },
+    {
       "signature": "impl NetworkEpidemicModel { pub fn new (num_nodes : usize , beta : f64 , gamma : f64) -> Self }"
     },
     {
@@ -3534,13 +3549,22 @@
       "signature": "impl NetworkEpidemicModel { pub fn num_nodes (& self) -> usize }"
     },
     {
+      "signature": "impl NetworkEpidemicModel { pub fn patient_zero (& self) -> Option < usize > }"
+    },
+    {
       "signature": "impl NetworkEpidemicModel { pub fn positions (& self) -> & [[f32 ; 2]] }"
     },
     {
       "signature": "impl NetworkEpidemicModel { pub fn set_beta (& mut self , beta : f64) -> Result < () , NetworkModelError > }"
     },
     {
+      "signature": "impl NetworkEpidemicModel { pub fn set_edge_quarantined (& mut self , u : usize , v : usize , quarantined : bool ,) -> Result < () , NetworkModelError > }"
+    },
+    {
       "signature": "impl NetworkEpidemicModel { pub fn set_gamma (& mut self , gamma : f64) -> Result < () , NetworkModelError > }"
+    },
+    {
+      "signature": "impl NetworkEpidemicModel { pub fn set_node_vaccinated (& mut self , node : usize , vaccinated : bool ,) -> Result < () , NetworkModelError > }"
     },
     {
       "signature": "impl NetworkEpidemicModel { pub fn set_num_nodes (& mut self , num : usize) -> Result < () , NetworkModelError > }"
@@ -3557,6 +3581,23 @@
     {
       "signature": "impl NetworkEpidemicModel { pub fn step_with_rng < R : Rng > (& mut self , rng : & mut R) }"
     },
+    {
+      "signature": "pub enum NodeState"
+    },
+    {
+      "signature": "pub fn heterogeneous_r0 (beta : f64 , gamma : f64 , mean_degree : f64 , degree_variance : f64) -> f64"
+    },
+    {
+      "signature": "pub struct NetworkEpidemicModel"
+    },
+    {
+      "signature": "pub use builder :: NetworkEpidemicModelBuilder"
+    },
+    {
+      "signature": "pub use builder :: NetworkModelError"
+    }
+  ],
+  "crates/domain_epidemiology/src/epidemiology/networks/builder.rs": [
     {
       "signature": "impl NetworkEpidemicModelBuilder { pub fn adjacency (mut self , adjacency : Vec < Vec < usize > >) -> Self }"
     },
@@ -3580,15 +3621,6 @@
     },
     {
       "signature": "pub enum NetworkModelError"
-    },
-    {
-      "signature": "pub enum NodeState"
-    },
-    {
-      "signature": "pub fn heterogeneous_r0 (beta : f64 , gamma : f64 , mean_degree : f64 , degree_variance : f64) -> f64"
-    },
-    {
-      "signature": "pub struct NetworkEpidemicModel"
     },
     {
       "signature": "pub struct NetworkEpidemicModelBuilder"
@@ -8988,10 +9020,16 @@
       "signature": "pub fn vietoris_rips_complex (cloud : & PointCloud , radius : f64 ,) -> Result < SimplicialComplex , TdaError >"
     },
     {
+      "signature": "pub fn vietoris_rips_complex_3d (cloud : & PointCloud3D , radius : f64 ,) -> Result < SimplicialComplex , TdaError >"
+    },
+    {
       "signature": "pub fn vietoris_rips_complex_nd (cloud : & NdPointCloud , radius : f64 ,) -> Result < SimplicialComplex , TdaError >"
     },
     {
       "signature": "pub fn vietoris_rips_from_distance_matrix (dist : & [Vec < f64 >] , radius : f64 , max_triangles : usize ,) -> Result < (SimplicialComplex , bool) , TdaError >"
+    },
+    {
+      "signature": "pub fn vietoris_rips_from_distances (dist : & [Vec < f64 >] , radius : f64 ,) -> Result < SimplicialComplex , TdaError >"
     },
     {
       "signature": "pub struct SimplicialComplex"
@@ -9063,6 +9101,21 @@
     },
     {
       "signature": "pub struct Simplex"
+    },
+    {
+      "signature": "pub use super :: space3d :: Point3D"
+    },
+    {
+      "signature": "pub use super :: space3d :: PointCloud3D"
+    },
+    {
+      "signature": "pub use super :: space3d :: farthest_point_landmarks"
+    },
+    {
+      "signature": "pub use super :: space3d :: farthest_point_landmarks_into"
+    },
+    {
+      "signature": "pub use super :: space3d :: takens_delay_embedding_3d"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/tda/homology.rs": [
@@ -9093,10 +9146,16 @@
       "signature": "pub use complex :: vietoris_rips_complex"
     },
     {
+      "signature": "pub use complex :: vietoris_rips_complex_3d"
+    },
+    {
       "signature": "pub use complex :: vietoris_rips_complex_nd"
     },
     {
       "signature": "pub use complex :: vietoris_rips_from_distance_matrix"
+    },
+    {
+      "signature": "pub use complex :: vietoris_rips_from_distances"
     },
     {
       "signature": "pub use core :: MAX_TDA_DIMENSION"
@@ -9141,6 +9200,9 @@
       "signature": "pub use persistence :: compute_persistence"
     },
     {
+      "signature": "pub use persistence :: compute_persistence_from_distances"
+    },
+    {
       "signature": "pub use persistence :: compute_rips_persistence"
     },
     {
@@ -9148,6 +9210,27 @@
     },
     {
       "signature": "pub use persistence :: compute_rips_persistence_nd"
+    },
+    {
+      "signature": "pub use space3d :: Point3D"
+    },
+    {
+      "signature": "pub use space3d :: PointCloud3D"
+    },
+    {
+      "signature": "pub use space3d :: farthest_point_landmarks"
+    },
+    {
+      "signature": "pub use space3d :: farthest_point_landmarks_into"
+    },
+    {
+      "signature": "pub use space3d :: takens_delay_embedding_3d"
+    },
+    {
+      "signature": "pub use workspace :: FiltrationStepSummary"
+    },
+    {
+      "signature": "pub use workspace :: TdaFiltrationWorkspace"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/tda/persistence.rs": [
@@ -9200,6 +9283,9 @@
       "signature": "pub fn compute_persistence (cloud : & PointCloud , radii : & [f64] ,) -> Result < PersistenceBarcode , TdaError >"
     },
     {
+      "signature": "pub fn compute_persistence_from_distances (dist : & [Vec < f64 >] , radii : & [f64] ,) -> Result < PersistenceBarcode , TdaError >"
+    },
+    {
       "signature": "pub fn compute_rips_persistence (cloud : & PointCloud) -> Result < RipsPersistenceResult , TdaError >"
     },
     {
@@ -9219,6 +9305,82 @@
     },
     {
       "signature": "pub struct RipsPersistenceResult"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/tda/space3d.rs": [
+    {
+      "signature": "impl Point3D { pub fn distance (& self , other : & Point3D) -> f64 }"
+    },
+    {
+      "signature": "impl Point3D { pub fn distance_squared (& self , other : & Point3D) -> f64 }"
+    },
+    {
+      "signature": "impl Point3D { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl Point3D { pub fn new (x : f64 , y : f64 , z : f64) -> Self }"
+    },
+    {
+      "signature": "impl PointCloud3D { pub fn distance_matrix (& self) -> Vec < Vec < f64 > > }"
+    },
+    {
+      "signature": "impl PointCloud3D { pub fn fill_distance_matrix (& self , dist : & mut [Vec < f64 >]) -> Result < () , TdaError > }"
+    },
+    {
+      "signature": "impl PointCloud3D { pub fn new (points : Vec < Point3D >) -> Result < Self , TdaError > }"
+    },
+    {
+      "signature": "impl PointCloud3D { pub fn size (& self) -> usize }"
+    },
+    {
+      "signature": "pub fn farthest_point_landmarks (points : & [Point3D] , max_landmarks : usize ,) -> Result < Vec < Point3D > , TdaError >"
+    },
+    {
+      "signature": "pub fn farthest_point_landmarks_into (points : & [Point3D] , max_landmarks : usize , min_dist_sq : & mut [f64] , out : & mut [Point3D] ,) -> Result < usize , TdaError >"
+    },
+    {
+      "signature": "pub fn takens_delay_embedding_3d (series : & [f64] , lag : usize) -> Result < PointCloud3D , TdaError >"
+    },
+    {
+      "signature": "pub struct Point3D"
+    },
+    {
+      "signature": "pub struct PointCloud3D"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/tda/workspace.rs": [
+    {
+      "signature": "impl TdaFiltrationWorkspace { pub fn active_edges (& self) -> & [[usize ; 2]] }"
+    },
+    {
+      "signature": "impl TdaFiltrationWorkspace { pub fn active_triangles (& self) -> & [[usize ; 3]] }"
+    },
+    {
+      "signature": "impl TdaFiltrationWorkspace { pub fn capacity (& self) -> usize }"
+    },
+    {
+      "signature": "impl TdaFiltrationWorkspace { pub fn compute_persistence_into (& mut self , n : usize , radii : & [f64] , out : & mut Vec < PersistenceInterval > ,) -> Result < () , TdaError > }"
+    },
+    {
+      "signature": "impl TdaFiltrationWorkspace { pub fn distance (& self , n : usize , i : usize , j : usize) -> f64 }"
+    },
+    {
+      "signature": "impl TdaFiltrationWorkspace { pub fn evaluate_radius (& mut self , n : usize , radius : f64 ,) -> Result < FiltrationStepSummary , TdaError > }"
+    },
+    {
+      "signature": "impl TdaFiltrationWorkspace { pub fn load_points_2d (& mut self , points : & [Point2D]) -> Result < () , TdaError > }"
+    },
+    {
+      "signature": "impl TdaFiltrationWorkspace { pub fn load_points_3d (& mut self , points : & [Point3D]) -> Result < () , TdaError > }"
+    },
+    {
+      "signature": "impl TdaFiltrationWorkspace { pub fn with_capacity (max_points : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct FiltrationStepSummary"
+    },
+    {
+      "signature": "pub struct TdaFiltrationWorkspace"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/zip_regression/core.rs": [

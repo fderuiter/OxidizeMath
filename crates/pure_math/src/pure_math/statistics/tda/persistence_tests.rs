@@ -1,131 +1,100 @@
 use super::super::complex::vietoris_rips_complex;
-use super::super::core::{NdPointCloud, Point2D, PointCloud};
+use super::super::core::{NdPointCloud, Point2D, Point3D, PointCloud, PointCloud3D};
 use super::super::homology::{betti_number_0, betti_numbers};
+use super::super::workspace::TdaFiltrationWorkspace;
 use super::*;
 
 #[test]
 #[verified_engine::verified]
-fn test_persistence_interval() {
+fn test_persistence_interval_validation_and_significance() {
     let interval = PersistenceInterval::new(0.5, 2.0, 1).unwrap();
     assert_eq!(interval.birth, 0.5);
     assert_eq!(interval.death, 2.0);
     assert_eq!(interval.dimension, 1);
     assert!((interval.persistence() - 1.5).abs() < math_commons::registry::TOLERANCE_FAST);
-}
+    assert!(interval.is_significant(1.0));
+    assert!(!interval.is_significant(2.0));
 
-#[test]
-#[verified_engine::verified]
-fn test_persistence_interval_invalid() {
     assert!(PersistenceInterval::new(2.0, 1.0, 0).is_err());
     assert!(PersistenceInterval::new(-1.0, 1.0, 0).is_err());
 }
 
 #[test]
 #[verified_engine::verified]
-fn test_persistence_interval_is_significant() {
-    let interval = PersistenceInterval::new(0.5, 2.0, 1).unwrap();
-    assert!(interval.is_significant(1.0));
-    assert!(!interval.is_significant(2.0));
-}
-
-#[test]
-#[verified_engine::verified]
-fn test_barcode_filter_by_dimension() {
-    let mut barcode = PersistenceBarcode::new();
-    barcode.add_interval(PersistenceInterval::new(0.0, 1.0, 0).unwrap());
-    barcode.add_interval(PersistenceInterval::new(0.5, 2.0, 1).unwrap());
-    barcode.add_interval(PersistenceInterval::new(1.0, 3.0, 1).unwrap());
-
-    assert_eq!(barcode.filter_by_dimension(0).len(), 1);
-    assert_eq!(barcode.filter_by_dimension(1).len(), 2);
-}
-
-#[test]
-#[verified_engine::verified]
-fn test_barcode_filter_by_persistence() {
+fn test_barcode_filtering_and_most_persistent() {
     let mut barcode = PersistenceBarcode::new();
     barcode.add_interval(PersistenceInterval::new(0.0, 0.5, 0).unwrap());
-    barcode.add_interval(PersistenceInterval::new(0.5, 2.0, 1).unwrap());
-
-    let significant = barcode.filter_by_persistence(1.0);
-    assert_eq!(significant.len(), 1);
-    assert_eq!(significant[0].dimension, 1);
-}
-
-#[test]
-#[verified_engine::verified]
-fn test_barcode_most_persistent() {
-    let mut barcode = PersistenceBarcode::new();
-    barcode.add_interval(PersistenceInterval::new(0.0, 1.0, 1).unwrap());
     barcode.add_interval(PersistenceInterval::new(0.5, 3.0, 1).unwrap());
     barcode.add_interval(PersistenceInterval::new(1.0, 2.0, 1).unwrap());
 
-    let most_persistent = barcode.most_persistent(1).unwrap();
-    assert!((most_persistent.persistence() - 2.5).abs() < math_commons::registry::TOLERANCE_FAST);
+    assert_eq!(barcode.filter_by_dimension(0).len(), 1);
+    assert_eq!(barcode.filter_by_dimension(1).len(), 2);
+    assert_eq!(barcode.filter_by_persistence(1.2).len(), 1);
+    assert!(
+        (barcode.most_persistent(1).unwrap().persistence() - 2.5).abs()
+            < math_commons::registry::TOLERANCE_FAST
+    );
 }
 
 #[test]
 #[verified_engine::verified]
-fn test_compute_persistence_line() {
-    let points = vec![
+fn test_compute_persistence_line_triangle_and_clusters() {
+    let line = PointCloud::new(vec![
         Point2D::new(0.0, 0.0),
         Point2D::new(1.0, 0.0),
         Point2D::new(2.0, 0.0),
-    ];
-    let cloud = PointCloud::new(points).unwrap();
-
+    ])
+    .unwrap();
     let radii: Vec<f64> = (0..30).map(|i| i as f64 * 0.1).collect();
-    let barcode = compute_persistence(&cloud, &radii).unwrap();
+    let line_barcode = compute_persistence(&line, &radii).unwrap();
+    assert!(!line_barcode.is_empty());
+    assert!(
+        line_barcode
+            .filter_by_dimension(1)
+            .iter()
+            .all(|h| !h.is_significant(0.5))
+    );
 
-    assert!(!barcode.is_empty());
-    let holes = barcode.filter_by_dimension(1);
-    let significant_holes: Vec<_> = holes.iter().filter(|h| h.is_significant(0.5)).collect();
-    assert_eq!(significant_holes.len(), 0);
-}
-
-#[test]
-#[verified_engine::verified]
-fn test_compute_persistence_triangle() {
-    let points = vec![
+    let triangle = PointCloud::new(vec![
         Point2D::new(0.0, 0.0),
         Point2D::new(2.0, 0.0),
         Point2D::new(1.0, 1.732),
-    ];
-    let cloud = PointCloud::new(points).unwrap();
+    ])
+    .unwrap();
+    let tri_radii: Vec<f64> = (0..30).map(|i| i as f64 * 0.15).collect();
+    assert!(
+        !compute_persistence(&triangle, &tri_radii)
+            .unwrap()
+            .is_empty()
+    );
 
-    let radii: Vec<f64> = (0..30).map(|i| i as f64 * 0.15).collect();
-    let barcode = compute_persistence(&cloud, &radii).unwrap();
-    assert!(!barcode.is_empty());
-}
-
-#[test]
-#[verified_engine::verified]
-fn test_compute_persistence_two_clusters() {
-    let points = vec![
+    let clusters = PointCloud::new(vec![
         Point2D::new(0.0, 0.0),
         Point2D::new(1.0, 0.0),
         Point2D::new(10.0, 0.0),
         Point2D::new(11.0, 0.0),
-    ];
-    let cloud = PointCloud::new(points).unwrap();
-
-    let radii: Vec<f64> = (0..50).map(|i| i as f64 * 0.3).collect();
-    let barcode = compute_persistence(&cloud, &radii).unwrap();
-
-    let components = barcode.filter_by_dimension(0);
-    let significant_components: Vec<_> = components
-        .iter()
-        .filter(|c| c.is_significant(1.0))
-        .collect();
-    assert!(!significant_components.is_empty());
+    ])
+    .unwrap();
+    let cluster_radii: Vec<f64> = (0..50).map(|i| i as f64 * 0.3).collect();
+    let cluster_barcode = compute_persistence(&clusters, &cluster_radii).unwrap();
+    assert!(
+        cluster_barcode
+            .filter_by_dimension(0)
+            .iter()
+            .any(|c| c.is_significant(1.0))
+    );
 }
 
 #[test]
 #[verified_engine::verified]
-fn test_compute_persistence_invalid_radius() {
-    let points = vec![Point2D::new(0.0, 0.0), Point2D::new(1.0, 0.0)];
-    let cloud = PointCloud::new(points).unwrap();
-
+fn test_compute_persistence_invalid_radius_and_barcode_parity() {
+    let cloud = PointCloud::new(vec![
+        Point2D::new(0.0, 0.0),
+        Point2D::new(1.0, 0.0),
+        Point2D::new(0.0, 1.0),
+        Point2D::new(1.0, 1.0),
+    ])
+    .unwrap();
     assert!(matches!(
         compute_persistence(&cloud, &[]),
         Err(TdaError::InvalidRadius { .. })
@@ -138,38 +107,70 @@ fn test_compute_persistence_invalid_radius() {
         compute_persistence(&cloud, &[f64::NAN]),
         Err(TdaError::InvalidRadius { .. })
     ));
+
+    let radii = [0.0, 0.5, 1.0, 1.5, 2.0];
+    let barcode = compute_persistence(&cloud, &radii).unwrap();
+    let b0_seq: Vec<usize> = radii
+        .iter()
+        .map(|&r| betti_number_0(&vietoris_rips_complex(&cloud, r).unwrap()).unwrap())
+        .collect();
+    assert_eq!(b0_seq, vec![4, 4, 1, 1, 1]);
+    assert_eq!(barcode.intervals.len(), 5);
 }
 
 #[test]
 #[verified_engine::verified]
-fn test_compute_persistence_barcode_parity() {
-    let points = vec![
-        Point2D::new(0.0, 0.0),
-        Point2D::new(1.0, 0.0),
-        Point2D::new(0.0, 1.0),
-        Point2D::new(1.0, 1.0),
+fn test_compute_persistence_from_distances_3d_and_workspace_parity() {
+    let pts = vec![
+        Point3D::new(0.0, 0.0, 0.0),
+        Point3D::new(2.0, 0.0, 0.0),
+        Point3D::new(2.0, 2.0, 0.0),
+        Point3D::new(0.0, 2.0, 0.0),
+        Point3D::new(0.0, 0.0, 6.0),
+        Point3D::new(2.0, 0.0, 6.0),
+        Point3D::new(2.0, 2.0, 6.0),
+        Point3D::new(0.0, 2.0, 6.0),
     ];
-    let cloud = PointCloud::new(points).unwrap();
-    let radii = [0.0, 0.5, 1.0, 1.5, 2.0];
-    let barcode = compute_persistence(&cloud, &radii).unwrap();
+    let cloud = PointCloud3D::new(pts.clone()).unwrap();
+    let dist = cloud.distance_matrix();
+    let radii: Vec<f64> = (0..24).map(|i| i as f64 * 0.4).collect();
+    let barcode = compute_persistence_from_distances(&dist, &radii).unwrap();
+    let dim1 = barcode.filter_by_dimension(1);
+    assert_eq!(dim1.len(), 5);
+    assert_eq!(
+        dim1.iter()
+            .filter(|iv| (iv.birth - 2.0).abs() < 1e-9)
+            .count(),
+        2
+    );
+    assert_eq!(
+        dim1.iter()
+            .filter(|iv| (iv.birth - 6.0).abs() < 1e-9)
+            .count(),
+        3
+    );
 
-    let mut b0_sequence = Vec::new();
-    for &r in &radii {
-        let c = vietoris_rips_complex(&cloud, r).unwrap();
-        b0_sequence.push(betti_number_0(&c).unwrap());
-    }
-    assert_eq!(b0_sequence, vec![4, 4, 1, 1, 1]);
-    assert_eq!(barcode.intervals.len(), 5);
+    let mut ws = TdaFiltrationWorkspace::with_capacity(64);
+    let mut intervals = Vec::with_capacity(64);
+    ws.load_points_3d(&pts).unwrap();
+    ws.compute_persistence_into(pts.len(), &radii, &mut intervals)
+        .unwrap();
+    let sort_key = |a: &PersistenceInterval, b: &PersistenceInterval| {
+        a.dimension
+            .cmp(&b.dimension)
+            .then_with(|| a.birth.total_cmp(&b.birth))
+            .then_with(|| a.death.total_cmp(&b.death))
+    };
+    intervals.sort_by(sort_key);
+    let mut expected = barcode.intervals.clone();
+    expected.sort_by(sort_key);
+    assert_eq!(intervals, expected);
 }
 
 #[verified_engine::verified]
 fn bridged_loops_cloud() -> PointCloud {
-    // Loop A (rhombus): sides = 1.05, short diagonal = 1.40 -> exact H1 [1.05, 1.40]
     let a = 0.70_f64;
     let b = (1.05_f64 * 1.05 - a * a).sqrt();
-
-    // Loop B (symmetric 6-gon): sides <= 1.25 (closing at 1.25), vertical chord = 2.15 -> exact H1 [1.25, 2.15]
-    // Bridged from Loop A's rightmost vertex (0.70, 0.0) to Loop B's leftmost vertex at distance 0.90.
     let h = 1.075_f64;
     let dx = (1.25_f64 * 1.25 - h * h).sqrt();
     let w = 0.60 + dx;
@@ -210,7 +211,6 @@ fn test_bridged_loops_exact_pairing_without_lifo_swap() {
     assert!((h1[1].death - 2.15).abs() < 1e-12);
     assert!(!h1[1].is_essential);
 
-    // Sampled compute_persistence must also preserve [1.05, 1.40] and [1.25, 2.15] without LIFO swapping
     let radii: Vec<f64> = (0..=50).map(|k| k as f64 * 0.05).collect();
     let sampled = compute_persistence(&cloud, &radii).unwrap();
     let mut sampled_h1 = sampled.filter_by_dimension(1);
@@ -225,10 +225,6 @@ fn test_bridged_loops_exact_pairing_without_lifo_swap() {
 #[test]
 #[verified_engine::verified]
 fn test_simultaneous_birth_and_death_transitions_detected() {
-    // Loop 1: unit square of side 0.8 -> born at 0.8, dies at 0.8 * sqrt(2) ≈ 1.1314
-    // Loop 2: well-separated square of side 1.3 -> born at 1.3, dies at 1.3 * sqrt(2) ≈ 1.8385
-    // Coarse grid step from 1.0 to 1.5 sees beta_1(1.0) == 1 and beta_1(1.5) == 1 (net delta 0!),
-    // which caused aggregate Betti tracking to miss Loop 1's death and Loop 2's birth.
     let cloud = PointCloud::new(vec![
         Point2D::new(0.0, 0.0),
         Point2D::new(0.8, 0.0),
@@ -269,7 +265,6 @@ fn test_betti_curve_matches_rips_intervals_and_nd_cloud() {
         );
     }
 
-    // Embed a square in R^4 on coordinates (w=0, x, y, z=5) and check H_1 interval [1.0, sqrt(2)]
     let nd = NdPointCloud::new(vec![
         vec![0.0, 0.0, 0.0, 5.0],
         vec![0.0, 1.0, 0.0, 5.0],
@@ -291,7 +286,6 @@ fn test_betti_curve_matches_rips_intervals_and_nd_cloud() {
 #[test]
 #[verified_engine::verified]
 fn test_triangle_cap_sets_truncated_flag() {
-    // 6-point cloud has C(6, 3) = 20 triangles; capping at 5 must report truncated_triangles = true
     let pts: Vec<Point2D> = (0..6)
         .map(|i| {
             let ang = std::f64::consts::TAU * (i as f64) / 6.0;
