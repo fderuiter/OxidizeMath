@@ -270,53 +270,7 @@ impl ChladniWaveTankTool {
         if self.state.boundary == BoundaryMode2D::Sponge {
             apply_sponge_layer(&mut self.solver.sponge_mask, GRID_SIZE, GRID_SIZE, 12, 1.8);
         }
-        match self.state.clamp_layout {
-            ClampLayout::None => {}
-            ClampLayout::CenterPin => {
-                apply_point_clamp(
-                    &mut self.solver.wall_mask,
-                    GRID_SIZE,
-                    GRID_SIZE,
-                    0.5,
-                    0.5,
-                    2.0,
-                );
-            }
-            ClampLayout::QuadSymmetry => {
-                for (cx, cy) in [(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)] {
-                    apply_point_clamp(
-                        &mut self.solver.wall_mask,
-                        GRID_SIZE,
-                        GRID_SIZE,
-                        cx,
-                        cy,
-                        1.8,
-                    );
-                }
-            }
-            ClampLayout::EdgeMidpoints => {
-                for (cx, cy) in [(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)] {
-                    apply_point_clamp(
-                        &mut self.solver.wall_mask,
-                        GRID_SIZE,
-                        GRID_SIZE,
-                        cx,
-                        cy,
-                        2.2,
-                    );
-                }
-            }
-        }
-        for &[cx, cy] in &self.custom_clamps {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                1.8,
-            );
-        }
+        self.apply_clamp_pins();
         if self.state.barrier_enabled {
             apply_multi_slit_barrier(
                 &mut self.solver.wall_mask,
@@ -338,6 +292,37 @@ impl ChladniWaveTankTool {
                 self.state.lens_aperture,
                 8.0,
                 self.state.refractive_index,
+            );
+        }
+    }
+
+    fn apply_clamp_pins(&mut self) {
+        let (pins, radius): (&[(f64, f64)], f64) = match self.state.clamp_layout {
+            ClampLayout::None => (&[], 0.0),
+            ClampLayout::CenterPin => (&[(0.5, 0.5)], 2.0),
+            ClampLayout::QuadSymmetry => (&[(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)], 1.8),
+            ClampLayout::EdgeMidpoints => {
+                (&[(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)], 2.2)
+            }
+        };
+        for &(cx, cy) in pins {
+            apply_point_clamp(
+                &mut self.solver.wall_mask,
+                GRID_SIZE,
+                GRID_SIZE,
+                cx,
+                cy,
+                radius,
+            );
+        }
+        for &[cx, cy] in &self.custom_clamps {
+            apply_point_clamp(
+                &mut self.solver.wall_mask,
+                GRID_SIZE,
+                GRID_SIZE,
+                cx,
+                cy,
+                1.8,
             );
         }
     }
