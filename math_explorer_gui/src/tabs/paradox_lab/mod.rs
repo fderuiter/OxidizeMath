@@ -1,6 +1,7 @@
-// @explorer_feature = "applied"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::accessibility::AccessibleHoverText;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod braess;
@@ -91,6 +92,14 @@ impl ExplorerTab for ParadoxLabTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "paradox_lab",
+        order: 35,
+        build: || Box::new(ParadoxLabTab::default()),
     }
 }
 

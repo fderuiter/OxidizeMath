@@ -167,18 +167,19 @@ impl NetworkMetricsTool {
             ui.separator();
             ui.label("Select Metric to Visualize:");
             let mut changed = false;
-            changed |= ui
-                .radio_value(&mut self.selected_metric, MetricType::DegreeCentrality, "Degree Centrality")
-                .clicked();
-            changed |= ui
-                .radio_value(&mut self.selected_metric, MetricType::ClosenessCentrality, "Closeness Centrality")
-                .clicked();
-            changed |= ui
-                .radio_value(&mut self.selected_metric, MetricType::ClusteringCoefficient, "Local Clustering Coefficient")
-                .clicked();
-            changed |= ui
-                .radio_value(&mut self.selected_metric, MetricType::VertexCover, "2-Approx Vertex Cover")
-                .clicked();
+            for (metric, label) in [
+                (MetricType::DegreeCentrality, "Degree Centrality"),
+                (MetricType::ClosenessCentrality, "Closeness Centrality"),
+                (
+                    MetricType::ClusteringCoefficient,
+                    "Local Clustering Coefficient",
+                ),
+                (MetricType::VertexCover, "2-Approx Vertex Cover"),
+            ] {
+                changed |= ui
+                    .radio_value(&mut self.selected_metric, metric, label)
+                    .clicked();
+            }
             if changed {
                 self.compute_metrics();
             }
@@ -186,36 +187,51 @@ impl NetworkMetricsTool {
                 &mut self.highlight_vertex_cover,
                 "Highlight 2-Approx Vertex Cover Rings",
             )
-            .accessible_hover_text("Draw a highlighted outer ring around vertices in the 2-approximate vertex cover");
+            .accessible_hover_text(
+                "Draw a highlighted outer ring around vertices in the 2-approximate vertex cover",
+            );
 
             ui.separator();
-            ui.heading("Global Parameters");
-            ui.label(format!("Nodes: {} | Edges: {}", self.node_positions.len(), self.edges.len()));
-            if let Some(d) = self.global_diameter {
-                ui.label(format!("Diameter: {d}"));
-            }
-            if let Some(c) = self.global_clustering {
-                ui.label(format!("Avg Clustering Coefficient: {c:.3}"));
-            }
-            if let Some(k) = self.global_degeneracy {
-                ui.label(format!("Degeneracy (k-core): {k}"));
-            }
-            let cover_list: Vec<String> = self
-                .vertex_cover_ids
-                .iter()
-                .take(12)
-                .map(usize::to_string)
-                .collect();
-            let suffix = if self.vertex_cover_ids.len() > 12 { ", ..." } else { "" };
-            ui.label(format!(
-                "2-Approx Vertex Cover (|C| = {}): {{{}{suffix}}}",
-                self.vertex_cover_ids.len(),
-                cover_list.join(", ")
-            ));
-
+            self.render_global_parameters(ui);
             ui.separator();
-            ui.label("Nodes are shaded from blue (low) to red (high); gold double-rings mark the 2-approximate vertex cover.");
+            ui.label(
+                "Nodes are shaded from blue (low) to red (high); gold double-rings mark the 2-approximate vertex cover.",
+            );
         });
+    }
+
+    fn render_global_parameters(&self, ui: &mut egui::Ui) {
+        ui.heading("Global Parameters");
+        ui.label(format!(
+            "Nodes: {} | Edges: {}",
+            self.node_positions.len(),
+            self.edges.len()
+        ));
+        if let Some(d) = self.global_diameter {
+            ui.label(format!("Diameter: {d}"));
+        }
+        if let Some(c) = self.global_clustering {
+            ui.label(format!("Avg Clustering Coefficient: {c:.3}"));
+        }
+        if let Some(k) = self.global_degeneracy {
+            ui.label(format!("Degeneracy (k-core): {k}"));
+        }
+        let cover_list: Vec<String> = self
+            .vertex_cover_ids
+            .iter()
+            .take(12)
+            .map(usize::to_string)
+            .collect();
+        let suffix = if self.vertex_cover_ids.len() > 12 {
+            ", ..."
+        } else {
+            ""
+        };
+        ui.label(format!(
+            "2-Approx Vertex Cover (|C| = {}): {{{}{suffix}}}",
+            self.vertex_cover_ids.len(),
+            cover_list.join(", ")
+        ));
     }
 
     fn render_metrics_canvas(&self, parent_ui: &mut egui::Ui) {
@@ -388,7 +404,15 @@ inventory::submit! {
         id: "NetworkMetricsTool",
         display_name: "Network Metrics",
         domain: "graph_theory",
-        tags: &["centrality", "degeneracy", "vertex_cover", "clustering"],
+        tags: &[
+            "centrality",
+            "clustering",
+            "watts-strogatz",
+            "degree",
+            "closeness",
+            "degeneracy",
+            "vertex_cover",
+        ],
         build: || Box::new(NetworkMetricsTool::default()),
     }
 }

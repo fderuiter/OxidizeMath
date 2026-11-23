@@ -161,18 +161,18 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         counts.record_tool(meta.id, (meta.build)());
     }
-    assert_eq!(counts.plot, 52, "Expected 52 Plot dataset+figure tools");
+    assert_eq!(counts.plot, 58, "Expected 58 Plot dataset+figure tools");
     assert_eq!(counts.raster, 7, "Expected 7 raster figure tools");
     assert_eq!(
-        counts.unsupported, 11,
-        "Expected 11 non-figure, non-topology tools"
+        counts.unsupported, 9,
+        "Expected 9 non-figure, non-topology tools"
     );
     assert_eq!(counts.topology, 7, "Expected 7 graph topology tools");
-    assert_eq!(counts.non_topology, 68, "Expected 68 non-topology tools");
-    assert_eq!(counts.solid_3d, 5, "Expected 5 solid 3D geometric tools");
+    assert_eq!(counts.non_topology, 72, "Expected 72 non-topology tools");
+    assert_eq!(counts.solid_3d, 6, "Expected 6 solid 3D geometric tools");
     assert_eq!(counts.splat_3d, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(counts.shader, 3, "Expected 3 analytical GLSL shader tools");
-    assert_eq!(counts.non_shader, 72, "Expected 72 non-shader tools");
+    assert_eq!(counts.non_shader, 76, "Expected 76 non-shader tools");
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
@@ -244,6 +244,7 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         "AttractorPlotter",
         "CrystalViewer",
         "SpinVisualizer",
+        "CorticalMorphometryTool",
     ];
     for id in solid_ids {
         let meta = inventory::iter::<crate::framework::ToolMetadata>

@@ -118,6 +118,7 @@ impl NeuralNetworkVizTool {
                     PlaybackAction::Play => self.is_running = true,
                     PlaybackAction::Pause => self.is_running = false,
                     PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset(),
                 }
             }
@@ -328,7 +329,7 @@ inventory::submit! {
         id: "NeuralNetworkVizTool",
         display_name: "Neural Network Viz",
         domain: "neuroscience",
-        tags: &[],
+        tags: &["synapse", "coupled neurons", "connectome", "membrane", "spiking"],
         build: || Box::new(NeuralNetworkVizTool::default()),
     }
 }

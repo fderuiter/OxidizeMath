@@ -191,6 +191,23 @@ impl AlgorithmVisualizerTool {
         }
     }
 
+    fn render_algorithm_selector(&mut self, ui: &mut egui::Ui) {
+        ui.label("Select Algorithm:");
+        let mut changed = false;
+        for (alg, label) in [
+            (Algorithm::Dijkstra, "Dijkstra"),
+            (Algorithm::Bfs, "BFS"),
+            (Algorithm::Dfs, "DFS"),
+        ] {
+            changed |= ui
+                .radio_value(&mut self.selected_algorithm, alg, label)
+                .clicked();
+        }
+        if changed {
+            self.run_algorithm();
+        }
+    }
+
     fn render_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id =
             crate::framework::scoped_panel_id(parent_ui, "algorithm_visualizer_controls");
@@ -209,36 +226,20 @@ impl AlgorithmVisualizerTool {
         });
     }
 
-    fn render_algorithm_selector(&mut self, ui: &mut egui::Ui) {
-        ui.label("Select Algorithm:");
-        let mut changed = false;
-        for (alg, label) in [
-            (Algorithm::Dijkstra, "Dijkstra"),
-            (Algorithm::Bfs, "BFS"),
-            (Algorithm::Dfs, "DFS"),
-        ] {
-            if ui
-                .radio_value(&mut self.selected_algorithm, alg, label)
-                .clicked()
-            {
-                changed = true;
-            }
-        }
-        if changed {
-            self.run_algorithm();
-        }
+    fn stop_at_step(&mut self, step: usize) {
+        self.animation_step = step;
+        self.is_playing = false;
+        self.step_timer = 0.0;
     }
 
     fn render_playback_controls(&mut self, ui: &mut egui::Ui) {
-        ui.label(format!(
-            "Animation Step: {} / {}",
-            self.animation_step,
-            self.visit_order.len()
-        ));
-        self.render_playback_buttons(ui);
-        let slider =
-            egui::Slider::new(&mut self.animation_step, 0..=self.visit_order.len()).text("Step");
-        if ui.add(slider).changed() {
+        let total = self.visit_order.len();
+        ui.label(format!("Animation Step: {} / {total}", self.animation_step));
+        self.render_playback_buttons(ui, total);
+        if ui
+            .add(egui::Slider::new(&mut self.animation_step, 0..=total).text("Step"))
+            .changed()
+        {
             self.step_timer = 0.0;
         }
         ui.add(
@@ -248,58 +249,44 @@ impl AlgorithmVisualizerTool {
         );
     }
 
-    fn render_playback_buttons(&mut self, ui: &mut egui::Ui) {
+    fn render_playback_buttons(&mut self, ui: &mut egui::Ui, total: usize) {
         ui.horizontal(|ui| {
             if ui
                 .button("↻ Reset")
                 .accessible_hover_text("Restart the algorithm visualization")
                 .clicked()
             {
-                self.animation_step = 0;
-                self.is_playing = false;
-                self.step_timer = 0.0;
+                self.stop_at_step(0);
             }
             let (label, hover) = if self.is_playing {
                 ("⏸ Pause", "Pause the algorithm visualization")
             } else {
-                (
-                    "▶ Play",
-                    "Start or resume continuous algorithm visualization",
-                )
+                ("▶ Play", "Start or resume continuous visualization")
             };
             if ui.button(label).accessible_hover_text(hover).clicked() {
-                if self.is_playing {
-                    self.is_playing = false;
-                } else {
-                    if self.animation_step >= self.visit_order.len() {
-                        self.animation_step = 0;
-                    }
-                    self.is_playing = true;
+                if !self.is_playing && self.animation_step >= total {
+                    self.animation_step = 0;
                 }
+                self.is_playing = !self.is_playing;
                 self.step_timer = 0.0;
             }
-            let can_step = self.animation_step < self.visit_order.len();
+            let can_step = self.animation_step < total;
             if ui
                 .add_enabled(can_step, eframe::egui::Button::new("▶ Step"))
                 .accessible_hover_text("Advance visualization by one step")
                 .clicked()
             {
-                self.animation_step += 1;
-                self.is_playing = false;
-                self.step_timer = 0.0;
+                self.stop_at_step(self.animation_step + 1);
             }
             if ui
                 .add_enabled(can_step, eframe::egui::Button::new("⏹ Finish"))
                 .accessible_hover_text("Skip to the end of the visualization")
                 .clicked()
             {
-                self.animation_step = self.visit_order.len();
-                self.is_playing = false;
-                self.step_timer = 0.0;
+                self.stop_at_step(total);
             }
         });
     }
-
     fn render_start_node_selector(&mut self, ui: &mut egui::Ui) {
         let mut node_ids: Vec<usize> = self.node_positions.keys().copied().collect();
         node_ids.sort_unstable();
