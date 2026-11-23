@@ -2437,7 +2437,9 @@ version = "0.4.0"
 dependencies = [
  "diagnostics",
  "engine_linalg",
+ "libm",
  "num-complex",
+ "num-traits",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -2477,6 +2479,7 @@ dependencies = [
  "egui_plot",
  "engine_linalg",
  "federated_registry",
+ "flate2",
  "futures",
  "inventory",
  "js-sys",

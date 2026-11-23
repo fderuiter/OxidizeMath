@@ -46,6 +46,29 @@ The proof follows directly from the properties of a finite, totally ordered set.
 
 Thus, the existence of a single, unique Favorite Child is proven. Q.E.D.
 
+\section{Continuous Morphogenesis and Spectral Lenia Soliton Viability}
+
+Beyond discrete agent scoring, biological morphogenesis on a periodic two-dimensional torus \( \mathbb{T}^2 = [0, W) \times [0, H) \) evolves continuous cell activations \( A_t(x, y) \in [0, 1] \) through non-local concentric-ring interactions (**Lenia**). Given an interaction radius \( R > 0 \) and radial shell profile \( K_S : [0, 1] \to [0, \infty) \) (canonical smooth bump core \( K_C(r) = \exp(4 - [r(1 - r)]^{-1}) \) for \( r \in (0, 1) \) or polynomial shell \( K_P(r) = \max(0, 1 - ((r - b)/w)^2)^4 \)), the discrete periodic kernel is normalized to unit \( L^1 \) mass:
+\begin{equation}
+K(x, y) = \frac{K_S\!\left(\sqrt{\Delta x^2 + \Delta y^2} / R\right)}{\sum_{u=0}^{W-1} \sum_{v=0}^{H-1} K_S\!\left(\sqrt{\Delta u^2 + \Delta v^2} / R\right)}, \qquad \sum_{x=0}^{W-1} \sum_{y=0}^{H-1} K(x, y) = 1,
+\end{equation}
+where \( \Delta x, \Delta y \) denote minimum-image torus displacements. By the two-dimensional circular convolution theorem, the neighborhood potential \( U_t = A_t * K \) is evaluated in \( \mathcal{O}(W H \log(W H)) \) operations via the discrete Fourier transform \( \mathcal{F} \):
+\begin{equation}
+U_t(x, y) = \mathcal{F}^{-1}\!\bigl(\mathcal{F}(A_t) \odot \hat{K}\bigr)(x, y), \qquad A_{t + \Delta t}(x, y) = \operatorname{clamp}\!\bigl(A_t(x, y) + \Delta t \, G(U_t(x, y)),\, 0,\, 1\bigr).
+\end{equation}
+
+\subsection{Growth Niche Alignment and the Analytical Vacuum Stability Cliff}
+
+Local mass creation and decay are governed by a bounded growth mapping \( G : [0, 1] \to [-1, 1] \), parameterized either by the Gaussian niche
+\begin{equation}
+G_{\text{Gauss}}(u; \mu, \sigma) = 2 \exp\!\left(-\frac{(u - \mu)^2}{2\sigma^2}\right) - 1
+\end{equation}
+or by the compactly supported quartic polynomial niche \( G_{\text{poly}}(u; \mu, \sigma) = 2 \max\!\bigl(0, 1 - ((u - \mu)/(3\sigma))^2\bigr)^4 - 1 \). Because unit-\( L^1 \) normalization implies \( U_t \equiv 0 \) on the homogeneous empty state \( A_t \equiv 0 \), asymptotic stability of the zero vacuum requires \( G(0) \le 0 \). For \( G_{\text{Gauss}} \), setting \( G_{\text{Gauss}}(0; \mu, \sigma) = 0 \) yields the exact linear bifurcation boundary in the \( (\mu, \sigma) \) parameter plane:
+\begin{equation}
+2 \exp\!\left(-\frac{\mu^2}{2\sigma^2}\right) - 1 = 0 \iff \mu = \sqrt{2 \ln 2}\,\sigma.
+\end{equation}
+Whenever \( \mu < \sqrt{2 \ln 2}\,\sigma \), \( G_{\text{Gauss}}(0; \mu, \sigma) > 0 \) destabilizes empty space into a global vacuum explosion. Conversely, if \( \mu \) exceeds the peak neighborhood potential \( u_{\max} = \max_{x, y} U_t(x, y) \) of a localized soliton (such as \( u_{\max} \approx 0.225 \) for \textit{Orbium unicaudatus}) by more than the positive support half-width of \( G \), then \( G(U_t(x, y)) < 0 \) everywhere and the organism starves to extinction. Self-sustaining, self-healing solitons therefore inhabit a narrow viability island bounded below by the \( G(0) = 0 \) vacuum cliff and above by the active potential distribution \( U_t \in [u_{0.05}, u_{\max}] \).
+
 \section{Conclusion}
 
 The Favorite Child Theorem provides a rigorous mathematical foundation for a concept previously understood only through intuition and anecdotal evidence. This formalization opens up new avenues for research, such as the study of "Favorite Child" stability over time and the probabilistic outcomes of sibling rivalries.
