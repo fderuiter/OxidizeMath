@@ -65,3 +65,17 @@ impl DerefMut for Dimension {
 pub fn flatten_2d_index(x: usize, y: usize, width: usize) -> usize {
     y * width + x
 }
+
+/// Converts a 3D coordinate `(x, y, z)` into a 1D flat index in `(z * height + y) * width + x` order.
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::types::flatten_3d_index;
+///
+/// let index = flatten_3d_index(3, 2, 1, 8, 6);
+/// assert_eq!(index, (6 + 2) * 8 + 3);
+/// ```
+#[inline(always)]
+pub fn flatten_3d_index(x: usize, y: usize, z: usize, width: usize, height: usize) -> usize {
+    (z * height + y) * width + x
+}

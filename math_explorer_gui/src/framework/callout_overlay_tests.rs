@@ -117,29 +117,44 @@ fn test_workspace_envelope_serialization() {
         ..Default::default()
     };
 
-    let envelope = WorkspaceEnvelope {
+    let legacy_envelope = WorkspaceEnvelope {
         schema_version: "1.0".to_string(),
         app_version: "0.1.0".to_string(),
         timestamp: "2026-11-14T00:00:00Z".to_string(),
         app_state,
         history_undo_stack: Vec::new(),
         history_redo_stack: Vec::new(),
-        callout_manager: Some(manager.clone()),
+        callout_manager: Some(manager),
     };
 
-    let json = serde_json::to_string(&envelope).expect("Serialize envelope");
-    let restored: WorkspaceEnvelope = serde_json::from_str(&json).expect("Deserialize envelope");
-
-    assert!(restored.callout_manager.is_some());
-    let restored_mgr = restored.callout_manager.unwrap();
-    assert_eq!(restored_mgr.len(), 1);
-    assert_eq!(restored_mgr.callouts()[0].text, "Peak");
-    assert_eq!(restored_mgr.callouts()[0].target_point, [3.0, 7.0]);
-
+    let json = serde_json::to_string(&legacy_envelope).expect("Serialize legacy envelope");
     let mut session_mgr = crate::app::WorkspaceSessionManager::new();
-    session_mgr.set_callout_manager(Some(restored_mgr));
-    assert!(session_mgr.callout_manager().is_some());
-    assert_eq!(session_mgr.callout_manager().unwrap().len(), 1);
+    let migrated_state = session_mgr
+        .parse_envelope(&json)
+        .expect("Parse and migrate legacy envelope");
+
+    assert!(
+        !migrated_state.tab_states.is_empty(),
+        "legacy callout_manager must migrate into active tab plot_states"
+    );
+    let tab_json = migrated_state
+        .tab_states
+        .values()
+        .next()
+        .expect("migrated tab state entry");
+    assert!(tab_json.contains("\"plot_states\""));
+    assert!(tab_json.contains("\"Peak\""));
+
+    let reserialized = session_mgr.create_envelope(migrated_state);
+    assert!(
+        !reserialized.contains("\"callout_manager\""),
+        "new workspace envelopes must omit deprecated top-level callout_manager"
+    );
+    let roundtrip = session_mgr
+        .parse_envelope(&reserialized)
+        .expect("Roundtrip migrated envelope");
+    let rt_tab_json = roundtrip.tab_states.values().next().unwrap();
+    assert!(rt_tab_json.contains("\"Peak\""));
 }
 
 #[test]
