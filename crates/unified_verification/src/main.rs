@@ -10,6 +10,7 @@ mod manifest_cache;
 mod policy_audit;
 mod profile;
 mod records;
+mod release_tag;
 mod report;
 mod utils;
 mod vulnerabilities;
@@ -93,6 +94,7 @@ fn main() {
         "check-public-debug" => exit_if_failed(api_drift::public_debug::run_public_debug_check()),
         "check-duplicates" => exit_if_failed(ast_visitor::run_clone_detector()),
         "check-profiles" => run_check_profiles_cli(),
+        "check-release-tag" => exit_if_failed(release_tag::run_check_release_tag_cli(&args[2..])),
         "check-staged-duplicates" => check_staged_duplicates(),
         "test-policy-audit" => run_policy_audit_cli(&args[2..]),
         "check-entropy" => run_check_entropy_cli(&args[2..]),

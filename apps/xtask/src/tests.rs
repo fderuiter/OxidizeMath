@@ -120,6 +120,7 @@ fn test_verification_gates() {
         "check-duplicates",
         "check-profiles",
         "check-public-debug",
+        "check-release-tag",
         "lint-workflows",
         "check-docs",
         "check-cargo-docs",
