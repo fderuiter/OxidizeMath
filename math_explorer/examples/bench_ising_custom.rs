@@ -5,14 +5,17 @@ use math_explorer::physics::stat_mech::ising::SpinLattice;
 use std::time::Instant;
 
 fn main() {
-    let width = 100;
-    let height = 100;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (width, height, iterations) = if smoke {
+        (20, 20, 5_000)
+    } else {
+        (100, 100, 10_000_000)
+    };
     let j_coupling = 1.0;
     let h_field = 0.0;
     // T < Tc to ensure interesting dynamics (clustering)
     let temp = 2.0 * j_coupling / KB;
-
-    let iterations = 10_000_000;
 
     println!(
         "Benchmarking Ising Model {}x{} for {} iterations...",
@@ -26,7 +29,7 @@ fn main() {
         lattice.metropolis_step(temp, j_coupling, h_field);
     }
     let duration = start.elapsed();
-    let old_speed = (iterations as f64 / duration.as_secs_f64()) / 1_000_000.0;
+    let old_speed = (iterations as f64 / duration.as_secs_f64().max(1e-9)) / 1_000_000.0;
     println!(
         "Before (metropolis_step): {:.4}s, {:.2} M/s",
         duration.as_secs_f64(),
@@ -38,7 +41,7 @@ fn main() {
     let start = Instant::now();
     lattice.evolve(iterations, temp, j_coupling, h_field);
     let duration = start.elapsed();
-    let new_speed = (iterations as f64 / duration.as_secs_f64()) / 1_000_000.0;
+    let new_speed = (iterations as f64 / duration.as_secs_f64().max(1e-9)) / 1_000_000.0;
     println!(
         "After (evolve):           {:.4}s, {:.2} M/s",
         duration.as_secs_f64(),

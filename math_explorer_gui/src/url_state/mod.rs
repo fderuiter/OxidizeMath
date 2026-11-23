@@ -8,6 +8,7 @@ mod base64url;
 mod browser;
 mod codec;
 mod history_bridge;
+mod json_validator;
 mod sync;
 mod workspace_codec;
 
@@ -24,6 +25,8 @@ mod browser_wasm_tests;
     feature = "pure_math"
 ))]
 mod contract_tests;
+#[cfg(test)]
+mod param_only_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(all(

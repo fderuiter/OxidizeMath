@@ -402,11 +402,34 @@ def run_truncated_stream_check(
     try:
         page = context.new_page()
         csp_violations: list[str] = []
+        aborted_unrouted: list[str] = []
         attach_csp_observer(page, csp_violations)
+        page.on(
+            "requestfailed",
+            lambda req: aborted_unrouted.append(f"{req.url}: {req.failure}")
+            if req.failure == "net::ERR_ABORTED"
+            and any(
+                req.url.split("?")[0].endswith(s)
+                for s in (
+                    "/reload.js",
+                    "/initializer.js",
+                    "/bootstrap.js",
+                    "/math_explorer_gui.js",
+                )
+            )
+            else None,
+        )
         install_telemetry_probe(page, dist_dir)
 
         page.goto(f"{base_url}/?wasm_mode={wasm_mode}", wait_until="domcontentloaded")
-        verify_error_recovery(page, scenario, EXPECTED_FAULTS["network"])
+        try:
+            verify_error_recovery(page, scenario, EXPECTED_FAULTS["network"])
+        except AssertionError as exc:
+            if aborted_unrouted:
+                raise TransientBrowserCrashError(
+                    f"[{scenario}] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                ) from exc
+            raise
         page.wait_for_timeout(40)
 
         trace = page.evaluate("() => window.__mathExplorerSmokeTrace")

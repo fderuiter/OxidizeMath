@@ -55,7 +55,26 @@ impl SimulationFramework {
             .and_then(|idx| self.available_tools.get(idx).map(|meta| meta.id))
     }
 
-    /// Computes an O(1) parameter-only revision token for live URL fragment synchronization.
+    fn cached_untracked_url_digest(&self, tool: &dyn super::InteractiveTool) -> u64 {
+        let current_rev = self.rev_cache.untracked_tool_revision;
+        let name = tool.name();
+        if let Some(cached) = self.rev_cache.untracked_url_digest.get() {
+            if cached.tool_name == name && cached.checked_untracked_rev == current_rev {
+                return cached.url_digest;
+            }
+        }
+        let digest = compute_untracked_tool_url_digest(tool);
+        self.rev_cache
+            .untracked_url_digest
+            .set(Some(super::UntrackedUrlDigestCache {
+                tool_name: name,
+                checked_untracked_rev: current_rev,
+                url_digest: digest,
+            }));
+        digest
+    }
+
+    /// Computes a parameter-only revision token for live URL fragment synchronization.
     #[must_use]
     pub fn url_state_revision(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -64,102 +83,157 @@ impl SimulationFramework {
         self.hash_hud_for_url(&mut hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(&mut hasher);
-            let tool_rev = tool.state_revision();
+            let tool_rev = tool.url_state_revision();
             if tool_rev > 0 {
                 1_u8.hash(&mut hasher);
                 tool_rev.hash(&mut hasher);
             } else {
                 0_u8.hash(&mut hasher);
-                self.rev_cache.untracked_tool_revision.hash(&mut hasher);
+                self.cached_untracked_url_digest(tool.as_ref())
+                    .hash(&mut hasher);
             }
         }
         hasher.finish().max(1)
     }
 
-    /// Exports the active tool's parameters as a compact, deterministic [`crate::presets::PresetWrapper`] JSON string.
+    /// Exports the active tool's parameters as a compact, deterministic [`crate::presets::PresetWrapper`] JSON string (`<= 4 KiB`).
     pub fn export_url_preset_json(&self) -> Result<Option<String>, String> {
+        self.export_url_preset_json_with_bounds(false)
+    }
+
+    /// Exports the active tool's parameters for `#ws=...` workspace URL sharing (`<= 32 KiB`, with `.mws` guidance on overflow).
+    pub fn export_workspace_url_preset_json(&self) -> Result<Option<String>, String> {
+        self.export_url_preset_json_with_bounds(true)
+    }
+
+    fn export_url_preset_json_with_bounds(
+        &self,
+        allow_workspace_bounds: bool,
+    ) -> Result<Option<String>, String> {
         let Some(tool) = &self.active_tool else {
             return Ok(None);
         };
-        let Some(state_str) = tool.save_state() else {
+        let Some(state_str) = tool.save_url_state() else {
             return Ok(None);
         };
-        let config: serde_json::Value = serde_json::from_str(&state_str)
+        let cleaned = egui_plot::export::strip_utf8_bom(&state_str).trim();
+        let cap = if allow_workspace_bounds {
+            crate::url_state::MAX_DECODED_WORKSPACE_URL_BYTES
+        } else {
+            crate::url_state::MAX_DECODED_URL_STATE_BYTES
+        };
+        if cleaned.len() > cap {
+            let mws_hint = if allow_workspace_bounds {
+                "; export a .mws workspace session via File -> Save Workspace Session As... instead"
+            } else {
+                ""
+            };
+            return Err(format!(
+                "URL state for '{}' ({} bytes) exceeds maximum allowed limit ({cap} bytes){mws_hint}",
+                tool.name(),
+                cleaned.len()
+            ));
+        }
+        let raw_config: &serde_json::value::RawValue = serde_json::from_str(cleaned)
             .map_err(|e| format!("Failed to serialize state for '{}': {e}", tool.name()))?;
-        let envelope_json =
-            crate::presets::serialize_compact_preset_envelope(tool.name(), tool.domain(), config)?;
+        let envelope_json = crate::presets::serialize_compact_preset_envelope(
+            tool.name(),
+            tool.domain(),
+            raw_config,
+        )?;
+        if allow_workspace_bounds {
+            crate::url_state::validate_workspace_url_preset_json(&envelope_json).map_err(|e| {
+                format!("{e}; export a .mws workspace session via File -> Save Workspace Session As... instead")
+            })?;
+        } else {
+            crate::url_state::validate_url_preset_json(&envelope_json)?;
+        }
         Ok(Some(envelope_json))
     }
 
-    /// Exports structured [`crate::url_state::ShareUrlParams`] for `tab_slug` (including active
-    /// inverse challenge, guided story + step, or AST goal challenge HUD metadata).
+    /// Exports structured [`crate::url_state::ShareUrlParams`] for `tab_slug` (`<= 4 KiB` state cap).
+    #[cfg(test)]
     pub fn export_share_url_params(
         &self,
         tab_slug: &str,
+    ) -> Result<crate::url_state::ShareUrlParams, String> {
+        self.export_share_url_params_with_bounds(tab_slug, false)
+    }
+
+    /// Exports structured [`crate::url_state::ShareUrlParams`] for `#ws=...` workspace URL sharing (`<= 32 KiB` state cap).
+    pub fn export_workspace_share_url_params(
+        &self,
+        tab_slug: &str,
+    ) -> Result<crate::url_state::ShareUrlParams, String> {
+        self.export_share_url_params_with_bounds(tab_slug, true)
+    }
+
+    fn export_share_url_params_with_bounds(
+        &self,
+        tab_slug: &str,
+        allow_workspace_bounds: bool,
     ) -> Result<crate::url_state::ShareUrlParams, String> {
         let tool = self.active_tool_id().map(str::to_string);
         if let Some(inv_meta) = self.active_challenge {
             return Ok(crate::url_state::ShareUrlParams {
                 tab: tab_slug.to_string(),
                 tool,
-                state_json: self.export_url_preset_json()?,
+                state_json: self.export_url_preset_json_with_bounds(allow_workspace_bounds)?,
                 preset: None,
                 challenge: Some(inv_meta.id.to_string()),
                 step: None,
             });
         }
-        let current_tool_state = self.active_tool.as_ref().and_then(|t| t.save_state());
-        match &self.challenge_hud.mode {
+        let current_tool_state = self.active_tool.as_ref().and_then(|t| t.save_url_state());
+        let (preset, challenge, step, state_json) = match &self.challenge_hud.mode {
             super::ChallengeHudMode::Story {
                 story,
                 step_index,
                 step_state,
             } => {
-                let state_json = if current_tool_state == *step_state {
+                let extra = if current_tool_state == *step_state {
                     None
                 } else {
-                    self.export_url_preset_json()?
+                    self.export_url_preset_json_with_bounds(allow_workspace_bounds)?
                 };
-                Ok(crate::url_state::ShareUrlParams {
-                    tab: tab_slug.to_string(),
-                    tool,
-                    state_json,
-                    preset: Some(story.id.to_string()),
-                    challenge: None,
-                    step: (*step_index > 0).then_some(*step_index),
-                })
+                (
+                    Some(story.id.to_string()),
+                    None,
+                    (*step_index > 0).then_some(*step_index),
+                    extra,
+                )
             }
             super::ChallengeHudMode::Challenge {
                 challenge,
                 initial_state,
                 ..
             } => {
-                let state_json = if current_tool_state == *initial_state {
+                let extra = if current_tool_state == *initial_state {
                     None
                 } else {
-                    self.export_url_preset_json()?
+                    self.export_url_preset_json_with_bounds(allow_workspace_bounds)?
                 };
-                Ok(crate::url_state::ShareUrlParams {
-                    tab: tab_slug.to_string(),
-                    tool,
-                    state_json,
-                    preset: None,
-                    challenge: Some(challenge.id.to_string()),
-                    step: None,
-                })
+                (None, Some(challenge.id.to_string()), None, extra)
             }
-            super::ChallengeHudMode::Inactive => Ok(crate::url_state::ShareUrlParams {
-                tab: tab_slug.to_string(),
-                tool,
-                state_json: self.export_url_preset_json()?,
-                preset: None,
-                challenge: None,
-                step: None,
-            }),
-        }
+            super::ChallengeHudMode::Inactive => (
+                None,
+                None,
+                None,
+                self.export_url_preset_json_with_bounds(allow_workspace_bounds)?,
+            ),
+        };
+        Ok(crate::url_state::ShareUrlParams {
+            tab: tab_slug.to_string(),
+            tool,
+            state_json,
+            preset,
+            challenge,
+            step,
+        })
     }
 
     /// Encodes a `#tab=...` fragment for `tab_slug`, supporting active inverse challenges, guided stories, and AST challenges.
+    #[cfg(test)]
     pub fn encode_share_fragment_for_tab(&self, tab_slug: &str) -> Result<String, String> {
         let params = self.export_share_url_params(tab_slug)?;
         crate::url_state::encode_share_fragment_with_hud(
@@ -173,6 +247,7 @@ impl SimulationFramework {
     }
 
     /// Encodes a full shareable web URL (`https://...#tab=...&tool=...&state=...`) for the active tool.
+    #[cfg(test)]
     pub fn encode_share_url(&self) -> Result<String, String> {
         let tab_slug = if self.domain == "biology" {
             "morphogenesis"
@@ -191,7 +266,7 @@ impl SimulationFramework {
         } else {
             self.domain.as_str()
         };
-        let params = self.export_share_url_params(tab_slug)?;
+        let params = self.export_workspace_share_url_params(tab_slug)?;
         let fragment = crate::url_state::encode_single_pane_smart_fragment_from_params(&params)?;
         Ok(crate::url_state::build_share_url_from_fragment(&fragment))
     }
@@ -292,6 +367,25 @@ impl SimulationFramework {
         self.preset_dialog.toast_error = None;
         self.reset_active_tool_manual_bounds();
     }
+}
+
+fn compute_untracked_tool_url_digest(tool: &dyn super::InteractiveTool) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    match tool.save_url_state() {
+        Some(state_str) => {
+            let cleaned = egui_plot::export::strip_utf8_bom(&state_str).trim();
+            if cleaned.len() <= crate::url_state::MAX_DECODED_WORKSPACE_URL_BYTES {
+                1_u8.hash(&mut hasher);
+                cleaned.hash(&mut hasher);
+            } else {
+                2_u8.hash(&mut hasher);
+            }
+        }
+        None => {
+            0_u8.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
 }
 
 #[path = "url_share/hydrate.rs"]

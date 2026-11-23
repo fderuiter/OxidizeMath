@@ -168,7 +168,11 @@ fn assert_large_tool_ws_roundtrip(ctx: &egui::Context, slug: &str, tool_id: &str
         .try_load_state(raw_state)
         .unwrap_or_else(|e| panic!("{tool_id} failed try_load_state: {e}"));
 
-    let exported_preset = app.tabs[tab_idx].export_url_preset_json().unwrap().unwrap();
+    assert!(app.tabs[tab_idx].export_url_preset_json().is_err());
+    let exported_preset = app.tabs[tab_idx]
+        .export_workspace_url_preset_json()
+        .unwrap()
+        .unwrap();
     assert!(
         exported_preset.len() > MAX_DECODED_URL_STATE_BYTES
             && exported_preset.len() <= MAX_DECODED_WORKSPACE_URL_BYTES,

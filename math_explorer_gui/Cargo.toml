@@ -1,6 +1,6 @@
 [package]
 name = "math_explorer_gui"
-version = "0.4.0"
+version.workspace = true
 edition = "2021"
 authors = ["Frederick de Ruiter <127706008+fderuiter@users.noreply.github.com>"]
 description = "Interactive scientific simulation and mathematical visualization desktop and web GUI"
@@ -8,10 +8,14 @@ homepage = "https://github.com/fderuiter/OxidizeMath"
 license = "AGPL-3.0-or-later"
 build = "build.rs"
 
+[[bin]]
+name = "math_explorer_gui"
+path = "src/main.rs"
+bench = false
+
 [package.metadata.packager]
 product-name = "Math Explorer"
 identifier = "com.jules.mathexplorer"
-version = "0.4.0"
 publisher = "OxidizeMath"
 homepage = "https://github.com/fderuiter/OxidizeMath"
 long-description = "Math Explorer provides an interactive desktop environment built on eframe and egui for exploring verified mathematical and scientific simulations across physics, biology, climate modeling, epidemiology, artificial intelligence, applied mathematics, and pure mathematics."
@@ -56,7 +60,6 @@ epidemiology = ["math_explorer/epidemiology", "pure_math"]
 physics = ["math_explorer/physics", "math_explorer/ai", "math_explorer/biology", "applied", "pure_math"]
 
 [dependencies]
-futures = { workspace = true }
 federated_registry = { path = "../crates/federated_registry" }
 eframe = { workspace = true }
 egui_plot = { version = "0.34.1", features = ["serde"] }
@@ -71,11 +74,13 @@ rand = { workspace = true }
 petgraph = { workspace = true }
 inventory = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 chrono = { workspace = true }
-flate2 = { version = "1.1.11", default-features = false, features = ["rust_backend"] }
+flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+futures = { workspace = true }
+oxidize_core = { path = "../crates/oxidize_core", features = ["ast-analysis"] }
 rfd = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -124,7 +129,7 @@ web-sys = { workspace = true, features = [
 wasm-bindgen-futures = { workspace = true }
 
 [dev-dependencies]
-png = "0.18"
+png = { workspace = true }
 rustfft = { workspace = true }
 verified_engine = { path = "../crates/verified_engine" }
 
@@ -133,7 +138,7 @@ wasm-bindgen-test = { workspace = true }
 
 [build-dependencies]
 futures = { workspace = true }
-oxidize_core = { path = "../crates/oxidize_core" }
+oxidize_core = { path = "../crates/oxidize_core", features = ["ast-analysis"] }
 serde_json = { workspace = true }
 
 [lints]

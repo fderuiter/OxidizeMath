@@ -8,10 +8,10 @@
 
 use super::base64url;
 use super::codec::{
-    clamp_decoded_url_grid_state, encode_share_fragment_with_hud, ensure_all_json_numbers_finite,
-    validate_url_identifier, ShareUrlParams, MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
-    MAX_URL_STORY_STEPS,
+    clamp_decoded_url_grid_state, encode_share_fragment_with_hud, validate_url_identifier,
+    ShareUrlParams, MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, MAX_URL_STORY_STEPS,
 };
+use super::json_validator::validate_json_streaming_with_bounds;
 use crate::app::{ComparisonSyncConfig, ViewportLayout};
 use crate::framework::{ToolStateBounds, MAX_JSON_ARRAY_LEN, MAX_JSON_NESTING_DEPTH};
 use flate2::read::DeflateDecoder;
@@ -135,11 +135,7 @@ struct WireWorkspaceEnvelope {
 /// Validates that `json_str` fits within the 32,768-byte `#ws=...` preset cap, obeys structural
 /// nesting/array bounds, and contains only finite JSON numbers.
 pub fn validate_workspace_url_preset_json(json_str: &str) -> Result<(), String> {
-    let cleaned = egui_plot::export::strip_utf8_bom(json_str);
-    WORKSPACE_PRESET_JSON_BOUNDS.validate_json(cleaned)?;
-    let parsed: serde_json::Value =
-        serde_json::from_str(cleaned).map_err(|e| format!("Invalid URL state JSON: {e}"))?;
-    ensure_all_json_numbers_finite(&parsed)
+    validate_json_streaming_with_bounds(json_str, WORKSPACE_PRESET_JSON_BOUNDS)
 }
 
 struct ValidatedWireHud {
@@ -435,11 +431,7 @@ pub fn decode_workspace_share_param(raw_b64: &str) -> Result<WorkspaceShareParam
     let compressed = base64url::decode(trimmed, MAX_URL_FRAGMENT_BYTES)?;
     let json_str = inflate_bounded_deflate(&compressed)?;
     let cleaned = egui_plot::export::strip_utf8_bom(&json_str);
-    WORKSPACE_URL_JSON_BOUNDS.validate_json(cleaned)?;
-
-    let raw_tree: serde_json::Value =
-        serde_json::from_str(cleaned).map_err(|e| format!("Invalid workspace URL JSON: {e}"))?;
-    ensure_all_json_numbers_finite(&raw_tree)?;
+    validate_json_streaming_with_bounds(cleaned, WORKSPACE_URL_JSON_BOUNDS)?;
 
     let wire: WireWorkspaceEnvelope = serde_json::from_str(cleaned)
         .map_err(|e| format!("Invalid workspace URL envelope: {e}"))?;
