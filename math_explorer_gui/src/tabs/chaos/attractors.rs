@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::async_sim::{BackgroundWorker, SimCommand};
-use crate::framework::InteractiveTool;
+use crate::framework::{CoupledExpressionBank, InteractiveTool};
 use eframe::egui;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::Vector3;
@@ -12,6 +12,13 @@ use std::sync::Arc;
 mod counterfactual;
 pub use counterfactual::*;
 
+#[path = "attractors/flow.rs"]
+pub mod flow;
+pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
+
+#[path = "attractors/serde_vec3.rs"]
+mod serde_vec3;
+
 #[path = "attractors/runner.rs"]
 mod runner;
 pub use runner::*;
@@ -20,6 +27,8 @@ pub use runner::*;
 mod ui;
 
 pub struct AttractorPlotter {
+    pub(crate) mode: AttractorMode,
+    pub(crate) flow_bank: CoupledExpressionBank,
     pub(crate) system: LorenzSystem,
     pub(crate) execution_state: SolverExecutionState,
     pub(crate) step_count: usize,
@@ -41,21 +50,24 @@ impl Default for AttractorPlotter {
     fn default() -> Self {
         let initial_state = LorenzState::new(1.0, 1.0, 1.0);
         let system = LorenzBuilder::new().build(initial_state);
-        let sigma = system.sigma;
-        let rho = system.rho;
-        let beta = system.beta;
+        let flow_bank = default_flow_bank();
+        let custom_flow = Some(Arc::new(CompiledFlowJob::from_bank(&flow_bank)));
         let params = Arc::new(std::sync::RwLock::new(AttractorSharedParams {
-            sigma,
-            rho,
-            beta,
+            sigma: system.sigma,
+            rho: system.rho,
+            beta: system.beta,
             dt: 0.01,
             simulation_speed: 5,
             max_points: 2000,
+            mode: AttractorMode::Lorenz,
+            custom_flow,
         }));
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
 
         Self {
+            mode: AttractorMode::Lorenz,
+            flow_bank,
             system,
             execution_state: SolverExecutionState::Ready,
             step_count: 0,
@@ -92,13 +104,16 @@ impl AttractorPlotter {
     #[must_use]
     pub fn is_finite_state(&self) -> bool {
         let v = self.system.state.vec;
+        let lorenz_ok = self.mode != AttractorMode::Lorenz
+            || (self.system.sigma.is_finite()
+                && self.system.rho.is_finite()
+                && self.system.beta.is_finite());
         v.x.is_finite()
             && v.y.is_finite()
             && v.z.is_finite()
-            && self.system.sigma.is_finite()
-            && self.system.rho.is_finite()
-            && self.system.beta.is_finite()
+            && lorenz_ok
             && self.dt.is_finite()
+            && self.flow_bank.param_slice().iter().all(|x| x.is_finite())
     }
 
     pub fn try_resume(&mut self) -> Result<(), &'static str> {
@@ -106,11 +121,7 @@ impl AttractorPlotter {
         if !v.x.is_finite() || !v.y.is_finite() || !v.z.is_finite() {
             return Err("Cannot resume simulation: state coordinates are non-finite.");
         }
-        if !self.system.sigma.is_finite()
-            || !self.system.rho.is_finite()
-            || !self.system.beta.is_finite()
-            || !self.dt.is_finite()
-        {
+        if !self.is_finite_state() {
             return Err("Cannot resume simulation: system parameters are non-finite.");
         }
         self.execution_state = SolverExecutionState::Running;
@@ -119,6 +130,7 @@ impl AttractorPlotter {
     }
 
     pub fn on_slider_changed(&mut self) {
+        let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.sigma = self.system.sigma;
@@ -127,6 +139,8 @@ impl AttractorPlotter {
             p.dt = self.dt;
             p.simulation_speed = self.simulation_speed;
             p.max_points = self.max_points;
+            p.mode = self.mode;
+            p.custom_flow = Some(job);
         }
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
@@ -164,6 +178,7 @@ impl AttractorPlotter {
         self.twin = None;
         self.branch_engine.clear();
         self.execution_state = SolverExecutionState::Ready;
+        let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.sigma = sigma;
@@ -172,6 +187,8 @@ impl AttractorPlotter {
             p.dt = self.dt;
             p.simulation_speed = self.simulation_speed;
             p.max_points = self.max_points;
+            p.mode = self.mode;
+            p.custom_flow = Some(job);
         }
         let params = Arc::clone(&self.params);
         self.worker
@@ -182,16 +199,63 @@ impl AttractorPlotter {
         self.system.sigma = 10.0;
         self.system.rho = 28.0;
         self.system.beta = 8.0 / 3.0;
+        self.flow_bank = default_flow_bank();
         self.dt = 0.01;
         self.reset();
     }
 
-    /// Projects 3D point to 2D screen space based on rotation
+    /// Projects 3D point to 2D screen space based on rotation.
     pub(crate) fn project(&self, p: Vector3<f64>) -> [f64; 2] {
-        let center_offset = Vector3::new(0.0, 0.0, 25.0);
+        let center_offset = match self.mode {
+            AttractorMode::Lorenz => Vector3::new(0.0, 0.0, 25.0),
+            AttractorMode::Custom => Vector3::zeros(),
+        };
         let p_centered = p - center_offset;
         self.camera
             .project(&[p_centered.x, p_centered.y, p_centered.z])
+    }
+
+    fn step_single_tick(&mut self, cap: usize, custom_job: Option<&CompiledFlowJob>) -> bool {
+        let current_vec = self.system.state.vec;
+        if !current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite() {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: current_vec,
+                diverged_at_step: self.step_count,
+            };
+            return false;
+        }
+        if let Some(ref mut twin) = self.twin {
+            if !twin.step_branch_a(self.dt, cap) {
+                self.execution_state = SolverExecutionState::Diverged {
+                    invalid_vec: twin.system_a.state.vec,
+                    diverged_at_step: self.step_count,
+                };
+                return false;
+            }
+        }
+        if let Some(job) = custom_job {
+            self.system.state.vec = job.rk4_step(current_vec, self.dt);
+        } else {
+            self.system.step(self.dt);
+        }
+        self.step_count += 1;
+
+        let vec = self.system.state.vec;
+        if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: vec,
+                diverged_at_step: self.step_count,
+            };
+            return false;
+        }
+        if self.history.len() >= cap {
+            self.history.pop_front();
+        }
+        self.history.push_back(vec);
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.step_count, self.dt, vec);
+        }
+        true
     }
 }
 
@@ -209,6 +273,13 @@ impl InteractiveTool for AttractorPlotter {
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.mode as u8).hash(&mut h);
+        for bar in self.flow_bank.bars() {
+            bar.raw_text.hash(&mut h);
+        }
+        for &pv in self.flow_bank.param_slice() {
+            pv.to_bits().hash(&mut h);
+        }
         self.system.sigma.to_bits().hash(&mut h);
         self.system.rho.to_bits().hash(&mut h);
         self.system.beta.to_bits().hash(&mut h);
@@ -254,46 +325,11 @@ impl InteractiveTool for AttractorPlotter {
             self.execution_state = SolverExecutionState::Running;
         }
         let cap = self.max_points.clamp(1, ATTRACTOR_RING_CAPACITY);
+        let custom_job = (self.mode == AttractorMode::Custom)
+            .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
         for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
-            let current_vec = self.system.state.vec;
-            if !current_vec.x.is_finite()
-                || !current_vec.y.is_finite()
-                || !current_vec.z.is_finite()
-            {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: current_vec,
-                    diverged_at_step: self.step_count,
-                };
+            if !self.step_single_tick(cap, custom_job.as_ref()) {
                 break;
-            }
-            if let Some(ref mut twin) = self.twin {
-                if !twin.step_branch_a(self.dt, cap) {
-                    self.execution_state = SolverExecutionState::Diverged {
-                        invalid_vec: twin.system_a.state.vec,
-                        diverged_at_step: self.step_count,
-                    };
-                    break;
-                }
-            }
-
-            self.system.step(self.dt);
-            self.step_count += 1;
-
-            let vec = self.system.state.vec;
-            if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: vec,
-                    diverged_at_step: self.step_count,
-                };
-                break;
-            }
-
-            if self.history.len() >= cap {
-                self.history.pop_front();
-            }
-            self.history.push_back(vec);
-            if let Some(ref mut twin) = self.twin {
-                twin.observe_lockstep(self.step_count, self.dt, vec);
             }
         }
         self.sync_local_branch_engine();
@@ -305,7 +341,10 @@ impl InteractiveTool for AttractorPlotter {
             .map(|t| t.snapshot(self.step_count, self.dt))
     }
 
-    fn apply_counterfactual_action(&mut self, action: crate::framework::BranchControlAction) -> bool {
+    fn apply_counterfactual_action(
+        &mut self,
+        action: crate::framework::BranchControlAction,
+    ) -> bool {
         match action {
             crate::framework::BranchControlAction::ForkHere => self.fork_here(),
             crate::framework::BranchControlAction::SwapBranches => self.swap_branches(),
@@ -411,3 +450,7 @@ mod attractor_tests;
 #[cfg(test)]
 #[path = "attractors/counterfactual_tests.rs"]
 mod counterfactual_tests;
+
+#[cfg(test)]
+#[path = "attractors/custom_flow_tests.rs"]
+mod custom_flow_tests;

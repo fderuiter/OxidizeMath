@@ -112,8 +112,9 @@ fn test_attractor_swap_clear_reset_zero_alloc_and_twin_exports() {
 fn test_attractor_and_sir_zero_allocation_verified_twin_step() {
     let plotter = AttractorPlotter::default();
     let mut runner = AttractorRunner {
-        system: math_explorer::physics::chaos::lorenz::LorenzBuilder::new()
-            .build(math_explorer::physics::chaos::lorenz::LorenzState::new(1.0, 1.0, 1.0)),
+        system: math_explorer::physics::chaos::lorenz::LorenzBuilder::new().build(
+            math_explorer::physics::chaos::lorenz::LorenzState::new(1.0, 1.0, 1.0),
+        ),
         params: std::sync::Arc::clone(&plotter.params),
         history: std::collections::VecDeque::with_capacity(ATTRACTOR_RING_CAPACITY),
         step_count: 0,
@@ -188,7 +189,10 @@ fn test_sir_1000_step_parity_and_lockdown_timing_delta_ipeak() {
         .unwrap()
         .raw_value;
 
-    assert!(averted_day10 > 200.0, "Day-10 lockdown must avert substantial peak infections, got {averted_day10}");
+    assert!(
+        averted_day10 > 200.0,
+        "Day-10 lockdown must avert substantial peak infections, got {averted_day10}"
+    );
     assert!(
         averted_day10 > averted_day17,
         "Day-10 intervention ({averted_day10}) must avert more peak infections than day-17 ({averted_day17})"
@@ -212,7 +216,14 @@ fn test_sir_swap_clear_reset_and_exports() {
 
     run_framework_export(&mut fw, "epidemiology", ExportFormat::Png);
     assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-    assert!(fw.export_queue.last_exported_bytes.as_deref().unwrap().len() > 1_000);
+    assert!(
+        fw.export_queue
+            .last_exported_bytes
+            .as_deref()
+            .unwrap()
+            .len()
+            > 1_000
+    );
 
     assert!(fw.dispatch_branch_action(BranchControlAction::SwapBranches));
     let swapped = fw
@@ -263,9 +274,46 @@ fn test_sir_day20_vs_day35_lockdown_exact_delta_ipeak() {
     let (peak_a_35, peak_b_35, delta_35) = run_lockdown(35.0);
     assert!((delta_20 - (peak_a_20 - peak_b_20)).abs() < 1e-9);
     assert!((delta_35 - (peak_a_35 - peak_b_35)).abs() < 1e-9);
-    assert!(delta_20 > 20_000.0, "Expected large day-20 ΔI_peak, got {delta_20}");
+    assert!(
+        delta_20 > 20_000.0,
+        "Expected large day-20 ΔI_peak, got {delta_20}"
+    );
     assert!(
         delta_20 > delta_35,
         "Day-20 lockdown ({delta_20}) must avert more peak infections than day-35 ({delta_35})"
+    );
+}
+
+#[test]
+fn test_attractor_custom_flow_counterfactual_fork_and_roundtrip() {
+    let mut plotter = AttractorPlotter {
+        mode: AttractorMode::Custom,
+        simulation_speed: 1,
+        ..Default::default()
+    };
+    plotter.on_slider_changed();
+    for _ in 0..25 {
+        plotter.step_simulation();
+    }
+    assert!(plotter.apply_counterfactual_action(BranchControlAction::SetPerturbation(0.0)));
+    assert!(plotter.apply_counterfactual_action(BranchControlAction::ForkHere));
+    for _ in 0..100 {
+        plotter.step_simulation();
+    }
+    let parity = plotter.counterfactual_snapshot().expect("custom twin");
+    assert_eq!(parity.l2_separation, 0.0);
+
+    let saved = plotter.save_state().expect("forked custom state saves");
+    let mut restored = AttractorPlotter::default();
+    restored
+        .try_load_state(&saved)
+        .expect("forked custom state loads");
+    assert_eq!(restored.mode, AttractorMode::Custom);
+    assert_eq!(
+        restored
+            .counterfactual_snapshot()
+            .expect("restored custom twin")
+            .fork_step,
+        25
     );
 }

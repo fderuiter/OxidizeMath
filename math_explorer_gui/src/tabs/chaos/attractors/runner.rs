@@ -1,5 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::flow::{AttractorMode, CompiledFlowJob};
+use super::serde_vec3;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
@@ -22,147 +24,6 @@ pub enum SolverExecutionState {
     },
 }
 
-mod serde_vec3 {
-    use super::*;
-    use serde::de::{self, SeqAccess, Visitor};
-    use serde::ser::SerializeSeq;
-    use serde::{Deserializer, Serializer};
-    use std::fmt;
-
-    struct F64Def(f64);
-
-    impl serde::Serialize for F64Def {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            if self.0.is_nan() {
-                serializer.serialize_str("NaN")
-            } else if self.0 == f64::INFINITY {
-                serializer.serialize_str("Infinity")
-            } else if self.0 == f64::NEG_INFINITY {
-                serializer.serialize_str("-Infinity")
-            } else {
-                serializer.serialize_f64(self.0)
-            }
-        }
-    }
-
-    struct F64Visitor;
-
-    impl<'de> Visitor<'de> for F64Visitor {
-        type Value = f64;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a float, null, or special float string (NaN, Infinity, -Infinity)")
-        }
-
-        fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(v)
-        }
-
-        fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(v as f64)
-        }
-
-        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(v as f64)
-        }
-
-        fn visit_unit<E>(self) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(f64::NAN)
-        }
-
-        fn visit_none<E>(self) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(f64::NAN)
-        }
-
-        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            match s {
-                "NaN" | "nan" => Ok(f64::NAN),
-                "Infinity" | "+Infinity" | "inf" | "+inf" => Ok(f64::INFINITY),
-                "-Infinity" | "-inf" => Ok(f64::NEG_INFINITY),
-                other => other.parse::<f64>().map_err(de::Error::custom),
-            }
-        }
-    }
-
-    pub fn serialize<S>(vec: &Vector3<f64>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut seq = serializer.serialize_seq(Some(3))?;
-        seq.serialize_element(&F64Def(vec.x))?;
-        seq.serialize_element(&F64Def(vec.y))?;
-        seq.serialize_element(&F64Def(vec.z))?;
-        seq.end()
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vector3<f64>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct Vec3Visitor;
-
-        impl<'de> Visitor<'de> for Vec3Visitor {
-            type Value = Vector3<f64>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a 3-element array of coordinates")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                let x = seq
-                    .next_element_seed(F64Seed)?
-                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let y = seq
-                    .next_element_seed(F64Seed)?
-                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                let z = seq
-                    .next_element_seed(F64Seed)?
-                    .ok_or_else(|| de::Error::invalid_length(2, &self))?;
-                Ok(Vector3::new(x, y, z))
-            }
-        }
-
-        struct F64Seed;
-
-        impl<'de> de::DeserializeSeed<'de> for F64Seed {
-            type Value = f64;
-
-            fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                deserializer.deserialize_any(F64Visitor)
-            }
-        }
-
-        deserializer.deserialize_seq(Vec3Visitor)
-    }
-}
-
 #[allow(missing_docs)]
 pub struct AttractorSharedParams {
     pub sigma: f64,
@@ -171,6 +32,8 @@ pub struct AttractorSharedParams {
     pub dt: f64,
     pub simulation_speed: usize,
     pub max_points: usize,
+    pub mode: AttractorMode,
+    pub custom_flow: Option<Arc<CompiledFlowJob>>,
 }
 
 #[derive(Clone)]
@@ -194,7 +57,7 @@ pub struct AttractorRunner {
 }
 
 impl AttractorRunner {
-    /// Builds a fresh Lorenz runner initialized from shared parameters.
+    /// Builds a fresh runner initialized from shared parameters.
     pub fn from_params(params: Arc<std::sync::RwLock<AttractorSharedParams>>) -> Self {
         let (sigma, rho, beta, max_points) = {
             let p = params.read().unwrap_or_else(|e| e.into_inner());
@@ -214,7 +77,15 @@ impl AttractorRunner {
         }
     }
 
-    fn sync_params(&mut self) -> (f64, usize, usize) {
+    fn sync_params(
+        &mut self,
+    ) -> (
+        f64,
+        usize,
+        usize,
+        AttractorMode,
+        Option<Arc<CompiledFlowJob>>,
+    ) {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         self.system.sigma = p.sigma;
         self.system.rho = p.rho;
@@ -223,27 +94,13 @@ impl AttractorRunner {
             p.dt,
             p.simulation_speed.clamp(1, MAX_SIMULATION_SPEED),
             p.max_points,
+            p.mode,
+            p.custom_flow.clone(),
         )
     }
 
-    fn advance_lorenz_tick(&mut self, dt: f64, max_points: usize, step_twin_too: bool) -> bool {
-        let current_vec = self.system.state.vec;
-        if !current_vec.x.is_finite()
-            || !current_vec.y.is_finite()
-            || !current_vec.z.is_finite()
-            || !self.system.sigma.is_finite()
-            || !self.system.rho.is_finite()
-            || !self.system.beta.is_finite()
-            || !dt.is_finite()
-        {
-            self.execution_state = SolverExecutionState::Diverged {
-                invalid_vec: current_vec,
-                diverged_at_step: self.step_count,
-            };
-            return false;
-        }
-
-        if step_twin_too {
+    fn step_twin_if_enabled(&mut self, dt: f64, max_points: usize, enabled: bool) -> bool {
+        if enabled {
             if let Some(ref mut twin) = self.twin {
                 if !twin.step_branch_a(dt, max_points) {
                     self.execution_state = SolverExecutionState::Diverged {
@@ -254,8 +111,45 @@ impl AttractorRunner {
                 }
             }
         }
+        true
+    }
 
-        self.system.step(dt);
+    fn advance_tick(
+        &mut self,
+        dt: f64,
+        max_points: usize,
+        mode: AttractorMode,
+        custom_flow: Option<&CompiledFlowJob>,
+        step_twin_too: bool,
+    ) -> bool {
+        let current_vec = self.system.state.vec;
+        let lorenz_ok = mode != AttractorMode::Lorenz
+            || (self.system.sigma.is_finite()
+                && self.system.rho.is_finite()
+                && self.system.beta.is_finite());
+        if !current_vec.x.is_finite()
+            || !current_vec.y.is_finite()
+            || !current_vec.z.is_finite()
+            || !lorenz_ok
+            || !dt.is_finite()
+        {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: current_vec,
+                diverged_at_step: self.step_count,
+            };
+            return false;
+        }
+        if !self.step_twin_if_enabled(dt, max_points, step_twin_too) {
+            return false;
+        }
+        match mode {
+            AttractorMode::Lorenz => self.system.step(dt),
+            AttractorMode::Custom => {
+                if let Some(job) = custom_flow {
+                    self.system.state.vec = job.rk4_step(current_vec, dt);
+                }
+            }
+        }
         self.step_count += 1;
 
         let vec = self.system.state.vec;
@@ -328,7 +222,7 @@ impl SimulationRunner for AttractorRunner {
         if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
             return;
         }
-        let (dt, simulation_speed, max_points) = self.sync_params();
+        let (dt, simulation_speed, max_points, _, _) = self.sync_params();
         if let Some(ref mut twin) = self.twin {
             for _ in 0..simulation_speed {
                 if !twin.step_branch_a(dt, max_points) {
@@ -346,12 +240,12 @@ impl SimulationRunner for AttractorRunner {
         if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
             return;
         }
-        let (dt, simulation_speed, max_points) = self.sync_params();
+        let (dt, simulation_speed, max_points, mode, custom_flow) = self.sync_params();
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
         for _ in 0..simulation_speed {
-            if !self.advance_lorenz_tick(dt, max_points, false) {
+            if !self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), false) {
                 break;
             }
         }
@@ -364,12 +258,12 @@ impl SimulationRunner for AttractorRunner {
         if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
             return;
         }
-        let (dt, simulation_speed, max_points) = self.sync_params();
+        let (dt, simulation_speed, max_points, mode, custom_flow) = self.sync_params();
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
         for _ in 0..simulation_speed {
-            if !self.advance_lorenz_tick(dt, max_points, true) {
+            if !self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), true) {
                 break;
             }
         }
@@ -379,8 +273,8 @@ impl SimulationRunner for AttractorRunner {
         if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
             return;
         }
-        let (dt, _, max_points) = self.sync_params();
-        if self.advance_lorenz_tick(dt, max_points, true) {
+        let (dt, _, max_points, mode, custom_flow) = self.sync_params();
+        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), true) {
             self.execution_state = SolverExecutionState::Paused;
         }
     }
@@ -430,7 +324,7 @@ impl SimulationRunner for AttractorRunner {
                 diverged_at_step,
                 "lorenz_state",
                 format!(
-                    "Non-finite Lorenz state [{:.2}, {:.2}, {:.2}] at step {}",
+                    "Non-finite attractor state [{:.2}, {:.2}, {:.2}] at step {}",
                     invalid_vec.x, invalid_vec.y, invalid_vec.z, diverged_at_step
                 ),
             ))
@@ -440,11 +334,10 @@ impl SimulationRunner for AttractorRunner {
                 self.step_count as f64 * if dt.is_finite() { dt } else { 0.01 },
                 self.step_count,
                 "lorenz_state",
-                "Non-finite Lorenz trajectory coordinates detected",
+                "Non-finite attractor trajectory coordinates detected",
             ))
         } else {
             None
         }
     }
 }
-

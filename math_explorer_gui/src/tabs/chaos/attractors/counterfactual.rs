@@ -2,7 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AttractorPlotter, AttractorRunner, SolverExecutionState};
+use super::{
+    AttractorMode, AttractorPlotter, AttractorRunner, CompiledFlowJob, SolverExecutionState,
+};
 use crate::app::SemanticPalette;
 use crate::async_sim::SimCommand;
 use crate::framework::{
@@ -12,6 +14,7 @@ use crate::framework::{
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 /// Pre-allocated trajectory ring-buffer capacity so locked `step()` loops never reallocate.
 pub const ATTRACTOR_RING_CAPACITY: usize = 10_000;
@@ -40,6 +43,10 @@ pub struct AttractorForkDescriptor {
 pub struct AttractorTwinState {
     /// Frozen-parameter Lorenz integrator for baseline `Branch A`.
     pub system_a: LorenzSystem,
+    /// Frozen dynamical mode (`Lorenz` or `Custom`) at fork time.
+    pub mode_a: AttractorMode,
+    /// Frozen compiled 3D custom vector field for `Branch A` when `mode_a == Custom`.
+    pub custom_flow_a: Option<Arc<CompiledFlowJob>>,
     /// Pre-allocated trajectory history for `Branch A`.
     pub history_a: VecDeque<Vector3<f64>>,
     /// 3D state coordinate where the fork occurred (`Fork @ t_k`).
@@ -90,6 +97,8 @@ impl AttractorTwinState {
 
         Self {
             system_a,
+            mode_a: AttractorMode::Lorenz,
+            custom_flow_a: None,
             history_a,
             fork_point,
             fork_step: step_count,
@@ -98,20 +107,37 @@ impl AttractorTwinState {
         }
     }
 
+    /// Attaches custom 3D flow configuration when forking in [`AttractorMode::Custom`].
+    #[must_use]
+    pub fn with_flow(
+        mut self,
+        mode_a: AttractorMode,
+        custom_flow_a: Option<Arc<CompiledFlowJob>>,
+    ) -> Self {
+        self.mode_a = mode_a;
+        self.custom_flow_a = custom_flow_a;
+        self
+    }
+
     /// Advances `system_a` by one `dt` step without heap allocation.
     pub fn step_branch_a(&mut self, dt: f64, max_points: usize) -> bool {
         let v = self.system_a.state.vec;
-        if !v.x.is_finite()
-            || !v.y.is_finite()
-            || !v.z.is_finite()
-            || !self.system_a.sigma.is_finite()
-            || !self.system_a.rho.is_finite()
-            || !self.system_a.beta.is_finite()
-            || !dt.is_finite()
+        let lorenz_ok = self.mode_a != AttractorMode::Lorenz
+            || (self.system_a.sigma.is_finite()
+                && self.system_a.rho.is_finite()
+                && self.system_a.beta.is_finite());
+        if !v.x.is_finite() || !v.y.is_finite() || !v.z.is_finite() || !lorenz_ok || !dt.is_finite()
         {
             return false;
         }
-        self.system_a.step(dt);
+        match self.mode_a {
+            AttractorMode::Lorenz => self.system_a.step(dt),
+            AttractorMode::Custom => {
+                if let Some(ref job) = self.custom_flow_a {
+                    self.system_a.state.vec = job.rk4_step(v, dt);
+                }
+            }
+        }
         let next = self.system_a.state.vec;
         if !next.x.is_finite() || !next.y.is_finite() || !next.z.is_finite() {
             return false;
@@ -166,16 +192,24 @@ impl AttractorTwinState {
 impl AttractorRunner {
     pub(super) fn handle_custom_command(&mut self, cmd: &str) {
         if let Some(rest) = cmd.strip_prefix("fork:") {
-            if self.step_count > 0 && !matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            if self.step_count > 0
+                && !matches!(self.execution_state, SolverExecutionState::Diverged { .. })
+            {
                 let delta = rest.parse::<f64>().unwrap_or(0.0);
-                let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
-                self.twin = Some(AttractorTwinState::fork_from(
-                    self.step_count,
-                    dt,
-                    &mut self.system,
-                    &self.history,
-                    delta,
-                ));
+                let (dt, mode, flow) = {
+                    let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+                    (p.dt, p.mode, p.custom_flow.clone())
+                };
+                self.twin = Some(
+                    AttractorTwinState::fork_from(
+                        self.step_count,
+                        dt,
+                        &mut self.system,
+                        &self.history,
+                        delta,
+                    )
+                    .with_flow(mode, flow),
+                );
             }
         } else if cmd == "swap" {
             self.swap_twin_branches();
@@ -203,13 +237,18 @@ impl AttractorPlotter {
             return false;
         }
         let delta = self.branch_engine.effective_delta();
-        self.twin = Some(AttractorTwinState::fork_from(
-            self.step_count,
-            self.dt,
-            &mut self.system,
-            &self.history,
-            delta,
-        ));
+        let custom_flow = (self.mode == AttractorMode::Custom)
+            .then(|| Arc::new(CompiledFlowJob::from_bank(&self.flow_bank)));
+        self.twin = Some(
+            AttractorTwinState::fork_from(
+                self.step_count,
+                self.dt,
+                &mut self.system,
+                &self.history,
+                delta,
+            )
+            .with_flow(self.mode, custom_flow),
+        );
         let _ = self
             .worker
             .send_command(SimCommand::Custom(format!("fork:{delta}")));
@@ -248,8 +287,7 @@ impl AttractorPlotter {
         self.branch_engine.sync_snapshot(snap);
     }
 
-    /// Deterministically reconstructs a forked twin state from a compact preset/URL descriptor.
-    pub(super) fn apply_fork_descriptor(&mut self, desc: AttractorForkDescriptor) -> Result<(), String> {
+    fn validate_fork_descriptor(desc: &AttractorForkDescriptor) -> Result<(), String> {
         if desc.fork_step == 0
             || desc.fork_step > 50_000
             || desc.post_fork_steps > 50_000
@@ -260,10 +298,33 @@ impl AttractorPlotter {
         {
             return Err("Invalid AttractorPlotter fork descriptor".to_string());
         }
-        let active_sigma = self.system.sigma;
-        let active_rho = self.system.rho;
-        let active_beta = self.system.beta;
+        Ok(())
+    }
+
+    fn advance_replay_step(&mut self, cap: usize, custom_job: Option<&CompiledFlowJob>) {
+        if let Some(job) = custom_job {
+            self.system.state.vec = job.rk4_step(self.system.state.vec, self.dt);
+        } else {
+            self.system.step(self.dt);
+        }
+        self.step_count += 1;
+        if self.history.len() >= cap {
+            self.history.pop_front();
+        }
+        self.history.push_back(self.system.state.vec);
+    }
+
+    /// Deterministically reconstructs a forked twin state from a compact preset/URL descriptor.
+    pub(super) fn apply_fork_descriptor(
+        &mut self,
+        desc: AttractorForkDescriptor,
+    ) -> Result<(), String> {
+        Self::validate_fork_descriptor(&desc)?;
+        let (active_sigma, active_rho, active_beta) =
+            (self.system.sigma, self.system.rho, self.system.beta);
         let cap = self.max_points.clamp(1, ATTRACTOR_RING_CAPACITY);
+        let custom_flow = (self.mode == AttractorMode::Custom)
+            .then(|| Arc::new(CompiledFlowJob::from_bank(&self.flow_bank)));
 
         self.system = LorenzBuilder::new()
             .sigma(desc.baseline_sigma)
@@ -274,12 +335,7 @@ impl AttractorPlotter {
         self.step_count = 0;
 
         for _ in 0..desc.fork_step {
-            self.system.step(self.dt);
-            self.step_count += 1;
-            if self.history.len() >= cap {
-                self.history.pop_front();
-            }
-            self.history.push_back(self.system.state.vec);
+            self.advance_replay_step(cap, custom_flow.as_deref());
         }
 
         let mut twin = AttractorTwinState::fork_from(
@@ -288,7 +344,8 @@ impl AttractorPlotter {
             &mut self.system,
             &self.history,
             desc.delta_x,
-        );
+        )
+        .with_flow(self.mode, custom_flow.clone());
         self.system.sigma = active_sigma;
         self.system.rho = active_rho;
         self.system.beta = active_beta;
@@ -296,12 +353,7 @@ impl AttractorPlotter {
 
         for _ in 0..desc.post_fork_steps {
             let _ = twin.step_branch_a(self.dt, cap);
-            self.system.step(self.dt);
-            self.step_count += 1;
-            if self.history.len() >= cap {
-                self.history.pop_front();
-            }
-            self.history.push_back(self.system.state.vec);
+            self.advance_replay_step(cap, custom_flow.as_deref());
             twin.observe_lockstep(self.step_count, self.dt, self.system.state.vec);
         }
 
