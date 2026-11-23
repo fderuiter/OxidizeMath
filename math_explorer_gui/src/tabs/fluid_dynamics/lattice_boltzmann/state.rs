@@ -73,6 +73,8 @@ pub enum LbmBrushMode {
     Solid,
     /// Erase solid cells back to fluid.
     Erase,
+    /// Inject directed fluid momentum along pointer drag direction.
+    VelocityJet,
 }
 
 /// Live hydrodynamic force and dimensionless telemetry reported by the LBM solver.

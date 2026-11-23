@@ -17,7 +17,7 @@ use crate::accessibility::{
 };
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{SimCommand, StateSnapshot};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::{BrushMode, BrushStroke, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use scientific_metadata::theory::TheoryDescribable;
 
@@ -173,8 +173,9 @@ impl LatticeBoltzmannTool {
     fn draw_sculpt_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.label(egui::RichText::new("Obstacle Sculpting").strong());
         ui.horizontal(|ui| {
-            ui.radio_value(&mut self.brush_mode, LbmBrushMode::Solid, "Sculpt Solid");
+            ui.radio_value(&mut self.brush_mode, LbmBrushMode::Solid, "Solid");
             ui.radio_value(&mut self.brush_mode, LbmBrushMode::Erase, "Erase");
+            ui.radio_value(&mut self.brush_mode, LbmBrushMode::VelocityJet, "Jet");
         });
         ui.add(
             egui::Slider::new(&mut self.brush_radius, BRUSH_RADIUS_MIN..=BRUSH_RADIUS_MAX)
@@ -191,54 +192,49 @@ impl LatticeBoltzmannTool {
             ctx.request_repaint();
         }
         self.draw_profile_buttons(ui, ctx);
-        ui.small("Left-drag sculpts • Right-drag erases • Inlet x < 2 protected");
+        ui.small("Left-drag sculpts/jets • Right-drag erases • Inlet x < 2 protected");
     }
 
     fn draw_profile_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        fn preset_btn(ui: &mut egui::Ui, label: &str, hover: &str) -> bool {
+            ui.button(label).accessible_hover_text(hover).clicked()
+        }
         ui.label("Tunnel Profiles:");
         ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("● Cylinder")
-                .accessible_hover_text("Load circular cylinder vortex-street benchmark")
-                .clicked()
-            {
+            if preset_btn(ui, "● Cylinder", "Load circular cylinder vortex-street benchmark") {
                 self.apply_obstacle_preset(cylinder_obstacle_grid());
                 ctx.request_repaint();
             }
-            if ui
-                .button("▮ Bluff Plate")
-                .accessible_hover_text("Load high-drag flat bluff plate obstacle")
-                .clicked()
-            {
+            if preset_btn(ui, "▮ Bluff Plate", "Load high-drag flat bluff plate obstacle") {
                 self.apply_obstacle_preset(bluff_plate_obstacle_grid());
                 ctx.request_repaint();
             }
-            if ui
-                .button("➤ Min-Drag Airfoil")
-                .accessible_hover_text("Load streamlined airfoil for minimum-drag comparison")
-                .clicked()
-            {
+            if preset_btn(ui, "➤ Min-Drag Airfoil", "Load streamlined airfoil benchmark") {
                 self.apply_obstacle_preset(streamlined_airfoil_obstacle_grid());
+                ctx.request_repaint();
+            }
+            if preset_btn(ui, "✈ NACA 2412", "Stamp cambered NACA 2412 airfoil at 8° AoA") {
+                self.apply_naca_2412_preset(8.0);
+                ctx.request_repaint();
+            }
+            if preset_btn(ui, "⏳ Venturi", "Stamp converging-diverging Venturi nozzle") {
+                self.apply_venturi_preset();
                 ctx.request_repaint();
             }
             for stamp in [
                 super::super::lbm_fairing::FairingStamp::TeardropFairing,
                 super::super::lbm_fairing::FairingStamp::SymmetricWedge,
             ] {
-                if ui
-                    .button(format!("♦ {}", stamp.label()))
-                    .accessible_hover_text("Stamp fairing geometry around protected R_core = 4")
-                    .clicked()
-                {
+                if preset_btn(
+                    ui,
+                    &format!("♦ {}", stamp.label()),
+                    "Stamp fairing geometry around protected R_core = 4",
+                ) {
                     self.apply_fairing_stamp(stamp);
                     ctx.request_repaint();
                 }
             }
-            if ui
-                .button("✕ Clear")
-                .accessible_hover_text("Remove all solid obstacles from the wind tunnel")
-                .clicked()
-            {
+            if preset_btn(ui, "✕ Clear", "Remove all solid obstacles from the wind tunnel") {
                 self.apply_obstacle_preset(vec![false; LBM_CELL_COUNT]);
                 ctx.request_repaint();
             }
@@ -284,6 +280,7 @@ impl LatticeBoltzmannTool {
                 );
                 paint_canvas_focus_ring(ui, &response);
                 lock_canvas_arrow_keys(ui, &response);
+                self.focused_canvas = response.has_focus().then_some(response.id);
                 self.handle_canvas_sculpting(ui, ctx, &response);
                 self.paint_canvas_hud_overlay(ui, response.rect);
             }
@@ -303,16 +300,34 @@ impl LatticeBoltzmannTool {
                 i.pointer.interact_pos(),
             )
         });
-        if (response.hovered() || response.dragged() || response.clicked())
-            && (primary_down || secondary_down)
-        {
-            if let Some(pos) = interact_pos.filter(|p| response.rect.contains(*p)) {
-                if let Some((gx, gy)) = screen_pos_to_cell(pos, response.rect) {
-                    self.cursor_cell = (gx, gy);
-                    let paint_solid = !secondary_down && self.brush_mode == LbmBrushMode::Solid;
-                    self.sculpt_at_cell(gx, gy, paint_solid);
-                    ctx.request_repaint();
-                }
+        if !(primary_down || secondary_down) {
+            self.last_drag_cell = None;
+        } else if response.hovered() || response.dragged() || response.clicked() {
+            if let Some((gx, gy)) = interact_pos
+                .filter(|p| response.rect.contains(*p))
+                .and_then(|pos| screen_pos_to_cell(pos, response.rect))
+            {
+                let (x0, y0) = self.last_drag_cell.unwrap_or((gx, gy));
+                self.last_drag_cell = Some((gx, gy));
+                self.cursor_cell = (gx, gy);
+                let mode = if secondary_down {
+                    BrushMode::Erase
+                } else {
+                    match self.brush_mode {
+                        LbmBrushMode::Solid => BrushMode::Solid,
+                        LbmBrushMode::Erase => BrushMode::Erase,
+                        LbmBrushMode::VelocityJet => BrushMode::VelocityJet,
+                    }
+                };
+                let stroke = BrushStroke {
+                    start: [x0 as f64 + 0.5, y0 as f64 + 0.5],
+                    end: [gx as f64 + 0.5, gy as f64 + 0.5],
+                    radius: f64::from(self.brush_radius),
+                    mode,
+                    drag_vector: [gx as f64 - x0 as f64, gy as f64 - y0 as f64],
+                };
+                self.apply_brush_stroke(&stroke);
+                ctx.request_repaint();
             }
         }
         if response.has_focus() {

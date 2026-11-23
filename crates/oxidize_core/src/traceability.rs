@@ -264,7 +264,10 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         if let Ok(mut crates) = self.vfs.list_dir(&crate_base).await {
             crates.sort();
             for crate_name in crates {
-                code_dirs.push(format!("{crate_base}/{crate_name}/src"));
+                let member_rel = format!("crates/{crate_name}");
+                if !runner::IGNORED_TRACEABILITY_MEMBERS.contains(&member_rel.as_str()) {
+                    code_dirs.push(format!("{crate_base}/{crate_name}/src"));
+                }
             }
         }
         (code_dirs, format!("{prefix}papers"))

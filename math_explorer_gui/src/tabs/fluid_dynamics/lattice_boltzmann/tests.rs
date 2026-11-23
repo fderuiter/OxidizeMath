@@ -330,3 +330,53 @@ fn test_lbm_fairing_challenge_lifecycle_and_tampered_url_clamping() {
     assert!((hydrated.inflow_speed - 0.10).abs() < 1e-12);
     assert!(hydrated.evaluate_challenge().unwrap().passed);
 }
+
+#[test]
+fn test_tool_on_brush_solid_erase_velocity_jet_and_naca_venturi_stamps() {
+    let mut tool = LatticeBoltzmannTool::default();
+    tool.apply_obstacle_preset(vec![false; LBM_CELL_COUNT]);
+    assert_eq!(count_solid_cells(&tool.obstacles), 0);
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let (_, resp) = ui.allocate_exact_size(egui::vec2(200.0, 100.0), egui::Sense::click());
+            let solid_stroke = BrushStroke {
+                start: [20.5, 10.5],
+                end: [35.5, 18.5],
+                radius: 2.0,
+                mode: BrushMode::Solid,
+                drag_vector: [15.0, 8.0],
+            };
+            tool.on_brush(&InteractionContext::from_brush_stroke(&resp, solid_stroke));
+            assert!(count_solid_cells(&tool.obstacles) > 20);
+            assert!(tool.obstacles[flatten_2d_index(20, 10, LBM_WIDTH)]);
+            assert!(tool.obstacles[flatten_2d_index(35, 18, LBM_WIDTH)]);
+
+            let erase_stroke = BrushStroke {
+                start: [20.5, 10.5],
+                end: [20.5, 10.5],
+                radius: 2.0,
+                mode: BrushMode::Erase,
+                drag_vector: [0.0, 0.0],
+            };
+            tool.on_brush(&InteractionContext::from_brush_stroke(&resp, erase_stroke));
+            assert!(!tool.obstacles[flatten_2d_index(20, 10, LBM_WIDTH)]);
+
+            let jet_stroke = BrushStroke {
+                start: [50.5, 25.5],
+                end: [54.5, 25.5],
+                radius: 2.0,
+                mode: BrushMode::VelocityJet,
+                drag_vector: [3.0, 0.0],
+            };
+            tool.on_brush(&InteractionContext::from_brush_stroke(&resp, jet_stroke));
+        });
+    });
+
+    tool.apply_naca_2412_preset(8.0);
+    assert!(count_solid_cells(&tool.obstacles) > 20);
+    tool.apply_venturi_preset();
+    assert!(count_solid_cells(&tool.obstacles) > 250);
+    assert!(tool.has_finite_parameters());
+}

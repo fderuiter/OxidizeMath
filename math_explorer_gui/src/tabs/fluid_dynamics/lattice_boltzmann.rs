@@ -1,15 +1,19 @@
 //! Dedicated D2Q9 Lattice Boltzmann Wind Tunnel tool with live bounce-back
 //! aerodynamic telemetry (`C_D`, `C_L`, `Re`), URL-shareable obstacle sculpting,
+//! `SpatialBrushKit` stroke integration (`Solid`, `Erase`, `VelocityJet`),
 //! inverse fairing challenge (`lbm_low_drag_fairing`), and vortex-shedding GIF export.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::lbm_fairing::{
-    restore_inlet_and_core_mask, FairingStamp, LbmFairingEvaluator, CHALLENGE_LBM_FAIRING,
+    restore_inlet_and_core_mask, LbmFairingEvaluator, CHALLENGE_LBM_FAIRING,
     CHALLENGE_LBM_VISCOSITY, LBM_U_IN,
 };
 use crate::async_sim::{BackgroundWorker, SimCommand};
-use crate::framework::{ChallengeEvaluation, InteractiveTool};
+use crate::framework::{
+    bresenham_line, BrushMode, BrushStroke, ChallengeEvaluation, InteractionContext,
+    InteractiveTool, SpatialBrushKit,
+};
 use eframe::egui;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     BgkCollision, LatticeBoltzmannD2Q9, LatticeState,
@@ -21,7 +25,7 @@ use std::sync::{Arc, RwLock};
 #[path = "lattice_boltzmann/legacy_unified.rs"]
 mod legacy_unified;
 #[cfg(test)]
-pub use legacy_unified::LbmUnified;
+pub use legacy_unified::{LbmSnapshotMetrics, LbmUnified, LBM_INLET_U};
 
 #[path = "lattice_boltzmann/presets.rs"]
 mod presets;
@@ -59,6 +63,8 @@ pub struct LatticeBoltzmannTool {
     pub(crate) mask_generation: u64,
     pub(crate) telemetry: LbmTelemetry,
     pub(crate) cursor_cell: (usize, usize),
+    pub(crate) last_drag_cell: Option<(usize, usize)>,
+    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) dirty: bool,
     pub(crate) gif_solver: Option<LatticeBoltzmannD2Q9<BgkCollision>>,
@@ -105,6 +111,8 @@ impl Default for LatticeBoltzmannTool {
             mask_generation: 0,
             telemetry,
             cursor_cell: (28, 25),
+            last_drag_cell: None,
+            focused_canvas: None,
             texture: None,
             dirty: true,
             gif_solver: None,
@@ -139,7 +147,7 @@ impl LatticeBoltzmannTool {
         );
     }
 
-    fn enforce_challenge_invariants_and_score(&mut self) {
+    pub(super) fn enforce_challenge_invariants_and_score(&mut self) {
         if self.active_challenge != Some(CHALLENGE_LBM_FAIRING) {
             return;
         }
@@ -168,34 +176,43 @@ impl LatticeBoltzmannTool {
         self.sync_obstacles_to_worker();
     }
 
-    pub(crate) fn apply_fairing_stamp(&mut self, stamp: FairingStamp) {
-        let mut mask = [false; LBM_CELL_COUNT];
-        stamp.write_mask(&mut mask);
-        self.apply_obstacle_preset(mask.to_vec());
-    }
-
-    pub(crate) fn enforce_current_budget(&mut self) {
-        enforce_area_budget(&mut self.obstacles, self.area_budget);
-        self.enforce_challenge_invariants_and_score();
-        self.sync_obstacles_to_worker();
-    }
-
-    pub(crate) fn apply_obstacle_preset(&mut self, mut grid: Vec<bool>) {
-        enforce_area_budget(&mut grid, self.area_budget);
-        self.obstacles = grid;
-        self.enforce_challenge_invariants_and_score();
-        self.mask_generation = self.mask_generation.wrapping_add(1);
-        {
-            let mut cfg = self.shared_config.write().unwrap_or_else(|e| e.into_inner());
-            cfg.viscosity = self.viscosity;
-            cfg.inflow_speed = self.inflow_speed;
-            cfg.obstacles.clone_from(&self.obstacles);
-            cfg.mask_generation = self.mask_generation;
+    /// Applies a continuous [`BrushStroke`] (`Solid`, `Erase`, or `VelocityJet`) in lattice coordinates.
+    pub fn apply_brush_stroke(&mut self, stroke: &BrushStroke) {
+        match stroke.mode {
+            BrushMode::Solid | BrushMode::Erase => {
+                let (x0, y0) =
+                    SpatialBrushKit::plot_to_grid_y_up(stroke.start, LBM_WIDTH, LBM_HEIGHT);
+                let (x1, y1) =
+                    SpatialBrushKit::plot_to_grid_y_up(stroke.end, LBM_WIDTH, LBM_HEIGHT);
+                let radius = (stroke.radius.round() as i32).clamp(BRUSH_RADIUS_MIN, BRUSH_RADIUS_MAX);
+                let paint_solid = stroke.mode == BrushMode::Solid;
+                for (cx, cy) in bresenham_line(x0, y0, x1, y1) {
+                    if cx >= 0 && cy >= 0 {
+                        apply_brush_with_budget(
+                            &mut self.obstacles,
+                            cx as usize,
+                            cy as usize,
+                            radius,
+                            paint_solid,
+                            self.area_budget,
+                        );
+                    }
+                }
+                self.enforce_challenge_invariants_and_score();
+                self.sync_obstacles_to_worker();
+            }
+            BrushMode::VelocityJet => {
+                self.gif_solver = None;
+                let _ = self
+                    .worker
+                    .send_command(SimCommand::ApplyBrushStroke(*stroke));
+                self.dirty = true;
+            }
+            _ => {}
         }
-        self.reset_flow_field();
     }
 
-    fn sync_obstacles_to_worker(&mut self) {
+    pub(super) fn sync_obstacles_to_worker(&mut self) {
         self.mask_generation = self.mask_generation.wrapping_add(1);
         {
             let mut cfg = self.shared_config.write().unwrap_or_else(|e| e.into_inner());
@@ -285,6 +302,16 @@ impl InteractiveTool for LatticeBoltzmannTool {
 
     fn domain(&self) -> &'static str {
         "fluid_dynamics"
+    }
+
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(ref stroke) = ctx.brush_stroke {
+            self.apply_brush_stroke(stroke);
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 
     fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {

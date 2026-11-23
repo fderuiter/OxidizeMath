@@ -13,7 +13,7 @@ use math_commons::math_kernel::colormap::{
 };
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    BgkCollision, LatticeBoltzmannD2Q9, LatticeState,
+    inject_velocity_jet, BgkCollision, LatticeBoltzmannD2Q9, LatticeState,
 };
 use std::sync::{Arc, RwLock};
 
@@ -259,6 +259,32 @@ impl LbmRunner {
             .write()
             .unwrap_or_else(|e| e.into_inner()) = self.solver.state.clone();
     }
+
+    fn apply_velocity_jet_stroke(&mut self, stroke: &crate::framework::BrushStroke) {
+        let _ = self.sync_from_shared_config();
+        let (x0, y0) = crate::framework::SpatialBrushKit::plot_to_grid_y_up(
+            stroke.start,
+            LBM_WIDTH,
+            LBM_HEIGHT,
+        );
+        let (x1, y1) =
+            crate::framework::SpatialBrushKit::plot_to_grid_y_up(stroke.end, LBM_WIDTH, LBM_HEIGHT);
+        let r = (stroke.radius.round() as i32).clamp(1, 8);
+        let jx = (stroke.drag_vector[0] * 0.05).clamp(-0.16, 0.16);
+        let jy = (stroke.drag_vector[1] * 0.05).clamp(-0.16, 0.16);
+        let (ux, uy) = if jx.hypot(jy) < 1e-6 {
+            (0.14, 0.0)
+        } else {
+            (jx, jy)
+        };
+        for (cx, cy) in crate::framework::bresenham_line(x0, y0, x1, y1) {
+            inject_velocity_jet(&mut self.solver, cx, cy, r, ux, uy);
+        }
+        *self
+            .shared_lattice
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = self.solver.state.clone();
+    }
 }
 
 impl FiniteStateGuard for LbmRunner {
@@ -298,6 +324,11 @@ impl SimulationRunner for LbmRunner {
                     .shared_lattice
                     .write()
                     .unwrap_or_else(|e| e.into_inner()) = self.solver.state.clone();
+            }
+            SimCommand::ApplyBrushStroke(ref stroke)
+                if stroke.mode == crate::framework::BrushMode::VelocityJet =>
+            {
+                self.apply_velocity_jet_stroke(stroke);
             }
             _ => {}
         }

@@ -3,20 +3,90 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::super::lbm_fairing::FairingStamp;
 use super::state::{
-    bluff_plate_obstacle_grid, encode_obstacle_mask, streamlined_airfoil_obstacle_grid,
-    LbmToolState, LbmViewMode, DEFAULT_AREA_BUDGET, INFLOW_SPEED_MAX, INFLOW_SPEED_MIN,
-    VISCOSITY_MAX, VISCOSITY_MIN,
+    bluff_plate_obstacle_grid, count_solid_cells, encode_obstacle_mask, enforce_area_budget,
+    streamlined_airfoil_obstacle_grid, LbmToolState, LbmViewMode, AREA_BUDGET_MAX, AREA_BUDGET_MIN,
+    DEFAULT_AREA_BUDGET, INFLOW_SPEED_MAX, INFLOW_SPEED_MIN, LBM_CELL_COUNT, LBM_HEIGHT,
+    LBM_INLET_GUARD_COLS, LBM_WIDTH, VISCOSITY_MAX, VISCOSITY_MIN,
 };
 use super::LatticeBoltzmannTool;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
+use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    BgkCollision, LatticeBoltzmannD2Q9,
+    stamp_naca4_airfoil, stamp_venturi_nozzle, BgkCollision, LatticeBoltzmannD2Q9, Naca4Airfoil,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 use std::sync::OnceLock;
+
+impl LatticeBoltzmannTool {
+    pub(crate) fn apply_fairing_stamp(&mut self, stamp: FairingStamp) {
+        let mut mask = [false; LBM_CELL_COUNT];
+        stamp.write_mask(&mut mask);
+        self.apply_obstacle_preset(mask.to_vec());
+    }
+
+    pub(crate) fn apply_naca_2412_preset(&mut self, aoa_deg: f64) {
+        let mut temp = LatticeBoltzmannD2Q9::<BgkCollision>::new(LBM_WIDTH, LBM_HEIGHT, 0.56);
+        let airfoil = Naca4Airfoil::from_code(
+            2412,
+            26.0,
+            0.32 * LBM_WIDTH as f64,
+            0.5 * LBM_HEIGHT as f64,
+            aoa_deg,
+        );
+        stamp_naca4_airfoil(&mut temp, &airfoil);
+        let grid = Self::extract_solver_obstacles(&temp);
+        self.apply_obstacle_preset(grid);
+    }
+
+    pub(crate) fn apply_venturi_preset(&mut self) {
+        let mut temp = LatticeBoltzmannD2Q9::<BgkCollision>::new(LBM_WIDTH, LBM_HEIGHT, 0.56);
+        stamp_venturi_nozzle(&mut temp, 0.44);
+        let grid = Self::extract_solver_obstacles(&temp);
+        if self.active_challenge.is_none() {
+            let needed = count_solid_cells(&grid);
+            self.area_budget = self
+                .area_budget
+                .max(needed)
+                .clamp(AREA_BUDGET_MIN, AREA_BUDGET_MAX);
+        }
+        self.apply_obstacle_preset(grid);
+    }
+
+    fn extract_solver_obstacles(solver: &LatticeBoltzmannD2Q9<BgkCollision>) -> Vec<bool> {
+        let mut grid = vec![false; LBM_CELL_COUNT];
+        for y in 0..LBM_HEIGHT.min(solver.height()) {
+            for x in LBM_INLET_GUARD_COLS..LBM_WIDTH.min(solver.width()) {
+                grid[flatten_2d_index(x, y, LBM_WIDTH)] = solver.is_obstacle(x, y);
+            }
+        }
+        grid
+    }
+
+    pub(crate) fn enforce_current_budget(&mut self) {
+        enforce_area_budget(&mut self.obstacles, self.area_budget);
+        self.enforce_challenge_invariants_and_score();
+        self.sync_obstacles_to_worker();
+    }
+
+    pub(crate) fn apply_obstacle_preset(&mut self, mut grid: Vec<bool>) {
+        enforce_area_budget(&mut grid, self.area_budget);
+        self.obstacles = grid;
+        self.enforce_challenge_invariants_and_score();
+        self.mask_generation = self.mask_generation.wrapping_add(1);
+        {
+            let mut cfg = self.shared_config.write().unwrap_or_else(|e| e.into_inner());
+            cfg.viscosity = self.viscosity;
+            cfg.inflow_speed = self.inflow_speed;
+            cfg.obstacles.clone_from(&self.obstacles);
+            cfg.mask_generation = self.mask_generation;
+        }
+        self.reset_flow_field();
+    }
+}
 
 impl FiniteStateGuard for LatticeBoltzmannTool {
     fn is_finite_state(&self) -> bool {

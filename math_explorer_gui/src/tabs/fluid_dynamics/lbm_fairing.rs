@@ -17,14 +17,12 @@ pub const LBM_HEIGHT: usize = 50;
 pub const LBM_CELL_COUNT: usize = LBM_WIDTH * LBM_HEIGHT;
 /// Packed byte length of the `5,000`-cell obstacle bitmask (`625` bytes).
 pub const LBM_MASK_BYTES: usize = LBM_CELL_COUNT / 8;
-
 /// Inlet column count along the left boundary (`x in 0..2`).
 pub const LBM_INLET_COLS: usize = 2;
 /// Horizontal inlet velocity `U_in` in lattice units.
 pub const LBM_U_IN: f64 = 0.1;
 /// Reference lattice density `rho_0`.
 pub const LBM_RHO_0: f64 = 1.0;
-
 /// Protected structural core X center.
 pub const LBM_CORE_X: i32 = 30;
 /// Protected structural core Y center.
@@ -39,7 +37,6 @@ pub const LBM_REF_DIAMETER: f64 = 11.0;
 pub const LBM_MIN_SOLID_CELLS: usize = 65;
 /// Deterministic BGK + bounce-back steps for zero-allocation drag evaluation.
 pub const LBM_EVAL_STEPS: usize = 120;
-
 /// Canonical challenge ID for the LBM low-drag fairing inverse problem.
 pub const CHALLENGE_LBM_FAIRING: &str = "lbm_low_drag_fairing";
 /// Locked kinematic viscosity `nu` for `lbm_low_drag_fairing`.
@@ -141,6 +138,48 @@ pub fn restore_inlet_and_core_mask(mask: &mut [bool; LBM_CELL_COUNT]) {
             }
         }
     }
+}
+
+/// Applies an interpolated [`crate::framework::BrushStroke`] to `mask`, returning `true` if any cell changed.
+#[cfg(test)]
+pub fn apply_stroke_to_fairing_mask(
+    mask: &mut [bool; LBM_CELL_COUNT],
+    stroke: &crate::framework::BrushStroke,
+    lock_core: bool,
+) -> bool {
+    use crate::framework::{rasterize_disk_stroke, BrushMode, SpatialBrushKit};
+    let is_obs = match stroke.mode {
+        BrushMode::Solid => true,
+        BrushMode::Erase => false,
+        _ => return false,
+    };
+    let (x0, y0) = SpatialBrushKit::plot_to_grid_y_up(stroke.start, LBM_WIDTH, LBM_HEIGHT);
+    let (x1, y1) = SpatialBrushKit::plot_to_grid_y_up(stroke.end, LBM_WIDTH, LBM_HEIGHT);
+    let r = (stroke.radius.round() as i32).clamp(0, 16);
+    let mut changed = false;
+    rasterize_disk_stroke((x0, y0), (x1, y1), r, (LBM_WIDTH, LBM_HEIGHT), |gx, gy| {
+        if gx < LBM_INLET_COLS {
+            return;
+        }
+        let (dx, dy) = (gx as i32 - LBM_CORE_X, gy as i32 - LBM_CORE_Y);
+        if !is_obs && lock_core && dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS {
+            return;
+        }
+        let idx = flatten_2d_index(gx, gy, LBM_WIDTH);
+        if mask[idx] != is_obs {
+            mask[idx] = is_obs;
+            changed = true;
+        }
+    });
+    changed
+}
+
+/// Encodes `mask` into run-length encoded `[value, count]` pairs for `SculptStatePayload`.
+#[cfg(test)]
+#[must_use]
+pub fn encode_fairing_mask_rle(mask: &[bool; LBM_CELL_COUNT]) -> Vec<[u32; 2]> {
+    let bytes: Vec<u8> = mask.iter().map(|&b| u8::from(b)).collect();
+    crate::framework::encode_rle_mask(&bytes)
 }
 
 /// Counts total solid cells and verifies every cell within `R_core = 4` of `(30, 25)` is solid.
