@@ -68,6 +68,10 @@ impl MriTool {
 
     pub(super) fn serialize_mri_state(&self) -> Option<String> {
         let pulse = (!self.pulse_config.mode.is_continuous()).then_some(self.pulse_config);
+        let fork = self
+            .twin
+            .as_ref()
+            .map(|t| t.to_descriptor(self.current_step_index()));
         serde_json::to_string(&MriToolState {
             t1: self.simulator.t1,
             t2: self.simulator.t2,
@@ -77,6 +81,7 @@ impl MriTool {
             time_scale: self.time_scale,
             state: Some(self.worker.state()),
             paused: None,
+            fork,
             pulse,
         })
         .ok()
@@ -102,6 +107,11 @@ impl MriTool {
             p.time_scale = self.time_scale;
         }
         self.pulse_workspace.playhead_playing = false;
+        if let Some(desc) = parsed.fork {
+            self.apply_mri_fork_descriptor(desc)?;
+        } else {
+            let _ = self.clear_fork();
+        }
         if !self.pulse_config.mode.is_continuous() {
             let _ = self.worker.send_command(SimCommand::Pause);
             self.recompute_pulse_sequence();
