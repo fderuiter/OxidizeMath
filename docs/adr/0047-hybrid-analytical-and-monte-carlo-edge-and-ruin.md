@@ -1,4 +1,4 @@
-# ADR 0045: Hybrid Analytical and Zero-Allocation Monte Carlo Edge Validation and Bankroll Solvency
+# ADR 0047: Hybrid Analytical and Zero-Allocation Monte Carlo Edge Validation and Bankroll Solvency
 
 ## Status
 Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))

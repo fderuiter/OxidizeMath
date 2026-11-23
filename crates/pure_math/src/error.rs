@@ -52,24 +52,40 @@ pub enum KellyError {
     InvalidBankroll { value: f64 },
     /// Invalid stake or portfolio weight (must be finite and strictly positive).
     #[error("Invalid stake or weight: {value} (must be finite and > 0)")]
-    #[allow(missing_docs)]
-    InvalidStake { value: f64 },
+    InvalidStake {
+        /// The invalid stake or weight value.
+        value: f64,
+    },
     /// Invalid drawdown floor, target barrier, or confidence level.
     #[error("Invalid barrier configuration: floor={floor}, initial_wealth={initial_wealth}")]
-    #[allow(missing_docs)]
-    InvalidBarrier { floor: f64, initial_wealth: f64 },
+    InvalidBarrier {
+        /// The requested floor, target barrier, or confidence bound.
+        floor: f64,
+        /// Reference initial wealth or upper bound.
+        initial_wealth: f64,
+    },
     /// Empty or insufficient bet ledger for statistical estimation.
     #[error("Insufficient bets: required at least {required}, got {actual}")]
-    #[allow(missing_docs)]
-    InsufficientBets { required: usize, actual: usize },
+    InsufficientBets {
+        /// Minimum required number of bets.
+        required: usize,
+        /// Actual number of bets provided.
+        actual: usize,
+    },
     /// Mismatched slice lengths across probabilities, odds, stakes, or outcomes.
     #[error("Slice length mismatch: expected {expected}, got {actual}")]
-    #[allow(missing_docs)]
-    DimensionMismatch { expected: usize, actual: usize },
+    DimensionMismatch {
+        /// Expected slice length.
+        expected: usize,
+        /// Actual slice length provided.
+        actual: usize,
+    },
     /// Root-finding or adjustment-coefficient solver failed to bracket or converge.
     #[error("Solvency root solver failed to converge: {reason}")]
-    #[allow(missing_docs)]
-    ConvergenceFailed { reason: &'static str },
+    ConvergenceFailed {
+        /// Static description of the bracketing or convergence failure.
+        reason: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

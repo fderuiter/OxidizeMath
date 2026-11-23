@@ -182,4 +182,27 @@ fn test_bankroll_state_backward_compatible_json_and_barrier_roundtrip() {
         .is_err());
 }
 
+#[test]
+fn test_stake_multiplier_observables_and_overbet_growth_rate() {
+    let mut tool = BankrollGrowthTool::default();
+    tool.try_load_state(
+        r#"{"initial_bankroll":1000.0,"probability":0.6,"odds":1.0,"num_bets":120,"stake_multiplier":2.5}"#,
+    )
+    .expect("overbet state loads");
+    let obs = tool.observables();
+    let ev = obs.iter().find(|(k, _)| *k == "expected_value").unwrap().1;
+    let g = obs
+        .iter()
+        .find(|(k, _)| *k == "expected_growth_rate")
+        .unwrap()
+        .1;
+    assert!(
+        ev > 0.15 && g < -0.02,
+        "above 2f*, EV > 0 yet log-growth g < 0"
+    );
+
+    tool.reset_defaults();
+    assert_eq!(tool.stake_multiplier, 1.0);
+}
+
 // [cite:clinical_trials_statistics]
