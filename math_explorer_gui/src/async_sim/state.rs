@@ -164,19 +164,25 @@ impl std::fmt::Display for SimWorkerState {
     }
 }
 
-#[allow(missing_docs)]
+/// Lifecycle status event emitted by a background simulation worker thread.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkerStatusEvent {
+    /// Worker initialized and awaiting commands.
     Ready,
+    /// Worker actively advancing simulation frames.
     Running,
+    /// Worker executing a single requested step.
     Stepping,
+    /// Worker paused while retaining current simulation state.
     Paused,
+    /// Worker encountered an unrecoverable error message.
     Faulted(String),
+    /// Worker loop exited cleanly.
     Terminated,
 }
 
 impl WorkerStatusEvent {
-    #[allow(missing_docs)]
+    /// Projects this worker event onto the corresponding [`SimWorkerState`].
     pub fn to_state(&self) -> SimWorkerState {
         match self {
             Self::Ready | Self::Paused => SimWorkerState::Ready,
