@@ -1,9 +1,11 @@
 //! Virtualized multi-column and series-tabbed data table modal for [`crate::Plot`].
 
 #[path = "data_table_format.rs"]
-mod format;
+pub(crate) mod format;
+#[path = "data_table_poi.rs"]
+mod poi_view;
 
-pub use format::{TableSeriesRef, format_table_value, format_tsv, series_share_x};
+pub(crate) use format::{TableSeriesRef, format_table_value, format_tsv, series_share_x};
 
 use egui::{
     Align, Align2, Color32, Context, FontId, Id, Key, Modifiers, Rect, RichText, ScrollArea, Sense,
@@ -13,19 +15,32 @@ use egui::{
 use crate::{
     ModalLifecycle, emit_plot_live_message,
     export::{copy_text_to_clipboard_with_callback, format_csv},
+    poi::CriticalPoint,
 };
 
-const ROW_H: f32 = 22.0;
-const HDR_H: f32 = 26.0;
-const MAX_H: f32 = 280.0;
-const IDX_W: f32 = 56.0;
-const COL_W: f32 = 136.0;
+pub(crate) const ROW_H: f32 = 22.0;
+pub(crate) const HDR_H: f32 = 26.0;
+pub(crate) const MAX_H: f32 = 280.0;
+pub(crate) const IDX_W: f32 = 56.0;
+pub(crate) const COL_W: f32 = 136.0;
+
+/// Active tab inside [`show_data_table_modal_with_pois`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DataTableViewMode {
+    /// Sampled series coordinates (`X`, `Y`).
+    #[default]
+    SeriesData,
+    /// Detected critical points (roots, y-intercepts, extrema, intersections).
+    CriticalPoints,
+}
 
 /// Persistent UI state for a plot's interactive Data Table modal.
 #[derive(Clone, Default)]
 pub struct DataTableState {
+    pub view_mode: DataTableViewMode,
     pub selected_series: usize,
     pub selected_row: usize,
+    pub selected_poi_row: usize,
     pub scroll_to_selected: bool,
     pub pending_scroll_offset: Option<f32>,
     pub status_message: Option<(String, bool)>,
@@ -45,7 +60,7 @@ pub fn poll_data_table_clipboard_status(ctx: &Context, plot_id: Id, state: &mut 
     }
 }
 
-fn copy_to_clipboard(
+pub(crate) fn copy_to_clipboard(
     ctx: &Context,
     plot_id: Id,
     st: &mut DataTableState,
@@ -74,24 +89,35 @@ fn copy_to_clipboard(
     }
 }
 
-struct RowCells<'a> {
-    ui: &'a Ui,
-    rect: Rect,
-    height: f32,
-    font: FontId,
+pub(crate) struct RowCells<'a> {
+    pub(crate) ui: &'a Ui,
+    pub(crate) rect: Rect,
+    pub(crate) height: f32,
+    pub(crate) font: FontId,
 }
 
 impl RowCells<'_> {
     fn paint(&self, col_idx: usize, text: &str, fg: Color32, dot: Option<Color32>) -> Rect {
-        let (x0, w) = if col_idx == 0 {
-            (self.rect.min.x, IDX_W)
+        let (x_off, w) = if col_idx == 0 {
+            (0.0, IDX_W)
         } else {
-            (
-                self.rect.min.x + IDX_W + COL_W * (col_idx - 1) as f32,
-                COL_W,
-            )
+            (IDX_W + COL_W * (col_idx - 1) as f32, COL_W)
         };
-        let cell = Rect::from_min_size(pos2(x0, self.rect.min.y), vec2(w, self.height));
+        self.paint_span(x_off, w, text, fg, dot)
+    }
+
+    pub(crate) fn paint_span(
+        &self,
+        x_offset: f32,
+        w: f32,
+        text: &str,
+        fg: Color32,
+        dot: Option<Color32>,
+    ) -> Rect {
+        let cell = Rect::from_min_size(
+            pos2(self.rect.min.x + x_offset, self.rect.min.y),
+            vec2(w, self.height),
+        );
         let clip = cell.intersect(self.ui.clip_rect());
         if clip.is_positive() {
             let painter = self.ui.painter().with_clip_rect(clip);
@@ -415,14 +441,15 @@ fn render_header_row(ui: &mut Ui, cols: &[(String, Color32)], width: f32) {
     }
 }
 
-/// Render the closeable, virtualized Data Table modal for a plot when `*open` is `true`.
-pub fn show_data_table_modal(
+/// Render the Data Table modal with both `Series Data` and `Critical Points` views.
+pub fn show_data_table_modal_with_pois(
     ctx: &Context,
     plot_id: Id,
     window_title: &str,
     open: &mut bool,
     state: &mut DataTableState,
     datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    critical_points: &[CriticalPoint],
 ) {
     poll_data_table_clipboard_status(ctx, plot_id, state);
     if !*open {
@@ -439,13 +466,57 @@ pub fn show_data_table_modal(
         })
         .collect();
     let shared_x = series.len() > 1 && series_share_x(&series);
-    let mut view = TableView {
-        plot_id,
-        series: &series,
-        shared_x,
-        state,
-    };
-    if !series.is_empty() {
+    preprocess_data_table_frame(ctx, plot_id, state, &series, shared_x, critical_points);
+    let max_w = (ctx.content_rect().width() - 48.0).clamp(360.0, 740.0);
+    ModalLifecycle::new(plot_id.with("data_table_modal"))
+        .title(window_title)
+        .default_width(520.0_f32.min(max_w))
+        .max_width(max_w)
+        .max_height(480.0)
+        .show(ctx, open, |ui, frame_ctx| {
+            render_mode_selector(ui, state, series.len(), critical_points.len());
+            ui.separator();
+            let should_close = match state.view_mode {
+                DataTableViewMode::SeriesData => {
+                    let mut view = TableView {
+                        plot_id,
+                        series: &series,
+                        shared_x,
+                        state,
+                    };
+                    view.render_body(ui)
+                }
+                DataTableViewMode::CriticalPoints => {
+                    poi_view::render_poi_body(ui, plot_id, state, critical_points)
+                }
+            };
+            if should_close {
+                frame_ctx.close();
+            }
+        });
+}
+
+fn preprocess_data_table_frame(
+    ctx: &Context,
+    plot_id: Id,
+    state: &mut DataTableState,
+    series: &[TableSeriesRef<'_>],
+    shared_x: bool,
+    critical_points: &[CriticalPoint],
+) {
+    if series.is_empty() && !critical_points.is_empty() {
+        state.view_mode = DataTableViewMode::CriticalPoints;
+    }
+    if state.view_mode == DataTableViewMode::CriticalPoints {
+        poi_view::clamp_poi_state(state, critical_points.len());
+        poi_view::handle_poi_keys(ctx, plot_id, state, critical_points);
+    } else if !series.is_empty() {
+        let mut view = TableView {
+            plot_id,
+            series,
+            shared_x,
+            state,
+        };
         let idx = if shared_x || series.len() == 1 {
             0
         } else {
@@ -455,17 +526,38 @@ pub fn show_data_table_modal(
         view.clamp(rows);
         view.handle_keys(ctx, rows);
     }
-    let max_w = (ctx.content_rect().width() - 48.0).clamp(360.0, 740.0);
-    ModalLifecycle::new(plot_id.with("data_table_modal"))
-        .title(window_title)
-        .default_width(480.0_f32.min(max_w))
-        .max_width(max_w)
-        .max_height(460.0)
-        .show(ctx, open, |ui, frame_ctx| {
-            if view.render_body(ui) {
-                frame_ctx.close();
-            }
-        });
+}
+
+fn render_mode_selector(
+    ui: &mut Ui,
+    state: &mut DataTableState,
+    series_count: usize,
+    poi_count: usize,
+) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("View:").small().weak());
+        let series_lbl = format!("Series Data ({series_count})");
+        if ui
+            .selectable_label(state.view_mode == DataTableViewMode::SeriesData, series_lbl)
+            .clicked()
+            && state.view_mode != DataTableViewMode::SeriesData
+        {
+            state.view_mode = DataTableViewMode::SeriesData;
+            state.scroll_to_selected = true;
+        }
+        let poi_lbl = format!("Critical Points ({poi_count})");
+        if ui
+            .selectable_label(
+                state.view_mode == DataTableViewMode::CriticalPoints,
+                poi_lbl,
+            )
+            .clicked()
+            && state.view_mode != DataTableViewMode::CriticalPoints
+        {
+            state.view_mode = DataTableViewMode::CriticalPoints;
+            state.scroll_to_selected = true;
+        }
+    });
 }
 
 #[cfg(test)]

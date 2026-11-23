@@ -9,6 +9,9 @@ use math_explorer::physics::fluid_dynamics::potential_flow::{
 };
 use std::f64::consts::PI;
 
+#[path = "potential_flow/cache.rs"]
+mod cache;
+
 pub(crate) const FLOW_STRENGTH_MIN: f64 = -1_000.0;
 pub(crate) const FLOW_STRENGTH_MAX: f64 = 1_000.0;
 pub(crate) const FLOW_POS_MIN: f64 = -50.0;
@@ -28,6 +31,7 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_x: f64,
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
+    pub(crate) cache: cache::ArrowFieldCache,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -136,6 +140,7 @@ impl Default for PotentialFlowTool {
             new_element_x: 0.0,
             new_element_y: 0.0,
             new_element_angle: 0.0,
+            cache: cache::ArrowFieldCache::default(),
         };
         tool.rebuild_field();
         tool
@@ -155,8 +160,12 @@ impl InteractiveTool for PotentialFlowTool {
         "fluid_dynamics"
     }
 
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
+    }
+
     fn has_finite_parameters(&self) -> bool {
-        (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_size)
+        (2..=crate::presets::MAX_INTERACTIVE_GRID_SIZE).contains(&self.grid_size)
             && self.view_range.is_finite()
             && (FLOW_VIEW_MIN..=FLOW_VIEW_MAX).contains(&self.view_range)
             && self.new_element_strength.is_finite()
@@ -195,7 +204,9 @@ impl InteractiveTool for PotentialFlowTool {
             );
         }
         self.elements = loaded.elements;
-        self.grid_size = loaded.grid_size;
+        self.grid_size = loaded
+            .grid_size
+            .min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
         self.view_range = loaded.view_range;
         self.selected_element_type = loaded.selected_element_type;
         self.new_element_strength = loaded.new_element_strength;
@@ -218,7 +229,7 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.draw_controls(ui);
-        let (origins, tips) = self.compute_arrow_field();
+        let (origins, tips) = self.ensure_cached_arrows();
         egui::CentralPanel::default().show_inside(ui, |ui| {
             Plot::new("potential_flow_plot")
                 .data_aspect(1.0)
@@ -227,7 +238,14 @@ impl InteractiveTool for PotentialFlowTool {
                     let arrow_color =
                         crate::app::SemanticPalette::from_visuals(&plot_ui.ctx().style().visuals)
                             .series_color(0);
-                    plot_ui.arrows(Arrows::new("Vector Field", origins, tips).color(arrow_color));
+                    plot_ui.arrows(
+                        Arrows::new(
+                            "Vector Field",
+                            egui_plot::PlotPoints::from_shared(origins),
+                            egui_plot::PlotPoints::from_shared(tips),
+                        )
+                        .color(arrow_color),
+                    );
                 });
         });
     }
@@ -301,8 +319,10 @@ impl PotentialFlowTool {
             }
 
             ui.separator();
+            let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
+            self.grid_size = self.grid_size.clamp(2, max_grid);
             ui.add(
-                egui::Slider::new(&mut self.grid_size, 10..=math_commons::registry::MAX_GRID_SIZE)
+                egui::Slider::new(&mut self.grid_size, 10..=max_grid)
                     .text("Visualization - Grid Density"),
             );
             ui.add(egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"));
@@ -370,7 +390,9 @@ impl PotentialFlowTool {
     pub(crate) fn add_element(&mut self) {
         self.elements.push(SerializedFlowElement {
             element_type: self.selected_element_type,
-            strength: self.new_element_strength.clamp(FLOW_STRENGTH_MIN, FLOW_STRENGTH_MAX),
+            strength: self
+                .new_element_strength
+                .clamp(FLOW_STRENGTH_MIN, FLOW_STRENGTH_MAX),
             x: self.new_element_x.clamp(FLOW_POS_MIN, FLOW_POS_MAX),
             y: self.new_element_y.clamp(FLOW_POS_MIN, FLOW_POS_MAX),
             angle: self.new_element_angle.clamp(FLOW_ANGLE_MIN, FLOW_ANGLE_MAX),
@@ -415,8 +437,14 @@ impl scientific_metadata::theory::TheoryDescribable for PotentialFlowTool {
             "Uniform".into(),
             "Uniform freestream flow phi = U (x cos(alpha) + y sin(alpha))".into(),
         );
-        map.insert("Source/Sink".into(), "Radial flow phi = (m / 2 pi) ln(r)".into());
-        map.insert("Vortex".into(), "Circulation flow phi = (Gamma / 2 pi) theta".into());
+        map.insert(
+            "Source/Sink".into(),
+            "Radial flow phi = (m / 2 pi) ln(r)".into(),
+        );
+        map.insert(
+            "Vortex".into(),
+            "Circulation flow phi = (Gamma / 2 pi) theta".into(),
+        );
         map.insert(
             "Doublet".into(),
             "Source-sink dipole limit phi = (mu / 2 pi) cos(theta) / r".into(),
@@ -450,3 +478,7 @@ inventory::submit! {
         preset_generator: || crate::starter_gallery::PRESET_SOURCE_SINK,
     }
 }
+
+#[cfg(test)]
+#[path = "potential_flow/tests.rs"]
+mod tests;
