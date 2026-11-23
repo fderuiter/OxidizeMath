@@ -1,4 +1,4 @@
-//! WCAG 2.2 AA Challenge HUD banner rendered inside [`super::SimulationFramework`].
+//! WCAG 2.2 AA Inverse Challenge HUD banner rendered inside [`super::SimulationFramework`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

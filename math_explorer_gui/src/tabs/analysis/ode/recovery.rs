@@ -54,6 +54,7 @@ impl OdeSolverTool {
         );
         self.math_input.clamp_active_params(-10.0..=10.0);
         self.coupled_bank.clamp_active_params(-10.0..=10.0);
+        self.push_clamped_legacy_params_to_bar();
 
         clamp_planar_state(
             &mut self.matrix_a,
@@ -124,7 +125,10 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
                     .all(|v| v.is_finite())
         }
         OdePreset::Custom => {
-            tool.param_k.is_finite() && tool.math_input.param_slice().iter().all(|v| v.is_finite())
+            tool.param_k.is_finite()
+                && tool.param_r.is_finite()
+                && tool.param_cap_k.is_finite()
+                && tool.math_input.param_slice().iter().all(|v| v.is_finite())
         }
         OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
         OdePreset::LogisticGrowth => tool.param_r.is_finite() && tool.param_cap_k.is_finite(),
@@ -197,6 +201,14 @@ impl FiniteStateGuard for OdeSolverTool {
     }
 }
 
+fn clamp_finite(val: &mut f64, lo: f64, hi: f64, fallback: f64) {
+    *val = if val.is_finite() {
+        val.clamp(lo, hi)
+    } else {
+        fallback
+    };
+}
+
 /// Clamps solver parameters and initial conditions to stable, finite bounds.
 pub fn clamp_ode_parameters(
     preset: OdePreset,
@@ -206,55 +218,25 @@ pub fn clamp_ode_parameters(
     ic_y0: &mut f64,
     ic_v0: &mut f64,
 ) {
-    *ic_y0 = if ic_y0.is_finite() {
-        ic_y0.clamp(-10.0, 10.0)
-    } else {
-        1.0
-    };
-    *ic_v0 = if ic_v0.is_finite() {
-        ic_v0.clamp(-10.0, 10.0)
-    } else {
-        0.0
-    };
+    clamp_finite(ic_y0, -10.0, 10.0, 1.0);
+    clamp_finite(ic_v0, -10.0, 10.0, 0.0);
 
     match preset {
-        OdePreset::Exponential => {
-            *param_k = if param_k.is_finite() {
-                param_k.clamp(-5.0, 5.0)
-            } else {
-                1.0
-            };
-        }
-        OdePreset::HarmonicOscillator => {
-            *param_k = if param_k.is_finite() {
-                param_k.clamp(0.01, 10.0)
-            } else {
-                1.0
-            };
-        }
+        OdePreset::Exponential => clamp_finite(param_k, -5.0, 5.0, 1.0),
+        OdePreset::HarmonicOscillator => clamp_finite(param_k, 0.01, 10.0, 1.0),
         OdePreset::LogisticGrowth => {
-            *param_r = if param_r.is_finite() {
-                param_r.clamp(0.01, 5.0)
-            } else {
-                1.0
-            };
-            *param_cap_k = if param_cap_k.is_finite() {
-                param_cap_k.clamp(0.1, 100.0)
-            } else {
-                10.0
-            };
+            clamp_finite(param_r, 0.01, 5.0, 1.0);
+            clamp_finite(param_cap_k, 0.1, 100.0, 10.0);
         }
-        OdePreset::LinearSystem2D | OdePreset::PlanarCustom | OdePreset::Custom => {
-            *param_k = if param_k.is_finite() {
-                param_k.clamp(-10.0, 10.0)
-            } else {
-                1.0
-            };
-            *param_r = if param_r.is_finite() {
-                param_r.clamp(-10.0, 10.0)
-            } else {
-                1.0
-            };
+        OdePreset::LinearSystem2D | OdePreset::PlanarCustom => {
+            clamp_finite(param_k, -10.0, 10.0, 1.0);
+            clamp_finite(param_r, -10.0, 10.0, 1.0);
+            clamp_finite(param_cap_k, 0.1, 100.0, 10.0);
+        }
+        OdePreset::Custom => {
+            clamp_finite(param_k, -10.0, 10.0, 1.0);
+            clamp_finite(param_r, 0.01, 5.0, 1.0);
+            clamp_finite(param_cap_k, 0.1, 100.0, 10.0);
         }
     }
 }

@@ -73,7 +73,7 @@ impl CustomOdeSpec {
             params[idx] = match name.as_str() {
                 "k" => param_k,
                 "r" => param_r,
-                "cap_k" => param_cap_k,
+                "cap_k" | "K" => param_cap_k,
                 _ => bar_slice.get(idx).copied().unwrap_or(1.0),
             };
         }
@@ -242,6 +242,7 @@ pub(super) fn default_ode_custom_params(k: f64, r: f64, cap_k: f64) -> BTreeMap<
         ("k".to_string(), k),
         ("r".to_string(), r),
         ("cap_k".to_string(), cap_k),
+        ("K".to_string(), cap_k),
     ])
 }
 
@@ -296,6 +297,14 @@ impl OdeSolverTool {
         self.math_input.set_expression("-k * y * sin(t)");
     }
 
+    pub(crate) fn push_clamped_legacy_params_to_bar(&mut self) {
+        self.math_input.set_param("k", self.param_k);
+        self.math_input.set_param("r", self.param_r);
+        self.math_input.set_param("cap_k", self.param_cap_k);
+        self.math_input.set_param("K", self.param_cap_k);
+        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
+    }
+
     pub(crate) fn sync_legacy_params_from_math_input(&mut self) {
         if let Some(k) = self.math_input.active_param_value("k") {
             self.param_k = k;
@@ -303,7 +312,11 @@ impl OdeSolverTool {
         if let Some(r) = self.math_input.active_param_value("r") {
             self.param_r = r;
         }
-        if let Some(cap_k) = self.math_input.active_param_value("cap_k") {
+        if let Some(cap_k) = self
+            .math_input
+            .active_param_value("cap_k")
+            .or_else(|| self.math_input.active_param_value("K"))
+        {
             self.param_cap_k = cap_k;
         }
         self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
@@ -322,9 +335,16 @@ impl OdeSolverTool {
             &mut self.param_r,
             &mut self.synced_legacy_params[1],
         );
+        let cap_symbol = if self.math_input.active_param_value("K").is_some()
+            && self.math_input.active_param_value("cap_k").is_none()
+        {
+            "K"
+        } else {
+            "cap_k"
+        };
         sync_one_legacy_param(
             &mut self.math_input,
-            "cap_k",
+            cap_symbol,
             &mut self.param_cap_k,
             &mut self.synced_legacy_params[2],
         );

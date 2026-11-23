@@ -73,12 +73,8 @@ pub struct OdeSolverTool {
     pub(crate) synced_legacy_params: [f64; 3],
 }
 
-fn default_ode_math_inputs() -> (
-    MathExpressionInputBar,
-    MathExpressionInputBar,
-    MathExpressionInputBar,
-) {
-    let scalar = MathExpressionInputBar::new(
+fn default_scalar_ode_input() -> MathExpressionInputBar {
+    MathExpressionInputBar::new(
         "y'",
         "-k * y * sin(t)",
         vec![
@@ -92,7 +88,27 @@ fn default_ode_math_inputs() -> (
             ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
         ],
     )
-    .with_axes(&["t", "y"]);
+    .with_axes(&["t", "y"])
+    .with_disallowed_vars(&[
+        ("x", "allowed variables: t, y"),
+        ("z", "allowed variables: t, y"),
+        (
+            "v",
+            "allowed variables: t, y; enable Coupled (y', v') mode to use v",
+        ),
+    ])
+    .with_param_spec("k", "k (Rate / Parameter)", -5.0..=5.0, 1.0)
+    .with_param_spec("r", "r (Growth Rate)", 0.0..=5.0, 1.0)
+    .with_param_spec("cap_k", "K (Carrying Capacity)", 1.0..=100.0, 10.0)
+    .with_param_spec("K", "K (Carrying Capacity)", 1.0..=100.0, 10.0)
+}
+
+fn default_ode_math_inputs() -> (
+    MathExpressionInputBar,
+    MathExpressionInputBar,
+    MathExpressionInputBar,
+) {
+    let scalar = default_scalar_ode_input();
     let planar_x = MathExpressionInputBar::new(
         "x'",
         DEFAULT_PLANAR_X_EXPR,
@@ -191,6 +207,17 @@ impl OdeSolverTool {
             ("y(t)", "v(t)", "y", "v")
         } else {
             self.preset.state_labels()
+        }
+    }
+
+    pub(crate) fn has_custom_input_error(&self) -> bool {
+        match self.preset {
+            OdePreset::Custom if self.custom_coupled => !self.coupled_bank.is_valid(),
+            OdePreset::Custom => !self.math_input.is_valid(),
+            OdePreset::PlanarCustom => {
+                !self.planar_x_input.is_valid() || !self.planar_y_input.is_valid()
+            }
+            _ => false,
         }
     }
 
@@ -361,8 +388,12 @@ impl OdeSolverTool {
     }
 
     fn recalculate_active(&mut self) {
+        let input_has_err = self.has_custom_input_error();
         let custom_spec = self.build_custom_ode_spec();
         let active_traj = simulate_ode(&self.sim_spec(self.method, custom_spec.as_ref()));
+        if input_has_err && (active_traj.diverged || active_traj.divergence_info.is_some()) {
+            return;
+        }
         self.time_series = active_traj.time_series;
         self.y_series = active_traj.y_series;
         self.v_series = active_traj.v_series;

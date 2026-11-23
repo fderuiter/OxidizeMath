@@ -211,7 +211,11 @@ pub fn eval_ode_final_state(
         total_time,
         param_k: p_map.get("k").copied().unwrap_or(1.0),
         param_r: p_map.get("r").copied().unwrap_or(1.0),
-        param_cap_k: p_map.get("cap_k").copied().unwrap_or(10.0),
+        param_cap_k: p_map
+            .get("cap_k")
+            .or_else(|| p_map.get("K"))
+            .copied()
+            .unwrap_or(10.0),
         ic_y0: p_map.get("y0").copied().unwrap_or(1.0),
         ic_v0: p_map.get("v0").copied().unwrap_or(0.0),
         matrix_a: super::poincare_map::DEFAULT_MATRIX_A,
@@ -233,7 +237,11 @@ pub fn eval_ode_final_state_planar(
     let v0 = p_map.get("v0").copied().unwrap_or(spec.ic_v0);
     let k = p_map.get("k").copied().unwrap_or(spec.param_k);
     let r = p_map.get("r").copied().unwrap_or(spec.param_r);
-    let cap_k = p_map.get("cap_k").copied().unwrap_or(spec.param_cap_k);
+    let cap_k = p_map
+        .get("cap_k")
+        .or_else(|| p_map.get("K"))
+        .copied()
+        .unwrap_or(spec.param_cap_k);
 
     match spec.preset {
         OdePreset::Exponential => step_final(ArrayState([y0]), &ExponentialOde { k }, spec, steps),

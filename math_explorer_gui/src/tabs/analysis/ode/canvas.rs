@@ -123,7 +123,7 @@ impl OdeSolverTool {
         let euler = simulate_ode(&self.sim_spec(IntegrationMethod::Euler, custom_spec.as_ref()));
         let heun = simulate_ode(&self.sim_spec(IntegrationMethod::Heun, custom_spec.as_ref()));
 
-        if rk4.diverged || euler.diverged || heun.diverged {
+        if !self.has_custom_input_error() && (rk4.diverged || euler.diverged || heun.diverged) {
             self.diverged = true;
         }
 

@@ -1,4 +1,4 @@
-# ADR 0044: Planar ODE AST Evaluation, Poincaré Stability Maps, AST Caching, and Recovery-Based URL Sharing
+# ADR 0046: Planar ODE AST Evaluation, Poincaré Stability Maps, AST Caching, and Recovery-Based URL Sharing
 
 ## Status
 Accepted (extends [ADR 0008](0008-finite-state-guard-solver-divergence.md), [ADR 0016](0016-ode-multi-solver-comparative-overlays.md), [ADR 0017](0017-native-ast-expression-parser-and-live-input.md), [ADR 0022](0022-unify-preset-state-serialization.md), and [ADR 0029](0029-consolidate-ast-evaluators-and-parser-helpers.md))

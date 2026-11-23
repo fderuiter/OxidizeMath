@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests verifying zero-allocation Marching Cubes isosurface extraction.
 use domain_applied::applied::isosurface::{
     IsosurfaceWorkspace, Mesh, Point3D, VoxelGrid, extract_isosurface, extract_isosurface_into,
 };

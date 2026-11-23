@@ -361,6 +361,7 @@ impl OdeSolverTool {
         self.param_cap_k = s
             .custom_params
             .get("cap_k")
+            .or_else(|| s.custom_params.get("K"))
             .copied()
             .unwrap_or(s.param_cap_k);
         self.ic_y0 = s.ic_y0;

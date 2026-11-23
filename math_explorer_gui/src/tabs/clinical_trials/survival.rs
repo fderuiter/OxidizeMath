@@ -351,7 +351,9 @@ mod tests {
     fn test_median_survival_and_half_probability_step_crossing() {
         let mut tool = SurvivalAnalysisTool::default();
         tool.import_preset_json(STARTER_PRESET_JSON).unwrap();
-        let median = tool.median_survival_time().expect("median survival reached");
+        let median = tool
+            .median_survival_time()
+            .expect("median survival reached");
         assert!((median - 18.0).abs() < 1e-9);
 
         let step_pts = tool.build_step_points();
