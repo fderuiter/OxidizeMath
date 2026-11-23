@@ -8,6 +8,7 @@ pub mod randomization;
 pub mod sample_size;
 pub mod simpson_paradox;
 pub mod survival;
+pub mod win_ratio;
 
 pub struct ClinicalTrialsTab {
     framework: crate::framework::SimulationFramework,

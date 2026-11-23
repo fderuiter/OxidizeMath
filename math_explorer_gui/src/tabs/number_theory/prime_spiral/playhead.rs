@@ -212,7 +212,6 @@ impl PrimeSpiralWidget {
                     self.ray_c = DEFAULT_RAY_C;
                     self.pulse_gate = true;
                 }
-                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
             }
         }
         ui.separator();
