@@ -4,8 +4,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::cartographer::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
-pub use super::sculpt::MorphoDiffusion;
 use super::sculpt::overlay_cell_mask_colors;
+pub use super::sculpt::MorphoDiffusion;
 pub use super::state::MorphoSnapshotData;
 use super::state::{
     apply_chemical_brush, apply_uniform_noise, ensure_nucleated_for_kinetics,
@@ -155,52 +155,37 @@ impl<D: MorphoDiffusion> MorphogenesisRunner<D> {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        self.apply_explicit_params(
-            p.kinetics, p.a, p.b, p.f, p.k, p.d_u, p.d_v, p.dt, p.auto_dt,
-        )
+        self.apply_shared_params(&p)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn apply_explicit_params(
-        &mut self,
-        mode: MorphogenesisKinetics,
-        a: f64,
-        b: f64,
-        f: f64,
-        k: f64,
-        d_u: f64,
-        d_v: f64,
-        dt: f64,
-        auto_dt: bool,
-    ) -> Option<(f64, bool)> {
-        if !a.is_finite()
-            || !b.is_finite()
-            || !f.is_finite()
-            || !k.is_finite()
-            || !d_u.is_finite()
-            || !d_v.is_finite()
-            || d_u <= 0.0
-            || d_v <= 0.0
+    fn apply_shared_params(&mut self, p: &MorphogenesisSharedParams) -> Option<(f64, bool)> {
+        if ![p.a, p.b, p.f, p.k, p.d_u, p.d_v]
+            .iter()
+            .all(|x| x.is_finite())
+            || p.d_u <= 0.0
+            || p.d_v <= 0.0
         {
             return None;
         }
-        self.system.kinetics.a = a;
-        self.system.kinetics.b = b;
-        self.gray_scott.f = f;
-        self.gray_scott.k = k;
-        self.system.diffusion_coeffs = [d_u, d_v];
-        if self.kinetics != mode {
-            self.kinetics = mode;
+        self.system.kinetics.a = p.a;
+        self.system.kinetics.b = p.b;
+        self.gray_scott.f = p.f;
+        self.gray_scott.k = p.k;
+        self.system.diffusion_coeffs = [p.d_u, p.d_v];
+        if self.kinetics != p.kinetics {
+            self.kinetics = p.kinetics;
             initialize_for_kinetics(&mut self.system, self.kinetics, self.width, self.height);
             self.enforce_mask_concentrations();
-        } else if self.kinetics == MorphogenesisKinetics::Schnakenberg && dt.is_finite() && dt > 0.0
+        } else if self.kinetics == MorphogenesisKinetics::Schnakenberg
+            && p.dt.is_finite()
+            && p.dt > 0.0
         {
-            let eff_dt = if auto_dt {
-                FusedEulerSolver::cfl_substeps_2d(dt, 1.0, d_u, d_v, MAX_CFL_SUBSTEPS).1
+            let eff_dt = if p.auto_dt {
+                FusedEulerSolver::cfl_substeps_2d(p.dt, 1.0, p.d_u, p.d_v, MAX_CFL_SUBSTEPS).1
             } else {
-                dt
+                p.dt
             };
-            if is_pattern_forming_regime(a, b, d_u, d_v, eff_dt) {
+            if is_pattern_forming_regime(p.a, p.b, p.d_u, p.d_v, eff_dt) {
                 let var_u = grid_u_variance(self.system.u());
                 if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
                     initialize_schnakenberg_system(&mut self.system, self.width, self.height);
@@ -208,25 +193,26 @@ impl<D: MorphoDiffusion> MorphogenesisRunner<D> {
                 }
             }
         }
-        (dt.is_finite() && dt > 0.0).then_some((dt, auto_dt))
+        (p.dt.is_finite() && p.dt > 0.0).then_some((p.dt, p.auto_dt))
     }
 
     fn apply_scalar_params(&mut self, s: &[f64]) -> Option<(f64, bool)> {
-        if s.len() < 10 {
+        let [mode, a, b, f, k, d_u, d_v, dt, auto, amp, ..] = s else {
             return None;
-        }
-        self.noise_amplitude = s[9];
-        self.apply_explicit_params(
-            Self::scalar_to_mode(s[0]),
-            s[1],
-            s[2],
-            s[3],
-            s[4],
-            s[5],
-            s[6],
-            s[7],
-            s[8] >= 0.5,
-        )
+        };
+        self.noise_amplitude = *amp;
+        self.apply_shared_params(&MorphogenesisSharedParams {
+            kinetics: Self::scalar_to_mode(*mode),
+            a: *a,
+            b: *b,
+            f: *f,
+            k: *k,
+            d_u: *d_u,
+            d_v: *d_v,
+            dt: *dt,
+            auto_dt: *auto >= 0.5,
+            high_contrast: false,
+        })
     }
 
     #[inline]
@@ -400,7 +386,12 @@ impl<D: MorphoDiffusion> SimulationRunner for MorphogenesisRunner<D> {
     }
 
     fn running_substeps_per_tick(&self) -> usize {
-        match self.params.read().unwrap_or_else(|e| e.into_inner()).kinetics {
+        match self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .kinetics
+        {
             MorphogenesisKinetics::Schnakenberg => 1,
             MorphogenesisKinetics::GrayScott => 4,
         }
@@ -491,7 +482,10 @@ impl<D: MorphoDiffusion> SimulationRunner for MorphogenesisRunner<D> {
     }
 
     fn replay_step(&mut self, params: &CheckpointParams) {
-        if let Some((dt, auto_dt)) = params.as_scalars().and_then(|s| self.apply_scalar_params(s)) {
+        if let Some((dt, auto_dt)) = params
+            .as_scalars()
+            .and_then(|s| self.apply_scalar_params(s))
+        {
             let amp = self.noise_amplitude;
             self.advance_grid_step(dt, auto_dt, amp);
         }
