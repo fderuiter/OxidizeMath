@@ -73,6 +73,7 @@ pub struct BifurcationDiagram {
     pub x0: f64,
     /// Whether `selected_r` is pinned against pointer hover updates.
     pub r_pinned: bool,
+    pub(crate) r_from_hover: bool,
     /// Reusable `CompiledExpr` formula bar for custom `x_{n+1} = f(r, x)` maps.
     pub math_input: MathExpressionInputBar,
     /// Inline evaluation or divergence error surfaced for custom AST maps.
@@ -119,6 +120,7 @@ impl Default for BifurcationDiagram {
             selected_r: (r_min + r_max) * 0.5,
             x0: DEFAULT_X0,
             r_pinned: false,
+            r_from_hover: false,
             math_input,
             custom_eval_error: None,
             custom_diverged: false,
@@ -311,34 +313,11 @@ impl InteractiveTool for BifurcationDiagram {
     }
 
     fn save_state(&self) -> Option<String> {
-        let is_custom = self.map_mode.is_custom();
-        let midpoint = (self.r_min + self.r_max) * 0.5;
-        let selected_r = (self.r_pinned || (self.selected_r - midpoint).abs() > 1e-12)
-            .then_some(self.selected_r);
-        let x0 =
-            (is_custom || self.r_pinned || (self.x0 - DEFAULT_X0).abs() > 1e-12).then_some(self.x0);
-        let trimmed_expr = self.math_input.raw_text.trim();
-        let custom_expr = (is_custom || trimmed_expr != DEFAULT_CUSTOM_EXPR)
-            .then(|| self.math_input.raw_text.clone());
-        let custom_params = if is_custom {
-            self.math_input.params_map()
-        } else {
-            BTreeMap::new()
-        };
+        self.build_state_json(true)
+    }
 
-        serde_json::to_string(&BifurcationState {
-            r_min: self.r_min,
-            r_max: self.r_max,
-            steps: self.steps,
-            map_mode: self.map_mode,
-            selected_r,
-            x0,
-            r_pinned: self.r_pinned,
-            use_custom_map: false,
-            custom_expr,
-            custom_params,
-        })
-        .ok()
+    fn save_url_state(&self) -> Option<String> {
+        self.build_state_json(false)
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
@@ -391,6 +370,41 @@ impl InteractiveTool for BifurcationDiagram {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.draw_side_panel(ui);
         self.draw_central_panel(ui);
+    }
+}
+
+impl BifurcationDiagram {
+    fn build_state_json(&self, include_hover_r: bool) -> Option<String> {
+        let is_custom = self.map_mode.is_custom();
+        let midpoint = (self.r_min + self.r_max) * 0.5;
+        let has_selected_r = self.r_pinned
+            || ((include_hover_r || !self.r_from_hover)
+                && (self.selected_r - midpoint).abs() > 1e-12);
+        let selected_r = has_selected_r.then_some(self.selected_r);
+        let x0 =
+            (is_custom || self.r_pinned || (self.x0 - DEFAULT_X0).abs() > 1e-12).then_some(self.x0);
+        let trimmed_expr = self.math_input.raw_text.trim();
+        let custom_expr = (is_custom || trimmed_expr != DEFAULT_CUSTOM_EXPR)
+            .then(|| self.math_input.raw_text.clone());
+        let custom_params = if is_custom {
+            self.math_input.params_map()
+        } else {
+            BTreeMap::new()
+        };
+
+        serde_json::to_string(&BifurcationState {
+            r_min: self.r_min,
+            r_max: self.r_max,
+            steps: self.steps,
+            map_mode: self.map_mode,
+            selected_r,
+            x0,
+            r_pinned: self.r_pinned,
+            use_custom_map: false,
+            custom_expr,
+            custom_params,
+        })
+        .ok()
     }
 }
 

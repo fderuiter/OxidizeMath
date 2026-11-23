@@ -83,10 +83,13 @@ impl BifurcationDiagram {
         let x0_changed = ui
             .add(egui::Slider::new(&mut self.x0, x0_range).text("Initial x₀"))
             .changed();
-        ui.checkbox(&mut self.r_pinned, "Pin r crosshair")
-            .accessible_hover_text(
-                "Freeze selected r against pointer hover; Enter toggles on plot",
-            );
+        let pin_changed = ui
+            .checkbox(&mut self.r_pinned, "Pin r crosshair")
+            .accessible_hover_text("Freeze selected r against pointer hover; Enter toggles on plot")
+            .changed();
+        if r_changed || (pin_changed && self.r_pinned) {
+            self.r_from_hover = false;
+        }
 
         full_recompute |= x0_changed;
         if ui
@@ -215,6 +218,7 @@ impl BifurcationDiagram {
                         self.selected_r = target_r;
                         self.r_pinned = true;
                     }
+                    self.r_from_hover = false;
                     r_changed = true;
                     announce = true;
                 }
@@ -223,6 +227,7 @@ impl BifurcationDiagram {
             if let Some(coord) = plot_ui.pointer_coordinate() {
                 if coord.x.is_finite() {
                     let next_r = coord.x.clamp(self.r_min, self.r_max);
+                    self.r_from_hover = true;
                     if (next_r - self.selected_r).abs() > 1e-9 {
                         self.selected_r = next_r;
                         r_changed = true;
@@ -284,6 +289,9 @@ impl BifurcationDiagram {
         }
         if enter {
             self.r_pinned = !self.r_pinned;
+        }
+        if r_changed || enter {
+            self.r_from_hover = false;
         }
         (r_changed, x0_changed, r_changed || x0_changed || enter)
     }

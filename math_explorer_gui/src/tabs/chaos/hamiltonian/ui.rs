@@ -51,7 +51,7 @@ impl HamiltonianChaosLab {
                 self.is_playing = false;
                 self.seed_default_showcase();
             }
-            None => {}
+            Some(PlaybackAction::StepBack | PlaybackAction::ScrubTo(_)) | None => {}
         }
     }
 

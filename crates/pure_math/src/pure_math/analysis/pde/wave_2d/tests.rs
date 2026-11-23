@@ -228,3 +228,37 @@ fn test_chladni_sand_drift_and_marching_squares_contours() {
         segs.len()
     );
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_extract_top_modes_rank_conjugate_dedup_and_phase() {
+    let n = 64_usize;
+    let mut fft = SpectralAnalyzer2D::new(n, n);
+    fft.set_hann_window(false);
+
+    let phase1 = 0.65_f64;
+    let phase2 = -1.15_f64;
+    let mut field = vec![0.0; n * n];
+    for y in 0..n {
+        for x in 0..n {
+            let a1 =
+                2.0 * PI * (4.0 * (x as f64) / (n as f64) + 3.0 * (y as f64) / (n as f64)) + phase1;
+            let a2 = 2.0 * PI * (-5.0 * (x as f64) / (n as f64) + 6.0 * (y as f64) / (n as f64))
+                + phase2;
+            field[flatten_2d_index(x, y, n)] = 1.6 * a1.cos() + 0.9 * a2.cos();
+        }
+    }
+
+    let _ = fft.compute_spectrum(&field);
+    let dom = fft.dominant_peak();
+    let mut modes = [SpectralMode2D::default(); 6];
+    let count = fft.extract_top_modes(&mut modes);
+
+    assert_eq!(count, 2);
+    assert_eq!((modes[0].kx, modes[0].ky), (4, 3));
+    assert_eq!((modes[1].kx, modes[1].ky), (-5, 6));
+    assert!(modes[0].magnitude > modes[1].magnitude);
+    assert!((modes[0].magnitude - dom.magnitude).abs() < 1.0e-12);
+    assert!((modes[0].phase - phase1).abs() < 1.0e-9);
+    assert!((modes[1].phase - phase2).abs() < 1.0e-9);
+}
