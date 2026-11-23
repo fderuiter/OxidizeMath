@@ -270,7 +270,6 @@ vendored_crates = [
 "crates/domain_physics/src/physics/solid_state/interactions.rs" = 1
 "crates/domain_physics/src/physics/solid_state/mod.rs" = 2
 "crates/domain_physics/src/physics/solid_state/second_quantization.rs" = 6
-"crates/domain_physics/src/physics/solid_state/types.rs" = 9
 "crates/domain_physics/src/physics/standard_model/gauge.rs" = 3
 "crates/domain_physics/src/physics/stat_mech/mod.rs" = 3
 "crates/math_commons/src/constants.rs" = 6

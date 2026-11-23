@@ -49,15 +49,22 @@ mod tests {
         exercise_interactive_tool::<crate::tabs::solid_state::band_structure::BandStructureTool>(
             &ctx,
         );
+        exercise_interactive_tool::<crate::tabs::solid_state::bcs::BcsSuperconductivityTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::solid_state::ising::IsingModelTool>(&ctx);
-        exercise_interactive_tool::<crate::tabs::quantum::clebsch::ClebschGordanTool>(&ctx);
-        exercise_interactive_tool::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(
+        exercise_interactive_tool::<crate::tabs::solid_state::quantum_stats::QuantumStatsPhononTool>(
+            &ctx,
+        );
+        exercise_interactive_tool::<crate::tabs::solid_state::sandpile::AbelianSandpileStudio>(
             &ctx,
         );
         exercise_interactive_tools_part_2(&ctx);
     }
 
     fn exercise_interactive_tools_part_2(ctx: &eframe::egui::Context) {
+        exercise_interactive_tool::<crate::tabs::quantum::clebsch::ClebschGordanTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(
+            ctx,
+        );
         exercise_interactive_tool::<
             crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool,
         >(ctx);

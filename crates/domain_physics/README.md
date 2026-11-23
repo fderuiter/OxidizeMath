@@ -16,8 +16,8 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
-- **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
-- **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, and zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`).
+- **`solid_state`**: Crystal lattice geometries, reciprocal space, electronic band structures, CODATA SI unit bridges (`ElectronVolts`, `Kelvin`), finite-temperature `IsotropicBCSModel` & `BcsGapSolver` superconductivity, Bogoliubov quasiparticle coherence factors, Dynes-broadened NIS tunneling conductance, Debye phonons, Thomas-Fermi/Yukawa screening, Fröhlich vertices, and Heisenberg magnons.
+- **`stat_mech`**: Ising spin lattices, SI-bridged `FermiDirac` / `BoseEinstein` / `MaxwellBoltzmann` quantum occupancy (`calculate_occupancy_ev`), log-sum-exp stabilized canonical ensembles (`canonical_thermodynamics_ev`), zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`), and seeded lattice diffusion.
 - **`optics`**: Graded-index and negative-index refractive media (`refraction`), RK4 Hamiltonian ray tracing and caustic envelope detection (`caustics`), and calibrated optical detector models (`sensing`), complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`.
 
 ---
@@ -81,6 +81,52 @@ let mut disk = GalacticDiskSystem::from_galaxy_model(
 disk.step_n_leapfrog(2.0, 20);
 assert!(disk.relative_energy_drift() < 1.0e-3);
 assert!(disk.relative_angular_momentum_drift() < 1.0e-11);
+```
+
+### Solving Finite-Temperature BCS Gaps and SI Quantum Occupancy
+
+Evaluate finite-temperature Cooper-pair energy gaps, universal weak-coupling $2\Delta(0)/(k_B T_c) \approx 3.528$ scaling, Dynes-broadened NIS tunneling conductance, and CODATA SI-bridged Fermi-Dirac occupancy:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::solid_state::bcs::{
+    BcsGapSolver, IsotropicBCSModel, nis_tunneling_conductance,
+};
+use math_explorer::physics::solid_state::types::{ElectronVolts, Kelvin};
+use math_explorer::physics::stat_mech::quantum_stats::{FermiDirac, calculate_occupancy_ev};
+
+let cutoff = 0.024;
+let d_xi = (2.0 * cutoff) / 160.0;
+let levels: Vec<f64> = (0..160).map(|i| -cutoff + (i as f64 + 0.5) * d_xi).collect();
+let model = IsotropicBCSModel::new(levels, 0.30 * d_xi, cutoff).unwrap();
+let solver = BcsGapSolver::new().with_tolerance(1e-11).with_max_iterations(250);
+
+let tc = model.critical_temperature().unwrap();
+let delta_0 = solver.solve(&model, ElectronVolts::new(0.0)).unwrap();
+let ratio = (2.0 * delta_0.as_f64()) / tc.thermal_energy_ev().as_f64();
+assert!((ratio - 3.528).abs() < 0.06);
+
+let normal = model.with_temperature(Kelvin::new(tc.as_f64() + 1.0));
+let delta_above = solver.solve(&normal, ElectronVolts::new(0.0)).unwrap();
+assert_eq!(delta_above.as_f64(), 0.0);
+let g_normal = nis_tunneling_conductance(
+    ElectronVolts::new(0.0),
+    delta_above,
+    ElectronVolts::new(4e-5),
+    Kelvin::new(tc.as_f64() + 1.0),
+)
+.unwrap();
+assert!((g_normal - 1.0).abs() < 1e-12);
+
+// Physical eV/Kelvin bridge: E - mu = 0.10 eV at 300 K yields ~0.0205, avoiding raw-SI 0.49 clamping
+let f_fd = calculate_occupancy_ev(
+    FermiDirac,
+    ElectronVolts::new(0.10),
+    ElectronVolts::new(0.0),
+    Kelvin::new(300.0),
+)
+.unwrap();
+assert!((f_fd - 0.020_47).abs() < 1e-3);
 ```
 
 ---

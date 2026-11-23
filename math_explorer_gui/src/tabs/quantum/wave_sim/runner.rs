@@ -132,7 +132,7 @@ pub struct WaveRunner {
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
     pub(crate) prev_mode_phases: [f64; 8],
-    sonification: crate::audio::SonificationFrame,
+    pub(crate) sonification: crate::audio::SonificationFrame,
 }
 
 impl WaveRunner {
@@ -187,17 +187,6 @@ impl WaveRunner {
         };
         runner.init_from_config(&cfg);
         runner
-    }
-
-    pub(crate) fn record_divergence(&mut self, param: &'static str, message: impl Into<String>) {
-        self.diverged = true;
-        self.sonification = crate::audio::SonificationFrame::silent();
-        self.diagnostic_report = Some(DiagnosticReport::new(
-            self.time,
-            self.step_count,
-            param,
-            message.into(),
-        ));
     }
 
     /// Rebuilds the spatial grid, clamped potential, Hamiltonian, and initial Gaussian wavepacket.
@@ -255,15 +244,6 @@ impl WaveRunner {
         self.prev_mode_phases = [0.0; 8];
         self.update_observables_in_place();
         self.refresh_sonification(cfg.dt);
-    }
-
-    pub(crate) fn refresh_sonification(&mut self, dt: f64) {
-        let modes = self.psi.project_spatial_modes::<8>();
-        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
-            &modes,
-            &mut self.prev_mode_phases,
-            dt.max(1.0e-4),
-        );
     }
 
     pub(crate) fn refresh_propagator(&mut self, dt: f64) -> bool {
@@ -441,13 +421,6 @@ impl WaveRunner {
             kinetic_energy: self.kinetic_energy,
             norm_sq: state_norm_squared(&self.psi),
         }
-    }
-
-    /// Current latched pre-wall transmission readout $T_{\text{scatter}}$, if latched.
-    #[cfg(test)]
-    #[must_use]
-    pub fn latched_transmission(&self) -> Option<f64> {
-        self.latched_transmission
     }
 }
 
