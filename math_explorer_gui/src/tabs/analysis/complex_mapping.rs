@@ -321,7 +321,7 @@ inventory::submit! {
         id: "ComplexMappingTool",
         display_name: "Complex Mapping",
         domain: "analysis",
-        tags: &[],
+        tags: &["conformal", "holomorphic", "cauchy-riemann", "complex plane", "domain coloring"],
         build: || Box::new(ComplexMappingTool::default()),
     }
 }

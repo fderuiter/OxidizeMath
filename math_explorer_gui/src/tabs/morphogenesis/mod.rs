@@ -1,6 +1,7 @@
-// @explorer_feature = "biology"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::async_sim::SimWorkerState;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +26,7 @@ pub use lenia::LeniaTool;
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
-pub use runner::{MorphogenesisKineticsRunner, MorphogenesisRunner, MorphogenesisSharedParams};
+pub use runner::{MorphogenesisRunner, MorphogenesisSharedParams};
 pub use tool::{MorphogenesisTool, MorphogenesisToolState};
 
 /// Legacy flat `MorphoState` schema saved by pre-framework `.mws` workspaces.
@@ -135,18 +136,11 @@ impl ExplorerTab for MorphogenesisTab {
     }
 }
 
-#[cfg(test)]
-impl MorphogenesisTab {
-    pub(crate) fn create_runner(
-        params: &std::sync::Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-        width: usize,
-        height: usize,
-    ) -> MorphogenesisKineticsRunner {
-        let ks = std::sync::Arc::new(std::sync::RwLock::new(
-            runner::MorphogenesisKineticsState::default(),
-        ));
-        let mask_rle = std::sync::Arc::new(std::sync::RwLock::new(Vec::new()));
-        MorphogenesisTool::create_kinetics_runner(params, &ks, &mask_rle, width, height)
+inventory::submit! {
+    TabDescriptor {
+        id: "morphogenesis",
+        order: 40,
+        build: || Box::new(MorphogenesisTab::default()),
     }
 }
 

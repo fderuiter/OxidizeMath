@@ -11,9 +11,7 @@ use super::state::{
 };
 use super::VolumetricFieldStudioTool;
 use crate::framework::{bounded_drag_value, enforce_ordered_drag_range, MathExpressionInputBar};
-use crate::volumetric_scene::{
-    rotation_from_normal, VolumeCutFilter, VolumetricSplatWorkspace,
-};
+use crate::volumetric_scene::{rotation_from_normal, VolumeCutFilter, VolumetricSplatWorkspace};
 use eframe::egui;
 use math_commons::ast::{parse, CompiledExpr};
 use math_explorer::ai::gaussian_splatting::Gaussian3D;
@@ -218,7 +216,10 @@ fn push_implicit_voxel_splat(
 }
 
 /// Renders template selectors, `MathExpressionInputBar`, shell thickening, and `[x, y, z]` bounds.
-pub(super) fn draw_implicit_controls(tool: &mut VolumetricFieldStudioTool, ui: &mut egui::Ui) -> bool {
+pub(super) fn draw_implicit_controls(
+    tool: &mut VolumetricFieldStudioTool,
+    ui: &mut egui::Ui,
+) -> bool {
     let mut changed = draw_template_buttons(tool, ui);
     let prev_raw = tool.formula_bar.raw_text.clone();
     let bar_changed = tool.formula_bar.ui(ui);

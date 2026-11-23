@@ -169,3 +169,48 @@ fn test_opted_in_scrubber_touch_targets_commands_and_aria_announcements() {
         msg.contains("Hodgkin-Huxley Model") && msg.contains("step 11") && prio == "polite"
     }));
 }
+
+#[test]
+fn test_playback_transport_consumes_dispatched_step_back_and_previous_keyframe() {
+    let ctx = egui::Context::default();
+    let meta = TimelineMetadata {
+        current_step: 19,
+        min_step: 0,
+        max_step: 24,
+        stride: 8,
+    };
+
+    egui_plot::commands::CommandRegistryData::dispatch(&ctx, "Step Back", "Simulation Playback");
+    let mut step_back_action = None;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            step_back_action = PlaybackTransport::from_worker_state(
+                "tt_disp_back",
+                "SIR Model",
+                SimWorkerState::Ready,
+            )
+            .timeline(Some(meta))
+            .show(ui);
+        });
+    });
+    assert_eq!(step_back_action, Some(PlaybackAction::StepBack));
+
+    egui_plot::commands::CommandRegistryData::dispatch(
+        &ctx,
+        "Previous Keyframe",
+        "Simulation Playback",
+    );
+    let mut prev_kf_action = None;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            prev_kf_action = PlaybackTransport::from_worker_state(
+                "tt_disp_kf",
+                "SIR Model",
+                SimWorkerState::Ready,
+            )
+            .timeline(Some(meta))
+            .show(ui);
+        });
+    });
+    assert_eq!(prev_kf_action, Some(PlaybackAction::ScrubTo(16)));
+}

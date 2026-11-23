@@ -55,7 +55,7 @@ Watertight 2-manifold ColoredMesh -> Binary .stl / Colored .ply / .obj         I
 
 - **Positive**: Clipped spheres, `32^3` Gyroid TPMS shells, hydrogenic orbitals, and sliced 3D Turing gyroid labyrinths export as closed, outward-oriented 2-manifolds (`(0, 0)` open/non-manifold edges, `signed_volume > 0.0`) ready for 3D slicers, while `GaussianRadianceCloud` scenes load directly in INRIA-compatible 3DGS viewers.
 - **Positive**: Hot-path 3D bytecode evaluation, collar-padded `MarchingCubes` extraction, and painter facet projection allocate `0` heap bytes per frame under `VerifiedAllocator`.
-- **Trade-off**: Interactive cubic voxel resolution remains capped at `16..=48` (`50^3` collar cubes) to preserve 60 FPS interactive responsiveness on native CPU and WebAssembly targets without octree dual contouring.
+- **Trade-off**: Interactive cubic voxel resolution remains capped at `16..=48` (`50^3` collar cubes) to preserve 60 FPS interactive responsiveness on native CPU and WebAssembly targets without octree dual contouring, and the default compressed `.wasm` budget in [verify_wasm_budget.sh](../../scripts/verify_wasm_budget.sh) is raised from `3,145,728` bytes (`3.0 MiB`) to `3,670,016` bytes (`3.5 MiB`) to accommodate the 27-tab / 79-tool / 117-preset workspace (`~2.80 MB` Brotli, `~3.28 MB` Gzip).
 
 ## Verification
 
