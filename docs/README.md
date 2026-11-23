@@ -29,7 +29,8 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0016: Standardize Crate Documentation Suite](adr/0016-standardize-crate-documentation-suite.md)
 - [ADR 0034: Curate `math_explorer` Facade Exports and Doctests](adr/0034-curate-math-explorer-facade-exports-and-doctests.md)
 - [ADR 0035: Spatial Fermi Games and Ising Droplet Brushes](adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md)
-- [ADR 0037: Repair Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates](adr/0037-repair-guides-and-enforce-static-doc-gates.md)
+- [ADR 0037: Glicko-2 Frozen-Period Tournament Simulator](adr/0037-glicko2-frozen-period-tournament-simulator.md)
+- [ADR 0038: Repair Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates](adr/0038-repair-guides-and-enforce-static-doc-gates.md)
 
 ## Contributing
 
