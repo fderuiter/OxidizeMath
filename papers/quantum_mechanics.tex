@@ -37,7 +37,7 @@ Physical observables are represented by the \texttt{QuantumOperator} struct.
 \end{itemize}
 
 \section{Calculus and Dynamics}
-The time evolution of a quantum system is governed by the Schrödinger Equation:
+The time evolution of a linear quantum system is governed by the Schrödinger Equation:
 \begin{equation}
     i\hbar \frac{\partial}{\partial t}|\psi(t)\rangle = \hat{H}|\psi(t)\rangle
 \end{equation}
@@ -45,7 +45,7 @@ For a time-independent Hamiltonian $\hat{H}$, the formal solution is:
 \begin{equation}
     |\psi(t)\rangle = e^{-i\hat{H}t/\hbar}|\psi(0)\rangle
 \end{equation}
-This is implemented in the \texttt{schrodinger} module using matrix exponentiation.
+This is implemented in the \texttt{schrodinger} module using matrix exponentiation for finite-dimensional systems, and extended to nonlinear mean-field Bose--Einstein condensates via Strang split-step Fourier propagation in \texttt{gross\_pitaevskii}.
 
 \section{Probability Theory}
 According to the Born Rule, the probability of finding a system in a basis state is the square of the magnitude of the projection.
@@ -65,5 +65,23 @@ Commutators $[\hat{A}, \hat{B}]$ quantify the simultaneous measurability of obse
 
 \section{Fourier Analysis}
 To switch between position and momentum representations in discrete systems, the Discrete Fourier Transform (DFT) operator is provided.
+
+\section{Nonlinear Gross--Pitaevskii Condensates and Quantized Vortices}
+At ultracold temperatures, a weakly interacting two-dimensional Bose--Einstein condensate order parameter $\psi(x, y, t)$ obeys the dimensionless Gross--Pitaevskii equation~\cite{gross1961vortex,pitaevskii1961vortex}:
+\begin{equation}
+    i\frac{\partial \psi}{\partial t} = \left(-\frac{1}{2}\nabla^2 + V(x, y) + g|\psi|^2\right)\psi,
+\end{equation}
+where $V(x, y)$ is an external harmonic or Gaussian-obstacle trap and $g$ is the contact interaction coupling (paralleling integrable dispersive wave balances in one-dimensional Korteweg--de Vries solitons~\cite{korteweg1895soliton,zabusky1965soliton}). Writing $\psi = \sqrt{\rho}\,e^{i\theta}$, the \texttt{gross\_pitaevskii} module integrates real-time unitary dynamics (and Wick-rotated imaginary-time ground-state cooling $\tau = it$) via symmetric second-order Strang operator splitting:
+\begin{equation}
+    \psi(t + \Delta t) = e^{-\frac{i\Delta t}{2}(V + g|\psi|^2)} \, \mathcal{F}^{-1}\!\left[e^{-\frac{i\Delta t}{2}(k_x^2 + k_y^2)} \mathcal{F}[\,\cdot\,]\right] e^{-\frac{i\Delta t}{2}(V + g|\psi|^2)}\psi(t) + \mathcal{O}(\Delta t^3).
+\end{equation}
+Each sub-operator is pointwise unitary in real or Fourier space, conserving total condensate norm $M = \iint |\psi|^2\,dx\,dy$ to machine precision ($\sim 10^{-15}$) while executing with zero dynamic heap allocations. Topological superfluid vortices are detected on every interior $2\times 2$ lattice plaquette by summing principal wrapped phase differences $\Delta\theta \in (-\pi, \pi]$ counter-clockwise around the four cell corners:
+\begin{equation}
+    \oint_{\square} \nabla\theta \cdot d\mathbf{l} = 2\pi q, \qquad q \in \mathbb{Z}\setminus\{0\},
+\end{equation}
+classifying elementary $+1$ ($+2\pi$) vortices and $-1$ ($-2\pi$) antivortices inside the condensate bulk.
+
+\bibliographystyle{plain}
+\bibliography{references}
 
 \end{document}

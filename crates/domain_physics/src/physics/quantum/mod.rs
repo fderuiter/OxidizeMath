@@ -75,6 +75,8 @@
 pub mod coupling;
 #[allow(missing_docs)]
 pub mod fourier;
+/// Zero-allocation 2D Strang split-step Gross-Pitaevskii superfluid condensate and vortex solver.
+pub mod gross_pitaevskii;
 #[allow(missing_docs)]
 pub mod hamiltonian;
 pub mod hydrogenic;
@@ -87,6 +89,10 @@ pub mod types;
 // Re-export key types for convenience
 pub use coupling::clebsch_gordan;
 pub use fourier::{dft_operator, idft_operator};
+pub use gross_pitaevskii::{
+    GpeInvariants2D, GpeParams2D, GpeTrapConfig, GpeTrapKind, GrossPitaevskiiSolver2D,
+    VortexChargeSummary, VortexCore2D,
+};
 pub use hamiltonian::{
     construct_1d_hamiltonian, construct_two_state_eigen_hamiltonian, gaussian_wavepacket,
 };

@@ -118,6 +118,12 @@ fn test_pure_math_custom_canvases_and_rasters_receive_tab_focus_and_labels() {
         &mut chladni,
         "2D Chladni Plate & Wave Tank Visualization",
     );
+
+    let mut soliton = crate::tabs::analysis::soliton_collision::SolitonCollisionTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut soliton,
+        "1D KdV Soliton Space-Time Waterfall Visualization",
+    );
 }
 
 #[cfg(feature = "biology")]
@@ -164,5 +170,11 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
     assert_tool_canvas_tab_focus_and_accesskit_label(
         &mut radar,
         "60 GHz MIMO Radar Room Visualization",
+    );
+
+    let mut superfluid = crate::tabs::quantum::superfluid_vortex::SuperfluidVortexTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut superfluid,
+        "2D Superfluid Condensate & Quantized Vortex Canvas",
     );
 }

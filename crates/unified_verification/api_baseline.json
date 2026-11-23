@@ -5874,6 +5874,150 @@
       "signature": "pub fn idft_operator (_ : usize) -> QuantumOperator"
     }
   ],
+  "crates/domain_physics/src/physics/quantum/gross_pitaevskii.rs": [
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn configure_trap (& mut self , _ : GpeTrapConfig) }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn density (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn dx (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn dy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn imprint_vortex (& mut self , _ : f64 , _ : f64 , _ : i32 , _ : f64) }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn imprint_vortex_dipole (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn length_x (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn length_y (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn phase (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn potential (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn seed_condensate (& mut self , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn step (& mut self , _ : & GpeParams2D , _ : f64) }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn vortices (& self) -> & [VortexCore2D] }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn wavefunction (& self) -> & [Complex < f64 >] }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn x_coords (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn y_coords (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub struct GrossPitaevskiiSolver2D"
+    },
+    {
+      "signature": "pub use config :: GpeInvariants2D"
+    },
+    {
+      "signature": "pub use config :: GpeParams2D"
+    },
+    {
+      "signature": "pub use config :: GpeTrapConfig"
+    },
+    {
+      "signature": "pub use config :: GpeTrapKind"
+    },
+    {
+      "signature": "pub use config :: MAX_GPE_DIM"
+    },
+    {
+      "signature": "pub use config :: MAX_TRACKED_VORTICES"
+    },
+    {
+      "signature": "pub use config :: VortexChargeSummary"
+    },
+    {
+      "signature": "pub use config :: VortexCore2D"
+    },
+    {
+      "signature": "pub use config :: thomas_fermi_chemical_potential_2d"
+    },
+    {
+      "signature": "pub use vortices :: wrap_phase_difference"
+    }
+  ],
+  "crates/domain_physics/src/physics/quantum/gross_pitaevskii/config.rs": [
+    {
+      "signature": "impl GpeInvariants2D { pub fn momentum_magnitude (self) -> f64 }"
+    },
+    {
+      "signature": "impl GpeTrapConfig { pub fn evaluate (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub const MAX_GPE_DIM : usize"
+    },
+    {
+      "signature": "pub const MAX_TRACKED_VORTICES : usize"
+    },
+    {
+      "signature": "pub enum GpeTrapKind"
+    },
+    {
+      "signature": "pub fn thomas_fermi_chemical_potential_2d (_ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub struct GpeInvariants2D"
+    },
+    {
+      "signature": "pub struct GpeParams2D"
+    },
+    {
+      "signature": "pub struct GpeTrapConfig"
+    },
+    {
+      "signature": "pub struct VortexChargeSummary"
+    },
+    {
+      "signature": "pub struct VortexCore2D"
+    }
+  ],
+  "crates/domain_physics/src/physics/quantum/gross_pitaevskii/vortices.rs": [
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn compute_invariants (& mut self , _ : f64) -> GpeInvariants2D }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn detect_vortices (& mut self , _ : f64) -> VortexChargeSummary }"
+    },
+    {
+      "signature": "impl GrossPitaevskiiSolver2D { pub fn refresh_density_and_phase (& mut self) -> f64 }"
+    },
+    {
+      "signature": "pub fn wrap_phase_difference (_ : f64) -> f64"
+    }
+  ],
   "crates/domain_physics/src/physics/quantum/hamiltonian.rs": [
     {
       "signature": "pub fn construct_1d_hamiltonian (_ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64 ,) -> QuantumOperator"
@@ -5941,6 +6085,27 @@
     },
     {
       "signature": "pub use fourier :: idft_operator"
+    },
+    {
+      "signature": "pub use gross_pitaevskii :: GpeInvariants2D"
+    },
+    {
+      "signature": "pub use gross_pitaevskii :: GpeParams2D"
+    },
+    {
+      "signature": "pub use gross_pitaevskii :: GpeTrapConfig"
+    },
+    {
+      "signature": "pub use gross_pitaevskii :: GpeTrapKind"
+    },
+    {
+      "signature": "pub use gross_pitaevskii :: GrossPitaevskiiSolver2D"
+    },
+    {
+      "signature": "pub use gross_pitaevskii :: VortexChargeSummary"
+    },
+    {
+      "signature": "pub use gross_pitaevskii :: VortexCore2D"
     },
     {
       "signature": "pub use hamiltonian :: construct_1d_hamiltonian"
@@ -8895,6 +9060,159 @@
     },
     {
       "signature": "pub struct HeatRodSolution"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/kdv.rs": [
+    {
+      "signature": "impl KdvSolver1D { pub fn dx (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn initial_field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn inject_soliton_pulse (& mut self , _ : f64 , _ : f64 , _ : KdvEquationMode) }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn length (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn num_points (& self) -> usize }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn psi_field (& self) -> & [Complex < f64 >] }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn seed_cosine_wave (& mut self , _ : f64 , _ : usize) }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn seed_kdv_solitons (& mut self , _ : & [SolitonSpec]) }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn seed_nls_bright_solitons (& mut self , _ : & [(f64 , f64 , f64)]) }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn step (& mut self , _ : & KdvParams , _ : f64) -> usize }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn step_kdv (& mut self , _ : f64 , _ : bool) -> usize }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn step_nls (& mut self , _ : f64 , _ : f64) -> usize }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn x_coords (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub struct KdvSolver1D"
+    },
+    {
+      "signature": "pub use config :: DetectedPulsePeak"
+    },
+    {
+      "signature": "pub use config :: KDV_IFRK4_CFL_TARGET"
+    },
+    {
+      "signature": "pub use config :: KdvEquationMode"
+    },
+    {
+      "signature": "pub use config :: KdvParams"
+    },
+    {
+      "signature": "pub use config :: MAX_KDV_POINTS"
+    },
+    {
+      "signature": "pub use config :: MAX_KDV_SUBSTEPS"
+    },
+    {
+      "signature": "pub use config :: SolitonInvariants"
+    },
+    {
+      "signature": "pub use config :: SolitonSpec"
+    },
+    {
+      "signature": "pub use config :: TwoSolitonPhaseShift"
+    },
+    {
+      "signature": "pub use config :: kdv_single_soliton_profile"
+    },
+    {
+      "signature": "pub use config :: kdv_two_soliton_phase_shifts"
+    },
+    {
+      "signature": "pub use config :: nls_bright_soliton_sample"
+    },
+    {
+      "signature": "pub use config :: wrap_periodic_coord"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/kdv/config.rs": [
+    {
+      "signature": "impl SolitonInvariants { pub fn relative_drift (self , _ : Self) -> [f64 ; 3] }"
+    },
+    {
+      "signature": "pub const KDV_IFRK4_CFL_TARGET : f64"
+    },
+    {
+      "signature": "pub const MAX_KDV_POINTS : usize"
+    },
+    {
+      "signature": "pub const MAX_KDV_SUBSTEPS : usize"
+    },
+    {
+      "signature": "pub enum KdvEquationMode"
+    },
+    {
+      "signature": "pub fn kdv_single_soliton_profile (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn kdv_two_soliton_phase_shifts (_ : f64 , _ : f64) -> TwoSolitonPhaseShift"
+    },
+    {
+      "signature": "pub fn nls_bright_soliton_sample (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Complex < f64 >"
+    },
+    {
+      "signature": "pub fn wrap_periodic_coord (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct DetectedPulsePeak"
+    },
+    {
+      "signature": "pub struct KdvParams"
+    },
+    {
+      "signature": "pub struct SolitonInvariants"
+    },
+    {
+      "signature": "pub struct SolitonSpec"
+    },
+    {
+      "signature": "pub struct TwoSolitonPhaseShift"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/kdv/diagnostics.rs": [
+    {
+      "signature": "impl KdvSolver1D { pub fn compute_invariants (& mut self , _ : & KdvParams) -> SolitonInvariants }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn compute_kdv_invariants (& mut self , _ : bool) -> SolitonInvariants }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn compute_nls_invariants (& mut self , _ : f64) -> SolitonInvariants }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn locate_top_two_peaks (& self , _ : KdvEquationMode ,) -> (DetectedPulsePeak , DetectedPulsePeak) }"
+    },
+    {
+      "signature": "impl KdvSolver1D { pub fn measure_two_soliton_phase_shifts (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> (f64 , f64) }"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/laplace.rs": [

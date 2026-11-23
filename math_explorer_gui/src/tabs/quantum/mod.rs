@@ -4,6 +4,7 @@ use eframe::egui;
 
 pub mod clebsch;
 pub mod spin_viz;
+pub mod superfluid_vortex;
 pub mod volumetric_studio;
 pub mod wave_sim;
 

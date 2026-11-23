@@ -82,6 +82,8 @@ pub mod fused_stepper;
 pub mod greens;
 #[allow(missing_docs)]
 pub mod heat;
+/// Zero-allocation 1D periodic pseudospectral Korteweg-de Vries and cubic NLS soliton solver.
+pub mod kdv;
 #[allow(missing_docs)]
 pub mod laplace;
 #[allow(missing_docs)]

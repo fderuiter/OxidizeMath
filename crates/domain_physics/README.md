@@ -11,7 +11,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 ### Module Structure
 
 - **`chaos`**: Deterministic chaotic systems, including the Lorenz attractor, double pendulum, and Lyapunov exponent analyzers.
-- **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, and Schrödinger wave equation solvers.
+- **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, Schrödinger wave equation solvers, and zero-allocation 2D Strang split-step Gross-Pitaevskii superfluid condensates with quantized $2\pi$ vortex plaquette detection (`quantum::gross_pitaevskii::GrossPitaevskiiSolver2D`).
 - **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), and zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`).
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
