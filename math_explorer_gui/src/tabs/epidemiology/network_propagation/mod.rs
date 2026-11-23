@@ -4,6 +4,7 @@ mod analytics;
 mod canvas;
 pub mod challenge;
 mod controls;
+mod dataflow;
 mod presets;
 #[cfg(test)]
 mod tests;
@@ -14,7 +15,7 @@ pub(crate) use analytics::compute_network_analytics;
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
-use std::collections::HashSet;
+use presets::{build_validated_candidate, NetPropState};
 use std::hash::{Hash, Hasher};
 
 /// Default deterministic seed matching [`oxidize_core::rng::OxidizeRng::default`].
@@ -35,44 +36,6 @@ pub enum ContainmentMode {
     QuarantineEdge,
 }
 
-const fn default_seed() -> u64 {
-    DEFAULT_NETWORK_SEED
-}
-
-const fn is_default_seed(seed: &u64) -> bool {
-    *seed == DEFAULT_NETWORK_SEED
-}
-
-const fn default_budget() -> usize {
-    DEFAULT_CONTAINMENT_BUDGET
-}
-
-const fn is_default_budget(budget: &usize) -> bool {
-    *budget == DEFAULT_CONTAINMENT_BUDGET
-}
-
-const fn is_false(value: &bool) -> bool {
-    !*value
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct NetPropState {
-    pub(super) num_nodes: usize,
-    pub(super) beta: f64,
-    pub(super) gamma: f64,
-    #[serde(default = "default_seed", skip_serializing_if = "is_default_seed")]
-    pub(super) seed: u64,
-    #[serde(default = "default_budget", skip_serializing_if = "is_default_budget")]
-    pub(super) budget: usize,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(super) vaccinated_nodes: Vec<usize>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(super) quarantined_edges: Vec<usize>,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub(super) is_running: bool,
-}
-
 /// Interactive stochastic network contagion and budgeted containment explorer.
 pub struct NetworkPropagationTool {
     pub(super) model: NetworkEpidemicModel,
@@ -91,6 +54,8 @@ pub struct NetworkPropagationTool {
     pub(super) is_running: bool,
     pub(super) active_challenge: Option<&'static str>,
     pub(super) revision: u64,
+    pub(super) last_upstream_graph_rev: u64,
+    pub(super) upstream_linked: bool,
     #[cfg(test)]
     pub(super) sim_steps: u64,
 }
@@ -118,6 +83,8 @@ impl Default for NetworkPropagationTool {
             is_running: false,
             active_challenge: None,
             revision: 1,
+            last_upstream_graph_rev: 0,
+            upstream_linked: false,
             #[cfg(test)]
             sim_steps: 0,
         }
@@ -283,87 +250,6 @@ impl NetworkPropagationTool {
             self.sim_steps = self.sim_steps.saturating_add(1);
         }
     }
-
-    #[cfg(test)]
-    pub(crate) fn sim_steps(&self) -> u64 {
-        self.sim_steps
-    }
-
-    #[cfg(test)]
-    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
-    }
-}
-
-fn validate_unique_indices(items: &[usize], label: &str) -> Result<Vec<usize>, String> {
-    let mut seen = HashSet::with_capacity(items.len());
-    for &idx in items {
-        if !seen.insert(idx) {
-            return Err(format!("Duplicate index {idx} in {label}"));
-        }
-    }
-    let mut sorted = items.to_vec();
-    sorted.sort_unstable();
-    Ok(sorted)
-}
-
-fn build_validated_candidate(
-    s: &NetPropState,
-) -> Result<
-    (
-        NetworkEpidemicModel,
-        oxidize_core::rng::OxidizeRng,
-        Vec<usize>,
-        Vec<usize>,
-    ),
-    String,
-> {
-    if !(10..=200).contains(&s.num_nodes)
-        || !s.beta.is_finite()
-        || !(0.0..=1.0).contains(&s.beta)
-        || !s.gamma.is_finite()
-        || !(0.0..=1.0).contains(&s.gamma)
-        || s.budget > MAX_CONTAINMENT_BUDGET
-    {
-        return Err("Network propagation parameters out of bounds".into());
-    }
-    if s.vaccinated_nodes
-        .len()
-        .saturating_add(s.quarantined_edges.len())
-        > s.budget
-    {
-        return Err("Containment interventions exceed configured budget".into());
-    }
-    let vax_sorted = validate_unique_indices(&s.vaccinated_nodes, "vaccinated_nodes")?;
-    let edge_sorted = validate_unique_indices(&s.quarantined_edges, "quarantined_edges")?;
-
-    let mut candidate_rng = oxidize_core::rng::OxidizeRng::new(s.seed);
-    let mut candidate =
-        NetworkEpidemicModel::new_with_rng(s.num_nodes, s.beta, s.gamma, &mut candidate_rng);
-
-    for &node in &vax_sorted {
-        if node >= candidate.num_nodes() {
-            return Err(format!("Vaccinated node index {node} out of bounds"));
-        }
-        if candidate.patient_zero() == Some(node)
-            || candidate.states()[node] != NodeState::Susceptible
-        {
-            return Err(format!("Cannot vaccinate patient zero (Node {node})"));
-        }
-        candidate
-            .set_node_vaccinated(node, true)
-            .map_err(|e| e.to_string())?;
-    }
-    for &edge_idx in &edge_sorted {
-        let &[u, v] = candidate
-            .edges()
-            .get(edge_idx)
-            .ok_or_else(|| format!("Quarantined edge index {edge_idx} out of bounds"))?;
-        candidate
-            .set_edge_quarantined(u, v, true)
-            .map_err(|e| e.to_string())?;
-    }
-    Ok((candidate, candidate_rng, vax_sorted, edge_sorted))
 }
 
 impl InteractiveTool for NetworkPropagationTool {
@@ -380,9 +266,14 @@ impl InteractiveTool for NetworkPropagationTool {
         crate::framework::ExportCapabilities::none()
     }
     fn has_finite_parameters(&self) -> bool {
+        let min_nodes = if self.last_upstream_graph_rev != 0 {
+            1
+        } else {
+            10
+        };
         self.model.beta().is_finite()
             && self.model.gamma().is_finite()
-            && (10..=200).contains(&self.model.num_nodes())
+            && (min_nodes..=200).contains(&self.model.num_nodes())
     }
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -399,14 +290,28 @@ impl InteractiveTool for NetworkPropagationTool {
         h.finish().max(1)
     }
     fn save_state(&self) -> Option<String> {
+        let (num_nodes, vaccinated_nodes, quarantined_edges) = if self.last_upstream_graph_rev != 0
+        {
+            (
+                self.model.num_nodes().clamp(10, 200),
+                Vec::new(),
+                Vec::new(),
+            )
+        } else {
+            (
+                self.model.num_nodes(),
+                self.vaccinated_nodes.clone(),
+                self.quarantined_edges.clone(),
+            )
+        };
         serde_json::to_string(&NetPropState {
-            num_nodes: self.model.num_nodes(),
+            num_nodes,
             beta: self.model.beta(),
             gamma: self.model.gamma(),
             seed: self.seed,
             budget: self.budget,
-            vaccinated_nodes: self.vaccinated_nodes.clone(),
-            quarantined_edges: self.quarantined_edges.clone(),
+            vaccinated_nodes,
+            quarantined_edges,
             is_running: self.is_running,
         })
         .ok()
@@ -456,6 +361,7 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.poll_upstream_graph(ui.ctx());
         egui::CentralPanel::default().show_inside(ui, |ui| {
             if self.is_running {
                 self.step_models_lockstep();

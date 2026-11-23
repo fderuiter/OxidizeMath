@@ -62,6 +62,7 @@ fn explicit_tool_papers(tool_id: &str) -> &'static [&'static str] {
         | "FractranMachineTool"
         | "AlgorithmicFractranTool"
         | "AlgorithmicComplexityTool" => &["algorithmic_information_rust"],
+        "WinRatioWorkbenchTool" | "WinRatioStressTesterTool" => &["win_ratio"],
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
