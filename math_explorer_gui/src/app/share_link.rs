@@ -21,10 +21,10 @@ impl MathExplorerApp {
         Some((tab_idx, tab))
     }
 
-    /// Captures the O(1) shareable URL signature for the active focused simulation pane.
+    /// Captures the O(1) shareable URL signature for the active focused simulation pane (plus active pipeline DAG).
     #[must_use]
     pub fn current_url_signature(&self) -> UrlStateSignature {
-        if let Some((selected_tab, tab)) = self.active_share_tab() {
+        let mut base = if let Some((selected_tab, tab)) = self.active_share_tab() {
             UrlStateSignature {
                 selected_tab,
                 active_tool_id: tab.active_tool_id(),
@@ -36,14 +36,76 @@ impl MathExplorerApp {
                 active_tool_id: None,
                 state_revision: 0,
             }
+        };
+        if self.viewport_layout != ViewportLayout::Single && !self.pipeline_dag.is_empty() {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            base.state_revision.hash(&mut h);
+            std::mem::discriminant(&self.viewport_layout).hash(&mut h);
+            self.active_focused_pane().hash(&mut h);
+            self.pipeline_dag.links().hash(&mut h);
+            for p in 0..self.viewport_layout.pane_count() {
+                p.hash(&mut h);
+                self.pane_tabs.get(p).copied().unwrap_or(0).hash(&mut h);
+                if let Some(tab) = self.pane_tab(p) {
+                    tab.url_state_revision().hash(&mut h);
+                }
+            }
+            base.state_revision = h.finish().max(1);
         }
+        base
     }
 
-    /// Encodes the active focused simulation pane's state as a `#tab=...` URL fragment.
+    fn export_pane_for_pipeline_url(
+        &self,
+        pane_idx: usize,
+    ) -> Result<crate::url_state::pipeline::PipelinePaneUrlEntry, String> {
+        use crate::url_state::pipeline::build_pane_url_entry;
+        if let Some(tab) = self.pane_tab(pane_idx) {
+            let json = tab.export_url_preset_json()?;
+            return build_pane_url_entry(tab.url_slug(), tab.active_tool_id(), json.as_deref());
+        }
+        let tab_idx = self
+            .pane_tabs
+            .get(pane_idx)
+            .copied()
+            .ok_or_else(|| format!("Missing tab assignment for pane {pane_idx}"))?;
+        let mut temp = crate::tabs::instantiate_tab(tab_idx)
+            .ok_or_else(|| format!("Unknown tab index {tab_idx} for pane {pane_idx}"))?;
+        if let Some(saved) = self
+            .pane_slots
+            .slot(pane_idx)
+            .and_then(|s| s.saved_states.get(temp.name()))
+        {
+            temp.load_state(saved);
+        }
+        let json = temp.export_url_preset_json()?;
+        build_pane_url_entry(temp.url_slug(), temp.active_tool_id(), json.as_deref())
+    }
+
+    /// Encodes the active focused simulation pane's state (and active multi-pane pipeline when linked) as `#tab=...`.
     pub fn encode_current_share_fragment(&self) -> Result<String, String> {
         let (_, tab) = self
             .active_share_tab()
             .ok_or_else(|| "No active simulation tab selected".to_string())?;
+        if self.viewport_layout != ViewportLayout::Single && !self.pipeline_dag.is_empty() {
+            let pane_count = self.viewport_layout.pane_count();
+            let mut panes = Vec::with_capacity(pane_count);
+            for p in 0..pane_count {
+                panes.push(self.export_pane_for_pipeline_url(p)?);
+            }
+            let env = crate::url_state::pipeline::PipelineUrlEnvelope {
+                layout: self.viewport_layout,
+                focused_pane: self.active_focused_pane(),
+                panes,
+                links: self.pipeline_dag.links().to_vec(),
+            };
+            return crate::url_state::pipeline::encode_pipeline_share_fragment(
+                tab.url_slug(),
+                tab.active_tool_id(),
+                env,
+            );
+        }
         tab.encode_url_share_fragment()
     }
 
@@ -127,6 +189,9 @@ impl MathExplorerApp {
         raw_hash: &str,
         ctx: Option<&egui::Context>,
     ) -> Result<bool, String> {
+        if let Some(pipe) = params.pipeline {
+            return self.hydrate_pipeline_share_url(pipe, raw_hash, ctx);
+        }
         let Some(tab_idx) = self.tabs.iter().position(|tab| {
             crate::url_state::matches_tab_slug(&params.tab, tab.url_slug(), tab.name())
         }) else {
@@ -146,7 +211,98 @@ impl MathExplorerApp {
         self.focused_pane = 0;
         self.set_layout(ViewportLayout::Single);
         self.session_manager.clear_toast();
+        self.finish_hydrated_url_sync(raw_hash);
+        Ok(true)
+    }
 
+    fn hydrate_pipeline_share_url(
+        &mut self,
+        pipe: crate::url_state::pipeline::ValidatedPipelineUrl,
+        raw_hash: &str,
+        ctx: Option<&egui::Context>,
+    ) -> Result<bool, String> {
+        let pane_count = pipe.layout.pane_count();
+        let mut built: Vec<(usize, Box<dyn crate::tabs::ExplorerTab>)> =
+            Vec::with_capacity(pane_count);
+        for desc in &pipe.panes {
+            let Some(tab_idx) = self.tabs.iter().position(|tab| {
+                crate::url_state::matches_tab_slug(&desc.tab, tab.url_slug(), tab.name())
+            }) else {
+                let err = format!("Unknown simulation tab '{}' in pipeline URL", desc.tab);
+                self.record_invalid_share_url(err.clone(), ctx);
+                return Err(err);
+            };
+            let Some(mut instance) = crate::tabs::instantiate_tab(tab_idx) else {
+                let err = format!("Failed to instantiate tab '{}' for pipeline URL", desc.tab);
+                self.record_invalid_share_url(err.clone(), ctx);
+                return Err(err);
+            };
+            if let Err(err) =
+                instance.import_url_preset_json(desc.tool.as_deref(), desc.state_json.as_deref())
+            {
+                self.record_invalid_share_url(err.clone(), ctx);
+                return Err(err);
+            }
+            built.push((tab_idx, instance));
+        }
+        for link in &pipe.links {
+            let src_tool = built[link.from_pane].1.active_tool_id();
+            let dst_tool = built[link.to_pane].1.active_tool_id();
+            if super::dataflow_bus::compatible_stream_kind(src_tool, dst_tool) != Some(link.kind) {
+                let err = "Incompatible tool stream link in shared pipeline URL".to_string();
+                self.record_invalid_share_url(err.clone(), ctx);
+                return Err(err);
+            }
+        }
+
+        self.apply_validated_pipeline_instances(pipe.layout, pipe.focused_pane, built, &pipe.links);
+        self.session_manager.clear_toast();
+        self.finish_hydrated_url_sync(raw_hash);
+        Ok(true)
+    }
+
+    fn apply_validated_pipeline_instances(
+        &mut self,
+        layout: ViewportLayout,
+        focused_pane: usize,
+        built: Vec<(usize, Box<dyn crate::tabs::ExplorerTab>)>,
+        links: &[super::dataflow_bus::PaneLink],
+    ) {
+        while self.pane_tabs.len() < 4 {
+            self.pane_tabs.push(0);
+        }
+        let mut iter = built.into_iter().enumerate();
+        if let Some((_, (tab0_idx, tab0))) = iter.next() {
+            let name0 = tab0.name().to_string();
+            self.tabs[tab0_idx] = tab0;
+            self.selected_tab = tab0_idx;
+            self.pane_tabs[0] = tab0_idx;
+            self.tab_state_cache.invalidate_tab(&name0);
+        }
+        for (pane_idx, (tab_idx, tab_box)) in iter {
+            self.pane_tabs[pane_idx] = tab_idx;
+            if pane_idx == 1 {
+                self.secondary_tab = tab_idx;
+            }
+            if let Some(slot) = self.pane_slots.slot_mut(pane_idx) {
+                slot.initialized = true;
+                if let Some(st) = tab_box.save_state() {
+                    slot.saved_states
+                        .insert(tab_box.name().to_string(), st.into());
+                }
+                slot.active = Some((tab_idx, tab_box));
+                slot.clear_active_cache();
+            }
+        }
+        self.viewport_layout = layout;
+        self.sync_layout();
+        self.prune_inactive_pane_slots(layout.pane_count());
+        self.focused_pane = focused_pane.min(layout.pane_count().saturating_sub(1));
+        let _ = self.pipeline_dag.restore_links(links, layout.pane_count());
+        self.prune_incompatible_pipeline_links();
+    }
+
+    fn finish_hydrated_url_sync(&mut self, raw_hash: &str) {
         let canonical_frag = self.encode_current_share_fragment().ok();
         #[cfg(target_arch = "wasm32")]
         if raw_hash.trim_start_matches('#').trim().is_empty() {
@@ -159,7 +315,6 @@ impl MathExplorerApp {
 
         self.url_sync
             .mark_synced(self.current_url_signature(), canonical_frag);
-        Ok(true)
     }
 
     fn record_invalid_share_url(&mut self, err: String, ctx: Option<&egui::Context>) {

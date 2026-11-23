@@ -132,23 +132,26 @@ impl math_commons::series::PointSeries for SeriesCoords<'_> {
     }
 
     #[inline(always)]
-    fn advance_plateau(
-        &self,
-        start: usize,
-        end: usize,
-        flat_y: f64,
-        x_min: f64,
-        x_max: f64,
-    ) -> usize {
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
         match self {
             Self::PlotPoints(pts) => {
                 <PlotPoint as math_commons::series::Sample2D>::advance_slice_plateau(
-                    pts, start, end, flat_y, x_min, x_max,
+                    pts,
+                    start,
+                    pts.len(),
+                    flat_y,
+                    x_min,
+                    x_max,
                 )
             }
             Self::Shared(pts) => {
                 <[f64; 2] as math_commons::series::Sample2D>::advance_slice_plateau(
-                    pts, start, end, flat_y, x_min, x_max,
+                    pts,
+                    start,
+                    pts.len(),
+                    flat_y,
+                    x_min,
+                    x_max,
                 )
             }
         }

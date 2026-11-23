@@ -148,7 +148,7 @@ fn fast_forward_plateau<P: PointSeries + ?Sized>(
     } else {
         return i;
     };
-    let next_i = pts.advance_plateau(i, n, flat_y, x_min, x_max);
+    let next_i = pts.advance_plateau_run(i, flat_y, x_min, x_max).min(n);
     if next_i > i {
         let end_p = pts.point_at(next_i - 1);
         if tracker.mode == 2 {

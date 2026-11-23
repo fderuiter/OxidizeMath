@@ -64,6 +64,18 @@ unverified_modules = [
 ]
 
 [[verify_suite.opt_outs]]
+path = "crates/domain_applied/src/applied/freesurfer/thickness_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_biology/tests/test_kuramoto_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_epidemiology/tests/test_network_step_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
 path = "crates/domain_physics/src/physics/stat_mech/sandpile/tests.rs"
 reason = "tests"
 
@@ -92,11 +104,27 @@ path = "crates/pure_math/src/pure_math/analysis/stochastic.rs"
 reason = "Legacy missing assertions"
 
 [[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/differential_geometry/buckled_flow_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/elliptic_curves/singular_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/hyperbolic/tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
 path = "crates/pure_math/src/pure_math/statistics/kelly/core_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
 path = "crates/pure_math/tests/algorithmic_information.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/tests/test_hyperbolic_zero_alloc.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
@@ -438,7 +466,7 @@ vendored_crates = [
 "math_explorer_gui/src/accessibility.rs" = 7
 "math_explorer_gui/src/async_sim/mod.rs" = 22
 "math_explorer_gui/src/async_sim/registry.rs" = 7
-"math_explorer_gui/src/async_sim/state.rs" = 32
+"math_explorer_gui/src/async_sim/state.rs" = 30
 "math_explorer_gui/src/async_sim/unified/mod.rs" = 2
 "math_explorer_gui/src/async_sim/unified/tool.rs" = 3
 "math_explorer_gui/src/camera/mod.rs" = 1

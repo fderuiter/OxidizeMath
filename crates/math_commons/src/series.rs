@@ -178,20 +178,13 @@ pub trait PointSeries {
         [self.x_at(index), self.y_at(index)]
     }
 
-    /// Advances from `start` up to `end` while `y == flat_y` and `x_min <= x <= x_max`.
+    /// Advances from `start` while each sample satisfies `(y == flat_y) & (x >= x_min) & (x <= x_max)`.
     #[inline(always)]
-    fn advance_plateau(
-        &self,
-        mut start: usize,
-        end: usize,
-        flat_y: f64,
-        x_min: f64,
-        x_max: f64,
-    ) -> usize {
-        let end = end.min(self.len());
-        while start < end {
-            let p = self.point_at(start);
-            if !((p[1] == flat_y) & (p[0] >= x_min) & (p[0] <= x_max)) {
+    fn advance_plateau_run(&self, mut start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let n = self.len();
+        while start < n {
+            let [x, y] = self.point_at(start);
+            if !((y == flat_y) & (x >= x_min) & (x <= x_max)) {
                 break;
             }
             start += 1;
@@ -223,15 +216,8 @@ impl<S: Sample2D> PointSeries for [S] {
     }
 
     #[inline(always)]
-    fn advance_plateau(
-        &self,
-        start: usize,
-        end: usize,
-        flat_y: f64,
-        x_min: f64,
-        x_max: f64,
-    ) -> usize {
-        S::advance_slice_plateau(self, start, end, flat_y, x_min, x_max)
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        S::advance_slice_plateau(self, start, <[S]>::len(self), flat_y, x_min, x_max)
     }
 }
 
@@ -258,15 +244,8 @@ impl<S: Sample2D, const N: usize> PointSeries for [S; N] {
     }
 
     #[inline(always)]
-    fn advance_plateau(
-        &self,
-        start: usize,
-        end: usize,
-        flat_y: f64,
-        x_min: f64,
-        x_max: f64,
-    ) -> usize {
-        S::advance_slice_plateau(self, start, end, flat_y, x_min, x_max)
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        S::advance_slice_plateau(self, start, N, flat_y, x_min, x_max)
     }
 }
 
@@ -293,15 +272,8 @@ impl<S: Sample2D> PointSeries for Vec<S> {
     }
 
     #[inline(always)]
-    fn advance_plateau(
-        &self,
-        start: usize,
-        end: usize,
-        flat_y: f64,
-        x_min: f64,
-        x_max: f64,
-    ) -> usize {
-        S::advance_slice_plateau(self, start, end, flat_y, x_min, x_max)
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        S::advance_slice_plateau(self, start, Vec::len(self), flat_y, x_min, x_max)
     }
 }
 
@@ -327,15 +299,8 @@ impl<T: PointSeries + ?Sized> PointSeries for &T {
     }
 
     #[inline(always)]
-    fn advance_plateau(
-        &self,
-        start: usize,
-        end: usize,
-        flat_y: f64,
-        x_min: f64,
-        x_max: f64,
-    ) -> usize {
-        (**self).advance_plateau(start, end, flat_y, x_min, x_max)
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        (**self).advance_plateau_run(start, flat_y, x_min, x_max)
     }
 }
 

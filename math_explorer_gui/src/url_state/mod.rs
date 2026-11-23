@@ -8,6 +8,7 @@ mod base64url;
 mod browser;
 mod codec;
 mod json_validator;
+pub mod pipeline;
 mod sync;
 
 #[cfg(all(

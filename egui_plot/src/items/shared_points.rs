@@ -107,16 +107,14 @@ impl math_commons::series::PointSeries for SharedPoints {
     }
 
     #[inline(always)]
-    fn advance_plateau(
-        &self,
-        start: usize,
-        end: usize,
-        flat_y: f64,
-        x_min: f64,
-        x_max: f64,
-    ) -> usize {
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
         <[f64; 2] as math_commons::series::Sample2D>::advance_slice_plateau(
-            &self.0, start, end, flat_y, x_min, x_max,
+            &self.0,
+            start,
+            self.0.len(),
+            flat_y,
+            x_min,
+            x_max,
         )
     }
 }

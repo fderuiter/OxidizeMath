@@ -282,6 +282,8 @@ pub fn notify_tool_switched(new_tool_id: &'static str) {
 }
 
 #[cfg(test)]
+mod medical_tests;
+#[cfg(test)]
 mod number_theory_tests;
 #[cfg(test)]
 mod rl_tests;
