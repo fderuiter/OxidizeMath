@@ -24,10 +24,10 @@ Previously, [`crates/domain_applied/src/applied/game_theory`](../../crates/domai
 
 4. **Dynamic $2..=8$ Replicator Resize and Five Integrated GUI Workbenches:**
    - Extended [`ReplicatorDynamicsTool`](../../math_explorer_gui/src/tabs/game_theory/replicator.rs) with interactive $2..=8$ strategy resize controls preserving existing payoffs, labels, normalized populations, and compiled symbolic formulas while keeping `ReplicatorPresetConfig` compatibility intact.
-   - Added `NashShapleyTool`, `DecisionBanditTool`, `OptimalAuctionTool`, and `MeanFieldGameTool` inside [`GameTheoryTab`](../../math_explorer_gui/src/tabs/game_theory/mod.rs) and `ShannonChannelTool` inside [`AlgorithmicInfoTab`](../../math_explorer_gui/src/tabs/algorithmic_information/mod.rs), preserving the 27 top-level `ExplorerTab` structure.
+   - Added `NashShapleyTool`, `DecisionBanditTool`, `OptimalAuctionTool`, and `MeanFieldGameTool` inside [`GameTheoryTab`](../../math_explorer_gui/src/tabs/game_theory/mod.rs) and `ShannonChannelTool` inside [`AlgorithmicInfoTab`](../../math_explorer_gui/src/tabs/algorithmic_information/mod.rs), preserving the 28 top-level `ExplorerTab` structure.
 
 ## Consequences
 
 - All new `domain_applied` and `pure_math` hot-path solvers execute with zero dynamic heap allocations under `VerifiedAllocator`.
 - `math_explorer` preserves clean feature isolation between `applied`, `pure_math`, and `ai` while exposing uniform umbrella error conversions.
-- All 89 registered `InteractiveTool` workbenches and 144 `StarterPresetMetadata` cards satisfy lossless URL state sharing, preset schema validation, deferred PNG/SVG plot export, and the 3 MB WASM bundle budget.
+- All 92 registered `InteractiveTool` workbenches and 158 `StarterPresetMetadata` cards satisfy lossless URL state sharing, preset schema validation, deferred PNG/SVG plot export, and the 3 MB WASM bundle budget.
