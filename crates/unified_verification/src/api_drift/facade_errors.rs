@@ -6,6 +6,8 @@ use std::path::Path;
 
 pub(super) const ERROR_CRATE_FILES: &[&str] = &[
     "crates/math_commons/src/error.rs",
+    "crates/02_engines/engine_graph/src/error.rs",
+    "crates/02_engines/engine_prob/src/error.rs",
     "crates/pure_math/src/error.rs",
     "crates/domain_ai/src/error.rs",
     "crates/domain_applied/src/error.rs",

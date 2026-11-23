@@ -31,17 +31,17 @@ const GL16_HALF: [(f64, f64); 8] = [
 ];
 
 fn ref_norm_cdf(z: f64) -> f64 {
-    0.5 * statrs::function::erf::erfc(-z * FRAC_1_SQRT_2)
+    0.5 * engine_prob::erfc(-z * FRAC_1_SQRT_2)
 }
 
 fn ref_norm_inv(p: f64) -> f64 {
     let (z0, delta) = if p <= 0.5 {
-        let z = -SQRT_2 * statrs::function::erf::erfc_inv(2.0 * p);
-        (z, 0.5 * statrs::function::erf::erfc(-z * FRAC_1_SQRT_2) - p)
+        let z = -SQRT_2 * engine_prob::erfc_inv(2.0 * p);
+        (z, 0.5 * engine_prob::erfc(-z * FRAC_1_SQRT_2) - p)
     } else {
         let q = 1.0 - p;
-        let z = SQRT_2 * statrs::function::erf::erfc_inv(2.0 * q);
-        (z, q - 0.5 * statrs::function::erf::erfc(z * FRAC_1_SQRT_2))
+        let z = SQRT_2 * engine_prob::erfc_inv(2.0 * q);
+        (z, q - 0.5 * engine_prob::erfc(z * FRAC_1_SQRT_2))
     };
     let pdf = (-0.5 * z0 * z0).exp() / TAU.sqrt();
     let ratio = delta / pdf;

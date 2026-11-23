@@ -25,10 +25,12 @@ macro_rules! impl_error_from {
 impl_error_from!(EvalError => Eval);
 impl_error_from!(FitError => Fit);
 impl_error_from!(GlslError => Glsl);
+impl_error_from!(GraphEngineError => GraphEngine);
 impl_error_from!(LexError => Lex);
 impl_error_from!(MathError => Math);
 impl_error_from!(MathCommonsError => MathCommons);
 impl_error_from!(ParseError => Parse);
+impl_error_from!(ProbError => Prob);
 impl_error_from!(std::io::Error => Io);
 
 impl From<String> for Error {

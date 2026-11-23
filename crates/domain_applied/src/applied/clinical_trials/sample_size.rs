@@ -1,5 +1,5 @@
 use super::types::ClinicalTrialError;
-use statrs::distribution::{ContinuousCDF, Normal};
+use engine_prob::{ContinuousDist, Normal};
 
 /// Calculates the required sample size per group for a two-sample t-test (comparing means).
 /// Based on the formula: n = 2 * sigma^2 * (Z_{1-alpha/2} + Z_{power})^2 / delta^2
@@ -34,15 +34,17 @@ pub fn calculate_sample_size_means(
         ));
     }
 
-    let normal =
-        Normal::new(0.0, 1.0).map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
+    let normal = Normal::standard();
 
     // Z value for alpha (two-tailed)
-    let z_alpha = normal.inverse_cdf(1.0 - alpha / 2.0);
+    let z_alpha = normal
+        .quantile(1.0 - alpha / 2.0)
+        .map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
 
     // Z value for beta (one-tailed for power)
-    // Power = 1 - beta. We need Z_{1-beta} which is inverse_cdf(power)
-    let z_beta = normal.inverse_cdf(power);
+    let z_beta = normal
+        .quantile(power)
+        .map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
 
     let numerator = 2.0 * sigma.powi(2) * (z_alpha + z_beta).powi(2);
     let denominator = delta.powi(2);
@@ -87,11 +89,14 @@ pub fn calculate_sample_size_proportions(
         ));
     }
 
-    let normal =
-        Normal::new(0.0, 1.0).map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
+    let normal = Normal::standard();
 
-    let z_alpha = normal.inverse_cdf(1.0 - alpha / 2.0);
-    let z_beta = normal.inverse_cdf(power);
+    let z_alpha = normal
+        .quantile(1.0 - alpha / 2.0)
+        .map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
+    let z_beta = normal
+        .quantile(power)
+        .map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
 
     let variance_term = p1 * (1.0 - p1) + p2 * (1.0 - p2);
     let z_term = (z_alpha + z_beta).powi(2);
@@ -125,9 +130,10 @@ pub fn calculate_power_means(
             "Effect size must be non-zero finite and sigma must be positive finite".to_string(),
         ));
     }
-    let normal =
-        Normal::new(0.0, 1.0).map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
-    let z_alpha = normal.inverse_cdf(1.0 - alpha / 2.0);
+    let normal = Normal::standard();
+    let z_alpha = normal
+        .quantile(1.0 - alpha / 2.0)
+        .map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
     let noncentrality = delta.abs() * (n_per_group as f64 / (2.0 * sigma * sigma)).sqrt();
     let power = normal.cdf(noncentrality - z_alpha) + normal.cdf(-noncentrality - z_alpha);
     Ok(power.clamp(0.0, 1.0))
@@ -167,9 +173,10 @@ pub fn calculate_power_proportions(
             "Proportions must differ and have positive variance".to_string(),
         ));
     }
-    let normal =
-        Normal::new(0.0, 1.0).map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
-    let z_alpha = normal.inverse_cdf(1.0 - alpha / 2.0);
+    let normal = Normal::standard();
+    let z_alpha = normal
+        .quantile(1.0 - alpha / 2.0)
+        .map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
     let noncentrality = (p1 - p2).abs() * ((n_per_group as f64) / variance_term).sqrt();
     let power = normal.cdf(noncentrality - z_alpha) + normal.cdf(-noncentrality - z_alpha);
     Ok(power.clamp(0.0, 1.0))

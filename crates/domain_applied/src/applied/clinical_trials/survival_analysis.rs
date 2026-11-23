@@ -1,5 +1,5 @@
 use super::types::{ClinicalTrialError, SurvivalTime};
-use statrs::distribution::{ChiSquared, ContinuousCDF};
+use engine_prob::{ChiSquared, ContinuousDist};
 
 /// Represents a single subject's outcome in a survival analysis study.
 #[derive(Debug, Clone, Copy)]

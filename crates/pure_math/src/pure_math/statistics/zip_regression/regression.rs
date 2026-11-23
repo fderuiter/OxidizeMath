@@ -40,11 +40,11 @@ use nalgebra::{DMatrix, DVector};
 /// ```
 pub struct ZipRegression {
     /// The observed counts.
-    counts: Vec<Count>,
+    pub(super) counts: Vec<Count>,
     /// Design matrix for the count model (X).
-    x_matrix: DMatrix<f64>,
+    pub(super) x_matrix: DMatrix<f64>,
     /// Design matrix for the zero-inflation model (Z).
-    z_matrix: DMatrix<f64>,
+    pub(super) z_matrix: DMatrix<f64>,
 }
 
 impl ZipRegression {
@@ -90,6 +90,20 @@ impl ZipRegression {
             return Err(ZipError::InvalidDimensions {
                 expected: format!("Z: {} rows", n),
                 actual: format!("Z: {} rows", z_matrix.nrows()),
+            });
+        }
+
+        if x_matrix.ncols() == 0 {
+            return Err(ZipError::InvalidDimensions {
+                expected: "X: >= 1 columns".to_string(),
+                actual: "X: 0 columns".to_string(),
+            });
+        }
+
+        if z_matrix.ncols() == 0 {
+            return Err(ZipError::InvalidDimensions {
+                expected: "Z: >= 1 columns".to_string(),
+                actual: "Z: 0 columns".to_string(),
             });
         }
 
@@ -163,14 +177,7 @@ impl ZipRegression {
             };
 
             let dist = ZipDistribution::new(params);
-            let prob = dist.pmf(self.counts[i]);
-
-            // Add log probability, with safeguard against log(0)
-            if prob > 0.0 {
-                ll += prob.ln();
-            } else {
-                ll += f64::NEG_INFINITY;
-            }
+            ll += dist.ln_pmf(self.counts[i]);
         }
 
         ll
@@ -249,30 +256,33 @@ pub fn simple_zip_fit(counts: &[Count]) -> Result<ZipParams, ZipError> {
         return ZipParams::from_values(0.99, 0.01);
     }
 
-    // Simple method: estimate λ from mean and ρ from excess zeros
-    // P(Y=0) in Poisson is e^(-λ), excess is ρ
-    // prop_zeros = ρ + (1-ρ)e^(-λ)
-
-    // Start with Poisson estimate
-    let lambda_init = mean;
-    let poisson_zero_prob = (-lambda_init).exp();
-
-    // Estimate ρ from excess zeros
-    let rho_est = if prop_zeros > poisson_zero_prob {
-        (prop_zeros - poisson_zero_prob) / (1.0 - poisson_zero_prob)
+    // Exact Lambert (1992) method-of-moments when overdispersed (variance > mean):
+    // E[Y] = (1-ρ)λ, Var[Y] = (1-ρ)λ(1 + ρλ) => λ_MoM = mean + variance/mean - 1, ρ_MoM = 1 - mean/λ_MoM
+    let (rho_est, lambda_adj) = if variance > mean {
+        let lambda_mom = (mean + variance / mean - 1.0).max(mean);
+        let rho_mom = (1.0 - mean / lambda_mom).clamp(0.0, 1.0 - 1.0e-12);
+        let p0 = (-lambda_mom).exp();
+        let rho_zero = if prop_zeros > p0 {
+            ((prop_zeros - p0) / (1.0 - p0)).clamp(0.0, 1.0 - 1.0e-12)
+        } else {
+            rho_mom
+        };
+        let rho_combined = rho_mom.max(rho_zero);
+        let lambda_combined = (mean / (1.0 - rho_combined)).max(0.01);
+        (rho_combined, lambda_combined)
     } else {
-        0.0 // No zero-inflation needed
+        let poisson_zero_prob = (-mean).exp();
+        let rho_zero = if prop_zeros > poisson_zero_prob {
+            ((prop_zeros - poisson_zero_prob) / (1.0 - poisson_zero_prob)).clamp(0.0, 1.0 - 1.0e-12)
+        } else {
+            0.0
+        };
+        let lambda_zero = (mean / (1.0 - rho_zero)).max(0.01);
+        (rho_zero, lambda_zero)
     };
 
-    // Adjust λ based on estimated ρ
-    let lambda_adj = if rho_est < 1.0 {
-        mean / (1.0 - rho_est)
-    } else {
-        mean
-    };
-
-    // Ensure valid parameter ranges
-    let rho_final = rho_est.clamp(0.0, 0.95);
+    // Ensure valid parameter ranges without artificial upper clamping at 0.95
+    let rho_final = rho_est.clamp(0.0, 1.0 - 1.0e-12);
     let lambda_final = lambda_adj.max(0.01);
 
     ZipParams::from_values(rho_final, lambda_final)

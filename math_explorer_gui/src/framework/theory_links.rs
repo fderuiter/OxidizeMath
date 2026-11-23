@@ -87,6 +87,10 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
         "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" => &["freesurfer"],
+        "DistributionsExplorerTool" | "ConjugateBayesianTool" => {
+            &["clinical_trials_statistics", "self_calibration_paper"]
+        }
+        "FactorBeliefPropagationTool" => &["graph_parameters_rust", "freesurfer"],
         _ => &[],
     };
     tokens.extend(explicit.iter().map(|s| (*s).to_string()));
@@ -107,15 +111,15 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
             "hurwitz_kronecker",
             "pure_math",
         ],
-        "game_theory" => &["graph_parameters_rust"],
+        "game_theory" | "ai" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" => &["clinical_trials_statistics"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
         "solid_state" => &["stat_mech", "pure_math"],
-        "ai" => &["graph_parameters_rust"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
+        "probability" => &["engine_prob", "engine_graph", "clinical_trials_statistics"],
         "relativity" => &[
             "general_relativity_geodesics",
             "general_relativity",

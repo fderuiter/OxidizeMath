@@ -15,8 +15,8 @@ mod umbrella_checks;
 fn assert_core_error_and_prelude_exports() {
     use math_explorer::diagnostics::{Diagnostic, DiagnosticBus, Severity};
     use math_explorer::error::{
-        Error, EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult,
-        ParseError, Result,
+        Error, EvalError, FitError, GlslError, GraphEngineError, LexError, MathCommonsError,
+        MathError, MathResult, ParseError, ProbError, Result,
     };
     use math_explorer::math_kernel::types::Dimension;
     use math_explorer::prelude as p;
@@ -48,6 +48,11 @@ fn assert_core_error_and_prelude_exports() {
     let (_u, _m): (MathCommonsError, p::MathError) = (p::MathCommonsError::from(err.clone()), err);
     let _err_ty: Error = ParseError::UnexpectedEof.into();
     let _fit_ty: Error = FitError::SingularMatrix.into();
+    let _prob_ty: Error = ProbError::EmptyInput { context: "test" }.into();
+    let _graph_ty: Error = GraphEngineError::EmptyGraph { context: "test" }.into();
+    let std_norm = math_explorer::engine_prob::Normal::standard();
+    assert!((math_explorer::engine_prob::ContinuousDist::cdf(&std_norm, 0.0) - 0.5).abs() < 1e-12);
+    let _bp_cfg = math_explorer::engine_graph::BpConfig::default();
 }
 
 #[test]

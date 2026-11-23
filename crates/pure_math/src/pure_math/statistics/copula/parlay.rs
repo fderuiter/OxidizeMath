@@ -5,12 +5,11 @@ use super::core::{CorrelationMatrix, Probability};
 use super::gaussian::{MAX_STACK_LEGS, evaluate_copula_cdf, sgp_joint_probability_with_scratch};
 use super::transforms::fast_norm_inv;
 use crate::error::CopulaError;
+use engine_prob::{ContinuousDist, Normal};
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use nalgebra::DMatrix;
 use oxidize_core::rng::OxidizeRng;
-use rand::Rng;
-use rand_distr::StandardNormal;
 
 /// Summary pricing and simulation metrics for a correlated Same Game Parlay (SGP).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -124,6 +123,7 @@ fn run_antithetic_cholesky_pairs(
     rng: &mut OxidizeRng,
 ) -> (u64, u64) {
     let d = thresholds.len();
+    let std_normal = Normal::standard();
     let mut both_hits = 0_u64;
     let mut single_hits = 0_u64;
 
@@ -131,7 +131,7 @@ fn run_antithetic_cholesky_pairs(
         let mut pos_ok = true;
         let mut neg_ok = true;
         for i in 0..d {
-            eps[i] = rng.sample(StandardNormal);
+            eps[i] = std_normal.sample(rng);
             let mut z_i = 0.0;
             for j in 0..=i {
                 z_i += cholesky[(i, j)] * eps[j];

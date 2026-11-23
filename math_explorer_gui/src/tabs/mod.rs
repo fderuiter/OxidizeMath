@@ -50,6 +50,8 @@ pub mod number_theory;
 pub mod optics_waves;
 #[cfg(feature = "applied")]
 pub mod paradox_lab;
+#[cfg(feature = "pure_math")]
+pub mod probability;
 #[cfg(feature = "physics")]
 pub mod quantum;
 #[cfg(feature = "physics")]
@@ -188,7 +190,8 @@ pub trait ExplorerTab {
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
-            | "Number Theory" => "Pure Math",
+            | "Number Theory"
+            | "Probability Workbench" => "Pure Math",
 
             "Astrophysics"
             | "Chaos Theory"
@@ -295,6 +298,7 @@ pub trait ExplorerTab {
             "Optics & Waves" => "optics_waves",
             "Paradox Lab" => "paradox_lab",
             "Population Structure" => "cannibalism",
+            "Probability Workbench" => "probability",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",

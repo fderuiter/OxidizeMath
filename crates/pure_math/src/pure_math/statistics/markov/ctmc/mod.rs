@@ -369,7 +369,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
         max_time: T,
         rng: &mut R,
     ) -> Result<Vec<(T, usize)>> {
-        use rand_distr::{Distribution, Exp, WeightedIndex};
+        use engine_prob::{Categorical, ContinuousDist, Exponential};
 
         if initial_state >= self.num_states {
             return Err(MarkovError::InvalidState {
@@ -391,7 +391,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
             }
 
             // Sample holding time
-            let exp_dist = Exp::new(rate.to_f64().unwrap_or(0.0)).map_err(|_| {
+            let exp_dist = Exponential::new(rate.to_f64().unwrap_or(0.0)).map_err(|_| {
                 crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
                     reason: format!(
                         "Invalid rate for exponential: {}",
@@ -426,13 +426,13 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
                 break;
             }
 
-            let dist = WeightedIndex::new(&weights).map_err(|_| {
+            let dist = Categorical::new(&weights).map_err(|_| {
                 crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
                     reason: "Failed to create weighted distribution".to_string(),
                 })
             })?;
 
-            let next_idx = dist.sample(rng);
+            let next_idx = dist.sample_index(rng);
             current_state = next_states[next_idx];
             trajectory.push((current_time, current_state));
         }

@@ -59,6 +59,7 @@ cargo run --release --package math_explorer_gui
 *   **Physics / Quantum:** Schrödinger Solver, Wavefunction Evolution, and Clebsch-Gordan Calculator.
 *   **Physics / Solid State:** Crystal Lattice Viewer (FCC, BCC, SC).
 *   **Game Theory:** Evolutionary Replicator Dynamics and Bayesian Glicko-2 Tournament Simulator ($r \pm 2\,\text{RD}$ confidence bands, $\sigma$ volatility shifts, Swiss & Round-Robin pairings, and frozen-vs-sequential drift).
+*   **Pure Math / Probability Workbench:** `#![no_std]` Continuous & Discrete Distributions (`< 1e-10` quantiles, `OxidizeRng` sampling, $W_1$ diagnostics), Conjugate Bayesian Updater (credible intervals & exact Bayes factors), and zero-allocation Factor-Graph Belief Propagation.
 
 
 ### Deep Dive: Modules
@@ -161,7 +162,7 @@ Available feature flags include: `ai`, `applied`, `biology`, `climate`, `epidemi
 
 For detailed system architecture, runtime constraints, and simulation guides, explore the [Centralized Architecture Guide Suite](docs/architecture/README.md):
 
-*   **[System Overview & Crate Topology](docs/architecture/system_overview.md):** 5-layer system design, crate dependency graphs, and catalog of all 20 crates.
+*   **[System Overview & Crate Topology](docs/architecture/system_overview.md):** 5-layer system design, crate dependency graphs, and catalog of all 22 crates.
 *   **[CERA Framework Guide](docs/architecture/cera_framework.md):** Climate-invariant encoding, representation alignment pipelines, and Earth Mover's Distance loss.
 *   **[Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md):** NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and `VerifiedEngine` runtime metrics.
 *   **[Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md):** Contributor onboarding tutorial to build and register interactive simulation tabs.

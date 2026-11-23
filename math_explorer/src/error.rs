@@ -1,5 +1,7 @@
 //! Unified feature-gated error re-exports and facade umbrella error across all OxidizeMath domains.
 
+pub use engine_graph::GraphEngineError;
+pub use engine_prob::ProbError;
 pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
 };
@@ -53,6 +55,8 @@ pub enum Error {
     Fit(FitError),
     /// AST-to-GLSL transpilation error.
     Glsl(GlslError),
+    /// `#![no_std]` graphical model and belief propagation engine error.
+    GraphEngine(GraphEngineError),
     /// AST lexer error.
     Lex(LexError),
     /// Foundational mathematical kernel error.
@@ -61,6 +65,8 @@ pub enum Error {
     MathCommons(MathCommonsError),
     /// AST parser error.
     Parse(ParseError),
+    /// `#![no_std]` probability and statistical inference engine error.
+    Prob(ProbError),
     /// Standard I/O error (e.g., mesh export or file serialization).
     Io(std::io::Error),
 

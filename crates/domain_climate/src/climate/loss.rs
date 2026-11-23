@@ -1,7 +1,16 @@
-//! This module implements the loss functions for the CERA framework.
+//! This module implements the loss functions for the CERA framework, delegating optimal-transport
+//! metrics (exact 1D Wasserstein $W_1$ / EMD and entropic log-domain Sinkhorn) to
+//! [`engine_prob::transport`].
 
 use crate::error::ClimateError;
+use engine_prob::{SinkhornConfig, sinkhorn_log_domain, wasserstein_1d_into};
+use math_commons::error::MathError;
 use nalgebra::{Dyn, Matrix, Storage};
+
+#[inline]
+const fn idx2d(row: usize, col: usize, cols: usize) -> usize {
+    row * cols + col
+}
 
 /// Fallible Mean Squared Error (MSE) between two matrices of identical shape.
 ///
@@ -27,15 +36,6 @@ pub fn try_mse_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
 }
 
 /// Computes the Mean Squared Error (MSE) between two matrices.
-///
-/// # Arguments
-///
-/// * `y_true` - The ground truth values.
-/// * `y_pred` - The predicted values.
-///
-/// # Returns
-///
-/// The mean squared error.
 #[verified_engine::verified]
 pub fn mse_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
     y_true: &Matrix<f32, Dyn, Dyn, S1>,
@@ -44,7 +44,8 @@ pub fn mse_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
     try_mse_loss(y_true, y_pred).unwrap_or_else(|e| panic!("{e}"))
 }
 
-/// Fallible Earth Mover's Distance (EMD) across paired 1D column distributions.
+/// Fallible Earth Mover's Distance ($W_1$) across paired 1D column distributions via
+/// [`engine_prob::wasserstein_1d_into`].
 ///
 /// Returns [`ClimateError::ShapeMismatch`] if `z1` and `z2` differ in dimensions.
 #[verified_engine::verified]
@@ -63,44 +64,27 @@ pub fn try_earth_movers_distance<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dy
         return Ok(0.0);
     }
 
-    let mut total_emd = 0.0;
+    let mut total_emd = 0.0_f64;
     let mut col1 = Vec::with_capacity(z1.nrows());
     let mut col2 = Vec::with_capacity(z2.nrows());
 
     for i in 0..z1.ncols() {
         col1.clear();
-        col1.extend(z1.column(i).iter().copied());
-
+        col1.extend(z1.column(i).iter().map(|&v| f64::from(v)));
         col2.clear();
-        col2.extend(z2.column(i).iter().copied());
-
-        col1.sort_unstable_by(|a, b| a.total_cmp(b));
-        col2.sort_unstable_by(|a, b| a.total_cmp(b));
-
-        let emd_i: f32 = col1
-            .iter()
-            .zip(col2.iter())
-            .map(|(a, b)| (a - b).abs())
-            .sum();
-        total_emd += emd_i / col1.len() as f32;
+        col2.extend(z2.column(i).iter().map(|&v| f64::from(v)));
+        let w1 = wasserstein_1d_into(&mut col1, &mut col2).map_err(|e| {
+            ClimateError::Math(MathError::NumericalError {
+                reason: e.to_string(),
+            })
+        })?;
+        total_emd += w1;
     }
 
-    Ok(total_emd / z1.ncols() as f32)
+    Ok((total_emd / (z1.ncols() as f64)) as f32)
 }
 
 /// Computes the Earth Mover's Distance (EMD) for multiple 1D distributions.
-///
-/// This function takes two matrices where each column represents a 1D distribution.
-/// It computes the EMD for each pair of columns and returns the average.
-///
-/// # Arguments
-///
-/// * `z1` - The first set of distributions, with shape (n_samples, n_distributions).
-/// * `z2` - The second set of distributions, with shape (n_samples, n_distributions).
-///
-/// # Returns
-///
-/// The average Earth Mover's Distance.
 ///
 /// # Examples
 ///
@@ -125,21 +109,55 @@ pub fn earth_movers_distance<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, D
     try_earth_movers_distance(z1, z2).unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// Computes entropic log-domain Sinkhorn optimal-transport cost averaged across paired columns of
+/// `z1` and `z2` under uniform empirical weights and $|x - y|$ ground cost via
+/// [`engine_prob::sinkhorn_log_domain`].
+#[verified_engine::verified]
+pub fn try_sinkhorn_transport_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
+    z1: &Matrix<f32, Dyn, Dyn, S1>,
+    z2: &Matrix<f32, Dyn, Dyn, S2>,
+    epsilon: f64,
+) -> Result<f32, ClimateError> {
+    if z1.shape() != z2.shape() {
+        return Err(ClimateError::ShapeMismatch {
+            context: "Matrices must have the same shape for Sinkhorn OT.",
+            expected: z1.shape(),
+            actual: z2.shape(),
+        });
+    }
+    let n = z1.nrows();
+    let cols = z1.ncols();
+    if n == 0 || cols == 0 {
+        return Ok(0.0);
+    }
+    let uniform = vec![1.0 / (n as f64); n];
+    let mut cost = vec![0.0_f64; n * n];
+    let cfg = SinkhornConfig {
+        epsilon,
+        max_iters: 500,
+        tolerance: 1.0e-9,
+    };
+    let mut total_cost = 0.0_f64;
+    for col in 0..cols {
+        for r in 0..n {
+            let xr = f64::from(z1[(r, col)]);
+            for c in 0..n {
+                let yc = f64::from(z2[(c, col)]);
+                cost[idx2d(r, c, n)] = (xr - yc).abs();
+            }
+        }
+        let (report, _plan) =
+            sinkhorn_log_domain(&uniform, &uniform, &cost, &cfg).map_err(|e| {
+                ClimateError::Math(MathError::NumericalError {
+                    reason: e.to_string(),
+                })
+            })?;
+        total_cost += report.transport_cost;
+    }
+    Ok((total_cost / (cols as f64)) as f32)
+}
+
 /// Computes the combined loss for the CERA framework.
-/// The total loss is a weighted sum of the reconstruction loss, the prediction
-/// loss, and the EMD loss.
-///
-/// # Arguments
-///
-/// * `reconstruction_loss` - The MSE of the autoencoder reconstruction.
-/// * `prediction_loss` - The MSE of the predictor output.
-/// * `emd_loss` - The Earth Mover's Distance between latent representations.
-/// * `lambda_pred` - The weight for the prediction loss.
-/// * `lambda_emd` - The weight for the EMD loss.
-///
-/// # Returns
-///
-/// The total weighted loss.
 #[verified_engine::verified]
 pub fn cera_loss(
     reconstruction_loss: f32,
@@ -163,28 +181,20 @@ mod tests {
     fn test_mse_loss() {
         let y_true = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
         let y_pred = DMatrix::from_row_slice(2, 2, &[1.0, 3.0, 2.0, 4.0]);
-        // Differences are 0, -1, 1, 0. Squared differences are 0, 1, 1, 0.
-        // Sum of squared differences is 2.
-        // MSE = 2 / 4 = 0.5.
         let loss = mse_loss(&y_true, &y_pred);
         assert!((loss - 0.5).abs() < math_commons::registry::TOLERANCE_FAST_F32);
     }
 
     #[test]
     #[verified_engine::verified]
-    fn test_earth_movers_distance() {
-        // Two distributions for the first channel, two for the second
+    fn test_earth_movers_distance_and_sinkhorn_consistency() {
         let z1 = DMatrix::from_row_slice(4, 2, &[1.0, 8.0, 2.0, 7.0, 3.0, 6.0, 4.0, 5.0]);
         let z2 = DMatrix::from_row_slice(4, 2, &[5.0, 4.0, 6.0, 3.0, 7.0, 2.0, 8.0, 1.0]);
 
-        // Channel 1: z1_sorted = [1,2,3,4], z2_sorted = [5,6,7,8]
-        // Diff = [4,4,4,4]. Sum of abs diff = 16. EMD_1 = 16 / 4 = 4.
-
-        // Channel 2: z1_sorted = [5,6,7,8], z2_sorted = [1,2,3,4]
-        // Diff = [4,4,4,4]. Sum of abs diff = 16. EMD_2 = 16 / 4 = 4.
-
-        // Average EMD = (4 + 4) / 2 = 4.
         let emd = earth_movers_distance(&z1, &z2);
         assert!((emd - 4.0).abs() < math_commons::registry::TOLERANCE_FAST_F32);
+
+        let sinkhorn = try_sinkhorn_transport_loss(&z1, &z2, 1.0e-3).unwrap();
+        assert!((sinkhorn - emd).abs() < 1.0e-3);
     }
 }

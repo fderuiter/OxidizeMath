@@ -5,7 +5,7 @@
 
 use super::core::{Count, ZipParams};
 use crate::error::ZipError;
-use statrs::function::gamma::ln_gamma;
+use engine_prob::{Bernoulli, DiscreteDist, Poisson, ln_gamma};
 
 /// Zero-Inflated Poisson distribution.
 ///
@@ -120,6 +120,43 @@ impl ZipDistribution {
         }
     }
 
+    /// Computes the log-probability mass $\ln P(Y = k)$ without intermediate underflow.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::zip_regression::{Count, ZipDistribution};
+    ///
+    /// let dist = ZipDistribution::from_values(0.25, 3.0).unwrap();
+    /// assert!((dist.ln_pmf(Count::new(0)).exp() - dist.pmf(Count::new(0))).abs() < 1e-14);
+    /// assert!((dist.ln_pmf(Count::new(4)).exp() - dist.pmf(Count::new(4))).abs() < 1e-14);
+    /// ```
+    #[verified_engine::verified]
+    pub fn ln_pmf(&self, count: Count) -> f64 {
+        let k = count.value();
+        let rho = self.params.rho.value();
+        let lambda = self.params.lambda.value();
+
+        if k == 0 {
+            if rho <= 0.0 {
+                return -lambda;
+            }
+            if rho >= 1.0 {
+                return 0.0;
+            }
+            let a = rho.ln();
+            let b = (1.0 - rho).ln() - lambda;
+            let hi = a.max(b);
+            let lo = a.min(b);
+            hi + (lo - hi).exp().ln_1p()
+        } else if rho >= 1.0 {
+            f64::NEG_INFINITY
+        } else {
+            (1.0 - rho).ln() + (k as f64) * lambda.ln() - lambda - self.log_factorial(k)
+        }
+    }
+
     /// Computes the cumulative distribution function P(Y ≤ k).
     ///
     /// # Arguments
@@ -193,6 +230,62 @@ impl ZipDistribution {
         (1.0 - rho) * lambda * (1.0 + rho * lambda)
     }
 
+    /// Computes the discrete quantile $\inf \{k \in \mathbb{N}_0 : P(Y \le k) \ge p\}$.
+    ///
+    /// Uses the mixture identity $F_{\text{ZIP}}(k) = \rho + (1 - \rho) F_{\text{Pois}(\lambda)}(k)$
+    /// to delegate positive-tail inversion directly to [`engine_prob::Poisson`].
+    #[verified_engine::verified]
+    pub fn quantile(&self, p: f64) -> Result<Count, ZipError> {
+        if !p.is_finite() || !(0.0..=1.0).contains(&p) {
+            return Err(ZipError::InvalidProbability {
+                value: p,
+                parameter: "p (quantile)".to_string(),
+            });
+        }
+        let rho = self.params.rho.value();
+        let lambda = self.params.lambda.value();
+        if p == 0.0 || rho >= 1.0 {
+            return Ok(Count::new(0));
+        }
+        if p >= 1.0 {
+            return Err(ZipError::InvalidProbability {
+                value: p,
+                parameter: "p (quantile must be < 1.0 when rho < 1.0)".to_string(),
+            });
+        }
+        let p_zero = self.pmf(Count::new(0));
+        if p <= p_zero {
+            return Ok(Count::new(0));
+        }
+        let p_pois = ((p - rho) / (1.0 - rho)).clamp(0.0, 1.0 - f64::EPSILON);
+        let pois = Poisson::new(lambda).map_err(|_| ZipError::InvalidRate { value: lambda })?;
+        let k = pois
+            .quantile(p_pois)
+            .map_err(|_| ZipError::InvalidProbability {
+                value: p,
+                parameter: "p (quantile)".to_string(),
+            })?;
+        let k_u32 = u32::try_from(k).map_err(|_| ZipError::InvalidCount { value: k as f64 })?;
+        Ok(Count::new(k_u32))
+    }
+
+    /// Draws a deterministic sample from the ZIP mixture using `rng` without OS entropy or heap allocations.
+    #[verified_engine::verified]
+    pub fn sample<R: rand::RngCore + ?Sized>(&self, rng: &mut R) -> Count {
+        let rho = self.params.rho.value();
+        let lambda = self.params.lambda.value();
+        if let Ok(bern) = Bernoulli::new(rho)
+            && bern.sample(rng) == 1
+        {
+            return Count::new(0);
+        }
+        if let Ok(pois) = Poisson::new(lambda) {
+            let k = pois.sample(rng);
+            return Count::new(k.min(u32::MAX as u64) as u32);
+        }
+        Count::new(0)
+    }
+
     /// Computes the standard deviation of the distribution.
     #[verified_engine::verified]
     pub fn std_dev(&self) -> f64 {
@@ -218,7 +311,7 @@ impl ZipDistribution {
         }
     }
 
-    /// Helper function to compute log(Γ(x)) using statrs.
+    /// Helper function to compute $\ln \Gamma(x)$ using [`engine_prob::ln_gamma`].
     #[verified_engine::verified]
     fn log_gamma(x: f64) -> f64 {
         ln_gamma(x)
@@ -325,5 +418,39 @@ mod tests {
             assert!(cdf <= 1.0);
             prev_cdf = cdf;
         }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_ln_pmf_quantile_and_deterministic_sampling() {
+        let dist = ZipDistribution::from_values(0.35, 3.2).unwrap();
+        for k in 0..25 {
+            let c = Count::new(k);
+            let diff = (dist.ln_pmf(c).exp() - dist.pmf(c)).abs();
+            assert!(diff < 1e-14);
+        }
+
+        for step in 0..99 {
+            let p = (step as f64) * 0.01;
+            let q = dist.quantile(p).unwrap();
+            assert!(dist.cdf(q) + 1e-12 >= p);
+            if q.value() > 0 {
+                assert!(dist.cdf(Count::new(q.value() - 1)) < p + 1e-12);
+            }
+        }
+        assert!(dist.quantile(1.0).is_err());
+        assert!(dist.quantile(-0.1).is_err());
+
+        let mut rng_a = oxidize_core::rng::OxidizeRng::new(0xBEEF_1234);
+        let mut rng_b = oxidize_core::rng::OxidizeRng::new(0xBEEF_1234);
+        let mut sum = 0.0;
+        let n = 8_000_usize;
+        for _ in 0..n {
+            let sa = dist.sample(&mut rng_a);
+            let sb = dist.sample(&mut rng_b);
+            assert_eq!(sa, sb);
+            sum += sa.as_f64();
+        }
+        assert!((sum / (n as f64) - dist.mean()).abs() < 0.08);
     }
 }

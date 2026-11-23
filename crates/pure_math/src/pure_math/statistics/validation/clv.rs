@@ -2,7 +2,7 @@
 
 use crate::error::KellyError;
 use crate::pure_math::statistics::kelly::{Odds, UnitInterval};
-use statrs::function::erf::erfc;
+use engine_prob::erfc;
 
 /// Single-bet Closing Line Value (CLV) metrics per Kaunitz, Zhong, and Kreiner (2017).
 #[derive(Debug, Clone, Copy, PartialEq)]

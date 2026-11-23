@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 20 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 22 workspace crates:
 
 ```mermaid
 graph TD
@@ -68,6 +68,8 @@ graph TD
 
     subgraph Math_Infrastructure
         Pure[pure_math]
+        Prob[engine_prob]
+        Graph[engine_graph]
         Commons[math_commons]
         Meta[scientific_metadata]
         Registry[federated_registry]
@@ -88,16 +90,18 @@ graph TD
     GUI --> Plot
     GUI --> Meta & Registry & Diag
     Explorer --> AI & Phys & Bio & App & Clim & Epi
-    Explorer --> Pure & Commons
+    Explorer --> Pure & Prob & Graph & Commons
 
-    AI --> Commons & Engine & Meta
-    Phys --> Commons & Engine & Meta & Pure
-    Bio --> Commons & Engine & Meta & Pure
-    App --> Commons & Engine & Meta & Pure
-    Clim --> Commons & Engine & Meta
-    Epi --> Commons & Engine & Meta & Pure
+    AI --> Commons & Engine & Meta & Prob
+    Phys --> Commons & Engine & Meta & Pure & Prob
+    Bio --> Commons & Engine & Meta & Pure & Prob
+    App --> Commons & Engine & Meta & Pure & Prob & Graph
+    Clim --> Commons & Engine & Meta & Prob
+    Epi --> Commons & Engine & Meta & Pure & Prob
 
-    Pure --> Commons & Meta
+    Pure --> Commons & Meta & Prob & Graph
+    Prob --> Engine
+    Graph --> Engine
     Commons --> CoreCrate
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
@@ -111,7 +115,7 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 20 member crates declared in `Cargo.toml`:
+The workspace contains all 22 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
@@ -119,6 +123,8 @@ The workspace contains all 20 member crates declared in `Cargo.toml`:
 | `crates/verified_engine` | Zero-allocation runtime and execution tracking | [zero_allocation_runtime](zero_allocation_runtime.md) |
 | `crates/verified_engine_macros` | Attribute macros (`#[theory]`, `#[verified]`) | [verified_engine](../../crates/verified_engine/src/lib.rs) |
 | `crates/diagnostics` | Static analysis diagnostics and reporting | [diagnostics](../../crates/diagnostics/README.md) |
+| `crates/02_engines/engine_prob` | `#![no_std]` special functions, distributions, conjugate Bayes, conformal & OT | [engine_prob](../../crates/02_engines/engine_prob/README.md) |
+| `crates/02_engines/engine_graph` | `#![no_std]` factor graphs, sum-product/max-product BP, chain & Potts MRF | [engine_graph](../../crates/02_engines/engine_graph/README.md) |
 | `crates/math_commons` | Tolerances, constant registries, numeric traits | [math_commons](../../crates/math_commons/README.md) |
 | `crates/pure_math` | Pure mathematics and numerical algorithms | [pure_math](../../crates/pure_math/README.md) |
 | `crates/scientific_metadata` | Theory descriptors and citation metadata | [scientific_metadata](../../crates/scientific_metadata/src/lib.rs) |

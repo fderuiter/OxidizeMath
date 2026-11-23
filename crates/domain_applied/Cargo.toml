@@ -10,6 +10,8 @@ statrs = { workspace = true }
 thiserror = { workspace = true }
 oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
+engine_prob = { path = "../02_engines/engine_prob", features = ["alloc"] }
+engine_graph = { path = "../02_engines/engine_graph", features = ["alloc"] }
 
 math_commons = { path = "../math_commons" }
 diagnostics = { path = "../diagnostics" }

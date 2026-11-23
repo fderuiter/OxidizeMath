@@ -2,8 +2,22 @@ use super::model::HiddenMarkovModel;
 use crate::error::MarkovError;
 #[allow(missing_docs)]
 pub type Result<T> = std::result::Result<T, MarkovError>;
+use engine_prob::Categorical;
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
+
+fn sample_weights<R: rand::RngCore + ?Sized>(
+    weights: &[f64],
+    label: &str,
+    rng: &mut R,
+) -> Result<usize> {
+    let dist = Categorical::new(weights).map_err(|_| {
+        MarkovError::Math(math_commons::error::MathError::NumericalError {
+            reason: format!("Failed to create {label} distribution"),
+        })
+    })?;
+    Ok(dist.sample_index(rng))
+}
 
 impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
     /// Generates a random observation sequence from the HMM.
@@ -22,8 +36,6 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         length: usize,
         rng: &mut R,
     ) -> Result<(Vec<usize>, Vec<usize>)> {
-        use rand_distr::{Distribution, WeightedIndex};
-
         if length == 0 {
             return Ok((Vec::new(), Vec::new()));
         }
@@ -31,65 +43,39 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         let mut states = Vec::with_capacity(length);
         let mut observations = Vec::with_capacity(length);
 
-        // Sample initial state
-        let initial_dist = WeightedIndex::new(
-            self.initial
-                .iter()
-                .map(|&x| x.to_f64().unwrap_or(0.0))
-                .collect::<Vec<_>>(),
-        )
-        .map_err(|_| {
-            crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
-                reason: "Failed to create initial distribution".to_string(),
-            })
-        })?;
-        let mut current_state = initial_dist.sample(rng);
+        let initial_weights: Vec<f64> = self
+            .initial
+            .iter()
+            .map(|&x| x.to_f64().unwrap_or(0.0))
+            .collect();
+        let mut current_state = sample_weights(&initial_weights, "initial", rng)?;
         states.push(current_state);
 
-        // Sample initial observation
         let emission_weights: Vec<f64> = self
             .emissions
             .row(current_state)
             .iter()
             .map(|&x| x.to_f64().unwrap_or(0.0))
             .collect();
-        let emission_dist = WeightedIndex::new(&emission_weights).map_err(|_| {
-            crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
-                reason: "Failed to create emission distribution".to_string(),
-            })
-        })?;
-        observations.push(emission_dist.sample(rng));
+        observations.push(sample_weights(&emission_weights, "emission", rng)?);
 
-        // Generate remaining sequence
         for _ in 1..length {
-            // Sample next state
             let transition_weights: Vec<f64> = self
                 .transitions
                 .row(current_state)
                 .iter()
                 .map(|&x| x.to_f64().unwrap_or(0.0))
                 .collect();
-            let transition_dist = WeightedIndex::new(&transition_weights).map_err(|_| {
-                crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
-                    reason: "Failed to create transition distribution".to_string(),
-                })
-            })?;
-            current_state = transition_dist.sample(rng);
+            current_state = sample_weights(&transition_weights, "transition", rng)?;
             states.push(current_state);
 
-            // Sample observation
             let emission_weights: Vec<f64> = self
                 .emissions
                 .row(current_state)
                 .iter()
                 .map(|&x| x.to_f64().unwrap_or(0.0))
                 .collect();
-            let emission_dist = WeightedIndex::new(&emission_weights).map_err(|_| {
-                crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
-                    reason: "Failed to create emission distribution".to_string(),
-                })
-            })?;
-            observations.push(emission_dist.sample(rng));
+            observations.push(sample_weights(&emission_weights, "emission", rng)?);
         }
 
         Ok((states, observations))

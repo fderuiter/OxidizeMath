@@ -24,6 +24,8 @@ pub mod __doctest_facade {
             PureMathError, PureMathError as Error, StochasticError, TdaError, TensorError,
             TransformError, ZipError,
         };
+        pub use engine_graph::GraphEngineError;
+        pub use engine_prob::ProbError;
         pub use math_commons::error::{
             EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult,
             ParseError,
@@ -43,6 +45,8 @@ pub mod __doctest_facade {
     }
     pub use crate::{math_types, pure_math};
     pub use diagnostics;
+    pub use engine_graph;
+    pub use engine_prob;
     pub use math_commons::{
         ast, constants, fit, math_kernel, poi, primitives, registry, series, wigner,
     };

@@ -1,0 +1,22 @@
+[package]
+name = "engine_graph"
+version.workspace = true
+edition = "2024"
+description = "Foundational #![no_std] factor-graph sum-product and max-product belief propagation, chain forward-backward, and Markov random field engine"
+
+[features]
+default = ["verified"]
+alloc = ["engine_prob/alloc"]
+verified = ["dep:verified_engine", "engine_prob/verified"]
+
+[dependencies]
+engine_prob = { path = "../engine_prob", default-features = false }
+libm = { workspace = true }
+verified_engine = { path = "../../verified_engine", optional = true }
+
+[dev-dependencies]
+approx = { workspace = true }
+verified_engine = { path = "../../verified_engine" }
+
+[lints]
+workspace = true

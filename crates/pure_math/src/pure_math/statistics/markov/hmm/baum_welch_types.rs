@@ -80,19 +80,21 @@ pub struct BaumWelchWorkspace<T> {
     pub(super) num_states: usize,
     pub(super) num_observations: usize,
     pub(super) max_len: usize,
-    pub(super) alpha: Vec<T>,
-    pub(super) scales: Vec<T>,
-    pub(super) beta_curr: Vec<T>,
-    pub(super) beta_next: Vec<T>,
-    pub(super) obs_beta: Vec<T>,
-    pub(super) init_gamma: Vec<T>,
-    pub(super) gamma_trans_sum: Vec<T>,
-    pub(super) gamma_all_sum: Vec<T>,
-    pub(super) xi_sum: Vec<T>,
-    pub(super) emission_sum: Vec<T>,
     pub(super) prev_initial: Vec<T>,
     pub(super) prev_transitions: Vec<T>,
     pub(super) prev_emissions: Vec<T>,
+    pub(super) f64_initial: Vec<f64>,
+    pub(super) f64_transitions: Vec<f64>,
+    pub(super) f64_emissions: Vec<f64>,
+    pub(super) f64_alpha: Vec<f64>,
+    pub(super) f64_beta: Vec<f64>,
+    pub(super) f64_scales: Vec<f64>,
+    pub(super) f64_gamma: Vec<f64>,
+    pub(super) f64_xi_sum: Vec<f64>,
+    pub(super) f64_emission_sum: Vec<f64>,
+    pub(super) f64_row_in: Vec<f64>,
+    pub(super) f64_row_ones: Vec<f64>,
+    pub(super) f64_row_out: Vec<f64>,
 }
 
 impl<T: RealField + Copy> BaumWelchWorkspace<T> {
@@ -103,23 +105,26 @@ impl<T: RealField + Copy> BaumWelchWorkspace<T> {
         let nn = num_states.saturating_mul(num_states);
         let nm = num_states.saturating_mul(num_observations);
         let tn = max_len.saturating_mul(num_states);
+        let row_cap = num_states.max(num_observations).max(1);
         Self {
             num_states,
             num_observations,
             max_len,
-            alpha: vec![z; tn],
-            scales: vec![z; max_len],
-            beta_curr: vec![z; num_states],
-            beta_next: vec![z; num_states],
-            obs_beta: vec![z; num_states],
-            init_gamma: vec![z; num_states],
-            gamma_trans_sum: vec![z; num_states],
-            gamma_all_sum: vec![z; num_states],
-            xi_sum: vec![z; nn],
-            emission_sum: vec![z; nm],
             prev_initial: vec![z; num_states],
             prev_transitions: vec![z; nn],
             prev_emissions: vec![z; nm],
+            f64_initial: vec![0.0; num_states],
+            f64_transitions: vec![0.0; nn],
+            f64_emissions: vec![0.0; nm],
+            f64_alpha: vec![0.0; tn],
+            f64_beta: vec![0.0; tn],
+            f64_scales: vec![0.0; max_len],
+            f64_gamma: vec![0.0; tn],
+            f64_xi_sum: vec![0.0; nn],
+            f64_emission_sum: vec![0.0; nm],
+            f64_row_in: vec![0.0; row_cap],
+            f64_row_ones: vec![1.0; row_cap],
+            f64_row_out: vec![0.0; row_cap],
         }
     }
 

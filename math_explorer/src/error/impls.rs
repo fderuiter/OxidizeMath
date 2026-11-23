@@ -21,6 +21,7 @@ impl<T: std::error::Error + Diagnostic + 'static> FacadeInnerError for T {
 
 enum InnerErrorRef<'a> {
     Domain(&'a dyn FacadeInnerError),
+    NoStd(&'a (dyn std::error::Error + 'static), &'static str),
     Io(&'a std::io::Error),
 }
 
@@ -154,10 +155,12 @@ impl Error {
             Self::Eval(err) => Some(InnerErrorRef::Domain(err)),
             Self::Fit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Glsl(err) => Some(InnerErrorRef::Domain(err)),
+            Self::GraphEngine(err) => Some(InnerErrorRef::NoStd(err, "GraphEngineError")),
             Self::Lex(err) => Some(InnerErrorRef::Domain(err)),
             Self::Math(err) => Some(InnerErrorRef::Domain(err)),
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Prob(err) => Some(InnerErrorRef::NoStd(err, "ProbError")),
             Self::Io(err) => Some(InnerErrorRef::Io(err)),
             #[cfg(any(
                 feature = "pure_math",
@@ -178,6 +181,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.classify() {
             Some(InnerErrorRef::Domain(err)) => std::fmt::Display::fmt(err.as_std_error(), f),
+            Some(InnerErrorRef::NoStd(err, _)) => std::fmt::Display::fmt(err, f),
             Some(InnerErrorRef::Io(err)) => std::fmt::Display::fmt(err, f),
             None => Ok(()),
         }
@@ -189,6 +193,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self.classify() {
             Some(InnerErrorRef::Domain(err)) => Some(err.as_std_error()),
+            Some(InnerErrorRef::NoStd(err, _)) => Some(err),
             Some(InnerErrorRef::Io(err)) => Some(err),
             None => None,
         }
@@ -200,7 +205,7 @@ impl Diagnostic for Error {
     fn severity(&self) -> Severity {
         match self.classify() {
             Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().severity(),
-            Some(InnerErrorRef::Io(_)) | None => Severity::Error,
+            Some(InnerErrorRef::NoStd(..)) | Some(InnerErrorRef::Io(_)) | None => Severity::Error,
         }
     }
 
@@ -208,6 +213,12 @@ impl Diagnostic for Error {
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = match self.classify() {
             Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().metadata(),
+            Some(InnerErrorRef::NoStd(err, err_type)) => {
+                let mut m = HashMap::new();
+                m.insert("error_type".to_string(), err_type.to_string());
+                m.insert("description".to_string(), err.to_string());
+                m
+            }
             Some(InnerErrorRef::Io(err)) => {
                 let mut m = HashMap::new();
                 m.insert("error_type".to_string(), "IoError".to_string());

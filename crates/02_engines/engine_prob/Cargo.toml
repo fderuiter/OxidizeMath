@@ -1,0 +1,23 @@
+[package]
+name = "engine_prob"
+version.workspace = true
+edition = "2024"
+description = "Foundational #![no_std] probability distributions, special functions, conjugate Bayesian inference, conformal calibration, and optimal transport engine"
+
+[features]
+default = ["verified"]
+alloc = []
+verified = ["dep:verified_engine"]
+
+[dependencies]
+libm = { workspace = true }
+rand_core = { workspace = true }
+verified_engine = { path = "../../verified_engine", optional = true }
+
+[dev-dependencies]
+approx = { workspace = true }
+oxidize_core = { path = "../../oxidize_core" }
+verified_engine = { path = "../../verified_engine" }
+
+[lints]
+workspace = true

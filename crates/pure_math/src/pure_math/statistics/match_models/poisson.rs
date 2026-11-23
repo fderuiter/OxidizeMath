@@ -2,8 +2,8 @@
 
 use super::grid::{DEFAULT_MAX_GOALS, GRID_STRIDE, MAX_GOALS_LIMIT, ScoreGrid};
 use crate::error::MatchModelError;
+use engine_prob::ln_gamma;
 use serde::{Deserialize, Deserializer, Serialize};
-use statrs::function::gamma::ln_gamma;
 
 /// Validated expected-goal parameters $(\lambda, \mu)$ for an independent two-team Poisson match model.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -69,7 +69,7 @@ impl<'de> Deserialize<'de> for IndependentPoissonParams {
     }
 }
 
-/// Evaluates $\ln(k!)$ using `statrs::function::gamma::ln_gamma`.
+/// Evaluates $\ln(k!)$ using [`engine_prob::ln_gamma`].
 #[inline]
 #[verified_engine::verified]
 pub fn log_factorial(k: usize) -> f64 {

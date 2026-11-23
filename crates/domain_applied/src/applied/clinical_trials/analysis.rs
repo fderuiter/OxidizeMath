@@ -1,5 +1,5 @@
 use super::types::{ClinicalTrialError, ContingencyTable};
-use statrs::distribution::{ContinuousCDF, Normal};
+use engine_prob::{ContinuousDist, Normal};
 
 #[derive(Debug, Clone)]
 #[allow(missing_docs)]
@@ -49,9 +49,9 @@ pub fn calculate_risk_metrics(
     let or = odds_treatment / odds_control;
 
     // Confidence Intervals (using Normal distribution for log-transformed RR/OR)
-    let normal =
-        Normal::new(0.0, 1.0).map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
-    let z = normal.inverse_cdf(1.0 - alpha / 2.0);
+    let z = Normal::standard()
+        .quantile(1.0 - alpha / 2.0)
+        .map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
 
     // SE for ln(RR)
     let se_ln_rr = ((1.0 / a) - (1.0 / (a + b)) + (1.0 / c) - (1.0 / (c + d))).sqrt();

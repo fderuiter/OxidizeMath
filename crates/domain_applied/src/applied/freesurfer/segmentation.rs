@@ -1,5 +1,6 @@
 use super::surface::MriVolume;
-use std::f64::consts::TAU;
+use engine_graph::potts_neighborhood_posteriors_into;
+use engine_prob::{ContinuousDist, Normal, discrete_posterior_into};
 
 /// Maximum number of simultaneous tissue classes supported in stack-allocated MRF segmentation.
 pub const MAX_TISSUE_CLASSES: usize = 16;
@@ -26,7 +27,7 @@ impl TissueClass {
         }
     }
 
-    /// Evaluates Gaussian intensity likelihood $P(I \mid L_k)$ at `intensity`.
+    /// Evaluates Gaussian intensity likelihood $P(I \mid L_k)$ at `intensity` via [`engine_prob::Normal`].
     #[must_use]
     #[verified_engine::verified]
     pub fn gaussian_likelihood(&self, intensity: f64) -> f64 {
@@ -34,9 +35,7 @@ impl TissueClass {
             return 0.0;
         }
         let sigma = self.std_dev.max(1e-6);
-        let z = (intensity - self.mean) / sigma;
-        let norm = 1.0 / (TAU.sqrt() * sigma);
-        norm * (-0.5 * z * z).exp()
+        Normal::new(self.mean, sigma).map_or(0.0, |dist| dist.pdf(intensity))
     }
 }
 
@@ -50,8 +49,9 @@ pub fn bayesian_classification(likelihood: f64, prior: f64) -> f64 {
     likelihood * prior
 }
 
-/// Writes normalized multi-label Bayes posteriors $P(L_k \mid I)$ into `posteriors_out` without
-/// heap allocation, falling back to uniform $1/K$ probabilities when total posterior mass is zero.
+/// Writes normalized multi-label Bayes posteriors $P(L_k \mid I)$ into `posteriors_out` via
+/// [`engine_prob::discrete_posterior_into`] without heap allocation, falling back to uniform $1/K$
+/// probabilities when total posterior mass is zero.
 #[verified_engine::verified]
 pub fn normalized_posteriors_into(
     likelihoods: &[f64],
@@ -65,33 +65,44 @@ pub fn normalized_posteriors_into(
     if k_len == 0 {
         return 0;
     }
-    let mut sum = 0.0;
-    for k in 0..k_len {
-        let lk = if likelihoods[k].is_finite() {
-            likelihoods[k].max(0.0)
-        } else {
-            0.0
-        };
-        let pr = if priors[k].is_finite() {
-            priors[k].max(0.0)
-        } else {
-            0.0
-        };
-        let unnorm = bayesian_classification(lk, pr);
-        posteriors_out[k] = unnorm;
-        sum += unnorm;
+    let all_finite = likelihoods[..k_len].iter().all(|x| x.is_finite())
+        && priors[..k_len].iter().all(|x| x.is_finite());
+    if all_finite
+        && let Ok(evidence) = discrete_posterior_into(
+            &likelihoods[..k_len],
+            &priors[..k_len],
+            &mut posteriors_out[..k_len],
+        )
+        && evidence > 0.0
+    {
+        return k_len;
     }
-    if !sum.is_finite() || sum <= 0.0 {
-        let uniform = 1.0 / (k_len as f64);
-        for out in posteriors_out.iter_mut().take(k_len) {
-            *out = uniform;
+    if k_len <= MAX_TISSUE_CLASSES {
+        let mut clean_l = [0.0_f64; MAX_TISSUE_CLASSES];
+        let mut clean_p = [0.0_f64; MAX_TISSUE_CLASSES];
+        for k in 0..k_len {
+            clean_l[k] = if likelihoods[k].is_finite() {
+                likelihoods[k].max(0.0)
+            } else {
+                0.0
+            };
+            clean_p[k] = if priors[k].is_finite() {
+                priors[k].max(0.0)
+            } else {
+                0.0
+            };
         }
-    } else {
-        let inv_sum = 1.0 / sum;
-        for out in posteriors_out.iter_mut().take(k_len) {
-            *out *= inv_sum;
+        if let Ok(evidence) = discrete_posterior_into(
+            &clean_l[..k_len],
+            &clean_p[..k_len],
+            &mut posteriors_out[..k_len],
+        ) && evidence > 0.0
+        {
+            return k_len;
         }
     }
+    let uniform = 1.0 / (k_len as f64);
+    posteriors_out[..k_len].fill(uniform);
     k_len
 }
 
@@ -148,7 +159,8 @@ fn count_six_connected_neighbors(
 
 /// Evaluates normalized Potts MRF voxel posteriors
 /// $P(L_v = k \mid I_v, L_{\mathcal{N}_6}) \propto P(I_v \mid L_k)\,P(L_k)\,\exp(\beta n_k(v))$
-/// into `posteriors_out` without dynamic heap allocation.
+/// into `posteriors_out` via [`engine_graph::potts_neighborhood_posteriors_into`] without dynamic
+/// heap allocation.
 #[verified_engine::verified]
 pub fn mrf_voxel_posteriors(
     intensity: f64,
@@ -171,17 +183,34 @@ pub fn mrf_voxel_posteriors(
         0.0
     };
     let mut likelihoods = [0.0_f64; MAX_TISSUE_CLASSES];
-    let mut mrf_priors = [0.0_f64; MAX_TISSUE_CLASSES];
+    let mut priors = [0.0_f64; MAX_TISSUE_CLASSES];
+    let mut counts_usize = [0_usize; MAX_TISSUE_CLASSES];
+    let mut scratch = [0.0_f64; MAX_TISSUE_CLASSES];
+    let mut unnorm_evidence = 0.0;
     for k in 0..k_len {
         likelihoods[k] = classes[k].gaussian_likelihood(intensity);
-        let spatial_prior = if classes[k].prior.is_finite() {
+        priors[k] = if classes[k].prior.is_finite() {
             classes[k].prior.max(0.0)
         } else {
             0.0
         };
-        mrf_priors[k] = spatial_prior * (beta * f64::from(neighbor_counts[k])).exp();
+        counts_usize[k] = usize::from(neighbor_counts[k]);
+        unnorm_evidence += likelihoods[k] * priors[k];
     }
-    normalized_posteriors_into(&likelihoods[..k_len], &mrf_priors[..k_len], posteriors_out)
+    if unnorm_evidence <= 0.0
+        || potts_neighborhood_posteriors_into(
+            &likelihoods[..k_len],
+            &priors[..k_len],
+            &counts_usize[..k_len],
+            beta,
+            &mut scratch[..k_len],
+            &mut posteriors_out[..k_len],
+        )
+        .is_err()
+    {
+        posteriors_out[..k_len].fill(1.0 / (k_len as f64));
+    }
+    k_len
 }
 
 #[verified_engine::verified]

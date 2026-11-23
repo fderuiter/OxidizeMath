@@ -1,5 +1,5 @@
 // [cite:attention_is_all_you_need_rust]
-use statrs::function::gamma::gamma;
+use engine_prob::gamma;
 use std::f64::consts::{EULER_GAMMA, PI};
 
 /// Bessel Function of the First Kind $J_\nu(x)$.

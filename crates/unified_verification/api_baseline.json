@@ -1,4 +1,1002 @@
 {
+  "crates/02_engines/engine_graph/src/bp_max_product.rs": [
+    {
+      "signature": "pub fn evaluate_assignment_log_score (_ : & FactorGraphView < '_ > , _ : & [usize]) -> f64"
+    },
+    {
+      "signature": "pub fn max_product_bp (_ : & FactorGraphView < '_ > , _ : & BpConfig ,) -> Result < (MaxProductReport , alloc :: vec :: Vec < usize > , alloc :: vec :: Vec < f64 > ,) , GraphEngineError , >"
+    },
+    {
+      "signature": "pub fn max_product_bp_into (_ : & FactorGraphView < '_ > , _ : & BpConfig , _ : & mut [f64] , _ : & mut [usize] , _ : & mut [f64] ,) -> Result < MaxProductReport , GraphEngineError >"
+    },
+    {
+      "signature": "pub struct MaxProductReport"
+    }
+  ],
+  "crates/02_engines/engine_graph/src/bp_sum_product.rs": [
+    {
+      "signature": "pub fn sum_product_bp (_ : & FactorGraphView < '_ > , _ : & BpConfig ,) -> Result < (BpReport , alloc :: vec :: Vec < f64 >) , GraphEngineError >"
+    },
+    {
+      "signature": "pub fn sum_product_bp_into (_ : & FactorGraphView < '_ > , _ : & BpConfig , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < BpReport , GraphEngineError >"
+    },
+    {
+      "signature": "pub struct BpConfig"
+    },
+    {
+      "signature": "pub struct BpReport"
+    }
+  ],
+  "crates/02_engines/engine_graph/src/chain_mrf.rs": [
+    {
+      "signature": "pub fn chain_accumulate_xi_into (_ : & ChainModelView < '_ > , _ : & [usize] , _ : & ChainFbWorkspace < '_ > , _ : & mut [f64] ,) -> Result < () , GraphEngineError >"
+    },
+    {
+      "signature": "pub fn chain_forward_backward_into (_ : & ChainModelView < '_ > , _ : & [usize] , _ : & mut ChainFbWorkspace < '_ > ,) -> Result < f64 , GraphEngineError >"
+    },
+    {
+      "signature": "pub fn potts_neighborhood_posteriors_into (_ : & [f64] , _ : & [f64] , _ : & [usize] , _ : f64 , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < () , GraphEngineError >"
+    },
+    {
+      "signature": "pub struct ChainFbWorkspace < 'a >"
+    },
+    {
+      "signature": "pub struct ChainModelView < 'a >"
+    }
+  ],
+  "crates/02_engines/engine_graph/src/error.rs": [
+    {
+      "signature": "pub enum GraphEngineError"
+    }
+  ],
+  "crates/02_engines/engine_graph/src/factor_graph.rs": [
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub const fn beliefs_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub const fn bp_scratch_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub const fn cardinalities (& self) -> & 'a [usize] }"
+    },
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub const fn edge_slot_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub const fn factors (& self) -> & 'a [FactorSpec] }"
+    },
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub const fn num_factors (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub const fn num_vars (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub const fn potentials (& self) -> & 'a [f64] }"
+    },
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub fn new (_ : & 'a [usize] , _ : & 'a [FactorSpec] , _ : & 'a [f64] ,) -> Result < Self , GraphEngineError > }"
+    },
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub fn var_belief < 'b > (& self , _ : & 'b [f64] , _ : usize) -> & 'b [f64] }"
+    },
+    {
+      "signature": "impl < 'a > FactorGraphView < 'a > { pub fn var_belief_offset (& self , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl FactorSpec { pub const fn pairwise (_ : usize , _ : usize , _ : usize , _ : usize , _ : usize ,) -> Self }"
+    },
+    {
+      "signature": "impl FactorSpec { pub const fn unary (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl FactorSpec { pub fn active_vars (& self) -> & [usize] }"
+    },
+    {
+      "signature": "impl FactorSpec { pub fn from_vars (_ : & [usize] , _ : & [usize] , _ : usize ,) -> Result < Self , GraphEngineError > }"
+    },
+    {
+      "signature": "pub const MAX_CARDINALITY : usize"
+    },
+    {
+      "signature": "pub const MAX_FACTOR_ARITY : usize"
+    },
+    {
+      "signature": "pub struct FactorGraphView < 'a >"
+    },
+    {
+      "signature": "pub struct FactorSpec"
+    }
+  ],
+  "crates/02_engines/engine_graph/src/lib.rs": [
+    {
+      "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate as engine_graph }"
+    },
+    {
+      "signature": "pub use bp_max_product :: MaxProductReport"
+    },
+    {
+      "signature": "pub use bp_max_product :: evaluate_assignment_log_score"
+    },
+    {
+      "signature": "pub use bp_max_product :: max_product_bp"
+    },
+    {
+      "signature": "pub use bp_max_product :: max_product_bp_into"
+    },
+    {
+      "signature": "pub use bp_sum_product :: BpConfig"
+    },
+    {
+      "signature": "pub use bp_sum_product :: BpReport"
+    },
+    {
+      "signature": "pub use bp_sum_product :: sum_product_bp"
+    },
+    {
+      "signature": "pub use bp_sum_product :: sum_product_bp_into"
+    },
+    {
+      "signature": "pub use chain_mrf :: ChainFbWorkspace"
+    },
+    {
+      "signature": "pub use chain_mrf :: ChainModelView"
+    },
+    {
+      "signature": "pub use chain_mrf :: chain_accumulate_xi_into"
+    },
+    {
+      "signature": "pub use chain_mrf :: chain_forward_backward_into"
+    },
+    {
+      "signature": "pub use chain_mrf :: potts_neighborhood_posteriors_into"
+    },
+    {
+      "signature": "pub use error :: GraphEngineError"
+    },
+    {
+      "signature": "pub use factor_graph :: FactorGraphView"
+    },
+    {
+      "signature": "pub use factor_graph :: FactorSpec"
+    },
+    {
+      "signature": "pub use factor_graph :: MAX_CARDINALITY"
+    },
+    {
+      "signature": "pub use factor_graph :: MAX_FACTOR_ARITY"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/calibration.rs": [
+    {
+      "signature": "impl EValue { pub const fn neutral () -> Self }"
+    },
+    {
+      "signature": "impl EValue { pub const fn value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EValue { pub fn average (_ : & [Self]) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl EValue { pub fn from_bounded_bet (_ : f64 , _ : f64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl EValue { pub fn from_p_value_power (_ : f64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl EValue { pub fn implied_p_value (self) -> f64 }"
+    },
+    {
+      "signature": "impl EValue { pub fn multiply (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl EValue { pub fn new (_ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl EValue { pub fn rejects_at (self , _ : f64) -> Result < bool , ProbError > }"
+    },
+    {
+      "signature": "pub fn conformal_p_value (_ : & [f64] , _ : f64) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn conformal_prediction_mask_into (_ : & [f64] , _ : f64 , _ : & mut [bool] ,) -> Result < usize , ProbError >"
+    },
+    {
+      "signature": "pub fn conformal_quantile (_ : & [f64] , _ : f64) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn conformal_quantile_into (_ : & mut [f64] , _ : f64) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn conformal_quantile_sorted (_ : & [f64] , _ : f64) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub struct EValue"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/conjugate/discrete_families.rs": [
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub const fn alphas (& self) -> & [f64 ; K] }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn bayes_factor (& self , _ : & Self , _ : & [u64 ; K]) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn credible_interval (& self , _ : usize , _ : f64) -> Result < (f64 , f64) , ProbError > }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn log_marginal_likelihood (& self , _ : & [u64 ; K]) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn new (_ : [f64 ; K]) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn posterior_means (& self) -> [f64 ; K] }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn update (& self , _ : & [u64 ; K]) -> Self }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub const fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub const fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub const fn jeffreys_prior () -> Self }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub const fn uniform_prior () -> Self }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn bayes_factor (& self , _ : & Self , _ : u64 , _ : u64 ,) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn credible_interval (& self , _ : f64) -> Result < (f64 , f64) , ProbError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn log_marginal_likelihood (& self , _ : u64 , _ : u64) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn new (_ : f64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn posterior (& self) -> Result < Beta , ProbError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn posterior_mean (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn posterior_variance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn predictive_pmf (& self , _ : u64 , _ : u64) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn update (& self , _ : u64 , _ : u64) -> Self }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub const fn rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub const fn shape (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn bayes_factor (& self , _ : & Self , _ : & [u64]) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn credible_interval (& self , _ : f64) -> Result < (f64 , f64) , ProbError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn log_marginal_likelihood (& self , _ : & [u64]) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn new (_ : f64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn posterior (& self) -> Result < Gamma , ProbError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn posterior_mean (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn posterior_variance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn predictive_ln_pmf (& self , _ : u64 , _ : f64) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn update (& self , _ : u64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn update_counts (& self , _ : & [u64]) -> Self }"
+    },
+    {
+      "signature": "pub fn dirichlet_bayes_factor (_ : & [f64] , _ : & [f64] , _ : & [u64] ,) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn dirichlet_log_marginal_likelihood (_ : & [f64] , _ : & [u64]) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn dirichlet_update_into (_ : & [f64] , _ : & [u64] , _ : & mut [f64] ,) -> Result < () , ProbError >"
+    },
+    {
+      "signature": "pub struct BetaBinomial"
+    },
+    {
+      "signature": "pub struct DirichletMultinomial < const K : usize >"
+    },
+    {
+      "signature": "pub struct GammaPoisson"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/conjugate/mod.rs": [
+    {
+      "signature": "pub use discrete_families :: BetaBinomial"
+    },
+    {
+      "signature": "pub use discrete_families :: DirichletMultinomial"
+    },
+    {
+      "signature": "pub use discrete_families :: GammaPoisson"
+    },
+    {
+      "signature": "pub use discrete_families :: dirichlet_bayes_factor"
+    },
+    {
+      "signature": "pub use discrete_families :: dirichlet_log_marginal_likelihood"
+    },
+    {
+      "signature": "pub use discrete_families :: dirichlet_update_into"
+    },
+    {
+      "signature": "pub use normal_families :: NormalInverseGamma"
+    },
+    {
+      "signature": "pub use normal_families :: NormalNormal"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/conjugate/normal_families.rs": [
+    {
+      "signature": "impl NormalInverseGamma { pub const fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub const fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub const fn kappa (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub const fn mu (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub const fn posterior_mean (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn bayes_factor (& self , _ : & Self , _ : & [f64]) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn expected_obs_variance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn log_marginal_likelihood (& self , _ : & [f64]) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn mean_credible_interval (& self , _ : f64) -> Result < (f64 , f64) , ProbError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn predictive_ln_pdf (& self , _ : f64) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn update_slice (& self , _ : & [f64]) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn variance_credible_interval (& self , _ : f64) -> Result < (f64 , f64) , ProbError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub const fn obs_std_dev (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalNormal { pub const fn posterior_mean (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalNormal { pub const fn posterior_std (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn bayes_factor (& self , _ : & Self , _ : & [f64]) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn credible_interval (& self , _ : f64) -> Result < (f64 , f64) , ProbError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn log_marginal_likelihood (& self , _ : & [f64]) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn posterior (& self) -> Result < Normal , ProbError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn posterior_predictive (& self) -> Result < Normal , ProbError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn posterior_variance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn update_slice (& self , _ : & [f64]) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn update_summary (& self , _ : usize , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "pub struct NormalInverseGamma"
+    },
+    {
+      "signature": "pub struct NormalNormal"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/distributions/continuous.rs": [
+    {
+      "signature": "impl Exponential { pub const fn rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Exponential { pub fn new (_ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl Normal { pub const fn location (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Normal { pub const fn standard () -> Self }"
+    },
+    {
+      "signature": "impl Normal { pub const fn std_dev (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Normal { pub fn new (_ : f64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl Uniform { pub const fn high (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Uniform { pub const fn low (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Uniform { pub fn new (_ : f64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "pub struct Exponential"
+    },
+    {
+      "signature": "pub struct Normal"
+    },
+    {
+      "signature": "pub struct Uniform"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/distributions/discrete.rs": [
+    {
+      "signature": "impl < 'a > Categorical < 'a > { pub const fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < 'a > Categorical < 'a > { pub const fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > Categorical < 'a > { pub fn new (_ : & 'a [f64]) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl < 'a > Categorical < 'a > { pub fn sample_index < R : RngCore + ? Sized > (& self , _ : & mut R) -> usize }"
+    },
+    {
+      "signature": "impl Bernoulli { pub const fn p (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Bernoulli { pub fn new (_ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl Binomial { pub const fn n (& self) -> u64 }"
+    },
+    {
+      "signature": "impl Binomial { pub const fn p (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Binomial { pub fn new (_ : u64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl Poisson { pub const fn lambda (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Poisson { pub fn new (_ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "pub struct Bernoulli"
+    },
+    {
+      "signature": "pub struct Binomial"
+    },
+    {
+      "signature": "pub struct Categorical < 'a >"
+    },
+    {
+      "signature": "pub struct Poisson"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/distributions/gamma_beta.rs": [
+    {
+      "signature": "impl Beta { pub const fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Beta { pub const fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Beta { pub fn new (_ : f64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl Gamma { pub const fn rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Gamma { pub const fn shape (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Gamma { pub fn new (_ : f64 , _ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "pub struct Beta"
+    },
+    {
+      "signature": "pub struct Gamma"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/distributions/mod.rs": [
+    {
+      "signature": "pub fn discrete_posterior_into (_ : & [f64] , _ : & [f64] , _ : & mut [f64] ,) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn next_f64_open01 < R : RngCore + ? Sized > (_ : & mut R) -> f64"
+    },
+    {
+      "signature": "pub fn next_f64_unit < R : RngCore + ? Sized > (_ : & mut R) -> f64"
+    },
+    {
+      "signature": "pub fn normalize_log_weights_into (_ : & [f64] , _ : & mut [f64]) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub trait ContinuousDist"
+    },
+    {
+      "signature": "pub trait ContinuousDist { fn cdf (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub trait ContinuousDist { fn ln_pdf (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub trait ContinuousDist { fn mean (& self) -> f64 }"
+    },
+    {
+      "signature": "pub trait ContinuousDist { fn pdf (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub trait ContinuousDist { fn quantile (& self , _ : f64) -> Result < f64 , ProbError > }"
+    },
+    {
+      "signature": "pub trait ContinuousDist { fn sample < R : RngCore + ? Sized > (& self , _ : & mut R) -> f64 }"
+    },
+    {
+      "signature": "pub trait ContinuousDist { fn variance (& self) -> f64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDist"
+    },
+    {
+      "signature": "pub trait DiscreteDist { fn cdf (& self , _ : u64) -> f64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDist { fn ln_pmf (& self , _ : u64) -> f64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDist { fn mean (& self) -> f64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDist { fn pmf (& self , _ : u64) -> f64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDist { fn quantile (& self , _ : f64) -> Result < u64 , ProbError > }"
+    },
+    {
+      "signature": "pub trait DiscreteDist { fn sample < R : RngCore + ? Sized > (& self , _ : & mut R) -> u64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDist { fn variance (& self) -> f64 }"
+    },
+    {
+      "signature": "pub use continuous :: Exponential"
+    },
+    {
+      "signature": "pub use continuous :: Normal"
+    },
+    {
+      "signature": "pub use continuous :: Uniform"
+    },
+    {
+      "signature": "pub use discrete :: Bernoulli"
+    },
+    {
+      "signature": "pub use discrete :: Binomial"
+    },
+    {
+      "signature": "pub use discrete :: Categorical"
+    },
+    {
+      "signature": "pub use discrete :: Poisson"
+    },
+    {
+      "signature": "pub use gamma_beta :: Beta"
+    },
+    {
+      "signature": "pub use gamma_beta :: Gamma"
+    },
+    {
+      "signature": "pub use t_chi2 :: ChiSquared"
+    },
+    {
+      "signature": "pub use t_chi2 :: StudentsT"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/distributions/t_chi2.rs": [
+    {
+      "signature": "impl ChiSquared { pub const fn dof (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ChiSquared { pub fn new (_ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "impl ChiSquared { pub fn survival (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl StudentsT { pub const fn dof (& self) -> f64 }"
+    },
+    {
+      "signature": "impl StudentsT { pub fn new (_ : f64) -> Result < Self , ProbError > }"
+    },
+    {
+      "signature": "pub struct ChiSquared"
+    },
+    {
+      "signature": "pub struct StudentsT"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/error.rs": [
+    {
+      "signature": "pub enum ProbError"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/lib.rs": [
+    {
+      "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate as engine_prob }"
+    },
+    {
+      "signature": "pub use calibration :: EValue"
+    },
+    {
+      "signature": "pub use calibration :: conformal_p_value"
+    },
+    {
+      "signature": "pub use calibration :: conformal_prediction_mask_into"
+    },
+    {
+      "signature": "pub use calibration :: conformal_quantile"
+    },
+    {
+      "signature": "pub use calibration :: conformal_quantile_into"
+    },
+    {
+      "signature": "pub use calibration :: conformal_quantile_sorted"
+    },
+    {
+      "signature": "pub use conjugate :: BetaBinomial"
+    },
+    {
+      "signature": "pub use conjugate :: DirichletMultinomial"
+    },
+    {
+      "signature": "pub use conjugate :: GammaPoisson"
+    },
+    {
+      "signature": "pub use conjugate :: NormalInverseGamma"
+    },
+    {
+      "signature": "pub use conjugate :: NormalNormal"
+    },
+    {
+      "signature": "pub use conjugate :: dirichlet_bayes_factor"
+    },
+    {
+      "signature": "pub use conjugate :: dirichlet_log_marginal_likelihood"
+    },
+    {
+      "signature": "pub use conjugate :: dirichlet_update_into"
+    },
+    {
+      "signature": "pub use distributions :: Bernoulli"
+    },
+    {
+      "signature": "pub use distributions :: Beta"
+    },
+    {
+      "signature": "pub use distributions :: Binomial"
+    },
+    {
+      "signature": "pub use distributions :: Categorical"
+    },
+    {
+      "signature": "pub use distributions :: ChiSquared"
+    },
+    {
+      "signature": "pub use distributions :: ContinuousDist"
+    },
+    {
+      "signature": "pub use distributions :: DiscreteDist"
+    },
+    {
+      "signature": "pub use distributions :: Exponential"
+    },
+    {
+      "signature": "pub use distributions :: Gamma"
+    },
+    {
+      "signature": "pub use distributions :: Normal"
+    },
+    {
+      "signature": "pub use distributions :: Poisson"
+    },
+    {
+      "signature": "pub use distributions :: StudentsT"
+    },
+    {
+      "signature": "pub use distributions :: Uniform"
+    },
+    {
+      "signature": "pub use distributions :: discrete_posterior_into"
+    },
+    {
+      "signature": "pub use distributions :: next_f64_open01"
+    },
+    {
+      "signature": "pub use distributions :: next_f64_unit"
+    },
+    {
+      "signature": "pub use distributions :: normalize_log_weights_into"
+    },
+    {
+      "signature": "pub use error :: ProbError"
+    },
+    {
+      "signature": "pub use special :: beta"
+    },
+    {
+      "signature": "pub use special :: erf"
+    },
+    {
+      "signature": "pub use special :: erf_inv"
+    },
+    {
+      "signature": "pub use special :: erfc"
+    },
+    {
+      "signature": "pub use special :: erfc_inv"
+    },
+    {
+      "signature": "pub use special :: gamma"
+    },
+    {
+      "signature": "pub use special :: ln_beta"
+    },
+    {
+      "signature": "pub use special :: ln_factorial"
+    },
+    {
+      "signature": "pub use special :: ln_gamma"
+    },
+    {
+      "signature": "pub use special :: regularized_incomplete_beta"
+    },
+    {
+      "signature": "pub use special :: regularized_lower_gamma"
+    },
+    {
+      "signature": "pub use special :: regularized_upper_gamma"
+    },
+    {
+      "signature": "pub use special :: standard_normal_cdf"
+    },
+    {
+      "signature": "pub use special :: standard_normal_ln_pdf"
+    },
+    {
+      "signature": "pub use special :: standard_normal_pdf"
+    },
+    {
+      "signature": "pub use special :: standard_normal_quantile"
+    },
+    {
+      "signature": "pub use special :: standard_normal_survival"
+    },
+    {
+      "signature": "pub use transport :: SinkhornConfig"
+    },
+    {
+      "signature": "pub use transport :: SinkhornReport"
+    },
+    {
+      "signature": "pub use transport :: sinkhorn_log_domain"
+    },
+    {
+      "signature": "pub use transport :: sinkhorn_log_domain_into"
+    },
+    {
+      "signature": "pub use transport :: sinkhorn_scratch_len"
+    },
+    {
+      "signature": "pub use transport :: wasserstein_1d"
+    },
+    {
+      "signature": "pub use transport :: wasserstein_1d_into"
+    },
+    {
+      "signature": "pub use transport :: wasserstein_1d_sorted"
+    },
+    {
+      "signature": "pub use transport :: wasserstein_1d_weights"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/special/erf.rs": [
+    {
+      "signature": "pub fn erf (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn erf_inv (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn erfc (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn erfc_inv (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn standard_normal_cdf (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn standard_normal_ln_pdf (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn standard_normal_pdf (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn standard_normal_quantile (_ : f64) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn standard_normal_survival (_ : f64) -> f64"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/special/gamma.rs": [
+    {
+      "signature": "pub fn beta (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn gamma (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn ln_beta (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn ln_factorial (_ : u64) -> f64"
+    },
+    {
+      "signature": "pub fn ln_gamma (_ : f64) -> f64"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/special/incomplete.rs": [
+    {
+      "signature": "pub fn regularized_incomplete_beta (_ : f64 , _ : f64 , _ : f64) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn regularized_lower_gamma (_ : f64 , _ : f64) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn regularized_upper_gamma (_ : f64 , _ : f64) -> Result < f64 , ProbError >"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/special/mod.rs": [
+    {
+      "signature": "pub use erf :: erf"
+    },
+    {
+      "signature": "pub use erf :: erf_inv"
+    },
+    {
+      "signature": "pub use erf :: erfc"
+    },
+    {
+      "signature": "pub use erf :: erfc_inv"
+    },
+    {
+      "signature": "pub use erf :: standard_normal_cdf"
+    },
+    {
+      "signature": "pub use erf :: standard_normal_ln_pdf"
+    },
+    {
+      "signature": "pub use erf :: standard_normal_pdf"
+    },
+    {
+      "signature": "pub use erf :: standard_normal_quantile"
+    },
+    {
+      "signature": "pub use erf :: standard_normal_survival"
+    },
+    {
+      "signature": "pub use gamma :: beta"
+    },
+    {
+      "signature": "pub use gamma :: gamma"
+    },
+    {
+      "signature": "pub use gamma :: ln_beta"
+    },
+    {
+      "signature": "pub use gamma :: ln_factorial"
+    },
+    {
+      "signature": "pub use gamma :: ln_gamma"
+    },
+    {
+      "signature": "pub use incomplete :: regularized_incomplete_beta"
+    },
+    {
+      "signature": "pub use incomplete :: regularized_lower_gamma"
+    },
+    {
+      "signature": "pub use incomplete :: regularized_upper_gamma"
+    }
+  ],
+  "crates/02_engines/engine_prob/src/transport.rs": [
+    {
+      "signature": "pub const fn sinkhorn_scratch_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn sinkhorn_log_domain (_ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & SinkhornConfig ,) -> Result < (SinkhornReport , alloc :: vec :: Vec < f64 >) , ProbError >"
+    },
+    {
+      "signature": "pub fn sinkhorn_log_domain_into (_ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & SinkhornConfig , _ : & mut [f64] , _ : Option < & mut [f64] > ,) -> Result < SinkhornReport , ProbError >"
+    },
+    {
+      "signature": "pub fn wasserstein_1d (_ : & [f64] , _ : & [f64]) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn wasserstein_1d_into (_ : & mut [f64] , _ : & mut [f64]) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn wasserstein_1d_sorted (_ : & [f64] , _ : & [f64]) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub fn wasserstein_1d_weights (_ : & [f64] , _ : & [f64] , _ : & [f64] ,) -> Result < f64 , ProbError >"
+    },
+    {
+      "signature": "pub struct SinkhornConfig"
+    },
+    {
+      "signature": "pub struct SinkhornReport"
+    }
+  ],
   "crates/diagnostics/src/lib.rs": [
     {
       "signature": "impl DiagnosticBus { pub fn emit (& self , _ : DiagnosticEvent) }"
@@ -866,9 +1864,56 @@
       "signature": "pub trait Optimizer { fn step (& mut self , _ : & DMatrix < f64 > , _ : & DMatrix < f64 > ,) -> Result < DMatrix < f64 > , AIError > }"
     }
   ],
+  "crates/domain_ai/src/ai/self_calibration/mod.rs": [
+    {
+      "signature": "pub use scoring :: EValue"
+    },
+    {
+      "signature": "pub use scoring :: calculate_soft_self_consistency_scores"
+    },
+    {
+      "signature": "pub use scoring :: calibrate_response_threshold"
+    },
+    {
+      "signature": "pub use scoring :: conformal_response_mask"
+    },
+    {
+      "signature": "pub use scoring :: conformal_response_set"
+    },
+    {
+      "signature": "pub use scoring :: response_conformal_p_values"
+    },
+    {
+      "signature": "pub use scoring :: response_nonconformity_scores"
+    },
+    {
+      "signature": "pub use scoring :: sequential_calibration_e_value"
+    }
+  ],
   "crates/domain_ai/src/ai/self_calibration/scoring.rs": [
     {
       "signature": "pub fn calculate_soft_self_consistency_scores (_ : & [Response]) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn calibrate_response_threshold (_ : & [Response] , _ : f64 ,) -> Result < f64 , AIError >"
+    },
+    {
+      "signature": "pub fn conformal_response_mask (_ : & [Response] , _ : & [Response] , _ : f64 ,) -> Result < Vec < bool > , AIError >"
+    },
+    {
+      "signature": "pub fn conformal_response_set < 'a > (_ : & [Response] , _ : & 'a [Response] , _ : f64 ,) -> Result < Vec < & 'a Response > , AIError >"
+    },
+    {
+      "signature": "pub fn response_conformal_p_values (_ : & [Response] , _ : & [Response] ,) -> Result < Vec < f64 > , AIError >"
+    },
+    {
+      "signature": "pub fn response_nonconformity_scores (_ : & [Response]) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn sequential_calibration_e_value (_ : & [Response] , _ : & [Response] , _ : f64 ,) -> Result < EValue , AIError >"
+    },
+    {
+      "signature": "pub use engine_prob :: EValue"
     }
   ],
   "crates/domain_ai/src/ai/self_calibration/temperature.rs": [
@@ -1147,6 +2192,12 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: engine_graph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: engine_prob }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: fit }"
@@ -3813,6 +4864,12 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: engine_graph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: engine_prob }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: fit }"
     },
     {
@@ -4935,6 +5992,9 @@
     },
     {
       "signature": "pub fn try_mse_loss < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> Result < f32 , ClimateError >"
+    },
+    {
+      "signature": "pub fn try_sinkhorn_transport_loss < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > , _ : f64 ,) -> Result < f32 , ClimateError >"
     }
   ],
   "crates/domain_climate/src/climate/mod.rs": [
@@ -5025,6 +6085,12 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: engine_graph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: engine_prob }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: fit }"
@@ -9826,6 +10892,12 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ZipError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use engine_graph :: GraphEngineError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use engine_prob :: ProbError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: EvalError } }"
     },
     {
@@ -9917,6 +10989,12 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use engine_graph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use engine_prob }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use math_commons :: ast }"
@@ -12464,6 +13542,33 @@
     },
     {
       "signature": "pub fn gamma_function (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub use engine_prob :: special :: erf"
+    },
+    {
+      "signature": "pub use engine_prob :: special :: erf_inv"
+    },
+    {
+      "signature": "pub use engine_prob :: special :: erfc"
+    },
+    {
+      "signature": "pub use engine_prob :: special :: erfc_inv"
+    },
+    {
+      "signature": "pub use engine_prob :: special :: ln_beta"
+    },
+    {
+      "signature": "pub use engine_prob :: special :: ln_gamma"
+    },
+    {
+      "signature": "pub use engine_prob :: special :: regularized_incomplete_beta"
+    },
+    {
+      "signature": "pub use engine_prob :: special :: regularized_lower_gamma"
+    },
+    {
+      "signature": "pub use engine_prob :: special :: regularized_upper_gamma"
     }
   ],
   "crates/pure_math/src/pure_math/special_functions/legendre.rs": [
@@ -15151,6 +16256,9 @@
       "signature": "impl ZipDistribution { pub fn from_values (_ : f64 , _ : f64) -> Result < Self , ZipError > }"
     },
     {
+      "signature": "impl ZipDistribution { pub fn ln_pmf (& self , _ : Count) -> f64 }"
+    },
+    {
       "signature": "impl ZipDistribution { pub fn mean (& self) -> f64 }"
     },
     {
@@ -15161,6 +16269,12 @@
     },
     {
       "signature": "impl ZipDistribution { pub fn pmf (& self , _ : Count) -> f64 }"
+    },
+    {
+      "signature": "impl ZipDistribution { pub fn quantile (& self , _ : f64) -> Result < Count , ZipError > }"
+    },
+    {
+      "signature": "impl ZipDistribution { pub fn sample < R : rand :: RngCore + ? Sized > (& self , _ : & mut R) -> Count }"
     },
     {
       "signature": "impl ZipDistribution { pub fn std_dev (& self) -> f64 }"
@@ -15231,6 +16345,12 @@
     },
     {
       "signature": "pub use regression :: simple_zip_fit"
+    },
+    {
+      "signature": "pub use solver :: ZipFitConfig"
+    },
+    {
+      "signature": "pub use solver :: ZipFitResult"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/zip_regression/regression.rs": [
@@ -15254,6 +16374,20 @@
     },
     {
       "signature": "pub struct ZipRegression"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/zip_regression/solver.rs": [
+    {
+      "signature": "impl ZipRegression { pub fn fit (& self) -> Result < ZipFitResult , ZipError > }"
+    },
+    {
+      "signature": "impl ZipRegression { pub fn fit_with_config (& self , _ : & ZipFitConfig) -> Result < ZipFitResult , ZipError > }"
+    },
+    {
+      "signature": "pub struct ZipFitConfig"
+    },
+    {
+      "signature": "pub struct ZipFitResult"
     }
   ],
   "crates/pure_math/src/pure_math/tensor/christoffel.rs": [
@@ -15712,6 +16846,12 @@
       "signature": "pub use domain_physics :: error :: StatMechError"
     },
     {
+      "signature": "pub use engine_graph :: GraphEngineError"
+    },
+    {
+      "signature": "pub use engine_prob :: ProbError"
+    },
+    {
       "signature": "pub use math_commons :: error :: EvalError"
     },
     {
@@ -15823,6 +16963,12 @@
     },
     {
       "signature": "pub use domain_physics :: physics"
+    },
+    {
+      "signature": "pub use engine_graph"
+    },
+    {
+      "signature": "pub use engine_prob"
     },
     {
       "signature": "pub use math_commons :: ast"

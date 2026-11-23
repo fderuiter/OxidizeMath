@@ -4,9 +4,9 @@ use super::analytical::PortfolioBet;
 use super::barrier::ProportionalPortfolioBet;
 use crate::error::KellyError;
 use crate::pure_math::statistics::validation::Z_95_TWO_SIDED;
+use engine_prob::{ContinuousDist, Normal};
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
-use statrs::distribution::{ContinuousCDF, Normal};
 
 const INV_TWO_POW_53: f64 = 1.0 / 9_007_199_254_740_992.0;
 
@@ -109,10 +109,11 @@ pub fn wilson_score_interval(
     if !confidence.is_finite() || confidence <= 0.0 || confidence >= 1.0 {
         return Err(KellyError::InvalidProbability { value: confidence });
     }
-    let normal = Normal::new(0.0, 1.0).map_err(|_| KellyError::ConvergenceFailed {
-        reason: "standard normal initialization failed",
-    })?;
-    let z = normal.inverse_cdf(0.5 * (1.0 + confidence));
+    let z = Normal::standard()
+        .quantile(0.5 * (1.0 + confidence))
+        .map_err(|_| KellyError::ConvergenceFailed {
+            reason: "standard normal quantile failed",
+        })?;
     wilson_from_z(successes, trials, z)
 }
 

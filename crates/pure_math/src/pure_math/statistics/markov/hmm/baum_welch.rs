@@ -1,13 +1,24 @@
-//! Zero-allocation Baum-Welch Expectation-Maximization (EM) parameter estimation for HMMs.
+//! Zero-allocation Baum-Welch Expectation-Maximization (EM) parameter estimation for HMMs,
+//! delegating chain forward-backward message passing to [`engine_graph`] and row normalization
+//! to [`engine_prob`].
 // [cite:clinical_trials_statistics]
 
 use super::baum_welch_types::{BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace};
 use super::model::HiddenMarkovModel;
 use crate::error::MarkovError;
+use engine_graph::{
+    ChainFbWorkspace, ChainModelView, chain_accumulate_xi_into, chain_forward_backward_into,
+};
+use engine_prob::discrete_posterior_into;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
+
+#[inline]
+const fn idx2d(row: usize, col: usize, cols: usize) -> usize {
+    row * cols + col
+}
 
 fn validate_bw_inputs<T: RealField + Copy + ToPrimitive>(
     hmm: &HiddenMarkovModel<T>,
@@ -51,141 +62,70 @@ fn validate_bw_inputs<T: RealField + Copy + ToPrimitive>(
     Ok(())
 }
 
-fn run_forward_into<T: RealField + Copy + ToPrimitive>(
+fn sync_f64_model<T: RealField + Copy + ToPrimitive>(
     hmm: &HiddenMarkovModel<T>,
-    observations: &[usize],
-    ws: &mut BaumWelchWorkspace<T>,
-) -> T {
-    let n = hmm.num_states;
-    let zero = T::zero();
-    let neg_inf = T::from_f64(f64::NEG_INFINITY)
-        .or_else(T::min_value)
-        .unwrap_or_else(|| zero.ln());
-    let y0 = observations[0];
-    let mut scale0 = zero;
-    for i in 0..n {
-        let v = hmm.initial[i] * hmm.emissions[(i, y0)];
-        ws.alpha[i] = v;
-        scale0 += v;
-    }
-    if scale0 <= zero {
-        return neg_inf;
-    }
-    for i in 0..n {
-        ws.alpha[i] /= scale0;
-    }
-    ws.scales[0] = scale0;
-    let mut ll = scale0.ln();
-
-    let mut prev_off = 0;
-    for (step_idx, &y_t) in observations.iter().enumerate().skip(1) {
-        let curr_off = prev_off + n;
-        let mut scale_t = zero;
-        for j in 0..n {
-            let mut sum = zero;
-            for i in 0..n {
-                sum += ws.alpha[prev_off + i] * hmm.transitions[(i, j)];
-            }
-            let v = sum * hmm.emissions[(j, y_t)];
-            ws.alpha[curr_off + j] = v;
-            scale_t += v;
-        }
-        if scale_t <= zero {
-            return neg_inf;
-        }
-        for j in 0..n {
-            ws.alpha[curr_off + j] /= scale_t;
-        }
-        ws.scales[step_idx] = scale_t;
-        ll += scale_t.ln();
-        prev_off = curr_off;
-    }
-    ll
-}
-
-fn init_backward_accumulators<T: RealField + Copy + ToPrimitive>(
-    hmm: &HiddenMarkovModel<T>,
-    observations: &[usize],
-    ws: &mut BaumWelchWorkspace<T>,
-) -> usize {
-    let n = hmm.num_states;
-    let m = hmm.num_observations;
-    let t_max = observations.len();
-    let zero = T::zero();
-    let one = T::one();
-
-    ws.init_gamma[..n].fill(zero);
-    ws.gamma_trans_sum[..n].fill(zero);
-    ws.gamma_all_sum[..n].fill(zero);
-    ws.xi_sum[..n * n].fill(zero);
-    ws.emission_sum[..n * m].fill(zero);
-    ws.beta_next[..n].fill(one);
-
-    let last_off = (t_max - 1) * n;
-    let y_last = observations[t_max - 1];
-    let mut emit_off = 0;
-    for i in 0..n {
-        let g = ws.alpha[last_off + i];
-        ws.gamma_all_sum[i] += g;
-        ws.emission_sum[emit_off + y_last] += g;
-        if t_max == 1 {
-            ws.init_gamma[i] = g;
-        }
-        emit_off += m;
-    }
-    last_off
-}
-
-fn accumulate_backward_stats<T: RealField + Copy + ToPrimitive>(
-    hmm: &HiddenMarkovModel<T>,
-    observations: &[usize],
     ws: &mut BaumWelchWorkspace<T>,
 ) {
     let n = hmm.num_states;
     let m = hmm.num_observations;
-    let t_max = observations.len();
-    let zero = T::zero();
-    let one = T::one();
-    let mut step_off = init_backward_accumulators(hmm, observations, ws);
-
-    for t in (0..t_max - 1).rev() {
-        step_off -= n;
-        let y_t = observations[t];
-        let y_next = observations[t + 1];
-        let inv_s_next = one / ws.scales[t + 1];
+    for i in 0..n {
+        ws.f64_initial[i] = hmm.initial[i].to_f64().unwrap_or(0.0);
         for j in 0..n {
-            ws.obs_beta[j] = hmm.emissions[(j, y_next)] * ws.beta_next[j];
+            ws.f64_transitions[idx2d(i, j, n)] = hmm.transitions[(i, j)].to_f64().unwrap_or(0.0);
         }
-        let mut norm = zero;
-        for i in 0..n {
-            let mut sum = zero;
-            for j in 0..n {
-                sum += hmm.transitions[(i, j)] * ws.obs_beta[j];
-            }
-            ws.beta_curr[i] = sum * inv_s_next;
-            norm += ws.alpha[step_off + i] * ws.beta_curr[i];
+        for k in 0..m {
+            ws.f64_emissions[idx2d(i, k, m)] = hmm.emissions[(i, k)].to_f64().unwrap_or(0.0);
         }
-        let inv_norm = if norm > zero { one / norm } else { one };
-        let mut xi_row_off = 0;
-        let mut em_row_off = 0;
-        for i in 0..n {
-            let alpha_i = ws.alpha[step_off + i];
-            let gamma_i = alpha_i * ws.beta_curr[i] * inv_norm;
-            ws.gamma_trans_sum[i] += gamma_i;
-            ws.gamma_all_sum[i] += gamma_i;
-            ws.emission_sum[em_row_off + y_t] += gamma_i;
-            if t == 0 {
-                ws.init_gamma[i] = gamma_i;
-            }
-            let scale_xi = alpha_i * inv_s_next * inv_norm;
-            for j in 0..n {
-                ws.xi_sum[xi_row_off + j] += scale_xi * hmm.transitions[(i, j)] * ws.obs_beta[j];
-            }
-            xi_row_off += n;
-            em_row_off += m;
-        }
-        ws.beta_next[..n].copy_from_slice(&ws.beta_curr[..n]);
     }
+}
+
+fn run_e_step_into<T: RealField + Copy + ToPrimitive>(
+    hmm: &HiddenMarkovModel<T>,
+    observations: &[usize],
+    ws: &mut BaumWelchWorkspace<T>,
+) -> f64 {
+    let n = hmm.num_states;
+    let m = hmm.num_observations;
+    let t_len = observations.len();
+    sync_f64_model(hmm, ws);
+
+    let ll = {
+        let model_view = ChainModelView {
+            num_states: n,
+            num_obs: m,
+            initial: &ws.f64_initial[..n],
+            transitions: &ws.f64_transitions[..n * n],
+            emissions: &ws.f64_emissions[..n * m],
+        };
+        let mut fb_ws = ChainFbWorkspace {
+            alpha: &mut ws.f64_alpha[..t_len * n],
+            beta: &mut ws.f64_beta[..t_len * n],
+            scales: &mut ws.f64_scales[..t_len],
+            gamma: &mut ws.f64_gamma[..t_len * n],
+        };
+        let ll = chain_forward_backward_into(&model_view, observations, &mut fb_ws)
+            .unwrap_or(f64::NEG_INFINITY);
+        if ll.is_finite() {
+            let _ = chain_accumulate_xi_into(
+                &model_view,
+                observations,
+                &fb_ws,
+                &mut ws.f64_xi_sum[..n * n],
+            );
+        }
+        ll
+    };
+    if !ll.is_finite() {
+        return ll;
+    }
+
+    ws.f64_emission_sum[..n * m].fill(0.0);
+    for (t, &obs) in observations.iter().enumerate() {
+        for i in 0..n {
+            ws.f64_emission_sum[idx2d(i, obs, m)] += ws.f64_gamma[idx2d(t, i, n)];
+        }
+    }
+    ll
 }
 
 fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
@@ -248,54 +188,71 @@ fn restore_parameters<T: RealField + Copy + ToPrimitive>(
 
 fn apply_m_step<T: RealField + Copy + ToPrimitive>(
     hmm: &mut HiddenMarkovModel<T>,
-    ws: &BaumWelchWorkspace<T>,
-    prior: T,
+    ws: &mut BaumWelchWorkspace<T>,
+    prior_f64: f64,
     has_transitions: bool,
 ) {
     let n = hmm.num_states;
     let m = hmm.num_observations;
-    let zero = T::zero();
 
-    let mut pi_sum = zero;
     for i in 0..n {
-        let v = ws.init_gamma[i] + prior;
-        hmm.initial[i] = v;
-        pi_sum += v;
+        ws.f64_row_in[i] = ws.f64_gamma[idx2d(0, i, n)] + prior_f64;
     }
-    if pi_sum > zero {
+    if let Ok(ev) = discrete_posterior_into(
+        &ws.f64_row_in[..n],
+        &ws.f64_row_ones[..n],
+        &mut ws.f64_row_out[..n],
+    ) && ev > 0.0
+    {
         for i in 0..n {
-            hmm.initial[i] /= pi_sum;
+            hmm.initial[i] = T::from_f64(ws.f64_row_out[i]).unwrap_or_else(T::zero);
         }
     }
 
     if has_transitions {
-        let mut xi_off = 0;
         for i in 0..n {
-            let mut row_sum = zero;
             for j in 0..n {
-                row_sum += ws.xi_sum[xi_off + j] + prior;
+                ws.f64_row_in[j] = ws.f64_xi_sum[idx2d(i, j, n)] + prior_f64;
             }
-            if row_sum > zero {
+            if let Ok(ev) = discrete_posterior_into(
+                &ws.f64_row_in[..n],
+                &ws.f64_row_ones[..n],
+                &mut ws.f64_row_out[..n],
+            ) && ev > 0.0
+            {
                 for j in 0..n {
-                    hmm.transitions[(i, j)] = (ws.xi_sum[xi_off + j] + prior) / row_sum;
+                    hmm.transitions[(i, j)] =
+                        T::from_f64(ws.f64_row_out[j]).unwrap_or_else(T::zero);
                 }
             }
-            xi_off += n;
         }
     }
 
-    let mut em_off = 0;
     for i in 0..n {
-        let mut row_sum = zero;
         for k in 0..m {
-            row_sum += ws.emission_sum[em_off + k] + prior;
+            ws.f64_row_in[k] = ws.f64_emission_sum[idx2d(i, k, m)] + prior_f64;
         }
-        if row_sum > zero {
+        if let Ok(ev) = discrete_posterior_into(
+            &ws.f64_row_in[..m],
+            &ws.f64_row_ones[..m],
+            &mut ws.f64_row_out[..m],
+        ) && ev > 0.0
+        {
             for k in 0..m {
-                hmm.emissions[(i, k)] = (ws.emission_sum[em_off + k] + prior) / row_sum;
+                hmm.emissions[(i, k)] = T::from_f64(ws.f64_row_out[k]).unwrap_or_else(T::zero);
             }
         }
-        em_off += m;
+    }
+}
+
+fn scalar_from_ll<T: RealField + Copy>(ll: f64) -> T {
+    if ll.is_finite() {
+        T::from_f64(ll).unwrap_or_else(T::zero)
+    } else {
+        let zero = T::zero();
+        T::from_f64(f64::NEG_INFINITY)
+            .or_else(T::min_value)
+            .unwrap_or_else(|| zero.ln())
     }
 }
 
@@ -317,8 +274,9 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
             workspace,
             log_likelihood_history,
         )?;
-        let initial_ll = run_forward_into(self, observations, workspace);
-        if !initial_ll.is_finite() {
+        let initial_ll_f64 = run_e_step_into(self, observations, workspace);
+        let initial_ll = scalar_from_ll::<T>(initial_ll_f64);
+        if !initial_ll_f64.is_finite() {
             return Ok(BaumWelchReport {
                 iterations: 0,
                 converged: true,
@@ -326,9 +284,11 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
                 final_log_likelihood: initial_ll,
             });
         }
-        accumulate_backward_stats(self, observations, workspace);
 
         let has_transitions = observations.len() > 1;
+        let prior_f64 = config.dirichlet_alpha.to_f64().unwrap_or(0.0);
+        let tol_f64 = config.tolerance.to_f64().unwrap_or(0.0);
+        let mut prev_ll_f64 = initial_ll_f64;
         let mut prev_ll = initial_ll;
         let mut iterations = 0;
         let mut converged = false;
@@ -339,24 +299,25 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
             .take(config.max_iterations)
         {
             snapshot_parameters(self, workspace);
-            apply_m_step(self, workspace, config.dirichlet_alpha, has_transitions);
-            let new_ll = run_forward_into(self, observations, workspace);
-            if !new_ll.is_finite() || new_ll < prev_ll {
+            apply_m_step(self, workspace, prior_f64, has_transitions);
+            let new_ll_f64 = run_e_step_into(self, observations, workspace);
+            if !new_ll_f64.is_finite() || new_ll_f64 < prev_ll_f64 {
                 restore_parameters(self, workspace);
                 *hist_slot = prev_ll;
                 iterations = iter + 1;
                 converged = true;
                 break;
             }
+            let new_ll = scalar_from_ll::<T>(new_ll_f64);
             *hist_slot = new_ll;
-            let delta = new_ll - prev_ll;
+            let delta = new_ll_f64 - prev_ll_f64;
+            prev_ll_f64 = new_ll_f64;
             prev_ll = new_ll;
             iterations = iter + 1;
-            if delta <= config.tolerance {
+            if delta <= tol_f64 {
                 converged = true;
                 break;
             }
-            accumulate_backward_stats(self, observations, workspace);
         }
 
         Ok(BaumWelchReport {

@@ -1,6 +1,6 @@
 //! Pocock/Bebu-Lachin two-sample U-statistic variance estimation for unmatched win ratios.
 
-use statrs::distribution::{ContinuousCDF, Normal};
+use engine_prob::{ContinuousDist, Normal};
 
 use super::censoring::TierCount;
 use super::pair_comparison::{ComparisonResult, WinRatioAnalysis, WinRatioStats};
@@ -167,7 +167,7 @@ fn degenerate_inference(
     net_benefit: f64,
     m: &SubjectMarginals<'_>,
 ) -> Option<(f64, f64, f64, f64, f64)> {
-    let normal = Normal::new(0.0, 1.0).ok()?;
+    let normal = Normal::standard();
     let win_ratio = if losses == 0 { f64::INFINITY } else { 0.0 };
     let var_net = accumulate_net_benefit_variance(n1, n2, net_benefit, m);
     let (z_score, p_value) = if var_net > 0.0 {
@@ -263,7 +263,7 @@ fn finite_log_wr_inference(
     m: &SubjectMarginals<'_>,
     alpha: f64,
 ) -> Option<(f64, f64, f64, f64, f64, f64)> {
-    let normal = Normal::new(0.0, 1.0).ok()?;
+    let normal = Normal::standard();
     let win_ratio = wins as f64 / losses as f64;
     let var_ln_wr =
         accumulate_log_wr_variance(n1, n2, wins as f64 / total_f, losses as f64 / total_f, m);
@@ -279,7 +279,7 @@ fn finite_log_wr_inference(
         return Some((win_ratio, win_ratio, win_ratio, 0.0, z, p));
     }
     let ln_wr = win_ratio.ln();
-    let z_crit = normal.inverse_cdf(1.0 - alpha / 2.0);
+    let z_crit = normal.quantile(1.0 - alpha / 2.0).ok()?;
     let z = ln_wr / log_wr_se;
     let p = (2.0 * (1.0 - normal.cdf(z.abs()))).clamp(0.0, 1.0);
     Some((

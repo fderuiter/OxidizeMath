@@ -125,10 +125,12 @@ pub mod core;
 pub mod distribution;
 pub mod link_functions;
 pub mod regression;
+pub mod solver;
 
 pub use core::{Count, PoissonRate, ZeroInflation, ZipParams};
 pub use distribution::ZipDistribution;
 pub use link_functions::{LogLink, LogitLink};
 pub use regression::{ZipRegression, simple_zip_fit};
+pub use solver::{ZipFitConfig, ZipFitResult};
 
 // [cite:clinical_trials_statistics]

@@ -1,0 +1,30 @@
+# ADR 20261123: `#![no_std]` Probability and Graphical Model Engines (`engine_prob`, `engine_graph`), ZIP EM+IRLS Solver, and Probability Workbench
+
+Date: 2026-11-23
+
+## Status
+Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0043](0043-repair-guides-and-enforce-static-doc-gates.md), [ADR 20261123](20261123-freesurfer-deformable-mrf-and-cortical-morphometry.md), and [ADR 20261123](20261123-inventory-tabs-and-scoped-build-scripts.md))
+
+## Context
+Prior to this decision, probability special functions, continuous and discrete distributions, stochastic samplers, optimal transport losses, and discrete message-passing routines were fragmented across `pure_math` and domain crates (`domain_ai`, `domain_applied`, `domain_biology`, `domain_climate`, `domain_epidemiology`, `domain_physics`) with ad-hoc dependencies on `statrs` and `rand_distr`:
+1. **`#![no_std]` Portability and Zero-Allocation Guarantees**: Embedded, `wasm32`, and `VerifiedAllocator`-guarded kernels require pure `#![no_std]` (`libm` + `rand_core::RngCore`) special functions, distributions, conjugate Bayesian updaters, conformal calibration primitives, optimal transport solvers, and factor-graph belief propagation operating over caller-supplied scratch slices with zero heap allocations.
+2. **Zero-Inflated Poisson Completeness and Unclamped EM+IRLS Estimation**: [`ZipDistribution`](../../crates/pure_math/src/pure_math/statistics/zip_regression/distribution.rs) lacked `ln_pmf`, `quantile`, and deterministic `sample`, while [`ZipRegression`](../../crates/pure_math/src/pure_math/statistics/zip_regression/regression.rs) provided forward evaluation without a maximum-likelihood `fit` solver or suffered artificial upper-bound clamping on extreme zero-inflation regimes ($\rho > 0.95$).
+3. **Unified Facade, Calibration, and Interactive Exploration**: `domain_ai::self_calibration` needed distribution-free split-conformal quantiles and sequential e-values, `domain_climate::loss` needed consolidated 1D Wasserstein ($W_1$) and log-domain Sinkhorn optimal transport, `domain_applied::freesurfer` and `pure_math::statistics::markov::hmm` needed shared discrete graphical-model primitives, and `math_explorer_gui` lacked a dedicated interactive Probability Workbench tab.
+
+## Decision
+1. **Tier-2 `#![no_std]` Probability Engine ([`crates/02_engines/engine_prob`](../../crates/02_engines/engine_prob/src/lib.rs))**:
+   - Implement `#![no_std]` Lanczos `ln_gamma` ($g = 7, n = 9$), Lentz continued-fraction regularized incomplete beta/gamma (`betainc_reg`, `gammainc_lower_reg`, `gammainc_upper_reg`), and rational-Chebyshev + Halley `erf`/`erfc`/`erf_inv`/`erfc_inv` in [`special/`](../../crates/02_engines/engine_prob/src/special/mod.rs).
+   - Provide `ContinuousDist` (`Normal`, `Uniform`, `Exponential`, `Gamma`, `Beta`, `StudentsT`, `ChiSquared`) and `DiscreteDist` (`Bernoulli`, `Binomial`, `Poisson`, `Categorical`) in [`distributions/`](../../crates/02_engines/engine_prob/src/distributions/mod.rs) with `< 1e-10` relative quantile accuracy and deterministic `RngCore` sampling.
+   - Implement zero-allocation conjugate families (`BetaBinomial`, `DirichletMultinomial`, `GammaPoisson`, `NormalNormal`, `NormalInverseGamma`) in [`conjugate/`](../../crates/02_engines/engine_prob/src/conjugate/mod.rs), split-conformal quantiles and `EValue` sequential testing in [`calibration.rs`](../../crates/02_engines/engine_prob/src/calibration.rs), and `wasserstein_1d_into` + `sinkhorn_log_domain_into` in [`transport.rs`](../../crates/02_engines/engine_prob/src/transport.rs).
+2. **Tier-2 `#![no_std]` Graphical Model Engine ([`crates/02_engines/engine_graph`](../../crates/02_engines/engine_graph/src/lib.rs))**:
+   - Provide slice-backed `FactorSpec` and `FactorGraphView`, zero-allocation `sum_product_bp_into` (computing marginal beliefs and exact tree / Bethe $\ln Z$) in [`bp_sum_product.rs`](../../crates/02_engines/engine_graph/src/bp_sum_product.rs), log-domain `max_product_bp_into` MAP decoding in [`bp_max_product.rs`](../../crates/02_engines/engine_graph/src/bp_max_product.rs), and `ChainModelView` / `potts_neighborhood_posteriors_into` in [`chain_mrf.rs`](../../crates/02_engines/engine_graph/src/chain_mrf.rs).
+3. **ZIP EM+IRLS+Newton Solver and Cross-Crate Consolidation**:
+   - Extend `ZipDistribution` with `ln_pmf`, `quantile`, and `sample`, and add `ZipRegression::fit` in [`solver.rs`](../../crates/pure_math/src/pure_math/statistics/zip_regression/solver.rs) combining Expectation-Maximization, weighted Poisson/logistic IRLS, and damped observed-information Newton polish without clamping $\rho$ at `0.95`.
+   - Wire `domain_ai::self_calibration::scoring`, `domain_climate::loss`, `domain_applied::freesurfer::segmentation`, and `pure_math::statistics::markov::hmm` to `engine_prob` and `engine_graph`, remove `rand_distr` from the workspace, and preserve public `statrs` trait compatibility in [`mechanism_design.rs`](../../crates/domain_applied/src/applied/game_theory/mechanism_design.rs).
+4. **Facade Re-Exports and `ProbabilityWorkbenchTab` in `math_explorer_gui`**:
+   - Re-export `engine_prob`, `engine_graph`, `ProbError`, and `GraphEngineError` from [`math_explorer`](../../math_explorer/src/lib.rs), and register [`ProbabilityWorkbenchTab`](../../math_explorer_gui/src/tabs/probability/mod.rs) (`#tab=probability`) hosting `DistributionsExplorerTool`, `ConjugateBayesianTool`, and `FactorBeliefPropagationTool`.
+
+## Consequences
+- **Positive**: Core probability, Bayesian updating, conformal calibration, optimal transport, and factor-graph belief propagation execute in `#![no_std]` environments and pass `VerifiedEngine` zero-allocation invariants on native and `wasm32` targets.
+- **Positive**: Consolidating stochastic samplers and special functions eliminates `rand_distr` across the workspace while keeping `mechanism_design.rs` trait bounds backward-compatible.
+- **Neutral**: Adding `engine_prob`, `engine_graph`, and `ProbabilityWorkbenchTab` expands the workspace to `22` member crates, `29` GUI tabs, `91` interactive tools, and `152` starter presets.

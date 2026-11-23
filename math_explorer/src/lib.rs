@@ -4,6 +4,8 @@ pub mod error;
 pub mod prelude;
 
 pub use diagnostics;
+pub use engine_graph;
+pub use engine_prob;
 pub use math_commons::{
     ast, constants, fit, math_kernel, poi, primitives, registry, series, wigner,
 };

@@ -5,7 +5,7 @@
 //! - [`PhasePoint2D`]: Canonical 2D coordinates $q = (w, b)$ and conjugate momenta $p = (p_w, p_b)$.
 //! - [`HamiltonianLeapfrog2D`]: Conformal symplectic Störmer-Verlet (kick-drift-kick) integrator.
 //! - [`LangevinBaoab2D`]: Second-order BAOAB Langevin thermostat splitting with exact
-//!   Ornstein-Uhlenbeck fluctuation-dissipation sampling via `rand_distr::Normal`.
+//!   Ornstein-Uhlenbeck fluctuation-dissipation sampling via [`engine_prob::Normal`].
 //!
 //! # Example
 //!
@@ -27,9 +27,9 @@
 //! ```
 
 use super::evolution::{EvolutionEngine, EvolutionError};
+use engine_prob::{ContinuousDist, Normal};
 use nalgebra::Vector2;
 use rand::RngCore;
-use rand_distr::{Distribution, Normal};
 use serde::{Deserialize, Serialize};
 
 /// Minimum safe particle mass preventing division-by-zero in kinetic velocity derivatives.
@@ -373,7 +373,7 @@ impl LangevinBaoab2D {
 
         let c1 = (-gamma * h).exp();
         let p_o = if kbt > 0.0 && gamma > 0.0 {
-            let normal = Normal::new(0.0, 1.0).map_err(|_| EvolutionError::ConversionError)?;
+            let normal = Normal::standard();
             let sigma = (m * kbt * (1.0 - c1 * c1)).max(0.0).sqrt();
             let xi = Vector2::new(normal.sample(rng), normal.sample(rng));
             p_b * c1 + xi * sigma

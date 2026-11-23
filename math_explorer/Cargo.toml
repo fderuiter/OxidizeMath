@@ -7,6 +7,8 @@ license = "AGPL-3.0-or-later"
 [dependencies]
 math_commons = { path = "../crates/math_commons" }
 diagnostics = { path = "../crates/diagnostics" }
+engine_graph = { path = "../crates/02_engines/engine_graph", features = ["alloc"] }
+engine_prob = { path = "../crates/02_engines/engine_prob", features = ["alloc"] }
 pure_math = { path = "../crates/pure_math", optional = true }
 domain_applied = { path = "../crates/domain_applied", optional = true }
 domain_ai = { path = "../crates/domain_ai", optional = true }

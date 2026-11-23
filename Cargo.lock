@@ -1057,12 +1057,12 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "diagnostics",
+ "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
  "rand",
- "rand_distr",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -1073,6 +1073,8 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "diagnostics",
+ "engine_graph",
+ "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
  "oxidize_core",
@@ -1105,6 +1107,7 @@ name = "domain_climate"
 version = "0.4.0"
 dependencies = [
  "diagnostics",
+ "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
  "oxidize_core",
@@ -1350,6 +1353,27 @@ name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
+
+[[package]]
+name = "engine_graph"
+version = "0.4.0"
+dependencies = [
+ "approx",
+ "engine_prob",
+ "libm",
+ "verified_engine",
+]
+
+[[package]]
+name = "engine_prob"
+version = "0.4.0"
+dependencies = [
+ "approx",
+ "libm",
+ "oxidize_core",
+ "rand_core",
+ "verified_engine",
+]
 
 [[package]]
 name = "enumflags2"
@@ -2444,6 +2468,8 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
+ "engine_graph",
+ "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",
@@ -3381,6 +3407,8 @@ dependencies = [
  "approx",
  "dashu",
  "diagnostics",
+ "engine_graph",
+ "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",
@@ -3389,11 +3417,9 @@ dependencies = [
  "petgraph",
  "quadrature",
  "rand",
- "rand_distr",
  "rustfft",
  "serde",
  "serde_json",
- "statrs",
  "thiserror 2.0.21",
  "verified_engine",
 ]

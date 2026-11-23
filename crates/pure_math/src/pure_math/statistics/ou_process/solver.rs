@@ -2,8 +2,8 @@
 
 use super::core::OuParams;
 use crate::error::OuError;
+use engine_prob::{ContinuousDist, Normal};
 use rand::Rng;
-use rand_distr::{Distribution, Normal};
 
 /// Time step for numerical integration (Δt).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -51,7 +51,7 @@ impl TimeStep {
 pub struct EulerMaruyama {
     params: OuParams,
     dt: TimeStep,
-    normal: Normal<f64>,
+    normal: Normal,
     diffusion_factor: f64,
 }
 
@@ -83,7 +83,7 @@ impl EulerMaruyama {
     /// ```
     #[verified_engine::verified]
     pub fn new(params: OuParams, dt: TimeStep) -> Self {
-        let normal = Normal::new(0.0, 1.0).unwrap();
+        let normal = Normal::standard();
         let diffusion_factor = params.sigma.value() * dt.value().sqrt();
         Self {
             params,

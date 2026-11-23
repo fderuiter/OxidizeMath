@@ -2,8 +2,7 @@
 
 use super::core::Probability;
 use crate::error::CopulaError;
-use statrs::distribution::{ContinuousCDF, Normal};
-use statrs::function::erf::{erfc, erfc_inv};
+use engine_prob::{ContinuousDist, Normal, erfc, erfc_inv};
 use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2, TAU};
 
 /// Fast zero-allocation standard normal CDF `Phi(z)` accurate to full IEEE-754 precision.
@@ -106,7 +105,7 @@ impl ProbabilityTransform for NormalTransform {
 
     #[verified_engine::verified]
     fn inverse_transform(&self, u: Probability) -> f64 {
-        self.normal.inverse_cdf(u.value())
+        self.normal.quantile(u.value()).unwrap_or(f64::NAN)
     }
 }
 

@@ -1,6 +1,6 @@
+use engine_prob::{ContinuousDist, Normal};
 use nalgebra::DMatrix;
 use rand::Rng;
-use rand_distr::{Distribution, Normal};
 
 const DEFAULT_BETA_START: f64 = 0.0001;
 const DEFAULT_BETA_END: f64 = 0.02;
@@ -108,10 +108,7 @@ pub fn generate_noise_with_rng<R: Rng + ?Sized>(
     cols: usize,
     rng: &mut R,
 ) -> Result<DMatrix<f64>, crate::error::AIError> {
-    let normal =
-        Normal::new(0.0, 1.0).map_err(|e| math_commons::error::MathError::ConversionError {
-            reason: format!("Invalid normal distribution: {}", e),
-        })?;
+    let normal = Normal::standard();
     Ok(DMatrix::from_fn(rows, cols, |_, _| normal.sample(rng)))
 }
 

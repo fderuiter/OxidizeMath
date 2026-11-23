@@ -1,5 +1,5 @@
 use super::types::{ClinicalTrialError, ContingencyTable, GroupData};
-use statrs::distribution::{ChiSquared, ContinuousCDF, StudentsT};
+use engine_prob::{ChiSquared, ContinuousDist, StudentsT};
 
 /// Defines a strategy for performing a hypothesis test.
 pub trait HypothesisTest<Input> {
@@ -68,13 +68,15 @@ impl<'a> HypothesisTest<(&'a GroupData, &'a GroupData)> for TTestIndependent {
         let t_stat = (mean1 - mean2) / se_diff;
 
         // P-value (two-tailed)
-        let t_dist = StudentsT::new(0.0, 1.0, dof)
-            .map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
+        let t_dist =
+            StudentsT::new(dof).map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
         let p_value = 2.0 * (1.0 - t_dist.cdf(t_stat.abs()));
 
         // Confidence Interval for the difference
         // diff +/- t_crit * se_diff
-        let t_crit = t_dist.inverse_cdf(1.0 - self.alpha / 2.0);
+        let t_crit = t_dist
+            .quantile(1.0 - self.alpha / 2.0)
+            .map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
         let margin = t_crit * se_diff;
         let diff = mean1 - mean2;
         let ci = (diff - margin, diff + margin);

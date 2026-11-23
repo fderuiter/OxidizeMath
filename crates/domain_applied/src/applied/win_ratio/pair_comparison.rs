@@ -1,5 +1,5 @@
 use crate::applied::clinical_trials::types::ClinicalTrialError;
-use statrs::distribution::{ContinuousCDF, Normal};
+use engine_prob::{ContinuousDist, Normal};
 use std::marker::PhantomData;
 
 pub use super::censoring::{CensoredOutcome, RightCensoredComparator, TierCount};
@@ -468,7 +468,7 @@ pub fn calculate_statistics(wins: i32, losses: i32) -> Option<WinRatioStats> {
     };
 
     let z_score = (p_win - 0.5) / se;
-    let normal = Normal::new(0.0, 1.0).unwrap();
+    let normal = Normal::standard();
     let p_value = 2.0 * (1.0 - normal.cdf(z_score.abs()));
 
     Some(WinRatioStats {

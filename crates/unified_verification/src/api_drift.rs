@@ -35,8 +35,29 @@ fn collect_crate_roots(workspace_root: &Path) -> Vec<PathBuf> {
 
         for path in crate_dirs {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
-            if name != "unified_verification" {
-                roots.push(path.join("src/lib.rs"));
+            if name == "unified_verification" {
+                continue;
+            }
+            let direct_lib = path.join("src/lib.rs");
+            if direct_lib.is_file() || !path.join("Cargo.toml").exists() {
+                if direct_lib.is_file() {
+                    roots.push(direct_lib);
+                } else if let Ok(nested_entries) = fs::read_dir(&path) {
+                    let mut nested_dirs: Vec<PathBuf> = nested_entries
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| p.is_dir())
+                        .collect();
+                    nested_dirs.sort();
+                    for nested in nested_dirs {
+                        let nested_lib = nested.join("src/lib.rs");
+                        if nested_lib.is_file() {
+                            roots.push(nested_lib);
+                        }
+                    }
+                }
+            } else {
+                roots.push(direct_lib);
             }
         }
     }
