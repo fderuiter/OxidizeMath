@@ -5,8 +5,9 @@ use math_explorer::nalgebra::DMatrix;
 use std::time::Instant;
 
 fn main() {
-    let size = 1000;
-    let num_modules = 10;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (size, num_modules) = if smoke { (64, 4) } else { (1000, 10) };
 
     println!(
         "Generating {} LoRA modules with {}x{} matrices...",

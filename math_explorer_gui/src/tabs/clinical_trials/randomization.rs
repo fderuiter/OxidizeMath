@@ -354,7 +354,15 @@ inventory::submit! {
         id: "RandomizationTool",
         display_name: "Randomization",
         domain: "clinical_trials",
-        tags: &["randomization", "block", "stratified", "simpson"],
+        tags: &[
+            "permuted block",
+            "stratified",
+            "bernoulli",
+            "allocation",
+            "confounding",
+            "simpson",
+            "rct",
+        ],
         build: || Box::new(RandomizationTool::default()),
     }
 }

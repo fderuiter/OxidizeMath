@@ -1,4 +1,4 @@
-# ADR 0047: Composite Win Ratio Workbench and Clinical Trial Biostatistics Upgrades
+# ADR 20261123: Composite Win Ratio Workbench and Clinical Trial Biostatistics Upgrades
 
 ## Status
 Accepted (extends [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0028](0028-finite-survival-time-and-total-order-kaplan-meier.md), and [ADR 0035](0035-pharmacokinetics-adme-gui-workbench.md))
@@ -24,4 +24,4 @@ At the same time, existing biostatistical tools in `ClinicalTrialsTab` exhibited
 ## Consequences
 - **Positive**: Every clinical trial tool in `ClinicalTrialsTab` now advertises `ExportCapabilities::plot()`, passes offscreen PNG/SVG modal audits, executes 100% locally in memory on desktop and `wasm32-unknown-unknown`, and exposes end-to-end report/table downloads.
 - **Positive**: `WinRatioTool::evaluate_hot_path` executes with zero heap allocations under `VerifiedEngine::run_verified`, and `MatchedPairing` enforces equal arm lengths prior to evaluation so domain panics are impossible from user input.
-- **Neutral**: Global GUI registry contracts advance from `75 -> 76` `InteractiveTool` entries (`52 -> 55` plot-export tools, `16 -> 14` non-figure tools) and `108 -> 110` `StarterPresetMetadata` cards.
+- **Neutral**: Global GUI registry contracts advance from `77 -> 78` `InteractiveTool` entries (`55 -> 58` plot-export tools, `15 -> 13` non-figure tools) and `112 -> 114` `StarterPresetMetadata` cards.

@@ -417,7 +417,15 @@ inventory::submit! {
         id: "WinRatioTool",
         display_name: "Composite Win Ratio",
         domain: "clinical_trials",
-        tags: &["win_ratio", "composite", "weibull", "ttest", "bmi"],
+        tags: &[
+            "win ratio",
+            "composite endpoint",
+            "weibull",
+            "pocock",
+            "ttest",
+            "bmi",
+            "rct",
+        ],
         build: || Box::new(WinRatioTool::default()),
     }
 }
