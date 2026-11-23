@@ -1087,7 +1087,6 @@ dependencies = [
 name = "domain_biology"
 version = "0.4.0"
 dependencies = [
- "approx",
  "diagnostics",
  "domain_applied",
  "math_commons",
@@ -1103,7 +1102,6 @@ dependencies = [
 name = "domain_climate"
 version = "0.4.0"
 dependencies = [
- "approx",
  "math_commons",
  "nalgebra 0.34.2",
  "oxidize_core",
@@ -1116,7 +1114,6 @@ dependencies = [
 name = "domain_epidemiology"
 version = "0.4.0"
 dependencies = [
- "approx",
  "diagnostics",
  "math_commons",
  "nalgebra 0.34.2",
@@ -2401,8 +2398,6 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
- "eframe",
- "egui",
  "federated_registry",
  "math_commons",
  "math_explorer",
@@ -2420,7 +2415,6 @@ dependencies = [
 name = "math_commons"
 version = "0.4.0"
 dependencies = [
- "approx",
  "diagnostics",
  "num-complex",
  "thiserror 2.0.21",
@@ -2448,7 +2442,6 @@ dependencies = [
  "pure_math",
  "rand",
  "scientific_metadata",
- "serde_json",
  "verified_engine",
 ]
 
@@ -2463,7 +2456,6 @@ dependencies = [
  "egui_plot",
  "federated_registry",
  "futures",
- "getrandom 0.2.17",
  "inventory",
  "js-sys",
  "math_commons",
@@ -3166,7 +3158,6 @@ dependencies = [
 name = "oxidize_core"
 version = "0.1.0"
 dependencies = [
- "approx",
  "async-recursion",
  "futures",
  "getrandom 0.2.17",
@@ -4466,7 +4457,6 @@ dependencies = [
 name = "verified_engine_macros"
 version = "0.1.0"
 dependencies = [
- "approx",
  "proc-macro2",
  "quote",
  "scientific_metadata",
