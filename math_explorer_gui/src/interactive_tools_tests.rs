@@ -1,67 +1,84 @@
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn test_additional_interactive_tools() {
-        use crate::framework::InteractiveTool;
-        let ctx = eframe::egui::Context::default();
-
-        macro_rules! check_tool {
-            ($tool_ty:path) => {
+    macro_rules! check_tools {
+        ($ctx:expr, $($tool_ty:path),+ $(,)?) => {{
+            $(
                 let mut tool = <$tool_ty>::default();
                 let _ = tool.name();
                 let _ = tool.theory();
                 let _ = tool.export_datasets();
                 let _ = tool.export_figure_options();
-                let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+                let _ = $ctx.run(eframe::egui::RawInput::default(), |ctx| {
                     tool.show(ctx);
                 });
-            };
-        }
+            )+
+        }};
+    }
 
-        check_tool!(crate::tabs::ai::q_table_inspector::QTableInspectorTool);
-        check_tool!(crate::tabs::ai::attention_maps::AttentionMapsTool);
-        check_tool!(crate::tabs::ai::tokenization::TokenizationTool);
-        check_tool!(crate::tabs::financial_math::bet_size::BetSizeCalculatorTool);
-        check_tool!(crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool);
-        check_tool!(crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool);
-        check_tool!(crate::tabs::game_theory::glicko2::Glicko2TournamentTool);
-        check_tool!(crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool);
-        check_tool!(crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool);
-        check_tool!(crate::tabs::solid_state::band_structure::BandStructureTool);
-        check_tool!(crate::tabs::solid_state::bcs::BcsSuperconductivityTool);
-        check_tool!(crate::tabs::solid_state::ising::IsingModelTool);
-        check_tool!(crate::tabs::solid_state::quantum_stats::QuantumStatsPhononTool);
-        check_tool!(crate::tabs::quantum::clebsch::ClebschGordanTool);
-        check_tool!(crate::tabs::graph_theory::network_metrics::NetworkMetricsTool);
-        check_tool!(crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool);
-        check_tool!(crate::tabs::clinical_trials::survival::SurvivalAnalysisTool);
-        check_tool!(crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool);
-        check_tool!(crate::tabs::clinical_trials::randomization::RandomizationTool);
-        check_tool!(crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool);
-        check_tool!(crate::tabs::climate::cera::CeraTool);
-        check_tool!(crate::tabs::climate::co2_projections::Co2ProjectionsTool);
-        check_tool!(crate::tabs::climate::temperature::TemperatureAnomaliesTool);
-        check_tool!(crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool);
-        check_tool!(crate::tabs::fluid_dynamics::turbulence::TurbulenceTool);
-        check_tool!(crate::tabs::ai::activation_functions::ActivationFunctionsTool);
-        check_tool!(crate::tabs::ai::gaussian_splatting::GaussianSplattingTool);
-        check_tool!(crate::tabs::ai::training_monitor::TrainingMonitorTool);
-        check_tool!(crate::tabs::ai::loss_landscape::LossLandscapeTool);
-        check_tool!(crate::tabs::ai::grid_world::GridWorldTool);
-        check_tool!(crate::tabs::medical::beam_profiling::BeamProfilingTool);
-        check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
-        check_tool!(crate::tabs::medical::radar_gating::RadarGatingTool);
-        check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
-        check_tool!(crate::tabs::chaos::hamiltonian::HamiltonianChaosLab);
-        check_tool!(crate::tabs::algorithmic_information::state::FractranMachineTool);
-        check_tool!(crate::tabs::number_theory::fractran_machine::FractranMachineTool);
-        check_tool!(crate::tabs::number_theory::ualbf_widget::UalbfWidget);
-        check_tool!(crate::tabs::number_theory::partitions_widget::PartitionsWidget);
-        check_tool!(crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget);
-        check_tool!(crate::tabs::morphogenesis::lenia::LeniaTool);
-        check_tool!(crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool);
-        check_tool!(crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool);
-        check_tool!(crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool);
+    #[test]
+    fn test_additional_interactive_tools_part_1() {
+        use crate::framework::InteractiveTool;
+        let ctx = eframe::egui::Context::default();
+        check_tools!(
+            ctx,
+            crate::tabs::ai::q_table_inspector::QTableInspectorTool,
+            crate::tabs::ai::attention_maps::AttentionMapsTool,
+            crate::tabs::ai::tokenization::TokenizationTool,
+            crate::tabs::financial_math::bet_size::BetSizeCalculatorTool,
+            crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool,
+            crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool,
+            crate::tabs::game_theory::glicko2::Glicko2TournamentTool,
+            crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool,
+            crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool,
+            crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool,
+            crate::tabs::solid_state::band_structure::BandStructureTool,
+            crate::tabs::solid_state::bcs::BcsSuperconductivityTool,
+            crate::tabs::solid_state::ising::IsingModelTool,
+            crate::tabs::solid_state::quantum_stats::QuantumStatsPhononTool,
+            crate::tabs::solid_state::sandpile::AbelianSandpileStudio,
+            crate::tabs::quantum::clebsch::ClebschGordanTool,
+            crate::tabs::graph_theory::network_metrics::NetworkMetricsTool,
+            crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool,
+            crate::tabs::clinical_trials::survival::SurvivalAnalysisTool,
+            crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool,
+            crate::tabs::clinical_trials::randomization::RandomizationTool,
+            crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool,
+            crate::tabs::climate::cera::CeraTool,
+            crate::tabs::climate::co2_projections::Co2ProjectionsTool,
+            crate::tabs::climate::temperature::TemperatureAnomaliesTool,
+        );
+    }
+
+    #[test]
+    fn test_additional_interactive_tools_part_2() {
+        use crate::framework::InteractiveTool;
+        let ctx = eframe::egui::Context::default();
+        check_tools!(
+            ctx,
+            crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool,
+            crate::tabs::fluid_dynamics::turbulence::TurbulenceTool,
+            crate::tabs::ai::activation_functions::ActivationFunctionsTool,
+            crate::tabs::ai::gaussian_splatting::GaussianSplattingTool,
+            crate::tabs::ai::training_monitor::TrainingMonitorTool,
+            crate::tabs::ai::loss_landscape::LossLandscapeTool,
+            crate::tabs::ai::grid_world::GridWorldTool,
+            crate::tabs::ai::closed_loop_control::ClosedLoopControlTool,
+            crate::tabs::medical::beam_profiling::BeamProfilingTool,
+            crate::tabs::medical::dose::DoseCalculationTool,
+            crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool,
+            crate::tabs::medical::radar_gating::RadarGatingTool,
+            crate::tabs::epidemiology::network_propagation::NetworkPropagationTool,
+            crate::tabs::chaos::hamiltonian::HamiltonianChaosLab,
+            crate::tabs::algorithmic_information::state::FractranMachineTool,
+            crate::tabs::number_theory::fractran_machine::FractranMachineTool,
+            crate::tabs::number_theory::ualbf_widget::UalbfWidget,
+            crate::tabs::number_theory::partitions_widget::PartitionsWidget,
+            crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget,
+            crate::tabs::morphogenesis::lenia::LeniaTool,
+            crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool,
+            crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool,
+            crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool,
+        );
     }
 
     #[test]

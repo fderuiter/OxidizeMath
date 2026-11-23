@@ -96,7 +96,6 @@ pub struct BcsSuperconductivityTool {
     pub(crate) datasheet_export: DatasheetExportState,
     pub(crate) last_param_summary: String,
     pub(crate) revision: u64,
-    pub(crate) focused_canvas: Option<egui::Id>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -136,7 +135,6 @@ impl Default for BcsSuperconductivityTool {
             datasheet_export: DatasheetExportState::default(),
             last_param_summary: String::new(),
             revision: 1,
-            focused_canvas: None,
         };
         tool.recalculate();
         tool
@@ -164,9 +162,6 @@ impl InteractiveTool for BcsSuperconductivityTool {
     }
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()

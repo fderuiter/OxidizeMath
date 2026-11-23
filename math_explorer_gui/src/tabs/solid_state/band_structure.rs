@@ -28,7 +28,6 @@ pub struct BandStructureTool {
     tb_points: Vec<[f64; 2]>,
     fe_points: Vec<[f64; 2]>,
     revision: u64,
-    focused_canvas: Option<egui::Id>,
     datasheet_export: DatasheetExportState,
 }
 
@@ -44,7 +43,6 @@ impl Default for BandStructureTool {
             tb_points: Vec::with_capacity(BAND_GRID_POINTS),
             fe_points: Vec::with_capacity(BAND_GRID_POINTS),
             revision: 1,
-            focused_canvas: None,
             datasheet_export: DatasheetExportState::default(),
         };
         tool.recalculate();
@@ -271,7 +269,6 @@ impl BandStructureTool {
             Some(&summary),
         );
         paint_canvas_focus_ring(ui, &resp.response);
-        self.focused_canvas = resp.response.has_focus().then_some(resp.response.id);
     }
 }
 
@@ -287,9 +284,6 @@ impl InteractiveTool for BandStructureTool {
     }
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()

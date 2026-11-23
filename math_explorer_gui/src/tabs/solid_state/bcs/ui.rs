@@ -286,7 +286,6 @@ fn render_central_panel(tool: &mut BcsSuperconductivityTool, ui: &mut egui::Ui) 
         Some(&summary),
     );
     paint_canvas_focus_ring(ui, &resp.response);
-    tool.focused_canvas = resp.response.has_focus().then_some(resp.response.id);
 }
 
 fn draw_active_bcs_view(

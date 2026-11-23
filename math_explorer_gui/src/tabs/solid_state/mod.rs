@@ -9,8 +9,9 @@ pub mod crystal_viewer;
 pub mod datasheet;
 pub mod ising;
 pub mod quantum_stats;
+pub mod sandpile;
 
-/// Explorer tab hosting solid-state band theory, crystal lattices, Ising spins, BCS superconductivity, and quantum statistics.
+/// Explorer tab hosting solid-state band theory, crystal lattices, Ising spins, BCS superconductivity, quantum statistics, and Abelian sandpiles.
 pub struct SolidStateTab {
     framework: crate::framework::SimulationFramework,
 }
@@ -30,10 +31,6 @@ impl ExplorerTab for SolidStateTab {
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.framework.show_inside(ui, "solid_state");
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
     }
 
     fn state_revision(&self) -> u64 {

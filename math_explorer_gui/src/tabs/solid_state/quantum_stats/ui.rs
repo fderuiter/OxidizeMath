@@ -293,7 +293,6 @@ fn render_central_panel(tool: &mut QuantumStatsPhononTool, ui: &mut egui::Ui) {
         Some(&summary),
     );
     paint_canvas_focus_ring(ui, &resp.response);
-    tool.focused_canvas = resp.response.has_focus().then_some(resp.response.id);
 }
 
 fn render_view_selector(tool: &mut QuantumStatsPhononTool, ui: &mut egui::Ui) {
