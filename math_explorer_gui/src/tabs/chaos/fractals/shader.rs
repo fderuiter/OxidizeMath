@@ -124,8 +124,8 @@ impl FractalViewer {
         writeln!(out, "const int MAX_ITER = {max_iter};").unwrap();
         writeln!(out, "const bool IS_JULIA = {is_julia};").unwrap();
         writeln!(out, "const bool IS_CUSTOM = {is_custom};").unwrap();
-        writeln!(out, "const float ESCAPE_R2 = {escape_r2};").unwrap();
         writeln!(out, "const vec2 JULIA_C = vec2({jx}, {jy});").unwrap();
+        writeln!(out, "const float ESCAPE_R2 = {escape_r2};").unwrap();
         writeln!(out, "const bool HIGH_CONTRAST = {};\n", self.high_contrast).unwrap();
         if needs_helpers {
             out.push_str(GLSL_COMPLEX_HELPERS);

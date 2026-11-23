@@ -50,6 +50,9 @@ pub mod state_guard;
 #[cfg(test)]
 mod state_guard_tests;
 pub mod story_hud;
+pub(crate) mod theory_links;
+#[cfg(test)]
+mod theory_links_tests;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
