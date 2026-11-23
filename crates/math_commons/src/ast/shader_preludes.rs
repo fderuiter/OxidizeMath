@@ -1,4 +1,5 @@
 //! Standalone WGSL and GLSL helper preludes for real and complex AST shader lowering.
+// [cite:math_commons]
 
 /// Target shading language for AST expression transpilation and prelude emission.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

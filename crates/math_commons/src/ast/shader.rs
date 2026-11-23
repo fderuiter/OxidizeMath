@@ -3,6 +3,7 @@
 //! Lowers real scalar (`f32` / `float`) and complex (`vec2<f32>` / `vec2`) [`Expr`]
 //! syntax trees using an explicit worklist bounded by [`MAX_EVAL_DEPTH`] without
 //! call-stack recursion.
+// [cite:math_commons]
 
 use super::eval::MAX_EVAL_DEPTH;
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};

@@ -3,7 +3,7 @@
 use super::*;
 use crate::accessibility::AccessibleTheoryHover;
 use crate::framework::bounded_drag_value;
-use crate::framework::shader_foundry::{emit_fractal_shader, render_shader_preview_section};
+use crate::framework::shader_foundry::render_shader_preview_section;
 use eframe::egui;
 use math_commons::math_kernel::colormap::ShaderPalette;
 use num_complex::Complex;
@@ -152,18 +152,11 @@ impl FractalViewer {
 
     fn draw_shader_preview(&mut self, ui: &mut egui::Ui) {
         let rev = self.shader_revision();
-        let expr_res = self.resolve_active_shader_expr();
-        let defaults = self.shader_uniform_defaults();
-        render_shader_preview_section(
-            ui,
-            "fractal_shader_preview",
-            &mut self.shader_preview,
-            rev,
-            move |fmt| {
-                let (expr, use_julia_seed) = expr_res?;
-                emit_fractal_shader(fmt, &expr, use_julia_seed, &defaults)
-            },
-        );
+        let mut preview = std::mem::take(&mut self.shader_preview);
+        render_shader_preview_section(ui, "fractal_shader_preview", &mut preview, rev, |fmt| {
+            self.export_shader_source(fmt)
+        });
+        self.shader_preview = preview;
     }
 
     fn pan_by_pixels(&mut self, delta: egui::Vec2, view_w: f64, view_h: f64) {

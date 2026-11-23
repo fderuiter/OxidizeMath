@@ -1,4 +1,5 @@
 //! Analytical CPU and WGSL/GLSL shader colormap emitters with WCAG 2.2 `3.0:1` contrast lifting.
+// [cite:math_commons]
 
 use super::{
     cyclic_cosine_palette, cyclic_cosine_palette_high_contrast, ensure_dark_canvas_contrast,

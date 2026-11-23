@@ -1,4 +1,5 @@
 //! Native Abstract Syntax Tree (AST) expression parser and dynamic evaluator.
+// [cite:math_commons]
 
 pub mod compiled;
 pub mod eval;

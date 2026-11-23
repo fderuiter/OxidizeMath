@@ -1,5 +1,6 @@
 //! A unified colormap utility module for scalar-to-color mapping.
 //! Handles custom color-gradient and step-linear mappings across the codebase.
+// [cite:math_commons]
 
 /// Maps a normalized scalar value (0.0 to 1.0) to an RGB color based on a typical heatmap (blue -> green -> red).
 ///

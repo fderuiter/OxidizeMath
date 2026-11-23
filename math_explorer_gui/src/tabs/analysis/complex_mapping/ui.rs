@@ -2,9 +2,7 @@
 
 use super::*;
 use crate::accessibility::AccessibleTheoryHover;
-use crate::framework::shader_foundry::{
-    emit_domain_coloring_shader, render_shader_preview_section,
-};
+use crate::framework::shader_foundry::render_shader_preview_section;
 use crate::framework::{bounded_drag_value, enforce_ordered_drag_range};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
@@ -182,18 +180,15 @@ impl ComplexMappingTool {
 
     fn draw_shader_preview(&mut self, ui: &mut egui::Ui) {
         let rev = self.shader_revision();
-        let expr_res = self.resolve_active_shader_expr();
-        let defaults = self.shader_uniform_defaults();
+        let mut preview = std::mem::take(&mut self.shader_preview);
         render_shader_preview_section(
             ui,
             "complex_mapping_shader_preview",
-            &mut self.shader_preview,
+            &mut preview,
             rev,
-            move |fmt| {
-                let expr = expr_res?;
-                emit_domain_coloring_shader(fmt, &expr, &defaults)
-            },
+            |fmt| self.export_shader_source(fmt),
         );
+        self.shader_preview = preview;
     }
 
     pub(super) fn draw_central_canvas(&mut self, parent_ui: &mut egui::Ui, grid_ok: bool) {

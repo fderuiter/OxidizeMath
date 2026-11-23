@@ -33,6 +33,7 @@ impl SimulationRunner for MockStepRunner {
             pixels: Arc::new(std::sync::RwLock::new(vec![eframe::egui::Color32::WHITE])),
             custom_data: vec![self.step_count.load(Ordering::SeqCst) as f64],
             structured_data: None,
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 
@@ -61,6 +62,7 @@ impl SimulationRunner for IdleValidationRunner {
             pixels: Arc::new(std::sync::RwLock::new(vec![eframe::egui::Color32::BLACK])),
             custom_data: Vec::new(),
             structured_data: None,
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 
@@ -93,6 +95,7 @@ impl SimulationRunner for DivergingStepRunner {
             pixels: Arc::new(std::sync::RwLock::new(vec![eframe::egui::Color32::BLACK])),
             custom_data: vec![self.value],
             structured_data: None,
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

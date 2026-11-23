@@ -1,4 +1,5 @@
 //! IEEE-safe GLSL ES 3.00 helper preambles for scalar (`float`) and complex (`vec2`) AST evaluation.
+// [cite:math_commons]
 
 /// Standalone GLSL ES 3.00 helper functions guarding scalar `float` division, exponentiation,
 /// logarithms (`ln`, `log10`), square roots, hyperbolic functions, and inverse trig domains.
