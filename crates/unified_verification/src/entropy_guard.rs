@@ -8,6 +8,11 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 use walkdir::WalkDir;
 
+mod file_filter;
+mod macro_scanner;
+
+use file_filter::{ScanFileKind, classify_scan_file, should_visit_file};
+
 pub const DEFAULT_SCAN_PATHS: &[&str] = &[
     "crates",
     "apps",
@@ -15,7 +20,10 @@ pub const DEFAULT_SCAN_PATHS: &[&str] = &[
     "math_explorer_gui",
     "egui_plot",
     ".github",
+    ".githooks",
     "scripts",
+    ".env",
+    "Dockerfile",
     "Cargo.toml",
     "traceability.toml",
     "verification_whitelist.toml",
@@ -24,7 +32,7 @@ pub const DEFAULT_SCAN_PATHS: &[&str] = &[
 pub const DEFAULT_TARGET_EXTENSIONS: &[&str] =
     &["rs", "toml", "yml", "yaml", "json", "sh", "js", "html"];
 
-struct SecretScanner {
+pub(super) struct SecretScanner {
     aws_re: Regex,
     gh_re: Regex,
     slack_re: Regex,
@@ -181,7 +189,7 @@ fn flatten_use_tree(
     }
 }
 
-fn resolve_path(p: &syn::Path, mappings: &HashMap<String, String>) -> String {
+pub(super) fn resolve_path(p: &syn::Path, mappings: &HashMap<String, String>) -> String {
     let mut parts = Vec::new();
     for (i, seg) in p.segments.iter().enumerate() {
         if i == 0 && p.leading_colon.is_none() {
@@ -196,6 +204,18 @@ fn resolve_path(p: &syn::Path, mappings: &HashMap<String, String>) -> String {
         }
     }
     parts.join("::")
+}
+
+pub(super) fn classify_entropy_call(resolved: &str) -> Option<&'static str> {
+    if resolved == "thread_rng" || resolved.ends_with("::thread_rng") {
+        Some("thread_rng()")
+    } else if resolved == "random" || resolved.ends_with("::random") {
+        Some("random()")
+    } else if resolved == "SystemTime::now" || resolved.ends_with("::SystemTime::now") {
+        Some("SystemTime::now()")
+    } else {
+        None
+    }
 }
 
 fn calculate_entropy(s: &str) -> f64 {
@@ -222,16 +242,9 @@ impl<'a, 'ast> Visit<'ast> for SecurityVisitor<'a> {
     fn visit_expr_call(&mut self, i: &'ast syn::ExprCall) {
         if let syn::Expr::Path(p) = &*i.func {
             let resolved = resolve_path(&p.path, &self.aliases);
-            let line = i.func.span().start().line;
-
-            if resolved == "thread_rng" || resolved.ends_with("::thread_rng") {
-                self.entropy_violations
-                    .push(("thread_rng()".to_string(), line));
-            } else if resolved == "random" || resolved.ends_with("::random") {
-                self.entropy_violations.push(("random()".to_string(), line));
-            } else if resolved == "SystemTime::now" || resolved.ends_with("::SystemTime::now") {
-                self.entropy_violations
-                    .push(("SystemTime::now()".to_string(), line));
+            if let Some(violation) = classify_entropy_call(&resolved) {
+                let line = i.func.span().start().line;
+                self.entropy_violations.push((violation.to_string(), line));
             }
         }
         syn::visit::visit_expr_call(self, i);
@@ -244,6 +257,17 @@ impl<'a, 'ast> Visit<'ast> for SecurityVisitor<'a> {
             self.secret_warnings.push((kind.to_string(), line));
         }
         syn::visit::visit_lit_str(self, lit);
+    }
+
+    fn visit_macro(&mut self, i: &'ast syn::Macro) {
+        macro_scanner::scan_macro(
+            i,
+            &self.aliases,
+            self.scanner,
+            &mut self.entropy_violations,
+            &mut self.secret_warnings,
+        );
+        syn::visit::visit_macro(self, i);
     }
 }
 
@@ -315,7 +339,13 @@ fn scan_rust_file(
 }
 
 fn scan_text_file(path: &Path, scanner: &SecretScanner, violations: &mut Vec<String>) {
-    let Ok(content) = fs::read_to_string(path) else {
+    let Ok(bytes) = fs::read(path) else {
+        return;
+    };
+    if bytes.contains(&0) {
+        return;
+    }
+    let Ok(content) = std::str::from_utf8(&bytes) else {
         return;
     };
     for (idx, line) in content.lines().enumerate() {
@@ -354,8 +384,7 @@ pub fn scan_paths_internal_with_cache(
     let mut visited = HashSet::new();
 
     for target in scan_targets {
-        let p = Path::new(target);
-        if !p.exists() {
+        if !Path::new(target).exists() {
             continue;
         }
         for entry in WalkDir::new(target)
@@ -363,42 +392,19 @@ pub fn scan_paths_internal_with_cache(
             .filter_entry(|e| !is_ignored_dir(e))
             .filter_map(|e| e.ok())
         {
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let path_str = entry.path().to_string_lossy().replace('\\', "/");
-            if path_str
-                .split('/')
-                .any(|seg| seg == "target" || seg == ".git")
+            if !entry.file_type().is_file()
+                || !should_visit_file(entry.path(), allowlist, &mut visited)
             {
                 continue;
             }
-            let can = entry
-                .path()
-                .canonicalize()
-                .unwrap_or_else(|_| entry.path().to_path_buf());
-            if !visited.insert(can) {
-                continue;
-            }
-            if is_file_allowlisted(entry.path(), allowlist) {
-                continue;
-            }
-            let ext = entry
-                .path()
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
-            let is_matched_ext = target_extensions
-                .iter()
-                .any(|e| e.trim_start_matches('.').eq_ignore_ascii_case(ext));
-            if !is_matched_ext {
-                continue;
-            }
-
-            if ext.eq_ignore_ascii_case("rs") {
-                scan_rust_file(entry.path(), &scanner, &mut all_violations, cache);
-            } else {
-                scan_text_file(entry.path(), &scanner, &mut all_violations);
+            match classify_scan_file(entry.path(), target_extensions) {
+                ScanFileKind::RustAst => {
+                    scan_rust_file(entry.path(), &scanner, &mut all_violations, cache);
+                }
+                ScanFileKind::Text => {
+                    scan_text_file(entry.path(), &scanner, &mut all_violations);
+                }
+                ScanFileKind::Skip => {}
             }
         }
     }

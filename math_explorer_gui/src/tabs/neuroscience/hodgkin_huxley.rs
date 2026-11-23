@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-#[path = "hodgkin_huxley_atlas.rs"]
-mod atlas;
+#[path = "hodgkin_huxley/atlas.rs"]
+pub mod atlas;
 
 #[cfg(test)]
 pub use atlas::HodgkinHuxleyRegime;
@@ -17,12 +17,12 @@ use math_explorer::pure_math::analysis::ode::{Euler, SolverExt};
 use oxidize_core::rng::OxidizeRng;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 const HH_MAX_HISTORY: usize = 10_000;
 
 #[allow(missing_docs)]
-#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct HodgkinHuxleyUnified {
     state: HodgkinHuxleyState,
     params: HodgkinHuxleyParameters,
@@ -32,6 +32,8 @@ pub struct HodgkinHuxleyUnified {
     dt: f64,
     step_count: usize,
     rng: OxidizeRng,
+    prev_v: f64,
+    spiked_since_snapshot: AtomicBool,
 }
 
 impl HodgkinHuxleyUnified {
@@ -41,6 +43,7 @@ impl HodgkinHuxleyUnified {
         self.params.g_l = g_l.max(0.0);
         self.i_ext = i_ext;
         self.dt = dt;
+        let prev_v = self.state.v;
         let mut solver = Euler::new(&self.state);
         let model = HodgkinHuxleyModel::new(self.params.clone(), self.i_ext);
         let next = solver.solve(&model, 0.0, &self.state, self.dt);
@@ -50,6 +53,10 @@ impl HodgkinHuxleyUnified {
             m: next.m.clamp(0.0, 1.0),
             h: next.h.clamp(0.0, 1.0),
         };
+        if prev_v <= 0.0 && self.state.v > 0.0 {
+            self.spiked_since_snapshot.store(true, Ordering::Relaxed);
+        }
+        self.prev_v = prev_v;
         self.time += self.dt;
         self.step_count += 1;
         if self.history.len() >= HH_MAX_HISTORY {
@@ -93,6 +100,8 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             dt: 0.01,
             step_count: 0,
             rng: OxidizeRng::new(0x4848_5F4E_4555_524F),
+            prev_v: -65.0,
+            spiked_since_snapshot: AtomicBool::new(false),
         }
     }
 
@@ -113,13 +122,34 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         custom_data.push(self.time);
         custom_data.push(self.state.v);
 
+        let spiked = self.spiked_since_snapshot.swap(false, Ordering::Relaxed);
+        let ref_prev_v = if spiked { -5.0 } else { self.prev_v };
+        let ref_cur_v = if spiked {
+            self.state.v.max(10.0)
+        } else {
+            self.state.v
+        };
+        let sonification = crate::audio::mappings::hodgkin_huxley_frame(
+            ref_cur_v,
+            ref_prev_v,
+            self.state.m,
+            self.state.h,
+            self.state.n,
+            self.i_ext,
+        );
+
         StateSnapshot {
             width: 0,
             height: 0,
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data,
             structured_data: None,
+            sonification,
         }
+    }
+
+    fn sonification_tool_id() -> Option<&'static str> {
+        Some("hodgkin_huxley")
     }
 
     fn parameters() -> HashMap<String, ParameterConstraint> {
@@ -263,6 +293,8 @@ impl UnifiedModel for HodgkinHuxleyUnified {
                 self.time = s[4];
             }
         }
+        self.prev_v = self.state.v;
+        self.spiked_since_snapshot.store(false, Ordering::Relaxed);
         self.step_count = checkpoint.step;
         self.rng = checkpoint.rng.clone();
     }

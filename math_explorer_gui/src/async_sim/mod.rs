@@ -440,13 +440,15 @@ impl SimulationController {
 // theory_verification!
 
 #[cfg(any(target_arch = "wasm32", test))]
-pub mod registry;
-#[cfg(any(target_arch = "wasm32", test))]
-pub use registry::*;
+mod registry;
+#[cfg(target_arch = "wasm32")]
+use registry::{
+    register_worker_context, take_worker_context, unregister_worker_context, WorkerContext,
+};
 
 #[cfg(target_arch = "wasm32")]
-pub mod wasm;
+mod wasm;
 #[cfg(target_arch = "wasm32")]
-pub use wasm::*;
+use wasm::{run_simulation_worker, wake_worker};
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;

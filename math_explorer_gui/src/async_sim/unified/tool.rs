@@ -241,25 +241,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 .can_reset(true)
                 .show(ui)
         {
-            match action {
-                PlaybackAction::Play => {
-                    let _ = self.controller.send_command(SimCommand::Start);
-                }
-                PlaybackAction::Pause => {
-                    let _ = self.controller.send_command(SimCommand::Pause);
-                }
-                PlaybackAction::Step => {
-                    let _ = self.controller.send_command(SimCommand::Step(1));
-                }
-                PlaybackAction::StepBack => {
-                    let _ = self.controller.send_command(SimCommand::StepBack(1));
-                }
-                PlaybackAction::ScrubTo(step) => {
-                    let _ = self.controller.send_command(SimCommand::SeekStep(step));
-                }
+            let cmd = match action {
+                PlaybackAction::Play => Some(SimCommand::Start),
+                PlaybackAction::Pause => Some(SimCommand::Pause),
+                PlaybackAction::Step => Some(SimCommand::Step(1)),
+                PlaybackAction::StepBack => Some(SimCommand::StepBack(1)),
+                PlaybackAction::ScrubTo(step) => Some(SimCommand::SeekStep(step)),
                 PlaybackAction::Reset => {
                     self.reset_simulation(Some(ctx));
+                    None
                 }
+            };
+            if let Some(c) = cmd {
+                let _ = self.controller.send_command(c);
             }
         }
     }
@@ -271,6 +265,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.heading(M::name());
             ui.separator();
             self.draw_status_and_transport(ui, &ctx);
+            if let Some(tool_id) = M::sonification_tool_id() {
+                let worker_state = self.controller.state();
+                if matches!(worker_state, SimWorkerState::Faulted) {
+                    crate::audio::notify_solver_diverged();
+                }
+                let frame = self
+                    .stepped_snapshot
+                    .as_ref()
+                    .or_else(|| self.controller.latest_snapshot())
+                    .map_or_else(crate::audio::SonificationFrame::silent, |s| s.sonification);
+                let is_idle = !matches!(
+                    worker_state,
+                    SimWorkerState::Running | SimWorkerState::Stepping
+                ) && self.stepped_snapshot.is_none();
+                ui.separator();
+                crate::audio::render_sonification_panel(ui, tool_id, &frame, is_idle);
+            }
             ui.separator();
             ui.label("Simulation Constants");
             if ui

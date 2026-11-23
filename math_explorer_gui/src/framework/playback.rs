@@ -404,6 +404,15 @@ impl<'a> PlaybackTransport<'a> {
         action: PlaybackAction,
         should_announce: bool,
     ) {
+        match action {
+            PlaybackAction::Pause => crate::audio::notify_playback_paused(),
+            PlaybackAction::ScrubTo(_) if self.is_playing => crate::audio::notify_playback_paused(),
+            PlaybackAction::Reset => crate::audio::notify_playback_reset(),
+            PlaybackAction::Play
+            | PlaybackAction::Step
+            | PlaybackAction::StepBack
+            | PlaybackAction::ScrubTo(_) => {}
+        }
         if should_announce {
             let announcement = helpers::format_announcement(
                 self.tool_name,

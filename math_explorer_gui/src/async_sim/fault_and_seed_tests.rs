@@ -74,6 +74,7 @@ impl SimulationRunner for DivergeOnStepRunner {
                 0.0
             }],
             structured_data: None,
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

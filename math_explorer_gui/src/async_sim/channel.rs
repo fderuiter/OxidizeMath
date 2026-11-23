@@ -197,6 +197,7 @@ mod tests {
             pixels: Arc::new(RwLock::new(vec![eframe::egui::Color32::WHITE])),
             custom_data: vec![tag],
             structured_data: None,
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 
