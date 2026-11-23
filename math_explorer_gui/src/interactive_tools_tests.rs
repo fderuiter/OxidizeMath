@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    fn check_single_tool<T: Default + crate::framework::InteractiveTool>(
+    fn exercise_interactive_tool<T: crate::framework::InteractiveTool + Default>(
         ctx: &eframe::egui::Context,
     ) {
         let mut tool = T::default();
@@ -14,80 +14,127 @@ mod tests {
     }
 
     #[test]
-    fn test_additional_interactive_tools_part_1() {
+    fn test_additional_interactive_tools() {
         let ctx = eframe::egui::Context::default();
-        check_single_tool::<crate::tabs::ai::q_table_inspector::QTableInspectorTool>(&ctx);
-        check_single_tool::<crate::tabs::ai::attention_maps::AttentionMapsTool>(&ctx);
-        check_single_tool::<crate::tabs::ai::tokenization::TokenizationTool>(&ctx);
-        check_single_tool::<crate::tabs::financial_math::bet_size::BetSizeCalculatorTool>(&ctx);
-        check_single_tool::<crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool>(&ctx);
-        check_single_tool::<crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool>(
+        exercise_interactive_tool::<crate::tabs::ai::q_table_inspector::QTableInspectorTool>(&ctx);
+        exercise_interactive_tool::<crate::tabs::ai::attention_maps::AttentionMapsTool>(&ctx);
+        exercise_interactive_tool::<crate::tabs::ai::tokenization::TokenizationTool>(&ctx);
+        exercise_interactive_tool::<crate::tabs::financial_math::bet_size::BetSizeCalculatorTool>(
             &ctx,
         );
-        check_single_tool::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(&ctx);
-        check_single_tool::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(&ctx);
-        check_single_tool::<
+        exercise_interactive_tool::<crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool>(
+            &ctx,
+        );
+        exercise_interactive_tool::<
+            crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool,
+        >(&ctx);
+        exercise_interactive_tool::<crate::tabs::financial_math::market_devig::MarketDeviggingTool>(
+            &ctx,
+        );
+        exercise_interactive_tool::<
+            crate::tabs::financial_math::market_execution::MarketExecutionTool,
+        >(&ctx);
+        exercise_interactive_tool::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(&ctx);
+        exercise_interactive_tool::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(
+            &ctx,
+        );
+        exercise_interactive_tool::<
             crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool,
         >(&ctx);
-        check_single_tool::<crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool>(
+        exercise_interactive_tool::<
+            crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool,
+        >(&ctx);
+        exercise_interactive_tool::<crate::tabs::solid_state::band_structure::BandStructureTool>(
             &ctx,
         );
-        check_single_tool::<crate::tabs::solid_state::band_structure::BandStructureTool>(&ctx);
-        check_single_tool::<crate::tabs::solid_state::ising::IsingModelTool>(&ctx);
-        check_single_tool::<crate::tabs::quantum::clebsch::ClebschGordanTool>(&ctx);
-        check_single_tool::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(&ctx);
-        check_single_tool::<crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool>(
+        exercise_interactive_tool::<crate::tabs::solid_state::ising::IsingModelTool>(&ctx);
+        exercise_interactive_tool::<crate::tabs::quantum::clebsch::ClebschGordanTool>(&ctx);
+        exercise_interactive_tool::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(
             &ctx,
         );
-        check_single_tool::<crate::tabs::clinical_trials::survival::SurvivalAnalysisTool>(&ctx);
-        check_single_tool::<crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool>(
-            &ctx,
-        );
-        check_single_tool::<crate::tabs::clinical_trials::randomization::RandomizationTool>(&ctx);
-        check_single_tool::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(&ctx);
-        check_single_tool::<crate::tabs::climate::cera::CeraTool>(&ctx);
-        check_single_tool::<crate::tabs::climate::co2_projections::Co2ProjectionsTool>(&ctx);
-        check_single_tool::<crate::tabs::climate::temperature::TemperatureAnomaliesTool>(&ctx);
-        check_single_tool::<crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(&ctx);
-        check_single_tool::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(&ctx);
+        exercise_interactive_tools_part_2(&ctx);
     }
 
-    #[test]
-    fn test_additional_interactive_tools_part_2() {
-        let ctx = eframe::egui::Context::default();
-        check_single_tool::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(&ctx);
-        check_single_tool::<crate::tabs::ai::gaussian_splatting::GaussianSplattingTool>(&ctx);
-        check_single_tool::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(&ctx);
-        check_single_tool::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(&ctx);
-        check_single_tool::<crate::tabs::ai::grid_world::GridWorldTool>(&ctx);
-        check_single_tool::<crate::tabs::ai::closed_loop_control::ClosedLoopControlTool>(&ctx);
-        check_single_tool::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(&ctx);
-        check_single_tool::<crate::tabs::medical::bioelectric_leads::BioelectricLeadTool>(&ctx);
-        check_single_tool::<crate::tabs::medical::dose::DoseCalculationTool>(&ctx);
-        check_single_tool::<
+    fn exercise_interactive_tools_part_2(ctx: &eframe::egui::Context) {
+        exercise_interactive_tool::<
+            crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool,
+        >(ctx);
+        exercise_interactive_tool::<crate::tabs::clinical_trials::survival::SurvivalAnalysisTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<
+            crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool,
+        >(ctx);
+        exercise_interactive_tool::<crate::tabs::clinical_trials::randomization::RandomizationTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<crate::tabs::climate::cera::CeraTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::climate::co2_projections::Co2ProjectionsTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::climate::temperature::TemperatureAnomaliesTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<crate::tabs::ai::gaussian_splatting::GaussianSplattingTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::ai::grid_world::GridWorldTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::ai::closed_loop_control::ClosedLoopControlTool>(
+            ctx,
+        );
+        exercise_interactive_tools_part_3(ctx);
+    }
+
+    fn exercise_interactive_tools_part_3(ctx: &eframe::egui::Context) {
+        exercise_interactive_tool::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::medical::bioelectric_leads::BioelectricLeadTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<crate::tabs::medical::dose::DoseCalculationTool>(ctx);
+        exercise_interactive_tool::<
             crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool,
-        >(&ctx);
-        check_single_tool::<crate::tabs::medical::radar_gating::RadarGatingTool>(&ctx);
-        check_single_tool::<crate::tabs::epidemiology::network_propagation::NetworkPropagationTool>(
-            &ctx,
+        >(ctx);
+        exercise_interactive_tool::<crate::tabs::medical::radar_gating::RadarGatingTool>(ctx);
+        exercise_interactive_tool::<
+            crate::tabs::epidemiology::network_propagation::NetworkPropagationTool,
+        >(ctx);
+        exercise_interactive_tool::<crate::tabs::chaos::hamiltonian::HamiltonianChaosLab>(ctx);
+        exercise_interactive_tool::<crate::tabs::algorithmic_information::state::FractranMachineTool>(
+            ctx,
         );
-        check_single_tool::<crate::tabs::chaos::hamiltonian::HamiltonianChaosLab>(&ctx);
-        check_single_tool::<crate::tabs::algorithmic_information::state::FractranMachineTool>(&ctx);
-        check_single_tool::<crate::tabs::number_theory::fractran_machine::FractranMachineTool>(
-            &ctx,
+        exercise_interactive_tool::<
+            crate::tabs::number_theory::fractran_machine::FractranMachineTool,
+        >(ctx);
+        exercise_interactive_tool::<crate::tabs::number_theory::ualbf_widget::UalbfWidget>(ctx);
+        exercise_interactive_tool::<crate::tabs::number_theory::partitions_widget::PartitionsWidget>(
+            ctx,
         );
-        check_single_tool::<crate::tabs::number_theory::ualbf_widget::UalbfWidget>(&ctx);
-        check_single_tool::<crate::tabs::number_theory::partitions_widget::PartitionsWidget>(&ctx);
-        check_single_tool::<crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget>(&ctx);
-        check_single_tool::<crate::tabs::morphogenesis::lenia::LeniaTool>(&ctx);
-        check_single_tool::<crate::tabs::neuroscience::excitable_sheet::ExcitableSheetTool>(&ctx);
-        check_single_tool::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(&ctx);
-        check_single_tool::<crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool>(
-            &ctx,
+        exercise_interactive_tool::<crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget>(
+            ctx,
         );
-        check_single_tool::<crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool>(
-            &ctx,
+        exercise_interactive_tool::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::neuroscience::excitable_sheet::ExcitableSheetTool>(
+            ctx,
         );
+        exercise_interactive_tool::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<
+            crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool,
+        >(ctx);
+        exercise_interactive_tool::<
+            crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool,
+        >(ctx);
     }
 
     #[test]
@@ -360,6 +407,14 @@ mod tests {
         assert_tool_roundtrip(
             &mut crate::tabs::financial_math::bet_size::BetSizeCalculatorTool::default(),
             r#"{"probability_input":60.0,"odds_format":"American","decimal_odds":2.2,"american_odds":120.0,"fractional_numerator":6.0,"fractional_denominator":5.0,"bankroll":2000.0}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::financial_math::market_devig::MarketDeviggingTool::default(),
+            r#"{"bankroll":2500.0,"quote_format":"Decimal","method":"Additive","decimal_quotes":[1.9,3.25,6.5,10.0,21.0,101.0],"target_outcome":5,"offered_decimal_odds":110.0}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::financial_math::market_execution::MarketExecutionTool::default(),
+            r#"{"budget":500.0,"mode":"Hedge","arb_odds":[2.1,1.98],"dutch_odds":[2.2,3.5,4.2],"dutch_selected":[false,true,true],"dutch_target_profit_mode":false,"dutch_target_profit":50.0,"middle_odds_a":1.91,"middle_odds_b":1.91,"middle_hit_prob_pct":9.0,"hedge_orig_stake":100.0,"hedge_orig_odds":9.0,"hedge_live_odds":1.67,"hedge_use_target_floor":true,"hedge_target_floor":0.0}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::solid_state::band_structure::BandStructureTool::default(),
