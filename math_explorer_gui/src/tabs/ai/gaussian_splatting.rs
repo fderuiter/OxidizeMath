@@ -5,6 +5,9 @@ mod scene;
 #[path = "gaussian_splatting_ui.rs"]
 mod ui;
 
+#[path = "gaussian_splatting_export.rs"]
+mod export;
+
 use crate::framework::{
     Camera3D, ExportCapabilities, InteractiveTool, ProjectionMode, Scene3DBuilder,
 };
@@ -175,9 +178,7 @@ impl GaussianSplattingTool {
             let [tx, ty, vz] = self.camera.rotate_to_camera_space(&world_arr);
             let tz = (dist - vz).max(0.25);
             let (jacobian, proj_scale) = match self.camera.projection {
-                ProjectionMode::Parallel => {
-                    (Matrix2x3::new(zoom, 0.0, 0.0, 0.0, zoom, 0.0), zoom)
-                }
+                ProjectionMode::Parallel => (Matrix2x3::new(zoom, 0.0, 0.0, 0.0, zoom, 0.0), zoom),
                 ProjectionMode::Perspective => (
                     projection::compute_jacobian(&Vector3::new(tx, ty, tz), focal, focal),
                     focal / tz,
@@ -242,7 +243,10 @@ impl InteractiveTool for GaussianSplattingTool {
         "Gaussian Splatting"
     }
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::none()
+        ExportCapabilities::splat_ply_only()
+    }
+    fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
+        Some(self.serialize_splats_ply_binary())
     }
     fn domain(&self) -> &'static str {
         "ai"
