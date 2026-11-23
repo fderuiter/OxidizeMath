@@ -3,7 +3,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::lattice_boltzmann::{LbmSnapshotMetrics, LbmUnified, LBM_HEIGHT, LBM_WIDTH};
+use super::lattice_boltzmann::{LbmSnapshotMetrics, LBM_HEIGHT, LBM_INLET_U, LBM_WIDTH};
+use super::lbm_fairing::{LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y, LBM_INLET_COLS};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::{
     decode_rle_mask, encode_rle_mask, rasterize_disk_stroke, BrushInteractionMode, BrushMode,
@@ -18,9 +19,81 @@ use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+pub(crate) fn seed_initial_lbm_geometry(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    params: &HashMap<String, f64>,
+) -> Option<(u16, f64)> {
+    let profile = *params.get("naca_profile").unwrap_or(&0.0);
+    let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+    let stamped = if profile >= 1.0 {
+        let code = profile.round() as u16;
+        stamp_airfoil_on_solver(solver, code, aoa);
+        Some((code, aoa))
+    } else {
+        for y in 0..solver.height() {
+            for x in 0..solver.width() {
+                let dx = x as i32 - LBM_CORE_X;
+                let dy = y as i32 - LBM_CORE_Y;
+                if dx * dx + dy * dy <= 25 {
+                    solver.set_obstacle(x, y, true);
+                }
+            }
+        }
+        None
+    };
+    solver.set_inlet(0, 0, LBM_INLET_COLS, solver.height(), LBM_INLET_U, 0.0);
+    stamped
+}
+
+pub(crate) fn reset_solver_preserving_obstacles(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    viscosity: f64,
+    restore_core: bool,
+) {
+    solver.collision_model.tau = 3.0 * viscosity + 0.5;
+    solver.init_equilibrium();
+    let width = solver.width();
+    let height = solver.height();
+    for y in 0..height {
+        for x in 0..width {
+            if x < LBM_INLET_COLS {
+                solver.set_obstacle(x, y, false);
+            } else if restore_core {
+                let dx = x as i32 - LBM_CORE_X;
+                let dy = y as i32 - LBM_CORE_Y;
+                if dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS {
+                    solver.set_obstacle(x, y, true);
+                }
+            }
+        }
+    }
+    solver.set_inlet(0, 0, LBM_INLET_COLS, height, LBM_INLET_U, 0.0);
+}
+
+pub(crate) fn inspect_solver_solid_and_core(
+    solver: &LatticeBoltzmannD2Q9<BgkCollision>,
+) -> (usize, bool) {
+    let mut n_solid = 0_usize;
+    let mut core_intact = true;
+    for y in 0..solver.height() {
+        for x in 0..solver.width() {
+            let obs = solver.is_obstacle(x, y);
+            if obs {
+                n_solid += 1;
+            }
+            let dx = x as i32 - LBM_CORE_X;
+            let dy = y as i32 - LBM_CORE_Y;
+            if dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS && !obs {
+                core_intact = false;
+            }
+        }
+    }
+    (n_solid, core_intact)
+}
+
 pub(crate) fn build_default_obstacle_bytes(params: &HashMap<String, f64>) -> Vec<u8> {
     let mut temp = LatticeBoltzmannD2Q9::<BgkCollision>::new(LBM_WIDTH, LBM_HEIGHT, 0.56);
-    LbmUnified::seed_initial_geometry(&mut temp, params);
+    seed_initial_lbm_geometry(&mut temp, params);
     let mut out = vec![0_u8; LBM_WIDTH * LBM_HEIGHT];
     for y in 0..LBM_HEIGHT {
         for x in 0..LBM_WIDTH {
@@ -32,7 +105,11 @@ pub(crate) fn build_default_obstacle_bytes(params: &HashMap<String, f64>) -> Vec
     out
 }
 
-pub(crate) fn apply_stroke_to_lbm(solver: &mut LatticeBoltzmannD2Q9<BgkCollision>, stroke: &BrushStroke) {
+pub(crate) fn apply_stroke_to_lbm(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    stroke: &BrushStroke,
+    lock_core: bool,
+) {
     let w = solver.width();
     let h = solver.height();
     let (x0, y0) = SpatialBrushKit::plot_to_grid_y_up(stroke.start, w, h);
@@ -42,12 +119,18 @@ pub(crate) fn apply_stroke_to_lbm(solver: &mut LatticeBoltzmannD2Q9<BgkCollision
     match stroke.mode {
         BrushMode::Solid => {
             rasterize_disk_stroke((x0, y0), (x1, y1), r, (w, h), |gx, gy| {
-                solver.set_obstacle(gx, gy, true);
+                if !lock_core || gx >= LBM_INLET_COLS {
+                    solver.set_obstacle(gx, gy, true);
+                }
             });
         }
         BrushMode::Erase => {
             rasterize_disk_stroke((x0, y0), (x1, y1), r, (w, h), |gx, gy| {
-                solver.set_obstacle(gx, gy, false);
+                let dx = gx as i32 - LBM_CORE_X;
+                let dy = gy as i32 - LBM_CORE_Y;
+                if !lock_core || dx * dx + dy * dy > LBM_CORE_RADIUS * LBM_CORE_RADIUS {
+                    solver.set_obstacle(gx, gy, false);
+                }
             });
         }
         BrushMode::VelocityJet => {

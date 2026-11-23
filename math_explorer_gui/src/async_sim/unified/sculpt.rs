@@ -2,11 +2,12 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{UnifiedModel, UnifiedSimTool};
-use crate::async_sim::SculptStatePayload;
+use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimTool};
+use crate::async_sim::{SculptStatePayload, SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::MAX_RLE_MASK_CELLS;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
+use std::sync::{Arc, RwLock};
 
 impl SculptStatePayload {
     /// Returns `true` when neither RLE 2D masks nor sparse 1D potentials are populated.
@@ -168,5 +169,144 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.texture = None;
         self.respawn_preserving_sculpt(None);
         Ok(())
+    }
+}
+
+#[allow(missing_docs)]
+pub struct UnifiedSimRunner<M: UnifiedModel> {
+    model: M,
+    params: Arc<RwLock<HashMap<String, f64>>>,
+    sculpt_state: Arc<RwLock<SculptStatePayload>>,
+    formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+    applied_formula_rev: Option<u64>,
+    steps_per_frame: usize,
+}
+
+impl<M: UnifiedModel> UnifiedSimRunner<M> {
+    #[allow(missing_docs)]
+    pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
+        Self::with_shared(
+            params,
+            Arc::new(RwLock::new(SculptStatePayload::default())),
+            Arc::new(RwLock::new(None)),
+        )
+    }
+
+    /// Creates a runner sharing `params`, `sculpt_state`, and an optional [`CompiledFormulaPayload`] slot.
+    pub fn with_shared(
+        params: Arc<RwLock<HashMap<String, f64>>>,
+        sculpt_state: Arc<RwLock<SculptStatePayload>>,
+        formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+    ) -> Self {
+        let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut runner = Self {
+            model: M::new(&initial_params),
+            params,
+            sculpt_state,
+            formula,
+            applied_formula_rev: None,
+            steps_per_frame: 5,
+        };
+        runner.sync_formula(&initial_params);
+        runner.apply_sculpt_if_present(&initial_params);
+        runner
+    }
+
+    fn apply_sculpt_if_present(&mut self, current_params: &HashMap<String, f64>) {
+        if M::supports_spatial_brush() {
+            let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+            if !sculpt.is_empty() {
+                self.model.apply_sculpt_payload(&sculpt, current_params);
+            }
+        }
+    }
+
+    fn sync_formula(&mut self, current_params: &HashMap<String, f64>) {
+        let payload_opt = self
+            .formula
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let next_rev = payload_opt.as_ref().map(|p| p.revision);
+        if next_rev != self.applied_formula_rev {
+            self.model
+                .apply_compiled_formula(payload_opt.as_ref(), current_params);
+            self.applied_formula_rev = next_rev;
+            self.apply_sculpt_if_present(current_params);
+        }
+    }
+
+    fn sync_sculpt_from_model(&self, current_params: &HashMap<String, f64>) {
+        if M::supports_spatial_brush() {
+            let exported = self.model.export_sculpt_payload(current_params);
+            let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+            *guard = exported;
+        }
+    }
+}
+
+impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
+    fn process_command(&mut self, cmd: SimCommand) {
+        let current_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        match cmd {
+            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
+            SimCommand::Reset => {
+                let had_sculpt = !self
+                    .sculpt_state
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .is_empty();
+                if had_sculpt {
+                    self.apply_sculpt_if_present(&current_params);
+                }
+                self.model.reset_model(&current_params);
+                self.applied_formula_rev = None;
+                self.sync_formula(&current_params);
+                if had_sculpt {
+                    self.sync_sculpt_from_model(&current_params);
+                }
+            }
+            SimCommand::SyncSculptState(payload) => {
+                self.sync_formula(&current_params);
+                self.model.apply_sculpt_payload(&payload, &current_params);
+                let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+                *guard = payload;
+            }
+            other => {
+                self.sync_formula(&current_params);
+                self.model.process_command(other, &current_params);
+                self.sync_sculpt_from_model(&current_params);
+            }
+        }
+    }
+
+    fn step(&mut self) {
+        let current_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        self.sync_formula(&current_params);
+        self.model.step(&current_params);
+    }
+
+    fn get_snapshot(&self) -> StateSnapshot {
+        self.model.get_snapshot()
+    }
+
+    fn get_steps_per_frame(&self) -> usize {
+        self.steps_per_frame
+    }
+
+    fn is_finite_state(&self) -> bool {
+        self.model.is_finite_state()
+    }
+
+    fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
+        self.model.diagnostic_report().cloned()
     }
 }

@@ -1,12 +1,151 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::persistence::build_formula_bar;
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::SimCommand;
+use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
+use crate::async_sim::{SimCommand, SimWorkerState};
+use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
+    pub(super) fn handle_recovery_action(
+        &mut self,
+        action: crate::framework::recovery::RecoveryAction,
+        ctx: Option<&egui::Context>,
+    ) {
+        use crate::framework::recovery::RecoveryAction;
+        match action {
+            RecoveryAction::AutoScaleStepSize => {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                if let Some(dt) = p.get_mut("dt") {
+                    *dt = (*dt * 0.5).max(1e-4);
+                } else if let Some(visc) = p.get_mut("viscosity") {
+                    *visc = (*visc * 0.5).max(0.00333);
+                }
+                drop(p);
+                self.reset_simulation(ctx);
+            }
+            RecoveryAction::ClampParameters => {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                for (name, c) in &self.param_metadata {
+                    if let Some(v) = p.get_mut(name) {
+                        *v = if !v.is_finite() {
+                            M::parameter_choices(name)
+                                .first()
+                                .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice)
+                        } else {
+                            v.clamp(c.min, c.max)
+                        };
+                    }
+                }
+                drop(p);
+                self.reset_simulation(ctx);
+            }
+            RecoveryAction::ResetParameters => {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                for (name, c) in &self.param_metadata {
+                    let d = match name.as_str() {
+                        "viscosity" => 0.02,
+                        "dt" => 0.05,
+                        "potential_type" => 0.0,
+                        _ => M::parameter_choices(name)
+                            .first()
+                            .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice),
+                    };
+                    p.insert(name.clone(), d);
+                }
+                drop(p);
+                if let Some(spec) = M::formula_spec() {
+                    self.custom_formula_enabled = false;
+                    self.formula_bar = Some(build_formula_bar(&spec));
+                    self.publish_formula_update();
+                }
+                self.reset_simulation(ctx);
+                let _ = self.controller.send_command(SimCommand::Start);
+            }
+        }
+    }
+
+    fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let state = self.controller.state();
+        if let Some(fault_action) =
+            render_worker_fault_banner(ui, state, self.controller.diagnostic_report(), true)
+        {
+            match fault_action {
+                WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters => {
+                    self.reset_simulation(Some(ctx));
+                }
+                WorkerFaultAction::Recovery(action) => {
+                    self.handle_recovery_action(action, Some(ctx));
+                }
+            }
+            ui.separator();
+        }
+
+        let state = self.controller.state();
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        ui.horizontal(|ui| {
+            ui.label("Status:");
+            let (status_text, color) = match state {
+                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
+                SimWorkerState::Ready => ("Ready", palette.success),
+                SimWorkerState::Running => ("Running", palette.info),
+                SimWorkerState::Stepping => ("Stepping", palette.warning),
+                SimWorkerState::Faulted => ("Faulted", palette.error),
+                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
+            };
+            ui.colored_label(color, status_text);
+        });
+        ui.separator();
+
+        if let Some(action) =
+            PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
+                .can_reset(true)
+                .show(ui)
+        {
+            match action {
+                PlaybackAction::Play => {
+                    let _ = self.controller.send_command(SimCommand::Start);
+                }
+                PlaybackAction::Pause => {
+                    let _ = self.controller.send_command(SimCommand::Pause);
+                }
+                PlaybackAction::Step => {
+                    let _ = self.controller.send_command(SimCommand::Step(1));
+                }
+                PlaybackAction::Reset => {
+                    self.reset_simulation(Some(ctx));
+                }
+            }
+        }
+    }
+
+    pub(super) fn draw_left_panel(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let panel_id = crate::framework::scoped_panel_id(ui, format!("{}_controls", M::name()));
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
+            ui.heading(M::name());
+            ui.separator();
+            self.draw_status_and_transport(ui, &ctx);
+            ui.separator();
+            ui.label("Simulation Constants");
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.steps_per_frame, 1..=100)
+                        .text("Speed (Steps/Frame)"),
+                )
+                .changed()
+            {
+                let _ = self
+                    .controller
+                    .send_command(SimCommand::SetSpeed(self.steps_per_frame));
+            }
+            self.draw_model_parameters(ui, &ctx);
+        });
+    }
+
     fn draw_presets_and_actions(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         let mut reset_needed = false;
         let presets = M::presets();
@@ -38,6 +177,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                             .send_command(SimCommand::Custom(action.to_string()))
                             .is_ok()
                     {
+                        if action.contains("Clear") {
+                            self.sculpt_state
+                                .write()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .clear();
+                        }
+                        if let Some(ext) = &mut self.ui_extension {
+                            ext.on_custom_action(action);
+                        }
+                        self.dirty = true;
                         ctx.request_repaint();
                     }
                 }
@@ -52,17 +201,32 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ui.label("Model Parameters");
 
         let mut reset_needed = self.draw_presets_and_actions(ui, ctx);
+        let ext_cmds = if let Some(ext) = &mut self.ui_extension {
+            ext.draw_side_panel_controls(ui, self.controller.latest_snapshot())
+        } else {
+            Vec::new()
+        };
+        if !ext_cmds.is_empty() {
+            self.dispatch_extension_commands(ext_cmds, Some(ctx));
+        }
+
         let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
 
         for (name, constraint) in &self.param_metadata {
+            let locked = self
+                .ui_extension
+                .as_ref()
+                .is_some_and(|ext| ext.is_parameter_locked(name));
             if let Some(val) = params_lock.get_mut(name) {
-                reset_needed |= Self::draw_single_parameter(
-                    ui,
-                    name,
-                    constraint,
-                    val,
-                    self.cached_descs.get(name),
-                );
+                ui.add_enabled_ui(!locked, |ui| {
+                    reset_needed |= Self::draw_single_parameter(
+                        ui,
+                        name,
+                        constraint,
+                        val,
+                        self.cached_descs.get(name),
+                    );
+                });
             }
         }
         drop(params_lock);

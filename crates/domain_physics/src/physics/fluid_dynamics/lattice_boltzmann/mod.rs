@@ -8,6 +8,8 @@ pub mod aerodynamics;
 #[allow(missing_docs)]
 pub mod algorithms;
 #[allow(missing_docs)]
+pub mod forces;
+#[allow(missing_docs)]
 pub mod model;
 #[allow(missing_docs)]
 pub mod state;
@@ -16,6 +18,7 @@ pub mod state;
 mod tests;
 
 pub use aerodynamics::*;
+pub use forces::compute_drag_coefficient;
 pub use model::*;
 pub use state::*;
 

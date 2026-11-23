@@ -2,7 +2,6 @@
 //! integration for 2D D2Q9 Lattice Boltzmann wind-tunnel simulations.
 
 use super::model::{BgkCollision, CollisionModel, D2Q9, Lattice2D, LatticeBoltzmannD2Q9};
-use pure_math::pure_math::analysis::evolution::DoubleBufferedState;
 
 /// Maximum lattice speed permitted for interactive velocity-jet injection to
 /// preserve low-Mach BGK compressibility and numerical stability.
@@ -233,7 +232,6 @@ pub fn advance_wind_tunnel_step(solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
     let safe_u = inlet_u.clamp(0.0, MAX_LATTICE_JET_SPEED);
     solver.set_inlet(0, 0, 2, solver.height(), safe_u, 0.0);
     solver.step();
-    DoubleBufferedState::swap_buffers(&mut solver.state);
     apply_outflow_right_boundary(solver);
 }
 

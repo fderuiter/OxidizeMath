@@ -1,14 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::persistence::build_formula_bar;
-use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimRunner};
-use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
+use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimRunner, UnifiedUiExtension};
 use crate::async_sim::{
     BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState, StateSnapshot,
 };
 use crate::framework::{
-    BrushStroke, InteractionContext, InteractiveTool, MathExpressionInputBar, PlaybackAction,
-    PlaybackTransport, SpatialBrushKit,
+    BrushStroke, CalloutManager, ChallengeEvaluation, InteractionContext, InteractiveTool,
+    MathExpressionInputBar, SpatialBrushKit,
 };
 use eframe::egui::{self, ColorImage};
 use scientific_metadata::theory::ParameterConstraint;
@@ -26,7 +25,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) custom_formula_enabled: bool,
     pub(super) formula_revision: u64,
     pub(super) param_metadata: Vec<(String, ParameterConstraint)>,
-    steps_per_frame: usize,
+    pub(super) steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(super) dirty: bool,
     stepped_snapshot: Option<StateSnapshot>,
@@ -37,6 +36,8 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(crate) callout_manager: CalloutManager,
+    pub(super) ui_extension: Option<Box<dyn UnifiedUiExtension>>,
     pub(crate) atlas: Option<crate::async_sim::atlas::ParameterAtlasController>,
     _marker: std::marker::PhantomData<M>,
 }
@@ -78,7 +79,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .iter()
             .map(|(name, _)| M::parameter_label(name))
             .collect();
-
+        let mut callout_manager = CalloutManager::new();
+        let ui_extension = M::create_ui_extension();
+        if let Some(ext) = &ui_extension {
+            ext.sync_callouts(controller.latest_snapshot(), &mut callout_manager);
+        }
         Self {
             controller,
             params,
@@ -100,6 +105,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_param_labels,
             cached_observable_label: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            callout_manager,
+            ui_extension,
             atlas: Self::create_optional_atlas(),
             _marker: std::marker::PhantomData,
         }
@@ -110,16 +117,51 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.controller.state()
     }
 
+    pub(super) fn dispatch_extension_commands(
+        &mut self,
+        commands: Vec<SimCommand>,
+        ctx: Option<&egui::Context>,
+    ) {
+        if commands.is_empty() {
+            return;
+        }
+        for cmd in commands {
+            let _ = self.controller.send_command(cmd);
+        }
+        self.dirty = true;
+        if let Some(ext) = &self.ui_extension {
+            if M::supports_spatial_brush() {
+                let mut sculpt = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+                ext.sync_sculpt_payload(&mut sculpt);
+            }
+            ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
+        }
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
+    }
+
     pub(super) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
-        self.sculpt_state
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .clear();
+        if self
+            .ui_extension
+            .as_ref()
+            .is_none_or(|ext| ext.active_challenge_id().is_none())
+        {
+            self.sculpt_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
+        }
         self.respawn_preserving_sculpt(ctx);
     }
 
     pub(super) fn respawn_preserving_sculpt(&mut self, ctx: Option<&egui::Context>) {
         self.stepped_snapshot = None;
+        if let Some(ext) = &mut self.ui_extension {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            ext.on_reset(&p);
+            ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
+        }
         let params = Arc::clone(&self.params);
         let sculpt = Arc::clone(&self.sculpt_state);
         let formula = Arc::clone(&self.shared_formula);
@@ -133,6 +175,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     /// Dispatches an interpolated [`BrushStroke`] to both UI sculpt state and the background worker.
     pub fn dispatch_brush_stroke(&mut self, stroke: BrushStroke, ctx: Option<&egui::Context>) {
+        if let Some(ext) = &mut self.ui_extension {
+            if !ext.on_brush_stroke(&stroke) {
+                return;
+            }
+        }
         if M::supports_spatial_brush() {
             let params_snap = self
                 .params
@@ -157,142 +204,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 c.request_repaint();
             }
         }
-    }
-
-    fn handle_recovery_action(
-        &mut self,
-        action: crate::framework::recovery::RecoveryAction,
-        ctx: Option<&egui::Context>,
-    ) {
-        use crate::framework::recovery::RecoveryAction;
-        match action {
-            RecoveryAction::AutoScaleStepSize => {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                if let Some(dt) = p.get_mut("dt") {
-                    *dt = (*dt * 0.5).max(1e-4);
-                } else if let Some(visc) = p.get_mut("viscosity") {
-                    *visc = (*visc * 0.5).max(0.00333);
-                }
-                drop(p);
-                self.reset_simulation(ctx);
-            }
-            RecoveryAction::ClampParameters => {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                for (name, c) in &self.param_metadata {
-                    if let Some(v) = p.get_mut(name) {
-                        *v = if !v.is_finite() {
-                            M::parameter_choices(name)
-                                .first()
-                                .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice)
-                        } else {
-                            v.clamp(c.min, c.max)
-                        };
-                    }
-                }
-                drop(p);
-                self.reset_simulation(ctx);
-            }
-            RecoveryAction::ResetParameters => {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                for (name, c) in &self.param_metadata {
-                    let d = match name.as_str() {
-                        "viscosity" => 0.02,
-                        "dt" => 0.05,
-                        "potential_type" => 0.0,
-                        _ => M::parameter_choices(name)
-                            .first()
-                            .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice),
-                    };
-                    p.insert(name.clone(), d);
-                }
-                drop(p);
-                if let Some(spec) = M::formula_spec() {
-                    self.custom_formula_enabled = false;
-                    self.formula_bar = Some(build_formula_bar(&spec));
-                    self.publish_formula_update();
-                }
-                self.reset_simulation(ctx);
-                let _ = self.controller.send_command(SimCommand::Start);
-            }
-        }
-    }
-
-    fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let state = self.controller.state();
-        if let Some(fault_action) =
-            render_worker_fault_banner(ui, state, self.controller.diagnostic_report(), true)
-        {
-            match fault_action {
-                WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters => {
-                    self.reset_simulation(Some(ctx));
-                }
-                WorkerFaultAction::Recovery(action) => {
-                    self.handle_recovery_action(action, Some(ctx));
-                }
-            }
-            ui.separator();
-        }
-
-        let state = self.controller.state();
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal(|ui| {
-            ui.label("Status:");
-            let (status_text, color) = match state {
-                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
-                SimWorkerState::Ready => ("Ready", palette.success),
-                SimWorkerState::Running => ("Running", palette.info),
-                SimWorkerState::Stepping => ("Stepping", palette.warning),
-                SimWorkerState::Faulted => ("Faulted", palette.error),
-                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
-            };
-            ui.colored_label(color, status_text);
-        });
-        ui.separator();
-
-        if let Some(action) =
-            PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
-                .can_reset(true)
-                .show(ui)
-        {
-            match action {
-                PlaybackAction::Play => {
-                    let _ = self.controller.send_command(SimCommand::Start);
-                }
-                PlaybackAction::Pause => {
-                    let _ = self.controller.send_command(SimCommand::Pause);
-                }
-                PlaybackAction::Step => {
-                    let _ = self.controller.send_command(SimCommand::Step(1));
-                }
-                PlaybackAction::Reset => {
-                    self.reset_simulation(Some(ctx));
-                }
-            }
-        }
-    }
-
-    fn draw_left_panel(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        let panel_id = crate::framework::scoped_panel_id(ui, format!("{}_controls", M::name()));
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
-            ui.heading(M::name());
-            ui.separator();
-            self.draw_status_and_transport(ui, &ctx);
-            ui.separator();
-            ui.label("Simulation Constants");
-            if ui
-                .add(
-                    egui::Slider::new(&mut self.steps_per_frame, 1..=100)
-                        .text("Speed (Steps/Frame)"),
-                )
-                .changed()
-            {
-                let _ = self
-                    .controller
-                    .send_command(SimCommand::SetSpeed(self.steps_per_frame));
-            }
-            self.draw_model_parameters(ui, &ctx);
-        });
     }
 }
 
@@ -376,6 +287,9 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             }
         }
         sculpt.hash_into(&mut h);
+        if let Some(ext) = &self.ui_extension {
+            ext.state_revision_salt().hash(&mut h);
+        }
         if let Some(atlas) = &self.atlas {
             atlas.is_visible().hash(&mut h);
             atlas.axis_keys().hash(&mut h);
@@ -410,6 +324,44 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.deserialize_tool_state(state)
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        let Some(ext) = &mut self.ui_extension else {
+            return if let Some(id) = challenge_id {
+                Err(format!(
+                    "Tool '{}' does not support challenge '{id}'",
+                    M::name()
+                ))
+            } else {
+                Ok(())
+            };
+        };
+        let mut next_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let cmds = ext.apply_challenge(challenge_id, &mut next_params)?;
+        *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
+        self.dispatch_extension_commands(cmds, None);
+        Ok(())
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.ui_extension
+            .as_ref()
+            .and_then(|ext| ext.active_challenge_id())
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        let snap = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot());
+        self.ui_extension
+            .as_ref()
+            .and_then(|ext| ext.evaluate_challenge(snap))
     }
 
     #[cfg(test)]

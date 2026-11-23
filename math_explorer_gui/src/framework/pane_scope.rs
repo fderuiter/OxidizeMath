@@ -1,10 +1,47 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{
-    AccessibleHoverText, BrushMode, BrushStroke, InputMode, InteractionContext, InteractiveTool,
-    PaneSidePanel,
-};
+use super::{AccessibleHoverText, BrushMode, BrushStroke, InteractiveTool, PaneSidePanel};
 use eframe::egui;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputMode {
+    Mouse,
+    Touch,
+}
+
+/// Event context provided to interaction hooks.
+#[allow(missing_docs)]
+pub struct InteractionContext<'a> {
+    pub pointer_pos: Option<egui::Pos2>,
+    pub delta: egui::Vec2,
+    pub is_dragging: bool,
+    pub is_clicked: bool,
+    pub response: &'a egui::Response,
+    pub input_mode: InputMode,
+    pub multi_touch: Option<egui::MultiTouchInfo>,
+    pub keys_down: std::collections::HashSet<egui::Key>,
+    pub modifiers: egui::Modifiers,
+    pub brush_stroke: Option<BrushStroke>,
+}
+
+impl<'a> InteractionContext<'a> {
+    /// Builds an [`InteractionContext`] carrying an interpolated [`BrushStroke`] for [`InteractiveTool::on_brush`].
+    #[must_use]
+    pub fn from_brush_stroke(response: &'a egui::Response, stroke: BrushStroke) -> Self {
+        Self {
+            pointer_pos: response.interact_pointer_pos(),
+            delta: response.drag_delta(),
+            is_dragging: response.dragged(),
+            is_clicked: response.clicked(),
+            response,
+            input_mode: InputMode::Mouse,
+            multi_touch: None,
+            keys_down: std::collections::HashSet::new(),
+            modifiers: egui::Modifiers::NONE,
+            brush_stroke: Some(stroke),
+        }
+    }
+}
 
 /// Computes a pane-salted panel [`egui::Id`] from the enclosing `ui` hierarchy.
 #[inline]

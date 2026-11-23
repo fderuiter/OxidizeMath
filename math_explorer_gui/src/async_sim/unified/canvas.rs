@@ -2,17 +2,55 @@
 
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::ui::render_empty_plot_guidance;
-use crate::async_sim::StateSnapshot;
+use crate::async_sim::SimCommand;
 use crate::framework::{BrushMode, InteractionContext, InteractiveTool};
 use eframe::egui::{self, ColorImage, TextureOptions};
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
-    fn draw_image_plot(&mut self, ui: &mut egui::Ui, texture: &egui::TextureHandle) {
+    fn sample_legacy_image_brush(&mut self, ctx: &egui::Context, plot_ui: &egui_plot::PlotUi) {
+        if !plot_ui.response().hovered()
+            || !ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
+        {
+            return;
+        }
+        let Some(pos) = plot_ui.pointer_coordinate() else {
+            return;
+        };
+        let grid_x = pos.x.round() as i32;
+        let grid_y = pos.y.round() as i32;
+        let is_obs = ctx.input(|i| i.pointer.primary_down());
+        let allowed = self
+            .ui_extension
+            .as_mut()
+            .is_none_or(|ext| ext.on_brush(grid_x, grid_y, 2, is_obs));
+        if allowed
+            && self
+                .controller
+                .send_command(SimCommand::ApplyBrush {
+                    cx: grid_x,
+                    cy: grid_y,
+                    r: 2,
+                    is_obstacle: is_obs,
+                })
+                .is_ok()
+        {
+            ctx.request_repaint();
+        }
+    }
+
+    fn draw_image_plot(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        texture: &egui::TextureHandle,
+    ) {
         let width = texture.size()[0] as f32;
         let height = texture.size()[1] as f32;
-        let allow_pan = !self.brush_kit.is_sculpting();
+        let allow_pan = !M::supports_spatial_brush() || !self.brush_kit.is_sculpting();
         let mut strokes = Vec::new();
+        let visuals = ui.visuals().clone();
+        let mut ext_cmds = Vec::new();
 
         let plot_resp = Plot::new(format!("{}_plot_img", M::name()))
             .data_aspect(1.0)
@@ -29,23 +67,31 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     PlotPoint::new(f64::from(width) / 2.0, f64::from(height) / 2.0),
                     [width, height],
                 ));
-
-                strokes = self.brush_kit.sample_plot(
-                    plot_ui,
-                    [0.5, 0.5],
-                    [f64::from(width) - 0.5, f64::from(height) - 0.5],
-                    Some(BrushMode::Erase),
-                );
+                if let Some(ext) = &mut self.ui_extension {
+                    ext_cmds = ext.handle_canvas_overlay(ctx, &visuals, plot_ui);
+                }
+                if M::supports_spatial_brush() {
+                    strokes = self.brush_kit.sample_plot(
+                        plot_ui,
+                        [0.5, 0.5],
+                        [f64::from(width) - 0.5, f64::from(height) - 0.5],
+                        Some(BrushMode::Erase),
+                    );
+                } else {
+                    self.sample_legacy_image_brush(ctx, plot_ui);
+                }
+                self.callout_manager.render_on_plot(plot_ui);
             });
 
         for stroke in strokes {
             let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
             self.on_brush(&ic);
         }
+        self.dispatch_extension_commands(ext_cmds, Some(ctx));
     }
 
-    fn draw_line_plot(&self, ui: &mut egui::Ui, snapshot: &StateSnapshot) {
-        if snapshot.custom_data.is_empty() {
+    fn draw_line_plot(&mut self, ui: &mut egui::Ui, custom_data: &[f64]) {
+        if custom_data.is_empty() {
             render_empty_plot_guidance(
                 ui,
                 "No trajectory samples yet — click ▶ Run in the side panel to begin.",
@@ -53,15 +99,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             return;
         }
         let mut points = Vec::new();
-        for i in (0..snapshot.custom_data.len()).step_by(2) {
-            if i + 1 < snapshot.custom_data.len() {
-                points.push([snapshot.custom_data[i], snapshot.custom_data[i + 1]]);
+        for i in (0..custom_data.len()).step_by(2) {
+            if i + 1 < custom_data.len() {
+                points.push([custom_data[i], custom_data[i + 1]]);
             }
         }
         if points.len() <= 1 {
             render_empty_plot_guidance(
                 ui,
                 "Initial resting state ready — click ▶ Run to evolve the trajectory over time.",
+            );
+        }
+        if let Some(&last_pt) = points.last() {
+            self.callout_manager.set_auto_callout(
+                "unified_latest",
+                last_pt,
+                format!("({:.2}, {:.2})", last_pt[0], last_pt[1]),
+                [22.0_f32, -18.0_f32],
             );
         }
 
@@ -85,6 +139,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                             .color(color),
                     );
                 }
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 
@@ -112,10 +167,17 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     fn render_primary_viewport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         self.refresh_texture_if_dirty(ctx);
+        if let Some(ext) = &self.ui_extension {
+            ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
+        }
         if let Some(texture) = self.texture.clone() {
-            self.draw_image_plot(ui, &texture);
-        } else if let Some(snapshot) = self.controller.latest_snapshot() {
-            self.draw_line_plot(ui, snapshot);
+            self.draw_image_plot(ui, ctx, &texture);
+        } else if let Some(custom_data) = self
+            .controller
+            .latest_snapshot()
+            .map(|s| s.custom_data.clone())
+        {
+            self.draw_line_plot(ui, &custom_data);
         } else {
             render_empty_plot_guidance(
                 ui,
