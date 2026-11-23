@@ -2,6 +2,8 @@
 //!
 //! Provides models for converting raw sensor output to real-world physical units.
 
+use crate::error::DoseFluenceError;
+
 /// A linear calibration model: y = mx + c.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -26,12 +28,15 @@ impl LinearCalibrator {
     ///
     /// # Returns
     ///
-    /// * `Result<LinearCalibrator, String>` - A fitted calibrator or error if data is insufficient.
+    /// * `Result<LinearCalibrator, DoseFluenceError>` - A fitted calibrator or error if data is insufficient.
     #[verified_engine::verified]
-    pub fn fit(voltages: &[f64], distances: &[f64]) -> Result<Self, String> {
+    pub fn fit(voltages: &[f64], distances: &[f64]) -> Result<Self, DoseFluenceError> {
         let n = voltages.len().min(distances.len());
         if n < 2 {
-            return Err("At least 2 data points required for linear calibration.".to_string());
+            return Err(DoseFluenceError::InsufficientCalibrationPoints {
+                minimum: 2,
+                actual: n,
+            });
         }
 
         let nf = n as f64;
@@ -47,7 +52,7 @@ impl LinearCalibrator {
 
         let denominator = nf * sum_x2 - sum_x.powi(2);
         if denominator.abs() < math_commons::registry::TOLERANCE_HIGH {
-            return Err("Variance of x is zero; cannot fit line.".to_string());
+            return Err(DoseFluenceError::ZeroCalibrationVariance);
         }
 
         let slope = (nf * sum_xy - sum_x * sum_y) / denominator;

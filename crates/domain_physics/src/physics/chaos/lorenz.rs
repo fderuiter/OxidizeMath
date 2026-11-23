@@ -188,20 +188,64 @@ impl OdeSystem<Vector3<f64>> for LorenzSystem {
     }
 }
 
+#[verified_engine::verified]
+fn lorenz_hopf_rho(sigma: f64, beta: f64) -> Option<f64> {
+    let denom = sigma - beta - 1.0;
+    if sigma > 0.0 && beta > 0.0 && denom > 1e-9 {
+        let rho_h = sigma * (sigma + beta + 3.0) / denom;
+        rho_h.is_finite().then_some(rho_h)
+    } else {
+        None
+    }
+}
+
+#[verified_engine::verified]
+fn classify_lorenz_regime(system: &LorenzSystem) -> (&'static str, f64, Option<f64>) {
+    use pure_math::pure_math::analysis::ode::{RungeKutta4, SolverExt};
+
+    let rho_h = lorenz_hopf_rho(system.sigma, system.beta);
+    let dt = 0.01;
+    let mut seed = Vector3::new(1.0, 1.0, 1.0);
+    let mut rk4 = RungeKutta4::new(&seed);
+    for _ in 0..400 {
+        let next = rk4.solve(system, 0.0, &seed, dt);
+        if !(next.x.is_finite() && next.y.is_finite() && next.z.is_finite()) || next.norm() > 1e6 {
+            break;
+        }
+        seed = next;
+    }
+    let lambda =
+        super::metrics::lorenz_lyapunov(system, &mut rk4, seed, dt, 40, 0.25).unwrap_or(f64::NAN);
+
+    if system.rho <= 1.0 {
+        return ("Origin sink regime", lambda, rho_h);
+    }
+    if lambda.is_finite() && lambda > 0.05 {
+        return ("Chaotic regime", lambda, rho_h);
+    }
+    if rho_h.is_some_and(|rh| system.rho >= rh) {
+        return ("Periodic window regime", lambda, rho_h);
+    }
+    ("Twin-lobe equilibrium regime", lambda, rho_h)
+}
+
 impl TheoryDescribable for LorenzSystem {
     fn theory_description(&self) -> String {
         let x = self.state.vec.x;
         let y = self.state.vec.y;
         let z = self.state.vec.z;
-        let regime = if self.rho > 24.74 {
-            "Chaotic regime"
-        } else {
-            "Stable regime"
-        };
-        format!(
-            "Lorenz attractor in {}, state: x={:.2}, y={:.2}, z={:.2}",
-            regime, x, y, z
-        )
+        let (regime, lambda, rho_h) = classify_lorenz_regime(self);
+        match (lambda.is_finite(), rho_h) {
+            (true, Some(rh)) => format!(
+                "Lorenz attractor in {regime} (λ₁={lambda:.2}, ρ_H={rh:.2}), state: x={x:.2}, y={y:.2}, z={z:.2}"
+            ),
+            (true, None) => format!(
+                "Lorenz attractor in {regime} (λ₁={lambda:.2}), state: x={x:.2}, y={y:.2}, z={z:.2}"
+            ),
+            (false, _) => {
+                format!("Lorenz attractor in {regime}, state: x={x:.2}, y={y:.2}, z={z:.2}")
+            }
+        }
     }
 
     fn phonetic_description(&self) -> String {

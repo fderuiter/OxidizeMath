@@ -297,7 +297,6 @@ fn test_contour_batch_shapes_hover_log_split_and_nan_free_extract_points() {
     let mid_pos = lin_tf.position_from_point(&egui_plot::PlotPoint::new(-1.02, 0.35));
     let (snap_pt, _) = z_batch.closest_continuous_point(mid_pos, &lin_tf).unwrap();
     assert!((snap_pt.x - (-1.0)).abs() < 1e-4 && (snap_pt.y - 0.35).abs() < 1e-3);
-
     let mut log_tf = PlotTransform::new(
         frame,
         PlotBounds::from_min_max([0.01, 0.01], [10.0, 10.0]),

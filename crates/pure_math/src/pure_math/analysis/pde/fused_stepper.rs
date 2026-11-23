@@ -1,3 +1,4 @@
+use math_commons::error::MathError;
 use math_commons::math_kernel::types::{StepSize, flatten_2d_index, flatten_3d_index};
 
 /// Six-neighbor 3D axial state values around a central grid cell.
@@ -61,30 +62,48 @@ impl<'de> serde::Deserialize<'de> for StencilOperators {
 }
 
 impl StencilOperators {
-    #[allow(missing_docs)]
+    /// Creates 1D stencil operators after validating that `dx` is finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `dx <= 0.0` or non-finite.
     #[verified_engine::verified]
-    pub fn new(dx: StepSize) -> Self {
-        Self::new_3d(dx, StepSize(1.0), StepSize(1.0))
+    pub fn try_new(dx: StepSize) -> Result<Self, MathError> {
+        Self::try_new_3d(dx, StepSize(1.0), StepSize(1.0))
     }
 
-    #[allow(missing_docs)]
+    /// Creates 2D stencil operators after validating that `dx` and `dy` are finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `dx <= 0.0`, `dy <= 0.0`, or either is non-finite.
     #[verified_engine::verified]
-    pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
-        Self::new_3d(dx, dy, StepSize(1.0))
+    pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, MathError> {
+        Self::try_new_3d(dx, dy, StepSize(1.0))
     }
 
-    /// Precomputes 3D finite-difference reciprocal spacings for `(dx, dy, dz)`.
+    /// Creates 3D stencil operators after validating that `dx`, `dy`, and `dz` are finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when any step size is `<= 0.0` or non-finite.
     #[verified_engine::verified]
-    pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
-        assert!(*dx > 0.0, "Step size dx must be positive and non-zero");
-        assert!(*dy > 0.0, "Step size dy must be positive and non-zero");
-        assert!(*dz > 0.0, "Step size dz must be positive and non-zero");
+    pub fn try_new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Result<Self, MathError> {
+        for step in [*dx, *dy, *dz] {
+            if !(step > 0.0 && step.is_finite()) {
+                return Err(MathError::StrictlyOutOfBounds {
+                    value: step,
+                    min: 0.0,
+                    max: f64::INFINITY,
+                });
+            }
+        }
         let inv_dx = 1.0 / *dx;
         let inv_two_dx = 1.0 / (2.0 * *dx);
         let inv_dx_sq = 1.0 / (*dx * *dx);
         let inv_dy_sq = 1.0 / (*dy * *dy);
         let inv_dz_sq = 1.0 / (*dz * *dz);
-        Self {
+        Ok(Self {
             dx,
             dy,
             dz,
@@ -93,7 +112,49 @@ impl StencilOperators {
             inv_dx_sq,
             inv_dy_sq,
             inv_dz_sq,
-        }
+        })
+    }
+
+    /// Creates 1D stencil operators.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `*dx <= 0.0` or non-finite. Prefer [`Self::try_new`].
+    #[verified_engine::verified]
+    pub fn new(dx: StepSize) -> Self {
+        Self::new_3d(dx, StepSize(1.0), StepSize(1.0))
+    }
+
+    /// Creates 2D stencil operators.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `*dx <= 0.0`, `*dy <= 0.0`, or either is non-finite. Prefer [`Self::try_new_2d`].
+    #[verified_engine::verified]
+    pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
+        Self::new_3d(dx, dy, StepSize(1.0))
+    }
+
+    /// Precomputes 3D finite-difference reciprocal spacings for `(dx, dy, dz)`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any step size is `<= 0.0` or non-finite. Prefer [`Self::try_new_3d`].
+    #[verified_engine::verified]
+    pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
+        assert!(
+            *dx > 0.0 && dx.is_finite(),
+            "Step size dx must be positive and non-zero"
+        );
+        assert!(
+            *dy > 0.0 && dy.is_finite(),
+            "Step size dy must be positive and non-zero"
+        );
+        assert!(
+            *dz > 0.0 && dz.is_finite(),
+            "Step size dz must be positive and non-zero"
+        );
+        Self::try_new_3d(dx, dy, dz).expect("Step sizes validated positive")
     }
 
     /// Central difference for 1st derivative (gradient): (u_{i+1} - u_{i-1}) / 2dx
@@ -153,6 +214,42 @@ pub struct FusedStencilStepper {
 }
 
 impl FusedStencilStepper {
+    /// Creates a 1D fused stencil stepper after validating `dx > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `*dx <= 0.0` or non-finite.
+    #[verified_engine::verified]
+    pub fn try_new(dx: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new(dx)?,
+        })
+    }
+
+    /// Creates a 2D fused stencil stepper after validating `dx > 0.0` and `dy > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `*dx <= 0.0`, `*dy <= 0.0`, or either is non-finite.
+    #[verified_engine::verified]
+    pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new_2d(dx, dy)?,
+        })
+    }
+
+    /// Creates a 3D fused stencil stepper after validating `dx > 0.0`, `dy > 0.0`, and `dz > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when any step size is `<= 0.0` or non-finite.
+    #[verified_engine::verified]
+    pub fn try_new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new_3d(dx, dy, dz)?,
+        })
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {
@@ -388,61 +485,5 @@ impl FusedStencilStepper {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_stencil_operators_precomputation() {
-        let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.25));
-        assert!((ops.inv_dx - 2.0).abs() < 1e-12);
-        assert!((ops.inv_two_dx - 1.0).abs() < 1e-12);
-        assert!((ops.inv_dx_sq - 4.0).abs() < 1e-12);
-        assert!((ops.inv_dy_sq - 16.0).abs() < 1e-12);
-
-        let ops_1d = StencilOperators::new(StepSize(2.0));
-        assert!((ops_1d.inv_dx - 0.5).abs() < 1e-12);
-        assert!((ops_1d.inv_two_dx - 0.25).abs() < 1e-12);
-        assert!((ops_1d.inv_dx_sq - 0.25).abs() < 1e-12);
-        assert!((ops_1d.inv_dy_sq - 1.0).abs() < 1e-12);
-    }
-
-    #[test]
-    #[should_panic(expected = "Step size dx must be positive and non-zero")]
-    fn test_stencil_operators_invalid_dx() {
-        StencilOperators::new(StepSize(0.0));
-    }
-
-    #[test]
-    #[should_panic(expected = "Step size dy must be positive and non-zero")]
-    fn test_stencil_operators_invalid_dy() {
-        StencilOperators::new_2d(StepSize(1.0), StepSize(-0.5));
-    }
-
-    #[test]
-    fn test_stencil_operator_evaluations() {
-        let dx = 0.2;
-        let dy = 0.4;
-        let ops = StencilOperators::new_2d(StepSize(dx), StepSize(dy));
-
-        let cd1 = ops.central_diff_1st(1.0, 3.0);
-        let cd1_expected = (3.0 - 1.0) / (2.0 * dx);
-        assert!((cd1 - cd1_expected).abs() < 1e-12);
-
-        let cd2 = ops.central_diff_2nd(1.0, 4.0, 9.0);
-        let cd2_expected = (9.0 - 2.0 * 4.0 + 1.0) / (dx * dx);
-        assert!((cd2 - cd2_expected).abs() < 1e-12);
-
-        let cd2_2d = ops.central_diff_2nd_2d(5.0, 2.0, 8.0, 3.0, 7.0);
-        let d2x_expected = (8.0 - 2.0 * 5.0 + 2.0) / (dx * dx);
-        let d2y_expected = (7.0 - 2.0 * 5.0 + 3.0) / (dy * dy);
-        assert!((cd2_2d - (d2x_expected + d2y_expected)).abs() < 1e-12);
-
-        let flux_pos = ops.upwind_flux(2.0, 1.0, 3.0, 5.0);
-        let flux_pos_expected = (3.0 * 2.0 - 1.0 * 2.0) / dx;
-        assert!((flux_pos - flux_pos_expected).abs() < 1e-12);
-
-        let flux_neg = ops.upwind_flux(-2.0, 1.0, 3.0, 5.0);
-        let flux_neg_expected = (5.0 * (-2.0) - 3.0 * (-2.0)) / dx;
-        assert!((flux_neg - flux_neg_expected).abs() < 1e-12);
-    }
-}
+#[path = "fused_stepper_tests.rs"]
+mod tests;

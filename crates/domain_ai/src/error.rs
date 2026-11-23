@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[allow(missing_docs)]
 pub enum AIError {
     /// Invalid parameter value (e.g. negative learning rate).
@@ -19,6 +19,68 @@ pub enum AIError {
     #[error("Uninitialized state: {name}")]
     #[allow(missing_docs)]
     UninitializedState { name: String },
+
+    /// Model dimension is incompatible with the requested attention head count.
+    #[error(
+        "Model dimension d_model ({d_model}) must be divisible by positive head count h ({heads})"
+    )]
+    InvalidHeadConfiguration {
+        /// Embedding dimension `d_model`.
+        d_model: usize,
+        /// Requested number of attention heads `h`.
+        heads: usize,
+    },
+
+    /// Number of per-head weight matrices did not match head count `h`.
+    #[error(
+        "Expected {expected} weight matrices per projection type, got w_q: {got_q}, w_k: {got_k}, w_v: {got_v}"
+    )]
+    HeadCountMismatch {
+        /// Expected number of heads `h`.
+        expected: usize,
+        /// Supplied query projection count.
+        got_q: usize,
+        /// Supplied key projection count.
+        got_k: usize,
+        /// Supplied value projection count.
+        got_v: usize,
+    },
+
+    /// Output projection weight matrix had incompatible dimensions.
+    #[error(
+        "{projection} dimension mismatch: expected ({}, {}), got ({}, {})",
+        expected.0,
+        expected.1,
+        actual.0,
+        actual.1
+    )]
+    ProjectionShapeMismatch {
+        /// Name of the projection matrix (`w_o`).
+        projection: &'static str,
+        /// Expected `(nrows, ncols)` shape.
+        expected: (usize, usize),
+        /// Actual `(nrows, ncols)` shape.
+        actual: (usize, usize),
+    },
+
+    /// Per-head projection weight matrix had incompatible dimensions.
+    #[error(
+        "Head {head} {projection} dimension mismatch: expected ({}, {}), got ({}, {})",
+        expected.0,
+        expected.1,
+        actual.0,
+        actual.1
+    )]
+    HeadProjectionShapeMismatch {
+        /// Zero-based attention head index.
+        head: usize,
+        /// Name of the head projection matrix (`w_q`, `w_k`, or `w_v`).
+        projection: &'static str,
+        /// Expected `(nrows, ncols)` shape.
+        expected: (usize, usize),
+        /// Actual `(nrows, ncols)` shape.
+        actual: (usize, usize),
+    },
 
     #[error("{0}")]
     #[allow(missing_docs)]

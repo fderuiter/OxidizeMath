@@ -4,6 +4,13 @@
 //! It includes joint survival functions, the win ratio parameter, and derived
 //! marginal and conditional survival functions and their PDFs.
 
+pub use super::power_sweep::{
+    MAX_ARM_SIZE, MAX_SWEEP_REPLICATES, MAX_SWEEP_STEPS, PowerSweepConfig, PowerSweepReport,
+    PowerSweepWorkspace, SampleSizePowerPoint, run_power_sweep_into, run_weibull_power_sweep,
+    simulate_weibull_trial_into,
+};
+pub use super::weibull_sampler::SimulatedSubject;
+
 /// Represents a Bivariate Survival Model (Weibull-like) used in the simulation.
 ///
 /// The joint survival function is defined as:

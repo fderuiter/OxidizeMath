@@ -2,6 +2,7 @@
 
 use super::{CurvatureHeatmap, CurvatureKind, ParametricSurfaceKind};
 use crate::framework::{Plot3DViewport, CAMERA_3D_HELPER_TEXT};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 
 impl CurvatureHeatmap {
@@ -76,20 +77,34 @@ impl CurvatureHeatmap {
             ))
             .show(ui, |ui| match self.surface_type {
                 ParametricSurfaceKind::Sphere => {
-                    ui.add(egui::Slider::new(&mut self.sphere_radius, 0.1..=5.0).text("Radius"));
+                    ui.add(
+                        AnimatedSlider::new(&mut self.sphere_radius, 0.1..=5.0)
+                            .hard_bounds(0.1..=5.0)
+                            .text("Radius")
+                            .id_salt("curvature_heatmap_sphere_radius"),
+                    );
                 }
                 ParametricSurfaceKind::Torus => {
                     ui.add(
-                        egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0)
-                            .text("Major Radius (R)"),
+                        AnimatedSlider::new(&mut self.torus_major_radius, 1.0..=5.0)
+                            .hard_bounds(1.0..=5.0)
+                            .text("Major Radius (R)")
+                            .id_salt("curvature_heatmap_torus_major"),
                     );
                     ui.add(
-                        egui::Slider::new(&mut self.torus_minor_radius, 0.1..=2.0)
-                            .text("Minor Radius (r)"),
+                        AnimatedSlider::new(&mut self.torus_minor_radius, 0.1..=2.0)
+                            .hard_bounds(0.1..=2.0)
+                            .text("Minor Radius (r)")
+                            .id_salt("curvature_heatmap_torus_minor"),
                     );
                 }
                 ParametricSurfaceKind::KleinBottle => {
-                    ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
+                    ui.add(
+                        AnimatedSlider::new(&mut self.klein_radius, 0.5..=5.0)
+                            .hard_bounds(0.5..=5.0)
+                            .text("Radius")
+                            .id_salt("curvature_heatmap_klein_radius"),
+                    );
                 }
                 ParametricSurfaceKind::CustomHeightfield
                 | ParametricSurfaceKind::CustomParametric => {

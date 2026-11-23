@@ -3,6 +3,8 @@ mod analysis;
 mod cache;
 mod manifest;
 #[cfg(feature = "ast-analysis")]
+mod module_tree;
+#[cfg(feature = "ast-analysis")]
 mod runner;
 #[cfg(feature = "ast-analysis")]
 mod scan_files;
@@ -199,7 +201,7 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         }
     }
 
-    async fn load_cached_optional(
+    pub(super) async fn load_cached_optional(
         &self,
         norm_path: &str,
         cache: &mut AstCache,
@@ -213,65 +215,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
             return Ok(true);
         }
         Ok(false)
-    }
-
-    async fn gather_active_files(
-        &self,
-        code_dirs: &[&str],
-        active_files: &mut HashSet<String>,
-        cache: &mut AstCache,
-    ) -> Result<(), std::io::Error> {
-        for dir in code_dirs {
-            let normalized = crate::path_utils::normalize_path(dir);
-            let lib = crate::path_utils::join_and_normalize(&normalized, "lib.rs");
-            let main = crate::path_utils::join_and_normalize(&normalized, "main.rs");
-            let mut has_entrypoint = false;
-
-            if self.load_cached_optional(&lib, cache).await? {
-                self.parse_module_tree(&lib, active_files, cache).await?;
-                has_entrypoint = true;
-            }
-            if self.load_cached_optional(&main, cache).await? {
-                self.parse_module_tree(&main, active_files, cache).await?;
-                has_entrypoint = true;
-            }
-            if !has_entrypoint {
-                self.gather_files_fallback(&normalized, active_files)
-                    .await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn gather_files_fallback(
-        &self,
-        start_dir: &str,
-        active_files: &mut HashSet<String>,
-    ) -> Result<(), std::io::Error> {
-        let mut stack = vec![start_dir.to_string()];
-        while let Some(current_dir) = stack.pop() {
-            let entries = match self.vfs.list_dir(&current_dir).await {
-                Ok(entries) => entries,
-                Err(err)
-                    if matches!(
-                        err.kind(),
-                        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
-                    ) =>
-                {
-                    continue;
-                }
-                Err(err) => return Err(err),
-            };
-            for name in entries {
-                let path = crate::path_utils::join_and_normalize(&current_dir, &name);
-                if name.ends_with(".rs") {
-                    active_files.insert(path);
-                } else if !name.contains('.') {
-                    stack.push(path);
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Discovers workspace code directories (`math_explorer/src`, `math_explorer_gui/src/tabs`,
@@ -365,43 +308,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         analysis::finalize_report_orphans(&mut report);
 
         Ok(report)
-    }
-
-    async fn parse_module_tree(
-        &self,
-        file_path: &str,
-        active_files: &mut HashSet<String>,
-        cache: &mut AstCache,
-    ) -> Result<(), std::io::Error> {
-        let mut stack = vec![crate::path_utils::normalize_path(file_path)];
-        while let Some(norm_file_path) = stack.pop() {
-            if active_files.contains(&norm_file_path) {
-                continue;
-            }
-            let key = AstCache::normalize_key(&norm_file_path);
-            if cache.get(&key).is_none() {
-                let content = self.vfs.read_to_string(&norm_file_path).await?;
-                cache.insert_source(key.clone(), content);
-            }
-            active_files.insert(norm_file_path.clone());
-
-            let submodules =
-                analysis::collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
-            let dir_path = analysis::module_child_dir(&norm_file_path);
-            for submodule in submodules.into_iter().rev() {
-                let path1 =
-                    crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}.rs"));
-                let path2 =
-                    crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}/mod.rs"));
-
-                if self.load_cached_optional(&path1, cache).await? {
-                    stack.push(path1);
-                } else if self.load_cached_optional(&path2, cache).await? {
-                    stack.push(path2);
-                }
-            }
-        }
-        Ok(())
     }
 }
 

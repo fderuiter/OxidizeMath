@@ -2,6 +2,7 @@
 
 use super::{ParametricSurfaceKind, SurfaceViewer};
 use crate::framework::Plot3DViewport;
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 
 impl SurfaceViewer {
@@ -65,20 +66,34 @@ impl SurfaceViewer {
             ))
             .show(ui, |ui| match self.surface_type {
                 ParametricSurfaceKind::Sphere => {
-                    ui.add(egui::Slider::new(&mut self.sphere_radius, 0.1..=5.0).text("Radius"));
+                    ui.add(
+                        AnimatedSlider::new(&mut self.sphere_radius, 0.1..=5.0)
+                            .hard_bounds(0.1..=5.0)
+                            .text("Radius")
+                            .id_salt("surface_viewer_sphere_radius"),
+                    );
                 }
                 ParametricSurfaceKind::Torus => {
                     ui.add(
-                        egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0)
-                            .text("Major Radius (R)"),
+                        AnimatedSlider::new(&mut self.torus_major_radius, 1.0..=5.0)
+                            .hard_bounds(1.0..=5.0)
+                            .text("Major Radius (R)")
+                            .id_salt("surface_viewer_torus_major"),
                     );
                     ui.add(
-                        egui::Slider::new(&mut self.torus_minor_radius, 0.1..=2.0)
-                            .text("Minor Radius (r)"),
+                        AnimatedSlider::new(&mut self.torus_minor_radius, 0.1..=2.0)
+                            .hard_bounds(0.1..=2.0)
+                            .text("Minor Radius (r)")
+                            .id_salt("surface_viewer_torus_minor"),
                     );
                 }
                 ParametricSurfaceKind::KleinBottle => {
-                    ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
+                    ui.add(
+                        AnimatedSlider::new(&mut self.klein_radius, 0.5..=5.0)
+                            .hard_bounds(0.5..=5.0)
+                            .text("Radius")
+                            .id_salt("surface_viewer_klein_radius"),
+                    );
                     self.draw_wall_thickness_slider(ui);
                 }
                 ParametricSurfaceKind::CustomHeightfield
@@ -94,11 +109,13 @@ impl SurfaceViewer {
             MAX_WALL_THICKNESS, MIN_WALL_THICKNESS,
         };
         ui.add(
-            egui::Slider::new(
+            AnimatedSlider::new(
                 &mut self.wall_thickness,
                 MIN_WALL_THICKNESS..=MAX_WALL_THICKNESS,
             )
-            .text("Shell Wall Thickness"),
+            .hard_bounds(MIN_WALL_THICKNESS..=MAX_WALL_THICKNESS)
+            .text("Shell Wall Thickness")
+            .id_salt("surface_viewer_wall_thickness"),
         );
     }
 
