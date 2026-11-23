@@ -38,7 +38,7 @@ pub struct ParameterConstraint {
 ///
 /// Implementing this trait allows simulation models across the workspace to expose
 /// verified descriptions, phonetic representations for accessibility, literature citations,
-/// and dynamic parameter reflection without coupling calculation routines to UI or database dependencies.
+/// and parameter constraint metadata without coupling calculation routines to UI or database dependencies.
 ///
 /// # Example
 ///
@@ -81,30 +81,15 @@ pub struct ParameterConstraint {
 ///         );
 ///         params
 ///     }
-///
-///     fn get_parameter(&self, name: &str) -> Option<f64> {
-///         match name {
-///             "length" => Some(self.length),
-///             _ => None,
-///         }
-///     }
-///
-///     fn set_parameter(&mut self, name: &str, value: f64) {
-///         if name == "length" {
-///             self.length = value;
-///         }
-///     }
 /// }
 ///
-/// let mut pendulum = Pendulum { length: 2.0 };
+/// let pendulum = Pendulum { length: 2.0 };
 /// assert_eq!(pendulum.theory_description(), "Simple pendulum of length 2.00 meters");
 /// assert_eq!(pendulum.phonetic_description(), "Simple pendulum");
 /// assert_eq!(pendulum.theory_citation(), "Landau, L. D., & Lifshitz, E. M. (1976). Mechanics.");
 /// assert_eq!(pendulum.theory_latex_equation(), None);
 /// assert_eq!(pendulum.theory_parameters()["length"].min, 0.1);
-/// assert_eq!(pendulum.get_parameter("length"), Some(2.0));
-/// pendulum.set_parameter("length", 3.5);
-/// assert_eq!(pendulum.get_parameter("length"), Some(3.5));
+/// assert_eq!(pendulum.theory_parameters()["length"].max, 10.0);
 /// ```
 pub trait TheoryDescribable {
     /// Returns the verified human-readable description for accessibility and UI tooltips.
@@ -126,16 +111,6 @@ pub trait TheoryDescribable {
         HashMap::new()
     }
 
-    /// Dynamically retrieves the current floating-point value of a named parameter, or `None` if not found.
-    fn get_parameter(&self, _name: &str) -> Option<f64> {
-        None
-    }
-
-    /// Dynamically updates the floating-point value of a named parameter.
-    ///
-    /// If the parameter name is unrecognized, this call is a no-op.
-    fn set_parameter(&mut self, _name: &str, _value: f64) {}
-
     /// Returns an optional LaTeX formula string representing the model's governing equation.
     ///
     /// By default, returns `None` to maintain backwards compatibility for models without explicit equations.
@@ -143,37 +118,6 @@ pub trait TheoryDescribable {
         None
     }
 }
-
-/// A macro active within user interface contexts to fetch the theoretical description of a model.
-///
-/// Delegates to [`TheoryDescribable::theory_description`].
-///
-/// # Example
-///
-/// ```rust
-/// use scientific_metadata::theory::TheoryDescribable;
-/// use scientific_metadata::theory_description;
-/// use std::collections::HashMap;
-///
-/// struct Model;
-/// impl TheoryDescribable for Model {
-///     fn theory_description(&self) -> String { "Verified Model Description".to_string() }
-///     fn phonetic_description(&self) -> String { "Verified Model".to_string() }
-///     fn theory_citation(&self) -> String { "Citation 2026".to_string() }
-///     fn available_descriptions(&self) -> HashMap<String, String> { HashMap::new() }
-/// }
-///
-/// let m = Model;
-/// assert_eq!(theory_description!(m), "Verified Model Description");
-/// ```
-#[macro_export]
-macro_rules! theory_description {
-    ($obj:expr) => {
-        $obj.theory_description()
-    };
-}
-
-pub use crate::theory_description;
 
 #[cfg(test)]
 mod tests {
@@ -216,18 +160,19 @@ mod tests {
     }
 
     #[test]
-    fn test_theory_description_macro_expansion() {
-        let model = MockModel::new();
-        let desc = theory_description!(model);
-        assert_eq!(desc, "Verified test description");
-
-        let desc_ref = theory_description!(&model);
-        assert_eq!(desc_ref, "Verified test description");
-    }
-
-    #[test]
     fn test_theory_latex_equation_default_and_override() {
         let model = MockModel::new();
+        assert_eq!(model.theory_description(), "Verified test description");
+        assert_eq!(model.phonetic_description(), "test model");
+        assert_eq!(model.theory_citation(), "Author et al. (2026)");
+        assert_eq!(
+            model
+                .available_descriptions()
+                .get("default")
+                .map(String::as_str),
+            Some("Verified test description")
+        );
+        assert!(model.theory_parameters().is_empty());
         assert_eq!(model.theory_latex_equation(), None);
 
         struct ModelWithEq;
