@@ -1,12 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "gaussian_splatting_export.rs"]
+mod export;
+#[path = "gaussian_splatting_lens_ui.rs"]
+mod lens_ui;
 #[path = "gaussian_splatting_scene.rs"]
 mod scene;
 #[path = "gaussian_splatting_ui.rs"]
 mod ui;
-
-#[path = "gaussian_splatting_export.rs"]
-mod export;
 
 #[cfg(test)]
 use crate::framework::ProjectionMode;
@@ -18,9 +19,10 @@ use nalgebra::Point3;
 use scene::evaluate_density_counts_with_thresholds;
 use scene::{
     build_preset_scene_and_gradients, evaluate_scene_density_counts_with_thresholds,
-    project_single_splat, rasterize_splats_into, VolumetricSplatPreset, CAMERA_DISTANCE,
-    DEFAULT_GRAD_THRESHOLD, DEFAULT_OPACITY_THRESHOLD, ELLIPSE_POINTS, GRAD_THRESHOLD_MAX,
-    GRAD_THRESHOLD_MIN, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN, VIEWPORT_HALF_EXTENT,
+    project_lensed_into, project_single_splat, rasterize_splats_into, LensedFrameTelemetry,
+    SplatLensConfig, SplatLensMode, VolumetricSplatPreset, CAMERA_DISTANCE, DEFAULT_GRAD_THRESHOLD,
+    DEFAULT_OPACITY_THRESHOLD, ELLIPSE_POINTS, GRAD_THRESHOLD_MAX, GRAD_THRESHOLD_MIN,
+    MAX_DYNAMIC_SPLATS, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN, VIEWPORT_HALF_EXTENT,
 };
 use scientific_metadata::theory::TheoryDescribable;
 
@@ -32,14 +34,6 @@ use scene::SPLAT_GRID_SIZE;
 
 type RenderCacheKey = (u64, u64, u64, u64);
 
-const fn default_grad_threshold() -> f64 {
-    DEFAULT_GRAD_THRESHOLD
-}
-
-const fn default_opacity_threshold() -> f64 {
-    DEFAULT_OPACITY_THRESHOLD
-}
-
 /// Interactive 3D Gaussian Splatting radiance field viewer built on `Plot3DViewport`.
 pub struct GaussianSplattingTool {
     /// Uniform multiplier applied to 3D Gaussian principal semi-axes.
@@ -50,8 +44,11 @@ pub struct GaussianSplattingTool {
     pub opacity_threshold: f64,
     /// Shared 3D orbit, pan, projection, and zoom camera state.
     pub camera: Camera3D,
-    /// Active volumetric scene preset (canonical 8-splat or dynamic orbital/Turing volumes).
+    /// Active volumetric scene preset (canonical 8-splat or dynamic orbital/Turing/accretion volumes).
     pub scene_preset: VolumetricSplatPreset,
+    /// Interactive gravitational thin-lens, relativistic beaming, and caustic overlay state.
+    pub lens: SplatLensConfig,
+    pub(super) lens_telemetry: LensedFrameTelemetry,
     pub(super) frustum_half_extents: (f64, f64),
     pub(super) scene: Scene,
     pub(super) grad_magnitudes: Vec<f64>,
@@ -65,6 +62,8 @@ pub struct GaussianSplattingTool {
     pub(super) texture: Option<egui::TextureHandle>,
     cached_key: Option<RenderCacheKey>,
     pub(super) cached_counts: DensityActionCounts,
+    pub(super) export_rx: Option<std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>>,
+    pub(super) export_status: Option<(String, bool)>,
 }
 
 impl Default for GaussianSplattingTool {
@@ -84,25 +83,32 @@ impl Default for GaussianSplattingTool {
         );
         let camera = Camera3D::new(0.5, 0.5, 1.0).with_perspective_distance(CAMERA_DISTANCE);
         let world_means = scene.gaussians.iter().map(|g| g.mean).collect();
+        let dual_cap = MAX_DYNAMIC_SPLATS
+            .saturating_mul(2)
+            .max(count.saturating_mul(2));
         Self {
             scale,
             grad_threshold,
             opacity_threshold,
             camera,
             scene_preset,
+            lens: SplatLensConfig::default(),
+            lens_telemetry: LensedFrameTelemetry::default(),
             frustum_half_extents: (VIEWPORT_HALF_EXTENT, VIEWPORT_HALF_EXTENT),
             scene,
             grad_magnitudes,
-            projected_splats: Vec::with_capacity(count),
-            ellipse_rings: Vec::with_capacity(count),
-            ellipse_rings_3d: Vec::with_capacity(count),
-            splat_centers: Vec::with_capacity(count),
+            projected_splats: Vec::with_capacity(dual_cap),
+            ellipse_rings: Vec::with_capacity(64),
+            ellipse_rings_3d: Vec::with_capacity(64),
+            splat_centers: Vec::with_capacity(dual_cap),
             world_means,
             scene_builder: Scene3DBuilder::new(camera),
             pixel_buffer: vec![egui::Color32::TRANSPARENT; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE],
             texture: None,
             cached_key: None,
             cached_counts,
+            export_rx: None,
+            export_status: None,
         }
     }
 }
@@ -149,7 +155,39 @@ impl GaussianSplattingTool {
         self.world_means = scene.gaussians.iter().map(|g| g.mean).collect();
         self.scene = scene;
         self.grad_magnitudes = grads;
+        let needed = self.scene.gaussians.len().saturating_mul(2);
+        if self.projected_splats.capacity() < needed {
+            self.projected_splats
+                .reserve(needed - self.projected_splats.capacity());
+        }
+        if self.splat_centers.capacity() < needed {
+            self.splat_centers
+                .reserve(needed - self.splat_centers.capacity());
+        }
         self.sync_density_counts();
+        self.cached_key = None;
+    }
+
+    /// Repositions the active gravitational lens center on the viewport canvas.
+    pub fn drag_lens_to(&mut self, plot_xy: [f64; 2]) {
+        let (xh, yh) = self.frustum_half_extents;
+        let cx = if plot_xy[0].is_finite() {
+            plot_xy[0].clamp(-xh, xh)
+        } else {
+            self.lens.center[0]
+        };
+        let cy = if plot_xy[1].is_finite() {
+            plot_xy[1].clamp(-yh, yh)
+        } else {
+            self.lens.center[1]
+        };
+        if (self.lens.center[0] - cx).abs() > 1.0e-9 || (self.lens.center[1] - cy).abs() > 1.0e-9 {
+            self.lens.center = [cx, cy];
+            self.cached_key = None;
+        }
+    }
+
+    pub(super) fn invalidate_render_cache(&mut self) {
         self.cached_key = None;
     }
 
@@ -162,19 +200,7 @@ impl GaussianSplattingTool {
     /// Renders the projected 3D Gaussian radiance field at the current `scale`, `camera`, and frustum.
     #[cfg(test)]
     pub fn render_splat_image(&self) -> egui::ColorImage {
-        let mut projected = Vec::with_capacity(self.scene.gaussians.len());
-        let mut rings = Vec::new();
-        let mut rings_3d = Vec::new();
-        let mut centers = Vec::new();
-        self.project_into(&mut projected, &mut rings, &mut rings_3d, &mut centers);
-        let mut pixels = vec![egui::Color32::TRANSPARENT; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE];
-        let (x_half, y_half) = self.frustum_half_extents;
-        rasterize_splats_into(&projected, x_half, y_half, &mut pixels);
-        egui::ColorImage {
-            size: [SPLAT_GRID_SIZE, SPLAT_GRID_SIZE],
-            source_size: egui::vec2(SPLAT_GRID_SIZE as f32, SPLAT_GRID_SIZE as f32),
-            pixels,
-        }
+        self.render_current_splat_image()
     }
 
     fn render_key(&self) -> RenderCacheKey {
@@ -182,6 +208,7 @@ impl GaussianSplattingTool {
         let mut cam_hasher = std::collections::hash_map::DefaultHasher::new();
         self.camera.hash_state(&mut cam_hasher);
         self.scene_preset.hash(&mut cam_hasher);
+        self.lens.hash_state(&mut cam_hasher);
         let (x_half, y_half) = self.frustum_half_extents;
         (
             self.scale.to_bits(),
@@ -201,7 +228,8 @@ impl GaussianSplattingTool {
         let mut rings = std::mem::take(&mut self.ellipse_rings);
         let mut rings_3d = std::mem::take(&mut self.ellipse_rings_3d);
         let mut centers = std::mem::take(&mut self.splat_centers);
-        self.project_into(&mut splats, &mut rings, &mut rings_3d, &mut centers);
+        self.lens_telemetry =
+            self.project_into(&mut splats, &mut rings, &mut rings_3d, &mut centers);
         let (x_half, y_half) = self.frustum_half_extents;
         rasterize_splats_into(&splats, x_half, y_half, &mut self.pixel_buffer);
         self.projected_splats = splats;
@@ -226,13 +254,16 @@ impl GaussianSplattingTool {
         self.cached_key = Some(key);
     }
 
-    fn project_into(
+    pub(super) fn project_into(
         &self,
         out_splats: &mut Vec<Gaussian2D>,
         out_rings: &mut Vec<([[f64; 2]; ELLIPSE_POINTS], egui::Color32)>,
         out_rings_3d: &mut Vec<([Point3<f64>; ELLIPSE_POINTS], egui::Color32)>,
         out_centers: &mut Vec<[f64; 2]>,
-    ) {
+    ) -> LensedFrameTelemetry {
+        if self.lens.mode != SplatLensMode::Off {
+            return project_lensed_into(self, out_splats, out_rings, out_rings_3d, out_centers);
+        }
         out_splats.clear();
         out_rings.clear();
         out_rings_3d.clear();
@@ -259,37 +290,12 @@ impl GaussianSplattingTool {
             }
         }
         out_splats.sort_unstable_by(|a, b| a.depth.total_cmp(&b.depth));
+        LensedFrameTelemetry {
+            emitted_images: out_splats.len(),
+            max_radiance_boost: 1.0,
+            ..LensedFrameTelemetry::default()
+        }
     }
-}
-
-#[derive(serde::Serialize)]
-struct GaussianSplattingSaveState {
-    scale: f64,
-    grad_threshold: f64,
-    opacity_threshold: f64,
-    camera: Camera3D,
-    #[serde(skip_serializing_if = "VolumetricSplatPreset::is_canonical")]
-    scene_preset: VolumetricSplatPreset,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct GaussianSplattingState {
-    scale: f64,
-    #[serde(default = "default_grad_threshold")]
-    grad_threshold: f64,
-    #[serde(default = "default_opacity_threshold")]
-    opacity_threshold: f64,
-    #[serde(default)]
-    scene_preset: VolumetricSplatPreset,
-    #[serde(default)]
-    camera: Option<Camera3D>,
-    #[serde(default)]
-    pitch: Option<f32>,
-    #[serde(default)]
-    yaw: Option<f32>,
-    #[serde(default)]
-    zoom: Option<f32>,
 }
 
 impl InteractiveTool for GaussianSplattingTool {
@@ -305,6 +311,9 @@ impl InteractiveTool for GaussianSplattingTool {
     fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
         Some(self.serialize_splats_ply_binary())
     }
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        Some(self.render_current_splat_image())
+    }
     fn domain(&self) -> &'static str {
         "ai"
     }
@@ -316,6 +325,7 @@ impl InteractiveTool for GaussianSplattingTool {
         self.grad_threshold.to_bits().hash(&mut h);
         self.opacity_threshold.to_bits().hash(&mut h);
         self.scene_preset.hash(&mut h);
+        self.lens.hash_state(&mut h);
         self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
@@ -327,6 +337,7 @@ impl InteractiveTool for GaussianSplattingTool {
             && (GRAD_THRESHOLD_MIN..=GRAD_THRESHOLD_MAX).contains(&self.grad_threshold)
             && self.opacity_threshold.is_finite()
             && (OPACITY_THRESHOLD_MIN..=OPACITY_THRESHOLD_MAX).contains(&self.opacity_threshold)
+            && self.lens.is_valid()
             && self.camera.is_valid()
     }
 
@@ -348,6 +359,7 @@ impl InteractiveTool for GaussianSplattingTool {
         } else {
             DEFAULT_OPACITY_THRESHOLD
         };
+        self.lens.clamp_in_place();
         if !self.camera.is_valid() {
             self.camera.reset();
         }
@@ -357,48 +369,11 @@ impl InteractiveTool for GaussianSplattingTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&GaussianSplattingSaveState {
-            scale: self.scale,
-            grad_threshold: self.grad_threshold,
-            opacity_threshold: self.opacity_threshold,
-            camera: self.camera,
-            scene_preset: self.scene_preset,
-        })
-        .ok()
+        self.serialize_tool_state_json()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        self.state_bounds().validate_json(state)?;
-        let parsed: GaussianSplattingState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid splatting state: {e}"))?;
-        if !parsed.scale.is_finite() || !(0.1..=10.0).contains(&parsed.scale) {
-            return Err("Gaussian splat scale must be finite within [0.1, 10.0]".into());
-        }
-        if !parsed.grad_threshold.is_finite()
-            || !(GRAD_THRESHOLD_MIN..=GRAD_THRESHOLD_MAX).contains(&parsed.grad_threshold)
-        {
-            return Err("Gradient threshold out of valid bounds".into());
-        }
-        if !parsed.opacity_threshold.is_finite()
-            || !(OPACITY_THRESHOLD_MIN..=OPACITY_THRESHOLD_MAX).contains(&parsed.opacity_threshold)
-        {
-            return Err("Opacity threshold out of valid bounds".into());
-        }
-        let camera = Camera3D::from_preset_fields(
-            parsed.camera,
-            parsed.pitch,
-            parsed.yaw,
-            parsed.zoom,
-            Some(Camera3D::default()),
-        )?;
-        self.scale = parsed.scale;
-        self.grad_threshold = parsed.grad_threshold;
-        self.opacity_threshold = parsed.opacity_threshold;
-        self.camera.apply_pose(camera);
-        self.set_scene_preset(parsed.scene_preset);
-        self.sync_density_counts();
-        self.cached_key = None;
-        Ok(())
+        self.deserialize_tool_state_json(state)
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
@@ -462,3 +437,7 @@ inventory::submit! {
 #[cfg(test)]
 #[path = "gaussian_splatting_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "gaussian_splatting_lens_tests.rs"]
+mod lens_tests;
