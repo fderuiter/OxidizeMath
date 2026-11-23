@@ -33,6 +33,8 @@ fn wasm_lenia_and_phyllotaxis_and_evolution_tools_step_and_roundtrip_url() {
     let hash = &url[url.find('#').expect("share URL fragment")..];
 
     let mut restored = crate::app::MathExplorerApp::default();
-    assert!(restored.apply_share_location_strings(hash, "", None).unwrap());
+    assert!(restored
+        .apply_share_location_strings(hash, "", None)
+        .unwrap());
     assert_eq!(restored.tabs[idx].active_tool_id(), Some("LeniaTool"));
 }

@@ -69,9 +69,10 @@ impl LeniaRunner {
         domain_params.kernel_radius = kernel_radius.min(width.min(height) / 2 - 1).max(2);
         domain_params.kernel_core = LeniaKernelCore::ExponentialBump;
 
-        let mut system = LeniaSystem::new(width, height, domain_params.clone()).unwrap_or_else(
-            |_| LeniaSystem::from_preset(width, height, preset.to_domain()).unwrap(),
-        );
+        let mut system =
+            LeniaSystem::new(width, height, domain_params.clone()).unwrap_or_else(|_| {
+                LeniaSystem::from_preset(width, height, preset.to_domain()).unwrap()
+            });
         preset.to_domain().stamp_into_grid(
             system.grid_mut(),
             width,

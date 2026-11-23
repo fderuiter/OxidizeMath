@@ -168,7 +168,10 @@ impl PhyllotaxisLSystemTool {
                 nutrient.reaction_velocity(),
                 nutrient.normalized_rate() * 100.0
             ));
-            ui.label(format!("Turtle Segments: {}", self.lsystem.segments().len()));
+            ui.label(format!(
+                "Turtle Segments: {}",
+                self.lsystem.segments().len()
+            ));
         });
     }
 
@@ -223,7 +226,11 @@ impl PhyllotaxisLSystemTool {
                         [seg[0] + offset_x, seg[1] - 4.0],
                         [seg[2] + offset_x, seg[3] - 4.0],
                     ];
-                    let name = if idx == 0 { "Nutrient L-System Shoot" } else { "" };
+                    let name = if idx == 0 {
+                        "Nutrient L-System Shoot"
+                    } else {
+                        ""
+                    };
                     plot_ui.line(
                         Line::new(name, PlotPoints::from(pts))
                             .color(palette.axis_y)

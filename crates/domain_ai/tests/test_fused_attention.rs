@@ -3,6 +3,7 @@ use approx::assert_relative_eq;
 use domain_ai::ai::transformer::MultiHeadAttention;
 use domain_ai::ai::transformer::attention::scaled_dot_product_attention;
 use nalgebra::DMatrix;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 /// Reference un-fused multi-head attention forward implementation.
@@ -215,31 +216,37 @@ fn test_fused_projection_latency_and_throughput() {
     );
     let _ = mha.forward(&q, &k, &v, None);
 
-    // Measure unfused projection loop latency
-    let iters = 50;
-    let start_ref = Instant::now();
-    for _ in 0..iters {
-        for i in 0..h {
-            let _q_p = &q * &w_q_vec[i];
-            let _k_p = &k * &w_k_vec[i];
-            let _v_p = &v * &w_v_vec[i];
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
+    {
+        let iters = 50;
+        let start_ref = Instant::now();
+        for _ in 0..iters {
+            for w_q_i in w_q_vec.iter().take(h) {
+                let _q_p = &q * w_q_i;
+            }
+            for w_k_i in w_k_vec.iter().take(h) {
+                let _k_p = &k * w_k_i;
+            }
+            for w_v_i in w_v_vec.iter().take(h) {
+                let _v_p = &v * w_v_i;
+            }
         }
-    }
-    let ref_proj_duration = start_ref.elapsed();
+        let ref_proj_duration = start_ref.elapsed();
 
-    // Measure fused projection latency
-    let start_fused = Instant::now();
-    for _ in 0..iters {
-        let _q_p = &q * &mha.w_q;
-        let _k_p = &k * &mha.w_k;
-        let _v_p = &v * &mha.w_v;
-    }
-    let fused_proj_duration = start_fused.elapsed();
+        let start_fused = Instant::now();
+        for _ in 0..iters {
+            let _q_p = &q * &mha.w_q;
+            let _k_p = &k * &mha.w_k;
+            let _v_p = &v * &mha.w_v;
+        }
+        let fused_proj_duration = start_fused.elapsed();
 
-    println!(
-        "Projection Latency over {} iterations: Unfused loop: {:?}, Fused GEMM: {:?}",
-        iters, ref_proj_duration, fused_proj_duration
-    );
+        println!(
+            "Projection Latency over {} iterations: Unfused loop: {:?}, Fused GEMM: {:?}",
+            iters, ref_proj_duration, fused_proj_duration
+        );
+    }
 
     // Dynamic allocation count during linear projection drops from 3 * h (= 24) to 3 total.
     let old_allocations_per_forward = 3 * h;

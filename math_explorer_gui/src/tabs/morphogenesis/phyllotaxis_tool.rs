@@ -114,7 +114,12 @@ impl PhyllotaxisToolState {
     /// Validates finiteness and domain bounds for all phyllotaxis, L-system, and kinetics parameters.
     pub fn validate(&self) -> Result<(), String> {
         let checks = [
-            ("divergence_angle_deg", self.divergence_angle_deg, 45.0, 180.0),
+            (
+                "divergence_angle_deg",
+                self.divergence_angle_deg,
+                45.0,
+                180.0,
+            ),
             ("scale_c", self.scale_c, 0.05, 2.0),
             ("substrate", self.substrate, 0.0, 25.0),
             ("v_max", self.v_max, 0.05, 25.0),
@@ -193,7 +198,8 @@ impl PhyllotaxisLSystemTool {
 
         self.phyllotaxis.set_nutrient(nutrient);
         self.phyllotaxis.set_config(cfg);
-        self.phyllotaxis.set_active_count(self.state.primordia_count);
+        self.phyllotaxis
+            .set_active_count(self.state.primordia_count);
 
         let lsys_cfg = LSystemConfig {
             preset: self.state.lsystem_preset.to_domain(),
@@ -236,11 +242,19 @@ impl FiniteStateGuard for PhyllotaxisLSystemTool {
 
     fn clamp_parameters(&mut self) {
         let sanitize = |v: f64, lo: f64, hi: f64, def: f64| {
-            if v.is_nan() { def } else { v.clamp(lo, hi) }
+            if v.is_nan() {
+                def
+            } else {
+                v.clamp(lo, hi)
+            }
         };
         let d = PhyllotaxisToolState::default();
-        self.state.divergence_angle_deg =
-            sanitize(self.state.divergence_angle_deg, 45.0, 180.0, d.divergence_angle_deg);
+        self.state.divergence_angle_deg = sanitize(
+            self.state.divergence_angle_deg,
+            45.0,
+            180.0,
+            d.divergence_angle_deg,
+        );
         self.state.scale_c = sanitize(self.state.scale_c, 0.05, 2.0, d.scale_c);
         self.state.primordia_count = self.state.primordia_count.clamp(5, 512);
         self.state.substrate = sanitize(self.state.substrate, 0.0, 25.0, d.substrate);

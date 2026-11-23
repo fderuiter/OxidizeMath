@@ -12,7 +12,9 @@ impl EvolutionKineticsTool {
             .add(egui::Slider::new(&mut self.state.resource_value, 0.1..=20.0).text("Reward V"))
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.state.cost_of_injury, 0.1..=20.0).text("Injury Cost C"))
+            .add(
+                egui::Slider::new(&mut self.state.cost_of_injury, 0.1..=20.0).text("Injury Cost C"),
+            )
             .changed();
         changed |= ui
             .add(

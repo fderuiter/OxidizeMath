@@ -193,7 +193,9 @@ impl EvolutionKineticsTool {
         )
         .expect("validated HillKinetics");
 
-        let max_s = (self.state.k_m * 5.0).max(self.state.substrate_probe * 1.25).max(5.0);
+        let max_s = (self.state.k_m * 5.0)
+            .max(self.state.substrate_probe * 1.25)
+            .max(5.0);
         let num_samples = 160usize;
         for i in 0..=num_samples {
             let s = max_s * (i as f64) / (num_samples as f64);
@@ -243,7 +245,11 @@ impl FiniteStateGuard for EvolutionKineticsTool {
 
     fn clamp_parameters(&mut self) {
         let sanitize = |v: f64, lo: f64, hi: f64, def: f64| {
-            if v.is_nan() { def } else { v.clamp(lo, hi) }
+            if v.is_nan() {
+                def
+            } else {
+                v.clamp(lo, hi)
+            }
         };
         let d = EvolutionKineticsToolState::default();
         self.state.resource_value =
@@ -290,10 +296,7 @@ impl InteractiveTool for EvolutionKineticsTool {
             ("Hawk Frequency p_H(t)".to_string(), self.hawk_curve.clone()),
             ("Dove Frequency p_D(t)".to_string(), self.dove_curve.clone()),
             ("Analytical ESS p*".to_string(), self.ess_line.clone()),
-            (
-                "Michaelis-Menten v([S])".to_string(),
-                self.mm_curve.clone(),
-            ),
+            ("Michaelis-Menten v([S])".to_string(), self.mm_curve.clone()),
             ("Hill Kinetics v([S])".to_string(), self.hill_curve.clone()),
         ]
     }

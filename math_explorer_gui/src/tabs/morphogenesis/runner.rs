@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
 use super::presets::MorphogenesisModelKind;
 use super::MorphogenesisTool;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
@@ -99,6 +100,13 @@ impl MorphogenesisRunner {
         self.system.kinetics.b = b;
         self.system.diffusion_coeffs[0] = d_u;
         self.system.diffusion_coeffs[1] = d_v;
+
+        if dt.is_finite() && dt > 0.0 && is_pattern_forming_regime(a, b, d_u, d_v, dt) {
+            let var_u = grid_u_variance(self.system.u());
+            if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
+                MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+            }
+        }
         (dt.is_finite() && dt > 0.0).then_some(dt)
     }
 }
@@ -221,11 +229,7 @@ impl MorphogenesisMultiRunner {
             .diffusion_coeffs(vec![d_u, d_v])
             .build()
             .expect("valid 2-species ReactionDiffusionSystem");
-        MorphogenesisTool::initialize_chemical_state(
-            &mut generic_rd_system.state,
-            width,
-            height,
-        );
+        MorphogenesisTool::initialize_chemical_state(&mut generic_rd_system.state, width, height);
 
         Self {
             base,

@@ -57,7 +57,8 @@ impl LeniaTool {
         if let Some(tex) = &mut self.texture {
             tex.set(image, egui::TextureOptions::NEAREST);
         } else {
-            self.texture = Some(ctx.load_texture("lenia_tex", image, egui::TextureOptions::NEAREST));
+            self.texture =
+                Some(ctx.load_texture("lenia_tex", image, egui::TextureOptions::NEAREST));
         }
         self.dirty = false;
     }

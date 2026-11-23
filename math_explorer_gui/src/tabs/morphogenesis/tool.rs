@@ -1,14 +1,15 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::atlas::MORPHO_ATLAS_AXIS_PAIRS;
 pub use super::presets::MorphogenesisToolState;
-use super::presets::{MorphogenesisModelKind, MorphogenesisTheory, default_gs_f, default_gs_k};
-#[cfg(test)]
-use super::runner::MorphogenesisRunner;
+use super::presets::{default_gs_f, default_gs_k, MorphogenesisModelKind, MorphogenesisTheory};
 use super::runner::{
-    MorphogenesisModelParams, MorphogenesisMultiRunner, MorphogenesisSharedParams,
+    MorphogenesisModelParams, MorphogenesisMultiRunner, MorphogenesisRunner,
+    MorphogenesisSharedParams,
 };
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use eframe::egui::ColorImage;
@@ -21,6 +22,8 @@ use std::sync::Arc;
 pub struct MorphogenesisTool {
     /// Asynchronous simulation worker controller.
     pub worker: BackgroundWorker<MorphogenesisMultiRunner>,
+    /// Progressive 2D parameter regime atlas controller.
+    pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) model_params: Arc<std::sync::RwLock<MorphogenesisModelParams>>,
     pub(crate) width: usize,
@@ -29,10 +32,11 @@ pub struct MorphogenesisTool {
     pub(crate) pixels: Vec<egui::Color32>,
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
-    pub(crate) step_runner: Option<MorphogenesisMultiRunner>,
+    pub(crate) step_runner: Option<MorphogenesisRunner>,
+    pub(crate) multi_step_runner: Option<MorphogenesisMultiRunner>,
     pub(crate) pending_initial_start: bool,
     pub(crate) last_high_contrast: Option<bool>,
-    theory: MorphogenesisTheory,
+    pub(crate) theory: MorphogenesisTheory,
 }
 
 impl Default for MorphogenesisTool {
@@ -58,6 +62,7 @@ impl Default for MorphogenesisTool {
 
         Self {
             worker,
+            atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
             model_params,
             width,
@@ -67,6 +72,7 @@ impl Default for MorphogenesisTool {
             dirty: true,
             stepped_pixels: None,
             step_runner: None,
+            multi_step_runner: None,
             pending_initial_start: true,
             last_high_contrast: None,
             theory: MorphogenesisTheory::default(),
@@ -75,7 +81,6 @@ impl Default for MorphogenesisTool {
 }
 
 impl MorphogenesisTool {
-    #[cfg(test)]
     pub(crate) fn create_runner(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         width: usize,
@@ -101,6 +106,7 @@ impl MorphogenesisTool {
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
         self.step_runner = None;
+        self.multi_step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
     }
@@ -121,6 +127,7 @@ impl MorphogenesisTool {
             .reset_or_respawn(|| Self::create_multi_runner(&params, &mp, width, height));
         self.stepped_pixels = None;
         self.step_runner = None;
+        self.multi_step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
     }
@@ -129,112 +136,7 @@ impl MorphogenesisTool {
         self.reset();
         let _ = self.worker.send_command(SimCommand::Start);
     }
-
-    pub(crate) fn apply_named_preset(&mut self, a: f64, b: f64, d_u: f64, d_v: f64, dt: f64) {
-        self.apply_model_preset(
-            MorphogenesisModelKind::Schnakenberg,
-            (a, b),
-            (default_gs_f(), default_gs_k()),
-            (d_u, d_v, dt),
-        );
-    }
-
-    pub(crate) fn apply_model_preset(
-        &mut self,
-        model: MorphogenesisModelKind,
-        ab: (f64, f64),
-        fk: (f64, f64),
-        diff_dt: (f64, f64, f64),
-    ) {
-        let (a, b) = ab;
-        let (f, k) = fk;
-        let (d_u, d_v, dt) = diff_dt;
-        let target_state = if self.worker.is_running() {
-            SimWorkerState::Running
-        } else {
-            SimWorkerState::Ready
-        };
-        let preset_state = MorphogenesisToolState {
-            a,
-            b,
-            d_u,
-            d_v,
-            dt,
-            width: self.width,
-            height: self.height,
-            model,
-            f,
-            k,
-            state: Some(target_state),
-            paused: None,
-            pending_initial_start: false,
-        };
-        if let Ok(json) = serde_json::to_string(&preset_state) {
-            let _ = self.try_load_state(&json);
-        }
-    }
 }
-
-impl FiniteStateGuard for MorphogenesisTool {
-    fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.worker.diagnostic_report()
-    }
-
-    fn diverged(&self) -> bool {
-        !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.dt = (p.dt * 0.5).max(1e-4);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn clamp_parameters(&mut self) {
-        let model = {
-            let mut mp = self.model_params.write().unwrap_or_else(|e| e.into_inner());
-            mp.f = mp.f.clamp(0.005, 0.12);
-            mp.k = mp.k.clamp(0.03, 0.08);
-            mp.model
-        };
-        let (du_min, dv_min, dt_max) = match model {
-            MorphogenesisModelKind::Schnakenberg => (0.1, 10.0, 0.1),
-            MorphogenesisModelKind::GrayScott
-            | MorphogenesisModelKind::GenericReactionDiffusion => (0.01, 0.01, 1.0),
-        };
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = p.a.clamp(0.0, 1.0);
-        p.b = p.b.clamp(0.0, 2.0);
-        p.d_u = p.d_u.clamp(du_min, 5.0);
-        p.d_v = p.d_v.clamp(dv_min, 200.0);
-        p.dt = p.dt.clamp(0.001, dt_max);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn reset_parameters(&mut self) {
-        {
-            let mut mp = self.model_params.write().unwrap_or_else(|e| e.into_inner());
-            mp.f = default_gs_f();
-            mp.k = default_gs_k();
-            mp.model = MorphogenesisModelKind::Schnakenberg;
-        }
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = 0.1;
-        p.b = 0.9;
-        p.d_u = 1.0;
-        p.d_v = 100.0;
-        p.dt = 0.05;
-        drop(p);
-        self.reset_system();
-    }
-}
-
 impl InteractiveTool for MorphogenesisTool {
     fn name(&self) -> &'static str {
         "Turing Morphogenesis"
@@ -281,13 +183,28 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn step_simulation(&mut self) {
-        let runner = self.step_runner.get_or_insert_with(|| {
-            Self::create_multi_runner(&self.params, &self.model_params, self.width, self.height)
-        });
-        for _ in 0..5 {
-            runner.step();
-        }
-        let snap = runner.get_snapshot();
+        let model = self
+            .model_params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .model;
+        let snap = if model == MorphogenesisModelKind::Schnakenberg {
+            let runner = self
+                .step_runner
+                .get_or_insert_with(|| Self::create_runner(&self.params, self.width, self.height));
+            for _ in 0..5 {
+                runner.step();
+            }
+            runner.get_snapshot()
+        } else {
+            let runner = self.multi_step_runner.get_or_insert_with(|| {
+                Self::create_multi_runner(&self.params, &self.model_params, self.width, self.height)
+            });
+            for _ in 0..5 {
+                runner.step();
+            }
+            runner.get_snapshot()
+        };
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
     }
@@ -344,6 +261,8 @@ impl InteractiveTool for MorphogenesisTool {
         self.height.hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.pending_initial_start.hash(&mut h);
+        self.atlas.is_visible().hash(&mut h);
+        self.atlas.axis_keys().hash(&mut h);
         h.finish().max(1)
     }
 
@@ -356,6 +275,7 @@ impl InteractiveTool for MorphogenesisTool {
             let mp = self.model_params.read().unwrap_or_else(|e| e.into_inner());
             (mp.f, mp.k, mp.model)
         };
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&MorphogenesisToolState {
             a,
             b,
@@ -370,14 +290,20 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: MorphogenesisToolState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
+        self.state_bounds().validate_json(state)?;
+        let parsed: MorphogenesisToolState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
+        self.atlas
+            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.atlas.set_visible(parsed.atlas_visible);
         let target_state = parsed.resolve_target_state();
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
@@ -405,6 +331,7 @@ impl InteractiveTool for MorphogenesisTool {
             self.worker = BackgroundWorker::new(runner);
             self.stepped_pixels = None;
             self.step_runner = None;
+            self.multi_step_runner = None;
             self.dirty = true;
         } else {
             self.reset();
@@ -421,6 +348,16 @@ impl InteractiveTool for MorphogenesisTool {
             }
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn has_finite_parameters(&self) -> bool {

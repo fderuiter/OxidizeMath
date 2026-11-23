@@ -24,7 +24,7 @@ fn top_level_beat_frequency(b: f64, r: f64, c: f64, t: f64) -> f64 {
 
 #[test]
 fn test_math_explorer_reexports_verified_theory_and_top_level_embed_theory() {
-    let mut model = ExplorerFacadeModel {
+    let model = ExplorerFacadeModel {
         mode_index: -2,
         coupling: 1.25,
     };
@@ -32,9 +32,14 @@ fn test_math_explorer_reexports_verified_theory_and_top_level_embed_theory() {
         model.theory_description(),
         "Top-level math_explorer facade model"
     );
-    assert_eq!(model.get_parameter("mode_index"), Some(-2.0));
-    model.set_parameter("mode_index", 2.0);
-    assert_eq!(model.mode_index, 2);
+    let params = model.theory_parameters();
+    assert_eq!(params.len(), 2);
+    assert_relative_eq!(params["mode_index"].min, -4.0);
+    assert_relative_eq!(params["mode_index"].max, 4.0);
+    assert_relative_eq!(params["mode_index"].step, 2.0);
+    assert_relative_eq!(params["coupling"].min, 0.0);
+    assert_relative_eq!(params["coupling"].max, 10.0);
+    assert_relative_eq!(params["coupling"].step, 0.25);
 
     let (freq, metrics) =
         VerifiedEngine::run_verified(|| top_level_beat_frequency(4.0, 3.0, 2.0, 1.0));
@@ -64,32 +69,21 @@ fn test_migrated_ode_allow_recursion_method_records_metrics() {
 #[test]
 fn test_migrated_physics_methods_record_verified_metrics() {
     use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
-    use math_explorer::physics::fluid_dynamics::lattice_boltzmann::algorithms::LbmConfig;
     use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-        BgkCollision, LatticeBoltzmannD2Q9,
+        LatticeBoltzmann, LatticeBoltzmannD2Q9,
     };
-    use math_explorer::rand::{SeedableRng, rngs::StdRng};
-    use oxidize_core::SimulationModel;
 
     let mut lorenz = LorenzBuilder::new().build(LorenzState::new(1.0, 1.0, 1.0));
-    let (res, lorenz_metrics) =
-        VerifiedEngine::run_verified(|| <LorenzSystem as SimulationModel>::step(&mut lorenz));
-    assert!(res.is_ok());
+    let ((), lorenz_metrics) =
+        VerifiedEngine::run_verified(|| LorenzSystem::step(&mut lorenz, 0.01));
+    assert!(lorenz.state.vec.x.is_finite());
     assert!(lorenz_metrics.function_calls >= 1);
 
-    let mut rng = StdRng::seed_from_u64(42);
-    let lbm_cfg = LbmConfig {
-        width: 4,
-        height: 4,
-        tau: 0.8,
-    };
-    let mut lbm =
-        <LatticeBoltzmannD2Q9<BgkCollision> as SimulationModel>::initialize(lbm_cfg, &mut rng)
-            .unwrap();
-    let (lbm_res, lbm_metrics) = VerifiedEngine::run_verified(|| {
-        <LatticeBoltzmannD2Q9<BgkCollision> as SimulationModel>::step(&mut lbm)
-    });
-    assert!(lbm_res.is_ok());
+    let (mut lbm, lbm_init_metrics) =
+        VerifiedEngine::run_verified(|| LatticeBoltzmannD2Q9::new(4, 4, 0.8));
+    assert!(lbm_init_metrics.function_calls >= 1);
+
+    let ((), lbm_metrics) = VerifiedEngine::run_verified(|| LatticeBoltzmann::step(&mut lbm));
     assert!(lbm_metrics.function_calls >= 2);
 }
 
@@ -307,7 +301,7 @@ pub fn facade_range(b: f64, r: f64, c: f64, t: f64) -> f64 {
 
 pub fn check_model() -> Option<f64> {
     let m = FacadeOnlyModel { steps: 15 };
-    m.get_parameter("steps")
+    m.theory_parameters().get("steps").map(|c| c.max)
 }
 "#;
 

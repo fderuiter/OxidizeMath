@@ -185,13 +185,21 @@ impl FiniteStateGuard for LeniaTool {
 
     fn clamp_parameters(&mut self) {
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.mu = if p.mu.is_nan() { 0.15 } else { p.mu.clamp(0.05, 0.50) };
+        p.mu = if p.mu.is_nan() {
+            0.15
+        } else {
+            p.mu.clamp(0.05, 0.50)
+        };
         p.sigma = if p.sigma.is_nan() {
             0.015
         } else {
             p.sigma.clamp(0.005, 0.15)
         };
-        p.dt = if p.dt.is_nan() { 0.1 } else { p.dt.clamp(0.01, 0.50) };
+        p.dt = if p.dt.is_nan() {
+            0.1
+        } else {
+            p.dt.clamp(0.01, 0.50)
+        };
         p.kernel_radius = p.kernel_radius.clamp(4, 32);
         drop(p);
         self.reset();
@@ -332,11 +340,8 @@ impl InteractiveTool for LeniaTool {
         if parsed.width != self.width || parsed.height != self.height {
             self.width = parsed.width;
             self.height = parsed.height;
-            self.worker = BackgroundWorker::new(LeniaRunner::new(
-                &self.params,
-                self.width,
-                self.height,
-            ));
+            self.worker =
+                BackgroundWorker::new(LeniaRunner::new(&self.params, self.width, self.height));
             self.stepped_pixels = None;
             self.step_runner = None;
             self.dirty = true;

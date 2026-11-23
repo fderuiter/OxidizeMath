@@ -15,10 +15,14 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// Progressive 2D parameter regime atlas and Schnakenberg dispersion cartographer.
+pub mod atlas;
 /// Evolutionary replicator and enzyme saturation kinetics tool.
 pub mod evolution_kinetics_tool;
 /// UI rendering for [`evolution_kinetics_tool::EvolutionKineticsTool`].
 pub mod evolution_kinetics_ui;
+/// Grid initialization, concentration colormapping, and recovery guard helpers.
+pub mod init;
 /// Background simulation runner for [`lenia_tool::LeniaTool`].
 pub mod lenia_runner;
 /// Spectral continuous cellular automaton (`LeniaSystem`) tool.
@@ -33,18 +37,26 @@ pub mod phyllotaxis_ui;
 pub mod presets;
 /// Multi-model reaction-diffusion simulation runner.
 pub mod runner;
+/// Starter gallery preset payloads and registrations for biology tools.
+pub mod starter_presets;
 /// Multi-model Turing morphogenesis tool.
 pub mod tool;
 /// UI rendering for [`tool::MorphogenesisTool`].
 pub mod ui;
 
 #[cfg(test)]
+pub use atlas::{
+    classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+};
+#[cfg(test)]
 pub use evolution_kinetics_tool::EvolutionKineticsTool;
 #[cfg(test)]
 pub use lenia_tool::{LeniaPresetChoice, LeniaTool};
 #[cfg(test)]
 pub use phyllotaxis_tool::PhyllotaxisLSystemTool;
-pub use presets::{MorphogenesisModelKind, SimpleRng};
+pub use presets::MorphogenesisModelKind;
+#[cfg(test)]
+pub use presets::MorphogenesisTheory;
 #[cfg(test)]
 pub use runner::MorphogenesisRunner;
 pub use runner::MorphogenesisSharedParams;
@@ -177,6 +189,11 @@ impl MorphogenesisTab {
             .as_ref()
             .and_then(|s| s.state)
             .unwrap_or(SimWorkerState::Ready);
+        let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
+        let atlas_axes = existing
+            .as_ref()
+            .map(|s| s.atlas_axes.clone())
+            .unwrap_or_else(atlas::default_morpho_atlas_axes);
         let target_state = if current_state == SimWorkerState::Running {
             SimWorkerState::Running
         } else {
@@ -199,6 +216,8 @@ impl MorphogenesisTab {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            atlas_visible,
+            atlas_axes,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;
@@ -360,7 +379,8 @@ impl ExplorerTab for MorphogenesisTab {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.framework.import_url_preset_json(tool_id, preset_json)?;
+        self.framework
+            .import_url_preset_json(tool_id, preset_json)?;
         let cfg = self.export_config();
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = cfg.a;

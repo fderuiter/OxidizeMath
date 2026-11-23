@@ -15,12 +15,7 @@ fn extract_hash(url: &str) -> &str {
 #[test]
 fn test_morphogenesis_tab_exposes_all_four_biology_tools_in_side_panel() {
     let mut tab = MorphogenesisTab::default();
-    let ids: Vec<&'static str> = tab
-        .framework
-        .available_tools
-        .iter()
-        .map(|m| m.id)
-        .collect();
+    let ids: Vec<&'static str> = tab.framework.available_tools.iter().map(|m| m.id).collect();
     assert_eq!(ids.len(), 4);
     assert!(ids.contains(&"MorphogenesisTool"));
     assert!(ids.contains(&"LeniaTool"));
@@ -158,8 +153,14 @@ fn test_biology_new_tools_url_fragment_roundtrips() {
     for (tool_id, preset_json) in [
         ("MorphogenesisTool", presets::PRESET_GRAY_SCOTT_CORAL),
         ("LeniaTool", presets::PRESET_LENIA_HYDROGEMINIUM),
-        ("PhyllotaxisLSystemTool", presets::PRESET_PHYLLOTAXIS_HILL_SHOOT),
-        ("EvolutionKineticsTool", presets::PRESET_EVOLUTION_KINETICS_ESS),
+        (
+            "PhyllotaxisLSystemTool",
+            presets::PRESET_PHYLLOTAXIS_HILL_SHOOT,
+        ),
+        (
+            "EvolutionKineticsTool",
+            presets::PRESET_EVOLUTION_KINETICS_ESS,
+        ),
     ] {
         app.tabs[tab_idx]
             .framework_mut()
@@ -179,7 +180,9 @@ fn test_biology_new_tools_url_fragment_roundtrips() {
         let hash = extract_hash(&share_url);
 
         let mut restored = crate::app::MathExplorerApp::default();
-        assert!(restored.apply_share_location_strings(hash, "", None).unwrap());
+        assert!(restored
+            .apply_share_location_strings(hash, "", None)
+            .unwrap());
         assert_eq!(restored.tabs[tab_idx].active_tool_id(), Some(tool_id));
         let actual_state = restored.tabs[tab_idx]
             .framework()
