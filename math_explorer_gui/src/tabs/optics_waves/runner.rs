@@ -305,6 +305,7 @@ impl SimulationRunner for OpticsWaveRunner {
             pixels: Arc::new(std::sync::RwLock::new(img.pixels)),
             custom_data: Vec::new(),
             structured_data: Some(Box::new(frame_data)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

@@ -95,7 +95,7 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
 fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut source_app = MathExplorerApp::default();
-    assert_eq!(source_app.tabs.len(), 22, "Expected all 22 ExplorerTabs");
+    assert_eq!(source_app.tabs.len(), 23, "Expected all 23 ExplorerTabs");
 
     let mut slugs = HashSet::new();
     for tab in &source_app.tabs {
@@ -145,8 +145,8 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     assert_eq!(
         tools.len(),
-        63,
-        "Expected all 63 registered InteractiveTools"
+        66,
+        "Expected all 66 registered InteractiveTools"
     );
 
     let mut source_app = MathExplorerApp::default();
@@ -208,8 +208,8 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
         .collect();
     assert_eq!(
         presets.len(),
-        77,
-        "Expected all 77 StarterPresetMetadata entries"
+        88,
+        "Expected all 88 StarterPresetMetadata entries"
     );
 
     for preset in presets {
