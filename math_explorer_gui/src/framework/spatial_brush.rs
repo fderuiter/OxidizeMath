@@ -63,6 +63,10 @@ pub enum BrushMode {
     WindLeft,
     /// Rightward stochastic wind cell (RL GridWorld).
     WindRight,
+    /// Paints planning target volume (`PTV`) voxels on a radiotherapy phantom.
+    PtvTarget,
+    /// Paints organ-at-risk (`OAR`) voxels on a radiotherapy phantom.
+    OrganAtRisk,
 }
 
 impl BrushMode {
@@ -90,6 +94,8 @@ impl BrushMode {
             Self::WindDown => "Wind Down",
             Self::WindLeft => "Wind Left",
             Self::WindRight => "Wind Right",
+            Self::PtvTarget => "PTV Target",
+            Self::OrganAtRisk => "Organ at Risk",
         }
     }
 }
