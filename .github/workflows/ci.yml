@@ -322,7 +322,10 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: wasm_web_dist
-          path: math_explorer_gui/dist
+          path: |
+            math_explorer_gui/dist
+            !math_explorer_gui/dist/**/*.gz
+            !math_explorer_gui/dist/**/*.br
           if-no-files-found: error
           retention-days: 7
 
@@ -670,7 +673,7 @@ jobs:
             end
           ' "$MANIFEST_FILE" > "${MANIFEST_FILE}.tmp"
           mv -f "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
-          rm -f pages_dist/Verification_Certificate.json
+          find pages_dist -type f \( -name '*.gz' -o -name '*.br' -o -name 'Verification_Certificate.json' \) -delete
 
           pdfs=()
           while IFS= read -r -d '' pdf; do

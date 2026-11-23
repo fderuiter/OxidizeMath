@@ -137,7 +137,7 @@ In CI, all eight `feature-matrix` legs share a single `features-shared` Linux `d
 
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [math_explorer_gui/Trunk.toml](math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed `traceability_manifest.json`, local paper artifacts when present, `favicon.ico`, and the exact WASM byte count without `.gz`/`.br` sidecars or standalone `Verification_Certificate.json`; [scripts/compress_dist.sh](scripts/compress_dist.sh) remains an opt-in standalone script for self-hosted web servers), enforces the 3 MB compressed bundle budget via temporary `brotli -9` and `gzip -9` streams in [scripts/verify_wasm_budget.sh](scripts/verify_wasm_budget.sh), executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, and uploads `wasm_web_dist` on `refs/heads/main`. Subsequently, `deploy-pages` downloads `wasm_web_dist`, `compiled_papers`, and `verification-certificate-linux_artifact`, validates and injects the live `Verification_Certificate.json` object into `pages_dist/traceability_manifest.json`, stages all 28 root PDFs at `pages_dist/{stem}.pdf` alongside `pages_dist/papers/index.html`, generates and verifies `pages_dist/SHA256SUMS` once across all served files, and publishes the GitHub Pages artifact.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [math_explorer_gui/Trunk.toml](math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed `traceability_manifest.json`, local paper artifacts when present, and `favicon.ico` without standalone `Verification_Certificate.json` or duplicate `papers/*.pdf`, while running [scripts/compress_dist.sh](scripts/compress_dist.sh) to stamp `WASM_SOURCE_SIZE`, `WASM_BROTLI_SIZE`, and `WASM_GZIP_SIZE` into `bootstrap.js` and generate local `.gz`/`.br` assets for self-hosted servers and Playwright wire-progress smoke checks), enforces the 3 MB compressed bundle budget via temporary `brotli -9` and `gzip -9` streams in [scripts/verify_wasm_budget.sh](scripts/verify_wasm_budget.sh), executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, and uploads `wasm_web_dist` (excluding `.gz`/`.br` sidecars) on `refs/heads/main`. Subsequently, `deploy-pages` downloads `wasm_web_dist`, `compiled_papers`, and `verification-certificate-linux_artifact`, validates and injects the live `Verification_Certificate.json` object into `pages_dist/traceability_manifest.json`, strips any residual `.gz`/`.br` or standalone `Verification_Certificate.json` files, stages all 28 root PDFs at `pages_dist/{stem}.pdf` alongside `pages_dist/papers/index.html`, generates and verifies `pages_dist/SHA256SUMS` once across all served files, and publishes the GitHub Pages artifact.
 
 ```bash
 # 1. Install the WebAssembly Rust target, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
@@ -156,13 +156,13 @@ cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --
 # 3. Run wasm32 browser unit tests, build math_explorer_gui/dist, verify the 3 MB budget, and run Playwright Chromium CSP & fault-injection smoke checks
 cargo run -p xtask -- test-wasm
 
-# 4. Generate and verify a SHA256SUMS manifest across served web dist files (root assets and optional papers/index.html, zero .gz/.br sidecars)
+# 4. Generate and verify a SHA256SUMS manifest across served web dist files (excluding local .gz/.br sidecars)
 (
   cd math_explorer_gui/dist
   files=()
   while IFS= read -r f; do
     [ -n "$f" ] && files+=("$f")
-  done < <(find . -mindepth 1 -not -path '*/.*' -type f ! -name 'SHA256SUMS' | sed 's|^\./||' | LC_ALL=C sort)
+  done < <(find . -mindepth 1 -not -path '*/.*' -type f ! -name 'SHA256SUMS' ! -name '*.gz' ! -name '*.br' | sed 's|^\./||' | LC_ALL=C sort)
   test "${#files[@]}" -gt 0
   sha256sum -- "${files[@]}" > SHA256SUMS
   sha256sum -c SHA256SUMS
