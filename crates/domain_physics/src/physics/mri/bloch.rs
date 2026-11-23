@@ -328,6 +328,20 @@ fn advance_isochromat_grid_kernel<const K: usize>(
     }
 }
 
+/// Computes the effective magnetic field $\vec{B}_{\text{eff}}$ in the frame rotating at
+/// carrier angular frequency $\omega_{\text{rf}}$:
+/// $\vec{B}_{\text{eff}} = (B_{1,\text{amp}} \cos\phi,\; B_{1,\text{amp}} \sin\phi,\; B_0 - \omega_{\text{rf}} / \gamma)$.
+#[verified_engine::verified]
+pub fn rotating_frame_effective_field(
+    b0: f64,
+    omega_rf: f64,
+    b1_amp: f64,
+    phase_rad: f64,
+) -> Vector3<f64> {
+    let delta_bz = b0 - omega_rf / proton::GYROMAGNETIC_RATIO;
+    Vector3::new(b1_amp * phase_rad.cos(), b1_amp * phase_rad.sin(), delta_bz)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

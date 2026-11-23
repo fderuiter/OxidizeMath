@@ -3,7 +3,6 @@
 //! Implements the core Partial Differential Equations (PDEs) of Fluid Dynamics.
 
 use super::types::{FlowState, FluidProperties, SpatialGradients};
-use crate::error::FluidError;
 use nalgebra::Vector3;
 
 /// Calculates the Material Derivative ($D/Dt$) of a scalar property.
@@ -126,42 +125,4 @@ impl MomentumEquation for Euler {
 
         convection + pressure_term + body_force_accel
     }
-}
-
-/// Computes the time evolution of velocity based on the Navier-Stokes Equations.
-///
-/// Wrapper around `NavierStokes` strategy for backward compatibility.
-#[verified_engine::verified]
-pub fn navier_stokes_time_derivative(
-    properties: &FluidProperties,
-    state: &FlowState,
-    velocity_gradient: &nalgebra::Matrix3<f64>,
-    pressure_gradient: Vector3<f64>,
-    laplacian_velocity: Vector3<f64>,
-    body_force_accel: Vector3<f64>,
-) -> Vector3<f64> {
-    let gradients =
-        SpatialGradients::new(*velocity_gradient, pressure_gradient, laplacian_velocity);
-    NavierStokes.acceleration(properties, state, &gradients, body_force_accel)
-}
-
-/// Computes the time evolution of velocity based on the Euler Equations (Inviscid).
-///
-/// Wrapper around `Euler` strategy for backward compatibility.
-#[verified_engine::verified]
-pub fn euler_time_derivative(
-    rho: f64,
-    state: &FlowState,
-    velocity_gradient: &nalgebra::Matrix3<f64>,
-    pressure_gradient: Vector3<f64>,
-    body_force_accel: Vector3<f64>,
-) -> Result<Vector3<f64>, FluidError> {
-    // Construct minimal properties for Euler (viscosity irrelevant)
-    let properties = FluidProperties::new(rho, 0.0)?;
-    let gradients = SpatialGradients::new(
-        *velocity_gradient,
-        pressure_gradient,
-        Vector3::zeros(), // Irrelevant for Euler
-    );
-    Ok(Euler.acceleration(&properties, state, &gradients, body_force_accel))
 }

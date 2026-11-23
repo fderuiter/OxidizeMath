@@ -160,35 +160,10 @@ pub fn validate_permissions_block(yaml: &Value) -> Result<(), String> {
     validate_permissions_with_exceptions(yaml, None, &[])
 }
 
-pub fn validate_concurrency_block(yaml: &Value) -> Result<(), &'static str> {
-    let concurrency = yaml
-        .get("concurrency")
-        .ok_or("Workflow is missing a global 'concurrency' block.")?;
-
-    match concurrency {
-        Value::String(s) => {
-            if s.trim().is_empty() {
-                return Err("Workflow 'concurrency' block cannot be empty.");
-            }
-        }
-        Value::Object(map) => {
-            let group = map
-                .get("group")
-                .ok_or("Workflow 'concurrency' block must specify a 'group'.")?;
-            if let Value::String(s) = group {
-                if s.trim().is_empty() {
-                    return Err("Workflow 'concurrency' group cannot be empty.");
-                }
-            } else {
-                return Err("Workflow 'concurrency' group must be a string.");
-            }
-        }
-        _ => {
-            return Err("Workflow 'concurrency' block must be a valid string or mapping.");
-        }
-    }
-
-    Ok(())
+/// Validates root and optional job-level `concurrency` blocks, enforcing run-unique groups and
+/// non-canceling rules across `on.push.branches` triggers.
+pub fn validate_concurrency_block(yaml: &Value) -> Result<(), String> {
+    concurrency::validate_concurrency_block(yaml)
 }
 
 /// Validates job-level `timeout-minutes` settings, exempting `jobs.<id>.uses` reusable workflow
@@ -332,7 +307,7 @@ fn lint_workflow_file(
     };
     for check in [
         perm_res,
-        validate_concurrency_block(&yaml).map_err(str::to_string),
+        validate_concurrency_block(&yaml),
         validate_job_timeouts(&yaml),
         pin_res,
         validate_run_script_expressions(&yaml),
@@ -403,6 +378,11 @@ pub fn lint_workflows() -> bool {
 #[cfg(test)]
 #[path = "workflow_linter/cargo_cache_tests.rs"]
 mod cargo_cache_tests;
+mod concurrency;
+mod concurrency_eval;
+#[cfg(test)]
+#[path = "workflow_linter/concurrency_tests.rs"]
+mod concurrency_tests;
 mod docker;
 mod expressions;
 mod pinning;

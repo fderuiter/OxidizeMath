@@ -1,5 +1,9 @@
 //! Core types for Topological Data Analysis.
 
+pub use super::space3d::{
+    Point3D, PointCloud3D, farthest_point_landmarks, farthest_point_landmarks_into,
+    takens_delay_embedding_3d,
+};
 use crate::error::TdaError;
 
 /// Maximum number of points supported in bounded Vietoris-Rips point clouds.

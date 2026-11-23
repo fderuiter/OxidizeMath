@@ -2,6 +2,7 @@
 //!
 //! Methodologies to enhance signal-to-noise ratio and extract respiratory signals.
 
+use crate::physics::medical::signal;
 use nalgebra::Point3;
 use rustfft::{FftPlanner, num_complex::Complex};
 
@@ -22,11 +23,7 @@ use rustfft::{FftPlanner, num_complex::Complex};
 /// $V_{resp}(t) \approx \frac{1}{N_{mesh}} \sum_{i=1}^{N_{mesh}} Z_{i}(t)$
 #[verified_engine::verified]
 pub fn weighted_average_height(vertices: &[Point3<f64>]) -> f64 {
-    if vertices.is_empty() {
-        return 0.0;
-    }
-    let sum_z: f64 = vertices.iter().map(|p| p.z).sum();
-    sum_z / vertices.len() as f64
+    signal::mean_vertex_height(vertices)
 }
 
 /// Calculates the theoretical SNR improvement factor due to spatial averaging.

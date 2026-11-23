@@ -1,4 +1,4 @@
-# ADR 0037: Additive Stepper Fixes, Standard Derives, and Public `Debug` Verification
+# ADR 0040: Additive Stepper Fixes, Standard Derives, and Public `Debug` Verification
 
 ## Status
 Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md) and [ADR 0036](0036-delete-simulation-model-traits-and-physics-adapters.md))

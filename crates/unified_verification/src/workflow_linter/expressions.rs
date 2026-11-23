@@ -54,7 +54,7 @@ impl SafeEnvScope {
     }
 }
 
-fn skip_ascii_ws(bytes: &[u8], mut idx: usize) -> usize {
+pub(super) fn skip_ascii_ws(bytes: &[u8], mut idx: usize) -> usize {
     while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
         idx += 1;
     }
@@ -62,7 +62,7 @@ fn skip_ascii_ws(bytes: &[u8], mut idx: usize) -> usize {
 }
 
 /// Advances past a single-quoted GitHub Actions string literal (`'...'` with `''` escapes).
-fn skip_single_quoted(bytes: &[u8], start: usize) -> usize {
+pub(super) fn skip_single_quoted(bytes: &[u8], start: usize) -> usize {
     let mut idx = start + 1;
     while idx < bytes.len() {
         if bytes[idx] == b'\'' {
@@ -78,7 +78,7 @@ fn skip_single_quoted(bytes: &[u8], start: usize) -> usize {
 }
 
 /// Decodes a closed single-quoted GitHub Actions string literal (`'...'` with `''` escapes).
-fn parse_single_quoted_literal(expr: &str, start: usize) -> Option<(String, usize)> {
+pub(super) fn parse_single_quoted_literal(expr: &str, start: usize) -> Option<(String, usize)> {
     let bytes = expr.as_bytes();
     if bytes.get(start) != Some(&b'\'') {
         return None;

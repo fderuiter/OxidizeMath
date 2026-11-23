@@ -398,6 +398,41 @@ pub fn compute_persistence(
     cloud: &PointCloud,
     radii: &[f64],
 ) -> Result<PersistenceBarcode, TdaError> {
+    compute_persistence_from_distances(&cloud.distance_matrix(), radii)
+}
+
+/// Computes a persistence barcode directly from a precomputed symmetric distance matrix,
+/// mapped onto caller filtration `radii` via exact $\mathbb{Z}_2$ pairing.
+///
+/// # Errors
+///
+/// Returns [`TdaError::InvalidRadius`] if `radii` is empty or contains negative/non-finite
+/// values, or [`TdaError::MatrixError`] if `dist` is non-square, exceeds `MAX_TDA_POINTS`,
+/// or contains non-finite entries.
+///
+/// # Example
+///
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::tda::{
+///     Point3D, PointCloud3D, compute_persistence_from_distances
+/// };
+///
+/// let cloud = PointCloud3D::new(vec![
+///     Point3D::new(0.0, 0.0, 0.0),
+///     Point3D::new(1.0, 0.0, 0.0),
+///     Point3D::new(1.0, 1.0, 0.0),
+///     Point3D::new(0.0, 1.0, 0.0),
+/// ]).unwrap();
+/// let radii = [0.0, 0.5, 1.1, 1.5];
+/// let barcode = compute_persistence_from_distances(&cloud.distance_matrix(), &radii).unwrap();
+/// assert!(!barcode.filter_by_dimension(1).is_empty());
+/// ```
+#[verified_engine::verified]
+pub fn compute_persistence_from_distances(
+    dist: &[Vec<f64>],
+    radii: &[f64],
+) -> Result<PersistenceBarcode, TdaError> {
     if radii.is_empty() {
         return Err(TdaError::InvalidRadius { value: 0.0 });
     }
@@ -410,7 +445,7 @@ pub fn compute_persistence(
     }
     sorted_radii.sort_by(f64::total_cmp);
 
-    let exact = compute_rips_persistence(cloud)?;
+    let exact = compute_rips_persistence_from_distances(dist)?;
     map_rips_intervals_to_radii(&exact, &sorted_radii)
 }
 
