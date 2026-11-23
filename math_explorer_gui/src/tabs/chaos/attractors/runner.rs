@@ -2,7 +2,10 @@
 
 use super::flow::{AttractorMode, CompiledFlowJob};
 use super::serde_vec3;
-use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    CheckpointParams, CheckpointPayload, SimCommand, SimulationRunner, StateSnapshot,
+    TimeTravelCheckpoint,
+};
 use crate::framework::recovery::DiagnosticReport;
 use crate::tabs::geometry_topology::vietoris_rips::{
     handoff::{publish_live_attractor_landmarks, ChaosLandmarkHandoff},
@@ -11,6 +14,7 @@ use crate::tabs::geometry_topology::vietoris_rips::{
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
 use nalgebra::Vector3;
+use oxidize_core::rng::OxidizeRng;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -57,6 +61,7 @@ pub struct AttractorRunner {
     pub history: VecDeque<Vector3<f64>>,
     pub step_count: usize,
     pub execution_state: SolverExecutionState,
+    pub rng: OxidizeRng,
 }
 
 impl AttractorRunner {
@@ -76,6 +81,7 @@ impl AttractorRunner {
             history: VecDeque::with_capacity(max_points),
             step_count: 0,
             execution_state: SolverExecutionState::Ready,
+            rng: OxidizeRng::new(0x4C4F_5245_4E5A_3139),
         }
     }
 
@@ -151,6 +157,23 @@ impl AttractorRunner {
         self.history.push_back(vec);
         true
     }
+
+    fn publish_live_landmarks(&self, dt: f64) {
+        let pts: Vec<Point3D> = self
+            .history
+            .iter()
+            .map(|v| Point3D::new(v.x, v.y, v.z))
+            .collect();
+        if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
+            publish_live_attractor_landmarks(ChaosLandmarkHandoff {
+                points: landmarks,
+                sigma: self.system.sigma,
+                rho: self.system.rho,
+                beta: self.system.beta,
+                dt,
+            });
+        }
+    }
 }
 
 impl SimulationRunner for AttractorRunner {
@@ -179,6 +202,7 @@ impl SimulationRunner for AttractorRunner {
                 self.history.clear();
                 self.step_count = 0;
                 self.execution_state = SolverExecutionState::Ready;
+                self.rng = OxidizeRng::new(0x4C4F_5245_4E5A_3139);
             }
             SimCommand::SetSpeed(speed) => {
                 self.params
@@ -204,20 +228,7 @@ impl SimulationRunner for AttractorRunner {
             }
         }
         if self.history.len() >= 16 && self.step_count % 15 < simulation_speed {
-            let pts: Vec<Point3D> = self
-                .history
-                .iter()
-                .map(|v| Point3D::new(v.x, v.y, v.z))
-                .collect();
-            if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
-                publish_live_attractor_landmarks(ChaosLandmarkHandoff {
-                    points: landmarks,
-                    sigma: self.system.sigma,
-                    rho: self.system.rho,
-                    beta: self.system.beta,
-                    dt,
-                });
-            }
+            self.publish_live_landmarks(dt);
         }
     }
 
@@ -305,99 +316,137 @@ impl SimulationRunner for AttractorRunner {
             None
         }
     }
-}
 
-impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter {
-    fn theory_description(&self) -> String {
-        match self.mode {
-            AttractorMode::Lorenz => format!(
-                "Lorenz attractor dynamical system: $\\dot{{x}} = \\sigma(y - x)$, $\\dot{{y}} = x(\\rho - z) - y$, $\\dot{{z}} = xy - \\beta z$ with parameters $\\sigma = {:.2}$, $\\rho = {:.2}$, $\\beta = {:.2}$.",
-                self.system.sigma, self.system.rho, self.system.beta
-            ),
-            AttractorMode::Custom => {
-                let exprs = self.flow_bank.expressions();
-                format!(
-                    "Custom 3D dynamical flow: dx/dt = {}, dy/dt = {}, dz/dt = {}.",
-                    exprs[0], exprs[1], exprs[2]
-                )
+    fn checkpoint_stride(&self) -> Option<usize> {
+        Some(1)
+    }
+
+    fn current_step(&self) -> usize {
+        self.step_count
+    }
+
+    fn capture_active_params(&self) -> Option<CheckpointParams> {
+        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let mode_flag = match p.mode {
+            AttractorMode::Lorenz => 0.0,
+            AttractorMode::Custom => 1.0,
+        };
+        Some(CheckpointParams::scalars(&[
+            p.sigma,
+            p.rho,
+            p.beta,
+            p.dt,
+            p.max_points as f64,
+            mode_flag,
+        ]))
+    }
+
+    fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
+        let params = self.capture_active_params()?;
+        let v = self.system.state.vec;
+        Some(TimeTravelCheckpoint {
+            step: self.step_count,
+            rng: self.rng.clone(),
+            params,
+            state: CheckpointPayload::scalars(&[v.x, v.y, v.z]),
+        })
+    }
+
+    fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
+        if let Some(s) = checkpoint.state.as_scalars() {
+            if s.len() >= 3 {
+                self.system.state.vec = Vector3::new(s[0], s[1], s[2]);
+            }
+        }
+        if let Some(p) = checkpoint.params.as_scalars() {
+            if p.len() >= 3 {
+                self.system.sigma = p[0];
+                self.system.rho = p[1];
+                self.system.beta = p[2];
+            }
+        }
+        self.step_count = checkpoint.step;
+        self.rng = checkpoint.rng.clone();
+        self.execution_state = if checkpoint.step == 0 {
+            SolverExecutionState::Ready
+        } else {
+            SolverExecutionState::Paused
+        };
+    }
+
+    fn rebuild_history(&mut self, front: &[TimeTravelCheckpoint], back: &[TimeTravelCheckpoint]) {
+        let max_points = back
+            .last()
+            .or_else(|| front.last())
+            .and_then(|cp| cp.params.as_scalars()?.get(4).copied())
+            .map_or(2000usize, |v| (v as usize).max(1));
+        self.history.clear();
+        let total_post_zero = front.iter().chain(back).filter(|cp| cp.step >= 1).count();
+        let skip = total_post_zero.saturating_sub(max_points);
+        for cp in front
+            .iter()
+            .chain(back)
+            .filter(|cp| cp.step >= 1)
+            .skip(skip)
+        {
+            if let Some(s) = cp.state.as_scalars().filter(|s| s.len() >= 3) {
+                self.history.push_back(Vector3::new(s[0], s[1], s[2]));
             }
         }
     }
-    fn phonetic_description(&self) -> String {
-        "3D strange attractor dynamical system theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Deterministic Nonperiodic Flow (Lorenz, 1963); Nonlinear Dynamics and Chaos (Strogatz, 2014)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        self.system.available_descriptions()
-    }
-    fn theory_parameters(
-        &self,
-    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
-        use scientific_metadata::theory::ParameterConstraint;
-        std::collections::HashMap::from([
-            (
-                "sigma".to_string(),
-                ParameterConstraint {
-                    min: 0.0,
-                    max: 50.0,
-                    step: 0.1,
-                },
-            ),
-            (
-                "rho".to_string(),
-                ParameterConstraint {
-                    min: 0.0,
-                    max: 100.0,
-                    step: 0.5,
-                },
-            ),
-            (
-                "beta".to_string(),
-                ParameterConstraint {
-                    min: 0.0,
-                    max: 10.0,
-                    step: 0.1,
-                },
-            ),
-            (
-                "dt".to_string(),
-                ParameterConstraint {
-                    min: 0.001,
-                    max: 0.05,
-                    step: 0.001,
-                },
-            ),
-            (
-                "param_0".to_string(),
-                ParameterConstraint {
-                    min: 0.0,
-                    max: 10.0,
-                    step: 0.05,
-                },
-            ),
-            (
-                "param_1".to_string(),
-                ParameterConstraint {
-                    min: 0.0,
-                    max: 10.0,
-                    step: 0.05,
-                },
-            ),
-        ])
-    }
-}
 
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "3d_attractor",
-        title: "3D Attractor",
-        description: "ẋ=σ(y-x), ẏ=x(ρ-z)-y, ż=xy-βz: Canonical 3D chaotic strange attractor trajectory.",
-        category: "Chaos Theory",
-        icon: "🦋",
-        domain: "chaos",
-        tool_name: Some("AttractorPlotter"),
-        preset_generator: || crate::starter_gallery::PRESET_3D_ATTRACTOR,
+    fn replay_step(&mut self, params: &CheckpointParams) {
+        let Some(p) = params.as_scalars() else {
+            return;
+        };
+        if p.len() < 5 {
+            return;
+        }
+        self.system.sigma = p[0];
+        self.system.rho = p[1];
+        self.system.beta = p[2];
+        let dt = p[3];
+        let max_points = (p[4] as usize).max(1);
+        let mode = if p.get(5).copied().unwrap_or(0.0) > 0.5 {
+            AttractorMode::Custom
+        } else {
+            AttractorMode::Lorenz
+        };
+        let custom_flow = (mode == AttractorMode::Custom)
+            .then(|| {
+                self.params
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .custom_flow
+                    .clone()
+            })
+            .flatten();
+        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref()) {
+            self.execution_state = SolverExecutionState::Paused;
+        }
+    }
+
+    fn running_substeps_per_tick(&self) -> usize {
+        self.params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .simulation_speed
+            .clamp(1, MAX_SIMULATION_SPEED)
+    }
+
+    fn step_running_substep(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let (dt, _, max_points, mode, custom_flow) = self.sync_params();
+        if self.execution_state == SolverExecutionState::Ready {
+            self.execution_state = SolverExecutionState::Running;
+        }
+        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref())
+            && self.history.len() >= 16
+            && self.step_count.is_multiple_of(15)
+        {
+            self.publish_live_landmarks(dt);
+        }
     }
 }

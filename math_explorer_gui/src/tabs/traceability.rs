@@ -1,3 +1,4 @@
+// @explorer_order = 34
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::collections::HashMap;

@@ -420,7 +420,7 @@ inventory::submit! {
         id: "FractalViewer",
         display_name: "Fractal Viewer",
         domain: "chaos",
-        tags: &[],
+        tags: &["mandelbrot", "julia", "escape time", "complex dynamics", "self-similarity", "fractal"],
         build: || Box::new(FractalViewer::default()),
     }
 }
