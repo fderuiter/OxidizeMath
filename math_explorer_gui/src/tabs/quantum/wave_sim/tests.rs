@@ -197,7 +197,8 @@ fn test_ast_syntax_aria_announcement_and_singular_potential_clamping() {
 #[test]
 fn test_sample_animation_frames_monotonic_time_and_distinct_wavepackets() {
     let mut tool = WaveSimulatorTool::new();
-    tool.apply_tunneling_split_challenge(None);
+    tool.apply_challenge(Some(challenge::CHALLENGE_QUANTUM_BARRIER_50_SPLIT))
+        .expect("activate quantum_barrier_50_split");
 
     let frames = tool.sample_animation_frames(10);
     assert_eq!(frames.len(), 10);
@@ -273,6 +274,86 @@ fn test_zero_allocation_hot_path_propagator_cache_and_state_guard_rollback() {
     assert!(fw.rollback_step_back());
     assert!(!fw.is_diverged());
     assert_eq!(fw.active_tool.as_ref().unwrap().save_state(), baseline);
+}
+
+#[test]
+fn test_quantum_barrier_50_split_challenge_scoring_and_callouts() {
+    let mut fw = SimulationFramework::new("quantum");
+    fw.launch_challenge_by_id(challenge::CHALLENGE_QUANTUM_BARRIER_50_SPLIT, None)
+        .expect("launch quantum_barrier_50_split");
+    let init_eval = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.evaluate_challenge())
+        .expect("challenge evaluation present");
+    assert!(!init_eval.passed);
+
+    for _ in 0..12 {
+        fw.active_tool.as_mut().unwrap().step_simulation();
+    }
+    let detuned_eval = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.evaluate_challenge())
+        .unwrap();
+    assert!(!detuned_eval.passed, "V0 = 15.0 must stay unsolved");
+
+    let mut cfg: serde_json::Value =
+        serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap();
+    cfg["v0"] = serde_json::json!(11.35);
+    cfg["width"] = serde_json::json!(0.5);
+    fw.active_tool
+        .as_mut()
+        .unwrap()
+        .try_load_state(&cfg.to_string())
+        .unwrap();
+    for _ in 0..12 {
+        fw.active_tool.as_mut().unwrap().step_simulation();
+    }
+    let solved_eval = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.evaluate_challenge())
+        .unwrap();
+    assert!(
+        solved_eval.passed,
+        "V0 = 11.35, w = 0.5 must solve 50% +/- 2%, got {}",
+        solved_eval.detail
+    );
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        fw.show(ctx, "quantum");
+    });
+    let wave = fw
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .as_any()
+        .unwrap()
+        .downcast_ref::<WaveSimulatorTool>()
+        .unwrap();
+    assert!(wave
+        .callout_manager
+        .callouts()
+        .iter()
+        .any(|c| c.tag.is_some()));
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen_test::wasm_bindgen_test]
+fn test_wasm_quantum_barrier_50_split_clamp_and_step() {
+    let meta = crate::starter_gallery::find_challenge_metadata(
+        challenge::CHALLENGE_QUANTUM_BARRIER_50_SPLIT,
+    )
+    .expect("quantum_barrier_50_split registered");
+    let baseline = meta.generate_baseline_state();
+    let clamped = meta.clamp_state_json(&baseline).expect("clamp baseline");
+    let mut tool = WaveSimulatorTool::new();
+    tool.apply_challenge(Some(challenge::CHALLENGE_QUANTUM_BARRIER_50_SPLIT))
+        .unwrap();
+    tool.try_load_state(&clamped).unwrap();
+    assert!(!tool.evaluate_challenge().unwrap().passed);
 }
 
 #[test]

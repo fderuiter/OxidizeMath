@@ -7,22 +7,41 @@ use crate::error::TdaError;
 use std::collections::{HashMap, HashSet};
 
 /// Union-Find data structure for connected component tracking.
-struct UnionFind {
+#[derive(Debug, Clone)]
+pub(crate) struct UnionFind {
     parent: Vec<usize>,
     rank: Vec<usize>,
+    components: usize,
 }
 
 impl UnionFind {
     #[verified_engine::verified]
-    fn new(n: usize) -> Self {
+    pub(crate) fn new(n: usize) -> Self {
         Self {
             parent: (0..n).collect(),
             rank: vec![0; n],
+            components: n,
         }
     }
 
     #[verified_engine::verified]
-    fn find(&mut self, x: usize) -> usize {
+    pub(crate) fn reset(&mut self) {
+        let n = self.parent.len();
+        self.reset_prefix(n);
+    }
+
+    #[verified_engine::verified]
+    pub(crate) fn reset_prefix(&mut self, n: usize) {
+        let limit = n.min(self.parent.len());
+        for (i, slot) in self.parent.iter_mut().enumerate().take(limit) {
+            *slot = i;
+        }
+        self.rank[..limit].fill(0);
+        self.components = limit;
+    }
+
+    #[verified_engine::verified]
+    pub(crate) fn find(&mut self, x: usize) -> usize {
         let mut root = x;
         while self.parent[root] != root {
             root = self.parent[root];
@@ -37,30 +56,28 @@ impl UnionFind {
     }
 
     #[verified_engine::verified]
-    fn union(&mut self, x: usize, y: usize) {
+    pub(crate) fn union(&mut self, x: usize, y: usize) -> bool {
         let root_x = self.find(x);
         let root_y = self.find(y);
-
-        if root_x != root_y {
-            if self.rank[root_x] < self.rank[root_y] {
-                self.parent[root_x] = root_y;
-            } else if self.rank[root_x] > self.rank[root_y] {
-                self.parent[root_y] = root_x;
-            } else {
-                self.parent[root_y] = root_x;
-                self.rank[root_x] += 1;
-            }
+        if root_x == root_y {
+            return false;
         }
+
+        if self.rank[root_x] < self.rank[root_y] {
+            self.parent[root_x] = root_y;
+        } else if self.rank[root_x] > self.rank[root_y] {
+            self.parent[root_y] = root_x;
+        } else {
+            self.parent[root_y] = root_x;
+            self.rank[root_x] += 1;
+        }
+        self.components -= 1;
+        true
     }
 
     #[verified_engine::verified]
-    fn count_components(&mut self) -> usize {
-        let n = self.parent.len();
-        let mut roots = HashSet::new();
-        for i in 0..n {
-            roots.insert(self.find(i));
-        }
-        roots.len()
+    pub(crate) fn count_components(&self) -> usize {
+        self.components
     }
 }
 
@@ -90,25 +107,89 @@ impl UnionFind {
 /// ```
 #[verified_engine::verified]
 pub fn betti_number_0(complex: &SimplicialComplex) -> Result<usize, TdaError> {
-    let vertices = complex.get_simplices(0);
-    if vertices.is_empty() {
+    let Some(vertices) = complex.simplices.first() else {
+        return Ok(0);
+    };
+    let n = vertices.len();
+    if n == 0 {
         return Ok(0);
     }
 
+    let edges = complex.simplices.get(1);
+    let dense_ids = vertices
+        .iter()
+        .all(|v| v.vertices.len() == 1 && v.vertices[0] < n);
+    if dense_ids {
+        return betti_0_dense(n, edges);
+    }
+    betti_0_sparse(vertices, edges)
+}
+
+#[verified_engine::verified]
+fn betti_0_dense(n: usize, edges: Option<&HashSet<Simplex>>) -> Result<usize, TdaError> {
+    let mut uf = UnionFind::new(n);
+    if let Some(edge_set) = edges {
+        for edge in edge_set {
+            if edge.vertices.len() != 2 || edge.vertices[0] >= n || edge.vertices[1] >= n {
+                return Err(TdaError::InvalidSimplex {
+                    reason: "invalid 1-simplex vertex index in complex".to_string(),
+                });
+            }
+            uf.union(edge.vertices[0], edge.vertices[1]);
+        }
+    }
+    Ok(uf.count_components())
+}
+
+#[verified_engine::verified]
+fn betti_0_sparse(
+    vertices: &HashSet<Simplex>,
+    edges: Option<&HashSet<Simplex>>,
+) -> Result<usize, TdaError> {
     let n = vertices.len();
     let mut vertex_to_index = HashMap::with_capacity(n);
-    for (i, vertex) in vertices.iter().enumerate() {
-        vertex_to_index.insert(vertex.vertices[0], i);
+    for (idx, vertex) in vertices.iter().enumerate() {
+        if vertex.vertices.len() != 1 {
+            return Err(TdaError::InvalidSimplex {
+                reason: "expected 0-simplex with 1 vertex".to_string(),
+            });
+        }
+        vertex_to_index.insert(vertex.vertices[0], idx);
     }
 
     let mut uf = UnionFind::new(n);
-    for edge in complex.get_simplices(1) {
-        let i = vertex_to_index[&edge.vertices[0]];
-        let j = vertex_to_index[&edge.vertices[1]];
-        uf.union(i, j);
+    if let Some(edge_set) = edges {
+        for edge in edge_set {
+            if edge.vertices.len() != 2 {
+                return Err(TdaError::InvalidSimplex {
+                    reason: "expected 1-simplex with 2 vertices".to_string(),
+                });
+            }
+            let (&i, &j) = vertex_to_index
+                .get(&edge.vertices[0])
+                .zip(vertex_to_index.get(&edge.vertices[1]))
+                .ok_or_else(|| TdaError::InvalidSimplex {
+                    reason: "1-simplex references missing 0-simplex vertex".to_string(),
+                })?;
+            uf.union(i, j);
+        }
     }
-
     Ok(uf.count_components())
+}
+
+/// Evaluates $\beta_1 = (|E| - |V| + \beta_0) - \operatorname{rank}_{\mathbb{Z}_2}(\partial_2)$
+/// from precomputed chain counts.
+#[verified_engine::verified]
+pub(crate) fn betti_1_from_counts(
+    v: usize,
+    e: usize,
+    beta0: usize,
+    rank_partial_2: usize,
+) -> usize {
+    if v == 0 || e == 0 {
+        return 0;
+    }
+    (e + beta0).saturating_sub(v).saturating_sub(rank_partial_2)
 }
 
 /// Computes the 1st Betti number (number of 1-dimensional holes/cycles) over $\mathbb{Z}_2$.
@@ -142,38 +223,56 @@ pub fn betti_number_0(complex: &SimplicialComplex) -> Result<usize, TdaError> {
 /// ```
 #[verified_engine::verified]
 pub fn betti_number_1(complex: &SimplicialComplex) -> Result<usize, TdaError> {
-    let v = complex.count_simplices(0);
-    if v == 0 {
+    if complex.count_simplices(0) == 0 || complex.count_simplices(1) == 0 {
         return Ok(0);
     }
-
-    let mut edges = complex.get_simplices(1);
-    let e = edges.len();
-    if e == 0 {
-        return Ok(0);
-    }
-
     let beta0 = betti_number_0(complex)?;
-    let cycles = (e + beta0).saturating_sub(v);
-    if cycles == 0 {
-        return Ok(0);
-    }
-
-    let mut triangles = complex.get_simplices(2);
-    if triangles.is_empty() {
-        return Ok(cycles);
-    }
-
-    edges.sort_unstable();
-    triangles.sort_unstable();
-    let rank_partial_2 = compute_partial_2_rank(&edges, &triangles)?;
-    Ok(cycles.saturating_sub(rank_partial_2))
+    betti_number_1_with_beta0(complex, beta0)
 }
 
 #[verified_engine::verified]
-fn compute_partial_2_rank(edges: &[Simplex], triangles: &[Simplex]) -> Result<usize, TdaError> {
-    let mut workspace = Z2BoundaryWorkspace::new(edges.len(), triangles.len())?;
-    for (col_idx, tri) in triangles.iter().enumerate() {
+fn betti_number_1_with_beta0(complex: &SimplicialComplex, beta0: usize) -> Result<usize, TdaError> {
+    let v = complex.count_simplices(0);
+    let e = complex.count_simplices(1);
+    let cycles = betti_1_from_counts(v, e, beta0, 0);
+    if cycles == 0 {
+        return Ok(0);
+    }
+    let Some(tri_set) = complex.simplices.get(2).filter(|s| !s.is_empty()) else {
+        return Ok(cycles);
+    };
+    let Some(edge_set) = complex.simplices.get(1) else {
+        return Ok(0);
+    };
+
+    let edges = collect_sorted_edge_pairs(edge_set)?;
+    let triangles = collect_sorted_tri_triples(tri_set)?;
+    let rank_partial_2 = compute_partial_2_rank(&edges, &triangles, cycles)?;
+    Ok(betti_1_from_counts(v, e, beta0, rank_partial_2))
+}
+
+#[verified_engine::verified]
+fn collect_sorted_edge_pairs(edge_set: &HashSet<Simplex>) -> Result<Vec<[usize; 2]>, TdaError> {
+    let mut edges = Vec::with_capacity(edge_set.len());
+    for edge in edge_set {
+        if edge.vertices.len() != 2 {
+            return Err(TdaError::InvalidSimplex {
+                reason: format!(
+                    "expected 1-simplex with 2 vertices, got {}",
+                    edge.vertices.len()
+                ),
+            });
+        }
+        edges.push([edge.vertices[0], edge.vertices[1]]);
+    }
+    edges.sort_unstable();
+    Ok(edges)
+}
+
+#[verified_engine::verified]
+fn collect_sorted_tri_triples(tri_set: &HashSet<Simplex>) -> Result<Vec<[usize; 3]>, TdaError> {
+    let mut triangles = Vec::with_capacity(tri_set.len());
+    for tri in tri_set {
         if tri.vertices.len() != 3 {
             return Err(TdaError::InvalidSimplex {
                 reason: format!(
@@ -182,24 +281,38 @@ fn compute_partial_2_rank(edges: &[Simplex], triangles: &[Simplex]) -> Result<us
                 ),
             });
         }
-        let v0 = tri.vertices[0];
-        let v1 = tri.vertices[1];
-        let v2 = tri.vertices[2];
+        triangles.push([tri.vertices[0], tri.vertices[1], tri.vertices[2]]);
+    }
+    triangles.sort_unstable();
+    Ok(triangles)
+}
+
+#[verified_engine::verified]
+fn compute_partial_2_rank(
+    edges: &[[usize; 2]],
+    triangles: &[[usize; 3]],
+    max_rank: usize,
+) -> Result<usize, TdaError> {
+    let mut workspace = Z2BoundaryWorkspace::new(edges.len(), triangles.len())?;
+    for (col_idx, &[v0, v1, v2]) in triangles.iter().enumerate() {
         let f0 = find_edge_row(edges, v0, v1)?;
         let f1 = find_edge_row(edges, v0, v2)?;
         let f2 = find_edge_row(edges, v1, v2)?;
         workspace.set_column_faces(col_idx, &[f0, f1, f2])?;
     }
-    Ok(workspace.reduce())
+    Ok(workspace.reduce_with_max_rank(max_rank))
 }
 
 #[verified_engine::verified]
-fn find_edge_row(edges: &[Simplex], u: usize, v: usize) -> Result<usize, TdaError> {
-    let (a, b) = if u <= v { (u, v) } else { (v, u) };
+fn find_edge_row(edges: &[[usize; 2]], u: usize, v: usize) -> Result<usize, TdaError> {
+    let pair = if u <= v { [u, v] } else { [v, u] };
     edges
-        .binary_search_by(|edge| edge.vertices.as_slice().cmp(&[a, b]))
+        .binary_search(&pair)
         .map_err(|_| TdaError::InvalidSimplex {
-            reason: format!("missing boundary edge [{a}, {b}] in simplicial complex"),
+            reason: format!(
+                "missing boundary edge [{}, {}] in simplicial complex",
+                pair[0], pair[1]
+            ),
         })
 }
 
@@ -228,7 +341,7 @@ fn find_edge_row(edges: &[Simplex], u: usize, v: usize) -> Result<usize, TdaErro
 #[verified_engine::verified]
 pub fn betti_numbers(complex: &SimplicialComplex) -> Result<(usize, usize), TdaError> {
     let beta0 = betti_number_0(complex)?;
-    let beta1 = betti_number_1(complex)?;
+    let beta1 = betti_number_1_with_beta0(complex, beta0)?;
     Ok((beta0, beta1))
 }
 
