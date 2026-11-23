@@ -9,8 +9,7 @@ use egui_plot::{Line, LineStyle, MarkerShape, PlotPoints, Points};
 use math_explorer::constants::C;
 use math_explorer::physics::astrophysics::{
     evaluate_relativistic_beaming, tangential_critical_radius_kpc,
-    validate_christoffel_radial_connection, CentralBlackHoleConfig, HaloProfile,
-    OrbitParticleKind,
+    validate_christoffel_radial_connection, CentralBlackHoleConfig, HaloProfile, OrbitParticleKind,
 };
 
 use crate::reflective_ui::render_copyable_metric;
@@ -80,15 +79,24 @@ pub(crate) fn clamp_bh_config(bh: &mut CentralBlackHoleConfig) {
     bh.mass_solar = clamp_finite(bh.mass_solar, 1.0e5, 1.0e11, 1.0e8);
     bh.effective_rs_kpc = clamp_finite(bh.effective_rs_kpc, 0.01, 2.0, 0.12);
     bh.relativistic_beta_scale = clamp_finite(bh.relativistic_beta_scale, 0.0, 0.05, 0.0025);
-    bh.magnetic_energy_density_j_m3 =
-        clamp_finite(bh.magnetic_energy_density_j_m3, 0.0, 50.0, 1.0);
+    bh.magnetic_energy_density_j_m3 = clamp_finite(bh.magnetic_energy_density_j_m3, 0.0, 50.0, 1.0);
 }
 
 impl GalacticOrbitSimulator {
     /// Repositions the interactive midplane caustic lens center in kpc.
     pub fn drag_orbit_lens_to(&mut self, xy_kpc: [f64; 2]) {
-        let nx = clamp_finite(xy_kpc[0], -25.0, 25.0, self.cfg.lens_overlay.lens_center_kpc[0]);
-        let ny = clamp_finite(xy_kpc[1], -25.0, 25.0, self.cfg.lens_overlay.lens_center_kpc[1]);
+        let nx = clamp_finite(
+            xy_kpc[0],
+            -25.0,
+            25.0,
+            self.cfg.lens_overlay.lens_center_kpc[0],
+        );
+        let ny = clamp_finite(
+            xy_kpc[1],
+            -25.0,
+            25.0,
+            self.cfg.lens_overlay.lens_center_kpc[1],
+        );
         if (self.cfg.lens_overlay.lens_center_kpc[0] - nx).abs() > 1.0e-9
             || (self.cfg.lens_overlay.lens_center_kpc[1] - ny).abs() > 1.0e-9
         {
@@ -295,7 +303,9 @@ impl GalacticOrbitSimulator {
                 cap_pts.push([p.x_kpc, p.y_kpc]);
                 continue;
             }
-            let r = (p.x_kpc * p.x_kpc + p.y_kpc * p.y_kpc).sqrt().max(1.001 * rs_kpc);
+            let r = (p.x_kpc * p.x_kpc + p.y_kpc * p.y_kpc)
+                .sqrt()
+                .max(1.001 * rs_kpc);
             let speed_kms = (p.vx_kms * p.vx_kms + p.vy_kms * p.vy_kms).sqrt();
             let los_cos = if speed_kms > 1.0e-6 {
                 (p.vy_kms / speed_kms).clamp(-1.0, 1.0)

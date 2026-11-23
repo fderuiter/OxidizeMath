@@ -145,7 +145,9 @@ fn test_interactive_orbit_caustic_drag_and_nfw_vs_burkert_exports() {
 
     egui_plot::clear_last_plot_datasets();
     let orbit_ds = sim.export_datasets();
-    assert!(orbit_ds.iter().any(|(n, _)| n.contains("NFW Cusp Critical")));
+    assert!(orbit_ds
+        .iter()
+        .any(|(n, _)| n.contains("NFW Cusp Critical")));
     assert!(orbit_ds
         .iter()
         .any(|(n, _)| n.contains("Burkert Core Critical")));

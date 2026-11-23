@@ -216,10 +216,7 @@ impl RotationCurveExplorer {
         ]
     }
 
-    pub(super) fn append_relativity_export_datasets(
-        &self,
-        out: &mut Vec<(String, Vec<[f64; 2]>)>,
-    ) {
+    pub(super) fn append_relativity_export_datasets(&self, out: &mut Vec<(String, Vec<[f64; 2]>)>) {
         if !self.cfg.relativity.enabled {
             return;
         }

@@ -7,6 +7,7 @@ use super::scene::{
 use super::GaussianSplattingTool;
 use crate::accessibility::AccessibleTheoryHover;
 use crate::framework::Plot3DViewport;
+use crate::reflective_ui::{AnimatedSlider, SweepMode};
 use eframe::egui;
 use egui_plot::{LineStyle, MarkerShape, PlotImage, PlotPoint};
 
@@ -35,7 +36,14 @@ impl GaussianSplattingTool {
             }
             let prev_scale = self.scale;
             if ui
-                .add(egui::Slider::new(&mut self.scale, 0.1..=10.0).text("Scale"))
+                .add(
+                    AnimatedSlider::new(&mut self.scale, 0.1..=10.0)
+                        .hard_bounds(0.1..=10.0)
+                        .speed(1.8)
+                        .sweep_mode(SweepMode::Oscillate)
+                        .text("Scale")
+                        .id_salt("gaussian_splatting_scale"),
+                )
                 .changed()
             {
                 self.scale = if self.scale.is_finite() {
@@ -58,16 +66,17 @@ impl GaussianSplattingTool {
         });
     }
 
-    fn draw_density_controls(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Adaptive Density Control");
+    fn draw_threshold_sliders(&mut self, ui: &mut egui::Ui) {
         let prev_grad = self.grad_threshold;
         if ui
             .add(
-                egui::Slider::new(
+                AnimatedSlider::new(
                     &mut self.grad_threshold,
                     GRAD_THRESHOLD_MIN..=GRAD_THRESHOLD_MAX,
                 )
-                .text("Gradient Threshold"),
+                .hard_bounds(GRAD_THRESHOLD_MIN..=GRAD_THRESHOLD_MAX)
+                .text("Gradient Threshold")
+                .id_salt("gaussian_splatting_grad_threshold"),
             )
             .changed()
         {
@@ -83,11 +92,13 @@ impl GaussianSplattingTool {
         let prev_opacity = self.opacity_threshold;
         if ui
             .add(
-                egui::Slider::new(
+                AnimatedSlider::new(
                     &mut self.opacity_threshold,
                     OPACITY_THRESHOLD_MIN..=OPACITY_THRESHOLD_MAX,
                 )
-                .text("Opacity Threshold"),
+                .hard_bounds(OPACITY_THRESHOLD_MIN..=OPACITY_THRESHOLD_MAX)
+                .text("Opacity Threshold")
+                .id_salt("gaussian_splatting_opacity_threshold"),
             )
             .changed()
         {
@@ -99,7 +110,11 @@ impl GaussianSplattingTool {
             };
             self.sync_density_counts();
         }
+    }
 
+    fn draw_density_controls(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Adaptive Density Control");
+        self.draw_threshold_sliders(ui);
         ui.label(format!(
             "Split (large grad & scale): {}",
             self.cached_counts.split
@@ -137,11 +152,11 @@ impl GaussianSplattingTool {
 
             let lens_drag_mode =
                 self.lens.mode != SplatLensMode::Off && self.lens.drag_lens_on_canvas;
-            let mut viewport =
-                Plot3DViewport::new("gaussian_splatting_plot", VIEWPORT_HALF_EXTENT);
+            let mut viewport = Plot3DViewport::new("gaussian_splatting_plot", VIEWPORT_HALF_EXTENT)
+                .allow_camera_drag(!lens_drag_mode);
             if lens_drag_mode {
-                viewport =
-                    viewport.helper_text("Drag canvas to reposition gravitational lens | Scroll to zoom");
+                viewport = viewport
+                    .helper_text("Drag canvas to reposition gravitational lens | Scroll to zoom");
             }
             let plot_resp = viewport.show(ui, &mut camera, |plot_ui| {
                 if let Some(tid) = tex_id {

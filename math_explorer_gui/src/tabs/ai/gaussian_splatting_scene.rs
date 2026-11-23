@@ -22,7 +22,7 @@ use math_explorer::ai::gaussian_splatting::{
 };
 use math_explorer::constants::SOLAR_MASS;
 use math_explorer::physics::astrophysics::{
-    tangential_critical_radius_kpc, validate_christoffel_radial_connection,
+    tangential_critical_radius_kpc, validate_christoffel_radial_connection, HaloProfile,
 };
 use math_explorer::physics::high_energy::general_relativity::SchwarzschildBlackHole;
 use nalgebra::{Matrix2, Matrix2x3, Point2, Point3, Vector2, Vector3};
@@ -201,7 +201,11 @@ pub(super) fn project_lensed_into(
         scale_multiplier: tool.scale,
     };
     let bh = SchwarzschildBlackHole::new(1.0e8 * SOLAR_MASS).expect("valid black hole");
-    let cam_forward = Vector3::new(view_matrix[(2, 0)], view_matrix[(2, 1)], view_matrix[(2, 2)]);
+    let cam_forward = Vector3::new(
+        view_matrix[(2, 0)],
+        view_matrix[(2, 1)],
+        view_matrix[(2, 2)],
+    );
     let (nfw_halo, burk_halo, sigma_crit) = tool.lens.matched_halos();
     let lens_center = Vector2::new(tool.lens.center[0], tool.lens.center[1]);
     let mut masked_rays = 0usize;
@@ -230,21 +234,45 @@ pub(super) fn project_lensed_into(
         out_splats,
     );
 
-    populate_tool_ellipse_rings(tool, dist, zoom, focal, out_splats, out_rings, out_rings_3d, out_centers);
-    let shadow_r = if tool.lens.mode == SplatLensMode::Schwarzschild {
-        1.5 * tool.lens.viewport_rs.max(0.0)
+    populate_tool_ellipse_rings(
+        tool,
+        dist,
+        zoom,
+        focal,
+        out_splats,
+        out_rings,
+        out_rings_3d,
+        out_centers,
+    );
+    build_lensed_telemetry(
+        &bh,
+        &tool.lens,
+        (&nfw_halo, &burk_halo, sigma_crit),
+        (out_splats.len(), masked_rays, max_boost),
+    )
+}
+
+fn build_lensed_telemetry(
+    bh: &SchwarzschildBlackHole,
+    lens: &SplatLensConfig,
+    (nfw_halo, burk_halo, sigma_crit): (&HaloProfile, &HaloProfile, f64),
+    (emitted_images, shadow_masked_rays, max_radiance_boost): (usize, usize, f64),
+) -> LensedFrameTelemetry {
+    let shadow_radius = if lens.mode == SplatLensMode::Schwarzschild {
+        1.5 * lens.viewport_rs.max(0.0)
     } else {
         0.0
     };
-    let (gamma_r00, _) = validate_christoffel_radial_connection(&bh, 6.0).unwrap_or((0.0, 0.0));
+    let (christoffel_gamma_r00, _) =
+        validate_christoffel_radial_connection(bh, 6.0).unwrap_or((0.0, 0.0));
     LensedFrameTelemetry {
-        emitted_images: out_splats.len(),
-        shadow_masked_rays: masked_rays,
-        shadow_radius: shadow_r,
-        nfw_critical_radius: tangential_critical_radius_kpc(None, &nfw_halo, sigma_crit, 6.0),
-        burkert_critical_radius: tangential_critical_radius_kpc(None, &burk_halo, sigma_crit, 6.0),
-        max_radiance_boost: max_boost,
-        christoffel_gamma_r00: gamma_r00,
+        emitted_images,
+        shadow_masked_rays,
+        shadow_radius,
+        nfw_critical_radius: tangential_critical_radius_kpc(None, nfw_halo, sigma_crit, 6.0),
+        burkert_critical_radius: tangential_critical_radius_kpc(None, burk_halo, sigma_crit, 6.0),
+        max_radiance_boost,
+        christoffel_gamma_r00,
     }
 }
 

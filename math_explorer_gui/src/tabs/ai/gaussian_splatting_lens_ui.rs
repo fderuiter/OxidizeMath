@@ -106,8 +106,7 @@ impl GaussianSplattingTool {
                     .text("Scale / Core Radius"),
             );
             ui.add(
-                egui::Slider::new(&mut self.lens.log10_sigma_crit, 7.0..=9.5)
-                    .text("log10(Σ_crit)"),
+                egui::Slider::new(&mut self.lens.log10_sigma_crit, 7.0..=9.5).text("log10(Σ_crit)"),
             );
         }
         ui.add(
@@ -115,8 +114,7 @@ impl GaussianSplattingTool {
                 .text("Peak Orbital v / c"),
         );
         ui.add(
-            egui::Slider::new(&mut self.lens.magnetic_u_b, 0.0..=10.0)
-                .text("Coronal U_B (J/m³)"),
+            egui::Slider::new(&mut self.lens.magnetic_u_b, 0.0..=10.0).text("Coronal U_B (J/m³)"),
         );
         if ui.small_button("Center Lens").clicked() {
             self.lens.center = [0.0, 0.0];
@@ -171,11 +169,7 @@ impl GaussianSplattingTool {
         }
     }
 
-    fn trigger_save_dialog(
-        &mut self,
-        cfg: SaveAsDialogConfig,
-        payload: Result<Vec<u8>, String>,
-    ) {
+    fn trigger_save_dialog(&mut self, cfg: SaveAsDialogConfig, payload: Result<Vec<u8>, String>) {
         match payload {
             Ok(bytes) => {
                 let (tx, rx) = std::sync::mpsc::channel();

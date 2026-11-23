@@ -133,7 +133,10 @@ fn test_interactive_lens_drag_caustic_overlays_url_and_exports() {
     };
     let _ = ctx.run(raw, |sub| tool.show(sub));
 
-    let rn = tool.lens_telemetry.nfw_critical_radius.expect("NFW caustic");
+    let rn = tool
+        .lens_telemetry
+        .nfw_critical_radius
+        .expect("NFW caustic");
     let rb = tool
         .lens_telemetry
         .burkert_critical_radius

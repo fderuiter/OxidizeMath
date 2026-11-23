@@ -9,9 +9,9 @@ mod scene;
 #[path = "gaussian_splatting_ui.rs"]
 mod ui;
 
-use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 #[cfg(test)]
 use crate::framework::ProjectionMode;
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{Gaussian2D, Scene};
 use nalgebra::Point3;
@@ -20,10 +20,9 @@ use scene::evaluate_density_counts_with_thresholds;
 use scene::{
     build_preset_scene_and_gradients, evaluate_scene_density_counts_with_thresholds,
     project_lensed_into, project_single_splat, rasterize_splats_into, LensedFrameTelemetry,
-    SplatLensConfig, SplatLensMode, VolumetricSplatPreset, CAMERA_DISTANCE,
-    DEFAULT_GRAD_THRESHOLD, DEFAULT_OPACITY_THRESHOLD, ELLIPSE_POINTS, GRAD_THRESHOLD_MAX,
-    GRAD_THRESHOLD_MIN, MAX_DYNAMIC_SPLATS, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN,
-    VIEWPORT_HALF_EXTENT,
+    SplatLensConfig, SplatLensMode, VolumetricSplatPreset, CAMERA_DISTANCE, DEFAULT_GRAD_THRESHOLD,
+    DEFAULT_OPACITY_THRESHOLD, ELLIPSE_POINTS, GRAD_THRESHOLD_MAX, GRAD_THRESHOLD_MIN,
+    MAX_DYNAMIC_SPLATS, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN, VIEWPORT_HALF_EXTENT,
 };
 use scientific_metadata::theory::TheoryDescribable;
 
@@ -84,7 +83,9 @@ impl Default for GaussianSplattingTool {
         );
         let camera = Camera3D::new(0.5, 0.5, 1.0).with_perspective_distance(CAMERA_DISTANCE);
         let world_means = scene.gaussians.iter().map(|g| g.mean).collect();
-        let dual_cap = MAX_DYNAMIC_SPLATS.saturating_mul(2).max(count.saturating_mul(2));
+        let dual_cap = MAX_DYNAMIC_SPLATS
+            .saturating_mul(2)
+            .max(count.saturating_mul(2));
         Self {
             scale,
             grad_threshold,
