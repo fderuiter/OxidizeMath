@@ -18,7 +18,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
 - **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamics, zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`), zero-allocation 1D/2D Edwards-Wilkinson and Kardar-Parisi-Zhang (`interface_growth`) surface roughening with Family-Vicsek scaling telemetry, and semi-implicit 2D stochastic Allen-Cahn and Cahn-Hilliard (`phase_field`) spinodal decomposition solvers.
-- **`optics`**: Geometric ray tracing, refractive boundary equations, and closed-form Fraunhofer wave diffraction (complemented by full-field 2D time-domain multi-slit and refractive-lens wave tank simulation in `pure_math::analysis::pde::wave_2d`).
+- **`optics`**: Graded-index and negative-index refractive media (`refraction`), RK4 Hamiltonian ray tracing and caustic envelope detection (`caustics`), and calibrated optical detector models (`sensing`), complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`.
 
 ---
 
