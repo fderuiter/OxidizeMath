@@ -109,7 +109,9 @@ fn relativity_presets_url_hydration_and_finite_state_guard_rollback() {
     inspector
         .import_preset_json(presets::PRESET_CHRISTOFFEL_CROSS_CHECK)
         .unwrap();
-    let eval = inspector.evaluate_current().expect("valid Kerr Christoffel");
+    let eval = inspector
+        .evaluate_current()
+        .expect("valid Kerr Christoffel");
     assert!(eval.max_abs_diff < 1e-6);
 }
 
@@ -134,7 +136,8 @@ fn relativity_tools_export_valid_png_svg_and_csv_artifacts() {
             match format {
                 ExportFormat::Png => {
                     let bytes = fw.export_queue.last_exported_bytes.as_deref().unwrap();
-                    let (_, _, px) = egui_plot::export_primitives::decode_png_rgba(bytes).unwrap();
+                    let px =
+                        crate::framework::deferred_export_tests::decode_rgba_pixels(bytes).unwrap();
                     let colors: HashSet<[u8; 4]> = px.into_iter().collect();
                     assert!(colors.len() >= 2);
                 }

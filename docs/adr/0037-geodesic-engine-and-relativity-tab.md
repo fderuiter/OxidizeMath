@@ -1,7 +1,8 @@
-# ADR 0035: Stack-Allocated Geodesic Engine and General Relativity Tab
+# ADR 0037: Stack-Allocated Geodesic Engine and General Relativity Tab
 
-- **Status:** Accepted
-- **Date:** 2026-11-21
+## Status
+
+Accepted (2026-11-21)
 
 ## Context
 

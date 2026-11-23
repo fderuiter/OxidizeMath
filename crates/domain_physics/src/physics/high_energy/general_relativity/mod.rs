@@ -31,15 +31,12 @@ pure_math::theory_verification!(
     },
     test = {
         let bh = SchwarzschildBlackHole::from_schwarzschild_radius(2.0).unwrap();
-        assert_relative_eq!(
-            bh.photon_sphere_radius().unwrap(),
-            PHOTON_SPHERE_FACTOR * 2.0,
-            epsilon = math_commons::registry::TOLERANCE_FAST
+        assert!(
+            (bh.photon_sphere_radius().unwrap() - PHOTON_SPHERE_FACTOR * 2.0).abs()
+                < math_commons::registry::TOLERANCE_FAST
         );
-        assert_relative_eq!(
-            bh.isco().unwrap(),
-            ISCO_FACTOR * 2.0,
-            epsilon = math_commons::registry::TOLERANCE_FAST
+        assert!(
+            (bh.isco().unwrap() - ISCO_FACTOR * 2.0).abs() < math_commons::registry::TOLERANCE_FAST
         );
     }
 );

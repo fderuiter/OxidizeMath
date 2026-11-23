@@ -5,8 +5,8 @@ use egui::{
 
 use super::{AccessibleTooltipExt as _, contrast_ratio, focus_ring_stroke};
 use crate::{
-    AccessState, CoordinatesFormatter, Corner, ExportDataSource, ExportFrame, ExportModalConfig,
-    ExportModalState, Legend, Line, Plot, PlotMemory, show_export_modal,
+    AccessState, CoordinatesFormatter, Corner, ExportDataSource, ExportModalConfig,
+    ExportModalState, Legend, Line, Plot, PlotMemory, export::DatasetFrame, show_export_modal,
 };
 
 fn base_input() -> RawInput {
@@ -422,7 +422,7 @@ impl ExportDataSource for DisabledExportSource {
         Vec::new()
     }
 
-    fn sample_gif_frames(&mut self, _: usize) -> Vec<ExportFrame> {
+    fn sample_gif_frames(&mut self, _: usize) -> Vec<DatasetFrame> {
         Vec::new()
     }
 

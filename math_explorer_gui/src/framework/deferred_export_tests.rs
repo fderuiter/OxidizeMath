@@ -37,9 +37,32 @@ fn run_deferred_frame(framework: &mut SimulationFramework, format: ExportFormat)
     });
 }
 
+pub(crate) fn decode_rgba_pixels(png_bytes: &[u8]) -> Result<Vec<[u8; 4]>, String> {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(png_bytes))
+        .read_info()
+        .map_err(|e| format!("Failed to parse PNG header: {e}"))?;
+    let buf_len = reader
+        .output_buffer_size()
+        .ok_or_else(|| "PNG buffer size overflow".to_string())?;
+    let mut buf = vec![0_u8; buf_len];
+    let info = reader
+        .next_frame(&mut buf)
+        .map_err(|e| format!("Failed to decode PNG frame: {e}"))?;
+    if info.color_type != png::ColorType::Rgba || info.bit_depth != png::BitDepth::Eight {
+        return Err(format!(
+            "Expected 8-bit RGBA PNG, got {:?} {:?}",
+            info.color_type, info.bit_depth
+        ));
+    }
+    let (pixels, rem) = buf[..info.buffer_size()].as_chunks::<4>();
+    if !rem.is_empty() {
+        return Err("Misaligned RGBA pixel buffer".to_string());
+    }
+    Ok(pixels.to_vec())
+}
+
 fn count_distinct_colors(png_bytes: &[u8]) -> usize {
-    let (_, _, pixels) =
-        egui_plot::export_primitives::decode_png_rgba(png_bytes).expect("valid PNG");
+    let pixels = decode_rgba_pixels(png_bytes).expect("valid PNG");
     let colors: HashSet<[u8; 4]> = pixels.into_iter().collect();
     colors.len()
 }
