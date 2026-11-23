@@ -1,8 +1,8 @@
 use super::{
     AmbsError, AnalysisError, BayesianError, CopulaError, DistributionError, EllipticCurveError,
-    EvolutionError, FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarkovError,
-    NumberTheoryError, OptimizationError, OuError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    EloError, EvolutionError, FractranError, Glicko2Error, KellyError, LinearAlgebraError,
+    MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
+    OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -24,15 +24,24 @@ pub enum PureMathError {
     /// Probability distribution and fitting error.
     #[error("{0}")]
     Distribution(#[from] DistributionError),
+    /// Sports Elo rating error.
+    #[error("{0}")]
+    Elo(#[from] EloError),
     /// Glicko-2 rating error.
     #[error("{0}")]
     Glicko2(#[from] Glicko2Error),
     /// Kelly criterion error.
     #[error("{0}")]
     Kelly(#[from] KellyError),
+    /// Market pricing, devigging, and cross-book execution error.
+    #[error("{0}")]
+    MarketPricing(#[from] MarketPricingError),
     /// Markov process error.
     #[error("{0}")]
     Markov(#[from] MarkovError),
+    /// Calibrated 2D score-grid match model error.
+    #[error("{0}")]
+    MatchModel(#[from] MatchModelError),
     /// Number theory error.
     #[error("{0}")]
     NumberTheory(#[from] NumberTheoryError),
@@ -125,9 +134,12 @@ impl PureMathError {
             Self::Bayesian(err) => err,
             Self::Copula(err) => err,
             Self::Distribution(err) => err,
+            Self::Elo(err) => err,
             Self::Glicko2(err) => err,
             Self::Kelly(err) => err,
+            Self::MarketPricing(err) => err,
             Self::Markov(err) => err,
+            Self::MatchModel(err) => err,
             Self::NumberTheory(err) => err,
             Self::Ou(err) => err,
             Self::Tda(err) => err,

@@ -1,5 +1,6 @@
-// @explorer_feature = "pure_math"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod bayesian_analytical;
@@ -17,7 +18,7 @@ mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
-/// Top-level `Pure Math` tab auto-discovered by `math_explorer_gui/build.rs`.
+/// Top-level `Pure Math` tab registered via static [`TabDescriptor`] inventory.
 pub struct ProbabilityStatisticsTab {
     framework: crate::framework::SimulationFramework,
 }
@@ -59,10 +60,6 @@ impl ExplorerTab for ProbabilityStatisticsTab {
         self.framework.load_state(state);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
-    }
-
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
     }
@@ -73,6 +70,14 @@ impl ExplorerTab for ProbabilityStatisticsTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "probability_statistics",
+        order: 27,
+        build: || Box::new(ProbabilityStatisticsTab::default()),
     }
 }
 

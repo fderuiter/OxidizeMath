@@ -153,6 +153,19 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
         .any(|e| e.url == "https://doi.org/10.1007/s40065-022-00360-6"));
 }
 
+#[test]
+fn test_cortical_morphometry_resolves_freesurfer_paper_and_doi_links() {
+    let cortical_links = resolve_portal_paper_links("CorticalMorphometryTool", "neuroscience");
+    assert!(!cortical_links.is_empty());
+    assert_eq!(cortical_links[0].paper_name, "freesurfer.tex");
+    let ext = resolve_citation_reference_links(
+        "Cortical Surface-Based Analysis I: Segmentation and Surface Reconstruction (Dale, Fischl & Sereno, 1999, https://doi.org/10.1006/nimg.1998.0395)",
+    );
+    assert!(ext
+        .iter()
+        .any(|e| e.url == "https://doi.org/10.1006/nimg.1998.0395"));
+}
+
 fn assert_clean_portal_output(tool_id: &str, out: &egui::FullOutput) -> usize {
     const FORBIDDEN_RAW_TEX: &[&str] = &[
         r"\hbar", r"\langle", r"\rangle", r"\vec", r"\hat", r"\bar", r"\dot", r"\ddot", r"\tilde",
@@ -208,7 +221,7 @@ fn find_hyperlink_center(out: &egui::FullOutput, prefix: &str) -> Option<egui::P
 
 fn run_portal_frame(
     ctx: &egui::Context,
-    framework: &SimulationFramework,
+    framework: &mut SimulationFramework,
     screen_rect: Option<egui::Rect>,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
@@ -227,7 +240,7 @@ fn run_portal_frame(
 }
 
 fn assert_portal_hyperlink_opens_url(
-    framework: &SimulationFramework,
+    framework: &mut SimulationFramework,
     screen_rect: Option<egui::Rect>,
     prefix: &str,
     expected_url_substr: &str,
@@ -290,18 +303,18 @@ fn test_all_registered_tools_render_clean_portal_latex_and_hyperlinks() {
             let tool_id = framework.available_tools[idx].id;
             let ctx = egui::Context::default();
             ctx.enable_accesskit();
-            let out = run_portal_frame(&ctx, &framework, screen_rect, Vec::new());
+            let out = run_portal_frame(&ctx, &mut framework, screen_rect, Vec::new());
             let _ = assert_clean_portal_output(tool_id, &out);
             if tool_id == "SpinVisualizer" {
                 assert_portal_hyperlink_opens_url(
-                    &framework,
+                    &mut framework,
                     screen_rect,
                     "📄 View PDF",
                     "quantum_mechanics.pdf",
                 );
             } else if tool_id == "CeraTool" {
                 assert_portal_hyperlink_opens_url(
-                    &framework,
+                    &mut framework,
                     screen_rect,
                     "🔗 arXiv:2509.00010",
                     "https://arxiv.org/abs/2509.00010",

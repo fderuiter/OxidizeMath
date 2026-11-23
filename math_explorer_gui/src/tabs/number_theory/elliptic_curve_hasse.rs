@@ -263,7 +263,6 @@ impl EllipticCurvePlayground {
         ctx: &egui::Context,
         outcome: TorusCanvasOutcome,
     ) {
-        self.focused_canvas = outcome.focused_canvas_id;
         if outcome.toggle_selector {
             self.selector = match self.selector {
                 ActivePointSelector::PointP => ActivePointSelector::PointQ,
@@ -312,6 +311,8 @@ impl EllipticCurvePlayground {
         }
         ui.separator();
         self.render_parameter_sliders(ui);
+        ui.separator();
+        self.render_torsion_sonification(ui);
         ui.separator();
         self.render_algebraic_readout(ui);
     }

@@ -1,6 +1,6 @@
 [package]
 name = "math_explorer_gui"
-version = "0.4.0"
+version.workspace = true
 edition = "2021"
 authors = ["Frederick de Ruiter <127706008+fderuiter@users.noreply.github.com>"]
 description = "Interactive scientific simulation and mathematical visualization desktop and web GUI"
@@ -8,10 +8,14 @@ homepage = "https://github.com/fderuiter/OxidizeMath"
 license = "AGPL-3.0-or-later"
 build = "build.rs"
 
+[[bin]]
+name = "math_explorer_gui"
+path = "src/main.rs"
+bench = false
+
 [package.metadata.packager]
 product-name = "Math Explorer"
 identifier = "com.jules.mathexplorer"
-version = "0.4.0"
 publisher = "OxidizeMath"
 homepage = "https://github.com/fderuiter/OxidizeMath"
 long-description = "Math Explorer provides an interactive desktop environment built on eframe and egui for exploring verified mathematical and scientific simulations across physics, biology, climate modeling, epidemiology, artificial intelligence, applied mathematics, and pure mathematics."
@@ -49,7 +53,7 @@ depends = [
 default = ["math_explorer", "ai", "applied", "biology", "climate", "epidemiology", "physics", "pure_math"]
 pure_math = ["math_explorer/pure_math"]
 applied = ["math_explorer/applied", "pure_math"]
-ai = ["math_explorer/ai", "math_explorer/biology", "math_explorer/physics", "applied", "pure_math"]
+ai = ["math_explorer/ai", "math_explorer/biology", "math_explorer/epidemiology", "math_explorer/physics", "applied", "pure_math"]
 biology = ["math_explorer/biology", "math_explorer/ai", "math_explorer/physics", "applied", "pure_math"]
 climate = ["math_explorer/climate", "ai"]
 epidemiology = ["math_explorer/epidemiology", "pure_math"]
