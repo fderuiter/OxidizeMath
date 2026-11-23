@@ -28,6 +28,37 @@ pub(crate) fn eval_scaled_polynomial(coeffs: &[f64], x: f64, log_x: bool, log_y:
     if out.is_finite() { out } else { f64::NAN }
 }
 
+pub(crate) fn eval_centered_polynomial(
+    u_mean: f64,
+    u_scale: f64,
+    centered_coeffs: &[f64],
+    x: f64,
+    log_x: bool,
+    log_y: bool,
+) -> f64 {
+    let u = if log_x {
+        if !x.is_finite() || x <= 0.0 {
+            return f64::NAN;
+        }
+        x.log10()
+    } else {
+        x
+    };
+    let z = (u - u_mean) / u_scale;
+    let mut poly = 0.0_f64;
+    for &coeff in centered_coeffs.iter().rev() {
+        poly = poly.mul_add(z, coeff);
+    }
+    let out = if log_y {
+        10.0_f64
+            .powf(poly.clamp(-300.0, 300.0))
+            .clamp(1e-300, 1e300)
+    } else {
+        poly
+    };
+    if out.is_finite() { out } else { f64::NAN }
+}
+
 pub(crate) fn fit_polynomial_scaled(
     points: &[[f64; 2]],
     target_degree: usize,
@@ -56,9 +87,12 @@ pub(crate) fn fit_polynomial_scaled(
         .collect();
 
     let degree = target_degree.clamp(1, 4).min(transformed.len() - 1);
-    let (coeffs, u_scale) = solve_polynomial_normal_eqs(&transformed, degree)?;
-    let r_squared = compute_transformed_r2(&transformed, &coeffs);
-    let (rmse, residuals) = compute_data_space_residuals(&raw_valid, &coeffs, log_x, log_y);
+    let (u_mean, u_scale, centered_coeffs) = solve_polynomial_normal_eqs(&transformed, degree)?;
+    let coeffs = uncenter_polynomial_coeffs(u_mean, u_scale, &centered_coeffs);
+    let formula_u_scale = transformed.iter().fold(1.0_f64, |m, p| m.max(p[0].abs()));
+    let r_squared = compute_transformed_r2(&transformed, u_mean, u_scale, &centered_coeffs);
+    let (rmse, residuals) =
+        compute_data_space_residuals(&raw_valid, u_mean, u_scale, &centered_coeffs, log_x, log_y);
     let fit_type = if degree == 1 {
         FitType::Linear
     } else {
@@ -66,7 +100,7 @@ pub(crate) fn fit_polynomial_scaled(
     };
     Some(FitResult {
         fit_type,
-        formula: format_scaled_polynomial_formula(&coeffs, u_scale, log_x, log_y),
+        formula: format_scaled_polynomial_formula(&coeffs, formula_u_scale, log_x, log_y),
         coefficients: coeffs,
         r_squared,
         rmse,
@@ -76,28 +110,25 @@ pub(crate) fn fit_polynomial_scaled(
         log_x,
         log_y,
         log_mode: log_x || log_y,
+        poly_centered: Some((u_mean, u_scale, centered_coeffs)),
     })
 }
 
-fn solve_polynomial_normal_eqs(points: &[[f64; 2]], degree: usize) -> Option<(Vec<f64>, f64)> {
-    let (u_min, u_max) = points
+fn solve_polynomial_normal_eqs(points: &[[f64; 2]], degree: usize) -> Option<(f64, f64, Vec<f64>)> {
+    let n = points.len() as f64;
+    let u_mean = points.iter().map(|p| p[0]).sum::<f64>() / n;
+    let u_scale = points
         .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
-            (lo.min(p[0]), hi.max(p[0]))
-        });
-    let span = u_max - u_min;
-    if !span.is_finite() || span <= 1e-15 {
+        .map(|p| (p[0] - u_mean).abs())
+        .fold(0.0_f64, f64::max);
+    if !u_mean.is_finite() || !u_scale.is_finite() || u_scale <= 1e-12 {
         return None;
     }
-    let mu = 0.5 * (u_min + u_max);
-    let scale = 0.5 * span;
-    let u_scale = u_min.abs().max(u_max.abs()).max(1.0);
-
     let m = degree + 1;
     let mut sum_z_pow = [0.0_f64; 9];
     let mut rhs = [0.0_f64; 5];
     for p in points {
-        let z = (p[0] - mu) / scale;
+        let z = (p[0] - u_mean) / u_scale;
         let mut cur = 1.0;
         for (k, slot) in sum_z_pow.iter_mut().enumerate().take(2 * degree + 1) {
             *slot += cur;
@@ -111,31 +142,22 @@ fn solve_polynomial_normal_eqs(points: &[[f64; 2]], degree: usize) -> Option<(Ve
     for (r, row) in mat.iter_mut().enumerate().take(m) {
         row[..m].copy_from_slice(&sum_z_pow[r..(r + m)]);
     }
-    let beta = solve_dense_small(&mut mat, &mut rhs, m)?;
-    let coeffs = uncenter_polynomial_coeffs(&beta, mu, scale)?;
-    Some((coeffs, u_scale))
+    let centered = solve_dense_small(&mut mat, &mut rhs, m)?;
+    Some((u_mean, u_scale, centered))
 }
 
-fn uncenter_polynomial_coeffs(beta: &[f64], mu: f64, scale: f64) -> Option<Vec<f64>> {
-    const BINOM: [[f64; 5]; 5] = [
-        [1.0, 0.0, 0.0, 0.0, 0.0],
-        [1.0, 1.0, 0.0, 0.0, 0.0],
-        [1.0, 2.0, 1.0, 0.0, 0.0],
-        [1.0, 3.0, 3.0, 1.0, 0.0],
-        [1.0, 4.0, 6.0, 4.0, 1.0],
-    ];
-    let m = beta.len();
-    let mut coeffs = vec![0.0_f64; m];
-    let mut inv_scale_k = 1.0_f64;
-    for (k, &bk) in beta.iter().enumerate() {
-        let scaled_bk = bk * inv_scale_k;
-        for (j, slot) in coeffs.iter_mut().enumerate().take(k + 1) {
-            let neg_mu_pow = (-mu).powi((k - j) as i32);
-            *slot += scaled_bk * BINOM[k][j] * neg_mu_pow;
+fn uncenter_polynomial_coeffs(u_mean: f64, u_scale: f64, centered: &[f64]) -> Vec<f64> {
+    let mut out = vec![0.0; centered.len()];
+    let deg = centered.len().saturating_sub(1);
+    for &b_k in centered.iter().rev() {
+        for j in (1..=deg).rev() {
+            out[j] = (out[j - 1] - u_mean * out[j]) / u_scale;
         }
-        inv_scale_k /= scale;
+        if !out.is_empty() {
+            out[0] = (-u_mean * out[0]) / u_scale + b_k;
+        }
     }
-    coeffs.iter().all(|c| c.is_finite()).then_some(coeffs)
+    out
 }
 
 /// Gaussian elimination with partial pivoting for small systems ($1 \le n \le 5$).
@@ -194,14 +216,20 @@ pub(crate) fn solve_dense_small(
     Some(x)
 }
 
-fn compute_transformed_r2(valid_points: &[[f64; 2]], coeffs: &[f64]) -> f64 {
+fn compute_transformed_r2(
+    valid_points: &[[f64; 2]],
+    u_mean: f64,
+    u_scale: f64,
+    centered_coeffs: &[f64],
+) -> f64 {
     let n = valid_points.len() as f64;
     let y_mean = valid_points.iter().map(|p| p[1]).sum::<f64>() / n;
     let (mut ss_tot, mut ss_res) = (0.0, 0.0);
     for p in valid_points {
+        let z = (p[0] - u_mean) / u_scale;
         let mut y_pred = 0.0_f64;
-        for &c in coeffs.iter().rev() {
-            y_pred = y_pred.mul_add(p[0], c);
+        for &c in centered_coeffs.iter().rev() {
+            y_pred = y_pred.mul_add(z, c);
         }
         ss_tot += (p[1] - y_mean).powi(2);
         ss_res += (p[1] - y_pred).powi(2);
@@ -215,14 +243,16 @@ fn compute_transformed_r2(valid_points: &[[f64; 2]], coeffs: &[f64]) -> f64 {
 
 fn compute_data_space_residuals(
     raw_valid: &[[f64; 2]],
-    coeffs: &[f64],
+    u_mean: f64,
+    u_scale: f64,
+    centered_coeffs: &[f64],
     log_x: bool,
     log_y: bool,
 ) -> (f64, Vec<[f64; 2]>) {
     let mut residuals = Vec::with_capacity(raw_valid.len());
     let mut sq_sum = 0.0;
     for p in raw_valid {
-        let y_hat = eval_scaled_polynomial(coeffs, p[0], log_x, log_y);
+        let y_hat = eval_centered_polynomial(u_mean, u_scale, centered_coeffs, p[0], log_x, log_y);
         let res = p[1] - y_hat;
         if res.is_finite() {
             residuals.push([p[0], res]);

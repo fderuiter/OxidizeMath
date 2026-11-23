@@ -258,3 +258,104 @@ fn test_calendar_year_shifted_exponential_logistic_and_sinusoidal() {
     assert!(sin_res.r_squared > 0.999, "Sin R^2: {}", sin_res.r_squared);
     assert!(!sin_res.formula.contains("0.0000"));
 }
+
+#[test]
+fn centered_polynomial_fit_recovers_high_offset_quartic_accurately() {
+    let x0 = 1_000_000.0_f64;
+    let pts: Vec<[f64; 2]> = (0..=40)
+        .map(|i| {
+            let u = -2.0 + (i as f64) * 0.1;
+            let x = x0 + u;
+            let y = 1.5 - 0.8 * u + 2.2 * u * u - 0.35 * u.powi(3) + 0.12 * u.powi(4);
+            [x, y]
+        })
+        .collect();
+
+    let fit = fit_model(&pts, FitType::Polynomial(4), "ShiftedQuartic", false)
+        .expect("high-offset quartic fit should succeed");
+    assert!(
+        fit.r_squared > 0.999_999,
+        "expected centered quartic R² > 0.999999, got {}",
+        fit.r_squared
+    );
+    let mid_pred = fit.eval(x0);
+    assert!((mid_pred - 1.5).abs() < 1e-6, "got {mid_pred}");
+}
+
+#[test]
+fn hidden_fit_overlay_executes_zero_fit_solver_calls() {
+    let ctx = egui::Context::default();
+    let plot_id = egui::Id::new("ac3_hidden_fit_plot");
+    let pts: Vec<[f64; 2]> = (0..=30)
+        .map(|i| [i as f64 * 0.25, 3.0 * (-0.1 * i as f64).exp()])
+        .collect();
+    ctx.data_mut(|d| {
+        d.insert_temp(
+            plot_id,
+            crate::AccessState {
+                fit_model: Some(FitType::Exponential),
+                show_fit_overlay: false,
+                ..Default::default()
+            },
+        );
+    });
+    super::reset_fit_model_with_axes_call_count();
+    for step in 0..3 {
+        let raw = egui::RawInput {
+            events: vec![egui::Event::PointerMoved(egui::pos2(
+                120.0 + step as f32 * 25.0,
+                160.0,
+            ))],
+            ..Default::default()
+        };
+        let _ = ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = crate::Plot::new("ac3_hidden")
+                    .id(plot_id)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(crate::Line::new("ExpSeries", pts.clone()));
+                    });
+            });
+        });
+    }
+    assert_eq!(super::fit_model_with_axes_call_count(), 0);
+}
+
+#[test]
+fn visible_fit_overlay_reuses_cached_fit_result_across_static_hover_frames() {
+    let ctx = egui::Context::default();
+    let plot_id = egui::Id::new("ac3_cached_fit_plot");
+    let pts: Vec<[f64; 2]> = (0..=30)
+        .map(|i| [i as f64 * 0.25, 3.0 * (-0.1 * i as f64).exp() + 0.5])
+        .collect();
+    ctx.data_mut(|d| {
+        d.insert_temp(
+            plot_id,
+            crate::AccessState {
+                fit_model: Some(FitType::Exponential),
+                show_fit_overlay: true,
+                ..Default::default()
+            },
+        );
+    });
+    super::reset_fit_model_with_axes_call_count();
+    for step in 0..4 {
+        let raw = egui::RawInput {
+            events: vec![egui::Event::PointerMoved(egui::pos2(
+                150.0 + step as f32 * 20.0,
+                180.0,
+            ))],
+            ..Default::default()
+        };
+        let _ = ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = crate::Plot::new("ac3_cached")
+                    .id(plot_id)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(crate::Line::new("ExpSeries", pts.clone()));
+                    });
+            });
+        });
+    }
+    assert_eq!(super::fit_model_with_axes_call_count(), 1);
+}

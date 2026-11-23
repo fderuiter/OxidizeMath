@@ -1,6 +1,8 @@
 //! Hoverable fitted curve & residual stem series injection, wrapping badge / error banner
 //! rendering, and `Fit Curve` menus.
 
+use std::hash::{Hash, Hasher};
+
 use egui::{Color32, Pos2, Rect, RichText, Stroke, Ui, pos2, vec2};
 
 use crate::{
@@ -19,6 +21,8 @@ pub(crate) type BaseDatasetTuple = (String, Vec<[f64; 2]>, Color32);
 pub(crate) enum FitOverlayStatus {
     /// No fit model is currently selected.
     Inactive,
+    /// Fit model is selected, but the overlay is hidden (`show_fit_overlay == false`).
+    Hidden,
     /// Fit converged and produced a valid [`FitResult`].
     Succeeded {
         result: FitResult,
@@ -34,9 +38,35 @@ pub(crate) enum FitOverlayStatus {
 
 impl FitOverlayStatus {
     #[must_use]
-    pub(crate) const fn is_succeeded(&self) -> bool {
+    pub(crate) const fn can_toggle_visibility(&self) -> bool {
+        matches!(self, Self::Succeeded { .. } | Self::Hidden)
+    }
+
+    #[must_use]
+    pub(crate) const fn did_inject_items(&self) -> bool {
         matches!(self, Self::Succeeded { .. })
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FitCacheKey {
+    pub(crate) fit_type: FitType,
+    pub(crate) dataset_idx: usize,
+    pub(crate) log_x: bool,
+    pub(crate) log_y: bool,
+    pub(crate) log_mode: bool,
+    pub(crate) dataset_hash: u64,
+}
+
+fn hash_fit_dataset(name: &str, points: &[[f64; 2]]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    name.hash(&mut hasher);
+    points.len().hash(&mut hasher);
+    for pt in points {
+        pt[0].to_bits().hash(&mut hasher);
+        pt[1].to_bits().hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 /// Computes the active regression fit (if enabled) and appends hoverable fitted curve and
@@ -67,6 +97,9 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
         access_state.last_fit_error_announced = None;
         return FitOverlayStatus::Inactive;
     };
+    if !access_state.show_fit_overlay {
+        return FitOverlayStatus::Hidden;
+    }
     let Some((ds_name, ds_pts, ds_color)) = base_datasets.get(access_state.fit_dataset_idx) else {
         return FitOverlayStatus::Failed {
             fit_type,
@@ -75,14 +108,9 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
         };
     };
     let disp_name = display_dataset_name(ds_name, access_state.fit_dataset_idx);
-    let Some(fit_res) = fit_model_with_axes(
-        ds_pts,
-        fit_type,
-        &disp_name,
-        log_x,
-        log_y,
-        access_state.fit_log_mode,
-    ) else {
+    let Some(fit_res) =
+        resolve_cached_fit(ds_pts, fit_type, &disp_name, log_x, log_y, access_state)
+    else {
         let reason = diagnose_fit_failure(ds_pts, fit_type, log_x, log_y);
         return FitOverlayStatus::Failed {
             fit_type,
@@ -93,21 +121,46 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
 
     access_state.last_fit_error_announced = None;
     let accent = resolve_fit_accent_color(ui, *ds_color);
-    if access_state.show_fit_overlay {
-        append_fitted_series(
-            ui,
-            items,
-            &fit_res,
-            &disp_name,
-            accent,
-            transform,
-            access_state,
-        );
-    }
+    append_fitted_series(
+        ui,
+        items,
+        &fit_res,
+        &disp_name,
+        accent,
+        transform,
+        access_state,
+    );
     FitOverlayStatus::Succeeded {
         result: fit_res,
         accent_color: accent,
     }
+}
+
+fn resolve_cached_fit(
+    ds_pts: &[[f64; 2]],
+    fit_type: FitType,
+    disp_name: &str,
+    log_x: bool,
+    log_y: bool,
+    access_state: &mut AccessState,
+) -> Option<FitResult> {
+    let log_mode = access_state.fit_log_mode && fit_type.supports_log_mode();
+    let cache_key = FitCacheKey {
+        fit_type,
+        dataset_idx: access_state.fit_dataset_idx,
+        log_x,
+        log_y,
+        log_mode,
+        dataset_hash: hash_fit_dataset(disp_name, ds_pts),
+    };
+    if let Some((ref prev_key, ref prev_res)) = access_state.cached_fit
+        && *prev_key == cache_key
+    {
+        return prev_res.clone();
+    }
+    let solved = fit_model_with_axes(ds_pts, fit_type, disp_name, log_x, log_y, log_mode);
+    access_state.cached_fit = Some((cache_key, solved.clone()));
+    solved
 }
 
 fn resolve_fit_accent_color(ui: &Ui, ds_color: Color32) -> Color32 {
@@ -263,7 +316,7 @@ pub(crate) fn paint_fit_status_overlay(
     access_state: &mut AccessState,
 ) {
     match status {
-        FitOverlayStatus::Inactive => {}
+        FitOverlayStatus::Inactive | FitOverlayStatus::Hidden => {}
         FitOverlayStatus::Succeeded {
             result,
             accent_color,
@@ -455,6 +508,7 @@ fn paint_failed_fit_banner(
                     .clicked()
                     {
                         access_state.fit_model = None;
+                        access_state.cached_fit = None;
                         access_state.last_fit_error_announced = None;
                     }
                 });
@@ -525,7 +579,7 @@ fn render_context_fit_actions(
     fit_status: &FitOverlayStatus,
 ) {
     ui.separator();
-    if fit_status.is_succeeded() {
+    if fit_status.can_toggle_visibility() {
         let toggle_text = if access_state.show_fit_overlay {
             "Hide Fit"
         } else {
@@ -538,6 +592,7 @@ fn render_context_fit_actions(
     }
     if ui.button("Clear Fit").clicked() {
         access_state.fit_model = None;
+        access_state.cached_fit = None;
         access_state.last_fit_error_announced = None;
         ui.close();
     }
