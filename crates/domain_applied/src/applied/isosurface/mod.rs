@@ -55,7 +55,7 @@ pub mod workspace;
 
 pub use gradients::{CentralDifferenceEstimator, GradientEstimator};
 pub use marching_cubes::{MarchingCubes, extract_isosurface};
-pub use types::{Mesh, Point3D, VoxelGrid};
+pub use types::{Mesh, Point3D, VoxelGrid, VoxelGridError};
 pub use workspace::{IsosurfaceWorkspace, extract_isosurface_into};
 
 // [cite:isosurface_extraction]
