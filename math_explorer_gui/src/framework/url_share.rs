@@ -55,7 +55,26 @@ impl SimulationFramework {
             .and_then(|idx| self.available_tools.get(idx).map(|meta| meta.id))
     }
 
-    /// Computes an O(1) parameter-only revision token for live URL fragment synchronization.
+    fn cached_untracked_url_digest(&self, tool: &dyn super::InteractiveTool) -> u64 {
+        let current_rev = self.rev_cache.untracked_tool_revision;
+        let name = tool.name();
+        if let Some(cached) = self.rev_cache.untracked_url_digest.get() {
+            if cached.tool_name == name && cached.checked_untracked_rev == current_rev {
+                return cached.url_digest;
+            }
+        }
+        let digest = compute_untracked_tool_url_digest(tool);
+        self.rev_cache
+            .untracked_url_digest
+            .set(Some(super::UntrackedUrlDigestCache {
+                tool_name: name,
+                checked_untracked_rev: current_rev,
+                url_digest: digest,
+            }));
+        digest
+    }
+
+    /// Computes a parameter-only revision token for live URL fragment synchronization.
     #[must_use]
     pub fn url_state_revision(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -63,13 +82,14 @@ impl SimulationFramework {
         self.active_challenge_id().hash(&mut hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(&mut hasher);
-            let tool_rev = tool.state_revision();
+            let tool_rev = tool.url_state_revision();
             if tool_rev > 0 {
                 1_u8.hash(&mut hasher);
                 tool_rev.hash(&mut hasher);
             } else {
                 0_u8.hash(&mut hasher);
-                self.rev_cache.untracked_tool_revision.hash(&mut hasher);
+                self.cached_untracked_url_digest(tool.as_ref())
+                    .hash(&mut hasher);
             }
         }
         hasher.finish().max(1)
@@ -80,13 +100,26 @@ impl SimulationFramework {
         let Some(tool) = &self.active_tool else {
             return Ok(None);
         };
-        let Some(state_str) = tool.save_state() else {
+        let Some(state_str) = tool.save_url_state() else {
             return Ok(None);
         };
-        let config: serde_json::Value = serde_json::from_str(&state_str)
+        let cleaned = egui_plot::export::strip_utf8_bom(&state_str).trim();
+        let cap = crate::url_state::MAX_DECODED_URL_STATE_BYTES;
+        if cleaned.len() > cap {
+            return Err(format!(
+                "URL state for '{}' ({} bytes) exceeds maximum allowed limit ({cap} bytes)",
+                tool.name(),
+                cleaned.len()
+            ));
+        }
+        let raw_config: &serde_json::value::RawValue = serde_json::from_str(cleaned)
             .map_err(|e| format!("Failed to serialize state for '{}': {e}", tool.name()))?;
-        let envelope_json =
-            crate::presets::serialize_compact_preset_envelope(tool.name(), tool.domain(), config)?;
+        let envelope_json = crate::presets::serialize_compact_preset_envelope(
+            tool.name(),
+            tool.domain(),
+            raw_config,
+        )?;
+        crate::url_state::validate_url_preset_json(&envelope_json)?;
         Ok(Some(envelope_json))
     }
 
@@ -263,4 +296,23 @@ fn extract_and_clamp_challenge_json(
     let clamped = ch_meta.clamp_state_json(&raw_inner)?;
     crate::url_state::validate_url_preset_json(&clamped)?;
     Ok(clamped)
+}
+
+fn compute_untracked_tool_url_digest(tool: &dyn super::InteractiveTool) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    match tool.save_url_state() {
+        Some(state_str) => {
+            let cleaned = egui_plot::export::strip_utf8_bom(&state_str).trim();
+            if cleaned.len() <= crate::url_state::MAX_DECODED_URL_STATE_BYTES {
+                1_u8.hash(&mut hasher);
+                cleaned.hash(&mut hasher);
+            } else {
+                2_u8.hash(&mut hasher);
+            }
+        }
+        None => {
+            0_u8.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
 }

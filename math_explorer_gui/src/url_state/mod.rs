@@ -7,6 +7,7 @@
 mod base64url;
 mod browser;
 mod codec;
+mod json_validator;
 mod sync;
 
 #[cfg(all(
@@ -20,6 +21,8 @@ mod sync;
     feature = "pure_math"
 ))]
 mod contract_tests;
+#[cfg(test)]
+mod param_only_tests;
 #[cfg(test)]
 mod tests;
 

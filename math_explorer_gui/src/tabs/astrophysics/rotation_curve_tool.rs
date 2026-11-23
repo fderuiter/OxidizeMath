@@ -194,6 +194,14 @@ impl InteractiveTool for RotationCurveExplorer {
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&self.cfg).ok()
     }
+    fn save_recovery_state(&self) -> Option<String> {
+        let mut recovery_cfg = RotationCurveState {
+            snapshot_manager: TraceSnapshotManager::new(),
+            ..self.cfg
+        };
+        let _ = &mut recovery_cfg;
+        serde_json::to_string(&recovery_cfg).ok()
+    }
     fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
         let parsed: RotationCurveState = serde_json::from_str(state)

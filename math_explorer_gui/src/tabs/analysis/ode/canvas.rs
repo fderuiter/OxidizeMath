@@ -24,6 +24,10 @@ impl InteractiveTool for OdeSolverTool {
         self.compute_state_revision()
     }
 
+    fn url_state_revision(&self) -> u64 {
+        self.compute_url_state_revision()
+    }
+
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }
@@ -74,6 +78,11 @@ impl InteractiveTool for OdeSolverTool {
 
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
 }

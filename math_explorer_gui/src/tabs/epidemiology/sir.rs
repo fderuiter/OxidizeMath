@@ -27,21 +27,12 @@ struct SirStateRef<'a> {
     beta: f64,
     gamma: f64,
     duration: f64,
-    #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
-    snapshot_manager: &'a TraceSnapshotManager,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot_manager: Option<&'a TraceSnapshotManager>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     atlas_visible: bool,
     #[serde(skip_serializing_if = "is_default_sir_atlas_axes")]
     atlas_axes: [String; 2],
-}
-
-#[derive(serde::Serialize)]
-struct SirRecoveryState {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
 }
 
 #[derive(serde::Deserialize)]
@@ -276,6 +267,31 @@ impl SirTool {
         self.recalculate();
         Ok(())
     }
+
+    fn hash_shared_parameters(&self, h: &mut impl Hasher) {
+        for val in [self.n, self.i0, self.beta, self.gamma, self.duration] {
+            val.to_bits().hash(h);
+        }
+        self.atlas.is_visible().hash(h);
+        self.atlas.axis_keys().hash(h);
+    }
+
+    fn serialize_sir_state(&self, include_snapshots: bool) -> Option<String> {
+        let (xk, yk) = self.atlas.axis_keys();
+        let snapshot_manager = (include_snapshots && !self.snapshot_manager.is_empty())
+            .then_some(&self.snapshot_manager);
+        serde_json::to_string(&SirStateRef {
+            n: self.n,
+            i0: self.i0,
+            beta: self.beta,
+            gamma: self.gamma,
+            duration: self.duration,
+            snapshot_manager,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
+        })
+        .ok()
+    }
 }
 
 impl InteractiveTool for SirTool {
@@ -292,15 +308,15 @@ impl InteractiveTool for SirTool {
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut h);
-        self.n.to_bits().hash(&mut h);
-        self.i0.to_bits().hash(&mut h);
-        self.beta.to_bits().hash(&mut h);
-        self.gamma.to_bits().hash(&mut h);
-        self.duration.to_bits().hash(&mut h);
+        self.hash_shared_parameters(&mut h);
         self.snapshot_manager.len().hash(&mut h);
         self.snapshot_manager.history_len().hash(&mut h);
-        self.atlas.is_visible().hash(&mut h);
-        self.atlas.axis_keys().hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn url_state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.hash_shared_parameters(&mut h);
         h.finish().max(1)
     }
 
@@ -342,29 +358,11 @@ impl InteractiveTool for SirTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let (xk, yk) = self.atlas.axis_keys();
-        serde_json::to_string(&SirStateRef {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
-            snapshot_manager: &self.snapshot_manager,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
-        })
-        .ok()
+        self.serialize_sir_state(true)
     }
 
     fn save_recovery_state(&self) -> Option<String> {
-        serde_json::to_string(&SirRecoveryState {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
-        })
-        .ok()
+        self.serialize_sir_state(false)
     }
 
     fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
