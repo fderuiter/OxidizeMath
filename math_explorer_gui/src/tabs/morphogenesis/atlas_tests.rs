@@ -255,6 +255,7 @@ fn test_all_five_starter_presets_evolve_without_fault_and_roundtrip_urls() {
             dt: cfg.dt,
             auto_dt: cfg.auto_dt,
             high_contrast: false,
+            ..Default::default()
         }));
         let mut runner = MorphogenesisTool::create_runner(&params, 24, 24);
         for _ in 0..40 {

@@ -284,6 +284,19 @@ inventory::submit! {
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
+        id: "morphogenesis_inhibitor_fork",
+        title: "Morphogenesis Inhibitor Fork",
+        description: "Counterfactual Schnakenberg twin forked at step 60 lowering D_v from 40 to 18 with |u_B - u_A| difference heatmap.",
+        category: "Counterfactual Biology",
+        icon: "⑂",
+        domain: "biology",
+        tool_name: Some("MorphogenesisTool"),
+        preset_generator: || crate::starter_gallery::PRESET_MORPHOGENESIS_INHIBITOR_FORK,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
         id: "gray_scott_mitosis",
         title: "Gray-Scott Mitosis",
         description: "∂v/∂t = D_v∇²v + uv² - (F+k)v: Self-replicating autocatalytic spots undergoing symmetric cell division.",
@@ -343,6 +356,23 @@ impl MorphogenesisTool {
         self.load_preset_state(MorphogenesisKinetics::GrayScott, a, b, f, k, d_u, d_v, dt);
     }
 
+    fn preset_atlas_axes(&self, kinetics: MorphogenesisKinetics) -> [String; 2] {
+        let (xk, yk) = self.atlas.axis_keys();
+        let allowed_pairs = match kinetics {
+            MorphogenesisKinetics::Schnakenberg => super::cartographer::MORPHO_ATLAS_AXIS_PAIRS,
+            MorphogenesisKinetics::GrayScott => {
+                super::gray_scott_atlas::GRAY_SCOTT_ATLAS_AXIS_PAIRS
+            }
+        };
+        if self.atlas.has_default_persisted_state()
+            || !allowed_pairs.iter().any(|&(ax, ay)| ax == xk && ay == yk)
+        {
+            super::cartographer::default_morpho_atlas_axes()
+        } else {
+            [xk.to_string(), yk.to_string()]
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn load_preset_state(
         &mut self,
@@ -367,20 +397,6 @@ impl MorphogenesisTool {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let (xk, yk) = self.atlas.axis_keys();
-        let allowed_pairs = match kinetics {
-            MorphogenesisKinetics::Schnakenberg => super::cartographer::MORPHO_ATLAS_AXIS_PAIRS,
-            MorphogenesisKinetics::GrayScott => {
-                super::gray_scott_atlas::GRAY_SCOTT_ATLAS_AXIS_PAIRS
-            }
-        };
-        let atlas_axes = if self.atlas.has_default_persisted_state()
-            || !allowed_pairs.iter().any(|&(ax, ay)| ax == xk && ay == yk)
-        {
-            super::cartographer::default_morpho_atlas_axes()
-        } else {
-            [xk.to_string(), yk.to_string()]
-        };
         let preset_state = MorphogenesisToolState {
             kinetics_mode: kinetics,
             a,
@@ -396,9 +412,10 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start,
+            fork: None,
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
-            atlas_axes,
+            atlas_axes: self.preset_atlas_axes(kinetics),
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);

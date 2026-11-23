@@ -40,6 +40,7 @@ fn test_morphogenesis_runner_offload() {
         step_count: 0,
         rng: oxidize_core::rng::OxidizeRng::default(),
         noise_amplitude: 0.0,
+        twin: None,
     };
 
     let snap_before = runner.get_snapshot();
@@ -211,6 +212,7 @@ fn test_mri_runner_offload() {
         current_time: 0.0,
         history: VecDeque::new(),
         max_history: 1000,
+        twin: None,
         step_count: 0,
         rng: oxidize_core::rng::OxidizeRng::default(),
     };
@@ -276,6 +278,7 @@ fn test_physics_and_chaos_runners_step_once() {
         current_time: 0.0,
         history: VecDeque::new(),
         max_history: 100,
+        twin: None,
         step_count: 0,
         rng: oxidize_core::rng::OxidizeRng::default(),
     };

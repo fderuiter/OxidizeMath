@@ -58,6 +58,8 @@ fn make_gray_scott_runner(
         dt: 1.0,
         auto_dt: true,
         high_contrast: false,
+        theme_mode: crate::app::ThemeMode::Dark,
+        heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));
     let runner = MorphogenesisTool::create_runner(&params, width, height);
     (runner, params)

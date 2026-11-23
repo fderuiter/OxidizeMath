@@ -6,11 +6,17 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 
 pub mod atlas;
+mod canvas;
 pub mod cartographer;
+pub mod counterfactual;
+mod counterfactual_heatmap;
+mod counterfactual_tool;
 pub mod gray_scott_atlas;
 pub mod lenia;
+mod persistence;
 pub mod presets;
 pub mod runner;
+mod runner_twin;
 pub mod sculpt;
 pub mod state;
 pub mod teleport;
@@ -21,6 +27,8 @@ pub mod ui;
 pub use cartographer::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
 };
+#[cfg(test)]
+pub use counterfactual::MorphogenesisHeatmapMode;
 #[cfg(test)]
 pub use gray_scott_atlas::{
     classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
@@ -157,6 +165,8 @@ inventory::submit! {
 
 #[cfg(test)]
 mod atlas_tests;
+#[cfg(test)]
+mod counterfactual_tests;
 #[cfg(test)]
 mod tests;
 

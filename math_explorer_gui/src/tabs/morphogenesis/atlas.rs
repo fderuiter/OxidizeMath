@@ -270,6 +270,30 @@ fn refresh_atlas_texture(
     cache.key = Some(key);
 }
 
+fn paint_atlas_overlays(
+    painter: &egui::Painter,
+    rect: Rect,
+    kinetics: MorphogenesisKinetics,
+    coords: (f64, f64),
+    palette: SemanticPalette,
+) -> ((f64, f64), (f64, f64)) {
+    painter.rect_stroke(
+        rect,
+        2.0,
+        Stroke::new(1.0_f32, palette.graph_edge),
+        egui::StrokeKind::Inside,
+    );
+    let (xr, yr) = atlas_ranges(kinetics);
+    if kinetics == MorphogenesisKinetics::GrayScott {
+        draw_gray_scott_curves(painter, rect, xr, yr, palette);
+    }
+    draw_preset_landmarks(painter, rect, kinetics, xr, yr, palette);
+    let cross = param_to_screen(rect, coords.0, coords.1, xr, yr);
+    painter.circle_stroke(cross, 5.0, Stroke::new(2.0_f32, palette.node_stroke));
+    painter.circle_filled(cross, 2.0, palette.error);
+    (xr, yr)
+}
+
 /// Renders the clickable 2D regime atlas minimap and returns updated `(x, y)` coordinates on click/drag.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_regime_atlas(
@@ -311,23 +335,7 @@ pub fn draw_regime_atlas(
             Color32::WHITE,
         );
     }
-    ui.painter().rect_stroke(
-        rect,
-        2.0,
-        Stroke::new(1.0_f32, palette.graph_edge),
-        egui::StrokeKind::Inside,
-    );
-
-    let (xr, yr) = atlas_ranges(kinetics);
-    if kinetics == MorphogenesisKinetics::GrayScott {
-        draw_gray_scott_curves(ui.painter(), rect, xr, yr, palette);
-    }
-    draw_preset_landmarks(ui.painter(), rect, kinetics, xr, yr, palette);
-
-    let cross = param_to_screen(rect, x_val, y_val, xr, yr);
-    ui.painter()
-        .circle_stroke(cross, 5.0, Stroke::new(2.0_f32, palette.node_stroke));
-    ui.painter().circle_filled(cross, 2.0, palette.error);
+    let (xr, yr) = paint_atlas_overlays(ui.painter(), rect, kinetics, (x_val, y_val), palette);
 
     let caption = match kinetics {
         MorphogenesisKinetics::Schnakenberg => "Green: Turing unstable | Amber: Hopf",
@@ -335,7 +343,7 @@ pub fn draw_regime_atlas(
     };
     ui.small(caption);
 
-    if (response.clicked() || response.dragged()) && response.interact_pointer_pos().is_some() {
+    if response.clicked() || response.dragged() {
         return response
             .interact_pointer_pos()
             .map(|pos| screen_to_param(rect, pos, xr, yr));

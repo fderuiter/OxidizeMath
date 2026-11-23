@@ -1,89 +1,21 @@
-//! Side-panel controls, 2D stability atlas integration, and accessible brushable plot canvas
-//! for [`super::MorphogenesisTool`].
+//! Side-panel controls, 2D stability atlas integration, counterfactual twin transport,
+//! and accessible brushable plot canvas for [`super::MorphogenesisTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::draw_regime_atlas;
 use super::runner::{MorphoSnapshotData, MAX_CFL_SUBSTEPS};
-use super::sculpt::{build_maze_rle, draw_morpho_sculpt_controls, overlay_cell_mask_colors};
-#[cfg(test)]
-use super::state::initialize_schnakenberg_system;
-use super::state::{plot_concentration_with_contrast, MorphogenesisKinetics};
+use super::sculpt::{build_maze_rle, draw_morpho_sculpt_controls};
+use super::state::MorphogenesisKinetics;
 use super::MorphogenesisTool;
-use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
-};
-use crate::async_sim::SimCommand;
+use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
+use crate::async_sim::{SimCommand, SimulationRunner};
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
-use crate::framework::{
-    BrushMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
-};
+use crate::framework::{CounterfactualTransport, PlaybackAction, PlaybackTransport};
 use eframe::egui;
-use eframe::egui::ColorImage;
-use egui_plot::{Plot, PlotImage, PlotPoint};
-#[cfg(test)]
-use math_explorer::biology::diffusion::SpatialDiffusion;
 use math_explorer::biology::morphogenesis::FusedEulerSolver;
-#[cfg(test)]
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 
 impl MorphogenesisTool {
-    fn sync_texture_from_snapshot(&mut self, ctx: &egui::Context) {
-        if !self.dirty && self.texture.is_some() {
-            return;
-        }
-        let Some(snapshot) = self.worker.latest_snapshot() else {
-            return;
-        };
-        let Ok(snapshot_pixels) = snapshot.pixels.try_read() else {
-            return;
-        };
-        if snapshot_pixels.is_empty() {
-            return;
-        }
-
-        let num_pixels = snapshot.width * snapshot.height;
-        if self.pixels.len() != num_pixels {
-            self.pixels.resize(num_pixels, egui::Color32::BLACK);
-        }
-        let high_contrast = self.last_high_contrast.unwrap_or_else(|| {
-            crate::app::ThemeMode::from_visuals(&ctx.style().visuals)
-                == crate::app::ThemeMode::HighContrast
-        });
-        if let Some(mdata) = snapshot
-            .structured_data
-            .as_ref()
-            .and_then(|d| d.downcast_ref::<MorphoSnapshotData>())
-            .filter(|m| m.u_data.len() == num_pixels)
-        {
-            let mut recolored = plot_concentration_with_contrast(
-                &mdata.u_data,
-                snapshot.width,
-                snapshot.height,
-                high_contrast,
-            );
-            if !mdata.mask_roles.is_empty() {
-                overlay_cell_mask_colors(&mut recolored, &mdata.mask_roles, high_contrast);
-            }
-            self.pixels.copy_from_slice(&recolored.pixels);
-        } else if snapshot_pixels.len() == num_pixels {
-            self.pixels.copy_from_slice(&snapshot_pixels);
-        }
-
-        let image = ColorImage {
-            size: [snapshot.width, snapshot.height],
-            pixels: self.pixels.clone(),
-            ..Default::default()
-        };
-        let texture_opts = egui::TextureOptions::NEAREST;
-        if let Some(texture) = &mut self.texture {
-            texture.set(image, texture_opts);
-        } else {
-            self.texture = Some(ctx.load_texture("morphogenesis_tex", image, texture_opts));
-        }
-        self.dirty = false;
-    }
-
     fn draw_kinetics_and_atlas(&mut self, ui: &mut egui::Ui) {
         let (kinetics, x_val, y_val, d_u, d_v, high_contrast) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -96,22 +28,13 @@ impl MorphogenesisTool {
 
         ui.horizontal(|ui| {
             ui.label("Kinetics:");
-            if ui
-                .selectable_label(
-                    kinetics == MorphogenesisKinetics::Schnakenberg,
-                    "Schnakenberg",
-                )
-                .clicked()
-                && kinetics != MorphogenesisKinetics::Schnakenberg
-            {
-                self.switch_kinetics(MorphogenesisKinetics::Schnakenberg);
-            }
-            if ui
-                .selectable_label(kinetics == MorphogenesisKinetics::GrayScott, "Gray-Scott")
-                .clicked()
-                && kinetics != MorphogenesisKinetics::GrayScott
-            {
-                self.switch_kinetics(MorphogenesisKinetics::GrayScott);
+            for (mode, label) in [
+                (MorphogenesisKinetics::Schnakenberg, "Schnakenberg"),
+                (MorphogenesisKinetics::GrayScott, "Gray-Scott"),
+            ] {
+                if ui.selectable_label(kinetics == mode, label).clicked() && kinetics != mode {
+                    self.switch_kinetics(mode);
+                }
             }
         });
 
@@ -230,25 +153,32 @@ impl MorphogenesisTool {
             "stamp_maze" => {
                 *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
                     build_maze_rle(self.width, self.height);
+                self.local_runner
+                    .system
+                    .diffusion
+                    .mask
+                    .stamp_microfluidic_maze();
+                self.local_runner.enforce_mask_concentrations();
+                self.sync_branch_engine_from_local();
                 let _ = self
                     .worker
                     .send_command(SimCommand::Custom("stamp_maze".to_string()));
-                self.pending_brush_frames = 4;
-                self.dirty = true;
-                ctx.request_repaint();
             }
             "clear_mask" => {
                 self.mask_rle
                     .write()
                     .unwrap_or_else(|e| e.into_inner())
                     .clear();
+                self.local_runner.system.diffusion.mask.clear();
                 let _ = self.worker.send_command(SimCommand::ClearObstacles);
-                self.pending_brush_frames = 4;
-                self.dirty = true;
-                ctx.request_repaint();
             }
-            _ => {}
+            _ => return,
         }
+        self.stepped_pixels = None;
+        self.step_runner = None;
+        self.pending_brush_frames = 4;
+        self.dirty = true;
+        ctx.request_repaint();
     }
 
     fn draw_presets(&mut self, ui: &mut egui::Ui) {
@@ -301,15 +231,15 @@ impl MorphogenesisTool {
         ) {
             match action {
                 WorkerFaultAction::Reset => self.reset(),
-                WorkerFaultAction::ResetParameters => FiniteStateGuard::reset_parameters(self),
+                WorkerFaultAction::ResetParameters
+                | WorkerFaultAction::Recovery(RecoveryAction::ResetParameters) => {
+                    FiniteStateGuard::reset_parameters(self);
+                }
                 WorkerFaultAction::Recovery(RecoveryAction::AutoScaleStepSize) => {
                     FiniteStateGuard::auto_scale_step_size(self);
                 }
                 WorkerFaultAction::Recovery(RecoveryAction::ClampParameters) => {
                     FiniteStateGuard::clamp_parameters(self);
-                }
-                WorkerFaultAction::Recovery(RecoveryAction::ResetParameters) => {
-                    FiniteStateGuard::reset_parameters(self);
                 }
             }
             ctx.request_repaint();
@@ -336,12 +266,19 @@ impl MorphogenesisTool {
                 let _ = self.worker.send_command(SimCommand::Pause);
             }
             PlaybackAction::Step => {
+                self.local_runner.step();
+                self.sync_branch_engine_from_local();
                 let _ = self.worker.send_command(SimCommand::Step(1));
+                self.dirty = true;
             }
             PlaybackAction::StepBack => {
+                let _ = self.local_runner.clear_fork();
+                self.branch_engine.clear();
                 let _ = self.worker.send_command(SimCommand::StepBack(1));
             }
             PlaybackAction::ScrubTo(step) => {
+                let _ = self.local_runner.clear_fork();
+                self.branch_engine.clear();
                 let _ = self.worker.send_command(SimCommand::SeekStep(step));
             }
             PlaybackAction::Reset => {
@@ -366,6 +303,23 @@ impl MorphogenesisTool {
                 ui.separator();
                 self.draw_playback_transport(ui, &ctx);
 
+                let current_step = self
+                    .worker
+                    .timeline_metadata()
+                    .map_or(self.local_runner.step_count, |m| {
+                        m.current_step.max(self.local_runner.step_count)
+                    });
+                let can_fork = current_step > 0 && FiniteStateGuard::is_finite_state(self);
+                let is_forked = self.is_forked();
+                if let Some(cf_action) =
+                    CounterfactualTransport::new(&mut self.branch_engine, can_fork, is_forked)
+                        .show(ui)
+                {
+                    let _ = self.apply_morpho_branch_action(cf_action);
+                    ctx.request_repaint();
+                }
+
+                self.draw_heatmap_mode_selector(ui);
                 if let Some(cmd) =
                     draw_morpho_sculpt_controls(ui, &mut self.brush_kit, &mut self.reagent_brush)
                 {
@@ -374,111 +328,5 @@ impl MorphogenesisTool {
                 self.draw_presets(ui);
             });
         });
-    }
-
-    fn draw_field_plot(&mut self, ui: &mut egui::Ui) {
-        let Some(texture) = self.texture.clone() else {
-            render_empty_plot_guidance(
-                ui,
-                "Reaction-diffusion grid ready — click ▶ Play or ⏭ Step to evolve patterns.",
-            );
-            return;
-        };
-
-        let w = self.width as f32;
-        let h = self.height as f32;
-        let allow_pan = !self.brush_kit.is_sculpting();
-        let mut strokes = Vec::new();
-        let plot_resp = Plot::new("morphogenesis_plot")
-            .data_aspect(1.0)
-            .view_aspect(1.0)
-            .show_grid(false)
-            .show_axes([false, false])
-            .allow_drag(allow_pan)
-            .allow_zoom(allow_pan)
-            .allow_scroll(allow_pan)
-            .show(ui, |plot_ui| {
-                plot_ui.image(PlotImage::new(
-                    "morphogenesis_image",
-                    texture.id(),
-                    PlotPoint::new(f64::from(w) / 2.0, f64::from(h) / 2.0),
-                    [w, h],
-                ));
-                strokes = self.brush_kit.sample_plot(
-                    plot_ui,
-                    [0.5, 0.5],
-                    [f64::from(w) - 0.5, f64::from(h) - 0.5],
-                    Some(BrushMode::Erase),
-                );
-            });
-        for stroke in strokes {
-            let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
-            self.on_brush(&ic);
-        }
-    }
-
-    pub(crate) fn draw_canvas(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.sync_texture_from_snapshot(&ctx);
-            if !self.atlas.is_visible() {
-                self.draw_field_plot(ui);
-                return;
-            }
-            let (current_mode, _, _) = self.effective_kinetics_triplet();
-            self.sync_atlas_options_for_mode(current_mode);
-            let (ax, ay) = self.active_axis_values();
-            let sig = self.non_axis_context_sig();
-            let cart = self.build_active_morpho_cartographer(self.atlas.axis_keys());
-            let mut teleport = None;
-            if ui.available_width() >= 620.0 {
-                ui.columns(2, |cols| {
-                    self.draw_field_plot(&mut cols[0]);
-                    teleport =
-                        self.atlas
-                            .show_panel(&mut cols[1], "morphogenesis", ax, ay, sig, |_| {
-                                std::sync::Arc::clone(&cart)
-                            });
-                });
-            } else {
-                teleport = self
-                    .atlas
-                    .show_panel(ui, "morphogenesis", ax, ay, sig, |_| {
-                        std::sync::Arc::clone(&cart)
-                    });
-                ui.separator();
-                self.draw_field_plot(ui);
-            }
-            if let Some(ev) = teleport {
-                self.apply_atlas_teleport(ev);
-                ctx.request_repaint();
-            }
-        });
-    }
-
-    #[cfg(test)]
-    pub(crate) fn initialize_system<D: SpatialDiffusion<2>>(
-        system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
-        width: usize,
-        height: usize,
-    ) {
-        initialize_schnakenberg_system(system, width, height);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn plot_concentration(data: &[f64], width: usize, height: usize) -> ColorImage {
-        plot_concentration_with_contrast(data, width, height, false)
-    }
-
-    /// Maps a 2D concentration slice onto a normalized heatmap [`ColorImage`] with optional high-contrast tokens.
-    #[cfg(test)]
-    #[must_use]
-    pub fn plot_concentration_with_contrast(
-        data: &[f64],
-        width: usize,
-        height: usize,
-        high_contrast: bool,
-    ) -> ColorImage {
-        plot_concentration_with_contrast(data, width, height, high_contrast)
     }
 }

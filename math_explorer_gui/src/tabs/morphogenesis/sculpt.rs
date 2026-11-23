@@ -3,9 +3,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::runner::{MorphogenesisKineticsState, MorphogenesisRunner, MorphogenesisSharedParams};
-use super::state::{initialize_for_kinetics, MorphogenesisKinetics};
-use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
+use super::counterfactual::active_morphogen_slice;
+use super::state::{apply_chemical_brush, MorphogenesisKinetics};
+use crate::async_sim::SimCommand;
 use crate::framework::{
     decode_rle_mask, encode_rle_mask, rasterize_disk_stroke, BrushInteractionMode, BrushMode,
     BrushStroke, SpatialBrushKit,
@@ -16,14 +16,10 @@ use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::biology::diffusion::{
     CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole, SpatialDiffusion,
 };
-use math_explorer::biology::morphogenesis::{
-    DiffusionCoeff, GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, TuringSystem,
-};
-use math_explorer::math_kernel::types::{Dimension, StepSize};
-use std::sync::Arc;
+use math_explorer::biology::morphogenesis::{ReactionKinetics, SchnakenbergKinetics, TuringSystem};
 
 /// Diffusion stencil capabilities shared between unmasked and masked 2D operators.
-pub trait MorphoDiffusion: SpatialDiffusion<2> + Send + 'static {
+pub trait MorphoDiffusion: SpatialDiffusion<2> + Clone + Send + 'static {
     /// Returns `true` when at least one cell role is non-`Free`.
     fn has_active_mask(&self) -> bool {
         false
@@ -111,6 +107,31 @@ impl MorphoDiffusion for MaskedFiniteDifference2D {
     }
 }
 
+pub(crate) fn enforce_system_mask_generic<D: MorphoDiffusion>(
+    system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
+    kinetics: MorphogenesisKinetics,
+    width: usize,
+    height: usize,
+) {
+    system.diffusion.sync_emitter_levels(kinetics);
+    if !system.diffusion.has_active_mask() {
+        return;
+    }
+    let (emit_u, emit_v) = system.diffusion.emitter_levels();
+    let roles_len = system.diffusion.mask_roles().len().min(width * height);
+    for idx in 0..roles_len {
+        match ReactionCellRole::from_u8(system.diffusion.mask_roles()[idx]) {
+            ReactionCellRole::ZeroFluxWall | ReactionCellRole::Sink => {
+                system.u_mut()[idx] = 0.0;
+                system.v_mut()[idx] = 0.0;
+            }
+            ReactionCellRole::EmitterU => system.u_mut()[idx] = emit_u,
+            ReactionCellRole::EmitterV => system.v_mut()[idx] = emit_v,
+            ReactionCellRole::Free => {}
+        }
+    }
+}
+
 pub(crate) fn default_morpho_brush_kit() -> SpatialBrushKit {
     SpatialBrushKit::new(BrushMode::ZeroFluxWall, 2.0)
         .with_interaction_mode(BrushInteractionMode::Sculpt)
@@ -149,12 +170,8 @@ pub(crate) fn apply_stroke_to_morpho_system<K: ReactionKinetics<2>>(
                 system.u_mut()[idx] = 0.0;
                 system.v_mut()[idx] = 0.0;
             }
-            ReactionCellRole::EmitterU => {
-                system.u_mut()[idx] = emit_u;
-            }
-            ReactionCellRole::EmitterV => {
-                system.v_mut()[idx] = emit_v;
-            }
+            ReactionCellRole::EmitterU => system.u_mut()[idx] = emit_u,
+            ReactionCellRole::EmitterV => system.v_mut()[idx] = emit_v,
             ReactionCellRole::Free => {}
         }
     });
@@ -278,188 +295,52 @@ pub(crate) fn draw_morpho_sculpt_controls(
 }
 
 impl super::MorphogenesisTool {
-    #[cfg(test)]
-    pub(crate) fn create_masked_runner(
-        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
-        width: usize,
-        height: usize,
-    ) -> MorphogenesisRunner {
-        Self::build_masked_runner(params, None, mask_rle, width, height)
-    }
-
-    pub(crate) fn create_kinetics_runner(
-        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-        kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
-        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
-        width: usize,
-        height: usize,
-    ) -> MorphogenesisRunner {
-        Self::build_masked_runner(params, Some(kinetics_state), mask_rle, width, height)
-    }
-
-    fn initial_kinetics_sync(
-        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-        kinetics_state: Option<&Arc<std::sync::RwLock<MorphogenesisKineticsState>>>,
-        p: &mut MorphogenesisSharedParams,
-    ) -> MorphogenesisKineticsState {
-        let Some(ks_arc) = kinetics_state else {
-            return MorphogenesisKineticsState {
-                mode: p.kinetics,
-                f: p.f,
-                k: p.k,
-            };
-        };
-        let ks = *ks_arc.read().unwrap_or_else(|e| e.into_inner());
-        let def = MorphogenesisKineticsState::default();
-        if ks != def
-            && p.kinetics == def.mode
-            && p.f.to_bits() == def.f.to_bits()
-            && p.k.to_bits() == def.k.to_bits()
-        {
-            p.kinetics = ks.mode;
-            p.f = ks.f;
-            p.k = ks.k;
-            if let Ok(mut wg) = params.try_write() {
-                wg.kinetics = ks.mode;
-                wg.f = ks.f;
-                wg.k = ks.k;
-            }
-            ks
-        } else {
-            let next_ks = MorphogenesisKineticsState {
-                mode: p.kinetics,
-                f: p.f,
-                k: p.k,
-            };
-            if let Ok(mut wg) = ks_arc.try_write() {
-                *wg = next_ks;
-            }
-            next_ks
-        }
-    }
-
-    fn build_masked_runner(
-        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-        kinetics_state: Option<&Arc<std::sync::RwLock<MorphogenesisKineticsState>>>,
-        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
-        width: usize,
-        height: usize,
-    ) -> MorphogenesisRunner {
-        let mut p = *params.read().unwrap_or_else(|e| e.into_inner());
-        let synced_ks = Self::initial_kinetics_sync(params, kinetics_state, &mut p);
-        let kinetics = SchnakenbergKinetics { a: p.a, b: p.b };
-        let gray_scott = GrayScottKinetics::new(p.f, p.k);
-        let diffusion = FiniteDifference2D::new(
-            Dimension(width),
-            Dimension(height),
-            StepSize(1.0),
-            StepSize(1.0),
-        )
-        .with_mask();
-        let mut system = TuringSystem::new_with_kinetics(
-            Dimension(width * height),
-            DiffusionCoeff(p.d_u),
-            DiffusionCoeff(p.d_v),
-            kinetics,
-            diffusion,
-        );
-        initialize_for_kinetics(&mut system, p.kinetics, width, height);
-        let rle = mask_rle.read().unwrap_or_else(|e| e.into_inner()).clone();
-        if !rle.is_empty() {
-            if let Ok(bytes) = decode_rle_mask(&rle, width * height) {
-                let _ = system.diffusion.mask.set_roles_slice(&bytes);
-            }
-        }
-        let mut runner = MorphogenesisRunner {
-            system,
-            kinetics: p.kinetics,
-            gray_scott,
-            params: Arc::clone(params),
-            kinetics_state: kinetics_state.map(Arc::clone),
-            last_synced_ks: synced_ks,
-            width,
-            height,
-            step_count: 0,
-            rng: oxidize_core::rng::OxidizeRng::new(super::runner::DEFAULT_MORPHOGENESIS_SEED),
-            noise_amplitude: 0.0,
-        };
-        runner.enforce_mask_concentrations();
-        runner
-    }
-
-    pub(crate) fn apply_loaded_dimensions_and_state(
-        &mut self,
-        next_w: usize,
-        next_h: usize,
-        prev_had_mask: bool,
-        target_state: SimWorkerState,
-        next_pending: bool,
-    ) {
-        if next_w != self.width || next_h != self.height {
-            self.width = next_w;
-            self.height = next_h;
-            let runner = Self::create_kinetics_runner(
-                &self.params,
-                &self.kinetics_state,
-                &self.mask_rle,
-                self.width,
-                self.height,
-            );
-            self.worker = BackgroundWorker::new(runner);
-            self.stepped_pixels = None;
-            self.step_runner = None;
-            self.dirty = true;
-        } else {
-            self.reset();
-            let rle_mask = self
-                .mask_rle
-                .read()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone();
-            if prev_had_mask || !rle_mask.is_empty() {
-                let _ = self
-                    .worker
-                    .send_command(SimCommand::SyncSculptState(SculptStatePayload {
-                        rle_mask,
-                        sparse_potential: Vec::new(),
-                    }));
-            }
-        }
-        if target_state == SimWorkerState::Running {
-            self.pending_initial_start = false;
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        } else {
-            self.pending_initial_start = next_pending;
-            if self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-        }
-    }
-
-    /// Dispatches a [`BrushStroke`] to UI RLE state and/or the background reaction-diffusion worker.
+    /// Dispatches a [`BrushStroke`] to UI RLE state, local twin runner, and background worker.
     pub fn dispatch_brush_stroke(&mut self, stroke: BrushStroke, ctx: Option<&egui::Context>) {
         if self.reagent_brush {
             let (cx, cy) =
                 SpatialBrushKit::plot_to_grid_y_down(stroke.end, self.width, self.height);
             let r = (stroke.radius.round() as i32).clamp(1, 20);
+            let inject = stroke.mode != BrushMode::Erase;
+            apply_chemical_brush(
+                &mut self.local_runner.system,
+                self.local_runner.kinetics,
+                (self.width, self.height),
+                (cx, cy, r),
+                inject,
+            );
+            self.local_runner.enforce_mask_concentrations();
             let _ = self.worker.send_command(SimCommand::ApplyBrush {
                 cx,
                 cy,
                 r,
-                is_obstacle: stroke.mode != BrushMode::Erase,
+                is_obstacle: inject,
             });
         } else {
             {
                 let mut rle = self.mask_rle.write().unwrap_or_else(|e| e.into_inner());
                 record_morpho_stroke_rle(&mut rle, self.width, self.height, &stroke);
             }
+            self.local_runner
+                .system
+                .diffusion
+                .sync_emitter_levels(self.local_runner.kinetics);
+            apply_stroke_to_morpho_system(
+                &mut self.local_runner.system,
+                self.width,
+                self.height,
+                &stroke,
+            );
             let _ = self
                 .worker
                 .send_command(SimCommand::ApplyBrushStroke(stroke));
         }
+        if let Some(ref mut twin) = self.local_runner.twin {
+            let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+            let ub = active_morphogen_slice(&self.local_runner.system, self.local_runner.kinetics);
+            twin.observe_lockstep(self.local_runner.step_count, dt, ub);
+        }
+        self.sync_branch_engine_from_local();
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_brush_frames = 4;

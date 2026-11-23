@@ -10,7 +10,9 @@ pub use crate::presets::{
     default_auto_dt, default_gray_scott_f, default_gray_scott_k, MorphogenesisKinetics,
     DEFAULT_GRAY_SCOTT_F, DEFAULT_GRAY_SCOTT_K,
 };
+#[cfg(test)]
 use eframe::egui::{self, ColorImage};
+#[cfg(test)]
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::biology::diffusion::SpatialDiffusion;
@@ -18,15 +20,6 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-
-/// Snapshot payload bundling active concentration field with `CellMask2D` role bytes.
-#[derive(Clone, Debug)]
-pub struct MorphoSnapshotData {
-    /// Flattened visualized concentration grid (`u` for Schnakenberg, `v` for Gray-Scott).
-    pub u_data: Vec<f64>,
-    /// Optional row-major `ReactionCellRole` byte grid when any cell is non-`Free`.
-    pub mask_roles: Vec<u8>,
-}
 
 pub(crate) fn apply_uniform_noise<D: SpatialDiffusion<2>>(
     system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
@@ -101,6 +94,9 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Optional counterfactual shadow twin fork descriptor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork: Option<super::counterfactual::MorphogenesisForkDescriptor>,
     /// Optional RLE-encoded `ReactionCellRole` mask (`[role, run_len]` pairs).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mask_rle: Vec<[u32; 2]>,
@@ -132,6 +128,7 @@ impl Default for MorphogenesisToolState {
             state: None,
             paused: None,
             pending_initial_start: false,
+            fork: None,
             mask_rle: Vec::new(),
             atlas_visible: false,
             atlas_axes: super::cartographer::default_morpho_atlas_axes(),
@@ -163,6 +160,9 @@ impl MorphogenesisToolState {
                 "Morphogenesis dimensions {}x{} must be within 1..=512",
                 self.width, self.height
             ));
+        }
+        if let Some(ref fork) = self.fork {
+            fork.validate()?;
         }
         if !self.mask_rle.is_empty() {
             decode_rle_mask(&self.mask_rle, self.width * self.height)?;
@@ -372,6 +372,7 @@ pub(crate) fn apply_chemical_brush<D: SpatialDiffusion<2>>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn plot_concentration_with_contrast(
     data: &[f64],
     width: usize,

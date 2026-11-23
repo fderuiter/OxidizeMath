@@ -248,6 +248,7 @@ fn test_morphogenesis_divergence_and_recovery() {
         step_count: 0,
         rng: oxidize_core::rng::OxidizeRng::default(),
         noise_amplitude: 0.0,
+        twin: None,
     };
 
     assert!(FiniteStateGuard::is_finite_state(&runner));

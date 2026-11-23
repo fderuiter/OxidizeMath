@@ -7,6 +7,7 @@ use super::cartographer::{
     grid_u_variance, is_pattern_forming_regime, MorphogenesisCartographer, MORPHO_ATLAS_AXIS_PAIRS,
     WASHOUT_VARIANCE_THRESHOLD,
 };
+use super::counterfactual::MorphogenesisHeatmapMode;
 use super::gray_scott_atlas::{
     is_gray_scott_pattern_viable, is_gray_scott_v_washed_out, GrayScottCartographer,
     GRAY_SCOTT_ATLAS_AXIS_PAIRS,
@@ -17,6 +18,7 @@ use super::state::{
     DEFAULT_GRAY_SCOTT_F, DEFAULT_GRAY_SCOTT_K,
 };
 use super::MorphogenesisTool;
+use crate::app::ThemeMode;
 use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -69,6 +71,10 @@ pub struct MorphogenesisSharedParams {
     pub auto_dt: bool,
     /// Whether high-contrast accessible colormap tokens are active.
     pub high_contrast: bool,
+    /// Active visual theme mode (`Dark`, `Light`, or `HighContrast`).
+    pub theme_mode: ThemeMode,
+    /// Active counterfactual spatial heatmap mode (`ActiveUb`, `SplitUaUb`, or `DifferenceAbs`).
+    pub heatmap_mode: MorphogenesisHeatmapMode,
 }
 
 impl Default for MorphogenesisSharedParams {
@@ -84,6 +90,8 @@ impl Default for MorphogenesisSharedParams {
             dt: 0.05,
             auto_dt: true,
             high_contrast: false,
+            theme_mode: ThemeMode::Dark,
+            heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
         }
     }
 }
@@ -265,6 +273,9 @@ impl MorphogenesisTool {
 
     /// Re-seeds deterministic spatial perturbations or Gray-Scott catalyst patches if washed out.
     pub fn reseed_if_washed_out_entering_pattern(&mut self) -> bool {
+        if self.is_forked() {
+            return false;
+        }
         let (mode, f, k) = self.effective_kinetics_triplet();
         let p = *self.params.read().unwrap_or_else(|e| e.into_inner());
         let eff_dt = if p.auto_dt {
@@ -400,7 +411,9 @@ impl MorphogenesisTool {
 
 impl FiniteStateGuard for MorphogenesisTool {
     fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
+        self.worker.state() != SimWorkerState::Faulted
+            && self.worker.diagnostic_report().is_none()
+            && FiniteStateGuard::is_finite_state(&self.local_runner)
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
