@@ -242,10 +242,8 @@ impl MriKSpaceScannerTool {
         let _ = self.recompute_if_dirty(self.last_high_contrast.unwrap_or(false));
     }
 
-    /// Returns the interactive k-space canvas `Id` when this tool owns non-text canvas focus.
     #[cfg(test)]
-    #[must_use]
-    pub const fn focused_canvas_id(&self) -> Option<egui::Id> {
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
         self.focused_kspace_id
     }
 }
