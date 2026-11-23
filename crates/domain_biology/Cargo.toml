@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 nalgebra = { workspace = true }
+num-complex = { workspace = true }
 rand = { workspace = true }
+rustfft = { workspace = true }
 thiserror = { workspace = true }
 oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }

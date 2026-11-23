@@ -105,6 +105,21 @@ impl LexError {
     }
 }
 
+impl diagnostics::Diagnostic for LexError {
+    fn severity(&self) -> diagnostics::Severity {
+        diagnostics::Severity::Error
+    }
+
+    fn metadata(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("error_type".to_string(), "LexError".to_string());
+        map.insert("start".to_string(), self.start.to_string());
+        map.insert("end".to_string(), self.end.to_string());
+        map.insert("description".to_string(), self.to_string());
+        map
+    }
+}
+
 /// Tokenizes a mathematical expression string into a vector of tokens.
 pub fn tokenize(input: &str) -> Result<Vec<Token>, LexError> {
     let mut tokens = Vec::new();

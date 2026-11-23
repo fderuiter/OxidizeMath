@@ -37,6 +37,39 @@ pub enum EvalError {
     DomainError(String),
 }
 
+impl diagnostics::Diagnostic for EvalError {
+    fn severity(&self) -> diagnostics::Severity {
+        diagnostics::Severity::Error
+    }
+
+    fn metadata(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        map.insert("error_type".to_string(), "EvalError".to_string());
+        map.insert("description".to_string(), self.to_string());
+        match self {
+            Self::UnknownVariable(name) => {
+                map.insert("variable".to_string(), name.clone());
+            }
+            Self::WrongArgumentCount {
+                func,
+                expected,
+                found,
+            } => {
+                map.insert("function".to_string(), format!("{func:?}"));
+                map.insert("expected_args".to_string(), expected.to_string());
+                map.insert("found_args".to_string(), found.to_string());
+            }
+            Self::RecursionLimitExceeded(max_depth) => {
+                map.insert("max_depth".to_string(), max_depth.to_string());
+            }
+            Self::DomainError(reason) => {
+                map.insert("reason".to_string(), reason.clone());
+            }
+        }
+        map
+    }
+}
+
 impl Expr {
     /// Evaluates the expression with the given variable map.
     pub fn eval(&self, vars: &HashMap<String, f64>) -> Result<f64, EvalError> {

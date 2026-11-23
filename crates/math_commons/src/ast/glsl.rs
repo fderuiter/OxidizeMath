@@ -36,6 +36,39 @@ pub enum GlslError {
     InvalidIdentifier(String),
 }
 
+impl diagnostics::Diagnostic for GlslError {
+    fn severity(&self) -> diagnostics::Severity {
+        diagnostics::Severity::Error
+    }
+
+    fn metadata(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::from([
+            ("error_type".to_string(), "GlslError".to_string()),
+            ("description".to_string(), self.to_string()),
+        ]);
+        match self {
+            Self::DepthLimitExceeded(limit) => {
+                map.insert("glsl_max_depth".to_string(), limit.to_string());
+            }
+            Self::WrongArgumentCount {
+                func,
+                expected,
+                found,
+            } => {
+                map.insert("glsl_func".to_string(), func.as_str().to_string());
+                map.insert("arity".to_string(), format!("{expected}/{found}"));
+            }
+            Self::NonFiniteLiteral(literal) => {
+                map.insert("literal".to_string(), literal.to_string());
+            }
+            Self::InvalidIdentifier(ident) => {
+                map.insert("glsl_identifier".to_string(), ident.clone());
+            }
+        }
+        map
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum GlslMode {
     Scalar,

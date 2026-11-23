@@ -1,14 +1,5 @@
 // [cite:ualbf_quasiperfect]
-use thiserror::Error;
-
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[allow(missing_docs)]
-pub enum NumberTheoryError {
-    #[error("Parse error: {0}")]
-    #[allow(missing_docs)]
-    ParseError(String),
-}
+pub use crate::error::NumberTheoryError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

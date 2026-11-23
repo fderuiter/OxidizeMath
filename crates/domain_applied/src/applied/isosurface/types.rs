@@ -210,6 +210,52 @@ impl VoxelGrid {
     pub fn data(&self) -> &[f32] {
         &self.data
     }
+
+    /// Mutable access to the underlying flat scalar buffer (`z -> y -> x` order) for zero-allocation updates.
+    #[verified_engine::verified]
+    pub fn data_mut(&mut self) -> &mut [f32] {
+        &mut self.data
+    }
+
+    /// Writes `value` at `(x, y, z)` if within grid bounds.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn set(&mut self, x: usize, y: usize, z: usize, value: f32) {
+        if x < self.width && y < self.height && z < self.depth {
+            let idx = (z * self.height + y) * self.width + x;
+            if idx < self.data.len() {
+                self.data[idx] = value;
+            }
+        }
+    }
+
+    /// Reconfigures dimensions, spacing, and origin in-place, reusing existing capacity when sufficient.
+    #[verified_engine::verified]
+    pub fn reconfigure_in_place(
+        &mut self,
+        dims: (usize, usize, usize),
+        voxel_size: Point3D,
+        origin: Point3D,
+    ) -> Result<(), VoxelGridError> {
+        let (width, height, depth) = dims;
+        if width == 0 || height == 0 || depth == 0 {
+            return Err(VoxelGridError::InvalidDimensions);
+        }
+        if voxel_size.x <= 0.0 || voxel_size.y <= 0.0 || voxel_size.z <= 0.0 {
+            return Err(VoxelGridError::InvalidVoxelSize);
+        }
+        let total = width
+            .checked_mul(height)
+            .and_then(|wh| wh.checked_mul(depth))
+            .ok_or(VoxelGridError::InvalidDimensions)?;
+        self.width = width;
+        self.height = height;
+        self.depth = depth;
+        self.voxel_size = voxel_size;
+        self.origin = origin;
+        self.data.resize(total, 0.0);
+        Ok(())
+    }
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn voxel_size(&self) -> &Point3D {

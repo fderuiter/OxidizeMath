@@ -26,8 +26,8 @@ pub enum TensorError {
     /// Indicates an attempt to access an element beyond the allocated bounds.
     #[error("Index out of bounds")]
     IndexOutOfBounds,
-    #[error(transparent)]
-    #[allow(missing_docs)]
+    /// Wrapped foundational mathematical error.
+    #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
 }
 
