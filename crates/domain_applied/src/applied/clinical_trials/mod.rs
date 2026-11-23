@@ -82,6 +82,8 @@ pub mod sample_size;
 pub mod survival_analysis;
 pub mod types;
 
+pub use types::ClinicalTrialError;
+
 // [cite:clinical_trials_statistics]
 
 use pure_math::theory_verification;
