@@ -147,8 +147,32 @@ impl SimulationFramework {
         file_slug
     }
 
+    fn render_action_bar_gif_progress(&mut self, ui: &mut egui::Ui) -> bool {
+        let Some((completed, total)) = self.active_gif_progress() else {
+            return false;
+        };
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        wrapped_colored_label(
+            ui,
+            palette.success,
+            format!("⏳ Encoding GIF frame {completed}/{total}..."),
+        );
+        if ui
+            .small_button("⏹ Cancel GIF")
+            .accessible_hover_text("Cancel active GIF animation export")
+            .clicked()
+        {
+            self.cancel_active_gif_export(true);
+            ui.ctx().request_repaint();
+        }
+        true
+    }
+
     fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         self.poll_action_bar_clipboard_status(ctx);
+        if self.render_action_bar_gif_progress(ui) {
+            return;
+        }
 
         let now = ctx.input(|i| i.time);
         let mut clear_status = false;

@@ -101,21 +101,13 @@ impl VolumetricFieldStudioTool {
         egui::ComboBox::from_label("3D Volume Engine")
             .selected_text(self.config.source.label())
             .show_ui(ui, |ui| {
-                ui.selectable_value(
-                    &mut self.config.source,
+                for mode in [
                     FieldSourceMode::QuantumSuperposition,
-                    FieldSourceMode::QuantumSuperposition.label(),
-                );
-                ui.selectable_value(
-                    &mut self.config.source,
                     FieldSourceMode::TuringMorphogenesis,
-                    FieldSourceMode::TuringMorphogenesis.label(),
-                );
-                ui.selectable_value(
-                    &mut self.config.source,
                     FieldSourceMode::CustomImplicit,
-                    FieldSourceMode::CustomImplicit.label(),
-                );
+                ] {
+                    ui.selectable_value(&mut self.config.source, mode, mode.label());
+                }
             });
         changed |= self.config.source != prev_src;
         match self.config.source {
@@ -285,20 +277,24 @@ impl VolumetricFieldStudioTool {
     }
 
     fn draw_probe_and_export_section(&mut self, ui: &mut egui::Ui) {
-        if ui
-            .add(
-                egui::Slider::new(
-                    &mut self.config.export_size_mm,
-                    MIN_EXPORT_SIZE_MM..=MAX_EXPORT_SIZE_MM,
+        if self.config.render_mode.uses_mesh() {
+            if ui
+                .add(
+                    egui::Slider::new(
+                        &mut self.config.export_size_mm,
+                        MIN_EXPORT_SIZE_MM..=MAX_EXPORT_SIZE_MM,
+                    )
+                    .suffix(" mm")
+                    .text("Print Size"),
                 )
-                .suffix(" mm")
-                .text("Print Size"),
-            )
-            .changed()
-        {
-            self.config.clamp_in_place();
+                .changed()
+            {
+                self.config.clamp_in_place();
+            }
+            ui.small("Use toolbar Export STL / PLY / OBJ for watertight 3D solids.");
+        } else {
+            ui.small("Use toolbar Export PLY for INRIA-compatible 3DGS radiance splats.");
         }
-        ui.small("Use toolbar Export STL / PLY / OBJ for watertight 3D solids.");
         ui.checkbox(
             &mut self.config.probe_brush_enabled,
             "Click Viewport to Perturb / Pulse",

@@ -52,8 +52,9 @@ pub use crate::{
     a11y::{contrast_ratio, focus_ring_stroke},
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     export::{
-        AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
-        color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
+        AspectRatioOption, DEFAULT_GIF_SPEED, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
+        StreamingGifEncoder, color32_image_to_png, color32_images_to_gif,
+        color32_images_to_gif_with_speed, copy_image_to_clipboard,
         copy_image_to_clipboard_with_callback, copy_text_to_clipboard,
         copy_text_to_clipboard_with_callback, decode_heightmap_png_16bit,
         encode_heightmap_png_16bit, encode_normal_map_png, export_csv, export_csv_3d,
@@ -62,7 +63,8 @@ pub use crate::{
     },
     export_modal::{
         CallbackExportSource, ExportDataSource, ExportModalAction, ExportModalBindings,
-        ExportModalConfig, ExportModalState, clipboard_status_id, show_export_modal,
+        ExportModalConfig, ExportModalState, ModalGifJobHandle, clipboard_status_id,
+        show_export_modal,
     },
     export_primitives::{
         ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,

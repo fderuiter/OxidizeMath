@@ -29,12 +29,24 @@ fn run_deferred_frame(framework: &mut SimulationFramework, format: ExportFormat)
         )),
         ..Default::default()
     };
-    let _ = ctx.run(raw_input, |ctx| {
+    let _ = ctx.run(raw_input.clone(), |ctx| {
         egui_plot::clear_last_plot_datasets();
         framework.show_export_modal = true;
         framework.queue_export(format);
         framework.show(ctx, "export_test_framework");
     });
+    if format == ExportFormat::Gif {
+        for _ in 0..250 {
+            if framework.active_gif_progress().is_none() {
+                break;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            let _ = ctx.run(raw_input.clone(), |ctx| {
+                framework.show(ctx, "export_test_framework");
+            });
+        }
+    }
 }
 
 pub(crate) fn decode_rgba_pixels(png_bytes: &[u8]) -> Result<Vec<[u8; 4]>, String> {
@@ -183,6 +195,9 @@ fn test_raster_texture_tools_png_svg_gif_exports() {
         assert!(caps.figure, "{tool_name} should support figure exports");
 
         let mut framework = new_framework_with_tool(tool);
+        framework.export_options.width = 320;
+        framework.export_options.height = 180;
+        framework.export_gif_frames = 5;
         run_deferred_frame(&mut framework, ExportFormat::Png);
         let png = framework
             .export_queue

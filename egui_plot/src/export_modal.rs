@@ -1,9 +1,14 @@
 //! Shared high-resolution plot and animation export modal UI.
 
+#[path = "export_modal_gif.rs"]
+mod export_modal_gif;
+
+pub use export_modal_gif::ModalGifJobHandle;
+
 use crate::export::{
     AspectRatioOption, DatasetFrame, ExportDataset, ExportOptions, MAX_EXPORT_DIMENSION,
-    copy_image_to_clipboard_with_callback, export_custom_gif, export_custom_image,
-    export_custom_png, export_custom_svg, save_file_dialog,
+    copy_image_to_clipboard_with_callback, export_custom_image, export_custom_png,
+    export_custom_svg, save_file_dialog,
 };
 
 const MODAL_HEADER_TEXT: &str = "Offscreen High-Res Render Settings";
@@ -42,6 +47,9 @@ pub struct ExportModalState {
     pub gif_frames: u32,
     /// Status or error message from the most recent export or clipboard operation.
     pub status_message: Option<String>,
+    /// Active standalone GIF export job handle (skipped during serialization).
+    #[cfg_attr(feature = "serde", serde(skip, default))]
+    pub gif_job: ModalGifJobHandle,
 }
 
 impl Default for ExportModalState {
@@ -53,6 +61,7 @@ impl Default for ExportModalState {
             gif_fps: 15,
             gif_frames: 20,
             status_message: None,
+            gif_job: ModalGifJobHandle::default(),
         }
     }
 }
@@ -68,6 +77,7 @@ impl ExportModalState {
             gif_fps: &mut self.gif_fps,
             gif_frames: &mut self.gif_frames,
             status_message: &mut self.status_message,
+            gif_job: Some(&mut self.gif_job),
         }
     }
 }
@@ -87,6 +97,8 @@ pub struct ExportModalBindings<'a> {
     pub gif_frames: &'a mut u32,
     /// Mutable status feedback message.
     pub status_message: &'a mut Option<String>,
+    /// Optional mutable handle to a standalone GIF export job.
+    pub gif_job: Option<&'a mut ModalGifJobHandle>,
 }
 
 /// Caller-scoped configuration for [`show_export_modal`].
@@ -150,6 +162,16 @@ pub trait ExportDataSource {
 
     /// Optional hook to intercept modal button clicks (e.g. to queue deferred end-of-frame exports).
     fn intercept_action(&mut self, _action: ExportModalAction) -> bool {
+        false
+    }
+
+    /// Optional `(completed_frames, total_frames)` progress reported by an external GIF job manager.
+    fn active_gif_progress(&self) -> Option<(usize, usize)> {
+        None
+    }
+
+    /// Optional hook to cancel an external GIF export job, returning `true` if a job was canceled.
+    fn cancel_gif_export(&mut self) -> bool {
         false
     }
 }
@@ -329,6 +351,7 @@ fn render_dimension_and_status(
     options: &ExportOptions,
     status_message: &Option<String>,
     status_color: Option<egui::Color32>,
+    gif_progress: Option<(usize, usize)>,
 ) {
     let (warn_color, ok_color) = if ui.visuals().dark_mode {
         (
@@ -352,6 +375,15 @@ fn render_dimension_and_status(
         );
     } else {
         ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
+    }
+
+    if let Some((completed, total)) = gif_progress {
+        let denom = total.max(1) as f32;
+        let fraction = (completed as f32 / denom).clamp(0.0, 1.0);
+        ui.add(
+            egui::ProgressBar::new(fraction)
+                .text(format!("GIF Progress: {completed} / {total} frames")),
+        );
     }
 
     if let Some(msg) = status_message {
@@ -395,23 +427,98 @@ fn handle_save_svg(
     }
 }
 
-fn handle_save_gif(
-    options: &ExportOptions,
-    gif_fps: u32,
-    gif_frames: u32,
-    filename: &str,
+fn start_standalone_gif_job(
+    ctx: &egui::Context,
+    scope_id: egui::Id,
+    bindings: &mut ExportModalBindings<'_>,
     source: &mut impl ExportDataSource,
-    status_message: &mut Option<String>,
 ) {
-    let sampled_frames = source.sample_gif_frames(gif_frames as usize);
-    match export_custom_gif(&sampled_frames, options, gif_fps) {
-        Ok(gif_bytes) => {
-            save_file_dialog(filename, &gif_bytes, "GIF Animation", &["gif"]);
-            *status_message = Some("GIF animation saved successfully.".to_string());
+    let sampled_frames = source.sample_gif_frames((*bindings.gif_frames).max(1) as usize);
+    if let Some(job) = bindings.gif_job.as_deref_mut() {
+        job.start(
+            ctx,
+            sampled_frames,
+            bindings.options,
+            *bindings.gif_fps,
+            bindings.status_message,
+        );
+    } else {
+        let fallback_id = scope_id.with("standalone_modal_gif_job");
+        let mut handle = ctx
+            .data_mut(|d| d.get_temp::<ModalGifJobHandle>(fallback_id))
+            .unwrap_or_default();
+        handle.start(
+            ctx,
+            sampled_frames,
+            bindings.options,
+            *bindings.gif_fps,
+            bindings.status_message,
+        );
+        if handle.is_active() {
+            ctx.data_mut(|d| d.insert_temp(fallback_id, handle));
         }
-        Err(e) => {
-            *status_message = Some(format!("GIF export failed: {e}"));
-        }
+    }
+}
+
+fn current_modal_gif_progress(
+    ctx: &egui::Context,
+    scope_id: egui::Id,
+    bindings: &ExportModalBindings<'_>,
+    source: &impl ExportDataSource,
+) -> Option<(usize, usize)> {
+    if let Some(ext) = source.active_gif_progress() {
+        return Some(ext);
+    }
+    if let Some(job) = bindings.gif_job.as_deref() {
+        return job.progress();
+    }
+    let fallback_id = scope_id.with("standalone_modal_gif_job");
+    ctx.data(|d| d.get_temp::<ModalGifJobHandle>(fallback_id))
+        .and_then(|h| h.progress())
+}
+
+fn cancel_modal_gif_job(
+    ctx: &egui::Context,
+    scope_id: egui::Id,
+    bindings: &mut ExportModalBindings<'_>,
+    source: &mut impl ExportDataSource,
+) {
+    if source.cancel_gif_export() {
+        ctx.request_repaint();
+        return;
+    }
+    let canceled = if let Some(job) = bindings.gif_job.as_deref_mut() {
+        job.cancel()
+    } else {
+        let fallback_id = scope_id.with("standalone_modal_gif_job");
+        ctx.data_mut(|d| d.remove_temp::<ModalGifJobHandle>(fallback_id))
+            .is_some_and(|mut h| h.cancel())
+    };
+    if canceled {
+        let msg = "GIF export canceled.".to_string();
+        crate::emit_plot_live_message(ctx, msg.clone(), false);
+        *bindings.status_message = Some(msg);
+        ctx.request_repaint();
+    }
+}
+
+fn poll_standalone_gif_job(
+    ctx: &egui::Context,
+    scope_id: egui::Id,
+    filename: &str,
+    bindings: &mut ExportModalBindings<'_>,
+) {
+    if let Some(job) = bindings.gif_job.as_deref_mut() {
+        job.poll(ctx, filename, bindings.status_message);
+        return;
+    }
+    let fallback_id = scope_id.with("standalone_modal_gif_job");
+    let Some(mut handle) = ctx.data_mut(|d| d.remove_temp::<ModalGifJobHandle>(fallback_id)) else {
+        return;
+    };
+    handle.poll(ctx, filename, bindings.status_message);
+    if handle.is_active() {
+        ctx.data_mut(|d| d.insert_temp(fallback_id, handle));
     }
 }
 
@@ -462,15 +569,52 @@ fn modal_fig_button(ui: &mut egui::Ui, enabled: bool, label: &str, disabled_reas
     enabled && resp.clicked()
 }
 
+fn render_gif_and_clipboard_buttons(
+    ui: &mut egui::Ui,
+    gif_active: bool,
+    bindings: &mut ExportModalBindings<'_>,
+    config: &ExportModalConfig<'_>,
+    source: &mut impl ExportDataSource,
+) {
+    let (enabled, reason) = source.figure_capability();
+    let gif_enabled = enabled && !gif_active;
+    let gif_reason = if !enabled {
+        reason
+    } else {
+        "GIF export already in progress"
+    };
+    if modal_fig_button(ui, gif_enabled, "🎬 Save GIF", gif_reason)
+        && !gif_active
+        && !source.intercept_action(ExportModalAction::SaveGif)
+    {
+        start_standalone_gif_job(ui.ctx(), config.id, bindings, source);
+    }
+    if gif_active && ui.button("⏹ Cancel GIF").clicked() {
+        cancel_modal_gif_job(ui.ctx(), config.id, bindings, source);
+    }
+    if modal_fig_button(ui, enabled, "📋 Copy to Clipboard", reason)
+        && !source.intercept_action(ExportModalAction::CopyClipboard)
+    {
+        handle_copy_clipboard(
+            ui.ctx(),
+            config.id,
+            bindings.options,
+            source,
+            bindings.status_message,
+        );
+    }
+}
+
 fn render_action_buttons(
     ui: &mut egui::Ui,
+    gif_active: bool,
     bindings: &mut ExportModalBindings<'_>,
     config: &ExportModalConfig<'_>,
     source: &mut impl ExportDataSource,
 ) -> bool {
     let mut close_requested = false;
     let (enabled, reason) = source.figure_capability();
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if modal_fig_button(ui, enabled, "💾 Save PNG", reason)
             && !source.intercept_action(ExportModalAction::SavePng)
         {
@@ -491,29 +635,7 @@ fn render_action_buttons(
                 bindings.status_message,
             );
         }
-        if modal_fig_button(ui, enabled, "🎬 Save GIF", reason)
-            && !source.intercept_action(ExportModalAction::SaveGif)
-        {
-            handle_save_gif(
-                bindings.options,
-                *bindings.gif_fps,
-                *bindings.gif_frames,
-                config.gif_filename,
-                source,
-                bindings.status_message,
-            );
-        }
-        if modal_fig_button(ui, enabled, "📋 Copy to Clipboard", reason)
-            && !source.intercept_action(ExportModalAction::CopyClipboard)
-        {
-            handle_copy_clipboard(
-                ui.ctx(),
-                config.id,
-                bindings.options,
-                source,
-                bindings.status_message,
-            );
-        }
+        render_gif_and_clipboard_buttons(ui, gif_active, bindings, config, source);
         if ui.button("Close").clicked() {
             close_requested = true;
         }
@@ -536,7 +658,7 @@ fn render_action_buttons(
     close_requested
 }
 
-/// Poll async clipboard status for `config.id` and render the shared high-res export modal when open.
+/// Poll async clipboard and GIF status for `config.id` and render the shared high-res export modal when open.
 pub fn show_export_modal(
     ctx: &egui::Context,
     mut bindings: ExportModalBindings<'_>,
@@ -544,6 +666,7 @@ pub fn show_export_modal(
     source: &mut impl ExportDataSource,
 ) {
     poll_clipboard_status(ctx, config.id, bindings.status_message);
+    poll_standalone_gif_job(ctx, config.id, config.gif_filename, &mut bindings);
     let status_color = source.status_color();
     let (scalar_enabled, _) = source.scalar_field_capability();
     let modal_id = config.id.with("export_modal_window");
@@ -556,14 +679,16 @@ pub fn show_export_modal(
             ui.separator();
             render_modal_settings(ui, config.id, &mut bindings, scalar_enabled);
             ui.separator();
+            let gif_progress = current_modal_gif_progress(ctx, config.id, &bindings, source);
             render_dimension_and_status(
                 ui,
                 bindings.options,
                 bindings.status_message,
                 status_color,
+                gif_progress,
             );
             ui.separator();
-            if render_action_buttons(ui, &mut bindings, config, source) {
+            if render_action_buttons(ui, gif_progress.is_some(), &mut bindings, config, source) {
                 frame_ctx.close();
             }
         });

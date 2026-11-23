@@ -218,6 +218,24 @@ fn test_modal_header_gif_callback_and_close_button() {
     let _ = run_frame(down, &mut state);
     let _ = run_frame(up, &mut state);
     assert_eq!(sampled_arg.get(), 6);
+    assert!(
+        state.gif_job.is_active(),
+        "Save GIF must start an asynchronous/incremental job without finishing inline"
+    );
+    assert_eq!(
+        state.status_message.as_deref(),
+        Some("Encoding GIF frame 0/6...")
+    );
+
+    for _ in 0..250 {
+        if !state.gif_job.is_active() {
+            break;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _ = run_frame(screen_input(), &mut state);
+    }
+    assert!(!state.gif_job.is_active());
     assert_eq!(
         state.status_message.as_deref(),
         Some("GIF animation saved successfully.")
@@ -440,11 +458,138 @@ fn test_export_modal_scalar_field_controls_and_intercept_actions() {
     );
 }
 
+#[test]
+fn test_standalone_modal_gif_progress_duplicate_click_guard_and_cancel() {
+    let ctx = egui::Context::default();
+    let mut state = ExportModalState {
+        open: true,
+        options: ExportOptions {
+            width: 1280,
+            height: 720,
+            ..Default::default()
+        },
+        gif_frames: 20,
+        ..Default::default()
+    };
+    let config = ExportModalConfig {
+        window_title: "Export Cancel Test",
+        id: egui::Id::new("modal_cancel_test"),
+        png_filename: "plot.png",
+        svg_filename: "plot.svg",
+        gif_filename: "plot.gif",
+    };
+    let sample_calls = Cell::new(0usize);
+    let pts: Vec<[f64; 2]> = (0..500)
+        .map(|i| [f64::from(i), (f64::from(i) * 0.1).sin()])
+        .collect();
+    let sample_data = vec![("DenseWave".to_string(), pts)];
+    let run_frame = |raw: egui::RawInput, state: &mut ExportModalState| {
+        let mut source = CallbackExportSource {
+            datasets_fn: || sample_data.clone(),
+            sample_frames_fn: |n| {
+                sample_calls.set(sample_calls.get() + 1);
+                sample_progressive_frames(&sample_data, n)
+            },
+        };
+        ctx.run(raw, |ctx| {
+            show_export_modal(ctx, state.bindings(), &config, &mut source);
+        })
+    };
+
+    let _ = run_frame(screen_input(), &mut state);
+    let out1 = run_frame(screen_input(), &mut state);
+    let gif_pos = find_text_center(&out1, "Save GIF").expect("Save GIF button");
+    let (down, up) = click_input(gif_pos);
+    let _ = run_frame(down, &mut state);
+    let _ = run_frame(up, &mut state);
+    assert_eq!(sample_calls.get(), 1);
+    assert!(state.gif_job.is_active());
+
+    // Duplicate click on Save GIF while active must be ignored
+    let (dup_down, dup_up) = click_input(gif_pos);
+    let _ = run_frame(dup_down, &mut state);
+    let out_active = run_frame(dup_up, &mut state);
+    assert_eq!(
+        sample_calls.get(),
+        1,
+        "Duplicate Save GIF click must be ignored"
+    );
+    assert!(find_text_center(&out_active, "GIF Progress:").is_some());
+
+    let cancel_pos = find_text_center(&out_active, "Cancel GIF").expect("Cancel GIF button");
+    let (c_down, c_up) = click_input(cancel_pos);
+    let _ = run_frame(c_down, &mut state);
+    let _ = run_frame(c_up, &mut state);
+    assert!(!state.gif_job.is_active());
+    assert_eq!(
+        state.status_message.as_deref(),
+        Some("GIF export canceled.")
+    );
+}
+
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen_test::wasm_bindgen_test]
 fn wasm_export_modal_uses_async_clipboard_initial_status() {
     assert_eq!(
         INITIAL_CLIPBOARD_STATUS,
         "Copying plot image to clipboard..."
+    );
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen_test::wasm_bindgen_test]
+fn wasm_standalone_modal_encodes_at_most_one_gif_frame_per_repaint_tick() {
+    let ctx = egui::Context::default();
+    let mut state = ExportModalState {
+        open: true,
+        options: ExportOptions {
+            width: 160,
+            height: 120,
+            aspect_ratio: AspectRatioOption::Free,
+            ..Default::default()
+        },
+        gif_frames: 4,
+        ..Default::default()
+    };
+    let config = ExportModalConfig {
+        window_title: "WASM Incremental GIF",
+        id: egui::Id::new("wasm_inc_gif"),
+        png_filename: "p.png",
+        svg_filename: "p.svg",
+        gif_filename: "p.gif",
+    };
+    let data = vec![(
+        "S".to_string(),
+        vec![[0.0, 0.0], [1.0, 1.0], [2.0, 0.5], [3.0, 1.5]],
+    )];
+    let step = |raw: egui::RawInput, state: &mut ExportModalState| {
+        let mut src = CallbackExportSource {
+            datasets_fn: || data.clone(),
+            sample_frames_fn: |n| sample_progressive_frames(&data, n),
+        };
+        ctx.run(raw, |ctx| {
+            show_export_modal(ctx, state.bindings(), &config, &mut src)
+        })
+    };
+
+    let _ = step(screen_input(), &mut state);
+    let out = step(screen_input(), &mut state);
+    let gif_pos = find_text_center(&out, "Save GIF").expect("Save GIF");
+    let (down, up) = click_input(gif_pos);
+    let _ = step(down, &mut state);
+    let _ = step(up, &mut state);
+    assert_eq!(state.gif_job.progress(), Some((0, 4)));
+
+    let _ = step(screen_input(), &mut state);
+    assert_eq!(state.gif_job.progress(), Some((1, 4)));
+    let _ = step(screen_input(), &mut state);
+    assert_eq!(state.gif_job.progress(), Some((2, 4)));
+    let _ = step(screen_input(), &mut state);
+    assert_eq!(state.gif_job.progress(), Some((3, 4)));
+    let _ = step(screen_input(), &mut state);
+    assert_eq!(state.gif_job.progress(), None);
+    assert_eq!(
+        state.status_message.as_deref(),
+        Some("GIF animation saved successfully.")
     );
 }

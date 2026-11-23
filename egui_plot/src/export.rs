@@ -1,5 +1,14 @@
 //! Cross-platform dataset and canvas snapshot export utilities.
 
+#[path = "gif_stream.rs"]
+mod gif_stream;
+
+pub use gif_stream::{
+    DEFAULT_GIF_SPEED, GifAnimationSummary, MAX_GIF_SPEED, MIN_GIF_SPEED, StreamingGifEncoder,
+    clamp_gif_speed, color32_images_to_gif_with_speed, decode_gif_animation_summary,
+    gif_frame_delay,
+};
+
 use crate::export_primitives::{
     PrimitiveCanvasLayout, is_valid_coord_pair,
     pixel_ops::{draw_dot, draw_segment},
@@ -522,46 +531,7 @@ pub fn export_custom_image_with_bounds(
 
 /// Convert a sequence of `egui::ColorImage` frames into an animated GIF byte stream.
 pub fn color32_images_to_gif(images: &[egui::ColorImage], fps: u32) -> Result<Vec<u8>, String> {
-    if images.is_empty() {
-        return Err("No frames provided for GIF encoding".to_string());
-    }
-
-    let clamped_fps = fps.clamp(1, 60);
-    let delay_ms = (1000 / clamped_fps).max(1);
-    let delay =
-        image::Delay::from_saturating_duration(std::time::Duration::from_millis(delay_ms as u64));
-
-    let mut gif_bytes = Vec::new();
-    {
-        let mut encoder = image::codecs::gif::GifEncoder::new(&mut gif_bytes);
-        encoder
-            .set_repeat(image::codecs::gif::Repeat::Infinite)
-            .map_err(|e| format!("Failed to set GIF repeat mode: {e}"))?;
-
-        for img in images {
-            let width = img.width() as u32;
-            let height = img.height() as u32;
-            if width == 0 || height == 0 {
-                continue;
-            }
-
-            let rgba_buf = color_image_to_rgba_bytes(img);
-
-            let rgba_img = image::RgbaImage::from_raw(width, height, rgba_buf)
-                .ok_or_else(|| "Failed to construct RGBA buffer for GIF frame".to_string())?;
-
-            let frame = image::Frame::from_parts(rgba_img, 0, 0, delay);
-            encoder
-                .encode_frame(frame)
-                .map_err(|e| format!("Failed to encode GIF frame: {e}"))?;
-        }
-    }
-
-    if gif_bytes.is_empty() {
-        return Err("GIF encoding produced empty byte stream".to_string());
-    }
-
-    Ok(gif_bytes)
+    color32_images_to_gif_with_speed(images, fps, DEFAULT_GIF_SPEED)
 }
 
 /// Sample progressive frame steps across a dataset for time-evolution animations.
@@ -588,16 +558,12 @@ pub fn sample_progressive_frames(
     frames
 }
 
-/// Render a sequence of plot frame datasets into an animated GIF byte stream.
-pub fn export_custom_gif(
+/// Compute shared `[min_x, max_x, min_y, max_y]` bounds across all valid points in `frames`.
+#[must_use]
+pub fn compute_dataset_frames_bounds(
     frames: &[DatasetFrame],
     options: &ExportOptions,
-    fps: u32,
-) -> Result<Vec<u8>, String> {
-    if frames.is_empty() {
-        return Err("No dataset frames provided for GIF export".to_string());
-    }
-
+) -> Option<[f64; 4]> {
     let mut min_x = f64::INFINITY;
     let mut max_x = -f64::INFINITY;
     let mut min_y = f64::INFINITY;
@@ -616,19 +582,26 @@ pub fn export_custom_gif(
         }
     }
 
-    let custom_bounds = if min_x < max_x && min_y < max_y {
-        Some([min_x, max_x, min_y, max_y])
-    } else {
-        None
-    };
+    (min_x < max_x && min_y < max_y).then_some([min_x, max_x, min_y, max_y])
+}
 
-    let mut images = Vec::with_capacity(frames.len());
-    for frame in frames {
-        let image = export_custom_image_with_bounds(frame, options, custom_bounds)?;
-        images.push(image);
+/// Render a sequence of plot frame datasets into an animated GIF byte stream one frame at a time.
+pub fn export_custom_gif(
+    frames: &[DatasetFrame],
+    options: &ExportOptions,
+    fps: u32,
+) -> Result<Vec<u8>, String> {
+    if frames.is_empty() {
+        return Err("No dataset frames provided for GIF export".to_string());
     }
 
-    color32_images_to_gif(&images, fps)
+    let custom_bounds = compute_dataset_frames_bounds(frames, options);
+    let mut encoder = StreamingGifEncoder::new(fps)?;
+    for frame in frames {
+        let image = export_custom_image_with_bounds(frame, options, custom_bounds)?;
+        encoder.encode_color_image(image)?;
+    }
+    encoder.finish()
 }
 
 /// Render plot datasets into a high-resolution PNG image byte buffer using offscreen rasterization.
@@ -641,11 +614,7 @@ pub fn export_custom_png(
 }
 
 fn color_image_to_rgba_bytes(image: &egui::ColorImage) -> Vec<u8> {
-    let mut rgba = Vec::with_capacity(image.pixels.len() * 4);
-    for p in &image.pixels {
-        rgba.extend_from_slice(&[p.r(), p.g(), p.b(), p.a()]);
-    }
-    rgba
+    gif_stream::pack_color_image_rgba(image)
 }
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -8,6 +8,8 @@ struct FrameworkExportSource<'a> {
     cached_tool_name: Option<&'static str>,
     cached_plot_datasets: &'a [(String, egui_plot::SharedPoints)],
     export_queue: &'a mut ExportQueue,
+    gif_progress: Option<(usize, usize)>,
+    cancel_gif_requested: &'a mut bool,
     status_color: egui::Color32,
     ctx: egui::Context,
 }
@@ -68,6 +70,9 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
     }
 
     fn intercept_action(&mut self, action: egui_plot::ExportModalAction) -> bool {
+        if action == egui_plot::ExportModalAction::SaveGif && self.gif_progress.is_some() {
+            return true;
+        }
         let (format, target) = match action {
             egui_plot::ExportModalAction::SavePng => (ExportFormat::Png, ExportTarget::File),
             egui_plot::ExportModalAction::SaveSvg => (ExportFormat::Svg, ExportTarget::File),
@@ -85,6 +90,19 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
         self.export_queue.push_target(format, target);
         self.ctx.request_repaint();
         true
+    }
+
+    fn active_gif_progress(&self) -> Option<(usize, usize)> {
+        self.gif_progress
+    }
+
+    fn cancel_gif_export(&mut self) -> bool {
+        if self.gif_progress.is_some() {
+            *self.cancel_gif_requested = true;
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -145,6 +163,8 @@ impl SimulationFramework {
         let status_color = self
             .export_status_severity
             .palette_color(&ctx.style().visuals);
+        let gif_progress = self.active_gif_progress();
+        let mut cancel_gif_requested = false;
         let bindings = egui_plot::export_modal::ExportModalBindings {
             open: &mut self.show_export_modal,
             options: &mut self.export_options,
@@ -152,15 +172,21 @@ impl SimulationFramework {
             gif_fps: &mut self.export_gif_fps,
             gif_frames: &mut self.export_gif_frames,
             status_message: &mut self.export_status_message,
+            gif_job: None,
         };
         let mut source = FrameworkExportSource {
             active_tool: &mut self.active_tool,
             cached_tool_name: self.sync_state.datasets_owner_tool,
             cached_plot_datasets: &self.current_valid_plot_datasets,
             export_queue: &mut self.export_queue,
+            gif_progress,
+            cancel_gif_requested: &mut cancel_gif_requested,
             status_color,
             ctx: ctx.clone(),
         };
         egui_plot::export_modal::show_export_modal(ctx, bindings, &config, &mut source);
+        if cancel_gif_requested {
+            self.cancel_active_gif_export(true);
+        }
     }
 }
