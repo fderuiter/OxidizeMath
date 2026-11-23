@@ -5,6 +5,7 @@
 //! backed by fixed stack buffers and typed [`FitError`] diagnostics.
 // [cite:math_commons]
 
+mod format;
 mod lm;
 mod nonlinear;
 mod poly;
@@ -305,7 +306,15 @@ impl CurveFit {
     pub fn format_formula(&self) -> String {
         match self.fit_model {
             FitModel::Linear | FitModel::Quadratic | FitModel::Cubic | FitModel::Quartic => {
-                format_polynomial_formula(self.coefficients(), self.log_x, self.log_y)
+                let u_scale = self.poly_center_scale.map_or(1.0, |(u_mean, u_span, _)| {
+                    (u_mean.abs() + u_span.abs()).max(1.0)
+                });
+                format::format_polynomial_with_scale(
+                    self.coefficients(),
+                    u_scale,
+                    self.log_x,
+                    self.log_y,
+                )
             }
             FitModel::Exponential
             | FitModel::PowerLaw
@@ -339,15 +348,5 @@ pub fn fit_model_with_axes<P: PointSeries + ?Sized>(
         fit_polynomial_scaled(points, deg, plot_log_x, plot_log_y)
     } else {
         fit_nonlinear(points, model, log_mode)
-    }
-}
-
-pub(super) fn symmetrize_lower<const N: usize>(mat: &mut [[f64; N]; N], dim: usize) {
-    for row in 0..dim {
-        let (head, tail) = mat[..dim].split_at_mut(row + 1);
-        let src = &head[row][row + 1..dim];
-        for (dst_row, &val) in tail.iter_mut().zip(src.iter()) {
-            dst_row[row] = val;
-        }
     }
 }
