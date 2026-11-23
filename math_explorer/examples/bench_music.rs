@@ -23,23 +23,30 @@ fn main() {
 
     println!("Benchmarking MusicEstimator::compute_spectrum...");
 
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (warmup, iterations, fine_step) = if smoke {
+        (2, 3, 0.05_f64)
+    } else {
+        (10, 100, 0.001_f64)
+    };
+
     // Warmup
-    for _ in 0..10 {
+    for _ in 0..warmup {
         let _ = estimator
             .compute_spectrum(0.0, 10.0, 0.05, 4.0e9, 3.0e8)
             .unwrap();
     }
 
     let start = Instant::now();
-    let iterations = 100;
     for _ in 0..iterations {
         // This specific call was causing the off-by-one panic
         let spectrum = estimator
-            .compute_spectrum(0.0, 10.0, 0.001, 4.0e9, 3.0e8)
+            .compute_spectrum(0.0, 10.0, fine_step, 4.0e9, 3.0e8)
             .unwrap();
 
         // Strictly verify the length dynamically
-        let expected_len = ((10.0_f64 - 0.0_f64) / 0.001_f64).round() as usize + 1;
+        let expected_len = ((10.0_f64 - 0.0_f64) / fine_step).round() as usize + 1;
         if spectrum.len() != expected_len {
             panic!(
                 "Unexpected spectrum length: expected {}, got {}",
