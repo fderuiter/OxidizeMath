@@ -4,9 +4,24 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::playback::{scoped_audio_bridge_id, ScopedAudioUiBridge};
-use super::SimulationFramework;
-use crate::audio::AcousticSettings;
+use super::{InteractiveTool, SimulationFramework};
+use crate::audio::{AcousticSettings, SonificationFrame};
 use eframe::egui;
+
+pub(super) fn sample_tool_sonification_frames<T: InteractiveTool + ?Sized>(
+    tool: &mut T,
+    num_frames: usize,
+) -> Vec<SonificationFrame> {
+    let count = num_frames.max(1);
+    let mut frames = Vec::with_capacity(count);
+    for _ in 0..count {
+        tool.step_simulation();
+        if let Some(frame) = tool.sonification_frame() {
+            frames.push(frame.sanitize());
+        }
+    }
+    frames
+}
 
 impl SimulationFramework {
     /// Returns `true` if live sonification audio is muted (`true` by default on boot and load).

@@ -74,7 +74,8 @@ fn build_warmed_tools() -> (
     }
 
     let mut wave = WaveSimulatorTool::new();
-    wave.apply_tunneling_split_challenge(None);
+    wave.apply_challenge(Some("quantum_barrier_50_split"))
+        .expect("challenge should activate");
     for _ in 0..5 {
         wave.step_simulation();
     }

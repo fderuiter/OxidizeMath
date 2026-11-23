@@ -2,10 +2,23 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::playback::{scoped_audio_bridge_id, ScopedAudioUiBridge};
 use crate::accessibility::{announce_status, AccessibleHoverText};
 use crate::audio::AcousticSettings;
 use eframe::egui;
+
+/// Scoped `egui` temp-data bridge synchronizing [`super::PlaybackTransport`] audio controls with [`super::SimulationFramework`].
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ScopedAudioUiBridge {
+    pub(crate) muted: bool,
+    pub(crate) toggled_mute: bool,
+    pub(crate) pause_triggered: bool,
+    pub(crate) settings_changed: bool,
+    pub(crate) settings: AcousticSettings,
+}
+
+pub(crate) fn scoped_audio_bridge_id() -> egui::Id {
+    egui::Id::new("SCOPED_FRAMEWORK_AUDIO_BRIDGE")
+}
 
 pub(super) fn render_audio_controls(
     ui: &mut egui::Ui,

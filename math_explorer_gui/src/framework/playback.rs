@@ -33,6 +33,7 @@ pub struct PlaybackTransport<'a> {
     is_playing: bool,
     is_in_thread: bool,
     can_toggle: bool,
+    allow_space_shortcut: bool,
     can_step: bool,
     can_reset: bool,
     timeline: Option<TimelineMetadata>,
@@ -44,19 +45,7 @@ pub struct PlaybackTransport<'a> {
     audio_settings: Option<&'a mut crate::audio::AcousticSettings>,
 }
 
-/// Scoped `egui` temp-data bridge synchronizing [`PlaybackTransport`] audio controls with [`super::SimulationFramework`].
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct ScopedAudioUiBridge {
-    pub(crate) muted: bool,
-    pub(crate) toggled_mute: bool,
-    pub(crate) pause_triggered: bool,
-    pub(crate) settings_changed: bool,
-    pub(crate) settings: crate::audio::AcousticSettings,
-}
-
-pub(crate) fn scoped_audio_bridge_id() -> egui::Id {
-    egui::Id::new("SCOPED_FRAMEWORK_AUDIO_BRIDGE")
-}
+pub(crate) use super::playback_audio::{scoped_audio_bridge_id, ScopedAudioUiBridge};
 
 impl<'a> PlaybackTransport<'a> {
     /// Constructs a transport bar synchronized with a background [`SimWorkerState`].
@@ -75,6 +64,7 @@ impl<'a> PlaybackTransport<'a> {
             is_playing,
             is_in_thread: false,
             can_toggle,
+            allow_space_shortcut: true,
             can_step,
             can_reset,
             timeline: None,
@@ -96,6 +86,7 @@ impl<'a> PlaybackTransport<'a> {
             is_playing,
             is_in_thread: true,
             can_toggle: true,
+            allow_space_shortcut: true,
             can_step: !is_playing,
             can_reset: true,
             timeline: None,
@@ -148,6 +139,13 @@ impl<'a> PlaybackTransport<'a> {
     #[must_use]
     pub fn with_sonification(mut self, settings: &'a mut crate::audio::AcousticSettings) -> Self {
         self.audio_settings = Some(settings);
+        self
+    }
+
+    /// Controls whether the `Space` shortcut toggles playback (e.g. `false` when a focused canvas consumes `Space`).
+    #[must_use]
+    pub fn allow_space_shortcut(mut self, allow: bool) -> Self {
+        self.allow_space_shortcut = allow;
         self
     }
 
@@ -325,9 +323,12 @@ impl<'a> PlaybackTransport<'a> {
             let announce = emit_playback_broadcast(ctx, base_id, dispatched, None);
             return (Some(dispatched), announce);
         }
-        if let Some((sync_key_action, key)) =
-            claim_pending_sync_key(ctx, self.can_toggle, self.is_playing, self.can_step)
-        {
+        if let Some((sync_key_action, key)) = claim_pending_sync_key(
+            ctx,
+            self.can_toggle && self.allow_space_shortcut,
+            self.is_playing,
+            self.can_step,
+        ) {
             let announce = emit_playback_broadcast(ctx, base_id, sync_key_action, Some(key));
             return (Some(sync_key_action), announce);
         }
@@ -396,6 +397,7 @@ impl<'a> PlaybackTransport<'a> {
             return None;
         }
         if self.can_toggle
+            && self.allow_space_shortcut
             && super::is_pane_activation_shortcut_allowed(ui)
             && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Space))
         {
