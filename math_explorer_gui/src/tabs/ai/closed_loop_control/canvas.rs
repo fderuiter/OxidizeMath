@@ -12,6 +12,8 @@ use eframe::egui::{self, accesskit::Role, Color32, Key, Pos2, Rect, Sense, Strok
 
 /// Outcome of rendering and interacting with the 2D phase-portrait perturbation pad.
 pub struct PhaseCanvasInteraction {
+    /// Widget ID of the phase-portrait perturbation canvas for focus tracking.
+    pub canvas_id: egui::Id,
     /// Normalized `[dx, dy]` perturbation kick requested via pointer click or keyboard.
     pub kick_request: Option<[f64; 2]>,
 }
@@ -79,7 +81,10 @@ pub fn show_phase_kick_canvas(
     );
     paint_canvas_focus_ring(ui, &response);
 
-    PhaseCanvasInteraction { kick_request }
+    PhaseCanvasInteraction {
+        canvas_id: response.id,
+        kick_request,
+    }
 }
 
 #[derive(Clone, Copy)]

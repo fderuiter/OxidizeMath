@@ -169,7 +169,7 @@ impl BifurcationDiagram {
     }
 
     pub(super) fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
-        let _ = self.focused_canvas.take();
+        self.focused_canvas = None;
         egui::CentralPanel::default().show_inside(ui, |ui| {
             if self.atlas.is_visible() {
                 if ui.available_width() >= 720.0 {

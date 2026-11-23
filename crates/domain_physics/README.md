@@ -18,7 +18,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
 - **`solid_state`**: Crystal lattice geometries, reciprocal space, electronic band structures, CODATA SI unit bridges (`ElectronVolts`, `Kelvin`), finite-temperature `IsotropicBCSModel` & `BcsGapSolver` superconductivity, Bogoliubov quasiparticle coherence factors, Dynes-broadened NIS tunneling conductance, Debye phonons, Thomas-Fermi/Yukawa screening, Fröhlich vertices, and Heisenberg magnons.
 - **`stat_mech`**: Ising spin lattices, SI-bridged `FermiDirac` / `BoseEinstein` / `MaxwellBoltzmann` quantum occupancy (`calculate_occupancy_ev`), log-sum-exp stabilized canonical ensembles (`canonical_thermodynamics_ev`), zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`), and seeded lattice diffusion.
-- **`optics`**: Geometric ray tracing, refractive boundary equations, and closed-form Fraunhofer wave diffraction (complemented by full-field 2D time-domain multi-slit and refractive-lens wave tank simulation in `pure_math::analysis::pde::wave_2d`).
+- **`optics`**: Graded-index and negative-index refractive media (`refraction`), RK4 Hamiltonian ray tracing and caustic envelope detection (`caustics`), and calibrated optical detector models (`sensing`), complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`.
 
 ---
 

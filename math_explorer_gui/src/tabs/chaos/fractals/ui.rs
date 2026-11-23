@@ -307,7 +307,7 @@ impl FractalViewer {
         ctx: &egui::Context,
         max_texture_side: usize,
     ) {
-        let _ = self.focused_canvas.take();
+        self.focused_canvas = None;
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             if self.atlas.is_visible() {
                 if ui.available_width() >= 620.0 {

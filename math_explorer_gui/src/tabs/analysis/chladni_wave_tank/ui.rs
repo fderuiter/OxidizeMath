@@ -24,6 +24,13 @@ impl ChladniWaveTankTool {
                 ui.separator();
                 self.draw_sonification_section(ui);
                 ui.separator();
+                self.draw_sculpt_controls(ui);
+                #[cfg(feature = "physics")]
+                {
+                    ui.separator();
+                    self.draw_physics_metamaterial_controls(ui);
+                }
+                ui.separator();
                 self.draw_medium_and_clamp_controls(ui);
                 ui.separator();
                 self.draw_driver_controls(ui);
@@ -246,25 +253,21 @@ impl ChladniWaveTankTool {
                 ))
                 .changed();
         });
-        ui.horizontal(|ui| {
-            ui.label("Driver (x, y):");
-            changed |= ui
-                .add(bounded_drag_value(
-                    &mut self.state.driver_x,
-                    0.0..=1.0,
-                    0.01,
-                ))
-                .changed();
-            changed |= ui
-                .add(bounded_drag_value(
-                    &mut self.state.driver_y,
-                    0.0..=1.0,
-                    0.01,
-                ))
-                .changed();
-        });
+        changed |= draw_unit_pair_drags(
+            ui,
+            "Driver (x, y):",
+            &mut self.state.driver_x,
+            &mut self.state.driver_y,
+        );
+        changed |= draw_unit_pair_drags(
+            ui,
+            "Pickup (x, y):",
+            &mut self.state.pickup_x,
+            &mut self.state.pickup_y,
+        );
         if changed {
             self.state_rev = self.state_rev.wrapping_add(1);
+            self.analysis_dirty = true;
             self.solver.reset_detector();
         }
         if !self.state.line_source {
@@ -373,6 +376,7 @@ impl ChladniWaveTankTool {
             .selected_text(match self.state.secondary_plot {
                 SecondaryPlotMode::DetectorCrossSection => "Detector I(y)",
                 SecondaryPlotMode::RadialFftSpectrum => "2D FFT Spectrum",
+                SecondaryPlotMode::PhononDispersion => "Phonon ω(|k|)",
             })
             .show_ui(ui, |ui| {
                 changed |= ui
@@ -389,6 +393,16 @@ impl ChladniWaveTankTool {
                         "2D FFT Spectrum",
                     )
                     .changed();
+                #[cfg(feature = "physics")]
+                {
+                    changed |= ui
+                        .selectable_value(
+                            &mut self.state.secondary_plot,
+                            SecondaryPlotMode::PhononDispersion,
+                            "Phonon ω(|k|)",
+                        )
+                        .changed();
+                }
             });
         changed
     }
@@ -428,4 +442,14 @@ impl ChladniWaveTankTool {
             render_copyable_metric(ui, &label, &format!("{hz:.4} Hz"));
         }
     }
+}
+
+fn draw_unit_pair_drags(ui: &mut egui::Ui, label: &str, x: &mut f64, y: &mut f64) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(label);
+        changed |= ui.add(bounded_drag_value(x, 0.0..=1.0, 0.01)).changed();
+        changed |= ui.add(bounded_drag_value(y, 0.0..=1.0, 0.01)).changed();
+    });
+    changed
 }

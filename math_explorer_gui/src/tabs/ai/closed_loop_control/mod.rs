@@ -34,6 +34,8 @@ pub struct ClosedLoopControlTool {
     pub playing: bool,
     /// Last rendered UI frame wall-clock duration in milliseconds.
     pub last_frame_ms: f64,
+    /// Phase-portrait canvas ID for suppressing global Space transport when focused.
+    pub(crate) focused_canvas: Option<egui::Id>,
 }
 
 impl Default for ClosedLoopControlTool {
@@ -46,6 +48,7 @@ impl Default for ClosedLoopControlTool {
             worker: None,
             playing: false,
             last_frame_ms: 0.0,
+            focused_canvas: None,
         }
     }
 }

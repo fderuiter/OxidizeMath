@@ -60,11 +60,15 @@ fn render_side_controls(tool: &mut ClosedLoopControlTool, ui: &mut egui::Ui) {
 }
 
 fn render_transport_and_telemetry(tool: &mut ClosedLoopControlTool, ui: &mut egui::Ui) {
+    let canvas_focused = tool
+        .focused_canvas
+        .is_some_and(|id| ui.ctx().memory(|m| m.has_focus(id)));
     match PlaybackTransport::in_thread(
         "closed_loop_control_transport",
         "Closed-Loop EKF Control",
         tool.playing,
     )
+    .allow_space_shortcut(!canvas_focused)
     .show(ui)
     {
         Some(PlaybackAction::Play) => tool.playing = true,
@@ -233,6 +237,7 @@ fn render_central_workspace(tool: &mut ClosedLoopControlTool, ui: &mut egui::Ui)
     let total_h = ui.available_height().max(390.0);
     let canvas_h = (total_h * 0.32).clamp(145.0, 215.0);
     let canvas_out = show_phase_kick_canvas(ui, &tool.state, &tool.pipeline, canvas_h);
+    tool.focused_canvas = Some(canvas_out.canvas_id);
     let mut pending_kick = canvas_out.kick_request;
 
     ui.add_space(4.0);
