@@ -315,6 +315,7 @@ pub mod ctmc;
 pub mod dtmc;
 #[allow(missing_docs)]
 pub mod hmm;
+pub mod parrondo;
 pub mod tensor;
 #[allow(missing_docs)]
 pub mod time_index;
@@ -329,6 +330,10 @@ pub use dtmc::{MarkovChain, StateType};
 pub type Result<T> = std::result::Result<T, MarkovError>;
 pub use hmm::HiddenMarkovModel;
 pub use num_traits::ToPrimitive;
+pub use parrondo::{
+    ParrondoEnsemble, ParrondoGame, ParrondoParams, ParrondoPhaseGridConfig, ParrondoPhasePoint,
+    ParrondoReport, ParrondoSchedule, solve_parrondo_ratchet,
+};
 pub use tensor::TransitionTensor;
 pub use time_index::TimeIndex;
 
