@@ -14,6 +14,7 @@ use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 
 mod canvas;
 mod presets;
+mod sonification;
 mod ui;
 
 #[cfg(test)]
@@ -132,11 +133,13 @@ pub(crate) struct ChladniWaveTankState {
     pub show_nodal_contours: bool,
     pub show_sand_particles: bool,
     pub rng_seed: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom_clamps: Vec<[f64; 2]>,
 }
 
 pub struct ChladniWaveTankTool {
     pub(crate) state: ChladniWaveTankState,
-    pub(crate) custom_clamps: Vec<[f64; 2]>,
+    pub(crate) audio: sonification::ChladniSonificationState,
     pub(crate) solver: Wave2DSolver,
     pub(crate) sand: ChladniSandSystem,
     pub(crate) fft: SpectralAnalyzer2D,
@@ -169,7 +172,7 @@ impl Default for ChladniWaveTankTool {
         );
         let mut tool = Self {
             state,
-            custom_clamps: Vec::with_capacity(16),
+            audio: sonification::ChladniSonificationState::default(),
             solver,
             sand,
             fft: SpectralAnalyzer2D::new(GRID_SIZE, GRID_SIZE),
@@ -217,7 +220,6 @@ impl ChladniWaveTankTool {
     }
 
     pub(crate) fn apply_preset(&mut self, preset: TankPreset) {
-        self.custom_clamps.clear();
         self.state = presets::default_state_for_preset(preset);
         self.state_rev = self.state_rev.wrapping_add(1);
         let warmup = match preset {
@@ -315,7 +317,7 @@ impl ChladniWaveTankTool {
                 radius,
             );
         }
-        for &[cx, cy] in &self.custom_clamps {
+        for &[cx, cy] in &self.state.custom_clamps {
             apply_point_clamp(
                 &mut self.solver.wall_mask,
                 GRID_SIZE,
@@ -357,6 +359,7 @@ impl ChladniWaveTankTool {
         self.dominant_peak = self.fft.dominant_peak();
         self.fft
             .compute_radial_profile(&mut self.radial_spectrum, &mut self.radial_counts);
+        self.update_sonification_frame();
         if self.state.show_nodal_contours {
             let field = if self.state.driver_enabled && !self.state.line_source {
                 self.solver.modal_field()
@@ -410,6 +413,7 @@ impl InteractiveTool for ChladniWaveTankTool {
     fn clamp_parameters(&mut self) -> bool {
         presets::clamp_state_fields(&mut self.state);
         self.state_rev = self.state_rev.wrapping_add(1);
+        crate::audio::notify_solver_diverged();
         true
     }
 
@@ -425,7 +429,6 @@ impl InteractiveTool for ChladniWaveTankTool {
             return Err("Chladni Wave Tank parameters out of finite valid bounds".into());
         }
         self.state = parsed;
-        self.custom_clamps.clear();
         self.state_rev = self.state_rev.wrapping_add(1);
         self.rebuild_domain_and_warmup(0);
         Ok(())
@@ -463,7 +466,6 @@ impl InteractiveTool for ChladniWaveTankTool {
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        self.draw_controls_panel(parent_ui);
         if !self.paused {
             for _ in 0..self.steps_per_frame {
                 self.advance_physics_step();
@@ -473,6 +475,7 @@ impl InteractiveTool for ChladniWaveTankTool {
         } else if self.analysis_dirty {
             self.refresh_analysis_outputs();
         }
+        self.draw_controls_panel(parent_ui);
         self.draw_central_workspace(parent_ui);
     }
 }

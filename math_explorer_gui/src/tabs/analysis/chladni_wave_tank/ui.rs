@@ -22,6 +22,8 @@ impl ChladniWaveTankTool {
                 ui.separator();
                 self.draw_preset_and_transport_controls(ui);
                 ui.separator();
+                self.draw_sonification_section(ui);
+                ui.separator();
                 self.draw_medium_and_clamp_controls(ui);
                 ui.separator();
                 self.draw_driver_controls(ui);
@@ -68,21 +70,25 @@ impl ChladniWaveTankTool {
             let play_label = if self.paused { "▶ Play" } else { "⏸ Pause" };
             if ui.button(play_label).clicked() {
                 self.paused = !self.paused;
+                if self.paused {
+                    crate::audio::notify_playback_paused();
+                }
             }
             if ui.button("⏭ Step").clicked() {
                 self.advance_physics_step();
                 self.refresh_analysis_outputs();
             }
             if ui.button("💥 Pulse").clicked() {
-                self.solver.inject_gaussian_pulse(
+                self.trigger_mallet_pulse(
                     self.state.driver_x,
                     self.state.driver_y,
                     0.045,
                     1.0,
+                    1.0,
                 );
-                self.refresh_analysis_outputs();
             }
             if ui.button("↺ Reset").clicked() {
+                crate::audio::notify_playback_reset();
                 self.rebuild_domain_and_warmup(12);
             }
         });
@@ -136,8 +142,10 @@ impl ChladniWaveTankTool {
         } else if mask_dirty {
             self.state_rev = self.state_rev.wrapping_add(1);
             self.rebuild_masks();
+            self.analysis_dirty = true;
         } else if param_changed {
             self.state_rev = self.state_rev.wrapping_add(1);
+            self.analysis_dirty = true;
         }
     }
 
@@ -158,8 +166,8 @@ impl ChladniWaveTankTool {
                 }
             });
         mask_dirty |= self.state.clamp_layout != prev_clamp;
-        if !self.custom_clamps.is_empty() && ui.small_button("Clear Custom Pins").clicked() {
-            self.custom_clamps.clear();
+        if !self.state.custom_clamps.is_empty() && ui.small_button("Clear Custom Pins").clicked() {
+            self.state.custom_clamps.clear();
             mask_dirty = true;
         }
         mask_dirty

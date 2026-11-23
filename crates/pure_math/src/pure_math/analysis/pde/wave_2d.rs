@@ -54,7 +54,7 @@ pub use masks::{
     apply_sponge_layer,
 };
 pub use particles_and_contours::{ChladniSandSystem, MarchingSquares2D};
-pub use spectral::{SpectralAnalyzer2D, SpectralPeak2D};
+pub use spectral::{SpectralAnalyzer2D, SpectralMode2D, SpectralPeak2D};
 
 /// Zero-allocation 2D Verlet PDE solver with pre-allocated mask and stencil buffers.
 #[derive(Debug, Clone)]

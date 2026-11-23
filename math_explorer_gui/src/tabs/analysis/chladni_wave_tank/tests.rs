@@ -279,3 +279,120 @@ fn test_all_four_starter_presets_load_and_export_svg_png_csv_json() {
     }
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn test_custom_clamps_url_roundtrip_and_bounds_validation() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let default_tool = ChladniWaveTankTool::default();
+    let default_json = default_tool.save_state().unwrap();
+    assert!(
+        !default_json.contains("custom_clamps"),
+        "Empty custom_clamps must be omitted via skip_serializing_if"
+    );
+
+    let mut source_app = MathExplorerApp::default();
+    let analysis_idx = source_app
+        .tabs
+        .iter()
+        .position(|t| t.url_slug() == "analysis")
+        .unwrap();
+    source_app.selected_tab = analysis_idx;
+    assert!(source_app.tabs[analysis_idx].select_tool_by_name("ChladniWaveTankTool"));
+
+    let pins = vec![[0.25, 0.35], [0.72, 0.64], [0.48, 0.22]];
+    if let Some(fw) = source_app.tabs[analysis_idx].framework_mut() {
+        let tool = fw
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .unwrap()
+            .downcast_mut::<ChladniWaveTankTool>()
+            .unwrap();
+        tool.state.custom_clamps = pins.clone();
+        tool.rebuild_masks();
+        tool.state_rev = tool.state_rev.wrapping_add(1);
+    }
+
+    let share_url = source_app.encode_current_share_url().unwrap();
+    let hash = &share_url[share_url.find('#').unwrap()..];
+    let mut restored_app = MathExplorerApp::default();
+    assert!(restored_app
+        .apply_share_location_strings(hash, "", None)
+        .unwrap());
+    let restored_tool = restored_app.tabs[analysis_idx]
+        .framework()
+        .unwrap()
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .as_any()
+        .unwrap()
+        .downcast_ref::<ChladniWaveTankTool>()
+        .unwrap();
+    assert_eq!(restored_tool.state.custom_clamps, pins);
+    let pin_cell_x = (0.25 * ((GRID_SIZE - 1) as f64)).round() as usize;
+    let pin_cell_y = (0.35 * ((GRID_SIZE - 1) as f64)).round() as usize;
+    assert!(restored_tool.solver.wall_mask[pin_cell_y * GRID_SIZE + pin_cell_x] <= 0.5);
+
+    verify_custom_clamp_state_rejections(&default_json);
+}
+
+fn verify_custom_clamp_state_rejections(base_json: &str) {
+    let mut tool = ChladniWaveTankTool::default();
+    let mut sixteen: serde_json::Value = serde_json::from_str(base_json).unwrap();
+    sixteen["custom_clamps"] = serde_json::json!(vec![[0.5, 0.5]; 16]);
+    assert!(tool.try_load_state(&sixteen.to_string()).is_ok());
+
+    let mut seventeen = sixteen.clone();
+    seventeen["custom_clamps"] = serde_json::json!(vec![[0.5, 0.5]; 17]);
+    assert!(tool.try_load_state(&seventeen.to_string()).is_err());
+
+    let mut forty = sixteen.clone();
+    forty["custom_clamps"] = serde_json::json!(vec![[0.5, 0.5]; 40]);
+    assert!(tool.try_load_state(&forty.to_string()).is_err());
+
+    for bad_coord in [[0.005, 0.5], [0.5, 0.995]] {
+        let mut out_of_range = sixteen.clone();
+        out_of_range["custom_clamps"] = serde_json::json!([bad_coord]);
+        assert!(tool.try_load_state(&out_of_range.to_string()).is_err());
+    }
+}
+
+#[test]
+fn test_chladni_sonification_panel_mallet_strike_and_mute_hooks() {
+    let mut tool = ChladniWaveTankTool::default();
+    tool.step_simulation();
+    assert!(tool.audio.latest_frame.is_audible());
+
+    tool.trigger_mallet_pulse(0.45, 0.55, 0.045, 1.0, 1.0);
+    assert!(tool.audio.latest_frame.voices[0].transient_impulse > 0.9);
+
+    let ctx = Context::default();
+    ctx.enable_accesskit();
+    let _ = ctx.run(raw_frame(), |ctx| tool.show(ctx));
+    let out = ctx.run(raw_frame(), |ctx| tool.show(ctx));
+    let ak = out.platform_output.accesskit_update.unwrap();
+    assert!(
+        ak.nodes
+            .iter()
+            .any(|(_, node)| node.role() == egui::accesskit::Role::Meter),
+        "Sonification meter must be rendered in ChladniWaveTankTool"
+    );
+    assert_eq!(tool.audio.pending_impulse, 0.0);
+
+    if crate::audio::snapshot_ui_state().muted {
+        crate::audio::toggle_mute_from_user_gesture();
+    }
+    assert!(!crate::audio::snapshot_ui_state().muted);
+    crate::audio::notify_playback_paused();
+    assert!(crate::audio::snapshot_ui_state().muted);
+
+    crate::audio::toggle_mute_from_user_gesture();
+    crate::audio::notify_playback_reset();
+    assert!(crate::audio::snapshot_ui_state().muted);
+
+    crate::audio::toggle_mute_from_user_gesture();
+    assert!(tool.clamp_parameters());
+    assert!(crate::audio::snapshot_ui_state().muted);
+}
