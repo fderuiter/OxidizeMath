@@ -1,8 +1,6 @@
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-static ACTIVE_VERIFIERS: AtomicUsize = AtomicUsize::new(0);
-
 /// Snapshot of runtime execution complexity counters recorded on the current thread during a
 /// verified run.
 ///
@@ -47,6 +45,9 @@ impl ComplexityMetrics {
     }
 }
 
+/// Process-wide count of threads currently executing with verification enabled.
+static ACTIVE_VERIFIERS: AtomicUsize = AtomicUsize::new(0);
+
 thread_local! {
     /// Thread-local accumulator of binary arithmetic operations in active verification regions.
     pub static ARITHMETIC_OPS: Cell<u64> = const { Cell::new(0) };
@@ -61,14 +62,14 @@ thread_local! {
 /// Enables runtime verification mode and metric accumulation on the calling thread.
 pub fn enable_verification() {
     if !VERIFICATION_MODE.replace(true) {
-        ACTIVE_VERIFIERS.fetch_add(1, Ordering::Relaxed);
+        ACTIVE_VERIFIERS.fetch_add(1, Ordering::SeqCst);
     }
 }
 
 /// Disables runtime verification mode on the calling thread.
 pub fn disable_verification() {
     if VERIFICATION_MODE.replace(false) {
-        ACTIVE_VERIFIERS.fetch_sub(1, Ordering::Relaxed);
+        ACTIVE_VERIFIERS.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -115,5 +116,109 @@ pub fn increment_memory_loads(count: u64) {
 pub fn increment_calls() {
     if is_verification_enabled() {
         FUNCTION_CALLS.set(FUNCTION_CALLS.get() + 1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::VerifiedEngine;
+    use std::sync::Mutex;
+
+    static TEST_SERIAL_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn test_idempotent_enable_disable_and_atomic_count() {
+        let _guard = TEST_SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        disable_verification();
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
+        assert!(!is_verification_enabled());
+
+        // Redundant disable on inactive thread must not underflow zero.
+        disable_verification();
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
+
+        // Repeated enable on same thread must increment counter only once.
+        enable_verification();
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 1);
+        assert!(is_verification_enabled());
+        enable_verification();
+        enable_verification();
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 1);
+
+        disable_verification();
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
+        assert!(!is_verification_enabled());
+        disable_verification();
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn test_run_verified_panic_unwind_preserves_atomic_count() {
+        let _guard = TEST_SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        disable_verification();
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
+
+        let unwind_enable = std::panic::catch_unwind(|| {
+            VerifiedEngine::run_verified(|| {
+                enable_verification();
+                assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 1);
+                panic!("simulated failure after nested enable");
+            });
+        });
+        assert!(unwind_enable.is_err());
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
+        assert!(!is_verification_enabled());
+
+        let unwind_disable = std::panic::catch_unwind(|| {
+            VerifiedEngine::run_verified(|| {
+                disable_verification();
+                assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
+                panic!("simulated failure after manual disable");
+            });
+        });
+        assert!(unwind_disable.is_err());
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
+        assert!(!is_verification_enabled());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_multithreaded_active_verifiers_isolation() {
+        use std::sync::{Arc, Barrier};
+        let _guard = TEST_SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        disable_verification();
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
+
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let w_entered = Arc::clone(&entered);
+        let w_release = Arc::clone(&release);
+
+        let handle = std::thread::spawn(move || {
+            enable_verification();
+            enable_verification();
+            reset_metrics();
+            increment_calls();
+            increment_arithmetic(5);
+            w_entered.wait();
+            w_release.wait();
+            let snap = get_metrics();
+            disable_verification();
+            snap
+        });
+
+        entered.wait();
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 1);
+        assert!(!is_verification_enabled());
+        reset_metrics();
+        increment_arithmetic(99);
+        assert_eq!(get_metrics().arithmetic_ops, 0);
+
+        release.wait();
+        let worker_snap = handle.join().expect("worker joined");
+        assert_eq!(worker_snap.function_calls, 1);
+        assert_eq!(worker_snap.arithmetic_ops, 5);
+        assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
     }
 }

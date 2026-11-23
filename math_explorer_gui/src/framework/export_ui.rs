@@ -47,6 +47,10 @@ impl SimulationFramework {
         let compact = bar_width < EXPORT_BAR_OVERFLOW_BREAKPOINT;
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
+            super::history_ui::render_workspace_history_buttons(ui);
+            if !compact {
+                ui.separator();
+            }
             let file_slug = if compact {
                 self.render_compact_export_menu(ui)
             } else {
@@ -57,6 +61,7 @@ impl SimulationFramework {
                 ui.separator();
             }
             self.render_starter_gallery_toggle(ctx, ui);
+            self.render_atlas_bar_toggle(ui);
             self.render_theory_portal_toggle(ctx, ui);
             if compact {
                 self.render_compact_preset_controls(ui, &file_slug, bar_width >= 420.0);
@@ -142,42 +147,6 @@ impl SimulationFramework {
         let (file_slug, caps) = self.active_tool_slug_and_caps();
         self.render_export_action_items(ui, caps, false);
         file_slug
-    }
-
-    fn render_starter_gallery_toggle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
-            .button("🎨 Starter Gallery")
-            .accessible_hover_text("Toggle starter template gallery overlay")
-            .clicked()
-        {
-            self.show_starter_gallery = !self.show_starter_gallery;
-            ctx.data_mut(|d| {
-                d.insert_temp(
-                    egui::Id::new("SHOW_STARTER_GALLERY"),
-                    self.show_starter_gallery,
-                )
-            });
-        }
-    }
-
-    fn render_theory_portal_toggle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
-            .button("📖 Theory")
-            .accessible_hover_text("Toggle Theory Context Portal")
-            .clicked()
-        {
-            self.show_theory_portal = !self.show_theory_portal;
-            let next = self.show_theory_portal;
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
-                if let Some(inst_key) =
-                    d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
-                {
-                    d.insert_temp(inst_key, next);
-                }
-            });
-            ctx.request_repaint();
-        }
     }
 
     fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {

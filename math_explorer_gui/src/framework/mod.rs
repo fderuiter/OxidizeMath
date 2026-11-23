@@ -1,3 +1,4 @@
+pub mod atlas_host;
 pub mod brush_codec;
 pub mod callout_overlay;
 pub mod challenge;
@@ -30,6 +31,7 @@ mod export_ui_modal;
 #[cfg(test)]
 mod export_ui_tests;
 pub mod fit_bridge;
+mod history_ui;
 pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
@@ -82,11 +84,14 @@ pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
+pub use history_ui::render_workspace_history_buttons;
 pub use math_input::*;
 pub use pane_scope::{
-    is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id, InputMode,
+    is_button_activation_focused, is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed,
+    is_text_edit_focused, record_focused_widget_type_from_output, scoped_panel_id, InputMode,
     InteractionContext,
 };
+pub(crate) use persistence::framework_json_semantically_eq;
 pub use playback::*;
 pub use recovery::*;
 pub use side_panel::{
@@ -185,11 +190,6 @@ pub trait InteractiveTool {
         self.state_revision()
     }
 
-    /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        None
-    }
-
     /// Direct numeric parameter finiteness hook without JSON serialization.
     fn has_finite_parameters(&self) -> bool {
         true
@@ -202,6 +202,32 @@ pub trait InteractiveTool {
 
     /// Synchronizes declarative guided story or challenge callout pins onto the tool's plot.
     fn sync_callouts(&mut self, _callouts: &[CalloutSpec]) {}
+
+    /// Candidate `(x_key, y_key)` parameter pairs for the framework-hosted 2D parameter atlas.
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        &[]
+    }
+
+    /// Current `(x_val, y_val)` coordinates of the tool on the selected `axis_keys` plane.
+    fn active_atlas_coords(&self, _axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        (0.0, 0.0)
+    }
+
+    /// Hashable signature of non-axis context parameters that invalidate cached atlas slices.
+    fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
+        self.state_revision()
+    }
+
+    /// Builds a zero-allocation [`crate::async_sim::atlas::RegimeCartographer`] for `axis_keys`.
+    fn build_atlas_cartographer(
+        &self,
+        _axis_keys: (&'static str, &'static str),
+    ) -> Option<std::sync::Arc<dyn crate::async_sim::atlas::RegimeCartographer>> {
+        None
+    }
+
+    /// Applies an interactive click or keyboard teleport event from the framework-hosted 2D atlas.
+    fn apply_atlas_teleport(&mut self, _ev: crate::async_sim::atlas::AtlasTeleportEvent) {}
 
     /// Optional hook to serialize tool-specific parameters into a String (e.g. JSON).
     fn save_state(&self) -> Option<String> {
@@ -387,25 +413,7 @@ pub trait InteractiveTool {
         &mut self,
         num_frames: usize,
     ) -> Vec<egui_plot::export::DatasetFrame> {
-        let count = num_frames.max(1);
-        let mut frames = Vec::with_capacity(count);
-
-        for _ in 0..count {
-            self.step_simulation();
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames.push(ds);
-            }
-        }
-
-        if frames.is_empty() {
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames = egui_plot::export::sample_progressive_frames(&ds, count);
-            }
-        }
-
-        frames
+        export_figure::sample_tool_animation_frames(self, num_frames)
     }
 
     /// Returns a type-erased reference for test inspection of concrete tool state.
@@ -473,6 +481,7 @@ pub struct SimulationFramework {
     pub(super) instance_id: u64,
     pub(super) sync_state: FrameworkSyncState,
     pub(super) rev_cache: FrameworkRevisionCache,
+    pub atlas_host: atlas_host::FrameworkAtlasHost,
 }
 
 pub use crate::camera::{
