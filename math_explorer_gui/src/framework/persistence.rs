@@ -141,14 +141,15 @@ struct FrameworkStateDeserialize {
 }
 
 fn with_isolated_plot_capture<T>(capture: impl FnOnce() -> T) -> T {
-    let prev = egui_plot::get_last_plot_datasets();
+    let prev = egui_plot::get_last_plot_shared_datasets();
     let prev_3d = egui_plot::get_last_plot_datasets_3d();
     let prev_prims = egui_plot::get_last_plot_primitives();
     egui_plot::clear_last_plot_datasets();
+    egui_plot::clear_last_plot_primitives();
     let result = capture();
     egui_plot::clear_last_plot_datasets();
     if !prev.is_empty() {
-        egui_plot::append_last_plot_datasets(&prev);
+        egui_plot::append_last_plot_shared_datasets(&prev);
     }
     if !prev_3d.is_empty() {
         egui_plot::append_last_plot_datasets_3d(&prev_3d);
@@ -161,11 +162,18 @@ fn with_isolated_plot_capture<T>(capture: impl FnOnce() -> T) -> T {
 
 pub(super) fn capture_isolated_tool_datasets(
     tool: &dyn InteractiveTool,
-) -> Vec<(String, Vec<[f64; 2]>)> {
-    with_isolated_plot_capture(|| tool.export_datasets())
+) -> Vec<(String, egui_plot::SharedPoints)> {
+    with_isolated_plot_capture(|| {
+        tool.export_datasets()
+            .into_iter()
+            .map(|(name, pts)| (name, egui_plot::SharedPoints::from(pts)))
+            .collect()
+    })
 }
 
-fn capture_isolated_tool_datasets_3d(tool: &dyn InteractiveTool) -> Vec<(String, Vec<[f64; 3]>)> {
+pub(super) fn capture_isolated_tool_datasets_3d(
+    tool: &dyn InteractiveTool,
+) -> Vec<(String, Vec<[f64; 3]>)> {
     with_isolated_plot_capture(|| tool.export_datasets_3d())
 }
 
@@ -225,10 +233,11 @@ impl SimulationFramework {
         self.rev_cache.framework_revision = self.rev_cache.framework_revision.wrapping_add(1);
         self.rev_cache.untracked_tool_revision =
             self.rev_cache.untracked_tool_revision.wrapping_add(1);
+        self.rev_cache.untracked_url_digest.set(None);
         *self.rev_cache.active_tool_json.borrow_mut() = None;
         self.rev_cache.last_snapshot_rev = None;
+        self.rev_cache.last_snapshot_source_datasets.clear();
         self.rev_cache.last_plot_capture_hash = None;
-        self.rev_cache.last_snapshot_plot_sig = None;
         self.rev_cache.memoized_state_rev.set(None);
     }
 
@@ -274,11 +283,7 @@ impl SimulationFramework {
         self.hash_saved_plot_states(&mut hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(&mut hasher);
-            if tracked_flag == 1 {
-                1_u8.hash(&mut hasher);
-            } else {
-                0_u8.hash(&mut hasher);
-            }
+            u8::from(tracked_flag == 1).hash(&mut hasher);
             eff_tool_rev.hash(&mut hasher);
         }
         let out = hasher.finish().max(1);
@@ -301,8 +306,7 @@ impl SimulationFramework {
                 }
             }
         }
-        let state_str = active_tool.save_state()?;
-        let arc_json: Arc<str> = Arc::from(state_str);
+        let arc_json = Arc::<str>::from(active_tool.save_state()?);
         if rev > 0 {
             *self.rev_cache.active_tool_json.borrow_mut() =
                 Some((name, rev, Arc::clone(&arc_json)));
@@ -399,21 +403,31 @@ impl SimulationFramework {
                     *tool = fresh;
                 }
             }
-            let refreshed = capture_isolated_tool_datasets(tool.as_ref());
-            let refreshed_3d = capture_isolated_tool_datasets_3d(tool.as_ref());
-            let recovery = tool.save_recovery_state();
-            let rev = tool.state_revision();
-            self.sync_state.datasets_owner_tool = Some(tool.name());
-            self.current_valid_plot_datasets = refreshed.clone();
-            self.current_valid_plot_datasets_3d = refreshed_3d;
-            self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
-            self.last_valid_snapshot = Some(StateSnapshot {
-                tool_state: recovery,
-                plot_datasets: refreshed,
-                step_index: self.step_counter,
-                timestamp: crate::web_io::PlatformInstant::now(),
-            });
         }
+        if let Some(tool) = self.active_tool.take() {
+            self.seed_tool_snapshot(tool.as_ref(), self.step_counter);
+            self.active_tool = Some(tool);
+        }
+    }
+
+    fn seed_tool_snapshot(&mut self, tool: &dyn InteractiveTool, step_index: usize) {
+        let datasets = capture_isolated_tool_datasets(tool);
+        let datasets_3d = capture_isolated_tool_datasets_3d(tool);
+        let recovery = tool.save_recovery_state();
+        let rev = tool.state_revision();
+        self.sync_state.datasets_owner_tool = Some(tool.name());
+        self.current_valid_plot_datasets = datasets.clone();
+        self.current_valid_plot_datasets_3d = datasets_3d;
+        self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
+        self.rev_cache.last_snapshot_source_datasets = datasets.clone();
+        let mut snap = StateSnapshot {
+            tool_state: recovery,
+            plot_datasets: datasets,
+            step_index,
+            timestamp: crate::web_io::PlatformInstant::now(),
+        };
+        snap.enforce_memory_budget();
+        self.last_valid_snapshot = Some(snap);
     }
 
     /// Selects and activates a tool by index in `available_tools`.
@@ -449,20 +463,7 @@ impl SimulationFramework {
         self.export_queue.status = None;
         self.step_counter = 0;
         self.baseline_tool_state = factory_baseline_state;
-        let recovery_state = new_tool.save_recovery_state();
-        let rev = new_tool.state_revision();
-        let initial_datasets = capture_isolated_tool_datasets(new_tool.as_ref());
-        let initial_datasets_3d = capture_isolated_tool_datasets_3d(new_tool.as_ref());
-        self.sync_state.datasets_owner_tool = Some(new_tool.name());
-        self.current_valid_plot_datasets = initial_datasets.clone();
-        self.current_valid_plot_datasets_3d = initial_datasets_3d;
-        self.rev_cache.last_snapshot_rev = (rev > 0).then_some((new_tool.name(), rev));
-        self.last_valid_snapshot = Some(StateSnapshot {
-            tool_state: recovery_state,
-            plot_datasets: initial_datasets,
-            step_index: 0,
-            timestamp: crate::web_io::PlatformInstant::now(),
-        });
+        self.seed_tool_snapshot(new_tool.as_ref(), 0);
         scientific_metadata::citation_registry::CitationRegistry::register(
             new_tool.name().to_string(),
             new_tool.theory().theory_citation(),
@@ -473,19 +474,16 @@ impl SimulationFramework {
 
     /// Selects and activates a tool by ID, display name, or tag in `available_tools` (case-insensitively).
     pub fn select_tool_by_name(&mut self, name: &str) -> bool {
-        let name_trimmed = name.trim();
-        if let Some(index) = self.available_tools.iter().position(|t| {
-            t.id.eq_ignore_ascii_case(name_trimmed)
-                || t.display_name.eq_ignore_ascii_case(name_trimmed)
-                || t.tags
-                    .iter()
-                    .any(|tag| tag.eq_ignore_ascii_case(name_trimmed))
-        }) {
-            self.select_tool(index);
+        let trimmed = name.trim();
+        let found = self.available_tools.iter().position(|t| {
+            t.id.eq_ignore_ascii_case(trimmed)
+                || t.display_name.eq_ignore_ascii_case(trimmed)
+                || t.tags.iter().any(|tag| tag.eq_ignore_ascii_case(trimmed))
+        });
+        found.is_some_and(|idx| {
+            self.select_tool(idx);
             true
-        } else {
-            false
-        }
+        })
     }
 
     /// Returns the active tool's interactive canvas `Id` if applicable.
