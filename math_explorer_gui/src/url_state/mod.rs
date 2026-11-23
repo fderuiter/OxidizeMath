@@ -7,6 +7,7 @@
 mod base64url;
 mod browser;
 mod codec;
+mod json_validator;
 mod sync;
 
 #[cfg(all(
@@ -21,6 +22,8 @@ mod sync;
 ))]
 mod contract_tests;
 #[cfg(test)]
+mod param_only_tests;
+#[cfg(test)]
 mod tests;
 
 pub use base64url::{decode as decode_base64url, encode as encode_base64url};
@@ -31,12 +34,14 @@ pub use browser::{
 };
 #[cfg(test)]
 pub use browser::{take_last_copied_share_url, with_mock_web_base_url};
+pub(crate) use codec::encode_share_fragment_with_hud_prevalidated;
 pub use codec::{
     encode_share_fragment, encode_share_fragment_with_challenge, encode_share_fragment_with_hud,
     matches_tab_slug, parse_share_location, quantize_bounded_url_series, quantize_url_centi,
     validate_url_preset_json, ShareUrlParams, CANONICAL_WEB_BASE_URL, CUSTOM_POTENTIAL_POINTS,
     MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, URL_JSON_BOUNDS,
 };
+pub(crate) use json_validator::validate_json_streaming_with_bounds;
 pub use sync::{UrlStateSignature, UrlSyncController, URL_SYNC_DEBOUNCE_MS};
 
 // theory_verification!

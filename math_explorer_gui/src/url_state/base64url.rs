@@ -11,27 +11,29 @@ pub fn encode(input: &[u8]) -> String {
         return String::new();
     }
     let out_len = (input.len() * 4).div_ceil(3);
-    let mut out = String::with_capacity(out_len);
+    let mut out = vec![0_u8; out_len];
     let (chunks, rem) = input.as_chunks::<3>();
+    let mut o = 0;
     for &[b0, b1, b2] in chunks {
-        out.push(ALPHABET[usize::from(b0 >> 2)] as char);
-        out.push(ALPHABET[usize::from(((b0 & 0x03) << 4) | (b1 >> 4))] as char);
-        out.push(ALPHABET[usize::from(((b1 & 0x0f) << 2) | (b2 >> 6))] as char);
-        out.push(ALPHABET[usize::from(b2 & 0x3f)] as char);
+        out[o] = ALPHABET[usize::from(b0 >> 2)];
+        out[o + 1] = ALPHABET[usize::from(((b0 & 0x03) << 4) | (b1 >> 4))];
+        out[o + 2] = ALPHABET[usize::from(((b1 & 0x0f) << 2) | (b2 >> 6))];
+        out[o + 3] = ALPHABET[usize::from(b2 & 0x3f)];
+        o += 4;
     }
     match rem {
         [b0] => {
-            out.push(ALPHABET[usize::from(b0 >> 2)] as char);
-            out.push(ALPHABET[usize::from((b0 & 0x03) << 4)] as char);
+            out[o] = ALPHABET[usize::from(b0 >> 2)];
+            out[o + 1] = ALPHABET[usize::from((b0 & 0x03) << 4)];
         }
         [b0, b1] => {
-            out.push(ALPHABET[usize::from(b0 >> 2)] as char);
-            out.push(ALPHABET[usize::from(((b0 & 0x03) << 4) | (b1 >> 4))] as char);
-            out.push(ALPHABET[usize::from((b1 & 0x0f) << 2)] as char);
+            out[o] = ALPHABET[usize::from(b0 >> 2)];
+            out[o + 1] = ALPHABET[usize::from(((b0 & 0x03) << 4) | (b1 >> 4))];
+            out[o + 2] = ALPHABET[usize::from((b1 & 0x0f) << 2)];
         }
         _ => {}
     }
-    out
+    String::from_utf8(out).unwrap_or_default()
 }
 
 #[inline]

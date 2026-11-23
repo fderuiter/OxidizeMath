@@ -89,7 +89,13 @@ impl OdeSystem<SimpleState> for BenchmarkSystem {
 }
 
 fn main() {
-    let size = 1_000_000;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (size, steps) = if smoke {
+        (10_000, 10)
+    } else {
+        (1_000_000, 100)
+    };
     let system = BenchmarkSystem;
     let mut state = SimpleState {
         data: vec![1.0; size],
@@ -104,7 +110,6 @@ fn main() {
     }
 
     let start = Instant::now();
-    let steps = 100;
     let dt = 0.01;
 
     for _ in 0..steps {

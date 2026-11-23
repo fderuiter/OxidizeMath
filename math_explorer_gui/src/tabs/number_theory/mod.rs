@@ -1,7 +1,9 @@
 // @explorer_feature = "pure_math"
+// @explorer_order = 21
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+pub mod elliptic_curve_audio;
 pub mod elliptic_curve_canvas;
 pub mod elliptic_curve_hasse;
 pub mod elliptic_curve_playground;

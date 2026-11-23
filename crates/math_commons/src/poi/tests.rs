@@ -130,3 +130,44 @@ fn test_plateau_crossing_y_intercept_and_nan_break() {
     assert_eq!(nan_scan.y_intercepts.len(), 1);
     assert!((nan_scan.y_intercepts[0] - 3.0).abs() < 1e-9);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_advance_flat_y_run_across_series_impls_and_nan_x() {
+    #[derive(Clone, Copy)]
+    struct CustomSample(f64, f64);
+    impl crate::series::Sample2D for CustomSample {
+        fn sample_x(&self) -> f64 {
+            self.0
+        }
+        fn sample_y(&self) -> f64 {
+            self.1
+        }
+    }
+
+    let arr = [[0.0, 2.0], [1.0, 2.0], [f64::NAN, 2.0], [3.0, 2.0]];
+    assert_eq!(arr.advance_flat_y_run(0, 2.0, -10.0, 10.0), 2);
+    assert_eq!(arr.as_slice().advance_flat_y_run(0, 2.0, -10.0, 10.0), 2);
+
+    let tuples = vec![(0.0, 5.0), (1.0, 5.0), (2.0, 5.0), (3.0, 1.0)];
+    assert_eq!(tuples.advance_flat_y_run(0, 5.0, 0.0, 1.5), 2);
+
+    let xs = vec![0.0, 1.0, 2.0, 3.0, 4.0];
+    let ys = vec![0.0, 7.0, 7.0, 7.0, 0.0];
+    let paired = (&xs, &ys);
+    assert_eq!(paired.advance_flat_y_run(1, 7.0, -10.0, 10.0), 4);
+    let mut out = [LocalExtremum {
+        point: [0.0; 2],
+        is_max: false,
+    }; 4];
+    assert_eq!(detect_local_extrema_into(&paired, &mut out), 1);
+    assert!((out[0].point[0] - 2.0).abs() < 1e-12);
+
+    let custom = [
+        CustomSample(0.0, 1.0),
+        CustomSample(1.0, 4.0),
+        CustomSample(2.0, 4.0),
+        CustomSample(3.0, 1.0),
+    ];
+    assert_eq!(custom.advance_flat_y_run(1, 4.0, -10.0, 10.0), 3);
+}

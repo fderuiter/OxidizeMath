@@ -8,6 +8,27 @@ pub trait Sample2D {
 
     /// Returns the vertical (`y`) coordinate of this sample.
     fn sample_y(&self) -> f64;
+
+    /// Counts consecutive leading samples in `slice` whose vertical coordinate equals `flat_y`
+    /// and whose finite horizontal coordinate lies within `x_min..=x_max`.
+    #[inline]
+    fn flat_run_prefix_len(slice: &[Self], flat_y: f64, x_min: f64, x_max: f64) -> usize
+    where
+        Self: Sized,
+    {
+        let mut k = 0;
+        let len = slice.len();
+        while k < len {
+            let s = &slice[k];
+            let x = s.sample_x();
+            let y = s.sample_y();
+            if y != flat_y || x < x_min || x > x_max || (x * 0.0) != 0.0 {
+                break;
+            }
+            k += 1;
+        }
+        k
+    }
 }
 
 impl Sample2D for [f64; 2] {
@@ -20,6 +41,20 @@ impl Sample2D for [f64; 2] {
     fn sample_y(&self) -> f64 {
         self[1]
     }
+
+    #[inline]
+    fn flat_run_prefix_len(slice: &[Self], flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let mut k = 0;
+        let len = slice.len();
+        while k < len {
+            let p = slice[k];
+            if p[1] != flat_y || p[0] < x_min || p[0] > x_max || (p[0] * 0.0) != 0.0 {
+                break;
+            }
+            k += 1;
+        }
+        k
+    }
 }
 
 impl Sample2D for (f64, f64) {
@@ -31,6 +66,20 @@ impl Sample2D for (f64, f64) {
     #[inline(always)]
     fn sample_y(&self) -> f64 {
         self.1
+    }
+
+    #[inline]
+    fn flat_run_prefix_len(slice: &[Self], flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let mut k = 0;
+        let len = slice.len();
+        while k < len {
+            let p = slice[k];
+            if p.1 != flat_y || p.0 < x_min || p.0 > x_max || (p.0 * 0.0) != 0.0 {
+                break;
+            }
+            k += 1;
+        }
+        k
     }
 }
 
@@ -60,6 +109,22 @@ pub trait PointSeries {
     fn point_at(&self, index: usize) -> [f64; 2] {
         [self.x_at(index), self.y_at(index)]
     }
+
+    /// Returns the first index `i >= start` (clamped to `self.len()`) where `y_at(i) != flat_y`
+    /// or `x_at(i)` falls outside the finite interval `x_min..=x_max`.
+    #[inline]
+    fn advance_flat_y_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let n = self.len();
+        let mut i = start.min(n);
+        while i < n {
+            let p = self.point_at(i);
+            if p[1] != flat_y || p[0] < x_min || p[0] > x_max || (p[0] * 0.0) != 0.0 {
+                break;
+            }
+            i += 1;
+        }
+        i
+    }
 }
 
 impl<S: Sample2D> PointSeries for [S] {
@@ -82,6 +147,12 @@ impl<S: Sample2D> PointSeries for [S] {
     fn point_at(&self, index: usize) -> [f64; 2] {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
+    }
+
+    #[inline]
+    fn advance_flat_y_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let s = start.min(self.len());
+        s + S::flat_run_prefix_len(&self[s..], flat_y, x_min, x_max)
     }
 }
 
@@ -106,6 +177,12 @@ impl<S: Sample2D, const N: usize> PointSeries for [S; N] {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
     }
+
+    #[inline]
+    fn advance_flat_y_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let s = start.min(N);
+        s + S::flat_run_prefix_len(&self[s..], flat_y, x_min, x_max)
+    }
 }
 
 impl<S: Sample2D> PointSeries for Vec<S> {
@@ -129,6 +206,12 @@ impl<S: Sample2D> PointSeries for Vec<S> {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
     }
+
+    #[inline]
+    fn advance_flat_y_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let s = start.min(self.len());
+        s + S::flat_run_prefix_len(&self[s..], flat_y, x_min, x_max)
+    }
 }
 
 impl<T: PointSeries + ?Sized> PointSeries for &T {
@@ -150,6 +233,11 @@ impl<T: PointSeries + ?Sized> PointSeries for &T {
     #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         (**self).point_at(index)
+    }
+
+    #[inline]
+    fn advance_flat_y_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        (**self).advance_flat_y_run(start, flat_y, x_min, x_max)
     }
 }
 
@@ -173,6 +261,22 @@ impl PointSeries for (&[f64], &[f64]) {
     fn point_at(&self, index: usize) -> [f64; 2] {
         [self.0[index], self.1[index]]
     }
+
+    #[inline]
+    fn advance_flat_y_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let n = self.0.len().min(self.1.len());
+        let xs = &self.0[..n];
+        let ys = &self.1[..n];
+        let mut i = start.min(n);
+        while i < n {
+            let x = xs[i];
+            if ys[i] != flat_y || x < x_min || x > x_max || (x * 0.0) != 0.0 {
+                break;
+            }
+            i += 1;
+        }
+        i
+    }
 }
 
 impl PointSeries for (&Vec<f64>, &Vec<f64>) {
@@ -194,5 +298,10 @@ impl PointSeries for (&Vec<f64>, &Vec<f64>) {
     #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         [self.0[index], self.1[index]]
+    }
+
+    #[inline]
+    fn advance_flat_y_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        (self.0.as_slice(), self.1.as_slice()).advance_flat_y_run(start, flat_y, x_min, x_max)
     }
 }

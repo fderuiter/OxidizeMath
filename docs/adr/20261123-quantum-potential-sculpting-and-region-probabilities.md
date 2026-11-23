@@ -1,4 +1,4 @@
-# ADR 0047: 1D Quantum Potential Sculpting, Resonant Presets, and Zero-Allocation Region Probabilities
+# ADR 20261123: 1D Quantum Potential Sculpting, Resonant Presets, and Zero-Allocation Region Probabilities
 
 ## Status
 Accepted (extends [ADR 0027](0027-precompute-quantum-propagators-inplace-evolution.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))
@@ -14,8 +14,9 @@ Accepted (extends [ADR 0027](0027-precompute-quantum-propagators-inplace-evoluti
 2. **Interactive Quantum Sculpting Canvas & Quantized URL State (`math_explorer_gui`)**:
    - Extend `SimCommand` with `SculptStroke1D` and `SetWavepacket`, add `UnifiedCanvasContext` and `custom_series` hooks to [`math_explorer_gui/src/async_sim/unified/mod.rs`](../../math_explorer_gui/src/async_sim/unified/mod.rs), and persist centi-quantized 200-point `"custom_potential"` series within the 4,096-byte URL state ceiling via [`math_explorer_gui/src/url_state/codec.rs`](../../math_explorer_gui/src/url_state/codec.rs) and [`math_explorer_gui/src/tabs/quantum/wave_sim/persistence.rs`](../../math_explorer_gui/src/tabs/quantum/wave_sim/persistence.rs).
    - Integrate lazy per-frame propagator recomputation, draggable $(x_0, k_0, \sigma)$ emitter handles, Born & two-region $P_T / P_R$ readouts, tunneling and resonant double-well starter presets, and WCAG 2.2 AA keyboard reticle editing into [`math_explorer_gui/src/tabs/quantum/wave_sim.rs`](../../math_explorer_gui/src/tabs/quantum/wave_sim.rs).
+   - Add defaulted `Sample2D::flat_run_prefix_len` and `PointSeries::advance_flat_y_run` slice overrides in [`crates/math_commons/src/series.rs`](../../crates/math_commons/src/series.rs) and [`egui_plot/src/items/values.rs`](../../egui_plot/src/items/values.rs) so 200k-point flat plateau critical-point scans (`scan_line_pois`) execute without per-point trait call overhead even in unoptimized `-C instrument-coverage` builds.
 
 ## Consequences
 - **Positive**: `apply_bresenham_potential_stroke` and `partition_region_probabilities` execute in place with zero dynamic heap allocations under `VerifiedAllocator`, while `WaveRunner` recomputes $e^{-i\hat{H}\Delta t/\hbar}$ at most once per frame when $V(x)$ or $\Delta t$ changes and keeps `evolve_state_in_place` zero-allocation.
 - **Positive**: Custom sculpted 200-point quantum potentials round-trip losslessly through shareable URLs well below the 4 KiB decoded payload limit while omitting `custom_potential` for unsculpted presets.
-- **Neutral**: [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json) is updated via `xtask regenerate-baseline` to record the new public `domain_physics::physics::quantum` items.
+- **Neutral**: [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json) is updated via `xtask regenerate-baseline` to record the new public `domain_physics::physics::quantum` and `math_commons::series` items.

@@ -55,7 +55,26 @@ impl SimulationFramework {
             .and_then(|idx| self.available_tools.get(idx).map(|meta| meta.id))
     }
 
-    /// Computes an O(1) parameter-only revision token for live URL fragment synchronization.
+    fn cached_untracked_url_digest(&self, tool: &dyn super::InteractiveTool) -> u64 {
+        let current_rev = self.rev_cache.untracked_tool_revision;
+        let name = tool.name();
+        if let Some(cached) = self.rev_cache.untracked_url_digest.get() {
+            if cached.tool_name == name && cached.checked_untracked_rev == current_rev {
+                return cached.url_digest;
+            }
+        }
+        let digest = compute_untracked_tool_url_digest(tool);
+        self.rev_cache
+            .untracked_url_digest
+            .set(Some(super::UntrackedUrlDigestCache {
+                tool_name: name,
+                checked_untracked_rev: current_rev,
+                url_digest: digest,
+            }));
+        digest
+    }
+
+    /// Computes a parameter-only revision token for live URL fragment synchronization.
     #[must_use]
     pub fn url_state_revision(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -64,16 +83,53 @@ impl SimulationFramework {
         self.hash_hud_for_url(&mut hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(&mut hasher);
-            let tool_rev = tool.state_revision();
+            let tool_rev = tool.url_state_revision();
             if tool_rev > 0 {
                 1_u8.hash(&mut hasher);
                 tool_rev.hash(&mut hasher);
             } else {
                 0_u8.hash(&mut hasher);
-                self.rev_cache.untracked_tool_revision.hash(&mut hasher);
+                self.cached_untracked_url_digest(tool.as_ref())
+                    .hash(&mut hasher);
             }
         }
         hasher.finish().max(1)
+    }
+
+    fn wrap_url_state_envelope(
+        tool: &dyn super::InteractiveTool,
+        state_str: &str,
+    ) -> Result<String, String> {
+        let cleaned = egui_plot::export::strip_utf8_bom(state_str).trim();
+        let cap = crate::url_state::MAX_DECODED_URL_STATE_BYTES;
+        if cleaned.len() > cap {
+            return Err(format!(
+                "URL state for '{}' ({} bytes) exceeds maximum allowed limit ({cap} bytes)",
+                tool.name(),
+                cleaned.len()
+            ));
+        }
+        let inner_bounds = super::ToolStateBounds::new(
+            cap,
+            crate::url_state::URL_JSON_BOUNDS
+                .max_depth
+                .saturating_sub(1),
+            crate::url_state::URL_JSON_BOUNDS.max_array_len,
+        );
+        crate::url_state::validate_json_streaming_with_bounds(cleaned, inner_bounds)
+            .map_err(|e| format!("Failed to serialize state for '{}': {e}", tool.name()))?;
+        let envelope_json = crate::presets::serialize_compact_raw_preset_envelope(
+            tool.name(),
+            tool.domain(),
+            cleaned,
+        )?;
+        if envelope_json.len() > cap {
+            return Err(format!(
+                "JSON state size ({} bytes) exceeds maximum allowed limit ({cap} bytes)",
+                envelope_json.len()
+            ));
+        }
+        Ok(envelope_json)
     }
 
     /// Exports the active tool's parameters as a compact, deterministic [`crate::presets::PresetWrapper`] JSON string.
@@ -81,40 +137,49 @@ impl SimulationFramework {
         let Some(tool) = &self.active_tool else {
             return Ok(None);
         };
-        let Some(state_str) = tool.save_state() else {
+        let Some(state_str) = tool.save_url_state() else {
             return Ok(None);
         };
-        let config: serde_json::Value = serde_json::from_str(&state_str)
-            .map_err(|e| format!("Failed to serialize state for '{}': {e}", tool.name()))?;
-        let envelope_json =
-            crate::presets::serialize_compact_preset_envelope(tool.name(), tool.domain(), config)?;
-        Ok(Some(envelope_json))
+        Self::wrap_url_state_envelope(tool.as_ref(), &state_str).map(Some)
+    }
+
+    fn export_url_preset_if_modified(
+        &self,
+        baseline: &Option<String>,
+    ) -> Result<Option<String>, String> {
+        let Some(tool) = &self.active_tool else {
+            return Ok(None);
+        };
+        let cur = tool.save_url_state();
+        if cur == *baseline {
+            return Ok(None);
+        }
+        cur.as_deref()
+            .map(|raw| Self::wrap_url_state_envelope(tool.as_ref(), raw))
+            .transpose()
     }
 
     /// Encodes a `#tab=...` fragment for `tab_slug`, supporting active inverse challenges, guided stories, and AST challenges.
     pub fn encode_share_fragment_for_tab(&self, tab_slug: &str) -> Result<String, String> {
         if let Some(inv_meta) = self.active_challenge {
             let preset_json = self.export_url_preset_json()?;
-            return crate::url_state::encode_share_fragment_with_challenge(
+            return crate::url_state::encode_share_fragment_with_hud_prevalidated(
                 tab_slug,
                 self.active_tool_id(),
+                None,
                 Some(inv_meta.id),
+                None,
                 preset_json.as_deref(),
             );
         }
-        let current_tool_state = self.active_tool.as_ref().and_then(|t| t.save_state());
         match &self.challenge_hud.mode {
             super::ChallengeHudMode::Story {
                 story,
                 step_index,
                 step_state,
             } => {
-                let extra_json = if current_tool_state == *step_state {
-                    None
-                } else {
-                    self.export_url_preset_json()?
-                };
-                crate::url_state::encode_share_fragment_with_hud(
+                let extra_json = self.export_url_preset_if_modified(step_state)?;
+                crate::url_state::encode_share_fragment_with_hud_prevalidated(
                     tab_slug,
                     self.active_tool_id(),
                     Some(story.id),
@@ -128,12 +193,8 @@ impl SimulationFramework {
                 initial_state,
                 ..
             } => {
-                let extra_json = if current_tool_state == *initial_state {
-                    None
-                } else {
-                    self.export_url_preset_json()?
-                };
-                crate::url_state::encode_share_fragment_with_hud(
+                let extra_json = self.export_url_preset_if_modified(initial_state)?;
+                crate::url_state::encode_share_fragment_with_hud_prevalidated(
                     tab_slug,
                     self.active_tool_id(),
                     None,
@@ -144,9 +205,12 @@ impl SimulationFramework {
             }
             super::ChallengeHudMode::Inactive => {
                 let preset_json = self.export_url_preset_json()?;
-                crate::url_state::encode_share_fragment(
+                crate::url_state::encode_share_fragment_with_hud_prevalidated(
                     tab_slug,
                     self.active_tool_id(),
+                    None,
+                    None,
+                    None,
                     preset_json.as_deref(),
                 )
             }
@@ -238,6 +302,25 @@ impl SimulationFramework {
         self.preset_dialog.toast_error = None;
         self.reset_active_tool_manual_bounds();
     }
+}
+
+fn compute_untracked_tool_url_digest(tool: &dyn super::InteractiveTool) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    match tool.save_url_state() {
+        Some(state_str) => {
+            let cleaned = egui_plot::export::strip_utf8_bom(&state_str).trim();
+            if cleaned.len() <= crate::url_state::MAX_DECODED_URL_STATE_BYTES {
+                1_u8.hash(&mut hasher);
+                cleaned.hash(&mut hasher);
+            } else {
+                2_u8.hash(&mut hasher);
+            }
+        }
+        None => {
+            0_u8.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
 }
 
 #[path = "url_share/hydrate.rs"]
