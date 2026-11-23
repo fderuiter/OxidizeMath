@@ -78,9 +78,14 @@ impl AttractorPlotter {
                 ui.label(format!("Shadow: ({:.2}, {:.2}, {:.2})", sh.x, sh.y, sh.z));
             }
         }
-        if self.system_kind == AttractorSystemKind::Lorenz {
+        if self.mode == AttractorMode::Custom || self.system_kind == AttractorSystemKind::Lorenz {
             if let Some(lyap) = self.current_lyapunov_exponent() {
-                ui.label(format!("Lorenz Lyapunov λ₁: {lyap:+.3}"));
+                let prefix = if self.mode == AttractorMode::Lorenz {
+                    "Lorenz Lyapunov"
+                } else {
+                    "Flow Lyapunov"
+                };
+                ui.label(format!("{prefix} λ₁: {lyap:+.3}"));
             }
         }
         if let Some((c_eps, d2)) = self.current_correlation_invariants() {
@@ -281,7 +286,19 @@ impl AttractorPlotter {
 
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.draw_twin_central_views(ui, ctx);
+            self.draw_central_fault_banner(ui, ctx);
+            if self.atlas.is_visible() && ui.available_width() >= 620.0 {
+                ui.columns(2, |cols| {
+                    self.draw_twin_central_views(&mut cols[0], ctx);
+                    self.render_attractor_atlas_panel(&mut cols[1]);
+                });
+            } else {
+                if self.atlas.is_visible() {
+                    self.render_attractor_atlas_panel(ui);
+                    ui.separator();
+                }
+                self.draw_twin_central_views(ui, ctx);
+            }
         });
     }
 }

@@ -6,27 +6,37 @@ use super::twin_state::{AttractorSystemKind, ON_ATTRACTOR_LORENZ_STATE};
 use super::{AttractorMode, AttractorPlotter, SolverExecutionState, MAX_SIMULATION_SPEED};
 use crate::accessibility::announce_status_with_priority;
 use crate::app::SemanticPalette;
-use crate::async_sim::{SimCommand, SimWorkerState};
+use crate::async_sim::{SimCommand, SimWorkerState, TimelineMetadata};
 use crate::framework::{bounded_drag_value, PlaybackAction, PlaybackTransport};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 
 impl AttractorPlotter {
-    pub(super) fn draw_model_and_parameter_controls(
-        &mut self,
-        ui: &mut egui::Ui,
-        ctx: &egui::Context,
-    ) {
+    fn draw_mode_and_atlas_header(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             let prev_mode = self.mode;
             ui.radio_value(&mut self.mode, AttractorMode::Lorenz, "Built-in");
             ui.radio_value(&mut self.mode, AttractorMode::Custom, "Custom 3D Flow");
             if self.mode != prev_mode {
+                if self.mode == AttractorMode::Custom {
+                    let _ = self.atlas.set_axis_keys("param_0", "param_1");
+                } else if self.atlas.axis_keys().0 == "param_0" {
+                    let _ = self.atlas.set_axis_keys("sigma", "rho");
+                }
                 self.reset();
                 ctx.request_repaint();
             }
         });
+        let _ = self.atlas.show_toggle_button(ui);
         ui.separator();
+    }
+
+    pub(super) fn draw_model_and_parameter_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+    ) {
+        self.draw_mode_and_atlas_header(ui, ctx);
 
         if self.mode == AttractorMode::Custom {
             egui::CollapsingHeader::new("Vector Field Equations")
@@ -246,18 +256,33 @@ impl AttractorPlotter {
                     self.worker.state()
                 };
 
-                let can_back = !self.diverged()
-                    && !worker_faulted
-                    && !self.worker.state().is_stepping()
-                    && self.timeline.can_step_back();
+                let timeline_meta = if self.diverged() || worker_faulted {
+                    None
+                } else {
+                    self.worker.timeline_metadata().or_else(|| {
+                        (self.timeline.len() > 1).then(|| {
+                            let min_step = self.timeline.get(0).map_or(0, |f| f.step);
+                            let max_step = self
+                                .timeline
+                                .get(self.timeline.len().saturating_sub(1))
+                                .map_or(0, |f| f.step);
+                            let current_step = self.timeline.current().map_or(0, |f| f.step);
+                            TimelineMetadata {
+                                current_step,
+                                min_step,
+                                max_step,
+                                stride: 1,
+                            }
+                        })
+                    })
+                };
 
                 if let Some(action) = PlaybackTransport::from_worker_state(
                     "attractor_transport",
                     "Attractor Plotter",
                     transport_state,
                 )
-                .can_step_back(can_back)
-                .timeline_scrubber(self.timeline.cursor(), self.timeline.len())
+                .timeline(timeline_meta)
                 .can_reset(true)
                 .show(ui)
                 {
@@ -289,8 +314,8 @@ impl AttractorPlotter {
                 self.execution_state = SolverExecutionState::Paused;
                 let _ = self.worker.send_command(SimCommand::Step(1));
             }
-            PlaybackAction::Scrub(frame_idx) => {
-                self.seek_timeline_frame(frame_idx, ctx);
+            PlaybackAction::ScrubTo(target_step) => {
+                self.seek_timeline_step(target_step, ctx);
             }
             PlaybackAction::Reset => {
                 self.reset();

@@ -89,11 +89,11 @@ impl LossLandscapeTool {
                 PlaybackAction::Play => self.is_playing = true,
                 PlaybackAction::Pause => self.is_playing = false,
                 PlaybackAction::Step => self.step_simulation(),
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.is_playing = false;
                     self.reset_arena();
                 }
-                PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
             }
         }
         ui.horizontal(|ui| {

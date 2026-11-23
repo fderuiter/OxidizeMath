@@ -69,7 +69,7 @@ fn test_scrub_seek_and_step_back_reproduce_bit_identical_twin_resumption() {
     assert_eq!(runner.timeline.len(), 81);
 
     // Seek backward to frame 30; timeline retains 81 frames until forward stepping resumes
-    runner.process_command(SimCommand::SeekFrame(30));
+    runner.process_command(SimCommand::SeekStep(30));
     assert_eq!(runner.execution_state, SolverExecutionState::Paused);
     assert_eq!(runner.step_count, 30);
     assert_eq!(runner.timeline.current_copied(), Some(expected_frame_30));

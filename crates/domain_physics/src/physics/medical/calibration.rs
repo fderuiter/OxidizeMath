@@ -1,5 +1,6 @@
 //! Input Data Calibration: CT to Physical Density.
 
+use crate::error::DoseFluenceError;
 use math_commons::primitives::NonNegativeFloat;
 
 /// Converts Hounsfield Units (HU) to physical density (g/cm³).
@@ -14,21 +15,21 @@ use math_commons::primitives::NonNegativeFloat;
 ///
 /// # Returns
 ///
-/// * `Result<NonNegativeFloat, String>` - Physical density in g/cm³.
+/// * `Result<NonNegativeFloat, DoseFluenceError>` - Physical density in g/cm³.
 ///
 /// # Formula
 ///
 /// - If $HU < 0$: $\rho = 1.0 + (HU / 1000.0)$
 /// - If $HU \geq 0$: $\rho = 1.0 + (HU / 500.0)$
 #[verified_engine::verified]
-pub fn hu_to_density(hu: f64) -> Result<NonNegativeFloat, String> {
+pub fn hu_to_density(hu: f64) -> Result<NonNegativeFloat, DoseFluenceError> {
     let density = if hu < 0.0 {
         1.0 + (hu / 1000.0)
     } else {
         1.0 + (hu / 500.0)
     };
 
-    NonNegativeFloat::new(density)
+    Ok(NonNegativeFloat::new(density)?)
 }
 
 #[cfg(test)]

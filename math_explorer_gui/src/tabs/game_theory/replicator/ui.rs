@@ -247,8 +247,8 @@ impl ReplicatorDynamicsTool {
                             PlaybackAction::Play => self.is_playing = true,
                             PlaybackAction::Pause => self.is_playing = false,
                             PlaybackAction::Step => self.step_once(),
+                            PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                             PlaybackAction::Reset => self.reset_playback(),
-                            PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
                         }
                     }
 

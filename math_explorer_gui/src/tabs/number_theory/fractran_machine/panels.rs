@@ -140,8 +140,8 @@ impl FractranMachineTool {
                             self.stop_reason = MachineStopReason::Paused;
                         }
                     }
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset_machine(),
-                    PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
                 }
             }
             if ui
@@ -160,6 +160,44 @@ impl FractranMachineTool {
                     .text("Steps/frame"),
             );
         });
+    }
+
+    /// Returns `true` when the machine is halted, overflowed, or blocked by a validation error.
+    #[must_use]
+    pub fn is_audio_silenced(&self) -> bool {
+        matches!(
+            self.stop_reason,
+            MachineStopReason::Halted | MachineStopReason::Overflow { .. }
+        ) || self.validation_error.is_some()
+    }
+
+    /// Extracts the current zero-allocation `just_intonation_ratio` chord and complexity timbre frame.
+    #[must_use]
+    pub fn current_sonification_frame(&self) -> crate::audio::SonificationFrame {
+        let pow2_hit = if self.step_count > 0 {
+            self.vm.power_of_two_exponent(&self.registers)
+        } else {
+            None
+        };
+        let (bdm_bits, lz76_bits) = self.complexity_bounds;
+        crate::audio::mappings::fractran_register_frame(
+            self.vm.primes(),
+            &self.registers,
+            pow2_hit,
+            bdm_bits,
+            lz76_bits,
+            self.is_audio_silenced(),
+        )
+    }
+
+    pub(super) fn render_sonification_bar(&self, ui: &mut egui::Ui) {
+        let frame = self.current_sonification_frame();
+        crate::audio::render_sonification_panel(
+            ui,
+            "fractran_machine",
+            &frame,
+            self.is_audio_silenced(),
+        );
     }
 }
 

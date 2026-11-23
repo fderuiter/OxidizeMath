@@ -109,8 +109,8 @@ impl TrainingMonitorTool {
                     PlaybackAction::Play => self.is_training = true,
                     PlaybackAction::Pause => self.is_training = false,
                     PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset(),
-                    PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
                 }
             }
 
@@ -304,7 +304,7 @@ inventory::submit! {
         id: "TrainingMonitorTool",
         display_name: "Training Monitor",
         domain: "ai",
-        tags: &[],
+        tags: &["gradient descent", "sgd", "adam", "loss curve", "mlp", "backpropagation"],
         build: || Box::new(TrainingMonitorTool::default()),
     }
 }

@@ -204,23 +204,10 @@ struct MockRingRunner {
 #[cfg(not(target_arch = "wasm32"))]
 impl SimulationRunner for MockRingRunner {
     fn process_command(&mut self, cmd: SimCommand) {
-        match cmd {
-            SimCommand::StepBack(count) => {
-                if let Some(v) = self.ring.step_back(count) {
-                    self.next_val = v;
-                }
-            }
-            SimCommand::SeekFrame(idx) => {
-                if let Some(v) = self.ring.seek(idx) {
-                    self.next_val = v;
-                }
-            }
-            SimCommand::Reset => {
-                self.ring.clear();
-                self.next_val = 0;
-                self.ring.push(0);
-            }
-            _ => {}
+        if matches!(cmd, SimCommand::Reset) {
+            self.ring.clear();
+            self.next_val = 0;
+            self.ring.push(0);
         }
     }
 
@@ -242,6 +229,36 @@ impl SimulationRunner for MockRingRunner {
 
     fn get_steps_per_frame(&self) -> usize {
         1
+    }
+
+    fn checkpoint_stride(&self) -> Option<usize> {
+        Some(1)
+    }
+
+    fn current_step(&self) -> usize {
+        self.ring.cursor()
+    }
+
+    fn capture_active_params(&self) -> Option<CheckpointParams> {
+        Some(CheckpointParams::scalars(&[1.0]))
+    }
+
+    fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
+        Some(TimeTravelCheckpoint {
+            step: self.ring.cursor(),
+            rng: oxidize_core::rng::OxidizeRng::default(),
+            params: CheckpointParams::scalars(&[1.0]),
+            state: CheckpointPayload::scalars(&[self.next_val as f64]),
+        })
+    }
+
+    fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
+        if let Some(s) = checkpoint.state.as_scalars() {
+            if let Some(&v) = s.first() {
+                self.next_val = v as usize;
+            }
+        }
+        let _ = self.ring.seek(checkpoint.step);
     }
 }
 
@@ -276,7 +293,7 @@ fn test_step_back_and_seek_frame_pause_restore_and_truncate_on_resume() {
         vec![3.0, 6.0]
     );
 
-    assert!(controller.send_command(SimCommand::SeekFrame(1)).is_ok());
+    assert!(controller.send_command(SimCommand::SeekStep(1)).is_ok());
     for _ in 0..400 {
         thread::sleep(Duration::from_millis(5));
         if controller.update().is_some() && controller.state() == SimWorkerState::Ready {

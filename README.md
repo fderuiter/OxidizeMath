@@ -134,7 +134,7 @@ classDiagram
 
 ### 3. Comprehensive Examples
 
-Explore 20+ specialized, runnable examples spanning Physics, AI, Biology, and Pure Math.
+Explore 32 specialized, runnable examples spanning AI, Applied Math, Biology, Climate, Epidemiology, Physics, and Pure Math.
 
 > **See the [Examples Catalog](math_explorer/examples/README.md) for the full list of simulations and their commands.**
 

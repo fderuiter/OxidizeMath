@@ -1,5 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-//! Preset serialization, `TheoryDescribable` metadata, and `StarterPresetMetadata` cards.
+//! Preset serialization and `StarterPresetMetadata` cards for [`super::AttractorPlotter`].
 
 use super::twin_state::{
     AttractorSystemKind, ExtraChaosParams, DEFAULT_EPSILON, DEFAULT_PERTURBATION_EXPR,
@@ -11,7 +11,6 @@ use super::{
 use crate::framework::Camera3D;
 use crate::starter_gallery::StarterPresetMetadata;
 use eframe::egui;
-use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::BTreeMap;
 
 const fn default_annotations_enabled() -> bool {
@@ -77,6 +76,10 @@ struct AttractorSaveState<'a> {
     rossler_params: Option<[f64; 3]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pendulum_params: Option<[f64; 5]>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    atlas_visible: bool,
+    #[serde(skip_serializing_if = "super::atlas::is_default_attractor_atlas_axes")]
+    atlas_axes: [String; 2],
 }
 
 #[derive(serde::Deserialize)]
@@ -125,6 +128,10 @@ struct AttractorState {
     rossler_params: Option<[f64; 3]>,
     #[serde(default)]
     pendulum_params: Option<[f64; 5]>,
+    #[serde(default)]
+    atlas_visible: bool,
+    #[serde(default = "super::atlas::default_attractor_atlas_axes")]
+    atlas_axes: [String; 2],
 }
 
 impl AttractorPlotter {
@@ -159,6 +166,7 @@ impl AttractorPlotter {
                 self.extra_params.pendulum_l2,
                 self.extra_params.pendulum_g,
             ]);
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&AttractorSaveState {
             sigma: self.system.sigma,
             rho: self.system.rho,
@@ -180,6 +188,8 @@ impl AttractorPlotter {
             perturbation_expr: &self.perturbation_expr,
             rossler_params,
             pendulum_params,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
@@ -270,6 +280,8 @@ impl AttractorPlotter {
         self.metrics_cache.correlation_radius = self.system_kind.default_correlation_radius();
         self.camera.apply_pose(camera);
         self.dragged_callout = None;
+        self.atlas.set_visible(s.atlas_visible);
+        let _ = self.atlas.set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1]);
         self.reset();
         let _ = self.worker.update();
 
@@ -307,104 +319,6 @@ impl AttractorPlotter {
                 self.flow_bank.set_params_map(custom_params);
             }
         }
-    }
-}
-
-impl TheoryDescribable for AttractorPlotter {
-    fn theory_description(&self) -> String {
-        if self.mode == AttractorMode::Custom {
-            let exprs = self.flow_bank.expressions();
-            return format!(
-                "Custom 3D dynamical flow: dx/dt = {}, dy/dt = {}, dz/dt = {} (ε={:.1e}).",
-                exprs[0], exprs[1], exprs[2], self.epsilon
-            );
-        }
-        match self.system_kind {
-            AttractorSystemKind::Lorenz => format!(
-                "Lorenz Strange Attractor & Twin Divergence (σ={:.2}, ρ={:.2}, β={:.2}, ε={:.1e})",
-                self.system.sigma, self.system.rho, self.system.beta, self.epsilon
-            ),
-            AttractorSystemKind::Rossler => format!(
-                "Rössler Spiral-Fold Strange Attractor (a={:.2}, b={:.2}, c={:.2}, ε={:.1e})",
-                self.extra_params.rossler_a,
-                self.extra_params.rossler_b,
-                self.extra_params.rossler_c,
-                self.epsilon
-            ),
-            AttractorSystemKind::DoublePendulum => format!(
-                "Lagrangian Double Pendulum Chaos (m₁={:.2}, m₂={:.2}, l₁={:.2}, l₂={:.2}, ε={:.1e})",
-                self.extra_params.pendulum_m1,
-                self.extra_params.pendulum_m2,
-                self.extra_params.pendulum_l1,
-                self.extra_params.pendulum_l2,
-                self.epsilon
-            ),
-        }
-    }
-
-    fn phonetic_description(&self) -> String {
-        if self.mode == AttractorMode::Custom {
-            return "Custom 3D chaotic twin trajectory simulation".to_string();
-        }
-        format!(
-            "{} chaotic twin trajectory simulation",
-            self.system_kind.label()
-        )
-    }
-
-    fn theory_citation(&self) -> String {
-        match self.system_kind {
-            AttractorSystemKind::Lorenz => {
-                "Lorenz, E. N. (1963). Deterministic Nonperiodic Flow; Wolf, A. et al. (1985)."
-                    .to_string()
-            }
-            AttractorSystemKind::Rossler => {
-                "Rössler, O. E. (1976). An Equation for Continuous Chaos. Physics Letters A."
-                    .to_string()
-            }
-            AttractorSystemKind::DoublePendulum => {
-                "Shinbrot, T. et al. (1992). Chaos in a Double Pendulum. Am. J. Phys.".to_string()
-            }
-        }
-    }
-
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::with_capacity(2);
-        map.insert("default".to_string(), self.theory_description());
-        map.insert(
-            "lyapunov".to_string(),
-            "Exponential separation ||δx(t)|| ≈ ||δx(0)|| exp(λ₁ t) bounded by strange-attractor diameter.".to_string(),
-        );
-        map
-    }
-
-    fn theory_latex_equation(&self) -> Option<String> {
-        if self.mode == AttractorMode::Custom {
-            return Some(r"\dot{\mathbf{x}} = \mathbf{f}(x, y, z)".to_string());
-        }
-        let eq = match self.system_kind {
-            AttractorSystemKind::Lorenz => {
-                r"\dot{x}=\sigma(y-x),\;\dot{y}=x(\rho-z)-y,\;\dot{z}=xy-\beta z,\;\log_{10}\|\delta\mathbf{x}(t)\|\approx \log_{10}\|\delta\mathbf{x}(0)\|+\frac{\lambda_1}{\ln 10}t"
-            }
-            AttractorSystemKind::Rossler => r"\dot{x}=-y-z,\;\dot{y}=x+ay,\;\dot{z}=b+z(x-c)",
-            AttractorSystemKind::DoublePendulum => {
-                r"\mathcal{L}=T(\theta_1,\theta_2,\omega_1,\omega_2)-V(\theta_1,\theta_2)"
-            }
-        };
-        Some(eq.to_string())
-    }
-
-    fn theory_parameters(&self) -> std::collections::HashMap<String, ParameterConstraint> {
-        [
-            ("sigma", 0.0, 50.0, 0.5),
-            ("rho", 0.0, 100.0, 0.5),
-            ("beta", 0.0, 10.0, 0.1),
-            ("dt", 0.001, 0.05, 0.001),
-            ("epsilon", 1e-12, 1e-1, 1e-9),
-        ]
-        .into_iter()
-        .map(|(k, min, max, step)| (k.into(), ParameterConstraint { min, max, step }))
-        .collect()
     }
 }
 

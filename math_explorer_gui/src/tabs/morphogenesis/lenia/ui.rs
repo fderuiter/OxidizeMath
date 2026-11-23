@@ -99,8 +99,8 @@ impl LeniaTool {
                     self.playing = false;
                     self.step_once();
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => self.reseed_current_genome(),
-                PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
             }
         }
         ui.small(format!(

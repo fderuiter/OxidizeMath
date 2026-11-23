@@ -13,8 +13,6 @@ use nalgebra::Point3;
 
 impl AttractorPlotter {
     pub(super) fn draw_twin_central_views(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        self.draw_central_fault_banner(ui, ctx);
-
         if self.history.is_empty() && !self.diverged() {
             render_empty_plot_guidance(
                 ui,

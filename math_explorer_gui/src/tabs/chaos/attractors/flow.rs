@@ -94,6 +94,63 @@ impl CompiledFlowJob {
         }
         sum_ln / (400.0 * dt)
     }
+
+    /// Creates a zero-allocation stack view overriding selected parameter slots.
+    #[inline]
+    #[must_use]
+    pub fn bind_params(&self, overrides: &[(usize, f64)]) -> BoundFlowView<'_> {
+        let mut params = self.params;
+        for &(idx, val) in overrides {
+            if idx < self.param_len {
+                params[idx] = val;
+            }
+        }
+        BoundFlowView { job: self, params }
+    }
+}
+
+impl math_explorer::pure_math::analysis::ode::OdeSystem<Vector3<f64>> for CompiledFlowJob {
+    fn derivative(&self, _t: f64, state: &Vector3<f64>) -> Vector3<f64> {
+        self.eval_rhs(*state)
+    }
+}
+
+/// Zero-allocation stack view of [`CompiledFlowJob`] with overridden parameter values.
+#[derive(Clone, Copy, Debug)]
+pub struct BoundFlowView<'a> {
+    job: &'a CompiledFlowJob,
+    params: [f64; MAX_SYNTHESIZED_PARAMS],
+}
+
+impl BoundFlowView<'_> {
+    /// Evaluates $(\dot{x}, \dot{y}, \dot{z})$ at `pos` on stack buffers.
+    #[inline]
+    #[must_use]
+    pub fn eval_rhs(&self, pos: Vector3<f64>) -> Vector3<f64> {
+        let p = &self.params[..self.job.param_len];
+        Vector3::new(
+            self.job.exprs[0].eval_3d(pos.x, pos.y, pos.z, p),
+            self.job.exprs[1].eval_3d(pos.x, pos.y, pos.z, p),
+            self.job.exprs[2].eval_3d(pos.x, pos.y, pos.z, p),
+        )
+    }
+
+    /// Advances `pos` by one 4th-order Runge-Kutta step of size `dt` on stack buffers.
+    #[inline]
+    #[must_use]
+    pub fn rk4_step(&self, pos: Vector3<f64>, dt: f64) -> Vector3<f64> {
+        let k1 = self.eval_rhs(pos);
+        let k2 = self.eval_rhs(pos + k1 * (0.5 * dt));
+        let k3 = self.eval_rhs(pos + k2 * (0.5 * dt));
+        let k4 = self.eval_rhs(pos + k3 * dt);
+        pos + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (dt / 6.0)
+    }
+}
+
+impl math_explorer::pure_math::analysis::ode::OdeSystem<Vector3<f64>> for BoundFlowView<'_> {
+    fn derivative(&self, _t: f64, state: &Vector3<f64>) -> Vector3<f64> {
+        self.eval_rhs(*state)
+    }
 }
 
 /// Builds the default 3-equation [`CoupledExpressionBank`] for custom 3D attractors.

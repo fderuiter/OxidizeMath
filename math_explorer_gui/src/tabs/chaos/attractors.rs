@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::{
     Camera3D, CoupledExpressionBank, MathExpressionInputBar, Scene3DBuilder, TimelineRingBuffer,
@@ -10,6 +11,12 @@ use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSy
 use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+#[path = "attractors/atlas.rs"]
+pub mod atlas;
+use atlas::ATTRACTOR_ATLAS_AXIS_PAIRS;
+#[cfg(test)]
+pub use atlas::{lorenz_hopf_threshold, AttractorCartographer};
 
 #[path = "attractors/flow.rs"]
 pub mod flow;
@@ -24,6 +31,8 @@ pub use runner_types::*;
 
 #[path = "attractors/runner.rs"]
 mod runner;
+#[path = "attractors/runner_checkpoint.rs"]
+mod runner_checkpoint;
 #[path = "attractors/serde_vec3.rs"]
 mod serde_vec3;
 pub use runner::*;
@@ -31,6 +40,9 @@ pub use runner::*;
 #[path = "attractors/twin_state.rs"]
 pub mod twin_state;
 pub use twin_state::*;
+
+#[path = "attractors/theory.rs"]
+mod theory;
 
 #[path = "attractors/ui.rs"]
 mod ui;
@@ -88,6 +100,7 @@ pub struct AttractorPlotter {
     pub(crate) metrics_cache: ChaosMetricsCache,
     pub(super) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
+    pub(crate) atlas: ParameterAtlasController,
 }
 
 impl Default for AttractorPlotter {
@@ -146,6 +159,7 @@ impl Default for AttractorPlotter {
                 false,
             ),
             invariants_cache: invariants::CachedAttractorInvariants::default(),
+            atlas: ParameterAtlasController::new(ATTRACTOR_ATLAS_AXIS_PAIRS.to_vec()),
         }
     }
 }
@@ -395,10 +409,24 @@ impl AttractorPlotter {
 
     pub(crate) fn seek_timeline_frame(&mut self, frame_idx: usize, ctx: &egui::Context) {
         self.execution_state = SolverExecutionState::Paused;
+        let mut target_step = frame_idx;
         if let Some(frame) = self.timeline.seek(frame_idx) {
+            target_step = frame.step;
             self.apply_restored_frame(frame);
         }
-        let _ = self.worker.send_command(SimCommand::SeekFrame(frame_idx));
+        let _ = self.worker.send_command(SimCommand::SeekStep(target_step));
+        ctx.request_repaint();
+    }
+
+    pub(crate) fn seek_timeline_step(&mut self, target_step: usize, ctx: &egui::Context) {
+        self.execution_state = SolverExecutionState::Paused;
+        let pos = self.timeline.iter_all().position(|f| f.step == target_step);
+        if let Some(pos) = pos {
+            if let Some(frame) = self.timeline.seek(pos) {
+                self.apply_restored_frame(frame);
+            }
+        }
+        let _ = self.worker.send_command(SimCommand::SeekStep(target_step));
         ctx.request_repaint();
     }
 

@@ -1,3 +1,5 @@
+use crate::error::EpidemiologyError;
+
 /// Solves the final size equation for $S_\infty$ using Newton-Raphson.
 ///
 /// Equation: $\ln(S_0 / S_\infty) = R_0 (1 - S_\infty / N)$
@@ -16,9 +18,9 @@
 /// assert!(calculate_final_size(0.0, 999.0, 1000.0).is_err());
 /// ```
 #[verified_engine::verified]
-pub fn calculate_final_size(r0: f64, s0: f64, n: f64) -> Result<f64, String> {
-    if r0 <= 0.0 {
-        return Err("R0 must be positive".to_string());
+pub fn calculate_final_size(r0: f64, s0: f64, n: f64) -> Result<f64, EpidemiologyError> {
+    if !r0.is_finite() || r0 <= 0.0 {
+        return Err(EpidemiologyError::InvalidReproductionNumber { r0 });
     }
 
     // f(x) = ln(S0) - ln(x) - R0 + R0*x/N
@@ -45,7 +47,7 @@ pub fn calculate_final_size(r0: f64, s0: f64, n: f64) -> Result<f64, String> {
         let dfx = -1.0 / x + r0 / n;
 
         if dfx.abs() < math_commons::registry::TOLERANCE_HIGH {
-            return Err("Derivative too close to zero".to_string());
+            return Err(EpidemiologyError::NearZeroDerivative { x, derivative: dfx });
         }
 
         let next_x = x - fx / dfx;
@@ -64,7 +66,9 @@ pub fn calculate_final_size(r0: f64, s0: f64, n: f64) -> Result<f64, String> {
         }
     }
 
-    Err("Newton-Raphson failed to converge".to_string())
+    Err(EpidemiologyError::ConvergenceFailure {
+        iterations: max_iter,
+    })
 }
 
 #[cfg(test)]
@@ -85,5 +89,16 @@ mod tests {
         // So S_inf should be small (less than 20% of N).
         assert!(s_inf < n * 0.2, "S_inf should be small for high R0");
         assert!(s_inf > 0.0);
+    }
+
+    #[test]
+    fn test_final_size_rejects_non_positive_r0_without_heap_allocations() {
+        let (ok, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            matches!(
+                calculate_final_size(0.0, 999.0, 1000.0),
+                Err(EpidemiologyError::InvalidReproductionNumber { r0 }) if r0 == 0.0
+            )
+        });
+        assert!(ok);
     }
 }

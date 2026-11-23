@@ -297,14 +297,10 @@ fn test_playback_transport_registers_frame_commands() {
 }
 
 #[test]
-fn test_opt_in_step_back_comma_shortcut_and_scrubber_metadata() {
-    use egui_plot::commands::{CommandRegistryData, CommandTrigger};
-
+fn test_non_opted_in_transport_disables_step_back_and_omits_scrubber() {
     clear_test_announcements();
     let ctx = egui::Context::default();
     let mut base_id = egui::Id::NULL;
-
-    // Non-opted-in transport ignores Comma and omits step_back / scrubber WidgetInfo
     let mut default_action = None;
     let _ = ctx.run(key_input(egui::Key::Comma), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -314,16 +310,31 @@ fn test_opt_in_step_back_comma_shortcut_and_scrubber_metadata() {
         });
     });
     assert_eq!(default_action, None);
-    assert!(ctx
-        .data(|d| d.get_temp::<egui::WidgetInfo>(base_id.with("step_back_button_info")))
-        .is_none());
+    assert!(
+        !ctx.data(|d| d.get_temp::<egui::WidgetInfo>(base_id.with("step_back_button_info")))
+            .expect("step_back_button_info recorded")
+            .enabled
+    );
     assert!(ctx
         .data(|d| d.get_temp::<egui::WidgetInfo>(base_id.with("timeline_scrubber_info")))
         .is_none());
+}
 
-    // Opted-in transport responds to Comma, registers CommandRegistryData, and populates WidgetInfo
+#[test]
+fn test_opt_in_step_back_comma_shortcut_and_scrubber_metadata() {
+    use crate::async_sim::TimelineMetadata;
+    use egui_plot::commands::{CommandRegistryData, CommandTrigger};
+
+    clear_test_announcements();
+    let ctx = egui::Context::default();
     let mut back_action = None;
     let mut twin_id = egui::Id::NULL;
+    let meta = TimelineMetadata {
+        current_step: 42,
+        min_step: 0,
+        max_step: 119,
+        stride: 1,
+    };
     let _ = ctx.run(key_input(egui::Key::Comma), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
             twin_id = ui.make_persistent_id("twin_sim");
@@ -332,15 +343,14 @@ fn test_opt_in_step_back_comma_shortcut_and_scrubber_metadata() {
                 "Attractor Plotter",
                 SimWorkerState::Ready,
             )
-            .can_step_back(true)
-            .timeline_scrubber(42, 120)
+            .timeline(Some(meta))
             .show(ui);
         });
     });
     assert_eq!(back_action, Some(PlaybackAction::StepBack));
     assert!(ctx
         .data(|d| d.get_temp::<egui::WidgetInfo>(twin_id.with("step_back_button_info")))
-        .is_some());
+        .is_some_and(|info| info.enabled));
     assert!(ctx
         .data(|d| d.get_temp::<egui::WidgetInfo>(twin_id.with("timeline_scrubber_info")))
         .is_some());
@@ -351,23 +361,32 @@ fn test_opt_in_step_back_comma_shortcut_and_scrubber_metadata() {
         .commands;
     assert!(cmds.iter().any(|c| {
         c.context == "Simulation Playback"
-            && c.name == "Step Backward"
+            && c.name == "Step Back"
             && c.trigger == CommandTrigger::Key(egui::Key::Comma)
     }));
     assert!(all_announcements().iter().any(|(msg, prio)| {
-        msg.contains("Stepping backward Attractor Plotter") && prio == "polite"
+        msg.contains("Stepping Attractor Plotter simulation backward to step 41")
+            && prio == "polite"
     }));
 }
 
 #[test]
 fn test_comma_shortcut_suppressed_when_text_edit_focused() {
+    use crate::async_sim::TimelineMetadata;
+
     let ctx = egui::Context::default();
     let mut formula = String::from("1e-9 * cos(x0)");
+    let meta = Some(TimelineMetadata {
+        current_step: 10,
+        min_step: 0,
+        max_step: 25,
+        stride: 1,
+    });
 
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
             let _ = PlaybackTransport::in_thread("twin", "Attractor Plotter", false)
-                .can_step_back(true)
+                .timeline(meta)
                 .show(ui);
             ui.add(egui::TextEdit::singleline(&mut formula))
                 .request_focus();
@@ -379,7 +398,7 @@ fn test_comma_shortcut_suppressed_when_text_edit_focused() {
         egui::CentralPanel::default().show(ctx, |ui| {
             assert!(ctx.wants_keyboard_input());
             action = PlaybackTransport::in_thread("twin", "Attractor Plotter", false)
-                .can_step_back(true)
+                .timeline(meta)
                 .show(ui);
             let _ = ui.add(egui::TextEdit::singleline(&mut formula));
         });

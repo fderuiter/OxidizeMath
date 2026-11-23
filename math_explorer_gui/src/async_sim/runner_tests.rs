@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn test_morphogenesis_runner_offload() {
     use crate::tabs::morphogenesis::{
-        MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
+        MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTool,
     };
     use math_explorer::biology::diffusion::FiniteDifference2D;
     use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
@@ -25,7 +25,7 @@ fn test_morphogenesis_runner_offload() {
         kinetics,
         diffusion,
     );
-    MorphogenesisTab::initialize_system(&mut system, width, height);
+    MorphogenesisTool::initialize_system(&mut system, width, height);
 
     let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
         a: 0.1,
@@ -41,6 +41,9 @@ fn test_morphogenesis_runner_offload() {
         params: Arc::clone(&params),
         width,
         height,
+        step_count: 0,
+        rng: oxidize_core::rng::OxidizeRng::default(),
+        noise_amplitude: 0.0,
     };
 
     let snap_before = runner.get_snapshot();
@@ -52,10 +55,7 @@ fn test_morphogenesis_runner_offload() {
     runner.step();
 
     // Verify parameter change takes effect immediately
-    {
-        let mut p = params.write().unwrap();
-        p.a = 0.2;
-    }
+    params.write().unwrap().a = 0.2;
     runner.step();
 
     let snap_after = runner.get_snapshot();
@@ -215,6 +215,8 @@ fn test_mri_runner_offload() {
         current_time: 0.0,
         history: VecDeque::new(),
         max_history: 1000,
+        step_count: 0,
+        rng: oxidize_core::rng::OxidizeRng::default(),
     };
 
     assert_eq!(runner.current_time, 0.0);
@@ -278,6 +280,8 @@ fn test_physics_and_chaos_runners_step_once() {
         current_time: 0.0,
         history: VecDeque::new(),
         max_history: 100,
+        step_count: 0,
+        rng: oxidize_core::rng::OxidizeRng::default(),
     };
     mri.step_once();
     assert!((mri.current_time - 0.001).abs() < 1e-12);
@@ -292,6 +296,7 @@ fn test_physics_and_chaos_runners_step_once() {
             simulation_speed: 5,
             max_points: 500,
             mode: AttractorMode::Lorenz,
+            custom_flow: None,
             ..Default::default()
         })));
     attractor.execution_state = SolverExecutionState::Paused;

@@ -306,12 +306,14 @@ impl EllipticCurvePlayground {
                     self.refresh_status_summary();
                     self.bump_revision();
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => *self = Self::default(),
-                PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
             }
         }
         ui.separator();
         self.render_parameter_sliders(ui);
+        ui.separator();
+        self.render_torsion_sonification(ui);
         ui.separator();
         self.render_algebraic_readout(ui);
     }
