@@ -141,6 +141,54 @@ pub fn restore_inlet_and_core_mask(mask: &mut [bool; LBM_CELL_COUNT]) {
     }
 }
 
+/// Applies an interpolated [`crate::framework::BrushStroke`] to `mask`, returning `true` if any cell changed.
+pub fn apply_stroke_to_fairing_mask(
+    mask: &mut [bool; LBM_CELL_COUNT],
+    stroke: &crate::framework::BrushStroke,
+    lock_core: bool,
+) -> bool {
+    let is_obs = match stroke.mode {
+        crate::framework::BrushMode::Solid => true,
+        crate::framework::BrushMode::Erase => false,
+        _ => return false,
+    };
+    let (x0, y0) =
+        crate::framework::SpatialBrushKit::plot_to_grid_y_up(stroke.start, LBM_WIDTH, LBM_HEIGHT);
+    let (x1, y1) =
+        crate::framework::SpatialBrushKit::plot_to_grid_y_up(stroke.end, LBM_WIDTH, LBM_HEIGHT);
+    let r = (stroke.radius.round() as i32).clamp(0, 16);
+    let mut changed = false;
+    crate::framework::rasterize_disk_stroke(
+        (x0, y0),
+        (x1, y1),
+        r,
+        (LBM_WIDTH, LBM_HEIGHT),
+        |gx, gy| {
+            if gx < LBM_INLET_COLS {
+                return;
+            }
+            let dx = gx as i32 - LBM_CORE_X;
+            let dy = gy as i32 - LBM_CORE_Y;
+            if !is_obs && lock_core && dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS {
+                return;
+            }
+            let idx = flatten_2d_index(gx, gy, LBM_WIDTH);
+            if mask[idx] != is_obs {
+                mask[idx] = is_obs;
+                changed = true;
+            }
+        },
+    );
+    changed
+}
+
+/// Encodes `mask` into run-length encoded `[value, count]` pairs for `SculptStatePayload`.
+#[must_use]
+pub fn encode_fairing_mask_rle(mask: &[bool; LBM_CELL_COUNT]) -> Vec<[u32; 2]> {
+    let bytes: Vec<u8> = mask.iter().map(|&b| u8::from(b)).collect();
+    crate::framework::encode_rle_mask(&bytes)
+}
+
 /// Counts total solid cells and verifies every cell within `R_core = 4` of `(30, 25)` is solid.
 #[must_use]
 pub fn inspect_mask_geometry(mask: &[bool; LBM_CELL_COUNT]) -> (usize, bool) {
