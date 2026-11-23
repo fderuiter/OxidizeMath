@@ -306,7 +306,7 @@ Interactive tools can map live mathematical invariants to real-time audio and `.
 ## Related References
 
 - Interactive tool trait definition: [`math_explorer_gui/src/framework/mod.rs`](../../math_explorer_gui/src/framework/mod.rs)
-- Dual-backend sonification architecture: [ADR 0037](../adr/0037-dual-backend-web-audio-sonification.md)
+- Dual-backend sonification architecture: [ADR 0038](../adr/0038-dual-backend-web-audio-sonification.md)
 - Example tool implementation (CERA): [`math_explorer_gui/src/tabs/climate/cera.rs`](../../math_explorer_gui/src/tabs/climate/cera.rs)
 - Example tool implementation (Radiation Dose): [`math_explorer_gui/src/tabs/medical/dose.rs`](../../math_explorer_gui/src/tabs/medical/dose.rs)
 - [System Overview](system_overview.md)
