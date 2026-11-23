@@ -1,7 +1,12 @@
 use super::*;
 
-#[test]
-fn test_morphogenesis_runner_offload() {
+fn build_test_morphogenesis_runner(
+    width: usize,
+    height: usize,
+) -> (
+    crate::tabs::morphogenesis::MorphogenesisRunner,
+    Arc<std::sync::RwLock<crate::tabs::morphogenesis::MorphogenesisSharedParams>>,
+) {
     use crate::tabs::morphogenesis::{
         MorphogenesisHeatmapMode, MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTool,
     };
@@ -11,7 +16,6 @@ fn test_morphogenesis_runner_offload() {
     };
     use math_explorer::math_kernel::types::{Dimension, StepSize};
 
-    let (width, height) = (20, 20);
     let diffusion = FiniteDifference2D::new(
         Dimension(width),
         Dimension(height),
@@ -26,7 +30,6 @@ fn test_morphogenesis_runner_offload() {
         diffusion,
     );
     MorphogenesisTool::initialize_system(&mut system, width, height);
-
     let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
         a: 0.1,
         b: 0.9,
@@ -38,7 +41,7 @@ fn test_morphogenesis_runner_offload() {
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
     }));
-    let mut runner = MorphogenesisRunner {
+    let runner = MorphogenesisRunner {
         system,
         params: Arc::clone(&params),
         width,
@@ -47,6 +50,12 @@ fn test_morphogenesis_runner_offload() {
         rng: oxidize_core::rng::OxidizeRng::default(),
         noise_amplitude: 0.0,
     };
+    (runner, params)
+}
+
+#[test]
+fn test_morphogenesis_runner_offload() {
+    let (mut runner, params) = build_test_morphogenesis_runner(20, 20);
 
     let snap_before = runner.get_snapshot();
     assert_eq!((snap_before.width, snap_before.height), (20, 20));
