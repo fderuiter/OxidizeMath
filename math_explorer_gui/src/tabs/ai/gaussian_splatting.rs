@@ -8,15 +8,17 @@ mod ui;
 #[path = "gaussian_splatting_export.rs"]
 mod export;
 
-use crate::framework::{
-    Camera3D, ExportCapabilities, InteractiveTool, ProjectionMode, Scene3DBuilder,
-};
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
+#[cfg(test)]
+use crate::framework::ProjectionMode;
 use eframe::egui;
-use math_explorer::ai::gaussian_splatting::{projection, Gaussian2D, Gaussian3D, Scene};
-use nalgebra::{Matrix2, Matrix2x3, Point2, Point3, Vector3};
+use math_explorer::ai::gaussian_splatting::{Gaussian2D, Scene};
+use nalgebra::Point3;
+#[cfg(test)]
+use scene::evaluate_density_counts_with_thresholds;
 use scene::{
-    build_default_scene, covariance_ellipse_ring, evaluate_density_counts_with_thresholds,
-    lift_ring_to_world, rasterize_splats_into, splat_stroke_color, CAMERA_DISTANCE,
+    build_preset_scene_and_gradients, evaluate_scene_density_counts_with_thresholds,
+    project_single_splat, rasterize_splats_into, VolumetricSplatPreset, CAMERA_DISTANCE,
     DEFAULT_GRAD_THRESHOLD, DEFAULT_OPACITY_THRESHOLD, ELLIPSE_POINTS, GRAD_THRESHOLD_MAX,
     GRAD_THRESHOLD_MIN, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN, VIEWPORT_HALF_EXTENT,
 };
@@ -29,12 +31,6 @@ pub(crate) use scene::SPLAT_GRID_SIZE;
 use scene::SPLAT_GRID_SIZE;
 
 type RenderCacheKey = (u64, u64, u64, u64);
-type ProjectedSplatOverlay = (
-    Gaussian2D,
-    [[f64; 2]; ELLIPSE_POINTS],
-    [Point3<f64>; ELLIPSE_POINTS],
-    egui::Color32,
-);
 
 const fn default_grad_threshold() -> f64 {
     DEFAULT_GRAD_THRESHOLD
@@ -54,8 +50,11 @@ pub struct GaussianSplattingTool {
     pub opacity_threshold: f64,
     /// Shared 3D orbit, pan, projection, and zoom camera state.
     pub camera: Camera3D,
+    /// Active volumetric scene preset (canonical 8-splat or dynamic orbital/Turing volumes).
+    pub scene_preset: VolumetricSplatPreset,
     pub(super) frustum_half_extents: (f64, f64),
     pub(super) scene: Scene,
+    pub(super) grad_magnitudes: Vec<f64>,
     pub(super) projected_splats: Vec<Gaussian2D>,
     pub(super) ellipse_rings: Vec<([[f64; 2]; ELLIPSE_POINTS], egui::Color32)>,
     pub(super) ellipse_rings_3d: Vec<([Point3<f64>; ELLIPSE_POINTS], egui::Color32)>,
@@ -73,8 +72,16 @@ impl Default for GaussianSplattingTool {
         let scale = 1.0;
         let grad_threshold = DEFAULT_GRAD_THRESHOLD;
         let opacity_threshold = DEFAULT_OPACITY_THRESHOLD;
-        let scene = build_default_scene();
+        let scene_preset = VolumetricSplatPreset::Canonical;
+        let (scene, grad_magnitudes) = build_preset_scene_and_gradients(scene_preset);
         let count = scene.gaussians.len();
+        let cached_counts = evaluate_scene_density_counts_with_thresholds(
+            &scene,
+            &grad_magnitudes,
+            scale,
+            grad_threshold,
+            opacity_threshold,
+        );
         let camera = Camera3D::new(0.5, 0.5, 1.0).with_perspective_distance(CAMERA_DISTANCE);
         let world_means = scene.gaussians.iter().map(|g| g.mean).collect();
         Self {
@@ -82,8 +89,10 @@ impl Default for GaussianSplattingTool {
             grad_threshold,
             opacity_threshold,
             camera,
+            scene_preset,
             frustum_half_extents: (VIEWPORT_HALF_EXTENT, VIEWPORT_HALF_EXTENT),
             scene,
+            grad_magnitudes,
             projected_splats: Vec::with_capacity(count),
             ellipse_rings: Vec::with_capacity(count),
             ellipse_rings_3d: Vec::with_capacity(count),
@@ -93,11 +102,7 @@ impl Default for GaussianSplattingTool {
             pixel_buffer: vec![egui::Color32::TRANSPARENT; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE],
             texture: None,
             cached_key: None,
-            cached_counts: evaluate_density_counts_with_thresholds(
-                scale,
-                grad_threshold,
-                opacity_threshold,
-            ),
+            cached_counts,
         }
     }
 }
@@ -114,6 +119,7 @@ impl GaussianSplattingTool {
     }
 
     /// Evaluates `determine_density_action` for `scale`, `grad_threshold`, and `opacity_threshold`.
+    #[cfg(test)]
     #[must_use]
     pub fn compute_density_counts(
         scale: f64,
@@ -124,11 +130,27 @@ impl GaussianSplattingTool {
     }
 
     pub(super) fn sync_density_counts(&mut self) {
-        self.cached_counts = Self::compute_density_counts(
+        self.cached_counts = evaluate_scene_density_counts_with_thresholds(
+            &self.scene,
+            &self.grad_magnitudes,
             self.scale,
             self.grad_threshold,
             self.opacity_threshold,
         );
+    }
+
+    /// Switches the active volumetric `Gaussian3D` scene preset and refreshes density metrics.
+    pub fn set_scene_preset(&mut self, preset: VolumetricSplatPreset) {
+        if self.scene_preset == preset && !self.scene.gaussians.is_empty() {
+            return;
+        }
+        self.scene_preset = preset;
+        let (scene, grads) = build_preset_scene_and_gradients(preset);
+        self.world_means = scene.gaussians.iter().map(|g| g.mean).collect();
+        self.scene = scene;
+        self.grad_magnitudes = grads;
+        self.sync_density_counts();
+        self.cached_key = None;
     }
 
     /// Projects a world `Point3<f64>` using the active splat & reference-axis camera projection.
@@ -156,9 +178,10 @@ impl GaussianSplattingTool {
     }
 
     fn render_key(&self) -> RenderCacheKey {
-        use std::hash::Hasher;
+        use std::hash::{Hash, Hasher};
         let mut cam_hasher = std::collections::hash_map::DefaultHasher::new();
         self.camera.hash_state(&mut cam_hasher);
+        self.scene_preset.hash(&mut cam_hasher);
         let (x_half, y_half) = self.frustum_half_extents;
         (
             self.scale.to_bits(),
@@ -223,62 +246,19 @@ impl GaussianSplattingTool {
         let dist = self.camera.perspective_distance();
         let view_matrix = self.camera.view_matrix(dist);
         for base in &self.scene.gaussians {
-            if let Some((splat_2d, ring_2d, ring_3d, color)) =
-                self.project_single_splat(base, scale_factor, dist, &view_matrix)
+            let want_ring = out_rings.len() < 48;
+            if let Some((splat_2d, maybe_ring)) =
+                project_single_splat(self, base, scale_factor, dist, &view_matrix, want_ring)
             {
                 out_centers.push([splat_2d.mean.x, splat_2d.mean.y]);
-                out_rings.push((ring_2d, color));
-                out_rings_3d.push((ring_3d, color));
+                if let Some((ring_2d, ring_3d, color)) = maybe_ring {
+                    out_rings.push((ring_2d, color));
+                    out_rings_3d.push((ring_3d, color));
+                }
                 out_splats.push(splat_2d);
             }
         }
         out_splats.sort_unstable_by(|a, b| a.depth.total_cmp(&b.depth));
-    }
-
-    fn project_single_splat(
-        &self,
-        base: &Gaussian3D,
-        scale_factor: f64,
-        dist: f64,
-        view_matrix: &nalgebra::Matrix4<f64>,
-    ) -> Option<ProjectedSplatOverlay> {
-        let scaled = Gaussian3D {
-            mean: base.mean,
-            scale: base.scale * scale_factor,
-            rotation: base.rotation,
-            opacity: base.opacity,
-            color: base.color,
-        };
-        let zoom = f64::from(self.camera.zoom);
-        let focal = dist * zoom;
-        let [tx, ty, vz] = self
-            .camera
-            .rotate_to_camera_space(&[scaled.mean.x, scaled.mean.y, scaled.mean.z]);
-        let tz = (dist - vz).max(0.25);
-        let (jacobian, proj_scale) = match self.camera.projection {
-            ProjectionMode::Parallel => (Matrix2x3::new(zoom, 0.0, 0.0, 0.0, zoom, 0.0), zoom),
-            ProjectionMode::Perspective => (
-                projection::compute_jacobian(&Vector3::new(tx, ty, tz), focal, focal),
-                focal / tz,
-            ),
-        };
-        let cov2d =
-            projection::project_covariance(&scaled.compute_covariance(), view_matrix, &jacobian)
-                + Matrix2::from_diagonal_element(1e-4);
-        let inv_cov = cov2d.try_inverse()?;
-        let [mx, my] = self.project_splat_point(scaled.mean);
-        let mean2d = Point2::new(mx, my);
-        let ring_2d = covariance_ellipse_ring(mean2d, &cov2d);
-        let ring_3d = lift_ring_to_world(&self.camera, &ring_2d, mean2d, [tx, ty, vz], proj_scale);
-        let color = splat_stroke_color(&scaled.color, scaled.opacity);
-        let splat_2d = Gaussian2D {
-            mean: mean2d,
-            conic: -0.5 * inv_cov,
-            opacity: scaled.opacity,
-            color: scaled.color,
-            depth: tz,
-        };
-        Some((splat_2d, ring_2d, ring_3d, color))
     }
 }
 
@@ -288,6 +268,8 @@ struct GaussianSplattingSaveState {
     grad_threshold: f64,
     opacity_threshold: f64,
     camera: Camera3D,
+    #[serde(skip_serializing_if = "VolumetricSplatPreset::is_canonical")]
+    scene_preset: VolumetricSplatPreset,
 }
 
 #[derive(serde::Deserialize)]
@@ -298,6 +280,8 @@ struct GaussianSplattingState {
     grad_threshold: f64,
     #[serde(default = "default_opacity_threshold")]
     opacity_threshold: f64,
+    #[serde(default)]
+    scene_preset: VolumetricSplatPreset,
     #[serde(default)]
     camera: Option<Camera3D>,
     #[serde(default)]
@@ -331,6 +315,7 @@ impl InteractiveTool for GaussianSplattingTool {
         self.scale.to_bits().hash(&mut h);
         self.grad_threshold.to_bits().hash(&mut h);
         self.opacity_threshold.to_bits().hash(&mut h);
+        self.scene_preset.hash(&mut h);
         self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
@@ -377,6 +362,7 @@ impl InteractiveTool for GaussianSplattingTool {
             grad_threshold: self.grad_threshold,
             opacity_threshold: self.opacity_threshold,
             camera: self.camera,
+            scene_preset: self.scene_preset,
         })
         .ok()
     }
@@ -409,6 +395,7 @@ impl InteractiveTool for GaussianSplattingTool {
         self.grad_threshold = parsed.grad_threshold;
         self.opacity_threshold = parsed.opacity_threshold;
         self.camera.apply_pose(camera);
+        self.set_scene_preset(parsed.scene_preset);
         self.sync_density_counts();
         self.cached_key = None;
         Ok(())

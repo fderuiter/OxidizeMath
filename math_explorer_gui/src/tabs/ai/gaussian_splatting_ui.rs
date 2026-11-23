@@ -16,6 +16,17 @@ impl GaussianSplattingTool {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Gaussian Splatting");
             ui.separator();
+            let mut selected_preset = self.scene_preset;
+            egui::ComboBox::from_label("Scene Preset")
+                .selected_text(selected_preset.label())
+                .show_ui(ui, |ui| {
+                    for preset in crate::volumetric_scene::presets::VolumetricSplatPreset::ALL {
+                        ui.selectable_value(&mut selected_preset, preset, preset.label());
+                    }
+                });
+            if selected_preset != self.scene_preset {
+                self.set_scene_preset(selected_preset);
+            }
             let prev_scale = self.scale;
             if ui
                 .add(egui::Slider::new(&mut self.scale, 0.1..=10.0).text("Scale"))
