@@ -1,8 +1,8 @@
 // [cite:hurwitz_kronecker]
 // [cite:modular_polynomials_review]
 
-use super::chord_tangent_canvas::{toroidal_secant_segments, CanvasViewport, REAL_VIEW_LIMIT};
-use super::chord_tangent_tool::{snap_real_point, CurveFieldMode, WeierstrassPlaygroundTool};
+use super::chord_tangent_canvas::{CanvasViewport, REAL_VIEW_LIMIT, toroidal_secant_segments};
+use super::chord_tangent_tool::{CurveFieldMode, WeierstrassPlaygroundTool, snap_real_point};
 use crate::app::SemanticPalette;
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{

@@ -251,17 +251,19 @@ impl SimulationRunner for MriRunner {
 
     fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
         if let Some(s) = checkpoint.state.as_scalars()
-            && s.len() >= 4 {
-                self.simulator.magnetization = Vector3::new(s[0], s[1], s[2]);
-                self.current_time = s[3];
-            }
+            && s.len() >= 4
+        {
+            self.simulator.magnetization = Vector3::new(s[0], s[1], s[2]);
+            self.current_time = s[3];
+        }
         if let Some(p) = checkpoint.params.as_scalars()
-            && p.len() >= 6 {
-                self.simulator.m0 = p[0];
-                self.simulator.t1 = p[1];
-                self.simulator.t2 = p[2];
-                self.simulator.b_field = Vector3::new(p[3], p[4], p[5]);
-            }
+            && p.len() >= 6
+        {
+            self.simulator.m0 = p[0];
+            self.simulator.t1 = p[1];
+            self.simulator.t2 = p[2];
+            self.simulator.b_field = Vector3::new(p[3], p[4], p[5]);
+        }
         self.step_count = checkpoint.step;
         self.rng = checkpoint.rng.clone();
     }
@@ -286,21 +288,23 @@ impl SimulationRunner for MriRunner {
             .skip(skip)
         {
             if let Some(s) = cp.state.as_scalars()
-                && s.len() >= 4 {
-                    self.history
-                        .push_back((s[3], Vector3::new(s[0], s[1], s[2])));
-                }
+                && s.len() >= 4
+            {
+                self.history
+                    .push_back((s[3], Vector3::new(s[0], s[1], s[2])));
+            }
         }
     }
 
     fn replay_step(&mut self, params: &CheckpointParams) {
         if let Some(p) = params.as_scalars()
-            && p.len() >= 6 {
-                self.simulator.m0 = p[0];
-                self.simulator.t1 = p[1];
-                self.simulator.t2 = p[2];
-                self.simulator.b_field = Vector3::new(p[3], p[4], p[5]);
-            }
+            && p.len() >= 6
+        {
+            self.simulator.m0 = p[0];
+            self.simulator.t1 = p[1];
+            self.simulator.t2 = p[2];
+            self.simulator.b_field = Vector3::new(p[3], p[4], p[5]);
+        }
         self.advance_bloch_ticks(1);
     }
 

@@ -308,3 +308,90 @@ fn test_runner_pass_latency_budget_64_and_128() {
         );
     }
 }
+
+#[test]
+fn test_mri_hahn_echo_scrub_sonification_and_zero_alloc_pulse() {
+    use super::pulse::{
+        CHALLENGE_BLOCH_HAHN_ECHO, MRI_PULSE_SAMPLES, MriPulseMode, MriPulseWorkspace,
+    };
+    use super::tool::MriTool;
+
+    let mut mri = MriTool::default();
+    mri.apply_challenge(Some(CHALLENGE_BLOCH_HAHN_ECHO))
+        .expect("Hahn echo challenge activates");
+    mri.pulse_config.b1_amp = 5.87e-6;
+    mri.pulse_config.duration_tau = 0.002;
+    mri.recompute_pulse_sequence();
+    let eval_before = mri.evaluate_challenge().expect("challenge evaluation");
+    assert!(eval_before.passed);
+
+    let mid_frame = mri.pulse_workspace.sample_sonification_frame(
+        MriPulseMode::HahnSpinEcho,
+        60,
+        mri.simulator.b_field,
+        mri.simulator.m0,
+    );
+    let echo_frame = mri.pulse_workspace.sample_sonification_frame(
+        MriPulseMode::HahnSpinEcho,
+        MRI_PULSE_SAMPLES - 1,
+        mri.simulator.b_field,
+        mri.simulator.m0,
+    );
+    assert_eq!(echo_frame.active_voices, 8);
+    assert!(echo_frame.master_gain > mid_frame.master_gain * 1.4);
+    mri.pulse_workspace.playhead_idx = 60;
+    mri.latest_sonification = mid_frame;
+    assert_eq!(eval_before.score, mri.evaluate_challenge().unwrap().score);
+
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut ws = MriPulseWorkspace::default();
+    let cfg = mri.pulse_config;
+    let b = mri.simulator.b_field;
+    verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let _ = ws.evaluate_hahn_echo(1.5, 1.0, 0.08, 1.0, &cfg);
+        for idx in 0..1_000usize {
+            let _ = ws.sample_sonification_frame(
+                MriPulseMode::HahnSpinEcho,
+                idx % MRI_PULSE_SAMPLES,
+                b,
+                1.0,
+            );
+        }
+    });
+}
+
+#[test]
+fn test_kspace_sonification_gradient_shift_and_theme_panels() {
+    use super::tool::MriTool;
+
+    let mut runner = build_runner(MriKSpaceToolState {
+        grid_size: 64,
+        selected_voxel: [32, 32],
+        ..Default::default()
+    });
+    let f0 = runner.get_snapshot().sonification;
+    assert_eq!(f0.active_voices, 8);
+    runner.params.write().unwrap().config.grad_gx_integral = 3.0e-5;
+    runner.process_command(SimCommand::Custom("sync_view".to_string()));
+    let f_grad = runner.get_snapshot().sonification;
+    assert!((f_grad.voices[0].freq_hz - f0.voices[0].freq_hz).abs() > 10.0);
+
+    let mut mri = MriTool::default();
+    let mut kspace_tool = MriKSpaceTool::default();
+    let ctx = egui::Context::default();
+    for mode in [
+        crate::app::ThemeMode::Dark,
+        crate::app::ThemeMode::Light,
+        crate::app::ThemeMode::HighContrast,
+    ] {
+        mode.apply_to_context(&ctx);
+        let _ = ctx.run(egui::RawInput::default(), |c| {
+            egui::CentralPanel::default().show(c, |ui| {
+                mri.show_inside(ui);
+                kspace_tool.show_inside(ui);
+            });
+        });
+    }
+}

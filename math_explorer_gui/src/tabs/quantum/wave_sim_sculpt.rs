@@ -323,31 +323,7 @@ impl WaveSimulatorTool {
         }
     }
 
-    pub(crate) fn draw_sculpt_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.label("Potential V(x) Sculpting");
-        ui.horizontal(|ui| {
-            ui.selectable_value(
-                &mut self.brush_kit.interaction_mode,
-                BrushInteractionMode::Sculpt,
-                "🖌 Sculpt",
-            );
-            ui.selectable_value(
-                &mut self.brush_kit.interaction_mode,
-                BrushInteractionMode::Pan,
-                "✋ Pan",
-            );
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(
-                &mut self.brush_kit.mode,
-                BrushMode::PotentialBarrier,
-                "Barrier",
-            );
-            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialWell, "Well");
-            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialStep, "Step");
-            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::Erase, "Erase");
-        });
-        ui.add(egui::Slider::new(&mut self.brush_kit.radius, 0.10..=1.20).text("Brush Width"));
+    fn draw_sculpt_action_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal_wrapped(|ui| {
             if ui.button("⛩ Stamp Double Barrier").clicked() {
                 self.stamp_double_barrier_preset(ctx);
@@ -393,5 +369,33 @@ impl WaveSimulatorTool {
             .worker
             .send_command(SimCommand::Custom("Clear Potential Edits".to_string()));
         ctx.request_repaint();
+    }
+
+    pub(crate) fn draw_sculpt_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.label("Potential V(x) Sculpting");
+        ui.horizontal(|ui| {
+            ui.selectable_value(
+                &mut self.brush_kit.interaction_mode,
+                BrushInteractionMode::Sculpt,
+                "🖌 Sculpt",
+            );
+            ui.selectable_value(
+                &mut self.brush_kit.interaction_mode,
+                BrushInteractionMode::Pan,
+                "✋ Pan",
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(
+                &mut self.brush_kit.mode,
+                BrushMode::PotentialBarrier,
+                "Barrier",
+            );
+            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialWell, "Well");
+            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialStep, "Step");
+            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::Erase, "Erase");
+        });
+        ui.add(egui::Slider::new(&mut self.brush_kit.radius, 0.10..=1.20).text("Brush Width"));
+        self.draw_sculpt_action_buttons(ui, ctx);
     }
 }

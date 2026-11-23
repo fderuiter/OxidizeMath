@@ -24,7 +24,7 @@ pub struct MriKSpaceTool {
     pub worker: BackgroundWorker<MriKSpaceRunner>,
     /// Most recent frame snapshot rendered across spatial, k-space, recon, and 3D Bloch views.
     pub latest: MriKSpaceSnapshot,
-    /// Latest stack-allocated sonification frame for Web Audio and `.wav` export.
+    /// Latest stack-allocated 8-voice sonification frame for Web Audio and `.wav` export.
     pub latest_sonification: crate::audio::SonificationFrame,
     pub(crate) fault_notified: bool,
     pub(crate) phantom_tex: Option<egui::TextureHandle>,
@@ -127,6 +127,28 @@ impl MriKSpaceTool {
         self.worker
             .reset_or_respawn(move || MriKSpaceRunner::new(params));
         self.textures_dirty = true;
+    }
+
+    pub(crate) fn poll_worker_snapshots(&mut self, high_contrast: bool) {
+        if self.last_high_contrast != Some(high_contrast) {
+            self.last_high_contrast = Some(high_contrast);
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .high_contrast = high_contrast;
+            self.sync_and_notify("sync_view");
+        }
+        while let Some(snap) = self.worker.update() {
+            self.latest_sonification = snap.sonification;
+            if let Some(data) = snap
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<MriKSpaceSnapshot>())
+            {
+                self.latest = data.clone();
+                self.textures_dirty = true;
+            }
+        }
     }
 
     /// Applies a brush stroke at grid coordinates `(cx, cy)` and dispatches `SimCommand::ApplyBrush`.

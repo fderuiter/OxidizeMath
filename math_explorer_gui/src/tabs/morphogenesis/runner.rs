@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
-use super::sculpt::{apply_stroke_to_morpho_system, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
+use super::atlas::{WASHOUT_VARIANCE_THRESHOLD, grid_u_variance, is_pattern_forming_regime};
+use super::sculpt::{apply_stroke_to_morpho_system, overlay_cell_mask_colors};
 use crate::async_sim::{
     CheckpointParams, CheckpointPayload, SimCommand, SimulationRunner, StateSnapshot,
     TimeTravelCheckpoint,
@@ -455,19 +455,19 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             ref mask,
         } = checkpoint.state
             && width == self.width
-                && height == self.height
-                && u.len() == self.system.u().len()
-                && v.len() == self.system.v().len()
-            {
-                self.system.u_mut().copy_from_slice(u);
-                self.system.v_mut().copy_from_slice(v);
-                match mask {
-                    Some(bytes) if bytes.len() == width * height => {
-                        let _ = self.system.diffusion.mask.set_roles_slice(bytes);
-                    }
-                    _ => self.system.diffusion.mask.clear(),
+            && height == self.height
+            && u.len() == self.system.u().len()
+            && v.len() == self.system.v().len()
+        {
+            self.system.u_mut().copy_from_slice(u);
+            self.system.v_mut().copy_from_slice(v);
+            match mask {
+                Some(bytes) if bytes.len() == width * height => {
+                    let _ = self.system.diffusion.mask.set_roles_slice(bytes);
                 }
+                _ => self.system.diffusion.mask.clear(),
             }
+        }
         if let Some(p) = checkpoint.params.as_scalars() {
             let _ = self.apply_scalar_params(p);
         }

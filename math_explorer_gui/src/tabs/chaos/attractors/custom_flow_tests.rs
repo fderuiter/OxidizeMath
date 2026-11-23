@@ -70,3 +70,23 @@ fn test_custom_3d_flow_worker_streaming_zero_alloc_and_roundtrip() {
     );
     assert_eq!(restored.flow_bank.params_map(), pmap);
 }
+
+#[test]
+fn test_custom_3d_flow_lyapunov_exponent() {
+    let mut rossler = AttractorPlotter {
+        mode: AttractorMode::Custom,
+        ..Default::default()
+    };
+    let rossler_lyap = rossler
+        .current_lyapunov_exponent()
+        .expect("custom Rössler Lyapunov computed");
+    assert!(rossler_lyap.is_finite() && rossler_lyap > 0.0);
+
+    rossler
+        .flow_bank
+        .set_expressions(&["-a * x - y", "x - a * y", "-b * z"]);
+    let sink_lyap = rossler
+        .current_lyapunov_exponent()
+        .expect("custom sink Lyapunov computed");
+    assert!(sink_lyap.is_finite() && sink_lyap < 0.0);
+}

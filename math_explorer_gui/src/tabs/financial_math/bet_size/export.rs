@@ -2,7 +2,7 @@
 
 use super::{BetSizeCalculatorTool, KellyStrategyRow};
 use crate::accessibility::{announce_live_assertive_status, announce_live_status};
-use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
+use crate::web_io::{SaveAsDialogConfig, spawn_save_as_file_dialog};
 use eframe::egui;
 use egui_plot::export::{copy_text_to_clipboard, escape_csv_field};
 use std::sync::mpsc::channel;

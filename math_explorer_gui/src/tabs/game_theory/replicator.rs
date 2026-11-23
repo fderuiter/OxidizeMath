@@ -31,10 +31,10 @@ pub struct ReplicatorDynamicsTool {
     playback_speed: f64,
     callout_manager: CalloutManager,
     symbolic_mode: bool,
-    symbolic_bars: Vec<Vec<MathExpressionInputBar>>,
+    pub(crate) symbolic_bars: Vec<Vec<MathExpressionInputBar>>,
     last_valid_exprs: Vec<Vec<Expr>>,
     symbolic_compiled: Vec<Vec<Option<CompiledExpr>>>,
-    symbolic_sliders: ParameterSliderBank,
+    pub(crate) symbolic_sliders: ParameterSliderBank,
     symbolic_error: Option<String>,
 }
 
@@ -397,7 +397,7 @@ impl ReplicatorDynamicsTool {
         config.validate()?;
 
         let rows = config.payoff_matrix.len();
-        let mut sliders = ParameterSliderBank::new().with_range(-5.0..=10.0, 2.0);
+        let mut sliders = self.symbolic_sliders.clone();
         let (sym_mode, bars, exprs, compiled) = if let Some(ref sym_rows) = config.symbolic_payoffs
         {
             let (bars, exprs) = build_dynamic_symbolic_grid(sym_rows)?;

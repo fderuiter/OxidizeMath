@@ -1,7 +1,4 @@
-// @explorer_feature = "physics"
-// @explorer_domain = "Physics"
-// @explorer_slug = "quantum"
-// @explorer_order = 10
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod clebsch;
 pub mod spin_viz;
@@ -11,7 +8,10 @@ pub mod wave_sim_sculpt;
 
 crate::declare_simulation_tab!(
     pub struct QuantumTab,
-    "Quantum Mechanics",
+    name: "Quantum Mechanics",
+    domain: "Physics",
+    slug: "quantum",
+    order: 10,
 );
 
 // [cite:quantum_mechanics]

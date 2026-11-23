@@ -1,7 +1,4 @@
-// @explorer_feature = "physics"
-// @explorer_domain = "Physics"
-// @explorer_slug = "fluid_dynamics"
-// @explorer_order = 12
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod lattice_boltzmann;
 pub mod lattice_boltzmann_sculpt;
@@ -13,7 +10,10 @@ pub mod turbulence;
 
 crate::declare_simulation_tab!(
     pub struct FluidDynamicsTab,
-    "Fluid Dynamics",
+    name: "Fluid Dynamics",
+    domain: "Physics",
+    slug: "fluid_dynamics",
+    order: 12,
 );
 
 // [cite:graph_parameters_rust]

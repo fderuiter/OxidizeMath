@@ -105,10 +105,11 @@ fn test_algorithmic_fractran_sonification_complexity_timbre_and_cycle_mute() {
     };
     let out = ctx.run(raw, |ctx| tool.show(ctx));
     let ak = out.platform_output.accesskit_update.unwrap();
-    assert!(ak
-        .nodes
-        .iter()
-        .any(|(_, n)| n.role() == egui::accesskit::Role::Meter));
+    assert!(
+        ak.nodes
+            .iter()
+            .any(|(_, n)| n.role() == egui::accesskit::Role::Meter)
+    );
 
     // Floyd cycle during live playback silences frame and suspends audio controller
     let cycle_cfg = FractranToolConfig {

@@ -68,38 +68,31 @@ trunk serve
 Follow these steps to add a new visualization tab or simulation tool to `math_explorer_gui`.
 
 #### 1. Create the Tab Module
-Create either a single file `src/tabs/<tab_name>.rs` or a directory `src/tabs/<tab_name>/mod.rs`. Every top-level tab module must declare `// @explorer_domain = "<Domain>"` and `// @explorer_slug = "<slug>"`, with optional directives for Cargo feature gating (`// @explorer_feature = "<domain>"`) and navigation ordering (`// @explorer_order = <n>`).
+Create either a single file `src/tabs/<tab_name>.rs` or a directory `src/tabs/<tab_name>/mod.rs`.
 
-For standard `SimulationFramework` domain tabs, use `crate::declare_simulation_tab!`:
+For standard `SimulationFramework` domain tabs, use [`crate::declare_simulation_tab!`](src/tabs/mod.rs), which generates the struct, `Default`, `ExplorerTab`, and static [`TabDescriptor`](src/tabs/mod.rs) registration (`inventory::submit!`):
 
 ```rust,ignore
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-// @explorer_feature = "physics"
-// @explorer_order = 10
-// @explorer_domain = "Physics"
-// @explorer_slug = "fluid"
 
 pub mod navier_stokes;
 
-crate::declare_simulation_tab! {
+crate::declare_simulation_tab!(
     /// Fluid Dynamics Interactive Explorer.
-    pub struct FluidDynamicsTab {
-        name: "Fluid Dynamics",
-        framework_domain: "fluid_dynamics",
-    }
-}
+    pub struct FluidDynamicsTab,
+    name: "Fluid Dynamics",
+    domain: "Physics",
+    slug: "fluid_dynamics",
+    order: 12,
+);
 ```
 
-For custom single-view or bespoke panels, implement `ExplorerTab` and `Default` directly, returning the generated `EXPLORER_DOMAIN` and `EXPLORER_SLUG` module constants:
+For custom single-view or legacy-migrated tabs, implement `ExplorerTab` (including `academic_domain` and `url_slug`) and `Default`, and submit a static [`TabDescriptor`](src/tabs/mod.rs):
 
 ```rust,ignore
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-// @explorer_feature = "physics"
-// @explorer_order = 10
-// @explorer_domain = "Physics"
-// @explorer_slug = "fluid"
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 #[derive(Default)]
@@ -113,11 +106,11 @@ impl ExplorerTab for FluidDynamicsTab {
     }
 
     fn academic_domain(&self) -> &'static str {
-        EXPLORER_DOMAIN
+        "Physics"
     }
 
     fn url_slug(&self) -> &'static str {
-        EXPLORER_SLUG
+        "fluid_dynamics"
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -127,15 +120,23 @@ impl ExplorerTab for FluidDynamicsTab {
         });
     }
 }
+
+inventory::submit! {
+    TabDescriptor {
+        id: "fluid_dynamics",
+        order: 100,
+        build: || Box::new(FluidDynamicsTab::default()),
+    }
+}
 ```
 
-#### 2. Automated Plugin Discovery (`build.rs`)
-Do **not** manually edit `src/tabs/mod.rs` or `src/app/mod.rs` to register your new tab. At compile time, [`build.rs`](build.rs) automatically scans `src/tabs/` for `crate::declare_simulation_tab!` or `impl ExplorerTab for <Struct>` definitions (requiring `Default`), validates unique URL slugs, and generates `$OUT_DIR/generated_tabs.rs` (`EXPLORER_DOMAIN`, `EXPLORER_SLUG`, `instantiate_tabs()`, and `instantiate_tab()`), which [`src/tabs/mod.rs`](src/tabs/mod.rs) includes automatically:
+#### 2. Expose the Module
+In [`src/tabs/mod.rs`](src/tabs/mod.rs), declare your feature-gated module:
 
-- `// @explorer_domain = "Physics"`: Required header comment specifying the `AcademicDomain` category.
-- `// @explorer_slug = "fluid"`: Required header comment specifying a unique URL state slug (cannot be `"simulation"`).
-- `// @explorer_feature = "physics"`: Optional header comment gating the module behind a Cargo feature.
-- `// @explorer_order = 10`: Optional header comment controlling navigation bar sort order (lower numbers appear first).
+```rust,ignore
+#[cfg(feature = "physics")]
+pub mod fluid_dynamics;
+```
 
 #### 3. Adding Interactive Tools Within a Domain Tab
 Most multi-tool domain tabs wrap `SimulationFramework::new("<domain>")` and discover individual tools via `inventory::submit!`. To add a new simulation tool (implementing `InteractiveTool` and `TheoryDescribable`) inside an existing domain folder (`src/tabs/<domain>/<tool>.rs`), declare `pub mod <tool>;` in `src/tabs/<domain>/mod.rs` and follow the step-by-step [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_walkthrough.md).

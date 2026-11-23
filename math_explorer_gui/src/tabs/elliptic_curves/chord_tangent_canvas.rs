@@ -3,11 +3,11 @@
 
 use super::chord_tangent_scene::{draw_fp_scene, draw_real_scene};
 use super::chord_tangent_tool::{
-    snap_real_point, ClickTarget, CurveFieldMode, WeierstrassPlaygroundTool,
+    ClickTarget, CurveFieldMode, WeierstrassPlaygroundTool, snap_real_point,
 };
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleHoverText,
+    AccessibleHoverText, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;

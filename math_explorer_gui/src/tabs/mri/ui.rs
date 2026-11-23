@@ -1,10 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::pulse::{MriPulseMode, MRI_PULSE_SAMPLES};
+use super::pulse::{MRI_PULSE_SAMPLES, MriPulseMode};
 use super::runner::MriSnapshot;
 use super::tool::MriTool;
 use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+    WorkerFaultAction, render_empty_plot_guidance, render_worker_fault_banner,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport};

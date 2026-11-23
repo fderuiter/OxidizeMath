@@ -1,8 +1,6 @@
-// @explorer_feature = "applied"
-// @explorer_domain = "Applied Math"
-// @explorer_slug = "favoritism"
-// @explorer_order = 32
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod state;
@@ -66,15 +64,15 @@ impl ExplorerTab for FavoritismTab {
     }
 
     fn academic_domain(&self) -> &'static str {
-        EXPLORER_DOMAIN
+        "Applied Math"
     }
 
     fn url_slug(&self) -> &'static str {
-        EXPLORER_SLUG
+        "favoritism"
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.framework.show_inside(ui, EXPLORER_SLUG);
+        self.framework.show_inside(ui, "favoritism");
     }
 
     fn state_revision(&self) -> u64 {
@@ -101,6 +99,14 @@ impl ExplorerTab for FavoritismTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "favoritism",
+        order: 32,
+        build: || Box::new(FavoritismTab::default()),
     }
 }
 

@@ -232,10 +232,11 @@ fn test_elliptic_torsion_sonification_periodicity_singular_silence_and_meter() {
         egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
     });
     let ak = out.platform_output.accesskit_update.unwrap();
-    assert!(ak
-        .nodes
-        .iter()
-        .any(|(_, n)| n.role() == egui::accesskit::Role::Meter));
+    assert!(
+        ak.nodes
+            .iter()
+            .any(|(_, n)| n.role() == egui::accesskit::Role::Meter)
+    );
     crate::audio::export_current_tool_wav("elliptic_curve_playground");
 
     // Singular curve emits silent sonification frame

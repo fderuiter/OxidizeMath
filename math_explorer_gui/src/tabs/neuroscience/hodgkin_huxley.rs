@@ -5,7 +5,7 @@ pub mod atlas;
 
 #[cfg(test)]
 pub use atlas::HodgkinHuxleyRegime;
-pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
+pub use atlas::{HH_ATLAS_AXIS_PAIRS, HodgkinHuxleyCartographer};
 
 use crate::async_sim::atlas::RegimeCartographer;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
@@ -17,8 +17,8 @@ use math_explorer::pure_math::analysis::ode::{Euler, SolverExt};
 use oxidize_core::rng::OxidizeRng;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const HH_MAX_HISTORY: usize = 10_000;
 
@@ -111,6 +111,13 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         let new_g_l = *params.get("g_l").unwrap_or(&0.3);
         let new_i_ext = *params.get("i_ext").unwrap_or(&10.0);
         self.apply_scalar_step(new_g_na, new_g_k, new_g_l, new_i_ext, self.dt);
+    }
+
+    fn sync_parameters(&mut self, params: &HashMap<String, f64>) {
+        self.params.g_na = params.get("g_na").copied().unwrap_or(120.0).max(0.0);
+        self.params.g_k = params.get("g_k").copied().unwrap_or(36.0).max(0.0);
+        self.params.g_l = params.get("g_l").copied().unwrap_or(0.3).max(0.0);
+        self.i_ext = *params.get("i_ext").unwrap_or(&10.0);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -274,23 +281,25 @@ impl UnifiedModel for HodgkinHuxleyUnified {
 
     fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
         if let Some(p) = checkpoint.params.as_scalars()
-            && p.len() >= 5 {
-                self.params.g_na = p[0].max(0.0);
-                self.params.g_k = p[1].max(0.0);
-                self.params.g_l = p[2].max(0.0);
-                self.i_ext = p[3];
-                self.dt = p[4];
-            }
+            && p.len() >= 5
+        {
+            self.params.g_na = p[0].max(0.0);
+            self.params.g_k = p[1].max(0.0);
+            self.params.g_l = p[2].max(0.0);
+            self.i_ext = p[3];
+            self.dt = p[4];
+        }
         if let Some(s) = checkpoint.state.as_scalars()
-            && s.len() >= 5 {
-                self.state = HodgkinHuxleyState {
-                    v: s[0],
-                    n: s[1].clamp(0.0, 1.0),
-                    m: s[2].clamp(0.0, 1.0),
-                    h: s[3].clamp(0.0, 1.0),
-                };
-                self.time = s[4];
-            }
+            && s.len() >= 5
+        {
+            self.state = HodgkinHuxleyState {
+                v: s[0],
+                n: s[1].clamp(0.0, 1.0),
+                m: s[2].clamp(0.0, 1.0),
+                h: s[3].clamp(0.0, 1.0),
+            };
+            self.time = s[4];
+        }
         self.prev_v = self.state.v;
         self.spiked_since_snapshot.store(false, Ordering::Relaxed);
         self.step_count = checkpoint.step;
@@ -312,9 +321,10 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             .skip(skip)
         {
             if let Some(s) = cp.state.as_scalars()
-                && s.len() >= 5 {
-                    self.history.push_back([s[4], s[0]]);
-                }
+                && s.len() >= 5
+            {
+                self.history.push_back([s[4], s[0]]);
+            }
         }
     }
 

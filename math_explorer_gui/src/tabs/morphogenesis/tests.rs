@@ -138,9 +138,10 @@ fn test_morphogenesis_grid_resize_and_buffer_safety() {
         serde_json::from_str(&tool.save_state().unwrap()).unwrap();
     state.width = 50;
     state.height = 50;
-    assert!(tool
-        .try_load_state(&serde_json::to_string(&state).unwrap())
-        .is_ok());
+    assert!(
+        tool.try_load_state(&serde_json::to_string(&state).unwrap())
+            .is_ok()
+    );
     assert!(tool.dirty);
 
     wait_for_morphogenesis_snapshot(&mut tool);
@@ -179,14 +180,15 @@ fn test_morphogenesis_starter_gallery_and_spots_stripes_reset_turing_system() {
     assert!(!tab.framework.show_starter_gallery);
 
     // Apply Turing Stripes via Starter Gallery on SimulationFramework
-    assert!(tab
-        .framework
-        .apply_starter_card(
-            "Turing Stripes",
-            Some("MorphogenesisTool"),
-            Some(crate::starter_gallery::PRESET_TURING_STRIPES),
-        )
-        .is_ok());
+    assert!(
+        tab.framework
+            .apply_starter_card(
+                "Turing Stripes",
+                Some("MorphogenesisTool"),
+                Some(crate::starter_gallery::PRESET_TURING_STRIPES),
+            )
+            .is_ok()
+    );
     let state = morpho_state(&tab);
     assert_eq!(
         (state.a, state.b, state.d_v, state.dt),

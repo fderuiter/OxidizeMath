@@ -2,8 +2,8 @@
 
 use super::{Algorithm, AlgorithmVisualizerTool};
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleHoverText,
+    AccessibleHoverText, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use eframe::egui::{self, Pos2, Vec2};
 use std::collections::HashMap;

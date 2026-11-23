@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{SirTool, MAX_SIR_DURATION, MIN_SIR_DURATION};
+use super::{MAX_SIR_DURATION, MIN_SIR_DURATION, SirTool};
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 
@@ -98,3 +98,5 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+// [cite:graph_parameters_rust]

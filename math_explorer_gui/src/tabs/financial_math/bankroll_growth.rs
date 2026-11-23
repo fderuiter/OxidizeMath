@@ -6,7 +6,7 @@
 mod state;
 
 use super::bankroll_ensemble::{BankrollEnsembleLab, BankrollLabMode};
-use crate::accessibility::{announce_live_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_live_status};
 use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoint};

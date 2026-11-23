@@ -11,7 +11,7 @@ use math_explorer::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::analysis::pde::wave_2d::young_double_slit_fringe_spacing;
 
 use super::*;
-use crate::app::{palette::DARK_PALETTE, SemanticPalette};
+use crate::app::{SemanticPalette, palette::DARK_PALETTE};
 
 impl ChladniWaveTankTool {
     pub(super) fn draw_central_workspace(&mut self, parent_ui: &mut egui::Ui) {
@@ -193,18 +193,22 @@ impl ChladniWaveTankTool {
             );
         }
 
+        for &[cx, cy] in &self.state.custom_clamps {
+            painter.circle_filled(to_screen(cx, cy), 3.4_f32, palette.warning);
+        }
+
         let drv_pos = to_screen(self.state.driver_x, self.state.driver_y);
         painter.circle_stroke(drv_pos, 5.0_f32, Stroke::new(1.8_f32, palette.axis_x));
     }
 
-    fn draw_secondary_analysis_plot(&self, ui: &mut egui::Ui) {
+    fn draw_secondary_analysis_plot(&mut self, ui: &mut egui::Ui) {
         match self.state.secondary_plot {
             SecondaryPlotMode::DetectorCrossSection => self.draw_detector_cross_section_plot(ui),
             SecondaryPlotMode::RadialFftSpectrum => self.draw_radial_fft_plot(ui),
         }
     }
 
-    fn draw_detector_cross_section_plot(&self, ui: &mut egui::Ui) {
+    fn draw_detector_cross_section_plot(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.label(format!(
             "Detector Intensity Cross-Section I(y) at x = {}",
@@ -231,6 +235,7 @@ impl ChladniWaveTankTool {
                         .width(2.0_f32),
                 );
                 self.overlay_young_reference(plot_ui, palette, peak_i);
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 
@@ -270,7 +275,7 @@ impl ChladniWaveTankTool {
         }
     }
 
-    fn draw_radial_fft_plot(&self, ui: &mut egui::Ui) {
+    fn draw_radial_fft_plot(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.label("2D FFT Azimuthal Radial Spectrum S(|k|)");
         let pts: PlotPoints = self
@@ -294,6 +299,7 @@ impl ChladniWaveTankTool {
                             .color(palette.series_color(1)),
                     );
                 }
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 

@@ -1,7 +1,4 @@
-// @explorer_feature = "pure_math"
-// @explorer_domain = "Pure Math"
-// @explorer_slug = "analysis"
-// @explorer_order = 20
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod chladni_wave_tank;
 pub mod complex_mapping;
@@ -10,7 +7,10 @@ pub mod riemann;
 
 crate::declare_simulation_tab!(
     pub struct AnalysisTab,
-    "Analysis & Calculus",
+    name: "Analysis & Calculus",
+    domain: "Pure Math",
+    slug: "analysis",
+    order: 20,
 );
 
 // [cite:graph_parameters_rust]

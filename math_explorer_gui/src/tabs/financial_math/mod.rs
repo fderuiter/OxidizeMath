@@ -1,7 +1,4 @@
-// @explorer_feature = "pure_math"
-// @explorer_domain = "Pure Math"
-// @explorer_slug = "financial_math"
-// @explorer_order = 24
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod bankroll_ensemble;
 pub mod bankroll_growth;
@@ -11,7 +8,10 @@ pub mod parrondo;
 
 crate::declare_simulation_tab!(
     pub struct FinancialMathTab,
-    "Financial Math",
+    name: "Financial Math",
+    domain: "Pure Math",
+    slug: "financial_math",
+    order: 24,
 );
 
 // [cite:clinical_trials_statistics]

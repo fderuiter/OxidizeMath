@@ -1,7 +1,5 @@
-// @explorer_feature = "pure_math"
-// @explorer_domain = "Pure Math"
-// @explorer_slug = "elliptic_curves"
-// @explorer_order = 26
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 // [cite:modular_polynomials_review]
 // [cite:hurwitz_kronecker]
 
@@ -16,7 +14,10 @@ mod modular_invariants_ui;
 mod tests;
 
 crate::declare_simulation_tab!(
-    /// Auto-discovered Pure Math tab for short-Weierstrass elliptic curve geometry and modular invariants.
+    /// Pure Math tab for short-Weierstrass elliptic curve geometry and modular invariants.
     pub struct EllipticCurvesTab,
-    "Elliptic Curves",
+    name: "Elliptic Curves",
+    domain: "Pure Math",
+    slug: "elliptic_curves",
+    order: 26,
 );

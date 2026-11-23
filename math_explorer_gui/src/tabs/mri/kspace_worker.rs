@@ -3,9 +3,10 @@
 use super::kspace_phantom::{build_preset_mask_into, colorize_scalar_field_into};
 use super::kspace_runner::{
     BLOCH_STEP_DT, DELTA_B0_POCKET_TESLA, ISOCHROMAT_SPREAD_FRAC, MriKSpaceRunner,
+    PROBE_SPREAD_FRAC,
 };
 use super::kspace_types::{
-    CompactBrushStroke, ISOCHROMAT_COUNT, MriKSpaceSnapshot, MriKSpaceToolState, StudioBrushMode,
+    CompactBrushStroke, MriKSpaceSnapshot, MriKSpaceToolState, StudioBrushMode,
 };
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
@@ -18,6 +19,46 @@ use std::f64::consts::PI;
 use std::sync::Arc;
 
 impl MriKSpaceRunner {
+    pub(crate) fn probe_spins_for_idx(
+        &self,
+        idx: usize,
+    ) -> [Vector3<f64>; crate::audio::frame::MAX_VOICES] {
+        if idx == self.probe_voxel_idx {
+            return self.probe_spins;
+        }
+        let center = self.spins[idx][1];
+        let m_perp = center.x.hypot(center.y);
+        let base_theta = center.x.atan2(center.y);
+        let spread = PROBE_SPREAD_FRAC * self.delta_b0[idx].abs();
+        let t_defocus = self
+            .echo_tau
+            .map_or(self.current_time, |tau| self.current_time - 2.0 * tau);
+        let gamma_t = proton::GYROMAGNETIC_RATIO * t_defocus;
+        std::array::from_fn(|s| {
+            let theta = base_theta + gamma_t * (((s as f64) - 3.5) * spread);
+            Vector3::new(m_perp * theta.sin(), m_perp * theta.cos(), center.z)
+        })
+    }
+
+    pub(crate) fn reseed_probe_for_voxel(&mut self, selected_voxel: [usize; 2]) {
+        let sel_r = selected_voxel[0].min(self.size.saturating_sub(1));
+        let sel_c = selected_voxel[1].min(self.size.saturating_sub(1));
+        let idx = flatten_2d_index(sel_c, sel_r, self.size);
+        let center = self.spins[idx][1];
+        let m_perp = center.x.hypot(center.y);
+        let base_theta = center.x.atan2(center.y);
+        let spread = PROBE_SPREAD_FRAC * self.delta_b0[idx].abs();
+        let t_defocus = self
+            .echo_tau
+            .map_or(self.current_time, |tau| self.current_time - 2.0 * tau);
+        let gamma_t = proton::GYROMAGNETIC_RATIO * t_defocus;
+        for (s, slot) in self.probe_spins.iter_mut().enumerate() {
+            let theta = base_theta + gamma_t * (((s as f64) - 3.5) * spread);
+            *slot = Vector3::new(m_perp * theta.sin(), m_perp * theta.cos(), center.z);
+        }
+        self.probe_voxel_idx = idx;
+    }
+
     pub(crate) fn apply_stroke_direct(
         &mut self,
         mode: StudioBrushMode,
@@ -65,8 +106,18 @@ impl MriKSpaceRunner {
                         &mut self.spins[idx],
                         prev_b0,
                         DELTA_B0_POCKET_TESLA,
+                        ISOCHROMAT_SPREAD_FRAC,
                         self.current_time,
                     );
+                    if idx == self.probe_voxel_idx {
+                        rotate_ensemble_delta_b0(
+                            &mut self.probe_spins,
+                            prev_b0,
+                            DELTA_B0_POCKET_TESLA,
+                            PROBE_SPREAD_FRAC,
+                            self.current_time,
+                        );
+                    }
                 }
             }
             StudioBrushMode::SpatialFlipAnglePulse => {
@@ -74,6 +125,9 @@ impl MriKSpaceRunner {
                 self.local_flip_rad[idx] = (self.local_flip_rad[idx] + d_alpha).min(PI);
                 if tip_live_spins {
                     rotate_ensemble_x(&mut self.spins[idx], d_alpha);
+                    if idx == self.probe_voxel_idx {
+                        rotate_ensemble_x(&mut self.probe_spins, d_alpha);
+                    }
                 }
             }
             StudioBrushMode::KSpaceRfSpike => {}
@@ -112,12 +166,54 @@ impl MriKSpaceRunner {
                     cfg.selected_voxel,
                 );
             }
-            "sync_view" => self.reconstruct_in_place(
-                cfg.grad_gx_integral,
-                cfg.grad_gy_integral,
-                cfg.selected_voxel,
-            ),
+            "sync_view" => {
+                let sr = cfg.selected_voxel[0].min(self.size.saturating_sub(1));
+                let sc = cfg.selected_voxel[1].min(self.size.saturating_sub(1));
+                if flatten_2d_index(sc, sr, self.size) != self.probe_voxel_idx {
+                    self.reseed_probe_for_voxel(cfg.selected_voxel);
+                }
+                self.reconstruct_in_place(
+                    cfg.grad_gx_integral,
+                    cfg.grad_gy_integral,
+                    cfg.selected_voxel,
+                );
+            }
             _ => {}
+        }
+    }
+
+    fn build_probe_audio_input(
+        &self,
+        sel_voxel: [usize; 2],
+        rf_spike_triggered: bool,
+    ) -> crate::audio::mappings::MriKSpaceProbeAudioInput {
+        let sr = sel_voxel[0].min(self.size.saturating_sub(1));
+        let sc = sel_voxel[1].min(self.size.saturating_sub(1));
+        let sidx = flatten_2d_index(sc, sr, self.size);
+        let idx = if self.rho[sidx] > 1e-4 && self.delta_b0[sidx].abs() > 0.0 {
+            sidx
+        } else if let Some(p_idx) =
+            (0..self.rho.len()).find(|&i| self.rho[i] > 1e-4 && self.delta_b0[i].abs() > 0.0)
+        {
+            p_idx
+        } else if self.rho[sidx] > 1e-4 {
+            sidx
+        } else {
+            (0..self.rho.len())
+                .find(|&i| self.rho[i] > 1e-4)
+                .unwrap_or(sidx)
+        };
+        crate::audio::mappings::MriKSpaceProbeAudioInput {
+            probe_spins: self.probe_spins_for_idx(idx),
+            rho: self.rho[idx],
+            t2: self.t2[idx],
+            delta_b0: self.delta_b0[idx],
+            turing_uv: self.phantom_engine.sample_turing_uv(idx, self.rho[idx]),
+            current_time: self.current_time,
+            echo_tau: self.echo_tau,
+            k_coord_cycles_per_m: self.k_coord_cycles_per_m,
+            selected_grad_phase_rad: self.selected_grad_phase_rad,
+            rf_spike_triggered,
         }
     }
 
@@ -126,14 +222,16 @@ impl MriKSpaceRunner {
             .rf_spike_pending
             .swap(false, std::sync::atomic::Ordering::Relaxed);
         if self.is_finite_state() {
-            crate::audio::mappings::mri_kspace_frame(&self.build_audio_input(sel_voxel, rf_spike))
+            crate::audio::mappings::mri_kspace_probe_frame(
+                &self.build_probe_audio_input(sel_voxel, rf_spike),
+            )
         } else {
             crate::audio::SonificationFrame::silent()
         }
     }
 }
 
-fn rotate_ensemble_x(ens: &mut [Vector3<f64>; ISOCHROMAT_COUNT], angle_rad: f64) {
+fn rotate_ensemble_x<const K: usize>(ens: &mut [Vector3<f64>; K], angle_rad: f64) {
     let (s, c) = angle_rad.sin_cos();
     for m in ens {
         let my = m.y * c + m.z * s;
@@ -143,17 +241,19 @@ fn rotate_ensemble_x(ens: &mut [Vector3<f64>; ISOCHROMAT_COUNT], angle_rad: f64)
     }
 }
 
-fn rotate_ensemble_delta_b0(
-    ens: &mut [Vector3<f64>; ISOCHROMAT_COUNT],
+fn rotate_ensemble_delta_b0<const K: usize>(
+    ens: &mut [Vector3<f64>; K],
     prev_b0: f64,
     next_b0: f64,
+    spread_frac: f64,
     elapsed_time: f64,
 ) {
     let gamma_t = proton::GYROMAGNETIC_RATIO * elapsed_time;
-    let prev_spread = ISOCHROMAT_SPREAD_FRAC * prev_b0.abs();
-    let next_spread = ISOCHROMAT_SPREAD_FRAC * next_b0.abs();
+    let prev_spread = spread_frac * prev_b0.abs();
+    let next_spread = spread_frac * next_b0.abs();
+    let center = ((K.saturating_sub(1)) as f64) * 0.5;
     for (s, m) in ens.iter_mut().enumerate() {
-        let offset = (s as f64) - 1.0;
+        let offset = (s as f64) - center;
         let dbz = (next_b0 + offset * next_spread) - (prev_b0 + offset * prev_spread);
         let (sin_th, cos_th) = (gamma_t * dbz).sin_cos();
         let mx = m.x * cos_th + m.y * sin_th;
@@ -256,7 +356,8 @@ impl SimulationRunner for MriKSpaceRunner {
 
         let sr = sel_voxel[0].min(self.size.saturating_sub(1));
         let sc = sel_voxel[1].min(self.size.saturating_sub(1));
-        let sidx = sr * self.size + sc;
+        let sidx = flatten_2d_index(sc, sr, self.size);
+        let sonification = self.snapshot_sonification(sel_voxel);
         let structured = MriKSpaceSnapshot {
             grid_size: self.size,
             current_time: self.current_time,
@@ -283,7 +384,7 @@ impl SimulationRunner for MriKSpaceRunner {
             pixels: Arc::new(std::sync::RwLock::new(recon_rgba)),
             custom_data: vec![self.current_time],
             structured_data: Some(Box::new(structured)),
-            sonification: self.snapshot_sonification(sel_voxel),
+            sonification,
         }
     }
 
@@ -294,6 +395,10 @@ impl SimulationRunner for MriKSpaceRunner {
     fn is_finite_state(&self) -> bool {
         self.current_time.is_finite()
             && self.recon_mag.iter().all(|v| v.is_finite())
+            && self
+                .probe_spins
+                .iter()
+                .all(|m| m.x.is_finite() && m.y.is_finite() && m.z.is_finite())
             && self.spins.iter().all(|ens| {
                 ens.iter()
                     .all(|m| m.x.is_finite() && m.y.is_finite() && m.z.is_finite())

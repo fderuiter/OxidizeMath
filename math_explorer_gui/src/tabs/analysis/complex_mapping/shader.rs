@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{ComplexMappingTool, MappingFunction, COMPLEX_COORD_MAX, COMPLEX_COORD_MIN};
+use super::{COMPLEX_COORD_MAX, COMPLEX_COORD_MIN, ComplexMappingTool, MappingFunction};
 use crate::framework::export_shader::compile_complex_bar_glsl;
 use crate::framework::{InteractiveTool, ShaderDialect};
 use math_commons::ast::{GLSL_COMPLEX_HELPERS, format_glsl_float};

@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::state::{PopulationStructureState, PopulationViewMode, CANNIBALISM_STATE_BOUNDS};
+use super::state::{CANNIBALISM_STATE_BOUNDS, PopulationStructureState, PopulationViewMode};
 use super::theory::CannibalismTheory;
 use crate::framework::{
     DiagnosticReport, ExportCapabilities, FiniteStateGuard, InteractiveTool, ToolStateBounds,

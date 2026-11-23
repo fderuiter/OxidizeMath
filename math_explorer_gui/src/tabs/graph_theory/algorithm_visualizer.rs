@@ -189,39 +189,30 @@ impl AlgorithmVisualizerTool {
         }
     }
 
+    fn render_algorithm_selector(&mut self, ui: &mut egui::Ui) {
+        ui.label("Select Algorithm:");
+        let mut changed = false;
+        for (alg, label) in [
+            (Algorithm::Dijkstra, "Dijkstra"),
+            (Algorithm::Bfs, "BFS"),
+            (Algorithm::Dfs, "DFS"),
+        ] {
+            changed |= ui
+                .radio_value(&mut self.selected_algorithm, alg, label)
+                .clicked();
+        }
+        if changed {
+            self.run_algorithm();
+        }
+    }
+
     fn render_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id =
             crate::framework::scoped_panel_id(parent_ui, "algorithm_visualizer_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Algorithm Visualizer");
             ui.separator();
-            ui.label("Select Algorithm:");
-            let mut changed = false;
-            if ui
-                .radio_value(
-                    &mut self.selected_algorithm,
-                    Algorithm::Dijkstra,
-                    "Dijkstra",
-                )
-                .clicked()
-            {
-                changed = true;
-            }
-            if ui
-                .radio_value(&mut self.selected_algorithm, Algorithm::Bfs, "BFS")
-                .clicked()
-            {
-                changed = true;
-            }
-            if ui
-                .radio_value(&mut self.selected_algorithm, Algorithm::Dfs, "DFS")
-                .clicked()
-            {
-                changed = true;
-            }
-            if changed {
-                self.run_algorithm();
-            }
+            self.render_algorithm_selector(ui);
             ui.separator();
             self.render_start_node_selector(ui);
             ui.separator();
@@ -360,9 +351,10 @@ impl InteractiveTool for AlgorithmVisualizerTool {
             ));
         }
         if let Some(id) = loaded.start_node
-            && !self.node_indices.contains_key(&id) {
-                return Err(format!("Unknown start_node id: {id}"));
-            }
+            && !self.node_indices.contains_key(&id)
+        {
+            return Err(format!("Unknown start_node id: {id}"));
+        }
         self.selected_algorithm = loaded.selected_algorithm;
         self.start_node = loaded.start_node;
         if let Some(id) = loaded.start_node {
@@ -396,13 +388,21 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool {
     fn theory_description(&self) -> String {
         let algo_str = match self.selected_algorithm {
-            Algorithm::Dijkstra => "Dijkstra shortest path algorithm via priority relaxation $d(v) = \\min(d(v), d(u) + w(u, v))$",
-            Algorithm::Bfs => "Breadth-First Search level-order queue traversal computing unweighted shortest path distances",
-            Algorithm::Dfs => "Depth-First Search recursive stack traversal exploring graph connectivity and cycles",
+            Algorithm::Dijkstra => {
+                "Dijkstra shortest path algorithm via priority relaxation $d(v) = \\min(d(v), d(u) + w(u, v))$"
+            }
+            Algorithm::Bfs => {
+                "Breadth-First Search level-order queue traversal computing unweighted shortest path distances"
+            }
+            Algorithm::Dfs => {
+                "Depth-First Search recursive stack traversal exploring graph connectivity and cycles"
+            }
         };
         format!(
             "Graph traversal and pathfinding analysis executing {} across $|V| = {}$ nodes and $|E| = {}$ edges.",
-            algo_str, self.node_positions.len(), self.edges.len()
+            algo_str,
+            self.node_positions.len(),
+            self.edges.len()
         )
     }
     fn phonetic_description(&self) -> String {

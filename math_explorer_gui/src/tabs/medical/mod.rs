@@ -1,7 +1,4 @@
-// @explorer_feature = "physics"
-// @explorer_domain = "Physics"
-// @explorer_slug = "medical"
-// @explorer_order = 15
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod beam_profiling;
 pub mod dose;
@@ -10,7 +7,10 @@ pub mod radar_gating;
 
 crate::declare_simulation_tab!(
     pub struct MedicalTab,
-    "Medical Physics",
+    name: "Medical Physics",
+    domain: "Physics",
+    slug: "medical",
+    order: 15,
 );
 
 // [cite:graph_parameters_rust]

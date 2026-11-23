@@ -2,13 +2,13 @@
 // [cite:hurwitz_kronecker]
 
 use super::modular_invariants_tool::{
-    snap_prime_u64, ModularInvariantsTool, ModularPlotMode, ModularQSeriesKind,
+    ModularInvariantsTool, ModularPlotMode, ModularQSeriesKind, snap_prime_u64,
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::scoped_panel_id;
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, Points};
-use math_explorer::pure_math::elliptic_curves::{psi, MAX_LATTICE_PRIME};
+use math_explorer::pure_math::elliptic_curves::{MAX_LATTICE_PRIME, psi};
 
 pub(crate) fn render_controls(tool: &mut ModularInvariantsTool, ui: &mut egui::Ui) {
     let mut changed = false;

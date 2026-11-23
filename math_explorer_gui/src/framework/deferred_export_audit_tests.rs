@@ -261,6 +261,7 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         "AttractorPlotter",
         "CrystalViewer",
         "SpinVisualizer",
+        "CorticalMorphometryTool",
     ];
     for id in solid_ids {
         let meta = inventory::iter::<crate::framework::ToolMetadata>

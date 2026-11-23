@@ -4,8 +4,8 @@ use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::kelly::{
-    expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
-    UnitInterval,
+    BankrollFraction, Odds, UnitInterval, expected_growth_rate, expected_value, kelly_fraction,
+    variants,
 };
 use std::sync::mpsc::Receiver;
 

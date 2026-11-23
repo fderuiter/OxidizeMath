@@ -1,7 +1,4 @@
-// @explorer_feature = "pure_math"
-// @explorer_domain = "Pure Math"
-// @explorer_slug = "algorithmic_information"
-// @explorer_order = 25
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod controls;
 pub mod plots;
@@ -14,9 +11,12 @@ mod tests;
 mod wasm_tests;
 
 crate::declare_simulation_tab!(
-    /// Top-level `Pure Math` tab auto-discovered by `math_explorer_gui/build.rs`.
+    /// Top-level `Pure Math` tab registered via [`crate::tabs::TabDescriptor`].
     pub struct AlgorithmicInfoTab,
-    "Algorithmic Information",
+    name: "Algorithmic Information",
+    domain: "Pure Math",
+    slug: "algorithmic_information",
+    order: 25,
 );
 
 // [cite:algorithmic_information_rust]

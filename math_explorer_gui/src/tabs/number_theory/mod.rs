@@ -1,7 +1,4 @@
-// @explorer_feature = "pure_math"
-// @explorer_domain = "Pure Math"
-// @explorer_slug = "number_theory"
-// @explorer_order = 21
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod elliptic_curve_audio;
 pub mod elliptic_curve_canvas;
@@ -17,7 +14,10 @@ pub mod ualbf_widget;
 
 crate::declare_simulation_tab!(
     pub struct NumberTheoryTab,
-    "Number Theory",
+    name: "Number Theory",
+    domain: "Pure Math",
+    slug: "number_theory",
+    order: 21,
 );
 
 // [cite:graph_parameters_rust]

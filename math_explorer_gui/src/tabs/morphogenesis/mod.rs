@@ -1,9 +1,7 @@
-// @explorer_feature = "biology"
-// @explorer_domain = "Biology"
-// @explorer_slug = "morphogenesis"
-// @explorer_order = 40
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::async_sim::SimWorkerState;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
@@ -108,11 +106,11 @@ impl ExplorerTab for MorphogenesisTab {
     }
 
     fn academic_domain(&self) -> &'static str {
-        EXPLORER_DOMAIN
+        "Biology"
     }
 
     fn url_slug(&self) -> &'static str {
-        EXPLORER_SLUG
+        "morphogenesis"
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -143,6 +141,14 @@ impl ExplorerTab for MorphogenesisTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "morphogenesis",
+        order: 40,
+        build: || Box::new(MorphogenesisTab::default()),
     }
 }
 

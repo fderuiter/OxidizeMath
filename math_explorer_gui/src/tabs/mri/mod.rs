@@ -1,9 +1,7 @@
-// @explorer_feature = "physics"
-// @explorer_domain = "Physics"
-// @explorer_slug = "mri"
-// @explorer_order = 11
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::async_sim::SimWorkerState;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
@@ -102,15 +100,15 @@ impl ExplorerTab for MriTab {
     }
 
     fn academic_domain(&self) -> &'static str {
-        EXPLORER_DOMAIN
+        "Physics"
     }
 
     fn url_slug(&self) -> &'static str {
-        EXPLORER_SLUG
+        "mri"
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.framework.show_inside(ui, EXPLORER_SLUG);
+        self.framework.show_inside(ui, "mri");
     }
 
     fn state_revision(&self) -> u64 {
@@ -137,6 +135,14 @@ impl ExplorerTab for MriTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "mri",
+        order: 11,
+        build: || Box::new(MriTab::default()),
     }
 }
 

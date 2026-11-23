@@ -7,7 +7,7 @@ use crate::accessibility::AccessibleHoverText;
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use math_explorer::pure_math::algorithmic_information::fractran::{
-    FractranProgram, FIRST_64_PRIMES,
+    FIRST_64_PRIMES, FractranProgram,
 };
 
 impl FractranMachineTool {

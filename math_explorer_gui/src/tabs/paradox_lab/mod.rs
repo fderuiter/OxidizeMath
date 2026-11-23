@@ -1,7 +1,5 @@
-// @explorer_feature = "applied"
-// @explorer_domain = "Applied Math"
-// @explorer_slug = "paradox_lab"
-// @explorer_order = 35
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::accessibility::AccessibleHoverText;
 #[cfg(test)]
 use crate::tabs::ExplorerTab;
@@ -15,7 +13,10 @@ mod parrondo_ui;
 crate::declare_simulation_tab!(
     /// Interactive Paradox Lab tab hosting Parrondo's ratchet and Braess's congestion paradox (`[cite:paradox_lab]`).
     pub struct ParadoxLabTab,
-    "Paradox Lab",
+    name: "Paradox Lab",
+    domain: "Applied Math",
+    slug: "paradox_lab",
+    order: 35,
 );
 
 /// Renders the Paradox Lab tool header and theory trigger (`[cite:paradox_lab]`).

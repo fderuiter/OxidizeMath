@@ -1,9 +1,6 @@
-// @explorer_feature = "physics"
-// @explorer_domain = "Physics"
-// @explorer_slug = "relativity"
-// @explorer_order = 17
-// Interactive General Relativity tab exposing 3D geodesic integration, Flamm/wormhole
-// embeddings, radial effective potentials, twin clocks, and Christoffel tensor inspection.
+//! Interactive General Relativity tab exposing 3D geodesic integration, Flamm/wormhole
+//! embeddings, radial effective potentials, twin clocks, and Christoffel tensor inspection.
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod inspector;
 pub mod playground;
@@ -17,7 +14,10 @@ pub use playground::{GeodesicPlaygroundTool, SpacetimePreset};
 crate::declare_simulation_tab!(
     /// Explorer tab grouping curved-spacetime geodesic and tensor inspection tools.
     pub struct RelativityTab,
-    "General Relativity",
+    name: "General Relativity",
+    domain: "Physics",
+    slug: "relativity",
+    order: 17,
 );
 
 // [cite:general_relativity_geodesics]

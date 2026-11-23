@@ -33,13 +33,14 @@ pub(super) fn split_contour_segments<F: Fn(usize) -> Complex64>(
             continue;
         }
         if let Some(&prev) = current.last()
-            && (w.re - prev[0]).hypot(w.im - prev[1]) > max_jump {
-                if current.len() >= 2 {
-                    segments.push(std::mem::take(&mut current));
-                } else {
-                    current.clear();
-                }
+            && (w.re - prev[0]).hypot(w.im - prev[1]) > max_jump
+        {
+            if current.len() >= 2 {
+                segments.push(std::mem::take(&mut current));
+            } else {
+                current.clear();
             }
+        }
         current.push([w.re, w.im]);
     }
     if current.len() >= 2 {
@@ -309,15 +310,16 @@ fn append_family_polylines(
     let pts = family.points.as_slice();
     for range in &family.ranges {
         if let Some(slice) = pts.get(range.clone())
-            && slice.len() >= 2 {
-                out.push(egui_plot::ExportPrimitive::Polyline {
-                    name: name.to_owned(),
-                    points: egui_plot::SharedPoints::from_plot_points(slice),
-                    color,
-                    stroke_width: 1.5,
-                    closed: false,
-                    fill: None,
-                });
-            }
+            && slice.len() >= 2
+        {
+            out.push(egui_plot::ExportPrimitive::Polyline {
+                name: name.to_owned(),
+                points: egui_plot::SharedPoints::from_plot_points(slice),
+                color,
+                stroke_width: 1.5,
+                closed: false,
+                fill: None,
+            });
+        }
     }
 }

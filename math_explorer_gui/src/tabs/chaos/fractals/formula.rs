@@ -16,6 +16,19 @@ pub struct CompiledFractalJob {
 }
 
 impl CompiledFractalJob {
+    /// Builds the canonical quadratic polynomial $z_{n+1} = z_n^2 + c$ without parameters.
+    #[must_use]
+    pub fn quadratic() -> Self {
+        let ast = parse("z^2 + c").expect("quadratic parses");
+        let compiled =
+            CompiledExpr::compile_complex(&ast, &["z", "c"]).expect("quadratic compiles");
+        Self {
+            compiled,
+            params: [0.0; MAX_SYNTHESIZED_PARAMS],
+            param_len: 0,
+        }
+    }
+
     /// Snapshots the active complex [`CompiledExpr`] and parameter slice from `bar`.
     #[must_use]
     pub fn from_bar(bar: &MathExpressionInputBar) -> Self {
@@ -55,6 +68,117 @@ impl CompiledFractalJob {
             iter += 1;
         }
         iter
+    }
+
+    /// Traces the critical orbit starting at $z_0 = 0$ for parameter `c` into `out` without heap allocation.
+    #[inline]
+    pub fn trace_critical_orbit(&self, c: Complex<f64>, out: &mut [Complex<f64>]) -> usize {
+        if out.is_empty() || !c.re.is_finite() || !c.im.is_finite() {
+            return 0;
+        }
+        let mut vars = [Complex::new(0.0, 0.0); 2 + MAX_SYNTHESIZED_PARAMS];
+        vars[1] = c;
+        for i in 0..self.param_len {
+            vars[2 + i] = Complex::new(self.params[i], 0.0);
+        }
+        let total_vars = 2 + self.param_len;
+        let mut written = 0;
+        while written < out.len() {
+            let z = vars[0];
+            if !z.re.is_finite() || !z.im.is_finite() {
+                break;
+            }
+            out[written] = z;
+            written += 1;
+            if z.norm_sqr() > 16.0 {
+                break;
+            }
+            vars[0] = self.compiled.eval_complex_slice(&vars[..total_vars]);
+        }
+        written
+    }
+
+    #[inline]
+    fn init_shadow_vars(
+        &self,
+        c: Complex<f64>,
+        param0_override: Option<f64>,
+    ) -> (
+        [Complex<f64>; 2 + MAX_SYNTHESIZED_PARAMS],
+        [Complex<f64>; 2 + MAX_SYNTHESIZED_PARAMS],
+        usize,
+    ) {
+        let mut vars = [Complex::new(0.0, 0.0); 2 + MAX_SYNTHESIZED_PARAMS];
+        let mut w_vars = [Complex::new(0.0, 0.0); 2 + MAX_SYNTHESIZED_PARAMS];
+        vars[1] = c;
+        w_vars[0] = Complex::new(1e-5, 0.0);
+        w_vars[1] = c;
+        for i in 0..self.param_len {
+            let val = if i == 0 {
+                param0_override.unwrap_or(self.params[i])
+            } else {
+                self.params[i]
+            };
+            vars[2 + i] = Complex::new(val, 0.0);
+            w_vars[2 + i] = Complex::new(val, 0.0);
+        }
+        (vars, w_vars, 2 + self.param_len)
+    }
+
+    /// Classifies complex parameter `c` into `(regime_u8, primary_metric, secondary_metric)` on stack buffers.
+    #[must_use]
+    pub fn classify_c_plane_point(
+        &self,
+        c: Complex<f64>,
+        param0_override: Option<f64>,
+        max_iter: u32,
+    ) -> (u8, f64, f64) {
+        if !c.re.is_finite() || !c.im.is_finite() || max_iter == 0 {
+            return (2, 0.0, 0.0);
+        }
+        let (mut vars, mut w_vars, total_vars) = self.init_shadow_vars(c, param0_override);
+        let mut shadow_escaped = false;
+        let mut tortoise = Complex::new(0.0, 0.0);
+        let mut power = 1u32;
+        let mut period = 1u32;
+        let mut detected_period: Option<u32> = None;
+
+        for iter in 0..max_iter {
+            let z = vars[0];
+            if !z.re.is_finite() || !z.im.is_finite() || z.norm_sqr() > 4.0 {
+                let ratio = f64::from(iter) / f64::from(max_iter);
+                let regime = if iter >= max_iter / 3 { 1 } else { 2 };
+                return (regime, ratio, f64::from(iter));
+            }
+            let z_next = self.compiled.eval_complex_slice(&vars[..total_vars]);
+            if iter >= max_iter / 2 && (z_next - tortoise).norm_sqr() < 1e-8 {
+                detected_period = Some(detected_period.map_or(period, |p| p.min(period)));
+            }
+            if period == power {
+                tortoise = z_next;
+                power = power.saturating_mul(2);
+                period = 0;
+            }
+            period += 1;
+            vars[0] = z_next;
+
+            if !shadow_escaped {
+                let w_next = self.compiled.eval_complex_slice(&w_vars[..total_vars]);
+                if !w_next.re.is_finite() || !w_next.im.is_finite() || w_next.norm_sqr() > 4.0 {
+                    shadow_escaped = true;
+                } else {
+                    w_vars[0] = w_next;
+                }
+            }
+        }
+
+        let sep = (w_vars[0] - vars[0]).norm();
+        if shadow_escaped || !sep.is_finite() || sep > 5e-3 {
+            (1, 1.0, f64::from(max_iter))
+        } else {
+            let rate = (sep / 1e-5).max(1e-12).ln() / f64::from(max_iter);
+            (0, rate, f64::from(detected_period.unwrap_or(1)))
+        }
     }
 }
 

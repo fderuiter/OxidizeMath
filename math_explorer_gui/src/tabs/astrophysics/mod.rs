@@ -1,7 +1,4 @@
-// @explorer_feature = "physics"
-// @explorer_domain = "Physics"
-// @explorer_slug = "astrophysics"
-// @explorer_order = 16
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 #[cfg(test)]
 use crate::tabs::ExplorerTab;
@@ -78,7 +75,10 @@ impl HaloKindChoice {
 crate::declare_simulation_tab!(
     /// Interactive Astrophysics & Dwarf-Galaxy Dynamics tab.
     pub struct AstrophysicsTab,
-    "Astrophysics",
+    name: "Astrophysics",
+    domain: "Physics",
+    slug: "astrophysics",
+    order: 16,
 );
 
 // [cite:dwarf_galaxy_empirical_dependencies]

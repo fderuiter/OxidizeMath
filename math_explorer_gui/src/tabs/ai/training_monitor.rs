@@ -256,8 +256,8 @@ impl InteractiveTool for TrainingMonitorTool {
 }
 
 fn generate_spiral_data(points_per_class: usize) -> Vec<(Vector, Vector)> {
-    use rand::seq::SliceRandom;
     use rand::Rng;
+    use rand::seq::SliceRandom;
 
     let mut rng = oxidize_core::rng::OxidizeRng::default();
     let mut data = Vec::new();

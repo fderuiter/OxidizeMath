@@ -1,16 +1,12 @@
-// @explorer_domain = "Applied Math"
-// @explorer_slug = "traceability"
-// @explorer_order = 34
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use std::collections::HashMap;
 
-#[path = "traceability/presets.rs"]
-mod presets_impl;
-pub use presets_impl::*;
-#[path = "traceability/scanner.rs"]
+mod presets;
+pub use presets::*;
 mod scanner;
-#[path = "traceability/web_snapshot.rs"]
 mod web_snapshot;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -307,11 +303,11 @@ impl ExplorerTab for TraceabilityTab {
     }
 
     fn academic_domain(&self) -> &'static str {
-        EXPLORER_DOMAIN
+        "Applied Math"
     }
 
     fn url_slug(&self) -> &'static str {
-        EXPLORER_SLUG
+        "traceability"
     }
 
     fn state_revision(&self) -> u64 {
@@ -404,8 +400,15 @@ impl ExplorerTab for TraceabilityTab {
     }
 }
 
+inventory::submit! {
+    TabDescriptor {
+        id: "traceability",
+        order: 34,
+        build: || Box::new(TraceabilityTab::default()),
+    }
+}
+
 #[cfg(test)]
-#[path = "traceability/tests.rs"]
 mod tests;
 
 // [cite:essay]

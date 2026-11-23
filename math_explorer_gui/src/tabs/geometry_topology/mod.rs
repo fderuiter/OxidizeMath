@@ -1,7 +1,4 @@
-// @explorer_feature = "pure_math"
-// @explorer_domain = "Pure Math"
-// @explorer_slug = "geometry_topology"
-// @explorer_order = 22
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod curvature_heatmap;
 pub mod custom_surface;
@@ -11,7 +8,10 @@ pub mod vietoris_rips;
 
 crate::declare_simulation_tab!(
     pub struct GeometryTopologyTab,
-    "Geometry & Topology",
+    name: "Geometry & Topology",
+    domain: "Pure Math",
+    slug: "geometry_topology",
+    order: 22,
 );
 
 // [cite:graph_parameters_rust]

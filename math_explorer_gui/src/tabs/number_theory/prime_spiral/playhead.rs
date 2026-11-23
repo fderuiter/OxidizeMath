@@ -8,12 +8,12 @@ use math_commons::math_kernel::types::flatten_2d_index;
 
 use super::PrimeSpiralWidget;
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleHoverText, AccessibleTheoryHover,
+    AccessibleHoverText, AccessibleTheoryHover, announce_live_status, lock_canvas_arrow_keys,
+    paint_canvas_focus_ring, register_canvas_accessibility,
 };
 use crate::app::SemanticPalette;
 use crate::audio::frame::MAX_VOICES;
-use crate::audio::mappings::{ulam_spiral_frame, UlamPolySample};
+use crate::audio::mappings::{UlamPolySample, ulam_spiral_frame};
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use crate::web_io::PlatformInstant;
 

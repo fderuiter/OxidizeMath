@@ -274,7 +274,7 @@ fn test_kspace_turing_delta_b0_detuning_echo_recovery_chirp_and_rf_spike() {
     }
     runner.process_command(SimCommand::Custom("sync_view".to_string()));
     let chirped = runner.get_snapshot().sonification;
-    assert_eq!(chirped.active_voices, 4);
+    assert_eq!(chirped.active_voices, 8);
     assert!(chirped.voices[0].fm_mod_hz > echo.voices[0].fm_mod_hz);
 
     // Paint KSpaceRfSpike stroke and verify transient_impulse click

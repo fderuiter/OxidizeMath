@@ -12,13 +12,13 @@ use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::number_theory::primes::{is_prime, primes_up_to};
 
 use crate::framework::{
-    scoped_panel_id, ExportCapabilities, InteractiveTool, PaneSidePanel, StarterPresetMetadata,
-    ToolMetadata,
+    ExportCapabilities, InteractiveTool, PaneSidePanel, StarterPresetMetadata, ToolMetadata,
+    scoped_panel_id,
 };
 use crate::web_io::PlatformInstant;
 pub use playhead::{
-    UlamPlayheadMode, DEFAULT_RAY_B, DEFAULT_RAY_C, DEFAULT_TEMPO_BPM, MAX_RAY_B, MAX_RAY_C,
-    MAX_TEMPO_BPM, MAX_ULAM_CURSOR_STEP, MIN_RAY_B, MIN_RAY_C, MIN_TEMPO_BPM,
+    DEFAULT_RAY_B, DEFAULT_RAY_C, DEFAULT_TEMPO_BPM, MAX_RAY_B, MAX_RAY_C, MAX_TEMPO_BPM,
+    MAX_ULAM_CURSOR_STEP, MIN_RAY_B, MIN_RAY_C, MIN_TEMPO_BPM, UlamPlayheadMode,
 };
 
 const fn default_ray_b() -> i64 {

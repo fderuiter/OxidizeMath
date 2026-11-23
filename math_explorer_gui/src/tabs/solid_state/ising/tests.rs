@@ -245,6 +245,39 @@ fn test_ising_poisoned_lock_recovery() {
 }
 
 #[test]
+fn test_ising_animated_slider_sweeps_sync_shared_params() {
+    use crate::reflective_ui::slider::{AnimatedSliderState, SweepMode, save_slider_state};
+
+    let mut tool = IsingModelTool::default();
+    let initial_t = tool.temperature;
+    let initial_h = tool.h_field;
+    let ctx = egui::Context::default();
+    for key in ["ising_temperature", "ising_h_field"] {
+        save_slider_state(
+            &ctx,
+            egui::Id::new(key),
+            AnimatedSliderState {
+                playing: true,
+                direction: 1.0,
+                sweep_mode: SweepMode::Oscillate,
+            },
+        );
+    }
+    let _ = ctx.run(
+        egui::RawInput {
+            predicted_dt: 0.1,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+    assert!(tool.temperature > initial_t);
+    assert!(tool.h_field > initial_h);
+    let shared = tool.params.read().unwrap_or_else(|e| e.into_inner());
+    assert_eq!(shared.temperature, tool.temperature);
+    assert_eq!(shared.h_field, tool.h_field);
+}
+
+#[test]
 fn test_ising_runner_apply_brush_clamping_and_clear_defector_sea() {
     let tool = IsingModelTool::default();
     let mut runner = IsingRunner {
