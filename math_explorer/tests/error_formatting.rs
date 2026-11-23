@@ -1,4 +1,4 @@
-//! Verifies that all 28 public error enums re-exported by `math_explorer::error`
+//! Verifies that all 30 public error enums re-exported by `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -17,7 +17,7 @@ use math_explorer::error::{
     EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
     HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarkovError,
     MathError, MonteCarloError, NumberTheoryError, OuError, PharmacokineticsError, RadarError,
-    SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
+    SandpileError, SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -155,6 +155,14 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         &RadarError::AntennaWeightCountMismatch {
             expected: 4,
             actual: 2,
+        },
+    );
+    assert_readable_diagnostic(
+        "SandpileError",
+        &SandpileError::InvalidDimensions {
+            width: 0,
+            height: 8,
+            max_dim: 128,
         },
     );
     assert_readable_diagnostic(

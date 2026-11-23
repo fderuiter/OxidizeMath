@@ -272,6 +272,12 @@
       "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn select_action (& mut self , _ : & S , _ : & [A]) -> Option < A > }"
     },
     {
+      "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn select_action_into (& mut self , _ : & S , _ : & [A] , _ : & mut [f64] ,) -> Option < A > }"
+    },
+    {
+      "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn set_learning_params (& mut self , _ : UnitInterval , _ : UnitInterval ,) }"
+    },
+    {
       "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn update (& mut self , _ : & S , _ : & A , _ : f64 , _ : & S , _ : & [A] ,) }"
     },
     {
@@ -326,6 +332,15 @@
       "signature": "pub use grid_world :: *"
     },
     {
+      "signature": "pub use q_function :: DiscreteAction"
+    },
+    {
+      "signature": "pub use q_function :: DiscreteState"
+    },
+    {
+      "signature": "pub use q_function :: FixedArrayQFunction"
+    },
+    {
       "signature": "pub use q_function :: TabularQFunction"
     },
     {
@@ -353,6 +368,27 @@
   "crates/domain_ai/src/ai/reinforcement_learning/q_function.rs": [
     {
       "signature": "impl < S , A > TabularQFunction < S , A > where S : State + Hash + Eq , A : Action + Hash + Eq , { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub const fn as_table (& self) -> & [[f64 ; ACTIONS] ; STATES] }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub fn copy_from_table (& mut self , _ : & [[f64 ; ACTIONS] ; STATES]) }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "pub struct DiscreteAction"
+    },
+    {
+      "signature": "pub struct DiscreteState"
+    },
+    {
+      "signature": "pub struct FixedArrayQFunction < const STATES : usize , const ACTIONS : usize >"
     },
     {
       "signature": "pub struct TabularQFunction < S , A > where S : State + Hash + Eq , A : Action + Hash + Eq ,"
@@ -2417,9 +2453,44 @@
       "signature": "pub use crate :: error"
     }
   ],
+  "crates/domain_applied/src/applied/pharmacokinetics/analytics.rs": [
+    {
+      "signature": "impl TherapeuticWindow { pub fn new (_ : f64 , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub fn accumulation_ratio (_ : f64 , _ : f64) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn auc_interval (_ : & [f64] , _ : & [f64] , _ : f64 , _ : f64 ,) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn peak_concentration (_ : & [f64] , _ : & [f64] ,) -> Result < (f64 , f64) , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn summarize_exposure (_ : & [f64] , _ : & [f64] , _ : TherapeuticWindow , _ : f64 , _ : f64 ,) -> Result < ExposureSummary , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn trapezoidal_auc (_ : & [f64] , _ : & [f64] ,) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn trough_concentration (_ : & [f64] , _ : & [f64] , _ : f64 , _ : f64 ,) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub struct ExposureSummary"
+    },
+    {
+      "signature": "pub struct TherapeuticWindow"
+    }
+  ],
   "crates/domain_applied/src/applied/pharmacokinetics/bateman.rs": [
     {
       "signature": "impl BatemanModel { pub fn new (_ : PKParameters) -> Self }"
+    },
+    {
+      "signature": "impl BatemanModel { pub fn with_dose (& self , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub fn calibrate_ka_from_half_life (_ : f64 , _ : f64 , _ : usize , _ : f64 ,) -> Result < (f64 , f64) , PharmacokineticsError >"
     },
     {
       "signature": "pub fn half_life (_ : f64) -> f64"
@@ -2448,7 +2519,22 @@
       "signature": "impl EnantiomerModel { pub fn concentration_xr_single_dose (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
     },
     {
+      "signature": "impl EnantiomerModel { pub fn d_concentration (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn f_d (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn f_l (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn l_concentration (& self , _ : f64) -> f64 }"
+    },
+    {
       "signature": "impl EnantiomerModel { pub fn new (_ : PKParameters , _ : PKParameters , _ : f64 , _ : f64 ,) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn with_dose (& self , _ : f64) -> Result < Self , PharmacokineticsError > }"
     },
     {
       "signature": "pub struct EnantiomerModel"
@@ -2462,7 +2548,34 @@
       "signature": "pub fn concentration_superposition (_ : & PKParameters , _ : & [f64] , _ : f64) -> f64"
     },
     {
+      "signature": "pub use analytics :: ExposureSummary"
+    },
+    {
+      "signature": "pub use analytics :: TherapeuticWindow"
+    },
+    {
+      "signature": "pub use analytics :: accumulation_ratio"
+    },
+    {
+      "signature": "pub use analytics :: auc_interval"
+    },
+    {
+      "signature": "pub use analytics :: peak_concentration"
+    },
+    {
+      "signature": "pub use analytics :: summarize_exposure"
+    },
+    {
+      "signature": "pub use analytics :: trapezoidal_auc"
+    },
+    {
+      "signature": "pub use analytics :: trough_concentration"
+    },
+    {
       "signature": "pub use bateman :: BatemanModel"
+    },
+    {
+      "signature": "pub use bateman :: calibrate_ka_from_half_life"
     },
     {
       "signature": "pub use bateman :: half_life"
@@ -2481,6 +2594,21 @@
     },
     {
       "signature": "pub use parameters :: PKParametersBuilder"
+    },
+    {
+      "signature": "pub use regimen :: DoseEvent"
+    },
+    {
+      "signature": "pub use regimen :: MAX_REGIMEN_EVENTS"
+    },
+    {
+      "signature": "pub use regimen :: RegimenModel"
+    },
+    {
+      "signature": "pub use regimen :: RegimenSuperposition"
+    },
+    {
+      "signature": "pub use regimen :: ReleaseFormulation"
     },
     {
       "signature": "pub use superposition :: SuperpositionModel"
@@ -2542,6 +2670,68 @@
       "signature": "pub struct PKParametersBuilder"
     }
   ],
+  "crates/domain_applied/src/applied/pharmacokinetics/regimen.rs": [
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn base_model (& self) -> & M }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn events (& self) -> & [DoseEvent] }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn new (_ : M , _ : & [DoseEvent]) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn sample_into (& self , _ : & [f64] , _ : & mut [f64]) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn ir (_ : f64 , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn new (_ : f64 , _ : f64 , _ : ReleaseFormulation ,) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn validate (& self) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn xr (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl RegimenSuperposition < EnantiomerModel > { pub fn d_concentration (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl RegimenSuperposition < EnantiomerModel > { pub fn l_concentration (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl RegimenSuperposition < EnantiomerModel > { pub fn sample_isomers_into (& self , _ : & [f64] , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl ReleaseFormulation { pub fn validate (& self) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub const MAX_REGIMEN_EVENTS : usize"
+    },
+    {
+      "signature": "pub enum ReleaseFormulation"
+    },
+    {
+      "signature": "pub struct DoseEvent"
+    },
+    {
+      "signature": "pub struct RegimenSuperposition < M : Copy >"
+    },
+    {
+      "signature": "pub trait RegimenModel : PharmacokineticModel + Copy"
+    },
+    {
+      "signature": "pub trait RegimenModel { fn with_event_dose (& self , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    }
+  ],
   "crates/domain_applied/src/applied/pharmacokinetics/superposition.rs": [
     {
       "signature": "impl < M > SuperpositionModel < M > { pub fn new (_ : M , _ : Vec < f64 >) -> Self }"
@@ -2560,7 +2750,16 @@
   ],
   "crates/domain_applied/src/applied/pharmacokinetics/two_pulse.rs": [
     {
+      "signature": "impl < M : RegimenModel > TwoPulseModel < M > { pub fn with_dose (& self , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
       "signature": "impl < M > TwoPulseModel < M > { pub fn new (_ : M , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TwoPulseModel < EnantiomerModel > { pub fn d_concentration (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl TwoPulseModel < EnantiomerModel > { pub fn l_concentration (& self , _ : f64) -> f64 }"
     },
     {
       "signature": "pub struct TwoPulseModel < M >"
@@ -4716,6 +4915,9 @@
     },
     {
       "signature": "pub use crate :: physics :: nuclear :: types :: NuclearError"
+    },
+    {
+      "signature": "pub use crate :: physics :: stat_mech :: sandpile :: SandpileError"
     },
     {
       "signature": "pub use umbrella :: PhysicsError"
@@ -7095,6 +7297,197 @@
       "signature": "pub trait StatisticalDistribution { fn occupancy (& self , _ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , StatMechError > }"
     }
   ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/algebra.rs": [
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub const fn heights (& self) -> & [[u32 ; W] ; H] }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn burning_waves (& self) -> (bool , [[u16 ; W] ; H] , u16) }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn cyclic_subgroup (& self , _ : usize) -> Vec < Self > }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn from_stabilized_raw (_ : [[u32 ; W] ; H]) -> Self }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn group_order () -> Result < i128 , SandpileError > }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn identity_element () -> Self }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn is_recurrent (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn new (_ : [[u32 ; W] ; H]) -> Self }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn zn_homomorphism < const N : usize > (& self , _ : Zn < N >) -> Self }"
+    },
+    {
+      "signature": "pub struct SandpileElement < const W : usize , const H : usize >"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/kirchhoff.rs": [
+    {
+      "signature": "pub const MAX_BAREISS_CELLS : usize"
+    },
+    {
+      "signature": "pub enum SandpileError"
+    },
+    {
+      "signature": "pub fn kirchhoff_determinant_bareiss (_ : usize , _ : usize) -> Result < i128 , SandpileError >"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/mod.rs": [
+    {
+      "signature": "impl SandpileGrid { pub const fn has_active_wavefront (& self) -> bool }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub const fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub const fn telemetry (& self) -> & AvalancheTelemetry }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub const fn width (& self) -> usize }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn add_grains (& mut self , _ : usize , _ : usize , _ : u32) -> Result < () , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn burn_depths (& self) -> & [u16] }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn drop_random_grain (& mut self) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn fill (& mut self , _ : u32) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn fit_avalanche_power_law (& self , _ : AvalancheObservable ,) -> Result < CurveFit , FitError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn height_at (& self , _ : usize , _ : usize) -> Result < u32 , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn heights (& self) -> & [u32] }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn new (_ : usize , _ : usize , _ : Option < u64 >) -> Result < Self , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn reseed (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn scaling_cutoff (& self , _ : AvalancheObservable) -> usize }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn set_heights (& mut self , _ : & [u32]) -> Result < () , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn stabilize_wavefront (& mut self) -> AvalancheStats }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn step_wavefront (& mut self) -> (usize , u64) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn telemetry_mut (& mut self) -> & mut AvalancheTelemetry }"
+    },
+    {
+      "signature": "pub const CRITICAL_HEIGHT : u32"
+    },
+    {
+      "signature": "pub const MAX_SANDPILE_DIM : usize"
+    },
+    {
+      "signature": "pub const MAX_STABLE_HEIGHT : u32"
+    },
+    {
+      "signature": "pub struct BurningTestResult"
+    },
+    {
+      "signature": "pub struct SandpileGrid"
+    },
+    {
+      "signature": "pub use algebra :: SandpileElement"
+    },
+    {
+      "signature": "pub use kirchhoff :: MAX_BAREISS_CELLS"
+    },
+    {
+      "signature": "pub use kirchhoff :: SandpileError"
+    },
+    {
+      "signature": "pub use kirchhoff :: kirchhoff_determinant_bareiss"
+    },
+    {
+      "signature": "pub use telemetry :: AvalancheObservable"
+    },
+    {
+      "signature": "pub use telemetry :: AvalancheStats"
+    },
+    {
+      "signature": "pub use telemetry :: AvalancheTelemetry"
+    },
+    {
+      "signature": "pub use telemetry :: EXACT_AVALANCHE_BUCKET_CAP"
+    },
+    {
+      "signature": "pub use telemetry :: MAX_POWER_LAW_FIT_POINTS"
+    },
+    {
+      "signature": "pub use telemetry :: WAVEFRONT_TRACE_CAP"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/telemetry.rs": [
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn last_stats (& self) -> AvalancheStats }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn total_avalanches (& self) -> u64 }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn zero_topple_drops (& self) -> u64 }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn fit_power_law (& self , _ : AvalancheObservable , _ : usize ,) -> Result < CurveFit , FitError > }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn record (& mut self , _ : AvalancheStats) }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn survival_curve_into (& self , _ : AvalancheObservable , _ : usize , _ : & mut [[f64 ; 2]] ,) -> usize }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn wavefront_trace (& self) -> & [u32] }"
+    },
+    {
+      "signature": "pub const EXACT_AVALANCHE_BUCKET_CAP : usize"
+    },
+    {
+      "signature": "pub const MAX_POWER_LAW_FIT_POINTS : usize"
+    },
+    {
+      "signature": "pub const WAVEFRONT_TRACE_CAP : usize"
+    },
+    {
+      "signature": "pub enum AvalancheObservable"
+    },
+    {
+      "signature": "pub struct AvalancheStats"
+    },
+    {
+      "signature": "pub struct AvalancheTelemetry"
+    }
+  ],
   "crates/federated_registry/src/lib.rs": [
     {
       "signature": "impl FederatedRegistry { pub fn emit (& self , _ : TelemetryEvent) }"
@@ -8822,10 +9215,25 @@
       "signature": "pub use group :: Zn"
     },
     {
+      "signature": "pub use group :: generate_left_coset"
+    },
+    {
+      "signature": "pub use group :: generate_right_coset"
+    },
+    {
+      "signature": "pub use group :: is_normal_subgroup"
+    },
+    {
+      "signature": "pub use group :: is_subgroup"
+    },
+    {
       "signature": "pub use linear_algebra :: LinearAlgebraError"
     },
     {
       "signature": "pub use polynomial :: Polynomial"
+    },
+    {
+      "signature": "pub use traits :: AbelianGroup"
     },
     {
       "signature": "pub use traits :: EuclideanDomain"
@@ -11403,6 +11811,9 @@
       "signature": "impl Odds { pub fn from_fractional (_ : f64 , _ : f64) -> Result < Self , KellyError > }"
     },
     {
+      "signature": "impl Odds { pub fn from_implied_probability (_ : f64) -> Result < Self , KellyError > }"
+    },
+    {
       "signature": "impl Odds { pub fn from_net_odds (_ : f64) -> Result < Self , KellyError > }"
     },
     {
@@ -11413,6 +11824,12 @@
     },
     {
       "signature": "impl Odds { pub fn new (_ : f64) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl Odds { pub fn to_american (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Odds { pub fn to_fractional (& self , _ : u64) -> (u64 , u64) }"
     },
     {
       "signature": "impl Odds { pub fn value (& self) -> f64 }"
@@ -11563,12 +11980,43 @@
       "signature": "pub enum StateType"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > ,) -> Result < (BaumWelchReport < T > , Vec < T >) , MarkovError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch_into (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > , _ : & mut BaumWelchWorkspace < T > , _ : & mut [T] ,) -> Result < BaumWelchReport < T > , MarkovError > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch_types.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > BaumWelchConfig < T > { pub fn new (_ : usize , _ : T , _ : T ,) -> Result < Self , MarkovError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > BaumWelchWorkspace < T > { pub fn ensure_capacity (& mut self , _ : usize , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > BaumWelchWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct BaumWelchConfig < T >"
+    },
+    {
+      "signature": "pub struct BaumWelchReport < T >"
+    },
+    {
+      "signature": "pub struct BaumWelchWorkspace < T >"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/forward_backward.rs": [
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn filter (& self , _ : & [usize]) -> Result < DVector < T > > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn forward (& self , _ : & [usize]) -> Result < T > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn log_likelihood (& self , _ : & [usize]) -> Result < T > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn posterior_probabilities (& self , _ : & [usize]) -> Result < DMatrix < T > > }"
@@ -11587,7 +12035,19 @@
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/mod.rs": [
     {
+      "signature": "pub use baum_welch_types :: BaumWelchConfig"
+    },
+    {
+      "signature": "pub use baum_welch_types :: BaumWelchReport"
+    },
+    {
+      "signature": "pub use baum_welch_types :: BaumWelchWorkspace"
+    },
+    {
       "signature": "pub use model :: HiddenMarkovModel"
+    },
+    {
+      "signature": "pub use viterbi :: ViterbiWorkspace"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/model.rs": [
@@ -11621,6 +12081,27 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn viterbi (& self , _ : & [usize]) -> Result < Vec < usize > > }"
     },
     {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn viterbi_into (& self , _ : & [usize] , _ : & mut ViterbiWorkspace < T > , _ : & mut [usize] ,) -> Result < () > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn ensure_capacity (& mut self , _ : usize , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn max_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn num_observations (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn num_states (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct ViterbiWorkspace < T >"
+    },
+    {
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
     }
   ],
@@ -11641,7 +12122,19 @@
       "signature": "pub use dtmc :: StateType"
     },
     {
+      "signature": "pub use hmm :: BaumWelchConfig"
+    },
+    {
+      "signature": "pub use hmm :: BaumWelchReport"
+    },
+    {
+      "signature": "pub use hmm :: BaumWelchWorkspace"
+    },
+    {
       "signature": "pub use hmm :: HiddenMarkovModel"
+    },
+    {
+      "signature": "pub use hmm :: ViterbiWorkspace"
     },
     {
       "signature": "pub use num_traits :: ToPrimitive"
@@ -13228,6 +13721,9 @@
     },
     {
       "signature": "pub use domain_physics :: error :: RadarError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: SandpileError"
     },
     {
       "signature": "pub use domain_physics :: error :: SolidStateError"

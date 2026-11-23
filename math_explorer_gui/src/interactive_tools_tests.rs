@@ -26,6 +26,7 @@ mod tests {
         check_tool!(crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool);
         check_tool!(crate::tabs::financial_math::monte_carlo_workbench::MonteCarloWorkbenchTool);
         check_tool!(crate::tabs::game_theory::glicko2::Glicko2TournamentTool);
+        check_tool!(crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool);
         check_tool!(crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool);
         check_tool!(crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool);
         check_tool!(crate::tabs::solid_state::band_structure::BandStructureTool);
@@ -47,8 +48,10 @@ mod tests {
         check_tool!(crate::tabs::ai::training_monitor::TrainingMonitorTool);
         check_tool!(crate::tabs::ai::loss_landscape::LossLandscapeTool);
         check_tool!(crate::tabs::ai::grid_world::GridWorldTool);
+        check_tool!(crate::tabs::ai::closed_loop_control::ClosedLoopControlTool);
         check_tool!(crate::tabs::medical::beam_profiling::BeamProfilingTool);
         check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
+        check_tool!(crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool);
         check_tool!(crate::tabs::medical::radar_gating::RadarGatingTool);
         check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
         check_tool!(crate::tabs::chaos::hamiltonian::HamiltonianChaosLab);
