@@ -22,7 +22,7 @@ pub const MAX_SCALAR_SAMPLES: usize = 1_024;
 pub const MAX_SCALAR_SERIES: usize = 16;
 
 /// Canonical [`ScalarSignalChannel`] series key for live Kuramoto order-parameter coherence `R(t)`.
-#[cfg(any(feature = "physics", test))]
+#[cfg(any(feature = "physics", feature = "pure_math", test))]
 pub const KURAMOTO_COHERENCE_SERIES: &str = "kuramoto_coherence_r";
 
 /// Revision-counted channel streaming normalized 2D graph coordinates and weighted edges.
@@ -270,7 +270,12 @@ pub(crate) fn with_pane_bus_scope<R>(
 
 /// Invokes `f` with mutable access to the active pane's linked [`SharedWorkspaceBus`],
 /// or returns `None` when the current pane is unlinked (or running standalone).
-#[cfg(any(feature = "pure_math", test))]
+#[cfg(any(
+    feature = "pure_math",
+    feature = "physics",
+    feature = "epidemiology",
+    test
+))]
 pub(crate) fn with_linked_bus<R>(f: impl FnOnce(&mut SharedWorkspaceBus) -> R) -> Option<R> {
     ACTIVE_LINKED_BUS.with(|slot| {
         let mut borrow = slot.borrow_mut();
