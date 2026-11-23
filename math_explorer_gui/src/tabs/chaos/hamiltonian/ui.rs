@@ -3,11 +3,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    ComparatorView, HamiltonianChaosLab, HamiltonianModelKind, SymplecticSolverChoice, MAX_ORBITS,
+    ComparatorView, HamiltonianChaosLab, HamiltonianModelKind, MAX_ORBITS, SymplecticSolverChoice,
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
-use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
+use crate::framework::{PaneSidePanel, PlaybackAction, PlaybackTransport, scoped_panel_id};
 use eframe::egui;
 use egui_plot::{Corner, Legend, Line, LineStyle, Plot, PlotPoints, Points};
 use math_explorer::physics::astrophysics::nbody::FigureEightThreeBody;
@@ -300,15 +300,15 @@ impl HamiltonianChaosLab {
                         .width(1.8_f32),
                     );
                 }
-                if self.model == HamiltonianModelKind::FigureEightThreeBody {
-                    if let Some(lead) = self.orbits.last() {
-                        let bodies = FigureEightThreeBody::body_positions(&lead.state12).to_vec();
-                        plot_ui.points(
-                            Points::new("3-Body Masses", PlotPoints::from(bodies))
-                                .color(palette.accent)
-                                .radius(5.0_f32),
-                        );
-                    }
+                if self.model == HamiltonianModelKind::FigureEightThreeBody
+                    && let Some(lead) = self.orbits.last()
+                {
+                    let bodies = FigureEightThreeBody::body_positions(&lead.state12).to_vec();
+                    plot_ui.points(
+                        Points::new("3-Body Masses", PlotPoints::from(bodies))
+                            .color(palette.accent)
+                            .radius(5.0_f32),
+                    );
                 }
                 if self.show_rk4_ghost && !self.ghost.trail.is_empty() {
                     plot_ui.line(

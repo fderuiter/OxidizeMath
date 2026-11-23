@@ -1,15 +1,15 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::pulse::{sync_mri_callouts, MriPulseMode, MriPulseWorkspace, RfPulseConfig};
+use super::pulse::{MriPulseMode, MriPulseWorkspace, RfPulseConfig, sync_mri_callouts};
 use super::runner::{
-    MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE,
+    MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE, MriRunner, MriSharedParams, MriSnapshot,
 };
 use super::theory::MriBlochTheory;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui_plot::PlotPoint;
-use math_explorer::physics::mri::bloch::{rotating_frame_effective_field, BlochSimulator};
+use math_explorer::physics::mri::bloch::{BlochSimulator, rotating_frame_effective_field};
 use math_explorer::physics::mri::proton;
 use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
 use nalgebra::Vector3;
@@ -315,23 +315,21 @@ impl InteractiveTool for MriTool {
                 ("Mz (Longitudinal)".to_string(), mz),
             ];
         }
-        if let Some(snap) = self.worker.latest_snapshot() {
-            if let Some(data) = snap
+        if let Some(snap) = self.worker.latest_snapshot()
+            && let Some(data) = snap
                 .structured_data
                 .as_ref()
                 .and_then(|d| d.downcast_ref::<MriSnapshot>())
-            {
-                if !data.history.is_empty() {
-                    let mx = data.history.iter().map(|(t, m)| [*t, m.x]).collect();
-                    let my = data.history.iter().map(|(t, m)| [*t, m.y]).collect();
-                    let mz = data.history.iter().map(|(t, m)| [*t, m.z]).collect();
-                    return vec![
-                        ("Mx (Transverse)".to_string(), mx),
-                        ("My (Transverse)".to_string(), my),
-                        ("Mz (Longitudinal)".to_string(), mz),
-                    ];
-                }
-            }
+            && !data.history.is_empty()
+        {
+            let mx = data.history.iter().map(|(t, m)| [*t, m.x]).collect();
+            let my = data.history.iter().map(|(t, m)| [*t, m.y]).collect();
+            let mz = data.history.iter().map(|(t, m)| [*t, m.z]).collect();
+            return vec![
+                ("Mx (Transverse)".to_string(), mx),
+                ("My (Transverse)".to_string(), my),
+                ("Mz (Longitudinal)".to_string(), mz),
+            ];
         }
         let m = self.simulator.magnetization;
         vec![

@@ -2,10 +2,10 @@
 
 use super::kspace_phantom::{build_preset_mask_into, colorize_scalar_field_into};
 use super::kspace_runner::{
-    MriKSpaceRunner, BLOCH_STEP_DT, DELTA_B0_POCKET_TESLA, ISOCHROMAT_SPREAD_FRAC,
+    BLOCH_STEP_DT, DELTA_B0_POCKET_TESLA, ISOCHROMAT_SPREAD_FRAC, MriKSpaceRunner,
 };
 use super::kspace_types::{
-    CompactBrushStroke, MriKSpaceSnapshot, MriKSpaceToolState, StudioBrushMode, ISOCHROMAT_COUNT,
+    CompactBrushStroke, ISOCHROMAT_COUNT, MriKSpaceSnapshot, MriKSpaceToolState, StudioBrushMode,
 };
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
@@ -95,10 +95,10 @@ impl MriKSpaceRunner {
                     &mut self.kspace_mask,
                 );
                 for s in &cfg.strokes {
-                    if let Ok((m, x, y, rad)) = s.validate(self.size) {
-                        if m.targets_kspace() {
-                            self.apply_stroke_direct(m, x, y, rad, false);
-                        }
+                    if let Ok((m, x, y, rad)) = s.validate(self.size)
+                        && m.targets_kspace()
+                    {
+                        self.apply_stroke_direct(m, x, y, rad, false);
                     }
                 }
                 self.sync_dft_kspace_tables();

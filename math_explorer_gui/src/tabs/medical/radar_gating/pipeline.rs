@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::spectra::{build_fmcw_config, compute_range_spectra, SpectralSnapshot};
+use super::spectra::{SpectralSnapshot, build_fmcw_config, compute_range_spectra};
 use super::state::RadarGatingState;
 use math_explorer::physics::medical::optical_motion::simulation::cosine_respiratory_curve;
 use math_explorer::physics::medical::radar_gating::surface::weighted_average_height;

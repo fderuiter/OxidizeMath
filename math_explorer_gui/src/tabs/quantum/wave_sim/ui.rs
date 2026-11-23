@@ -1,16 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::WaveSimulatorTool;
 use super::persistence::truncate_utf8_bytes;
 use super::presets::{
-    wave_parameter_label, WavePotentialPreset, DT_MAX, DT_MIN, GRID_X_MAX, GRID_X_MIN, K0_MAX,
-    K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, POTENTIAL_DISPLAY_SCALE, SIGMA_MAX,
-    SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN, X0_MAX, X0_MIN,
+    DT_MAX, DT_MIN, GRID_X_MAX, GRID_X_MIN, K0_MAX, K0_MIN, MAX_CUSTOM_EXPR_BYTES,
+    MAX_STEPS_PER_FRAME, POTENTIAL_DISPLAY_SCALE, SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX,
+    WIDTH_MIN, WavePotentialPreset, X0_MAX, X0_MIN, wave_parameter_label,
 };
 use super::runner::WaveData;
-use super::WaveSimulatorTool;
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+    WorkerFaultAction, render_empty_plot_guidance, render_worker_fault_banner,
 };
 use crate::async_sim::{SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{

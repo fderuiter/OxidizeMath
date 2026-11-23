@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
-use super::sculpt::{apply_stroke_to_morpho_system, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
+use super::atlas::{WASHOUT_VARIANCE_THRESHOLD, grid_u_variance, is_pattern_forming_regime};
+use super::sculpt::{apply_stroke_to_morpho_system, overlay_cell_mask_colors};
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -128,7 +128,11 @@ impl MorphogenesisRunner {
         if dt.is_finite() && dt > 0.0 && is_pattern_forming_regime(a, b, d_u, d_v, dt) {
             let var_u = grid_u_variance(self.system.u());
             if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
-                MorphogenesisTool::initialize_schnakenberg(&mut self.system, self.width, self.height);
+                MorphogenesisTool::initialize_schnakenberg(
+                    &mut self.system,
+                    self.width,
+                    self.height,
+                );
             }
         }
         (dt.is_finite() && dt > 0.0).then_some(dt)

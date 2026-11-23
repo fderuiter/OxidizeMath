@@ -3,17 +3,18 @@
 // [cite:gaussian_splatting]
 
 pub use crate::volumetric_scene::presets::{
-    build_preset_scene_and_gradients, VolumetricSplatPreset,
+    VolumetricSplatPreset, build_preset_scene_and_gradients,
 };
 pub use crate::volumetric_scene::{
-    covariance_ellipse_ring, splat_stroke_color, DensityActionCounts, ELLIPSE_POINTS,
+    DensityActionCounts, ELLIPSE_POINTS, covariance_ellipse_ring, splat_stroke_color,
 };
 
 use crate::framework::{Camera3D, ProjectionMode};
 use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{
-    optimization::{determine_density_action, DensityAction},
-    projection, rendering, Gaussian2D, Gaussian3D, Scene,
+    Gaussian2D, Gaussian3D, Scene,
+    optimization::{DensityAction, determine_density_action},
+    projection, rendering,
 };
 use nalgebra::{Matrix2, Matrix2x3, Point2, Point3, Vector3};
 

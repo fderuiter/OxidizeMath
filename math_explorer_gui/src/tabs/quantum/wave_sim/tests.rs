@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::presets::{evaluate_potential_grid, POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN};
+use super::presets::{POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN, evaluate_potential_grid};
 use super::*;
 use crate::async_sim::SimulationRunner;
 use crate::framework::{BrushMode, BrushStroke, InteractiveTool, SimulationFramework};
@@ -85,7 +85,9 @@ fn test_wave_sculpt_brush_url_state_roundtrip() {
     assert!(!tool.sparse_potential.is_empty());
     let saved = tool.save_state().expect("save sculpted wave state");
     let mut restored = WaveSimulatorTool::new();
-    restored.try_load_state(&saved).expect("restore sculpted wave state");
+    restored
+        .try_load_state(&saved)
+        .expect("restore sculpted wave state");
     assert_eq!(restored.sparse_potential, tool.sparse_potential);
 }
 
@@ -175,9 +177,11 @@ fn test_ast_syntax_aria_announcement_and_singular_potential_clamping() {
         0.05,
         &pole_expr,
     );
-    assert!(clamped
-        .iter()
-        .all(|&v| v.is_finite() && (POTENTIAL_CLAMP_MIN..=POTENTIAL_CLAMP_MAX).contains(&v)));
+    assert!(
+        clamped
+            .iter()
+            .all(|&v| v.is_finite() && (POTENTIAL_CLAMP_MIN..=POTENTIAL_CLAMP_MAX).contains(&v))
+    );
     assert!((clamped[dense_grid.len() - 3] - (-500.0)).abs() < 1e-12);
     assert!((clamped[dense_grid.len() - 2] - 0.0).abs() < 1e-12);
     assert!((clamped[dense_grid.len() - 1] - 500.0).abs() < 1e-12);

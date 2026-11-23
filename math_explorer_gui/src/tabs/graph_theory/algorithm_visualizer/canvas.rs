@@ -16,7 +16,7 @@ fn next_node_in_direction(
     let &origin = positions.get(&current)?;
     positions
         .iter()
-        .filter(|(&id, _)| id != current)
+        .filter(|&(&id, _)| id != current)
         .filter_map(|(&id, &pos)| {
             let delta = pos - origin;
             let forward = delta.dot(dir);
@@ -75,7 +75,13 @@ impl AlgorithmVisualizerTool {
 
             let visuals = ui.visuals().clone();
             self.draw_edges(&painter, &to_screen, &visuals);
-            self.draw_nodes(&painter, &to_screen, node_radius, &visuals, response.has_focus());
+            self.draw_nodes(
+                &painter,
+                &to_screen,
+                node_radius,
+                &visuals,
+                response.has_focus(),
+            );
         });
     }
 
@@ -137,10 +143,7 @@ impl AlgorithmVisualizerTool {
         if activate {
             self.start_node = Some(self.focused_node);
             self.run_algorithm();
-            announce_live_status(
-                ctx,
-                format!("Start node set to Node {}", self.focused_node),
-            );
+            announce_live_status(ctx, format!("Start node set to Node {}", self.focused_node));
         }
     }
 
@@ -221,11 +224,7 @@ impl AlgorithmVisualizerTool {
                 (1.0, palette.node_stroke),
             );
             if canvas_focused && self.focused_node == id {
-                painter.circle_stroke(
-                    screen_pos,
-                    node_radius + 4.0_f32,
-                    (2.5_f32, palette.accent),
-                );
+                painter.circle_stroke(screen_pos, node_radius + 4.0_f32, (2.5_f32, palette.accent));
             }
             let label = if self.selected_algorithm == Algorithm::Dijkstra && is_visited {
                 self.distances

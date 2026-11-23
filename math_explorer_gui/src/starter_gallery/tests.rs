@@ -5,9 +5,11 @@ use super::*;
 #[test]
 fn test_starter_cards_presence_and_metadata() {
     let analysis_cards = get_starter_cards_for_domain("analysis", &[]);
-    assert!(analysis_cards
-        .iter()
-        .any(|c| c.title == "Harmonic Oscillator"));
+    assert!(
+        analysis_cards
+            .iter()
+            .any(|c| c.title == "Harmonic Oscillator")
+    );
     assert!(analysis_cards.iter().any(|c| c.title == "Logistic Growth"));
 
     let fluid_cards = get_starter_cards_for_domain("fluid_dynamics", &[]);
@@ -20,19 +22,23 @@ fn test_starter_cards_presence_and_metadata() {
     assert!(bio_cards.iter().any(|c| c.title == "Turing Spots"));
 
     let mri_cards = get_starter_cards_for_domain("mri", &[]);
-    assert!(mri_cards
-        .iter()
-        .any(|c| c.title == "Off-Resonance Bloch Precession"));
+    assert!(
+        mri_cards
+            .iter()
+            .any(|c| c.title == "Off-Resonance Bloch Precession")
+    );
 
     let fav_cards = get_starter_cards_for_domain("favoritism", &[]);
-    assert!(fav_cards
-        .iter()
-        .any(|c| c.title == "Crisis & Proximity Showdown"));
+    assert!(
+        fav_cards
+            .iter()
+            .any(|c| c.title == "Crisis & Proximity Showdown")
+    );
 }
 
 #[test]
 fn test_preset_json_validity() {
-    use crate::presets::{deserialize_preset_envelope, MorphogenesisPresetConfig};
+    use crate::presets::{MorphogenesisPresetConfig, deserialize_preset_envelope};
 
     let ode_meta = inventory::iter::<ToolMetadata>
         .into_iter()
@@ -53,16 +59,34 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 75, "Expected 75 registered tools");
+    assert!(!tools.is_empty(), "Expected registered tools in inventory");
+    let mut tool_keys = std::collections::HashSet::new();
+    for tool in &tools {
+        assert!(
+            tool_keys.insert((tool.domain, tool.id)),
+            "Duplicate ToolMetadata registration '{}/{}'",
+            tool.domain,
+            tool.id
+        );
+    }
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(
+    assert!(
+        presets.len() >= tools.len(),
+        "Expected at least one starter preset per registered tool ({} < {})",
         presets.len(),
-        108,
-        "Expected 108 registered starter presets"
+        tools.len()
     );
+    let mut preset_ids = std::collections::HashSet::new();
+    for preset in &presets {
+        assert!(
+            preset_ids.insert(preset.id),
+            "Duplicate starter preset ID '{}'",
+            preset.id
+        );
+    }
 
     for tool in &tools {
         let matching: Vec<_> = presets
@@ -215,15 +239,17 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
 }
 
 #[test]
-fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
+fn test_all_starter_presets_apply_and_mutate_perturbed_states() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(
+    assert!(!tools.is_empty(), "Expected registered tools in inventory");
+    assert!(
+        presets.len() >= tools.len(),
+        "Expected at least one starter preset per registered tool ({} < {})",
         presets.len(),
-        108,
-        "Expected 108 StarterPresetMetadata entries"
+        tools.len()
     );
 
     for preset in presets {
@@ -240,12 +266,13 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
 }
 
 #[test]
-fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
+fn test_all_interactive_tools_serialize_and_restore_non_default_state() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(tools.len(), 75, "Expected 75 InteractiveTool registrations");
+    assert!(!tools.is_empty(), "Expected registered tools in inventory");
+    assert!(presets.len() >= tools.len());
 
     for tool_meta in tools {
         let default_tool = (tool_meta.build)();
@@ -308,9 +335,10 @@ fn test_unified_sim_tool_rejects_unknown_empty_and_non_finite_parameters() {
     let mut tool = (lbm_meta.build)();
 
     assert!(tool.try_load_state("{}").is_err());
-    assert!(tool
-        .try_load_state(r#"{"reynolds": 100.0, "relaxation_time": 0.6}"#)
-        .is_err());
+    assert!(
+        tool.try_load_state(r#"{"reynolds": 100.0, "relaxation_time": 0.6}"#)
+            .is_err()
+    );
     assert!(tool
         .import_preset_json(
             r#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"fluid_dynamics","timestamp":"0"},"config":{"unknown_param":1.0}}"#

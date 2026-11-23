@@ -7,7 +7,7 @@ use std::f64::consts::{PI, TAU};
 use num_complex::Complex;
 
 use crate::audio::frame::{
-    clamp_freq_hz, HarmonicWeights, SonificationFrame, VoiceSpec, WaveformPreset, NUM_HARMONICS,
+    HarmonicWeights, NUM_HARMONICS, SonificationFrame, VoiceSpec, WaveformPreset, clamp_freq_hz,
 };
 
 /// Projects complex spatial-mode amplitudes and phase velocities into `PeriodicWave` harmonics

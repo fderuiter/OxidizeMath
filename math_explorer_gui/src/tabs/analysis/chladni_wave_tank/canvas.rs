@@ -11,7 +11,7 @@ use math_explorer::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::analysis::pde::wave_2d::young_double_slit_fringe_spacing;
 
 use super::*;
-use crate::app::{palette::DARK_PALETTE, SemanticPalette};
+use crate::app::{SemanticPalette, palette::DARK_PALETTE};
 
 impl ChladniWaveTankTool {
     pub(super) fn draw_central_workspace(&mut self, parent_ui: &mut egui::Ui) {
@@ -116,23 +116,25 @@ impl ChladniWaveTankTool {
             }
         }
 
-        if (response.clicked() || response.dragged()) && rect.width() > 1.0 && rect.height() > 1.0 {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
-                let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
-                let shift = ctx.input(|i| i.modifiers.shift);
-                if shift && response.clicked() && self.custom_clamps.len() < 16 {
-                    self.custom_clamps.push([nx, ny]);
-                    self.rebuild_masks();
-                } else {
-                    self.state.driver_x = nx;
-                    self.state.driver_y = ny;
-                    if response.clicked() {
-                        self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
-                    }
+        if (response.clicked() || response.dragged())
+            && rect.width() > 1.0
+            && rect.height() > 1.0
+            && let Some(pos) = response.interact_pointer_pos()
+        {
+            let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
+            let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
+            let shift = ctx.input(|i| i.modifiers.shift);
+            if shift && response.clicked() && self.custom_clamps.len() < 16 {
+                self.custom_clamps.push([nx, ny]);
+                self.rebuild_masks();
+            } else {
+                self.state.driver_x = nx;
+                self.state.driver_y = ny;
+                if response.clicked() {
+                    self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
                 }
-                self.state_rev = self.state_rev.wrapping_add(1);
             }
+            self.state_rev = self.state_rev.wrapping_add(1);
         }
     }
 
@@ -334,7 +336,7 @@ impl ChladniWaveTankTool {
                 .iter()
                 .zip(self.sand.positions_y().iter())
                 .step_by(2)
-                .filter(|(&px, &py)| px.is_finite() && py.is_finite())
+                .filter(|&(&px, &py)| px.is_finite() && py.is_finite())
                 .map(|(&px, &py)| [px + 0.5, py + 0.5])
                 .collect();
             if !pts.is_empty() {

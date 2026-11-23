@@ -11,9 +11,9 @@ use crate::framework::CalloutManager;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::kelly::{
-    expected_growth_rate, expected_value, kelly_fraction, BankrollFraction, Odds, UnitInterval,
+    BankrollFraction, Odds, UnitInterval, expected_growth_rate, expected_value, kelly_fraction,
 };
-use oxidize_core::rng::{OxidizeRng, BASE_SEED};
+use oxidize_core::rng::{BASE_SEED, OxidizeRng};
 use rand::Rng;
 
 /// Maximum number of sequential wagers preallocated for zero-allocation evaluation.

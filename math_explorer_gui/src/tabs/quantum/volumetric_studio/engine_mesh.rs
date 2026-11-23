@@ -3,7 +3,7 @@
 //! and manifold Wavefront `.obj` export for [`super::VolumetricEngine`].
 // [cite:isosurface_extraction]
 
-use super::super::state::{VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT};
+use super::super::state::{STUDIO_VIEWPORT_EXTENT, VolumetricStudioConfig};
 use super::VolumetricEngine;
 use crate::camera::Camera3D;
 use crate::volumetric_scene::VolumeCutFilter;
@@ -12,7 +12,7 @@ use egui_plot::PlotPoint;
 use math_explorer::applied::isosurface::{
     CentralDifferenceEstimator, IsosurfaceWorkspace, MarchingCubes, VoxelGrid,
 };
-use oxidize_core::mesh::{export_mesh_to_obj_string, Mesh, Point3D as CorePoint3D};
+use oxidize_core::mesh::{Mesh, Point3D as CorePoint3D, export_mesh_to_obj_string};
 
 /// Maximum painter facets emitted per frame to keep `egui_plot::Polygon` crisp at 60 FPS.
 pub const MAX_RENDERED_FACETS: usize = 2_400;
@@ -342,11 +342,7 @@ fn sanitize_normal(n: CorePoint3D) -> CorePoint3D {
 fn sanitize_normal_with_fallback(n: CorePoint3D, fallback: CorePoint3D) -> CorePoint3D {
     let clean = sanitize_point(n);
     let u = clean.normalize();
-    if u.magnitude() > 0.5 {
-        u
-    } else {
-        fallback
-    }
+    if u.magnitude() > 0.5 { u } else { fallback }
 }
 
 impl VolumetricEngine {

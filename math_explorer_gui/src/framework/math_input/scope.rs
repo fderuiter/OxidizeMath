@@ -1,6 +1,6 @@
 //! Tool-specific variable scope validation for `MathExpressionInputBar`.
 
-use math_commons::ast::{is_universal_constant, Expr, MAX_EVAL_DEPTH};
+use math_commons::ast::{Expr, MAX_EVAL_DEPTH, is_universal_constant};
 
 /// Variable scope rules enforced on parsed expressions before compilation.
 #[derive(Clone, Debug, Default)]
@@ -45,13 +45,14 @@ impl VariableScopePolicy {
             {
                 return Err(format!("Unknown variable '{bad}' ({hint})"));
             }
-            if let Some(allowed) = &self.allowed_vars {
-                if !axes.iter().any(|a| a == &var) && !allowed.iter().any(|a| a == &var) {
-                    let summary = format_allowed_summary(axes, allowed);
-                    return Err(format!(
-                        "Unknown variable '{var}'. Allowed variables: {summary}"
-                    ));
-                }
+            if let Some(allowed) = &self.allowed_vars
+                && !axes.iter().any(|a| a == &var)
+                && !allowed.iter().any(|a| a == &var)
+            {
+                let summary = format_allowed_summary(axes, allowed);
+                return Err(format!(
+                    "Unknown variable '{var}'. Allowed variables: {summary}"
+                ));
             }
         }
         Ok(())

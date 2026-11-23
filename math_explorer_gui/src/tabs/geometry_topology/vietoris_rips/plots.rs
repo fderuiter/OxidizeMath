@@ -2,16 +2,16 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::VietorisRipsTool;
 use super::io::MAX_VIETORIS_RIPS_POINTS;
 use super::presets::{GeneratorDescriptor, ShapePreset};
 use super::state::{SculptBrush, VrSourceMode};
-use super::VietorisRipsTool;
 use crate::accessibility::AccessibleTheoryHover;
 use crate::app::SemanticPalette;
 use crate::framework::bounded_drag_value;
 use eframe::egui;
 use egui_plot::{Line, LineStyle, Plot, Points, Polygon};
-use math_explorer::pure_math::statistics::tda::{RipsInterval, MAX_FILTRATION_TRIANGLES};
+use math_explorer::pure_math::statistics::tda::{MAX_FILTRATION_TRIANGLES, RipsInterval};
 
 /// Visualization mode for the right-hand persistent homology plot.
 #[derive(
@@ -178,10 +178,10 @@ fn render_filtration_toolbar(tool: &mut VietorisRipsTool, ui: &mut egui::Ui) {
         if ui.button("Download .csv").clicked() {
             tool.io_tasks.trigger_intervals_csv_save(&tool.persistence);
         }
-        if ui.button("Download .json").clicked() {
-            if let Err(err) = tool.io_tasks.trigger_intervals_json_save(&tool.persistence) {
-                tool.error_msg = Some(err);
-            }
+        if ui.button("Download .json").clicked()
+            && let Err(err) = tool.io_tasks.trigger_intervals_json_save(&tool.persistence)
+        {
+            tool.error_msg = Some(err);
         }
     });
 }

@@ -3,7 +3,7 @@
 
 use federated_registry::Severity;
 use serde::{Deserialize, Serialize};
-use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 // theory_verification!
 

@@ -1,3 +1,5 @@
+// @explorer_domain = "Applied Math"
+// @explorer_slug = "traceability"
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::collections::HashMap;
@@ -12,8 +14,8 @@ mod web_snapshot;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use scanner::execute_workspace_scan;
-pub(crate) use web_snapshot::embedded_traceability_report;
 use web_snapshot::PaperStatus;
+pub(crate) use web_snapshot::embedded_traceability_report;
 pub use web_snapshot::{paper_tex_url, render_paper_links};
 
 pub struct TraceabilityTab {
@@ -247,10 +249,10 @@ impl TraceabilityTab {
             }
             self.render_share_link_button(ui);
             #[cfg(not(target_arch = "wasm32"))]
-            if ui.button("Select Codebase Directory...").clicked() {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    self.select_directory(&path);
-                }
+            if ui.button("Select Codebase Directory...").clicked()
+                && let Some(path) = rfd::FileDialog::new().pick_folder()
+            {
+                self.select_directory(&path);
             }
 
             if let Some(path) = &self.repo_path {
@@ -303,6 +305,14 @@ impl ExplorerTab for TraceabilityTab {
         "Traceability Portal"
     }
 
+    fn academic_domain(&self) -> &'static str {
+        EXPLORER_DOMAIN
+    }
+
+    fn url_slug(&self) -> &'static str {
+        EXPLORER_SLUG
+    }
+
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -319,13 +329,13 @@ impl ExplorerTab for TraceabilityTab {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        if let Some(req_tool) = tool_id {
-            if !crate::url_state::matches_tab_slug(req_tool, self.url_slug(), self.name()) {
-                return Err(format!(
-                    "Tab '{}' does not support sub-tool '{req_tool}'",
-                    self.name()
-                ));
-            }
+        if let Some(req_tool) = tool_id
+            && !crate::url_state::matches_tab_slug(req_tool, self.url_slug(), self.name())
+        {
+            return Err(format!(
+                "Tab '{}' does not support sub-tool '{req_tool}'",
+                self.name()
+            ));
         }
         if let Some(json_str) = preset_json {
             crate::url_state::validate_url_preset_json(json_str)?;

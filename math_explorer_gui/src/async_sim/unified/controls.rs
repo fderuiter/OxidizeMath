@@ -3,7 +3,7 @@
 use super::persistence::build_formula_bar;
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
+use crate::async_sim::ui::{WorkerFaultAction, render_worker_fault_banner};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;

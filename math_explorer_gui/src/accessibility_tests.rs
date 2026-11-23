@@ -131,9 +131,11 @@ fn test_accessible_hover_text_focus_escape_preserves_focus() {
     ctx.memory_mut(|m| m.request_focus(btn_id));
     let (_, focused_on_tab) = run_action_frame(&ctx, true, Vec::new());
     assert!(focused_on_tab);
-    assert!(all_announcements()
-        .iter()
-        .any(|(msg, prio)| msg == "Helpful guidance" && prio == "polite"));
+    assert!(
+        all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg == "Helpful guidance" && prio == "polite")
+    );
 
     clear_test_announcements();
     let esc = vec![egui::Event::Key {
@@ -148,9 +150,10 @@ fn test_accessible_hover_text_focus_escape_preserves_focus() {
         focused_after_escape,
         "Escape dismissal must preserve keyboard focus"
     );
-    assert!(ctx
-        .data(|d| d.get_temp::<bool>(btn_id.with("tooltip_dismissed")))
-        .unwrap_or(false));
+    assert!(
+        ctx.data(|d| d.get_temp::<bool>(btn_id.with("tooltip_dismissed")))
+            .unwrap_or(false)
+    );
     assert!(all_announcements().is_empty());
 }
 

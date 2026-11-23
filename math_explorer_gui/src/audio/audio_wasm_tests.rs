@@ -1,8 +1,8 @@
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use super::{
-    export_current_tool_wav, notify_playback_paused, notify_solver_diverged, on_webgl_context_lost,
-    snapshot_ui_state, submit_tool_frame, toggle_mute_from_user_gesture, WaveformPreset,
+    WaveformPreset, export_current_tool_wav, notify_playback_paused, notify_solver_diverged,
+    on_webgl_context_lost, snapshot_ui_state, submit_tool_frame, toggle_mute_from_user_gesture,
 };
 use crate::audio::mappings::attractor_frame;
 

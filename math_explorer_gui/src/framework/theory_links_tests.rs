@@ -2,8 +2,8 @@
 
 use super::theory_links::{resolve_citation_reference_links, resolve_portal_paper_links};
 use super::*;
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::StateSnapshot;
+use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::framework::recovery::FiniteStateGuard;
 use eframe::egui;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
@@ -88,20 +88,26 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
     let spin_links = resolve_portal_paper_links("SpinVisualizer", "quantum");
     assert!(!spin_links.is_empty());
     assert_eq!(spin_links[0].paper_name, "quantum_mechanics.tex");
-    assert!(spin_links[0]
-        .pdf_url
-        .as_deref()
-        .is_some_and(|u| u.ends_with("/quantum_mechanics.pdf")));
-    assert!(spin_links[0]
-        .tex_url
-        .as_deref()
-        .is_some_and(|u| u.ends_with("/papers/quantum_mechanics.tex")));
+    assert!(
+        spin_links[0]
+            .pdf_url
+            .as_deref()
+            .is_some_and(|u| u.ends_with("/quantum_mechanics.pdf"))
+    );
+    assert!(
+        spin_links[0]
+            .tex_url
+            .as_deref()
+            .is_some_and(|u| u.ends_with("/papers/quantum_mechanics.tex"))
+    );
 
     let ai_links = resolve_portal_paper_links("TrainingMonitorTool", "ai");
     assert!(!ai_links.is_empty());
-    assert!(ai_links
-        .iter()
-        .all(|l| !l.paper_name.starts_with("spec:") && !l.paper_name.starts_with("registry:")));
+    assert!(
+        ai_links
+            .iter()
+            .all(|l| !l.paper_name.starts_with("spec:") && !l.paper_name.starts_with("registry:"))
+    );
 
     let fractran_links = resolve_portal_paper_links("FractranMachineTool", "number_theory");
     assert!(!fractran_links.is_empty());
@@ -122,35 +128,51 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
     );
 
     let volumetric_links = resolve_portal_paper_links("VolumetricFieldStudioTool", "quantum");
-    assert!(volumetric_links
-        .iter()
-        .any(|l| l.paper_name == "gaussian_splatting.tex"));
-    assert!(volumetric_links
-        .iter()
-        .any(|l| l.paper_name == "isosurface_extraction.tex"));
-    assert!(volumetric_links
-        .iter()
-        .any(|l| l.paper_name == "quantum_mechanics.tex"));
+    assert!(
+        volumetric_links
+            .iter()
+            .any(|l| l.paper_name == "gaussian_splatting.tex")
+    );
+    assert!(
+        volumetric_links
+            .iter()
+            .any(|l| l.paper_name == "isosurface_extraction.tex")
+    );
+    assert!(
+        volumetric_links
+            .iter()
+            .any(|l| l.paper_name == "quantum_mechanics.tex")
+    );
 
+    assert_external_citation_links();
+}
+
+fn assert_external_citation_links() {
     let cera_ext = resolve_citation_reference_links(
         "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)",
     );
-    assert!(cera_ext
-        .iter()
-        .any(|e| e.url == "https://arxiv.org/abs/2509.00010"));
+    assert!(
+        cera_ext
+            .iter()
+            .any(|e| e.url == "https://arxiv.org/abs/2509.00010")
+    );
 
     let attn_ext =
         resolve_citation_reference_links("Attention Is All You Need (Vaswani et al., 2017)");
-    assert!(attn_ext
-        .iter()
-        .any(|e| e.url == "https://arxiv.org/abs/1706.03762"));
+    assert!(
+        attn_ext
+            .iter()
+            .any(|e| e.url == "https://arxiv.org/abs/1706.03762")
+    );
 
     let part_ext = resolve_citation_reference_links(
         "On Eisenstein series, color partition and divisor function (Pushpa & Vasuki, 2022)",
     );
-    assert!(part_ext
-        .iter()
-        .any(|e| e.url == "https://doi.org/10.1007/s40065-022-00360-6"));
+    assert!(
+        part_ext
+            .iter()
+            .any(|e| e.url == "https://doi.org/10.1007/s40065-022-00360-6")
+    );
 }
 
 fn assert_clean_portal_output(tool_id: &str, out: &egui::FullOutput) -> usize {

@@ -3,8 +3,8 @@
 use super::{AttractorPlotter, SolverExecutionState};
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::{
-    render_custom_fault_banner, render_empty_plot_guidance, render_worker_fault_banner,
-    WorkerFaultAction,
+    WorkerFaultAction, render_custom_fault_banner, render_empty_plot_guidance,
+    render_worker_fault_banner,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
@@ -20,16 +20,17 @@ impl AttractorPlotter {
             ui.heading("3D Chaotic Attractor");
             ui.separator();
 
-            if worker_faulted && !self.diverged() {
-                if let Some(action) = render_worker_fault_banner(
+            if worker_faulted
+                && !self.diverged()
+                && let Some(action) = render_worker_fault_banner(
                     ui,
                     self.worker.state(),
                     self.worker.diagnostic_report(),
                     false,
-                ) {
-                    self.apply_fault_action(action, ctx);
-                    ui.separator();
-                }
+                )
+            {
+                self.apply_fault_action(action, ctx);
+                ui.separator();
             }
 
             ui.horizontal(|ui| {
@@ -291,15 +292,15 @@ impl AttractorPlotter {
             ) {
                 self.apply_fault_action(action, ctx);
             }
-        } else if self.worker.state() == SimWorkerState::Faulted {
-            if let Some(action) = render_worker_fault_banner(
+        } else if self.worker.state() == SimWorkerState::Faulted
+            && let Some(action) = render_worker_fault_banner(
                 ui,
                 self.worker.state(),
                 self.worker.diagnostic_report(),
                 false,
-            ) {
-                self.apply_fault_action(action, ctx);
-            }
+            )
+        {
+            self.apply_fault_action(action, ctx);
         }
     }
 
@@ -351,25 +352,22 @@ impl AttractorPlotter {
             self.clear_callout_drag(plot_ui);
         }
 
-        if self.dragged_callout.is_none() {
-            if let Some(pos) = hit_pos {
-                if let Some(idx) = rects.iter().position(|r| r.expand(4.0).contains(pos)) {
-                    ctx.set_cursor_icon(egui::CursorIcon::Grab);
-                    if primary_pressed {
-                        self.dragged_callout = Some(idx);
-                    }
-                }
+        if self.dragged_callout.is_none()
+            && let Some(pos) = hit_pos
+            && let Some(idx) = rects.iter().position(|r| r.expand(4.0).contains(pos))
+        {
+            ctx.set_cursor_icon(egui::CursorIcon::Grab);
+            if primary_pressed {
+                self.dragged_callout = Some(idx);
             }
         }
 
-        if pointer_down {
-            if let Some(idx) = self.dragged_callout {
-                ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
-                self.fixed_callout_offsets[idx] += drag_delta;
-                ctx.data_mut(|d| {
-                    d.insert_temp(plot_id.with("dragging_callout"), true);
-                });
-            }
+        if pointer_down && let Some(idx) = self.dragged_callout {
+            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+            self.fixed_callout_offsets[idx] += drag_delta;
+            ctx.data_mut(|d| {
+                d.insert_temp(plot_id.with("dragging_callout"), true);
+            });
         }
     }
 

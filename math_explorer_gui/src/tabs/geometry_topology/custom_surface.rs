@@ -4,10 +4,10 @@
 //! `(x(u, v), y(u, v), z(u, v))` formula and domain bound controls for `SurfaceViewer`
 //! and `CurvatureHeatmap`.
 
-use crate::framework::math_input::{ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
-use crate::framework::{bounded_drag_value, enforce_ordered_drag_range, MathExpressionInputBar};
+use crate::framework::math_input::{MAX_SYNTHESIZED_PARAMS, ParameterSliderBank};
+use crate::framework::{MathExpressionInputBar, bounded_drag_value, enforce_ordered_drag_range};
 use eframe::egui;
-use math_commons::ast::{is_universal_constant, parse, CompiledExpr};
+use math_commons::ast::{CompiledExpr, is_universal_constant, parse};
 use math_explorer::pure_math::differential_geometry::surface::{
     CompiledHeightfieldSurface, CompiledParametricSurface,
 };

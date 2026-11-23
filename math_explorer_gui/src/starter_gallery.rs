@@ -452,14 +452,14 @@ pub mod stories;
 #[path = "starter_gallery/story_packs.rs"]
 mod story_packs;
 pub use challenges::{
-    challenge_matches_domain, find_challenge_metadata, get_challenge_cards_for_domain,
-    ChallengeCard, ChallengeMetadata, GallerySelection,
+    ChallengeCard, ChallengeMetadata, GallerySelection, challenge_matches_domain,
+    find_challenge_metadata, get_challenge_cards_for_domain,
+};
+pub use root_host::{
+    StarterGalleryTab, show_starter_gallery_overlay, show_starter_gallery_with_challenges,
 };
 pub(crate) use root_host::{
     begin_root_starter_gallery_scope, flush_deferred_starter_galleries, try_defer_starter_gallery,
-};
-pub use root_host::{
-    show_starter_gallery_overlay, show_starter_gallery_with_challenges, StarterGalleryTab,
 };
 pub use stories::*;
 

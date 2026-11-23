@@ -1,11 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{clamp_finite, HaloKindChoice};
+use super::{HaloKindChoice, clamp_finite};
 use crate::framework::{FiniteStateGuard, InteractiveTool, TraceSnapshotManager};
 use eframe::egui;
 use math_explorer::physics::astrophysics::{
-    sample_rotation_curve_into, BaryonicDiskConfig, DwarfMorphology, Magnitude, Mpc,
-    VelocityDecomposition,
+    BaryonicDiskConfig, DwarfMorphology, Magnitude, Mpc, VelocityDecomposition,
+    sample_rotation_curve_into,
 };
 
 const CURVE_SAMPLES: usize = 96;

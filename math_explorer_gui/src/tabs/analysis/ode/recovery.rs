@@ -2,7 +2,7 @@
 
 use super::OdeSolverTool;
 use crate::framework::recovery::{
-    render_recovery_banner, DiagnosticReport, FiniteStateGuard, RecoveryAction,
+    DiagnosticReport, FiniteStateGuard, RecoveryAction, render_recovery_banner,
 };
 use crate::presets::OdePreset;
 use eframe::egui;

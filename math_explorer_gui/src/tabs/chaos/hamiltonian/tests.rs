@@ -6,8 +6,8 @@ use super::preset::{
     PRESET_DOUBLE_PENDULUM_DRIFT, PRESET_FIGURE_EIGHT_CHOREOGRAPHY, PRESET_HENON_HEILES_KAM,
 };
 use super::{
-    HamiltonianChaosLab, HamiltonianModelKind, SymplecticSolverChoice, MAX_ORBITS,
-    MAX_SECTION_POINTS,
+    HamiltonianChaosLab, HamiltonianModelKind, MAX_ORBITS, MAX_SECTION_POINTS,
+    SymplecticSolverChoice,
 };
 use crate::framework::InteractiveTool;
 use eframe::egui::{self, Context, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect};

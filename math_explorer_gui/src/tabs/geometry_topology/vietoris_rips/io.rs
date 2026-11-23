@@ -2,16 +2,16 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::{ToolStateBounds, MAX_JSON_NESTING_DEPTH};
+use crate::framework::{MAX_JSON_NESTING_DEPTH, ToolStateBounds};
 use crate::web_io::{
-    spawn_open_file_dialog, spawn_save_as_file_dialog, strip_utf8_bom, OpenDialogConfig,
-    SaveAsDialogConfig,
+    OpenDialogConfig, SaveAsDialogConfig, spawn_open_file_dialog, spawn_save_as_file_dialog,
+    strip_utf8_bom,
 };
 use math_explorer::pure_math::statistics::tda::core::{NdPointCloud, Point2D};
 use math_explorer::pure_math::statistics::tda::{
-    RipsInterval, RipsPersistenceResult, MAX_TDA_DIMENSION, MAX_TDA_POINTS,
+    MAX_TDA_DIMENSION, MAX_TDA_POINTS, RipsInterval, RipsPersistenceResult,
 };
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
 /// Maximum UTF-8 file size (`512 KiB`) accepted when importing local point clouds.
 pub const MAX_IMPORT_BYTES: usize = 524_288;
@@ -72,11 +72,7 @@ pub fn quantize_url_coord(value: f64) -> f64 {
         return value;
     }
     let rounded = (value * 10_000.0).round() / 10_000.0;
-    if rounded == 0.0 {
-        0.0
-    } else {
-        rounded
-    }
+    if rounded == 0.0 { 0.0 } else { rounded }
 }
 
 /// Parses a `.csv`, `.tsv`, or `.json` point-cloud payload strictly within safety bounds.

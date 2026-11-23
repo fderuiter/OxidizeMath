@@ -4,8 +4,8 @@
 
 use super::*;
 use crate::framework::{InteractiveTool, ToolMetadata};
-use crate::tabs::clinical_trials::ClinicalTrialsTab;
 use crate::tabs::ExplorerTab;
+use crate::tabs::clinical_trials::ClinicalTrialsTab;
 
 fn run_headless_tool_frame(tool: &mut PharmacokineticsTool) {
     let ctx = egui::Context::default();
@@ -65,9 +65,10 @@ fn test_ui_renders_all_modes_log_axis_and_solver_error_banner() {
     tool.recalculate();
     let series = export::build_active_trace_series(&tool);
     assert_eq!(series.len(), 3);
-    assert!(tool
-        .snapshot_manager
-        .add_snapshot("Chiral XR", tool.param_summary(), series));
+    assert!(
+        tool.snapshot_manager
+            .add_snapshot("Chiral XR", tool.param_summary(), series)
+    );
     run_headless_tool_frame(&mut tool);
 
     tool.absorption_mode = AbsorptionMode::SolveFromTMax;
@@ -150,9 +151,11 @@ mod wasm_browser_tests {
         assert!(fragment.len() <= MAX_URL_FRAGMENT_BYTES);
 
         let mut restored = MathExplorerApp::default();
-        assert!(restored
-            .apply_share_location_strings(fragment, "", None)
-            .unwrap());
+        assert!(
+            restored
+                .apply_share_location_strings(fragment, "", None)
+                .unwrap()
+        );
         assert_eq!(
             restored.tabs[tab_idx].active_tool_id(),
             Some("PharmacokineticsTool")
@@ -165,23 +168,25 @@ mod wasm_browser_tests {
         let md = export::format_markdown_card(&tool);
         tool.card_export.trigger_save_markdown(md);
         tool.card_export.poll();
-        assert!(tool
-            .card_export
-            .status_info
-            .as_deref()
-            .unwrap_or("")
-            .contains("pk_regimen_card.md"));
+        assert!(
+            tool.card_export
+                .status_info
+                .as_deref()
+                .unwrap_or("")
+                .contains("pk_regimen_card.md")
+        );
         assert!(tool.card_export.status_error.is_none());
 
         let csv = export::format_csv_card(&tool);
         tool.card_export.trigger_save_csv(csv);
         tool.card_export.poll();
-        assert!(tool
-            .card_export
-            .status_info
-            .as_deref()
-            .unwrap_or("")
-            .contains("pk_regimen_summary.csv"));
+        assert!(
+            tool.card_export
+                .status_info
+                .as_deref()
+                .unwrap_or("")
+                .contains("pk_regimen_summary.csv")
+        );
         assert!(tool.card_export.status_error.is_none());
     }
 }

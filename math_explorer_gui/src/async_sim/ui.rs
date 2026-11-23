@@ -3,7 +3,7 @@
 
 use super::SimWorkerState;
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::recovery::{render_recovery_banner, DiagnosticReport, RecoveryAction};
+use crate::framework::recovery::{DiagnosticReport, RecoveryAction, render_recovery_banner};
 use eframe::egui;
 
 /// User recovery action selected from a shared worker fault banner.
@@ -139,7 +139,7 @@ pub fn render_empty_plot_guidance(ui: &mut egui::Ui, message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::{contrast_ratio, ThemeMode};
+    use crate::app::{ThemeMode, contrast_ratio};
 
     fn find_text_color(output: &egui::FullOutput, needle: &str) -> Option<egui::Color32> {
         let mut stack: Vec<&egui::epaint::Shape> = output.shapes.iter().map(|c| &c.shape).collect();

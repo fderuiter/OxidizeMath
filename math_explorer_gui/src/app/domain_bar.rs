@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::accessibility::{announce_live_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_live_status};
 use crate::app::MathExplorerApp;
 use eframe::egui;
 
@@ -104,15 +104,13 @@ pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize
 pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Context) {
     #[cfg(feature = "pure_math")]
     if crate::tabs::geometry_topology::vietoris_rips::handoff::take_open_vietoris_rips_request(ctx)
-    {
-        if let Some(tab_idx) = app
+        && let Some(tab_idx) = app
             .tabs
             .iter()
             .position(|t| t.name() == "Geometry & Topology")
-        {
-            select_primary_tab(app, ctx, tab_idx);
-            let _ = app.tabs[tab_idx].select_tool_by_name("VietorisRipsTool");
-        }
+    {
+        select_primary_tab(app, ctx, tab_idx);
+        let _ = app.tabs[tab_idx].select_tool_by_name("VietorisRipsTool");
     }
     #[cfg(not(feature = "pure_math"))]
     let _ = (app, ctx);
@@ -341,10 +339,11 @@ fn render_domain_button(
     });
 
     // Direct switch for single-module domains on domain button click
-    if module_count == 1 && is_clicked {
-        if let Some(first_idx) = first_module_idx {
-            select_tab(app, ctx, first_idx);
-        }
+    if module_count == 1
+        && is_clicked
+        && let Some(first_idx) = first_module_idx
+    {
+        select_tab(app, ctx, first_idx);
     }
 }
 
@@ -353,18 +352,18 @@ fn render_active_path_label(
     active_domain: Option<AcademicDomain>,
     active_tab_name: &str,
 ) {
-    if let Some(active_dom) = active_domain {
-        if ui.available_width() > 200.0 {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Active: {} › {}",
-                        active_dom.name(),
-                        active_tab_name
-                    ))
-                    .weak(),
-                );
-            });
-        }
+    if let Some(active_dom) = active_domain
+        && ui.available_width() > 200.0
+    {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(
+                egui::RichText::new(format!(
+                    "Active: {} › {}",
+                    active_dom.name(),
+                    active_tab_name
+                ))
+                .weak(),
+            );
+        });
     }
 }

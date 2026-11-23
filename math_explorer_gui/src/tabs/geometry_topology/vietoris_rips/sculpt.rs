@@ -2,8 +2,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::state::{SculptBrush, VrSourceMode, MAX_VR_COORD_ABS};
-use super::{CloudSource, VietorisRipsTool, MAX_CHAOS_LANDMARKS, MAX_VIETORIS_RIPS_POINTS};
+use super::state::{MAX_VR_COORD_ABS, SculptBrush, VrSourceMode};
+use super::{CloudSource, MAX_CHAOS_LANDMARKS, MAX_VIETORIS_RIPS_POINTS, VietorisRipsTool};
 use math_explorer::pure_math::statistics::tda::{Point2D, Point3D};
 
 impl VietorisRipsTool {
@@ -76,14 +76,15 @@ impl VietorisRipsTool {
         if !continuing_drag {
             self.active_drag_vertex = self.nearest_2d_vertex(target, r2);
         }
-        if let Some(idx) = self.active_drag_vertex {
-            if idx < self.points.len() && self.points[idx] != target {
-                let mut next = self.points.clone();
-                next[idx] = target;
-                return self
-                    .rebuild_from_2d(CloudSource::Custom2D(next), Vec::new(), self.radius)
-                    .is_ok();
-            }
+        if let Some(idx) = self.active_drag_vertex
+            && idx < self.points.len()
+            && self.points[idx] != target
+        {
+            let mut next = self.points.clone();
+            next[idx] = target;
+            return self
+                .rebuild_from_2d(CloudSource::Custom2D(next), Vec::new(), self.radius)
+                .is_ok();
         }
         false
     }

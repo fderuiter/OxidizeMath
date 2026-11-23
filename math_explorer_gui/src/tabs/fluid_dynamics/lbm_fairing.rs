@@ -5,7 +5,7 @@
 use crate::framework::{ChallengeEvaluation, ChallengeMetadata};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    compute_drag_coefficient, BgkCollision, LatticeBoltzmannD2Q9,
+    BgkCollision, LatticeBoltzmannD2Q9, compute_drag_coefficient,
 };
 use serde::{Deserialize, Serialize};
 

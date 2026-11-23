@@ -3,7 +3,7 @@
 // theory_verification!
 
 use crate::audio::frame::{
-    clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset, MAX_VOICES,
+    MAX_VOICES, SonificationFrame, VoiceSpec, WaveformPreset, clamp_freq_hz,
 };
 
 /// Root reference pitch (`A3 = 220.0 Hz`) for prime-power harmonic chords.

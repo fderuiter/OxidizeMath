@@ -114,11 +114,13 @@ fn test_app_undo_redo_and_webgl_recovery_roundtrip() {
     );
 
     mgr.execute_undo(&mut app);
-    assert!(app.tabs[fw_tab_idx]
-        .framework()
-        .unwrap()
-        .saved_plot_states
-        .is_empty());
+    assert!(
+        app.tabs[fw_tab_idx]
+            .framework()
+            .unwrap()
+            .saved_plot_states
+            .is_empty()
+    );
 
     mgr.execute_redo(&mut app);
     assert_eq!(

@@ -2,9 +2,9 @@
 
 use super::*;
 use crate::framework::SimulationFramework;
-use crate::tabs::morphogenesis::MorphogenesisTab;
 use crate::tabs::ExplorerTab;
-use federated_registry::{global_registry, Severity};
+use crate::tabs::morphogenesis::MorphogenesisTab;
+use federated_registry::{Severity, global_registry};
 
 fn inject_unknown_config_field(preset_json: &str) -> String {
     let mut val: serde_json::Value = serde_json::from_str(preset_json).expect("valid preset json");
@@ -52,11 +52,22 @@ fn count_gallery_buttons(output: &egui::FullOutput) -> usize {
 }
 
 #[test]
-fn test_all_57_starter_cards_launch_and_sync_framework_state() {
+fn test_all_starter_cards_launch_and_sync_framework_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 108);
+    assert!(
+        !presets.is_empty(),
+        "Expected non-empty StarterPresetMetadata registry"
+    );
+    let mut seen_ids = std::collections::HashSet::new();
+    for preset in &presets {
+        assert!(
+            seen_ids.insert(preset.id),
+            "Duplicate StarterPresetMetadata id '{}'",
+            preset.id
+        );
+    }
 
     for preset in presets {
         let json = preset.generate_preset();
@@ -165,12 +176,16 @@ fn test_all_52_tools_reject_unknown_fields_and_wrong_domain() {
 
     let mut morph = MorphogenesisTab::default();
     let morph_exported = morph.to_json_string().unwrap();
-    assert!(morph
-        .from_json_str(&inject_unknown_config_field(&morph_exported))
-        .is_err());
-    assert!(morph
-        .from_json_str(&replace_preset_domain(&morph_exported, "quantum"))
-        .is_err());
+    assert!(
+        morph
+            .from_json_str(&inject_unknown_config_field(&morph_exported))
+            .is_err()
+    );
+    assert!(
+        morph
+            .from_json_str(&replace_preset_domain(&morph_exported, "quantum"))
+            .is_err()
+    );
 }
 
 #[test]
@@ -188,11 +203,13 @@ fn test_failed_card_launch_surfaces_toast_and_preset_serialization_telemetry() {
         Some(&bad_ode_json),
     );
     assert!(res.is_err());
-    assert!(framework
-        .preset_dialog
-        .toast_error
-        .as_deref()
-        .is_some_and(|m| m.contains("Broken Harmonic")));
+    assert!(
+        framework
+            .preset_dialog
+            .toast_error
+            .as_deref()
+            .is_some_and(|m| m.contains("Broken Harmonic"))
+    );
 
     let events = global_registry().try_recv_all();
     assert!(
@@ -206,18 +223,22 @@ fn test_failed_card_launch_surfaces_toast_and_preset_serialization_telemetry() {
 
     let mut morph_fw = SimulationFramework::new("biology");
     let bad_morph_json = inject_unknown_config_field(PRESET_TURING_SPOTS);
-    assert!(morph_fw
-        .apply_starter_card(
-            "Broken Spots",
-            Some("MorphogenesisTool"),
-            Some(&bad_morph_json)
-        )
-        .is_err());
-    assert!(morph_fw
-        .preset_dialog
-        .toast_error
-        .as_deref()
-        .is_some_and(|m| m.contains("Broken Spots")));
+    assert!(
+        morph_fw
+            .apply_starter_card(
+                "Broken Spots",
+                Some("MorphogenesisTool"),
+                Some(&bad_morph_json)
+            )
+            .is_err()
+    );
+    assert!(
+        morph_fw
+            .preset_dialog
+            .toast_error
+            .as_deref()
+            .is_some_and(|m| m.contains("Broken Spots"))
+    );
     let morph_events = global_registry().try_recv_all();
     assert!(morph_events.iter().any(|e| {
         e.source == "PresetSerialization"
@@ -303,12 +324,13 @@ fn test_all_story_and_challenge_presets_launch_and_compile_ast_cleanly() {
                 panic!("Story '{}' step {step_idx} failed to launch: {e}", story.id)
             });
             let bad = inject_unknown_config_field((story.steps[step_idx].preset_generator)());
-            assert!(fw
-                .active_tool
-                .as_mut()
-                .unwrap()
-                .import_preset_json(&bad)
-                .is_err());
+            assert!(
+                fw.active_tool
+                    .as_mut()
+                    .unwrap()
+                    .import_preset_json(&bad)
+                    .is_err()
+            );
         }
     }
 

@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 #[path = "attractors/flow.rs"]
 pub mod flow;
-pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
+pub use flow::{AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS, default_flow_bank};
 
 #[path = "attractors/invariants.rs"]
 mod invariants;
@@ -428,20 +428,19 @@ impl InteractiveTool for AttractorPlotter {
         let was_paused = self.is_paused();
         if let Some(snapshot) = self.worker.update() {
             self.latest_sonification = snapshot.sonification;
-            if !ui_diverged {
-                if let Some(data) = snapshot
+            if !ui_diverged
+                && let Some(data) = snapshot
                     .structured_data
                     .as_ref()
                     .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
+            {
+                self.history = data.history.clone();
+                self.system.state.vec = data.current_vec;
+                self.step_count = data.step_count;
+                if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
+                    || !was_paused
                 {
-                    self.history = data.history.clone();
-                    self.system.state.vec = data.current_vec;
-                    self.step_count = data.step_count;
-                    if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
-                        || !was_paused
-                    {
-                        self.execution_state = data.execution_state;
-                    }
+                    self.execution_state = data.execution_state;
                 }
             }
         }

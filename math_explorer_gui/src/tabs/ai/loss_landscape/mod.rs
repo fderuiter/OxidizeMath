@@ -21,21 +21,21 @@ pub use presets::PredictorMode;
 
 use crate::camera::Camera3D;
 use crate::framework::{
-    enforce_ordered_drag_range, InteractionContext, InteractiveTool, MathExpressionInputBar,
+    InteractionContext, InteractiveTool, MathExpressionInputBar, enforce_ordered_drag_range,
 };
 use arena::{ArenaConfig, ParticleArena};
 use data::{
-    default_preset_targets, default_target_formula_bar, parse_target_table, sample_formula_targets,
     DEFAULT_HUBER_DELTA, DEFAULT_TABLE_TEXT, DEFAULT_TARGET_SAMPLES, DEFAULT_TARGET_X_BOUNDS,
-    MAX_TABLE_ROWS,
+    MAX_TABLE_ROWS, default_preset_targets, default_target_formula_bar, parse_target_table,
+    sample_formula_targets,
 };
 use eframe::egui;
 use evaluator::EmpiricalConfig;
 use presets::DEFAULT_LOSS_EXPR;
 use surfaces::{
-    map_2d_rect_pos, push_sculpt_bump, unproject_3d_rect_pos, LandscapeSurface, SculptBump,
-    SurfaceEvaluator, SurfaceGrid, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN,
-    SCULPT_SIGMA_MAX, SCULPT_SIGMA_MIN,
+    LandscapeSurface, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN, SCULPT_SIGMA_MAX,
+    SCULPT_SIGMA_MIN, SculptBump, SurfaceEvaluator, SurfaceGrid, map_2d_rect_pos, push_sculpt_bump,
+    unproject_3d_rect_pos,
 };
 
 pub(crate) const LOSS_PARAM_MIN_BOUND: f64 = -100.0;
@@ -389,10 +389,10 @@ impl InteractiveTool for LossLandscapeTool {
             return;
         };
         let wb = self.pointer_to_wb(ctx.response.rect, pos);
-        if let Some(prev) = self.last_brush_wb {
-            if (wb[0] - prev[0]).hypot(wb[1] - prev[1]) < 0.02 {
-                return;
-            }
+        if let Some(prev) = self.last_brush_wb
+            && (wb[0] - prev[0]).hypot(wb[1] - prev[1]) < 0.02
+        {
+            return;
         }
         let amp = if ctx.modifiers.alt {
             -self.sculpt_amplitude

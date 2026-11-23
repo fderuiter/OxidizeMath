@@ -5,10 +5,10 @@
 use math_explorer::pure_math::analysis::pde::wave_2d::{BoundaryMode2D, Wave2DMedium};
 
 use super::{
-    ChladniWaveTankState, ChladniWaveTankTool, ClampLayout, SecondaryPlotMode, TankPreset,
-    WaveColormap, AMP_MAX, AMP_MIN, DAMPING_MAX, DAMPING_MIN, DT_MAX, DT_MIN, FREQ_MAX, FREQ_MIN,
-    GRID_SIZE, REFRACTIVE_MAX, REFRACTIVE_MIN, SLIT_SEP_MAX, SLIT_SEP_MIN, SPEED_MAX, SPEED_MIN,
-    STIFFNESS_MAX, STIFFNESS_MIN,
+    AMP_MAX, AMP_MIN, ChladniWaveTankState, ChladniWaveTankTool, ClampLayout, DAMPING_MAX,
+    DAMPING_MIN, DT_MAX, DT_MIN, FREQ_MAX, FREQ_MIN, GRID_SIZE, REFRACTIVE_MAX, REFRACTIVE_MIN,
+    SLIT_SEP_MAX, SLIT_SEP_MIN, SPEED_MAX, SPEED_MIN, STIFFNESS_MAX, STIFFNESS_MIN,
+    SecondaryPlotMode, TankPreset, WaveColormap,
 };
 
 fn sanitize_bounded(val: f64, min: f64, max: f64, fallback: f64) -> f64 {

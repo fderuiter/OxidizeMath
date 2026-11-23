@@ -4,8 +4,8 @@ use super::presets::PRESET_LENIA_GEMINIUM;
 use super::*;
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};
 use crate::presets::MorphogenesisKineticsMode;
-use crate::tabs::morphogenesis::{MorphogenesisTab, MorphogenesisToolState};
 use crate::tabs::ExplorerTab;
+use crate::tabs::morphogenesis::{MorphogenesisTab, MorphogenesisToolState};
 use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
 
 fn screen_input(events: Vec<egui::Event>) -> egui::RawInput {
@@ -234,9 +234,10 @@ fn test_lenia_compact_url_share_roundtrip() {
     let fragment = &share_url[hash_idx..];
 
     let mut app = crate::app::MathExplorerApp::default();
-    assert!(app
-        .apply_share_location_strings(fragment, "", None)
-        .unwrap());
+    assert!(
+        app.apply_share_location_strings(fragment, "", None)
+            .unwrap()
+    );
     let bio_idx = app
         .tabs
         .iter()

@@ -4,8 +4,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::accessibility::{
-    lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
-    AccessibleTheoryHover,
+    AccessibleTheoryHover, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use crate::app::SemanticPalette;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
@@ -97,11 +97,7 @@ pub fn populate_torus_ray_segments(
 fn boundary_hit_time(coord: f64, dir: f64, p_f: f64) -> f64 {
     if dir > 1e-9 {
         let gap = (p_f - coord).max(0.0);
-        if gap <= 1e-9 {
-            p_f / dir
-        } else {
-            gap / dir
-        }
+        if gap <= 1e-9 { p_f / dir } else { gap / dir }
     } else if dir < -1e-9 {
         let gap = coord.max(0.0);
         if gap <= 1e-9 {

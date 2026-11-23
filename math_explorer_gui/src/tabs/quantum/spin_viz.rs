@@ -11,7 +11,7 @@ use crate::framework::{
 use eframe::egui;
 use egui_plot::{LineStyle, MarkerShape};
 use math_explorer::physics::quantum::{
-    evolve_state_in_place, spin, time_evolution_operator, QuantumOperator, QuantumState,
+    QuantumOperator, QuantumState, evolve_state_in_place, spin, time_evolution_operator,
 };
 use nalgebra::{DMatrix, DVector, Point3};
 use num_complex::Complex;

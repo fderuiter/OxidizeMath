@@ -1,17 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::wcag_contrast_on_black;
-use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer, DEFAULT_ATLAS_SIDE};
-use crate::framework::state_bounds::ToolStateBounds;
+use crate::async_sim::atlas::{AtlasTeleportEvent, DEFAULT_ATLAS_SIDE, RegimeCartographer};
 use crate::framework::InteractiveTool;
+use crate::framework::state_bounds::ToolStateBounds;
 use scientific_metadata::theory::TheoryDescribable;
 
 #[cfg(feature = "biology")]
 #[test]
 fn test_morphogenesis_theory_bounds_and_four_regimes() {
     use crate::tabs::morphogenesis::{
-        classify_schnakenberg_regime, MorphogenesisCartographer, MorphogenesisRegime,
-        MorphogenesisTheory,
+        MorphogenesisCartographer, MorphogenesisRegime, MorphogenesisTheory,
+        classify_schnakenberg_regime,
     };
 
     let theory = MorphogenesisTheory::default().theory_parameters();
@@ -66,7 +66,7 @@ fn test_morphogenesis_theory_bounds_and_four_regimes() {
 #[test]
 fn test_morphogenesis_washout_auto_reseeds_into_turing_patterns_without_reset() {
     use crate::async_sim::SimulationRunner;
-    use crate::tabs::morphogenesis::{grid_u_variance, MorphogenesisTool};
+    use crate::tabs::morphogenesis::{MorphogenesisTool, grid_u_variance};
 
     let tool = MorphogenesisTool::default();
     {
@@ -106,7 +106,7 @@ fn test_morphogenesis_washout_auto_reseeds_into_turing_patterns_without_reset() 
 #[cfg(feature = "biology")]
 #[test]
 fn test_morphogenesis_state_bounds_and_teleport_reseed() {
-    use crate::tabs::morphogenesis::{grid_u_variance, MorphogenesisTool};
+    use crate::tabs::morphogenesis::{MorphogenesisTool, grid_u_variance};
 
     let mut tool = MorphogenesisTool::default();
     {
@@ -314,7 +314,7 @@ fn scan_accesskit_atlas_button(out: &eframe::egui::FullOutput) -> bool {
 #[cfg(all(feature = "biology", feature = "epidemiology"))]
 #[test]
 fn test_flagship_tools_expose_atlas_toggle_in_accesskit_tree() {
-    use eframe::{egui, App};
+    use eframe::{App, egui};
 
     let mut app = crate::app::MathExplorerApp::default();
     let ctx = egui::Context::default();

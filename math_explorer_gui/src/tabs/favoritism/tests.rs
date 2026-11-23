@@ -217,14 +217,15 @@ fn test_favoritism_reset_live_region_theory_and_preset_io() {
     let live_msg = crate::accessibility::with_live_region(|r| r.slots[r.active_slot].clone());
     assert_eq!(live_msg, "Parameters reset to baseline defaults");
 
-    assert!(tab
-        .framework
-        .apply_starter_card(
-            "Crisis & Proximity Showdown",
-            Some("FavoritismTool"),
-            Some(crate::starter_gallery::PRESET_FAVORITISM_SIBLING_RIVALRY),
-        )
-        .is_ok());
+    assert!(
+        tab.framework
+            .apply_starter_card(
+                "Crisis & Proximity Showdown",
+                Some("FavoritismTool"),
+                Some(crate::starter_gallery::PRESET_FAVORITISM_SIBLING_RIVALRY),
+            )
+            .is_ok()
+    );
     let preset_json = tab
         .framework
         .active_tool

@@ -6,9 +6,9 @@ use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 use eframe::egui;
 use math_explorer::math_types::Integer;
 use math_explorer::pure_math::algorithmic_information::fractran::{
-    FractranProgram, FractranState, FIRST_64_PRIMES,
+    FIRST_64_PRIMES, FractranProgram, FractranState,
 };
-use math_explorer::pure_math::algorithmic_information::geometry::{distance, Point2D};
+use math_explorer::pure_math::algorithmic_information::geometry::{Point2D, distance};
 use math_explorer::pure_math::algorithmic_information::kolmogorov::{
     bdm_complexity, exponents_to_bits, integer_to_bits, k_floor_r, lz76_complexity,
     prefix_kolmogorov_approx, shannon_entropy_bits,
@@ -290,10 +290,10 @@ impl FractranMachineTool {
             Ok(Some(rule_idx)) => {
                 self.last_rule_index = Some(rule_idx);
                 self.next_rule_index = self.program.matching_rule(&self.live.exponents);
-                if let Some(p) = FractranProgram::power_of_two_exponent(&self.live.exponents) {
-                    if self.emitted_primes.last().copied() != Some(p) {
-                        self.emitted_primes.push(p);
-                    }
+                if let Some(p) = FractranProgram::power_of_two_exponent(&self.live.exponents)
+                    && self.emitted_primes.last().copied() != Some(p)
+                {
+                    self.emitted_primes.push(p);
                 }
                 if self.trajectory.len() >= MAX_TRAJECTORY_POINTS {
                     self.trajectory.remove(0);

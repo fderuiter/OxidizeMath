@@ -6,8 +6,8 @@ use std::f64::consts::{FRAC_PI_2, TAU};
 
 use math_explorer::nalgebra::SVector;
 use math_explorer::physics::high_energy::{
-    combined_clock_rate, effective_potential, flamm_paraboloid_z, GeodesicKind,
-    KerrEquatorialMetric, MorrisThorneWormhole, SchwarzschildBlackHole, C,
+    C, GeodesicKind, KerrEquatorialMetric, MorrisThorneWormhole, SchwarzschildBlackHole,
+    combined_clock_rate, effective_potential, flamm_paraboloid_z,
 };
 use math_explorer::pure_math::analysis::ode::{ArrayState, RungeKutta4};
 use math_explorer::pure_math::tensor::{GeodesicState, GeodesicStepStatus, GeodesicSystem};

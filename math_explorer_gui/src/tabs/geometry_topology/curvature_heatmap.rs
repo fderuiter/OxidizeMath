@@ -295,8 +295,12 @@ impl scientific_metadata::theory::TheoryDescribable for CurvatureHeatmap {
             SurfaceType::CustomParametric => "custom compiled parametric manifold",
         };
         let curv_formula = match self.curvature_type {
-            CurvatureType::Gaussian => "Gaussian curvature $K = \\kappa_1 \\kappa_2 = \\frac{LN - M^2}{EG - F^2}$ (an intrinsic invariant by Gauss's Theorema Egregium)",
-            CurvatureType::Mean => "mean curvature $H = \\frac{\\kappa_1 + \\kappa_2}{2} = \\frac{EN - 2FM + GL}{2(EG - F^2)}$",
+            CurvatureType::Gaussian => {
+                "Gaussian curvature $K = \\kappa_1 \\kappa_2 = \\frac{LN - M^2}{EG - F^2}$ (an intrinsic invariant by Gauss's Theorema Egregium)"
+            }
+            CurvatureType::Mean => {
+                "mean curvature $H = \\frac{\\kappa_1 + \\kappa_2}{2} = \\frac{EN - 2FM + GL}{2(EG - F^2)}$"
+            }
         };
         format!(
             "Differential geometry surface analysis evaluating {curv_formula} on a parametric {surf_name}."

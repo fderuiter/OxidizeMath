@@ -9,8 +9,7 @@ use crate::accessibility::AccessibleHoverText;
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport, bounded_drag_value};
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{
-    MAX_LATTICE_PRIME, PrimeWeierstrassCurve, WeierstrassCurve, j_invariant_mod_p,
-    j_invariant_real,
+    MAX_LATTICE_PRIME, PrimeWeierstrassCurve, WeierstrassCurve, j_invariant_mod_p, j_invariant_real,
 };
 
 pub(crate) fn render_side_panel(tool: &mut WeierstrassPlaygroundTool, ui: &mut egui::Ui) {
@@ -59,30 +58,42 @@ fn render_real_controls(tool: &mut WeierstrassPlaygroundTool, ui: &mut egui::Ui)
     ui.horizontal(|ui| {
         ui.label("a:");
         changed |= ui
-            .add(bounded_drag_value(&mut tool.state.real_a, -10.0..=10.0, 0.05))
+            .add(bounded_drag_value(
+                &mut tool.state.real_a,
+                -10.0..=10.0,
+                0.05,
+            ))
             .changed();
         ui.label("b:");
         changed |= ui
-            .add(bounded_drag_value(&mut tool.state.real_b, -10.0..=10.0, 0.05))
+            .add(bounded_drag_value(
+                &mut tool.state.real_b,
+                -10.0..=10.0,
+                0.05,
+            ))
             .changed();
     });
     ui.horizontal(|ui| {
         ui.label("x_P:");
         changed |= ui
-            .add(bounded_drag_value(&mut tool.state.real_px, -4.0..=4.0, 0.05))
+            .add(bounded_drag_value(
+                &mut tool.state.real_px,
+                -4.0..=4.0,
+                0.05,
+            ))
             .changed();
-        changed |= ui
-            .checkbox(&mut tool.state.real_p_upper, "+y_P")
-            .changed();
+        changed |= ui.checkbox(&mut tool.state.real_p_upper, "+y_P").changed();
     });
     ui.horizontal(|ui| {
         ui.label("x_Q:");
         changed |= ui
-            .add(bounded_drag_value(&mut tool.state.real_qx, -4.0..=4.0, 0.05))
+            .add(bounded_drag_value(
+                &mut tool.state.real_qx,
+                -4.0..=4.0,
+                0.05,
+            ))
             .changed();
-        changed |= ui
-            .checkbox(&mut tool.state.real_q_upper, "+y_Q")
-            .changed();
+        changed |= ui.checkbox(&mut tool.state.real_q_upper, "+y_Q").changed();
     });
     changed
 }
@@ -171,22 +182,15 @@ fn render_group_summary(tool: &WeierstrassPlaygroundTool, ui: &mut egui::Ui) {
                     j_invariant_real(&curve)
                 ));
                 ui.label(format!("P + Q = {}", fmt_real_pt(sum)));
-                ui.label(format!(
-                    "[{}]P = {}",
-                    tool.state.scalar_k,
-                    fmt_real_pt(kp)
-                ));
+                ui.label(format!("[{}]P = {}", tool.state.scalar_k, fmt_real_pt(kp)));
             }
             Err(err) => {
                 ui.colored_label(err_color, err.to_string());
             }
         },
         CurveFieldMode::FiniteField => {
-            match PrimeWeierstrassCurve::new(
-                tool.state.mod_a,
-                tool.state.mod_b,
-                tool.state.prime_p,
-            ) {
+            match PrimeWeierstrassCurve::new(tool.state.mod_a, tool.state.mod_b, tool.state.prime_p)
+            {
                 Ok(curve) => {
                     let (p, q) = tool.current_fp_points();
                     let sum = curve.add(p, q);

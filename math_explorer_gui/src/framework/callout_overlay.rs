@@ -265,15 +265,16 @@ impl CalloutManager {
             let frame_size = Vec2::new(approx_width, 22.0);
             let frame_rect = Align2::CENTER_CENTER.anchor_size(anchor_pos, frame_size);
 
-            if let Some(pos) = pointer_pos {
-                if frame_rect.contains(pos) && self.dragged_id.is_none() {
-                    ctx.set_cursor_icon(egui::CursorIcon::Grab);
-                    if ctx.input(|i| i.pointer.primary_pressed()) {
-                        self.dragged_id = Some(callout.id);
-                        ctx.data_mut(|d| {
-                            d.insert_temp(plot_ui.plot_id().with("dragging_callout"), true);
-                        });
-                    }
+            if let Some(pos) = pointer_pos
+                && frame_rect.contains(pos)
+                && self.dragged_id.is_none()
+            {
+                ctx.set_cursor_icon(egui::CursorIcon::Grab);
+                if ctx.input(|i| i.pointer.primary_pressed()) {
+                    self.dragged_id = Some(callout.id);
+                    ctx.data_mut(|d| {
+                        d.insert_temp(plot_ui.plot_id().with("dragging_callout"), true);
+                    });
                 }
             }
 

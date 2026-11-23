@@ -9,7 +9,7 @@ use eframe::egui;
 use math_explorer::applied::clinical_trials::design::{
     AllocationStrategy, BlockRandomizer, Group, SimpleRandomizer,
 };
-use oxidize_core::rng::{OxidizeRng, BASE_SEED};
+use oxidize_core::rng::{BASE_SEED, OxidizeRng};
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum RandomizationType {
@@ -264,9 +264,15 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for RandomizationTool {
     fn theory_description(&self) -> String {
         let scheme = match self.randomization_type {
-            RandomizationType::Simple => "simple Bernoulli randomization with equal allocation probability $P(\\text{Treatment}) = 0.5$",
-            RandomizationType::Block => "permuted block randomization with block size guaranteeing periodic balance",
-            RandomizationType::Stratified => "stratified block randomization balancing prognostic strata to prevent Simpson's paradox confounding",
+            RandomizationType::Simple => {
+                "simple Bernoulli randomization with equal allocation probability $P(\\text{Treatment}) = 0.5$"
+            }
+            RandomizationType::Block => {
+                "permuted block randomization with block size guaranteeing periodic balance"
+            }
+            RandomizationType::Stratified => {
+                "stratified block randomization balancing prognostic strata to prevent Simpson's paradox confounding"
+            }
         };
         format!(
             "Clinical trial subject allocation using {} for $N = {}$ subjects to eliminate selection bias and balance prognostic factors.",

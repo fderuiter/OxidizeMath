@@ -60,9 +60,10 @@ fn wasm_challenge_url_hydration_and_lock_clamping() {
     assert_eq!(parsed.challenge.as_deref(), Some("bloch_pi_inversion"));
 
     let mut app = crate::app::MathExplorerApp::default();
-    assert!(app
-        .apply_share_location_strings(&hash, &search, None)
-        .expect("wasm app challenge hydration must succeed"));
+    assert!(
+        app.apply_share_location_strings(&hash, &search, None)
+            .expect("wasm app challenge hydration must succeed")
+    );
     let encoded = app
         .encode_current_share_url()
         .expect("encoding active challenge URL must succeed");

@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::systems::{CustomOdeSpec, ExponentialOde, HarmonicOscillatorOde, LogisticGrowthOde};
 use super::OdeSolverTool;
+use super::systems::{CustomOdeSpec, ExponentialOde, HarmonicOscillatorOde, LogisticGrowthOde};
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
 use math_explorer::pure_math::analysis::ode::{

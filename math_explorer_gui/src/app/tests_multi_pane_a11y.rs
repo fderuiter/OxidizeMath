@@ -3,9 +3,9 @@
 use super::viewport::focus::{focus_pane_interactive, pane_focus_border_color};
 use super::*;
 use crate::accessibility::{all_announcements, clear_test_announcements, with_live_region};
+use eframe::App;
 use eframe::egui;
 use eframe::egui::accesskit::{NodeId, Role};
-use eframe::App;
 use std::collections::{HashMap, HashSet};
 
 fn run_frame(
@@ -199,15 +199,18 @@ fn test_f6_shift_f6_and_focus_pane_menu_cycle_without_pointer_hover() {
     assert!(pane_rects[2].contains(ctx.read_response(fid).unwrap().rect.center()));
 
     let msgs = all_announcements();
-    assert!(msgs
-        .iter()
-        .any(|(m, _)| m.contains("Top-Right Pane (Pane 2 of 4)")));
-    assert!(msgs
-        .iter()
-        .any(|(m, _)| m.contains("Bottom-Left Pane (Pane 3 of 4)")));
-    assert!(msgs
-        .iter()
-        .any(|(m, _)| m.contains("Bottom-Right Pane (Pane 4 of 4)")));
+    assert!(
+        msgs.iter()
+            .any(|(m, _)| m.contains("Top-Right Pane (Pane 2 of 4)"))
+    );
+    assert!(
+        msgs.iter()
+            .any(|(m, _)| m.contains("Bottom-Left Pane (Pane 3 of 4)"))
+    );
+    assert!(
+        msgs.iter()
+            .any(|(m, _)| m.contains("Bottom-Right Pane (Pane 4 of 4)"))
+    );
     with_live_region(|r| {
         assert!(r.slots[r.active_slot].contains("Bottom-Left Pane (Pane 3 of 4)"));
     });
@@ -235,9 +238,11 @@ fn test_menu_modal_and_sash_focus_never_activate_simulation_controls() {
     for key in [egui::Key::Space, egui::Key::Enter, egui::Key::Tab] {
         let _ = run_frame(&ctx, &mut app, vec![key_press(key, egui::Modifiers::NONE)]);
     }
-    assert!(!all_announcements()
-        .iter()
-        .any(|(m, _)| m.contains("Simulation playing")));
+    assert!(
+        !all_announcements()
+            .iter()
+            .any(|(m, _)| m.contains("Simulation playing"))
+    );
 
     app.show_help_menu = true;
     let _ = run_frame(&ctx, &mut app, Vec::new());
@@ -245,9 +250,11 @@ fn test_menu_modal_and_sash_focus_never_activate_simulation_controls() {
     for key in [egui::Key::Space, egui::Key::Enter, egui::Key::Tab] {
         let _ = run_frame(&ctx, &mut app, vec![key_press(key, egui::Modifiers::NONE)]);
     }
-    assert!(!all_announcements()
-        .iter()
-        .any(|(m, _)| m.contains("Simulation playing")));
+    assert!(
+        !all_announcements()
+            .iter()
+            .any(|(m, _)| m.contains("Simulation playing"))
+    );
     app.show_help_menu = false;
 
     app.command_palette.open();
@@ -256,9 +263,11 @@ fn test_menu_modal_and_sash_focus_never_activate_simulation_controls() {
     for key in [egui::Key::Space, egui::Key::Tab] {
         let _ = run_frame(&ctx, &mut app, vec![key_press(key, egui::Modifiers::NONE)]);
     }
-    assert!(!all_announcements()
-        .iter()
-        .any(|(m, _)| m.contains("Simulation playing")));
+    assert!(
+        !all_announcements()
+            .iter()
+            .any(|(m, _)| m.contains("Simulation playing"))
+    );
 }
 
 fn setup_dual_sir_app(ctx: &egui::Context) -> Option<(MathExplorerApp, egui::FullOutput)> {
@@ -325,11 +334,13 @@ fn test_secondary_pane_reflective_copy_emits_root_copy_text() {
             modifiers: egui::Modifiers::NONE,
         }],
     );
-    assert!(click_out
-        .platform_output
-        .commands
-        .iter()
-        .any(|cmd| matches!(cmd, egui::OutputCommand::CopyText(_))));
+    assert!(
+        click_out
+            .platform_output
+            .commands
+            .iter()
+            .any(|cmd| matches!(cmd, egui::OutputCommand::CopyText(_)))
+    );
 }
 
 #[test]
@@ -366,9 +377,11 @@ fn test_secondary_pane_plot_navigation_and_csv_error_live_region() {
         &mut app,
         vec![key_press(egui::Key::ArrowRight, egui::Modifiers::NONE)],
     );
-    assert!(all_announcements()
-        .iter()
-        .any(|(m, p)| m.contains("Point ") && p == "polite"));
+    assert!(
+        all_announcements()
+            .iter()
+            .any(|(m, p)| m.contains("Point ") && p == "polite")
+    );
 
     clear_test_announcements();
     egui_plot::emit_plot_live_message(
@@ -376,9 +389,11 @@ fn test_secondary_pane_plot_navigation_and_csv_error_live_region() {
         "CSV Import Error: Invalid numeric column".into(),
         true,
     );
-    assert!(all_announcements()
-        .iter()
-        .any(|(m, p)| m.contains("CSV Import Error") && p == "assertive"));
+    assert!(
+        all_announcements()
+            .iter()
+            .any(|(m, p)| m.contains("CSV Import Error") && p == "assertive")
+    );
 }
 
 #[test]
@@ -428,9 +443,10 @@ fn test_scoped_temp_keys_and_wcag_g195_focus_border_contrast() {
         let border = pane_focus_border_color(&visuals);
         assert!(contrast_ratio(border, visuals.panel_fill) >= 4.5);
         assert!(contrast_ratio(border, visuals.extreme_bg_color) >= 4.5);
-        assert!(out
-            .shapes
-            .iter()
-            .any(|cs| shape_has_stroke_color(&cs.shape, border)));
+        assert!(
+            out.shapes
+                .iter()
+                .any(|cs| shape_has_stroke_color(&cs.shape, border))
+        );
     }
 }

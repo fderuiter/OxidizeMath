@@ -4,7 +4,7 @@
 
 use std::f64::consts::TAU;
 
-use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};
+use crate::audio::frame::{SonificationFrame, VoiceSpec, WaveformPreset, clamp_freq_hz};
 
 /// Five-note just-intonation major pentatonic frequencies (`1:1, 9:8, 5:4, 3:2, 5:3` over `220 Hz`).
 pub const RING_PENTATONIC_HZ: [f32; 5] = [220.0, 247.5, 275.0, 330.0, 366.666_7];

@@ -25,15 +25,15 @@ use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool};
 use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
 use eframe::egui;
 use egui_plot::PlotPoint;
-use io::{parse_point_cloud_text, ImportedCloud, PendingIoTasks, MAX_URL_CUSTOM_POINTS_2D};
+use io::{ImportedCloud, MAX_URL_CUSTOM_POINTS_2D, PendingIoTasks, parse_point_cloud_text};
 use math_explorer::pure_math::statistics::tda::core::{NdPointCloud, Point2D};
 use math_explorer::pure_math::statistics::tda::{
-    farthest_point_landmarks, PersistenceInterval, Point3D, RipsPersistenceResult,
-    SimplicialComplex, TdaFiltrationWorkspace,
+    PersistenceInterval, Point3D, RipsPersistenceResult, SimplicialComplex, TdaFiltrationWorkspace,
+    farthest_point_landmarks,
 };
 use plots::PersistencePlotMode;
-use presets::{generate_preset_points, GeneratorDescriptor, ShapePreset};
-use state::{deserialize_tool_state, serialize_tool_state, SculptBrush, VrSourceMode};
+use presets::{GeneratorDescriptor, ShapePreset, generate_preset_points};
+use state::{SculptBrush, VrSourceMode, deserialize_tool_state, serialize_tool_state};
 
 /// Maximum 3D landmark budget (`64`) for chaotic attractors, Takens embeddings, and zero-alloc sweeps.
 pub const MAX_CHAOS_LANDMARKS: usize = 64;

@@ -110,18 +110,19 @@ fn draw_real_overlays(
         (q, palette.warning, "Q"),
         (sum, palette.success, "P+Q"),
     ] {
-        if let Some((x, y)) = pt.coords() {
-            if (vp.x_min..=vp.x_max).contains(&x) && (vp.y_min..=vp.y_max).contains(&y) {
-                let sc = vp.to_screen(x, y);
-                painter.circle_filled(sc, 5.5_f32, col);
-                painter.text(
-                    sc + egui::vec2(7.0_f32, -7.0_f32),
-                    egui::Align2::LEFT_BOTTOM,
-                    lbl,
-                    egui::FontId::proportional(13.0_f32),
-                    visuals.text_color(),
-                );
-            }
+        if let Some((x, y)) = pt.coords()
+            && (vp.x_min..=vp.x_max).contains(&x)
+            && (vp.y_min..=vp.y_max).contains(&y)
+        {
+            let sc = vp.to_screen(x, y);
+            painter.circle_filled(sc, 5.5_f32, col);
+            painter.text(
+                sc + egui::vec2(7.0_f32, -7.0_f32),
+                egui::Align2::LEFT_BOTTOM,
+                lbl,
+                egui::FontId::proportional(13.0_f32),
+                visuals.text_color(),
+            );
         }
     }
 }
@@ -156,31 +157,31 @@ pub(crate) fn draw_fp_scene(
     let sum = curve.add(p, q);
     let neg_sum = curve.negate(sum);
 
-    if tool.state.show_secant {
-        if let Some((x1, y1)) = p.coords() {
-            if let Some(m) = curve.slope_mod_p(p, q) {
-                for (a, b) in toroidal_secant_segments(curve.p, x1, y1, m) {
-                    painter.line_segment(
-                        [vp.to_screen(a[0], a[1]), vp.to_screen(b[0], b[1])],
-                        egui::Stroke::new(1.5_f32, palette.warning),
-                    );
-                }
-            } else {
-                let pf = curve.p as f64;
+    if tool.state.show_secant
+        && let Some((x1, y1)) = p.coords()
+    {
+        if let Some(m) = curve.slope_mod_p(p, q) {
+            for (a, b) in toroidal_secant_segments(curve.p, x1, y1, m) {
                 painter.line_segment(
-                    [vp.to_screen(x1 as f64, 0.0), vp.to_screen(x1 as f64, pf)],
+                    [vp.to_screen(a[0], a[1]), vp.to_screen(b[0], b[1])],
                     egui::Stroke::new(1.5_f32, palette.warning),
                 );
             }
-            if let (Some((rx, ry)), Some((sx, sy))) = (neg_sum.coords(), sum.coords()) {
-                painter.line_segment(
-                    [
-                        vp.to_screen(rx as f64, ry as f64),
-                        vp.to_screen(sx as f64, sy as f64),
-                    ],
-                    egui::Stroke::new(1.5_f32, palette.success),
-                );
-            }
+        } else {
+            let pf = curve.p as f64;
+            painter.line_segment(
+                [vp.to_screen(x1 as f64, 0.0), vp.to_screen(x1 as f64, pf)],
+                egui::Stroke::new(1.5_f32, palette.warning),
+            );
+        }
+        if let (Some((rx, ry)), Some((sx, sy))) = (neg_sum.coords(), sum.coords()) {
+            painter.line_segment(
+                [
+                    vp.to_screen(rx as f64, ry as f64),
+                    vp.to_screen(sx as f64, sy as f64),
+                ],
+                egui::Stroke::new(1.5_f32, palette.success),
+            );
         }
     }
 

@@ -50,10 +50,7 @@ fn render_parameter_sliders(tool: &mut ModularInvariantsTool, ui: &mut egui::Ui)
         .changed();
     let mut p_cand = tool.state.inspect_prime;
     if ui
-        .add(
-            egui::Slider::new(&mut p_cand, 5..=MAX_LATTICE_PRIME as u64)
-                .text("Inspected Prime p"),
-        )
+        .add(egui::Slider::new(&mut p_cand, 5..=MAX_LATTICE_PRIME as u64).text("Inspected Prime p"))
         .changed()
     {
         tool.state.inspect_prime = snap_prime_u64(p_cand);
@@ -179,7 +176,10 @@ pub(crate) fn build_export_datasets(tool: &ModularInvariantsTool) -> Vec<(String
             ("+2√p Hasse Bound".into(), tool.hasse_upper.clone()),
             ("-2√p Hasse Bound".into(), tool.hasse_lower.clone()),
             ("Frobenius Trace a_p".into(), tool.trace_pts.clone()),
-            ("Class Number h(a_p² - 4p)".into(), tool.class_num_pts.clone()),
+            (
+                "Class Number h(a_p² - 4p)".into(),
+                tool.class_num_pts.clone(),
+            ),
         ],
         ModularPlotMode::HurwitzKroneckerSums => vec![
             ("(p - 2) / 3 Law".into(), tool.hurwitz_expected.clone()),

@@ -4,7 +4,7 @@
 
 use super::SimulationFramework;
 use crate::starter_gallery::{
-    challenge_matches_domain, find_challenge_metadata, ChallengeCard, ChallengeMetadata,
+    ChallengeCard, ChallengeMetadata, challenge_matches_domain, find_challenge_metadata,
 };
 use eframe::egui;
 
@@ -157,11 +157,11 @@ impl SimulationFramework {
             ));
         }
 
-        if self.selected_tool_index != Some(target_idx) {
-            if let Some((old_name, old_json)) = self.serialized_active_tool() {
-                self.saved_tool_states
-                    .insert(old_name.to_string(), old_json.to_string());
-            }
+        if self.selected_tool_index != Some(target_idx)
+            && let Some((old_name, old_json)) = self.serialized_active_tool()
+        {
+            self.saved_tool_states
+                .insert(old_name.to_string(), old_json.to_string());
         }
         scientific_metadata::citation_registry::CitationRegistry::register(
             candidate.name().to_string(),

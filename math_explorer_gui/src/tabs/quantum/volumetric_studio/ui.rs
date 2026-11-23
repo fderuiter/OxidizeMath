@@ -4,14 +4,14 @@
 // [cite:quantum_mechanics]
 // [cite:isosurface_extraction]
 
-use super::state::{
-    FieldSourceMode, QuantumObservableChoice, SliceAxis, VolumetricRenderMode, MAX_VOLUMETRIC_GRID,
-    MIN_VOLUMETRIC_GRID,
-};
 use super::VolumetricFieldStudioTool;
-use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
+use super::state::{
+    FieldSourceMode, MAX_VOLUMETRIC_GRID, MIN_VOLUMETRIC_GRID, QuantumObservableChoice, SliceAxis,
+    VolumetricRenderMode,
+};
+use crate::framework::{PaneSidePanel, PlaybackAction, PlaybackTransport, scoped_panel_id};
 use crate::volumetric_scene::OPACITY_THRESHOLD;
-use crate::web_io::{spawn_save_as_file_dialog, PlatformInstant, SaveAsDialogConfig};
+use crate::web_io::{PlatformInstant, SaveAsDialogConfig, spawn_save_as_file_dialog};
 use eframe::egui;
 use math_explorer::physics::quantum::OrbitalQuantumNumbers;
 use std::sync::mpsc;

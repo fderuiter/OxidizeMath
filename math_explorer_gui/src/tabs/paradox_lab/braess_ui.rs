@@ -3,8 +3,8 @@
 use super::braess::BraessNetworkParadoxTool;
 use super::render_tool_header;
 use crate::accessibility::{
-    announce_live_status, paint_canvas_focus_ring, register_canvas_accessibility,
-    AccessibleHoverText,
+    AccessibleHoverText, announce_live_status, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use crate::app::SemanticPalette;
 use crate::framework::{StarterPresetMetadata, ToolMetadata};

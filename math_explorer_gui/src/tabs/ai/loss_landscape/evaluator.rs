@@ -112,12 +112,11 @@ impl<'a> SurfaceEvaluator<'a> {
     #[inline]
     #[must_use]
     pub const fn global_minima(self) -> &'static [[f64; 2]] {
-        if matches!(self.surface, LandscapeSurface::LinearMse) {
-            if let Some(emp) = self.empirical {
-                if emp.custom_predictor.is_some() || !emp.is_preset_linear_target {
-                    return &[];
-                }
-            }
+        if matches!(self.surface, LandscapeSurface::LinearMse)
+            && let Some(emp) = self.empirical
+            && (emp.custom_predictor.is_some() || !emp.is_preset_linear_target)
+        {
+            return &[];
         }
         self.surface.global_minima()
     }

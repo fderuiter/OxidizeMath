@@ -3,10 +3,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{EntityMode, PharmacokineticsTool};
-use crate::web_io::{sanitize_download_filename, spawn_save_as_file_dialog, SaveAsDialogConfig};
+use crate::web_io::{SaveAsDialogConfig, sanitize_download_filename, spawn_save_as_file_dialog};
 use egui_plot::PlotPoint;
 use std::fmt::Write as _;
-use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 /// Non-blocking status and channel state for Markdown/CSV dosing card saves and clipboard copies.
 #[derive(Default)]

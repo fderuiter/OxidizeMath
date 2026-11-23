@@ -43,61 +43,60 @@ static ASSERTIVE_SLOT_TOGGLE: std::sync::atomic::AtomicBool =
 #[cfg(target_arch = "wasm32")]
 // theory_verification!
 pub fn init_accessibility_bridge() {
-    if let Some(window) = web_sys::window() {
-        if let Some(document) = window.document() {
-            if let Some(body) = document.body() {
-                // Technique ARIA22: Polite container with role="status", aria-live="polite", and aria-atomic="true"
-                if document.get_element_by_id("aria-live-polite").is_none() {
-                    if let Ok(container) = document.create_element("div") {
-                        container.set_id("aria-live-polite");
-                        let _ = container.set_attribute("role", "status");
-                        let _ = container.set_attribute("aria-live", "polite");
-                        let _ = container.set_attribute("aria-atomic", "true");
-                        let _ = container.set_attribute("class", "sr-only");
-                        let _ = container.set_attribute(
+    if let Some(window) = web_sys::window()
+        && let Some(document) = window.document()
+        && let Some(body) = document.body()
+    {
+        // Technique ARIA22: Polite container with role="status", aria-live="polite", and aria-atomic="true"
+        if document.get_element_by_id("aria-live-polite").is_none()
+            && let Ok(container) = document.create_element("div")
+        {
+            container.set_id("aria-live-polite");
+            let _ = container.set_attribute("role", "status");
+            let _ = container.set_attribute("aria-live", "polite");
+            let _ = container.set_attribute("aria-atomic", "true");
+            let _ = container.set_attribute("class", "sr-only");
+            let _ = container.set_attribute(
                             "style",
                             "position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;",
                         );
 
-                        if let Ok(slot0) = document.create_element("span") {
-                            slot0.set_id("aria-live-polite-slot-0");
-                            let _ = container.append_child(&slot0);
-                        }
-                        if let Ok(slot1) = document.create_element("span") {
-                            slot1.set_id("aria-live-polite-slot-1");
-                            let _ = container.append_child(&slot1);
-                        }
-
-                        let _ = body.append_child(&container);
-                    }
-                }
-
-                // Technique ARIA19: Assertive container with role="alert", aria-live="assertive", and aria-atomic="true"
-                if document.get_element_by_id("aria-live-assertive").is_none() {
-                    if let Ok(container) = document.create_element("div") {
-                        container.set_id("aria-live-assertive");
-                        let _ = container.set_attribute("role", "alert");
-                        let _ = container.set_attribute("aria-live", "assertive");
-                        let _ = container.set_attribute("aria-atomic", "true");
-                        let _ = container.set_attribute("class", "sr-only");
-                        let _ = container.set_attribute(
-                            "style",
-                            "position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;",
-                        );
-
-                        if let Ok(slot0) = document.create_element("span") {
-                            slot0.set_id("aria-live-assertive-slot-0");
-                            let _ = container.append_child(&slot0);
-                        }
-                        if let Ok(slot1) = document.create_element("span") {
-                            slot1.set_id("aria-live-assertive-slot-1");
-                            let _ = container.append_child(&slot1);
-                        }
-
-                        let _ = body.append_child(&container);
-                    }
-                }
+            if let Ok(slot0) = document.create_element("span") {
+                slot0.set_id("aria-live-polite-slot-0");
+                let _ = container.append_child(&slot0);
             }
+            if let Ok(slot1) = document.create_element("span") {
+                slot1.set_id("aria-live-polite-slot-1");
+                let _ = container.append_child(&slot1);
+            }
+
+            let _ = body.append_child(&container);
+        }
+
+        // Technique ARIA19: Assertive container with role="alert", aria-live="assertive", and aria-atomic="true"
+        if document.get_element_by_id("aria-live-assertive").is_none()
+            && let Ok(container) = document.create_element("div")
+        {
+            container.set_id("aria-live-assertive");
+            let _ = container.set_attribute("role", "alert");
+            let _ = container.set_attribute("aria-live", "assertive");
+            let _ = container.set_attribute("aria-atomic", "true");
+            let _ = container.set_attribute("class", "sr-only");
+            let _ = container.set_attribute(
+                            "style",
+                            "position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;",
+                        );
+
+            if let Ok(slot0) = document.create_element("span") {
+                slot0.set_id("aria-live-assertive-slot-0");
+                let _ = container.append_child(&slot0);
+            }
+            if let Ok(slot1) = document.create_element("span") {
+                slot1.set_id("aria-live-assertive-slot-1");
+                let _ = container.append_child(&slot1);
+            }
+
+            let _ = body.append_child(&container);
         }
     }
     ensure_plot_live_bridge();
@@ -190,38 +189,38 @@ pub fn announce_status_with_priority(message: &str, priority: &str) {
         let _ = &r.slots[active];
     });
 
-    if let Some(window) = web_sys::window() {
-        if let Some(document) = window.document() {
-            let is_assertive = priority.eq_ignore_ascii_case("assertive")
-                || priority.eq_ignore_ascii_case("alert");
-            let container_id = if is_assertive {
-                "aria-live-assertive"
-            } else {
-                "aria-live-polite"
-            };
+    if let Some(window) = web_sys::window()
+        && let Some(document) = window.document()
+    {
+        let is_assertive =
+            priority.eq_ignore_ascii_case("assertive") || priority.eq_ignore_ascii_case("alert");
+        let container_id = if is_assertive {
+            "aria-live-assertive"
+        } else {
+            "aria-live-polite"
+        };
 
-            if document.get_element_by_id(container_id).is_none() {
-                init_accessibility_bridge();
-            }
+        if document.get_element_by_id(container_id).is_none() {
+            init_accessibility_bridge();
+        }
 
-            let toggle = if is_assertive {
-                &ASSERTIVE_SLOT_TOGGLE
-            } else {
-                &POLITE_SLOT_TOGGLE
-            };
-            let slot_idx = next_live_slot(toggle);
-            let sibling_idx = 1 - slot_idx;
+        let toggle = if is_assertive {
+            &ASSERTIVE_SLOT_TOGGLE
+        } else {
+            &POLITE_SLOT_TOGGLE
+        };
+        let slot_idx = next_live_slot(toggle);
+        let sibling_idx = 1 - slot_idx;
 
-            let active_id = format!("{container_id}-slot-{slot_idx}");
-            let sibling_id = format!("{container_id}-slot-{sibling_idx}");
+        let active_id = format!("{container_id}-slot-{slot_idx}");
+        let sibling_id = format!("{container_id}-slot-{sibling_idx}");
 
-            if let Some(sibling_slot) = document.get_element_by_id(&sibling_id) {
-                sibling_slot.set_text_content(Some(""));
-            }
+        if let Some(sibling_slot) = document.get_element_by_id(&sibling_id) {
+            sibling_slot.set_text_content(Some(""));
+        }
 
-            if let Some(active_slot) = document.get_element_by_id(&active_id) {
-                active_slot.set_text_content(Some(message));
-            }
+        if let Some(active_slot) = document.get_element_by_id(&active_id) {
+            active_slot.set_text_content(Some(message));
         }
     }
 }

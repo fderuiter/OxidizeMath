@@ -11,12 +11,14 @@ fn test_vietoris_rips_try_load_state_3d_bounds_and_250_2d_cap() {
     let mut tool = VietorisRipsTool::default();
     let before = tool.complex_builds;
 
-    assert!(tool
-        .try_load_state(r#"{"radius":1.5,"points":[]}"#)
-        .is_err());
-    assert!(tool
-        .try_load_state(r#"{"radius":1.5,"points":[[0.0,"NaN"]]}"#)
-        .is_err());
+    assert!(
+        tool.try_load_state(r#"{"radius":1.5,"points":[]}"#)
+            .is_err()
+    );
+    assert!(
+        tool.try_load_state(r#"{"radius":1.5,"points":[[0.0,"NaN"]]}"#)
+            .is_err()
+    );
     let over_250 = serde_json::json!({
         "radius": 2.0,
         "points": (0..(MAX_VIETORIS_RIPS_POINTS + 1)).map(|i| [i as f64 * 0.1, 0.0]).collect::<Vec<_>>()

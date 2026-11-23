@@ -5,11 +5,11 @@ use super::serde_vec3;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use crate::tabs::geometry_topology::vietoris_rips::{
-    handoff::{publish_live_attractor_landmarks, ChaosLandmarkHandoff},
     MAX_CHAOS_LANDMARKS,
+    handoff::{ChaosLandmarkHandoff, publish_live_attractor_landmarks},
 };
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
-use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
+use math_explorer::pure_math::statistics::tda::{Point3D, farthest_point_landmarks};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;

@@ -11,8 +11,8 @@ mod ui;
 
 pub use controller::{AtlasTeleportEvent, ParameterAtlasController};
 pub use runner::{
-    clamp_atlas_dimensions, AtlasPassMeta, AtlasRenderRequest, AtlasRunner, ATLAS_SLICE_BUDGET,
-    ATLAS_STRIDES, DEFAULT_ATLAS_SIDE, MAX_ATLAS_SIDE,
+    ATLAS_SLICE_BUDGET, ATLAS_STRIDES, AtlasPassMeta, AtlasRenderRequest, AtlasRunner,
+    DEFAULT_ATLAS_SIDE, MAX_ATLAS_SIDE, clamp_atlas_dimensions,
 };
 
 use eframe::egui;

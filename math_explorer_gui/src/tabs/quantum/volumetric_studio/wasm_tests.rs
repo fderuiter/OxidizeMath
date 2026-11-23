@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 //! Headless WebAssembly (`wasm32-unknown-unknown`) browser tests for `VolumetricFieldStudioTool`.
 
+use super::VolumetricFieldStudioTool;
 use super::presets::{PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3D_TURING_GYROID_JSON};
 use super::state::{SliceAxis, VolumetricRenderMode};
-use super::VolumetricFieldStudioTool;
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use wasm_bindgen_test::wasm_bindgen_test;

@@ -6,8 +6,9 @@
 use crate::accessibility::announce_live_status;
 use eframe::egui::{self, EventFilter, Key, Modifiers, Pos2, Rect, Shape};
 use egui_plot::{
+    PlotPoint, PlotUi,
     commands::{CommandRegistryData, CommandTrigger},
-    focus_ring_stroke, PlotPoint, PlotUi,
+    focus_ring_stroke,
 };
 
 /// Controls whether pointer/keyboard gestures pan/zoom the viewport or sculpt spatial fields.

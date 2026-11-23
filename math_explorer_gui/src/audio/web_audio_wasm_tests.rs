@@ -1,10 +1,10 @@
 use wasm_bindgen_test::wasm_bindgen_test;
 use web_sys::AudioContextState;
 
-use super::{create_periodic_wave, WebAudioNodeBackend};
+use super::{WebAudioNodeBackend, create_periodic_wave};
 use crate::audio::backend::{MuteReason, SonificationBackend};
 use crate::audio::fourier::compute_preset_harmonics;
-use crate::audio::frame::{WaveformPreset, LIMITER_CEILING_DBFS};
+use crate::audio::frame::{LIMITER_CEILING_DBFS, WaveformPreset};
 use crate::audio::mappings::{hodgkin_huxley_frame, prime_chord_frame};
 
 #[wasm_bindgen_test]

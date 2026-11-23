@@ -2,8 +2,8 @@
 
 use super::MorphogenesisTool;
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
-    RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent, RegimeCartographer,
+    atlas_regime_color,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
 use eframe::egui;

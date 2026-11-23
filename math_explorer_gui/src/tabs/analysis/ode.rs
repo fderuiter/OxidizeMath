@@ -8,14 +8,14 @@ pub mod recovery;
 pub mod systems;
 pub mod ui;
 
-use comparison::{simulate_preset, SolverDiscrepancy};
-use systems::{default_coupled_ode_bank, CustomOdeSpec};
+use comparison::{SolverDiscrepancy, simulate_preset};
+use systems::{CustomOdeSpec, default_coupled_ode_bank};
 
+#[cfg(test)]
+use crate::framework::InteractiveTool;
 use crate::framework::math_input::CoupledExpressionBank;
 use crate::framework::recovery::emit_divergence_telemetry;
 pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-#[cfg(test)]
-use crate::framework::InteractiveTool;
 use crate::framework::{CalloutManager, MathExpressionInputBar, TraceSeries, TraceSnapshotManager};
 use crate::presets::OdePreset;
 #[cfg(test)]

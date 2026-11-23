@@ -283,7 +283,9 @@ impl scientific_metadata::theory::TheoryDescribable for TurbulenceTool {
         let re = (self.density * self.velocity * self.length) / self.dynamic_viscosity;
         let geom_str = match self.geometry {
             Geometry::Pipe => "pipe flow with critical threshold $Re_c \\approx 2300$",
-            Geometry::FlatPlate => "boundary layer over a flat plate with transition threshold $Re_c \\approx 5 \\times 10^5$",
+            Geometry::FlatPlate => {
+                "boundary layer over a flat plate with transition threshold $Re_c \\approx 5 \\times 10^5$"
+            }
         };
         format!(
             "Fluid flow regime analysis for {} governed by Reynolds number $Re = \\frac{{\\rho v L}}{{\\mu}} = {:.1}$.",

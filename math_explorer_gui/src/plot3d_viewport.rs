@@ -4,7 +4,7 @@
 
 use eframe::egui;
 
-use crate::camera::{Camera3D, CAMERA_3D_HELPER_TEXT};
+use crate::camera::{CAMERA_3D_HELPER_TEXT, Camera3D};
 
 /// Shared 3D viewport wrapper around `egui_plot::Plot` that activates `scene_3d_mode`,
 /// disables 2D pan/zoom gestures, locks symmetric viewport bounds so `Camera3D::zoom`

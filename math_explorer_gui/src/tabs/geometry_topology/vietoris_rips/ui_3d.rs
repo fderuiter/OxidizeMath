@@ -5,7 +5,7 @@
 use super::handoff::{poll_live_attractor_landmarks, take_chaos_landmark_handoff};
 use super::presets::GeneratorDescriptor;
 use super::state::{SculptBrush, VrSourceMode};
-use super::{CloudSource, VietorisRipsTool, MAX_CHAOS_LANDMARKS};
+use super::{CloudSource, MAX_CHAOS_LANDMARKS, VietorisRipsTool};
 use crate::accessibility::AccessibleTheoryHover;
 use crate::app::SemanticPalette;
 use crate::framework::Plot3DViewport;

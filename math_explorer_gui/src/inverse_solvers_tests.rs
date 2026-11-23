@@ -6,27 +6,26 @@
 use crate::async_sim::unified::UnifiedSimRunner;
 use crate::async_sim::{SimCommand, SimulationRunner};
 use crate::framework::InteractiveTool;
-use crate::tabs::clinical_trials::pharmacokinetics::challenge::{
-    PkRegimenState, PkWorkspace, CHALLENGE_PK_THERAPEUTIC_WINDOW,
-};
 use crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool;
+use crate::tabs::clinical_trials::pharmacokinetics::challenge::{
+    CHALLENGE_PK_THERAPEUTIC_WINDOW, PkRegimenState, PkWorkspace,
+};
 use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
 use crate::tabs::fluid_dynamics::lbm_fairing::{
-    FairingStamp, LbmFairingEvaluator, CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY,
-    LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y, LBM_MIN_SOLID_CELLS,
+    CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY, FairingStamp, LBM_CELL_COUNT, LBM_CORE_RADIUS,
+    LBM_CORE_X, LBM_CORE_Y, LBM_MIN_SOLID_CELLS, LbmFairingEvaluator,
 };
 use crate::tabs::fluid_dynamics::lbm_fairing_ui::LbmUiExtension;
 use crate::tabs::medical::dose::DoseCalculationTool;
 use crate::tabs::medical::imrt::{
-    ImrtWorkspace, CHALLENGE_IMRT_BETA, CHALLENGE_IMRT_OAR_LIMIT_GY, CHALLENGE_IMRT_OAR_SPARING,
-    CHALLENGE_IMRT_PRESCRIPTION_GY,
-};
-use crate::tabs::mri::pulse::{
-    MriPulseMode, MriPulseWorkspace, RfPulseConfig, CHALLENGE_BLOCH_HAHN_ECHO,
-    CHALLENGE_BLOCH_PI_INVERSION, CHALLENGE_MRI_B0, CHALLENGE_MRI_T1, CHALLENGE_MRI_T2,
-    CHALLENGE_MRI_TE,
+    CHALLENGE_IMRT_BETA, CHALLENGE_IMRT_OAR_LIMIT_GY, CHALLENGE_IMRT_OAR_SPARING,
+    CHALLENGE_IMRT_PRESCRIPTION_GY, ImrtWorkspace,
 };
 use crate::tabs::mri::MriTool;
+use crate::tabs::mri::pulse::{
+    CHALLENGE_BLOCH_HAHN_ECHO, CHALLENGE_BLOCH_PI_INVERSION, CHALLENGE_MRI_B0, CHALLENGE_MRI_T1,
+    CHALLENGE_MRI_T2, CHALLENGE_MRI_TE, MriPulseMode, MriPulseWorkspace, RfPulseConfig,
+};
 use math_explorer::applied::pharmacokinetics::{solve_ka, t_max};
 use math_explorer::physics::mri::proton;
 use std::collections::HashMap;

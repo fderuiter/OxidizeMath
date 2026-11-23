@@ -1,4 +1,6 @@
 // @explorer_feature = "biology"
+// @explorer_domain = "Biology"
+// @explorer_slug = "morphogenesis"
 use crate::async_sim::SimWorkerState;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisPresetConfig;
@@ -26,7 +28,7 @@ pub mod ui;
 
 #[cfg(test)]
 pub use atlas::{
-    classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+    MorphogenesisCartographer, MorphogenesisRegime, classify_schnakenberg_regime, grid_u_variance,
 };
 #[cfg(test)]
 pub use lenia::LeniaTool;
@@ -127,18 +129,17 @@ impl MorphogenesisTab {
             .as_ref()
             .filter(|t| t.name() == "Turing Morphogenesis")
             .and_then(|t| t.save_state())
+            && let Ok(s) = serde_json::from_str::<MorphogenesisToolState>(&json)
         {
-            if let Ok(s) = serde_json::from_str::<MorphogenesisToolState>(&json) {
-                return MorphogenesisPresetConfig {
-                    a: s.a,
-                    b: s.b,
-                    d_u: s.d_u,
-                    d_v: s.d_v,
-                    dt: s.dt,
-                    width: s.width,
-                    height: s.height,
-                };
-            }
+            return MorphogenesisPresetConfig {
+                a: s.a,
+                b: s.b,
+                d_u: s.d_u,
+                d_v: s.d_v,
+                dt: s.dt,
+                width: s.width,
+                height: s.height,
+            };
         }
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         MorphogenesisPresetConfig {
@@ -244,12 +245,12 @@ impl MorphogenesisTab {
     }
 
     fn sync_framework_after_direct_tool_mutation(&mut self) {
-        if let Some(tool) = self.framework.active_tool.as_ref() {
-            if let Some(saved) = tool.save_state() {
-                self.framework
-                    .saved_tool_states
-                    .insert(tool.name().to_string(), saved);
-            }
+        if let Some(tool) = self.framework.active_tool.as_ref()
+            && let Some(saved) = tool.save_state()
+        {
+            self.framework
+                .saved_tool_states
+                .insert(tool.name().to_string(), saved);
         }
         self.framework.cache_valid_snapshot();
     }
@@ -275,13 +276,13 @@ impl MorphogenesisTab {
         current_state.state = legacy.state;
         current_state.paused = legacy.paused;
         current_state.pending_initial_start = legacy.pending_initial_start;
-        if let Ok(updated_json) = serde_json::to_string(&current_state) {
-            if tool.try_load_state(&updated_json).is_ok() {
-                let cfg = self.export_config();
-                self.sync_shared_params_from_config(&cfg);
-                self.framework.show_starter_gallery = false;
-                self.sync_framework_after_direct_tool_mutation();
-            }
+        if let Ok(updated_json) = serde_json::to_string(&current_state)
+            && tool.try_load_state(&updated_json).is_ok()
+        {
+            let cfg = self.export_config();
+            self.sync_shared_params_from_config(&cfg);
+            self.framework.show_starter_gallery = false;
+            self.sync_framework_after_direct_tool_mutation();
         }
         true
     }
@@ -346,6 +347,14 @@ impl FiniteStateGuard for MorphogenesisTab {
 impl ExplorerTab for MorphogenesisTab {
     fn name(&self) -> &'static str {
         "Morphogenesis"
+    }
+
+    fn academic_domain(&self) -> &'static str {
+        EXPLORER_DOMAIN
+    }
+
+    fn url_slug(&self) -> &'static str {
+        EXPLORER_SLUG
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

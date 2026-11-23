@@ -2,8 +2,8 @@
 
 use super::kspace_runner::MriKSpaceRunner;
 use super::kspace_types::{
-    CompactBrushStroke, MriKSpaceSharedParams, MriKSpaceSnapshot, MriKSpaceTheory,
-    MriKSpaceToolState, StudioBrushMode, MAX_STUDIO_STROKES,
+    CompactBrushStroke, MAX_STUDIO_STROKES, MriKSpaceSharedParams, MriKSpaceSnapshot,
+    MriKSpaceTheory, MriKSpaceToolState, StudioBrushMode,
 };
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::{ExportCapabilities, InteractionContext, InteractiveTool};

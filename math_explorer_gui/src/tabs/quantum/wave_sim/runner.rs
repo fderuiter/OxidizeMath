@@ -1,17 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{
+    DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH,
+    DEFAULT_X0, GRID_POINTS, GRID_X_MAX, GRID_X_MIN, SIGMA_MAX, SIGMA_MIN, WavePotentialPreset,
     barrier_interval_for_preset, default_compiled_expr, evaluate_potential_grid,
-    WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME,
-    DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS, GRID_X_MAX, GRID_X_MIN, SIGMA_MAX,
-    SIGMA_MIN,
 };
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_commons::ast::Expr;
 use math_explorer::physics::quantum::{
-    construct_1d_hamiltonian, evolve_state_in_place, gaussian_wavepacket, state_norm_squared,
-    time_evolution_operator, QuantumOperator, QuantumState,
+    QuantumOperator, QuantumState, construct_1d_hamiltonian, evolve_state_in_place,
+    gaussian_wavepacket, state_norm_squared, time_evolution_operator,
 };
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
@@ -19,8 +18,8 @@ use std::any::Any;
 use std::sync::{Arc, RwLock};
 
 pub use super::presets::{
-    compute_tunneling_observables, TunnelingObservables, BARRIER_TRANSIT_THRESHOLD,
-    RIGHT_WALL_GUARD_X, WALL_ARRIVAL_THRESHOLD,
+    BARRIER_TRANSIT_THRESHOLD, RIGHT_WALL_GUARD_X, TunnelingObservables, WALL_ARRIVAL_THRESHOLD,
+    compute_tunneling_observables,
 };
 
 /// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`WaveRunner`].

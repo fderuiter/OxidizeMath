@@ -1,5 +1,5 @@
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
-use crate::framework::{bounded_drag_value, InteractiveTool, MathExpressionInputBar};
+use crate::framework::{InteractiveTool, MathExpressionInputBar, bounded_drag_value};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use egui_plot::{Plot, PlotPoint, Points, VLine};

@@ -2,8 +2,8 @@
 
 // theory_verification!
 
-use super::worker::{advance_running_frame, drain_worker_commands, FrameTickOutcome};
-use super::{take_worker_context, SimCommand, SimWorkerState, WorkerStatusEvent};
+use super::worker::{FrameTickOutcome, advance_running_frame, drain_worker_commands};
+use super::{SimCommand, SimWorkerState, WorkerStatusEvent, take_worker_context};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, TryRecvError};

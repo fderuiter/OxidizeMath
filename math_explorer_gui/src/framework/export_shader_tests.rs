@@ -4,7 +4,7 @@ use super::*;
 use crate::tabs::analysis::complex_mapping::{ComplexMappingTool, MappingFunction};
 use crate::tabs::chaos::fractals::{FractalMode, FractalViewer};
 use crate::tabs::fluid_dynamics::potential_flow::{
-    ElementType, PotentialFlowTool, SerializedFlowElement, MAX_SHADER_SINGULARITIES,
+    ElementType, MAX_SHADER_SINGULARITIES, PotentialFlowTool, SerializedFlowElement,
 };
 use eframe::egui;
 use std::sync::{Arc, Mutex};
@@ -215,19 +215,21 @@ fn test_potential_flow_singularity_cap_64_sink_sign_and_non_shader_warning() {
 #[test]
 fn test_compact_overflow_menu_and_non_shader_tool_warning_status() {
     let mut fw = SimulationFramework::new("epidemiology");
-    assert!(fw
-        .active_tool
-        .as_ref()
-        .is_some_and(|t| !t.export_capabilities().shader));
+    assert!(
+        fw.active_tool
+            .as_ref()
+            .is_some_and(|t| !t.export_capabilities().shader)
+    );
     let ctx = egui::Context::default();
     fw.queue_export(ExportFormat::GlslWebGl2);
     fw.dispatch_pending_exports_with_ctx(&ctx);
     assert_eq!(fw.export_status_severity, ExportStatusSeverity::Warning);
-    assert!(fw
-        .export_status_message
-        .as_deref()
-        .unwrap_or("")
-        .contains("GLSL shader export is unavailable"));
+    assert!(
+        fw.export_status_message
+            .as_deref()
+            .unwrap_or("")
+            .contains("GLSL shader export is unavailable")
+    );
 
     let mut shader_fw = SimulationFramework::new("__compact_shader__");
     shader_fw.active_tool = Some(Box::new(FractalViewer::default()));

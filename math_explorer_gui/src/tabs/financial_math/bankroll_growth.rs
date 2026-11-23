@@ -11,10 +11,10 @@ use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::kelly::{
-    expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
-    UnitInterval,
+    BankrollFraction, Odds, UnitInterval, expected_growth_rate, expected_value, kelly_fraction,
+    variants,
 };
-use oxidize_core::rng::{OxidizeRng, BASE_SEED};
+use oxidize_core::rng::{BASE_SEED, OxidizeRng};
 use rand::Rng;
 
 pub(crate) fn is_default_stake_multiplier(val: &f64) -> bool {

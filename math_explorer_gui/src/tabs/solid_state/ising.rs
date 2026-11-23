@@ -2,12 +2,12 @@ use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{InteractionContext, InteractiveTool};
 use eframe::egui;
 use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
-use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
+use math_explorer::physics::stat_mech::ising::SpinLattice;
 use nalgebra::DMatrix;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[path = "ising/overlay.rs"]
 mod overlay;
@@ -212,10 +212,12 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && !px.is_empty() {
-                return Some(egui::ColorImage::new([w, h], px.clone()));
-            }
+        if let Some((w, h, ref px)) = self.stepped_pixels
+            && w > 0
+            && h > 0
+            && !px.is_empty()
+        {
+            return Some(egui::ColorImage::new([w, h], px.clone()));
         }
         let snap = self.worker.latest_snapshot()?;
         let px = snap.pixels.try_read().ok()?;

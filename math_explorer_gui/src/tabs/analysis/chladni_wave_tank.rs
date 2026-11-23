@@ -5,9 +5,9 @@
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_point_clamp,
-    apply_sponge_layer, BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D,
-    SpectralAnalyzer2D, SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver,
+    BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D, SpectralAnalyzer2D,
+    SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver, apply_biconvex_lens,
+    apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_point_clamp, apply_sponge_layer,
 };
 
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};

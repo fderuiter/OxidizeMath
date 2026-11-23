@@ -2,7 +2,7 @@
 
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv, Move};
-use math_explorer::ai::reinforcement_learning::{algorithms::TabularQAgent, MarkovDecisionProcess};
+use math_explorer::ai::reinforcement_learning::{MarkovDecisionProcess, algorithms::TabularQAgent};
 use std::collections::HashMap;
 use std::sync::Arc;
 

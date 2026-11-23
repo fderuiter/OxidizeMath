@@ -35,9 +35,11 @@ fn test_corrupted_json_and_empty_domain_graceful_failure() {
         "test_domain",
         "Dummy Tool",
     );
-    assert!(bad_schema
-        .unwrap_err()
-        .contains("Invalid JSON preset schema"));
+    assert!(
+        bad_schema
+            .unwrap_err()
+            .contains("Invalid JSON preset schema")
+    );
 
     let valid_json = serialize_preset_envelope(
         "Dummy Tool",
@@ -288,10 +290,12 @@ fn test_preset_dialog_invalid_json_and_export_error_toasts() {
     }));
     assert_eq!(state.value, 12.5);
     assert_eq!(state.name, "Baseline");
-    assert!(dialog
-        .toast_error
-        .as_deref()
-        .is_some_and(|m| m.contains("Invalid JSON preset schema")));
+    assert!(
+        dialog
+            .toast_error
+            .as_deref()
+            .is_some_and(|m| m.contains("Invalid JSON preset schema"))
+    );
     assert!(dialog.toast_info.is_none());
 
     // Direct export serialization failure records error toast immediately

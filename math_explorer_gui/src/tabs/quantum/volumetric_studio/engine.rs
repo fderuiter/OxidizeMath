@@ -8,21 +8,21 @@
 pub mod mesh_ops;
 
 use super::state::{
-    FieldSourceMode, QuantumObservableChoice, VolumetricStudioConfig, MAX_VOLUMETRIC_GRID,
-    MIN_VOLUMETRIC_GRID, STUDIO_CAMERA_DISTANCE, STUDIO_VIEWPORT_EXTENT,
+    FieldSourceMode, MAX_VOLUMETRIC_GRID, MIN_VOLUMETRIC_GRID, QuantumObservableChoice,
+    STUDIO_CAMERA_DISTANCE, STUDIO_VIEWPORT_EXTENT, VolumetricStudioConfig,
 };
 use crate::framework::recovery::DiagnosticReport;
 use crate::volumetric_scene::{
-    extract_voxel_splats_into, presets::seed_3d_turing_gyroid, project_and_rasterize_workspace,
-    VolumetricSplatWorkspace, MAX_DYNAMIC_SPLATS,
+    MAX_DYNAMIC_SPLATS, VolumetricSplatWorkspace, extract_voxel_splats_into,
+    presets::seed_3d_turing_gyroid, project_and_rasterize_workspace,
 };
 use math_explorer::applied::isosurface::{IsosurfaceWorkspace, Point3D, VoxelGrid};
 use math_explorer::biology::diffusion::FiniteDifference3D;
 use math_explorer::biology::morphogenesis::{DiffusionCoeff, SchnakenbergKinetics, TuringSystem};
-use math_explorer::math_kernel::types::{flatten_3d_index, Dimension, StepSize};
+use math_explorer::math_kernel::types::{Dimension, StepSize, flatten_3d_index};
 use math_explorer::physics::quantum::{HydrogenicSuperposition3D, OrbitalQuantumNumbers};
 use math_explorer::pure_math::special_functions::legendre::legendre_p_associated;
-use mesh_ops::{extract_slice_contours_into, ProjectedFacet, MAX_RENDERED_FACETS};
+use mesh_ops::{MAX_RENDERED_FACETS, ProjectedFacet, extract_slice_contours_into};
 use oxidize_core::mesh::Mesh;
 
 const MESH_VERTEX_CAP: usize = 98_304;

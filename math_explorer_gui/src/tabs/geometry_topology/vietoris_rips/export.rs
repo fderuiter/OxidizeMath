@@ -2,8 +2,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::plots::{visible_intervals, PersistencePlotMode};
 use super::VietorisRipsTool;
+use super::plots::{PersistencePlotMode, visible_intervals};
 use crate::app::SemanticPalette;
 use eframe::egui;
 use egui_plot::{ExportPrimitive, PlotPoint};

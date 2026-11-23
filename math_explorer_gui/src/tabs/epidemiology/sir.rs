@@ -6,7 +6,7 @@ mod metrics;
 
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
-use atlas::{default_sir_atlas_axes, is_default_sir_atlas_axes, SIR_ATLAS_AXIS_PAIRS};
+use atlas::{SIR_ATLAS_AXIS_PAIRS, default_sir_atlas_axes, is_default_sir_atlas_axes};
 #[cfg(test)]
 pub use atlas::{SirCartographer, SirRegime};
 use eframe::egui;

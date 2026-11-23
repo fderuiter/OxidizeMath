@@ -6,8 +6,8 @@ use crate::tabs::analysis::ode::OdeSolverTool;
 use crate::tabs::epidemiology::sir::SirTool;
 use crate::web_io::PlatformInstant;
 use eframe::App;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 type TabCounter = (String, Arc<AtomicUsize>, Arc<AtomicU64>);
 
@@ -47,6 +47,9 @@ impl ExplorerTab for CountingTab {
     }
     fn academic_domain(&self) -> &'static str {
         self.inner.academic_domain()
+    }
+    fn url_slug(&self) -> &'static str {
+        self.inner.url_slug()
     }
 }
 
@@ -108,7 +111,9 @@ fn build_heavy_sir_framework_json() -> String {
 
 fn instrument_app_with_heavy_hidden_tabs() -> (MathExplorerApp, Vec<TabCounter>) {
     let mut app = MathExplorerApp::default();
-    assert_eq!(app.tabs.len(), 26);
+    let expected_tabs = crate::tabs::instantiate_tabs().len();
+    assert!(expected_tabs > 0);
+    assert_eq!(app.tabs.len(), expected_tabs);
 
     let ode_fw_json = build_heavy_ode_framework_json();
     let sir_fw_json = build_heavy_sir_framework_json();
@@ -185,11 +190,12 @@ fn test_idle_21_tab_extraction_under_half_ms_with_zero_save_state_calls() {
     );
 
     // Measure direct 21-tab AppState::extract(&app) latency and verify zero tab save_state calls
+    let expected_tabs = crate::tabs::instantiate_tabs().len();
     let start = PlatformInstant::now();
     let iterations = 20;
     for _ in 0..iterations {
         let extracted = AppState::extract(&app);
-        assert_eq!(extracted.tab_states.len(), 26);
+        assert_eq!(extracted.tab_states.len(), expected_tabs);
     }
     let avg_ms = (start.elapsed().as_secs_f64() * 1000.0) / f64::from(iterations);
     let extract_calls: usize = counters

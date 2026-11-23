@@ -283,7 +283,29 @@ inventory::submit! {
 }
 ```
 
-Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing domain tab's `math_explorer_gui/src/tabs/<domain>/mod.rs` so the module compiles and registers with `inventory`. Do **not** manually edit `math_explorer_gui/src/tabs/mod.rs` — top-level `ExplorerTab` modules are discovered automatically at build time by `math_explorer_gui/build.rs`.
+Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing domain tab's `math_explorer_gui/src/tabs/<domain>/mod.rs` so the module compiles and registers with `inventory`.
+
+If you are creating a brand-new `SimulationFramework` domain directory (`math_explorer_gui/src/tabs/<domain>/mod.rs`), declare its academic domain, URL slug, feature gate, ordering, and `ExplorerTab` adapter declaratively with [`crate::declare_simulation_tab!`](../../math_explorer_gui/src/tabs/mod.rs):
+
+```rust,ignore
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+// @explorer_feature = "physics"
+// @explorer_order = 10
+// @explorer_domain = "Physics"
+// @explorer_slug = "mechanics"
+
+pub mod harmonic_oscillator;
+
+crate::declare_simulation_tab! {
+    /// Classical Mechanics Interactive Explorer.
+    pub struct MechanicsTab {
+        name: "Classical Mechanics",
+        framework_domain: "physics",
+    }
+}
+```
+
+Do **not** manually edit `math_explorer_gui/src/tabs/mod.rs` — top-level `ExplorerTab` modules under `math_explorer_gui/src/tabs/` are discovered automatically at build time by [`math_explorer_gui/build.rs`](../../math_explorer_gui/build.rs).
 
 ## Event Handling Hooks
 

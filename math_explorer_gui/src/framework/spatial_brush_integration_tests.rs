@@ -11,7 +11,7 @@ use crate::framework::{
     BrushMode, BrushStroke, InteractionContext, InteractiveTool, SimulationFramework,
 };
 use crate::tabs::fluid_dynamics::lattice_boltzmann::{
-    LbmSnapshotMetrics, LbmUnified, LBM_HEIGHT, LBM_WIDTH,
+    LBM_HEIGHT, LBM_WIDTH, LbmSnapshotMetrics, LbmUnified,
 };
 use crate::tabs::fluid_dynamics::lattice_boltzmann_sculpt::{
     export_solver_rle, stamp_airfoil_on_solver,
@@ -19,7 +19,7 @@ use crate::tabs::fluid_dynamics::lattice_boltzmann_sculpt::{
 use crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool;
 use crate::tabs::morphogenesis::MorphogenesisTool;
 use crate::tabs::quantum::wave_sim::{WaveData, WaveRunner, WaveSimConfig, WaveSimulatorTool};
-use crate::url_state::{encode_share_fragment, parse_share_location, MAX_DECODED_URL_STATE_BYTES};
+use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, encode_share_fragment, parse_share_location};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{

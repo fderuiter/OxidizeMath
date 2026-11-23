@@ -4,8 +4,8 @@
 
 use super::SpinVisualizer;
 use oxidize_core::mesh::{
-    append_colored_part, build_arrow, build_uv_sphere, extrude_polyline_tube, ColoredMesh, Mesh,
-    Point3D, VertexColor,
+    ColoredMesh, Mesh, Point3D, VertexColor, append_colored_part, build_arrow, build_uv_sphere,
+    extrude_polyline_tube,
 };
 use std::f32::consts::TAU;
 

@@ -4,8 +4,8 @@ use verified_engine::engine::VerifiedEngine;
 
 use super::backend::{MuteReason, SonificationBackend};
 use super::frame::{
-    SonificationFrame, VoiceSpec, WaveformPreset, FLOOR_DBFS, LIMITER_CEILING_DBFS,
-    LIMITER_CEILING_LINEAR,
+    FLOOR_DBFS, LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR, SonificationFrame, VoiceSpec,
+    WaveformPreset,
 };
 use super::mappings::{
     attractor_frame, bifurcation_frame, hodgkin_huxley_frame, just_intonation_ratio,
@@ -267,7 +267,8 @@ fn test_mute_within_30ms_wav_encoding_and_accessible_ui_themes() {
     super::toggle_mute_from_user_gesture();
     super::on_webgl_context_lost();
     let msgs = crate::accessibility::all_announcements();
-    assert!(msgs
-        .iter()
-        .any(|(text, prio)| prio == "polite" && text.contains("suspended cleanly")));
+    assert!(
+        msgs.iter()
+            .any(|(text, prio)| prio == "polite" && text.contains("suspended cleanly"))
+    );
 }

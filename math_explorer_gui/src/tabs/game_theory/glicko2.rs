@@ -11,9 +11,9 @@ use crate::presets::{
 #[cfg(test)]
 use eframe::egui;
 use math_explorer::pure_math::statistics::glicko2::{
+    GlickoPlayer, Pairing, PeriodMatch, Rating, RatingDeviation, SystemConstant, Volatility,
     evaluate_rating_period, evaluate_sequential_period, round_robin_schedule,
-    simulate_period_matches, swiss_pairings, GlickoPlayer, Pairing, PeriodMatch, Rating,
-    RatingDeviation, SystemConstant, Volatility,
+    simulate_period_matches, swiss_pairings,
 };
 use oxidize_core::rng::OxidizeRng;
 use std::collections::HashSet;
@@ -243,10 +243,10 @@ impl Glicko2TournamentTool {
         let points: Vec<f64> = active.iter().map(|&i| self.competitors[i].points).collect();
         let mut prior = Vec::new();
         for m in self.completed_periods.iter().flat_map(|p| &p.matches) {
-            if let (Some(la), Some(lb)) = (inv[m.player_a], inv[m.player_b]) {
-                if let Ok(pm) = PeriodMatch::new(la, lb, m.score_a) {
-                    prior.push(pm);
-                }
+            if let (Some(la), Some(lb)) = (inv[m.player_a], inv[m.player_b])
+                && let Ok(pm) = PeriodMatch::new(la, lb, m.score_a)
+            {
+                prior.push(pm);
             }
         }
         if let Ok(plan) = swiss_pairings(&players, &points, &prior) {

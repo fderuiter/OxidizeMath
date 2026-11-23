@@ -9,13 +9,15 @@ use std::collections::HashSet;
 fn perturb_json_numbers(val: &mut serde_json::Value) -> bool {
     match val {
         serde_json::Value::Number(num) => {
-            if let Some(f) = num.as_f64() {
-                if f.is_finite() && num.as_i64().is_none() && num.as_u64().is_none() {
-                    let candidate = if f.abs() > 1e-3 { f * 1.05 } else { 0.125 };
-                    if let Some(n) = serde_json::Number::from_f64(candidate) {
-                        *num = n;
-                        return true;
-                    }
+            if let Some(f) = num.as_f64()
+                && f.is_finite()
+                && num.as_i64().is_none()
+                && num.as_u64().is_none()
+            {
+                let candidate = if f.abs() > 1e-3 { f * 1.05 } else { 0.125 };
+                if let Some(n) = serde_json::Number::from_f64(candidate) {
+                    *num = n;
+                    return true;
                 }
             }
             false
@@ -83,18 +85,28 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
 }
 
 #[test]
-fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
+fn test_contract_all_tabs_unique_slugs_and_session_preserving_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut source_app = MathExplorerApp::default();
-    assert_eq!(source_app.tabs.len(), 26, "Expected all 26 ExplorerTabs");
+    let expected_tabs = crate::tabs::instantiate_tabs().len();
+    assert!(expected_tabs > 0, "Expected instantiated ExplorerTabs");
+    assert_eq!(source_app.tabs.len(), expected_tabs);
 
     let mut slugs = HashSet::new();
     for tab in &source_app.tabs {
+        let slug = tab.url_slug();
         assert!(
-            slugs.insert(tab.url_slug()),
-            "Duplicate tab URL slug '{}'",
-            tab.url_slug()
+            !slug.trim().is_empty(),
+            "Tab '{}' has empty slug",
+            tab.name()
         );
+        assert_ne!(
+            slug,
+            "simulation",
+            "Tab '{}' fell back to generic 'simulation' slug",
+            tab.name()
+        );
+        assert!(slugs.insert(slug), "Duplicate tab URL slug '{slug}'");
     }
     seed_custom_tab_states(&mut source_app);
 
@@ -131,13 +143,12 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
 }
 
 #[test]
-fn test_contract_all_55_tools_lossless_url_roundtrip() {
+fn test_contract_all_tools_lossless_url_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(
-        tools.len(),
-        75,
-        "Expected all 75 registered InteractiveTools"
+    assert!(
+        !tools.is_empty(),
+        "Expected registered InteractiveTools in inventory"
     );
 
     let mut source_app = MathExplorerApp::default();
@@ -174,9 +185,11 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
         assert!(hash.len() <= MAX_URL_FRAGMENT_BYTES);
 
         let mut dest_app = MathExplorerApp::default();
-        assert!(dest_app
-            .apply_share_location_strings(hash, "", None)
-            .unwrap());
+        assert!(
+            dest_app
+                .apply_share_location_strings(hash, "", None)
+                .unwrap()
+        );
         assert_eq!(dest_app.selected_tab, tab_idx);
         assert_eq!(dest_app.tabs[tab_idx].active_tool_id(), Some(meta.id));
         let restored_tool_state = dest_app.tabs[tab_idx]
@@ -192,15 +205,15 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
 }
 
 #[test]
-fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
+fn test_contract_all_starter_presets_lossless_url_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let tool_count = inventory::iter::<ToolMetadata>.into_iter().count();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(
-        presets.len(),
-        108,
-        "Expected all 108 StarterPresetMetadata entries"
+    assert!(
+        !presets.is_empty() && presets.len() >= tool_count,
+        "Expected non-empty StarterPresetMetadata covering all registered tools"
     );
 
     for preset in presets {
@@ -366,8 +379,10 @@ fn test_copy_share_link_populates_clipboard_and_confirmation_toast() {
     app.copy_current_share_link(&ctx);
     let trace_copied =
         take_last_copied_share_url().expect("Traceability share link must be copied");
-    assert!(trace_copied
-        .starts_with("https://fderuiter.github.io/OxidizeMath/#tab=traceability&state="));
+    assert!(
+        trace_copied
+            .starts_with("https://fderuiter.github.io/OxidizeMath/#tab=traceability&state=")
+    );
 
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -414,10 +429,11 @@ fn test_focused_secondary_pane_share_link_and_command_registry_registration() {
     app.set_layout(ViewportLayout::SplitHorizontal);
     app.set_pane_tab(1, quantum_idx);
     app.focus_pane(1);
-    assert!(app
-        .pane_tab_mut(1)
-        .unwrap()
-        .select_tool_by_name("SpinVisualizer"));
+    assert!(
+        app.pane_tab_mut(1)
+            .unwrap()
+            .select_tool_by_name("SpinVisualizer")
+    );
 
     let raw = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(

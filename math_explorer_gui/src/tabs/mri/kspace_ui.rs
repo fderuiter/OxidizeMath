@@ -5,11 +5,11 @@ use super::kspace_types::{KSpaceMaskPreset, MriKSpaceSnapshot, PhantomPreset, St
 use crate::accessibility::{
     lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
 };
-use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
+use crate::async_sim::ui::{WorkerFaultAction, render_worker_fault_banner};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{
-    bounded_drag_value, InputMode, InteractionContext, InteractiveTool, PlaybackAction,
-    PlaybackTransport,
+    InputMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
+    bounded_drag_value,
 };
 use eframe::egui;
 use eframe::egui::ColorImage;

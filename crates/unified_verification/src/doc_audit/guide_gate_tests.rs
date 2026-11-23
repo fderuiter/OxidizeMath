@@ -190,6 +190,8 @@ impl InteractiveTool for DemoTool {
 ```rust,ignore
 impl ExplorerTab for DemoTab {
     fn name(&self) -> &'static str { \"Demo\" }
+    fn academic_domain(&self) -> &'static str { \"Pure Math\" }
+    fn url_slug(&self) -> &'static str { \"demo\" }
     fn show(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {}
 }
 ```

@@ -86,8 +86,8 @@ pub(crate) fn embedded_traceability_report() -> Result<TraceabilityReport, Strin
 
 /// Returns the compile-time precomputed traceability report and certificate for packaged desktop runs.
 #[cfg(not(target_arch = "wasm32"))]
-pub(super) fn embedded_traceability(
-) -> Result<(TraceabilityReport, Option<VerificationCertificate>), String> {
+pub(super) fn embedded_traceability()
+-> Result<(TraceabilityReport, Option<VerificationCertificate>), String> {
     static CACHE: OnceLock<Result<(TraceabilityReport, Option<VerificationCertificate>), String>> =
         OnceLock::new();
     CACHE
@@ -109,8 +109,8 @@ pub(super) fn embedded_traceability(
 
 /// Fetches `./traceability_manifest.json` via [`oxidize_core::vfs::WasmVfs`] on `wasm32`.
 #[cfg(target_arch = "wasm32")]
-pub async fn fetch_web_traceability(
-) -> Result<(TraceabilityReport, Option<VerificationCertificate>), String> {
+pub async fn fetch_web_traceability()
+-> Result<(TraceabilityReport, Option<VerificationCertificate>), String> {
     use oxidize_core::vfs::{VirtualFileSystem, WasmVfs};
 
     if !is_relative_same_origin_url(MANIFEST_REL_URL) {

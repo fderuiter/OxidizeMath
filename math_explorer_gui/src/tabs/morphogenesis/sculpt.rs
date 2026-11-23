@@ -4,8 +4,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::{
-    decode_rle_mask, encode_rle_mask, rasterize_disk_stroke, BrushInteractionMode, BrushMode,
-    BrushStroke, SpatialBrushKit,
+    BrushInteractionMode, BrushMode, BrushStroke, SpatialBrushKit, decode_rle_mask,
+    encode_rle_mask, rasterize_disk_stroke,
 };
 use eframe::egui::{self, Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};

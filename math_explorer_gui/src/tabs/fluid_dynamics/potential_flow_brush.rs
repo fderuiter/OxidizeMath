@@ -3,12 +3,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::potential_flow::{
-    ElementType, PotentialFlowTool, SerializedFlowElement, FLOW_ANGLE_MAX, FLOW_ANGLE_MIN,
-    FLOW_POS_MAX, FLOW_POS_MIN, FLOW_STRENGTH_MAX, FLOW_STRENGTH_MIN,
+    ElementType, FLOW_ANGLE_MAX, FLOW_ANGLE_MIN, FLOW_POS_MAX, FLOW_POS_MIN, FLOW_STRENGTH_MAX,
+    FLOW_STRENGTH_MIN, PotentialFlowTool, SerializedFlowElement,
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{
-    bounded_drag_value, BrushInteractionMode, BrushMode, BrushStroke, SpatialBrushKit,
+    BrushInteractionMode, BrushMode, BrushStroke, SpatialBrushKit, bounded_drag_value,
 };
 use eframe::egui;
 
@@ -113,9 +113,7 @@ impl PotentialFlowTool {
                 ui.selectable_value(&mut self.brush_kit.mode, BrushMode::FlowDoublet, "Doublet");
                 ui.selectable_value(&mut self.brush_kit.mode, BrushMode::Erase, "Erase");
             });
-            ui.add(
-                egui::Slider::new(&mut self.brush_kit.radius, 0.5..=6.0).text("Capture Radius"),
-            );
+            ui.add(egui::Slider::new(&mut self.brush_kit.radius, 0.5..=6.0).text("Capture Radius"));
         }
     }
 
@@ -154,7 +152,8 @@ impl PotentialFlowTool {
             .clamp(FLOW_STRENGTH_MIN, FLOW_STRENGTH_MAX);
 
         if let Some(existing) = self.elements.iter_mut().rev().find(|el| {
-            el.element_type == target_type && (el.x - stroke.start[0]).powi(2) + (el.y - stroke.start[1]).powi(2) <= r_sq
+            el.element_type == target_type
+                && (el.x - stroke.start[0]).powi(2) + (el.y - stroke.start[1]).powi(2) <= r_sq
         }) {
             existing.x = px;
             existing.y = py;

@@ -1,10 +1,10 @@
 use crate::app::ui_panels::render_help_window;
 use crate::command_palette::CommandPalette;
-use crate::starter_gallery::{show_starter_gallery_overlay, StarterCard};
-use eframe::egui::{self, vec2, Context, Event, Id, Key, Modifiers, Pos2, RawInput, Rect};
+use crate::starter_gallery::{StarterCard, show_starter_gallery_overlay};
+use eframe::egui::{self, Context, Event, Id, Key, Modifiers, Pos2, RawInput, Rect, vec2};
 use egui_plot::{
-    show_export_modal, CallbackExportSource, ExportModalConfig, ExportModalState, Legend, Line,
-    Plot, PlotMemory,
+    CallbackExportSource, ExportModalConfig, ExportModalState, Legend, Line, Plot, PlotMemory,
+    show_export_modal,
 };
 
 fn screen_raw() -> RawInput {
@@ -30,6 +30,12 @@ struct DummyTab(&'static str);
 
 impl crate::tabs::ExplorerTab for DummyTab {
     fn name(&self) -> &'static str {
+        self.0
+    }
+    fn academic_domain(&self) -> &'static str {
+        "Applied Math"
+    }
+    fn url_slug(&self) -> &'static str {
         self.0
     }
     fn show_inside(&mut self, _ui: &mut egui::Ui, _frame: &mut eframe::Frame) {}
@@ -319,10 +325,12 @@ fn test_legend_checkbox_accesskit_action_click_and_keyboard() {
         egui::accesskit::Action::Click,
         checkbox_node_id,
     ));
-    assert!(!PlotMemory::load(&ctx, plot_id)
-        .unwrap()
-        .hidden_items
-        .is_empty());
+    assert!(
+        !PlotMemory::load(&ctx, plot_id)
+            .unwrap()
+            .hidden_items
+            .is_empty()
+    );
 
     // 2. Focus via AccessKit + Space toggles series back on, Enter toggles it off again.
     let _ = run(accesskit_action_raw(
@@ -330,14 +338,18 @@ fn test_legend_checkbox_accesskit_action_click_and_keyboard() {
         checkbox_node_id,
     ));
     let _ = run(key_raw(Key::Space));
-    assert!(PlotMemory::load(&ctx, plot_id)
-        .unwrap()
-        .hidden_items
-        .is_empty());
+    assert!(
+        PlotMemory::load(&ctx, plot_id)
+            .unwrap()
+            .hidden_items
+            .is_empty()
+    );
 
     let _ = run(key_raw(Key::Enter));
-    assert!(!PlotMemory::load(&ctx, plot_id)
-        .unwrap()
-        .hidden_items
-        .is_empty());
+    assert!(
+        !PlotMemory::load(&ctx, plot_id)
+            .unwrap()
+            .hidden_items
+            .is_empty()
+    );
 }

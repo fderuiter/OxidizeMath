@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    ComparatorView, HamiltonianChaosLab, HamiltonianModelKind, SymplecticSolverChoice, MAX_ORBITS,
+    ComparatorView, HamiltonianChaosLab, HamiltonianModelKind, MAX_ORBITS, SymplecticSolverChoice,
 };
 use crate::starter_gallery::StarterPresetMetadata;
 

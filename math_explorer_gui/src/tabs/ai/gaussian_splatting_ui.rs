@@ -1,10 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::GaussianSplattingTool;
 use super::scene::{
     GRAD_THRESHOLD_MAX, GRAD_THRESHOLD_MIN, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN,
     SPLAT_GRID_SIZE, VIEWPORT_HALF_EXTENT,
 };
-use super::GaussianSplattingTool;
 use crate::accessibility::AccessibleTheoryHover;
 use crate::framework::Plot3DViewport;
 use eframe::egui;

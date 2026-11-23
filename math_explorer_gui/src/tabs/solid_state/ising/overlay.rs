@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::preset::{FermiGamePreset, IsingInteractionMode};
-use super::{ising_spin_color, IsingModelTool, DEFAULT_ISING_SIZE, MAX_SPATIAL_HISTORY};
+use super::{DEFAULT_ISING_SIZE, IsingModelTool, MAX_SPATIAL_HISTORY, ising_spin_color};
 use crate::async_sim::SimCommand;
 use eframe::egui;
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
@@ -81,11 +81,11 @@ impl IsingModelTool {
     }
 
     pub(super) fn sync_metrics_from_latest(&mut self) {
-        if let Some(snapshot) = self.worker.latest_snapshot() {
-            if snapshot.custom_data.len() >= 2 {
-                self.magnetization = snapshot.custom_data[0];
-                self.energy = snapshot.custom_data[1];
-            }
+        if let Some(snapshot) = self.worker.latest_snapshot()
+            && snapshot.custom_data.len() >= 2
+        {
+            self.magnetization = snapshot.custom_data[0];
+            self.energy = snapshot.custom_data[1];
         }
     }
 

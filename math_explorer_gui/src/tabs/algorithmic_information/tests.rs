@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::AlgorithmicInfoTab;
 use super::presets::PRESET_FRACTRAN_PRIMEGAME;
 use super::state::{FractranMachineTool, FractranPreset, FractranToolConfig, MAX_STEPS_PER_FRAME};
-use super::AlgorithmicInfoTab;
 use crate::framework::{InteractiveTool, SimulationFramework};
 use crate::tabs::ExplorerTab;
 use eframe::egui;

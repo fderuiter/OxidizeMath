@@ -123,12 +123,12 @@ impl UrlSyncController {
 
         self.dirty_since_ms = None;
         self.last_flushed = Some(sig);
-        if let Ok(fragment) = encode_fragment() {
-            if self.last_synced_fragment.as_deref() != Some(fragment.as_str()) {
-                #[cfg(target_arch = "wasm32")]
-                let _ = super::replace_browser_url_fragment(&fragment);
-                self.last_synced_fragment = Some(fragment);
-            }
+        if let Ok(fragment) = encode_fragment()
+            && self.last_synced_fragment.as_deref() != Some(fragment.as_str())
+        {
+            #[cfg(target_arch = "wasm32")]
+            let _ = super::replace_browser_url_fragment(&fragment);
+            self.last_synced_fragment = Some(fragment);
         }
         None
     }

@@ -1,12 +1,12 @@
 //! Interactive radiation therapy dose calculation & 4-beam IMRT inverse planning tool.
 
 use super::imrt::{
-    DoseState, ImrtWorkspace, BASELINE_IMRT_ANGLES_DEG, BASELINE_IMRT_WEIGHTS, CHALLENGE_IMRT_BETA,
+    BASELINE_IMRT_ANGLES_DEG, BASELINE_IMRT_WEIGHTS, CHALLENGE_IMRT_BETA,
     CHALLENGE_IMRT_OAR_LIMIT_GY, CHALLENGE_IMRT_OAR_SPARING, CHALLENGE_IMRT_PRESCRIPTION_GY,
-    IMRT_BEAM_COUNT, IMRT_GRID_DIM, IMRT_OAR_CENTER, IMRT_OAR_RADIUS_CM, IMRT_PHANTOM_SIZE_CM,
-    IMRT_TUMOR_CENTER, IMRT_TUMOR_RADIUS_CM,
+    DoseState, IMRT_BEAM_COUNT, IMRT_GRID_DIM, IMRT_OAR_CENTER, IMRT_OAR_RADIUS_CM,
+    IMRT_PHANTOM_SIZE_CM, IMRT_TUMOR_CENTER, IMRT_TUMOR_RADIUS_CM, ImrtWorkspace,
 };
-use crate::accessibility::{announce_live_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_live_status};
 use crate::app::SemanticPalette;
 use crate::framework::{
     CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool, PaneSidePanel,

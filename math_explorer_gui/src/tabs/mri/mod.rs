@@ -1,4 +1,6 @@
 // @explorer_feature = "physics"
+// @explorer_domain = "Physics"
+// @explorer_slug = "mri"
 use crate::async_sim::SimWorkerState;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
@@ -22,7 +24,7 @@ pub mod ui;
 pub use kspace_tool::MriKSpaceTool;
 pub use runner::sanitize_mri_time_scale;
 #[cfg(test)]
-pub use runner::{MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE};
+pub use runner::{MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE, MriRunner, MriSharedParams, MriSnapshot};
 #[cfg(test)]
 pub use tool::MriTool;
 pub use tool::MriToolState;
@@ -79,15 +81,15 @@ impl MriTab {
             }
         }));
         current_state.paused = None;
-        if let Ok(updated_json) = serde_json::to_string(&current_state) {
-            if tool.try_load_state(&updated_json).is_ok() {
-                if let Some(saved) = tool.save_state() {
-                    self.framework
-                        .saved_tool_states
-                        .insert(tool.name().to_string(), saved);
-                }
-                self.framework.cache_valid_snapshot();
+        if let Ok(updated_json) = serde_json::to_string(&current_state)
+            && tool.try_load_state(&updated_json).is_ok()
+        {
+            if let Some(saved) = tool.save_state() {
+                self.framework
+                    .saved_tool_states
+                    .insert(tool.name().to_string(), saved);
             }
+            self.framework.cache_valid_snapshot();
         }
         true
     }
@@ -98,8 +100,16 @@ impl ExplorerTab for MriTab {
         "MRI Physics"
     }
 
+    fn academic_domain(&self) -> &'static str {
+        EXPLORER_DOMAIN
+    }
+
+    fn url_slug(&self) -> &'static str {
+        EXPLORER_SLUG
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.framework.show_inside(ui, "mri");
+        self.framework.show_inside(ui, EXPLORER_SLUG);
     }
 
     fn state_revision(&self) -> u64 {

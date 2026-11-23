@@ -46,7 +46,9 @@ impl TrainingMonitorTool {
         let optimizer: Box<dyn math_explorer::ai::optimization::Optimizer<f64>> =
             match Adam::new(self.learning_rate) {
                 Ok(adam) => Box::new(adam),
-                Err(_) => Box::new(math_explorer::ai::optimization::SGD::new(self.learning_rate)),
+                Err(_) => Box::new(math_explorer::ai::optimization::SGD::new(
+                    self.learning_rate,
+                )),
             };
 
         self.training_loop = TrainingLoop::new(2, self.hidden_dim, 2, optimizer);
@@ -265,8 +267,8 @@ fn generate_spiral_data(points_per_class: usize) -> Vec<(Vector, Vector)> {
             let r = i as f64 / n as f64;
             let t = 2.5 * r * 2.0 * PI + (class_idx as f64 * PI);
 
-            let x = r * t.sin() + rng.gen::<f64>() * 0.1;
-            let y = r * t.cos() + rng.gen::<f64>() * 0.1;
+            let x = r * t.sin() + rng.r#gen::<f64>() * 0.1;
+            let y = r * t.cos() + rng.r#gen::<f64>() * 0.1;
 
             let input = Vector::from_vec(vec![x, y]);
             let target = if class_idx == 0 {

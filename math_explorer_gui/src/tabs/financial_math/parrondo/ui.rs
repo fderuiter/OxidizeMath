@@ -1,12 +1,12 @@
 //! Side-panel controls, Kelly `NoEdge` diagnostics, and responsive workspace layout.
 
 use super::{
-    KellyEdgeBadge, ParrondoParadoxTool, ParrondoViewMode, ALLOWED_MODULI, MAX_STEPS, MAX_WALKERS,
-    MIN_STEPS, MIN_WALKERS,
+    ALLOWED_MODULI, KellyEdgeBadge, MAX_STEPS, MAX_WALKERS, MIN_STEPS, MIN_WALKERS,
+    ParrondoParadoxTool, ParrondoViewMode,
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
-use crate::framework::{scoped_panel_id, PaneSidePanel};
+use crate::framework::{PaneSidePanel, scoped_panel_id};
 use eframe::egui;
 
 const SCHEDULE_PRESETS: [&str; 3] = ["ABB", "AABB", "ABAB"];

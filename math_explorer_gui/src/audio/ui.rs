@@ -5,10 +5,10 @@
 use eframe::egui;
 
 use super::frame::{
-    MeterReading, SonificationFrame, WaveformPreset, FLOOR_DBFS, LIMITER_CEILING_DBFS,
+    FLOOR_DBFS, LIMITER_CEILING_DBFS, MeterReading, SonificationFrame, WaveformPreset,
 };
 use crate::accessibility::{
-    paint_canvas_focus_ring, register_canvas_accessibility, AccessibleHoverText,
+    AccessibleHoverText, paint_canvas_focus_ring, register_canvas_accessibility,
 };
 use crate::app::palette::SemanticPalette;
 

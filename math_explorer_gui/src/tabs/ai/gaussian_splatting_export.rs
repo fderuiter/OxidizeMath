@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::GaussianSplattingTool;
-use oxidize_core::mesh::{export_splats_to_ply_binary, GaussianSplatPly};
+use oxidize_core::mesh::{GaussianSplatPly, export_splats_to_ply_binary};
 
 impl GaussianSplattingTool {
     /// Converts the active 3D Gaussian scene at `self.scale` into an INRIA-standard binary `.ply`.

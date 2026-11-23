@@ -2,16 +2,16 @@
 
 use super::kspace_runner::MriKSpaceRunner;
 use super::kspace_types::{
-    KSpaceMaskPreset, MriKSpaceSharedParams, MriKSpaceToolState, PhantomPreset, StudioBrushMode,
-    MAX_STUDIO_STROKES, PRESET_MRI_KSPACE_STUDIO,
+    KSpaceMaskPreset, MAX_STUDIO_STROKES, MriKSpaceSharedParams, MriKSpaceToolState,
+    PRESET_MRI_KSPACE_STUDIO, PhantomPreset, StudioBrushMode,
 };
 use super::{MriKSpaceTool, MriTab};
 use crate::async_sim::{SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::InteractiveTool;
 use crate::tabs::ExplorerTab;
 use crate::url_state::{
-    encode_share_fragment, parse_share_location, validate_url_preset_json,
-    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, encode_share_fragment,
+    parse_share_location, validate_url_preset_json,
 };
 use eframe::egui;
 use std::sync::{Arc, RwLock};

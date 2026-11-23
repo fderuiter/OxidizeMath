@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 
 #[path = "fractals/formula.rs"]
 pub mod formula;
-pub use formula::{default_fractal_input_bar, CompiledFractalJob, DEFAULT_FRACTAL_EXPR};
+pub use formula::{CompiledFractalJob, DEFAULT_FRACTAL_EXPR, default_fractal_input_bar};
 
 #[path = "fractals/runner.rs"]
 mod runner;

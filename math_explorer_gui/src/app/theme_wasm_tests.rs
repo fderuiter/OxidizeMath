@@ -1,4 +1,4 @@
-use super::{query_browser_media_flags, resolve_startup_theme, sync_document_theme, ThemeMode};
+use super::{ThemeMode, query_browser_media_flags, resolve_startup_theme, sync_document_theme};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::wasm_bindgen_test;
 

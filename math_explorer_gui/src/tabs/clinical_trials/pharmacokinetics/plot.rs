@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{EntityMode, PharmacokineticsTool, LOG10_CONC_FLOOR};
+use super::{EntityMode, LOG10_CONC_FLOOR, PharmacokineticsTool};
 use crate::app::SemanticPalette;
 use eframe::egui;
 use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints, PlotUi, Polygon};

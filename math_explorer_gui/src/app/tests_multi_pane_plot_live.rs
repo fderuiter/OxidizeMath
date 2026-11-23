@@ -3,9 +3,9 @@
 use super::viewport::focus::focus_pane_interactive;
 use super::*;
 use crate::accessibility::{all_announcements, clear_test_announcements, with_live_region};
+use eframe::App;
 use eframe::egui;
 use eframe::egui::accesskit::{Action, ActionRequest, NodeId, Role};
-use eframe::App;
 
 fn run_app_frame(
     ctx: &egui::Context,
@@ -92,10 +92,10 @@ fn find_node_in_rect(
             if n.role() != role {
                 return None;
             }
-            if let Some(sub) = label_substr {
-                if !n.label().is_some_and(|l| l.contains(sub)) {
-                    return None;
-                }
+            if let Some(sub) = label_substr
+                && !n.label().is_some_and(|l| l.contains(sub))
+            {
+                return None;
             }
             let b = n.bounds()?;
             let center = egui::pos2(((b.x0 + b.x1) * 0.5) as f32, ((b.y0 + b.y1) * 0.5) as f32);

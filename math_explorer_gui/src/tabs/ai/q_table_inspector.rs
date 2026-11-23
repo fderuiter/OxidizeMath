@@ -1,6 +1,6 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+    WorkerFaultAction, render_empty_plot_guidance, render_worker_fault_banner,
 };
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{InputMode, InteractiveTool, PlaybackAction, PlaybackTransport};
@@ -47,15 +47,14 @@ impl Default for QTableInspectorTool {
 
 impl QTableInspectorTool {
     pub(super) fn sync_from_latest(&mut self) {
-        if let Some(snapshot) = self.worker.latest_snapshot() {
-            if let Some(data) = snapshot
+        if let Some(snapshot) = self.worker.latest_snapshot()
+            && let Some(data) = snapshot
                 .structured_data
                 .as_ref()
                 .and_then(|d| d.downcast_ref::<QTableSnapshot>())
-            {
-                self.cached_q_values = data.q_values.clone();
-                self.episodes_trained = data.episodes_trained;
-            }
+        {
+            self.cached_q_values = data.q_values.clone();
+            self.episodes_trained = data.episodes_trained;
         }
     }
 
@@ -74,17 +73,16 @@ impl QTableInspectorTool {
             .worker
             .send_command(SimCommand::TrainEpisodes(episodes as usize));
         for _ in 0..200 {
-            if let Some(snap) = self.worker.update() {
-                if let Some(data) = snap
+            if let Some(snap) = self.worker.update()
+                && let Some(data) = snap
                     .structured_data
                     .as_ref()
                     .and_then(|d| d.downcast_ref::<QTableSnapshot>())
-                {
-                    self.cached_q_values = data.q_values.clone();
-                    self.episodes_trained = data.episodes_trained;
-                    if self.episodes_trained >= target {
-                        break;
-                    }
+            {
+                self.cached_q_values = data.q_values.clone();
+                self.episodes_trained = data.episodes_trained;
+                if self.episodes_trained >= target {
+                    break;
                 }
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
@@ -139,12 +137,7 @@ impl QTableInspectorTool {
         }
     }
 
-    fn draw_side_panel(
-        &mut self,
-        parent_ui: &mut egui::Ui,
-        ctx: &egui::Context,
-        legend_size: f32,
-    ) {
+    fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context, legend_size: f32) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "q_table_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Training Controls");
@@ -184,10 +177,7 @@ impl QTableInspectorTool {
             }
 
             if ui
-                .add_enabled(
-                    state.is_ready(),
-                    egui::Button::new("▶ Train 1000 Episodes"),
-                )
+                .add_enabled(state.is_ready(), egui::Button::new("▶ Train 1000 Episodes"))
                 .accessible_hover_text("Train the agent for 1000 episodes in the background")
                 .clicked()
             {
@@ -377,15 +367,14 @@ impl InteractiveTool for QTableInspectorTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        if let Some(snapshot) = self.worker.update() {
-            if let Some(data) = snapshot
+        if let Some(snapshot) = self.worker.update()
+            && let Some(data) = snapshot
                 .structured_data
                 .as_ref()
                 .and_then(|d| d.downcast_ref::<QTableSnapshot>())
-            {
-                self.cached_q_values = data.q_values.clone();
-                self.episodes_trained = data.episodes_trained;
-            }
+        {
+            self.cached_q_values = data.q_values.clone();
+            self.episodes_trained = data.episodes_trained;
         }
         if matches!(
             self.worker.state(),

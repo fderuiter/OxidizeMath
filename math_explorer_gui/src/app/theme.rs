@@ -276,13 +276,13 @@ pub(super) fn init_startup_theme(
 ) {
     let detected = detect_startup_theme(cc);
     app.theme = detected;
-    if let Some(storage) = cc.storage {
-        if let Some(state_str) = storage.get_string(eframe::APP_KEY) {
-            let explicit_theme = extract_explicit_theme_from_json(&state_str);
-            app.load_state_from_json(&state_str);
-            if explicit_theme.is_none() {
-                app.theme = detected;
-            }
+    if let Some(storage) = cc.storage
+        && let Some(state_str) = storage.get_string(eframe::APP_KEY)
+    {
+        let explicit_theme = extract_explicit_theme_from_json(&state_str);
+        app.load_state_from_json(&state_str);
+        if explicit_theme.is_none() {
+            app.theme = detected;
         }
     }
     app.theme.apply_to_context(&cc.egui_ctx);
@@ -420,8 +420,8 @@ mod tests {
 
     #[test]
     fn test_startup_media_query_precedence() {
-        use egui::Theme::{Dark, Light};
         use ThemeMode::{Dark as TD, HighContrast as THC, Light as TL};
+        use egui::Theme::{Dark, Light};
         for (fc, mc, pl, sys, expected) in [
             (true, false, true, Some(Light), THC),
             (false, true, true, Some(Light), THC),

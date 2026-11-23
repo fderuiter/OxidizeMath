@@ -4,7 +4,7 @@
 //! prevents concurrent test threads' simulation divergence diagnostics from leaking
 //! into unrelated `MathExplorerApp::update` accessibility announcements or panel state.
 
-use federated_registry::{global_registry, Severity, TelemetryEvent};
+use federated_registry::{Severity, TelemetryEvent, global_registry};
 use std::collections::HashMap;
 
 /// Returns a non-empty label identifying the calling thread by name or `ThreadId`.
@@ -98,9 +98,11 @@ mod tests {
             !events.iter().any(|e| e.source == "OdeSolverTool"),
             "Foreign test thread telemetry must not leak into poll_app_telemetry"
         );
-        assert!(events
-            .iter()
-            .any(|e| e.source == "LocalAppSource" && e.thread_name == current_thread_label()));
+        assert!(
+            events
+                .iter()
+                .any(|e| e.source == "LocalAppSource" && e.thread_name == current_thread_label())
+        );
         assert!(events.iter().any(|e| e.source == "DirectUntaggedTest"));
         let requeued = global_registry().try_recv_all();
         assert!(requeued.iter().any(|e| e.source == "OdeSolverTool"));

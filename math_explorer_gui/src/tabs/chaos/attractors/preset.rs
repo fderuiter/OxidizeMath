@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    AttractorMode, AttractorPlotter, SolverExecutionState, DEFAULT_FIXED_CALLOUT_OFFSETS,
-    DEFAULT_FLOW_EXPRS,
+    AttractorMode, AttractorPlotter, DEFAULT_FIXED_CALLOUT_OFFSETS, DEFAULT_FLOW_EXPRS,
+    SolverExecutionState,
 };
 use crate::framework::Camera3D;
 use eframe::egui;

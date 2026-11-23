@@ -2,8 +2,8 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use super::*;
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 use egui_plot::commands::{CommandMetadata, CommandRegistryData, CommandTrigger};
 
 fn run_frame_with_rect(
@@ -125,9 +125,11 @@ fn test_plot_shortcuts_appear_unfocused_in_framework_and_standalone_tabs() {
     }];
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, down_event);
     let aria_msg = ctx.data(|d| d.get_temp::<String>(egui::Id::new("aria_live_message")));
-    assert!(aria_msg
-        .as_deref()
-        .is_none_or(|m| !m.starts_with("Dataset ")));
+    assert!(
+        aria_msg
+            .as_deref()
+            .is_none_or(|m| !m.starts_with("Dataset "))
+    );
 
     // Standalone ExplorerTab (Favoritism) with populated Plot + Legend
     let fav_idx = find_tab_index(&app, "Favoritism");

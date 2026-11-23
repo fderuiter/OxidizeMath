@@ -4,14 +4,14 @@ use std::collections::{BTreeMap, HashMap};
 
 use eframe::egui;
 use egui_plot::{
-    snapshot::OrderedId, FitType, ImportedDataset, Legend, Line, Plot, PlotBounds, PlotMemory,
-    PlotOverlaySnapshot, SavedCallout,
+    FitType, ImportedDataset, Legend, Line, Plot, PlotBounds, PlotMemory, PlotOverlaySnapshot,
+    SavedCallout, snapshot::OrderedId,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 
 use crate::framework::{
-    clamp::clamp_state_json, Camera3D, InteractiveTool, Plot3DViewport, SimulationFramework,
-    ToolMetadata,
+    Camera3D, InteractiveTool, Plot3DViewport, SimulationFramework, ToolMetadata,
+    clamp::clamp_state_json,
 };
 
 struct MockPlotTool {

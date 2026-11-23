@@ -16,8 +16,32 @@ use std::pin::Pin;
 
 const MANIFEST_FILENAME: &str = "traceability_manifest.json";
 
+/// Writes `contents` to `path` only when the file does not exist or its byte contents differ,
+/// preserving filesystem modification times (`mtime`) across no-op builds.
+pub(crate) fn write_if_changed(path: &Path, contents: &[u8]) -> std::io::Result<bool> {
+    if let Ok(existing) = fs::read(path)
+        && existing == contents
+    {
+        return Ok(false);
+    }
+    fs::write(path, contents)?;
+    Ok(true)
+}
+
+fn should_emit_rerun_for_vfs_path(rel: &str) -> bool {
+    let clean = rel.trim_start_matches("./").trim_start_matches(['/', '\\']);
+    clean == "traceability.toml"
+        || clean == "Verification_Certificate.json"
+        || clean == "papers"
+        || clean.starts_with("papers/")
+        || clean == "math_explorer_gui/src/tabs"
+        || clean.starts_with("math_explorer_gui/src/tabs/")
+}
+
 /// Read-only build-script [`VirtualFileSystem`] adapter rooted at `..` that emits
-/// deduplicated forward-slash `cargo:rerun-if-changed` directives for existing paths.
+/// scoped forward-slash `cargo:rerun-if-changed` directives for traceability inputs
+/// (`traceability.toml`, `Verification_Certificate.json`, `papers/`, and `src/tabs`)
+/// without subscribing `math_explorer_gui` to sibling crate `.rs` source trees.
 struct BuildSnapshotVfs {
     root: PathBuf,
     emitted: RefCell<BTreeSet<String>>,
@@ -53,6 +77,12 @@ impl BuildSnapshotVfs {
             println!("cargo:rerun-if-changed={normalized}");
         }
     }
+
+    fn emit_scoped_vfs_path(&self, vfs_rel: &str, disk_path: &Path) {
+        if should_emit_rerun_for_vfs_path(vfs_rel) {
+            self.emit_if_exists(disk_path);
+        }
+    }
 }
 
 impl VirtualFileSystem for BuildSnapshotVfs {
@@ -60,10 +90,11 @@ impl VirtualFileSystem for BuildSnapshotVfs {
         &self,
         path: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, std::io::Error>> + '_>> {
+        let vfs_rel = path.to_string();
         let disk_path = self.resolve_path(path);
         Box::pin(async move {
             let content = fs::read_to_string(&disk_path)?;
-            self.emit_if_exists(&disk_path);
+            self.emit_scoped_vfs_path(&vfs_rel, &disk_path);
             Ok(content)
         })
     }
@@ -85,10 +116,11 @@ impl VirtualFileSystem for BuildSnapshotVfs {
         &self,
         path: &str,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<String>, std::io::Error>> + '_>> {
+        let vfs_rel = path.to_string();
         let disk_path = self.resolve_path(path);
         Box::pin(async move {
             let entries = fs::read_dir(&disk_path)?;
-            self.emit_if_exists(&disk_path);
+            self.emit_scoped_vfs_path(&vfs_rel, &disk_path);
             let mut names = Vec::new();
             for entry in entries.flatten() {
                 if let Some(name) = entry.file_name().to_str() {
@@ -106,6 +138,7 @@ pub fn generate_traceability_snapshot(out_dir: &Path) {
     let ws_root = Path::new("..");
     let vfs = BuildSnapshotVfs::new(ws_root);
     vfs.emit_if_exists(Path::new("build_snapshot.rs"));
+    emit_papers_rerun_directives(ws_root, &vfs);
 
     let cert_path = ws_root.join("Verification_Certificate.json");
     vfs.emit_if_exists(&cert_path);
@@ -120,7 +153,24 @@ pub fn generate_traceability_snapshot(out_dir: &Path) {
         certificate,
     };
     let json = serialize_sorted_manifest(&payload);
-    write_manifest_outputs(out_dir, &json);
+    write_manifest_outputs(out_dir, json.as_bytes());
+}
+
+fn emit_papers_rerun_directives(ws_root: &Path, vfs: &BuildSnapshotVfs) {
+    let papers_dir = ws_root.join("papers");
+    vfs.emit_if_exists(&papers_dir);
+    let Ok(entries) = fs::read_dir(&papers_dir) else {
+        return;
+    };
+    let mut tex_paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("tex"))
+        .collect();
+    tex_paths.sort();
+    for tex_path in tex_paths {
+        vfs.emit_if_exists(&tex_path);
+    }
 }
 
 fn read_optional_certificate(cert_path: &Path) -> Option<VerificationCertificate> {
@@ -137,8 +187,8 @@ fn serialize_sorted_manifest(payload: &TraceabilityManifestPayload) -> String {
     json
 }
 
-fn write_manifest_outputs(out_dir: &Path, json: &str) {
-    fs::write(out_dir.join(MANIFEST_FILENAME), json)
+fn write_manifest_outputs(out_dir: &Path, json_bytes: &[u8]) {
+    write_if_changed(&out_dir.join(MANIFEST_FILENAME), json_bytes)
         .expect("Failed to write OUT_DIR/traceability_manifest.json");
 
     if let Some(profile_dir) = out_dir
@@ -146,18 +196,18 @@ fn write_manifest_outputs(out_dir: &Path, json: &str) {
         .find(|p| p.file_name().and_then(|n| n.to_str()) == Some("build"))
         .and_then(Path::parent)
     {
-        let _ = fs::write(profile_dir.join(MANIFEST_FILENAME), json);
+        let _ = write_if_changed(&profile_dir.join(MANIFEST_FILENAME), json_bytes);
         if let Some(parent_target) = profile_dir.parent() {
-            let _ = fs::write(parent_target.join(MANIFEST_FILENAME), json);
+            let _ = write_if_changed(&parent_target.join(MANIFEST_FILENAME), json_bytes);
         }
     }
 
     if let Some(custom_target) = env::var_os("CARGO_TARGET_DIR") {
         let target_path = PathBuf::from(custom_target);
         if target_path.is_dir() {
-            let _ = fs::write(target_path.join(MANIFEST_FILENAME), json);
+            let _ = write_if_changed(&target_path.join(MANIFEST_FILENAME), json_bytes);
         }
     } else if Path::new("../target").is_dir() {
-        let _ = fs::write(Path::new("../target").join(MANIFEST_FILENAME), json);
+        let _ = write_if_changed(&Path::new("../target").join(MANIFEST_FILENAME), json_bytes);
     }
 }

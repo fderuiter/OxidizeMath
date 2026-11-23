@@ -3,8 +3,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    GhostComparator, HamiltonianChaosLab, HamiltonianModelKind, OrbitSlot, SymplecticSolverChoice,
-    FRAME_BUDGET_MS, MAX_ORBITS, MAX_SECTION_POINTS, MAX_TRAIL_POINTS,
+    FRAME_BUDGET_MS, GhostComparator, HamiltonianChaosLab, HamiltonianModelKind, MAX_ORBITS,
+    MAX_SECTION_POINTS, MAX_TRAIL_POINTS, OrbitSlot, SymplecticSolverChoice,
 };
 use crate::web_io::PlatformInstant;
 use math_explorer::physics::astrophysics::nbody::FigureEightThreeBody;

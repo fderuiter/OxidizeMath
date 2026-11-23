@@ -4,12 +4,12 @@
 mod cards;
 
 use super::{
-    goal_challenge_to_starter_card, story_to_starter_card, ChallengeCard, GallerySelection,
-    StarterCard,
+    ChallengeCard, GallerySelection, StarterCard, goal_challenge_to_starter_card,
+    story_to_starter_card,
 };
 use cards::{
-    compute_gallery_metrics, render_challenges_grid, render_starter_card, render_stories_grid,
-    GalleryOverlayMetrics,
+    GalleryOverlayMetrics, compute_gallery_metrics, render_challenges_grid, render_starter_card,
+    render_stories_grid,
 };
 use eframe::egui;
 

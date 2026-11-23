@@ -309,10 +309,10 @@ pub fn count_prominent_peaks(curve: &[[f64; 2]], min_height: f64, min_prominence
                 .fold(f64::INFINITY, f64::min);
             let ref_peak = prev_h.min(height);
             if ref_peak - valley < min_prominence {
-                if height > prev_h {
-                    if let Some(last) = kept.last_mut() {
-                        *last = (idx, height);
-                    }
+                if height > prev_h
+                    && let Some(last) = kept.last_mut()
+                {
+                    *last = (idx, height);
                 }
                 continue;
             }

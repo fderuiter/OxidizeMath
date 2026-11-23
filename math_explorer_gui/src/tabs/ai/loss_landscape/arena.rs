@@ -12,9 +12,9 @@ use math_explorer::applied::game_theory::mean_field::physics::{Hamiltonian, Quad
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use math_explorer::pure_math::analysis::evolution::EvolutionEngine;
 use math_explorer::pure_math::analysis::momentum_dynamics::{
-    clamp_damping, clamp_dt, clamp_mass, clamp_temperature, HamiltonianLeapfrog2D, LangevinBaoab2D,
-    PhasePoint2D, MAX_DAMPING, MAX_DT, MAX_MASS, MAX_TEMPERATURE, MIN_DAMPING, MIN_DT, MIN_MASS,
-    MIN_TEMPERATURE,
+    HamiltonianLeapfrog2D, LangevinBaoab2D, MAX_DAMPING, MAX_DT, MAX_MASS, MAX_TEMPERATURE,
+    MIN_DAMPING, MIN_DT, MIN_MASS, MIN_TEMPERATURE, PhasePoint2D, clamp_damping, clamp_dt,
+    clamp_mass, clamp_temperature,
 };
 use math_explorer::pure_math::analysis::optimization::{Adam, AdamState2D, SGD};
 use nalgebra::Vector2;

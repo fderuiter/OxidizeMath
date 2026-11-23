@@ -158,10 +158,10 @@ impl CommandPalette {
             let tab_name = tab.name();
             let mut score = fuzzy_match_score(tab_name, &self.query);
             let domain = tab.academic_domain();
-            if !domain.is_empty() {
-                if let Some(domain_score) = fuzzy_match_score(domain, &self.query) {
-                    score = Some(score.map_or(domain_score, |s| s.min(domain_score)));
-                }
+            if !domain.is_empty()
+                && let Some(domain_score) = fuzzy_match_score(domain, &self.query)
+            {
+                score = Some(score.map_or(domain_score, |s| s.min(domain_score)));
             }
             if let Some(s) = score {
                 matched.push((
@@ -235,10 +235,10 @@ impl CommandPalette {
                     .unwrap_or(filtered_items.len() - 1);
             }
 
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
-                if let Some(item) = filtered_items.get(self.selected_index) {
-                    selected_item = Some(item.to_selection());
-                }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+                && let Some(item) = filtered_items.get(self.selected_index)
+            {
+                selected_item = Some(item.to_selection());
             }
         }
 

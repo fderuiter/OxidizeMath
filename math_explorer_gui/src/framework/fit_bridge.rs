@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use egui_plot::{CustomFitEvaluator, MAX_FIT_PARAMS};
-use math_commons::ast::{is_universal_constant, parse_equation, CompiledExpr};
+use math_commons::ast::{CompiledExpr, is_universal_constant, parse_equation};
 
 #[derive(Debug)]
 struct CompiledCustomFitEvaluator {

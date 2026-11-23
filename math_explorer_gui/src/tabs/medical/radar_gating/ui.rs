@@ -2,15 +2,15 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::RadarGatingTool;
 use super::canvas::show_room_canvas;
 use super::pipeline::RadarPipeline;
 use super::state::{
-    RadarGatingState, MAX_SAMPLES_PER_CHIRP, MAX_SNAPSHOTS, MAX_SWEEP_BINS, MIN_SAMPLES_PER_CHIRP,
-    MIN_SNAPSHOTS, MIN_SWEEP_BINS,
+    MAX_SAMPLES_PER_CHIRP, MAX_SNAPSHOTS, MAX_SWEEP_BINS, MIN_SAMPLES_PER_CHIRP, MIN_SNAPSHOTS,
+    MIN_SWEEP_BINS, RadarGatingState,
 };
-use super::RadarGatingTool;
 use crate::app::theme::SemanticPalette;
-use crate::framework::{bounded_drag_value, PaneSidePanel, PlaybackAction, PlaybackTransport};
+use crate::framework::{PaneSidePanel, PlaybackAction, PlaybackTransport, bounded_drag_value};
 use eframe::egui::{self, Color32, RichText};
 use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, VLine};
 use math_explorer::physics::medical::radar_gating::BeamState;

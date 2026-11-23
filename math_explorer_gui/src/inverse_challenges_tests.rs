@@ -9,7 +9,7 @@ use crate::starter_gallery::{
     find_challenge_metadata, get_challenge_cards_for_domain, show_starter_gallery_with_challenges,
 };
 use crate::url_state::{
-    encode_base64url, parse_share_location, MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, encode_base64url, parse_share_location,
 };
 use eframe::egui::{self, Color32};
 
@@ -62,10 +62,18 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         assert!(clamped.len() <= MAX_DECODED_URL_STATE_BYTES);
     }
 
-    assert_eq!(get_challenge_cards_for_domain("mri").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("fluid_dynamics").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("medical").len(), 1);
+    let mut expected_by_domain: std::collections::BTreeMap<&'static str, usize> =
+        std::collections::BTreeMap::new();
+    for meta in inventory::iter::<ChallengeMetadata> {
+        *expected_by_domain.entry(meta.domain).or_insert(0) += 1;
+    }
+    let mut domain_total = 0usize;
+    for (domain, expected_count) in &expected_by_domain {
+        let domain_cards = get_challenge_cards_for_domain(domain);
+        assert_eq!(domain_cards.len(), *expected_count);
+        domain_total += domain_cards.len();
+    }
+    assert_eq!(domain_total, cards.len());
 
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -78,10 +86,11 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .platform_output
         .accesskit_update
         .expect("AccessKit nodes expected");
-    assert!(ak.nodes.iter().any(|(_, n)| n
-        .label()
-        .unwrap_or("")
-        .contains("Bloch 180° Spin Inversion")));
+    assert!(ak.nodes.iter().any(|(_, n)| {
+        n.label()
+            .unwrap_or("")
+            .contains("Bloch 180° Spin Inversion")
+    }));
 }
 
 fn assert_theme_hud_contrast(theme: ThemeMode, ctx: &egui::Context) {
@@ -145,9 +154,11 @@ fn test_challenge_hud_wcag_contrast_reset_and_aria_across_themes() {
             fw.show(ctx, "clinical_trials");
         });
         let announcements = crate::accessibility::all_announcements();
-        assert!(announcements
-            .iter()
-            .any(|(msg, prio)| msg.contains("Challenge passed") && prio == "polite"));
+        assert!(
+            announcements
+                .iter()
+                .any(|(msg, prio)| msg.contains("Challenge passed") && prio == "polite")
+        );
 
         fw.reset_active_challenge_baseline(Some(&ctx)).unwrap();
         assert!(
@@ -178,9 +189,10 @@ fn test_stateless_challenge_urls_within_size_budget() {
         assert_eq!(parsed.challenge.as_deref(), Some(challenge_id));
 
         let mut app = MathExplorerApp::default();
-        assert!(app
-            .apply_share_location_strings(&bare_hash, "", None)
-            .unwrap());
+        assert!(
+            app.apply_share_location_strings(&bare_hash, "", None)
+                .unwrap()
+        );
         let active_fw = app.tabs[app.selected_tab].framework().unwrap();
         assert_eq!(active_fw.active_challenge_id(), Some(challenge_id));
 
@@ -218,9 +230,11 @@ fn test_tampered_challenge_url_clamps_locked_parameters() {
     );
 
     let mut hydrated_app = MathExplorerApp::default();
-    assert!(hydrated_app
-        .apply_share_location_strings(&tampered_hash, "", None)
-        .unwrap());
+    assert!(
+        hydrated_app
+            .apply_share_location_strings(&tampered_hash, "", None)
+            .unwrap()
+    );
     let fw = hydrated_app.tabs[hydrated_app.selected_tab]
         .framework()
         .unwrap();

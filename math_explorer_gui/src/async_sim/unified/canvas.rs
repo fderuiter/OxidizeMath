@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{UnifiedModel, UnifiedSimTool};
-use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::SimCommand;
+use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::framework::{BrushMode, InteractionContext, InteractiveTool};
 use eframe::egui::{self, ColorImage, TextureOptions};
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};

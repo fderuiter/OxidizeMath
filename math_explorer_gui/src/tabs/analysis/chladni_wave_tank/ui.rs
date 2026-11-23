@@ -5,7 +5,7 @@
 use eframe::egui;
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    analytic_clamped_square_omega, young_double_slit_fringe_spacing, BoundaryMode2D, Wave2DMedium,
+    BoundaryMode2D, Wave2DMedium, analytic_clamped_square_omega, young_double_slit_fringe_spacing,
 };
 
 use super::*;

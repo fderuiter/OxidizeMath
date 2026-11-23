@@ -3,11 +3,11 @@
 use super::viewport::sash::{quad_horizontal_sash_id, quad_vertical_sash_id};
 use super::*;
 use crate::framework::{
-    clear_pane_side_panel_records, pane_side_panel_records, PaneSidePanel, ToolMetadata,
-    MAX_PANE_SIDE_PANEL_WIDTH_RATIO,
+    MAX_PANE_SIDE_PANEL_WIDTH_RATIO, PaneSidePanel, ToolMetadata, clear_pane_side_panel_records,
+    pane_side_panel_records,
 };
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 
 fn run_frame_1024(
     ctx: &egui::Context,
@@ -35,15 +35,15 @@ fn find_button_bounds_in_x_range(
     for (_, node) in &ak.nodes {
         let label = node.label().unwrap_or_default();
         let val = node.value().unwrap_or_default();
-        if label.contains(needle) || val.contains(needle) {
-            if let Some(b) = node.bounds() {
-                let rect = egui::Rect::from_min_max(
-                    egui::pos2(b.x0 as f32, b.y0 as f32),
-                    egui::pos2(b.x1 as f32, b.y1 as f32),
-                );
-                if x_range.contains(&rect.center().x) {
-                    return Some(rect);
-                }
+        if (label.contains(needle) || val.contains(needle))
+            && let Some(b) = node.bounds()
+        {
+            let rect = egui::Rect::from_min_max(
+                egui::pos2(b.x0 as f32, b.y0 as f32),
+                egui::pos2(b.x1 as f32, b.y1 as f32),
+            );
+            if x_range.contains(&rect.center().x) {
+                return Some(rect);
             }
         }
     }
@@ -177,10 +177,10 @@ fn test_all_39_pane_side_panels_scroll_collapse_and_keep_positive_canvas_at_twen
             });
 
         for tool_idx in 0..tool_count {
-            if let Some(fw) = app.pane_tab_mut(0).and_then(|t| t.framework_mut()) {
-                if tool_idx < fw.available_tools.len() {
-                    fw.select_tool(tool_idx);
-                }
+            if let Some(fw) = app.pane_tab_mut(0).and_then(|t| t.framework_mut())
+                && tool_idx < fw.available_tools.len()
+            {
+                fw.select_tool(tool_idx);
             }
             clear_pane_side_panel_records(&ctx);
             let _ = run_frame_1024(&ctx, &mut app, Vec::new());
@@ -258,15 +258,15 @@ fn find_button_in_rect(
     for (_, node) in &ak.nodes {
         let label = node.label().unwrap_or_default();
         let val = node.value().unwrap_or_default();
-        if label.contains(needle) || val.contains(needle) {
-            if let Some(b) = node.bounds() {
-                let rect = egui::Rect::from_min_max(
-                    egui::pos2(b.x0 as f32, b.y0 as f32),
-                    egui::pos2(b.x1 as f32, b.y1 as f32),
-                );
-                if bounds_rect.contains(rect.center()) {
-                    return Some(rect);
-                }
+        if (label.contains(needle) || val.contains(needle))
+            && let Some(b) = node.bounds()
+        {
+            let rect = egui::Rect::from_min_max(
+                egui::pos2(b.x0 as f32, b.y0 as f32),
+                egui::pos2(b.x1 as f32, b.y1 as f32),
+            );
+            if bounds_rect.contains(rect.center()) {
+                return Some(rect);
             }
         }
     }

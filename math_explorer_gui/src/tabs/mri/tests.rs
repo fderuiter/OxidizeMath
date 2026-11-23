@@ -37,11 +37,11 @@ fn test_mri_worker_simulation_step_and_zero_allocation() {
     let mut stepped = false;
     for _ in 0..200 {
         std::thread::sleep(std::time::Duration::from_millis(20));
-        if let Some(snap) = tool.worker.update() {
-            if snap.custom_data.first().copied().unwrap_or(0.0) > 0.0 {
-                stepped = true;
-                break;
-            }
+        if let Some(snap) = tool.worker.update()
+            && snap.custom_data.first().copied().unwrap_or(0.0) > 0.0
+        {
+            stepped = true;
+            break;
         }
     }
     assert!(stepped);
@@ -354,14 +354,15 @@ fn test_mri_reset_live_region_theory_and_preset_io() {
     let live_msg = crate::accessibility::with_live_region(|r| r.slots[r.active_slot].clone());
     assert_eq!(live_msg, "Parameters reset to baseline defaults");
 
-    assert!(tab
-        .framework
-        .apply_starter_card(
-            "Off-Resonance Bloch Precession",
-            Some("MriTool"),
-            Some(crate::starter_gallery::PRESET_MRI_BLOCH_RELAXATION),
-        )
-        .is_ok());
+    assert!(
+        tab.framework
+            .apply_starter_card(
+                "Off-Resonance Bloch Precession",
+                Some("MriTool"),
+                Some(crate::starter_gallery::PRESET_MRI_BLOCH_RELAXATION),
+            )
+            .is_ok()
+    );
     let preset_json = tab
         .framework
         .active_tool
@@ -398,14 +399,15 @@ fn test_mri_reset_live_region_theory_and_preset_io() {
 fn test_mri_workspace_undo_mws_and_figure_export() {
     let ctx = egui::Context::default();
     let mut tab = MriTab::default();
-    assert!(tab
-        .framework
-        .apply_starter_card(
-            "Off-Resonance Bloch Precession",
-            Some("MriTool"),
-            Some(crate::starter_gallery::PRESET_MRI_BLOCH_RELAXATION),
-        )
-        .is_ok());
+    assert!(
+        tab.framework
+            .apply_starter_card(
+                "Off-Resonance Bloch Precession",
+                Some("MriTool"),
+                Some(crate::starter_gallery::PRESET_MRI_BLOCH_RELAXATION),
+            )
+            .is_ok()
+    );
     if let Some(tool) = tab.framework.active_tool.as_mut() {
         for _ in 0..80 {
             tool.step_simulation();

@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{FractalMode, FractalViewer, COORD_MAX, COORD_MIN, ZOOM_MAX, ZOOM_MIN};
+use super::{COORD_MAX, COORD_MIN, FractalMode, FractalViewer, ZOOM_MAX, ZOOM_MIN};
 use crate::framework::export_shader::compile_complex_bar_glsl;
 use crate::framework::{InteractiveTool, ShaderDialect};
-use math_commons::ast::{format_glsl_float, GLSL_COMPLEX_HELPERS};
+use math_commons::ast::{GLSL_COMPLEX_HELPERS, format_glsl_float};
 use math_commons::math_kernel::glsl_colormap::{
     glsl_cyclic_cosine_palette_fn, glsl_ensure_dark_canvas_contrast_fn,
 };

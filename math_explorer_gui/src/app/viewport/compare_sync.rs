@@ -89,10 +89,10 @@ pub(crate) fn publish_multi_pane_sync_context(app: &MathExplorerApp, ctx: &egui:
         state.pending_key = pending_key;
         if !cfg.sync_playback {
             state.active_broadcast = None;
-        } else if let Some(ref bcast) = state.active_broadcast {
-            if state.frame_seq.saturating_sub(bcast.emitted_frame) > 1 {
-                state.active_broadcast = None;
-            }
+        } else if let Some(ref bcast) = state.active_broadcast
+            && state.frame_seq.saturating_sub(bcast.emitted_frame) > 1
+        {
+            state.active_broadcast = None;
         }
     });
 }

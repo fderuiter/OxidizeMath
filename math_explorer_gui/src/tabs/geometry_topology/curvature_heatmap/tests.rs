@@ -50,10 +50,12 @@ fn curvature_heatmap_camera_preset_and_export_work() {
         ((0.0, 3.0), (0.5, 2.5))
     );
     custom_restored.populate_scene(egui::Color32::WHITE);
-    assert!(!custom_restored
-        .scene_builder
-        .sorted_projected_segments()
-        .is_empty());
+    assert!(
+        !custom_restored
+            .scene_builder
+            .sorted_projected_segments()
+            .is_empty()
+    );
 }
 
 #[test]

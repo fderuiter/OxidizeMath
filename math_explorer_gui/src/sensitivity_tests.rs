@@ -186,9 +186,11 @@ fn test_four_param_progressive_convergence_and_repaint_gating() {
             render_sensitivity_panel_ui(ui, &engine, "conv_test");
         });
     });
-    assert!(out1.viewport_output[&egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+    assert!(
+        out1.viewport_output[&egui::ViewportId::ROOT]
+            .repaint_delay
+            .is_zero()
+    );
 
     let mut frame2_calls = 0;
     engine.compute(&params, |p| eval_sum(p, &mut frame2_calls));
@@ -211,9 +213,11 @@ fn test_four_param_progressive_convergence_and_repaint_gating() {
             render_sensitivity_panel_ui(ui, &engine, "conv_test");
         });
     });
-    assert!(!out_idle.viewport_output[&egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+    assert!(
+        !out_idle.viewport_output[&egui::ViewportId::ROOT]
+            .repaint_delay
+            .is_zero()
+    );
 }
 
 #[test]

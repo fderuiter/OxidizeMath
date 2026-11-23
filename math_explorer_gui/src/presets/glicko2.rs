@@ -137,13 +137,13 @@ fn validate_periods(periods: &[Glicko2PeriodPreset], num_players: usize) -> Resu
         ));
     }
     for (p_idx, period) in periods.iter().enumerate() {
-        if let Some(bye) = period.bye_player {
-            if bye >= num_players {
-                return Err(format!(
-                    "Period {} bye_player index {bye} is out of bounds for {num_players} players",
-                    p_idx + 1
-                ));
-            }
+        if let Some(bye) = period.bye_player
+            && bye >= num_players
+        {
+            return Err(format!(
+                "Period {} bye_player index {bye} is out of bounds for {num_players} players",
+                p_idx + 1
+            ));
         }
         for (m_idx, m) in period.matches.iter().enumerate() {
             if m.player_a >= num_players || m.player_b >= num_players {

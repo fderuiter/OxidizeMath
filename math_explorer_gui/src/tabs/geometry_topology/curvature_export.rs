@@ -3,10 +3,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::super::export_utils::{
-    clamp_grid_res, extrude_open_patch_wall_shell, extrude_surface_wall_shell,
-    has_direct_periodic_seams, has_klein_seam_topology, has_polar_singularities,
-    is_standard_tau_domain, periodic_surface_to_manifold_mesh, polar_surface_to_manifold_mesh,
-    DEFAULT_WALL_THICKNESS,
+    DEFAULT_WALL_THICKNESS, clamp_grid_res, extrude_open_patch_wall_shell,
+    extrude_surface_wall_shell, has_direct_periodic_seams, has_klein_seam_topology,
+    has_polar_singularities, is_standard_tau_domain, periodic_surface_to_manifold_mesh,
+    polar_surface_to_manifold_mesh,
 };
 use super::{CurvatureHeatmap, CurvatureType, SurfaceType};
 use math_commons::math_kernel::colormap::mapped_gradient;

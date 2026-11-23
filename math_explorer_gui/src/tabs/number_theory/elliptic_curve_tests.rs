@@ -7,8 +7,8 @@ use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::AffinePointFp;
 use verified_engine::engine::VerifiedEngine;
 
-use super::elliptic_curve_playground::{ActivePointSelector, EllipticCurvePlayground};
 use super::NumberTheoryTab;
+use super::elliptic_curve_playground::{ActivePointSelector, EllipticCurvePlayground};
 use crate::command_palette::CommandPalette;
 use crate::framework::{InteractiveTool, StarterPresetMetadata, ToolMetadata};
 use crate::tabs::ExplorerTab;

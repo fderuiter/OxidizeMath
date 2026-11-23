@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{ElementType, PotentialFlowTool, SerializedFlowElement, FLOW_VIEW_MAX, FLOW_VIEW_MIN};
+use super::{ElementType, FLOW_VIEW_MAX, FLOW_VIEW_MIN, PotentialFlowTool, SerializedFlowElement};
 use crate::framework::{InteractiveTool, ShaderDialect};
 use math_commons::ast::format_glsl_float;
 use math_commons::math_kernel::glsl_colormap::{
@@ -47,11 +47,7 @@ impl PotentialFlowTool {
                 sum += el.strength.abs() / (2.0 * std::f64::consts::PI * self.view_range.max(1.0));
             }
         }
-        if sum > 1.0e-3 {
-            sum * 1.75
-        } else {
-            10.0
-        }
+        if sum > 1.0e-3 { sum * 1.75 } else { 10.0 }
     }
 }
 

@@ -1,6 +1,6 @@
 //! Unified accessible playback transport widget for continuous and episodic simulations.
 
-use crate::accessibility::{announce_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_status};
 use crate::async_sim::SimWorkerState;
 use crate::framework::InputMode;
 use eframe::egui;
@@ -195,10 +195,10 @@ impl<'a> PlaybackTransport<'a> {
             claim_pending_sync_key, emit_playback_broadcast, poll_playback_broadcast,
         };
         let ctx = ui.ctx();
-        if let Some((bcast_action, announce)) = poll_playback_broadcast(ctx, base_id) {
-            if self.is_action_applicable(bcast_action) {
-                return (Some(bcast_action), announce);
-            }
+        if let Some((bcast_action, announce)) = poll_playback_broadcast(ctx, base_id)
+            && self.is_action_applicable(bcast_action)
+        {
+            return (Some(bcast_action), announce);
         }
         if let Some(clicked) = clicked_action {
             let announce = emit_playback_broadcast(ctx, base_id, clicked, None);

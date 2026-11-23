@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::state::{clamp_selected_child_index, ChildInputsState, ChildState, FavoritismToolState};
+use super::state::{ChildInputsState, ChildState, FavoritismToolState, clamp_selected_child_index};
 use super::theory::FavoritismTheory;
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Plot};
-use math_explorer::applied::favoritism::{calculate_favoritism_score, FavoritismInputs};
+use math_explorer::applied::favoritism::{FavoritismInputs, calculate_favoritism_score};
 use scientific_metadata::theory::TheoryDescribable;
 use std::hash::{Hash, Hasher};
 
@@ -156,11 +156,12 @@ impl FavoritismTool {
         }
         self.children.remove(index);
         if self.selected_child_index == Some(index) {
-            self.selected_child_index = clamp_selected_child_index(Some(index), self.children.len());
-        } else if let Some(selected) = self.selected_child_index {
-            if index < selected {
-                self.selected_child_index = Some(selected - 1);
-            }
+            self.selected_child_index =
+                clamp_selected_child_index(Some(index), self.children.len());
+        } else if let Some(selected) = self.selected_child_index
+            && index < selected
+        {
+            self.selected_child_index = Some(selected - 1);
         }
     }
 
@@ -180,8 +181,7 @@ impl FavoritismTool {
                     .collect();
 
                 let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-                let chart =
-                    BarChart::new("Favoritism Scores", bars).color(palette.series_color(0));
+                let chart = BarChart::new("Favoritism Scores", bars).color(palette.series_color(0));
 
                 Plot::new("favoritism_plot")
                     .legend(egui_plot::Legend::default())
@@ -197,21 +197,21 @@ impl FavoritismTool {
 
     fn render_strategy_panel(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            if let Some(idx) = self.selected_child_index {
-                if let Some(child) = self.children.get_mut(idx) {
-                    ui.heading(format!("Strategy: {}", child.name));
-                    ui.separator();
-                    let mut changed = false;
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        changed |= Self::render_time_and_gifts_groups(ui, &mut child.inputs);
-                        changed |= Self::render_personality_group(ui, &mut child.inputs);
-                        changed |= Self::render_social_and_contact_groups(ui, &mut child.inputs);
-                    });
-                    if changed {
-                        child.update_score();
-                    }
-                    return;
+            if let Some(idx) = self.selected_child_index
+                && let Some(child) = self.children.get_mut(idx)
+            {
+                ui.heading(format!("Strategy: {}", child.name));
+                ui.separator();
+                let mut changed = false;
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    changed |= Self::render_time_and_gifts_groups(ui, &mut child.inputs);
+                    changed |= Self::render_personality_group(ui, &mut child.inputs);
+                    changed |= Self::render_social_and_contact_groups(ui, &mut child.inputs);
+                });
+                if changed {
+                    child.update_score();
                 }
+                return;
             }
             ui.centered_and_justified(|ui| {
                 ui.label("Select a family member to adjust their strategy.");
@@ -279,7 +279,10 @@ impl FavoritismTool {
         ui.group(|ui| {
             ui.label("Social & Crisis");
             changed |= ui
-                .checkbox(&mut inputs.social.helped_during_crisis, "Helped during Crisis")
+                .checkbox(
+                    &mut inputs.social.helped_during_crisis,
+                    "Helped during Crisis",
+                )
                 .changed();
             changed |= ui
                 .checkbox(

@@ -2,15 +2,15 @@
 
 use super::AttractorPlotter;
 use crate::tabs::geometry_topology::vietoris_rips::{
-    handoff::{request_open_vietoris_rips, submit_chaos_landmark_handoff, ChaosLandmarkHandoff},
     MAX_CHAOS_LANDMARKS,
+    handoff::{ChaosLandmarkHandoff, request_open_vietoris_rips, submit_chaos_landmark_handoff},
 };
 use eframe::egui;
 use math_explorer::physics::chaos::fractals::correlation_dimension;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
 use math_explorer::physics::chaos::metrics::lorenz_lyapunov;
 use math_explorer::pure_math::analysis::ode::RungeKutta4;
-use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
+use math_explorer::pure_math::statistics::tda::{Point3D, farthest_point_landmarks};
 use nalgebra::Vector3;
 
 #[derive(Default, Clone, Copy)]

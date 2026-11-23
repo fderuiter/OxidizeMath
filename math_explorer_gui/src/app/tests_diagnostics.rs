@@ -121,10 +121,10 @@ fn test_diagnostics_panel_shortcut_toggle() {
 
 fn find_text_pos(shapes: &[egui::epaint::ClippedShape], target: &str) -> Option<egui::Pos2> {
     for shape in shapes {
-        if let egui::epaint::Shape::Text(text_shape) = &shape.shape {
-            if text_shape.galley.text() == target {
-                return Some(text_shape.pos);
-            }
+        if let egui::epaint::Shape::Text(text_shape) = &shape.shape
+            && text_shape.galley.text() == target
+        {
+            return Some(text_shape.pos);
         }
     }
     None

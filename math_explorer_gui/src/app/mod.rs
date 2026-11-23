@@ -58,10 +58,10 @@ pub use shared_json::SharedTabJson;
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
-    contrast_ratio, contrasting_text_color, relative_luminance, SemanticPalette, ThemeMode,
+    SemanticPalette, ThemeMode, contrast_ratio, contrasting_text_color, relative_luminance,
 };
-pub use viewport::compare_sync::ComparisonSyncConfig;
 pub use viewport::ViewportLayout;
+pub use viewport::compare_sync::ComparisonSyncConfig;
 
 use crate::command_palette::CommandPalette;
 use crate::tabs::ExplorerTab;

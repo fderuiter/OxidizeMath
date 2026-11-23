@@ -6,8 +6,8 @@ use super::*;
 use crate::framework::{InteractiveTool, TraceSeries};
 use math_commons::registry::TOLERANCE_FAST;
 use math_explorer::applied::pharmacokinetics::{
-    concentration_bateman, concentration_superposition, half_life, solve_ka, t_max,
-    EnantiomerModel, PKParameters,
+    EnantiomerModel, PKParameters, concentration_bateman, concentration_superposition, half_life,
+    solve_ka, t_max,
 };
 
 #[test]

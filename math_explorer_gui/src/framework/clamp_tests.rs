@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::recovery::*;
 use super::SimulationFramework;
+use super::recovery::*;
 
 fn active_json(fw: &SimulationFramework) -> serde_json::Value {
     serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap()
@@ -139,13 +139,15 @@ fn test_clamp_parameters_dispatches_domain_hooks_and_restores_datasets() {
     );
 
     let mut lbm_fw = SimulationFramework::new("fluid_dynamics");
-    assert!(!lbm_fw
-        .active_tool
-        .as_ref()
-        .unwrap()
-        .theory()
-        .theory_parameters()
-        .is_empty());
+    assert!(
+        !lbm_fw
+            .active_tool
+            .as_ref()
+            .unwrap()
+            .theory()
+            .theory_parameters()
+            .is_empty()
+    );
     load_active(&mut lbm_fw, r#"{"viscosity":99.0}"#);
     lbm_fw.cache_valid_snapshot();
     lbm_fw.clamp_parameters();

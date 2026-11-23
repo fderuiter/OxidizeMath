@@ -13,7 +13,7 @@ mod sim;
 #[path = "playground/ui.rs"]
 mod ui;
 
-pub use sim::{TrajectorySample, MAX_TRAJECTORY_SAMPLES};
+pub use sim::{MAX_TRAJECTORY_SAMPLES, TrajectorySample};
 
 /// Curved spacetime background selectable in [`GeodesicPlaygroundTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

@@ -1,12 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::{
-    atlas_regime_color, atlas_scalar_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasPassMeta,
-    AtlasRenderRequest, AtlasRunner, ParameterAtlasController, RegimeCartographer, ATLAS_STRIDES,
+    ATLAS_STRIDES, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasPassMeta, AtlasRenderRequest,
+    AtlasRunner, ParameterAtlasController, RegimeCartographer, atlas_regime_color,
+    atlas_scalar_color,
 };
 use crate::async_sim::SimulationRunner;
-use crate::framework::state_bounds::ToolStateBounds;
 use crate::framework::InteractiveTool;
+use crate::framework::state_bounds::ToolStateBounds;
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -39,10 +40,10 @@ impl RegimeCartographer for WasmTestCartographer {
 
     fn evaluate_cell(&self, p1: f64, p2: f64) -> AtlasCell {
         let idx = self.evals.fetch_add(1, Ordering::Relaxed);
-        if let Some((limit, ref atom)) = self.cancel_gen {
-            if idx + 1 == limit {
-                atom.store(2, Ordering::Release);
-            }
+        if let Some((limit, ref atom)) = self.cancel_gen
+            && idx + 1 == limit
+        {
+            atom.store(2, Ordering::Release);
         }
         AtlasCell {
             regime: u8::from(p1 + p2 > 1.0),
@@ -56,11 +57,7 @@ impl RegimeCartographer for WasmTestCartographer {
     }
 
     fn regime_label(&self, regime: u8) -> &'static str {
-        if regime == 0 {
-            "Low"
-        } else {
-            "High"
-        }
+        if regime == 0 { "Low" } else { "High" }
     }
 
     fn primary_metric_label(&self) -> &'static str {
@@ -169,7 +166,7 @@ fn wasm_atlas_high_contrast_wcag_and_aria_live_teleport() {
 fn wasm_flagship_state_bounds_and_washout_reseed() {
     use crate::async_sim::SimulationRunner;
     use crate::tabs::epidemiology::sir::SirTool;
-    use crate::tabs::morphogenesis::{grid_u_variance, MorphogenesisTool};
+    use crate::tabs::morphogenesis::{MorphogenesisTool, grid_u_variance};
 
     let mut sir = SirTool::default();
     sir.atlas.set_visible(true);

@@ -4,11 +4,11 @@
 // [cite:quantum_mechanics]
 // [cite:favorite_child]
 
-use super::{extract_voxel_splats_into, VolumetricSplatWorkspace, MAX_DYNAMIC_SPLATS};
+use super::{MAX_DYNAMIC_SPLATS, VolumetricSplatWorkspace, extract_voxel_splats_into};
 use math_explorer::ai::gaussian_splatting::{Gaussian3D, Scene};
 use math_explorer::applied::isosurface::{Point3D, VoxelGrid};
 use math_explorer::biology::morphogenesis::{DiffusionCoeff, SchnakenbergKinetics, TuringSystem};
-use math_explorer::math_kernel::types::{flatten_2d_index, flatten_3d_index, Dimension, StepSize};
+use math_explorer::math_kernel::types::{Dimension, StepSize, flatten_2d_index, flatten_3d_index};
 use math_explorer::physics::quantum::{
     HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable,
 };

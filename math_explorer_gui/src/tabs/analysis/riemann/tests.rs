@@ -110,15 +110,17 @@ fn test_riemann_exp_guard_and_state_bounds() {
     assert!(tool.result.is_finite());
     assert!(!tool.has_finite_parameters());
 
-    assert!(tool
-        .try_load_state(r#"{"preset":"EToX","min_x":-50.0,"max_x":50.0,"steps":50}"#)
-        .is_ok());
+    assert!(
+        tool.try_load_state(r#"{"preset":"EToX","min_x":-50.0,"max_x":50.0,"steps":50}"#)
+            .is_ok()
+    );
     assert!(tool.result.is_finite());
     assert!(tool.has_finite_parameters());
 
-    assert!(tool
-        .try_load_state(r#"{"preset":"EToX","min_x":-55.0,"max_x":50.0,"steps":50}"#)
-        .is_err());
+    assert!(
+        tool.try_load_state(r#"{"preset":"EToX","min_x":-55.0,"max_x":50.0,"steps":50}"#)
+            .is_err()
+    );
 }
 
 #[test]

@@ -9,9 +9,9 @@ mod step_tests;
 #[cfg(test)]
 mod tests;
 pub use atlas::{
-    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasPassMeta, AtlasRenderRequest, AtlasRunner,
-    AtlasTeleportEvent, ParameterAtlasController, RegimeCartographer, ATLAS_SLICE_BUDGET,
-    ATLAS_STRIDES, DEFAULT_ATLAS_SIDE, MAX_ATLAS_SIDE,
+    ATLAS_SLICE_BUDGET, ATLAS_STRIDES, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasPassMeta,
+    AtlasRenderRequest, AtlasRunner, AtlasTeleportEvent, DEFAULT_ATLAS_SIDE, MAX_ATLAS_SIDE,
+    ParameterAtlasController, RegimeCartographer,
 };
 #[allow(missing_docs)]
 pub mod ui;
@@ -24,8 +24,8 @@ pub use channel::*;
 pub mod state;
 pub use state::*;
 
-use std::sync::mpsc::{self, Sender};
 pub use std::sync::Arc;
+use std::sync::mpsc::{self, Sender};
 
 #[allow(missing_docs)]
 pub trait SimulationRunner: Send + 'static {
@@ -325,11 +325,12 @@ impl SimulationController {
             }
         }
 
-        if let Some(snapshot) = batch.latest_snapshot {
-            if !self.state.is_faulted() && !self.state.is_terminated() {
-                self.latest_snapshot = Some(snapshot);
-                received_new_snapshot = true;
-            }
+        if let Some(snapshot) = batch.latest_snapshot
+            && !self.state.is_faulted()
+            && !self.state.is_terminated()
+        {
+            self.latest_snapshot = Some(snapshot);
+            received_new_snapshot = true;
         }
 
         if batch.disconnected {
@@ -463,7 +464,7 @@ impl<T: SimulationRunner> From<BackgroundWorker<T>> for SimulationController {
 mod registry;
 #[cfg(target_arch = "wasm32")]
 use registry::{
-    register_worker_context, take_worker_context, unregister_worker_context, WorkerContext,
+    WorkerContext, register_worker_context, take_worker_context, unregister_worker_context,
 };
 
 #[cfg(target_arch = "wasm32")]

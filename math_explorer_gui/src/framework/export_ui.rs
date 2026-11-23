@@ -28,11 +28,11 @@ pub(super) fn export_action_button(
 
 impl SimulationFramework {
     pub(super) fn open_export_modal_for_active_tool(&mut self) {
-        if let Some(tool) = &self.active_tool {
-            if let Some(custom_opts) = tool.export_figure_options() {
-                self.export_bg_dark = custom_opts.background_color != egui::Color32::WHITE;
-                self.export_options = custom_opts;
-            }
+        if let Some(tool) = &self.active_tool
+            && let Some(custom_opts) = tool.export_figure_options()
+        {
+            self.export_bg_dark = custom_opts.background_color != egui::Color32::WHITE;
+            self.export_options = custom_opts;
         }
         self.show_export_modal = true;
     }

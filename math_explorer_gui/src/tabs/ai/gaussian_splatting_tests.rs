@@ -203,9 +203,11 @@ fn test_gaussian_splatting_state_persistence_and_legacy_presets() {
 
     // Out-of-bounds scale or zoom is rejected
     assert!(restored.try_load_state(r#"{"scale":0.0}"#).is_err());
-    assert!(restored
-        .try_load_state(r#"{"scale":1.0,"camera":{"pitch":0.0,"yaw":0.0,"zoom":150.0}}"#)
-        .is_err());
+    assert!(
+        restored
+            .try_load_state(r#"{"scale":1.0,"camera":{"pitch":0.0,"yaw":0.0,"zoom":150.0}}"#)
+            .is_err()
+    );
 }
 
 #[test]

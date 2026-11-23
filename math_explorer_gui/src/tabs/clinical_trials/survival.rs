@@ -3,7 +3,7 @@ use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotPoints};
 use math_explorer::applied::clinical_trials::survival_analysis::{
-    kaplan_meier, Observation, TimePoint,
+    Observation, TimePoint, kaplan_meier,
 };
 use math_explorer::applied::clinical_trials::types::SurvivalTime;
 

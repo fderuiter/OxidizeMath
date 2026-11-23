@@ -32,10 +32,10 @@ impl WorkspaceRecoverySnapshot {
 impl WorkspaceSessionManager {
     fn finalize_drag_before_snapshot(&mut self, current_state: &AppState) {
         if self.lifecycle_state == SessionLifecycleState::DragEditing {
-            if let Some(ref last_state) = self.last_committed_state {
-                if current_state != last_state {
-                    self.push_undo(last_state.clone());
-                }
+            if let Some(ref last_state) = self.last_committed_state
+                && current_state != last_state
+            {
+                self.push_undo(last_state.clone());
             }
             self.lifecycle_state = SessionLifecycleState::Idle;
         }
@@ -136,9 +136,11 @@ mod tests {
             SessionLifecycleState::Idle
         );
         assert_eq!(snapshot.undo_stack.len(), 2);
-        assert!(snapshot
-            .envelope_json
-            .contains("\"schema_version\": \"1.0\""));
+        assert!(
+            snapshot
+                .envelope_json
+                .contains("\"schema_version\": \"1.0\"")
+        );
         assert!(snapshot.envelope_json.contains("\"history_undo_stack\""));
 
         let fresh_ctx = egui::Context::default();

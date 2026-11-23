@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{UnifiedModel, UnifiedSimTool};
-use crate::async_sim::atlas::{AtlasTeleportEvent, ParameterAtlasController};
 use crate::async_sim::SimCommand;
+use crate::async_sim::atlas::{AtlasTeleportEvent, ParameterAtlasController};
 use eframe::egui;
 use std::hash::{Hash, Hasher};
 

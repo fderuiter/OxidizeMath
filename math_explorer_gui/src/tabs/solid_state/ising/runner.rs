@@ -5,11 +5,11 @@ use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use eframe::egui;
 use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
-use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
+use math_explorer::physics::stat_mech::ising::SpinLattice;
 use nalgebra::DMatrix;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[allow(missing_docs)]
 pub struct IsingSharedParams {

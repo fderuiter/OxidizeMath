@@ -118,10 +118,11 @@ impl SecondaryPaneSlots {
     }
 
     pub(super) fn swap_secondary_slots(&mut self, pane_a: usize, pane_b: usize) {
-        if let (Some(idx_a), Some(idx_b)) = (pane_a.checked_sub(1), pane_b.checked_sub(1)) {
-            if idx_a < self.slots.len() && idx_b < self.slots.len() {
-                self.slots.swap(idx_a, idx_b);
-            }
+        if let (Some(idx_a), Some(idx_b)) = (pane_a.checked_sub(1), pane_b.checked_sub(1))
+            && idx_a < self.slots.len()
+            && idx_b < self.slots.len()
+        {
+            self.slots.swap(idx_a, idx_b);
         }
     }
 }
@@ -321,24 +322,23 @@ impl MathExplorerApp {
                 slot.saved_states = map.clone();
             } else if is_legacy {
                 slot.saved_states.clear();
-                if pane_idx < pane_count {
-                    if let Some(ref name) = tab_name {
-                        if let Some(fallback) = fallback_tab_states.get(name) {
-                            slot.saved_states.insert(name.clone(), fallback.clone());
-                        }
-                    }
+                if pane_idx < pane_count
+                    && let Some(ref name) = tab_name
+                    && let Some(fallback) = fallback_tab_states.get(name)
+                {
+                    slot.saved_states.insert(name.clone(), fallback.clone());
                 }
             }
             slot.initialized = !slot.saved_states.is_empty() || pane_idx < pane_count;
-            if pane_idx < pane_count {
-                if let Some((active_idx, ref mut active_tab)) = slot.active {
-                    if active_idx == assigned {
-                        if let Some(saved) = slot.saved_states.get(active_tab.name()) {
-                            active_tab.load_state(saved);
-                        }
-                    } else {
-                        slot.active = None;
+            if pane_idx < pane_count
+                && let Some((active_idx, ref mut active_tab)) = slot.active
+            {
+                if active_idx == assigned {
+                    if let Some(saved) = slot.saved_states.get(active_tab.name()) {
+                        active_tab.load_state(saved);
                     }
+                } else {
+                    slot.active = None;
                 }
             }
         }

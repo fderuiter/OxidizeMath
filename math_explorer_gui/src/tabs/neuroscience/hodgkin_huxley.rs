@@ -3,12 +3,12 @@
 #[path = "hodgkin_huxley/atlas.rs"]
 pub mod atlas;
 
+use crate::async_sim::StateSnapshot;
 use crate::async_sim::atlas::RegimeCartographer;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
-use crate::async_sim::StateSnapshot;
 #[cfg(test)]
 pub use atlas::HodgkinHuxleyRegime;
-pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
+pub use atlas::{HH_ATLAS_AXIS_PAIRS, HodgkinHuxleyCartographer};
 use math_explorer::biology::neuroscience::{
     HodgkinHuxleyModel, HodgkinHuxleyNeuron, HodgkinHuxleyParameters,
 };

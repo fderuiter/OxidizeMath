@@ -6,10 +6,10 @@ use super::Glicko2TournamentTool;
 use crate::framework::InteractiveTool;
 use crate::presets::{Glicko2TournamentPresetConfig, MAX_TOURNAMENT_PERIODS};
 use crate::web_io::{
-    spawn_open_file_dialog, spawn_save_as_file_dialog, OpenDialogConfig, SaveAsDialogConfig,
+    OpenDialogConfig, SaveAsDialogConfig, spawn_open_file_dialog, spawn_save_as_file_dialog,
 };
 use eframe::egui;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
 const MATCH_LOG_OPEN_CONFIG: OpenDialogConfig = OpenDialogConfig {
     filter_name: "Match Log or Preset (.csv, .json)",

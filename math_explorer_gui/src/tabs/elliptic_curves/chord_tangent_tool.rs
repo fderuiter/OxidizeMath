@@ -275,14 +275,12 @@ impl InteractiveTool for WeierstrassPlaygroundTool {
     fn step_simulation(&mut self) {
         let max_cycle = match self.state.field_mode {
             CurveFieldMode::Real => 24_i64,
-            CurveFieldMode::FiniteField => PrimeWeierstrassCurve::new(
-                self.state.mod_a,
-                self.state.mod_b,
-                self.state.prime_p,
-            )
-            .ok()
-            .and_then(|c| c.point_count().ok())
-            .map_or(24_i64, |n| (n as i64).clamp(2, 128)),
+            CurveFieldMode::FiniteField => {
+                PrimeWeierstrassCurve::new(self.state.mod_a, self.state.mod_b, self.state.prime_p)
+                    .ok()
+                    .and_then(|c| c.point_count().ok())
+                    .map_or(24_i64, |n| (n as i64).clamp(2, 128))
+            }
         };
         self.state.scalar_k = (self.state.scalar_k % max_cycle) + 1;
         self.bump_revision();

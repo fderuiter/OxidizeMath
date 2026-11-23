@@ -278,18 +278,28 @@ fn test_workspace_build_script_outputs_emit_rerun_directives() {
     {
         let gui_rerun = parse_rerun_directives(&gui_output);
         for expected in [
+            "build.rs",
+            "build_snapshot.rs",
             "src/tabs",
             "Cargo.toml",
-            "../crates/federated_registry/src",
-            "../crates/oxidize_core/src",
-            "../math_explorer/src",
-            "../crates/math_commons/src",
-            "../crates/scientific_metadata/src",
-            "../crates/diagnostics/src",
+            "../traceability.toml",
+            "../papers",
         ] {
             assert!(
                 gui_rerun.contains(expected),
                 "math_explorer_gui output missing cargo:rerun-if-changed={expected}"
+            );
+        }
+        assert!(
+            gui_rerun
+                .iter()
+                .any(|p| p.starts_with("../papers/") && p.ends_with(".tex")),
+            "math_explorer_gui output missing ../papers/*.tex rerun directives"
+        );
+        for path in &gui_rerun {
+            assert!(
+                !path.starts_with("../crates/") && !path.starts_with("../math_explorer/"),
+                "math_explorer_gui output emitted sibling crate rerun path: {path}"
             );
         }
     }

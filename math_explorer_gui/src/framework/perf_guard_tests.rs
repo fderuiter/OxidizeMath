@@ -7,8 +7,8 @@ use crate::tabs::epidemiology::sir::SirTool;
 use crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool;
 use crate::tabs::graph_theory::graph_editor::GraphEditorTool;
 use crate::web_io::PlatformInstant;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct SaveStateTrapTool {
     inner: OdeSolverTool,
@@ -125,9 +125,11 @@ fn test_trace_series_arc_clone_is_constant_time() {
     let mut mgr = TraceSnapshotManager::new();
     mgr.add_snapshot("Run 1", "k=1.0", vec![series]);
     let mgr_clone = mgr.clone();
-    assert!(mgr.snapshots()[0].series[0]
-        .points
-        .ptr_eq(&mgr_clone.snapshots()[0].series[0].points));
+    assert!(
+        mgr.snapshots()[0].series[0]
+            .points
+            .ptr_eq(&mgr_clone.snapshots()[0].series[0].points)
+    );
 
     let encoded = serde_json::to_string(&mgr).expect("serialize TraceSnapshotManager");
     let decoded: TraceSnapshotManager =

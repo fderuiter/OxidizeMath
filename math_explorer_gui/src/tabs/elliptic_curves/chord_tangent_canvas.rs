@@ -101,7 +101,8 @@ impl CanvasViewport {
     }
 
     pub(crate) fn to_math(self, pos: egui::Pos2) -> (f64, f64) {
-        let tx = ((pos.x - self.rect.left()) / self.rect.width().max(1.0_f32)).clamp(0.0_f32, 1.0_f32);
+        let tx =
+            ((pos.x - self.rect.left()) / self.rect.width().max(1.0_f32)).clamp(0.0_f32, 1.0_f32);
         let ty = ((self.rect.bottom() - pos.y) / self.rect.height().max(1.0_f32))
             .clamp(0.0_f32, 1.0_f32);
         (
@@ -139,11 +140,11 @@ pub(crate) fn render_interactive_canvas(tool: &mut WeierstrassPlaygroundTool, ui
         }
     };
 
-    if response.clicked() {
-        if let Some(pos) = response.interact_pointer_pos() {
-            response.request_focus();
-            handle_canvas_click(tool, ui.ctx(), vp, pos, ui.input(|i| i.modifiers.shift));
-        }
+    if response.clicked()
+        && let Some(pos) = response.interact_pointer_pos()
+    {
+        response.request_focus();
+        handle_canvas_click(tool, ui.ctx(), vp, pos, ui.input(|i| i.modifiers.shift));
     }
 
     let summary = canvas_a11y_summary(tool);
@@ -291,11 +292,8 @@ fn canvas_a11y_summary(tool: &WeierstrassPlaygroundTool) -> String {
             Err(err) => err.to_string(),
         },
         CurveFieldMode::FiniteField => {
-            match PrimeWeierstrassCurve::new(
-                tool.state.mod_a,
-                tool.state.mod_b,
-                tool.state.prime_p,
-            ) {
+            match PrimeWeierstrassCurve::new(tool.state.mod_a, tool.state.mod_b, tool.state.prime_p)
+            {
                 Ok(curve) => {
                     let (p, q) = tool.current_fp_points();
                     let sum = curve.add(p, q);

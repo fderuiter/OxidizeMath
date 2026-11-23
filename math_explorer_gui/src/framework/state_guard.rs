@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::recovery::*;
 use super::SimulationFramework;
+use super::recovery::*;
 
 #[path = "state_guard/rollback.rs"]
 mod rollback;
@@ -73,13 +73,12 @@ type CapturedDatasets = Vec<(String, Vec<[f64; 2]>)>;
 
 impl SimulationFramework {
     fn refresh_snapshot_datasets_only(&mut self) {
-        if let Some(snap) = &mut self.last_valid_snapshot {
-            if !self.current_valid_plot_datasets.is_empty()
-                && inspect_datasets_for_divergence(&self.current_valid_plot_datasets).is_ok()
-            {
-                snap.plot_datasets = self.current_valid_plot_datasets.clone();
-                snap.enforce_memory_budget();
-            }
+        if let Some(snap) = &mut self.last_valid_snapshot
+            && !self.current_valid_plot_datasets.is_empty()
+            && inspect_datasets_for_divergence(&self.current_valid_plot_datasets).is_ok()
+        {
+            snap.plot_datasets = self.current_valid_plot_datasets.clone();
+            snap.enforce_memory_budget();
         }
     }
 

@@ -230,12 +230,11 @@ impl ModularInvariantsTool {
 
             if let Ok(curve) =
                 PrimeWeierstrassCurve::new(self.state.coeff_a, self.state.coeff_b, p as i64)
+                && let Ok(summary) = analyze_frobenius_prime(&curve)
             {
-                if let Ok(summary) = analyze_frobenius_prime(&curve) {
-                    self.trace_pts.push([x, summary.frobenius_trace as f64]);
-                    self.class_num_pts
-                        .push([x, summary.imaginary_class_number as f64]);
-                }
+                self.trace_pts.push([x, summary.frobenius_trace as f64]);
+                self.class_num_pts
+                    .push([x, summary.imaginary_class_number as f64]);
             }
         }
 

@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::{CalloutManager, ChallengeEvaluation, ChallengeMetadata};
-use math_explorer::physics::mri::bloch::{rotating_frame_effective_field, BlochSimulator};
+use math_explorer::physics::mri::bloch::{BlochSimulator, rotating_frame_effective_field};
 use math_explorer::physics::mri::proton;
 use math_explorer::pure_math::analysis::ode::{RungeKutta4, Solver};
 use nalgebra::Vector3;

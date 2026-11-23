@@ -4,7 +4,7 @@ use super::pulse::MriPulseMode;
 use super::runner::MriSnapshot;
 use super::tool::MriTool;
 use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+    WorkerFaultAction, render_empty_plot_guidance, render_worker_fault_banner,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport};
@@ -340,19 +340,17 @@ impl MriTool {
     }
 
     pub(crate) fn show_ui_inside(&mut self, ui: &mut egui::Ui) {
-        if self.pulse_config.mode.is_continuous() {
-            if let Some(snapshot) = self.worker.update() {
-                if let Some(data) = snapshot
-                    .structured_data
-                    .as_ref()
-                    .and_then(|d| d.downcast_ref::<MriSnapshot>())
-                {
-                    self.current_time = data.current_time;
-                    self.simulator.magnetization = data.magnetization;
-                    self.history = data.history.clone();
-                    self.update_plot_buffers();
-                }
-            }
+        if self.pulse_config.mode.is_continuous()
+            && let Some(snapshot) = self.worker.update()
+            && let Some(data) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<MriSnapshot>())
+        {
+            self.current_time = data.current_time;
+            self.simulator.magnetization = data.magnetization;
+            self.history = data.history.clone();
+            self.update_plot_buffers();
         }
 
         if matches!(

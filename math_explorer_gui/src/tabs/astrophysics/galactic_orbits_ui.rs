@@ -1,13 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::galactic_orbits_tool::{GalacticOrbitSimulator, TRAIL_CAPACITY};
 use super::HaloKindChoice;
+use super::galactic_orbits_tool::{GalacticOrbitSimulator, TRAIL_CAPACITY};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, LineStyle, MarkerShape, Plot, PlotPoints, Points};
 use math_explorer::physics::astrophysics::{
-    decompose_rotation_curve, DwarfMorphology, OrbitParticleKind,
+    DwarfMorphology, OrbitParticleKind, decompose_rotation_curve,
 };
 
 impl GalacticOrbitSimulator {

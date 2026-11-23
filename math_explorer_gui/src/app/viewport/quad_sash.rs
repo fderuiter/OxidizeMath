@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::sash::{
-    apply_accesskit_actions, apply_keyboard_adjustments, focus_outline_color,
-    quad_horizontal_sash_id, quad_vertical_sash_id, register_axis_splitter_accessibility,
-    SashFrameState, MAX_SPLIT_RATIO, MIN_SPLIT_RATIO,
+    MAX_SPLIT_RATIO, MIN_SPLIT_RATIO, SashFrameState, apply_accesskit_actions,
+    apply_keyboard_adjustments, focus_outline_color, quad_horizontal_sash_id,
+    quad_vertical_sash_id, register_axis_splitter_accessibility,
 };
 use crate::app::MathExplorerApp;
 use eframe::egui;

@@ -67,16 +67,20 @@ fn test_sir_sensitivity_converges_in_two_frames_and_invalidates_on_duration() {
 
     let out1 = ctx.run(input.clone(), |ctx| tool.show(ctx));
     assert!(!tool.sensitivity_engine.is_converged());
-    assert!(out1.viewport_output[&egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+    assert!(
+        out1.viewport_output[&egui::ViewportId::ROOT]
+            .repaint_delay
+            .is_zero()
+    );
 
     let _ = ctx.run(input.clone(), |ctx| tool.show(ctx));
     assert!(tool.sensitivity_engine.is_converged());
     let out_idle = ctx.run(input.clone(), |ctx| tool.show(ctx));
-    assert!(!out_idle.viewport_output[&egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+    assert!(
+        !out_idle.viewport_output[&egui::ViewportId::ROOT]
+            .repaint_delay
+            .is_zero()
+    );
     assert!(tool.sensitivity_engine.metrics[2].partial_derivative > 0.0);
     assert!(tool.sensitivity_engine.metrics[3].partial_derivative < 0.0);
 
@@ -85,9 +89,11 @@ fn test_sir_sensitivity_converges_in_two_frames_and_invalidates_on_duration() {
     tool.recalculate();
     let out_after_duration = ctx.run(input, |ctx| tool.show(ctx));
     assert!(!tool.sensitivity_engine.is_converged());
-    assert!(out_after_duration.viewport_output[&egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+    assert!(
+        out_after_duration.viewport_output[&egui::ViewportId::ROOT]
+            .repaint_delay
+            .is_zero()
+    );
 }
 
 #[test]
@@ -174,9 +180,11 @@ fn test_sir_100k_steps_decimates_display_polylines_and_preserves_peak_and_export
     let ctx = egui::Context::default();
     let _ = ctx.run(egui::RawInput::default(), |c| tool.show(c));
     let plot_datasets = egui_plot::get_last_plot_datasets();
-    assert!(plot_datasets
-        .iter()
-        .all(|(_, pts)| pts.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS));
+    assert!(
+        plot_datasets
+            .iter()
+            .all(|(_, pts)| pts.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS)
+    );
 
     let exported = tool.export_datasets();
     assert_eq!(exported[0].1.len(), 100_001);

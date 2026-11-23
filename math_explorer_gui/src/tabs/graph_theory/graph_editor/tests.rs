@@ -137,14 +137,14 @@ fn find_node_circle_stroke(shapes: &[egui::epaint::ClippedShape]) -> Option<egui
 
 fn find_weight_text_color(shapes: &[egui::epaint::ClippedShape]) -> Option<egui::Color32> {
     shapes.iter().find_map(|clipped| {
-        if let egui::epaint::Shape::Text(text_shape) = &clipped.shape {
-            if text_shape.galley.text() == "3.5" {
-                return Some(
-                    text_shape
-                        .override_text_color
-                        .unwrap_or(text_shape.fallback_color),
-                );
-            }
+        if let egui::epaint::Shape::Text(text_shape) = &clipped.shape
+            && text_shape.galley.text() == "3.5"
+        {
+            return Some(
+                text_shape
+                    .override_text_color
+                    .unwrap_or(text_shape.fallback_color),
+            );
         }
         None
     })
@@ -358,9 +358,11 @@ fn test_keyboard_edge_connection_duplicate_and_self_loop() {
     dispatch_key(&mut tool, egui::Key::E, egui::Modifiers::NONE);
     assert_eq!(tool.edges.len(), 1);
     assert_eq!(tool.undo_stack.len(), undo_after_connect);
-    assert!(last_announcement()
-        .unwrap_or_default()
-        .contains("Duplicate edge"));
+    assert!(
+        last_announcement()
+            .unwrap_or_default()
+            .contains("Duplicate edge")
+    );
 
     // Reverse direction (1 -> 0) on undirected graph is also rejected as duplicate
     dispatch_key(&mut tool, egui::Key::Tab, egui::Modifiers::NONE);
@@ -489,8 +491,9 @@ fn test_try_load_state_equality_and_single_fire_toolbar_shortcuts() {
     };
     run_tool_frame(&ctx, &mut tool, vec![z_evt]);
     assert_eq!(tool.node_positions.len(), count_before - 1);
-    assert!(tool
-        .import_preset_json(snapshot::STARTER_PRESET_JSON)
-        .is_ok());
+    assert!(
+        tool.import_preset_json(snapshot::STARTER_PRESET_JSON)
+            .is_ok()
+    );
     assert!(!tool.can_undo() && !tool.can_redo());
 }

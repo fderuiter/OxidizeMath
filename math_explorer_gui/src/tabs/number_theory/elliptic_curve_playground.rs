@@ -9,19 +9,19 @@ use std::hash::{Hash, Hasher};
 use eframe::egui;
 use egui_plot::export_primitives::ExportPrimitive;
 use math_explorer::pure_math::elliptic_curves::{
-    sweep_hasse_bounds, AffinePointFp, ChordStepFp, HasseSweepEntry, WeierstrassCurveFp,
+    AffinePointFp, ChordStepFp, HasseSweepEntry, WeierstrassCurveFp, sweep_hasse_bounds,
 };
 use math_explorer::pure_math::number_theory::primes::{is_prime, primes_up_to};
 use scientific_metadata::theory::TheoryDescribable;
 
 use super::elliptic_curve_canvas::{
-    populate_torus_ray_segments, render_torus_canvas, TorusCanvasModel, TorusCanvasOutcome,
+    TorusCanvasModel, TorusCanvasOutcome, populate_torus_ray_segments, render_torus_canvas,
 };
-use super::elliptic_curve_hasse::{fmt_point, render_hasse_plot, HassePlotBuffers};
+use super::elliptic_curve_hasse::{HassePlotBuffers, fmt_point, render_hasse_plot};
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{
-    scoped_panel_id, ExportCapabilities, InteractiveTool, PaneSidePanel, ToolMetadata,
-    ToolStateBounds,
+    ExportCapabilities, InteractiveTool, PaneSidePanel, ToolMetadata, ToolStateBounds,
+    scoped_panel_id,
 };
 use crate::web_io::PlatformInstant;
 

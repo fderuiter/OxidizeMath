@@ -79,9 +79,10 @@ fn geodesic_playground_camera3d_scroll_zoom_and_drag_orbit_update_state() {
 fn relativity_presets_url_hydration_and_finite_state_guard_rollback() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut app = MathExplorerApp::default();
-    assert!(app
-        .apply_share_location_strings("#tab=relativity&tool=GeodesicPlaygroundTool", "", None)
-        .unwrap());
+    assert!(
+        app.apply_share_location_strings("#tab=relativity&tool=GeodesicPlaygroundTool", "", None)
+            .unwrap()
+    );
     let active_tab = &mut app.tabs[app.selected_tab];
     assert_eq!(active_tab.url_slug(), "relativity");
 

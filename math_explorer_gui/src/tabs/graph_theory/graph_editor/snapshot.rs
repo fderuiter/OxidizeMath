@@ -86,10 +86,10 @@ impl SerializedGraphState {
         }) {
             return Err("Edges must reference existing nodes with finite weights".to_string());
         }
-        if let Some(sel) = self.selected_node {
-            if !self.node_positions.contains_key(&sel) {
-                return Err(format!("selected_node {sel} does not exist"));
-            }
+        if let Some(sel) = self.selected_node
+            && !self.node_positions.contains_key(&sel)
+        {
+            return Err(format!("selected_node {sel} does not exist"));
         }
         if !self.edge_latencies.is_empty() && self.edge_latencies.len() != self.edges.len() {
             return Err("edge_latencies length must match edges".to_string());

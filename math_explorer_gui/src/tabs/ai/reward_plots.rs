@@ -1,5 +1,5 @@
 use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+    WorkerFaultAction, render_empty_plot_guidance, render_worker_fault_banner,
 };
 use crate::async_sim::{
     SimCommand, SimWorkerState, SimulationController, SimulationRunner, StateSnapshot,
@@ -8,7 +8,7 @@ use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv, Move};
-use math_explorer::ai::reinforcement_learning::{algorithms::TabularQAgent, MarkovDecisionProcess};
+use math_explorer::ai::reinforcement_learning::{MarkovDecisionProcess, algorithms::TabularQAgent};
 use std::sync::Arc;
 
 #[allow(missing_docs)]
@@ -355,16 +355,15 @@ impl InteractiveTool for RewardPlotsTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        if let Some(snapshot) = self.controller.update() {
-            if let Some(data) = snapshot
+        if let Some(snapshot) = self.controller.update()
+            && let Some(data) = snapshot
                 .structured_data
                 .as_ref()
                 .and_then(|d| d.downcast_ref::<RlSnapshotData>())
-            {
-                self.rewards_per_episode = data.rewards_per_episode.clone();
-                self.episodes_trained = data.episodes_trained;
-                self.target_episodes = data.target_episodes;
-            }
+        {
+            self.rewards_per_episode = data.rewards_per_episode.clone();
+            self.episodes_trained = data.episodes_trained;
+            self.target_episodes = data.target_episodes;
         }
 
         if matches!(

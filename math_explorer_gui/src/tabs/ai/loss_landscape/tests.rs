@@ -2,8 +2,8 @@
 
 use super::arena::RacerKind;
 use super::data::{LossMetric, TargetDataMode};
-use super::presets::{PredictorMode, NONCONVEX_SINUSOIDAL_PRESET_JSON, STARTER_PRESET_JSON};
-use super::surfaces::{LandscapeSurface, SculptBump, SurfaceEvaluator, MAX_SCULPT_BUMPS};
+use super::presets::{NONCONVEX_SINUSOIDAL_PRESET_JSON, PredictorMode, STARTER_PRESET_JSON};
+use super::surfaces::{LandscapeSurface, MAX_SCULPT_BUMPS, SculptBump, SurfaceEvaluator};
 use super::{CanvasInteractionMode, LandscapeViewMode, LossLandscapeTool};
 use crate::framework::{InputMode, InteractionContext, InteractiveTool};
 use eframe::egui;
@@ -326,7 +326,7 @@ fn test_lorenz_chaotic_preset_graceful_feature_gating() {
 
 #[test]
 fn test_racer_semantic_palette_colors_distinct_and_wcag_aa_across_themes() {
-    use crate::app::{contrast_ratio, ThemeMode};
+    use crate::app::{ThemeMode, contrast_ratio};
 
     for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::HighContrast] {
         let visuals = mode.visuals();

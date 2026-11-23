@@ -4,7 +4,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{MathExplorerApp, ViewportLayout};
-use crate::url_state::{ShareUrlParams, UrlStateSignature, URL_SYNC_DEBOUNCE_MS};
+use crate::url_state::{ShareUrlParams, URL_SYNC_DEBOUNCE_MS, UrlStateSignature};
 use eframe::egui;
 use federated_registry::Severity;
 use std::time::Duration;
@@ -150,10 +150,10 @@ impl MathExplorerApp {
         let canonical_frag = self.encode_current_share_fragment().ok();
         #[cfg(target_arch = "wasm32")]
         // theory_verification!
-        if raw_hash.trim_start_matches('#').trim().is_empty() {
-            if let Some(ref frag) = canonical_frag {
-                let _ = crate::url_state::replace_browser_url_fragment(frag);
-            }
+        if raw_hash.trim_start_matches('#').trim().is_empty()
+            && let Some(ref frag) = canonical_frag
+        {
+            let _ = crate::url_state::replace_browser_url_fragment(frag);
         }
         #[cfg(not(target_arch = "wasm32"))]
         let _ = raw_hash;

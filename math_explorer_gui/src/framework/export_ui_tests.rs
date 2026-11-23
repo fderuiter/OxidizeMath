@@ -3,8 +3,8 @@
 use super::*;
 use eframe::egui;
 use scientific_metadata::theory::TheoryDescribable;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct MockTheory;
 
@@ -254,9 +254,10 @@ fn test_framework_polls_scoped_clipboard_status_when_modal_closed() {
         framework_a.export_status_message.as_deref(),
         Some("Copied plot image to clipboard!")
     );
-    assert!(ctx
-        .data(|d| d.get_temp::<String>(egui_plot::clipboard_status_id(scope_a)))
-        .is_none());
+    assert!(
+        ctx.data(|d| d.get_temp::<String>(egui_plot::clipboard_status_id(scope_a)))
+            .is_none()
+    );
     assert_eq!(
         ctx.data(|d| d.get_temp::<String>(egui_plot::clipboard_status_id(scope_b)))
             .as_deref(),

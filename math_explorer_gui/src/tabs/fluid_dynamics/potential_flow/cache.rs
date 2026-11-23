@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    ElementType, PotentialFlowTool, SerializedFlowElement, FLOW_ANGLE_MAX, FLOW_ANGLE_MIN,
-    FLOW_POS_MAX, FLOW_POS_MIN, FLOW_STRENGTH_MAX, FLOW_STRENGTH_MIN, FLOW_VIEW_MAX, FLOW_VIEW_MIN,
+    ElementType, FLOW_ANGLE_MAX, FLOW_ANGLE_MIN, FLOW_POS_MAX, FLOW_POS_MIN, FLOW_STRENGTH_MAX,
+    FLOW_STRENGTH_MIN, FLOW_VIEW_MAX, FLOW_VIEW_MIN, PotentialFlowTool, SerializedFlowElement,
 };
 use egui_plot::PlotPoint;
 use std::hash::{Hash as _, Hasher as _};
@@ -57,11 +57,7 @@ pub(crate) struct ArrowFieldCache {
 }
 
 fn canonical_bits(val: f64) -> u64 {
-    if val == 0.0 {
-        0
-    } else {
-        val.to_bits()
-    }
+    if val == 0.0 { 0 } else { val.to_bits() }
 }
 
 fn hash_flow_element(el: &SerializedFlowElement, h: &mut impl std::hash::Hasher) {

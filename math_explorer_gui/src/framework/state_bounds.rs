@@ -127,17 +127,16 @@ fn step_structural_byte(
     max_depth: usize,
     max_array_len: usize,
 ) -> Result<(), String> {
-    if b != b']' {
-        if let Some(JsonScope::Array { len, empty }) = stack.last_mut() {
-            if *empty {
-                *empty = false;
-                *len = 1;
-                if *len > max_array_len {
-                    return Err(format!(
-                        "JSON array length ({len}) exceeds maximum allowed limit ({max_array_len})"
-                    ));
-                }
-            }
+    if b != b']'
+        && let Some(JsonScope::Array { len, empty }) = stack.last_mut()
+        && *empty
+    {
+        *empty = false;
+        *len = 1;
+        if *len > max_array_len {
+            return Err(format!(
+                "JSON array length ({len}) exceeds maximum allowed limit ({max_array_len})"
+            ));
         }
     }
 

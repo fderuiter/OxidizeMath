@@ -8,19 +8,19 @@ mod ui;
 #[path = "gaussian_splatting_export.rs"]
 mod export;
 
-use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 #[cfg(test)]
 use crate::framework::ProjectionMode;
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{Gaussian2D, Scene};
 use nalgebra::Point3;
 #[cfg(test)]
 use scene::evaluate_density_counts_with_thresholds;
 use scene::{
-    build_preset_scene_and_gradients, evaluate_scene_density_counts_with_thresholds,
-    project_single_splat, rasterize_splats_into, VolumetricSplatPreset, CAMERA_DISTANCE,
-    DEFAULT_GRAD_THRESHOLD, DEFAULT_OPACITY_THRESHOLD, ELLIPSE_POINTS, GRAD_THRESHOLD_MAX,
-    GRAD_THRESHOLD_MIN, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN, VIEWPORT_HALF_EXTENT,
+    CAMERA_DISTANCE, DEFAULT_GRAD_THRESHOLD, DEFAULT_OPACITY_THRESHOLD, ELLIPSE_POINTS,
+    GRAD_THRESHOLD_MAX, GRAD_THRESHOLD_MIN, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN,
+    VIEWPORT_HALF_EXTENT, VolumetricSplatPreset, build_preset_scene_and_gradients,
+    evaluate_scene_density_counts_with_thresholds, project_single_splat, rasterize_splats_into,
 };
 use scientific_metadata::theory::TheoryDescribable;
 

@@ -1,4 +1,6 @@
 // @explorer_feature = "applied"
+// @explorer_domain = "Applied Math"
+// @explorer_slug = "favoritism"
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
@@ -43,15 +45,15 @@ impl FavoritismTab {
             current_state.children.len(),
         );
         current_state.new_child_name = legacy.new_child_name;
-        if let Ok(updated_json) = serde_json::to_string(&current_state) {
-            if tool.try_load_state(&updated_json).is_ok() {
-                if let Some(saved) = tool.save_state() {
-                    self.framework
-                        .saved_tool_states
-                        .insert(tool.name().to_string(), saved);
-                }
-                self.framework.cache_valid_snapshot();
+        if let Ok(updated_json) = serde_json::to_string(&current_state)
+            && tool.try_load_state(&updated_json).is_ok()
+        {
+            if let Some(saved) = tool.save_state() {
+                self.framework
+                    .saved_tool_states
+                    .insert(tool.name().to_string(), saved);
             }
+            self.framework.cache_valid_snapshot();
         }
         true
     }
@@ -62,8 +64,16 @@ impl ExplorerTab for FavoritismTab {
         "Favoritism"
     }
 
+    fn academic_domain(&self) -> &'static str {
+        EXPLORER_DOMAIN
+    }
+
+    fn url_slug(&self) -> &'static str {
+        EXPLORER_SLUG
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.framework.show_inside(ui, "favoritism");
+        self.framework.show_inside(ui, EXPLORER_SLUG);
     }
 
     fn state_revision(&self) -> u64 {

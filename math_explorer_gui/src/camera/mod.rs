@@ -50,8 +50,7 @@ pub const CAMERA_3D_MAX_ANGLE_RAD: f32 = 1_000.0_f32 * std::f32::consts::TAU;
 pub const CAMERA_3D_MAX_PAN: f32 = 1_000.0_f32;
 
 /// Canonical canvas helper text displayed below interactive 3D viewports.
-pub const CAMERA_3D_HELPER_TEXT: &str =
-    "Drag canvas or use WASD to orbit, Shift+Drag or Shift+WASD to pan, scroll or Q/E to zoom, P to switch projection, double-click or press R to reset view.";
+pub const CAMERA_3D_HELPER_TEXT: &str = "Drag canvas or use WASD to orbit, Shift+Drag or Shift+WASD to pan, scroll or Q/E to zoom, P to switch projection, double-click or press R to reset view.";
 
 /// 3D viewport projection mode matching GeoGebra 3D style-bar projection switching.
 #[derive(

@@ -6,20 +6,20 @@ use super::lattice_boltzmann_sculpt::{
     rotate_airfoil_in_place, seed_initial_lbm_geometry,
 };
 use super::lbm_fairing::{
-    decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0,
-    LBM_U_IN,
+    FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0, LBM_U_IN,
+    decode_mask_hex,
 };
 use super::lbm_fairing_ui::LbmUiExtension;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool, UnifiedUiExtension};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::framework::{decode_rle_mask, BrushMode, BrushStroke, SpatialBrushKit};
+use crate::framework::{BrushMode, BrushStroke, SpatialBrushKit, decode_rle_mask};
 use eframe::egui::Color32;
 use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_drag_coefficient,
-    compute_vorticity_into, AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9,
+    AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9, advance_wind_tunnel_step,
+    compute_aerodynamic_coefficients, compute_drag_coefficient, compute_vorticity_into,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
@@ -99,7 +99,8 @@ impl LbmUnified {
                     && y < height
                     && (x - cx).pow(2) + (y - cy).pow(2) <= r * r
                 {
-                    self.solver.set_obstacle(x as usize, y as usize, is_obstacle);
+                    self.solver
+                        .set_obstacle(x as usize, y as usize, is_obstacle);
                 }
             }
         }
@@ -112,8 +113,17 @@ impl FiniteStateGuard for LbmUnified {
         if self.diverged {
             return false;
         }
-        self.solver.state.velocity_x().iter().all(|&v| v.is_finite())
-            && self.solver.state.velocity_y().iter().all(|&v| v.is_finite())
+        self.solver
+            .state
+            .velocity_x()
+            .iter()
+            .all(|&v| v.is_finite())
+            && self
+                .solver
+                .state
+                .velocity_y()
+                .iter()
+                .all(|&v| v.is_finite())
             && self.solver.state.density().iter().all(|&v| v.is_finite())
     }
 
@@ -368,7 +378,11 @@ impl UnifiedModel for LbmUnified {
         record_stroke_in_rle(stroke, params, sculpt_state);
     }
 
-    fn apply_sculpt_payload(&mut self, payload: &SculptStatePayload, params: &HashMap<String, f64>) {
+    fn apply_sculpt_payload(
+        &mut self,
+        payload: &SculptStatePayload,
+        params: &HashMap<String, f64>,
+    ) {
         if payload.rle_mask.is_empty() {
             return;
         }
@@ -462,17 +476,7 @@ impl TheoryDescribable for LbmUnified {
     }
 }
 
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "LBM Flow Simulation",
-    "domain": "fluid_dynamics",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "viscosity": 0.02
-  }
-}"#;
+const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"LBM Flow Simulation","domain":"fluid_dynamics","timestamp":"2026-11-16T00:00:00Z"},"config":{"viscosity":0.02}}"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {

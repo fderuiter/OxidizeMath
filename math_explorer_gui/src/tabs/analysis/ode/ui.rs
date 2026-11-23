@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::systems::eval_ode_final_state;
 use super::OdeSolverTool;
+use super::systems::eval_ode_final_state;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
 use crate::reflective_ui::AnimatedSlider;

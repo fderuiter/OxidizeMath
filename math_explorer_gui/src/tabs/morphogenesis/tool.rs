@@ -12,7 +12,7 @@ use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{
-    decode_rle_mask, ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit,
+    ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit, decode_rle_mask,
 };
 use eframe::egui;
 use eframe::egui::ColorImage;
@@ -60,7 +60,8 @@ impl Default for MorphogenesisTool {
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
 
         let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
-        let runner = Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
+        let runner =
+            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -130,10 +131,10 @@ impl MorphogenesisTool {
         );
         Self::initialize_adapter_system(&mut system, width, height);
         let rle = mask_rle.read().unwrap_or_else(|e| e.into_inner()).clone();
-        if !rle.is_empty() {
-            if let Ok(bytes) = decode_rle_mask(&rle, width * height) {
-                let _ = system.diffusion.mask.set_roles_slice(&bytes);
-            }
+        if !rle.is_empty()
+            && let Ok(bytes) = decode_rle_mask(&rle, width * height)
+        {
+            let _ = system.diffusion.mask.set_roles_slice(&bytes);
         }
         let mut runner = MorphogenesisKineticsRunner {
             system,
@@ -176,9 +177,8 @@ impl MorphogenesisTool {
         let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
-        self.worker.reset_or_respawn(|| {
-            Self::create_kinetics_runner(&params, &ks, &mask, width, height)
-        });
+        self.worker
+            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
@@ -205,14 +205,16 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && px.len() == w * h {
-                return Some(ColorImage {
-                    size: [w, h],
-                    pixels: px.clone(),
-                    ..Default::default()
-                });
-            }
+        if let Some((w, h, ref px)) = self.stepped_pixels
+            && w > 0
+            && h > 0
+            && px.len() == w * h
+        {
+            return Some(ColorImage {
+                size: [w, h],
+                pixels: px.clone(),
+                ..Default::default()
+            });
         }
         if !self.dirty && self.pixels.len() == self.width * self.height && !self.pixels.is_empty() {
             return Some(ColorImage {

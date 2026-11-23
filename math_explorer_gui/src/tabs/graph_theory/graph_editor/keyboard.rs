@@ -359,10 +359,10 @@ impl GraphEditorTool {
         };
         *pos += delta;
         let updated_pos = *pos;
-        if let Some(&idx) = self.node_indices.get(&selected_id) {
-            if let Some(weight) = self.graph.graph.node_weight_mut(idx) {
-                *weight = updated_pos;
-            }
+        if let Some(&idx) = self.node_indices.get(&selected_id)
+            && let Some(weight) = self.graph.graph.node_weight_mut(idx)
+        {
+            *weight = updated_pos;
         }
         announce_status(&format!(
             "Moved node {selected_id} to ({:.1}, {:.1})",

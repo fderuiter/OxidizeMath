@@ -31,9 +31,11 @@ fn test_surface_viewer_deferred_obj_stl_ply_exports_and_live_announcements() {
         fw.show(sub_ctx, "surface_obj_clipboard_audit");
     });
     assert_eq!(fw.export_status_severity, ExportStatusSeverity::Warning);
-    assert!(all_announcements()
-        .iter()
-        .any(|(_, prio)| prio == "assertive"));
+    assert!(
+        all_announcements()
+            .iter()
+            .any(|(_, prio)| prio == "assertive")
+    );
 }
 
 #[test]

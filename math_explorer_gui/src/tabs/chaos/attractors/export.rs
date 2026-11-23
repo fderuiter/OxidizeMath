@@ -7,7 +7,7 @@ use math_commons::math_kernel::colormap::mapped_gradient;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
 use nalgebra::Vector3;
 use oxidize_core::mesh::{
-    extrude_polyline_tube, ColoredMesh, Mesh, Point3D, VertexColor, MAX_TUBE_RADIAL_SEGMENTS,
+    ColoredMesh, MAX_TUBE_RADIAL_SEGMENTS, Mesh, Point3D, VertexColor, extrude_polyline_tube,
 };
 
 /// Minimum swept tube radius for 3D Lorenz trajectory export.

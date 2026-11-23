@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::*;
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 
 fn shortcut_mods() -> egui::Modifiers {
     if cfg!(target_os = "macos") {
@@ -188,6 +188,28 @@ fn add_graph_node_in_pane_zero(app: &mut MathExplorerApp) {
 }
 
 #[cfg(feature = "pure_math")]
+fn setup_split_graph_editor_pane(
+    ctx: &egui::Context,
+    app: &mut MathExplorerApp,
+    frame: &mut eframe::Frame,
+    graph_idx: usize,
+) {
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    app.set_pane_tab(0, graph_idx);
+    app.focus_pane(0);
+    app.pane_tab_mut(0)
+        .unwrap()
+        .framework_mut()
+        .unwrap()
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .try_load_state(r#"{"node_positions":{},"edges":[],"selected_node":null,"next_node_id":0}"#)
+        .unwrap();
+    let _ = run_frame_with_rect(ctx, app, frame, Vec::new());
+}
+
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_graph_editor_shortcuts_split_no_replay_and_session_fallback() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
@@ -204,19 +226,7 @@ fn test_graph_editor_shortcuts_split_no_replay_and_session_fallback() {
     app.theme = ThemeMode::HighContrast;
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, Vec::new());
 
-    app.set_layout(ViewportLayout::SplitHorizontal);
-    app.set_pane_tab(0, graph_idx);
-    app.focus_pane(0);
-    app.pane_tab_mut(0)
-        .unwrap()
-        .framework_mut()
-        .unwrap()
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .try_load_state(r#"{"node_positions":{},"edges":[],"selected_node":null,"next_node_id":0}"#)
-        .unwrap();
-    let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, Vec::new());
+    setup_split_graph_editor_pane(&ctx, &mut app, &mut frame, graph_idx);
 
     for _ in 0..2 {
         add_graph_node_in_pane_zero(&mut app);
@@ -231,22 +241,24 @@ fn test_graph_editor_shortcuts_split_no_replay_and_session_fallback() {
         &mut frame,
         key_shortcut_event(egui::Key::Z, mods),
     );
-    assert!(app
-        .pane_tab(0)
-        .unwrap()
-        .save_state()
-        .unwrap()
-        .contains(r#""next_node_id":1"#));
+    assert!(
+        app.pane_tab(0)
+            .unwrap()
+            .save_state()
+            .unwrap()
+            .contains(r#""next_node_id":1"#)
+    );
     assert!(app.session_manager.can_redo() && app.can_redo());
 
     let shift_z = key_shortcut_event(egui::Key::Z, mods | egui::Modifiers::SHIFT);
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, shift_z);
-    assert!(app
-        .pane_tab(0)
-        .unwrap()
-        .save_state()
-        .unwrap()
-        .contains(r#""next_node_id":2"#));
+    assert!(
+        app.pane_tab(0)
+            .unwrap()
+            .save_state()
+            .unwrap()
+            .contains(r#""next_node_id":2"#)
+    );
     for _ in 0..4 {
         let _ = run_frame_with_rect(
             &ctx,

@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 
 fn run_screen_events(ctx: &egui::Context, app: &mut MathExplorerApp, events: Vec<egui::Event>) {
     let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1280.0, 900.0));

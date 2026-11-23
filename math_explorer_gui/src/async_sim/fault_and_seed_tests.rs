@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::async_sim::unified::UnifiedSimTool;
-use crate::framework::recovery::DiagnosticReport;
 use crate::framework::InteractiveTool;
+use crate::framework::recovery::DiagnosticReport;
 use crate::tabs::ai::q_table_inspector::QTableInspectorTool;
 use crate::tabs::ai::reward_plots::RewardPlotsTool;
 use crate::tabs::chaos::attractors::AttractorPlotter;
@@ -116,9 +116,11 @@ fn test_live_diverged_worker_resets_in_place_and_clears_diagnostic_report() {
     assert!(controller.diagnostic_report().is_some());
     assert!(controller.send_command(SimCommand::Start).is_err());
     assert!(controller.send_command(SimCommand::Pause).is_err());
-    assert!(controller
-        .send_command(SimCommand::TrainEpisodes(5))
-        .is_err());
+    assert!(
+        controller
+            .send_command(SimCommand::TrainEpisodes(5))
+            .is_err()
+    );
 
     diverge_flag.store(false, Ordering::SeqCst);
     let respawned = controller.reset_or_respawn(|| -> DivergeOnStepRunner {
@@ -180,32 +182,31 @@ fn test_unified_tools_render_non_empty_panels_on_frame_zero() {
     let ctx = egui::Context::default();
 
     let mut wave = WaveSimulatorTool::new();
-    if let Some(snap) = wave.worker.latest_snapshot() {
-        if let Some(wdata) = snap
+    if let Some(snap) = wave.worker.latest_snapshot()
+        && let Some(wdata) = snap
             .structured_data
             .as_ref()
             .and_then(|d| d.downcast_ref::<crate::tabs::quantum::wave_sim::WaveData>())
-        {
-            let psi_pts: Vec<[f64; 2]> = wdata
-                .prob_density
-                .iter()
-                .enumerate()
-                .map(|(i, &p)| [i as f64, p])
-                .collect();
-            let pot_pts: Vec<[f64; 2]> = wdata
-                .potential
-                .iter()
-                .enumerate()
-                .map(|(i, &v)| [i as f64, v * 0.2])
-                .collect();
-            let datasets = vec![
-                ("Seeded |psi(x, 0)|^2".to_string(), psi_pts),
-                ("Scaled V(x)".to_string(), pot_pts),
-            ];
-            let opts = egui_plot::export::ExportOptions::default();
-            if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &opts) {
-                let _ = std::fs::write("/tmp/seeded_wavepacket_frame_zero.png", png);
-            }
+    {
+        let psi_pts: Vec<[f64; 2]> = wdata
+            .prob_density
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| [i as f64, p])
+            .collect();
+        let pot_pts: Vec<[f64; 2]> = wdata
+            .potential
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| [i as f64, v * 0.2])
+            .collect();
+        let datasets = vec![
+            ("Seeded |psi(x, 0)|^2".to_string(), psi_pts),
+            ("Scaled V(x)".to_string(), pot_pts),
+        ];
+        let opts = egui_plot::export::ExportOptions::default();
+        if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &opts) {
+            let _ = std::fs::write("/tmp/seeded_wavepacket_frame_zero.png", png);
         }
     }
     let wave_out = ctx.run(egui::RawInput::default(), |ctx| {
@@ -234,15 +235,16 @@ fn test_lbm_paused_apply_brush_emits_fresh_snapshot() {
     let _ = lbm.controller.update();
     assert_eq!(lbm.state(), SimWorkerState::Ready);
 
-    assert!(lbm
-        .controller
-        .send_command(SimCommand::ApplyBrush {
-            cx: 80,
-            cy: 10,
-            r: 3,
-            is_obstacle: true,
-        })
-        .is_ok());
+    assert!(
+        lbm.controller
+            .send_command(SimCommand::ApplyBrush {
+                cx: 80,
+                cy: 10,
+                r: 3,
+                is_obstacle: true,
+            })
+            .is_ok()
+    );
 
     let mut updated = false;
     for _ in 0..400 {

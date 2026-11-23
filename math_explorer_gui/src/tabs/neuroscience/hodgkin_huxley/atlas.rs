@@ -2,7 +2,7 @@
 
 use super::HodgkinHuxleyUnified;
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer, atlas_regime_color,
 };
 use crate::async_sim::unified::UnifiedModel;
 use eframe::egui;

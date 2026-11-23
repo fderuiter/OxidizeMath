@@ -1,13 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 //! Unit, zero-allocation (`VerifiedAllocator`), cutting-plane, `.obj` export, and contract tests.
 
+use super::VolumetricFieldStudioTool;
 use super::presets::{
-    PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3DZ2_CONE_JSON, PRESET_3D_TURING_GYROID_JSON,
+    PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3D_TURING_GYROID_JSON, PRESET_3DZ2_CONE_JSON,
 };
 use super::state::{FieldSourceMode, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig};
-use super::VolumetricFieldStudioTool;
-use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
+use crate::framework::recovery::FiniteStateGuard;
 use eframe::egui;
 
 #[test]

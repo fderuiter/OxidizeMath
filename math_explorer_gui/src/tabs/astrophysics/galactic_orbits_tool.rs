@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{clamp_finite, HaloKindChoice};
+use super::{HaloKindChoice, clamp_finite};
 use crate::framework::{FiniteStateGuard, InteractiveTool};
 use eframe::egui;
 use math_explorer::physics::astrophysics::{

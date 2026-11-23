@@ -38,7 +38,9 @@ struct BandStructureState {
 }
 
 impl InteractiveTool for BandStructureTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Band Structure"
     }
@@ -59,8 +61,8 @@ impl InteractiveTool for BandStructureTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: BandStructureState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid BandStructure state: {e}"))?;
+        let s: BandStructureState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid BandStructure state: {e}"))?;
         if !s.e0.is_finite() || !(-5.0..=5.0).contains(&s.e0) {
             return Err(format!("e0 out of [-5.0, 5.0]: {}", s.e0));
         }
@@ -170,7 +172,6 @@ impl InteractiveTool for BandStructureTool {
 
 // [cite:mmwave_radiotherapy_setup]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "BandStructureTool",
@@ -184,21 +185,37 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for BandStructureTool {
     fn theory_description(&self) -> String {
         let model_str = if self.show_free_electron {
-            format!("parabolic free-electron dispersion $E(k) = \\frac{{\\hbar^2 k^2}}{{2m}}$ with effective mass $m = {:.2}$", self.m)
+            format!(
+                "parabolic free-electron dispersion $E(k) = \\frac{{\\hbar^2 k^2}}{{2m}}$ with effective mass $m = {:.2}$",
+                self.m
+            )
         } else {
-            format!("1D tight-binding nearest-neighbor dispersion $E(k) = E_0 - 2t \\cos(ka)$ with $E_0 = {:.2}$, hopping $t = {:.2}$, lattice constant $a = {:.2}$", self.e0, self.t, self.a)
+            format!(
+                "1D tight-binding nearest-neighbor dispersion $E(k) = E_0 - 2t \\cos(ka)$ with $E_0 = {:.2}$, hopping $t = {:.2}$, lattice constant $a = {:.2}$",
+                self.e0, self.t, self.a
+            )
         };
         format!(
             "Solid state electronic band structure dispersion relation in the first Brillouin zone $[-\\pi/a, \\pi/a]$: {}.",
             model_str
         )
     }
-    fn phonetic_description(&self) -> String { "Electronic band structure and tight-binding dispersion theory".into() }
-    fn theory_citation(&self) -> String { "Introduction to Solid State Physics (Kittel, 2004); Solid State Physics (Ashcroft & Mermin, 1976)".into() }
+    fn phonetic_description(&self) -> String {
+        "Electronic band structure and tight-binding dispersion theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Introduction to Solid State Physics (Kittel, 2004); Solid State Physics (Ashcroft & Mermin, 1976)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("TightBinding".into(), "E(k) = E_0 - 2t cos(ka) atomic orbital overlap model".into());
-        map.insert("FreeElectron".into(), "E(k) = hbar^2 k^2 / (2m) parabolic free Fermi gas dispersion".into());
+        map.insert(
+            "TightBinding".into(),
+            "E(k) = E_0 - 2t cos(ka) atomic orbital overlap model".into(),
+        );
+        map.insert(
+            "FreeElectron".into(),
+            "E(k) = hbar^2 k^2 / (2m) parabolic free Fermi gas dispersion".into(),
+        );
         map
     }
 }

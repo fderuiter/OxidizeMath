@@ -3,9 +3,7 @@
 use super::EllipticCurvesTab;
 use super::chord_tangent_canvas::toroidal_secant_segments;
 use super::chord_tangent_tool::{CurveFieldMode, WeierstrassPlaygroundTool};
-use super::modular_invariants_tool::{
-    ModularInvariantsTool, ModularPlotMode, ModularQSeriesKind,
-};
+use super::modular_invariants_tool::{ModularInvariantsTool, ModularPlotMode, ModularQSeriesKind};
 use crate::framework::InteractiveTool;
 use crate::tabs::ExplorerTab;
 use eframe::egui;

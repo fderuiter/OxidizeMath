@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::StateSnapshot;
-use crate::framework::recovery::*;
 use crate::framework::SimulationFramework;
+use crate::framework::recovery::*;
 
 impl SimulationFramework {
     fn try_restore_snapshot_or_clamped(&mut self, state_str: &str) -> Option<(&'static str, bool)> {
@@ -51,13 +51,14 @@ impl SimulationFramework {
         }
 
         let base_clone = self.baseline_tool_state.clone();
-        if let (Some(tool), Some(ref base)) = (&mut self.active_tool, &base_clone) {
-            if tool.try_load_recovery_state(base).is_ok() && tool.has_finite_parameters() {
-                return (
-                    "Snapshot validation failed; restored baseline parameter configuration",
-                    true,
-                );
-            }
+        if let (Some(tool), Some(base)) = (&mut self.active_tool, &base_clone)
+            && tool.try_load_recovery_state(base).is_ok()
+            && tool.has_finite_parameters()
+        {
+            return (
+                "Snapshot validation failed; restored baseline parameter configuration",
+                true,
+            );
         }
         if let Some(tool) = &mut self.active_tool {
             if tool.clamp_parameters() && tool.has_finite_parameters() {
@@ -115,10 +116,11 @@ impl SimulationFramework {
             .as_deref()
             .and_then(auto_scale_state_json);
         let mut applied_scaled = false;
-        if let (Some(tool), Some(ref halved_state)) = (&mut self.active_tool, &scaled) {
-            if tool.try_load_recovery_state(halved_state).is_ok() && tool.has_finite_parameters() {
-                applied_scaled = true;
-            }
+        if let (Some(tool), Some(halved_state)) = (&mut self.active_tool, &scaled)
+            && tool.try_load_recovery_state(halved_state).is_ok()
+            && tool.has_finite_parameters()
+        {
+            applied_scaled = true;
         }
         let mut used_fallback = false;
         if !applied_scaled {
@@ -195,8 +197,7 @@ impl SimulationFramework {
                     });
                 if let Some(clamped_json) = clamped {
                     tool.load_recovery_state(&clamped_json);
-                    telemetry_details =
-                        "Clamped snapshot JSON parameters to stable bounds and restored plot datasets";
+                    telemetry_details = "Clamped snapshot JSON parameters to stable bounds and restored plot datasets";
                 } else if let Some(base) = base_ref {
                     tool.load_recovery_state(base);
                 }
@@ -212,7 +213,7 @@ impl SimulationFramework {
     }
 
     fn clamp_without_snapshot(&mut self) {
-        if let (Some(tool), Some(ref base)) = (&mut self.active_tool, &self.baseline_tool_state) {
+        if let (Some(tool), Some(base)) = (&mut self.active_tool, &self.baseline_tool_state) {
             tool.load_recovery_state(base);
         } else if let Some(tool) = &mut self.active_tool {
             let _ = tool.clamp_parameters();
@@ -276,10 +277,9 @@ impl SimulationFramework {
         if let Some(&meta) = self
             .selected_tool_index
             .and_then(|idx| self.available_tools.get(idx))
+            && meta.id != tool.name()
         {
-            if meta.id != tool.name() {
-                self.saved_tool_states.remove(meta.id);
-            }
+            self.saved_tool_states.remove(meta.id);
         }
         if let Some(state) = restored_state {
             self.saved_tool_states
@@ -313,10 +313,9 @@ impl SimulationFramework {
         if let Some(&meta) = self
             .selected_tool_index
             .and_then(|idx| self.available_tools.get(idx))
+            && meta.id != tool.name()
         {
-            if meta.id != tool.name() {
-                self.saved_tool_states.remove(meta.id);
-            }
+            self.saved_tool_states.remove(meta.id);
         }
         if let Some(s) = state {
             self.saved_tool_states.insert(tool.name().to_string(), s);
@@ -414,18 +413,18 @@ impl SimulationFramework {
     ) -> Result<(), String> {
         let meta = self.available_tools[idx];
         let mut new_tool = (meta.build)();
-        if let Some(json_str) = preset_json {
-            if let Err(err) = new_tool.import_preset_json(json_str) {
-                let msg = format!("Failed to launch '{card_title}': {err}");
-                self.preset_dialog.record_import_error(msg.clone());
-                return Err(msg);
-            }
+        if let Some(json_str) = preset_json
+            && let Err(err) = new_tool.import_preset_json(json_str)
+        {
+            let msg = format!("Failed to launch '{card_title}': {err}");
+            self.preset_dialog.record_import_error(msg.clone());
+            return Err(msg);
         }
-        if self.selected_tool_index != Some(idx) {
-            if let Some((old_name, old_json)) = self.serialized_active_tool() {
-                self.saved_tool_states
-                    .insert(old_name.to_string(), old_json.to_string());
-            }
+        if self.selected_tool_index != Some(idx)
+            && let Some((old_name, old_json)) = self.serialized_active_tool()
+        {
+            self.saved_tool_states
+                .insert(old_name.to_string(), old_json.to_string());
         }
         scientific_metadata::citation_registry::CitationRegistry::register(
             new_tool.name().to_string(),

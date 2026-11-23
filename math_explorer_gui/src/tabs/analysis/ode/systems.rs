@@ -4,7 +4,7 @@
 
 use super::OdeSolverTool;
 use crate::framework::math_input::{
-    CoupledExpressionBank, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS,
+    CoupledExpressionBank, MAX_SYNTHESIZED_PARAMS, MathExpressionInputBar,
 };
 use crate::presets::OdePreset;
 use math_commons::ast::{CompiledExpr, Instruction};

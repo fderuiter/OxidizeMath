@@ -1,14 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::rotation_curve_tool::RotationCurveExplorer;
 use super::HaloKindChoice;
+use super::rotation_curve_tool::RotationCurveExplorer;
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::TraceSeries;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, LineStyle, Plot, PlotPoints};
 use math_explorer::physics::astrophysics::{
-    decompose_rotation_curve, BaryonicDiskConfig, DwarfMorphology, Mpc,
+    BaryonicDiskConfig, DwarfMorphology, Mpc, decompose_rotation_curve,
 };
 
 impl RotationCurveExplorer {

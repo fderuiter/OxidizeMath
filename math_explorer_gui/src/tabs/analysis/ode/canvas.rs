@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::recovery;
 use super::OdeSolverTool;
-use crate::framework::recovery::FiniteStateGuard;
+use super::recovery;
 use crate::framework::InteractiveTool;
+use crate::framework::recovery::FiniteStateGuard;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};

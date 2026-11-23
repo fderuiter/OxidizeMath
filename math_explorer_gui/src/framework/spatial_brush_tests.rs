@@ -9,7 +9,7 @@ use crate::accessibility::with_live_region;
 use crate::app::ThemeMode;
 use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
 use eframe::egui::{self, Event, Key, Modifiers};
-use egui_plot::{contrast_ratio, focus_ring_stroke, Line, Plot, PlotPoints};
+use egui_plot::{Line, Plot, PlotPoints, contrast_ratio, focus_ring_stroke};
 
 #[test]
 fn test_bresenham_fast_diagonal_leaves_zero_skipped_cells() {

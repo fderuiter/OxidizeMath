@@ -9,12 +9,12 @@
 mod bridge;
 
 use crate::accessibility;
-use crate::app::session::WorkspaceRecoverySnapshot;
 use crate::app::MathExplorerApp;
+use crate::app::session::WorkspaceRecoverySnapshot;
 use bridge::{
-    bind_fallback_download_listener, notify_js_begin_recovery, notify_recovery_completed,
-    notify_recovery_failed, persist_envelope_to_local_storage, register_js_timeout_bridge,
-    set_overlay_visible, LOSS_STATUS_MSG,
+    LOSS_STATUS_MSG, bind_fallback_download_listener, notify_js_begin_recovery,
+    notify_recovery_completed, notify_recovery_failed, persist_envelope_to_local_storage,
+    register_js_timeout_bridge, set_overlay_visible,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -163,14 +163,13 @@ fn on_context_lost(event: &web_sys::Event, runtime_rc: &Rc<RefCell<RecoveryRunti
         rt.epoch = rt.epoch.wrapping_add(1);
         let epoch = rt.epoch;
         let runner = rt.active_runner.take();
-        if let Some(ref active) = runner {
-            if let Some(mut app) = active.app_mut::<MathExplorerApp>() {
-                let snap = app.capture_recovery_snapshot();
-                let blocked =
-                    !persist_envelope_to_local_storage(window.as_ref(), &snap.envelope_json);
-                rt.saved_snapshot = Some(snap);
-                rt.storage_blocked = blocked;
-            }
+        if let Some(ref active) = runner
+            && let Some(mut app) = active.app_mut::<MathExplorerApp>()
+        {
+            let snap = app.capture_recovery_snapshot();
+            let blocked = !persist_envelope_to_local_storage(window.as_ref(), &snap.envelope_json);
+            rt.saved_snapshot = Some(snap);
+            rt.storage_blocked = blocked;
         }
         rt.phase = RecoveryPhase::AwaitingRestore { epoch };
         let (env, name, blocked) = rt.snapshot_metadata();

@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::theme::ThemeMode;
-use super::viewport::compare_sync::ComparisonSyncConfig;
-use super::viewport::ViewportLayout;
 use super::SharedTabJson;
+use super::theme::ThemeMode;
+use super::viewport::ViewportLayout;
+use super::viewport::compare_sync::ComparisonSyncConfig;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::cell::RefCell;

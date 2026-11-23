@@ -5,8 +5,8 @@
 use eframe::egui;
 
 use super::{
-    Camera3D, ProjectionMode, CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_PAN, CAMERA_3D_ZOOM_MAX,
-    CAMERA_3D_ZOOM_MIN,
+    CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_PAN, CAMERA_3D_ZOOM_MAX, CAMERA_3D_ZOOM_MIN, Camera3D,
+    ProjectionMode,
 };
 
 const ORBIT_RAD_PER_SEC: f32 = 3.0_f32;

@@ -158,12 +158,11 @@ pub(super) fn advance_running_frame<R: SimulationRunner + ?Sized>(
 ) -> FrameTickOutcome {
     let slice_start = max_slice.map(|_| crate::web_io::PlatformInstant::now());
     for idx in 0..steps_per_frame {
-        if idx > 0 {
-            if let (Some(budget), Some(start)) = (max_slice, slice_start) {
-                if start.elapsed() >= budget {
-                    break;
-                }
-            }
+        if idx > 0
+            && let (Some(budget), Some(start)) = (max_slice, slice_start)
+            && start.elapsed() >= budget
+        {
+            break;
         }
         runner.step();
         if !runner.is_finite_state() {
@@ -213,17 +212,17 @@ pub(super) fn spawn_native_worker<T: SimulationRunner>(
                 }
             };
 
-            if let Some(first_cmd) = cmd_opt {
-                if !drain_worker_commands(
+            if let Some(first_cmd) = cmd_opt
+                && !drain_worker_commands(
                     first_cmd,
                     &cmd_rx,
                     &mut runner,
                     &mut state,
                     &mut steps_per_frame,
                     &state_tx,
-                ) {
-                    break;
-                }
+                )
+            {
+                break;
             }
 
             if state.is_running() {

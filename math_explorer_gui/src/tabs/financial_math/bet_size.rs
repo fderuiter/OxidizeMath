@@ -1,7 +1,7 @@
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::pure_math::statistics::kelly::{
-    expected_value, kelly_fraction, variants, Odds, UnitInterval,
+    Odds, UnitInterval, expected_value, kelly_fraction, variants,
 };
 
 #[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]

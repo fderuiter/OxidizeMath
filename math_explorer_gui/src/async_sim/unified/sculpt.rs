@@ -71,15 +71,15 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
 
-        if !sculpt.rle_mask.is_empty() {
-            if let Ok(val) = serde_json::to_value(&sculpt.rle_mask) {
-                map.insert("rle_mask".to_string(), val);
-            }
+        if !sculpt.rle_mask.is_empty()
+            && let Ok(val) = serde_json::to_value(&sculpt.rle_mask)
+        {
+            map.insert("rle_mask".to_string(), val);
         }
-        if !sculpt.sparse_potential.is_empty() {
-            if let Ok(val) = serde_json::to_value(&sculpt.sparse_potential) {
-                map.insert("sparse_potential".to_string(), val);
-            }
+        if !sculpt.sparse_potential.is_empty()
+            && let Ok(val) = serde_json::to_value(&sculpt.sparse_potential)
+        {
+            map.insert("sparse_potential".to_string(), val);
         }
 
         serde_json::to_string(&map).ok()

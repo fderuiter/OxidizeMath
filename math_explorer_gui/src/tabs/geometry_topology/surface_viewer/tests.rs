@@ -45,11 +45,12 @@ fn surface_viewer_custom_parametric_union_parameter_cap_preserves_valid_mesh() {
         .param_z_bar
         .set_expression("p5 * sin(v) + p6 + p7");
     tool.custom_sandbox.recompile_parametric_triple();
-    assert!(tool
-        .custom_sandbox
-        .parametric_error
-        .as_deref()
-        .is_some_and(|m| m.contains("maximum 6")));
+    assert!(
+        tool.custom_sandbox
+            .parametric_error
+            .as_deref()
+            .is_some_and(|m| m.contains("maximum 6"))
+    );
     let preserved_pos = tool.custom_sandbox.build_parametric().position(0.5, 0.5);
     assert!((preserved_pos - baseline_pos).norm() < 1e-12);
 }
@@ -116,14 +117,17 @@ fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
         ((1.0, 5.0), (-3.0, 4.0))
     );
     restored.populate_scene(egui::Color32::WHITE);
-    assert!(!restored
-        .scene_builder
-        .sorted_projected_segments()
-        .is_empty());
-    assert!(tool
-        .custom_sandbox
-        .set_uv_bounds(SurfaceType::CustomHeightfield, [4.0, 1.0], [-1.0, 1.0])
-        .is_err());
+    assert!(
+        !restored
+            .scene_builder
+            .sorted_projected_segments()
+            .is_empty()
+    );
+    assert!(
+        tool.custom_sandbox
+            .set_uv_bounds(SurfaceType::CustomHeightfield, [4.0, 1.0], [-1.0, 1.0])
+            .is_err()
+    );
 }
 
 #[test]

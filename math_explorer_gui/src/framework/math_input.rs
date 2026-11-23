@@ -9,11 +9,11 @@ mod scope;
 mod tests;
 
 pub use coupled::CoupledExpressionBank;
-pub use params::{ParamSliderSpec, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
+pub use params::{MAX_SYNTHESIZED_PARAMS, ParamSliderSpec, ParameterSliderBank};
 use scope::VariableScopePolicy;
 
 use eframe::egui;
-use math_commons::ast::{parse_equation, CompiledExpr, Expr, ParseError};
+use math_commons::ast::{CompiledExpr, Expr, ParseError, parse_equation};
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 

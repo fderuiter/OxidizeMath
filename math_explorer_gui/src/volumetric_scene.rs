@@ -10,9 +10,10 @@ pub mod presets;
 use crate::camera::Camera3D;
 use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{
-    optimization::{determine_density_action, DensityAction},
-    projection::{project_scene_into, SplatCameraProjection},
-    rendering, Gaussian2D, Gaussian3D, Scene,
+    Gaussian2D, Gaussian3D, Scene,
+    optimization::{DensityAction, determine_density_action},
+    projection::{SplatCameraProjection, project_scene_into},
+    rendering,
 };
 use math_explorer::applied::isosurface::{CentralDifferenceEstimator, Point3D, VoxelGrid};
 use nalgebra::{Matrix2, Point2, Point3, UnitQuaternion, Vector3};
@@ -184,10 +185,10 @@ pub fn extract_voxel_splats_into(
                 }
                 let wx = (orig.x + (x as f32) * vs.x) as f64;
                 let coords = [wx, wy, wz];
-                if let Some(c) = cut {
-                    if coords[c.axis.min(2)] > c.max_coord {
-                        continue;
-                    }
+                if let Some(c) = cut
+                    && coords[c.axis.min(2)] > c.max_coord
+                {
+                    continue;
                 }
                 let val = grid.get(x, y, z);
                 if val.abs() < threshold {
