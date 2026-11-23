@@ -159,6 +159,8 @@ impl SimulationFramework {
             self.rev_cache.untracked_tool_revision.wrapping_add(1);
         *self.rev_cache.active_tool_json.borrow_mut() = None;
         self.rev_cache.last_snapshot_rev = None;
+        self.rev_cache.last_plot_capture_hash = None;
+        self.rev_cache.last_snapshot_plot_sig = None;
         self.rev_cache.memoized_state_rev.set(None);
     }
 
