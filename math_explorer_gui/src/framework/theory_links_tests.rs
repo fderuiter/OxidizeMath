@@ -102,6 +102,17 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
         .iter()
         .all(|l| !l.paper_name.starts_with("spec:") && !l.paper_name.starts_with("registry:")));
 
+    let fractran_links = resolve_portal_paper_links("FractranMachineTool", "number_theory");
+    assert!(!fractran_links.is_empty());
+    assert_eq!(
+        fractran_links[0].paper_name,
+        "algorithmic_information_rust.tex"
+    );
+
+    let glicko_links = resolve_portal_paper_links("Glicko2TournamentTool", "game_theory");
+    assert!(!glicko_links.is_empty());
+    assert_eq!(glicko_links[0].paper_name, "graph_parameters_rust.tex");
+
     let cera_ext = resolve_citation_reference_links(
         "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)",
     );
@@ -283,8 +294,8 @@ fn test_all_registered_tools_render_clean_portal_latex_and_hyperlinks() {
 
     #[cfg(all(feature = "ai", feature = "physics", feature = "pure_math"))]
     assert!(
-        verified_tools >= 55,
-        "Expected >= 55 tools, got {verified_tools}"
+        verified_tools >= 60,
+        "Expected >= 60 tools, got {verified_tools}"
     );
     #[cfg(not(all(feature = "ai", feature = "physics", feature = "pure_math")))]
     assert!(verified_tools > 0);

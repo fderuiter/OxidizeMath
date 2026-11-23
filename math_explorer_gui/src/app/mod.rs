@@ -9,6 +9,7 @@ mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
 mod share_link;
+pub mod shared_json;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -53,6 +54,7 @@ mod wasm_tests;
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
+pub use shared_json::SharedTabJson;
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
@@ -443,6 +445,7 @@ impl eframe::App for MathExplorerApp {
         };
 
         self.prune_inactive_pane_slots(active_layout.pane_count());
+        domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
         self.sync_workspace_history_bridge(ctx);
 
         if active_layout != ViewportLayout::Single {

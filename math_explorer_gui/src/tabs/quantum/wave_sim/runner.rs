@@ -222,8 +222,7 @@ impl WaveRunner {
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
         let finite_or = |v: f64, d: f64| if v.is_finite() { v } else { d };
-        let safe_x0 = finite_or(cfg.x0, DEFAULT_X0);
-        let safe_k0 = finite_or(cfg.k0, DEFAULT_K0);
+        let (safe_x0, safe_k0) = (finite_or(cfg.x0, DEFAULT_X0), finite_or(cfg.k0, DEFAULT_K0));
         let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
