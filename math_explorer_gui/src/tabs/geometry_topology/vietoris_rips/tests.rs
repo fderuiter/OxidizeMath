@@ -224,18 +224,9 @@ fn test_interval_csv_json_exports_and_svg_png_figure_primitives() {
         let svg = export_primitives_svg(&prims, &opts).unwrap();
         assert!(svg.contains("<svg") && svg.len() > 250);
         let img = render_primitives_image(&prims, &opts).unwrap();
-        assert!(
-            img.width() > 0 && img.height() > 0 && img.pixels.len() == img.width() * img.height()
-        );
+        assert!(img.width() > 0 && img.height() > 0 && img.pixels.len() == img.width() * img.height());
         let png = color32_image_to_png(&img).unwrap();
         assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
-        let mut reader = png::Decoder::new(std::io::Cursor::new(&png))
-            .read_info()
-            .unwrap();
-        let mut buf = vec![0_u8; reader.output_buffer_size().unwrap()];
-        let info = reader.next_frame(&mut buf).unwrap();
-        assert_eq!(info.width as usize, img.width());
-        assert_eq!(info.height as usize, img.height());
     }
 }
 

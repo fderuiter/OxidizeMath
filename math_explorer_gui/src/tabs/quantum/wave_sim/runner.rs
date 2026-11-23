@@ -167,7 +167,9 @@ impl WaveRunner {
         let n = self.n_points.max(2);
         let dx = (self.x_max - self.x_min) / (n as f64 - 1.0);
         self.x_axis = (0..n).map(|i| self.x_min + i as f64 * dx).collect();
-        (self.x_left, self.x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
+        let (x_left, x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
+        self.x_left = x_left;
+        self.x_right = x_right;
         self.potential = evaluate_potential_grid(
             cfg.preset,
             &self.x_axis,
@@ -182,16 +184,18 @@ impl WaveRunner {
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
         let finite_or = |v: f64, d: f64| if v.is_finite() { v } else { d };
-        self.x0 = finite_or(cfg.x0, DEFAULT_X0);
-        self.k0 = finite_or(cfg.k0, DEFAULT_K0);
-        self.sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
+        let (safe_x0, safe_k0) = (finite_or(cfg.x0, DEFAULT_X0), finite_or(cfg.k0, DEFAULT_K0));
+        let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
             DEFAULT_SIGMA
         };
-        self.kinetic_energy = 0.5 * self.k0 * self.k0;
+        self.x0 = safe_x0;
+        self.k0 = safe_k0;
+        self.sigma = safe_sigma;
+        self.kinetic_energy = 0.5 * safe_k0 * safe_k0;
         self.steps_per_frame = cfg.steps_per_frame.max(1);
-        self.psi = gaussian_wavepacket(&self.x_axis, self.x0, self.k0, self.sigma);
+        self.psi = gaussian_wavepacket(&self.x_axis, safe_x0, safe_k0, safe_sigma);
         self.time = 0.0;
         self.entered_barrier = false;
         self.wall_arrived = false;
