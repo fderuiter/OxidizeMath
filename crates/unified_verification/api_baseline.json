@@ -6923,7 +6923,7 @@
       "signature": "pub fn fit_nonlinear < P : PointSeries + ? Sized > (_ : & P , _ : FitModel , _ : bool ,) -> Result < CurveFit , FitError >"
     },
     {
-      "signature": "pub fn format_nonlinear_formula (_ : FitModel , _ : & [f64]) -> String"
+      "signature": "pub use super :: format :: format_nonlinear_formula"
     }
   ],
   "crates/math_commons/src/fit/poly.rs": [
@@ -6937,10 +6937,10 @@
       "signature": "pub fn fit_polynomial_scaled < P : PointSeries + ? Sized > (_ : & P , _ : usize , _ : bool , _ : bool ,) -> Result < CurveFit , FitError >"
     },
     {
-      "signature": "pub fn format_polynomial_formula (_ : & [f64] , _ : bool , _ : bool) -> String"
+      "signature": "pub fn solve_dense_small (_ : & mut [[f64 ; 5] ; 5] , _ : & [f64 ; 5] , _ : usize ,) -> Result < [f64 ; 5] , FitError >"
     },
     {
-      "signature": "pub fn solve_dense_small (_ : & mut [[f64 ; 5] ; 5] , _ : & [f64 ; 5] , _ : usize ,) -> Result < [f64 ; 5] , FitError >"
+      "signature": "pub use super :: format :: format_polynomial_formula"
     }
   ],
   "crates/math_commons/src/fit/seeds.rs": [
