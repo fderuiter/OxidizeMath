@@ -167,7 +167,7 @@ fn hermite_root_on_segment<P: PointSeries + ?Sized>(
     let sec = (p1[1] - p0[1]) / h;
     let m0 = endpoint_monotone_slope_left(pts, i, p0, sec)?;
     let m1 = endpoint_monotone_slope_right(pts, i, p1, sec)?;
-    solve_hermite_bracket(p0, p1, h, m0, m1, y_target)
+    engine_diffeq::hermite::solve_monotone_hermite_crossing(p0, p1, h, m0, m1, y_target)
 }
 
 fn endpoint_monotone_slope_left<P: PointSeries + ?Sized>(
@@ -210,80 +210,6 @@ fn endpoint_monotone_slope_right<P: PointSeries + ?Sized>(
     } else {
         0.0
     })
-}
-
-fn solve_hermite_bracket(
-    p0: [f64; 2],
-    p1: [f64; 2],
-    h: f64,
-    mut m0: f64,
-    mut m1: f64,
-    y_target: f64,
-) -> Option<f64> {
-    let sec = (p1[1] - p0[1]) / h;
-    if sec.abs() <= 1e-15 {
-        m0 = 0.0;
-        m1 = 0.0;
-    } else {
-        let a = m0 / sec;
-        let b = m1 / sec;
-        let hypot = (a * a + b * b).sqrt();
-        if hypot > 3.0 {
-            let tau = 3.0 / hypot;
-            m0 = tau * a * sec;
-            m1 = tau * b * sec;
-        }
-    }
-    let mut lo = 0.0_f64;
-    let mut hi = 1.0_f64;
-    let f_lo = p0[1] - y_target;
-    let mut t = (-f_lo / (p1[1] - p0[1])).clamp(0.0, 1.0);
-    for _ in 0..16 {
-        let (ft, dft) = eval_hermite_val_deriv(p0[1], p1[1], h, m0, m1, t, y_target);
-        if ft.abs() <= 1e-12 {
-            break;
-        }
-        if (ft > 0.0) == (f_lo > 0.0) {
-            lo = t;
-        } else {
-            hi = t;
-        }
-        let cand = if dft.abs() > 1e-14 {
-            t - ft / dft
-        } else {
-            -1.0
-        };
-        t = if cand > lo && cand < hi {
-            cand
-        } else {
-            0.5 * (lo + hi)
-        };
-    }
-    Some(p0[0] + t.clamp(0.0, 1.0) * h)
-}
-
-#[inline(always)]
-fn eval_hermite_val_deriv(
-    y0: f64,
-    y1: f64,
-    h: f64,
-    m0: f64,
-    m1: f64,
-    t: f64,
-    y_target: f64,
-) -> (f64, f64) {
-    let t2 = t * t;
-    let t3 = t2 * t;
-    let val = (2.0 * t3 - 3.0 * t2 + 1.0) * y0
-        + (t3 - 2.0 * t2 + t) * h * m0
-        + (-2.0 * t3 + 3.0 * t2) * y1
-        + (t3 - t2) * h * m1
-        - y_target;
-    let deriv = (6.0 * t2 - 6.0 * t) * y0
-        + (3.0 * t2 - 4.0 * t + 1.0) * h * m0
-        + (-6.0 * t2 + 6.0 * t) * y1
-        + (3.0 * t2 - 2.0 * t) * h * m1;
-    (val, deriv)
 }
 
 /// Writes interpolated `y` values where `pts` crosses vertical line `x = x_target` into `out`.

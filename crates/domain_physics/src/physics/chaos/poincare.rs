@@ -6,6 +6,7 @@
 
 // [cite:chaos_theory]
 
+use engine_diffeq::hermite::{cubic_hermite_scalar, solve_hermite_root};
 use pure_math::pure_math::analysis::ode::ArrayState;
 
 /// Transverse directional filter for Poincaré hyperplane crossings.
@@ -84,59 +85,6 @@ pub struct PoincareSection<const N: usize> {
 fn wrap_angle_pi(angle: f64) -> f64 {
     let two_pi = std::f64::consts::TAU;
     (angle + std::f64::consts::PI).rem_euclid(two_pi) - std::f64::consts::PI
-}
-
-#[verified_engine::verified]
-fn cubic_hermite_scalar(s: f64, dt: f64, v0: f64, v1: f64, d0: f64, d1: f64) -> f64 {
-    let s2 = s * s;
-    let s3 = s2 * s;
-    let h00 = 2.0 * s3 - 3.0 * s2 + 1.0;
-    let h10 = s3 - 2.0 * s2 + s;
-    let h01 = -2.0 * s3 + 3.0 * s2;
-    let h11 = s3 - s2;
-    h00 * v0 + h10 * (dt * d0) + h01 * v1 + h11 * (dt * d1)
-}
-
-#[verified_engine::verified]
-fn cubic_hermite_slope(s: f64, dt: f64, v0: f64, v1: f64, d0: f64, d1: f64) -> f64 {
-    let s2 = s * s;
-    let dh00 = 6.0 * s2 - 6.0 * s;
-    let dh10 = 3.0 * s2 - 4.0 * s + 1.0;
-    let dh01 = -6.0 * s2 + 6.0 * s;
-    let dh11 = 3.0 * s2 - 2.0 * s;
-    dh00 * v0 + dh10 * (dt * d0) + dh01 * v1 + dh11 * (dt * d1)
-}
-
-#[verified_engine::verified]
-fn solve_hermite_root(dt: f64, g0: f64, g1: f64, dg0: f64, dg1: f64) -> f64 {
-    if (g1 - g0).abs() <= 1e-15 {
-        return 0.5;
-    }
-    let mut lo = 0.0_f64;
-    let mut hi = 1.0_f64;
-    let mut g_lo = g0;
-    let mut s = (-g0 / (g1 - g0)).clamp(0.0, 1.0);
-
-    for _ in 0..16 {
-        let f = cubic_hermite_scalar(s, dt, g0, g1, dg0, dg1);
-        if f.abs() <= 1e-14 {
-            break;
-        }
-        if (f > 0.0) == (g_lo > 0.0) {
-            lo = s;
-            g_lo = f;
-        } else {
-            hi = s;
-        }
-        let df = cubic_hermite_slope(s, dt, g0, g1, dg0, dg1);
-        let candidate = if df.abs() > 1e-14 { s - f / df } else { -1.0 };
-        s = if candidate > lo && candidate < hi {
-            candidate
-        } else {
-            0.5 * (lo + hi)
-        };
-    }
-    s.clamp(0.0, 1.0)
 }
 
 impl PoincareSection<4> {

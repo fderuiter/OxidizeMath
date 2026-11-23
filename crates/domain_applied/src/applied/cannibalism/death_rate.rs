@@ -27,17 +27,11 @@ pub fn sanitize_density(value: f64) -> f64 {
 /// Integrates a uniformly spaced age-grid profile via composite trapezoidal quadrature.
 #[verified_engine::verified]
 pub fn trapezoidal_quadrature(values: &[f64], da: f64) -> f64 {
-    let n = values.len();
-    if n < 2 || !da.is_finite() || da <= 0.0 {
-        return 0.0;
-    }
-    let mut sum = 0.5 * (sanitize_density(values[0]) + sanitize_density(values[n - 1]));
-    let mut idx = 1;
-    while idx + 1 < n {
-        sum += sanitize_density(values[idx]);
-        idx += 1;
-    }
-    sanitize_density(sum * da)
+    sanitize_density(engine_diffeq::trapezoidal_uniform_mapped(
+        values,
+        da,
+        sanitize_density,
+    ))
 }
 
 /// Advances one CFL-safe characteristic upwind step (`dt <= da`) without heap allocation.

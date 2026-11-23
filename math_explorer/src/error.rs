@@ -1,5 +1,6 @@
 //! Unified feature-gated error re-exports and facade umbrella error across all OxidizeMath domains.
 
+pub use engine_diffeq::DiffeqError;
 pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
 };
@@ -47,6 +48,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Error {
+    /// Differential equation and quadrature engine error.
+    Diffeq(DiffeqError),
     /// AST evaluation error.
     Eval(EvalError),
     /// Zero-allocation curve-fitting solver error.

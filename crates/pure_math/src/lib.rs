@@ -18,10 +18,10 @@ pub mod __macro_deps {
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
-            AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-            FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarketPricingError,
-            MarkovError, MatchModelError, NumberTheoryError, OptimizationError, OuError,
-            PureMathError, PureMathError as Error, StochasticError, TdaError, TensorError,
+            AmbsError, AnalysisError, CopulaError, DiffeqError, EllipticCurveError, EloError,
+            EvolutionError, FractranError, Glicko2Error, KellyError, LinearAlgebraError,
+            MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
+            OuError, PureMathError, PureMathError as Error, StochasticError, TdaError, TensorError,
             TransformError, ZipError,
         };
         pub use math_commons::error::{
@@ -43,6 +43,7 @@ pub mod __doctest_facade {
     }
     pub use crate::{math_types, pure_math};
     pub use diagnostics;
+    pub use engine_diffeq as diffeq;
     pub use math_commons::{
         ast, constants, fit, math_kernel, poi, primitives, registry, series, wigner,
     };

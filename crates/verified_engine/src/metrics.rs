@@ -1,5 +1,7 @@
-use std::cell::Cell;
-use std::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(feature = "std")]
+use core::cell::Cell;
+#[cfg(feature = "std")]
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 /// Snapshot of runtime execution complexity counters recorded on the current thread during a
 /// verified run.
@@ -46,9 +48,11 @@ impl ComplexityMetrics {
 }
 
 /// Process-wide count of threads currently executing with verification enabled.
+#[cfg(feature = "std")]
 static ACTIVE_VERIFIERS: AtomicUsize = AtomicUsize::new(0);
 
-thread_local! {
+#[cfg(feature = "std")]
+std::thread_local! {
     /// Thread-local accumulator of binary arithmetic operations in active verification regions.
     pub static ARITHMETIC_OPS: Cell<u64> = const { Cell::new(0) };
     /// Thread-local accumulator of indexing memory loads in active verification regions.
@@ -60,33 +64,60 @@ thread_local! {
 }
 
 /// Enables runtime verification mode and metric accumulation on the calling thread.
+#[cfg(feature = "std")]
 pub fn enable_verification() {
     if !VERIFICATION_MODE.replace(true) {
         ACTIVE_VERIFIERS.fetch_add(1, Ordering::SeqCst);
     }
 }
 
+/// No-op verification toggle in `#![no_std]` builds where thread-local storage is unavailable.
+#[cfg(not(feature = "std"))]
+#[inline(always)]
+pub fn enable_verification() {}
+
 /// Disables runtime verification mode on the calling thread.
+#[cfg(feature = "std")]
 pub fn disable_verification() {
     if VERIFICATION_MODE.replace(false) {
         ACTIVE_VERIFIERS.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
+/// No-op verification toggle in `#![no_std]` builds where thread-local storage is unavailable.
+#[cfg(not(feature = "std"))]
+#[inline(always)]
+pub fn disable_verification() {}
+
 /// Returns `true` when verification instrumentation is active on the calling thread.
+#[cfg(feature = "std")]
 #[inline(always)]
 pub fn is_verification_enabled() -> bool {
     ACTIVE_VERIFIERS.load(Ordering::Relaxed) != 0 && VERIFICATION_MODE.get()
 }
 
+/// Returns `false` in `#![no_std]` builds without `std` thread-local counters.
+#[cfg(not(feature = "std"))]
+#[inline(always)]
+pub const fn is_verification_enabled() -> bool {
+    false
+}
+
 /// Resets all thread-local complexity counters (`ARITHMETIC_OPS`, `MEMORY_LOADS`, `FUNCTION_CALLS`) to zero.
+#[cfg(feature = "std")]
 pub fn reset_metrics() {
     ARITHMETIC_OPS.set(0);
     MEMORY_LOADS.set(0);
     FUNCTION_CALLS.set(0);
 }
 
+/// No-op counter reset in `#![no_std]` builds.
+#[cfg(not(feature = "std"))]
+#[inline(always)]
+pub fn reset_metrics() {}
+
 /// Reads the current thread-local counters into a [`ComplexityMetrics`] snapshot.
+#[cfg(feature = "std")]
 pub fn get_metrics() -> ComplexityMetrics {
     ComplexityMetrics {
         arithmetic_ops: ARITHMETIC_OPS.get(),
@@ -95,7 +126,15 @@ pub fn get_metrics() -> ComplexityMetrics {
     }
 }
 
+/// Returns a zeroed [`ComplexityMetrics`] snapshot in `#![no_std]` builds.
+#[cfg(not(feature = "std"))]
+#[inline(always)]
+pub const fn get_metrics() -> ComplexityMetrics {
+    ComplexityMetrics::new()
+}
+
 /// Adds `count` arithmetic operations to the calling thread's counter when verification is enabled.
+#[cfg(feature = "std")]
 #[inline(always)]
 pub fn increment_arithmetic(count: u64) {
     if is_verification_enabled() {
@@ -103,7 +142,13 @@ pub fn increment_arithmetic(count: u64) {
     }
 }
 
+/// No-op arithmetic counter increment in `#![no_std]` builds.
+#[cfg(not(feature = "std"))]
+#[inline(always)]
+pub fn increment_arithmetic(_count: u64) {}
+
 /// Adds `count` indexed memory loads to the calling thread's counter when verification is enabled.
+#[cfg(feature = "std")]
 #[inline(always)]
 pub fn increment_memory_loads(count: u64) {
     if is_verification_enabled() {
@@ -111,7 +156,13 @@ pub fn increment_memory_loads(count: u64) {
     }
 }
 
+/// No-op memory-load counter increment in `#![no_std]` builds.
+#[cfg(not(feature = "std"))]
+#[inline(always)]
+pub fn increment_memory_loads(_count: u64) {}
+
 /// Increments the calling thread's `#[verified]` function call counter by one when verification is enabled.
+#[cfg(feature = "std")]
 #[inline(always)]
 pub fn increment_calls() {
     if is_verification_enabled() {
@@ -119,7 +170,12 @@ pub fn increment_calls() {
     }
 }
 
-#[cfg(test)]
+/// No-op function-call counter increment in `#![no_std]` builds.
+#[cfg(not(feature = "std"))]
+#[inline(always)]
+pub fn increment_calls() {}
+
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
     use crate::engine::VerifiedEngine;

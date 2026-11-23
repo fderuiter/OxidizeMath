@@ -39,10 +39,7 @@ impl RiemannIntegrationTool {
         egui::ComboBox::from_id_salt("riemann_quadrature_method")
             .selected_text(self.quadrature_method.name())
             .show_ui(ui, |ui| {
-                for method in [
-                    QuadratureMethod::Trapezoidal,
-                    QuadratureMethod::ClenshawCurtis,
-                ] {
+                for method in QuadratureMethod::ALL {
                     if ui
                         .selectable_value(&mut self.quadrature_method, method, method.name())
                         .changed()
@@ -54,7 +51,8 @@ impl RiemannIntegrationTool {
 
         ui.add_space(6.0);
         let partition_label = match self.quadrature_method {
-            QuadratureMethod::Trapezoidal => "Partitions (N)",
+            QuadratureMethod::Trapezoidal | QuadratureMethod::Simpson => "Partitions (N)",
+            QuadratureMethod::GaussKronrod15 => "Display Panels (N)",
             QuadratureMethod::ClenshawCurtis => "Chebyshev Display Panels (N)",
         };
         if ui
@@ -68,7 +66,7 @@ impl RiemannIntegrationTool {
             changed = true;
         }
 
-        if self.quadrature_method == QuadratureMethod::ClenshawCurtis
+        if self.quadrature_method.uses_tolerance()
             && ui
                 .add(
                     egui::Slider::new(&mut self.cc_tolerance, MIN_CC_TOLERANCE..=MAX_CC_TOLERANCE)
@@ -133,7 +131,10 @@ impl RiemannIntegrationTool {
             ui.heading("Result");
             render_copyable_metric(ui, "Area", &format!("{:.8}", self.result));
             let err_label = match self.quadrature_method {
-                QuadratureMethod::Trapezoidal => "Est. Error (Richardson)",
+                QuadratureMethod::Trapezoidal | QuadratureMethod::Simpson => {
+                    "Est. Error (Richardson)"
+                }
+                QuadratureMethod::GaussKronrod15 => "Est. Error (G7-K15)",
                 QuadratureMethod::ClenshawCurtis => "Est. Error (Clenshaw-Curtis)",
             };
             render_copyable_metric(ui, err_label, &format!("{:.3e}", self.error_estimate));

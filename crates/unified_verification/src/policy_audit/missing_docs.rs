@@ -233,7 +233,12 @@ fn crate_prefix_of_whitelist_key(key: &str) -> Option<String> {
     if segs.len() < 2 {
         return None;
     }
-    if (segs[0] == "crates" || segs[0] == "apps") && segs.len() >= 3 {
+    if segs[0] == "crates"
+        && segs[1].chars().next().is_some_and(|c| c.is_ascii_digit())
+        && segs.len() >= 4
+    {
+        Some(format!("{}/{}/{}", segs[0], segs[1], segs[2]))
+    } else if (segs[0] == "crates" || segs[0] == "apps") && segs.len() >= 3 {
         Some(format!("{}/{}", segs[0], segs[1]))
     } else if segs[0] != "crates" && segs[0] != "apps" {
         Some(segs[0].to_string())

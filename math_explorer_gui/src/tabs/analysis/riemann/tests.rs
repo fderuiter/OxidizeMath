@@ -185,3 +185,43 @@ fn test_riemann_clenshaw_curtis_error_estimate_and_state_roundtrip() {
     assert!((restored.cc_tolerance - 1e-10).abs() < 1e-15);
     assert!((restored.result - 2.0).abs() < 1e-9);
 }
+
+#[test]
+fn test_riemann_simpson_and_gauss_kronrod15_accuracy_and_roundtrip() {
+    let mut simp = RiemannIntegrationTool {
+        preset: FunctionPreset::XSquared,
+        quadrature_method: QuadratureMethod::Simpson,
+        min_x: 0.0,
+        max_x: 10.0,
+        steps: 10,
+        ..Default::default()
+    };
+    simp.recalculate();
+    assert!((simp.result - 1000.0 / 3.0).abs() < 1e-11);
+    assert!(simp.error_estimate < 1e-10);
+
+    let mut gk = RiemannIntegrationTool {
+        preset: FunctionPreset::Custom,
+        quadrature_method: QuadratureMethod::GaussKronrod15,
+        cc_tolerance: 1e-10,
+        min_x: 0.0,
+        max_x: 4.0,
+        steps: 24,
+        ..Default::default()
+    };
+    gk.math_input.set_expression("sin(k * x)");
+    let mut params = BTreeMap::new();
+    params.insert("k".to_string(), 12.0);
+    gk.math_input.set_params_map(&params);
+    gk.recalculate();
+
+    let exact = (1.0 - 48.0_f64.cos()) / 12.0;
+    assert!((gk.result - exact).abs() < 1e-9, "GK15 got {}", gk.result);
+    assert!(gk.error_estimate <= 1e-8);
+
+    let saved = gk.save_state().expect("save GK15 state");
+    let mut restored = RiemannIntegrationTool::default();
+    restored.try_load_state(&saved).expect("load GK15 state");
+    assert_eq!(restored.quadrature_method, QuadratureMethod::GaussKronrod15);
+    assert!((restored.result - exact).abs() < 1e-9);
+}

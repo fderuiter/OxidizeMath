@@ -1073,6 +1073,7 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "diagnostics",
+ "engine_diffeq",
  "math_commons",
  "nalgebra 0.34.2",
  "oxidize_core",
@@ -1135,6 +1136,7 @@ dependencies = [
  "approx",
  "diagnostics",
  "domain_applied",
+ "engine_diffeq",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",
@@ -1350,6 +1352,15 @@ name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
+
+[[package]]
+name = "engine_diffeq"
+version = "0.4.0"
+dependencies = [
+ "nalgebra 0.34.2",
+ "serde",
+ "verified_engine",
+]
 
 [[package]]
 name = "enumflags2"
@@ -2426,6 +2437,7 @@ name = "math_commons"
 version = "0.4.0"
 dependencies = [
  "diagnostics",
+ "engine_diffeq",
  "num-complex",
  "thiserror 2.0.21",
  "verified_engine",
@@ -2444,6 +2456,7 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
+ "engine_diffeq",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",
@@ -3381,6 +3394,7 @@ dependencies = [
  "approx",
  "dashu",
  "diagnostics",
+ "engine_diffeq",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",

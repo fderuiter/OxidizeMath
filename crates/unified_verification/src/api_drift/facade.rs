@@ -19,6 +19,7 @@ use facade_signatures::{ParsedSignatureMap, build_parsed_signatures_counted};
 
 const FACADE_REACHABLE_PREFIXES: &[&str] = &[
     "math_explorer/src/",
+    "crates/02_engines/engine_diffeq/src/",
     "crates/math_commons/src/",
     "crates/diagnostics/src/",
     "crates/pure_math/src/",

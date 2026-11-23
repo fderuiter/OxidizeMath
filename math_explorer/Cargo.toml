@@ -6,6 +6,7 @@ license = "AGPL-3.0-or-later"
 
 [dependencies]
 math_commons = { path = "../crates/math_commons" }
+engine_diffeq = { path = "../crates/02_engines/engine_diffeq" }
 diagnostics = { path = "../crates/diagnostics" }
 pure_math = { path = "../crates/pure_math", optional = true }
 domain_applied = { path = "../crates/domain_applied", optional = true }
@@ -31,6 +32,8 @@ pure_math = [
     "dep:oxidize_core",
     "dep:petgraph",
     "dep:rand",
+    "engine_diffeq/std",
+    "engine_diffeq/nalgebra",
 ]
 applied = ["pure_math", "dep:domain_applied"]
 ai = ["applied", "pure_math", "dep:domain_ai"]

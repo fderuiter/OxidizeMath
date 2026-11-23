@@ -469,6 +469,12 @@ impl RootFinder for Brent {
     }
 }
 
+pub use engine_diffeq::hermite::{
+    clamp_fritsch_carlson_slopes, cubic_hermite_scalar, cubic_hermite_slope,
+    cubic_hermite_val_deriv, solve_hermite_root, solve_hermite_unit_bracket,
+    solve_monotone_hermite_crossing,
+};
+
 #[cfg(test)]
 #[path = "roots_tests.rs"]
 mod tests;

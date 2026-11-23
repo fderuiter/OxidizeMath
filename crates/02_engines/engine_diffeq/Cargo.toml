@@ -1,0 +1,21 @@
+[package]
+name = "engine_diffeq"
+version.workspace = true
+edition = "2024"
+
+[features]
+default = []
+alloc = []
+std = ["alloc", "verified_engine/std", "serde/std"]
+nalgebra = ["dep:nalgebra"]
+
+[dependencies]
+nalgebra = { workspace = true, optional = true }
+serde = { workspace = true, default-features = false, features = ["derive"] }
+verified_engine = { path = "../../verified_engine", default-features = false }
+
+[dev-dependencies]
+verified_engine = { path = "../../verified_engine", features = ["std"] }
+
+[lints]
+workspace = true

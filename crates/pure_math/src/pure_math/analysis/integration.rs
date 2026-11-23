@@ -1,31 +1,19 @@
 //! Numerical Integration Strategies.
 //!
-//! Provides a common interface for numerical integration algorithms, allowing
-//! them to be swapped for testing or performance optimization.
+//! Re-exports `#![no_std]` Newton-Cotes (`Trapezoidal`, `Simpson`) and adaptive
+//! `GaussKronrod15` (`G7-K15`) quadrature rules from `engine_diffeq` alongside
+//! `ClenshawCurtis` quadrature.
 
 use quadrature::clenshaw_curtis;
 
-/// Result of an integration operation.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct IntegrationResult {
-    /// The estimated value of the integral.
-    pub value: f64,
-    /// The estimated absolute error.
-    pub error: f64,
-}
-
-/// A trait for numerical integration strategies.
-pub trait Integrator: Send + Sync {
-    /// Integrates the function `f` over the interval `[min, max]` with a target error `eps`.
-    #[verified_engine::verified]
-    fn integrate<F>(&self, f: F, min: f64, max: f64, eps: f64) -> IntegrationResult
-    where
-        F: Fn(f64) -> f64;
-}
+pub use engine_diffeq::quadrature::{
+    GK15_STACK_SUBINTERVALS, GaussKronrod15, IntegrationResult, Integrator, Simpson, Trapezoidal,
+    gk15_panel, trapezoidal_nonuniform, trapezoidal_uniform_grid, trapezoidal_uniform_mapped,
+};
 
 /// Clenshaw-Curtis Quadrature Integration.
 ///
-/// Uses the `quadrature` crate.
+/// Uses the `quadrature` crate for smooth integrands when `std` is available.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ClenshawCurtis;
 
@@ -43,55 +31,28 @@ impl Integrator for ClenshawCurtis {
     }
 }
 
-/// Trapezoidal Rule Integration.
-///
-/// A simple numerical integration method that divides the area into trapezoids.
-/// Useful for testing or when `clenshaw_curtis` overhead is undesirable and high precision isn't needed.
-#[derive(Debug, Clone, Copy)]
-pub struct Trapezoidal {
-    /// Number of steps (segments) to use.
-    pub steps: usize,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl Trapezoidal {
-    /// Creates a new Trapezoidal integrator with the specified number of steps.
+    #[test]
     #[verified_engine::verified]
-    pub fn new(steps: usize) -> Self {
-        Self { steps }
-    }
-}
+    fn test_analysis_integration_reexports_all_quadrature_rules() {
+        let f = |x: f64| x * x;
+        let trap_coarse = Trapezoidal::new(10).integrate(f, 0.0, 10.0, 0.0);
+        assert!(trap_coarse.error > 0.0);
 
-impl Default for Trapezoidal {
-    #[verified_engine::verified]
-    fn default() -> Self {
-        Self { steps: 100 }
-    }
-}
+        let trap_refined = Trapezoidal::new(10).integrate(f, 0.0, 10.0, 1e-4);
+        assert!((trap_refined.value - 1000.0 / 3.0).abs() < 1e-4);
 
-impl Integrator for Trapezoidal {
-    #[verified_engine::verified]
-    fn integrate<F>(&self, f: F, min: f64, max: f64, _eps: f64) -> IntegrationResult
-    where
-        F: Fn(f64) -> f64,
-    {
-        if self.steps == 0 {
-            return IntegrationResult {
-                value: 0.0,
-                error: 0.0,
-            };
-        }
+        let simp = Simpson::new(20).integrate(f, 0.0, 10.0, 0.0);
+        assert!((simp.value - 1000.0 / 3.0).abs() < 1e-12);
 
-        let h = (max - min) / self.steps as f64;
-        let mut sum = 0.5 * (f(min) + f(max));
-        for i in 1..self.steps {
-            sum += f(min + i as f64 * h);
-        }
+        let gk = GaussKronrod15::new().integrate(|x: f64| (5.0 * x).sin(), 0.0, 4.0, 1e-10);
+        let exact = (1.0 - 20.0_f64.cos()) / 5.0;
+        assert!((gk.value - exact).abs() < 1e-10);
 
-        // Error estimation for Trapezoidal is O(h^2), but we don't calculate it dynamically here.
-        // We return 0.0 for error to indicate "unknown" or "not computed".
-        IntegrationResult {
-            value: sum * h,
-            error: 0.0,
-        }
+        let cc = ClenshawCurtis.integrate(f, 0.0, 10.0, 1e-10);
+        assert!((cc.value - 1000.0 / 3.0).abs() < 1e-9);
     }
 }

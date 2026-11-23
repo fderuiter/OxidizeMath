@@ -8,7 +8,8 @@ use super::OdeSolverTool;
 use crate::presets::OdePreset;
 use math_commons::ast::{CompiledExpr, Expr, Instruction};
 use math_explorer::pure_math::analysis::ode::{
-    ArrayState, Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver,
+    ArrayState, Bdf2, DormandPrince45, Euler, Heun, IntegrationMethod, OdeModel, OdeState,
+    OdeSystem, Rosenbrock23, RungeKutta4, Solver, TimeStepper,
 };
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -315,34 +316,44 @@ fn eval_planar_custom_final(
     step_final(ArrayState(ic), &dyn_sys, spec, steps)
 }
 
+fn run_model_final<const N: usize, D: OdeSystem<ArrayState<N>>, S: Solver<ArrayState<N>>>(
+    state: ArrayState<N>,
+    dyn_sys: &D,
+    solver: S,
+    dt: f64,
+    steps: usize,
+) -> f64 {
+    let mut model = OdeModel::new(state, dyn_sys, solver);
+    for _ in 0..steps {
+        model.step(dt);
+    }
+    model.get_state().0[0]
+}
+
 fn step_final<const N: usize, D: OdeSystem<ArrayState<N>>>(
-    mut state: ArrayState<N>,
+    state: ArrayState<N>,
     dyn_sys: &D,
     spec: &super::comparison::OdeSimSpec<'_>,
     steps: usize,
-) -> f64 {
+) -> f64
+where
+    ArrayState<N>: OdeState,
+{
     let dt = spec.dt;
     match spec.method {
         IntegrationMethod::RungeKutta4 => {
-            let mut solver = RungeKutta4::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
+            run_model_final(state, dyn_sys, RungeKutta4::new(&state), dt, steps)
         }
-        IntegrationMethod::Euler => {
-            let mut solver = Euler::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
+        IntegrationMethod::DormandPrince45 => {
+            run_model_final(state, dyn_sys, DormandPrince45::new(&state), dt, steps)
         }
-        IntegrationMethod::Heun => {
-            let mut solver = Heun::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
+        IntegrationMethod::Rosenbrock23 => {
+            run_model_final(state, dyn_sys, Rosenbrock23::new(&state), dt, steps)
         }
+        IntegrationMethod::Bdf2 => run_model_final(state, dyn_sys, Bdf2::new(&state), dt, steps),
+        IntegrationMethod::Euler => run_model_final(state, dyn_sys, Euler::new(&state), dt, steps),
+        IntegrationMethod::Heun => run_model_final(state, dyn_sys, Heun::new(&state), dt, steps),
     }
-    state.0[0]
 }
 
 impl OdeSolverTool {

@@ -421,3 +421,79 @@ fn test_ode_200k_steps_decimates_display_polyline_and_preserves_full_exports() {
     assert_eq!(exported[0].1.len(), 200_001);
     assert_eq!(exported[1].1.len(), 200_001);
 }
+
+#[test]
+fn test_ode_non_autonomous_analytical_accuracy_rk4_and_rk45() {
+    for method in [
+        IntegrationMethod::RungeKutta4,
+        IntegrationMethod::DormandPrince45,
+    ] {
+        // 1. y' = -k * y * sin(t), y(0) = 2.0 => y(t) = 2.0 * exp(k * (cos(t) - 1))
+        let k = 1.5;
+        let mut tool_sin = OdeSolverTool {
+            preset: OdePreset::Custom,
+            method,
+            param_k: k,
+            ic_y0: 2.0,
+            dt: 0.02,
+            total_time: 6.0,
+            ..Default::default()
+        };
+        tool_sin.math_input.set_expression("-k * y * sin(t)");
+        tool_sin.recalculate();
+        assert!(!tool_sin.diverged());
+        for (&t, &y) in tool_sin.time_series.iter().zip(&tool_sin.y_series) {
+            let exact = 2.0 * (k * (t.cos() - 1.0)).exp();
+            assert!(
+                (y - exact).abs() < 1e-5,
+                "{method:?} -k*y*sin(t) at t={t}: got {y}, exact {exact}"
+            );
+        }
+
+        // 2. y' = cos(t) - y, y(0) = 1.0 => y(t) = 0.5*(sin(t) + cos(t)) + 0.5*exp(-t)
+        let mut tool_forced = OdeSolverTool {
+            preset: OdePreset::Custom,
+            method,
+            ic_y0: 1.0,
+            dt: 0.02,
+            total_time: 6.0,
+            ..Default::default()
+        };
+        tool_forced.math_input.set_expression("cos(t) - y");
+        tool_forced.recalculate();
+        assert!(!tool_forced.diverged());
+        for (&t, &y) in tool_forced.time_series.iter().zip(&tool_forced.y_series) {
+            let exact = 0.5 * (t.sin() + t.cos()) + 0.5 * (-t).exp();
+            assert!(
+                (y - exact).abs() < 1e-5,
+                "{method:?} cos(t)-y at t={t}: got {y}, exact {exact}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_ode_stiff_solvers_rosenbrock23_and_bdf2_remain_finite() {
+    for method in [IntegrationMethod::Rosenbrock23, IntegrationMethod::Bdf2] {
+        let mut tool = OdeSolverTool {
+            preset: OdePreset::Custom,
+            method,
+            ic_y0: 1.0,
+            dt: 0.05,
+            total_time: 10.0,
+            ..Default::default()
+        };
+        tool.math_input.set_expression("-1000 * y");
+        tool.recalculate();
+        assert!(!tool.diverged(), "{method:?} diverged on y' = -1000*y");
+        let last_y = *tool.y_series.last().expect("final y");
+        assert!(last_y.is_finite() && last_y.abs() < 1e-3);
+
+        tool.math_input.set_expression("-5 * y^2");
+        tool.recalculate();
+        assert!(!tool.diverged(), "{method:?} diverged on y' = -5*y^2");
+        let last_quad = *tool.y_series.last().expect("final y");
+        let exact_quad = 1.0 / (1.0 + 5.0 * 10.0);
+        assert!(last_quad.is_finite() && (last_quad - exact_quad).abs() < 1e-2);
+    }
+}

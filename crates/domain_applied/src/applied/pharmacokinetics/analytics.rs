@@ -189,13 +189,7 @@ pub fn trapezoidal_auc(
     concentrations: &[f64],
 ) -> Result<f64, PharmacokineticsError> {
     validate_profile(times, concentrations)?;
-    let mut area = 0.0;
-    let mut idx = 0;
-    while idx + 1 < times.len() {
-        let dt = times[idx + 1] - times[idx];
-        area += 0.5 * (concentrations[idx] + concentrations[idx + 1]) * dt;
-        idx += 1;
-    }
+    let area = engine_diffeq::trapezoidal_nonuniform(times, concentrations);
     debug_assert!(area >= 0.0);
     debug_assert!(area.is_finite());
     Ok(area)

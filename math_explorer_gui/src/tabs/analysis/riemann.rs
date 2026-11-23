@@ -2,7 +2,9 @@
 
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
-use math_explorer::pure_math::analysis::integration::{ClenshawCurtis, Integrator, Trapezoidal};
+use math_explorer::pure_math::analysis::integration::{
+    ClenshawCurtis, GaussKronrod15, Integrator, Simpson, Trapezoidal,
+};
 use std::collections::BTreeMap;
 
 #[path = "riemann/ui.rs"]
@@ -20,16 +22,32 @@ const DEFAULT_RIEMANN_EXPR: &str = "clamp(sin(k * x), -0.5, 0.8)";
 pub enum QuadratureMethod {
     #[default]
     Trapezoidal,
+    Simpson,
+    GaussKronrod15,
     ClenshawCurtis,
 }
 
 impl QuadratureMethod {
+    pub const ALL: [Self; 4] = [
+        Self::Trapezoidal,
+        Self::Simpson,
+        Self::GaussKronrod15,
+        Self::ClenshawCurtis,
+    ];
+
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
             Self::Trapezoidal => "Composite Trapezoidal",
+            Self::Simpson => "Composite Simpson (1/3 Rule)",
+            Self::GaussKronrod15 => "Gauss-Kronrod 15-Point (Adaptive G7-K15)",
             Self::ClenshawCurtis => "Clenshaw-Curtis (Adaptive Chebyshev)",
         }
+    }
+
+    #[must_use]
+    pub const fn uses_tolerance(self) -> bool {
+        matches!(self, Self::GaussKronrod15 | Self::ClenshawCurtis)
     }
 }
 
@@ -134,25 +152,18 @@ impl RiemannIntegrationTool {
             return (0.0, 0.0);
         }
         let f = |x: f64| self.evaluate_at(x);
-        match self.quadrature_method {
-            QuadratureMethod::Trapezoidal => {
-                let val_n = Trapezoidal::new(self.steps).integrate(f, a, b, 1e-6).value;
-                let val_2n = Trapezoidal::new(self.steps.saturating_mul(2))
-                    .integrate(f, a, b, 1e-6)
-                    .value;
-                let est = ((val_2n - val_n).abs() * (4.0 / 3.0)).max(0.0);
-                (val_n, est)
-            }
-            QuadratureMethod::ClenshawCurtis => {
-                let eps = if self.cc_tolerance.is_finite() {
-                    self.cc_tolerance.clamp(MIN_CC_TOLERANCE, MAX_CC_TOLERANCE)
-                } else {
-                    DEFAULT_CC_TOLERANCE
-                };
-                let res = ClenshawCurtis.integrate(f, a, b, eps);
-                (res.value, res.error.abs())
-            }
-        }
+        let eps = if self.cc_tolerance.is_finite() {
+            self.cc_tolerance.clamp(MIN_CC_TOLERANCE, MAX_CC_TOLERANCE)
+        } else {
+            DEFAULT_CC_TOLERANCE
+        };
+        let res = match self.quadrature_method {
+            QuadratureMethod::Trapezoidal => Trapezoidal::new(self.steps).integrate(f, a, b, 0.0),
+            QuadratureMethod::Simpson => Simpson::new(self.steps).integrate(f, a, b, 0.0),
+            QuadratureMethod::GaussKronrod15 => GaussKronrod15::new().integrate(f, a, b, eps),
+            QuadratureMethod::ClenshawCurtis => ClenshawCurtis.integrate(f, a, b, eps),
+        };
+        (res.value, res.error.abs())
     }
 
     pub(crate) fn recalculate(&mut self) {
@@ -208,7 +219,9 @@ impl RiemannIntegrationTool {
         self.cached_trapezoid_polygons = (0..n)
             .filter_map(|i| {
                 let (x0, x1) = match self.quadrature_method {
-                    QuadratureMethod::Trapezoidal => {
+                    QuadratureMethod::Trapezoidal
+                    | QuadratureMethod::Simpson
+                    | QuadratureMethod::GaussKronrod15 => {
                         let dx = span / (n as f64);
                         let left = self.min_x + (i as f64) * dx;
                         (left, left + dx)
@@ -364,7 +377,15 @@ inventory::submit! {
         id: "RiemannIntegrationTool",
         display_name: "Riemann Integration",
         domain: "analysis",
-        tags: &["quadrature", "simpson", "trapezoidal", "midpoint", "definite integral", "calculus"],
+        tags: &[
+            "quadrature",
+            "simpson",
+            "gauss-kronrod",
+            "trapezoidal",
+            "midpoint",
+            "definite integral",
+            "calculus",
+        ],
         build: || Box::new(RiemannIntegrationTool::default()),
     }
 }

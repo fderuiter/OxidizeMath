@@ -1,4 +1,527 @@
 {
+  "crates/02_engines/engine_diffeq/src/error.rs": [
+    {
+      "signature": "pub enum DiffeqError"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/hermite.rs": [
+    {
+      "signature": "pub fn clamp_fritsch_carlson_slopes (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> (f64 , f64)"
+    },
+    {
+      "signature": "pub fn cubic_hermite_scalar (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn cubic_hermite_slope (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn cubic_hermite_val_deriv (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> (f64 , f64)"
+    },
+    {
+      "signature": "pub fn solve_hermite_root (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn solve_hermite_unit_bracket (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> Result < f64 , DiffeqError >"
+    },
+    {
+      "signature": "pub fn solve_monotone_hermite_crossing (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Option < f64 >"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/lib.rs": [
+    {
+      "signature": "pub use error :: DiffeqError"
+    },
+    {
+      "signature": "pub use hermite :: clamp_fritsch_carlson_slopes"
+    },
+    {
+      "signature": "pub use hermite :: cubic_hermite_scalar"
+    },
+    {
+      "signature": "pub use hermite :: cubic_hermite_slope"
+    },
+    {
+      "signature": "pub use hermite :: cubic_hermite_val_deriv"
+    },
+    {
+      "signature": "pub use hermite :: solve_hermite_root"
+    },
+    {
+      "signature": "pub use hermite :: solve_hermite_unit_bracket"
+    },
+    {
+      "signature": "pub use hermite :: solve_monotone_hermite_crossing"
+    },
+    {
+      "signature": "pub use ode :: ArrayState"
+    },
+    {
+      "signature": "pub use ode :: Bdf2"
+    },
+    {
+      "signature": "pub use ode :: DormandPrince45"
+    },
+    {
+      "signature": "pub use ode :: Euler"
+    },
+    {
+      "signature": "pub use ode :: Heun"
+    },
+    {
+      "signature": "pub use ode :: IntegrationMethod"
+    },
+    {
+      "signature": "pub use ode :: OdeModel"
+    },
+    {
+      "signature": "pub use ode :: OdeState"
+    },
+    {
+      "signature": "pub use ode :: OdeSystem"
+    },
+    {
+      "signature": "pub use ode :: Rosenbrock23"
+    },
+    {
+      "signature": "pub use ode :: RungeKutta4"
+    },
+    {
+      "signature": "pub use ode :: SliceOdeSystem"
+    },
+    {
+      "signature": "pub use ode :: Solver"
+    },
+    {
+      "signature": "pub use ode :: SolverExt"
+    },
+    {
+      "signature": "pub use ode :: TimeStepper"
+    },
+    {
+      "signature": "pub use ode :: VecState"
+    },
+    {
+      "signature": "pub use ode :: VectorOperations"
+    },
+    {
+      "signature": "pub use ode :: step_slice_rk4"
+    },
+    {
+      "signature": "pub use ode :: step_slice_rk45"
+    },
+    {
+      "signature": "pub use quadrature :: GK15_STACK_SUBINTERVALS"
+    },
+    {
+      "signature": "pub use quadrature :: GaussKronrod15"
+    },
+    {
+      "signature": "pub use quadrature :: IntegrationResult"
+    },
+    {
+      "signature": "pub use quadrature :: Integrator"
+    },
+    {
+      "signature": "pub use quadrature :: Simpson"
+    },
+    {
+      "signature": "pub use quadrature :: Trapezoidal"
+    },
+    {
+      "signature": "pub use quadrature :: gk15_panel"
+    },
+    {
+      "signature": "pub use quadrature :: trapezoidal_nonuniform"
+    },
+    {
+      "signature": "pub use quadrature :: trapezoidal_uniform_grid"
+    },
+    {
+      "signature": "pub use quadrature :: trapezoidal_uniform_mapped"
+    },
+    {
+      "signature": "pub use workspace :: SolverWorkspace"
+    },
+    {
+      "signature": "pub use workspace :: StackWorkspace"
+    },
+    {
+      "signature": "pub use workspace :: lu_factor_in_place"
+    },
+    {
+      "signature": "pub use workspace :: lu_solve_in_place"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/math.rs": [
+    {
+      "signature": "pub fn exp_f64 (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn hypot_f64 (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn ln_f64 (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn pow_pos_f64 (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn sqrt_f64 (_ : f64) -> f64"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/ode/bdf2.rs": [
+    {
+      "signature": "impl < State : OdeState > Bdf2 < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : OdeState > Bdf2 < State > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl < State : OdeState > Bdf2 < State > { pub fn step_in_workspace < S : OdeSystem < State > + ? Sized > (& mut self , _ : & S , _ : f64 , _ : & mut State , _ : f64 , _ : & mut SolverWorkspace < '_ > , _ : & mut [usize] ,) -> Result < () , DiffeqError > }"
+    },
+    {
+      "signature": "pub struct Bdf2 < State >"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/ode/explicit.rs": [
+    {
+      "signature": "impl < State : VectorOperations > Euler < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : VectorOperations > Heun < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : VectorOperations > RungeKutta4 < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "pub fn step_slice_rk4 < S : SliceOdeSystem + ? Sized > (_ : & S , _ : f64 , _ : & mut [f64] , _ : f64 , _ : & mut SolverWorkspace < '_ > ,) -> Result < () , DiffeqError >"
+    },
+    {
+      "signature": "pub struct Euler < State >"
+    },
+    {
+      "signature": "pub struct Heun < State >"
+    },
+    {
+      "signature": "pub struct RungeKutta4 < State >"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/ode/mod.rs": [
+    {
+      "signature": "impl IntegrationMethod { pub const ALL : [Self ; 6] }"
+    },
+    {
+      "signature": "impl IntegrationMethod { pub const fn name (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum IntegrationMethod"
+    },
+    {
+      "signature": "pub use bdf2 :: Bdf2"
+    },
+    {
+      "signature": "pub use explicit :: Euler"
+    },
+    {
+      "signature": "pub use explicit :: Heun"
+    },
+    {
+      "signature": "pub use explicit :: RungeKutta4"
+    },
+    {
+      "signature": "pub use explicit :: step_slice_rk4"
+    },
+    {
+      "signature": "pub use model :: OdeModel"
+    },
+    {
+      "signature": "pub use rk45 :: DormandPrince45"
+    },
+    {
+      "signature": "pub use rk45 :: step_slice_rk45"
+    },
+    {
+      "signature": "pub use rosenbrock :: Rosenbrock23"
+    },
+    {
+      "signature": "pub use state :: ArrayState"
+    },
+    {
+      "signature": "pub use state :: VecState"
+    },
+    {
+      "signature": "pub use stepper :: TimeStepper"
+    },
+    {
+      "signature": "pub use traits :: OdeState"
+    },
+    {
+      "signature": "pub use traits :: OdeSystem"
+    },
+    {
+      "signature": "pub use traits :: SliceOdeSystem"
+    },
+    {
+      "signature": "pub use traits :: Solver"
+    },
+    {
+      "signature": "pub use traits :: SolverExt"
+    },
+    {
+      "signature": "pub use traits :: VectorOperations"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/ode/model.rs": [
+    {
+      "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub const fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub fn new (_ : State , _ : Dynamics , _ : S) -> Self }"
+    },
+    {
+      "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub fn set_time (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub fn with_time (_ : State , _ : Dynamics , _ : S , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct OdeModel < State , Dynamics , S >"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/ode/rk45.rs": [
+    {
+      "signature": "impl < State : OdeState > DormandPrince45 < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : OdeState > DormandPrince45 < State > { pub fn with_tolerances (_ : & State , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub fn step_slice_rk45 < S : SliceOdeSystem + ? Sized > (_ : & S , _ : f64 , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ > ,) -> Result < () , DiffeqError >"
+    },
+    {
+      "signature": "pub struct DormandPrince45 < State >"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/ode/rosenbrock.rs": [
+    {
+      "signature": "impl < State : OdeState > Rosenbrock23 < State > { pub const fn last_error (& self) -> f64 }"
+    },
+    {
+      "signature": "impl < State : OdeState > Rosenbrock23 < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : OdeState > Rosenbrock23 < State > { pub fn step_in_workspace < S : OdeSystem < State > + ? Sized > (& mut self , _ : & S , _ : f64 , _ : & mut State , _ : f64 , _ : & mut SolverWorkspace < '_ > , _ : & mut [usize] ,) -> Result < f64 , DiffeqError > }"
+    },
+    {
+      "signature": "pub struct Rosenbrock23 < State >"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/ode/state.rs": [
+    {
+      "signature": "impl < const N : usize > ArrayState < N > { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const N : usize > ArrayState < N > { pub fn max_abs_diff (& self , _ : & Self) -> f64 }"
+    },
+    {
+      "signature": "impl < const N : usize > ArrayState < N > { pub fn zeros () -> Self }"
+    },
+    {
+      "signature": "pub struct ArrayState < const N : usize >"
+    },
+    {
+      "signature": "pub struct VecState"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/ode/stepper.rs": [
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > : OdeSystem < State >"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn get_state (& self) -> & State }"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn get_state_mut (& mut self) -> & mut State }"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn get_time (& self) -> f64 }"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn set_time (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn step_with < S : Solver < State > > (& mut self , _ : & mut S , _ : f64) }"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/ode/traits.rs": [
+    {
+      "signature": "pub trait OdeState : VectorOperations"
+    },
+    {
+      "signature": "pub trait OdeState { fn component (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "pub trait OdeState { fn set_component (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "pub trait OdeState { fn state_dim (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait OdeSystem < State : VectorOperations >"
+    },
+    {
+      "signature": "pub trait OdeSystem < State : VectorOperations > { fn derivative (& self , _ : f64 , _ : & State) -> State }"
+    },
+    {
+      "signature": "pub trait OdeSystem < State : VectorOperations > { fn derivative_in_place (& self , _ : f64 , _ : & State , _ : & mut State) }"
+    },
+    {
+      "signature": "pub trait SliceOdeSystem"
+    },
+    {
+      "signature": "pub trait SliceOdeSystem { fn derivative_slice (& self , _ : f64 , _ : & [f64] , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "pub trait Solver < State : VectorOperations >"
+    },
+    {
+      "signature": "pub trait Solver < State : VectorOperations > { fn step < S > (& mut self , _ : & S , _ : f64 , _ : & mut State , _ : f64) where S : OdeSystem < State > + ? Sized }"
+    },
+    {
+      "signature": "pub trait SolverExt < State : VectorOperations > : Solver < State >"
+    },
+    {
+      "signature": "pub trait SolverExt < State : VectorOperations > { fn solve < S > (& mut self , _ : & S , _ : f64 , _ : & State , _ : f64) -> State where S : OdeSystem < State > + ? Sized }"
+    },
+    {
+      "signature": "pub trait VectorOperations : Sized + Clone + Add < Output = Self > + Mul < f64 , Output = Self > + AddAssign + MulAssign < f64 >"
+    },
+    {
+      "signature": "pub trait VectorOperations { fn copy_from (& mut self , _ : & Self) }"
+    },
+    {
+      "signature": "pub trait VectorOperations { fn copy_from_scaled (& mut self , _ : & Self , _ : & Self , _ : f64) }"
+    },
+    {
+      "signature": "pub trait VectorOperations { fn scale_add (& mut self , _ : & Self , _ : f64) }"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/quadrature/gauss_kronrod.rs": [
+    {
+      "signature": "impl GaussKronrod15 { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl GaussKronrod15 { pub const fn with_max_subintervals (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl GaussKronrod15 { pub fn integrate_with_workspace < F : Fn (f64) -> f64 > (& self , _ : F , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ > ,) -> Result < IntegrationResult , DiffeqError > }"
+    },
+    {
+      "signature": "pub const GK15_STACK_SUBINTERVALS : usize"
+    },
+    {
+      "signature": "pub fn gk15_panel < F : Fn (f64) -> f64 > (_ : & F , _ : f64 , _ : f64) -> IntegrationResult"
+    },
+    {
+      "signature": "pub struct GaussKronrod15"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/quadrature/mod.rs": [
+    {
+      "signature": "pub struct IntegrationResult"
+    },
+    {
+      "signature": "pub trait Integrator : Send + Sync"
+    },
+    {
+      "signature": "pub trait Integrator { fn integrate < F > (& self , _ : F , _ : f64 , _ : f64 , _ : f64) -> IntegrationResult where F : Fn (f64) -> f64 }"
+    },
+    {
+      "signature": "pub use gauss_kronrod :: GK15_STACK_SUBINTERVALS"
+    },
+    {
+      "signature": "pub use gauss_kronrod :: GaussKronrod15"
+    },
+    {
+      "signature": "pub use gauss_kronrod :: gk15_panel"
+    },
+    {
+      "signature": "pub use newton_cotes :: Simpson"
+    },
+    {
+      "signature": "pub use newton_cotes :: Trapezoidal"
+    },
+    {
+      "signature": "pub use newton_cotes :: trapezoidal_nonuniform"
+    },
+    {
+      "signature": "pub use newton_cotes :: trapezoidal_uniform_grid"
+    },
+    {
+      "signature": "pub use newton_cotes :: trapezoidal_uniform_mapped"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/quadrature/newton_cotes.rs": [
+    {
+      "signature": "impl Simpson { pub const fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl Trapezoidal { pub const fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn trapezoidal_nonuniform (_ : & [f64] , _ : & [f64]) -> f64"
+    },
+    {
+      "signature": "pub fn trapezoidal_uniform_grid (_ : & [f64] , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn trapezoidal_uniform_mapped < F : Fn (f64) -> f64 > (_ : & [f64] , _ : f64 , _ : F) -> f64"
+    },
+    {
+      "signature": "pub struct Simpson"
+    },
+    {
+      "signature": "pub struct Trapezoidal"
+    }
+  ],
+  "crates/02_engines/engine_diffeq/src/workspace.rs": [
+    {
+      "signature": "impl < 'a > SolverWorkspace < 'a > { pub const fn capacity (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > SolverWorkspace < 'a > { pub const fn rk45_scratch_len (_ : usize) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > SolverWorkspace < 'a > { pub const fn stiff_scratch_len (_ : usize) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > SolverWorkspace < 'a > { pub fn from_slice (_ : & 'a mut [f64]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > SolverWorkspace < 'a > { pub fn try_slice_mut (& mut self , _ : usize) -> Result < & mut [f64] , DiffeqError > }"
+    },
+    {
+      "signature": "impl < const CAP : usize > StackWorkspace < CAP > { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl < const CAP : usize > StackWorkspace < CAP > { pub fn as_workspace (& mut self) -> SolverWorkspace < '_ > }"
+    },
+    {
+      "signature": "pub fn lu_factor_in_place (_ : & mut [f64] , _ : & mut [usize] , _ : usize ,) -> Result < () , DiffeqError >"
+    },
+    {
+      "signature": "pub fn lu_solve_in_place (_ : & [f64] , _ : & [usize] , _ : & [f64] , _ : & mut [f64] , _ : usize)"
+    },
+    {
+      "signature": "pub struct SolverWorkspace < 'a >"
+    },
+    {
+      "signature": "pub struct StackWorkspace < const CAP : usize >"
+    }
+  ],
   "crates/diagnostics/src/lib.rs": [
     {
       "signature": "impl DiagnosticBus { pub fn emit (& self , _ : DiagnosticEvent) }"
@@ -9727,6 +10250,9 @@
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
+      "signature": "pub use engine_diffeq :: DiffeqError"
+    },
+    {
       "signature": "pub use sports :: EloError"
     },
     {
@@ -9764,6 +10290,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: CopulaError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: DiffeqError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EllipticCurveError } }"
@@ -9917,6 +10446,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use engine_diffeq as diffeq }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use math_commons :: ast }"
@@ -10643,27 +11175,120 @@
   ],
   "crates/pure_math/src/pure_math/analysis/integration.rs": [
     {
-      "signature": "impl Trapezoidal { pub fn new (_ : usize) -> Self }"
-    },
-    {
       "signature": "pub struct ClenshawCurtis"
     },
     {
-      "signature": "pub struct IntegrationResult"
+      "signature": "pub use engine_diffeq :: quadrature :: GK15_STACK_SUBINTERVALS"
     },
     {
-      "signature": "pub struct Trapezoidal"
+      "signature": "pub use engine_diffeq :: quadrature :: GaussKronrod15"
     },
     {
-      "signature": "pub trait Integrator : Send + Sync"
+      "signature": "pub use engine_diffeq :: quadrature :: IntegrationResult"
     },
     {
-      "signature": "pub trait Integrator { fn integrate < F > (& self , _ : F , _ : f64 , _ : f64 , _ : f64) -> IntegrationResult where F : Fn (f64) -> f64 }"
+      "signature": "pub use engine_diffeq :: quadrature :: Integrator"
+    },
+    {
+      "signature": "pub use engine_diffeq :: quadrature :: Simpson"
+    },
+    {
+      "signature": "pub use engine_diffeq :: quadrature :: Trapezoidal"
+    },
+    {
+      "signature": "pub use engine_diffeq :: quadrature :: gk15_panel"
+    },
+    {
+      "signature": "pub use engine_diffeq :: quadrature :: trapezoidal_nonuniform"
+    },
+    {
+      "signature": "pub use engine_diffeq :: quadrature :: trapezoidal_uniform_grid"
+    },
+    {
+      "signature": "pub use engine_diffeq :: quadrature :: trapezoidal_uniform_mapped"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/mod.rs": [
     {
+      "signature": "pub use engine_diffeq :: DiffeqError"
+    },
+    {
+      "signature": "pub use engine_diffeq :: SolverWorkspace"
+    },
+    {
+      "signature": "pub use engine_diffeq :: StackWorkspace"
+    },
+    {
       "signature": "pub use evolution :: EvolutionError"
+    },
+    {
+      "signature": "pub use integration :: ClenshawCurtis"
+    },
+    {
+      "signature": "pub use integration :: GaussKronrod15"
+    },
+    {
+      "signature": "pub use integration :: IntegrationResult"
+    },
+    {
+      "signature": "pub use integration :: Integrator"
+    },
+    {
+      "signature": "pub use integration :: Simpson"
+    },
+    {
+      "signature": "pub use integration :: Trapezoidal"
+    },
+    {
+      "signature": "pub use ode :: ArrayState"
+    },
+    {
+      "signature": "pub use ode :: Bdf2"
+    },
+    {
+      "signature": "pub use ode :: DormandPrince45"
+    },
+    {
+      "signature": "pub use ode :: Euler"
+    },
+    {
+      "signature": "pub use ode :: Heun"
+    },
+    {
+      "signature": "pub use ode :: IntegrationMethod"
+    },
+    {
+      "signature": "pub use ode :: OdeModel"
+    },
+    {
+      "signature": "pub use ode :: OdeState"
+    },
+    {
+      "signature": "pub use ode :: OdeSystem"
+    },
+    {
+      "signature": "pub use ode :: Rosenbrock23"
+    },
+    {
+      "signature": "pub use ode :: RungeKutta4"
+    },
+    {
+      "signature": "pub use ode :: SliceOdeSystem"
+    },
+    {
+      "signature": "pub use ode :: Solver"
+    },
+    {
+      "signature": "pub use ode :: SolverExt"
+    },
+    {
+      "signature": "pub use ode :: TimeStepper"
+    },
+    {
+      "signature": "pub use ode :: VecState"
+    },
+    {
+      "signature": "pub use ode :: VectorOperations"
     },
     {
       "signature": "pub use optimization :: OptimizationError"
@@ -10757,16 +11382,25 @@
   ],
   "crates/pure_math/src/pure_math/analysis/ode/mod.rs": [
     {
-      "signature": "impl IntegrationMethod { pub const ALL : [Self ; 3] }"
+      "signature": "pub use engine_diffeq :: DiffeqError"
     },
     {
-      "signature": "impl IntegrationMethod { pub fn name (& self) -> & 'static str }"
+      "signature": "pub use engine_diffeq :: SolverWorkspace"
     },
     {
-      "signature": "pub enum IntegrationMethod"
+      "signature": "pub use engine_diffeq :: StackWorkspace"
+    },
+    {
+      "signature": "pub use engine_diffeq :: ode :: IntegrationMethod"
     },
     {
       "signature": "pub use model :: OdeModel"
+    },
+    {
+      "signature": "pub use solvers :: Bdf2"
+    },
+    {
+      "signature": "pub use solvers :: DormandPrince45"
     },
     {
       "signature": "pub use solvers :: Euler"
@@ -10775,7 +11409,16 @@
       "signature": "pub use solvers :: Heun"
     },
     {
+      "signature": "pub use solvers :: Rosenbrock23"
+    },
+    {
       "signature": "pub use solvers :: RungeKutta4"
+    },
+    {
+      "signature": "pub use solvers :: step_slice_rk4"
+    },
+    {
+      "signature": "pub use solvers :: step_slice_rk45"
     },
     {
       "signature": "pub use state :: ArrayState"
@@ -10802,10 +11445,16 @@
       "signature": "pub use traits :: HamiltonianSystem"
     },
     {
+      "signature": "pub use traits :: OdeState"
+    },
+    {
       "signature": "pub use traits :: OdeSystem"
     },
     {
       "signature": "pub use traits :: SeparableHamiltonian"
+    },
+    {
+      "signature": "pub use traits :: SliceOdeSystem"
     },
     {
       "signature": "pub use traits :: Solver"
@@ -10819,64 +11468,46 @@
   ],
   "crates/pure_math/src/pure_math/analysis/ode/model.rs": [
     {
-      "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub fn new (_ : State , _ : Dynamics , _ : S) -> Self }"
-    },
-    {
-      "signature": "pub struct OdeModel < State , Dynamics , S >"
+      "signature": "pub use engine_diffeq :: ode :: OdeModel"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/solvers.rs": [
     {
-      "signature": "impl < State : Clone > Euler < State > { pub fn new (_ : & State) -> Self }"
+      "signature": "pub use engine_diffeq :: ode :: Bdf2"
     },
     {
-      "signature": "impl < State : Clone > Heun < State > { pub fn new (_ : & State) -> Self }"
+      "signature": "pub use engine_diffeq :: ode :: DormandPrince45"
     },
     {
-      "signature": "impl < State : Clone > RungeKutta4 < State > { pub fn new (_ : & State) -> Self }"
+      "signature": "pub use engine_diffeq :: ode :: Euler"
     },
     {
-      "signature": "pub struct Euler < State >"
+      "signature": "pub use engine_diffeq :: ode :: Heun"
     },
     {
-      "signature": "pub struct Heun < State >"
+      "signature": "pub use engine_diffeq :: ode :: Rosenbrock23"
     },
     {
-      "signature": "pub struct RungeKutta4 < State >"
+      "signature": "pub use engine_diffeq :: ode :: RungeKutta4"
+    },
+    {
+      "signature": "pub use engine_diffeq :: ode :: step_slice_rk4"
+    },
+    {
+      "signature": "pub use engine_diffeq :: ode :: step_slice_rk45"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/state.rs": [
     {
-      "signature": "impl < const N : usize > ArrayState < N > { pub fn is_finite (& self) -> bool }"
+      "signature": "pub use engine_diffeq :: ode :: ArrayState"
     },
     {
-      "signature": "impl < const N : usize > ArrayState < N > { pub fn max_abs_diff (& self , _ : & Self) -> f64 }"
-    },
-    {
-      "signature": "impl < const N : usize > ArrayState < N > { pub fn zeros () -> Self }"
-    },
-    {
-      "signature": "pub struct ArrayState < const N : usize >"
-    },
-    {
-      "signature": "pub struct VecState"
+      "signature": "pub use engine_diffeq :: ode :: VecState"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/stepper.rs": [
     {
-      "signature": "pub trait TimeStepper < State : VectorOperations > : OdeSystem < State >"
-    },
-    {
-      "signature": "pub trait TimeStepper < State : VectorOperations > { fn get_state (& self) -> & State }"
-    },
-    {
-      "signature": "pub trait TimeStepper < State : VectorOperations > { fn get_state_mut (& mut self) -> & mut State }"
-    },
-    {
-      "signature": "pub trait TimeStepper < State : VectorOperations > { fn step (& mut self , _ : f64) }"
-    },
-    {
-      "signature": "pub trait TimeStepper < State : VectorOperations > { fn step_with < S : Solver < State > > (& mut self , _ : & mut S , _ : f64) }"
+      "signature": "pub use engine_diffeq :: ode :: TimeStepper"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/symplectic.rs": [
@@ -10949,15 +11580,6 @@
       "signature": "pub trait HamiltonianSystem < State : VectorOperations > { fn relative_energy_error (& self , _ : & State , _ : f64) -> f64 }"
     },
     {
-      "signature": "pub trait OdeSystem < State : VectorOperations >"
-    },
-    {
-      "signature": "pub trait OdeSystem < State : VectorOperations > { fn derivative (& self , _ : f64 , _ : & State) -> State }"
-    },
-    {
-      "signature": "pub trait OdeSystem < State : VectorOperations > { fn derivative_in_place (& self , _ : f64 , _ : & State , _ : & mut State) }"
-    },
-    {
       "signature": "pub trait SeparableHamiltonian < State : VectorOperations > : HamiltonianSystem < State >"
     },
     {
@@ -10982,28 +11604,22 @@
       "signature": "pub trait SeparableHamiltonian < State : VectorOperations > { type Coord : VectorOperations }"
     },
     {
-      "signature": "pub trait Solver < State : VectorOperations >"
+      "signature": "pub use engine_diffeq :: ode :: OdeState"
     },
     {
-      "signature": "pub trait Solver < State : VectorOperations > { fn step < S > (& mut self , _ : & S , _ : f64 , _ : & mut State , _ : f64) where S : OdeSystem < State > + ? Sized }"
+      "signature": "pub use engine_diffeq :: ode :: OdeSystem"
     },
     {
-      "signature": "pub trait SolverExt < State : VectorOperations > : Solver < State >"
+      "signature": "pub use engine_diffeq :: ode :: SliceOdeSystem"
     },
     {
-      "signature": "pub trait SolverExt < State : VectorOperations > { fn solve < S > (& mut self , _ : & S , _ : f64 , _ : & State , _ : f64) -> State where S : OdeSystem < State > + ? Sized }"
+      "signature": "pub use engine_diffeq :: ode :: Solver"
     },
     {
-      "signature": "pub trait VectorOperations : Sized + Clone + Add < Output = Self > + Mul < f64 , Output = Self > + AddAssign + MulAssign < f64 >"
+      "signature": "pub use engine_diffeq :: ode :: SolverExt"
     },
     {
-      "signature": "pub trait VectorOperations { fn copy_from (& mut self , _ : & Self) }"
-    },
-    {
-      "signature": "pub trait VectorOperations { fn copy_from_scaled (& mut self , _ : & Self , _ : & Self , _ : f64) }"
-    },
-    {
-      "signature": "pub trait VectorOperations { fn scale_add (& mut self , _ : & Self , _ : f64) }"
+      "signature": "pub use engine_diffeq :: ode :: VectorOperations"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/optimization.rs": [
@@ -11619,6 +12235,27 @@
     },
     {
       "signature": "pub trait RootFinder { fn find_root < F > (& self , _ : F , _ : f64 , _ : f64) -> Result < f64 , AnalysisError > where F : Fn (f64) -> f64 }"
+    },
+    {
+      "signature": "pub use engine_diffeq :: hermite :: clamp_fritsch_carlson_slopes"
+    },
+    {
+      "signature": "pub use engine_diffeq :: hermite :: cubic_hermite_scalar"
+    },
+    {
+      "signature": "pub use engine_diffeq :: hermite :: cubic_hermite_slope"
+    },
+    {
+      "signature": "pub use engine_diffeq :: hermite :: cubic_hermite_val_deriv"
+    },
+    {
+      "signature": "pub use engine_diffeq :: hermite :: solve_hermite_root"
+    },
+    {
+      "signature": "pub use engine_diffeq :: hermite :: solve_hermite_unit_bracket"
+    },
+    {
+      "signature": "pub use engine_diffeq :: hermite :: solve_monotone_hermite_crossing"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/stochastic.rs": [
@@ -15570,6 +16207,12 @@
       "signature": "impl ComplexityMetrics { pub const fn new () -> Self }"
     },
     {
+      "signature": "pub const fn get_metrics () -> ComplexityMetrics"
+    },
+    {
+      "signature": "pub const fn is_verification_enabled () -> bool"
+    },
+    {
       "signature": "pub fn disable_verification ()"
     },
     {
@@ -15712,6 +16355,9 @@
       "signature": "pub use domain_physics :: error :: StatMechError"
     },
     {
+      "signature": "pub use engine_diffeq :: DiffeqError"
+    },
+    {
       "signature": "pub use math_commons :: error :: EvalError"
     },
     {
@@ -15823,6 +16469,9 @@
     },
     {
       "signature": "pub use domain_physics :: physics"
+    },
+    {
+      "signature": "pub use engine_diffeq as diffeq"
     },
     {
       "signature": "pub use math_commons :: ast"

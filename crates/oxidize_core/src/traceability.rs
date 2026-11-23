@@ -212,8 +212,28 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         if let Ok(mut crates) = self.vfs.list_dir(&crate_base).await {
             crates.sort();
             for crate_name in crates {
-                if !crate_name.starts_with('.') {
-                    code_dirs.push(format!("{crate_base}/{crate_name}/src"));
+                if crate_name.starts_with('.') {
+                    continue;
+                }
+                let direct_src = format!("{crate_base}/{crate_name}/src");
+                if self.vfs.list_dir(&direct_src).await.is_ok() {
+                    code_dirs.push(direct_src);
+                } else if let Ok(mut nested) = self
+                    .vfs
+                    .list_dir(&format!("{crate_base}/{crate_name}"))
+                    .await
+                {
+                    nested.sort();
+                    for sub_name in nested {
+                        if !sub_name.starts_with('.') {
+                            let nested_src = format!("{crate_base}/{crate_name}/{sub_name}/src");
+                            if self.vfs.list_dir(&nested_src).await.is_ok() {
+                                code_dirs.push(nested_src);
+                            }
+                        }
+                    }
+                } else {
+                    code_dirs.push(direct_src);
                 }
             }
         }

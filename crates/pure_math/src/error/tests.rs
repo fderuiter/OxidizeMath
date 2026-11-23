@@ -36,6 +36,11 @@ fn test_pure_math_leaf_wrappers_preserve_source_chain() {
 fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
     let cases: Vec<PureMathError> = vec![
         CopulaError::NotSymmetric.into(),
+        DiffeqError::InsufficientWorkspace {
+            required: 8,
+            available: 4,
+        }
+        .into(),
         EloError::InvalidScale { value: 0.0 }.into(),
         Glicko2Error::EmptyMatchResults.into(),
         KellyError::InvalidOdds { value: 0.5 }.into(),

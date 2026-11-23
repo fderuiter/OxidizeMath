@@ -9,7 +9,8 @@ use super::systems::{
 use crate::presets::OdePreset;
 use math_commons::ast::Expr;
 use math_explorer::pure_math::analysis::ode::{
-    ArrayState, Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver,
+    ArrayState, Bdf2, DormandPrince45, Euler, Heun, IntegrationMethod, OdeModel, OdeSystem,
+    Rosenbrock23, RungeKutta4, Solver, TimeStepper,
 };
 use serde::{Deserialize, Serialize};
 
@@ -247,37 +248,44 @@ fn run_loop_1d<D: OdeSystem<ArrayState<1>>>(
     dt: f64,
     num_steps: usize,
 ) {
+    use IntegrationMethod::{Bdf2 as B2, DormandPrince45 as Dp45, Euler as Eu, Heun as He};
+    use IntegrationMethod::{Rosenbrock23 as Ros23, RungeKutta4 as Rk4};
     match method {
-        IntegrationMethod::RungeKutta4 => {
-            execute_steps_1d(
-                traj,
-                init,
-                dynamics,
-                &mut RungeKutta4::new(&init),
-                dt,
-                num_steps,
-            );
-        }
-        IntegrationMethod::Euler => {
-            execute_steps_1d(traj, init, dynamics, &mut Euler::new(&init), dt, num_steps);
-        }
-        IntegrationMethod::Heun => {
-            execute_steps_1d(traj, init, dynamics, &mut Heun::new(&init), dt, num_steps);
-        }
+        Rk4 => execute_steps_1d(traj, init, dynamics, RungeKutta4::new(&init), dt, num_steps),
+        Dp45 => execute_steps_1d(
+            traj,
+            init,
+            dynamics,
+            DormandPrince45::new(&init),
+            dt,
+            num_steps,
+        ),
+        Ros23 => execute_steps_1d(
+            traj,
+            init,
+            dynamics,
+            Rosenbrock23::new(&init),
+            dt,
+            num_steps,
+        ),
+        B2 => execute_steps_1d(traj, init, dynamics, Bdf2::new(&init), dt, num_steps),
+        Eu => execute_steps_1d(traj, init, dynamics, Euler::new(&init), dt, num_steps),
+        He => execute_steps_1d(traj, init, dynamics, Heun::new(&init), dt, num_steps),
     }
 }
 
 fn execute_steps_1d<D: OdeSystem<ArrayState<1>>, S: Solver<ArrayState<1>>>(
     traj: &mut SolverTrajectory,
-    mut state: ArrayState<1>,
+    init: ArrayState<1>,
     dynamics: &D,
-    solver: &mut S,
+    solver: S,
     dt: f64,
     num_steps: usize,
 ) {
+    let mut model = OdeModel::new(init, dynamics, solver);
     for i in 0..=num_steps {
-        let t = i as f64 * dt;
-        let y = state.0[0];
+        let t = model.get_time();
+        let y = model.get_state().0[0];
         if !y.is_finite() {
             traj.diverged = true;
             traj.divergence_info = Some((t, i, "y(t)".to_string()));
@@ -285,7 +293,9 @@ fn execute_steps_1d<D: OdeSystem<ArrayState<1>>, S: Solver<ArrayState<1>>>(
         }
         traj.time_series.push(t);
         traj.y_series.push(y);
-        solver.step(dynamics, t, &mut state, dt);
+        if i < num_steps {
+            model.step(dt);
+        }
     }
 }
 
@@ -298,55 +308,45 @@ fn run_loop_2d<D: OdeSystem<ArrayState<2>>>(
     num_steps: usize,
     names: (&str, &str),
 ) {
+    let s4 = RungeKutta4::new(&init);
+    let dp = DormandPrince45::new(&init);
+    let ros = Rosenbrock23::new(&init);
+    let bdf = Bdf2::new(&init);
+    let eu = Euler::new(&init);
+    let he = Heun::new(&init);
     match method {
         IntegrationMethod::RungeKutta4 => {
-            execute_steps_2d(
-                traj,
-                init,
-                dynamics,
-                &mut RungeKutta4::new(&init),
-                dt,
-                num_steps,
-                names,
-            );
+            execute_steps_2d(traj, init, dynamics, s4, dt, num_steps, names)
+        }
+        IntegrationMethod::DormandPrince45 => {
+            execute_steps_2d(traj, init, dynamics, dp, dt, num_steps, names)
+        }
+        IntegrationMethod::Rosenbrock23 => {
+            execute_steps_2d(traj, init, dynamics, ros, dt, num_steps, names)
+        }
+        IntegrationMethod::Bdf2 => {
+            execute_steps_2d(traj, init, dynamics, bdf, dt, num_steps, names)
         }
         IntegrationMethod::Euler => {
-            execute_steps_2d(
-                traj,
-                init,
-                dynamics,
-                &mut Euler::new(&init),
-                dt,
-                num_steps,
-                names,
-            );
+            execute_steps_2d(traj, init, dynamics, eu, dt, num_steps, names)
         }
-        IntegrationMethod::Heun => {
-            execute_steps_2d(
-                traj,
-                init,
-                dynamics,
-                &mut Heun::new(&init),
-                dt,
-                num_steps,
-                names,
-            );
-        }
+        IntegrationMethod::Heun => execute_steps_2d(traj, init, dynamics, he, dt, num_steps, names),
     }
 }
 
 fn execute_steps_2d<D: OdeSystem<ArrayState<2>>, S: Solver<ArrayState<2>>>(
     traj: &mut SolverTrajectory,
-    mut state: ArrayState<2>,
+    init: ArrayState<2>,
     dynamics: &D,
-    solver: &mut S,
+    solver: S,
     dt: f64,
     num_steps: usize,
     names: (&str, &str),
 ) {
+    let mut model = OdeModel::new(init, dynamics, solver);
     for i in 0..=num_steps {
-        let t = i as f64 * dt;
-        let [x, y] = state.0;
+        let t = model.get_time();
+        let [x, y] = model.get_state().0;
         if !x.is_finite() {
             traj.diverged = true;
             traj.divergence_info = Some((t, i, names.0.to_string()));
@@ -360,7 +360,9 @@ fn execute_steps_2d<D: OdeSystem<ArrayState<2>>, S: Solver<ArrayState<2>>>(
         traj.time_series.push(t);
         traj.y_series.push(x);
         traj.v_series.push(y);
-        solver.step(dynamics, t, &mut state, dt);
+        if i < num_steps {
+            model.step(dt);
+        }
     }
 }
 
