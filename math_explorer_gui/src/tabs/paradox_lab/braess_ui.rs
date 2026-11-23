@@ -29,49 +29,20 @@ impl BraessNetworkParadoxTool {
     }
 
     fn render_controls(&mut self, ui: &mut egui::Ui) {
-        let mut changed = false;
-        changed |= ui
-            .checkbox(&mut self.state.shortcut_open, "Open Central Shortcut (A → B)")
-            .accessible_hover_text("Toggle directed shortcut A to B on the 4-node Wheatstone network")
-            .changed();
-        changed |= ui
-            .checkbox(
-                &mut self.state.continuum_mfg_mode,
-                "Continuum Crowd Mode (HJB + Fokker-Planck)",
-            )
-            .accessible_hover_text("Switch plot between Wardrop latency curves and Mean-Field Game PDEs")
-            .changed();
-
-        ui.separator();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.state.demand, 0.2..=2.0).text("Demand D"))
-            .accessible_hover_text("Total commuter traffic demand from source S to destination T")
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.state.congestion_slope, 0.2..=3.0).text("Congestion α"))
-            .accessible_hover_text("Linear latency slope alpha on bottleneck edges S->A and B->T")
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.state.bypass_latency, 0.2..=3.0).text("Bypass β"))
-            .accessible_hover_text("Constant travel latency beta on highway edges A->T and S->B")
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.state.shortcut_cost, 0.0..=1.5).text("Shortcut Cost"))
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.state.shortcut_toll, 0.0..=1.5).text("Shortcut Toll τ"))
-            .accessible_hover_text("Pigouvian congestion toll charged on shortcut A->B")
-            .changed();
-
+        let mut changed = self.render_toggle_and_network_sliders(ui);
         if ui
-            .button(format!("Apply Optimal Pigou Toll (τ* = {:.2})", self.metrics.optimal_toll))
-            .accessible_hover_text("Set shortcut toll to marginal externality restoring Pigou social optimum")
+            .button(format!(
+                "Apply Optimal Pigou Toll (τ* = {:.2})",
+                self.metrics.optimal_toll
+            ))
+            .accessible_hover_text(
+                "Set shortcut toll to marginal externality restoring Pigou social optimum",
+            )
             .clicked()
         {
             self.state.shortcut_toll = self.metrics.optimal_toll;
             changed = true;
         }
-
         ui.separator();
         ui.label("Continuum MFG Parameters:");
         changed |= ui
@@ -86,23 +57,91 @@ impl BraessNetworkParadoxTool {
         }
     }
 
+    fn render_toggle_and_network_sliders(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        changed |= ui
+            .checkbox(
+                &mut self.state.shortcut_open,
+                "Open Central Shortcut (A → B)",
+            )
+            .accessible_hover_text(
+                "Toggle directed shortcut A to B on the 4-node Wheatstone network",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.state.continuum_mfg_mode,
+                "Continuum Crowd Mode (HJB + Fokker-Planck)",
+            )
+            .accessible_hover_text(
+                "Switch plot between Wardrop latency curves and Mean-Field Game PDEs",
+            )
+            .changed();
+        ui.separator();
+        changed |= ui
+            .add(egui::Slider::new(&mut self.state.demand, 0.2..=2.0).text("Demand D"))
+            .accessible_hover_text("Total commuter traffic demand from source S to destination T")
+            .changed();
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut self.state.congestion_slope, 0.2..=3.0).text("Congestion α"),
+            )
+            .accessible_hover_text("Linear latency slope alpha on bottleneck edges S->A and B->T")
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut self.state.bypass_latency, 0.2..=3.0).text("Bypass β"))
+            .accessible_hover_text("Constant travel latency beta on highway edges A->T and S->B")
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut self.state.shortcut_cost, 0.0..=1.5).text("Shortcut Cost"))
+            .changed();
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut self.state.shortcut_toll, 0.0..=1.5).text("Shortcut Toll τ"),
+            )
+            .accessible_hover_text("Pigouvian congestion toll charged on shortcut A->B")
+            .changed();
+        changed
+    }
+
     fn render_metrics_banner(&self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         let m = self.metrics();
-        let poa_color = if m.price_of_anarchy > 1.001 { palette.warning } else { palette.success };
+        let poa_color = if m.price_of_anarchy > 1.001 {
+            palette.warning
+        } else {
+            palette.success
+        };
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(
                 palette.series[0],
-                format!("Wardrop: {:.3} (closed {:.3})", m.wardrop_latency, m.closed_latency),
+                format!(
+                    "Wardrop: {:.3} (closed {:.3})",
+                    m.wardrop_latency, m.closed_latency
+                ),
             );
             ui.separator();
-            ui.colored_label(palette.success, format!("Pigou Opt: {:.3}", m.pigou_latency));
+            ui.colored_label(
+                palette.success,
+                format!("Pigou Opt: {:.3}", m.pigou_latency),
+            );
             ui.separator();
             ui.colored_label(poa_color, format!("PoA: {:.4}", m.price_of_anarchy));
             ui.separator();
             ui.colored_label(
-                if m.nash_fixed_point { palette.success } else { palette.error },
-                format!("Nash Fixed Point: {}", if m.nash_fixed_point { "Verified" } else { "False" }),
+                if m.nash_fixed_point {
+                    palette.success
+                } else {
+                    palette.error
+                },
+                format!(
+                    "Nash Fixed Point: {}",
+                    if m.nash_fixed_point {
+                        "Verified"
+                    } else {
+                        "False"
+                    }
+                ),
             );
             ui.separator();
             ui.colored_label(palette.muted_text, format!("CFL: {:.3}", m.mfg_cfl_ratio));
@@ -125,7 +164,11 @@ impl BraessNetworkParadoxTool {
                 ui.ctx(),
                 format!(
                     "Shortcut A to B {}, Wardrop latency {:.2}, Price of Anarchy {:.3}",
-                    if self.state.shortcut_open { "opened" } else { "closed" },
+                    if self.state.shortcut_open {
+                        "opened"
+                    } else {
+                        "closed"
+                    },
                     self.metrics.wardrop_latency,
                     self.metrics.price_of_anarchy
                 ),
@@ -134,7 +177,11 @@ impl BraessNetworkParadoxTool {
 
         let summary = format!(
             "Shortcut {}, flows Upper {:.2}, Lower {:.2}, Zig-zag {:.2}, PoA {:.3}",
-            if self.state.shortcut_open { "open" } else { "closed" },
+            if self.state.shortcut_open {
+                "open"
+            } else {
+                "closed"
+            },
             self.metrics.wardrop_flow[0],
             self.metrics.wardrop_flow[1],
             self.metrics.wardrop_flow[2],
@@ -163,35 +210,44 @@ impl BraessNetworkParadoxTool {
         let (s_pos, t_pos) = (egui::pos2(cx - dx, cy), egui::pos2(cx + dx, cy));
         let (a_pos, b_pos) = (egui::pos2(cx, cy - dy), egui::pos2(cx, cy + dy));
 
-        painter.line_segment([s_pos, a_pos], egui::Stroke::new(2.5_f32, palette.series[0]));
-        painter.line_segment([a_pos, t_pos], egui::Stroke::new(2.0_f32, palette.graph_edge));
-        painter.line_segment([s_pos, b_pos], egui::Stroke::new(2.0_f32, palette.graph_edge));
-        painter.line_segment([b_pos, t_pos], egui::Stroke::new(2.5_f32, palette.series[0]));
-
-        let ab_color = if self.state.shortcut_open {
-            palette.error
+        for (p0, p1, width, color) in [
+            (s_pos, a_pos, 2.5_f32, palette.series[0]),
+            (a_pos, t_pos, 2.0_f32, palette.graph_edge),
+            (s_pos, b_pos, 2.0_f32, palette.graph_edge),
+            (b_pos, t_pos, 2.5_f32, palette.series[0]),
+        ] {
+            painter.line_segment([p0, p1], egui::Stroke::new(width, color));
+        }
+        let (ab_w, ab_c) = if self.state.shortcut_open {
+            (3.2_f32, palette.error)
         } else {
-            palette.muted_text
+            (1.2_f32, palette.muted_text)
         };
-        painter.line_segment(
-            [a_pos, b_pos],
-            egui::Stroke::new(if self.state.shortcut_open { 3.2_f32 } else { 1.2_f32 }, ab_color),
-        );
+        painter.line_segment([a_pos, b_pos], egui::Stroke::new(ab_w, ab_c));
 
         let font = egui::FontId::proportional(12.0_f32);
         for (pos, label) in [(s_pos, "S"), (a_pos, "A"), (b_pos, "B"), (t_pos, "T")] {
             painter.circle_filled(pos, 12.0_f32, palette.surface_fill);
-            painter.circle_stroke(pos, 12.0_f32, egui::Stroke::new(2.0_f32, palette.node_stroke));
-            painter.text(pos, egui::Align2::CENTER_CENTER, label, font.clone(), palette.node_stroke);
+            painter.circle_stroke(
+                pos,
+                12.0_f32,
+                egui::Stroke::new(2.0_f32, palette.node_stroke),
+            );
+            painter.text(
+                pos,
+                egui::Align2::CENTER_CENTER,
+                label,
+                font.clone(),
+                palette.node_stroke,
+            );
         }
         let f = self.metrics.wardrop_flow;
-        let p_ab = self.metrics.pigou_flow[2];
         painter.text(
             egui::pos2(rect.left() + 10.0, rect.top() + 14.0),
             egui::Align2::LEFT_CENTER,
             format!(
                 "Flows: S→A→T {:.2} | S→B→T {:.2} | S→A→B→T {:.2} (Pigou A→B {:.2})",
-                f[0], f[1], f[2], p_ab
+                f[0], f[1], f[2], self.metrics.pigou_flow[2]
             ),
             font,
             palette.info,
@@ -201,54 +257,90 @@ impl BraessNetworkParadoxTool {
     fn render_active_plot(&self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         if self.state.continuum_mfg_mode {
-            Plot::new(ui.id().with("braess_mfg_plot"))
-                .legend(Legend::default())
-                .x_axis_label("Corridor Position x")
-                .y_axis_label("HJB Value u(x,t) / Fokker-Planck Crowd Density m(x,t)")
-                .show(ui, |plot_ui| {
-                    plot_ui.line(
-                        Line::new("HJB Value u(x, 0)", PlotPoints::from(self.mfg_u0.clone()))
-                            .color(palette.accent)
-                            .style(LineStyle::Dashed { length: 7.0_f32 })
-                            .width(2.0_f32),
-                    );
-                    for (name, pts, color, w) in [
-                        ("Initial Density m(x, 0)", &self.mfg_m0, palette.series[0], 1.8_f32),
-                        ("Midpoint Density m(x, T/2)", &self.mfg_m_mid, palette.series[1], 2.2_f32),
-                        ("Terminal Density m(x, T)", &self.mfg_m_final, palette.success, 2.4_f32),
-                    ] {
-                        plot_ui.line(Line::new(name, PlotPoints::from(pts.clone())).color(color).width(w));
-                    }
-                });
+            self.render_mfg_plot(ui, &palette);
         } else {
-            Plot::new(ui.id().with("braess_latency_plot"))
-                .legend(Legend::default())
-                .x_axis_label("Commuter Demand D")
-                .y_axis_label("Average Commuter Travel Time L(D)")
-                .show(ui, |plot_ui| {
-                    plot_ui.vline(
-                        VLine::new("Active Demand D", self.state.demand)
-                            .color(palette.accent)
-                            .style(LineStyle::Dashed { length: 6.0_f32 }),
-                    );
-                    plot_ui.line(
-                        Line::new("Wardrop Selfish Latency", PlotPoints::from(self.curve_wardrop.clone()))
-                            .color(palette.error)
-                            .width(2.5_f32),
-                    );
-                    plot_ui.line(
-                        Line::new("Closed-Shortcut Latency", PlotPoints::from(self.curve_closed.clone()))
-                            .color(palette.series[0])
-                            .style(LineStyle::Dashed { length: 8.0_f32 })
-                            .width(2.0_f32),
-                    );
-                    plot_ui.line(
-                        Line::new("Pigou Social Optimum", PlotPoints::from(self.curve_pigou.clone()))
-                            .color(palette.success)
-                            .width(2.2_f32),
-                    );
-                });
+            self.render_latency_plot(ui, &palette);
         }
+    }
+
+    fn render_mfg_plot(&self, ui: &mut egui::Ui, palette: &SemanticPalette) {
+        Plot::new(ui.id().with("braess_mfg_plot"))
+            .legend(Legend::default())
+            .x_axis_label("Corridor Position x")
+            .y_axis_label("HJB Value u(x,t) / Fokker-Planck Crowd Density m(x,t)")
+            .show(ui, |plot_ui| {
+                plot_ui.line(
+                    Line::new("HJB Value u(x, 0)", PlotPoints::from(self.mfg_u0.clone()))
+                        .color(palette.accent)
+                        .style(LineStyle::Dashed { length: 7.0_f32 })
+                        .width(2.0_f32),
+                );
+                for (name, pts, color, w) in [
+                    (
+                        "Initial Density m(x, 0)",
+                        &self.mfg_m0,
+                        palette.series[0],
+                        1.8_f32,
+                    ),
+                    (
+                        "Midpoint Density m(x, T/2)",
+                        &self.mfg_m_mid,
+                        palette.series[1],
+                        2.2_f32,
+                    ),
+                    (
+                        "Terminal Density m(x, T)",
+                        &self.mfg_m_final,
+                        palette.success,
+                        2.4_f32,
+                    ),
+                ] {
+                    plot_ui.line(
+                        Line::new(name, PlotPoints::from(pts.clone()))
+                            .color(color)
+                            .width(w),
+                    );
+                }
+            });
+    }
+
+    fn render_latency_plot(&self, ui: &mut egui::Ui, palette: &SemanticPalette) {
+        Plot::new(ui.id().with("braess_latency_plot"))
+            .legend(Legend::default())
+            .x_axis_label("Commuter Demand D")
+            .y_axis_label("Average Commuter Travel Time L(D)")
+            .show(ui, |plot_ui| {
+                plot_ui.vline(
+                    VLine::new("Active Demand D", self.state.demand)
+                        .color(palette.accent)
+                        .style(LineStyle::Dashed { length: 6.0_f32 }),
+                );
+                plot_ui.line(
+                    Line::new(
+                        "Wardrop Selfish Latency",
+                        PlotPoints::from(self.curve_wardrop.clone()),
+                    )
+                    .color(palette.error)
+                    .width(2.5_f32),
+                );
+                plot_ui.line(
+                    Line::new(
+                        "Closed-Shortcut Latency",
+                        PlotPoints::from(self.curve_closed.clone()),
+                    )
+                    .color(palette.series[0])
+                    .style(LineStyle::Dashed { length: 8.0_f32 })
+                    .width(2.0_f32),
+                );
+                plot_ui.line(
+                    Line::new(
+                        "Pigou Social Optimum",
+                        PlotPoints::from(self.curve_pigou.clone()),
+                    )
+                    .color(palette.success)
+                    .width(2.2_f32),
+                );
+            });
     }
 }
 

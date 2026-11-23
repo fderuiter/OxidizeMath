@@ -32,7 +32,9 @@ impl ParrondoParadoxTool {
                     .text("Bias ε")
                     .step_by(0.0005),
             )
-            .accessible_hover_text("Coin disadvantage epsilon subtracted from fair win probabilities")
+            .accessible_hover_text(
+                "Coin disadvantage epsilon subtracted from fair win probabilities",
+            )
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.state.mix_gamma, 0.0..=1.0).text("Mix γ (Game A)"))
@@ -160,15 +162,27 @@ impl ParrondoParadoxTool {
     fn render_drift_banner(&self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         let m = self.metrics();
-        let color_for = |d: f64| if d >= 0.0 { palette.success } else { palette.error };
+        let color_for = |d: f64| {
+            if d >= 0.0 {
+                palette.success
+            } else {
+                palette.error
+            }
+        };
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(color_for(m.drift_a), format!("μ(A): {:+.5}", m.drift_a));
             ui.separator();
             ui.colored_label(color_for(m.drift_b), format!("μ(B): {:+.5}", m.drift_b));
             ui.separator();
-            ui.colored_label(color_for(m.drift_abb), format!("μ(ABB): {:+.5}", m.drift_abb));
+            ui.colored_label(
+                color_for(m.drift_abb),
+                format!("μ(ABB): {:+.5}", m.drift_abb),
+            );
             ui.separator();
-            ui.colored_label(color_for(m.drift_mix), format!("μ(Mix): {:+.5}", m.drift_mix));
+            ui.colored_label(
+                color_for(m.drift_mix),
+                format!("μ(Mix): {:+.5}", m.drift_mix),
+            );
         });
     }
 
@@ -188,10 +202,30 @@ impl ParrondoParadoxTool {
                 );
                 for (name, slice, color, width) in [
                     ("Game A (Pure)", &self.traj_a[..end], palette.error, 2.0_f32),
-                    ("Game B (Pure)", &self.traj_b[..end], palette.series[1], 2.0_f32),
-                    ("Periodic ABB", &self.traj_abb[..end], palette.success, 2.5_f32),
-                    ("Random Mixture", &self.traj_mix[..end], palette.series[0], 2.0_f32),
-                    ("Gillespie SSA Ratchet", &self.traj_ssa[..end], palette.series[4], 1.4_f32),
+                    (
+                        "Game B (Pure)",
+                        &self.traj_b[..end],
+                        palette.series[1],
+                        2.0_f32,
+                    ),
+                    (
+                        "Periodic ABB",
+                        &self.traj_abb[..end],
+                        palette.success,
+                        2.5_f32,
+                    ),
+                    (
+                        "Random Mixture",
+                        &self.traj_mix[..end],
+                        palette.series[0],
+                        2.0_f32,
+                    ),
+                    (
+                        "Gillespie SSA Ratchet",
+                        &self.traj_ssa[..end],
+                        palette.series[4],
+                        1.4_f32,
+                    ),
                 ] {
                     plot_ui.line(
                         Line::new(name, PlotPoints::from(slice.to_vec()))
@@ -262,13 +296,55 @@ impl InteractiveTool for ParrondoParadoxTool {
             ("Game B (Pure)".into(), self.traj_b[..end].to_vec()),
             ("Periodic ABB".into(), self.traj_abb[..end].to_vec()),
             ("Random Mixture".into(), self.traj_mix[..end].to_vec()),
-            ("Markov Stationary Drift".into(), self.traj_exact[..end].to_vec()),
-            ("Gillespie SSA Ratchet".into(), self.traj_ssa[..end].to_vec()),
+            (
+                "Markov Stationary Drift".into(),
+                self.traj_exact[..end].to_vec(),
+            ),
+            (
+                "Gillespie SSA Ratchet".into(),
+                self.traj_ssa[..end].to_vec(),
+            ),
         ]
     }
     fn step_simulation(&mut self) {
         self.state.seed = self.state.seed.wrapping_add(1);
         self.rebuild_full_simulation();
+    }
+}
+
+impl ParrondoParadoxTool {
+    #[cfg(test)]
+    pub(super) fn completed_steps(&self) -> usize {
+        self.current_step
+    }
+
+    #[cfg(test)]
+    pub(super) fn abb_terminal_capital(&self) -> f64 {
+        self.traj_abb.last().map_or(0.0, |p| p[1])
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_test_configuration(
+        &mut self,
+        variant: ParrondoVariant,
+        eps: f64,
+        walkers: usize,
+        steps: usize,
+    ) {
+        self.state.variant = variant;
+        self.state.bias_epsilon = eps;
+        self.state.walkers = walkers;
+        self.state.steps = steps;
+        self.rebuild_full_simulation();
+    }
+
+    pub(super) fn focus_slope(&self) -> f64 {
+        match self.state.focus_schedule {
+            ParrondoSchedule::PureA => self.metrics.drift_a,
+            ParrondoSchedule::PureB => self.metrics.drift_b,
+            ParrondoSchedule::PeriodicABB => self.metrics.drift_abb,
+            ParrondoSchedule::RandomMix => self.metrics.drift_mix,
+        }
     }
 }
 

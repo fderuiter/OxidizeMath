@@ -122,8 +122,16 @@ impl StochasticSystem<ParrondoSsaState> for ParrondoGillespieSystem {
         };
         out.push(p_win);
         out.push((1.0 - p_win).max(0.0));
-        out.push(if state.active_game == 0 { self.switch_ab } else { 0.0 });
-        out.push(if state.active_game == 1 { self.switch_ba } else { 0.0 });
+        out.push(if state.active_game == 0 {
+            self.switch_ab
+        } else {
+            0.0
+        });
+        out.push(if state.active_game == 1 {
+            self.switch_ba
+        } else {
+            0.0
+        });
     }
 
     fn react(&self, state: &mut ParrondoSsaState, idx: usize) -> Result<(), StochasticError> {
@@ -195,7 +203,9 @@ pub struct ParrondoParadoxTool {
 fn next_markov_state(variant: ParrondoVariant, cur: usize, won: bool) -> usize {
     match variant {
         ParrondoVariant::CapitalDependent => (cur + if won { 1 } else { 2 }) % 3,
-        ParrondoVariant::HistoryDependent => usize::from(cur == 1 || cur == 3) * 2 + usize::from(won),
+        ParrondoVariant::HistoryDependent => {
+            usize::from(cur == 1 || cur == 3) * 2 + usize::from(won)
+        }
     }
 }
 
@@ -236,7 +246,12 @@ fn stationary_drift(mat: &DMatrix<f64>, probs: &[f64; 4]) -> f64 {
     (0..n).map(|s| pi[s] * (2.0 * probs[s] - 1.0)).sum()
 }
 
-fn compute_abb_tensor_metrics(p_a: &DMatrix<f64>, p_b: &DMatrix<f64>, win_a: &[f64; 4], win_b: &[f64; 4]) -> (f64, f64, f64) {
+fn compute_abb_tensor_metrics(
+    p_a: &DMatrix<f64>,
+    p_b: &DMatrix<f64>,
+    win_a: &[f64; 4],
+    win_b: &[f64; 4],
+) -> (f64, f64, f64) {
     let n = p_a.nrows();
     let (t_min, t_mid, t_one, t_max) = (
         TimeIndex::new(0.0).unwrap(),
@@ -323,43 +338,9 @@ impl Default for ParrondoParadoxTool {
 }
 
 impl ParrondoParadoxTool {
-    /// Returns analytical stationary drift metrics for all four schedules.
+    /// Returns analytical stationary-distribution drift metrics for all four schedules.
     pub fn metrics(&self) -> ParrondoMetrics {
         self.metrics
-    }
-
-    #[cfg(test)]
-    pub(super) fn completed_steps(&self) -> usize {
-        self.current_step
-    }
-
-    #[cfg(test)]
-    pub(super) fn abb_terminal_capital(&self) -> f64 {
-        self.traj_abb.last().map_or(0.0, |p| p[1])
-    }
-
-    #[cfg(test)]
-    pub(super) fn set_test_configuration(
-        &mut self,
-        variant: ParrondoVariant,
-        eps: f64,
-        walkers: usize,
-        steps: usize,
-    ) {
-        self.state.variant = variant;
-        self.state.bias_epsilon = eps;
-        self.state.walkers = walkers;
-        self.state.steps = steps;
-        self.rebuild_full_simulation();
-    }
-
-    pub(super) fn focus_slope(&self) -> f64 {
-        match self.state.focus_schedule {
-            ParrondoSchedule::PureA => self.metrics.drift_a,
-            ParrondoSchedule::PureB => self.metrics.drift_b,
-            ParrondoSchedule::PeriodicABB => self.metrics.drift_abb,
-            ParrondoSchedule::RandomMix => self.metrics.drift_mix,
-        }
     }
 
     /// Pre-allocates walker and trajectory buffers at step 0 for zero-allocation stepping.
@@ -409,7 +390,11 @@ impl ParrondoParadoxTool {
             return;
         }
         let next_step = self.current_step + 1;
-        let (variant, win_a, win_b) = (self.state.variant, self.ssa_system.win_a, self.ssa_system.win_b);
+        let (variant, win_a, win_b) = (
+            self.state.variant,
+            self.ssa_system.win_a,
+            self.ssa_system.win_b,
+        );
         let mean_a = advance_walkers(&mut self.walkers_a, &mut self.rng, variant, &win_a);
         let mean_b = advance_walkers(&mut self.walkers_b, &mut self.rng, variant, &win_b);
         let abb_probs = if self.current_step.is_multiple_of(3) {
@@ -485,7 +470,11 @@ fn advance_mix_walkers(
     let mut sum = 0.0;
     for w in walkers.iter_mut() {
         let idx = usize::from(w.state).min(3);
-        let p = if rng.r#gen::<f64>() < gamma { win_a[idx] } else { win_b[idx] };
+        let p = if rng.r#gen::<f64>() < gamma {
+            win_a[idx]
+        } else {
+            win_b[idx]
+        };
         let won = rng.r#gen::<f64>() < p;
         w.capital += if won { 1 } else { -1 };
         w.state = next_markov_state(variant, idx, won) as u8;

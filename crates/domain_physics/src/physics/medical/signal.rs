@@ -1,3 +1,5 @@
+use nalgebra::Point3;
+
 /// Models a Dirac Delta Composite Function for beam pulses.
 ///
 /// $$ g(x) = \sum_{n=0}^{(t_{off} - t_{on})/\Delta t} \delta(x - x_n) $$
@@ -38,4 +40,14 @@ pub fn dirac_pulse_count(t_on: f64, t_off: f64, delta_t: f64) -> usize {
 #[verified_engine::verified]
 pub fn signal_front_delay(phase_slope_high_freq: f64) -> f64 {
     phase_slope_high_freq
+}
+
+/// Calculates the arithmetic mean of vertex Z-coordinates across a surface ROI mesh.
+#[verified_engine::verified]
+pub(super) fn mean_vertex_height(vertices: &[Point3<f64>]) -> f64 {
+    if vertices.is_empty() {
+        return 0.0;
+    }
+    let sum_z: f64 = vertices.iter().map(|p| p.z).sum();
+    sum_z / vertices.len() as f64
 }

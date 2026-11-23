@@ -134,7 +134,8 @@ fn solve_flows_for_demand(s: &BraessState, demand: f64) -> ([f64; 3], [f64; 3], 
         let half = [0.5 * demand, 0.5 * demand, 0.0];
         return (half, half, closed_lat);
     }
-    let x2_w = ((2.0 * (s.bypass_latency - s.shortcut_cost - s.shortcut_toll) / s.congestion_slope)
+    let x2_w = ((2.0 * (s.bypass_latency - s.shortcut_cost - s.shortcut_toll)
+        / s.congestion_slope)
         - demand)
         .clamp(0.0, demand);
     let wardrop = [0.5 * (demand - x2_w), 0.5 * (demand - x2_w), x2_w];
@@ -152,8 +153,8 @@ fn smith_step_array(flow: [f64; 3], s: &BraessState) -> [f64; 3] {
     for i in 0..k {
         let mut delta = 0.0;
         for j in 0..k {
-            delta += flow[j] * (costs[j] - costs[i]).max(0.0)
-                - flow[i] * (costs[i] - costs[j]).max(0.0);
+            delta +=
+                flow[j] * (costs[j] - costs[i]).max(0.0) - flow[i] * (costs[i] - costs[j]).max(0.0);
         }
         next[i] = (flow[i] + eta * delta).max(0.0);
     }
@@ -234,7 +235,10 @@ impl BraessNetworkParadoxTool {
     #[cfg(test)]
     pub(super) fn has_finite_mfg_profiles(&self) -> bool {
         self.mfg_u0.iter().all(|p| p[1].is_finite())
-            && self.mfg_m_final.iter().all(|p| p[1].is_finite() && p[1] >= 0.0)
+            && self
+                .mfg_m_final
+                .iter()
+                .all(|p| p[1].is_finite() && p[1] >= 0.0)
     }
 
     /// Advances zero-allocation Smith route-switching flow toward the Wardrop equilibrium.
@@ -287,7 +291,8 @@ impl BraessNetworkParadoxTool {
             let mut probe = self.state.clone();
             probe.demand = d;
             let (w, p, closed) = solve_flows_for_demand(&probe, d);
-            self.curve_wardrop.push([d, avg_physical_latency(w, &probe)]);
+            self.curve_wardrop
+                .push([d, avg_physical_latency(w, &probe)]);
             self.curve_closed.push([d, closed]);
             self.curve_pigou.push([d, avg_physical_latency(p, &probe)]);
         }
@@ -317,7 +322,8 @@ impl BraessNetworkParadoxTool {
         };
         let running = |p: Position, d: Density| alpha * d.0 + well * (-p.0 * p.0 / 0.08).exp();
         let terminal = |p: Position, d: Density| 0.4 * beta * p.0 * p.0 + 0.2 * alpha * d.0;
-        let bimodal = |x: f64| (-((x + 0.42).powi(2)) / 0.06).exp() + (-((x - 0.42).powi(2)) / 0.06).exp();
+        let bimodal =
+            |x: f64| (-((x + 0.42).powi(2)) / 0.06).exp() + (-((x - 0.42).powi(2)) / 0.06).exp();
         let mass = (0..nx)
             .map(|i| bimodal(cfg.space_min + (i as f64) * cfg.dx))
             .sum::<f64>()
@@ -325,7 +331,12 @@ impl BraessNetworkParadoxTool {
         let init = |p: Position| bimodal(p.0) / mass.max(1e-9);
 
         let (u, m) = FixedPointSolver::new(10).solve(&cfg, &running, &terminal, &init);
-        for buf in [&mut self.mfg_u0, &mut self.mfg_m0, &mut self.mfg_m_mid, &mut self.mfg_m_final] {
+        for buf in [
+            &mut self.mfg_u0,
+            &mut self.mfg_m0,
+            &mut self.mfg_m_mid,
+            &mut self.mfg_m_final,
+        ] {
             buf.clear();
         }
         for i in 0..nx {
