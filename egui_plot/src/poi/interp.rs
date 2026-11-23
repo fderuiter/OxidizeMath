@@ -107,6 +107,48 @@ pub(crate) struct SingleLineScan {
     pub(crate) extrema: Vec<([f64; 2], bool)>,
 }
 
+fn skip_plateau_chunks(
+    pts: &[PlotPoint],
+    start_idx: usize,
+    y_val: f64,
+    want_y_ints: bool,
+    p0_x: f64,
+) -> Option<(usize, PlotPoint)> {
+    let (x_min, x_max) = if !want_y_ints {
+        (f64::MIN, f64::MAX)
+    } else if p0_x > 0.0 {
+        (f64::from_bits(1), f64::MAX)
+    } else if p0_x < 0.0 {
+        (f64::MIN, -f64::from_bits(1))
+    } else {
+        return None;
+    };
+    macro_rules! ok_pt {
+        ($p:expr) => {
+            ($p.y == y_val) & ($p.x >= x_min) & ($p.x <= x_max)
+        };
+    }
+    let (chunks, _) = pts[start_idx..].as_chunks::<8>();
+    let mut skipped = 0usize;
+    let mut tail = PlotPoint { x: 0.0, y: 0.0 };
+    for &[a0, a1, a2, a3, a4, a5, a6, a7] in chunks {
+        if !(ok_pt!(a0)
+            & ok_pt!(a1)
+            & ok_pt!(a2)
+            & ok_pt!(a3)
+            & ok_pt!(a4)
+            & ok_pt!(a5)
+            & ok_pt!(a6)
+            & ok_pt!(a7))
+        {
+            break;
+        }
+        skipped += 8;
+        tail = a7;
+    }
+    (skipped > 0).then_some((start_idx + skipped, tail))
+}
+
 /// Fused single-pass streaming scan for $y = 0$ roots, $x = 0$ intercepts, and local extrema.
 pub(crate) fn scan_single_line_all(
     pts: &[PlotPoint],
@@ -128,6 +170,18 @@ pub(crate) fn scan_single_line_all(
     let (mut mode, mut prev, mut start, mut second, mut last) = (0u8, dummy, dummy, dummy, dummy);
     let mut i = 1;
     while i < n {
+        if p0_fin
+            && (mode == 0 || mode == 2)
+            && n - i >= 8
+            && let Some((next_i, tail)) = skip_plateau_chunks(pts, i, p0.y, want_y_ints, p0.x)
+        {
+            if mode == 2 {
+                last = tail;
+            }
+            p0 = tail;
+            i = next_i;
+            continue;
+        }
         let idx = i - 1;
         let p1 = pts[i];
         i += 1;
