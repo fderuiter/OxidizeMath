@@ -3,6 +3,7 @@
 mod cache;
 mod canvas;
 mod controls;
+mod interact;
 mod presets;
 mod shader;
 #[cfg(test)]
@@ -138,11 +139,14 @@ pub struct PotentialFlowTool {
     pub(crate) selected_element: Option<usize>,
     pub(crate) selected_probe: usize,
     pub(crate) active_drag: Option<DragTarget>,
+    pub(crate) active_drag_element: Option<usize>,
     pub(crate) focus_target: FocusTarget,
     pub(crate) reticle: [f64; 2],
     pub(crate) dye_probes: Vec<DyeProbe>,
     pub(crate) cached_handles: Vec<(DragTarget, egui::Pos2)>,
+    pub(crate) cached_polylines: Vec<Vec<[f64; 2]>>,
     pub(crate) last_canvas_id: Option<egui::Id>,
+    pub(crate) focused_plot_id: Option<egui::Id>,
     pub(crate) callout_manager: crate::framework::CalloutManager,
     pub(crate) contour_cache: cache::ContourCache,
     pub(crate) origins: Vec<PlotPoint>,
@@ -153,28 +157,30 @@ pub struct PotentialFlowTool {
     pub(crate) cached_arrow_view_bits: u64,
 }
 
+fn default_cylinder_elements() -> Vec<SerializedFlowElement> {
+    vec![
+        SerializedFlowElement {
+            element_type: ElementType::Uniform,
+            strength: 10.0,
+            x: 0.0,
+            y: 0.0,
+            angle: 0.0,
+        },
+        SerializedFlowElement {
+            element_type: ElementType::Doublet,
+            strength: 2.0 * PI * 10.0 * 2.0 * 2.0,
+            x: 0.0,
+            y: 0.0,
+            angle: 0.0,
+        },
+    ]
+}
+
 impl Default for PotentialFlowTool {
     fn default() -> Self {
-        let kappa = 2.0 * PI * 10.0 * 2.0 * 2.0;
-        let elements = vec![
-            SerializedFlowElement {
-                element_type: ElementType::Uniform,
-                strength: 10.0,
-                x: 0.0,
-                y: 0.0,
-                angle: 0.0,
-            },
-            SerializedFlowElement {
-                element_type: ElementType::Doublet,
-                strength: kappa,
-                x: 0.0,
-                y: 0.0,
-                angle: 0.0,
-            },
-        ];
         let mut tool = Self {
             field: PotentialFlowField::new(),
-            elements,
+            elements: default_cylinder_elements(),
             grid_size: 20,
             view_range: 10.0,
             selected_element_type: ElementType::Source,
@@ -198,11 +204,14 @@ impl Default for PotentialFlowTool {
             selected_element: Some(1),
             selected_probe: 4,
             active_drag: None,
+            active_drag_element: None,
             focus_target: FocusTarget::Reticle,
             reticle: [0.0, 3.0],
             dye_probes: Vec::new(),
             cached_handles: Vec::new(),
+            cached_polylines: Vec::new(),
             last_canvas_id: None,
+            focused_plot_id: None,
             callout_manager: crate::framework::CalloutManager::new(),
             contour_cache: cache::ContourCache::default(),
             origins: Vec::new(),
@@ -246,10 +255,21 @@ impl InteractiveTool for PotentialFlowTool {
         self.build_glsl_shader(dialect)
     }
 
+    fn on_click(&mut self, ctx: &crate::framework::InteractionContext) {
+        self.handle_flow_click(ctx);
+    }
+
+    fn on_drag(&mut self, ctx: &crate::framework::InteractionContext) {
+        self.handle_flow_drag(ctx);
+    }
+
     fn on_brush(&mut self, ctx: &crate::framework::InteractionContext) {
-        if let Some(ref stroke) = ctx.brush_stroke {
-            self.apply_flow_brush_stroke(stroke);
-        }
+        self.apply_flow_brush_context(ctx);
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_plot_id
+            .or_else(|| self.brush_kit.focused_plot_id())
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -328,6 +348,7 @@ impl PotentialFlowTool {
             }
         }
         self.reseed_dye_streaks();
+        self.refresh_contour_cache();
         self.grid_revision = self.grid_revision.wrapping_add(1);
     }
 
@@ -413,47 +434,6 @@ impl PotentialFlowTool {
                 }
             }
         }
-    }
-
-    pub(crate) fn add_element(&mut self) {
-        self.stamp_element_at(self.new_element_x, self.new_element_y);
-    }
-
-    pub(crate) fn stamp_element_at(&mut self, x: f64, y: f64) -> Option<usize> {
-        if self.elements.len() >= crate::framework::MAX_JSON_ARRAY_LEN {
-            return None;
-        }
-        self.elements.push(SerializedFlowElement {
-            element_type: self.selected_element_type,
-            strength: self
-                .new_element_strength
-                .clamp(FLOW_STRENGTH_MIN, FLOW_STRENGTH_MAX),
-            x: x.clamp(FLOW_POS_MIN, FLOW_POS_MAX),
-            y: y.clamp(FLOW_POS_MIN, FLOW_POS_MAX),
-            angle: self.new_element_angle.clamp(FLOW_ANGLE_MIN, FLOW_ANGLE_MAX),
-        });
-        let idx = self.elements.len() - 1;
-        self.selected_element = Some(idx);
-        self.rebuild_field();
-        Some(idx)
-    }
-
-    pub(crate) fn delete_element(&mut self, idx: usize) -> Option<SerializedFlowElement> {
-        if idx >= self.elements.len() {
-            return None;
-        }
-        let removed = self.elements.remove(idx);
-        self.rebuild_field();
-        Some(removed)
-    }
-
-    pub(crate) fn clear(&mut self) {
-        self.elements.clear();
-        self.origins.clear();
-        self.tips.clear();
-        self.selected_element = None;
-        self.focus_target = FocusTarget::Reticle;
-        self.rebuild_field();
     }
 }
 

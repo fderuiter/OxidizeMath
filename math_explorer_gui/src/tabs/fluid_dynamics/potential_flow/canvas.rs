@@ -9,6 +9,7 @@ use crate::accessibility::{
     register_canvas_accessibility,
 };
 use crate::app::SemanticPalette;
+use crate::framework::{BrushMode, PlotBrushController, PlotBrushFrame};
 use eframe::egui;
 use egui_plot::{Arrows, Line, MarkerShape, Plot, PlotPoint, PlotUi, Points};
 
@@ -28,7 +29,7 @@ impl PotentialFlowTool {
             .map(|(t, _)| t)
     }
 
-    pub(super) fn render_canvas(&mut self, ui: &mut egui::Ui) {
+    fn canvas_interaction_flags(&self, ui: &egui::Ui) -> (f32, bool, bool, bool) {
         let hit_radius = if ui.ctx().input(|i| i.any_touches()) {
             22.0
         } else {
@@ -42,14 +43,20 @@ impl PotentialFlowTool {
             .input(|i| i.pointer.hover_pos())
             .and_then(|p| self.hit_test_cached_handle(p, hit_radius))
             .is_some();
-        let sculpting = self.brush_kit.is_sculpting();
+        let sculpting = self.brush_kit.is_sculpting() && !self.stamp_mode;
         let allow_drag =
             !sculpting && !self.stamp_mode && self.active_drag.is_none() && !press_hits;
         let allow_wheel_zoom = !sculpting && !hover_hits && self.active_drag.is_none();
+        (hit_radius, sculpting, allow_drag, allow_wheel_zoom)
+    }
+
+    pub(super) fn render_canvas(&mut self, ui: &mut egui::Ui) {
+        let (hit_radius, sculpting, allow_drag, allow_wheel_zoom) =
+            self.canvas_interaction_flags(ui);
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
             let r = self.view_range.max(0.5);
-            let mut strokes = Vec::new();
+            let mut brush_frame: Option<PlotBrushFrame> = None;
             let plot_resp = Plot::new("potential_flow_plot")
                 .data_aspect(1.0)
                 .view_aspect(1.0)
@@ -61,19 +68,23 @@ impl PotentialFlowTool {
                 .allow_zoom(allow_wheel_zoom)
                 .allow_scroll(allow_wheel_zoom)
                 .show(ui, |plot_ui| {
-                    strokes = self.render_canvas_plot_contents(plot_ui, hit_radius, r, sculpting);
+                    brush_frame =
+                        self.render_canvas_plot_contents(plot_ui, hit_radius, r, sculpting);
                 });
 
-            for stroke in strokes {
-                let ic = crate::framework::InteractionContext::from_brush_stroke(
-                    &plot_resp.response,
-                    stroke,
-                );
-                crate::framework::InteractiveTool::on_brush(self, &ic);
-            }
             self.last_canvas_id = Some(plot_resp.response.id);
-            lock_canvas_arrow_keys(ui, &plot_resp.response);
-            if !sculpting {
+            self.focused_plot_id = plot_resp
+                .response
+                .has_focus()
+                .then_some(plot_resp.response.id);
+            if let Some(frame) = brush_frame {
+                if !frame.is_dragging {
+                    self.active_drag_element = None;
+                    self.active_drag = None;
+                }
+                frame.dispatch(ui, &plot_resp.response, self);
+            } else {
+                lock_canvas_arrow_keys(ui, &plot_resp.response);
                 paint_canvas_focus_ring(ui, &plot_resp.response);
             }
             let summary = self.canvas_accessibility_summary();
@@ -93,26 +104,25 @@ impl PotentialFlowTool {
         hit_radius: f32,
         r: f64,
         sculpting: bool,
-    ) -> Vec<crate::framework::BrushStroke> {
+    ) -> Option<PlotBrushFrame> {
         self.refresh_cached_handles(plot_ui);
         if !sculpting {
             self.handle_canvas_pointer(plot_ui, hit_radius);
-            self.handle_canvas_wheel(plot_ui, hit_radius);
             if plot_ui.response().has_focus() {
                 self.handle_canvas_keyboard(plot_ui);
             }
         }
+        self.handle_canvas_wheel(plot_ui, hit_radius);
         let focused = plot_ui.response().has_focus();
-        let strokes = if sculpting {
-            self.brush_kit.sample_plot(
+        let frame = sculpting.then(|| {
+            PlotBrushController::capture_plot(
+                &mut self.brush_kit,
                 plot_ui,
                 [-r, -r],
                 [r, r],
-                Some(crate::framework::BrushMode::Erase),
+                Some(BrushMode::Erase),
             )
-        } else {
-            Vec::new()
-        };
+        });
         self.refresh_cached_handles(plot_ui);
         let (streamlines, stag) = self.ensure_cached_contours();
         self.reconcile_arrows();
@@ -124,7 +134,7 @@ impl PotentialFlowTool {
             stag,
         );
         self.callout_manager.render_on_plot(plot_ui);
-        strokes
+        frame
     }
 
     fn refresh_cached_handles(&mut self, plot_ui: &PlotUi<'_>) {
@@ -157,7 +167,7 @@ impl PotentialFlowTool {
                 if let Some(target) = self.hit_test_cached_handle(pos, hit_radius) {
                     self.active_drag = Some(target);
                     if let DragTarget::Element(idx) = target {
-                        self.selected_element = Some(idx);
+                        self.sync_sidebar_from_element(idx);
                         self.focus_target = FocusTarget::Element(idx);
                     } else {
                         self.focus_target = FocusTarget::DyeRake;

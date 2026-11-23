@@ -32,6 +32,7 @@ fn wasm_potential_flow_presets_contours_and_state_roundtrip() {
 fn wasm_potential_flow_live_reticle_announcements() {
     init_accessibility_bridge();
     let mut tool = PotentialFlowTool::default();
+    tool.brush_kit.interaction_mode = crate::framework::BrushInteractionMode::Pan;
     let ctx = egui::Context::default();
     let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1024.0, 768.0));
     let _ = ctx.run(
@@ -41,7 +42,7 @@ fn wasm_potential_flow_live_reticle_announcements() {
         },
         |c| tool.show(c),
     );
-    let canvas_id = tool.focused_canvas_id().expect("canvas id initialized");
+    let canvas_id = tool.last_canvas_id.expect("canvas id initialized");
     ctx.memory_mut(|m| m.request_focus(canvas_id));
     let key_ev = |pressed| egui::Event::Key {
         key: egui::Key::ArrowUp,

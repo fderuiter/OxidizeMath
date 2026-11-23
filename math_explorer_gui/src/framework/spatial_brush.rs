@@ -43,8 +43,10 @@ pub enum BrushMode {
     PotentialWell,
     /// Step potential plateau from cursor $x$ to the right boundary (Quantum).
     PotentialStep,
-    /// Places or steers a potential-flow source/sink singularity.
+    /// Places or steers a potential-flow source singularity.
     FlowSource,
+    /// Places or steers a potential-flow sink singularity.
+    FlowSink,
     /// Places or steers a potential-flow point vortex singularity.
     FlowVortex,
     /// Places or steers a potential-flow doublet singularity.
@@ -78,7 +80,8 @@ impl BrushMode {
             Self::PotentialBarrier => "Finite Barrier",
             Self::PotentialWell => "Potential Well",
             Self::PotentialStep => "Potential Step",
-            Self::FlowSource => "Source / Sink",
+            Self::FlowSource => "Source",
+            Self::FlowSink => "Sink",
             Self::FlowVortex => "Vortex",
             Self::FlowDoublet => "Doublet",
             Self::RlTrap => "Trap Hazard",
@@ -380,13 +383,18 @@ impl SpatialBrushKit {
             return;
         };
 
-        let pointer_in_plot = response.hovered() || response.dragged();
+        let pointer_in_plot =
+            response.hovered() || response.dragged() || self.last_drag_pos.is_some();
         if !pointer_in_plot {
             self.last_drag_pos = None;
             return;
         }
 
-        if let Some(coord) = plot_ui.pointer_coordinate() {
+        let live_coord = ctx
+            .input(|i| i.pointer.interact_pos().or_else(|| i.pointer.latest_pos()))
+            .map(|p| plot_ui.plot_from_screen(p))
+            .or_else(|| plot_ui.pointer_coordinate());
+        if let Some(coord) = live_coord {
             let curr = [coord.x, coord.y];
             let prev = self.last_drag_pos.unwrap_or(curr);
             let drag_vector = [curr[0] - prev[0], curr[1] - prev[1]];

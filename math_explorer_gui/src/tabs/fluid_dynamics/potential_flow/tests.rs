@@ -144,10 +144,13 @@ fn test_keyboard_reticle_nudge_stamp_delete_and_unlocked_tab() {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
     let mut tool = PotentialFlowTool::default();
+    tool.brush_kit.interaction_mode = crate::framework::BrushInteractionMode::Pan;
     let _ = ctx.run(raw_screen(Vec::new()), |c| tool.show(c));
-    let canvas_id = tool.focused_canvas_id().expect("canvas id recorded");
+    assert!(tool.focused_canvas_id().is_none());
+    let canvas_id = tool.last_canvas_id.expect("canvas id recorded");
     ctx.memory_mut(|m| m.request_focus(canvas_id));
     let _ = ctx.run(raw_screen(Vec::new()), |c| tool.show(c));
+    assert_eq!(tool.focused_canvas_id(), Some(canvas_id));
     assert_eq!(ctx.memory(|m| m.focused()), Some(canvas_id));
 
     let orig_reticle = tool.reticle;
@@ -421,9 +424,10 @@ fn test_spatial_brush_sculpt_mode_keyboard_stamp_and_erase() {
     let initial_len = tool.elements.len();
 
     let _ = ctx.run(raw_screen(Vec::new()), |c| tool.show(c));
-    let canvas_id = tool.focused_canvas_id().expect("canvas id recorded");
+    let canvas_id = tool.last_canvas_id.expect("canvas id recorded");
     ctx.memory_mut(|m| m.request_focus(canvas_id));
     let _ = ctx.run(raw_screen(Vec::new()), |c| tool.show(c));
+    assert_eq!(tool.focused_canvas_id(), Some(canvas_id));
 
     for _ in 0..3 {
         let _ = ctx.run(raw_screen(key_press_events(egui::Key::ArrowRight)), |c| {

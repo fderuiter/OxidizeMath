@@ -334,47 +334,8 @@ impl PotentialFlowTool {
         canvas_focused: bool,
     ) {
         use egui_plot::{MarkerShape, Points};
-        for (kind, name, shape, color) in [
-            (
-                ElementType::Source,
-                "Sources",
-                MarkerShape::Circle,
-                palette.success,
-            ),
-            (
-                ElementType::Sink,
-                "Sinks",
-                MarkerShape::Square,
-                palette.error,
-            ),
-            (
-                ElementType::Vortex,
-                "Vortices",
-                MarkerShape::Asterisk,
-                palette.series_color(3),
-            ),
-            (
-                ElementType::Doublet,
-                "Doublets",
-                MarkerShape::Up,
-                palette.series_color(4),
-            ),
-        ] {
-            let pts: Vec<[f64; 2]> = self
-                .elements
-                .iter()
-                .filter(|e| e.element_type == kind)
-                .map(|e| [e.x, e.y])
-                .collect();
-            if !pts.is_empty() {
-                plot_ui.points(
-                    Points::new(name, pts)
-                        .shape(shape)
-                        .radius(6.5_f32)
-                        .color(color),
-                );
-            }
-        }
+        let dark_mode = plot_ui.ctx().style().visuals.dark_mode || self.high_contrast;
+        self.render_singularity_handles(plot_ui, palette, dark_mode);
         plot_ui.points(
             Points::new("Dye Rake", vec![[self.dye_rake_x, self.dye_rake_y]])
                 .shape(MarkerShape::Right)

@@ -39,12 +39,6 @@ fn is_inside_cylinder(x: f64, y: f64, cyl: Option<(f64, f64, f64)>, ratio: f64) 
 }
 
 impl PotentialFlowTool {
-    #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<eframe::egui::Id> {
-        self.last_canvas_id
-            .or_else(|| self.brush_kit.focused_plot_id())
-    }
-
     pub(crate) fn active_probe_readout(&self) -> Option<TracerProbeReadout> {
         let probe = self
             .dye_probes
@@ -262,31 +256,31 @@ impl PotentialFlowTool {
         }
     }
 
+    pub(crate) fn refresh_contour_cache(&mut self) {
+        let key = self.contour_geometry_key();
+        if self.contour_cache.contour_key == Some(key) {
+            return;
+        }
+        let r = self.view_range.max(0.5);
+        let bounds = (-r, r, -r, r);
+        let levels = self.compute_iso_levels();
+        let segs = self
+            .field
+            .extract_streamline_segments(bounds, self.contour_resolution, &levels);
+        let chains = super::presets::chain_segments(&segs);
+        self.contour_cache.streamlines = chains
+            .iter()
+            .map(|chain| Arc::new(chain.iter().map(|&[x, y]| PlotPoint::new(x, y)).collect()))
+            .collect();
+        self.cached_polylines = chains;
+        self.contour_cache.stagnation = Arc::new(self.compute_exterior_stagnation());
+        self.contour_cache.contour_key = Some(key);
+    }
+
     pub(crate) fn ensure_cached_contours(
         &mut self,
     ) -> (Vec<Arc<Vec<PlotPoint>>>, Arc<Vec<PlotPoint>>) {
-        let key = self.contour_geometry_key();
-        if self.contour_cache.contour_key != Some(key) {
-            let r = self.view_range.max(0.5);
-            let bounds = (-r, r, -r, r);
-            let levels = self.compute_iso_levels();
-            let segs =
-                self.field
-                    .extract_streamline_segments(bounds, self.contour_resolution, &levels);
-            self.contour_cache.streamlines = super::presets::chain_segments(&segs)
-                .into_iter()
-                .map(|chain| {
-                    Arc::new(
-                        chain
-                            .into_iter()
-                            .map(|[x, y]| PlotPoint::new(x, y))
-                            .collect(),
-                    )
-                })
-                .collect();
-            self.contour_cache.stagnation = Arc::new(self.compute_exterior_stagnation());
-            self.contour_cache.contour_key = Some(key);
-        }
+        self.refresh_contour_cache();
         (
             self.contour_cache
                 .streamlines
