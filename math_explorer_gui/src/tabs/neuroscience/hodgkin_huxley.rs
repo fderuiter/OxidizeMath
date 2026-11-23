@@ -4,8 +4,8 @@
 pub mod atlas;
 
 use crate::async_sim::atlas::RegimeCartographer;
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
-use crate::async_sim::StateSnapshot;
+use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool, UnifiedUiExtension};
+use crate::async_sim::{SimCommand, StateSnapshot};
 #[cfg(test)]
 pub use atlas::HodgkinHuxleyRegime;
 pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
@@ -30,9 +30,44 @@ pub struct HodgkinHuxleyUnified {
 
 impl crate::framework::recovery::FiniteStateGuard for HodgkinHuxleyUnified {}
 
+struct HodgkinHuxleyUiExtension;
+
+impl UnifiedUiExtension for HodgkinHuxleyUiExtension {
+    fn draw_side_panel_controls(
+        &mut self,
+        ui: &mut eframe::egui::Ui,
+        _latest_snapshot: Option<&StateSnapshot>,
+    ) -> Vec<SimCommand> {
+        #[cfg(feature = "pure_math")]
+        {
+            use crate::accessibility::AccessibleHoverText;
+            ui.separator();
+            if ui
+                .button("🧠 Open 3D Cortical Sheet (Riemannian Studio)")
+                .accessible_hover_text(
+                    "Launch 3D thickness-weighted Hodgkin-Huxley cortical wave propagation in Riemannian PDE Studio",
+                )
+                .clicked()
+            {
+                crate::tabs::geometry_topology::riemannian_studio::handoff::request_open_riemannian_preset(
+                    ui.ctx(),
+                    crate::tabs::geometry_topology::riemannian_studio::handoff::RiemannianPresetTarget::CorticalSpreadingDepression,
+                );
+            }
+        }
+        #[cfg(not(feature = "pure_math"))]
+        let _ = ui;
+        Vec::new()
+    }
+}
+
 impl UnifiedModel for HodgkinHuxleyUnified {
     fn domain() -> &'static str {
         "neuroscience"
+    }
+
+    fn create_ui_extension() -> Option<Box<dyn UnifiedUiExtension>> {
+        Some(Box::new(HodgkinHuxleyUiExtension))
     }
 
     fn new(params: &HashMap<String, f64>) -> Self {

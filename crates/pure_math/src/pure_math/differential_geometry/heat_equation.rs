@@ -110,112 +110,131 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         }
     }
 
+    #[verified_engine::verified]
+    fn sample_clamped(&self, i: i32, j: i32) -> f64 {
+        let (nu, nv) = self.grid_res;
+        let i_idx = i.clamp(0, (nu - 1) as i32) as usize;
+        let j_idx = j.clamp(0, (nv - 1) as i32) as usize;
+        self.u_grid[i_idx][j_idx]
+    }
+
+    #[verified_engine::verified]
+    fn flux_u_at(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
+        let u_half = self.range_u.0 + (i_base as f64 + 0.5) * du;
+        let v_curr = self.range_v.0 + j_base as f64 * dv;
+        let (e, f, g_metric) = self.surface.first_fundamental_form(u_half, v_curr);
+        let det_g = e * g_metric - f * f;
+        if det_g.abs() < 1e-12 {
+            return 0.0;
+        }
+        let sqrt_g = det_g.sqrt();
+        let f_u =
+            (self.sample_clamped(i_base + 1, j_base) - self.sample_clamped(i_base, j_base)) / du;
+        let f_v_i = (self.sample_clamped(i_base, j_base + 1)
+            - self.sample_clamped(i_base, j_base - 1))
+            / (2.0 * dv);
+        let f_v_ip1 = (self.sample_clamped(i_base + 1, j_base + 1)
+            - self.sample_clamped(i_base + 1, j_base - 1))
+            / (2.0 * dv);
+        let f_v = 0.5 * (f_v_i + f_v_ip1);
+        (g_metric * f_u - f * f_v) / sqrt_g
+    }
+
+    #[verified_engine::verified]
+    fn flux_v_at(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
+        let u_curr = self.range_u.0 + i_base as f64 * du;
+        let v_half = self.range_v.0 + (j_base as f64 + 0.5) * dv;
+        let (e, f, g_metric) = self.surface.first_fundamental_form(u_curr, v_half);
+        let det_g = e * g_metric - f * f;
+        if det_g.abs() < 1e-12 {
+            return 0.0;
+        }
+        let sqrt_g = det_g.sqrt();
+        let f_v =
+            (self.sample_clamped(i_base, j_base + 1) - self.sample_clamped(i_base, j_base)) / dv;
+        let f_u_j = (self.sample_clamped(i_base + 1, j_base)
+            - self.sample_clamped(i_base - 1, j_base))
+            / (2.0 * du);
+        let f_u_jp1 = (self.sample_clamped(i_base + 1, j_base + 1)
+            - self.sample_clamped(i_base - 1, j_base + 1))
+            / (2.0 * du);
+        let f_u = 0.5 * (f_u_j + f_u_jp1);
+        (e * f_v - f * f_u) / sqrt_g
+    }
+
     /// Advances the simulation by time step `dt`.
     /// Uses $\Delta_S f = \frac{1}{\sqrt{g}} [ \partial_u (\frac{G f_u - F f_v}{\sqrt{g}}) + \partial_v (\frac{E f_v - F f_u}{\sqrt{g}}) ]$
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
         let (nu, nv) = self.grid_res;
+        if nu < 2 || nv < 2 {
+            return;
+        }
         let du = (self.range_u.1 - self.range_u.0) / (nu as f64 - 1.0);
         let dv = (self.range_v.1 - self.range_v.0) / (nv as f64 - 1.0);
-
-        // Bolt Optimization: Use pre-allocated buffer instead of cloning the grid every step
-
-        // Safe getter with wrapping for periodicity (assuming closed surface or periodic domain like torus)
-        // For general surfaces, Neumann conditions (replicate boundary) are often safer,
-        // but for Sphere/Torus physics, wrapping is often desired on angles.
-        // Let's implement clamp for generic stability in this library context.
-        let get = |grid: &Vec<Vec<f64>>, i: i32, j: i32| -> f64 {
-            let i_idx = i.clamp(0, (nu - 1) as i32) as usize;
-            let j_idx = j.clamp(0, (nv - 1) as i32) as usize;
-            grid[i_idx][j_idx]
-        };
 
         #[allow(clippy::needless_range_loop)]
         for i in 0..nu {
             for j in 0..nv {
                 let u = self.range_u.0 + i as f64 * du;
                 let v = self.range_v.0 + j as f64 * dv;
-
-                // 1. Calculate derivatives of f at (i, j)
-                // We need half-step derivatives for the divergence.
-                // Or we can use central differences for the whole operator.
-                // Let's use central differences for the outer derivatives and central for inner.
-                // Standard discretization of divergence form:
-                // d_u (A f_u) ~ (A_{i+1/2} (f_{i+1} - f_i)/du - A_{i-1/2} (f_i - f_{i-1})/du) / du
-
-                // Let's compute flux terms at half-points.
-
-                // Flux U terms: A = (G f_u - F f_v) / sqrt(g)
-                // We need A at (i+0.5, j) and (i-0.5, j)
-
-                let compute_flux_u = |i_base: i32, j_base: i32| -> f64 {
-                    // Evaluate metric at half step u
-                    let u_half = self.range_u.0 + (i_base as f64 + 0.5) * du;
-                    let v_curr = self.range_v.0 + j_base as f64 * dv;
-                    let (e, f, g_metric) = self.surface.first_fundamental_form(u_half, v_curr);
-                    let sqrt_g = (e * g_metric - f * f).sqrt();
-
-                    // f_u at i+0.5 is (f_{i+1} - f_i) / du
-                    let f_u = (get(&self.u_grid, i_base + 1, j_base)
-                        - get(&self.u_grid, i_base, j_base))
-                        / du;
-
-                    // f_v at i+0.5 is average of f_v at i and i+1?
-                    // f_v at i = (f_{i, j+1} - f_{i, j-1}) / 2dv
-                    let f_v_i = (get(&self.u_grid, i_base, j_base + 1)
-                        - get(&self.u_grid, i_base, j_base - 1))
-                        / (2.0 * dv);
-                    let f_v_ip1 = (get(&self.u_grid, i_base + 1, j_base + 1)
-                        - get(&self.u_grid, i_base + 1, j_base - 1))
-                        / (2.0 * dv);
-                    let f_v = 0.5 * (f_v_i + f_v_ip1);
-
-                    (g_metric * f_u - f * f_v) / sqrt_g
+                let (e, f, g_metric) = self.surface.first_fundamental_form(u, v);
+                let det_g = e * g_metric - f * f;
+                let laplacian = if det_g.abs() < 1e-12 {
+                    0.0
+                } else {
+                    let flux_u_plus = self.flux_u_at(i as i32, j as i32, du, dv);
+                    let flux_u_minus = self.flux_u_at(i as i32 - 1, j as i32, du, dv);
+                    let flux_v_plus = self.flux_v_at(i as i32, j as i32, du, dv);
+                    let flux_v_minus = self.flux_v_at(i as i32, j as i32 - 1, du, dv);
+                    let term1 = (flux_u_plus - flux_u_minus) / du;
+                    let term2 = (flux_v_plus - flux_v_minus) / dv;
+                    let area = self.surface.area_element(u, v).max(1e-12);
+                    (term1 + term2) / area
                 };
-
-                let flux_u_plus = compute_flux_u(i as i32, j as i32);
-                let flux_u_minus = compute_flux_u(i as i32 - 1, j as i32);
-
-                // Flux V terms: B = (E f_v - F f_u) / sqrt(g)
-                // We need B at (i, j+0.5) and (i, j-0.5)
-
-                let compute_flux_v = |i_base: i32, j_base: i32| -> f64 {
-                    let u_curr = self.range_u.0 + i_base as f64 * du;
-                    let v_half = self.range_v.0 + (j_base as f64 + 0.5) * dv;
-                    let (e, f, g_metric) = self.surface.first_fundamental_form(u_curr, v_half);
-                    let sqrt_g = (e * g_metric - f * f).sqrt();
-
-                    // f_v at j+0.5 is (f_{j+1} - f_j) / dv
-                    let f_v = (get(&self.u_grid, i_base, j_base + 1)
-                        - get(&self.u_grid, i_base, j_base))
-                        / dv;
-
-                    // f_u at j+0.5 is average
-                    let f_u_j = (get(&self.u_grid, i_base + 1, j_base)
-                        - get(&self.u_grid, i_base - 1, j_base))
-                        / (2.0 * du);
-                    let f_u_jp1 = (get(&self.u_grid, i_base + 1, j_base + 1)
-                        - get(&self.u_grid, i_base - 1, j_base + 1))
-                        / (2.0 * du);
-                    let f_u = 0.5 * (f_u_j + f_u_jp1);
-
-                    (e * f_v - f * f_u) / sqrt_g
-                };
-
-                let flux_v_plus = compute_flux_v(i as i32, j as i32);
-                let flux_v_minus = compute_flux_v(i as i32, j as i32 - 1);
-
-                // Divergence
-                let term1 = (flux_u_plus - flux_u_minus) / du;
-                let term2 = (flux_v_plus - flux_v_minus) / dv;
-
-                let area = self.surface.area_element(u, v);
-                let laplacian = (1.0 / area) * (term1 + term2);
 
                 self.next_grid[i][j] = self.u_grid[i][j] + dt * self.alpha * laplacian;
             }
         }
 
         std::mem::swap(&mut self.u_grid, &mut self.next_grid);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
+    use super::*;
+    use crate::pure_math::differential_geometry::surface::Sphere;
+    use std::f64::consts::PI;
+    use verified_engine::engine::VerifiedEngine;
+
+    #[test]
+    fn test_heat_equation_solver_polar_domain_no_nan_and_zero_alloc() {
+        let sphere = Sphere { radius: 1.0 };
+        let mut solver = HeatEquationSolver::new(
+            &sphere,
+            0.01,
+            (0.0, 2.0 * PI),
+            (0.0, PI),
+            (16, 16),
+            |u, v| v.cos() + 0.25 * u.sin() * v.sin(),
+        );
+
+        let ((), _metrics) = VerifiedEngine::run_verified(|| {
+            for _ in 0..25 {
+                solver.step(1e-4);
+            }
+        });
+
+        for row in &solver.u_grid {
+            for &val in row {
+                assert!(
+                    val.is_finite(),
+                    "Pole-inclusive grid produced non-finite value {val}"
+                );
+            }
+        }
     }
 }

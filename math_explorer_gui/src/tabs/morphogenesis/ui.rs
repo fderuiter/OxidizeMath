@@ -246,6 +246,22 @@ impl MorphogenesisTool {
             }
         }
         ui.separator();
+        #[cfg(feature = "pure_math")]
+        {
+            use crate::accessibility::AccessibleHoverText;
+            if ui
+                .button("🌐 Open on 3D Manifold (Riemannian Studio)")
+                .accessible_hover_text(
+                    "Launch Gray-Scott Turing mitosis on a welded 3D sphere in Riemannian PDE Studio",
+                )
+                .clicked()
+            {
+                crate::tabs::geometry_topology::riemannian_studio::handoff::request_open_riemannian_preset(
+                    ui.ctx(),
+                    crate::tabs::geometry_topology::riemannian_studio::handoff::RiemannianPresetTarget::SphericalTuringMitosis,
+                );
+            }
+        }
         let _ = self.atlas.show_toggle_button(ui);
     }
 

@@ -5,6 +5,9 @@ use eframe::egui;
 pub mod curvature_heatmap;
 pub mod custom_surface;
 pub mod export_utils;
+pub mod riemannian_studio;
+pub mod surface_brush;
+pub mod surface_brush_kernel;
 pub mod surface_viewer;
 pub mod vietoris_rips;
 

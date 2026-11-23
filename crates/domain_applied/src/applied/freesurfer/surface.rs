@@ -1,5 +1,3 @@
-use nalgebra::DVector;
-
 /// Represents a 3D surface mesh.
 /// For this example, it's a collection of vertices.
 pub struct Surface {
@@ -21,16 +19,19 @@ pub struct Surface {
 /// The calculated internal energy value.
 #[verified_engine::verified]
 pub fn internal_energy(surface: &Surface, alpha: f64, beta: f64) -> f64 {
-    // A simple placeholder: sum of squared distances between adjacent vertices
-    // to simulate tension and rigidity.
-    let mut energy = 0.0;
-    for i in 0..surface.vertices.len() - 1 {
-        let p1 = DVector::from_vec(surface.vertices[i].to_vec());
-        let p2 = DVector::from_vec(surface.vertices[i + 1].to_vec());
-        let diff = p2 - p1;
-        energy += diff.norm_squared();
+    if surface.vertices.len() < 2 {
+        return 0.0;
     }
-    alpha * energy + beta * energy // Simplified placeholder
+    let mut energy = 0.0;
+    for i in 0..(surface.vertices.len() - 1) {
+        let p1 = surface.vertices[i];
+        let p2 = surface.vertices[i + 1];
+        let dx = p2[0] - p1[0];
+        let dy = p2[1] - p1[1];
+        let dz = p2[2] - p1[2];
+        energy += dx * dx + dy * dy + dz * dz;
+    }
+    alpha * energy + beta * energy
 }
 
 /// Calculates a simplified external energy based on an image gradient.
@@ -68,5 +69,33 @@ pub fn evolve_surface(surface: &mut Surface, learning_rate: f64, gradient_streng
         vertex[0] -= learning_rate * gradient_strength;
         vertex[1] -= learning_rate * gradient_strength;
         vertex[2] -= learning_rate * gradient_strength;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
+    use super::*;
+    use verified_engine::engine::VerifiedEngine;
+
+    #[test]
+    fn test_internal_energy_100_steps_zero_alloc_and_exact_value() {
+        let mut surface = Surface {
+            vertices: vec![[0.0, 0.0, 0.0], [1.0, 2.0, 2.0], [1.0, 2.0, 5.0]],
+        };
+        // Distances squared: (1+4+4) + (0+0+9) = 18.0 -> (0.5 + 0.25) * 18.0 = 13.5
+        let initial = internal_energy(&surface, 0.5, 0.25);
+        assert!((initial - 13.5).abs() < 1e-12);
+
+        let (accum, _metrics) = VerifiedEngine::run_verified(|| {
+            let mut sum = 0.0;
+            for _ in 0..100 {
+                evolve_surface(&mut surface, 1e-4, 0.2);
+                sum += internal_energy(&surface, 0.5, 0.25) + external_energy(&surface, 0.2);
+            }
+            sum
+        });
+        assert!(accum.is_finite());
     }
 }

@@ -84,19 +84,23 @@ impl DiscreteSurface {
         let f = r_u.dot(&r_v);
         let g = r_v.dot(&r_v);
 
-        let n_unnorm = r_u.cross(&r_v);
-        let n = n_unnorm.normalize();
-
-        let l = r_uu.coords.dot(&n);
-        let m = r_uv.dot(&n);
-        let n_coeff = r_vv.coords.dot(&n); // 'n' is taken, use n_coeff
-
-        // Mean curvature H
         let det_g = e * g - f * f;
         if det_g.abs() < 1e-12 {
             // Singularity (e.g., pole), return zero flow or handle explicitly.
             return Vector3::zeros();
         }
+
+        let n_unnorm = r_u.cross(&r_v);
+        let n_norm = n_unnorm.norm();
+        if n_norm < 1e-12 {
+            return Vector3::zeros();
+        }
+        let n = n_unnorm / n_norm;
+
+        let l = r_uu.coords.dot(&n);
+        let m = r_uv.dot(&n);
+        let n_coeff = r_vv.coords.dot(&n); // 'n' is taken, use n_coeff
+
         let h_val = (e * n_coeff - 2.0 * f * m + g * l) / (2.0 * det_g);
 
         n * h_val
@@ -131,31 +135,48 @@ impl MeanCurvatureFlow {
         #[allow(clippy::needless_range_loop)]
         for i in 0..nu {
             for j in 0..nv {
-                // Velocity = Mean Curvature Vector
-                // Flow equation: dr/dt = \vec{H} (or 2\vec{H}, conventions vary)
-                // Note: Standard MCF is dr/dt = -Hn if H is defined via divergence of normal?
-                // Usually dr/dt = \Delta_S r.
-                // Our calc `mean_curvature_vector` returns H*n.
-                // If we want to shrink a sphere, H is positive (1/R) and n is outward.
-                // We want to move inward. So velocity should be -H*n.
-                // Wait, if n is outward, H is 1/R. n = (x,y,z)/R. Hn = (x,y,z)/R^2.
-                // We want -dr/dt for minimization?
-                // Actually, Mean Curvature Vector H_vec is usually defined as pointing in direction of decreasing area (inward for sphere).
-                // Let's check our H sign.
-                // Sphere: r_u x r_v points OUTWARD (standard param).
-                // H = 1/R > 0.
-                // H*n points OUTWARD.
-                // To shrink, we need -H*n.
-
                 let h_vec = self.surface.mean_curvature_vector(i, j);
-
-                // Update
-                // Flow by mean curvature vector: dr/dt = H_vec
-                // H_vec points in the direction of steepest area descent (curvature vector).
                 self.next_points[i][j] = self.surface.points[i][j] + h_vec * dt;
             }
         }
 
         std::mem::swap(&mut self.surface.points, &mut self.next_points);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
+    use super::*;
+    use std::f64::consts::PI;
+    use verified_engine::engine::VerifiedEngine;
+
+    #[test]
+    fn test_mean_curvature_flow_100_steps_zero_alloc_and_pole_safe() {
+        let nu = 12;
+        let nv = 12;
+        let mut pts = vec![vec![Point3::origin(); nv]; nu];
+        for (i, row) in pts.iter_mut().enumerate() {
+            let u = 2.0 * PI * (i as f64) / (nu as f64);
+            for (j, slot) in row.iter_mut().enumerate() {
+                let v = PI * (j as f64) / ((nv - 1) as f64);
+                *slot = Point3::new(v.sin() * u.cos(), v.sin() * u.sin(), v.cos());
+            }
+        }
+        let mut flow = MeanCurvatureFlow::new(DiscreteSurface::new(pts, true, false));
+        let r_before = flow.surface.points[3][5].coords.norm();
+        let ((), _metrics) = VerifiedEngine::run_verified(|| {
+            for _ in 0..100 {
+                flow.step(1e-4);
+            }
+        });
+        let r_after = flow.surface.points[3][5].coords.norm();
+        assert!(r_after < r_before, "Forward MCF must shrink sphere radius");
+        for row in &flow.surface.points {
+            for p in row {
+                assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite());
+            }
+        }
     }
 }

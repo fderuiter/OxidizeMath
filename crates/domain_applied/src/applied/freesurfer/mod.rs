@@ -87,7 +87,7 @@ pub mod thickness;
 pub use glm::{estimate_beta, t_statistic};
 pub use segmentation::bayesian_classification;
 pub use surface::{Surface, evolve_surface, external_energy, internal_energy};
-pub use thickness::cortical_thickness;
+pub use thickness::{cortical_thickness, cortical_thickness_batch, cortical_thickness_batch_into};
 
 // [cite:freesurfer]
 

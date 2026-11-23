@@ -118,13 +118,29 @@ impl Camera3D {
         ui: &egui::Ui,
         plot_id: Option<egui::Id>,
     ) {
+        self.handle_interaction_with_options(response, ui, plot_id, true);
+    }
+
+    pub(crate) fn handle_interaction_with_options(
+        &mut self,
+        response: &egui::Response,
+        ui: &egui::Ui,
+        plot_id: Option<egui::Id>,
+        allow_primary_orbit: bool,
+    ) {
         let prev = *self;
         let gizmo_handled = self.draw_gizmo_overlay(response, ui);
         let is_dragging_callout = Self::is_callout_drag_active(response, ui, plot_id);
         let multi_touch = ui.input(|i| i.multi_touch());
 
         if !gizmo_handled && !is_dragging_callout {
-            self.apply_canvas_pointer(response, ui, multi_touch, plot_id.is_none());
+            self.apply_canvas_pointer(
+                response,
+                ui,
+                multi_touch,
+                plot_id.is_none(),
+                allow_primary_orbit,
+            );
         }
 
         self.apply_pointer_zoom(response, ui, multi_touch.is_some());
@@ -170,6 +186,7 @@ impl Camera3D {
         ui: &egui::Ui,
         multi_touch: Option<egui::MultiTouchInfo>,
         allow_secondary_pan: bool,
+        allow_primary_orbit: bool,
     ) {
         let press_inside_gizmo = ui.input(|i| {
             i.pointer
@@ -182,7 +199,7 @@ impl Camera3D {
         if !press_inside_gizmo && (response.clicked() || primary_drag || aux_pan_drag) {
             response.request_focus();
         }
-        if !press_inside_gizmo && response.double_clicked() {
+        if !press_inside_gizmo && allow_primary_orbit && response.double_clicked() {
             self.reset();
         } else if let Some(touch) = multi_touch {
             if touch.zoom_delta != 1.0_f32 {
@@ -198,7 +215,7 @@ impl Camera3D {
             let delta = response.drag_delta();
             if ui.input(|i| i.modifiers.shift) {
                 self.pan_by_pixels(delta);
-            } else {
+            } else if allow_primary_orbit {
                 self.yaw = (self.yaw - delta.x * 0.01_f32)
                     .clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
                 self.pitch = (self.pitch - delta.y * 0.01_f32)

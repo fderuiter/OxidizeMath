@@ -183,6 +183,8 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors
 
     let mut mesh = Mesh::default();
     mesh.vertices.push(Point3D::new(0.0, 1.0, 2.0));
+    let lap = math_explorer::prelude::CotangentLaplacian::from_mesh(&mesh);
+    assert_eq!(lap.num_vertices(), 1);
     let prelude_mesh: PreludeMesh = mesh;
     assert_eq!(prelude_mesh.vertices.len(), 1);
     let _sample = RngCore::next_u32(&mut OxidizeRng::new(7));

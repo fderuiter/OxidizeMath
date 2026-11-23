@@ -186,6 +186,45 @@ pub fn cortical_thickness(
     0.5 * (dist_w_to_p + dist_p_to_w)
 }
 
+/// Evaluates symmetric white-to-pial cortical thickness across all paired vertices into `out`,
+/// constructing one `SpatialGrid` pair per surface rebuild.
+#[verified_engine::verified]
+pub fn cortical_thickness_batch_into(
+    white_surface: &Surface,
+    pial_surface: &Surface,
+    out: &mut [f64],
+) {
+    let count = white_surface
+        .vertices
+        .len()
+        .min(pial_surface.vertices.len())
+        .min(out.len());
+    if count == 0 {
+        return;
+    }
+    let white_grid = SpatialGrid::from_surface(white_surface);
+    let pial_grid = SpatialGrid::from_surface(pial_surface);
+    for (idx, slot) in out.iter_mut().enumerate().take(count) {
+        let dist_w_to_p = pial_grid.shortest_distance(&white_surface.vertices[idx]);
+        let dist_p_to_w = white_grid.shortest_distance(&pial_surface.vertices[idx]);
+        *slot = 0.5 * (dist_w_to_p + dist_p_to_w);
+    }
+}
+
+/// Evaluates symmetric white-to-pial cortical thickness across all paired vertices,
+/// reusing a single `SpatialGrid` pair across the entire surface.
+#[must_use]
+#[verified_engine::verified]
+pub fn cortical_thickness_batch(white_surface: &Surface, pial_surface: &Surface) -> Vec<f64> {
+    let count = white_surface
+        .vertices
+        .len()
+        .min(pial_surface.vertices.len());
+    let mut out = vec![0.0; count];
+    cortical_thickness_batch_into(white_surface, pial_surface, &mut out);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,5 +293,31 @@ mod tests {
         let expected = naive_point_to_surface_distance(&query, &surface);
         let actual = point_to_surface_distance(&query, &surface);
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_cortical_thickness_batch_matches_scalar_queries() {
+        let mut white = Vec::new();
+        let mut pial = Vec::new();
+        for i in 0..32 {
+            let theta = (i as f64) * 0.2;
+            let r_w = 10.0;
+            let r_p = 12.2 + 0.6 * (3.0 * theta).sin();
+            white.push([r_w * theta.cos(), r_w * theta.sin(), (i as f64) * 0.1]);
+            pial.push([r_p * theta.cos(), r_p * theta.sin(), (i as f64) * 0.1]);
+        }
+        let white_surf = Surface { vertices: white };
+        let pial_surf = Surface { vertices: pial };
+        let batch = cortical_thickness_batch(&white_surf, &pial_surf);
+        assert_eq!(batch.len(), 32);
+        for (idx, &val) in batch.iter().enumerate() {
+            let scalar = cortical_thickness(
+                &white_surf.vertices[idx],
+                &pial_surf.vertices[idx],
+                &white_surf,
+                &pial_surf,
+            );
+            assert!((val - scalar).abs() < 1e-12);
+        }
     }
 }

@@ -71,6 +71,7 @@ fn test_all_6_plot_3d_viewport_tools_hide_2d_plot_chrome() {
         "SpinVisualizer",
         "SurfaceViewer",
         "CurvatureHeatmap",
+        "RiemannianPdeStudio",
         "Gaussian Splatting",
     ];
     let mut verified = 0_usize;
@@ -83,7 +84,7 @@ fn test_all_6_plot_3d_viewport_tools_hide_2d_plot_chrome() {
         assert_no_2d_plot_chrome(&mut *tool, target_id);
         verified += 1;
     }
-    assert_eq!(verified, 6);
+    assert_eq!(verified, 7);
 }
 
 const PLOT_CHROME_BUTTON_LABELS: &[&str] = &[
