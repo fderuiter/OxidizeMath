@@ -165,7 +165,10 @@ fn test_ode_tool_non_autonomous_and_stiff_implicit_solvers() {
     mod_tool.recalculate();
     let exact_mod = (1.5 * (4.0_f64.cos() - 1.0)).exp();
     let got_mod = *mod_tool.y_series.last().expect("modulated final");
-    assert!((got_mod - exact_mod).abs() < 1e-6, "got {got_mod} vs {exact_mod}");
+    assert!(
+        (got_mod - exact_mod).abs() < 1e-6,
+        "got {got_mod} vs {exact_mod}"
+    );
 
     // 2. Non-autonomous y'(t) = cos(t) - y, y(0) = 0 => y(T) = 0.5 * (sin(T) + cos(T) - exp(-T))
     let mut driven = OdeSolverTool {
@@ -200,7 +203,10 @@ fn test_ode_tool_non_autonomous_and_stiff_implicit_solvers() {
         stiff.recalculate();
         assert!(!stiff.diverged(), "{stiff_method:?} diverged");
         assert!(
-            stiff.y_series.iter().all(|&y| y.is_finite() && y > 0.0 && y <= 1.0),
+            stiff
+                .y_series
+                .iter()
+                .all(|&y| y.is_finite() && y > 0.0 && y <= 1.0),
             "{stiff_method:?} lost positivity or boundedness: {:?}",
             stiff.y_series
         );

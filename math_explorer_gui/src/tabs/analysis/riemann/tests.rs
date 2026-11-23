@@ -232,9 +232,6 @@ fn test_riemann_simpson_and_gauss_kronrod15_accuracy_and_panels() {
     assert!(saved.len() < 4096);
     let mut restored = RiemannIntegrationTool::default();
     restored.try_load_state(&saved).expect("load gk state");
-    assert_eq!(
-        restored.quadrature_method,
-        QuadratureMethod::GaussKronrod15
-    );
+    assert_eq!(restored.quadrature_method, QuadratureMethod::GaussKronrod15);
     assert!((restored.result - gk.result).abs() < 1e-12);
 }

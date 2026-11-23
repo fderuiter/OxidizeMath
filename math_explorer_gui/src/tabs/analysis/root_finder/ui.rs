@@ -257,7 +257,10 @@ impl RootFinderTool {
         palette: &crate::app::SemanticPalette,
     ) {
         let span = (self.bracket_max - self.bracket_min).abs().max(0.1);
-        let (pmin, pmax) = (self.bracket_min - 0.15 * span, self.bracket_max + 0.15 * span);
+        let (pmin, pmax) = (
+            self.bracket_min - 0.15 * span,
+            self.bracket_max + 0.15 * span,
+        );
         plot_ui.line(
             Line::new("y = 0", PlotPoints::new(vec![[pmin, 0.0], [pmax, 0.0]]))
                 .color(palette.graph_edge),
@@ -323,15 +326,13 @@ impl RootFinderTool {
     ) {
         for (idx, seg) in self.contours_f1.iter().enumerate() {
             let name = if idx == 0 { "F1(x, y) = 0" } else { "" };
-            plot_ui.line(
-                Line::new(name, PlotPoints::new(seg.clone())).color(palette.series_color(0)),
-            );
+            plot_ui
+                .line(Line::new(name, PlotPoints::new(seg.clone())).color(palette.series_color(0)));
         }
         for (idx, seg) in self.contours_f2.iter().enumerate() {
             let name = if idx == 0 { "F2(x, y) = 0" } else { "" };
-            plot_ui.line(
-                Line::new(name, PlotPoints::new(seg.clone())).color(palette.series_color(1)),
-            );
+            plot_ui
+                .line(Line::new(name, PlotPoints::new(seg.clone())).color(palette.series_color(1)));
         }
         let path: Vec<[f64; 2]> = self
             .system_steps

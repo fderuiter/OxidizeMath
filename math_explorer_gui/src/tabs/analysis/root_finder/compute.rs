@@ -20,8 +20,12 @@ impl RootFinderTool {
     pub(crate) fn eval_2d_pair(&self, x: f64, y: f64) -> [f64; 2] {
         let compiled = self.coupled_bank.active_compiled();
         let params = self.coupled_bank.param_slice();
-        let f1 = compiled.first().map_or(f64::NAN, |c| c.eval_2d(x, y, params));
-        let f2 = compiled.get(1).map_or(f64::NAN, |c| c.eval_2d(x, y, params));
+        let f1 = compiled
+            .first()
+            .map_or(f64::NAN, |c| c.eval_2d(x, y, params));
+        let f2 = compiled
+            .get(1)
+            .map_or(f64::NAN, |c| c.eval_2d(x, y, params));
         [f1, f2]
     }
 
@@ -75,19 +79,15 @@ impl RootFinderTool {
         let max_it = self.max_iterations.clamp(4, 200);
         let f = |x: f64| self.eval_scalar_raw(x);
         let res = match self.scalar_method {
-            ScalarRootMethod::Bisection => Bisection::new(max_it, tol).find_root(
-                f,
-                self.bracket_min,
-                self.bracket_max,
-            ),
+            ScalarRootMethod::Bisection => {
+                Bisection::new(max_it, tol).find_root(f, self.bracket_min, self.bracket_max)
+            }
             ScalarRootMethod::Brent => {
                 Brent::new(max_it, tol).find_root(f, self.bracket_min, self.bracket_max)
             }
-            ScalarRootMethod::NewtonRaphson => NewtonRaphson::new(max_it, tol).find_root(
-                f,
-                self.bracket_min,
-                self.bracket_max,
-            ),
+            ScalarRootMethod::NewtonRaphson => {
+                NewtonRaphson::new(max_it, tol).find_root(f, self.bracket_min, self.bracket_max)
+            }
             ScalarRootMethod::Secant => {
                 Secant::new(max_it, tol).find_root(f, self.bracket_min, self.bracket_max)
             }
@@ -102,10 +102,13 @@ impl RootFinderTool {
             }
             Err(err) => {
                 self.status_error = Some(err.to_string());
-                self.final_residual = self
-                    .scalar_steps
-                    .last()
-                    .map_or(0.0, |s| if s.fx.is_finite() { s.fx.abs() } else { 0.0 });
+                self.final_residual = self.scalar_steps.last().map_or(0.0, |s| {
+                    if s.fx.is_finite() {
+                        s.fx.abs()
+                    } else {
+                        0.0
+                    }
+                });
             }
         }
     }
@@ -229,7 +232,10 @@ impl RootFinderTool {
                 bracket: None,
                 construction_segment: x_next.is_finite().then_some([[x, fx], [x_next, 0.0]]),
             });
-            if fx.abs() <= tol || (x_next - x).abs() <= tol || !dfx.is_finite() || dfx.abs() <= 1e-14
+            if fx.abs() <= tol
+                || (x_next - x).abs() <= tol
+                || !dfx.is_finite()
+                || dfx.abs() <= 1e-14
             {
                 break;
             }
@@ -286,10 +292,13 @@ impl RootFinderTool {
             }
             Err(err) => {
                 self.status_error = Some(err.to_string());
-                self.final_residual = self
-                    .system_steps
-                    .last()
-                    .map_or(0.0, |s| if s.inf_norm.is_finite() { s.inf_norm } else { 0.0 });
+                self.final_residual = self.system_steps.last().map_or(0.0, |s| {
+                    if s.inf_norm.is_finite() {
+                        s.inf_norm
+                    } else {
+                        0.0
+                    }
+                });
             }
         }
         let center = self.converged_root_2d.unwrap_or(self.init_2d);
@@ -423,11 +432,7 @@ where
     segments
 }
 
-fn collect_cell_zero_segments(
-    rect: [f64; 4],
-    c: [f64; 4],
-    segments: &mut Vec<Vec<[f64; 2]>>,
-) {
+fn collect_cell_zero_segments(rect: [f64; 4], c: [f64; 4], segments: &mut Vec<Vec<[f64; 2]>>) {
     if !c.iter().all(|v| v.is_finite()) {
         return;
     }

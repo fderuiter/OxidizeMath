@@ -3,8 +3,8 @@
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use math_explorer::pure_math::analysis::integration::{
-    ClenshawCurtis, GK15_MAX_PANELS, GaussKronrod15, GkSubinterval, Integrator, Simpson,
-    Trapezoidal,
+    ClenshawCurtis, GaussKronrod15, GkSubinterval, Integrator, Simpson, Trapezoidal,
+    GK15_MAX_PANELS,
 };
 use std::collections::BTreeMap;
 
@@ -170,7 +170,8 @@ impl RiemannIntegrationTool {
         let eps = self.effective_tolerance();
         match self.quadrature_method {
             QuadratureMethod::Trapezoidal => {
-                let res = Trapezoidal::new(self.steps).integrate(|x| self.evaluate_at(x), a, b, eps);
+                let res =
+                    Trapezoidal::new(self.steps).integrate(|x| self.evaluate_at(x), a, b, eps);
                 self.active_panel_count = self.steps;
                 (res.value, res.error.abs())
             }

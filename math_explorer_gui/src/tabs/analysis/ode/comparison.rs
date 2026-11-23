@@ -142,9 +142,12 @@ fn dispatch_preset_simulation(
     sched: StepSchedule,
 ) {
     match preset {
-        OdePreset::Exponential => {
-            run_step_loop(traj, VecState(vec![ic[0]]), ExponentialOde { k: params[0] }, sched)
-        }
+        OdePreset::Exponential => run_step_loop(
+            traj,
+            VecState(vec![ic[0]]),
+            ExponentialOde { k: params[0] },
+            sched,
+        ),
         OdePreset::HarmonicOscillator => run_step_loop(
             traj,
             VecState(vec![ic[0], ic[1]]),

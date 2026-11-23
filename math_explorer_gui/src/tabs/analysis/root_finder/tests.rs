@@ -135,7 +135,9 @@ fn render_tool_deferred_png(tool: Box<dyn crate::framework::InteractiveTool>) ->
 
 #[test]
 fn test_export_root_finder_and_gk15_screenshots() {
-    use crate::tabs::analysis::riemann::{FunctionPreset, QuadratureMethod, RiemannIntegrationTool};
+    use crate::tabs::analysis::riemann::{
+        FunctionPreset, QuadratureMethod, RiemannIntegrationTool,
+    };
 
     let mut rf_1d = RootFinderTool {
         dimension: RootDimension::Scalar1D,

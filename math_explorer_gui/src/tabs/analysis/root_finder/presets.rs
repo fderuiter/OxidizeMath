@@ -31,7 +31,8 @@ impl scientific_metadata::theory::TheoryDescribable for RootFinderTool {
         let mut map = std::collections::HashMap::new();
         map.insert(
             "Bisection".into(),
-            "Guaranteed binary bracket halving under intermediate value theorem sign changes".into(),
+            "Guaranteed binary bracket halving under intermediate value theorem sign changes"
+                .into(),
         );
         map.insert(
             "Brent".into(),

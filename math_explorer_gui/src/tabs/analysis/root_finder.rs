@@ -137,18 +137,12 @@ fn default_coupled_2d_bank() -> CoupledExpressionBank {
     .with_param_range(-5.0..=5.0, 1.0)
     .with_initial_params(&[("r", 2.0), ("c", 0.5)])
     .with_system_presets(vec![
-        (
-            "Circle & Parabola",
-            vec!["x^2 + y^2 - r^2", "x^2 - y - c"],
-        ),
+        ("Circle & Parabola", vec!["x^2 + y^2 - r^2", "x^2 - y - c"]),
         (
             "Trigonometric Lattice",
             vec!["sin(x) + y - 1", "x + cos(y) - 1"],
         ),
-        (
-            "Hyperbola & Line",
-            vec!["x * y - 1", "x - 2 * y + c"],
-        ),
+        ("Hyperbola & Line", vec!["x * y - 1", "x - 2 * y + c"]),
     ])
 }
 
@@ -294,9 +288,10 @@ impl InteractiveTool for RootFinderTool {
             && (ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(&self.bracket_min)
             && (ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(&self.bracket_max)
             && self.bracket_min < self.bracket_max
-            && self.init_2d.iter().all(|v| {
-                v.is_finite() && (ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(v)
-            })
+            && self
+                .init_2d
+                .iter()
+                .all(|v| v.is_finite() && (ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(v))
             && self.domain_span_2d.is_finite()
             && (0.5..=25.0).contains(&self.domain_span_2d)
             && self.tolerance.is_finite()
@@ -307,7 +302,8 @@ impl InteractiveTool for RootFinderTool {
 
     fn clamp_parameters(&mut self) -> bool {
         self.bracket_min = if self.bracket_min.is_finite() {
-            self.bracket_min.clamp(ROOT_DOMAIN_MIN, ROOT_DOMAIN_MAX - ROOT_MIN_SPAN)
+            self.bracket_min
+                .clamp(ROOT_DOMAIN_MIN, ROOT_DOMAIN_MAX - ROOT_MIN_SPAN)
         } else {
             0.0
         };
@@ -385,7 +381,10 @@ impl InteractiveTool for RootFinderTool {
             || !(ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(&s.bracket_min)
             || !(ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(&s.bracket_max)
             || s.bracket_min >= s.bracket_max
-            || !s.init_2d.iter().all(|v| v.is_finite() && (ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(v))
+            || !s
+                .init_2d
+                .iter()
+                .all(|v| v.is_finite() && (ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(v))
             || !s.domain_span_2d.is_finite()
             || !(0.5..=25.0).contains(&s.domain_span_2d)
             || !s.tolerance.is_finite()
