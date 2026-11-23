@@ -55,6 +55,7 @@ default = []
 serde = [
     "dep:serde",
     "egui/serde",
+    "math_commons/serde",
 ]
 
 [lib]
@@ -81,6 +82,9 @@ features = ["accesskit"]
 [dependencies.emath]
 version = "0.33.0"
 default-features = false
+
+[dependencies.math_commons]
+path = "../crates/math_commons"
 
 [dependencies.serde]
 version = "1"

@@ -2,7 +2,9 @@
 
 pub use crate::error::*;
 pub use diagnostics::{Diagnostic, Severity};
+pub use math_commons::fit::FitModel;
 pub use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
+pub use math_commons::series::{PointSeries, Sample2D};
 
 #[cfg(feature = "pure_math")]
 pub use nalgebra::{self, DMatrix, DVector};

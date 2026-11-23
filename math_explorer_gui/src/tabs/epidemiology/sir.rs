@@ -388,39 +388,35 @@ impl InteractiveTool for SirTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
-        });
-    }
-
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        ui.vertical(|ui| {
-            ui.heading("Parameters");
-            if self.render_parameter_controls(ui) {
-                self.record_history_and_recalculate();
-            }
-            metrics::render_epidemic_metrics(ui, self);
-            self.render_sir_readouts_and_atlas(ui);
-            ui.add_space(8.0);
-            let param_summary = self.param_summary();
-            let current_len = self.snapshot_manager.len();
-            let (s_pts, i_pts, r_pts) = (&self.s_points, &self.i_points, &self.r_points);
-            if self.snapshot_manager.render_ui(ui, move || {
-                let label = format!("Baseline {}", current_len + 1);
-                let to_pairs =
-                    |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-                let series = vec![
-                    TraceSeries::new("Susceptible", to_pairs(s_pts)),
-                    TraceSeries::new("Infected", to_pairs(i_pts)),
-                    TraceSeries::new("Recovered", to_pairs(r_pts)),
-                ];
-                Some((label, param_summary, series))
-            }) {
-                self.revision = self.revision.wrapping_add(1).max(1);
-            }
-            self.evaluate_sensitivity(ui);
-            ui.separator();
-            metrics::render_simulation_plot(ui, self);
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.heading("Parameters");
+                if self.render_parameter_controls(ui) {
+                    self.record_history_and_recalculate();
+                }
+                metrics::render_epidemic_metrics(ui, self);
+                self.render_sir_readouts_and_atlas(ui);
+                ui.add_space(8.0);
+                let param_summary = self.param_summary();
+                let current_len = self.snapshot_manager.len();
+                let (s_pts, i_pts, r_pts) = (&self.s_points, &self.i_points, &self.r_points);
+                if self.snapshot_manager.render_ui(ui, move || {
+                    let label = format!("Baseline {}", current_len + 1);
+                    let to_pairs =
+                        |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+                    let series = vec![
+                        TraceSeries::new("Susceptible", to_pairs(s_pts)),
+                        TraceSeries::new("Infected", to_pairs(i_pts)),
+                        TraceSeries::new("Recovered", to_pairs(r_pts)),
+                    ];
+                    Some((label, param_summary, series))
+                }) {
+                    self.revision = self.revision.wrapping_add(1).max(1);
+                }
+                self.evaluate_sensitivity(ui);
+                ui.separator();
+                metrics::render_simulation_plot(ui, self);
+            });
         });
     }
 }

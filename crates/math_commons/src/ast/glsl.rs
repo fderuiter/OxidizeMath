@@ -1,4 +1,5 @@
 //! Iterative AST-to-GLSL ES 3.00 transpiler for scalar (`float`) and complex (`vec2`) expressions.
+// [cite:math_commons]
 
 use super::eval::MAX_EVAL_DEPTH;
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};

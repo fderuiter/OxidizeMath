@@ -1,4 +1,7 @@
-use super::{NdPointCloud, PersistenceInterval, Point2D, PointCloud, Simplex, SimplicialComplex};
+use super::{
+    NdPointCloud, PersistenceInterval, Point2D, Point3D, PointCloud, PointCloud3D, Simplex,
+    SimplicialComplex,
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 impl Serialize for PointCloud {
@@ -28,6 +31,36 @@ impl<'de> Deserialize<'de> for PointCloud {
         }
         let raw = PointCloudRaw::deserialize(deserializer)?;
         PointCloud::new(raw.points).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for PointCloud3D {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        struct PointCloud3DRef<'a> {
+            points: &'a [Point3D],
+        }
+        PointCloud3DRef {
+            points: &self.points,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for PointCloud3D {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct PointCloud3DRaw {
+            points: Vec<Point3D>,
+        }
+        let raw = PointCloud3DRaw::deserialize(deserializer)?;
+        PointCloud3D::new(raw.points).map_err(serde::de::Error::custom)
     }
 }
 
@@ -209,12 +242,22 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_nd_point_cloud_serde_validation() {
-        use super::super::NdPointCloud;
+        use super::super::{NdPointCloud, Point3D, PointCloud3D};
 
         let cloud = NdPointCloud::new(vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0]]).unwrap();
         let json = serde_json::to_string(&cloud).unwrap();
         let restored: NdPointCloud = serde_json::from_str(&json).unwrap();
         assert_eq!(restored, cloud);
         assert!(serde_json::from_str::<NdPointCloud>(r#"{"points":[[1.0],[1.0,2.0]]}"#).is_err());
+
+        let cloud3d = PointCloud3D::new(vec![
+            Point3D::new(0.0, 1.0, 2.0),
+            Point3D::new(3.0, 4.0, 5.0),
+        ])
+        .unwrap();
+        let json3d = serde_json::to_string(&cloud3d).unwrap();
+        let restored3d: PointCloud3D = serde_json::from_str(&json3d).unwrap();
+        assert_eq!(restored3d, cloud3d);
+        assert!(serde_json::from_str::<PointCloud3D>(r#"{"points":[]}"#).is_err());
     }
 }

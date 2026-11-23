@@ -1,4 +1,5 @@
 //! Dynamic evaluation engine for AST expressions supporting both real and complex numbers.
+// [cite:math_commons]
 
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use num_complex::{Complex64, ComplexFloat};
