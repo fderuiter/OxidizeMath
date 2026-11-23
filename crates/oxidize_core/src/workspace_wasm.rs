@@ -4,8 +4,56 @@
 //! of external crate dependencies while dynamically discovering every WebAssembly-compatible
 //! workspace crate.
 
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// Typed error returned when discovering or parsing Cargo workspace manifests.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WorkspaceError {
+    /// Manifest TOML or array syntax could not be parsed.
+    InvalidManifestSyntax(String),
+    /// Manifest does not contain a `[workspace]` table.
+    MissingWorkspaceSection,
+    /// `[workspace]` table does not contain a `members` array.
+    MissingMembersArray,
+    /// Failed to read a manifest file from disk.
+    ManifestIo {
+        /// Path to the manifest that failed to read.
+        path: String,
+        /// Underlying OS error description.
+        reason: String,
+    },
+    /// Member `Cargo.toml` is missing `[package]` or `package.name`.
+    MissingPackageField {
+        /// Path to the member manifest.
+        path: String,
+        /// Name of the missing TOML key or table.
+        field: &'static str,
+    },
+}
+
+impl fmt::Display for WorkspaceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidManifestSyntax(reason) => {
+                write!(f, "Failed to parse Cargo.toml: {reason}")
+            }
+            Self::MissingWorkspaceSection => {
+                write!(f, "Could not find [workspace] section in Cargo.toml")
+            }
+            Self::MissingMembersArray => {
+                write!(f, "Could not find workspace.members array in Cargo.toml")
+            }
+            Self::ManifestIo { path, reason } => write!(f, "Failed to read {path}: {reason}"),
+            Self::MissingPackageField { path, field } => {
+                write!(f, "Missing {field} in {path}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for WorkspaceError {}
 
 /// Host-only workspace packages excluded from `wasm32-unknown-unknown` test execution.
 pub const HOST_ONLY_WORKSPACE_PACKAGES: &[&str] =
@@ -126,9 +174,9 @@ fn parse_quoted_array_items(array_body: &str) -> Vec<String> {
 }
 
 /// Parses `workspace.members` from a `Cargo.toml` string using only the Rust standard library.
-pub fn parse_workspace_members_std(content: &str) -> Result<Vec<String>, String> {
+pub fn parse_workspace_members_std(content: &str) -> Result<Vec<String>, WorkspaceError> {
     let ws_body = extract_section_body(content, "workspace")
-        .ok_or_else(|| "Could not find [workspace] section in Cargo.toml".to_string())?;
+        .ok_or(WorkspaceError::MissingWorkspaceSection)?;
     for (idx, line) in ws_body.lines().enumerate() {
         if let Some((key, rest)) = line.split_once('=')
             && key.trim() == "members"
@@ -137,16 +185,20 @@ pub fn parse_workspace_members_std(content: &str) -> Result<Vec<String>, String>
                 .chain(ws_body.lines().skip(idx + 1))
                 .collect::<Vec<_>>()
                 .join("\n");
-            let open = tail
-                .find('[')
-                .ok_or_else(|| "Malformed workspace.members array".to_string())?;
-            let close = tail[open + 1..]
-                .find(']')
-                .ok_or_else(|| "Unterminated workspace.members array".to_string())?;
+            let open = tail.find('[').ok_or_else(|| {
+                WorkspaceError::InvalidManifestSyntax(
+                    "Malformed workspace.members array".to_string(),
+                )
+            })?;
+            let close = tail[open + 1..].find(']').ok_or_else(|| {
+                WorkspaceError::InvalidManifestSyntax(
+                    "Unterminated workspace.members array".to_string(),
+                )
+            })?;
             return Ok(parse_quoted_array_items(&tail[open + 1..open + 1 + close]));
         }
     }
-    Err("Could not find workspace.members array in Cargo.toml".to_string())
+    Err(WorkspaceError::MissingMembersArray)
 }
 
 fn parse_key_string(section_body: &str, target_key: &str) -> Option<String> {
@@ -178,22 +230,35 @@ fn is_proc_macro_manifest(content: &str) -> bool {
 }
 
 /// Discovers all `wasm32-unknown-unknown`-compatible crates under `workspace_root`.
-pub fn discover_wasm_crates(workspace_root: &Path) -> Result<Vec<WasmCrateSpec>, String> {
+pub fn discover_wasm_crates(workspace_root: &Path) -> Result<Vec<WasmCrateSpec>, WorkspaceError> {
     let root_manifest = workspace_root.join("Cargo.toml");
-    let root_toml = fs::read_to_string(&root_manifest)
-        .map_err(|e| format!("Failed to read {}: {e}", root_manifest.display()))?;
+    let root_toml = fs::read_to_string(&root_manifest).map_err(|e| WorkspaceError::ManifestIo {
+        path: root_manifest.display().to_string(),
+        reason: e.to_string(),
+    })?;
     let members = parse_workspace_members_std(&root_toml)?;
 
     let mut specs = Vec::with_capacity(members.len());
     for member in members {
         let member_dir = workspace_root.join(&member);
         let manifest_path = member_dir.join("Cargo.toml");
-        let manifest = fs::read_to_string(&manifest_path)
-            .map_err(|e| format!("Failed to read {}: {e}", manifest_path.display()))?;
-        let pkg_body = extract_section_body(&manifest, "package")
-            .ok_or_else(|| format!("Missing [package] in {}", manifest_path.display()))?;
-        let package_name = parse_key_string(&pkg_body, "name")
-            .ok_or_else(|| format!("Missing package.name in {}", manifest_path.display()))?;
+        let manifest =
+            fs::read_to_string(&manifest_path).map_err(|e| WorkspaceError::ManifestIo {
+                path: manifest_path.display().to_string(),
+                reason: e.to_string(),
+            })?;
+        let pkg_body = extract_section_body(&manifest, "package").ok_or_else(|| {
+            WorkspaceError::MissingPackageField {
+                path: manifest_path.display().to_string(),
+                field: "[package]",
+            }
+        })?;
+        let package_name = parse_key_string(&pkg_body, "name").ok_or_else(|| {
+            WorkspaceError::MissingPackageField {
+                path: manifest_path.display().to_string(),
+                field: "package.name",
+            }
+        })?;
 
         if HOST_ONLY_WORKSPACE_PACKAGES.contains(&package_name.as_str())
             || is_proc_macro_manifest(&manifest)
