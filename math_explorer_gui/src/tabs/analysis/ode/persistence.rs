@@ -85,6 +85,14 @@ struct OdeStateRef<'a> {
     method: IntegrationMethod,
     comparison_mode: bool,
     show_annotations: bool,
+    #[serde(skip_serializing_if = "super::phase::is_default_view_mode")]
+    view_mode: super::phase::PlotViewMode,
+    #[serde(skip_serializing_if = "super::phase::is_zero_t_slice")]
+    t_slice: f64,
+    #[serde(skip_serializing_if = "is_false")]
+    atlas_visible: bool,
+    #[serde(skip_serializing_if = "super::atlas::is_default_ode_atlas_axes")]
+    atlas_axes: [String; 2],
 }
 
 #[derive(serde::Deserialize)]
@@ -119,6 +127,14 @@ struct OdeState {
     comparison_mode: bool,
     #[serde(default = "default_annotations_enabled")]
     show_annotations: bool,
+    #[serde(default)]
+    view_mode: super::phase::PlotViewMode,
+    #[serde(default)]
+    t_slice: f64,
+    #[serde(default)]
+    atlas_visible: bool,
+    #[serde(default = "super::atlas::default_ode_atlas_axes")]
+    atlas_axes: [String; 2],
 }
 
 impl OdeSolverTool {
@@ -246,6 +262,10 @@ impl OdeSolverTool {
         }
         self.comparison_mode.hash(hasher);
         self.show_annotations.hash(hasher);
+        (self.view_mode as u8).hash(hasher);
+        self.t_slice.to_bits().hash(hasher);
+        self.atlas.is_visible().hash(hasher);
+        self.atlas.axis_keys().hash(hasher);
         let callouts = self.callout_manager.callouts();
         callouts.len().hash(hasher);
         for c in callouts {
@@ -318,6 +338,7 @@ impl OdeSolverTool {
             custom_params,
             coupled_params,
         } = self.custom_serialization_maps();
+        let (ax, ay) = self.atlas.axis_keys();
         serde_json::to_string(&OdeStateRef {
             preset: Some(self.preset),
             dt: self.dt,
@@ -337,6 +358,10 @@ impl OdeSolverTool {
             method: self.method,
             comparison_mode: self.comparison_mode,
             show_annotations: self.show_annotations,
+            view_mode: self.view_mode,
+            t_slice: self.t_slice,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [ax.to_string(), ay.to_string()],
         })
         .ok()
     }
@@ -402,72 +427,12 @@ impl OdeSolverTool {
         self.method = s.method;
         self.comparison_mode = s.comparison_mode;
         self.show_annotations = s.show_annotations;
+        self.view_mode = s.view_mode;
+        self.t_slice = s.t_slice.clamp(0.0, self.total_time);
+        let _ = self.atlas.set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1]);
+        self.atlas.set_visible(s.atlas_visible);
+        self.phase_cursor = None;
         self.pending_sweep_run = None;
-    }
-
-    pub(crate) fn collect_full_xy_pairs(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
-        if self
-            .series_cache
-            .matches_series(&self.time_series, &self.y_series, &self.v_series)
-        {
-            let (py, pv) = self.series_cache.shared_points();
-            return (py.to_vec(), pv.to_vec());
-        }
-        let mut plot_points_y = Vec::with_capacity(self.time_series.len());
-        let mut plot_points_v = if self.v_series.is_empty() {
-            Vec::new()
-        } else {
-            Vec::with_capacity(self.v_series.len())
-        };
-        for (i, &t) in self.time_series.iter().enumerate() {
-            if let Some(&y) = self.y_series.get(i) {
-                plot_points_y.push([t, y]);
-            }
-            if let Some(&v) = self.v_series.get(i) {
-                plot_points_v.push([t, v]);
-            }
-        }
-        (plot_points_y, plot_points_v)
-    }
-
-    pub(crate) fn build_current_trace_series(&self) -> Vec<crate::framework::TraceSeries> {
-        let (py, pv) = if self
-            .series_cache
-            .matches_series(&self.time_series, &self.y_series, &self.v_series)
-        {
-            self.series_cache.shared_points()
-        } else {
-            let (y, v) = self.collect_full_xy_pairs();
-            (y.into(), v.into())
-        };
-        let mut series = vec![crate::framework::TraceSeries::new("y(t)", py)];
-        if self.has_second_state() && !pv.is_empty() {
-            series.push(crate::framework::TraceSeries::new(
-                self.second_state_label(),
-                pv,
-            ));
-        }
-        series
-    }
-
-    pub(crate) fn build_full_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = Vec::new();
-        if self.comparison_mode && !self.comparison_manager.is_empty() {
-            datasets.extend(self.comparison_manager.export_datasets());
-        } else {
-            let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
-            datasets.push(("y(t)".to_string(), plot_points_y));
-            if self.has_second_state() && !plot_points_v.is_empty() {
-                datasets.push((self.second_state_label().to_string(), plot_points_v));
-            }
-        }
-        datasets.extend(self.snapshot_manager.export_datasets());
-        for (name, pts) in egui_plot::get_last_plot_datasets() {
-            if !datasets.iter().any(|(existing, _)| existing == &name) {
-                datasets.push((name, pts));
-            }
-        }
-        datasets
     }
 }
 
@@ -481,10 +446,21 @@ fn validate_deserialized_ode_state(s: &OdeState) -> Result<(), String> {
         || !s.param_cap_k.is_finite()
         || !s.ic_y0.is_finite()
         || !s.ic_v0.is_finite()
+        || !s.t_slice.is_finite()
+        || s.t_slice < 0.0
         || !s.custom_params.values().all(|v| v.is_finite())
         || !s.coupled_params.values().all(|v| v.is_finite())
     {
         return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
+    }
+    if !super::atlas::ODE_ATLAS_AXIS_PAIRS
+        .iter()
+        .any(|&(xk, yk)| xk == s.atlas_axes[0] && yk == s.atlas_axes[1])
+    {
+        return Err(format!(
+            "Unsupported ODE atlas_axes pair ('{}', '{}')",
+            s.atlas_axes[0], s.atlas_axes[1]
+        ));
     }
     if crate::presets::checked_ode_step_count(s.dt, s.total_time).is_none() {
         return Err(format!(

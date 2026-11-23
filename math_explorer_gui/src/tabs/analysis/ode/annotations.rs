@@ -119,6 +119,30 @@ pub(crate) fn harmonic_equilibrium_root(tool: &OdeSolverTool) -> Option<f64> {
 /// Renders simulation callout annotations onto the ODE plot canvas.
 pub fn render_ode_callouts(plot_ui: &mut PlotUi<'_>, tool: &OdeSolverTool) {
     let (bg_fill, frame_stroke, text_color, palette) = callout_frame_styling(plot_ui);
+    if tool.is_2d_phase_portrait() {
+        if tool.ic_y0.is_finite() && tool.ic_v0.is_finite() {
+            let callout_ic = Callout::new(
+                [tool.ic_y0, tool.ic_v0],
+                format!("Initial State: ({:.2}, {:.2})", tool.ic_y0, tool.ic_v0),
+            )
+            .offset(Vec2::new(35.0, -30.0))
+            .leader_stroke(Stroke::new(1.5_f32, palette.series_color(0)))
+            .frame(bg_fill, frame_stroke)
+            .corner_radius(CornerRadius::same(4))
+            .text_color(text_color);
+            plot_ui.callout(callout_ic);
+        }
+        if tool.preset == OdePreset::HarmonicOscillator {
+            let callout_eq = Callout::new([0.0, 0.0], "Center Equilibrium (0, 0)")
+                .offset(Vec2::new(-35.0, 25.0))
+                .leader_stroke(Stroke::new(1.5_f32, palette.series_color(1)))
+                .frame(bg_fill, frame_stroke)
+                .corner_radius(CornerRadius::same(4))
+                .text_color(text_color);
+            plot_ui.callout(callout_eq);
+        }
+        return;
+    }
     render_initial_condition_callout(
         plot_ui,
         tool.ic_y0,
@@ -128,4 +152,47 @@ pub fn render_ode_callouts(plot_ui: &mut PlotUi<'_>, tool: &OdeSolverTool) {
         &palette,
     );
     render_preset_asymptote_callout(plot_ui, tool, bg_fill, frame_stroke, text_color, &palette);
+}
+
+impl OdeSolverTool {
+    pub(crate) fn update_callouts(&mut self) {
+        if !self.diverged() && !self.y_series.is_empty() {
+            if self.is_2d_phase_portrait() {
+                self.callout_manager.set_auto_callout(
+                    "initial_condition",
+                    [self.ic_y0, self.ic_v0],
+                    format!("Initial ({:.2}, {:.2})", self.ic_y0, self.ic_v0),
+                    [-25.0, -25.0],
+                );
+                if let (Some(&last_y), Some(&last_v)) = (self.y_series.last(), self.v_series.last())
+                {
+                    self.callout_manager.set_auto_callout(
+                        "final_state",
+                        [last_y, last_v],
+                        format!("Final ({:.2}, {:.2})", last_y, last_v),
+                        [25.0, -25.0],
+                    );
+                }
+            } else {
+                self.callout_manager.set_auto_callout(
+                    "initial_condition",
+                    [0.0, self.ic_y0],
+                    format!("Initial (0, {:.2})", self.ic_y0),
+                    [-25.0, -25.0],
+                );
+                if let (Some(&last_t), Some(&last_y)) =
+                    (self.time_series.last(), self.y_series.last())
+                {
+                    self.callout_manager.set_auto_callout(
+                        "final_state",
+                        [last_t, last_y],
+                        format!("Final ({:.2}, {:.2})", last_t, last_y),
+                        [25.0, -25.0],
+                    );
+                }
+            }
+        } else if self.diverged() {
+            self.callout_manager.clear_auto();
+        }
+    }
 }

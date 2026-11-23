@@ -32,6 +32,7 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
         || !tool.dt.is_finite()
         || !tool.total_time.is_finite()
         || !tool.ic_y0.is_finite()
+        || !tool.t_slice.is_finite()
         || !params_finite
     {
         return false;

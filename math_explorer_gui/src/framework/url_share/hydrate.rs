@@ -134,7 +134,7 @@ impl SimulationFramework {
         let mut base_candidate =
             self.validate_candidate_tool_preset(target_idx, base_json, None)?;
         base_candidate.sync_callouts(challenge.callouts);
-        let initial_state = base_candidate.save_url_state();
+        let initial_state = base_candidate.export_url_state();
         let candidate = self.validate_candidate_tool_preset(
             target_idx,
             base_json,
@@ -194,7 +194,7 @@ impl SimulationFramework {
         let mut step_candidate =
             self.validate_candidate_tool_preset(target_idx, step_json, None)?;
         step_candidate.sync_callouts(step.callouts);
-        let step_state = step_candidate.save_url_state();
+        let step_state = step_candidate.export_url_state();
         let candidate = self.validate_candidate_tool_preset(
             target_idx,
             step_json,

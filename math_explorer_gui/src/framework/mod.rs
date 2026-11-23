@@ -210,8 +210,13 @@ pub trait InteractiveTool {
     }
 
     /// Parameter-only state serialization hook for URL sharing (omits trace histories).
-    fn save_url_state(&self) -> Option<String> {
+    fn export_url_state(&self) -> Option<String> {
         self.save_recovery_state()
+    }
+
+    /// Alias for [`Self::export_url_state`] preserving parameter-only URL state serialization.
+    fn save_url_state(&self) -> Option<String> {
+        self.export_url_state()
     }
 
     /// Fallibly restores parameter-only recovery state without clobbering pinned comparison overlays.

@@ -28,6 +28,10 @@ impl InteractiveTool for OdeSolverTool {
         self.compute_url_state_revision()
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }
@@ -41,6 +45,10 @@ impl InteractiveTool for OdeSolverTool {
     }
 
     fn save_recovery_state(&self) -> Option<String> {
+        self.serialize_recovery_state()
+    }
+
+    fn export_url_state(&self) -> Option<String> {
         self.serialize_recovery_state()
     }
 
@@ -128,19 +136,34 @@ impl OdeSolverTool {
     }
 
     pub(super) fn render_plot_canvas(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
-        ui.heading("Solution Trajectory");
+        let heading = match self.view_mode {
+            super::phase::PlotViewMode::TimeSeries => "Solution Trajectory",
+            super::phase::PlotViewMode::PhasePortrait if self.has_second_state() => {
+                "2D Phase Portrait"
+            }
+            super::phase::PlotViewMode::PhasePortrait => "Slope Field & Trajectory",
+        };
+        ui.heading(heading);
 
         if FiniteStateGuard::diverged(self) {
             recovery::render_recovery_ui_in_place(ui, self, changed);
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        if self.view_mode == super::phase::PlotViewMode::PhasePortrait {
+            self.render_phase_portrait_canvas(ui, &palette, changed);
+            self.render_ode_atlas_panel(ui, changed);
+            return;
+        }
+
+        self.handle_pre_plot_keyboard_seeding(ui, changed);
         let line_y = Line::new("y(t)", PlotPoints::from_shared(Arc::clone(&self.display_y)))
             .color(palette.series_color(0));
         let has_v = self.has_second_state();
         let v_label = self.second_state_label();
+        let mut hover_coord = None;
 
-        Plot::new("ode_plot")
+        let plot_resp = Plot::new("ode_plot")
             .view_aspect(2.0)
             .x_axis_label("t \\text{ (Time)}")
             .y_axis_label("y(t)")
@@ -164,6 +187,15 @@ impl OdeSolverTool {
                 }
                 self.snapshot_manager.render_on_plot(plot_ui);
                 self.callout_manager.render_on_plot(plot_ui);
+                hover_coord = plot_ui.pointer_coordinate().map(|pt| [pt.x, pt.y]);
             });
+
+        self.attach_ode_plot_accessibility_and_seeding(
+            ui,
+            plot_resp.response,
+            hover_coord,
+            changed,
+        );
+        self.render_ode_atlas_panel(ui, changed);
     }
 }

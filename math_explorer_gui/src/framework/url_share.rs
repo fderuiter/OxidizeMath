@@ -101,7 +101,7 @@ impl SimulationFramework {
         let Some(tool) = &self.active_tool else {
             return Ok(None);
         };
-        let Some(state_str) = tool.save_url_state() else {
+        let Some(state_str) = tool.export_url_state() else {
             return Ok(None);
         };
         let cleaned = egui_plot::export::strip_utf8_bom(&state_str).trim();
@@ -135,7 +135,7 @@ impl SimulationFramework {
                 preset_json.as_deref(),
             );
         }
-        let current_tool_state = self.active_tool.as_ref().and_then(|t| t.save_url_state());
+        let current_tool_state = self.active_tool.as_ref().and_then(|t| t.export_url_state());
         match &self.challenge_hud.mode {
             super::ChallengeHudMode::Story {
                 story,
@@ -275,7 +275,7 @@ impl SimulationFramework {
 
 fn compute_untracked_tool_url_digest(tool: &dyn super::InteractiveTool) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    match tool.save_url_state() {
+    match tool.export_url_state() {
         Some(state_str) => {
             let cleaned = egui_plot::export::strip_utf8_bom(&state_str).trim();
             if cleaned.len() <= crate::url_state::MAX_DECODED_URL_STATE_BYTES {

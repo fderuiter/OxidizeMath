@@ -23,6 +23,7 @@ pub struct OdeModel<State, Dynamics, S> {
     pub dynamics: Dynamics,
     /// The numerical solver.
     pub solver: S,
+    elapsed_time: f64,
 }
 
 impl<State, Dynamics, S> OdeModel<State, Dynamics, S> {
@@ -33,6 +34,7 @@ impl<State, Dynamics, S> OdeModel<State, Dynamics, S> {
             state,
             dynamics,
             solver,
+            elapsed_time: 0.0,
         }
     }
 }
@@ -72,9 +74,67 @@ where
 
     #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
-        // We pass &self.dynamics to the solver.
-        // The solver needs a reference to something implementing OdeSystem<State>.
-        // Dynamics implements OdeSystem<State>.
-        self.solver.step(&self.dynamics, 0.0, &mut self.state, dt);
+        let t = self.elapsed_time;
+        self.solver.step(&self.dynamics, t, &mut self.state, dt);
+        self.elapsed_time += dt;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::solvers::RungeKutta4;
+    use super::super::state::ArrayState;
+    use super::*;
+
+    struct NonAutonomousSineDecay {
+        k: f64,
+    }
+
+    impl OdeSystem<ArrayState<1>> for NonAutonomousSineDecay {
+        #[verified_engine::verified]
+        fn derivative(&self, t: f64, state: &ArrayState<1>) -> ArrayState<1> {
+            let mut out = ArrayState::zeros();
+            self.derivative_in_place(t, state, &mut out);
+            out
+        }
+
+        #[verified_engine::verified]
+        fn derivative_in_place(&self, t: f64, state: &ArrayState<1>, out: &mut ArrayState<1>) {
+            out.0[0] = -self.k * state.0[0] * t.sin();
+        }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_ode_model_advances_elapsed_time_for_non_autonomous_rk4() {
+        let init = ArrayState([1.0]);
+        let mut model = OdeModel::new(
+            init,
+            NonAutonomousSineDecay { k: 1.0 },
+            RungeKutta4::new(&init),
+        );
+        let dt = 0.05;
+        let steps = 200;
+
+        let (max_err, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            let mut worst = 0.0_f64;
+            for step_idx in 0..=steps {
+                let t = (step_idx as f64) * dt;
+                let exact = (t.cos() - 1.0).exp();
+                let err = (model.get_state().0[0] - exact).abs();
+                if err > worst {
+                    worst = err;
+                }
+                if step_idx < steps {
+                    model.step(dt);
+                }
+            }
+            worst
+        });
+
+        assert!(
+            max_err < 1e-4,
+            "Non-autonomous RK4 max error {max_err:.6e} exceeded 1e-4"
+        );
     }
 }
