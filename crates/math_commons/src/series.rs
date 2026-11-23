@@ -1,6 +1,8 @@
 //! Zero-copy 2D coordinate series views for curve fitting and critical-point solvers.
 // [cite:math_commons]
 
+use alloc::vec::Vec;
+
 /// Single 2D `(x, y)` coordinate sample enabling blanket [`PointSeries`] slice implementations.
 pub trait Sample2D {
     /// Returns the horizontal (`x`) coordinate of this sample.
