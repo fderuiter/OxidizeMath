@@ -39,7 +39,7 @@ fn verify_single_figure_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
         .last_exported_bytes
         .as_deref()
         .unwrap_or_else(|| panic!("Missing PNG bytes for {meta_name}"));
-    let (_, _, pixels) = egui_plot::export_primitives::decode_png_rgba(png_bytes)
+    let pixels = super::deferred_export_tests::decode_rgba_pixels(png_bytes)
         .unwrap_or_else(|e| panic!("Invalid PNG for {meta_name}: {e}"));
     let colors: HashSet<[u8; 4]> = pixels.into_iter().collect();
     assert!(

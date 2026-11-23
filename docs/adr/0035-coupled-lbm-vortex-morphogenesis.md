@@ -16,7 +16,7 @@ Four architectural and numerical constraints shaped the design across `pure_math
 
 ## Decision
 1. **Unify `LatticeBoltzmann::step` Buffer Swapping and Open-Outlet Wakes (`domain_physics`)**:
-   - Call `DoubleBufferedState::swap_buffers(&mut self.state)` at the end of [`LatticeBoltzmann::step`](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/algorithms.rs), remove the duplicate swap from `<LatticeBoltzmannD2Q9<BgkCollision> as SimulationModel>::step`, and add `apply_open_outlet` zero-gradient outflow extrapolation so bluff-body cylinder wakes shed alternating Karman vortex streets cleanly.
+   - Call `DoubleBufferedState::swap_buffers(&mut self.state)` at the end of [`LatticeBoltzmann::step`](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/algorithms.rs) so both inherent `step()` and [`EvolutionEngine::step`](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/algorithms.rs) advance streamed distributions in lockstep (with the legacy `SimulationModel` adapter retired per [ADR 0036](0036-delete-simulation-model-traits-and-physics-adapters.md)), and add `apply_open_outlet` zero-gradient outflow extrapolation so bluff-body cylinder wakes shed alternating Karman vortex streets cleanly.
 2. **Extend `StencilOperators` with `inv_dy` and `upwind_2d` (`pure_math`)**:
    - Add `pub inv_dy: f64` and `StencilOperators::upwind_2d` to [`crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs`](../../crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs), preserving concentration non-negativity under explicit CFL sub-stepping ($|u_x|\Delta t/\Delta x + |u_y|\Delta t/\Delta y \le 0.5$).
 3. **Promote `GrayScottKinetics` and Masked Advection-Diffusion (`domain_biology`)**:

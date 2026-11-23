@@ -86,32 +86,30 @@ fn test_lbm_velocity_propagation() {
 
 #[test]
 #[verified_engine::verified]
-fn test_lbm_simulation_model_step_no_double_swap() {
-    use oxidize_core::SimulationModel;
+fn test_lbm_evolution_engine_step_no_double_swap() {
+    use pure_math::pure_math::analysis::evolution::EvolutionEngine;
 
     let mut direct = LatticeBoltzmannD2Q9::new(16, 8, 0.7);
-    let mut via_trait = LatticeBoltzmannD2Q9::initialize(
-        domain_physics::physics::fluid_dynamics::lattice_boltzmann::algorithms::LbmConfig {
-            width: 16,
-            height: 8,
-            tau: 0.7,
-        },
-        oxidize_core::rng::OxidizeRng::default(),
-    )
-    .expect("LBM initialization should succeed");
+    let mut engine = LatticeBoltzmannD2Q9::new(16, 8, 0.7);
+    let mut external_state = engine.state.clone();
+    let mut rng = oxidize_core::rng::OxidizeRng::default();
 
     for _ in 0..12 {
         direct.set_inlet(0, 0, 2, 8, 0.08, 0.0);
         direct.step();
 
-        via_trait.set_inlet(0, 0, 2, 8, 0.08, 0.0);
-        SimulationModel::step(&mut via_trait).expect("SimulationModel::step should succeed");
+        std::mem::swap(&mut engine.state, &mut external_state);
+        engine.set_inlet(0, 0, 2, 8, 0.08, 0.0);
+        std::mem::swap(&mut engine.state, &mut external_state);
+        EvolutionEngine::step(&mut engine, &mut external_state, &mut (), &mut rng, 1.0)
+            .expect("EvolutionEngine::step should succeed");
     }
 
+    std::mem::swap(&mut engine.state, &mut external_state);
     for y in 0..8 {
         for x in 0..16 {
             let (ux_a, uy_a) = direct.get_velocity(x, y);
-            let (ux_b, uy_b) = via_trait.get_velocity(x, y);
+            let (ux_b, uy_b) = engine.get_velocity(x, y);
             assert_relative_eq!(ux_a, ux_b, epsilon = 1e-12);
             assert_relative_eq!(uy_a, uy_b, epsilon = 1e-12);
         }
