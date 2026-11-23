@@ -84,7 +84,8 @@ pub trait ExplorerTab {
     /// Academic domain category of the tab for top navigation bar grouping.
     fn academic_domain(&self) -> &'static str {
         match self.name() {
-            "Analysis & Calculus"
+            "Algorithmic Information"
+            | "Analysis & Calculus"
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
@@ -167,6 +168,7 @@ pub trait ExplorerTab {
     fn url_slug(&self) -> &'static str {
         match self.name() {
             "Artificial Intelligence" => "ai",
+            "Algorithmic Information" => "algorithmic_information",
             "Analysis & Calculus" => "analysis",
             "Astrophysics" => "astrophysics",
             "Battery Degradation" => "battery_degradation",

@@ -177,6 +177,7 @@ fn test_attractor_plotter_invariants_and_one_click_handoff_to_vietoris_rips() {
     plotter.system.rho = 28.0;
     let ctx = egui::Context::default();
     let mut app = crate::app::MathExplorerApp::default();
+    let mut vr = VietorisRipsTool::default();
     let t0 = crate::web_io::PlatformInstant::now();
     let payload = plotter
         .send_landmarks_to_vietoris_rips(Some(&ctx))
@@ -186,7 +187,6 @@ fn test_attractor_plotter_invariants_and_one_click_handoff_to_vietoris_rips() {
     crate::app::domain_bar::poll_cross_tab_tool_handoffs(&mut app, &ctx);
     assert_eq!(app.tabs[app.selected_tab].name(), "Geometry & Topology");
 
-    let mut vr = VietorisRipsTool::default();
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| vr.show_inside(ui));
     });
