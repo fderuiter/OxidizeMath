@@ -67,20 +67,16 @@ fn test_sir_sensitivity_converges_in_two_frames_and_invalidates_on_duration() {
 
     let out1 = ctx.run(input.clone(), |ctx| tool.show(ctx));
     assert!(!tool.sensitivity_engine.is_converged());
-    assert!(
-        out1.viewport_output[&egui::ViewportId::ROOT]
-            .repaint_delay
-            .is_zero()
-    );
+    assert!(out1.viewport_output[&egui::ViewportId::ROOT]
+        .repaint_delay
+        .is_zero());
 
     let _ = ctx.run(input.clone(), |ctx| tool.show(ctx));
     assert!(tool.sensitivity_engine.is_converged());
     let out_idle = ctx.run(input.clone(), |ctx| tool.show(ctx));
-    assert!(
-        !out_idle.viewport_output[&egui::ViewportId::ROOT]
-            .repaint_delay
-            .is_zero()
-    );
+    assert!(!out_idle.viewport_output[&egui::ViewportId::ROOT]
+        .repaint_delay
+        .is_zero());
     assert!(tool.sensitivity_engine.metrics[2].partial_derivative > 0.0);
     assert!(tool.sensitivity_engine.metrics[3].partial_derivative < 0.0);
 
@@ -89,11 +85,9 @@ fn test_sir_sensitivity_converges_in_two_frames_and_invalidates_on_duration() {
     tool.recalculate();
     let out_after_duration = ctx.run(input, |ctx| tool.show(ctx));
     assert!(!tool.sensitivity_engine.is_converged());
-    assert!(
-        out_after_duration.viewport_output[&egui::ViewportId::ROOT]
-            .repaint_delay
-            .is_zero()
-    );
+    assert!(out_after_duration.viewport_output[&egui::ViewportId::ROOT]
+        .repaint_delay
+        .is_zero());
 }
 
 #[test]
@@ -145,3 +139,59 @@ fn test_sir_epidemic_peak_and_logistic_fit_r2() {
     );
 }
 
+#[test]
+fn test_sir_100k_steps_decimates_display_polylines_and_preserves_peak_and_exports() {
+    let mut tool = SirTool {
+        duration: 10_000.0,
+        ..Default::default()
+    };
+    tool.recalculate();
+    assert_eq!(tool.i_points.len(), 100_001);
+    assert!(tool.display_s.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS);
+    assert!(tool.display_i.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS);
+    assert!(tool.display_r.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS);
+
+    let full_peak = metrics::compute_epidemic_peak(&tool.i_points).expect("full peak");
+    let short_tool = SirTool::default();
+    let short_peak = metrics::compute_epidemic_peak(&short_tool.i_points).expect("365d peak");
+    assert!((full_peak.0 - short_peak.0).abs() < 1e-9);
+    assert!((full_peak.1 - short_peak.1).abs() < 1e-9);
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |c| tool.show(c));
+    let plot_datasets = egui_plot::get_last_plot_datasets();
+    assert!(plot_datasets
+        .iter()
+        .all(|(_, pts)| pts.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS));
+
+    let exported = tool.export_datasets();
+    assert_eq!(exported[0].1.len(), 100_001);
+    assert_eq!(exported[1].1.len(), 100_001);
+    assert_eq!(exported[2].1.len(), 100_001);
+}
+
+#[test]
+fn test_sir_forked_100k_steps_decimates_both_branches_and_exports_full_series() {
+    let mut tool = SirTool {
+        duration: 10_000.0,
+        ..Default::default()
+    };
+    assert!(tool.fork_at_day(10.0));
+    tool.beta = 0.2;
+    tool.recalculate();
+
+    let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
+    assert!(tool.display_s.len() <= cap && tool.cf.display_s_a.len() <= cap);
+    assert!(tool.display_i.len() <= cap && tool.cf.display_i_a.len() <= cap);
+    assert!(tool.display_r.len() <= cap && tool.cf.display_r_a.len() <= cap);
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |c| tool.show(c));
+    let plot_datasets = egui_plot::get_last_plot_datasets();
+    assert_eq!(plot_datasets.len(), 6);
+    assert!(plot_datasets.iter().all(|(_, pts)| pts.len() <= cap));
+
+    let exported = tool.export_datasets();
+    assert_eq!(exported.len(), 6);
+    assert!(exported.iter().all(|(_, pts)| pts.len() == 100_001));
+}

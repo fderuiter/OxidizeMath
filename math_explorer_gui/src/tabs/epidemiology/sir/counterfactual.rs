@@ -3,18 +3,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{SirTool, MAX_SIR_STEPS};
-use crate::app::SemanticPalette;
 use crate::framework::{
-    branch_a_ghost_line, branch_b_solid_line, fork_marker_callout, fork_marker_vline,
-    l2_distance_3d, render_divergence_strip, sanitize_perturbation_delta,
-    sir_peak_infections_averted, BranchControlAction, CounterfactualBranchEngine,
-    CounterfactualTransport, DivergenceSnapshot, DomainInterventionDelta, InteractiveTool,
-    PlaybackAction, PlaybackTransport, SeparationTracker,
+    l2_distance_3d, sanitize_perturbation_delta, sir_peak_infections_averted, BranchControlAction,
+    CounterfactualBranchEngine, CounterfactualTransport, DivergenceSnapshot,
+    DomainInterventionDelta, PlaybackAction, PlaybackTransport, SeparationTracker,
 };
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::epidemiology::compartmental::{SIRModel, SIRState};
 use math_explorer::pure_math::analysis::ode::TimeStepper;
+use std::sync::Arc;
 
 /// Fixed RK4 integration step (`0.1` days) used by `SirTool`.
 pub const SIR_STEP_DT: f64 = 0.1;
@@ -119,6 +117,10 @@ pub struct SirCounterfactualState {
     pub i_points_a: Vec<PlotPoint>,
     /// Cached ghost recovered curve points for `Branch A`.
     pub r_points_a: Vec<PlotPoint>,
+    /// Decimated ghost display buffers for `Branch A` (`S_A, I_A, R_A`).
+    pub(crate) display_s_a: Arc<Vec<PlotPoint>>,
+    pub(crate) display_i_a: Arc<Vec<PlotPoint>>,
+    pub(crate) display_r_a: Arc<Vec<PlotPoint>>,
     /// Infected value `I(t_k)` at the fork point for anchoring the `"Fork @ t_k"` callout.
     pub fork_infected_y: f64,
     /// Shared framework `CounterfactualBranchEngine` state.
@@ -135,9 +137,23 @@ impl Default for SirCounterfactualState {
             s_points_a: Vec::new(),
             i_points_a: Vec::new(),
             r_points_a: Vec::new(),
+            display_s_a: Arc::new(Vec::new()),
+            display_i_a: Arc::new(Vec::new()),
+            display_r_a: Arc::new(Vec::new()),
             fork_infected_y: 0.0,
             branch_engine: CounterfactualBranchEngine::with_delta(0.0),
         }
+    }
+}
+
+impl SirCounterfactualState {
+    pub(super) fn reset_branch_a_points(&mut self) {
+        self.s_points_a.clear();
+        self.i_points_a.clear();
+        self.r_points_a.clear();
+        self.display_s_a = Arc::new(Vec::new());
+        self.display_i_a = Arc::new(Vec::new());
+        self.display_r_a = Arc::new(Vec::new());
     }
 }
 
@@ -201,9 +217,7 @@ impl SirTool {
     /// Clears the active counterfactual fork while retaining active `Branch B` parameters.
     pub fn clear_fork(&mut self) -> bool {
         let had = self.cf.fork.take().is_some();
-        self.cf.s_points_a.clear();
-        self.cf.i_points_a.clear();
-        self.cf.r_points_a.clear();
+        self.cf.reset_branch_a_points();
         self.cf.branch_engine.clear();
         if had {
             self.recalculate();
@@ -237,10 +251,23 @@ impl SirTool {
         self.recalculate();
     }
 
+    pub(super) fn refresh_display_polylines(&mut self) {
+        let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
+        self.display_s = crate::framework::decimate_plot_points_minmax(&self.s_points, cap);
+        self.display_i = crate::framework::decimate_plot_points_minmax(&self.i_points, cap);
+        self.display_r = crate::framework::decimate_plot_points_minmax(&self.r_points, cap);
+        if self.cf.fork.is_some() {
+            self.cf.display_s_a =
+                crate::framework::decimate_plot_points_minmax(&self.cf.s_points_a, cap);
+            self.cf.display_i_a =
+                crate::framework::decimate_plot_points_minmax(&self.cf.i_points_a, cap);
+            self.cf.display_r_a =
+                crate::framework::decimate_plot_points_minmax(&self.cf.r_points_a, cap);
+        }
+    }
+
     pub(super) fn recalculate_forked(&mut self, desc: SirForkDescriptor, end_step: usize) {
-        self.cf.s_points_a.clear();
-        self.cf.i_points_a.clear();
-        self.cf.r_points_a.clear();
+        self.cf.reset_branch_a_points();
 
         let base_n = desc.baseline_n.max(1.0);
         let base_i0 = desc.baseline_i0.clamp(0.0, base_n);
@@ -268,6 +295,7 @@ impl SirTool {
             desc.delta_x,
         );
         self.trace_sir_post_fork(&mut twin, fork_step, end_step);
+        self.refresh_display_polylines();
         self.sync_sir_divergence_snapshot(&twin, desc, fork_step, end_step);
     }
 
@@ -415,64 +443,6 @@ impl SirTool {
                 }
                 true
             }
-        }
-    }
-
-    pub(super) fn render_sir_plot_curves<'a>(
-        &'a self,
-        plot_ui: &mut egui_plot::PlotUi<'a>,
-        palette: &SemanticPalette,
-    ) {
-        let to_vec = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-        if let Some(ref desc) = self.cf.fork {
-            plot_ui.line(branch_a_ghost_line(
-                "Susceptible (Branch A)",
-                to_vec(&self.cf.s_points_a),
-                palette.axis_z,
-            ));
-            plot_ui.line(branch_a_ghost_line(
-                "Infected (Branch A)",
-                to_vec(&self.cf.i_points_a),
-                palette.axis_x,
-            ));
-            plot_ui.line(branch_a_ghost_line(
-                "Recovered (Branch A)",
-                to_vec(&self.cf.r_points_a),
-                palette.axis_y,
-            ));
-            plot_ui.line(branch_b_solid_line(
-                "Susceptible (Branch B)",
-                to_vec(&self.s_points),
-                palette.axis_z,
-            ));
-            plot_ui.line(branch_b_solid_line(
-                "Infected (Branch B)",
-                to_vec(&self.i_points),
-                palette.axis_x,
-            ));
-            plot_ui.line(branch_b_solid_line(
-                "Recovered (Branch B)",
-                to_vec(&self.r_points),
-                palette.axis_y,
-            ));
-            let fork_t = desc.fork_step as f64 * SIR_STEP_DT;
-            plot_ui.vline(fork_marker_vline(palette, fork_t));
-            plot_ui.callout(fork_marker_callout(
-                [fork_t, self.cf.fork_infected_y],
-                fork_t,
-                palette,
-            ));
-        } else {
-            plot_ui.line(egui_plot::Line::new("Susceptible", &self.s_points[..]).color(palette.axis_z));
-            plot_ui.line(egui_plot::Line::new("Infected", &self.i_points[..]).color(palette.axis_x));
-            plot_ui.line(egui_plot::Line::new("Recovered", &self.r_points[..]).color(palette.axis_y));
-        }
-        self.snapshot_manager.render_on_plot(plot_ui);
-    }
-
-    pub(super) fn render_sir_divergence_if_active(&self, ui: &mut egui::Ui) {
-        if let Some(ref snap) = self.cf.branch_engine.active_snapshot {
-            render_divergence_strip(ui, self.name(), snap);
         }
     }
 }

@@ -60,10 +60,14 @@ pub struct SirTool {
     pub(crate) gamma: f64,
     pub(crate) duration: f64,
 
-    // Cached plot data
+    // Cached plot data (full-resolution trajectories for metrics and exports)
     pub(crate) s_points: Vec<PlotPoint>,
     pub(crate) i_points: Vec<PlotPoint>,
     pub(crate) r_points: Vec<PlotPoint>,
+    // Decimated display buffers capped at MAX_DISPLAY_POLYLINE_POINTS
+    pub(crate) display_s: std::sync::Arc<Vec<PlotPoint>>,
+    pub(crate) display_i: std::sync::Arc<Vec<PlotPoint>>,
+    pub(crate) display_r: std::sync::Arc<Vec<PlotPoint>>,
 
     pub(crate) snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
@@ -83,6 +87,9 @@ impl Default for SirTool {
             s_points: vec![],
             i_points: vec![],
             r_points: vec![],
+            display_s: std::sync::Arc::new(Vec::new()),
+            display_i: std::sync::Arc::new(Vec::new()),
+            display_r: std::sync::Arc::new(Vec::new()),
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
@@ -96,7 +103,10 @@ impl Default for SirTool {
 
 impl SirTool {
     pub fn param_summary(&self) -> String {
-        format!(r"\beta={:.2}, \gamma={:.2}, N={:.0}", self.beta, self.gamma, self.n)
+        format!(
+            r"\beta={:.2}, \gamma={:.2}, N={:.0}",
+            self.beta, self.gamma, self.n
+        )
     }
 
     fn render_parameter_controls(&mut self, ui: &mut egui::Ui) -> bool {
@@ -105,10 +115,7 @@ impl SirTool {
             .add(egui::Slider::new(&mut self.n, 100.0..=100_000.0).text("Population (N)"))
             .changed();
         changed |= ui
-            .add(
-                egui::Slider::new(&mut self.i0, 1.0..=self.n / 2.0)
-                    .text("Initial Infected (I0)"),
-            )
+            .add(egui::Slider::new(&mut self.i0, 1.0..=self.n / 2.0).text("Initial Infected (I0)"))
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.beta, 0.0..=5.0).text("Transmission Rate (beta)"))
@@ -160,6 +167,9 @@ impl SirTool {
         self.s_points.clear();
         self.i_points.clear();
         self.r_points.clear();
+        self.display_s = std::sync::Arc::new(Vec::new());
+        self.display_i = std::sync::Arc::new(Vec::new());
+        self.display_r = std::sync::Arc::new(Vec::new());
         self.last_param_summary = self.param_summary();
 
         if !self.duration.is_finite() || self.duration <= 0.0 {
@@ -172,9 +182,7 @@ impl SirTool {
             self.recalculate_forked(desc, end_step);
             return;
         }
-        self.cf.s_points_a.clear();
-        self.cf.i_points_a.clear();
-        self.cf.r_points_a.clear();
+        self.cf.reset_branch_a_points();
         self.cf.branch_engine.clear();
 
         // Ensure parameters are valid before passing to model
@@ -204,6 +212,7 @@ impl SirTool {
 
                 model.step(dt);
             }
+            self.refresh_display_polylines();
         }
     }
 
@@ -258,7 +267,9 @@ impl SirTool {
 }
 
 impl InteractiveTool for SirTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "SIR Model"
     }
@@ -295,9 +306,18 @@ impl InteractiveTool for SirTool {
             .all(f64::is_finite)
             && self.n > 0.0
             && self.duration > 0.0
-            && self.s_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
-            && self.i_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
-            && self.r_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
+            && self
+                .s_points
+                .iter()
+                .all(|p| p.x.is_finite() && p.y.is_finite())
+            && self
+                .i_points
+                .iter()
+                .all(|p| p.x.is_finite() && p.y.is_finite())
+            && self
+                .r_points
+                .iter()
+                .all(|p| p.x.is_finite() && p.y.is_finite())
     }
 
     fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
@@ -313,21 +333,27 @@ impl InteractiveTool for SirTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = egui_plot::get_last_plot_datasets();
-        if datasets.is_empty() {
+        let mut datasets = Vec::new();
+        if !self.s_points.is_empty() {
+            let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
             if self.cf.fork.is_some() {
-                datasets.push(("Susceptible (Branch B)".to_string(), self.s_points.iter().map(|p| [p.x, p.y]).collect()));
-                datasets.push(("Infected (Branch B)".to_string(), self.i_points.iter().map(|p| [p.x, p.y]).collect()));
-                datasets.push(("Recovered (Branch B)".to_string(), self.r_points.iter().map(|p| [p.x, p.y]).collect()));
-                datasets.push(("Susceptible (Branch A)".to_string(), self.cf.s_points_a.iter().map(|p| [p.x, p.y]).collect()));
-                datasets.push(("Infected (Branch A)".to_string(), self.cf.i_points_a.iter().map(|p| [p.x, p.y]).collect()));
-                datasets.push(("Recovered (Branch A)".to_string(), self.cf.r_points_a.iter().map(|p| [p.x, p.y]).collect()));
+                datasets.push(("Susceptible (Branch B)".to_string(), to_pairs(&self.s_points)));
+                datasets.push(("Infected (Branch B)".to_string(), to_pairs(&self.i_points)));
+                datasets.push(("Recovered (Branch B)".to_string(), to_pairs(&self.r_points)));
+                datasets.push(("Susceptible (Branch A)".to_string(), to_pairs(&self.cf.s_points_a)));
+                datasets.push(("Infected (Branch A)".to_string(), to_pairs(&self.cf.i_points_a)));
+                datasets.push(("Recovered (Branch A)".to_string(), to_pairs(&self.cf.r_points_a)));
             } else {
-                datasets.push(("Susceptible".to_string(), self.s_points.iter().map(|p| [p.x, p.y]).collect()));
-                datasets.push(("Infected".to_string(), self.i_points.iter().map(|p| [p.x, p.y]).collect()));
-                datasets.push(("Recovered".to_string(), self.r_points.iter().map(|p| [p.x, p.y]).collect()));
+                datasets.push(("Susceptible".to_string(), to_pairs(&self.s_points)));
+                datasets.push(("Infected".to_string(), to_pairs(&self.i_points)));
+                datasets.push(("Recovered".to_string(), to_pairs(&self.r_points)));
             }
-            datasets.extend(self.snapshot_manager.export_datasets());
+        }
+        datasets.extend(self.snapshot_manager.export_datasets());
+        for (name, pts) in egui_plot::get_last_plot_datasets() {
+            if !datasets.iter().any(|(existing, _)| existing == &name) {
+                datasets.push((name, pts));
+            }
         }
         datasets
     }
@@ -381,7 +407,8 @@ impl InteractiveTool for SirTool {
         ui.vertical(|ui| {
             ui.heading("Parameters");
             if self.render_parameter_controls(ui) {
-                let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+                let to_pairs =
+                    |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
                 let series = vec![
                     TraceSeries::new("Susceptible", to_pairs(&self.s_points)),
                     TraceSeries::new("Infected", to_pairs(&self.i_points)),

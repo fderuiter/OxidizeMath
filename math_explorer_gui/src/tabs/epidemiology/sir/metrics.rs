@@ -1,9 +1,15 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use eframe::egui;
-use egui_plot::{Plot, PlotPoint};
+use egui_plot::{Line, Plot, PlotPoint, PlotPoints};
+use std::sync::Arc;
 
-use super::SirTool;
+use super::{SirTool, SIR_STEP_DT};
+use crate::app::SemanticPalette;
+use crate::framework::{
+    branch_a_ghost_line, branch_b_solid_line, fork_marker_callout, fork_marker_vline,
+    render_divergence_strip, InteractiveTool,
+};
 use crate::reflective_ui::render_copyable_metric;
 
 /// Computes interpolated `(peak_day, peak_infected)` from simulated `Infected` points.
@@ -71,15 +77,69 @@ pub(super) fn render_simulation_plot(ui: &mut egui::Ui, tool: &SirTool) {
         }
     });
 
-    tool.render_sir_divergence_if_active(ui);
+    if let Some(ref snap) = tool.cf.branch_engine.active_snapshot {
+        render_divergence_strip(ui, tool.name(), snap);
+    }
 
-    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+    let palette = SemanticPalette::from_visuals(ui.visuals());
     let plot = Plot::new("sir_plot")
         .id(plot_id)
         .view_aspect(2.0)
         .legend(egui_plot::Legend::default());
 
     plot.show(ui, |plot_ui| {
-        tool.render_sir_plot_curves(plot_ui, &palette);
+        render_sir_plot_curves(tool, plot_ui, &palette);
     });
+}
+
+fn render_sir_plot_curves<'a>(
+    tool: &'a SirTool,
+    plot_ui: &mut egui_plot::PlotUi<'a>,
+    palette: &SemanticPalette,
+) {
+    let shared = |arc: &Arc<Vec<PlotPoint>>| PlotPoints::from_shared(Arc::clone(arc));
+    if let Some(ref desc) = tool.cf.fork {
+        plot_ui.line(branch_a_ghost_line(
+            "Susceptible (Branch A)",
+            shared(&tool.cf.display_s_a),
+            palette.axis_z,
+        ));
+        plot_ui.line(branch_a_ghost_line(
+            "Infected (Branch A)",
+            shared(&tool.cf.display_i_a),
+            palette.axis_x,
+        ));
+        plot_ui.line(branch_a_ghost_line(
+            "Recovered (Branch A)",
+            shared(&tool.cf.display_r_a),
+            palette.axis_y,
+        ));
+        plot_ui.line(branch_b_solid_line(
+            "Susceptible (Branch B)",
+            shared(&tool.display_s),
+            palette.axis_z,
+        ));
+        plot_ui.line(branch_b_solid_line(
+            "Infected (Branch B)",
+            shared(&tool.display_i),
+            palette.axis_x,
+        ));
+        plot_ui.line(branch_b_solid_line(
+            "Recovered (Branch B)",
+            shared(&tool.display_r),
+            palette.axis_y,
+        ));
+        let fork_t = desc.fork_step as f64 * SIR_STEP_DT;
+        plot_ui.vline(fork_marker_vline(palette, fork_t));
+        plot_ui.callout(fork_marker_callout(
+            [fork_t, tool.cf.fork_infected_y],
+            fork_t,
+            palette,
+        ));
+    } else {
+        plot_ui.line(Line::new("Susceptible", shared(&tool.display_s)).color(palette.axis_z));
+        plot_ui.line(Line::new("Infected", shared(&tool.display_i)).color(palette.axis_x));
+        plot_ui.line(Line::new("Recovered", shared(&tool.display_r)).color(palette.axis_y));
+    }
+    tool.snapshot_manager.render_on_plot(plot_ui);
 }

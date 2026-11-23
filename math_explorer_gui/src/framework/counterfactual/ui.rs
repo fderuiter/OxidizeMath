@@ -238,10 +238,10 @@ fn render_metric_chip(
 #[must_use]
 pub fn branch_b_solid_line(
     name: impl Into<String>,
-    points: Vec<[f64; 2]>,
+    points: impl Into<egui_plot::PlotPoints<'static>>,
     color: egui::Color32,
 ) -> egui_plot::Line<'static> {
-    egui_plot::Line::new(name.into(), egui_plot::PlotPoints::from(points))
+    egui_plot::Line::new(name.into(), points.into())
         .color(color)
         .style(egui_plot::LineStyle::Solid)
         .width(2.4_f32)
@@ -251,10 +251,10 @@ pub fn branch_b_solid_line(
 #[must_use]
 pub fn branch_a_ghost_line(
     name: impl Into<String>,
-    points: Vec<[f64; 2]>,
+    points: impl Into<egui_plot::PlotPoints<'static>>,
     color: egui::Color32,
 ) -> egui_plot::Line<'static> {
-    egui_plot::Line::new(name.into(), egui_plot::PlotPoints::from(points))
+    egui_plot::Line::new(name.into(), points.into())
         .color(color)
         .style(egui_plot::LineStyle::Dashed { length: 6.0_f32 })
         .width(1.7_f32)
