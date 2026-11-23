@@ -58,6 +58,7 @@ impl LossLandscapeTool {
     }
 
     pub(super) fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
+        self.poll_obj_export(parent_ui.ctx());
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "loss_landscape_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Loss Landscape Arena");
@@ -249,7 +250,9 @@ impl LossLandscapeTool {
     }
 
     fn draw_physics_and_sculpt_ui(&mut self, ui: &mut egui::Ui) {
-        ui.add(egui::Slider::new(&mut self.resolution, 10..=50).text("Grid"));
+        let max_res = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
+        self.resolution = self.resolution.clamp(10, max_res);
+        ui.add(egui::Slider::new(&mut self.resolution, 10..=max_res).text("Grid"));
         ui.add(egui::Slider::new(&mut self.arena_config.mass, MIN_MASS..=MAX_MASS).text("Mass m"));
         ui.add(
             egui::Slider::new(&mut self.arena_config.damping, MIN_DAMPING..=MAX_DAMPING)
@@ -315,5 +318,20 @@ impl LossLandscapeTool {
         egui::CollapsingHeader::new("Camera 3D")
             .default_open(false)
             .show(ui, |ui| self.camera.ui(ui));
+        let is_saving = self.cache.obj_export_rx.is_some();
+        if ui
+            .add_enabled(!is_saving, egui::Button::new("Export to OBJ"))
+            .clicked()
+        {
+            self.trigger_obj_export();
+        }
+        if let Some((ref message, is_error)) = self.cache.obj_export_status {
+            let color = if is_error {
+                palette.error
+            } else {
+                palette.success
+            };
+            ui.colored_label(color, message);
+        }
     }
 }

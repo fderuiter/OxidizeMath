@@ -205,6 +205,17 @@ impl SurfaceViewer {
     pub fn populate_scene(&mut self, color: egui::Color32) {
         self.populate_cached_wireframe(color);
     }
+
+    #[cfg(test)]
+    pub(crate) fn debug_cache_counts(&self) -> (usize, usize) {
+        (self.cache.surface_eval_count, self.cache.projection_count)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_grid_resolutions(&mut self, u_res: usize, v_res: usize) {
+        self.u_resolution = u_res;
+        self.v_resolution = v_res;
+    }
 }
 
 impl InteractiveTool for SurfaceViewer {

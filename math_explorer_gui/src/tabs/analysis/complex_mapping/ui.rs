@@ -5,7 +5,6 @@ use crate::framework::{bounded_drag_value, enforce_ordered_drag_range};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
-use math_explorer::pure_math::analysis::complex::mapping::conformal_scale_factor;
 use num_complex::Complex64;
 
 pub(super) const CONTOUR_RESOLUTION: usize = 161;
@@ -110,7 +109,7 @@ impl ComplexMappingTool {
         );
 
         ui.add_space(10.0);
-        let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
+        let max_grid = crate::presets::MAX_INTERACTIVE_CONFORMAL_GRID_SIZE;
         self.grid_density = self.grid_density.clamp(2, max_grid);
         ui.add(egui::Slider::new(&mut self.grid_density, 2..=max_grid).text("Grid Density:"));
     }
@@ -133,15 +132,7 @@ impl ComplexMappingTool {
             ));
         });
 
-        let z0 = Complex64::new(self.inspection_point[0], self.inspection_point[1]);
-        let w0 = self.eval_z(z0);
-        let scale_factor = conformal_scale_factor(|z| self.deriv_z(z), z0);
-        let safe_scale = if scale_factor.is_finite() {
-            scale_factor
-        } else {
-            0.0
-        };
-
+        let (w0, safe_scale) = self.ensure_cached_probe();
         let w_text = if w0.re.is_finite() && w0.im.is_finite() {
             format!("{:.3} + {:.3}i", w0.re, w0.im)
         } else {
@@ -164,20 +155,11 @@ impl ComplexMappingTool {
             .y_axis_label("Im(z)")
             .show(ui, |plot_ui| {
                 if grid_ok {
-                    let (z_v, b_v) = &self.cache.z_vertical;
-                    if !z_v.is_empty() {
+                    let (z_batch, z_bounds) = &self.cache.z_batch;
+                    if !z_batch.is_empty() {
                         plot_ui.line(
-                            Line::from_segments("Re(z) grid", std::sync::Arc::clone(z_v))
-                                .with_bounds(*b_v)
-                                .color(palette.series_color(0)),
-                        );
-                    }
-                    let (z_h, b_h) = &self.cache.z_horizontal;
-                    if !z_h.is_empty() {
-                        plot_ui.line(
-                            Line::from_segments("Im(z) grid", std::sync::Arc::clone(z_h))
-                                .with_bounds(*b_h)
-                                .color(palette.series_color(1)),
+                            Line::from_colored_segments("z-grid", std::sync::Arc::clone(z_batch))
+                                .with_bounds(*z_bounds),
                         );
                     }
                 }
@@ -204,28 +186,19 @@ impl ComplexMappingTool {
             .y_axis_label("Im(w)")
             .show(ui, |plot_ui| {
                 if grid_ok {
-                    let (w_v, b_v) = &self.cache.w_vertical;
-                    if !w_v.is_empty() {
+                    let (w_batch, w_bounds) = &self.cache.w_batch;
+                    if !w_batch.is_empty() {
                         plot_ui.line(
-                            Line::from_segments("u-contours", std::sync::Arc::clone(w_v))
-                                .with_bounds(*b_v)
-                                .color(palette.series_color(0)),
-                        );
-                    }
-                    let (w_h, b_h) = &self.cache.w_horizontal;
-                    if !w_h.is_empty() {
-                        plot_ui.line(
-                            Line::from_segments("v-contours", std::sync::Arc::clone(w_h))
-                                .with_bounds(*b_h)
-                                .color(palette.series_color(1)),
+                            Line::from_colored_segments(
+                                "w-contours",
+                                std::sync::Arc::clone(w_batch),
+                            )
+                            .with_bounds(*w_bounds),
                         );
                     }
                 }
                 if self.inspection_point.iter().all(|v| v.is_finite()) {
-                    let w0 = self.eval_z(Complex64::new(
-                        self.inspection_point[0],
-                        self.inspection_point[1],
-                    ));
+                    let w0 = self.cache.cached_w0;
                     if w0.re.is_finite() && w0.im.is_finite() {
                         plot_ui.points(
                             egui_plot::Points::new("", PlotPoints::new(vec![[w0.re, w0.im]]))

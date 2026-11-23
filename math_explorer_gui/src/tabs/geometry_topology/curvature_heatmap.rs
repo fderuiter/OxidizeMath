@@ -9,8 +9,17 @@ mod ui;
 
 use super::custom_surface::{CustomSurfaceSandbox, SurfaceType};
 use crate::framework::{Camera3D, InteractiveTool, Scene3DBuilder};
+use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
 use eframe::egui;
 use std::collections::BTreeMap;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+
+const OBJ_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
+    filter_name: "OBJ File",
+    extensions: &["obj"],
+    fallback_filename: "curvature_surface.obj",
+    write_error_prefix: "Failed to save OBJ mesh",
+};
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(super) enum CurvatureType {
@@ -86,6 +95,8 @@ pub struct CurvatureHeatmap {
     pub(crate) scene_builder: Scene3DBuilder,
     pub(super) custom_sandbox: CustomSurfaceSandbox,
     cache: cache::CurvatureGeometryCache,
+    pub(super) obj_export_rx: Option<Receiver<Result<String, String>>>,
+    pub(super) obj_export_status: Option<(String, bool)>,
 }
 
 impl Default for CurvatureHeatmap {
@@ -104,14 +115,104 @@ impl Default for CurvatureHeatmap {
             scene_builder: Scene3DBuilder::new(camera),
             custom_sandbox: CustomSurfaceSandbox::default(),
             cache: cache::CurvatureGeometryCache::default(),
+            obj_export_rx: None,
+            obj_export_status: None,
         }
     }
 }
 
 impl CurvatureHeatmap {
+    pub(super) fn trigger_obj_export(&mut self) {
+        match self.build_obj_mesh_string() {
+            Ok(obj_content) => {
+                let (tx, rx) = mpsc::channel();
+                self.obj_export_rx = Some(rx);
+                self.obj_export_status = None;
+                spawn_save_as_file_dialog(
+                    tx,
+                    OBJ_SAVE_CONFIG,
+                    "curvature_surface.obj",
+                    obj_content,
+                    |path, default_name| {
+                        path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(default_name)
+                            .to_string()
+                    },
+                );
+            }
+            Err(err) => {
+                self.obj_export_status = Some((err, true));
+            }
+        }
+    }
+
+    pub(super) fn poll_obj_export(&mut self, ctx: &egui::Context) {
+        let Some(rx) = &self.obj_export_rx else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(Ok(saved_name)) => {
+                let msg = format!("Saved OBJ mesh to {saved_name}");
+                crate::accessibility::announce_live_status(ctx, &msg);
+                self.obj_export_status = Some((msg, false));
+                self.obj_export_rx = None;
+            }
+            Ok(Err(err)) => {
+                crate::accessibility::announce_live_assertive_status(ctx, &err);
+                self.obj_export_status = Some((err, true));
+                self.obj_export_rx = None;
+            }
+            Err(TryRecvError::Empty) => ctx.request_repaint(),
+            Err(TryRecvError::Disconnected) => self.obj_export_rx = None,
+        }
+    }
+
     /// Populates `self.scene_builder` with cached world `Point3<f64>` curvature-colored grid segments.
     pub fn populate_scene(&mut self, series_color: egui::Color32) {
         self.populate_cached_scene(series_color);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn debug_cache_counts(&self) -> (usize, usize) {
+        (self.cache.curvature_eval_count, self.cache.projection_count)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_grid_resolutions(&mut self, u_res: usize, v_res: usize) {
+        self.u_resolution = u_res;
+        self.v_resolution = v_res;
+    }
+
+    /// Generates serialized Wavefront `.obj` text for the active parametric surface mesh.
+    pub fn build_obj_mesh_string(&self) -> Result<String, String> {
+        use math_explorer::pure_math::differential_geometry::surface::{
+            KleinBottle, ParametricSurface, Sphere, Torus,
+        };
+        let surface: Box<dyn ParametricSurface> = match self.surface_type {
+            SurfaceType::Sphere => Box::new(Sphere {
+                radius: self.sphere_radius,
+            }),
+            SurfaceType::Torus => Box::new(Torus {
+                major_radius: self.torus_major_radius,
+                minor_radius: self.torus_minor_radius,
+            }),
+            SurfaceType::KleinBottle => Box::new(KleinBottle {
+                radius: self.klein_radius,
+            }),
+            SurfaceType::CustomHeightfield => Box::new(self.custom_sandbox.build_heightfield()),
+            SurfaceType::CustomParametric => Box::new(self.custom_sandbox.build_parametric()),
+        };
+        let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
+        let mesh = super::export_utils::surface_to_mesh_with_domain(
+            surface.as_ref(),
+            u_range,
+            v_range,
+            self.u_resolution,
+            self.v_resolution,
+        );
+        oxidize_core::mesh::export_mesh_to_obj_string(&mesh)
+            .map_err(|e| format!("Failed to serialize OBJ mesh: {e}"))
     }
 }
 
@@ -216,6 +317,7 @@ impl InteractiveTool for CurvatureHeatmap {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.poll_obj_export(ui.ctx());
         self.draw_side_panel(ui);
         self.draw_viewport(ui);
     }

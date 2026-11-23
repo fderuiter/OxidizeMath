@@ -118,7 +118,10 @@ pub(super) fn try_load_tool_state(tool: &mut LossLandscapeTool, state: &str) -> 
     validate_target_and_arena(&p)?;
 
     (tool.w_min, tool.w_max, tool.b_min, tool.b_max) = (p.w_min, p.w_max, p.b_min, p.b_max);
-    (tool.resolution, tool.surface, tool.view_mode) = (p.resolution, p.surface, p.view_mode);
+    let clamped_res = p
+        .resolution
+        .min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
+    (tool.resolution, tool.surface, tool.view_mode) = (clamped_res, p.surface, p.view_mode);
     tool.predictor_mode = p.predictor_mode;
     tool.loss_metric = p.loss_metric;
     tool.huber_delta = p.huber_delta;
@@ -171,7 +174,7 @@ fn validate_bounds_and_expressions(p: &LossLandscapeState) -> Result<(), String>
         && (LOSS_PARAM_MIN_BOUND..=LOSS_PARAM_MAX_BOUND).contains(&p.b_min)
         && (LOSS_PARAM_MIN_BOUND..=LOSS_PARAM_MAX_BOUND).contains(&p.b_max)
         && p.b_min < p.b_max
-        && (10..=50).contains(&p.resolution)
+        && (10..=math_commons::registry::MAX_GRID_SIZE).contains(&p.resolution)
         && p.huber_delta.is_finite()
         && (0.01..=50.0).contains(&p.huber_delta);
     let expr_ok = p.custom_expr.as_ref().is_none_or(|s| s.len() <= 512)

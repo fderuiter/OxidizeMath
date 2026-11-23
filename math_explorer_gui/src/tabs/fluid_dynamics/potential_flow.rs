@@ -1,7 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::accessibility::AccessibleHoverText;
-use crate::framework::{bounded_drag_value, InteractiveTool};
+use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::{Arrows, Plot};
 use math_explorer::physics::fluid_dynamics::potential_flow::{
@@ -13,6 +12,8 @@ use std::f64::consts::PI;
 mod cache;
 #[path = "potential_flow/shader.rs"]
 mod shader;
+#[path = "potential_flow/ui.rs"]
+mod ui;
 #[cfg(test)]
 pub(crate) use shader::MAX_SHADER_SINGULARITIES;
 
@@ -20,10 +21,10 @@ pub(crate) const FLOW_STRENGTH_MIN: f64 = -1_000.0;
 pub(crate) const FLOW_STRENGTH_MAX: f64 = 1_000.0;
 pub(crate) const FLOW_POS_MIN: f64 = -50.0;
 pub(crate) const FLOW_POS_MAX: f64 = 50.0;
-const FLOW_ANGLE_MIN: f64 = -180.0;
-const FLOW_ANGLE_MAX: f64 = 180.0;
+pub(super) const FLOW_ANGLE_MIN: f64 = -180.0;
+pub(super) const FLOW_ANGLE_MAX: f64 = 180.0;
 const FLOW_VIEW_MIN: f64 = 0.1;
-const FLOW_VIEW_MAX: f64 = 50.0;
+pub(super) const FLOW_VIEW_MAX: f64 = 50.0;
 
 pub struct PotentialFlowTool {
     pub(crate) field: PotentialFlowField,
@@ -268,83 +269,6 @@ impl InteractiveTool for PotentialFlowTool {
 }
 
 impl PotentialFlowTool {
-    fn draw_add_element_controls(&mut self, ui: &mut egui::Ui) {
-        ui.collapsing("Add Element", |ui| {
-            for (elem, label) in [
-                (ElementType::Uniform, "Uniform Flow"),
-                (ElementType::Source, "Source"),
-                (ElementType::Sink, "Sink"),
-                (ElementType::Vortex, "Vortex"),
-                (ElementType::Doublet, "Doublet"),
-            ] {
-                ui.radio_value(&mut self.selected_element_type, elem, label);
-            }
-
-            ui.separator();
-            ui.label("Strength / Velocity");
-            ui.add(bounded_drag_value(
-                &mut self.new_element_strength,
-                FLOW_STRENGTH_MIN..=FLOW_STRENGTH_MAX,
-                0.1,
-            ));
-
-            if self.selected_element_type == ElementType::Uniform {
-                ui.add(
-                    egui::Slider::new(&mut self.new_element_angle, FLOW_ANGLE_MIN..=FLOW_ANGLE_MAX)
-                        .text("Angle (degrees)"),
-                );
-            } else {
-                ui.label("Position X");
-                ui.add(bounded_drag_value(
-                    &mut self.new_element_x,
-                    FLOW_POS_MIN..=FLOW_POS_MAX,
-                    0.1,
-                ));
-                ui.label("Position Y");
-                ui.add(bounded_drag_value(
-                    &mut self.new_element_y,
-                    FLOW_POS_MIN..=FLOW_POS_MAX,
-                    0.1,
-                ));
-            }
-
-            if ui
-                .button("➕ Add Element")
-                .accessible_hover_text("Add the selected flow element to the field")
-                .clicked()
-            {
-                self.add_element();
-            }
-        });
-    }
-
-    fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "potential_flow_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Potential Flow Controls");
-            ui.separator();
-            self.draw_add_element_controls(ui);
-
-            ui.separator();
-            if ui
-                .button("🔄 Clear All")
-                .accessible_hover_text("Remove all potential flow elements and reset the field")
-                .clicked()
-            {
-                self.clear();
-            }
-
-            ui.separator();
-            let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
-            self.grid_size = self.grid_size.clamp(2, max_grid);
-            ui.add(
-                egui::Slider::new(&mut self.grid_size, 10..=max_grid)
-                    .text("Visualization - Grid Density"),
-            );
-            ui.add(egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"));
-        });
-    }
-
     pub(crate) fn rebuild_field(&mut self) {
         let mut field = PotentialFlowField::new();
         for el in &self.elements {
@@ -373,7 +297,16 @@ impl PotentialFlowTool {
         self.rebuild_field();
     }
 
-    fn clear(&mut self) {
+    pub(crate) fn remove_element(&mut self, index: usize) -> Option<SerializedFlowElement> {
+        if index >= self.elements.len() {
+            return None;
+        }
+        let removed = self.elements.remove(index);
+        self.rebuild_field();
+        Some(removed)
+    }
+
+    pub(super) fn clear(&mut self) {
         self.elements.clear();
         self.field.clear();
     }

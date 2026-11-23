@@ -113,7 +113,10 @@ fn test_complex_mapping_clamps_grid_density_and_caches_contours_across_probe_mov
         r#"{"function":"ZSquared","grid_min":-2.0,"grid_max":2.0,"grid_density":1000,"inspection_point":[1.0,0.5]}"#,
     )
     .expect("grid_density 1000 should load and clamp");
-    assert_eq!(tool.grid_density, crate::presets::MAX_INTERACTIVE_GRID_SIZE);
+    assert_eq!(
+        tool.grid_density,
+        crate::presets::MAX_INTERACTIVE_CONFORMAL_GRID_SIZE
+    );
     assert!(tool.has_finite_parameters());
 
     let mut live = ComplexMappingTool::default();
@@ -121,8 +124,10 @@ fn test_complex_mapping_clamps_grid_density_and_caches_contours_across_probe_mov
     let _ = ctx.run(egui::RawInput::default(), |c| live.show(c));
     let _ = ctx.run(egui::RawInput::default(), |c| live.show(c));
     assert_eq!(live.cache.eval_count, 1);
+    assert_eq!(live.cache.probe_eval_count, 1);
 
     live.inspection_point = [-0.75, 1.25];
     let _ = ctx.run(egui::RawInput::default(), |c| live.show(c));
     assert_eq!(live.cache.eval_count, 1);
+    assert_eq!(live.cache.probe_eval_count, 2);
 }

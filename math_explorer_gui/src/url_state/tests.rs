@@ -272,5 +272,5 @@ fn test_shared_url_clamps_high_res_surface_and_flow_grids_to_interactive_caps() 
     let parsed_flow = parse_share_location(&flow_frag, "").unwrap().unwrap();
     let flow_cfg: serde_json::Value =
         serde_json::from_str(parsed_flow.state_json.as_deref().unwrap()).unwrap();
-    assert_eq!(flow_cfg["config"]["grid_size"], 100);
+    assert_eq!(flow_cfg["config"]["grid_size"], 120);
 }

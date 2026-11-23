@@ -146,14 +146,18 @@ pub trait PlotItem {
         }
     }
 
-    fn has_any_points(&self) -> bool {
+    fn point_count(&self) -> usize {
         if let Some(segs) = self.line_segments() {
-            return segs.iter().any(|seg| !seg.is_empty());
+            return segs.iter().map(Vec::len).sum();
         }
         match self.geometry() {
-            PlotGeometry::Points(pts) => !pts.is_empty(),
-            PlotGeometry::None | PlotGeometry::Rects => !self.extract_points().is_empty(),
+            PlotGeometry::Points(pts) => pts.len(),
+            PlotGeometry::None | PlotGeometry::Rects => self.extract_points().len(),
         }
+    }
+
+    fn has_any_points(&self) -> bool {
+        self.point_count() > 0
     }
 
     fn item_content_hash(&self) -> u64 {
@@ -623,11 +627,32 @@ impl PlotItem for VLine {
     }
 }
 
+/// A polyline segment carrying its own stroke color and width inside a consolidated [`Line`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct ColoredSegment {
+    pub points: Vec<PlotPoint>,
+    pub color: Color32,
+    pub width: f32,
+}
+
+impl ColoredSegment {
+    /// Creates a colored polyline segment.
+    #[must_use]
+    pub fn new(points: Vec<PlotPoint>, color: Color32, width: f32) -> Self {
+        Self {
+            points,
+            color,
+            width,
+        }
+    }
+}
+
 /// A series of values forming a path.
 pub struct Line<'a> {
     base: PlotItemBase,
     pub(super) series: PlotPoints<'a>,
     pub(super) segment_batch: Option<Arc<Vec<Vec<PlotPoint>>>>,
+    pub(super) colored_segment_batch: Option<Arc<Vec<ColoredSegment>>>,
     pub(super) cached_bounds: Option<PlotBounds>,
     pub(super) stroke: Stroke,
     pub(super) fill: Option<f32>,
@@ -643,6 +668,7 @@ impl<'a> Line<'a> {
             base: PlotItemBase::new(name.into()),
             series: series.into(),
             segment_batch: None,
+            colored_segment_batch: None,
             cached_bounds: None,
             stroke: Stroke::new(1.5_f32, Color32::TRANSPARENT), // Note: a stroke of 1.0 (or less) can look bad on low-dpi-screens
             fill: None,
@@ -659,8 +685,32 @@ impl<'a> Line<'a> {
             base: PlotItemBase::new(name.into()),
             series: PlotPoints::default(),
             segment_batch: Some(segments),
+            colored_segment_batch: None,
             cached_bounds: None,
             stroke: Stroke::new(1.5_f32, Color32::TRANSPARENT),
+            fill: None,
+            fill_alpha: DEFAULT_FILL_ALPHA,
+            gradient_color: None,
+            gradient_fill: false,
+            style: LineStyle::Solid,
+        }
+    }
+
+    /// Creates a consolidated multi-color segment batch preserving exact segment draw order.
+    pub fn from_colored_segments(
+        name: impl Into<String>,
+        segments: Arc<Vec<ColoredSegment>>,
+    ) -> Self {
+        let repr_color = segments
+            .first()
+            .map_or(Color32::TRANSPARENT, |seg| seg.color);
+        Self {
+            base: PlotItemBase::new(name.into()),
+            series: PlotPoints::default(),
+            segment_batch: None,
+            colored_segment_batch: Some(segments),
+            cached_bounds: None,
+            stroke: Stroke::new(1.5_f32, repr_color),
             fill: None,
             fill_alpha: DEFAULT_FILL_ALPHA,
             gradient_color: None,
@@ -746,7 +796,25 @@ fn y_intersection(p1: &Pos2, p2: &Pos2, y: f32) -> Option<f32> {
 }
 
 impl PlotItem for Line<'_> {
+    fn point_count(&self) -> usize {
+        if let Some(batch) = &self.colored_segment_batch {
+            return batch.iter().map(|seg| seg.points.len()).sum();
+        }
+        if let Some(batch) = &self.segment_batch {
+            return batch.iter().map(Vec::len).sum();
+        }
+        self.series.points().len()
+    }
+
     fn extract_points(&self) -> Vec<[f64; 2]> {
+        if let Some(batch) = &self.colored_segment_batch {
+            let total: usize = batch.iter().map(|seg| seg.points.len()).sum();
+            let mut out = Vec::with_capacity(total);
+            for seg in batch.iter() {
+                out.extend(seg.points.iter().map(|p| [p.x, p.y]));
+            }
+            return out;
+        }
         if let Some(batch) = &self.segment_batch {
             let total: usize = batch.iter().map(Vec::len).sum();
             let mut out = Vec::with_capacity(total);
@@ -759,6 +827,21 @@ impl PlotItem for Line<'_> {
     }
 
     fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        if let Some(batch) = &self.colored_segment_batch {
+            let name = self.name().to_owned();
+            return batch
+                .iter()
+                .filter(|seg| !seg.points.is_empty())
+                .map(|seg| crate::export_primitives::ExportPrimitive::Polyline {
+                    name: name.clone(),
+                    points: seg.points.iter().map(|p| [p.x, p.y]).collect(),
+                    color: seg.color,
+                    stroke_width: seg.width,
+                    closed: false,
+                    fill: None,
+                })
+                .collect();
+        }
         if let Some(batch) = &self.segment_batch {
             let name = self.name().to_owned();
             return batch
@@ -793,6 +876,22 @@ impl PlotItem for Line<'_> {
         datasets: &mut Vec<crate::DeferredDatasetEntry>,
         primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
     ) {
+        if let Some(batch) = &self.colored_segment_batch {
+            if batch.iter().any(|seg| !seg.points.is_empty()) {
+                let name = self.base.name.clone();
+                datasets.push(crate::DeferredDatasetEntry::SharedColoredSegments {
+                    name: name.clone(),
+                    segments: Arc::clone(batch),
+                });
+                primitives.push(
+                    crate::export_primitives::DeferredPlotPrimitive::ColoredPolylineBatch {
+                        name,
+                        segments: Arc::clone(batch),
+                    },
+                );
+            }
+            return;
+        }
         if let Some(batch) = &self.segment_batch {
             if batch.iter().any(|seg| !seg.is_empty()) {
                 let name = self.base.name.clone();
@@ -836,7 +935,25 @@ impl PlotItem for Line<'_> {
         self.name().hash(&mut hasher);
         self.stroke.color.to_array().hash(&mut hasher);
         self.allow_hover().hash(&mut hasher);
-        if let Some(batch) = &self.segment_batch {
+        if let Some(batch) = &self.colored_segment_batch {
+            2u8.hash(&mut hasher);
+            (Arc::as_ptr(batch) as usize).hash(&mut hasher);
+            batch.len().hash(&mut hasher);
+            if let Some(first_seg) = batch.first() {
+                first_seg.color.to_array().hash(&mut hasher);
+                if let Some(first) = first_seg.points.first() {
+                    first.x.to_bits().hash(&mut hasher);
+                    first.y.to_bits().hash(&mut hasher);
+                }
+            }
+            if let Some(last_seg) = batch.last() {
+                last_seg.color.to_array().hash(&mut hasher);
+                if let Some(last) = last_seg.points.last() {
+                    last.x.to_bits().hash(&mut hasher);
+                    last.y.to_bits().hash(&mut hasher);
+                }
+            }
+        } else if let Some(batch) = &self.segment_batch {
             3u8.hash(&mut hasher);
             (Arc::as_ptr(batch) as usize).hash(&mut hasher);
             batch.len().hash(&mut hasher);
@@ -868,6 +985,7 @@ impl PlotItem for Line<'_> {
             base,
             series,
             segment_batch,
+            colored_segment_batch,
             stroke,
             fill,
             gradient_fill,
@@ -875,6 +993,103 @@ impl PlotItem for Line<'_> {
             ..
         } = self;
         let fill = *fill;
+
+        if let Some(batch) = colored_segment_batch {
+            shapes.reserve(batch.len());
+            let mut current: Vec<Pos2> = Vec::new();
+            for seg in batch.iter() {
+                if seg.points.len() == 2
+                    && matches!(style, LineStyle::Solid)
+                    && transform.is_point_valid_for_scale(&seg.points[0])
+                    && transform.is_point_valid_for_scale(&seg.points[1])
+                {
+                    let width = if base.highlight {
+                        seg.width * 2.0
+                    } else {
+                        seg.width
+                    };
+                    shapes.push(Shape::line_segment(
+                        [
+                            transform.position_from_point(&seg.points[0]),
+                            transform.position_from_point(&seg.points[1]),
+                        ],
+                        Stroke::new(width, seg.color),
+                    ));
+                    continue;
+                }
+                current.clear();
+                let seg_stroke = PathStroke::new(seg.width, seg.color);
+                for v in &seg.points {
+                    if transform.is_point_valid_for_scale(v) {
+                        current.push(transform.position_from_point(v));
+                    } else if !current.is_empty() {
+                        style.style_line(
+                            std::mem::take(&mut current),
+                            seg_stroke.clone(),
+                            base.highlight,
+                            shapes,
+                        );
+                    }
+                }
+                if !current.is_empty() {
+                    style.style_line(
+                        std::mem::take(&mut current),
+                        seg_stroke,
+                        base.highlight,
+                        shapes,
+                    );
+                }
+            }
+            return;
+        }
+
+        if let Some(batch) = segment_batch
+            && fill.is_none()
+            && self.gradient_color.is_none()
+            && matches!(style, LineStyle::Solid)
+            && !base.highlight
+        {
+            shapes.reserve(batch.len());
+            let mut current: Vec<Pos2> = Vec::new();
+            let seg_stroke = PathStroke::new(stroke.width, stroke.color);
+            for raw_seg in batch.iter() {
+                if raw_seg.len() == 2
+                    && transform.is_point_valid_for_scale(&raw_seg[0])
+                    && transform.is_point_valid_for_scale(&raw_seg[1])
+                {
+                    shapes.push(Shape::line_segment(
+                        [
+                            transform.position_from_point(&raw_seg[0]),
+                            transform.position_from_point(&raw_seg[1]),
+                        ],
+                        *stroke,
+                    ));
+                    continue;
+                }
+                current.clear();
+                for v in raw_seg {
+                    if transform.is_point_valid_for_scale(v) {
+                        current.push(transform.position_from_point(v));
+                    } else if !current.is_empty() {
+                        style.style_line(
+                            std::mem::take(&mut current),
+                            seg_stroke.clone(),
+                            false,
+                            shapes,
+                        );
+                    }
+                }
+                if !current.is_empty() {
+                    style.style_line(
+                        std::mem::take(&mut current),
+                        seg_stroke.clone(),
+                        false,
+                        shapes,
+                    );
+                }
+            }
+            return;
+        }
 
         let mut final_stroke: PathStroke = (*stroke).into();
         // if we have a gradient color, we need to wrap the stroke callback to transpose the position to a value
@@ -1003,7 +1218,7 @@ impl PlotItem for Line<'_> {
     }
 
     fn geometry(&self) -> PlotGeometry<'_> {
-        if self.segment_batch.is_some() {
+        if self.segment_batch.is_some() || self.colored_segment_batch.is_some() {
             PlotGeometry::None
         } else {
             PlotGeometry::Points(self.series.points())
@@ -1013,6 +1228,15 @@ impl PlotItem for Line<'_> {
     fn bounds(&self) -> PlotBounds {
         if let Some(cached) = self.cached_bounds {
             return cached;
+        }
+        if let Some(batch) = &self.colored_segment_batch {
+            let mut bounds = PlotBounds::NOTHING;
+            for seg in batch.iter() {
+                for pt in &seg.points {
+                    bounds.extend_with(pt);
+                }
+            }
+            return bounds;
         }
         if let Some(batch) = &self.segment_batch {
             let mut bounds = PlotBounds::NOTHING;
@@ -1027,7 +1251,7 @@ impl PlotItem for Line<'_> {
     }
 
     fn line_points(&self) -> Option<&[PlotPoint]> {
-        if self.segment_batch.is_some() {
+        if self.segment_batch.is_some() || self.colored_segment_batch.is_some() {
             None
         } else {
             Some(self.series.points())
@@ -1039,6 +1263,12 @@ impl PlotItem for Line<'_> {
         pointer: Pos2,
         transform: &PlotTransform,
     ) -> Option<(PlotPoint, f32)> {
+        if let Some(batch) = &self.colored_segment_batch {
+            return batch
+                .iter()
+                .filter_map(|seg| closest_point_on_polyline(&seg.points, pointer, transform))
+                .min_by_key(|(_, d)| d.ord());
+        }
         if let Some(batch) = &self.segment_batch {
             return batch
                 .iter()
@@ -1046,6 +1276,81 @@ impl PlotItem for Line<'_> {
                 .min_by_key(|(_, d)| d.ord());
         }
         closest_point_on_polyline(self.series.points(), pointer, transform)
+    }
+
+    fn find_closest(&self, point: Pos2, transform: &PlotTransform) -> Option<ClosestElem> {
+        if let Some(batch) = &self.colored_segment_batch {
+            return batch
+                .iter()
+                .flat_map(|seg| seg.points.iter())
+                .enumerate()
+                .filter(|(_, value)| transform.is_point_valid_for_scale(value))
+                .map(|(index, value)| ClosestElem {
+                    index,
+                    dist_sq: point.distance_sq(transform.position_from_point(value)),
+                })
+                .min_by_key(|e| e.dist_sq.ord());
+        }
+        if let Some(batch) = &self.segment_batch {
+            return batch
+                .iter()
+                .flat_map(|seg| seg.iter())
+                .enumerate()
+                .filter(|(_, value)| transform.is_point_valid_for_scale(value))
+                .map(|(index, value)| ClosestElem {
+                    index,
+                    dist_sq: point.distance_sq(transform.position_from_point(value)),
+                })
+                .min_by_key(|e| e.dist_sq.ord());
+        }
+        self.series
+            .points()
+            .iter()
+            .enumerate()
+            .filter(|(_, value)| transform.is_point_valid_for_scale(value))
+            .map(|(index, value)| ClosestElem {
+                index,
+                dist_sq: point.distance_sq(transform.position_from_point(value)),
+            })
+            .min_by_key(|e| e.dist_sq.ord())
+    }
+
+    fn on_hover(
+        &self,
+        plot_area_response: &egui::Response,
+        elem: ClosestElem,
+        shapes: &mut Vec<Shape>,
+        cursors: &mut Vec<Cursor>,
+        plot: &PlotConfig<'_>,
+        label_formatter: &LabelFormatter<'_>,
+    ) -> Option<PlotPoint> {
+        let value = if let Some(batch) = &self.colored_segment_batch {
+            *batch
+                .iter()
+                .flat_map(|seg| seg.points.iter())
+                .nth(elem.index)?
+        } else if let Some(batch) = &self.segment_batch {
+            *batch.iter().flat_map(|seg| seg.iter()).nth(elem.index)?
+        } else {
+            *self.series.points().get(elem.index)?
+        };
+        let world_point = plot.world_point.or_else(|| {
+            plot.sidecar_3d
+                .and_then(|s| s.world_point(self.id(), elem.index, [value.x, value.y]))
+        });
+        let item_plot = PlotConfig {
+            world_point,
+            ..*plot
+        };
+        Some(render_snapped_hover_point(
+            self,
+            plot_area_response,
+            value,
+            shapes,
+            cursors,
+            &item_plot,
+            label_formatter,
+        ))
     }
 }
 
@@ -1383,11 +1688,33 @@ impl PlotItem for Text {
     }
 }
 
+/// A scatter marker carrying its own color and radius inside a consolidated [`Points`] item.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ColoredPoint {
+    pub point: PlotPoint,
+    pub color: Color32,
+    pub radius: f32,
+}
+
+impl ColoredPoint {
+    /// Creates a colored scatter point.
+    #[must_use]
+    pub const fn new(point: PlotPoint, color: Color32, radius: f32) -> Self {
+        Self {
+            point,
+            color,
+            radius,
+        }
+    }
+}
+
 /// A set of points.
 pub struct Points<'a> {
     base: PlotItemBase,
 
     pub(super) series: PlotPoints<'a>,
+    pub(super) colored_point_batch: Option<Arc<Vec<ColoredPoint>>>,
+    pub(super) cached_bounds: Option<PlotBounds>,
 
     pub(super) shape: MarkerShape,
 
@@ -1408,12 +1735,37 @@ impl<'a> Points<'a> {
         Self {
             base: PlotItemBase::new(name.into()),
             series: series.into(),
+            colored_point_batch: None,
+            cached_bounds: None,
             shape: MarkerShape::Circle,
             color: Color32::TRANSPARENT,
             filled: true,
             radius: 1.0,
             stems: None,
         }
+    }
+
+    /// Creates a consolidated scatter item with per-point color and radius.
+    pub fn from_colored_points(name: impl Into<String>, points: Arc<Vec<ColoredPoint>>) -> Self {
+        let repr_color = points.first().map_or(Color32::TRANSPARENT, |p| p.color);
+        Self {
+            base: PlotItemBase::new(name.into()),
+            series: PlotPoints::default(),
+            colored_point_batch: Some(points),
+            cached_bounds: None,
+            shape: MarkerShape::Circle,
+            color: repr_color,
+            filled: true,
+            radius: 3.0,
+            stems: None,
+        }
+    }
+
+    /// Attaches precomputed plot-space bounds to skip per-frame point scans.
+    #[inline]
+    pub fn with_bounds(mut self, bounds: PlotBounds) -> Self {
+        self.cached_bounds = Some(bounds);
+        self
     }
 
     /// Set the shape of the markers.
@@ -1455,11 +1807,33 @@ impl<'a> Points<'a> {
 }
 
 impl PlotItem for Points<'_> {
+    fn point_count(&self) -> usize {
+        if let Some(batch) = &self.colored_point_batch {
+            return batch.len();
+        }
+        self.series.points().len()
+    }
+
     fn extract_points(&self) -> Vec<[f64; 2]> {
+        if let Some(batch) = &self.colored_point_batch {
+            return batch.iter().map(|cp| [cp.point.x, cp.point.y]).collect();
+        }
         self.series.points().iter().map(|p| [p.x, p.y]).collect()
     }
 
     fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        if let Some(batch) = &self.colored_point_batch {
+            let name = self.name().to_owned();
+            return batch
+                .iter()
+                .map(|cp| crate::export_primitives::ExportPrimitive::Points {
+                    name: name.clone(),
+                    points: vec![[cp.point.x, cp.point.y]],
+                    color: cp.color,
+                    radius: cp.radius,
+                })
+                .collect();
+        }
         let points = self.extract_points();
         if points.is_empty() {
             return vec![];
@@ -1477,6 +1851,22 @@ impl PlotItem for Points<'_> {
         datasets: &mut Vec<crate::DeferredDatasetEntry>,
         primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
     ) {
+        if let Some(batch) = &self.colored_point_batch {
+            if !batch.is_empty() {
+                let name = self.base.name.clone();
+                datasets.push(crate::DeferredDatasetEntry::SharedColoredPoints {
+                    name: name.clone(),
+                    points: Arc::clone(batch),
+                });
+                primitives.push(
+                    crate::export_primitives::DeferredPlotPrimitive::ColoredPointsBatch {
+                        name,
+                        points: Arc::clone(batch),
+                    },
+                );
+            }
+            return;
+        }
         let points = self.series.take_shared_points();
         if !points.is_empty() {
             let name = self.base.name.clone();
@@ -1492,7 +1882,64 @@ impl PlotItem for Points<'_> {
             });
         }
     }
+
+    fn item_content_hash(&self) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut hasher = ahash::AHasher::default();
+        self.id().hash(&mut hasher);
+        self.name().hash(&mut hasher);
+        self.color.to_array().hash(&mut hasher);
+        self.allow_hover().hash(&mut hasher);
+        if let Some(batch) = &self.colored_point_batch {
+            6u8.hash(&mut hasher);
+            (Arc::as_ptr(batch) as usize).hash(&mut hasher);
+            batch.len().hash(&mut hasher);
+            if let Some(first) = batch.first() {
+                first.point.x.to_bits().hash(&mut hasher);
+                first.point.y.to_bits().hash(&mut hasher);
+            }
+            if let Some(last) = batch.last() {
+                last.point.x.to_bits().hash(&mut hasher);
+                last.point.y.to_bits().hash(&mut hasher);
+            }
+        } else {
+            4u8.hash(&mut hasher);
+            hash_plot_point_slice(
+                self.series.points(),
+                self.series.shared_ptr_id(),
+                &mut hasher,
+            );
+        }
+        hasher.finish()
+    }
+
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
+        if let Some(batch) = &self.colored_point_batch {
+            shapes.reserve(batch.len());
+            let scale = if self.base.highlight {
+                2f32.sqrt()
+            } else {
+                1.0
+            };
+            for cp in batch.iter() {
+                if transform.is_point_valid_for_scale(&cp.point) {
+                    let center = transform.position_from_point(&cp.point);
+                    let r = cp.radius * scale;
+                    let (fill, stroke) = if self.filled {
+                        (cp.color, Stroke::NONE)
+                    } else {
+                        (Color32::TRANSPARENT, Stroke::new(r / 5.0, cp.color))
+                    };
+                    shapes.push(Shape::Circle(CircleShape {
+                        center,
+                        radius: r,
+                        fill,
+                        stroke,
+                    }));
+                }
+            }
+            return;
+        }
         let sqrt_3 = 3_f32.sqrt();
         let frac_sqrt_3_2 = 3_f32.sqrt() / 2.0;
         let frac_1_sqrt_2 = 1.0 / 2_f32.sqrt();
@@ -1639,11 +2086,82 @@ impl PlotItem for Points<'_> {
     }
 
     fn geometry(&self) -> PlotGeometry<'_> {
-        PlotGeometry::Points(self.series.points())
+        if self.colored_point_batch.is_some() {
+            PlotGeometry::None
+        } else {
+            PlotGeometry::Points(self.series.points())
+        }
     }
 
     fn bounds(&self) -> PlotBounds {
+        if let Some(cached) = self.cached_bounds {
+            return cached;
+        }
+        if let Some(batch) = &self.colored_point_batch {
+            let mut bounds = PlotBounds::NOTHING;
+            for cp in batch.iter() {
+                bounds.extend_with(&cp.point);
+            }
+            return bounds;
+        }
         self.series.bounds()
+    }
+
+    fn find_closest(&self, point: Pos2, transform: &PlotTransform) -> Option<ClosestElem> {
+        if let Some(batch) = &self.colored_point_batch {
+            return batch
+                .iter()
+                .enumerate()
+                .filter(|(_, cp)| transform.is_point_valid_for_scale(&cp.point))
+                .map(|(index, cp)| ClosestElem {
+                    index,
+                    dist_sq: point.distance_sq(transform.position_from_point(&cp.point)),
+                })
+                .min_by_key(|e| e.dist_sq.ord());
+        }
+        self.series
+            .points()
+            .iter()
+            .enumerate()
+            .filter(|(_, value)| transform.is_point_valid_for_scale(value))
+            .map(|(index, value)| ClosestElem {
+                index,
+                dist_sq: point.distance_sq(transform.position_from_point(value)),
+            })
+            .min_by_key(|e| e.dist_sq.ord())
+    }
+
+    fn on_hover(
+        &self,
+        plot_area_response: &egui::Response,
+        elem: ClosestElem,
+        shapes: &mut Vec<Shape>,
+        cursors: &mut Vec<Cursor>,
+        plot: &PlotConfig<'_>,
+        label_formatter: &LabelFormatter<'_>,
+    ) -> Option<PlotPoint> {
+        let value = if let Some(batch) = &self.colored_point_batch {
+            batch.get(elem.index)?.point
+        } else {
+            *self.series.points().get(elem.index)?
+        };
+        let world_point = plot.world_point.or_else(|| {
+            plot.sidecar_3d
+                .and_then(|s| s.world_point(self.id(), elem.index, [value.x, value.y]))
+        });
+        let item_plot = PlotConfig {
+            world_point,
+            ..*plot
+        };
+        Some(render_snapped_hover_point(
+            self,
+            plot_area_response,
+            value,
+            shapes,
+            cursors,
+            &item_plot,
+            label_formatter,
+        ))
     }
 
     fn base(&self) -> &PlotItemBase {
@@ -1824,6 +2342,7 @@ pub struct PlotImage {
     base: PlotItemBase,
     pub(super) position: PlotPoint,
     pub(super) texture_id: TextureId,
+    pub(super) backing_image: Option<Arc<egui::ColorImage>>,
     pub(super) uv: Rect,
     pub(super) size: Vec2,
     pub(crate) rotation: f64,
@@ -1843,12 +2362,20 @@ impl PlotImage {
             base: PlotItemBase::new(name.into()),
             position: center_position,
             texture_id: texture_id.into(),
+            backing_image: None,
             uv: Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
             size: size.into(),
             rotation: 0.0,
             bg_fill: Default::default(),
             tint: Color32::WHITE,
         }
+    }
+
+    /// Attaches a shared CPU pixel buffer so offscreen PNG/SVG plot exports render this image.
+    #[inline]
+    pub fn with_backing_image(mut self, image: Arc<egui::ColorImage>) -> Self {
+        self.backing_image = Some(image);
+        self
     }
 
     /// Select UV range. Default is (0,0) in top-left, (1,1) bottom right.
@@ -1883,6 +2410,51 @@ impl PlotImage {
 }
 
 impl PlotItem for PlotImage {
+    fn point_count(&self) -> usize {
+        0
+    }
+
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        let Some(ref image) = self.backing_image else {
+            return vec![];
+        };
+        let half_w = 0.5 * f64::from(self.size.x);
+        let half_h = 0.5 * f64::from(self.size.y);
+        vec![crate::export_primitives::ExportPrimitive::RasterImage {
+            name: self.name().to_owned(),
+            image: Arc::clone(image),
+            bounds: Some([
+                self.position.x - half_w,
+                self.position.x + half_w,
+                self.position.y - half_h,
+                self.position.y + half_h,
+            ]),
+        }]
+    }
+
+    fn append_deferred_export(
+        &mut self,
+        _datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        if let Some(ref image) = self.backing_image {
+            let half_w = 0.5 * f64::from(self.size.x);
+            let half_h = 0.5 * f64::from(self.size.y);
+            primitives.push(
+                crate::export_primitives::DeferredPlotPrimitive::RasterImage {
+                    name: self.base.name.clone(),
+                    image: Arc::clone(image),
+                    bounds: Some([
+                        self.position.x - half_w,
+                        self.position.x + half_w,
+                        self.position.y - half_h,
+                        self.position.y + half_h,
+                    ]),
+                },
+            );
+        }
+    }
+
     fn shapes(&self, ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
         let Self {
             position,

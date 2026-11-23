@@ -6,7 +6,6 @@
 pub use super::evaluator::SurfaceEvaluator;
 use crate::camera::Camera3D;
 use eframe::egui::{self, Color32};
-use egui_plot::Points;
 use nalgebra::Vector2;
 
 pub const MAX_SCULPT_BUMPS: usize = 32;
@@ -254,7 +253,7 @@ impl SurfaceGrid {
         bounds: (f64, f64, f64, f64),
         resolution: usize,
     ) -> Self {
-        let res = resolution.clamp(10, 50);
+        let res = resolution.clamp(10, crate::presets::MAX_INTERACTIVE_GRID_SIZE);
         let (w_min, w_max, b_min, b_max) = bounds;
         let denom = (res - 1).max(1) as f64;
         let (w_step, b_step) = ((w_max - w_min) / denom, (b_max - b_min) / denom);
@@ -310,53 +309,6 @@ impl SurfaceGrid {
         let by = ((b - b_min) / (b_max - b_min).max(1e-9)) * 2.0 - 1.0;
         let hz = -0.55 + 1.3 * self.normalized_height(loss) + z_offset;
         [wx.clamp(-1.05, 1.05), by.clamp(-1.05, 1.05), hz]
-    }
-
-    #[must_use]
-    pub fn wireframe_polylines(&self, camera: &Camera3D) -> Vec<(f64, Vec<[f64; 2]>)> {
-        let num_rows = self.rows.len();
-        if num_rows == 0 {
-            return Vec::new();
-        }
-        let num_cols = self.rows[0].len();
-        let mut lines = Vec::with_capacity(num_rows + num_cols);
-        for row in &self.rows {
-            let mut pts = Vec::with_capacity(num_cols);
-            let mut h_sum = 0.0;
-            for &[w, b, loss] in row {
-                h_sum += self.normalized_height(loss);
-                pts.push(camera.project(&self.world_point(w, b, loss, 0.0)));
-            }
-            lines.push((h_sum / (num_cols.max(1) as f64), pts));
-        }
-        for col in 0..num_cols {
-            let mut pts = Vec::with_capacity(num_rows);
-            let mut h_sum = 0.0;
-            for row in &self.rows {
-                let [w, b, loss] = row[col];
-                h_sum += self.normalized_height(loss);
-                pts.push(camera.project(&self.world_point(w, b, loss, 0.0)));
-            }
-            lines.push((h_sum / (num_rows.max(1) as f64), pts));
-        }
-        lines
-    }
-
-    #[must_use]
-    pub fn heatmap_points(&self, low: Color32, high: Color32) -> Vec<Points<'static>> {
-        let mut out = Vec::with_capacity(self.rows.len() * self.rows.first().map_or(0, Vec::len));
-        for row in &self.rows {
-            for &[w, b, loss] in row {
-                if w.is_finite() && b.is_finite() && loss.is_finite() {
-                    out.push(
-                        Points::new(format!("Loss: {loss:.4}"), vec![[w, b]])
-                            .color(lerp_color(low, high, self.normalized_height(loss)))
-                            .radius(3.0_f32),
-                    );
-                }
-            }
-        }
-        out
     }
 
     #[must_use]

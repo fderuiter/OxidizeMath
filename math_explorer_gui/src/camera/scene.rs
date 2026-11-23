@@ -2,42 +2,45 @@
 
 //! Depth-sorted 3D primitive collector and sidecar emitter for [`super::Plot3DViewport`].
 
+#[path = "scene_batch.rs"]
+mod scene_batch;
+
 use eframe::egui;
-use egui_plot::{
-    Line, LineStyle, MarkerShape, Plot3DSeries, Plot3DSeriesSidecar, PlotPoint, PlotPoints, PlotUi,
-    Points, Text,
-};
+use egui_plot::{LineStyle, MarkerShape, Plot3DSeries, Plot3DSeriesSidecar, PlotUi};
 use nalgebra::Point3;
+use scene_batch::{
+    build_consolidated_batches, emit_consolidated_batches, CachedPointBatch, CachedSegmentBatch,
+};
 
 use super::Camera3D;
 
 #[derive(Clone, Debug)]
-struct SegmentPrimitive3D {
-    name: String,
-    p0_proj: [f64; 2],
-    p1_proj: [f64; 2],
-    p0_world: [f64; 3],
-    p1_world: [f64; 3],
-    viewer_z: f64,
-    stroke: egui::Stroke,
-    style: LineStyle,
-    allow_hover: bool,
+pub(super) struct SegmentPrimitive3D {
+    pub(super) name: String,
+    pub(super) p0_proj: [f64; 2],
+    pub(super) p1_proj: [f64; 2],
+    pub(super) p0_world: [f64; 3],
+    pub(super) p1_world: [f64; 3],
+    pub(super) viewer_z: f64,
+    pub(super) stroke: egui::Stroke,
+    pub(super) style: LineStyle,
+    pub(super) allow_hover: bool,
 }
 
 #[derive(Clone, Debug)]
-struct PointPrimitive3D {
-    name: String,
-    proj: [f64; 2],
-    world: [f64; 3],
-    viewer_z: f64,
-    radius: f32,
-    color: egui::Color32,
-    shape: MarkerShape,
-    allow_hover: bool,
+pub(super) struct PointPrimitive3D {
+    pub(super) name: String,
+    pub(super) proj: [f64; 2],
+    pub(super) world: [f64; 3],
+    pub(super) viewer_z: f64,
+    pub(super) radius: f32,
+    pub(super) color: egui::Color32,
+    pub(super) shape: MarkerShape,
+    pub(super) allow_hover: bool,
 }
 
 #[derive(Clone, Debug)]
-enum Drawable3D {
+pub(super) enum Drawable3D {
     Segment(SegmentPrimitive3D),
     Point(PointPrimitive3D),
 }
@@ -52,10 +55,10 @@ impl Drawable3D {
 }
 
 #[derive(Clone, Debug)]
-struct LabelPrimitive3D {
-    proj: [f64; 2],
-    text: String,
-    color: egui::Color32,
+pub(super) struct LabelPrimitive3D {
+    pub(super) proj: [f64; 2],
+    pub(super) text: String,
+    pub(super) color: egui::Color32,
 }
 
 /// Reusable 3D scene builder that projects world `Point3<f64>` primitives through [`Camera3D`],
@@ -70,6 +73,9 @@ pub struct Scene3DBuilder {
     sorted: bool,
     labels: Vec<LabelPrimitive3D>,
     sidecar: Plot3DSeriesSidecar,
+    registered_plot_id: Option<egui::Id>,
+    cached_segments: Option<CachedSegmentBatch>,
+    cached_points: Option<CachedPointBatch>,
     proj_scratch: Vec<[f64; 2]>,
     vz_scratch: Vec<f64>,
     world_scratch: Vec<[f64; 3]>,
@@ -94,6 +100,9 @@ impl Scene3DBuilder {
         self.sorted = false;
         self.labels.clear();
         self.sidecar.clear();
+        self.registered_plot_id = None;
+        self.cached_segments = None;
+        self.cached_points = None;
     }
 
     /// Sets a visual centering offset subtracted before camera rotation while keeping true world
@@ -158,6 +167,9 @@ impl Scene3DBuilder {
                 [p0_world, p1_world],
                 stroke.color,
             );
+        } else if allow_hover {
+            self.sidecar.register_projected_pair(p0_proj, p0_world);
+            self.sidecar.register_projected_pair(p1_proj, p1_world);
         }
         self.sorted = false;
         self.primitives
@@ -388,6 +400,10 @@ impl Scene3DBuilder {
         let prims = &self.primitives;
         self.order
             .sort_by(|&a, &b| prims[a].viewer_z().total_cmp(&prims[b].viewer_z()));
+        let (seg_batch, pt_batch) = build_consolidated_batches(&self.primitives, &self.order);
+        self.cached_segments = seg_batch;
+        self.cached_points = pt_batch;
+        self.registered_plot_id = None;
         self.sorted = true;
     }
 
@@ -404,56 +420,46 @@ impl Scene3DBuilder {
             .collect()
     }
 
-    /// Sorts all collected 3D primitives back-to-front by `viewer_z`, emits them into `plot_ui`,
-    /// and attaches the populated [`Plot3DSeriesSidecar`].
+    /// Sorts all collected 3D primitives back-to-front by `viewer_z`, emits consolidated items
+    /// into `plot_ui`, and attaches the populated [`Plot3DSeriesSidecar`].
     pub fn finish(&mut self, plot_ui: &mut PlotUi<'_>) {
         self.ensure_sorted();
         let plot_id = plot_ui.plot_id();
-        for (draw_rank, &idx) in self.order.iter().enumerate() {
-            match &self.primitives[idx] {
-                Drawable3D::Segment(seg) => {
-                    let item_id = plot_id.with(("scene3d_seg", draw_rank));
-                    if seg.allow_hover {
-                        self.sidecar
-                            .register_item_vertices(item_id, vec![seg.p0_world, seg.p1_world]);
-                    }
-                    plot_ui.line(
-                        Line::new(
-                            seg.name.clone(),
-                            PlotPoints::new(vec![seg.p0_proj, seg.p1_proj]),
-                        )
-                        .id(item_id)
-                        .stroke(seg.stroke)
-                        .style(seg.style)
-                        .allow_hover(seg.allow_hover),
-                    );
-                }
-                Drawable3D::Point(pt) => {
-                    let item_id = plot_id.with(("scene3d_pt", draw_rank));
-                    if pt.allow_hover {
-                        self.sidecar.register_item_vertices(item_id, vec![pt.world]);
-                    }
-                    plot_ui.points(
-                        Points::new(pt.name.clone(), vec![pt.proj])
-                            .id(item_id)
-                            .radius(pt.radius)
-                            .color(pt.color)
-                            .shape(pt.shape)
-                            .allow_hover(pt.allow_hover),
-                    );
-                }
+        if self.registered_plot_id != Some(plot_id) {
+            if let Some(batch) = self.cached_segments.as_ref().filter(|b| b.allow_hover) {
+                self.sidecar.register_shared_item_vertices(
+                    plot_id.with("scene3d_segments"),
+                    std::sync::Arc::clone(&batch.world_vertices),
+                );
             }
+            if let Some(batch) = self.cached_points.as_ref().filter(|b| b.allow_hover) {
+                self.sidecar.register_shared_item_vertices(
+                    plot_id.with("scene3d_points"),
+                    std::sync::Arc::clone(&batch.world_vertices),
+                );
+            }
+            self.registered_plot_id = Some(plot_id);
         }
-        for lbl in &self.labels {
-            plot_ui.text(
-                Text::new(
-                    "",
-                    PlotPoint::new(lbl.proj[0], lbl.proj[1]),
-                    egui::RichText::new(&lbl.text).strong().color(lbl.color),
-                )
-                .allow_hover(false),
-            );
-        }
-        plot_ui.set_3d_sidecar(self.sidecar.clone());
+        emit_consolidated_batches(
+            plot_ui,
+            self.cached_segments.as_ref(),
+            self.cached_points.as_ref(),
+            &self.labels,
+            &self.sidecar,
+            true,
+        );
+    }
+
+    /// Emits consolidated 3D items into `plot_ui` without attaching a 3D sidecar (allowing caller tabular series).
+    pub fn finish_without_sidecar(&mut self, plot_ui: &mut PlotUi<'_>) {
+        self.ensure_sorted();
+        emit_consolidated_batches(
+            plot_ui,
+            self.cached_segments.as_ref(),
+            self.cached_points.as_ref(),
+            &self.labels,
+            &self.sidecar,
+            false,
+        );
     }
 }

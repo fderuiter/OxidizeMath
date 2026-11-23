@@ -340,6 +340,7 @@ pub(super) struct FrameworkRevisionCache {
         std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
     pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
     pub(super) last_plot_capture_hash: Option<(&'static str, u64)>,
+    pub(super) last_plot_3d_capture_hash: Option<(&'static str, u64)>,
     pub(super) last_snapshot_plot_sig: Option<u64>,
 }
 

@@ -3,6 +3,7 @@
 //! 3D and 2D Hamiltonian Loss Landscape Arena (`LossLandscapeTool`).
 
 pub mod arena;
+mod cache;
 mod canvas;
 pub mod data;
 pub mod evaluator;
@@ -11,6 +12,8 @@ pub mod presets;
 pub mod surfaces;
 mod ui;
 
+#[cfg(test)]
+mod batch_cache_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -34,8 +37,8 @@ use evaluator::EmpiricalConfig;
 use presets::DEFAULT_LOSS_EXPR;
 use surfaces::{
     map_2d_rect_pos, push_sculpt_bump, unproject_3d_rect_pos, LandscapeSurface, SculptBump,
-    SurfaceEvaluator, SurfaceGrid, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN,
-    SCULPT_SIGMA_MAX, SCULPT_SIGMA_MIN,
+    SurfaceEvaluator, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN, SCULPT_SIGMA_MAX,
+    SCULPT_SIGMA_MIN,
 };
 
 pub(crate) const LOSS_PARAM_MIN_BOUND: f64 = -100.0;
@@ -97,6 +100,7 @@ pub struct LossLandscapeTool {
     pub(super) slingshot_anchor: Option<[f64; 2]>,
     pub(super) slingshot_current: Option<[f64; 2]>,
     pub(super) last_brush_wb: Option<[f64; 2]>,
+    pub(crate) cache: cache::LossLandscapeCache,
 }
 
 impl Default for LossLandscapeTool {
@@ -141,6 +145,7 @@ impl Default for LossLandscapeTool {
             slingshot_anchor: None,
             slingshot_current: None,
             last_brush_wb: None,
+            cache: cache::LossLandscapeCache::default(),
         };
         tool.reset_arena();
         tool
@@ -313,6 +318,10 @@ impl InteractiveTool for LossLandscapeTool {
         "ai"
     }
 
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
+    }
+
     fn has_finite_parameters(&self) -> bool {
         self.w_min.is_finite()
             && self.w_max.is_finite()
@@ -324,7 +333,7 @@ impl InteractiveTool for LossLandscapeTool {
             && (LOSS_PARAM_MIN_BOUND..=LOSS_PARAM_MAX_BOUND).contains(&self.b_min)
             && (LOSS_PARAM_MIN_BOUND..=LOSS_PARAM_MAX_BOUND).contains(&self.b_max)
             && self.b_min < self.b_max
-            && (10..=50).contains(&self.resolution)
+            && (10..=crate::presets::MAX_INTERACTIVE_GRID_SIZE).contains(&self.resolution)
             && self.huber_delta.is_finite()
             && (0.01..=50.0).contains(&self.huber_delta)
             && !self.cached_targets.is_empty()
@@ -367,7 +376,9 @@ impl InteractiveTool for LossLandscapeTool {
             false,
             false,
         );
-        self.resolution = self.resolution.clamp(10, 50);
+        self.resolution = self
+            .resolution
+            .clamp(10, crate::presets::MAX_INTERACTIVE_GRID_SIZE);
         self.huber_delta = if self.huber_delta.is_finite() {
             self.huber_delta.clamp(0.01, 50.0)
         } else {
@@ -451,14 +462,10 @@ impl InteractiveTool for LossLandscapeTool {
             if !self.has_finite_parameters() {
                 return;
             }
-            let grid = SurfaceGrid::sample_eval(
-                self.surface_evaluator(),
-                self.domain_bounds(),
-                self.resolution,
-            );
+            let grid_key = self.ensure_cached_grid();
             match self.view_mode {
-                LandscapeViewMode::View3D => self.show_3d_arena(ui, &grid),
-                LandscapeViewMode::Contour2D => self.show_2d_contours(ui, &grid),
+                LandscapeViewMode::View3D => self.show_3d_arena(ui, grid_key),
+                LandscapeViewMode::Contour2D => self.show_2d_contours(ui, grid_key),
             }
         });
     }

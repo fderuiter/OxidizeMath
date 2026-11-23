@@ -101,3 +101,46 @@ fn wasm_loss_landscape_slingshot_race_and_orbit_suppression() {
     assert_eq!(tool.arena.step_count, 30);
     assert!(tool.has_finite_parameters());
 }
+
+#[wasm_bindgen_test]
+fn wasm_batched_tools_headless_png_svg_obj_csv_json_exports() {
+    use egui_plot::export::{format_csv, format_json, ExportOptions};
+    use egui_plot::export_primitives::{decode_png_rgba, export_primitives_png, export_primitives_svg};
+    use egui_plot::{series_share_x, TableSeriesRef};
+
+    let ctx = egui::Context::default();
+    let opts = ExportOptions::default();
+
+    let mut loss = LossLandscapeTool::default();
+    loss.view_mode = LandscapeViewMode::Contour2D;
+    loss.resolution = 24;
+    egui_plot::clear_last_plot_datasets();
+    let _ = ctx.run(wasm_raw_input(Vec::new()), |c| loss.show(c));
+    assert!(egui_plot::get_last_plot_item_counts().iter().all(|&n| n <= 2));
+
+    let ds = egui_plot::get_last_plot_datasets();
+    let refs: Vec<TableSeriesRef<'_>> = ds
+        .iter()
+        .map(|(n, p)| TableSeriesRef {
+            name: n.as_str(),
+            points: p.as_slice(),
+            color: egui::Color32::WHITE,
+        })
+        .collect();
+    assert!(series_share_x(&refs));
+    assert!(format_csv(&ds).contains("Loss (b = "));
+    assert!(format_json(&ds).contains("Loss (b = "));
+
+    let prims = egui_plot::get_last_plot_primitives();
+    let png = export_primitives_png(&prims, &opts).expect("WASM PNG export");
+    let (w, h, _) = decode_png_rgba(&png).expect("decode WASM PNG");
+    assert!(w > 0 && h > 0);
+    let svg = export_primitives_svg(&prims, &opts).expect("WASM SVG export");
+    assert!(svg.contains("<svg") && svg.contains("<image"));
+    assert!(loss.build_obj_mesh_string().expect("WASM Loss OBJ").contains("\nv "));
+
+    let surf = crate::tabs::geometry_topology::surface_viewer::SurfaceViewer::default();
+    assert!(surf.build_obj_mesh_string().expect("WASM Surface OBJ").contains("\nf "));
+    let curv = crate::tabs::geometry_topology::curvature_heatmap::CurvatureHeatmap::default();
+    assert!(curv.build_obj_mesh_string().expect("WASM Curvature OBJ").contains("\nf "));
+}

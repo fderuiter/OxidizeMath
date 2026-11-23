@@ -226,6 +226,7 @@ fn clamp_decoded_url_grid_state(
     let max_schema = math_commons::registry::MAX_GRID_SIZE as u64;
     let surf_cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION as u64;
     let grid_cap = crate::presets::MAX_INTERACTIVE_GRID_SIZE as u64;
+    let conformal_cap = crate::presets::MAX_INTERACTIVE_CONFORMAL_GRID_SIZE as u64;
     let is_fluid = matches_tab_slug(tab, "fluid_dynamics", "Fluid Dynamics")
         || tool.is_some_and(|t| matches_tab_slug(t, "PotentialFlowTool", "Potential Flow"));
 
@@ -239,7 +240,8 @@ fn clamp_decoded_url_grid_state(
     if let Some(cfg) = target_map {
         clamped |= clamp_json_u64_in_range(cfg, "u_resolution", surf_cap, max_schema);
         clamped |= clamp_json_u64_in_range(cfg, "v_resolution", surf_cap, max_schema);
-        clamped |= clamp_json_u64_in_range(cfg, "grid_density", grid_cap, max_schema);
+        clamped |= clamp_json_u64_in_range(cfg, "grid_density", conformal_cap, max_schema);
+        clamped |= clamp_json_u64_in_range(cfg, "resolution", grid_cap, max_schema);
         if is_fluid {
             clamped |= clamp_json_u64_in_range(cfg, "grid_size", grid_cap, max_schema);
         }

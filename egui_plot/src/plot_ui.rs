@@ -1,8 +1,29 @@
 use std::ops::RangeInclusive;
+use std::sync::Arc;
 
 use egui::{Color32, Pos2, Response, Vec2, Vec2b, epaint::Hsva};
 
 use crate::{BoundsModification, PlotBounds, PlotItem, PlotPoint, PlotTransform};
+
+/// A cached 2D tabular series attached to [`PlotUi`] for shared-axis `Data Table` and CSV/JSON exports.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TabularSeries {
+    pub name: String,
+    pub points: Vec<[f64; 2]>,
+    pub color: Color32,
+}
+
+impl TabularSeries {
+    /// Creates a named tabular series with `[x, y]` coordinate pairs and accent color.
+    #[must_use]
+    pub fn new(name: impl Into<String>, points: Vec<[f64; 2]>, color: Color32) -> Self {
+        Self {
+            name: name.into(),
+            points,
+            color,
+        }
+    }
+}
 
 /// Provides methods to interact with a plot while building it. It is the single argument of the closure
 /// provided to [`crate::Plot::show`]. See [`crate::Plot`] for an example of how to use it.
@@ -16,6 +37,7 @@ pub struct PlotUi<'a> {
     pub(crate) bounds_modifications: Vec<BoundsModification>,
     pub(crate) plot_id: egui::Id,
     pub(crate) sidecar_3d: Option<crate::Plot3DSeriesSidecar>,
+    pub(crate) tabular_series: Option<Arc<Vec<TabularSeries>>>,
 }
 
 impl<'a> PlotUi<'a> {
@@ -50,6 +72,17 @@ impl<'a> PlotUi<'a> {
     /// Returns a mutable reference to the 3D series sidecar, initializing an empty one if needed.
     pub fn sidecar_3d_mut(&mut self) -> &mut crate::Plot3DSeriesSidecar {
         self.sidecar_3d.get_or_insert_with(Default::default)
+    }
+
+    /// Attaches shared-axis 2D tabular series used by `Data Table` and CSV/JSON exports without adding visual items.
+    pub fn set_tabular_series(&mut self, series: Arc<Vec<TabularSeries>>) {
+        self.tabular_series = Some(series);
+    }
+
+    /// Returns the attached shared-axis tabular series if present.
+    #[must_use]
+    pub fn tabular_series(&self) -> Option<&Arc<Vec<TabularSeries>>> {
+        self.tabular_series.as_ref()
     }
 
     /// The plot bounds as they were in the last frame. If called on the first frame and the bounds were not
@@ -184,7 +217,11 @@ impl<'a> PlotUi<'a> {
             .segment_batch
             .as_ref()
             .is_some_and(|batch| batch.iter().any(|seg| !seg.is_empty()));
-        if line.series.is_empty() && !has_segments {
+        let has_colored_segments = line
+            .colored_segment_batch
+            .as_ref()
+            .is_some_and(|batch| batch.iter().any(|seg| !seg.points.is_empty()));
+        if line.series.is_empty() && !has_segments && !has_colored_segments {
             return;
         }
 
@@ -232,7 +269,11 @@ impl<'a> PlotUi<'a> {
 
     /// Add data points.
     pub fn points(&mut self, mut points: crate::Points<'a>) {
-        if points.series.is_empty() {
+        let has_colored = points
+            .colored_point_batch
+            .as_ref()
+            .is_some_and(|batch| !batch.is_empty());
+        if points.series.is_empty() && !has_colored {
             return;
         }
 

@@ -10,39 +10,7 @@ impl CurvatureHeatmap {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Curvature Heatmap");
             ui.separator();
-
-            ui.label("Select Surface:");
-            ui.horizontal_wrapped(|ui| {
-                ui.radio_value(&mut self.surface_type, SurfaceType::Sphere, "Sphere");
-                ui.radio_value(&mut self.surface_type, SurfaceType::Torus, "Torus");
-                ui.radio_value(
-                    &mut self.surface_type,
-                    SurfaceType::KleinBottle,
-                    "Klein Bottle",
-                );
-                ui.radio_value(
-                    &mut self.surface_type,
-                    SurfaceType::CustomHeightfield,
-                    "Custom z=f(x,y)",
-                );
-                ui.radio_value(
-                    &mut self.surface_type,
-                    SurfaceType::CustomParametric,
-                    "Custom r(u,v)",
-                );
-            });
-
-            ui.separator();
-            ui.label("Select Curvature Type:");
-            ui.horizontal(|ui| {
-                ui.radio_value(
-                    &mut self.curvature_type,
-                    CurvatureType::Gaussian,
-                    "Gaussian",
-                );
-                ui.radio_value(&mut self.curvature_type, CurvatureType::Mean, "Mean");
-            });
-
+            self.draw_surface_and_curvature_selectors(ui);
             ui.separator();
             self.draw_parameter_controls(ui);
 
@@ -57,7 +25,63 @@ impl CurvatureHeatmap {
                 ui.add(egui::Slider::new(&mut self.u_resolution, 10..=max_res).text("Grid Size U"));
                 ui.add(egui::Slider::new(&mut self.v_resolution, 10..=max_res).text("Grid Size V"));
             });
+
+            ui.separator();
+            self.draw_obj_export_section(ui);
         });
+    }
+
+    fn draw_surface_and_curvature_selectors(&mut self, ui: &mut egui::Ui) {
+        ui.label("Select Surface:");
+        ui.horizontal_wrapped(|ui| {
+            ui.radio_value(&mut self.surface_type, SurfaceType::Sphere, "Sphere");
+            ui.radio_value(&mut self.surface_type, SurfaceType::Torus, "Torus");
+            ui.radio_value(
+                &mut self.surface_type,
+                SurfaceType::KleinBottle,
+                "Klein Bottle",
+            );
+            ui.radio_value(
+                &mut self.surface_type,
+                SurfaceType::CustomHeightfield,
+                "Custom z=f(x,y)",
+            );
+            ui.radio_value(
+                &mut self.surface_type,
+                SurfaceType::CustomParametric,
+                "Custom r(u,v)",
+            );
+        });
+
+        ui.separator();
+        ui.label("Select Curvature Type:");
+        ui.horizontal(|ui| {
+            ui.radio_value(
+                &mut self.curvature_type,
+                CurvatureType::Gaussian,
+                "Gaussian",
+            );
+            ui.radio_value(&mut self.curvature_type, CurvatureType::Mean, "Mean");
+        });
+    }
+
+    fn draw_obj_export_section(&mut self, ui: &mut egui::Ui) {
+        let is_saving = self.obj_export_rx.is_some();
+        if ui
+            .add_enabled(!is_saving, egui::Button::new("Export to OBJ"))
+            .clicked()
+        {
+            self.trigger_obj_export();
+        }
+        if let Some((message, is_error)) = &self.obj_export_status {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            let color = if *is_error {
+                palette.error
+            } else {
+                palette.success
+            };
+            ui.colored_label(color, message);
+        }
     }
 
     fn draw_parameter_controls(&mut self, ui: &mut egui::Ui) {

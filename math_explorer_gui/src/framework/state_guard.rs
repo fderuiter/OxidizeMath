@@ -191,9 +191,22 @@ impl SimulationFramework {
             Ok((has_plot_datasets, tool_datasets)) => {
                 if !self.is_diverged {
                     let active_name = self.active_tool.as_ref().map(|t| t.name());
-                    let plot_datasets_3d = egui_plot::get_last_plot_datasets_3d();
-                    if !plot_datasets_3d.is_empty() {
-                        self.current_valid_plot_datasets_3d = plot_datasets_3d;
+                    let capture_hash_3d = egui_plot::last_plot_3d_capture_hash();
+                    if capture_hash_3d != 0 {
+                        let same_3d = active_name.is_some_and(|name| {
+                            self.rev_cache.last_plot_3d_capture_hash
+                                == Some((name, capture_hash_3d))
+                        }) && !self.current_valid_plot_datasets_3d.is_empty();
+                        if !same_3d {
+                            let plot_datasets_3d = egui_plot::get_last_plot_datasets_3d();
+                            if !plot_datasets_3d.is_empty() {
+                                self.current_valid_plot_datasets_3d = plot_datasets_3d;
+                                if let Some(name) = active_name {
+                                    self.rev_cache.last_plot_3d_capture_hash =
+                                        Some((name, capture_hash_3d));
+                                }
+                            }
+                        }
                     }
                     if has_plot_datasets {
                         let capture_hash = egui_plot::last_plot_capture_hash();

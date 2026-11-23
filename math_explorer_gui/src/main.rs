@@ -4,6 +4,8 @@ pub mod accessibility;
 mod app;
 #[allow(missing_docs)]
 pub mod async_sim;
+#[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
+mod batch_plot_perf_and_export_tests;
 #[allow(missing_docs)]
 pub mod camera;
 #[cfg(test)]

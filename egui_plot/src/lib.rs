@@ -43,6 +43,7 @@ use emath::Float as _;
 
 pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
+    data_table::format::{TableSeriesRef, series_share_x},
     export::{
         AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
         color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
@@ -68,19 +69,21 @@ pub use crate::{
         fit_custom_with_registered_callback, has_custom_fit_callback, register_custom_fit_callback,
     },
     items::{
-        Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
-        LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
-        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, Text, VLine,
+        Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, ColoredPoint,
+        ColoredSegment, HLine, Line, LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry,
+        PlotImage, PlotItem, PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout,
+        Text, VLine,
     },
     latex::{parse_latex_to_layout_job, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::{CanvasCallout, PlotMemory},
     modal_lifecycle::{ModalFrameContext, ModalLifecycle},
-    plot_ui::PlotUi,
+    plot_ui::{PlotUi, TabularSeries},
     poi::{CriticalPoint, CriticalPointKind, MAX_CRITICAL_POINTS, detect_critical_points},
     sidecar_3d::{
         Plot3DSeries, Plot3DSeriesSidecar, append_last_plot_datasets_3d,
-        clear_last_plot_datasets_3d, format_world_coord, get_last_plot_datasets_3d,
+        append_last_plot_sidecar_3d, clear_last_plot_datasets_3d, format_world_coord,
+        get_last_plot_datasets_3d, last_plot_3d_capture_hash,
     },
     transform::{PlotBounds, PlotTransform},
 };
@@ -1296,6 +1299,7 @@ impl<'a> Plot<'a> {
             bounds_modifications: Vec::new(),
             plot_id,
             sidecar_3d: None,
+            tabular_series: None,
         };
 
         // Render persisted imported datasets as overlay items
@@ -1310,6 +1314,7 @@ impl<'a> Plot<'a> {
         }
 
         let inner = build_fn(&mut plot_ui);
+        record_last_plot_item_count(plot_ui.items.len());
 
         // Drain any remaining canvas callouts not consumed by a custom CalloutManager
         let newly_added_callouts = drain_pending_callouts(plot_id);
@@ -1332,6 +1337,7 @@ impl<'a> Plot<'a> {
             last_plot_transform,
             bounds_modifications,
             sidecar_3d,
+            tabular_series,
             ..
         } = plot_ui;
 
@@ -1799,10 +1805,13 @@ impl<'a> Plot<'a> {
             access_state.show_edit_callout_modal = false;
             access_state.focused_poi = None;
         }
-        let export_datasets_3d: Vec<(String, Vec<[f64; 3]>)> = sidecar_3d
+        let has_3d_datasets = sidecar_3d
             .as_ref()
-            .map_or_else(Vec::new, Plot3DSeriesSidecar::export_datasets_3d);
-        append_last_plot_datasets_3d(&export_datasets_3d);
+            .is_some_and(Plot3DSeriesSidecar::has_series);
+        if let Some(ref sidecar) = sidecar_3d {
+            append_last_plot_sidecar_3d(sidecar);
+        }
+        let tabular_slice = tabular_series.as_deref().map(Vec::as_slice);
 
         let base_items_hash = hash_plot_items(&items);
         let active_fit = if allow_2d_analysis
@@ -1811,6 +1820,7 @@ impl<'a> Plot<'a> {
         {
             let base_ds = Arc::clone(get_or_populate_base_datasets(
                 &items,
+                tabular_slice,
                 base_items_hash,
                 &mut access_state.cached_base_datasets,
             ));
@@ -1899,6 +1909,7 @@ impl<'a> Plot<'a> {
             ui.ctx(),
             &items,
             sidecar_3d.as_ref(),
+            tabular_slice,
             access_state.focused_item,
         );
         if !critical_points.is_empty() {
@@ -1912,7 +1923,7 @@ impl<'a> Plot<'a> {
                         return ds;
                     }
                 }
-                collect_accessible_datasets(&items)
+                collect_accessible_datasets(&items, tabular_slice)
             });
         if response.has_focus() {
             if allow_2d_analysis {
@@ -2054,8 +2065,14 @@ impl<'a> Plot<'a> {
                 .data_mut(|d| d.insert_temp(plot_id.with("toggle_settings"), false));
         }
 
-        let has_fit_candidates =
-            allow_2d_analysis && items.iter().any(|it| item_point_count(&**it) >= 2);
+        let has_tabular_points = tabular_series
+            .as_ref()
+            .is_some_and(|ts| ts.iter().any(|s| !s.points.is_empty()));
+        let has_fit_candidates = allow_2d_analysis
+            && (tabular_series
+                .as_ref()
+                .is_some_and(|ts| ts.iter().any(|s| s.points.len() >= 2))
+                || items.iter().any(|it| item_point_count(&**it) >= 2));
         if allow_2d_analysis
             && access_state.show_fit_overlay
             && let Some((ref fit_res, accent_color)) = active_fit
@@ -2073,9 +2090,16 @@ impl<'a> Plot<'a> {
         let series_count = sidecar_3d
             .as_ref()
             .filter(|s| !s.series().is_empty())
-            .map_or_else(|| items.len(), |s| s.series().len());
+            .map(|s| s.series().len())
+            .or_else(|| {
+                tabular_series
+                    .as_ref()
+                    .filter(|ts| !ts.is_empty())
+                    .map(|ts| ts.len())
+            })
+            .unwrap_or(items.len());
         let has_any_export_points =
-            !export_datasets_3d.is_empty() || items.iter().any(|it| it.has_any_points());
+            has_3d_datasets || has_tabular_points || items.iter().any(|it| it.has_any_points());
         let has_table_content = has_any_export_points || !critical_points.is_empty();
         let plot_a11y_label = match title.as_deref() {
             Some(t) => format!("Interactive Plot ({t}), {series_count} series"),
@@ -2100,18 +2124,22 @@ impl<'a> Plot<'a> {
                     access_state.export_modal.open = true;
                 }
                 if ui.button("Export CSV").clicked() {
-                    if !export_datasets_3d.is_empty() {
-                        export::export_csv_3d(&export_datasets_3d);
+                    if let Some(ref sidecar) = sidecar_3d
+                        && sidecar.has_series()
+                    {
+                        export::export_csv_3d(&sidecar.export_datasets_3d());
                     } else {
-                        let export_datasets = collect_export_datasets(&items);
+                        let export_datasets = collect_export_datasets(&items, tabular_slice);
                         export::export_csv(&export_datasets);
                     }
                 }
                 if ui.button("Export JSON").clicked() {
-                    if !export_datasets_3d.is_empty() {
-                        export::export_json_3d(&export_datasets_3d);
+                    if let Some(ref sidecar) = sidecar_3d
+                        && sidecar.has_series()
+                    {
+                        export::export_json_3d(&sidecar.export_datasets_3d());
                     } else {
-                        let export_datasets = collect_export_datasets(&items);
+                        let export_datasets = collect_export_datasets(&items, tabular_slice);
                         export::export_json(&export_datasets);
                     }
                 }
@@ -2149,6 +2177,7 @@ impl<'a> Plot<'a> {
                         ui.menu_button("Fit Curve", |ui| {
                             let base_ds = Arc::clone(get_or_populate_base_datasets(
                                 &items,
+                                tabular_slice,
                                 base_items_hash,
                                 &mut access_state.cached_base_datasets,
                             ));
@@ -2215,7 +2244,7 @@ impl<'a> Plot<'a> {
 
         {
             let table_window_title = format_modal_title("Data Table", title.as_deref());
-            if let Some(ref sidecar) = sidecar_3d {
+            if let Some(sidecar) = sidecar_3d.as_ref().filter(|s| s.has_series()) {
                 data_table::show_data_table_modal_3d(
                     ui.ctx(),
                     plot_id,
@@ -2230,7 +2259,7 @@ impl<'a> Plot<'a> {
                     if let Some(ref ds) = lazy_accessible_datasets {
                         ds.as_slice()
                     } else if access_state.show_table {
-                        table_datasets_storage = collect_accessible_datasets(&items);
+                        table_datasets_storage = collect_accessible_datasets(&items, tabular_slice);
                         table_datasets_storage.as_slice()
                     } else {
                         &[]
@@ -2259,9 +2288,9 @@ impl<'a> Plot<'a> {
                 gif_filename: "plot.gif",
             };
             let mut export_source = export_modal::CallbackExportSource {
-                datasets_fn: || collect_export_datasets(&items),
+                datasets_fn: || collect_export_datasets(&items, tabular_slice),
                 sample_frames_fn: |num_frames| {
-                    let ds = collect_export_datasets(&items);
+                    let ds = collect_export_datasets(&items, tabular_slice);
                     export::sample_progressive_frames(&ds, num_frames)
                 },
             };
@@ -2702,19 +2731,23 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
-                if !export_datasets_3d.is_empty() {
-                    export::export_csv_3d(&export_datasets_3d);
+                if let Some(ref sidecar) = sidecar_3d
+                    && sidecar.has_series()
+                {
+                    export::export_csv_3d(&sidecar.export_datasets_3d());
                 } else {
-                    let export_datasets = collect_export_datasets(&items);
+                    let export_datasets = collect_export_datasets(&items, tabular_slice);
                     export::export_csv(&export_datasets);
                 }
                 ui.close();
             }
             if ui.button("Export JSON").clicked() {
-                if !export_datasets_3d.is_empty() {
-                    export::export_json_3d(&export_datasets_3d);
+                if let Some(ref sidecar) = sidecar_3d
+                    && sidecar.has_series()
+                {
+                    export::export_json_3d(&sidecar.export_datasets_3d());
                 } else {
-                    let export_datasets = collect_export_datasets(&items);
+                    let export_datasets = collect_export_datasets(&items, tabular_slice);
                     export::export_json(&export_datasets);
                 }
                 ui.close();
@@ -2745,6 +2778,7 @@ impl<'a> Plot<'a> {
                 ui.menu_button("Fit Curve", |ui| {
                     let base_ds = Arc::clone(get_or_populate_base_datasets(
                         &items,
+                        tabular_slice,
                         base_items_hash,
                         &mut access_state.cached_base_datasets,
                     ));
@@ -2756,16 +2790,17 @@ impl<'a> Plot<'a> {
         let mut deferred_datasets = Vec::with_capacity(items.len());
         let mut deferred_primitives = Vec::with_capacity(items.len());
         if let Some(ref sidecar) = sidecar_3d
-            && !sidecar.series().is_empty()
+            && sidecar.has_series()
         {
-            for s in sidecar.series() {
-                if !s.projected.is_empty() {
-                    deferred_datasets.push(DeferredDatasetEntry::Owned {
-                        name: s.name.clone(),
-                        points: s.projected.clone(),
-                    });
-                }
+            deferred_datasets.push(DeferredDatasetEntry::Sidecar3D(sidecar.clone()));
+            let mut ignored_datasets = Vec::new();
+            for item in &mut items {
+                item.append_deferred_export(&mut ignored_datasets, &mut deferred_primitives);
             }
+        } else if let Some(ref tabular) = tabular_series
+            && !tabular.is_empty()
+        {
+            deferred_datasets.push(DeferredDatasetEntry::SharedTabular(Arc::clone(tabular)));
             let mut ignored_datasets = Vec::new();
             for item in &mut items {
                 item.append_deferred_export(&mut ignored_datasets, &mut deferred_primitives);
@@ -3262,13 +3297,7 @@ fn hash_plot_items(items: &[Box<dyn PlotItem + '_>]) -> u64 {
 }
 
 fn item_point_count(item: &dyn PlotItem) -> usize {
-    if let Some(segs) = item.line_segments() {
-        return segs.iter().map(Vec::len).sum();
-    }
-    match item.geometry() {
-        PlotGeometry::Points(pts) => pts.len(),
-        PlotGeometry::None | PlotGeometry::Rects => item.extract_points().len(),
-    }
+    item.point_count()
 }
 
 type BaseDatasetList = Vec<fit_overlay::BaseDatasetTuple>;
@@ -3276,6 +3305,7 @@ type BaseDatasetCache = Option<(u64, Arc<BaseDatasetList>)>;
 
 fn get_or_populate_base_datasets<'c>(
     items: &[Box<dyn PlotItem + '_>],
+    tabular_series: Option<&[TabularSeries]>,
     base_items_hash: u64,
     cache: &'c mut BaseDatasetCache,
 ) -> &'c Arc<BaseDatasetList> {
@@ -3283,23 +3313,41 @@ fn get_or_populate_base_datasets<'c>(
         .as_ref()
         .is_none_or(|(cached_hash, _)| *cached_hash != base_items_hash);
     if needs_refresh {
-        let built: BaseDatasetList = items
-            .iter()
-            .map(|it| (it.name().to_owned(), it.extract_points(), it.color()))
-            .collect();
+        let built = collect_accessible_datasets(items, tabular_series);
         *cache = Some((base_items_hash, Arc::new(built)));
     }
     &cache.as_ref().expect("populated base datasets").1
 }
 
-fn collect_accessible_datasets(items: &[Box<dyn PlotItem + '_>]) -> BaseDatasetList {
+fn collect_accessible_datasets(
+    items: &[Box<dyn PlotItem + '_>],
+    tabular_series: Option<&[TabularSeries]>,
+) -> BaseDatasetList {
+    record_materialized_plot_datasets();
+    if let Some(ts) = tabular_series.filter(|ts| !ts.is_empty()) {
+        return ts
+            .iter()
+            .map(|s| (s.name.clone(), s.points.clone(), s.color))
+            .collect();
+    }
     items
         .iter()
         .map(|item| (item.name().to_owned(), item.extract_points(), item.color()))
         .collect()
 }
 
-fn collect_export_datasets(items: &[Box<dyn PlotItem + '_>]) -> Vec<(String, Vec<[f64; 2]>)> {
+fn collect_export_datasets(
+    items: &[Box<dyn PlotItem + '_>],
+    tabular_series: Option<&[TabularSeries]>,
+) -> Vec<(String, Vec<[f64; 2]>)> {
+    record_materialized_plot_datasets();
+    if let Some(ts) = tabular_series.filter(|ts| !ts.is_empty()) {
+        return ts
+            .iter()
+            .filter(|s| !s.points.is_empty())
+            .map(|s| (s.name.clone(), s.points.clone()))
+            .collect();
+    }
     items
         .iter()
         .filter_map(|item| {
@@ -3313,10 +3361,13 @@ fn register_plot_dataset_commands_from_items(
     ctx: &egui::Context,
     items: &[Box<dyn PlotItem + '_>],
     sidecar_3d: Option<&Plot3DSeriesSidecar>,
+    tabular_series: Option<&[TabularSeries]>,
     focused_item: usize,
 ) {
     use crate::commands::{CommandRegistryData, CommandTrigger};
-    let has_series = sidecar_3d.filter(|s| !s.series().is_empty()).is_some() || !items.is_empty();
+    let has_series = sidecar_3d.filter(|s| !s.series().is_empty()).is_some()
+        || tabular_series.is_some_and(|ts| !ts.is_empty())
+        || !items.is_empty();
     if !has_series {
         return;
     }
@@ -3342,6 +3393,10 @@ fn register_plot_dataset_commands_from_items(
             .get(focused_item)
             .or_else(|| sidecar.series().first())
             .is_some_and(|s| !s.projected.is_empty())
+    } else if let Some(ts) = tabular_series.filter(|ts| !ts.is_empty()) {
+        ts.get(focused_item)
+            .or_else(|| ts.first())
+            .is_some_and(|s| !s.points.is_empty())
     } else {
         items
             .get(focused_item)
@@ -4664,15 +4719,25 @@ pub enum DeferredDatasetEntry {
         name: String,
         points: Arc<Vec<PlotPoint>>,
     },
+    SharedColoredPoints {
+        name: String,
+        points: Arc<Vec<ColoredPoint>>,
+    },
     SharedSegments {
         name: String,
         segments: Arc<Vec<Vec<PlotPoint>>>,
+    },
+    SharedColoredSegments {
+        name: String,
+        segments: Arc<Vec<ColoredSegment>>,
     },
     SharedArrows {
         name: String,
         origins: Arc<Vec<PlotPoint>>,
         tips: Arc<Vec<PlotPoint>>,
     },
+    SharedTabular(Arc<Vec<TabularSeries>>),
+    Sidecar3D(Plot3DSeriesSidecar),
     Owned {
         name: String,
         points: Vec<[f64; 2]>,
@@ -4680,32 +4745,60 @@ pub enum DeferredDatasetEntry {
 }
 
 impl DeferredDatasetEntry {
-    fn materialize(&self) -> (String, Vec<[f64; 2]>) {
+    fn materialize_into(&self, out: &mut Vec<(String, Vec<[f64; 2]>)>) {
         match self {
             Self::SharedPoints { name, points } => {
-                (name.clone(), points.iter().map(|p| [p.x, p.y]).collect())
+                out.push((name.clone(), points.iter().map(|p| [p.x, p.y]).collect()));
+            }
+            Self::SharedColoredPoints { name, points } => {
+                out.push((
+                    name.clone(),
+                    points.iter().map(|cp| [cp.point.x, cp.point.y]).collect(),
+                ));
             }
             Self::SharedSegments { name, segments } => {
                 let total: usize = segments.iter().map(Vec::len).sum();
-                let mut out = Vec::with_capacity(total);
+                let mut pts = Vec::with_capacity(total);
                 for seg in segments.iter() {
-                    out.extend(seg.iter().map(|p| [p.x, p.y]));
+                    pts.extend(seg.iter().map(|p| [p.x, p.y]));
                 }
-                (name.clone(), out)
+                out.push((name.clone(), pts));
+            }
+            Self::SharedColoredSegments { name, segments } => {
+                let total: usize = segments.iter().map(|seg| seg.points.len()).sum();
+                let mut pts = Vec::with_capacity(total);
+                for seg in segments.iter() {
+                    pts.extend(seg.points.iter().map(|p| [p.x, p.y]));
+                }
+                out.push((name.clone(), pts));
             }
             Self::SharedArrows {
                 name,
                 origins,
                 tips,
             } => {
-                let mut out = Vec::with_capacity(origins.len().min(tips.len()) * 2);
+                let mut pts = Vec::with_capacity(origins.len().min(tips.len()) * 2);
                 for (origin, tip) in origins.iter().zip(tips.iter()) {
-                    out.push([origin.x, origin.y]);
-                    out.push([tip.x, tip.y]);
+                    pts.push([origin.x, origin.y]);
+                    pts.push([tip.x, tip.y]);
                 }
-                (name.clone(), out)
+                out.push((name.clone(), pts));
             }
-            Self::Owned { name, points } => (name.clone(), points.clone()),
+            Self::SharedTabular(series) => {
+                for s in series.iter() {
+                    if !s.points.is_empty() {
+                        out.push((s.name.clone(), s.points.clone()));
+                    }
+                }
+            }
+            Self::Sidecar3D(sidecar) => {
+                for s in sidecar.series() {
+                    if !s.projected.is_empty() {
+                        out.push((s.name.clone(), s.projected.clone()));
+                    }
+                }
+            }
+            Self::Owned { name, points } => out.push((name.clone(), points.clone())),
         }
     }
 
@@ -4717,10 +4810,26 @@ impl DeferredDatasetEntry {
                 }
                 Ok(())
             }
+            Self::SharedColoredPoints { name, points } => {
+                for (idx, cp) in points.iter().enumerate() {
+                    check_xy_finite(name.as_str(), idx, cp.point.x, cp.point.y)?;
+                }
+                Ok(())
+            }
             Self::SharedSegments { name, segments } => {
                 let mut flat_idx = 0usize;
                 for seg in segments.iter() {
                     for pt in seg {
+                        check_xy_finite(name.as_str(), flat_idx, pt.x, pt.y)?;
+                        flat_idx += 1;
+                    }
+                }
+                Ok(())
+            }
+            Self::SharedColoredSegments { name, segments } => {
+                let mut flat_idx = 0usize;
+                for seg in segments.iter() {
+                    for pt in &seg.points {
                         check_xy_finite(name.as_str(), flat_idx, pt.x, pt.y)?;
                         flat_idx += 1;
                     }
@@ -4737,6 +4846,22 @@ impl DeferredDatasetEntry {
                     for pt in [origin, tip] {
                         check_xy_finite(name.as_str(), flat_idx, pt.x, pt.y)?;
                         flat_idx += 1;
+                    }
+                }
+                Ok(())
+            }
+            Self::SharedTabular(series) => {
+                for s in series.iter() {
+                    for (idx, pt) in s.points.iter().enumerate() {
+                        check_xy_finite(s.name.as_str(), idx, pt[0], pt[1])?;
+                    }
+                }
+                Ok(())
+            }
+            Self::Sidecar3D(sidecar) => {
+                for s in sidecar.series() {
+                    for (idx, pt) in s.projected.iter().enumerate() {
+                        check_xy_finite(s.name.as_str(), idx, pt[0], pt[1])?;
                     }
                 }
                 Ok(())
@@ -4766,6 +4891,38 @@ fn check_xy_finite(name: &str, idx: usize, x: f64, y: f64) -> Result<(), (&str, 
 thread_local! {
     static LAST_PLOT_DATASETS: std::cell::RefCell<(Vec<DeferredDatasetEntry>, u64)> =
         const { std::cell::RefCell::new((Vec::new(), 0)) };
+    static LAST_PLOT_ITEM_COUNTS: std::cell::RefCell<Vec<usize>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    static MATERIALIZED_PLOT_DATASETS_CALLS: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+}
+
+pub(crate) fn record_materialized_plot_datasets() {
+    MATERIALIZED_PLOT_DATASETS_CALLS.with(|c| c.set(c.get() + 1));
+}
+
+/// Returns how many times plot dataset point arrays were materialized since the last reset.
+#[doc(hidden)]
+#[must_use]
+pub fn materialized_plot_datasets_call_count() -> usize {
+    MATERIALIZED_PLOT_DATASETS_CALLS.with(std::cell::Cell::get)
+}
+
+/// Resets the plot dataset materialization counter.
+#[doc(hidden)]
+pub fn reset_materialized_plot_datasets_call_count() {
+    MATERIALIZED_PLOT_DATASETS_CALLS.with(|c| c.set(0));
+}
+
+fn record_last_plot_item_count(count: usize) {
+    LAST_PLOT_ITEM_COUNTS.with(|c| c.borrow_mut().push(count));
+}
+
+/// Returns the number of visual items submitted to each [`Plot`] rendered in the current frame.
+#[doc(hidden)]
+#[must_use]
+pub fn get_last_plot_item_counts() -> Vec<usize> {
+    LAST_PLOT_ITEM_COUNTS.with(|c| c.borrow().clone())
 }
 
 /// Clears thread-local record of plot datasets from the current frame.
@@ -4775,6 +4932,7 @@ pub fn clear_last_plot_datasets() {
         guard.0.clear();
         guard.1 = 0;
     });
+    LAST_PLOT_ITEM_COUNTS.with(|c| c.borrow_mut().clear());
     clear_last_plot_datasets_3d();
     clear_last_plot_primitives();
 }
@@ -4851,13 +5009,14 @@ pub fn check_last_plot_datasets_finite() -> Result<bool, (String, char, usize, f
 
 /// Retrieves all plot datasets captured across `egui_plot::Plot` widgets rendered in the active session.
 pub fn get_last_plot_datasets() -> Vec<(String, Vec<[f64; 2]>)> {
+    record_materialized_plot_datasets();
     LAST_PLOT_DATASETS.with(|d| {
         let guard = d.borrow();
-        guard
-            .0
-            .iter()
-            .map(DeferredDatasetEntry::materialize)
-            .collect()
+        let mut out = Vec::with_capacity(guard.0.len());
+        for entry in &guard.0 {
+            entry.materialize_into(&mut out);
+        }
+        out
     })
 }
 

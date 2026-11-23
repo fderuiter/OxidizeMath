@@ -13,6 +13,12 @@ impl FractalViewer {
         if !self.has_finite_parameters() {
             return Err("Fractal parameters are non-finite or out of bounds".to_string());
         }
+        if self.mode.is_custom() {
+            return Err(
+                "Standalone GLSL shader export is only supported for analytical Mandelbrot and Julia modes"
+                    .to_string(),
+            );
+        }
         let cx = format_glsl_float(self.center.re.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
         let cy = format_glsl_float(self.center.im.clamp(COORD_MIN, COORD_MAX))
@@ -54,6 +60,8 @@ fn write_dialect_header(out: &mut String, dialect: ShaderDialect, mode: FractalM
     let family = match mode {
         FractalMode::Mandelbrot => "Mandelbrot",
         FractalMode::Julia => "Julia",
+        FractalMode::CustomMandelbrot => "Custom Mandelbrot",
+        FractalMode::CustomJulia => "Custom Julia",
     };
     writeln!(
         out,
