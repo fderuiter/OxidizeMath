@@ -3,7 +3,7 @@
 use super::lattice_boltzmann_sculpt::{
     apply_lbm_custom_action, apply_stroke_to_lbm, draw_lbm_brush_panel, export_solver_rle,
     inspect_solver_solid_and_core, record_stroke_in_rle, reset_solver_preserving_obstacles,
-    rotate_airfoil_in_place, seed_initial_lbm_geometry,
+    seed_initial_lbm_geometry, sync_lbm_parameters,
 };
 use super::lbm_fairing::{
     decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0,
@@ -202,16 +202,13 @@ impl UnifiedModel for LbmUnified {
             ));
             return;
         }
-        if let Some((code, prev_aoa)) = self.stamped_airfoil {
-            let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
-            if aoa.is_finite() && (aoa - prev_aoa).abs() > 1e-6 {
-                rotate_airfoil_in_place(&mut self.solver, code, prev_aoa, aoa);
-                self.stamped_airfoil = Some((code, aoa));
-            }
-        }
-        self.display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
+        sync_lbm_parameters(
+            &mut self.solver,
+            &mut self.stamped_airfoil,
+            &mut self.display_vorticity,
+            params,
+        );
         self.step_count += 1;
-        self.solver.collision_model.tau = 3.0 * viscosity + 0.5;
         advance_wind_tunnel_step(&mut self.solver, LBM_INLET_U);
         self.refresh_diagnostics();
 
@@ -224,6 +221,16 @@ impl UnifiedModel for LbmUnified {
                 "Non-finite velocity detected in Lattice Boltzmann grid cells.",
             ));
         }
+    }
+
+    fn sync_parameters(&mut self, params: &HashMap<String, f64>) {
+        sync_lbm_parameters(
+            &mut self.solver,
+            &mut self.stamped_airfoil,
+            &mut self.display_vorticity,
+            params,
+        );
+        self.refresh_diagnostics();
     }
 
     fn get_snapshot(&self) -> StateSnapshot {

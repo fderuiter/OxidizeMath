@@ -28,11 +28,12 @@ fn test_bifurcation_animated_slider_sweep() {
     // Simulate activating animation on r_min slider
     let id = egui::Id::new("bifurcation_r_min");
     ctx.data_mut(|d| {
-        d.insert_temp(
+        d.insert_persisted(
             id,
             AnimatedSliderState {
                 playing: true,
                 direction: 1.0,
+                ..Default::default()
             },
         );
     });
