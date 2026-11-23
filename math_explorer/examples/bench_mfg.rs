@@ -16,9 +16,9 @@ fn main() {
     // 1.0 / nt < 0.002 => nt > 500.
     // Using nt=2000 for extra stability margin (dt=0.0005, ratio=0.125).
 
-    let grid_points = 200;
-    let time_steps = 2000;
-    let iterations = 100;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (grid_points, time_steps, iterations) = if smoke { (20, 50, 5) } else { (200, 2000, 100) };
 
     println!(
         "Setting up MFG with nx={}, nt={}, iterations={}...",
