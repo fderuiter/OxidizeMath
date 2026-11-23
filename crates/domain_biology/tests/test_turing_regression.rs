@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test turing regression.
 use domain_biology::biology::diffusion::{FiniteDifference1D, FiniteDifference2D};
 use domain_biology::biology::morphogenesis::{DiffusionCoeff, GrayScottKinetics, TuringSystem};
 use math_commons::math_kernel::types::{Dimension, StepSize, flatten_2d_index};

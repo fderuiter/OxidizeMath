@@ -1,12 +1,10 @@
 //! CSV overlay rendering, `Overlays` toolbar/menu controls, `Zoom Fit` framing,
 //! narrow-pane toolbar overflow compaction, clipboard paste, and drag-and-drop handling.
 
-use std::sync::Arc;
-
 use egui::{Color32, Id, Rect, Response, Ui, Vec2b};
 
 use crate::{
-    AccessState, Line, MarkerShape, PlotBounds, PlotItem, PlotMemory, PlotUi, Points,
+    AccessState, Line, MarkerShape, PlotBounds, PlotItem, PlotMemory, PlotUi, Points, SharedPoints,
     a11y::{self, AccessibleTooltipExt as _},
     apply_aspect_and_sync_linked,
     commands::CommandRegistryData,
@@ -15,6 +13,7 @@ use crate::{
     export::{self, ImportedDataset},
     file_io::parse_immediate_csv_overlay,
     fit_overlay,
+    runtime_cache::CachedItemSeries,
 };
 
 /// Plot width below which secondary toolbar controls collapse into a `⋯ More` overflow menu.
@@ -28,14 +27,17 @@ pub(crate) struct OverlayViewportSync<'a> {
 
 pub(crate) struct PlotToolbarConfig<'a, 'b> {
     pub plot_id: Id,
-    pub plot_rect: Rect,
+    pub header_rect: Rect,
     pub allow_csv_import: bool,
     pub allow_2d_analysis: bool,
+    pub scene_3d_mode: bool,
     pub has_table_content: bool,
     pub has_fit_candidates: bool,
-    pub base_items_hash: u64,
     pub items: &'a [Box<dyn PlotItem + 'b>],
+    pub item_shared_points: &'a [SharedPoints],
+    pub base_series_for_menu: &'a [CachedItemSeries],
     pub export_datasets_3d: &'a [(String, Vec<[f64; 3]>)],
+    pub fit_status: &'a fit_overlay::FitOverlayStatus,
     pub viewport_sync: OverlayViewportSync<'a>,
 }
 
@@ -433,7 +435,10 @@ fn render_secondary_toolbar_actions(
         if !cfg.export_datasets_3d.is_empty() {
             export::export_csv_3d(cfg.export_datasets_3d);
         } else {
-            export::export_csv(&crate::collect_export_datasets(cfg.items));
+            export::export_csv(&crate::collect_export_datasets(
+                cfg.items,
+                cfg.item_shared_points,
+            ));
         }
         if in_overflow {
             ui.close();
@@ -443,13 +448,16 @@ fn render_secondary_toolbar_actions(
         if !cfg.export_datasets_3d.is_empty() {
             export::export_json_3d(cfg.export_datasets_3d);
         } else {
-            export::export_json(&crate::collect_export_datasets(cfg.items));
+            export::export_json(&crate::collect_export_datasets(
+                cfg.items,
+                cfg.item_shared_points,
+            ));
         }
         if in_overflow {
             ui.close();
         }
     }
-    if ui.button("🔧 Settings").clicked() {
+    if !cfg.scene_3d_mode && ui.button("🔧 Settings").clicked() {
         access_state.show_settings_modal = !access_state.show_settings_modal;
         if in_overflow {
             ui.close();
@@ -476,17 +484,21 @@ fn render_toolbar_fit_controls(
             Some("Fit Curve"),
         )
         .accessible_tooltip("Requires a dataset with at least 2 points for curve fitting");
+        if access_state.fit_model.is_some() && ui.button("Clear Fit").clicked() {
+            clear_active_fit_state(access_state);
+        }
         return;
     }
     ui.menu_button("Fit Curve", |ui| {
-        let base_ds = Arc::clone(crate::get_or_populate_base_datasets(
-            cfg.items,
-            cfg.base_items_hash,
-            &mut access_state.cached_base_datasets,
-        ));
-        fit_overlay::render_fit_curve_menu(ui, &base_ds, access_state, in_overflow);
+        fit_overlay::render_fit_curve_menu(
+            ui,
+            cfg.base_series_for_menu,
+            access_state,
+            in_overflow,
+            cfg.fit_status,
+        );
     });
-    if access_state.fit_model.is_some() {
+    if cfg.fit_status.can_toggle_visibility() {
         let toggle_text = if access_state.show_fit_overlay {
             "Hide Fit"
         } else {
@@ -495,10 +507,16 @@ fn render_toolbar_fit_controls(
         if ui.button(toggle_text).clicked() {
             access_state.show_fit_overlay = !access_state.show_fit_overlay;
         }
-        if ui.button("Clear Fit").clicked() {
-            access_state.fit_model = None;
-        }
     }
+    if access_state.fit_model.is_some() && ui.button("Clear Fit").clicked() {
+        clear_active_fit_state(access_state);
+    }
+}
+
+fn clear_active_fit_state(access_state: &mut AccessState) {
+    access_state.fit_model = None;
+    access_state.custom_fit_error = None;
+    access_state.last_fit_error_announced = None;
 }
 
 fn render_import_toast(ui: &mut Ui, access_state: &mut AccessState) {
@@ -517,7 +535,7 @@ fn render_import_toast(ui: &mut Ui, access_state: &mut AccessState) {
     if a11y::focusable_action_button(
         ui,
         true,
-        egui::Button::new("✖").small(),
+        egui::Button::new("✖").min_size(egui::vec2(24.0, 24.0)),
         Some("Dismiss import notification"),
     )
     .accessible_tooltip("Dismiss import notification")
@@ -559,46 +577,76 @@ fn render_csv_toolbar_controls(
     }
 }
 
-/// Renders the top horizontal plot toolbar, compacting secondary actions on narrow split panes.
+fn render_table_view_button(ui: &mut Ui, has_table_content: bool) -> bool {
+    let mut table_btn = a11y::focusable_action_button(
+        ui,
+        has_table_content,
+        egui::Button::new("Table View"),
+        Some("Table View"),
+    );
+    if !has_table_content {
+        table_btn = table_btn.accessible_tooltip("No tabular data points available for this plot");
+    }
+    has_table_content && table_btn.clicked()
+}
+
+fn render_collapse_toolbar_button(ui: &mut Ui, mem: &mut PlotMemory) {
+    let collapse_btn = egui::Button::new("▲").min_size(egui::vec2(24.0, 24.0));
+    if a11y::focusable_action_button(
+        ui,
+        ui.is_enabled(),
+        collapse_btn,
+        Some("Collapse plot toolbar"),
+    )
+    .accessible_tooltip("Collapse toolbar (restore via right-click menu or Plot Settings)")
+    .clicked()
+    {
+        mem.toolbar_collapsed = true;
+        ui.ctx().request_repaint();
+    }
+}
+
+/// Renders the docked horizontal plot header, compacting secondary actions on narrow split panes.
 pub(crate) fn render_plot_top_toolbar(
     ui: &mut Ui,
     cfg: &PlotToolbarConfig<'_, '_>,
     mem: &mut PlotMemory,
     access_state: &mut AccessState,
 ) {
-    let overlay_rect = Rect::from_min_size(
-        cfg.plot_rect.min,
-        egui::vec2(cfg.plot_rect.width(), 30.0_f32),
+    let inner_rect = cfg.header_rect.shrink2(egui::vec2(2.0, 2.0));
+    let mut header_ui = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(("plot_docked_header", cfg.plot_id))
+            .max_rect(inner_rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
-    ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
-        ui.horizontal(|ui| {
-            render_csv_toolbar_controls(ui, cfg, mem, access_state);
+    header_ui.set_clip_rect(cfg.header_rect.intersect(ui.clip_rect()));
+    header_ui.spacing_mut().interact_size.x = header_ui.spacing().interact_size.x.max(24.0);
+    header_ui.spacing_mut().interact_size.y = header_ui.spacing().interact_size.y.max(24.0);
+    header_ui.spacing_mut().button_padding = egui::vec2(5.0, 3.0);
+    header_ui.spacing_mut().item_spacing = egui::vec2(4.0, 2.0);
 
-            let mut table_btn = a11y::focusable_action_button(
-                ui,
-                cfg.has_table_content,
-                egui::Button::new("Table View"),
-                Some("Table View"),
-            );
-            if !cfg.has_table_content {
-                table_btn =
-                    table_btn.accessible_tooltip("No tabular data points available for this plot");
-            }
-            if cfg.has_table_content && table_btn.clicked() {
+    render_csv_toolbar_controls(&mut header_ui, cfg, mem, access_state);
+
+    let show_inline_table = cfg.header_rect.width() >= 340.0;
+    if show_inline_table && render_table_view_button(&mut header_ui, cfg.has_table_content) {
+        access_state.show_table = !access_state.show_table;
+    }
+
+    if cfg.header_rect.width() >= NARROW_PLOT_TOOLBAR_WIDTH {
+        render_secondary_toolbar_actions(&mut header_ui, cfg, access_state, false);
+        render_import_toast(&mut header_ui, access_state);
+    } else {
+        header_ui.menu_button("⋯ More", |ui| {
+            if !show_inline_table && render_table_view_button(ui, cfg.has_table_content) {
                 access_state.show_table = !access_state.show_table;
+                ui.close();
             }
-
-            if cfg.plot_rect.width() >= NARROW_PLOT_TOOLBAR_WIDTH {
-                render_secondary_toolbar_actions(ui, cfg, access_state, false);
-            } else {
-                ui.menu_button("⋯ More", |ui| {
-                    render_secondary_toolbar_actions(ui, cfg, access_state, true);
-                });
-            }
-
-            render_import_toast(ui, access_state);
+            render_secondary_toolbar_actions(ui, cfg, access_state, true);
         });
-    });
+    }
+
+    render_collapse_toolbar_button(&mut header_ui, mem);
 }
 
 #[cfg(test)]

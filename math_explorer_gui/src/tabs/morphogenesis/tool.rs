@@ -7,10 +7,13 @@ use super::runner::{
     MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
     MorphogenesisSharedParams,
 };
+use super::sculpt::default_morpho_brush_kit;
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::FiniteStateGuard;
-use crate::framework::{ExportCapabilities, InteractiveTool};
+use crate::framework::{
+    decode_rle_mask, ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit,
+};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use math_explorer::biology::diffusion::FiniteDifference2D;
@@ -27,6 +30,8 @@ pub struct MorphogenesisTool {
     pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+    pub(crate) mask_rle: Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+    pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) width: usize,
     pub(crate) height: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
@@ -48,7 +53,9 @@ impl Default for MorphogenesisTool {
         let kinetics_state =
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
 
-        let runner = Self::create_kinetics_runner(&params, &kinetics_state, width, height);
+        let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
+        let runner =
+            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -56,6 +63,8 @@ impl Default for MorphogenesisTool {
             atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
             kinetics_state,
+            mask_rle,
+            brush_kit: default_morpho_brush_kit(),
             width,
             height,
             texture: None,
@@ -79,12 +88,14 @@ impl MorphogenesisTool {
         height: usize,
     ) -> MorphogenesisKineticsRunner {
         let ks = Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
-        Self::create_kinetics_runner(params, &ks, width, height)
+        let mask = Arc::new(std::sync::RwLock::new(Vec::new()));
+        Self::create_kinetics_runner(params, &ks, &mask, width, height)
     }
 
     pub(crate) fn create_kinetics_runner(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
         width: usize,
         height: usize,
     ) -> MorphogenesisKineticsRunner {
@@ -105,7 +116,8 @@ impl MorphogenesisTool {
             StepSize(1.0),
             StepSize(1.0),
         )
-        .with_boundary_mode(boundary.to_domain_mode());
+        .with_boundary_mode(boundary.to_domain_mode())
+        .with_mask();
         let mut system = TuringSystem::new_with_kinetics(
             Dimension(width * height),
             DiffusionCoeff(d_u),
@@ -114,13 +126,24 @@ impl MorphogenesisTool {
             diffusion,
         );
         Self::initialize_adapter_system(&mut system, width, height);
-        MorphogenesisKineticsRunner {
+        let rle = mask_rle.read().unwrap_or_else(|e| e.into_inner()).clone();
+        if !rle.is_empty() {
+            if let Ok(bytes) = decode_rle_mask(&rle, width * height) {
+                let _ = system.diffusion.mask.set_roles_slice(&bytes);
+            }
+        }
+        let mut runner = MorphogenesisKineticsRunner {
             system,
             params: Arc::clone(params),
             kinetics_state: Arc::clone(kinetics_state),
             width,
             height,
-        }
+            step_count: 0,
+            rng: oxidize_core::rng::OxidizeRng::new(super::runner::DEFAULT_MORPHOGENESIS_SEED),
+            noise_amplitude: 0.0,
+        };
+        runner.enforce_mask_concentrations();
+        runner
     }
 
     #[cfg(test)]
@@ -129,6 +152,7 @@ impl MorphogenesisTool {
         let runner = Self::create_kinetics_runner(
             &self.params,
             &self.kinetics_state,
+            &self.mask_rle,
             self.width,
             self.height,
         );
@@ -150,10 +174,11 @@ impl MorphogenesisTool {
     pub fn reset(&mut self) {
         let params = Arc::clone(&self.params);
         let ks = Arc::clone(&self.kinetics_state);
+        let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
         self.worker
-            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, width, height));
+            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
         self.stepped_pixels = None;
         self.stepped_scalar = None;
         self.step_runner = None;
@@ -192,6 +217,16 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn step_simulation(&mut self) {
         self.step_simulation_offscreen();
+    }
+
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(stroke) = ctx.brush_stroke {
+            self.dispatch_brush_stroke(stroke, Some(&ctx.response.ctx));
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -248,6 +283,10 @@ impl InteractiveTool for MorphogenesisTool {
         }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
+        self.mask_rle
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.pending_initial_start.hash(&mut h);
         self.atlas.is_visible().hash(&mut h);
@@ -267,6 +306,11 @@ impl InteractiveTool for MorphogenesisTool {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt)
         };
+        let mask_rle = self
+            .mask_rle
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&MorphogenesisToolState {
             a,
@@ -283,6 +327,7 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
         })
@@ -317,6 +362,7 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
         }
+        *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
         self.apply_dimensions_and_target_state(
             parsed.width,
             parsed.height,

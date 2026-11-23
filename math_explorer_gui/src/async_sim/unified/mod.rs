@@ -4,11 +4,18 @@ mod atlas;
 mod canvas;
 mod controls;
 mod persistence;
+pub mod sculpt;
 pub mod tool;
+pub use sculpt::UnifiedSimRunner;
 pub use tool::*;
 
-use crate::async_sim::{RegimeCartographer, SimCommand, SimulationRunner, StateSnapshot};
-use crate::framework::{CalloutManager, ChallengeEvaluation, MAX_SYNTHESIZED_PARAMS};
+use crate::async_sim::{
+    CheckpointParams, RegimeCartographer, SculptStatePayload, SimCommand, StateSnapshot,
+    TimeTravelCheckpoint,
+};
+use crate::framework::{
+    BrushStroke, CalloutManager, ChallengeEvaluation, SpatialBrushKit, MAX_SYNTHESIZED_PARAMS,
+};
 use eframe::egui;
 use math_commons::ast::CompiledExpr;
 use scientific_metadata::theory::ParameterConstraint;
@@ -64,6 +71,12 @@ pub trait UnifiedUiExtension: Send {
     fn on_brush(&mut self, _cx: i32, _cy: i32, _r: i32, _is_obstacle: bool) -> bool {
         true
     }
+
+    fn on_brush_stroke(&mut self, _stroke: &BrushStroke) -> bool {
+        true
+    }
+
+    fn sync_sculpt_payload(&self, _sculpt: &mut SculptStatePayload) {}
 
     fn on_custom_action(&mut self, _action: &str) {}
 
@@ -247,12 +260,83 @@ pub trait UnifiedModel:
         false
     }
 
-    /// Whether `StateSnapshot::structured_data` carries a `ScalarField2D` for contours and 16-bit textures.
+    /// Whether this model exports a 2D scalar field for Marching Squares contours and 16-bit textures.
     fn has_scalar_field() -> bool
     where
         Self: Sized,
     {
         false
+    }
+
+    /// Extracts a [`math_commons::math_kernel::marching_squares::ScalarField2D`] from `snapshot` when [`Self::has_scalar_field`] is `true`.
+    fn extract_scalar_field(
+        snapshot: &StateSnapshot,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D>
+    where
+        Self: Sized,
+    {
+        snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| {
+                d.downcast_ref::<math_commons::math_kernel::marching_squares::ScalarField2D>()
+            })
+            .cloned()
+    }
+
+    /// Whether this model supports interactive [`SpatialBrushKit`] sculpting and persistence.
+    fn supports_spatial_brush() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    /// Returns the default [`SpatialBrushKit`] configuration for this model.
+    fn default_brush_kit() -> SpatialBrushKit
+    where
+        Self: Sized,
+    {
+        SpatialBrushKit::default()
+    }
+
+    /// Renders optional brush controls and live diagnostic readouts in the left side panel.
+    fn draw_brush_controls(
+        _ui: &mut eframe::egui::Ui,
+        _brush_kit: &mut SpatialBrushKit,
+        _params: &Arc<RwLock<HashMap<String, f64>>>,
+        _sculpt_state: &Arc<RwLock<SculptStatePayload>>,
+        _snapshot: Option<&StateSnapshot>,
+    ) -> Vec<SimCommand>
+    where
+        Self: Sized,
+    {
+        Vec::new()
+    }
+
+    /// Updates UI-side `sculpt_state` synchronously when a `BrushStroke` is applied so
+    /// `save_state()` immediately reflects sculpted masks/potentials.
+    fn record_ui_brush_stroke(
+        _stroke: &BrushStroke,
+        _params: &HashMap<String, f64>,
+        _formula: Option<&CompiledFormulaPayload>,
+        _sculpt_state: &mut SculptStatePayload,
+    ) where
+        Self: Sized,
+    {
+    }
+
+    /// Restores or exports sculpted state on the worker model instance.
+    fn apply_sculpt_payload(
+        &mut self,
+        _payload: &SculptStatePayload,
+        _params: &HashMap<String, f64>,
+    ) {
+    }
+
+    /// Exports current worker model sculpt state into `payload`.
+    fn export_sculpt_payload(&self, _params: &HashMap<String, f64>) -> SculptStatePayload {
+        SculptStatePayload::default()
     }
 
     /// Allow the model to draw custom visualization in the central panel.
@@ -264,14 +348,60 @@ pub trait UnifiedModel:
         false
     }
 
-    /// Evaluate a fast scalar observable `(metric_label, value)` from `params`
-    /// for parameter sensitivity analysis. Returns `None` when no fast scalar
-    /// observable is available on the UI thread.
+    /// Allow the model to draw custom visualization with [`SpatialBrushKit`] sampling,
+    /// returning `(handled, emitted_strokes)`.
+    fn custom_central_panel_with_brush(
+        ui: &mut eframe::egui::Ui,
+        snapshot: Option<&StateSnapshot>,
+        _brush_kit: &mut SpatialBrushKit,
+    ) -> (bool, Vec<BrushStroke>)
+    where
+        Self: Sized,
+    {
+        (Self::custom_central_panel(ui, snapshot), Vec::new())
+    }
+
+    /// Evaluate a fast scalar observable `(metric_label, value)` from `params` for sensitivity analysis.
     fn evaluate_observable(_params: &HashMap<String, f64>) -> Option<(&'static str, f64)>
     where
         Self: Sized,
     {
         None
+    }
+
+    /// Opt-in keyframe capture stride `K` (`Some(1)` for compact ODEs, `Some(16)` for 2D grids).
+    fn checkpoint_stride(&self) -> Option<usize> {
+        None
+    }
+
+    /// Current deterministic step index for opted-in time-travel models.
+    fn current_step(&self) -> usize {
+        0
+    }
+
+    /// Captures a self-contained [`TimeTravelCheckpoint`] at `current_step()`.
+    fn capture_checkpoint(&self, _params: &HashMap<String, f64>) -> Option<TimeTravelCheckpoint> {
+        None
+    }
+
+    /// Captures active model parameters for mid-run parameter epoch tracking.
+    fn capture_active_params(&self, params: &HashMap<String, f64>) -> Option<CheckpointParams> {
+        self.checkpoint_stride()
+            .map(|_| CheckpointParams::NamedMap(params.clone()))
+    }
+
+    /// Restores dynamical fields, active parameters, step index, and cloned `OxidizeRng`.
+    fn restore_checkpoint(&mut self, _checkpoint: &TimeTravelCheckpoint) {}
+
+    /// Reconstructs bounded trajectory histories from retained keyframes `..=kf_idx`.
+    fn rebuild_history(&mut self, _front: &[TimeTravelCheckpoint], _back: &[TimeTravelCheckpoint]) {
+    }
+
+    /// Advances one zero-allocation sub-step during deterministic checkpoint replay.
+    fn replay_step(&mut self, params: &CheckpointParams) {
+        if let Some(map) = params.as_named_map() {
+            self.step(map);
+        }
     }
 
     /// Returns a stable tool identifier when this unified model emits live
@@ -282,7 +412,6 @@ pub trait UnifiedModel:
     {
         None
     }
-
     /// Optional `(x_key, y_key)` parameter pairs exposed in a 2D [`crate::async_sim::ParameterAtlasController`].
     fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)]
     where
@@ -300,97 +429,5 @@ pub trait UnifiedModel:
         Self: Sized,
     {
         None
-    }
-}
-
-#[allow(missing_docs)]
-pub struct UnifiedSimRunner<M: UnifiedModel> {
-    model: M,
-    params: Arc<RwLock<HashMap<String, f64>>>,
-    formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
-    applied_formula_rev: Option<u64>,
-    steps_per_frame: usize,
-}
-
-impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    #[allow(missing_docs)]
-    pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
-        Self::with_formula(params, Arc::new(RwLock::new(None)))
-    }
-
-    /// Creates a runner sharing both `params` and an optional [`CompiledFormulaPayload`] slot.
-    pub fn with_formula(
-        params: Arc<RwLock<HashMap<String, f64>>>,
-        formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
-    ) -> Self {
-        let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
-        let mut runner = Self {
-            model: M::new(&initial_params),
-            params,
-            formula,
-            applied_formula_rev: None,
-            steps_per_frame: 5,
-        };
-        runner.sync_formula(&initial_params);
-        runner
-    }
-
-    fn sync_formula(&mut self, current_params: &HashMap<String, f64>) {
-        let payload_opt = self
-            .formula
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let next_rev = payload_opt.as_ref().map(|p| p.revision);
-        if next_rev != self.applied_formula_rev {
-            self.model
-                .apply_compiled_formula(payload_opt.as_ref(), current_params);
-            self.applied_formula_rev = next_rev;
-        }
-    }
-}
-
-impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
-    fn process_command(&mut self, cmd: SimCommand) {
-        let current_params = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        match cmd {
-            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
-            SimCommand::Reset => {
-                self.model.reset_model(&current_params);
-                self.applied_formula_rev = None;
-                self.sync_formula(&current_params);
-            }
-            _ => self.model.process_command(cmd, &current_params),
-        }
-    }
-
-    fn step(&mut self) {
-        let current_params = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        self.sync_formula(&current_params);
-        self.model.step(&current_params);
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        self.model.get_snapshot()
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        self.steps_per_frame
-    }
-
-    fn is_finite_state(&self) -> bool {
-        self.model.is_finite_state()
-    }
-
-    fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
-        self.model.diagnostic_report().cloned()
     }
 }

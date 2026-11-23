@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for security isosurface overflow.
 use domain_applied::applied::isosurface::{Point3D, VoxelGrid};
 
 #[test]

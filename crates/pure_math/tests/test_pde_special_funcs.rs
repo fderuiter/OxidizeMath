@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test pde special funcs.
 use approx::assert_abs_diff_eq;
 use pure_math::pure_math::analysis::pde::{
     greens::GreenFunctionSolver1D, heat::HeatEquation1D, laplace::LaplaceEquation2D,

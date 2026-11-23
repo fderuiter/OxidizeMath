@@ -2,12 +2,16 @@ use super::SpatialDiffusion;
 
 #[allow(missing_docs)]
 pub mod boundary;
+mod fused_pair;
 #[allow(missing_docs)]
 pub mod geometry;
 #[allow(missing_docs)]
 pub mod iteration;
+pub mod mask;
 #[cfg(test)]
 mod tests;
+
+pub use mask::{CellMask2D, MaskedFiniteDifference2D, ReactionCellRole};
 
 use boundary::{BoundaryMode, NeumannBoundary};
 use geometry::{Cartesian2D, GeometryStrategy};
@@ -62,6 +66,12 @@ impl FiniteDifference2D {
     #[verified_engine::verified]
     pub fn is_periodic(&self) -> bool {
         self.boundary_mode == BoundaryMode::Periodic
+    }
+
+    /// Wraps this 2D stencil operator in a [`MaskedFiniteDifference2D`] with an empty cell mask.
+    #[verified_engine::verified]
+    pub fn with_mask(self) -> MaskedFiniteDifference2D {
+        MaskedFiniteDifference2D::new(self)
     }
 }
 
@@ -123,7 +133,7 @@ impl<const N: usize> SpatialDiffusion<N> for FiniteDifference2D {
     fn step_fused<K: crate::biology::morphogenesis::reaction::ReactionKinetics<N>>(
         &self,
         state: [&[f64]; N],
-        next_state: [&mut [f64]; N],
+        mut next_state: [&mut [f64]; N],
         dt: f64,
         coeffs: [f64; N],
         kinetics: &K,
@@ -131,9 +141,25 @@ impl<const N: usize> SpatialDiffusion<N> for FiniteDifference2D {
         if N == 0 || self.geometry.size() == 0 {
             return;
         }
+        let stepper = SpatialDiffusion::<N>::stepper(self);
+        if N == 2 && self.boundary_mode == BoundaryMode::Neumann {
+            if let [nu, nv] = &mut next_state[..] {
+                fused_pair::step_fused_pair(
+                    (*self.geometry.width, *self.geometry.height),
+                    state[0],
+                    state[1],
+                    nu,
+                    nv,
+                    dt,
+                    [coeffs[0], coeffs[1]],
+                    &stepper.ops,
+                    kinetics,
+                );
+                return;
+            }
+        }
 
         let dim = (*self.geometry.width, *self.geometry.height);
-        let stepper = SpatialDiffusion::<N>::stepper(self);
         let rhs_fn = |_i: usize,
                       curr: [f64; N],
                       left: [f64; N],

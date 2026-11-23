@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for bench gaussian.
 #![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
 use math_explorer::ai::gaussian_splatting::rendering::blend_gaussians;
 use math_explorer::ai::gaussian_splatting::structs::Gaussian2D;

@@ -257,9 +257,9 @@ fn test_compact_overflow_menu_and_non_shader_tool_warning_status() {
 }
 
 #[test]
-fn test_fractal_viewer_custom_ast_glsl_shader_and_scalar_field_composition() {
+fn test_fractal_custom_mandelbrot_and_custom_julia_glsl_shader_export() {
     let mut viewer = FractalViewer {
-        mode: FractalMode::CustomJulia,
+        mode: FractalMode::CustomMandelbrot,
         ..Default::default()
     };
     viewer.math_input.set_expression("a * z^3 + c");
@@ -270,11 +270,20 @@ fn test_fractal_viewer_custom_ast_glsl_shader_and_scalar_field_composition() {
     let caps = viewer.export_capabilities();
     assert!(caps.scalar_field && caps.contour_controls && caps.shader);
 
-    let glsl = viewer
+    let custom_mb = viewer
         .export_glsl_shader(ShaderDialect::WebGl2Es300)
-        .unwrap();
-    assert!(glsl.contains("const bool IS_JULIA = true;"));
-    assert!(glsl.contains("const vec2 a = vec2(1.25, 0.0);"));
-    assert!(glsl.contains("step_fractal(z, c)"));
-    assert!(glsl.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
+        .expect("CustomMandelbrot WebGL2 shader must compile");
+    assert!(custom_mb.contains("// OxidizeMath Analytical Custom Mandelbrot Escape-Time Shader"));
+    assert!(custom_mb.contains("const bool IS_JULIA = false;"));
+    assert!(custom_mb.contains("const float ESCAPE_R2 = 4.0;"));
+    assert!(custom_mb.contains("const vec2 a = vec2(1.25, 0.0);"));
+    assert!(custom_mb.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
+
+    viewer.mode = FractalMode::CustomJulia;
+    let custom_julia = viewer
+        .export_glsl_shader(ShaderDialect::Shadertoy)
+        .expect("CustomJulia Shadertoy shader must compile");
+    assert!(custom_julia.contains("// OxidizeMath Analytical Custom Julia Escape-Time Shader"));
+    assert!(custom_julia.contains("const bool IS_JULIA = true;"));
+    assert!(custom_julia.contains("void mainImage(out vec4 fragColor, in vec2 fragCoord)"));
 }

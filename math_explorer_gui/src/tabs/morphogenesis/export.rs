@@ -63,13 +63,17 @@ impl MorphogenesisTool {
             if let Some(values) = snapshot
                 .structured_data
                 .as_ref()
-                .and_then(|d| d.downcast_ref::<Vec<f64>>())
+                .and_then(|d| {
+                    d.downcast_ref::<super::runner::MorphoSnapshotData>()
+                        .map(|m| m.u_data.as_slice())
+                        .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+                })
                 .filter(|v| v.len() == snapshot.width * snapshot.height && snapshot.width > 0)
             {
                 return Some(ScalarField2D {
                     width: snapshot.width,
                     height: snapshot.height,
-                    values: values.clone(),
+                    values: values.to_vec(),
                     periodic,
                     default_levels: 8,
                 });
@@ -78,6 +82,7 @@ impl MorphogenesisTool {
         let runner = Self::create_kinetics_runner(
             &self.params,
             &self.kinetics_state,
+            &self.mask_rle,
             self.width,
             self.height,
         );
@@ -95,6 +100,7 @@ impl MorphogenesisTool {
             Self::create_kinetics_runner(
                 &self.params,
                 &self.kinetics_state,
+                &self.mask_rle,
                 self.width,
                 self.height,
             )
@@ -105,12 +111,12 @@ impl MorphogenesisTool {
         let snap = runner.get_snapshot();
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
-        if let Some(vals) = snap
-            .structured_data
-            .as_ref()
-            .and_then(|d| d.downcast_ref::<Vec<f64>>())
-        {
-            self.stepped_scalar = Some((snap.width, snap.height, vals.clone()));
+        if let Some(vals) = snap.structured_data.as_ref().and_then(|d| {
+            d.downcast_ref::<super::runner::MorphoSnapshotData>()
+                .map(|m| m.u_data.as_slice())
+                .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+        }) {
+            self.stepped_scalar = Some((snap.width, snap.height, vals.to_vec()));
         }
     }
 }

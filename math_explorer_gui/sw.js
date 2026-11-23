@@ -1,7 +1,7 @@
-// Lightweight pre-boot app-shell Service Worker for Math Explorer GUI.
-// Caches only lightweight shell HTML/JS/metadata (excluding the ~4.5 MB .wasm bundle)
-// using network-first resolution so offline reloads render #error_container cleanly
-// instead of failing navigation with net::ERR_FAILED.
+// Lightweight post-boot app-shell Service Worker for Math Explorer GUI.
+// Caches only lightweight shell HTML/JS/metadata (excluding the multi-MB .wasm bundle)
+// while honoring fresh HTTP cache entries on normal navigations so offline reloads
+// render #error_container cleanly instead of failing navigation with net::ERR_FAILED.
 const SHELL_CACHE_NAME = 'math-explorer-shell-v1';
 const SHELL_CACHE_PREFIX = 'math-explorer-shell-';
 
@@ -80,19 +80,19 @@ async function precacheShell() {
     for (const relPath of CORE_SHELL_PATHS) {
         const targetUrl = new URL(relPath, base).href;
         try {
-            const response = await fetch(targetUrl, { cache: 'reload' });
+            const response = await fetch(targetUrl);
             if (response && response.ok) {
                 await cache.put(targetUrl, response);
             }
         } catch (_err) {
-            // Best-effort during install; runtime network-first populates cache on online loads
+            // Best-effort during install; runtime fetch populates cache on online loads
         }
     }
 
     for (const relPath of OPTIONAL_SHELL_PATHS) {
         const targetUrl = new URL(relPath, base).href;
         try {
-            const response = await fetch(targetUrl, { cache: 'no-cache' });
+            const response = await fetch(targetUrl);
             if (response && response.ok) {
                 await cache.put(targetUrl, response);
             }
@@ -128,11 +128,14 @@ async function handleShellOrNavigateFetch(request, isNavigate) {
         : new URL(request.url).origin + new URL(request.url).pathname;
 
     try {
-        const networkRequest = new Request(request, { cache: 'no-cache' });
-        const networkResponse = await fetch(networkRequest);
+        const networkResponse = await fetch(request);
         if (networkResponse && networkResponse.ok) {
-            const cache = await caches.open(SHELL_CACHE_NAME);
-            await cache.put(cacheKey, networkResponse.clone());
+            try {
+                const cache = await caches.open(SHELL_CACHE_NAME);
+                await cache.put(cacheKey, networkResponse.clone());
+            } catch (_cacheErr) {
+                // Storage quota errors must never discard a valid network response
+            }
         }
         return networkResponse;
     } catch (_networkErr) {
@@ -150,8 +153,7 @@ async function handleShellOrNavigateFetch(request, isNavigate) {
 
 async function handleUncachedRuntimeFetch(request) {
     try {
-        const networkRequest = new Request(request, { cache: 'no-cache' });
-        return await fetch(networkRequest);
+        return await fetch(request);
     } catch (_networkErr) {
         return buildOfflineUnavailableResponse();
     }

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for bench lorahub.
 #![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
 use math_explorer::applied::lorahub::{LoraEnsemble, LoraStateDict};
 use math_explorer::nalgebra::DMatrix;

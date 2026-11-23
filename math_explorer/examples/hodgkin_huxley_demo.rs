@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for hodgkin huxley demo.
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 
 fn main() {

@@ -1,14 +1,22 @@
 use super::*;
 
+#[derive(Clone, Copy)]
+pub(crate) struct UntrackedUrlDigestCache {
+    pub(crate) tool_name: &'static str,
+    pub(crate) checked_untracked_rev: u64,
+    pub(crate) url_digest: u64,
+}
+
 #[derive(Default)]
 pub(crate) struct FrameworkRevisionCache {
     pub(crate) framework_revision: u64,
     pub(crate) untracked_tool_revision: u64,
+    pub(crate) untracked_url_digest: std::cell::Cell<Option<UntrackedUrlDigestCache>>,
     pub(crate) active_tool_json:
         std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
     pub(crate) last_snapshot_rev: Option<(&'static str, u64)>,
+    pub(crate) last_snapshot_source_datasets: Vec<(String, egui_plot::SharedPoints)>,
     pub(crate) last_plot_capture_hash: Option<(&'static str, u64)>,
-    pub(crate) last_snapshot_plot_sig: Option<u64>,
 }
 
 impl SimulationFramework {
@@ -55,6 +63,7 @@ impl SimulationFramework {
             diagnostic_report: None,
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
+            challenge_hud: ChallengeHudState::default(),
             active_challenge: None,
             challenge_was_passed: false,
             instance_id: overlay_sync::next_framework_id(),

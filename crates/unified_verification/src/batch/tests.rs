@@ -107,6 +107,47 @@ fn test_run_batch_staged_for_paths_catches_profile_and_doc_failures() {
 }
 
 #[test]
+fn test_run_batch_staged_for_paths_catches_guide_gate_violations() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let tmp = TempTestDir::new("batch_staged_guide_gate");
+    let orig = env::current_dir().unwrap();
+    let _guard = CurrentDirGuard(orig);
+
+    env::set_current_dir(&*tmp).unwrap();
+    fs::create_dir_all("apps/xtask/src").unwrap();
+    fs::write(
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"apps/xtask\"]\n\n[profile.release]\noverflow-checks = true\n",
+    )
+    .unwrap();
+    fs::write(
+        "apps/xtask/Cargo.toml",
+        "[package]\nname = \"xtask\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lints]\nworkspace = true\n",
+    )
+    .unwrap();
+    fs::write("apps/xtask/README.md", "# xtask\n\nValid helper crate.\n").unwrap();
+    fs::write(
+        "apps/xtask/src/main.rs",
+        "#![doc = include_str!(\"../README.md\")]\n#![cfg_attr(any(), verified(opt_out = \"tests\"))]\nfn main() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        "apps/xtask/src/papers.rs",
+        "#![cfg_attr(any(), verified(opt_out = \"tests\"))]\npub fn compile() { let _ = \"pdflatex\"; }\n",
+    )
+    .unwrap();
+    fs::write("README.md", "Build academic papers with Tectonic 0.15.0.\n").unwrap();
+
+    let staged = vec!["README.md".to_string()];
+    let members = vec!["apps/xtask".to_string()];
+    let mut cache = AstCache::new();
+    assert!(
+        !run_batch_staged_for_paths(&staged, &staged, &members, &mut cache),
+        "Stale Tectonic guide instruction must fail batch-staged"
+    );
+}
+
+#[test]
 fn test_batch_ast_parses_each_unique_workspace_file_at_most_once() {
     let _lock = crate::DIR_LOCK.lock().unwrap();
     let orig = env::current_dir().unwrap();
@@ -185,15 +226,15 @@ fn test_batch_staged_enforces_adr_for_staged_core_changes() {
 
     fs::create_dir_all(dir.join("docs/adr")).unwrap();
     fs::write(
-        dir.join("docs/adr/0001-core-edit.md"),
-        "# ADR 0001: Core Edit\n\n## Status\n\nAccepted\n",
+        dir.join("docs/adr/20261123-core-edit.md"),
+        "# ADR 20261123: Core Edit\n\n## Status\n\nAccepted\n",
     )
     .unwrap();
-    run_git(&["add", "docs/adr/0001-core-edit.md"]);
+    run_git(&["add", "docs/adr/20261123-core-edit.md"]);
 
     let staged_with_adr = vec![
         "crates/pure_math/src/lib.rs".to_string(),
-        "docs/adr/0001-core-edit.md".to_string(),
+        "docs/adr/20261123-core-edit.md".to_string(),
     ];
     assert!(run_batch_staged_for_paths_in_dir(
         &dir,

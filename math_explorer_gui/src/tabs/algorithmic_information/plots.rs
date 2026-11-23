@@ -196,7 +196,7 @@ impl FractranMachineTool {
             .filter(|(_, pts)| pts.len() >= 2)
             .map(|(name, points)| ExportPrimitive::Polyline {
                 name,
-                points,
+                points: points.into(),
                 color: egui::Color32::TRANSPARENT,
                 stroke_width: 2.0,
                 closed: false,
@@ -206,9 +206,10 @@ impl FractranMachineTool {
 
         let palette = crate::app::SemanticPalette::from_visuals(&egui::Visuals::dark());
         let count = self.visible_register_count();
-        for (idx, (&prime, &exp)) in FIRST_64_PRIMES[..count]
+        for (idx, (&prime, &exp)) in FIRST_64_PRIMES
             .iter()
-            .zip(&self.live.exponents[..count])
+            .zip(self.live.exponents.iter())
+            .take(count)
             .enumerate()
         {
             let x = idx as f64;
