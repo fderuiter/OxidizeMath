@@ -35,6 +35,9 @@ impl InteractiveTool for SaveStateTrapTool {
     fn state_revision(&self) -> u64 {
         self.inner.state_revision()
     }
+    fn url_state_revision(&self) -> u64 {
+        self.inner.url_state_revision()
+    }
     fn has_finite_parameters(&self) -> bool {
         self.finite_override
             .unwrap_or_else(|| self.inner.has_finite_parameters())
@@ -45,6 +48,9 @@ impl InteractiveTool for SaveStateTrapTool {
     }
     fn save_recovery_state(&self) -> Option<String> {
         self.inner.save_recovery_state()
+    }
+    fn save_url_state(&self) -> Option<String> {
+        self.inner.save_url_state()
     }
     fn load_state(&mut self, state: &str) {
         self.inner.load_state(state);

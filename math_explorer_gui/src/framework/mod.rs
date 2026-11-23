@@ -176,6 +176,11 @@ pub trait InteractiveTool {
         0
     }
 
+    /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
+    fn url_state_revision(&self) -> u64 {
+        self.state_revision()
+    }
+
     /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         None
@@ -202,6 +207,11 @@ pub trait InteractiveTool {
     /// Lightweight parameter-only snapshot hook used by `cache_valid_snapshot`.
     fn save_recovery_state(&self) -> Option<String> {
         self.save_state()
+    }
+
+    /// Parameter-only state serialization hook for URL sharing (omits trace histories).
+    fn save_url_state(&self) -> Option<String> {
+        self.save_recovery_state()
     }
 
     /// Fallibly restores parameter-only recovery state without clobbering pinned comparison overlays.
@@ -382,10 +392,18 @@ pub trait InteractiveTool {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct UntrackedUrlDigestCache {
+    pub(super) tool_name: &'static str,
+    pub(super) checked_untracked_rev: u64,
+    pub(super) url_digest: u64,
+}
+
 #[derive(Default)]
 pub(super) struct FrameworkRevisionCache {
     pub(super) framework_revision: u64,
     pub(super) untracked_tool_revision: u64,
+    pub(super) untracked_url_digest: std::cell::Cell<Option<UntrackedUrlDigestCache>>,
     pub(super) active_tool_json:
         std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
     pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
