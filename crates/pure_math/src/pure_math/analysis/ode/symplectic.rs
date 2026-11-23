@@ -1,8 +1,8 @@
 //! Zero-allocation symplectic numerical integrators for conservative Hamiltonian ODEs.
 //!
 //! Provides explicit splitting solvers ([`StormerVerlet`] and [`Yoshida4`]) for
-//! [`SeparableHamiltonian`] systems alongside the implicit 2-stage 4th-order
-//! [`GaussLegendre4`] Runge-Kutta solver for general (including non-separable)
+//! [`SeparableHamiltonian`] systems alongside implicit fixed-point symplectic Runge-Kutta
+//! solvers ([`ImplicitMidpoint`] and [`GaussLegendre4`]) for general (including non-separable)
 //! [`OdeSystem`] and [`super::traits::HamiltonianSystem`] dynamics.
 
 // [cite:advanced_linear_algebra]
@@ -19,13 +19,20 @@ pub enum SymplecticMethod {
     /// 4th-order explicit Yoshida (1990) symmetric triple-Verlet composition for separable Hamiltonians.
     #[default]
     Yoshida4,
+    /// 2nd-order 1-stage implicit midpoint (Gauss-Legendre $s=1$) symplectic solver for general Hamiltonians.
+    ImplicitMidpoint,
     /// 4th-order 2-stage implicit Gauss-Legendre Runge-Kutta for general Hamiltonians.
     GaussLegendre4,
 }
 
 impl SymplecticMethod {
     /// All supported symplectic integration methods.
-    pub const ALL: [Self; 3] = [Self::StormerVerlet, Self::Yoshida4, Self::GaussLegendre4];
+    pub const ALL: [Self; 4] = [
+        Self::StormerVerlet,
+        Self::Yoshida4,
+        Self::ImplicitMidpoint,
+        Self::GaussLegendre4,
+    ];
 
     /// Human-readable display label for UI selectors and telemetry.
     #[must_use]
@@ -34,6 +41,7 @@ impl SymplecticMethod {
         match self {
             Self::StormerVerlet => "Störmer-Verlet (2nd)",
             Self::Yoshida4 => "Yoshida 4th Order",
+            Self::ImplicitMidpoint => "Implicit Midpoint (2nd)",
             Self::GaussLegendre4 => "Gauss-Legendre 4th",
         }
     }
@@ -208,6 +216,98 @@ impl<Coord: VectorOperations> Yoshida4<Coord> {
     }
 }
 
+/// Second-order 1-stage implicit midpoint symplectic integrator ($s = 1$ Gauss-Legendre).
+///
+/// Preserves the canonical symplectic 2-form $dp \wedge dq$ on arbitrary (including non-separable)
+/// Hamiltonian systems via bounded fixed-point iteration $k^{(m+1)} = f(t + h/2, y_n + \frac{h}{2} k^{(m)})$
+/// with zero dynamic heap allocations.
+#[derive(Debug, Clone)]
+pub struct ImplicitMidpoint<State> {
+    k: State,
+    k_next: State,
+    mid: State,
+    max_iters: usize,
+    substeps: usize,
+}
+
+impl<State: Clone> ImplicitMidpoint<State> {
+    /// Default fixed-point iteration budget per substep.
+    pub const DEFAULT_MAX_ITERS: usize = 10;
+
+    /// Default symmetric symplectic substep count per `step` call.
+    pub const DEFAULT_SUBSTEPS: usize = 2;
+
+    /// Upper cap on fixed-point iterations to guarantee bounded loop execution.
+    pub const MAX_ALLOWED_ITERS: usize = 64;
+
+    /// Upper cap on symmetric substeps per `step` call.
+    pub const MAX_ALLOWED_SUBSTEPS: usize = 8;
+
+    /// Constructs a new `ImplicitMidpoint` solver with default iteration and substep budgets.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn new(example_state: &State) -> Self {
+        Self::with_config(
+            example_state,
+            Self::DEFAULT_MAX_ITERS,
+            Self::DEFAULT_SUBSTEPS,
+        )
+    }
+
+    /// Constructs a new `ImplicitMidpoint` solver with an explicit fixed-point iteration cap.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn with_max_iters(example_state: &State, max_iters: usize) -> Self {
+        Self::with_config(example_state, max_iters, Self::DEFAULT_SUBSTEPS)
+    }
+
+    /// Constructs a new `ImplicitMidpoint` solver with explicit iteration and substep bounds.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn with_config(example_state: &State, max_iters: usize, substeps: usize) -> Self {
+        Self {
+            k: example_state.clone(),
+            k_next: example_state.clone(),
+            mid: example_state.clone(),
+            max_iters: max_iters.clamp(1, Self::MAX_ALLOWED_ITERS),
+            substeps: substeps.clamp(1, Self::MAX_ALLOWED_SUBSTEPS),
+        }
+    }
+}
+
+impl<State: VectorOperations> ImplicitMidpoint<State> {
+    #[verified_engine::verified]
+    fn step_single<S>(&mut self, system: &S, t: f64, state: &mut State, dt: f64)
+    where
+        S: OdeSystem<State> + ?Sized,
+    {
+        let half_dt = 0.5 * dt;
+        let t_mid = t + half_dt;
+        system.derivative_in_place(t, state, &mut self.k);
+        let iters = self.max_iters.clamp(1, Self::MAX_ALLOWED_ITERS);
+        for _ in 0..iters {
+            self.mid.copy_from_scaled(state, &self.k, half_dt);
+            system.derivative_in_place(t_mid, &self.mid, &mut self.k_next);
+            self.k.copy_from(&self.k_next);
+        }
+        state.scale_add(&self.k, dt);
+    }
+}
+
+impl<State: VectorOperations> Solver<State> for ImplicitMidpoint<State> {
+    #[verified_engine::verified]
+    fn step<S>(&mut self, system: &S, t: f64, state: &mut State, dt: f64)
+    where
+        S: OdeSystem<State> + ?Sized,
+    {
+        let n_sub = self.substeps.clamp(1, Self::MAX_ALLOWED_SUBSTEPS);
+        let sub_dt = dt / (n_sub as f64);
+        for sub in 0..n_sub {
+            self.step_single(system, t + (sub as f64) * sub_dt, state, sub_dt);
+        }
+    }
+}
+
 const SQRT_3_OVER_6: f64 = 0.288_675_134_594_812_87;
 const GL4_C1: f64 = 0.5 - SQRT_3_OVER_6;
 const GL4_C2: f64 = 0.5 + SQRT_3_OVER_6;
@@ -326,129 +426,5 @@ impl<State: VectorOperations> Solver<State> for GaussLegendre4<State> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::pure_math::analysis::ode::{ArrayState, HamiltonianSystem, RungeKutta4};
-
-    struct QuarticOscillator;
-
-    impl OdeSystem<ArrayState<2>> for QuarticOscillator {
-        #[verified_engine::verified]
-        fn derivative(&self, _t: f64, s: &ArrayState<2>) -> ArrayState<2> {
-            let q = s.0[0];
-            let p = s.0[1];
-            ArrayState([p, -(q + q * q * q)])
-        }
-
-        #[verified_engine::verified]
-        fn derivative_in_place(&self, _t: f64, s: &ArrayState<2>, out: &mut ArrayState<2>) {
-            let q = s.0[0];
-            out.0[0] = s.0[1];
-            out.0[1] = -(q + q * q * q);
-        }
-    }
-
-    impl HamiltonianSystem<ArrayState<2>> for QuarticOscillator {
-        #[verified_engine::verified]
-        fn hamiltonian(&self, s: &ArrayState<2>) -> f64 {
-            let q = s.0[0];
-            let p = s.0[1];
-            0.5 * p * p + 0.5 * q * q + 0.25 * q * q * q * q
-        }
-    }
-
-    impl SeparableHamiltonian<ArrayState<2>> for QuarticOscillator {
-        type Coord = ArrayState<1>;
-
-        #[verified_engine::verified]
-        fn split_canonical(&self, s: &ArrayState<2>, q: &mut Self::Coord, p: &mut Self::Coord) {
-            q.0[0] = s.0[0];
-            p.0[0] = s.0[1];
-        }
-
-        #[verified_engine::verified]
-        fn join_canonical(&self, q: &Self::Coord, p: &Self::Coord, s: &mut ArrayState<2>) {
-            s.0[0] = q.0[0];
-            s.0[1] = p.0[0];
-        }
-
-        #[verified_engine::verified]
-        fn kinetic_energy(&self, p: &Self::Coord) -> f64 {
-            0.5 * p.0[0] * p.0[0]
-        }
-
-        #[verified_engine::verified]
-        fn potential_energy(&self, q: &Self::Coord) -> f64 {
-            let x = q.0[0];
-            0.5 * x * x + 0.25 * x * x * x * x
-        }
-
-        #[verified_engine::verified]
-        fn grad_kinetic_in_place(&self, p: &Self::Coord, dq_dt: &mut Self::Coord) {
-            dq_dt.0[0] = p.0[0];
-        }
-
-        #[verified_engine::verified]
-        fn neg_grad_potential_in_place(&self, q: &Self::Coord, dp_dt: &mut Self::Coord) {
-            let x = q.0[0];
-            dp_dt.0[0] = -(x + x * x * x);
-        }
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_symplectic_order_hierarchy_and_energy_bounds() {
-        let sys = QuarticOscillator;
-        let y0 = ArrayState([1.4, 0.0]);
-        let e0 = sys.hamiltonian(&y0);
-        let dt = 0.05;
-        let steps = 4_000;
-
-        let mut s_verlet = y0;
-        let mut s_yoshida = y0;
-        let mut s_gl4 = y0;
-        let mut s_rk4 = y0;
-
-        let mut verlet = StormerVerlet::new(&ArrayState([0.0]));
-        let mut yoshida = Yoshida4::new(&ArrayState([0.0]));
-        let mut gl4 = GaussLegendre4::new(&y0);
-        let mut rk4 = RungeKutta4::new(&y0);
-
-        for i in 0..steps {
-            let t = i as f64 * dt;
-            verlet.step_separable(&sys, &mut s_verlet, dt);
-            yoshida.step_separable(&sys, &mut s_yoshida, dt);
-            gl4.step(&sys, t, &mut s_gl4, dt);
-            rk4.step(&sys, t, &mut s_rk4, dt);
-        }
-
-        let err_verlet = sys.relative_energy_error(&s_verlet, e0);
-        let err_yoshida = sys.relative_energy_error(&s_yoshida, e0);
-        let err_gl4 = sys.relative_energy_error(&s_gl4, e0);
-        let err_rk4 = sys.relative_energy_error(&s_rk4, e0);
-
-        assert!(
-            err_verlet < 5e-3,
-            "Verlet bounded shadow error: {err_verlet}"
-        );
-        assert!(err_yoshida < 5e-6, "Yoshida4 bounded error: {err_yoshida}");
-        assert!(err_gl4 < 5e-7, "GaussLegendre4 bounded error: {err_gl4}");
-        assert!(
-            err_gl4 * 50.0 < err_rk4,
-            "GL4 ({err_gl4}) must outperform secular RK4 drift ({err_rk4})"
-        );
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_symplectic_method_metadata_and_array_helpers() {
-        assert_eq!(SymplecticMethod::ALL.len(), 3);
-        for method in SymplecticMethod::ALL {
-            assert!(!method.name().is_empty());
-        }
-        let a = ArrayState::zeros();
-        let b = ArrayState([1.5, -2.25]);
-        assert!(a.is_finite() && b.is_finite());
-        assert!((a.max_abs_diff(&b) - 2.25).abs() < 1e-12);
-    }
-}
+#[path = "symplectic/tests.rs"]
+mod tests;

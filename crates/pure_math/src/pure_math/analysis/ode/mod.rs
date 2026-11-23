@@ -53,7 +53,7 @@ pub use model::OdeModel;
 pub use solvers::{Euler, Heun, RungeKutta4};
 pub use state::{ArrayState, VecState};
 pub use stepper::TimeStepper;
-pub use symplectic::{GaussLegendre4, StormerVerlet, SymplecticMethod, Yoshida4};
+pub use symplectic::{GaussLegendre4, ImplicitMidpoint, StormerVerlet, SymplecticMethod, Yoshida4};
 pub use traits::{
     HamiltonianSystem, OdeSystem, SeparableHamiltonian, Solver, SolverExt, VectorOperations,
 };

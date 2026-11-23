@@ -6,16 +6,50 @@ use super::*;
 fn test_bifurcation_recompute_and_borrowed_slice() {
     let mut tool = BifurcationDiagram::default();
     assert!(!tool.points.is_empty());
+    assert_eq!(tool.lyapunov_points.len(), tool.steps);
 
     let count_initial = tool.points.len();
     tool.steps = 200;
     tool.recompute();
     assert_ne!(tool.points.len(), count_initial);
+    assert_eq!(tool.lyapunov_points.len(), 200);
 
     let slice: &[PlotPoint] = &tool.points[..];
     let plot_points: egui_plot::PlotPoints<'_> = slice.into();
     assert!(matches!(plot_points, egui_plot::PlotPoints::Borrowed(_)));
     assert_eq!(plot_points.points().len(), tool.points.len());
+}
+
+#[test]
+fn test_bifurcation_lyapunov_overlay_sign_changes_and_roundtrip() {
+    let mut tool = BifurcationDiagram {
+        r_min: 3.1,
+        r_max: 4.0,
+        steps: 300,
+        show_lyapunov: true,
+        ..Default::default()
+    };
+    tool.recompute();
+
+    // Period-2 regime around r = 3.2 has λ < 0; Ulam chaotic regime at r = 4.0 has λ ≈ ln(2) > 0.6.
+    tool.probe_r = 3.2;
+    let lam_periodic = tool.probe_lyapunov().expect("periodic lyapunov");
+    assert!(lam_periodic < -0.2, "Expected negative λ at r=3.2, got {lam_periodic}");
+
+    tool.probe_r = 4.0;
+    let lam_chaotic = tool.probe_lyapunov().expect("chaotic lyapunov");
+    assert!(
+        (lam_chaotic - 2.0_f64.ln()).abs() < 0.08,
+        "Expected λ(4.0) ≈ ln(2), got {lam_chaotic}"
+    );
+
+    let saved = tool.save_state().expect("save_state with lyapunov overlay");
+    assert!(saved.contains("\"show_lyapunov\":true"));
+    let mut restored = BifurcationDiagram::default();
+    restored
+        .try_load_state(&saved)
+        .expect("restore lyapunov overlay state");
+    assert!(restored.show_lyapunov);
 }
 
 #[test]
@@ -25,7 +59,6 @@ fn test_bifurcation_animated_slider_sweep() {
     let ctx = egui::Context::default();
     let initial_r_min = tool.r_min;
 
-    // Simulate activating animation on r_min slider
     let id = egui::Id::new("bifurcation_r_min");
     ctx.data_mut(|d| {
         d.insert_temp(
@@ -45,7 +78,6 @@ fn test_bifurcation_animated_slider_sweep() {
         tool.show(ctx);
     });
 
-    // r_min should have increased, and recompute was triggered
     assert!(tool.r_min > initial_r_min);
 
     let points_vec: Vec<[f64; 2]> = tool.points.iter().map(|p| [p.x, p.y]).collect();
@@ -66,6 +98,7 @@ fn test_bifurcation_custom_1d_map_zero_alloc_and_state_roundtrip() {
         r_max: 2.0,
         steps: 240,
         x0: 0.25,
+        show_lyapunov: true,
         ..Default::default()
     };
     tool.math_input.set_expression("a * sin(pi * x) * r / 2");
@@ -74,8 +107,13 @@ fn test_bifurcation_custom_1d_map_zero_alloc_and_state_roundtrip() {
     tool.math_input.set_params_map(&pmap);
     tool.recompute();
     assert!(!tool.points.is_empty());
+    assert!(!tool.lyapunov_points.is_empty());
     assert!(tool
         .points
+        .iter()
+        .all(|pt| pt.x.is_finite() && pt.y.is_finite()));
+    assert!(tool
+        .lyapunov_points
         .iter()
         .all(|pt| pt.x.is_finite() && pt.y.is_finite()));
 
@@ -102,6 +140,7 @@ fn test_bifurcation_custom_1d_map_zero_alloc_and_state_roundtrip() {
     });
 
     // Verify compact JSON / #state= persistence round-trip (< 4096 bytes)
+    tool.show_lyapunov = false;
     tool.math_input.set_expression("a * x * (1 - x) * r");
     tool.math_input.set_params_map(&pmap);
     let saved = tool.save_state().expect("custom bifurcation state saves");

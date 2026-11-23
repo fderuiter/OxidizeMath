@@ -382,7 +382,7 @@ impl FractalViewer {
     }
 }
 
-// [cite:graph_parameters_rust]
+// [cite:chaos_theory]
 
 inventory::submit! {
     crate::framework::ToolMetadata {

@@ -1,11 +1,16 @@
 // @explorer_feature = "physics"
+
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod attractors;
 pub mod bifurcation;
+pub mod billiards;
 pub mod fractals;
 pub mod hamiltonian;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests;
 
 pub struct ChaosTab {
     framework: crate::framework::SimulationFramework,
@@ -41,7 +46,12 @@ impl ExplorerTab for ChaosTab {
     }
 
     fn select_tool_by_name(&mut self, name: &str) -> bool {
-        self.framework.select_tool_by_name(name)
+        let normalized = if name == "HamiltonianChaosLab" {
+            "HamiltonianChaosTool"
+        } else {
+            name
+        };
+        self.framework.select_tool_by_name(normalized)
     }
 
     fn focused_canvas_id(&self) -> Option<egui::Id> {
@@ -57,4 +67,4 @@ impl ExplorerTab for ChaosTab {
     }
 }
 
-// [cite:graph_parameters_rust]
+// [cite:chaos_theory]

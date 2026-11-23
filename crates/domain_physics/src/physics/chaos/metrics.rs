@@ -22,7 +22,7 @@ pub fn logistic_lyapunov(r: f64, x0: f64, n: usize) -> f64 {
         let x = map.state;
         let derivative = r * (1.0 - 2.0 * x);
         // Handle singularity at x = 0.5 (f'(x) = 0).
-        sum_logs += derivative.abs().ln();
+        sum_logs += derivative.abs().max(1e-15).ln();
         map.next();
     }
 

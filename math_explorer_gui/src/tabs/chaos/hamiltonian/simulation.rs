@@ -3,18 +3,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    GhostComparator, HamiltonianChaosLab, HamiltonianModelKind, OrbitSlot, SymplecticSolverChoice,
+    GhostComparator, HamiltonianChaosTool, HamiltonianModelKind, OrbitSlot, SymplecticSolverChoice,
     FRAME_BUDGET_MS, MAX_ORBITS, MAX_SECTION_POINTS, MAX_TRAIL_POINTS,
 };
 use crate::web_io::PlatformInstant;
-use math_explorer::physics::astrophysics::nbody::FigureEightThreeBody;
-use math_explorer::physics::chaos::poincare::PoincareSection;
+use math_explorer::physics::chaos::hamiltonian::{
+    perturb_figure_eight_momentum, ChirikovStandardMap, PoincareSection, CRITICAL_K_GREENE,
+};
 use math_explorer::pure_math::analysis::ode::{
     ArrayState, HamiltonianSystem, OdeSystem, Solver, SymplecticMethod, VectorOperations,
 };
-use std::f64::consts::PI;
+use std::f64::consts::{PI, TAU};
 
-const WARMUP_STEPS_ON_SEED: usize = 320;
+pub(super) const WARMUP_STEPS_ON_SEED: usize = 320;
 
 pub(super) fn push_capped_ring(
     buf: &mut Vec<[f64; 2]>,
@@ -44,7 +45,7 @@ pub(super) fn push_sliding_trail(buf: &mut Vec<[f64; 2]>, cap: usize, pt: [f64; 
     buf.push(pt);
 }
 
-impl HamiltonianChaosLab {
+impl HamiltonianChaosTool {
     /// Allowed energy slider range `(min, max, default)` for the active model.
     #[must_use]
     pub const fn energy_bounds(&self) -> (f64, f64, f64) {
@@ -52,6 +53,7 @@ impl HamiltonianChaosLab {
             HamiltonianModelKind::HenonHeiles => (0.02, 0.1665, 0.125),
             HamiltonianModelKind::DoublePendulum => (4.0, 52.0, 26.0),
             HamiltonianModelKind::FigureEightThreeBody => (0.5, 2.5, 1.287),
+            HamiltonianModelKind::ChirikovStandardMap => (0.0, 5.0, CRITICAL_K_GREENE),
         }
     }
 
@@ -62,10 +64,11 @@ impl HamiltonianChaosLab {
             HamiltonianModelKind::HenonHeiles => [-0.62, 0.88, -0.62, 0.62],
             HamiltonianModelKind::DoublePendulum => [-PI, PI, -8.5, 8.5],
             HamiltonianModelKind::FigureEightThreeBody => [-1.25, 1.25, -1.25, 1.25],
+            HamiltonianModelKind::ChirikovStandardMap => [0.0, TAU, 0.0, TAU],
         }
     }
 
-    /// Clamps `dt`, `energy`, `steps_per_frame`, and `cursor_qp` into valid finite bounds.
+    /// Clamps `dt`, `energy`, `chirikov_k`, `steps_per_frame`, and `cursor_qp` into finite bounds.
     pub fn clamp_model_parameters(&mut self) {
         if !self.dt.is_finite() {
             self.dt = 0.015;
@@ -76,17 +79,30 @@ impl HamiltonianChaosLab {
             self.energy = e_def;
         }
         self.energy = self.energy.clamp(e_min, e_max);
+        if !self.chirikov_k.is_finite() {
+            self.chirikov_k = CRITICAL_K_GREENE;
+        }
+        self.chirikov_k = self.chirikov_k.clamp(0.0, 5.0);
+        self.chirikov = ChirikovStandardMap::new(self.chirikov_k);
+        if !self.pendulum_fan_spread.is_finite() {
+            self.pendulum_fan_spread = 0.015;
+        }
+        self.pendulum_fan_spread = self.pendulum_fan_spread.clamp(0.0005, 0.25);
+        if !self.figure_eight_perturbation.is_finite() {
+            self.figure_eight_perturbation = 0.0;
+        }
+        self.figure_eight_perturbation = self.figure_eight_perturbation.clamp(-0.20, 0.20);
         self.steps_per_frame = self.steps_per_frame.clamp(1, 128);
         let [q_min, q_max, p_min, p_max] = self.poincare_bounds();
         let q = if self.cursor_qp[0].is_finite() {
             self.cursor_qp[0].clamp(q_min, q_max)
         } else {
-            0.0
+            0.5 * (q_min + q_max)
         };
         let p = if self.cursor_qp[1].is_finite() {
             self.cursor_qp[1].clamp(p_min, p_max)
         } else {
-            0.0
+            0.5 * (p_min + p_max)
         };
         self.cursor_qp = [q, p];
     }
@@ -96,6 +112,7 @@ impl HamiltonianChaosLab {
     pub fn orbits_are_finite(&self) -> bool {
         self.orbits.iter().all(|slot| match self.model {
             HamiltonianModelKind::FigureEightThreeBody => slot.state12.is_finite(),
+            HamiltonianModelKind::ChirikovStandardMap => slot.map_state.is_finite(),
             _ => slot.state4.is_finite(),
         })
     }
@@ -109,13 +126,18 @@ impl HamiltonianChaosLab {
             HamiltonianModelKind::HenonHeiles => SymplecticSolverChoice::Yoshida4,
             HamiltonianModelKind::DoublePendulum => SymplecticSolverChoice::GaussLegendre4,
             HamiltonianModelKind::FigureEightThreeBody => SymplecticSolverChoice::Yoshida4,
+            HamiltonianModelKind::ChirikovStandardMap => SymplecticSolverChoice::Yoshida4,
         };
         self.dt = match new_model {
-            HamiltonianModelKind::HenonHeiles => 0.02,
-            HamiltonianModelKind::DoublePendulum => 0.02,
+            HamiltonianModelKind::HenonHeiles | HamiltonianModelKind::DoublePendulum => 0.02,
             HamiltonianModelKind::FigureEightThreeBody => 0.01,
+            HamiltonianModelKind::ChirikovStandardMap => 0.02,
         };
-        self.cursor_qp = [0.0, 0.0];
+        self.cursor_qp = match new_model {
+            HamiltonianModelKind::ChirikovStandardMap => [PI, 1.2],
+            _ => [0.0, 0.0],
+        };
+        self.last_status_note = None;
         self.seed_default_showcase();
         self.state_rev = self.state_rev.wrapping_add(1);
     }
@@ -123,6 +145,7 @@ impl HamiltonianChaosLab {
     /// Populates curated default showcase orbits for the active Hamiltonian model.
     pub fn seed_default_showcase(&mut self) {
         self.clear_orbits();
+        let fig8_seeds = [[0.0, 0.0], [0.035, -0.02 + self.figure_eight_perturbation]];
         let seeds: &[[f64; 2]] = match self.model {
             HamiltonianModelKind::HenonHeiles => &[
                 [0.10, 0.0],
@@ -132,7 +155,15 @@ impl HamiltonianChaosLab {
                 [-0.27, 0.0],
             ],
             HamiltonianModelKind::DoublePendulum => &[[0.25, 0.0], [1.15, 0.0], [-0.95, 1.2]],
-            HamiltonianModelKind::FigureEightThreeBody => &[[0.0, 0.0], [0.035, -0.02]],
+            HamiltonianModelKind::FigureEightThreeBody => &fig8_seeds,
+            HamiltonianModelKind::ChirikovStandardMap => &[
+                [0.5, 0.6],
+                [PI, 0.3],
+                [PI, 1.8],
+                [2.2, 3.1],
+                [0.2, 4.4],
+                [4.8, 5.5],
+            ],
         };
         for &qp in seeds {
             let _ = self.seed_orbit_no_warmup(qp);
@@ -166,11 +197,16 @@ impl HamiltonianChaosLab {
             return Err("Seed coordinates must be finite.");
         }
         let mut slot = self.construct_orbit_slot(qp, self.orbits.len())?;
-        if self.model != HamiltonianModelKind::FigureEightThreeBody {
-            slot.section_points.push(qp);
-        } else {
-            slot.section_points
-                .push([slot.state12.0[0], slot.state12.0[6]]);
+        match self.model {
+            HamiltonianModelKind::FigureEightThreeBody => {
+                slot.section_points
+                    .push([slot.state12.0[0], slot.state12.0[6]]);
+            }
+            HamiltonianModelKind::ChirikovStandardMap => {
+                slot.section_points
+                    .push([slot.map_state.0[0], slot.map_state.0[1]]);
+            }
+            _ => slot.section_points.push(qp),
         }
         if self.orbits.len() >= MAX_ORBITS {
             self.orbits.remove(0);
@@ -189,6 +225,7 @@ impl HamiltonianChaosLab {
         qp: [f64; 2],
         color_index: usize,
     ) -> Result<OrbitSlot, &'static str> {
+        let mut map_state = ArrayState::<2>::zeros();
         let mut state4 = ArrayState::<4>::zeros();
         let mut deriv4 = ArrayState::<4>::zeros();
         let mut state12 = ArrayState::<12>::zeros();
@@ -211,16 +248,22 @@ impl HamiltonianChaosLab {
                 self.pendulum.hamiltonian(&state4)
             }
             HamiltonianModelKind::FigureEightThreeBody => {
-                state12 = FigureEightThreeBody::figure_eight_initial_state();
-                let dy = qp[0].clamp(-0.45, 0.45);
-                let dpy = qp[1].clamp(-0.45, 0.45);
-                state12.0[1] += dy;
-                state12.0[3] -= dy;
-                state12.0[7] += dpy;
-                state12.0[9] -= dpy;
+                if !(-0.45..=0.45).contains(&qp[0]) || !(-0.45..=0.45).contains(&qp[1]) {
+                    return Err(
+                        "Perturbation seed lies outside bounded 3-body domain [-0.45, 0.45].",
+                    );
+                }
+                state12 = perturb_figure_eight_momentum(qp[1], -0.5 * qp[1]);
+                state12.0[1] += qp[0];
+                state12.0[3] -= qp[0];
                 self.three_body
                     .derivative_in_place(0.0, &state12, &mut deriv12);
                 self.three_body.hamiltonian(&state12)
+            }
+            HamiltonianModelKind::ChirikovStandardMap => {
+                map_state = ChirikovStandardMap::seed_on_torus(qp[0], qp[1])
+                    .ok_or("Point lies outside the [0, 2π] × [0, 2π] Chirikov torus.")?;
+                1.0
             }
         };
         Ok(OrbitSlot {
@@ -228,6 +271,7 @@ impl HamiltonianChaosLab {
             color_index,
             initial_energy,
             last_rel_err_pct: 0.0,
+            map_state,
             prev4: state4,
             state4,
             prev_deriv4: deriv4,
@@ -275,6 +319,7 @@ impl HamiltonianChaosLab {
             HamiltonianModelKind::HenonHeiles => self.step_henon_once(t, dt),
             HamiltonianModelKind::DoublePendulum => self.step_pendulum_once(t, dt),
             HamiltonianModelKind::FigureEightThreeBody => self.step_three_body_once(t, dt),
+            HamiltonianModelKind::ChirikovStandardMap => self.step_chirikov_once(),
         }
         self.sim_time += dt;
     }
@@ -291,6 +336,9 @@ impl HamiltonianChaosLab {
                 SymplecticMethod::Yoshida4 => {
                     self.yoshida2
                         .step_separable(&self.henon, &mut slot.state4, dt);
+                }
+                SymplecticMethod::ImplicitMidpoint => {
+                    self.midpoint4.step(&self.henon, t, &mut slot.state4, dt);
                 }
                 SymplecticMethod::GaussLegendre4 => {
                     self.gl4_4.step(&self.henon, t, &mut slot.state4, dt);
@@ -334,7 +382,12 @@ impl HamiltonianChaosLab {
         for slot in &mut self.orbits {
             slot.prev4.copy_from(&slot.state4);
             slot.prev_deriv4.copy_from(&slot.deriv4);
-            self.gl4_4.step(&self.pendulum, t, &mut slot.state4, dt);
+            if self.solver == SymplecticSolverChoice::ImplicitMidpoint {
+                self.midpoint4
+                    .step(&self.pendulum, t, &mut slot.state4, dt);
+            } else {
+                self.gl4_4.step(&self.pendulum, t, &mut slot.state4, dt);
+            }
             self.pendulum
                 .derivative_in_place(t + dt, &slot.state4, &mut slot.deriv4);
             if let Some(hit) = self.poincare4.detect_crossing(
@@ -375,8 +428,13 @@ impl HamiltonianChaosLab {
                     self.yoshida6
                         .step_separable(&self.three_body, &mut slot.state12, dt);
                 }
+                SymplecticSolverChoice::ImplicitMidpoint => {
+                    self.midpoint12
+                        .step(&self.three_body, t, &mut slot.state12, dt);
+                }
                 SymplecticSolverChoice::GaussLegendre4 => {
-                    self.gl4_12.step(&self.three_body, t, &mut slot.state12, dt);
+                    self.gl4_12
+                        .step(&self.three_body, t, &mut slot.state12, dt);
                 }
             }
             self.three_body

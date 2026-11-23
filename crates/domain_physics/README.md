@@ -10,7 +10,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 
 ### Module Structure
 
-- **`chaos`**: Deterministic chaotic systems, including conservative Hamiltonian models (`DoublePendulum`, `HenonHeiles`), cubic-Hermite `PoincareSection` detectors, the Lorenz attractor, and Lyapunov exponent analyzers.
+- **`chaos`**: Deterministic dissipative and conservative chaotic systems, including `hamiltonian` flows and maps (`DoublePendulum`, `HenonHeiles`, `ChirikovStandardMap`, `FigureEightThreeBody`, cubic-Hermite `PoincareSection`), flat Euclidean `billiards` (`CircularBilliard`, `EllipticalBilliard`, `StadiumBilliard`, `SinaiBilliard`) with Birkhoff $(s/L, \sin\phi)$ phase portraits, the Lorenz attractor, and Lyapunov exponent analyzers (`logistic_lyapunov`).
 - **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, and Schrödinger wave equation solvers.
 - **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`), and planar 3-body gravitational choreographies (`FigureEightThreeBody`).
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
@@ -47,6 +47,53 @@ lorenz.step(0.01);
 
 let updated_vec = lorenz.state.vec;
 assert!(updated_vec.x != 10.0 || updated_vec.y != 10.0);
+```
+
+### Symplectic Hamiltonian Flows and Area-Preserving Maps
+
+Integrate non-separable conservative systems with zero-allocation `ImplicitMidpoint` and iterate area-preserving `ChirikovStandardMap` orbits:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::chaos::hamiltonian::{
+    ChirikovStandardMap, DoublePendulum, HamiltonianSystem, ImplicitMidpoint, Solver,
+};
+
+let pendulum = DoublePendulum::default();
+let mut state = DoublePendulum::default_chaotic_state();
+let e0 = pendulum.hamiltonian(&state);
+let mut midpoint = ImplicitMidpoint::new(&state);
+for step in 0..400 {
+    midpoint.step(&pendulum, step as f64 * 0.01, &mut state, 0.01);
+}
+assert!(pendulum.relative_energy_error(&state, e0) < 5.0e-3);
+
+let map = ChirikovStandardMap::default();
+let mut torus_pt = ChirikovStandardMap::seed_on_torus(1.2, 2.1).unwrap();
+map.step_in_place(&mut torus_pt);
+assert!((map.jacobian_determinant(torus_pt.0[0]) - 1.0).abs() < 1.0e-15);
+```
+
+### Flat Euclidean Dynamical Billiards and Birkhoff Coordinates
+
+Trace exact specular reflections inside confocal elliptical and Bunimovich stadium tables while monitoring conserved focal products and Birkhoff $(s/L, \sin\phi)$ phase coordinates:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::chaos::billiards::{
+    BilliardRay, EllipticalBilliard, StadiumBilliard,
+};
+
+let ellipse = EllipticalBilliard::new(1.4, 1.0);
+let mut ray = BilliardRay::from_angle([0.2, 0.15], 0.73).unwrap();
+let focal_inv = ellipse.focal_angular_momentum_product(&ray);
+let hit = ellipse.collide(&mut ray).unwrap();
+assert!((0.0..1.0).contains(&hit.arc_fraction));
+assert!((ellipse.focal_angular_momentum_product(&ray) - focal_inv).abs() < 1.0e-12);
+
+let stadium = StadiumBilliard::new(0.8, 1.0);
+let mut s_ray = BilliardRay::from_angle([0.1, 0.2], 0.9).unwrap();
+assert!(stadium.collide(&mut s_ray).is_some());
 ```
 
 ### Decomposing Dwarf-Galaxy Rotation Curves and Symplectic Disk Orbits

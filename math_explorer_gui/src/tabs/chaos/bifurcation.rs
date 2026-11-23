@@ -1,17 +1,23 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use crate::framework::{bounded_drag_value, InteractiveTool, MathExpressionInputBar};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
-use egui_plot::{Plot, PlotPoint, Points, VLine};
+use egui_plot::{HLine, Line, LineStyle, Plot, PlotPoint, Points, VLine};
 use math_explorer::physics::chaos::logistic;
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::{BTreeMap, HashMap};
 
+#[path = "bifurcation/lyapunov.rs"]
+mod lyapunov;
+
 const DEFAULT_CUSTOM_MAP_EXPR: &str = "r * sin(pi * x)";
-const CUSTOM_BURN_IN: usize = 200;
-const CUSTOM_ORBIT_SAMPLES: usize = 100;
-const CUSTOM_ESCAPE_GUARD: f64 = 1e6;
+pub(crate) const CUSTOM_BURN_IN: usize = 200;
+pub(crate) const CUSTOM_ORBIT_SAMPLES: usize = 100;
+pub(crate) const CUSTOM_ESCAPE_GUARD: f64 = 1e6;
 const CUSTOM_R_BOUND: f64 = 20.0;
+const MAX_STEPS: usize = 2000;
 
 /// Map family evaluated by [`BifurcationDiagram`].
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -30,14 +36,16 @@ impl BifurcationMapMode {
 }
 
 pub struct BifurcationDiagram {
-    map_mode: BifurcationMapMode,
-    r_min: f64,
-    r_max: f64,
-    probe_r: f64,
-    steps: usize,
-    x0: f64,
+    pub map_mode: BifurcationMapMode,
+    pub r_min: f64,
+    pub r_max: f64,
+    pub probe_r: f64,
+    pub steps: usize,
+    pub x0: f64,
+    pub show_lyapunov: bool,
     math_input: MathExpressionInputBar,
     points: Vec<PlotPoint>,
+    pub(crate) lyapunov_points: Vec<PlotPoint>,
 }
 
 impl Default for BifurcationDiagram {
@@ -66,8 +74,10 @@ impl Default for BifurcationDiagram {
             probe_r: 3.50,
             steps: 500,
             x0: 0.5,
+            show_lyapunov: false,
             math_input,
             points: Vec::new(),
+            lyapunov_points: Vec::with_capacity(MAX_STEPS),
         };
         tool.recompute();
         tool
@@ -75,7 +85,7 @@ impl Default for BifurcationDiagram {
 }
 
 impl BifurcationDiagram {
-    fn recompute(&mut self) {
+    pub fn recompute(&mut self) {
         if self.map_mode == BifurcationMapMode::Logistic {
             let raw_points =
                 logistic::generate_bifurcation_diagram(self.r_min, self.r_max, self.steps);
@@ -83,6 +93,7 @@ impl BifurcationDiagram {
                 .into_iter()
                 .map(|(r, x)| PlotPoint::new(r, x))
                 .collect();
+            self.recompute_lyapunov();
             return;
         }
 
@@ -90,10 +101,11 @@ impl BifurcationDiagram {
             return;
         };
         let params = self.math_input.param_slice();
-        let steps = self.steps.clamp(2, 2000);
+        let steps = self.steps.clamp(2, MAX_STEPS);
         let span = self.r_max - self.r_min;
         if !span.is_finite() || span <= 0.0 {
             self.points.clear();
+            self.lyapunov_points.clear();
             return;
         }
 
@@ -126,6 +138,7 @@ impl BifurcationDiagram {
                 self.points.push(PlotPoint::new(r, x));
             }
         }
+        self.recompute_lyapunov();
     }
 
     fn draw_map_mode_selector(&mut self, ui: &mut egui::Ui) -> bool {
@@ -188,8 +201,13 @@ impl BifurcationDiagram {
             )
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.steps, 100..=2000).text("Resolution (steps)"))
+            .add(egui::Slider::new(&mut self.steps, 100..=MAX_STEPS).text("Resolution (steps)"))
             .changed();
+        let _ = ui
+            .checkbox(&mut self.show_lyapunov, "Show Lyapunov λ(r) Overlay")
+            .accessible_hover_text(
+                "Overlay maximal Lyapunov exponent λ(r) and zero chaos threshold line",
+            );
 
         if ui
             .button("▶ Recompute")
@@ -209,6 +227,7 @@ impl BifurcationDiagram {
     }
 
     fn draw_audio_probe(&mut self, ui: &mut egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
         ui.separator();
         let _ = ui.add(
@@ -216,6 +235,17 @@ impl BifurcationDiagram {
                 .text("Sweep r (Audio)")
                 .id_salt("bifurcation_probe_r"),
         );
+        if let Some(lam) = self.probe_lyapunov() {
+            let color = if lam > 0.0 {
+                palette.error
+            } else {
+                palette.success
+            };
+            ui.colored_label(
+                color,
+                format!("Lyapunov λ(r = {:.3}) = {:+.4}", self.probe_r, lam),
+            );
+        }
         let frame = crate::audio::mappings::bifurcation_frame(self.probe_r);
         crate::audio::render_sonification_panel(ui, "bifurcation", &frame, false);
     }
@@ -225,11 +255,11 @@ impl TheoryDescribable for BifurcationDiagram {
     fn theory_description(&self) -> String {
         match self.map_mode {
             BifurcationMapMode::Logistic => format!(
-                "Logistic map bifurcation diagram, r range: {:.2} to {:.2}",
+                "Logistic map bifurcation diagram and maximal Lyapunov exponent λ(r), r range: {:.2} to {:.2}",
                 self.r_min, self.r_max
             ),
             BifurcationMapMode::Custom => format!(
-                "Custom 1D map bifurcation x_{{n+1}} = {}, r range: {:.2} to {:.2}",
+                "Custom 1D map bifurcation x_{{n+1}} = {} with tangent Lyapunov overlay, r range: {:.2} to {:.2}",
                 self.math_input.raw_text, self.r_min, self.r_max
             ),
         }
@@ -247,7 +277,7 @@ impl TheoryDescribable for BifurcationDiagram {
         let mut map = HashMap::new();
         map.insert(
             "default".to_string(),
-            "Logistic map bifurcation diagram".to_string(),
+            "Logistic map bifurcation diagram and maximal Lyapunov exponent λ(r)".to_string(),
         );
         map
     }
@@ -275,6 +305,8 @@ struct BifurcationState {
     custom_params: BTreeMap<String, f64>,
     #[serde(default = "default_x0", skip_serializing_if = "is_default_x0")]
     x0: f64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    show_lyapunov: bool,
 }
 
 impl InteractiveTool for BifurcationDiagram {
@@ -307,6 +339,7 @@ impl InteractiveTool for BifurcationDiagram {
             custom_expr,
             custom_params,
             x0: self.x0,
+            show_lyapunov: self.show_lyapunov,
         })
         .ok()
     }
@@ -323,7 +356,7 @@ impl InteractiveTool for BifurcationDiagram {
             || !r_bounds.contains(&s.r_min)
             || !r_bounds.contains(&s.r_max)
             || s.r_min >= s.r_max
-            || !(100..=2000).contains(&s.steps)
+            || !(100..=MAX_STEPS).contains(&s.steps)
             || !s.x0.is_finite()
             || !(-10.0..=10.0).contains(&s.x0)
         {
@@ -335,6 +368,7 @@ impl InteractiveTool for BifurcationDiagram {
         self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
         self.steps = s.steps;
         self.x0 = s.x0;
+        self.show_lyapunov = s.show_lyapunov;
         self.math_input
             .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_CUSTOM_MAP_EXPR));
         self.math_input.set_params_map(&s.custom_params);
@@ -352,13 +386,25 @@ impl InteractiveTool for BifurcationDiagram {
             let response = Plot::new("bifurcation_plot")
                 .view_aspect(2.0)
                 .x_axis_label("Control Parameter (r)")
-                .y_axis_label("State (x)")
+                .y_axis_label("State (x) / Lyapunov λ(r)")
                 .show(ui, |plot_ui| {
                     plot_ui.points(
                         Points::new("Attractor", &self.points[..])
                             .radius(1.0_f32)
                             .color(palette.series_color(0)),
                     );
+                    if self.show_lyapunov {
+                        plot_ui.hline(
+                            HLine::new("Chaos Threshold (λ = 0)", 0.0)
+                                .color(palette.graph_edge)
+                                .style(LineStyle::dashed_loose()),
+                        );
+                        plot_ui.line(
+                            Line::new("Lyapunov Exponent λ(r)", &self.lyapunov_points[..])
+                                .color(palette.accent)
+                                .width(1.6_f32),
+                        );
+                    }
                     plot_ui.vline(VLine::new("Audio Probe r", self.probe_r).color(palette.warning));
                 })
                 .response;
@@ -367,14 +413,14 @@ impl InteractiveTool for BifurcationDiagram {
     }
 }
 
-// [cite:algorithmic_information_rust]
+// [cite:chaos_theory]
 
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "BifurcationDiagram",
         display_name: "Bifurcation Diagram",
         domain: "chaos",
-        tags: &[],
+        tags: &["bifurcation", "logistic", "lyapunov", "feigenbaum"],
         build: || Box::new(BifurcationDiagram::default()),
     }
 }
@@ -397,7 +443,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "bifurcation",
         title: "Bifurcation Diagram",
-        description: "x_{n+1} = r·x_n·(1 - x_n): Period-doubling cascade towards deterministic chaos.",
+        description: "x_{n+1} = r·x_n·(1 - x_n): Period-doubling cascade and Lyapunov λ(r) chaos overlay.",
         category: "Non-Linear Dynamics",
         icon: "🌿",
         domain: "chaos",

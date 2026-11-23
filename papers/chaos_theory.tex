@@ -1,14 +1,13 @@
-\documentclass{article}
-\usepackage{amsmath}
+\documentclass[12pt]{article}
+
+\usepackage{amsmath, amssymb}
 \usepackage{geometry}
-\usepackage{listings}
-\usepackage{graphicx}
-
 \usepackage{accessibility}
-\usepackage{amssymb}
 
-\title{Chaos Theory and the Lorenz System}
-\author{Jules (AI Assistant)}
+\geometry{margin=1in}
+
+\title{Dissipative Attractors, Symplectic Hamiltonian Chaos, and Flat Euclidean Dynamical Billiards in Rust}
+\author{OxidizeMath Project}
 \date{\today}
 
 \begin{document}
@@ -16,10 +15,106 @@
 \maketitle
 
 \begin{abstract}
-This paper outlines the physics underlying the Lorenz system, which originally modeled atmospheric convection but became the seminal example of deterministic chaos.
+We present the mathematical formulation and zero-allocation Rust implementation underlying \texttt{domain\_physics::physics::chaos}, \texttt{pure\_math::analysis::ode::symplectic}, and the interactive \texttt{ChaosTab} laboratory in \texttt{math\_explorer\_gui}. Our treatment spans four pillars of nonlinear dynamics: (1) dissipative strange attractors and one-dimensional period-doubling cascades quantified by maximal Lyapunov exponents $\lambda(r)$; (2) conservative Hamiltonian flows and area-preserving symplectic maps exhibiting Kolmogorov--Arnold--Moser (KAM) invariant tori and stochastic seas on cubic-Hermite Poincar\'e surfaces of section; (3) structure-preserving geometric numerical integrators (\texttt{StormerVerlet}, fourth-order \texttt{Yoshida4}, \texttt{ImplicitMidpoint}, and \texttt{GaussLegendre4}) contrasted against secular energy drift under explicit \texttt{RungeKutta4}; and (4) exact specular ray dynamics in flat ($K = 0$) Euclidean billiards projected onto canonical Birkhoff phase-space coordinates $(s / L, \sin\phi)$ across circular, confocal elliptical, dispersing Sinai, and defocusing Bunimovich stadium tables. All simulation kernels operate on stack-allocated state arrays with zero dynamic heap allocations under \texttt{VerifiedAllocator}.
 \end{abstract}
 
-\section{Introduction}
-The Lorenz system is a system of ordinary differential equations first studied by Edward Lorenz. It is notable for having chaotic solutions for certain parameter values and initial conditions.
+\section{Dissipative Flows, Period-Doubling Cascades, and Lyapunov Exponents}
+
+In dissipative continuous-time systems $\dot{\mathbf{x}} = \mathbf{F}(\mathbf{x})$ on $\mathbb{R}^n$, phase-space volume contracts whenever $\nabla \cdot \mathbf{F} < 0$. For the canonical Lorenz convection model \cite{lorenz1963deterministic},
+\begin{equation}
+\dot{x} = \sigma(y - x), \qquad
+\dot{y} = x(\rho - z) - y, \qquad
+\dot{z} = xy - \beta z,
+\label{eq:lorenz}
+\end{equation}
+the constant divergence $\nabla \cdot \mathbf{F} = -(\sigma + 1 + \beta) < 0$ for $\sigma, \beta > 0$ compresses bounded initial ensembles exponentially onto a zero-volume strange attractor (standard parameters $\sigma = 10$, $\rho = 28$, $\beta = 8/3$) while sensitive dependence on initial conditions stretches nearby trajectories exponentially along unstable manifolds.
+
+In discrete one-dimensional unimodal maps $x_{n+1} = f_r(x_n)$ such as the logistic family $f_r(x) = r x (1 - x)$ for $r \in [0, 4]$ \cite{may1976simple}, loss of fixed-point stability triggers a universal period-doubling cascade accumulating at the Feigenbaum constant $\delta \approx 4.6692016$ \cite{feigenbaum1978quantitative}. Asymptotic orbital sensitivity is governed by the maximal Lyapunov exponent
+\begin{equation}
+\lambda(r) = \lim_{N \to \infty} \frac{1}{N} \sum_{k=0}^{N-1} \ln \left| f_r'(x_k) \right|.
+\label{eq:lyapunov}
+\end{equation}
+Negative values ($\lambda(r) < 0$) certify attracting periodic orbits and stability windows (such as the period-3 window near $r \approx 3.83$), $\lambda(r) = 0$ marks pitchfork or period-doubling bifurcation thresholds, and $\lambda(r) > 0$ certifies deterministic chaos, reaching exact full chaos $\lambda(4) = \ln 2 \approx 0.693147$ via Ulam--von Neumann conjugacy to the tent map. In \texttt{domain\_physics::physics::chaos::metrics::logistic\_lyapunov}, Eq.~\eqref{eq:lyapunov} is evaluated after discarding burn-in transients with $f_r'(x) = r(1 - 2x)$; for user-compiled AST maps in \texttt{BifurcationDiagram}, $f_r'(x_k)$ is evaluated allocation-free via central finite differences $[f_r(x_k + h) - f_r(x_k - h)] / (2h)$ with $h = 10^{-6}$.
+
+\section{Conservative Hamiltonian Dynamics, KAM Tori, and Symplectic Maps}
+
+Autonomous $d$-degree-of-freedom Hamiltonian systems evolve on $2d$-dimensional canonical phase space $\mathbf{z} = (\mathbf{q}, \mathbf{p}) \in \mathbb{R}^{2d}$ according to Hamilton's equations \cite{hairer2006geometric}:
+\begin{equation}
+\dot{\mathbf{q}} = \nabla_{\mathbf{p}} H(\mathbf{q}, \mathbf{p}), \qquad
+\dot{\mathbf{p}} = -\nabla_{\mathbf{q}} H(\mathbf{q}, \mathbf{p}).
+\label{eq:hamilton}
+\end{equation}
+By Liouville's theorem, the time-$t$ flow $\Phi_t$ preserves both total energy $H(\mathbf{q}, \mathbf{p}) = E$ and the canonical symplectic 2-form $\omega = \sum_{i=1}^d dq_i \wedge dp_i$, so phase-space volume is strictly invariant ($\det D\Phi_t \equiv 1$) and point/strange attractors cannot exist. Instead, by Kolmogorov--Arnold--Moser (KAM) theory, sufficiently irrational quasi-periodic invariant tori of an integrable Hamiltonian $H_0$ survive small conservative perturbations $H = H_0 + \varepsilon H_1$, whereas resonant tori fracture via the Poincar\'e--Birkhoff theorem into alternating elliptic island chains and hyperbolic tangles bounded by chaotic stochastic layers.
+
+\subsection{H\'enon--Heiles Potential, Planar Double Pendulum, and Figure-8 Choreography}
+
+In \texttt{domain\_physics::physics::chaos::hamiltonian}, three continuous conservative benchmarks are implemented over fixed-size \texttt{ArrayState<N>} buffers:
+\begin{enumerate}
+\item \textbf{H\'enon--Heiles System} (\texttt{HenonHeiles}, $N = 4$) \cite{henon1964applicability}: A separable galactic axisymmetric model $H(x, y, p_x, p_y) = \frac{1}{2}(p_x^2 + p_y^2) + \frac{1}{2}(x^2 + y^2) + \lambda(x^2 y - \frac{1}{3}y^3)$ whose bounded escape shell $E < 1/(6\lambda^2)$ transitions smoothly from nested KAM tori ($E = 1/12$ for $\lambda = 1$) to widespread chaos ($E = 1/8$, $1/6$).
+\item \textbf{Canonical Double Pendulum} (\texttt{DoublePendulum}, $N = 4$) \cite{shinbrot1992chaos}: A non-separable mechanical system $H(\theta_1, \theta_2, p_1, p_2) = T(\theta_1 - \theta_2, p_1, p_2) + V(\theta_1, \theta_2)$ with configuration-dependent mass matrix coupling $(p_1, p_2)$ through $\cos(\theta_1 - \theta_2)$. Small angular perturbations $\delta\theta_1$ across an ensemble fan remain phase-coherent inside low-energy libration tori and diverge exponentially in high-energy tumbling chaos.
+\item \textbf{Three-Body Figure-8 Choreography} (\texttt{FigureEightThreeBody}, $N = 12$) \cite{chenciner2000remarkable}: Three unit masses chasing a single zero-angular-momentum planar lemniscate curve with period $T \approx 6.32591398$ under Newtonian gravity $H = \sum_{a=1}^3 \frac{1}{2}\|\mathbf{p}_a\|^2 - \sum_{a < b} \|\mathbf{r}_a - \mathbf{r}_b\|^{-1}$. Symmetric momentum perturbations $(\delta p_x, \delta p_y)$ applied as $+(\delta p_x, \delta p_y)$ on body~1 and $-(\delta p_x, \delta p_y)$ on body~2 preserve $\sum_a \mathbf{p}_a = \mathbf{0}$ while probing choreography stability.
+\end{enumerate}
+
+To visualize $N = 4$ flows without projection distortion, \texttt{PoincareSection<4>} detects transverse crossings $q_s(t^*) = c$ ($\dot{q}_s(t^*) > 0$) by constructing the unique cubic Hermite polynomial interpolating $(q_s(t_n), \dot{q}_s(t_n))$ and $(q_s(t_{n+1}), \dot{q}_s(t_{n+1}))$ across each step $\Delta t$ and converging safeguarded Newton--bisection to $\tau^* \in [0, 1]$, retaining $\mathcal{O}(\Delta t^4)$ section fidelity.
+
+\subsection{Chirikov Standard Map}
+
+Reducing a periodically kicked rotor to stroboscopic observations yields the exact area-preserving Chirikov--Taylor standard map on the cylinder/torus $(q, p) \in [0, 2\pi)^2$ \cite{chirikov1979universal}:
+\begin{equation}
+p_{n+1} = p_n + K \sin(q_n) \pmod{2\pi}, \qquad
+q_{n+1} = q_n + p_{n+1} \pmod{2\pi}.
+\label{eq:chirikov}
+\end{equation}
+Because $q_{n+1}$ uses the updated momentum $p_{n+1}$, the Jacobian determinant is identically unity:
+\begin{equation}
+\det \frac{\partial(q_{n+1}, p_{n+1})}{\partial(q_n, p_n)}
+= \det \begin{pmatrix} 1 + K\cos q_n & 1 \\ K\cos q_n & 1 \end{pmatrix} = 1.
+\end{equation}
+By Greene's residue criterion \cite{greene1979method}, the last rotational golden-mean KAM invariant curve disintegrates at the critical stochasticity parameter $K_c \approx 0.971635406$, opening global vertical momentum transport across the torus for $K > K_c$.
+
+\section{Symplectic Geometric Numerical Integration}
+
+Standard explicit Runge--Kutta schemes such as fourth-order \texttt{RungeKutta4} do not preserve $\omega$, introducing numerical dissipation or anti-dissipation whose energy error grows secularly ($\mathcal{O}(t\,\Delta t^4)$) and destroys KAM tori over long integrations \cite{hairer2006geometric}. In \texttt{pure\_math::analysis::ode::symplectic}, four stack-allocated symplectic integrators guarantee exact conservation of a nearby shadow Hamiltonian $\tilde{H} = H + \mathcal{O}(\Delta t^p)$:
+\begin{itemize}
+\item \textbf{Velocity St\"ormer--Verlet} (\texttt{StormerVerlet}, order $p = 2$, separable $H = T(\mathbf{p}) + V(\mathbf{q})$): Symmetric kick--drift--kick composition $\Phi_{\Delta t}^{[2]} = \varphi_{\Delta t/2}^V \circ \varphi_{\Delta t}^T \circ \varphi_{\Delta t/2}^V$.
+\item \textbf{Fourth-Order Yoshida} (\texttt{Yoshida4}, order $p = 4$, separable $H = T(\mathbf{p}) + V(\mathbf{q})$) \cite{yoshida1990construction}: Triple symmetric St\"ormer--Verlet composition $\Phi_{w_1 \Delta t}^{[2]} \circ \Phi_{w_0 \Delta t}^{[2]} \circ \Phi_{w_1 \Delta t}^{[2]}$ with real time-step weights
+\begin{equation}
+w_1 = \frac{1}{2 - 2^{1/3}}, \qquad w_0 = -\frac{2^{1/3}}{2 - 2^{1/3}}, \qquad 2w_1 + w_0 = 1.
+\end{equation}
+\item \textbf{Implicit Midpoint} (\texttt{ImplicitMidpoint}, order $p = 2$, general non-separable $H(\mathbf{q}, \mathbf{p})$) \cite{hairer2006geometric}: The canonical single-stage Gauss--Legendre collocation rule
+\begin{equation}
+\mathbf{z}_{n+1} = \mathbf{z}_n + h\,\mathbf{J}\nabla H\!\left(\frac{\mathbf{z}_n + \mathbf{z}_{n+1}}{2}\right),
+\end{equation}
+solved via bounded fixed-point iteration over symmetric substeps $h = \Delta t / m$ for non-separable systems such as \texttt{DoublePendulum}.
+\item \textbf{Two-Stage Gauss--Legendre} (\texttt{GaussLegendre4}, order $p = 4$, general non-separable $H(\mathbf{q}, \mathbf{p})$) \cite{hairer2006geometric}: Implicit collocation at shifted Gauss nodes $c_{1,2} = \frac{1}{2} \mp \frac{\sqrt{3}}{6}$, bounding chaotic double-pendulum relative energy oscillation several orders of magnitude below explicit \texttt{RungeKutta4}.
+\end{itemize}
+
+\section{Flat Euclidean Dynamical Billiards and Birkhoff Coordinates}
+
+A planar Euclidean dynamical billiard confines a point particle moving along straight lines at unit speed $\|\mathbf{v}\| = 1$ inside a flat ($K = 0$) domain $\Omega \subset \mathbb{R}^2$ with piecewise-smooth boundary $\partial\Omega$ \cite{birkhoff1927dynamical,berry1981regular}. At each boundary impact $\mathbf{r} \in \partial\Omega$ with inward unit normal $\hat{\mathbf{n}}$ and counterclockwise unit tangent $\hat{\mathbf{t}}$, elastic reflection reverses the normal velocity component while preserving the tangential component:
+\begin{equation}
+\mathbf{v}' = \mathbf{v} - 2(\mathbf{v} \cdot \hat{\mathbf{n}})\hat{\mathbf{n}}, \qquad
+\sin\phi = \mathbf{v}' \cdot \hat{\mathbf{t}} \in [-1, 1],
+\label{eq:reflection}
+\end{equation}
+where $\phi \in [-\pi/2, \pi/2]$ is the reflection angle measured from $\hat{\mathbf{n}}$. Measuring counterclockwise perimeter arc length $s \in [0, L)$ along the outer boundary of total length $L$, the collision map $\mathcal{B}: (s_n / L, \sin\phi_n) \mapsto (s_{n+1} / L, \sin\phi_{n+1})$ preserves the canonical Birkhoff area form $d\mu = \cos\phi\,ds\,d\phi = ds\,d(\sin\phi)$ \cite{birkhoff1927dynamical}.
+
+In \texttt{domain\_physics::physics::chaos::billiards}, exact analytical ray--curve intersections and closed-form normals contrast integrable and chaotic Euclidean geometries:
+\begin{enumerate}
+\item \textbf{Circular Billiard} (\texttt{CircularBilliard}, radius $R$): Rotational symmetry conserves angular momentum $J = R\sin\phi$, foliating Birkhoff space into horizontal invariant lines $\sin\phi = \text{const}$ with caustic circles of radius $R|\sin\phi|$.
+\item \textbf{Confocal Elliptical Billiard} (\texttt{EllipticalBilliard}, semi-axes $a > b > 0$, focal distance $c = \sqrt{a^2 - b^2}$) \cite{berry1981regular}: Complete integrability follows from conservation of Joachimsthal's focal angular-momentum product about foci $\mathbf{F}_\pm = (\pm c, 0)$,
+\begin{equation}
+I(\mathbf{r}, \mathbf{v}) = L_1 L_2
+= \bigl((\mathbf{r} - \mathbf{F}_-) \times \mathbf{v}\bigr)
+  \bigl((\mathbf{r} - \mathbf{F}_+) \times \mathbf{v}\bigr),
+\label{eq:focal_product}
+\end{equation}
+separating Birkhoff phase space along the homoclinic focal separatrix $I = 0$ into whispering-gallery orbits ($I > 0$, tangent to a confocal ellipse caustic) and bouncing-ball librations crossing between the foci ($I < 0$, tangent to a confocal hyperbola caustic). Perimeter normalization uses Ramanujan's second elliptic approximation paired with 16-node Gauss--Legendre quadrature for incomplete elliptic arc length $s(\theta)$.
+\item \textbf{Sinai Dispersing Billiard} (\texttt{SinaiBilliard}, square $[-W/2, W/2]^2$ with central disk obstacle of radius $R < W/2$) \cite{sinai1970dynamical}: Strictly convex inward scatterer curvature disperses infinitesimally adjacent ray bundles at every disk impact, yielding positive Kolmogorov--Sinai entropy, exponential decay of correlations, and ergodic filling of Birkhoff phase space.
+\item \textbf{Bunimovich Stadium Billiard} (\texttt{StadiumBilliard}, straight walls of length $2a > 0$ capped by semicircles of radius $R$) \cite{bunimovich1979ergodic}: Although convex semicircular caps focus narrow ray bundles locally, inter-collision drift exceeds twice the focal chord length (\emph{defocusing} mechanism), destroying all smooth caustics for $a > 0$ and producing K-system ergodicity punctuated only by measure-zero neutral ``bouncing-ball'' vertical orbits ($\sin\phi = 0$ on the flat segments).
+\end{enumerate}
+
+\bibliographystyle{plain}
+\bibliography{references}
 
 \end{document}
