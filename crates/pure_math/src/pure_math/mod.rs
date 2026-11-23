@@ -28,12 +28,32 @@
 //!
 //! *   **[Algebra](algebra)**: Abstract algebraic structures (Groups, Rings, Fields).
 //! *   **[Algorithmic Information](algorithmic_information)**: Kolmogorov complexity and information theory.
-//! *   **[Analysis](analysis)**: Calculus, Integration, and Differential Equations.
-//! *   **[Differential Geometry](differential_geometry)**: Manifolds and curvature.
+//! *   **[Analysis](analysis)**: Calculus, Complex Riemann Surfaces, Conformal Mapping, Cauchy Integration, and Differential Equations.
+//! *   **[Differential Geometry](differential_geometry)**: Parametric manifolds, curvature, Laplace-Beltrami, and zero-allocation flat-buffer geometric flows (`MeanCurvatureFlow`, `HeatEquationSolver`).
 //! *   **[Elliptic Curves](elliptic_curves)**: Cryptography primitives and geometric arithmetic.
 //! *   **[Graph Theory](graph_theory)**: Network analysis and traversal algorithms.
 //! *   **[Number Theory](number_theory)**: Primes, Partitions, and Modular Arithmetic.
 //! *   **[Statistics](statistics)**: Competitive modeling (Glicko-2), Stochastic processes (Markov), and Data Analysis.
+//! *   **[Vector Calculus](vector_calculus)**: Curvilinear differential operators, Gauss/Stokes integral theorems, and zero-allocation 3D Helmholtz-Hodge decomposition.
+//!
+//! ## Curvilinear Stokes & Multi-Sheet Riemann Monodromy
+//!
+//! ```rust
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::nalgebra::Vector3;
+//! use math_explorer::num_complex::Complex64;
+//! use math_explorer::pure_math::analysis::complex::surfaces::{NthRootSurface, RiemannSurface};
+//! use math_explorer::pure_math::vector_calculus::coordinates::Cartesian;
+//! use math_explorer::pure_math::vector_calculus::theorems::{StokesPatch, verify_stokes_theorem};
+//!
+//! let patch = StokesPatch::new(2, 0.0, (-1.0, 1.0), (-1.0, 1.0));
+//! let (_, _, diff) = verify_stokes_theorem(&Cartesian, &patch, |p| Vector3::new(-p[1], p[0], 0.0), 16);
+//! assert!(diff < 1e-10);
+//!
+//! let sqrt_surf = NthRootSurface::new(2);
+//! assert_eq!(sqrt_surf.next_sheet(0, 1), 1);
+//! assert!((sqrt_surf.evaluate(Complex64::new(4.0, 0.0), 1).re + 2.0).abs() < 1e-12);
+//! ```
 //!
 //! ## Philosophy
 //!

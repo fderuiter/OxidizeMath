@@ -43,6 +43,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](adr/0045-spatial-brush-kit-and-field-sculpting.md)
 - [ADR 0045: Short-Weierstrass Elliptic Curves and Modular GUI Tab](adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md)
 - [ADR 0046: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0046-symplectic-hamiltonian-solvers-and-poincare-lab.md)
+- [ADR 20261123: Zero-Allocation Curvilinear Vector Calculus, Flat-Buffer Geometric Flows, and Interactive 3D Vector, Flow, and Riemann Studios](adr/20261123-3d-vector-flow-and-riemann-studios.md)
 - [ADR 20261123: Zero-Allocation 2D Abelian Sandpile Engine, Recurrent Group Algebra, and Solid-State Studio](adr/20261123-abelian-sandpile-engine-and-studio.md)
 - [ADR 20261123: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/20261123-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 - [ADR 20261123: Bidirectional Zero-Allocation Odds Conversions, Format-Aware Kelly Errors, and Bet Size Calculator Synchronization](adr/20261123-bidirectional-odds-conversions-and-bet-calculator-sync.md)

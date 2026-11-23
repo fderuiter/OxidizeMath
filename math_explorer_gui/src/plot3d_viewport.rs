@@ -101,6 +101,27 @@ impl<'a> Plot3DViewport<'a> {
         camera: &mut Camera3D,
         build_fn: impl FnOnce(&mut egui_plot::PlotUi<'p>) -> R,
     ) -> egui_plot::PlotResponse<R> {
+        let mut ret: Option<R> = None;
+        let mut slot = Some(build_fn);
+        let raw = self.show_dyn(ui, camera, &mut |plot_ui| {
+            if let Some(f) = slot.take() {
+                ret = Some(f(plot_ui));
+            }
+        });
+        egui_plot::PlotResponse {
+            inner: ret.expect("Plot::show invokes closure once"),
+            response: raw.response,
+            transform: raw.transform,
+            hovered_plot_item: raw.hovered_plot_item,
+        }
+    }
+
+    fn show_dyn<'p>(
+        self,
+        ui: &mut egui::Ui,
+        camera: &mut Camera3D,
+        build_fn: &mut dyn FnMut(&mut egui_plot::PlotUi<'p>),
+    ) -> egui_plot::PlotResponse<()> {
         let avail = ui.available_size_before_wrap();
         let (plot_height, x_half, y_half) =
             Self::compute_half_extents(avail, self.half_extent, self.helper_text.is_some());
@@ -115,7 +136,7 @@ impl<'a> Plot3DViewport<'a> {
             plot_ui.set_plot_bounds_x(-x_half..=x_half);
             plot_ui.set_plot_bounds_y(-y_half..=y_half);
             captured_plot_id = Some(plot_ui.plot_id());
-            build_fn(plot_ui)
+            build_fn(plot_ui);
         });
 
         let rect_h = plot_response.response.rect.height().max(1.0_f32);

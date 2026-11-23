@@ -290,6 +290,13 @@ impl TheoryDescribable for BifurcationDiagram {
     }
 }
 
+impl BifurcationDiagram {
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+}
+
 impl InteractiveTool for BifurcationDiagram {
     fn theory(&self) -> &dyn TheoryDescribable {
         self
@@ -301,10 +308,6 @@ impl InteractiveTool for BifurcationDiagram {
 
     fn domain(&self) -> &'static str {
         "chaos"
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn step_simulation(&mut self) {

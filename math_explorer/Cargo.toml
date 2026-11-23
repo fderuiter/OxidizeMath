@@ -176,5 +176,9 @@ required-features = ["pure_math"]
 name = "lorenz_chaos"
 required-features = ["physics"]
 
+[[example]]
+name = "vector_flow_riemann_demo"
+required-features = ["pure_math"]
+
 [lints]
 workspace = true

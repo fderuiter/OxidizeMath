@@ -222,6 +222,9 @@ fn default_tool_priority(domain: &str, id: &str) -> u8 {
         | ("clinical_trials", "PharmacokineticsTool")
         | ("epidemiology", "SirTool")
         | ("ai", "LossLandscapeTool") => 0,
+        ("analysis", "CurvilinearVectorStudio")
+        | ("analysis", "RiemannSurfaceStudio")
+        | ("geometry_topology", "ManifoldFlowStudio") => 2,
         _ => 1,
     }
 }

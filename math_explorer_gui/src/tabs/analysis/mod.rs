@@ -5,8 +5,10 @@ use eframe::egui;
 
 pub mod chladni_wave_tank;
 pub mod complex_mapping;
+pub mod curvilinear_vector;
 pub mod ode;
 pub mod riemann;
+pub mod riemann_surface;
 
 pub struct AnalysisTab {
     framework: crate::framework::SimulationFramework,

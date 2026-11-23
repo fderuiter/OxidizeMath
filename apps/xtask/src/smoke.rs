@@ -271,9 +271,14 @@ mod tests {
         let target_dir = resolve_target_dir(&ws_root);
         let examples = discover_registered_examples(&ws_root, &target_dir)
             .expect("must list registered math_explorer examples");
-        assert_eq!(examples.len(), 32);
+        assert_eq!(examples.len(), 33);
         assert!(examples.iter().any(|name| name == "hello_world"));
         assert!(examples.iter().any(|name| name == "isosurface_torus"));
+        assert!(
+            examples
+                .iter()
+                .any(|name| name == "vector_flow_riemann_demo")
+        );
         assert!(!examples.iter().any(|name| name == "check_statrs"));
     }
 

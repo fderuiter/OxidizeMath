@@ -243,6 +243,13 @@ impl MriKSpaceScannerTool {
     }
 }
 
+impl MriKSpaceScannerTool {
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_kspace_id
+    }
+}
+
 impl InteractiveTool for MriKSpaceScannerTool {
     fn name(&self) -> &'static str {
         "MRI 2D k-Space Scanner"
@@ -258,10 +265,6 @@ impl InteractiveTool for MriKSpaceScannerTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.show_scanner_inside(ui);
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_kspace_id
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {

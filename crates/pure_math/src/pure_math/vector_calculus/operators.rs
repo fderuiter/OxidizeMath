@@ -1,3 +1,7 @@
+//! Curvilinear gradient, divergence, curl, and scalar Laplacian operators.
+
+// [cite:vector_calculus]
+
 use super::coordinates::OrthogonalCoordinateSystem;
 use nalgebra::Vector3;
 
@@ -10,7 +14,7 @@ fn partial_derivative<F>(i: usize, point: &Vector3<f64>, f: F) -> f64
 where
     F: Fn(&Vector3<f64>) -> f64,
 {
-    debug_assert!(i < 3);
+    assert!(i < 3);
     let mut p_plus = *point;
     p_plus[i] += H;
     let mut p_minus = *point;
@@ -26,13 +30,17 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> f64,
 {
-    debug_assert!(point.iter().all(|x| x.is_finite()));
+    assert!(point.iter().all(|x| x.is_finite()));
     let factors = coords.scale_factors(point);
     let mut grad = Vector3::zeros();
 
     for i in 0..3 {
         let df = partial_derivative(i, point, &field);
-        grad[i] = df / factors[i];
+        grad[i] = if factors[i].abs() < 1e-12 {
+            0.0
+        } else {
+            df / factors[i]
+        };
     }
 
     grad
@@ -46,7 +54,7 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> Vector3<f64>,
 {
-    debug_assert!(point.iter().all(|x| x.is_finite()));
+    assert!(point.iter().all(|x| x.is_finite()));
     let factors = coords.scale_factors(point);
     let h1h2h3 = factors[0] * factors[1] * factors[2];
 
@@ -80,7 +88,7 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> Vector3<f64>,
 {
-    debug_assert!(point.iter().all(|x| x.is_finite()));
+    assert!(point.iter().all(|x| x.is_finite()));
     let h = coords.scale_factors(point);
     let mut result = Vector3::zeros();
 
@@ -98,7 +106,12 @@ where
             partial_derivative(k, point, func)
         };
 
-        result[i] = (term_1 - term_2) / (h[j] * h[k]);
+        let denom = h[j] * h[k];
+        result[i] = if denom.abs() < 1e-12 {
+            0.0
+        } else {
+            (term_1 - term_2) / denom
+        };
     }
 
     result
@@ -111,7 +124,7 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> f64,
 {
-    debug_assert!(point.iter().all(|x| x.is_finite()));
+    assert!(point.iter().all(|x| x.is_finite()));
     let h_factors = coords.scale_factors(point);
     let h1h2h3 = h_factors[0] * h_factors[1] * h_factors[2];
 
@@ -123,8 +136,12 @@ where
 
         let term_func = |p: &Vector3<f64>| {
             let h = coords.scale_factors(p);
-            let dphi = partial_derivative(i, p, &field);
-            (h[j] * h[k] / h[i]) * dphi
+            if h[i].abs() < 1e-12 {
+                0.0
+            } else {
+                let dphi = partial_derivative(i, p, &field);
+                (h[j] * h[k] / h[i]) * dphi
+            }
         };
 
         sum += partial_derivative(i, point, term_func);

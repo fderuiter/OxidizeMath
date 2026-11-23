@@ -15,7 +15,7 @@ cargo run --package math_explorer --features physics --example mmwave_setup
 # Hodgkin-Huxley neuron simulation
 cargo run --package math_explorer --features biology --example hodgkin_huxley_demo
 
-# Smoke-test all 32 registered examples in isolated sandboxes with MATH_EXPLORER_SMOKE=1
+# Smoke-test all 33 registered examples in isolated sandboxes with MATH_EXPLORER_SMOKE=1
 cargo run -p xtask -- smoke-examples
 ```
 
@@ -66,5 +66,6 @@ cargo run -p xtask -- smoke-examples
 - `sports_analytics_demo`: Copula, Glicko-2, Kelly criterion, Markov, and Ornstein-Uhlenbeck analytics.
 - `statistics_demo`: Glicko-2, Kelly criterion, and topological data analysis overview.
 - `tensor_demo`: Computing Riemannian metrics and Christoffel symbols on manifolds.
+- `vector_flow_riemann_demo`: Curvilinear Stokes & Helmholtz decomposition, flat-buffer Mean Curvature & Laplace-Beltrami heat flow, and multi-sheet Riemann monodromy.
 
 For more details, see the inline documentation within each `.rs` file.

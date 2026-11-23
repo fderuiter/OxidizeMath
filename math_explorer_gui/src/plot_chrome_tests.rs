@@ -72,6 +72,9 @@ fn test_all_6_plot_3d_viewport_tools_hide_2d_plot_chrome() {
         "SurfaceViewer",
         "CurvatureHeatmap",
         "Gaussian Splatting",
+        "CurvilinearVectorStudio",
+        "ManifoldFlowStudio",
+        "RiemannSurfaceStudio",
     ];
     let mut verified = 0_usize;
     for target_id in expected_3d_ids {
@@ -83,7 +86,7 @@ fn test_all_6_plot_3d_viewport_tools_hide_2d_plot_chrome() {
         assert_no_2d_plot_chrome(&mut *tool, target_id);
         verified += 1;
     }
-    assert_eq!(verified, 6);
+    assert_eq!(verified, 9);
 }
 
 const PLOT_CHROME_BUTTON_LABELS: &[&str] = &[

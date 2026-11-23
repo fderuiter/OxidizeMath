@@ -8,12 +8,21 @@ where
     S: ParametricSurface,
     F: Fn(f64, f64) -> f64,
 {
+    assert!(u.is_finite() && v.is_finite());
+    let det_sqrt_center = surface.area_element(u, v);
+    if det_sqrt_center <= 1e-12 || !det_sqrt_center.is_finite() {
+        return 0.0;
+    }
     let h = 1e-5;
 
     // Inner term helper
     let inner = |u_curr: f64, v_curr: f64| -> (f64, f64) {
         let (e, f, g) = surface.first_fundamental_form(u_curr, v_curr);
-        let det_sqrt = (e * g - f * f).sqrt();
+        let det = e * g - f * f;
+        if det <= 1e-12 || !det.is_finite() {
+            return (0.0, 0.0);
+        }
+        let det_sqrt = det.sqrt();
 
         // Derivatives of the function
         let f_u = (func(u_curr + h, v_curr) - func(u_curr - h, v_curr)) / (2.0 * h);
@@ -34,7 +43,5 @@ where
     let (_, term2_minus_v) = inner(u, v - h);
     let d_dv_term2 = (term2_plus_v - term2_minus_v) / (2.0 * h);
 
-    let det_sqrt = surface.area_element(u, v);
-
-    (1.0 / det_sqrt) * (d_du_term1 + d_dv_term2)
+    (1.0 / det_sqrt_center) * (d_du_term1 + d_dv_term2)
 }

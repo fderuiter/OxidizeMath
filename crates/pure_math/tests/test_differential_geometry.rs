@@ -110,22 +110,14 @@ fn test_heat_equation_smoothing() {
     );
 
     // Measure max temp
-    let max_temp_init = solver
-        .u_grid
-        .iter()
-        .flatten()
-        .fold(0.0f64, |a, &b| a.max(b));
+    let max_temp_init = solver.u_grid.iter().fold(0.0f64, |a, &b| a.max(b));
 
     // Run steps
     for _ in 0..50 {
         solver.step(0.01);
     }
 
-    let max_temp_final = solver
-        .u_grid
-        .iter()
-        .flatten()
-        .fold(0.0f64, |a, &b| a.max(b));
+    let max_temp_final = solver.u_grid.iter().fold(0.0f64, |a, &b| a.max(b));
 
     // Heat should spread, lowering the max temp
     assert!(
@@ -144,11 +136,9 @@ fn test_mean_curvature_flow_shrinkage() {
     let nv = 10;
     let radius = 2.0;
 
-    let mut points = vec![vec![Point3::origin(); nv]; nu];
+    let mut points = vec![Point3::origin(); nu * nv];
 
-    #[allow(clippy::needless_range_loop)]
     for i in 0..nu {
-        #[allow(clippy::needless_range_loop)]
         for j in 0..nv {
             let u = 2.0 * PI * i as f64 / nu as f64;
             // Avoid exact 0 and PI to prevent singularities in parameterization derivatives
@@ -158,24 +148,18 @@ fn test_mean_curvature_flow_shrinkage() {
             let x = radius * v.sin() * u.cos();
             let y = radius * v.sin() * u.sin();
             let z = radius * v.cos();
-            points[i][j] = Point3::new(x, y, z);
+            let idx = math_commons::math_kernel::types::flatten_2d_index(j, i, nv);
+            points[idx] = Point3::new(x, y, z);
         }
     }
 
-    let discrete_sphere = DiscreteSurface::new(points, true, false);
+    let discrete_sphere = DiscreteSurface::new(points, nu, nv, true, false);
     let mut flow = MeanCurvatureFlow::new(discrete_sphere);
 
     // Compute initial average radius
     let avg_radius = |surf: &DiscreteSurface| -> f64 {
-        let mut sum = 0.0;
-        let mut count = 0;
-        for row in &surf.points {
-            for p in row {
-                sum += p.coords.norm(); // distance from origin
-                count += 1;
-            }
-        }
-        sum / count as f64
+        let sum: f64 = surf.points.iter().map(|p| p.coords.norm()).sum();
+        sum / surf.points.len() as f64
     };
 
     let r_init = avg_radius(&flow.surface);

@@ -1,8 +1,8 @@
-#[allow(missing_docs)]
-pub mod coordinates;
-#[allow(missing_docs)]
-pub mod operators;
-#[allow(missing_docs)]
-pub mod theorems;
+//! Orthogonal curvilinear coordinate systems, differential operators, and integral theorems.
 
-// [cite:quasiperfect_alcf]
+// [cite:vector_calculus]
+
+pub mod coordinates;
+pub mod helmholtz;
+pub mod operators;
+pub mod theorems;

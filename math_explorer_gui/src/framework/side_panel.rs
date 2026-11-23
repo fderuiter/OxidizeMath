@@ -155,6 +155,22 @@ impl PaneSidePanel {
         parent_ui: &mut egui::Ui,
         add_contents: impl FnOnce(&mut egui::Ui) -> R,
     ) -> egui::InnerResponse<Option<R>> {
+        let mut ret: Option<R> = None;
+        let mut slot = Some(add_contents);
+        let mut dyn_fn = |ui: &mut egui::Ui| {
+            if let Some(f) = slot.take() {
+                ret = Some(f(ui));
+            }
+        };
+        let response = self.show_inside_dyn(parent_ui, &mut dyn_fn);
+        egui::InnerResponse::new(ret, response)
+    }
+
+    fn show_inside_dyn(
+        self,
+        parent_ui: &mut egui::Ui,
+        add_contents: &mut dyn FnMut(&mut egui::Ui),
+    ) -> egui::Response {
         let ctx = parent_ui.ctx().clone();
         let pane_width = enclosing_pane_width(parent_ui);
         let outer_max = compute_outer_max_width(parent_ui, pane_width);
@@ -165,13 +181,13 @@ impl PaneSidePanel {
         }
     }
 
-    fn show_collapsed_rail<R>(
+    fn show_collapsed_rail(
         self,
         parent_ui: &mut egui::Ui,
         ctx: &egui::Context,
         pane_width: f32,
         outer_max: f32,
-    ) -> egui::InnerResponse<Option<R>> {
+    ) -> egui::Response {
         let rail_id = self.id.with("collapsed_rail");
         let rail_w = COLLAPSED_RAIL_WIDTH.min(outer_max);
         let base = match self.side {
@@ -183,7 +199,6 @@ impl PaneSidePanel {
             .exact_width(rail_w)
             .show_inside(parent_ui, |ui| {
                 render_collapsed_toggle(ui, ctx, self.id, self.side);
-                None
             });
         record_panel_metrics(
             ctx,
@@ -196,17 +211,17 @@ impl PaneSidePanel {
                 scroll_content_height: 0.0,
             },
         );
-        inner
+        inner.response
     }
 
-    fn show_expanded_panel<R>(
+    fn show_expanded_panel(
         self,
         parent_ui: &mut egui::Ui,
         ctx: &egui::Context,
         pane_width: f32,
         outer_max: f32,
-        add_contents: impl FnOnce(&mut egui::Ui) -> R,
-    ) -> egui::InnerResponse<Option<R>> {
+        add_contents: &mut dyn FnMut(&mut egui::Ui),
+    ) -> egui::Response {
         let min_outer = self.min_width.unwrap_or(DEFAULT_MIN_WIDTH).min(outer_max);
         let default_outer = self
             .default_width
@@ -224,11 +239,9 @@ impl PaneSidePanel {
             .default_width(default_outer)
             .width_range(min_outer..=outer_max)
             .show_inside(parent_ui, |ui| {
-                let (out, vh, ch) =
-                    render_expanded_contents(ui, ctx, self.id, self.side, add_contents);
+                let (vh, ch) = render_expanded_contents(ui, ctx, self.id, self.side, add_contents);
                 viewport_h = vh;
                 content_h = ch;
-                Some(out)
             });
         record_panel_metrics(
             ctx,
@@ -241,7 +254,7 @@ impl PaneSidePanel {
                 scroll_content_height: content_h,
             },
         );
-        inner
+        inner.response
     }
 }
 
@@ -318,13 +331,13 @@ fn prime_compact_scroll_state(
     let _ = ctx.animate_bool_with_time(scroll_id.with("v"), true, 0.0);
 }
 
-fn render_expanded_contents<R>(
+fn render_expanded_contents(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
     id: egui::Id,
     side: Side,
-    add_contents: impl FnOnce(&mut egui::Ui) -> R,
-) -> (R, f32, f32) {
+    add_contents: &mut dyn FnMut(&mut egui::Ui),
+) -> (f32, f32) {
     let bounded = ui.max_rect();
     let inner_w = bounded.width().max(1.0);
     let mut child_ui = ui.new_child(
@@ -346,7 +359,7 @@ fn render_expanded_contents<R>(
     let scroll_out = egui::ScrollArea::vertical()
         .id_salt(scroll_salt)
         .auto_shrink([false, false])
-        .show(&mut child_ui, add_contents);
+        .show(&mut child_ui, |ui| add_contents(ui));
     if scroll_out.content_size.y > scroll_out.inner_rect.height() {
         let _ = ctx.animate_bool_with_time(scroll_out.id.with("v"), true, 0.0);
     }
@@ -356,11 +369,7 @@ fn render_expanded_contents<R>(
         bounded.min,
         egui::vec2(inner_w, used_h),
     ));
-    (
-        scroll_out.inner,
-        scroll_out.inner_rect.height(),
-        scroll_out.content_size.y,
-    )
+    (scroll_out.inner_rect.height(), scroll_out.content_size.y)
 }
 
 fn render_collapse_header(ui: &mut egui::Ui, ctx: &egui::Context, id: egui::Id, side: Side) {

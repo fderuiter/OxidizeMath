@@ -10584,7 +10584,19 @@
       "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn new (_ : & 'a S , _ : f64 , _ : (f64 , f64) , _ : (f64 , f64) , _ : (usize , usize) , _ : impl Fn (f64 , f64) -> f64 ,) -> Self }"
     },
     {
+      "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn recommended_cfl_dt (& self) -> f64 }"
+    },
+    {
+      "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn set_value (& mut self , _ : usize , _ : usize , _ : f64) }"
+    },
+    {
       "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn total_heat (& self) -> f64 }"
+    },
+    {
+      "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn value (& self , _ : usize , _ : usize) -> f64 }"
     },
     {
       "signature": "pub struct HeatEquationSolver < 'a , S : ParametricSurface >"
@@ -10592,13 +10604,34 @@
   ],
   "crates/pure_math/src/pure_math/differential_geometry/mean_curvature_flow.rs": [
     {
+      "signature": "impl DiscreteSurface { pub const fn dims (& self) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl DiscreteSurface { pub fn as_slice (& self) -> & [Point3 < f64 >] }"
+    },
+    {
+      "signature": "impl DiscreteSurface { pub fn from_parametric < F > (_ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize , _ : bool , _ : bool , _ : F ,) -> Self where F : Fn (f64 , f64) -> Point3 < f64 > , }"
+    },
+    {
       "signature": "impl DiscreteSurface { pub fn mean_curvature_vector (& self , _ : usize , _ : usize) -> Vector3 < f64 > }"
     },
     {
-      "signature": "impl DiscreteSurface { pub fn new (_ : Vec < Vec < Point3 < f64 > > > , _ : bool , _ : bool) -> Self }"
+      "signature": "impl DiscreteSurface { pub fn new (_ : Vec < Point3 < f64 > > , _ : usize , _ : usize , _ : bool , _ : bool ,) -> Self }"
+    },
+    {
+      "signature": "impl DiscreteSurface { pub fn point (& self , _ : usize , _ : usize) -> Point3 < f64 > }"
+    },
+    {
+      "signature": "impl DiscreteSurface { pub fn surface_area (& self) -> f64 }"
     },
     {
       "signature": "impl MeanCurvatureFlow { pub fn new (_ : DiscreteSurface) -> Self }"
+    },
+    {
+      "signature": "impl MeanCurvatureFlow { pub fn recommended_cfl_dt (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MeanCurvatureFlow { pub fn refresh_curvature_norms (& mut self) }"
     },
     {
       "signature": "impl MeanCurvatureFlow { pub fn step (& mut self , _ : f64) }"
@@ -13157,6 +13190,32 @@
       "signature": "pub trait OrthogonalCoordinateSystem { fn scale_factors (& self , _ : & Vector3 < f64 >) -> Vector3 < f64 > }"
     }
   ],
+  "crates/pure_math/src/pure_math/vector_calculus/helmholtz.rs": [
+    {
+      "signature": "impl HelmholtzWorkspace { pub fn cell_center (& self , _ : & Domain , _ : usize , _ : usize , _ : usize) -> Vector3 < f64 > }"
+    },
+    {
+      "signature": "impl HelmholtzWorkspace { pub fn index (& self , _ : usize , _ : usize , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl HelmholtzWorkspace { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl HelmholtzWorkspace { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl HelmholtzWorkspace { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn helmholtz_decompose < S : OrthogonalCoordinateSystem > (_ : & S , _ : & [Vector3 < f64 >] , _ : & Domain , _ : & mut HelmholtzWorkspace , _ : usize ,) -> HelmholtzSummary"
+    },
+    {
+      "signature": "pub struct HelmholtzSummary"
+    },
+    {
+      "signature": "pub struct HelmholtzWorkspace"
+    }
+  ],
   "crates/pure_math/src/pure_math/vector_calculus/operators.rs": [
     {
       "signature": "pub fn curl < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> Vector3 < f64 > ,"
@@ -13173,10 +13232,31 @@
   ],
   "crates/pure_math/src/pure_math/vector_calculus/theorems.rs": [
     {
+      "signature": "impl StokesPatch { pub fn new (_ : usize , _ : f64 , _ : (f64 , f64) , _ : (f64 , f64) ,) -> Self }"
+    },
+    {
+      "signature": "impl StokesPatch { pub fn point_at (& self , _ : f64 , _ : f64) -> Vector3 < f64 > }"
+    },
+    {
       "signature": "pub fn verify_divergence_theorem < S , F > (_ : & S , _ : & Domain , _ : F , _ : usize ,) -> (f64 , f64 , f64) where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> Vector3 < f64 > + Copy ,"
     },
     {
+      "signature": "pub fn verify_stokes_theorem < S , F > (_ : & S , _ : & StokesPatch , _ : F , _ : usize ,) -> (f64 , f64 , f64) where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> Vector3 < f64 > + Copy ,"
+    },
+    {
       "signature": "pub struct Domain"
+    },
+    {
+      "signature": "pub struct StokesPatch"
+    },
+    {
+      "signature": "pub use super :: helmholtz :: HelmholtzSummary"
+    },
+    {
+      "signature": "pub use super :: helmholtz :: HelmholtzWorkspace"
+    },
+    {
+      "signature": "pub use super :: helmholtz :: helmholtz_decompose"
     }
   ],
   "crates/scientific_metadata/src/citation_registry.rs": [
