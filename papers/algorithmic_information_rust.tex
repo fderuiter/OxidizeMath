@@ -13,7 +13,7 @@
 \maketitle
 
 \begin{abstract}
-This paper introduces a new open-source Rust library for the computational exploration of concepts from the paper "Algorithmic Information Bounds for Distances and Orthogonal Projections" by Cholak et al. We present the design of the library, which includes modules for geometric primitives, Kolmogorov complexity approximations, and an implementation of the paper's core Combinatorial Lemma. We demonstrate the library's utility by providing numerical experiments that explore the information-theoretic bounds and the resulting Hausdorff dimension inequalities.
+This paper introduces an open-source Rust library for the computational exploration of algorithmic information theory and universal register machines, drawing on "Algorithmic Information Bounds for Distances and Orthogonal Projections" by Cholak et al.\ alongside Conway's FRACTRAN universal arithmetic language. We present the design of the library, which includes modules for geometric primitives, Kolmogorov complexity approximations, the core Combinatorial Lemma, and a zero-allocation prime-exponent FRACTRAN virtual machine with Minsky counter-machine decoding. We demonstrate the library's utility through numerical experiments on Hausdorff dimension bounds and prime-generating counter automata.
 \end{abstract}
 
 \section{Introduction}
@@ -29,11 +29,11 @@ This paper introduces a new open-source Rust library for the computational explo
 
 \section{Implementation Design}
 
-The core of our computational framework is a new Rust library, developed as a module within the \texttt{math\_explorer} crate. The library is designed to be modular and extensible, with a clear separation of concerns that reflects the mathematical concepts from the source paper. The main modules are \texttt{geometry}, \texttt{kolmogorov}, and \texttt{combinatorics}.
+The core of our computational framework is a Rust library exposed through the \texttt{math\_explorer} crate. The library is designed to be modular and extensible, with a clear separation of concerns that reflects the underlying computability and geometric measure concepts. The main modules are \texttt{geometry}, \texttt{kolmogorov}, \texttt{combinatorics}, and \texttt{fractran}.
 
 \subsection{The \texttt{geometry} Module}
 
-The \texttt{geometry} module provides the foundational data structures for representing geometric objects. To handle the high-precision arithmetic required by the theoretical framework, we use the \texttt{rug} library, which provides arbitrary-precision rational numbers (\texttt{rug::Rational}).
+The \texttt{geometry} module provides the foundational data structures for representing geometric objects. To handle the arbitrary-precision arithmetic required by the theoretical framework, we wrap exact rational numbers (\texttt{dashu::rational::RBig}) inside \texttt{Rational}.
 
 \begin{itemize}
     \item \texttt{Point2D}: A type alias for a 2D vector of \texttt{Rational} numbers, representing a point in $\mathbb{R}^2$.
@@ -61,7 +61,17 @@ The \texttt{combinatorics} module implements the Combinatorial Lemma (Lemma 1) f
     \item \texttt{combinatorial\_lemma}: This generic function takes as input the sets $X$ and $V$, the collection of subsets $N_v$, and the similarity relations $\sim_d$, and it performs a search to find a pair of points $(u, v)$ that satisfies the lemma's conclusion. While the lemma's proof is a non-constructive counting argument, our implementation provides a constructive way to find such a pair, albeit with a computational cost that depends on the size of the sets.
 \end{itemize}
 
-This modular design allows for future extensions and provides a solid foundation for the numerical experiments presented in the next section.
+\subsection{The \texttt{fractran} Module}
+
+The \texttt{fractran} module implements John Horton Conway's FRACTRAN universal register language by compiling positive rational multipliers $f_j = A_j / B_j$ into preallocated prime-exponent tables over a sorted prime basis $p_0 < p_1 < \dots < p_{m-1}$. Representing the machine integer $N = \prod_{i=0}^{m-1} p_i^{e_i}$ directly by its exponent vector $\mathbf{e} \in \mathbb{N}^m$ avoids arbitrary-precision integer blow-up and enables deterministic zero-allocation execution.
+
+\begin{itemize}
+    \item \texttt{FractranProgram} and \texttt{FractranCompiledVm}: \texttt{FractranProgram} validates strictly positive \texttt{Rational} rules over smooth prime factors and compiles their numerators and denominators into flat \texttt{u32} exponent matrices. \texttt{FractranCompiledVm::step\_registers} finds the first rule satisfying $\mathbf{e} \ge \nu_{\mathbf{p}}(B_j)$ and updates $\mathbf{e} \leftarrow (\mathbf{e} - \nu_{\mathbf{p}}(B_j)) + \nu_{\mathbf{p}}(A_j)$ in place using checked \texttt{u32} arithmetic with zero dynamic heap allocations.
+    \item \texttt{FractranState} and Minsky Counter Machines: Partitioning the prime basis into indicator control-state primes and unbounded data-register primes decodes any FRACTRAN configuration into an explicit Minsky counter-machine state and extracts directed guard/increment transitions.
+    \item \texttt{FractranPreset}: Built-in canonical programs include Conway's 14-fraction universal prime generator \texttt{PRIMEGAME} (emitting pure powers of two $2^2, 2^3, 2^5, 2^7, 2^{11}, \dots$), \texttt{MULT}, \texttt{ADD}, and \texttt{FIBONACCI}.
+\end{itemize}
+
+This modular design allows for future extensions and provides a solid foundation for the numerical experiments and interactive visualizations presented in the next section.
 
 \section{Numerical Experiments and Results}
 % Experiments for Theorem 2 (distances)
