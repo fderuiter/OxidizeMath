@@ -1,20 +1,12 @@
 #!/usr/bin/env bash
-# Externalize Trunk's inline module bootstrap for strict CSP compliance,
-# harden WASM fetch stream error propagation, and pre-compress dist assets.
+# Stage precomputed traceability manifest, local paper artifacts (when present),
+# favicon, and exact WASM byte size into Trunk's web distribution directory.
 set -euo pipefail
 
 STAGING_DIR="${1:-${TRUNK_STAGING_DIR:-math_explorer_gui/dist}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-INDEX_HTML="$STAGING_DIR/index.html"
-LOADER_JS="$STAGING_DIR/trunk-loader.js"
 BOOTSTRAP_JS="$STAGING_DIR/bootstrap.js"
-
-if [ ! -f "$REPO_ROOT/Verification_Certificate.json" ]; then
-    echo "Error: $REPO_ROOT/Verification_Certificate.json not found for web staging" >&2
-    exit 1
-fi
-cp -f "$REPO_ROOT/Verification_Certificate.json" "$STAGING_DIR/Verification_Certificate.json"
 
 MANIFEST_SRC=""
 for cand in \
@@ -51,9 +43,11 @@ if [ -d "$REPO_ROOT/papers/output" ]; then
     shopt -s nullglob
     pdfs=("$REPO_ROOT"/papers/output/*.pdf)
     if [ ${#pdfs[@]} -gt 0 ]; then
+        cp -f -- "${pdfs[@]}" "$STAGING_DIR/"
+    fi
+    if [ -s "$REPO_ROOT/papers/output/pages-index.html" ]; then
         mkdir -p "$STAGING_DIR/papers"
-        cp -f "${pdfs[@]}" "$STAGING_DIR/"
-        cp -f "${pdfs[@]}" "$STAGING_DIR/papers/"
+        cp -f -- "$REPO_ROOT/papers/output/pages-index.html" "$STAGING_DIR/papers/index.html"
     fi
     shopt -u nullglob
 fi
@@ -62,73 +56,44 @@ if [ -f "$STAGING_DIR/icon.ico" ]; then
     mv "$STAGING_DIR/icon.ico" "$STAGING_DIR/favicon.ico"
 fi
 
+bash "$SCRIPT_DIR/compress_dist.sh" "$STAGING_DIR" wasm
+
 wasm_size=0
+wasm_brotli_size=0
+wasm_gzip_size=0
 for wf in "$STAGING_DIR"/*.wasm; do
     if [ -f "$wf" ]; then
         wasm_size=$(wc -c < "$wf" | tr -d '[:space:]')
+        if [ -f "${wf}.br" ]; then
+            wasm_brotli_size=$(wc -c < "${wf}.br" | tr -d '[:space:]')
+        fi
+        if [ -f "${wf}.gz" ]; then
+            wasm_gzip_size=$(wc -c < "${wf}.gz" | tr -d '[:space:]')
+        fi
         break
     fi
 done
 
 if [ -f "$BOOTSTRAP_JS" ] && [ "$wasm_size" -gt 0 ]; then
-    awk -v wasm_size="$wasm_size" '
+    awk \
+        -v wasm_size="$wasm_size" \
+        -v wasm_brotli_size="$wasm_brotli_size" \
+        -v wasm_gzip_size="$wasm_gzip_size" \
+        '
         /^const WASM_SOURCE_SIZE = [0-9]+;$/ {
             print "const WASM_SOURCE_SIZE = " wasm_size ";"
+            next
+        }
+        /^const WASM_BROTLI_SIZE = [0-9]+;$/ {
+            print "const WASM_BROTLI_SIZE = " wasm_brotli_size ";"
+            next
+        }
+        /^const WASM_GZIP_SIZE = [0-9]+;$/ {
+            print "const WASM_GZIP_SIZE = " wasm_gzip_size ";"
             next
         }
         { print }
     ' "$BOOTSTRAP_JS" > "${BOOTSTRAP_JS}.tmp" && mv "${BOOTSTRAP_JS}.tmp" "$BOOTSTRAP_JS"
 fi
 
-if [ -f "$INDEX_HTML" ] && grep -q '<script type="module">' "$INDEX_HTML"; then
-    awk -v loader="$LOADER_JS" '
-        BEGIN { in_mod = 0 }
-        /<script type="module">/ {
-            in_mod = 1
-            print "<script type=\"module\" src=\"./trunk-loader.js\"></script>"
-            next
-        }
-        in_mod && /<\/script>/ {
-            in_mod = 0
-            next
-        }
-        in_mod {
-            print > loader
-            next
-        }
-        { print }
-    ' "$INDEX_HTML" > "${INDEX_HTML}.tmp" && mv "${INDEX_HTML}.tmp" "$INDEX_HTML"
-
-    if [ -f "$LOADER_JS" ]; then
-        wasm_size=0
-        for wf in "$STAGING_DIR"/*.wasm; do
-            if [ -f "$wf" ]; then
-                wasm_size=$(wc -c < "$wf" | tr -d '[:space:]')
-                break
-            fi
-        done
-
-        awk -v wasm_size="$wasm_size" '
-            {
-                if (wasm_size > 0 && $0 ~ /__trunkInitializer\(init,/) {
-                    sub(/\.wasm'\'', [0-9]+,/, ".wasm'\'', " wasm_size ",")
-                }
-                print
-            }
-            /const statusText = response\.statusText;/ {
-                print "        if (!response.ok) { throw new Error(\"HTTP \" + status + \" (\" + (statusText || \"Request Failed\") + \") while fetching \" + source); }"
-            }
-        ' "$LOADER_JS" | awk '
-            {
-                if ($0 ~ /^              \}\);$/ && prev ~ /push\(\);/) {
-                    print "              }).catch((err) => { controller.error(err); });"
-                } else {
-                    print $0
-                }
-                prev = $0
-            }
-        ' > "${LOADER_JS}.tmp" && mv "${LOADER_JS}.tmp" "$LOADER_JS"
-    fi
-fi
-
-bash "$SCRIPT_DIR/compress_dist.sh" "$STAGING_DIR"
+bash "$SCRIPT_DIR/compress_dist.sh" "$STAGING_DIR" js html css svg webmanifest json

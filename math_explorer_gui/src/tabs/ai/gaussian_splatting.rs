@@ -15,8 +15,9 @@ use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{projection, Gaussian2D, Gaussian3D, Scene};
 use nalgebra::{Matrix2, Matrix2x3, Point2, Point3, Vector3};
 use scene::{
-    build_default_scene, covariance_ellipse_ring, evaluate_density_counts, lift_ring_to_world,
-    rasterize_splats_into, splat_stroke_color, CAMERA_DISTANCE, ELLIPSE_POINTS,
+    build_preset_scene_and_gradients, covariance_ellipse_ring, evaluate_scene_density_counts,
+    lift_ring_to_world, rasterize_splats_into, splat_stroke_color, VolumetricSplatPreset,
+    CAMERA_DISTANCE, ELLIPSE_POINTS,
 };
 use scientific_metadata::theory::TheoryDescribable;
 
@@ -34,7 +35,10 @@ pub struct GaussianSplattingTool {
     pub scale: f64,
     /// Shared 3D orbit, pan, projection, and zoom camera state.
     pub camera: Camera3D,
+    /// Active volumetric scene preset (canonical 8-splat or dynamic orbital/Turing volumes).
+    pub scene_preset: VolumetricSplatPreset,
     pub(super) scene: Scene,
+    pub(super) grad_magnitudes: Vec<f64>,
     pub(super) projected_splats: Vec<Gaussian2D>,
     pub(super) ellipse_rings: Vec<([[f64; 2]; ELLIPSE_POINTS], egui::Color32)>,
     pub(super) ellipse_rings_3d: Vec<([Point3<f64>; ELLIPSE_POINTS], egui::Color32)>,
@@ -50,14 +54,18 @@ pub struct GaussianSplattingTool {
 impl Default for GaussianSplattingTool {
     fn default() -> Self {
         let scale = 1.0;
-        let scene = build_default_scene();
+        let scene_preset = VolumetricSplatPreset::Canonical;
+        let (scene, grad_magnitudes) = build_preset_scene_and_gradients(scene_preset);
         let count = scene.gaussians.len();
+        let cached_counts = evaluate_scene_density_counts(&scene, &grad_magnitudes, scale);
         let camera = Camera3D::new(0.5, 0.5, 1.0).with_perspective_distance(CAMERA_DISTANCE);
         let world_means = scene.gaussians.iter().map(|g| g.mean).collect();
         Self {
             scale,
             camera,
+            scene_preset,
             scene,
+            grad_magnitudes,
             projected_splats: Vec::with_capacity(count),
             ellipse_rings: Vec::with_capacity(count),
             ellipse_rings_3d: Vec::with_capacity(count),
@@ -67,15 +75,31 @@ impl Default for GaussianSplattingTool {
             pixel_buffer: vec![egui::Color32::TRANSPARENT; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE],
             texture: None,
             cached_key: None,
-            cached_counts: Self::compute_density_counts_for_scale(scale),
+            cached_counts,
         }
     }
 }
 
 impl GaussianSplattingTool {
     /// Evaluates `determine_density_action` across the canonical 3D scene for a given `scale`.
+    #[cfg(test)]
     pub fn compute_density_counts_for_scale(scale: f64) -> DensityActionCounts {
-        evaluate_density_counts(scale)
+        scene::evaluate_density_counts(scale)
+    }
+
+    /// Switches the active volumetric `Gaussian3D` scene preset and refreshes density metrics.
+    pub fn set_scene_preset(&mut self, preset: VolumetricSplatPreset) {
+        if self.scene_preset == preset && !self.scene.gaussians.is_empty() {
+            return;
+        }
+        self.scene_preset = preset;
+        let (scene, grads) = build_preset_scene_and_gradients(preset);
+        self.world_means = scene.gaussians.iter().map(|g| g.mean).collect();
+        self.scene = scene;
+        self.grad_magnitudes = grads;
+        self.cached_counts =
+            evaluate_scene_density_counts(&self.scene, &self.grad_magnitudes, self.scale);
+        self.cached_key = None;
     }
 
     /// Projects a world `Point3<f64>` using the active splat & reference-axis camera projection.
@@ -103,9 +127,10 @@ impl GaussianSplattingTool {
     }
 
     fn render_key(&self) -> RenderCacheKey {
-        use std::hash::Hasher;
+        use std::hash::{Hash, Hasher};
         let mut cam_hasher = std::collections::hash_map::DefaultHasher::new();
         self.camera.hash_state(&mut cam_hasher);
+        self.scene_preset.hash(&mut cam_hasher);
         (self.scale.to_bits(), cam_hasher.finish())
     }
 
@@ -114,7 +139,8 @@ impl GaussianSplattingTool {
         if self.cached_key == Some(key) && self.texture.is_some() {
             return;
         }
-        self.cached_counts = Self::compute_density_counts_for_scale(self.scale);
+        self.cached_counts =
+            evaluate_scene_density_counts(&self.scene, &self.grad_magnitudes, self.scale);
         let mut splats = std::mem::take(&mut self.projected_splats);
         let mut rings = std::mem::take(&mut self.ellipse_rings);
         let mut rings_3d = std::mem::take(&mut self.ellipse_rings_3d);
@@ -194,13 +220,15 @@ impl GaussianSplattingTool {
             };
             let [mx, my] = self.project_splat_point(scaled.mean);
             let mean2d = Point2::new(mx, my);
-            let ring_2d = covariance_ellipse_ring(mean2d, &cov2d);
-            let color = splat_stroke_color(&scaled.color, scaled.opacity);
-            out_rings_3d.push((
-                lift_ring_to_world(&self.camera, &ring_2d, mean2d, [tx, ty, vz], proj_scale),
-                color,
-            ));
-            out_rings.push((ring_2d, color));
+            if out_rings.len() < 48 {
+                let ring_2d = covariance_ellipse_ring(mean2d, &cov2d);
+                let color = splat_stroke_color(&scaled.color, scaled.opacity);
+                out_rings_3d.push((
+                    lift_ring_to_world(&self.camera, &ring_2d, mean2d, [tx, ty, vz], proj_scale),
+                    color,
+                ));
+                out_rings.push((ring_2d, color));
+            }
             out_centers.push([mx, my]);
             out_splats.push(Gaussian2D {
                 mean: mean2d,
@@ -219,12 +247,16 @@ impl GaussianSplattingTool {
 struct GaussianSplattingSaveState {
     scale: f64,
     camera: Camera3D,
+    #[serde(skip_serializing_if = "VolumetricSplatPreset::is_canonical")]
+    scene_preset: VolumetricSplatPreset,
 }
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GaussianSplattingState {
     scale: f64,
+    #[serde(default)]
+    scene_preset: VolumetricSplatPreset,
     #[serde(default)]
     camera: Option<Camera3D>,
     #[serde(default)]
@@ -256,6 +288,7 @@ impl InteractiveTool for GaussianSplattingTool {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.scale.to_bits().hash(&mut h);
+        self.scene_preset.hash(&mut h);
         self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
@@ -273,7 +306,8 @@ impl InteractiveTool for GaussianSplattingTool {
         if !self.camera.is_valid() {
             self.camera.reset();
         }
-        self.cached_counts = Self::compute_density_counts_for_scale(self.scale);
+        self.cached_counts =
+            evaluate_scene_density_counts(&self.scene, &self.grad_magnitudes, self.scale);
         self.cached_key = None;
         true
     }
@@ -282,6 +316,7 @@ impl InteractiveTool for GaussianSplattingTool {
         serde_json::to_string(&GaussianSplattingSaveState {
             scale: self.scale,
             camera: self.camera,
+            scene_preset: self.scene_preset,
         })
         .ok()
     }
@@ -302,7 +337,9 @@ impl InteractiveTool for GaussianSplattingTool {
         )?;
         self.scale = parsed.scale;
         self.camera.apply_pose(camera);
-        self.cached_counts = Self::compute_density_counts_for_scale(self.scale);
+        self.set_scene_preset(parsed.scene_preset);
+        self.cached_counts =
+            evaluate_scene_density_counts(&self.scene, &self.grad_magnitudes, self.scale);
         self.cached_key = None;
         Ok(())
     }

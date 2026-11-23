@@ -36,6 +36,8 @@ mod ui;
 #[path = "attractors/export.rs"]
 pub mod export;
 
+pub(crate) const DEFAULT_FIXED_CALLOUT_OFFSETS: [[f32; 2]; 2] = [[35.0, -25.0], [-35.0, 25.0]];
+
 pub struct AttractorPlotter {
     pub(crate) mode: AttractorMode,
     pub(crate) flow_bank: CoupledExpressionBank,
@@ -105,7 +107,7 @@ impl Default for AttractorPlotter {
             latest_correlation_sum: None,
             regime_atlas: LorenzRegimeAtlasState::new(initial_beta),
             show_annotations: true,
-            fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
+            fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
             latest_sonification: crate::audio::mappings::attractor_frame(
                 [1.0, 1.0, 1.0],
@@ -160,19 +162,21 @@ impl AttractorPlotter {
         Ok(())
     }
 
-    pub fn on_slider_changed(&mut self) {
+    fn sync_shared_params(&self) {
         let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.sigma = self.system.sigma;
-            p.rho = self.system.rho;
-            p.beta = self.system.beta;
-            p.dt = self.dt;
-            p.simulation_speed = self.simulation_speed;
-            p.max_points = self.max_points;
-            p.mode = self.mode;
-            p.custom_flow = Some(job);
-        }
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.sigma = self.system.sigma;
+        p.rho = self.system.rho;
+        p.beta = self.system.beta;
+        p.dt = self.dt;
+        p.simulation_speed = self.simulation_speed;
+        p.max_points = self.max_points;
+        p.mode = self.mode;
+        p.custom_flow = Some(job);
+    }
+
+    pub fn on_slider_changed(&mut self) {
+        self.sync_shared_params();
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
         }
@@ -223,18 +227,7 @@ impl AttractorPlotter {
         self.history.clear();
         self.step_count = 0;
         self.execution_state = SolverExecutionState::Ready;
-        let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.sigma = sigma;
-            p.rho = rho;
-            p.beta = beta;
-            p.dt = self.dt;
-            p.simulation_speed = self.simulation_speed;
-            p.max_points = self.max_points;
-            p.mode = self.mode;
-            p.custom_flow = Some(job);
-        }
+        self.sync_shared_params();
         let params = Arc::clone(&self.params);
         self.worker
             .reset_or_respawn(|| AttractorRunner::from_params(params));
@@ -248,6 +241,7 @@ impl AttractorPlotter {
         self.flow_bank = default_flow_bank();
         self.dt = 0.01;
         self.tube_radius = export::DEFAULT_TUBE_RADIUS;
+        self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
         self.reset();
     }
 
@@ -333,6 +327,11 @@ impl InteractiveTool for AttractorPlotter {
         self.is_paused().hash(&mut h);
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
+        let f32_bits = |v: f32| if v == 0.0 { 0 } else { v.to_bits() };
+        for offset in &self.fixed_callout_offsets {
+            f32_bits(offset.x).hash(&mut h);
+            f32_bits(offset.y).hash(&mut h);
+        }
         self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
