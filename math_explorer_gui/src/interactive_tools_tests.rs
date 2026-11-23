@@ -95,6 +95,9 @@ mod tests {
             check_one::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
             check_one::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(ctx);
             check_one::<crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool>(ctx);
+            check_one::<crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool>(
+                ctx,
+            );
         }
     }
 
