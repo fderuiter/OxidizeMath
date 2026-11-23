@@ -1,19 +1,20 @@
-//! Side-panel `AnimatedSlider` controls, recovery banner, and paired `egui_plot` inspector
-//! for [`super::LeniaTool`].
+//! Side-panel `AnimatedSlider` controls, formula sandboxes, and paired `egui_plot`
+//! potential/telemetry inspector for [`super::LeniaTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::sandbox::{compute_potential_distribution, POTENTIAL_HIST_BINS};
 use super::{LeniaBrushMode, LeniaSpeciesPreset, LeniaTool};
 use crate::async_sim::SimWorkerState;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
-use egui_plot::{Legend, Line, Plot, PlotPoints};
-use math_commons::math_kernel::colormap::ensure_dark_canvas_contrast;
-use math_explorer::biology::lenia::{
-    GrowthParams, KernelShells, MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MIN_KERNEL_RADIUS,
+use egui_plot::{
+    Bar, BarChart, HLine, Legend, Line, LineStyle, Plot, PlotPoints, PlotUi, Polygon, VLine,
 };
+use math_commons::math_kernel::colormap::ensure_dark_canvas_contrast;
+use math_explorer::biology::lenia::{MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MIN_KERNEL_RADIUS};
 
 impl LeniaTool {
     pub(crate) fn render_studio(&mut self, ui: &mut egui::Ui) {
@@ -46,6 +47,8 @@ impl LeniaTool {
                 self.draw_playback_and_species(ui);
                 ui.separator();
                 self.draw_kernel_and_growth_sliders(ui);
+                ui.separator();
+                self.draw_rule_sandboxes(ui);
                 ui.separator();
                 self.draw_brush_and_grid_controls(ui);
             });
@@ -108,27 +111,34 @@ impl LeniaTool {
             }
         }
         ui.small(format!(
-            "Step: {:.2} ms | Mass: {:.1} | Speed: {:.2}",
+            "Step: {:.2} ms | Mass: {:.1} | max(U): {:.3}",
             self.last_step_ms,
             self.engine.telemetry().total_mass,
-            self.engine.telemetry().centroid_speed,
+            self.engine.max_potential(),
         ));
         ui.add_space(4.0);
-        ui.label("Species Genomes:");
-        ui.horizontal_wrapped(|ui| {
-            for sp in LeniaSpeciesPreset::ALL {
-                if ui
-                    .selectable_label(self.species == sp, sp.label())
-                    .clicked()
-                {
-                    self.apply_species_preset(sp);
+        let locked = self.is_kernel_locked_by_challenge();
+        if locked {
+            ui.small("🔒 Kernel & Species locked (Orbium, R = 13.0)");
+        }
+        ui.add_enabled_ui(!locked, |ui| {
+            ui.label("Species Genomes:");
+            ui.horizontal_wrapped(|ui| {
+                for sp in LeniaSpeciesPreset::ALL {
+                    if ui
+                        .selectable_label(self.species == sp, sp.label())
+                        .clicked()
+                    {
+                        self.apply_species_preset(sp);
+                    }
                 }
-            }
+            });
         });
     }
 
     fn draw_kernel_and_growth_sliders(&mut self, ui: &mut egui::Ui) {
         ui.label("Kernel & Growth (Sweepable):");
+        let locked = self.is_kernel_locked_by_challenge();
         let prev = (
             self.radius,
             self.mu,
@@ -136,7 +146,8 @@ impl LeniaTool {
             self.dt,
             self.ring_weights.clone(),
         );
-        ui.add(
+        ui.add_enabled(
+            !locked,
             AnimatedSlider::new(&mut self.radius, MIN_KERNEL_RADIUS..=MAX_KERNEL_RADIUS)
                 .text("Radius R")
                 .id_salt("lenia_radius"),
@@ -156,7 +167,9 @@ impl LeniaTool {
                 .text("Step dt")
                 .id_salt("lenia_dt"),
         );
-        self.draw_ring_controls(ui);
+        ui.add_enabled_ui(!locked && !self.use_custom_kernel, |ui| {
+            self.draw_ring_controls(ui);
+        });
 
         if (
             self.radius,
@@ -166,8 +179,11 @@ impl LeniaTool {
             &self.ring_weights,
         ) != (prev.0, prev.1, prev.2, prev.3, &prev.4)
         {
+            self.push_mu_sigma_to_growth_bar();
             self.sync_engine_parameters();
-            let _ = self.reseed_if_extinct_entering_viable();
+            if !self.reseed_if_extinct_entering_viable() {
+                self.user_mutation_nonce = self.user_mutation_nonce.wrapping_add(1);
+            }
         }
     }
 
@@ -195,6 +211,7 @@ impl LeniaTool {
 
     fn draw_brush_and_grid_controls(&mut self, ui: &mut egui::Ui) {
         ui.label("Brush & Perturbation:");
+        let locked = self.is_kernel_locked_by_challenge();
         ui.horizontal_wrapped(|ui| {
             ui.selectable_value(&mut self.brush_mode, LeniaBrushMode::Deposit, "🖌 Deposit");
             ui.selectable_value(&mut self.brush_mode, LeniaBrushMode::Slice, "✂ Slice Tail");
@@ -210,27 +227,30 @@ impl LeniaTool {
                 .text("Brush r")
                 .id_salt("lenia_brush_r"),
         );
-        ui.add(
+        ui.add_enabled(
+            !locked,
             AnimatedSlider::new(&mut self.perturbation, 0.0..=0.35)
                 .text("Noise")
                 .id_salt("lenia_perturb"),
         );
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Grid:");
-            for dim in [64usize, 128, 256] {
-                if ui
-                    .selectable_label(self.grid_size == dim, format!("{dim}²"))
-                    .clicked()
-                    && self.grid_size != dim
-                {
-                    self.grid_size = dim;
+        ui.add_enabled_ui(!locked, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Grid:");
+                for dim in [64usize, 128, 256] {
+                    if ui
+                        .selectable_label(self.grid_size == dim, format!("{dim}²"))
+                        .clicked()
+                        && self.grid_size != dim
+                    {
+                        self.grid_size = dim;
+                        self.reseed_current_genome();
+                    }
+                }
+                if ui.button("🎲 Reseed").clicked() {
+                    self.rng_seed = self.rng_seed.wrapping_add(1);
                     self.reseed_current_genome();
                 }
-            }
-            if ui.button("🎲 Reseed").clicked() {
-                self.rng_seed = self.rng_seed.wrapping_add(1);
-                self.reseed_current_genome();
-            }
+            });
         });
     }
 
@@ -242,9 +262,15 @@ impl LeniaTool {
                     let canvas_side = cols[0].available_width().min(avail.y - 16.0);
                     cols[0].vertical_centered(|ui| {
                         self.draw_interactive_canvas(ui, canvas_side);
-                        ui.small("Drag to paint (Shift/Right-drag to slice); Tab + Arrows + Space to stamp.");
+                        ui.small(
+                            "Drag to paint (Shift/Right-drag to slice); Tab + Arrows + Space to stamp.",
+                        );
                     });
-                    self.draw_inspector_plots(&mut cols[1], avail.y);
+                    egui::ScrollArea::vertical()
+                        .id_salt("lenia_right_inspector_scroll")
+                        .show(&mut cols[1], |ui| {
+                            self.draw_inspector_plots(ui, avail.y);
+                        });
                 });
             } else {
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -256,20 +282,20 @@ impl LeniaTool {
         });
     }
 
-    fn draw_inspector_plots(&self, ui: &mut egui::Ui, total_height: f32) {
+    fn draw_inspector_plots(&mut self, ui: &mut egui::Ui, total_height: f32) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let dark = ui.visuals().dark_mode;
         let col_k = Self::contrast_line_color(palette.accent, dark);
         let col_g = Self::contrast_line_color(palette.success, dark);
         let col_v = Self::contrast_line_color(palette.warning, dark);
-        let plot_h = ((total_height - 52.0) * 0.48).clamp(110.0, 320.0);
+        let col_u = Self::contrast_line_color(palette.info, dark);
+        let plot_h = ((total_height - 52.0) * 0.46).clamp(120.0, 300.0);
 
-        let shells = KernelShells::new(self.radius, &self.ring_weights);
-        let growth = GrowthParams::new(self.mu, self.sigma);
-        let k_pts = shells.sample_radial_profile(96);
-        let g_pts = growth.sample_curve(96);
+        let k_pts = self.engine.sample_radial_kernel(96);
+        let g_pts = self.engine.sample_growth_curve(96);
+        let dist = compute_potential_distribution(self.engine.state(), self.engine.potential());
 
-        ui.label("Radial Kernel K(r) & Growth Curve G(u)");
+        ui.label("Radial Kernel K(r), Growth G(u) & Potential U = A * K");
         Plot::new(crate::framework::scoped_panel_id(
             ui,
             "lenia_kernel_growth_plot",
@@ -277,6 +303,12 @@ impl LeniaTool {
         .height(plot_h)
         .legend(Legend::default())
         .show(ui, |plot_ui| {
+            Self::draw_potential_overlay(plot_ui, &dist, col_u, col_v);
+            plot_ui.hline(
+                HLine::new("G(u) = 0", 0.0)
+                    .color(palette.muted_text)
+                    .width(1.0_f32),
+            );
             plot_ui.line(
                 Line::new("Kernel K(r)", PlotPoints::from(k_pts))
                     .color(col_k)
@@ -285,11 +317,23 @@ impl LeniaTool {
             plot_ui.line(
                 Line::new("Growth G(u)", PlotPoints::from(g_pts))
                     .color(col_g)
-                    .width(2.0_f32),
+                    .width(2.2_f32),
             );
+            self.callouts.render_on_plot(plot_ui);
         });
 
         ui.label("Live Soliton Telemetry");
+        self.draw_telemetry_plot(ui, plot_h, col_k, col_g, col_v);
+    }
+
+    fn draw_telemetry_plot(
+        &self,
+        ui: &mut egui::Ui,
+        plot_h: f32,
+        col_k: egui::Color32,
+        col_g: egui::Color32,
+        col_v: egui::Color32,
+    ) {
         let (mass_pts, area_pts, speed_pts) = self.build_telemetry_series();
         Plot::new(crate::framework::scoped_panel_id(
             ui,
@@ -314,6 +358,50 @@ impl LeniaTool {
                     .width(2.0_f32),
             );
         });
+    }
+
+    fn draw_potential_overlay(
+        plot_ui: &mut PlotUi<'_>,
+        dist: &super::sandbox::PotentialDistribution,
+        col_u: egui::Color32,
+        col_v: egui::Color32,
+    ) {
+        if dist.active_count > 0 && dist.u_max > dist.u_p05 {
+            let band_fill =
+                egui::Color32::from_rgba_unmultiplied(col_u.r(), col_u.g(), col_u.b(), 28);
+            let band_pts = vec![
+                [dist.u_p05, -1.0],
+                [dist.u_max, -1.0],
+                [dist.u_max, 1.0],
+                [dist.u_p05, 1.0],
+            ];
+            plot_ui.polygon(
+                Polygon::new("Active U Band [u_p05, max(U)]", PlotPoints::from(band_pts))
+                    .fill_color(band_fill),
+            );
+        }
+        let bar_w = 0.86 / (POTENTIAL_HIST_BINS as f64);
+        let bar_fill = egui::Color32::from_rgba_unmultiplied(col_u.r(), col_u.g(), col_u.b(), 110);
+        let bars: Vec<Bar> = dist
+            .bins
+            .iter()
+            .map(|&[u_c, h]| Bar::new(u_c, h).width(bar_w))
+            .collect();
+        plot_ui.bar_chart(BarChart::new("Potential U = A * K", bars).color(bar_fill));
+        if dist.active_count > 0 {
+            plot_ui.vline(
+                VLine::new("u_p05 (5%)", dist.u_p05)
+                    .color(col_u)
+                    .width(1.2_f32)
+                    .style(LineStyle::Dotted { spacing: 4.0 }),
+            );
+            plot_ui.vline(
+                VLine::new("max(U)", dist.u_max)
+                    .color(col_v)
+                    .width(1.8_f32)
+                    .style(LineStyle::Dashed { length: 6.0 }),
+            );
+        }
     }
 }
 
@@ -342,8 +430,7 @@ impl LeniaTool {
     }
 
     pub(crate) fn collect_inspector_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let shells = KernelShells::new(self.radius, &self.ring_weights);
-        let growth = GrowthParams::new(self.mu, self.sigma);
+        let dist = compute_potential_distribution(self.engine.state(), self.engine.potential());
         let mut mass = Vec::with_capacity(self.history.len().max(1));
         let mut area = Vec::with_capacity(self.history.len().max(1));
         let mut speed = Vec::with_capacity(self.history.len().max(1));
@@ -353,8 +440,25 @@ impl LeniaTool {
             speed.push([sample.time, sample.centroid_speed]);
         }
         vec![
-            ("Kernel K(r)".to_string(), shells.sample_radial_profile(96)),
-            ("Growth G(u)".to_string(), growth.sample_curve(96)),
+            (
+                "Kernel K(r)".to_string(),
+                self.engine.sample_radial_kernel(96),
+            ),
+            (
+                "Growth G(u)".to_string(),
+                self.engine.sample_growth_curve(96),
+            ),
+            (
+                "Potential Histogram U = A * K".to_string(),
+                dist.bins.to_vec(),
+            ),
+            (
+                "Potential Niche Bounds [u_p05, max(U)]".to_string(),
+                vec![
+                    [dist.u_p05, self.engine.evaluate_growth(dist.u_p05)],
+                    [dist.u_max, self.engine.evaluate_growth(dist.u_max)],
+                ],
+            ),
             ("Total Mass".to_string(), mass),
             ("Active Area".to_string(), area),
             ("Centroid Speed".to_string(), speed),

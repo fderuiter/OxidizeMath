@@ -4081,7 +4081,19 @@
       "signature": "impl LeniaEngine { pub fn clear (& mut self) }"
     },
     {
+      "signature": "impl LeniaEngine { pub fn compute_potential_in_place (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn custom_growth (& self) -> Option < & CompiledGrowthRule > }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn custom_kernel (& self) -> Option < & CompiledKernelRule > }"
+    },
+    {
       "signature": "impl LeniaEngine { pub fn dt (& self) -> f64 }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn evaluate_growth (& self , _ : f64) -> f64 }"
     },
     {
       "signature": "impl LeniaEngine { pub fn from_species (_ : usize , _ : usize , _ : LeniaSpecies , _ : f64 , _ : & mut OxidizeRng ,) -> Self }"
@@ -4096,6 +4108,9 @@
       "signature": "impl LeniaEngine { pub fn kernel_hat (& self) -> & [Complex < f64 >] }"
     },
     {
+      "signature": "impl LeniaEngine { pub fn max_potential (& self) -> f64 }"
+    },
+    {
       "signature": "impl LeniaEngine { pub fn new (_ : usize , _ : usize , _ : KernelShells , _ : GrowthParams , _ : f64 ,) -> Self }"
     },
     {
@@ -4108,7 +4123,19 @@
       "signature": "impl LeniaEngine { pub fn refresh_telemetry (& mut self) }"
     },
     {
+      "signature": "impl LeniaEngine { pub fn sample_growth_curve (& self , _ : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn sample_radial_kernel (& self , _ : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
       "signature": "impl LeniaEngine { pub fn seed_species (& mut self , _ : LeniaSpecies , _ : f64 , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn set_custom_growth (& mut self , _ : Option < CompiledGrowthRule >) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn set_custom_kernel (& mut self , _ : Option < CompiledKernelRule >) }"
     },
     {
       "signature": "impl LeniaEngine { pub fn set_dt (& mut self , _ : f64) }"
@@ -4144,10 +4171,99 @@
       "signature": "pub struct LeniaEngine"
     },
     {
-      "signature": "pub struct LeniaTelemetry"
+      "signature": "pub use super :: telemetry_math :: LeniaTelemetry"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/fft_probe.rs": [
+    {
+      "signature": "pub const PROBE_CELLS : usize"
+    },
+    {
+      "signature": "pub const PROBE_DOWNSAMPLE : f64"
+    },
+    {
+      "signature": "pub const PROBE_SIDE : usize"
+    },
+    {
+      "signature": "pub const PROBE_STEPS : usize"
+    },
+    {
+      "signature": "pub enum LeniaProbeOutcome"
+    },
+    {
+      "signature": "pub fn evaluate_lenia_probe_32 (_ : & LeniaProbeSpec < '_ >) -> LeniaProbeSummary"
+    },
+    {
+      "signature": "pub fn evaluate_lenia_probe_32_preseeded (_ : & LeniaProbeSpec < '_ > , _ : & [f64 ; PROBE_CELLS] , _ : f64 , _ : Option < & [Complex < f64 > ; PROBE_CELLS] > ,) -> LeniaProbeSummary"
+    },
+    {
+      "signature": "pub fn fft_2d_forward_32 (_ : & mut [Complex < f64 > ; PROBE_CELLS])"
+    },
+    {
+      "signature": "pub fn fft_2d_inverse_32 (_ : & mut [Complex < f64 > ; PROBE_CELLS])"
+    },
+    {
+      "signature": "pub fn precompute_probe_kernel_hat_32 (_ : & LeniaProbeSpec < '_ > , _ : & mut [Complex < f64 > ; PROBE_CELLS] ,)"
+    },
+    {
+      "signature": "pub fn seed_probe_species_32 (_ : LeniaSpecies , _ : f64 , _ : & mut [f64 ; PROBE_CELLS] ,) -> f64"
+    },
+    {
+      "signature": "pub struct LeniaProbeSpec < 'a >"
+    },
+    {
+      "signature": "pub struct LeniaProbeSummary"
     }
   ],
   "crates/domain_biology/src/biology/lenia/kernel.rs": [
+    {
+      "signature": "impl CompiledGrowthRule { pub fn compiled (& self) -> & CompiledExpr }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn evaluate (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn evaluate_with_params (& self , _ : f64 , _ : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn new (_ : CompiledExpr , _ : & [f64]) -> Self }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn params (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn sample_curve (& self , _ : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn set_params (& mut self , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn compiled (& self) -> & CompiledExpr }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn new (_ : CompiledExpr , _ : & [f64]) -> Self }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn params (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn sample_radial_profile (& self , _ : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn set_params (& mut self , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn shell_unnormalized (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn shell_unnormalized_with_params (& self , _ : f64 , _ : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn write_wrapped_spatial_kernel (& self , _ : usize , _ : usize , _ : f64 , _ : & mut [Complex < f64 >] ,) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn write_wrapped_spatial_kernel_with_params (& self , _ : usize , _ : usize , _ : f64 , _ : & [f64] , _ : & mut [Complex < f64 >] ,) -> f64 }"
+    },
     {
       "signature": "impl GrowthParams { pub fn evaluate (& self , _ : f64) -> f64 }"
     },
@@ -4179,10 +4295,22 @@
       "signature": "impl KernelShells { pub fn write_wrapped_spatial_kernel (& self , _ : usize , _ : usize , _ : & mut [Complex < f64 >] ,) -> f64 }"
     },
     {
+      "signature": "pub const MAX_LENIA_RULE_PARAMS : usize"
+    },
+    {
       "signature": "pub fn growth_gaussian (_ : f64 , _ : f64 , _ : f64) -> f64"
     },
     {
       "signature": "pub fn kernel_core_bump (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn write_normalized_torus_kernel < F > (_ : usize , _ : usize , _ : f64 , _ : & mut [Complex < f64 >] , _ : F ,) -> f64 where F : Fn (f64) -> f64 ,"
+    },
+    {
+      "signature": "pub struct CompiledGrowthRule"
+    },
+    {
+      "signature": "pub struct CompiledKernelRule"
     },
     {
       "signature": "pub struct GrowthParams"
@@ -4214,16 +4342,67 @@
       "signature": "pub use engine :: LeniaTelemetry"
     },
     {
+      "signature": "pub use fft_probe :: LeniaProbeOutcome"
+    },
+    {
+      "signature": "pub use fft_probe :: LeniaProbeSpec"
+    },
+    {
+      "signature": "pub use fft_probe :: LeniaProbeSummary"
+    },
+    {
+      "signature": "pub use fft_probe :: PROBE_CELLS"
+    },
+    {
+      "signature": "pub use fft_probe :: PROBE_DOWNSAMPLE"
+    },
+    {
+      "signature": "pub use fft_probe :: PROBE_SIDE"
+    },
+    {
+      "signature": "pub use fft_probe :: PROBE_STEPS"
+    },
+    {
+      "signature": "pub use fft_probe :: evaluate_lenia_probe_32"
+    },
+    {
+      "signature": "pub use fft_probe :: evaluate_lenia_probe_32_preseeded"
+    },
+    {
+      "signature": "pub use fft_probe :: fft_2d_forward_32"
+    },
+    {
+      "signature": "pub use fft_probe :: fft_2d_inverse_32"
+    },
+    {
+      "signature": "pub use fft_probe :: precompute_probe_kernel_hat_32"
+    },
+    {
+      "signature": "pub use fft_probe :: seed_probe_species_32"
+    },
+    {
+      "signature": "pub use kernel :: CompiledGrowthRule"
+    },
+    {
+      "signature": "pub use kernel :: CompiledKernelRule"
+    },
+    {
       "signature": "pub use kernel :: GrowthParams"
     },
     {
       "signature": "pub use kernel :: KernelShells"
     },
     {
+      "signature": "pub use kernel :: MAX_LENIA_RULE_PARAMS"
+    },
+    {
       "signature": "pub use kernel :: growth_gaussian"
     },
     {
       "signature": "pub use kernel :: kernel_core_bump"
+    },
+    {
+      "signature": "pub use kernel :: write_normalized_torus_kernel"
     },
     {
       "signature": "pub use presets :: LeniaGenome"
