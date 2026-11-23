@@ -15,11 +15,13 @@ use std::sync::Arc;
 pub mod flow;
 pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
 
-#[path = "attractors/serde_vec3.rs"]
-mod serde_vec3;
+#[path = "attractors/invariants.rs"]
+mod invariants;
 
 #[path = "attractors/runner.rs"]
 mod runner;
+#[path = "attractors/serde_vec3.rs"]
+mod serde_vec3;
 pub use runner::*;
 
 #[path = "attractors/ui.rs"]
@@ -48,6 +50,7 @@ pub struct AttractorPlotter {
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
     pub(super) latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
 }
 
 impl Default for AttractorPlotter {
@@ -94,6 +97,7 @@ impl Default for AttractorPlotter {
                 [0.0, 26.0, -1.67],
                 false,
             ),
+            invariants_cache: invariants::CachedAttractorInvariants::default(),
         }
     }
 }

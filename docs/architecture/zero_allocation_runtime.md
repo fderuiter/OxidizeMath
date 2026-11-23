@@ -97,7 +97,7 @@ To comply with zero-allocation constraints in core simulation code:
 1. **Pre-allocate Collections**: Always construct vectors with `Vec::with_capacity(n)`.
 2. **Reuse Scratch Buffers**: Pass mutable references to existing storage buffers rather than returning newly allocated instances.
 3. **Avoid Dynamic Formatting**: Avoid `format!` or string concatenations in inner loops.
-4. **Use Fixed Arrays**: Use stack-allocated arrays (`[T; N]`) or static matrices (`SMatrix`) when array dimensions are fixed at compile time. For example, [`SonificationFrame`](../../math_explorer_gui/src/audio/frame.rs) stores 8 polyphonic voice descriptors and 8-partial Fourier `HarmonicWeights` entirely on the stack (`Copy`), and [`OfflinePcmSynthesizer`](../../math_explorer_gui/src/audio/synth.rs) pre-allocates its stereo PCM buffer once during initialization so 1,000-step acoustic extraction and synthesis loops execute with zero dynamic allocations under `VerifiedEngine::run_verified` (see [ADR 0039](../adr/0039-dual-backend-web-audio-sonification.md)).
+4. **Use Fixed Arrays**: Use stack-allocated arrays (`[T; N]`) or static matrices (`SMatrix`) when array dimensions are fixed at compile time. For example, [`SonificationFrame`](../../math_explorer_gui/src/audio/frame.rs) stores 8 polyphonic voice descriptors and 8-partial Fourier `HarmonicWeights` entirely on the stack (`Copy`), and [`OfflinePcmSynthesizer`](../../math_explorer_gui/src/audio/synth.rs) pre-allocates its stereo PCM buffer once during initialization so 1,000-step acoustic extraction and synthesis loops execute with zero dynamic allocations under `VerifiedEngine::run_verified` (see [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)).
 
 ## Related References
 
