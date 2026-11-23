@@ -98,6 +98,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: "1.99.1"
           components: clippy, rustfmt
 
       - name: Cache Cargo dependencies
@@ -105,10 +106,6 @@ jobs:
         with:
           scope: preflight
           profile: dev
-          extra-files: |
-            apps/xtask/Cargo.toml
-            apps/xtask/README.md
-            apps/xtask/src/**
 
       - name: Build Unified Verification Tool
         run: cargo build -p unified_verification
@@ -189,6 +186,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: "1.99.1"
           components: clippy, rustfmt, llvm-tools-preview
           targets: ${{ matrix.target }}
 
@@ -345,16 +343,17 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
 
       - name: Cache Cargo dependencies
         uses: ./.github/actions/cargo-cache
         with:
           scope: compile-papers
           profile: dev
-          extra-files: |
+          manifest-files: |
+            Cargo.toml
             apps/xtask/Cargo.toml
-            apps/xtask/README.md
-            apps/xtask/src/**
 
       - name: Compile Papers
         run: cargo run -p xtask -- compile-papers
@@ -406,6 +405,8 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
 
       - name: Cache Cargo dependencies
         uses: ./.github/actions/cargo-cache
@@ -413,10 +414,10 @@ jobs:
           scope: features-shared
           profile: dev
           restore-only: ${{ matrix.feature != 'climate' }}
-          extra-files: |
-            apps/xtask/Cargo.toml
-            apps/xtask/README.md
-            apps/xtask/src/**
+
+      - name: Seed Shared Feature Cache
+        if: matrix.feature == 'climate'
+        run: cargo test -p math_explorer --no-run --all-features
 
       - name: Run Tests
         run: |
@@ -454,6 +455,8 @@ jobs:
       - name: Set up Rust
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
 
       - name: Cache Cargo dependencies
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
@@ -461,7 +464,6 @@ jobs:
         with:
           scope: package-${{ matrix.target }}
           profile: release
-          extra-files: math_explorer_gui/Cargo.toml
 
       # Pinned cargo-packager version for reproducible packaging builds without source compilation fallback
       - name: Install cargo-packager
