@@ -177,9 +177,7 @@ impl GaussianSplattingTool {
             let [tx, ty, vz] = self.camera.rotate_to_camera_space(&world_arr);
             let tz = (dist - vz).max(0.25);
             let (jacobian, proj_scale) = match self.camera.projection {
-                ProjectionMode::Parallel => {
-                    (Matrix2x3::new(zoom, 0.0, 0.0, 0.0, zoom, 0.0), zoom)
-                }
+                ProjectionMode::Parallel => (Matrix2x3::new(zoom, 0.0, 0.0, 0.0, zoom, 0.0), zoom),
                 ProjectionMode::Perspective => (
                     projection::compute_jacobian(&Vector3::new(tx, ty, tz), focal, focal),
                     focal / tz,
@@ -244,7 +242,7 @@ impl InteractiveTool for GaussianSplattingTool {
         "Gaussian Splatting"
     }
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_splat_ply()
     }
     fn step_simulation(&mut self) {
         self.step_export_simulation();
@@ -257,6 +255,9 @@ impl InteractiveTool for GaussianSplattingTool {
     }
     fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
         self.build_export_tables()
+    }
+    fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
+        Some(self.serialize_splats_ply_binary())
     }
     fn domain(&self) -> &'static str {
         "ai"

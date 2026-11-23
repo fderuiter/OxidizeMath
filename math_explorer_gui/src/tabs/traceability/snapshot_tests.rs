@@ -4,7 +4,10 @@ use super::*;
 
 #[test]
 fn test_web_manifest_relative_urls_and_tex_fallback_links() {
-    assert_eq!(web_snapshot::MANIFEST_REL_URL, "./traceability_manifest.json");
+    assert_eq!(
+        web_snapshot::MANIFEST_REL_URL,
+        "./traceability_manifest.json"
+    );
     assert!(web_snapshot::is_relative_same_origin_url(
         web_snapshot::MANIFEST_REL_URL
     ));
@@ -58,10 +61,9 @@ fn test_invalid_manifest_payload_errors_and_bare_report_deserializes() {
         scanned_files: 42,
         ..Default::default()
     };
-    report.paper_coverage.insert(
-        "essay.tex".to_string(),
-        vec!["math_commons".to_string()],
-    );
+    report
+        .paper_coverage
+        .insert("essay.tex".to_string(), vec!["math_commons".to_string()]);
     let raw = serde_json::to_string(&report).expect("serialize TraceabilityReport");
     let (parsed, cert) = web_snapshot::parse_manifest_json(&raw).expect("parse bare report");
     assert_eq!(parsed, report);
@@ -122,7 +124,10 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
         .keys()
         .filter(|k| k.ends_with(".tex"))
         .count();
-    assert_eq!(tex_paper_count, 28, "Manifest must cover all 28 .tex papers");
+    assert_eq!(
+        tex_paper_count, 28,
+        "Manifest must cover all 28 .tex papers"
+    );
     assert!(manifest_report.orphaned_papers.is_empty());
     assert!(manifest_report.unlinked_code.is_empty());
     assert!(manifest_report.invalid_links.is_empty());

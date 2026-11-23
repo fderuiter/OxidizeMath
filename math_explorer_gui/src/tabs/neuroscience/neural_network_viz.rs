@@ -15,6 +15,8 @@ pub struct NeuralNetworkVizTool {
     external_input: Vec<f64>,
     is_running: bool,
     dt: f64,
+    prev_ring_v: [f64; 5],
+    sonification: crate::audio::SonificationFrame,
 }
 
 impl Default for NeuralNetworkVizTool {
@@ -52,6 +54,8 @@ impl Default for NeuralNetworkVizTool {
             external_input,
             is_running: false,
             dt: 0.05,
+            prev_ring_v: [-65.0; 5],
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 }
@@ -78,10 +82,24 @@ impl NeuralNetworkVizTool {
             }
         }
 
+        let mut before = [-65.0; 5];
+        for (idx, slot) in before.iter_mut().enumerate() {
+            if let Some(neuron) = self.neurons.get(idx) {
+                *slot = neuron.v();
+            }
+        }
         for (i, input) in next_inputs.iter().enumerate().take(num_neurons) {
             let total_i_ext = self.external_input[i] + input;
             self.neurons[i].update(self.dt, total_i_ext);
         }
+        let mut after = [-65.0; 5];
+        for (idx, slot) in after.iter_mut().enumerate() {
+            if let Some(neuron) = self.neurons.get(idx) {
+                *slot = neuron.v();
+            }
+        }
+        self.prev_ring_v = before;
+        self.sonification = crate::audio::mappings::neural_ring_frame(&after, &before, 0.0);
     }
 
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
@@ -104,6 +122,14 @@ impl NeuralNetworkVizTool {
                     PlaybackAction::Reset => self.reset(),
                 }
             }
+
+            ui.separator();
+            crate::audio::render_sonification_panel(
+                ui,
+                "neural_network_viz",
+                &self.sonification,
+                !self.is_running,
+            );
 
             ui.separator();
             ui.heading("External Current (uA/cm^2)");

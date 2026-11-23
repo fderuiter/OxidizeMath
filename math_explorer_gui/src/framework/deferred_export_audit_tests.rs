@@ -1,11 +1,31 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+#[cfg(all(feature = "ai", feature = "physics", feature = "pure_math"))]
+use crate::accessibility::{all_announcements, clear_test_announcements, with_live_region};
 use crate::starter_gallery::StarterPresetMetadata;
+#[cfg(all(feature = "ai", feature = "physics", feature = "pure_math"))]
+use crate::tabs::geometry_topology::export_utils::{
+    count_open_and_nonmanifold_edges, signed_volume,
+};
 use eframe::egui;
 use std::collections::HashSet;
 
-fn run_modal_export_after_clear(framework: &mut SimulationFramework, format: ExportFormat) {
+#[derive(Default)]
+struct AuditCounts {
+    plot_tools: usize,
+    dataset_only: usize,
+    solid_3d: usize,
+    splat_3d: usize,
+    shader_tools: usize,
+    non_shader_tools: usize,
+}
+
+fn run_deferred_export_frame(
+    framework: &mut SimulationFramework,
+    format: ExportFormat,
+    open_modal: bool,
+) {
     let ctx = egui::Context::default();
     let raw_input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -16,7 +36,7 @@ fn run_modal_export_after_clear(framework: &mut SimulationFramework, format: Exp
     };
     let _ = ctx.run(raw_input, |ctx| {
         egui_plot::clear_last_plot_datasets();
-        framework.show_export_modal = true;
+        framework.show_export_modal = open_modal;
         framework.queue_export(format);
         framework.show(ctx, "audit_framework");
     });
@@ -61,7 +81,7 @@ fn hydrate_tool_for_audit(meta: &crate::framework::ToolMetadata, tool: &mut dyn 
 }
 
 fn verify_dataset_exports(meta_name: &str, framework: &mut SimulationFramework) {
-    run_modal_export_after_clear(framework, ExportFormat::Csv);
+    run_deferred_export_frame(framework, ExportFormat::Csv, true);
     assert_eq!(
         framework.export_status_severity,
         ExportStatusSeverity::Success,
@@ -77,7 +97,7 @@ fn verify_dataset_exports(meta_name: &str, framework: &mut SimulationFramework) 
 
     verify_clipboard_csv_export(meta_name, framework);
 
-    run_modal_export_after_clear(framework, ExportFormat::Json);
+    run_deferred_export_frame(framework, ExportFormat::Json, true);
     assert_eq!(
         framework.export_status_severity,
         ExportStatusSeverity::Success,
@@ -128,7 +148,7 @@ fn verify_clipboard_csv_export(meta_name: &str, framework: &mut SimulationFramew
 }
 
 fn verify_figure_exports(meta_name: &str, framework: &mut SimulationFramework) {
-    run_modal_export_after_clear(framework, ExportFormat::Png);
+    run_deferred_export_frame(framework, ExportFormat::Png, true);
     assert_eq!(
         framework.export_status_severity,
         ExportStatusSeverity::Success,
@@ -148,7 +168,7 @@ fn verify_figure_exports(meta_name: &str, framework: &mut SimulationFramework) {
         "Deferred modal PNG for {meta_name} was blank (single solid color)"
     );
 
-    run_modal_export_after_clear(framework, ExportFormat::Svg);
+    run_deferred_export_frame(framework, ExportFormat::Svg, true);
     assert_eq!(
         framework.export_status_severity,
         ExportStatusSeverity::Success,
@@ -199,21 +219,20 @@ fn verify_shader_capability(
     true
 }
 
-fn audit_single_tool(
-    meta: &crate::framework::ToolMetadata,
-    plot_tool_count: &mut usize,
-    dataset_only_count: &mut usize,
-    shader_tool_count: &mut usize,
-    non_shader_tool_count: &mut usize,
-) {
+fn audit_single_tool(meta: &crate::framework::ToolMetadata, counts: &mut AuditCounts) {
     let mut tool = (meta.build)();
     hydrate_tool_for_audit(meta, tool.as_mut());
 
     let caps = tool.export_capabilities();
+    if caps.stl && caps.ply && caps.obj {
+        counts.solid_3d += 1;
+    } else if caps.ply {
+        counts.splat_3d += 1;
+    }
     if verify_shader_capability(meta.id, tool.as_ref(), caps) {
-        *shader_tool_count += 1;
+        counts.shader_tools += 1;
     } else {
-        *non_shader_tool_count += 1;
+        counts.non_shader_tools += 1;
     }
 
     assert!(caps.dataset, "{} dataset export disabled", meta.id);
@@ -228,13 +247,13 @@ fn audit_single_tool(
     verify_dataset_exports(meta.id, &mut framework);
 
     if caps.figure {
-        *plot_tool_count += 1;
+        counts.plot_tools += 1;
         assert!(caps.figure_disabled_reason.is_empty(), "{}", meta.id);
         verify_figure_exports(meta.id, &mut framework);
     } else {
-        *dataset_only_count += 1;
+        counts.dataset_only += 1;
         assert!(!caps.figure_disabled_reason.is_empty(), "{}", meta.id);
-        run_modal_export_after_clear(&mut framework, ExportFormat::Png);
+        run_deferred_export_frame(&mut framework, ExportFormat::Png, true);
         assert_eq!(
             framework.export_status_severity,
             ExportStatusSeverity::Warning,
@@ -246,24 +265,15 @@ fn audit_single_tool(
 
 #[test]
 fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
-    let mut plot_tool_count = 0usize;
-    let mut dataset_only_count = 0usize;
-    let mut shader_tool_count = 0usize;
-    let mut non_shader_tool_count = 0usize;
+    let mut counts = AuditCounts::default();
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
-        audit_single_tool(
-            meta,
-            &mut plot_tool_count,
-            &mut dataset_only_count,
-            &mut shader_tool_count,
-            &mut non_shader_tool_count,
-        );
+        audit_single_tool(meta, &mut counts);
     }
 
     assert_eq!(
-        plot_tool_count + dataset_only_count,
-        shader_tool_count + non_shader_tool_count
+        counts.plot_tools + counts.dataset_only,
+        counts.shader_tools + counts.non_shader_tools
     );
 
     #[cfg(all(
@@ -276,9 +286,126 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         feature = "pure_math"
     ))]
     {
-        assert_eq!(plot_tool_count, 53, "Expected 53 dataset+figure tools");
-        assert_eq!(dataset_only_count, 7, "Expected 7 dataset-only tools");
-        assert_eq!(shader_tool_count, 3, "Expected 3 analytical GLSL tools");
-        assert_eq!(non_shader_tool_count, 57, "Expected 57 non-shader tools");
+        assert_eq!(counts.plot_tools, 57, "Expected 57 dataset+figure tools");
+        assert_eq!(counts.dataset_only, 7, "Expected 7 dataset-only tools");
+        assert_eq!(counts.solid_3d, 5, "Expected 5 solid 3D geometric tools");
+        assert_eq!(counts.splat_3d, 1, "Expected 1 3DGS splat PLY tool");
+        assert_eq!(counts.shader_tools, 3, "Expected 3 analytical GLSL tools");
+        assert_eq!(counts.non_shader_tools, 61, "Expected 61 non-shader tools");
     }
+}
+
+#[cfg(all(feature = "ai", feature = "physics", feature = "pure_math"))]
+fn assert_closed_outward_mesh(meta_id: &str, mesh: &oxidize_core::mesh::Mesh) -> usize {
+    assert!(
+        mesh.normals.iter().all(|n| n.is_finite()),
+        "{meta_id} emitted non-finite vertex normal"
+    );
+    assert_eq!(
+        count_open_and_nonmanifold_edges(mesh),
+        (0, 0),
+        "{meta_id} mesh is not a closed 2-manifold"
+    );
+    assert!(
+        signed_volume(mesh) > 0.0,
+        "{meta_id} mesh winding is not outward"
+    );
+    84 + 50 * (mesh.indices.len() / 3)
+}
+
+#[cfg(all(feature = "ai", feature = "physics", feature = "pure_math"))]
+fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
+    let mesh = tool
+        .export_mesh_3d()
+        .unwrap_or_else(|| panic!("{meta_id} must implement export_mesh_3d"))
+        .unwrap_or_else(|e| panic!("{meta_id} mesh generation failed: {e}"));
+    let expected_stl_len = assert_closed_outward_mesh(meta_id, &mesh);
+
+    let mut fw = SimulationFramework::new("__audit_3d__");
+    fw.active_tool = Some(tool);
+
+    clear_test_announcements();
+    let slot_before = with_live_region(|r| r.active_slot);
+    run_deferred_export_frame(&mut fw, ExportFormat::Stl, false);
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    assert_ne!(with_live_region(|r| r.active_slot), slot_before);
+    assert!(all_announcements()
+        .iter()
+        .any(|(msg, prio)| msg.contains("STL 3D Mesh saved successfully") && prio == "polite"));
+    let stl_bytes = fw
+        .export_queue
+        .last_exported_bytes
+        .as_deref()
+        .expect("STL bytes recorded");
+    assert_eq!(stl_bytes.len(), expected_stl_len);
+
+    clear_test_announcements();
+    run_deferred_export_frame(&mut fw, ExportFormat::Ply, false);
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    assert!(all_announcements()
+        .iter()
+        .any(|(msg, prio)| msg.contains("PLY 3D Model saved successfully") && prio == "polite"));
+    let ply_bytes = fw
+        .export_queue
+        .last_exported_bytes
+        .as_deref()
+        .expect("PLY bytes recorded");
+    assert!(ply_bytes.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
+
+    run_deferred_export_frame(&mut fw, ExportFormat::Obj, false);
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    let obj_text = fw
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .expect("OBJ text recorded");
+    assert!(obj_text.contains("\nf ") && !obj_text.contains("NaN"));
+}
+
+#[cfg(all(feature = "ai", feature = "physics", feature = "pure_math"))]
+#[test]
+fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
+    let solid_ids = [
+        "SurfaceViewer",
+        "CurvatureHeatmap",
+        "AttractorPlotter",
+        "CrystalViewer",
+        "SpinVisualizer",
+    ];
+    for id in solid_ids {
+        let meta = inventory::iter::<crate::framework::ToolMetadata>
+            .into_iter()
+            .find(|m| m.id == id)
+            .unwrap_or_else(|| panic!("Missing registered 3D tool {id}"));
+        verify_solid_3d_tool_exports(id, (meta.build)());
+    }
+
+    let gs_meta = inventory::iter::<crate::framework::ToolMetadata>
+        .into_iter()
+        .find(|m| m.id == "Gaussian Splatting")
+        .expect("Gaussian Splatting registered");
+    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
+    gs_fw.active_tool = Some((gs_meta.build)());
+
+    clear_test_announcements();
+    run_deferred_export_frame(&mut gs_fw, ExportFormat::Stl, false);
+    assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
+    assert!(all_announcements()
+        .iter()
+        .any(|(_, prio)| prio == "assertive"));
+
+    clear_test_announcements();
+    let slot_before = with_live_region(|r| r.active_slot);
+    run_deferred_export_frame(&mut gs_fw, ExportFormat::Ply, false);
+    assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Success);
+    assert_ne!(with_live_region(|r| r.active_slot), slot_before);
+    assert!(all_announcements()
+        .iter()
+        .any(|(msg, prio)| msg.contains("PLY 3D Model saved successfully") && prio == "polite"));
+    let splat_ply = gs_fw
+        .export_queue
+        .last_exported_bytes
+        .as_deref()
+        .expect("3DGS PLY bytes recorded");
+    assert!(splat_ply.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
 }

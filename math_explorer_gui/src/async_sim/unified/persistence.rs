@@ -2,6 +2,7 @@
 
 use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
 use crate::framework::{InteractiveTool, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
+use eframe::egui::ColorImage;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -66,6 +67,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     pub(super) fn serialize_tool_state(&self) -> Option<String> {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(ext) = &self.ui_extension {
+            if let Some(custom) = ext.save_extra_state(&params) {
+                return Some(custom);
+            }
+        }
         let formula_ext =
             M::formula_spec()
                 .zip(self.formula_bar.as_ref())
@@ -111,8 +117,27 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         serde_json::to_string(&sorted).ok()
     }
 
+    fn try_load_extension_state(&mut self, state: &str) -> Option<Result<(), String>> {
+        let ext = self.ui_extension.as_mut()?;
+        let mut next_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let res = ext.try_load_extra_state(state, &mut next_params)?;
+        Some(res.map(|cmds| {
+            *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
+            self.texture = None;
+            self.reset_simulation(None);
+            self.dispatch_extension_commands(cmds, None);
+        }))
+    }
+
     pub(super) fn deserialize_tool_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
+        if let Some(res) = self.try_load_extension_state(state) {
+            return res;
+        }
         if let Ok(ext) = serde_json::from_str::<UnifiedExtendedState>(state) {
             return self.apply_extended_state(ext);
         }
@@ -216,5 +241,62 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
         Ok(())
+    }
+
+    pub(super) fn build_unified_export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        if M::is_raster_model() {
+            let params_guard = self.params.read().ok();
+            let empty_params = HashMap::new();
+            let params = params_guard.as_deref().unwrap_or(&empty_params);
+            if let Some(snap) = self
+                .stepped_snapshot
+                .as_ref()
+                .or_else(|| self.controller.latest_snapshot())
+            {
+                let tables = M::export_tables_from_snapshot(snap, params);
+                if !tables.is_empty() {
+                    return tables;
+                }
+            }
+            let fresh = M::new(params).get_snapshot();
+            return M::export_tables_from_snapshot(&fresh, params);
+        }
+        crate::framework::ExportTable::from_legacy_datasets(
+            &self.export_datasets_3d(),
+            &self.export_datasets(),
+        )
+    }
+
+    pub(super) fn build_unified_raster_image(&self) -> Option<ColorImage> {
+        let snapshot = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot())?;
+        let guard = snapshot.pixels.try_read().ok()?;
+        if guard.is_empty() || snapshot.width == 0 || snapshot.height == 0 {
+            return None;
+        }
+        Some(ColorImage::new(
+            [snapshot.width, snapshot.height],
+            guard.clone(),
+        ))
+    }
+
+    pub(super) fn step_unified_simulation(&mut self) {
+        if let Ok(params) = self.params.read() {
+            let mut model = M::new(&params);
+            if self.custom_formula_enabled {
+                let payload = self
+                    .shared_formula
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                model.apply_compiled_formula(payload.as_ref(), &params);
+            }
+            for _ in 0..self.steps_per_frame.max(1) {
+                model.step(&params);
+            }
+            self.stepped_snapshot = Some(model.get_snapshot());
+        }
     }
 }
