@@ -69,6 +69,33 @@ pub(crate) fn format_kelly_rows_markdown(rows: &[KellyStrategyRow]) -> String {
 }
 
 impl BetSizeCalculatorTool {
+    pub(super) fn build_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        if self.growth_curve_points.is_empty() {
+            return Vec::new();
+        }
+        let to_vec = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect();
+        let mut out = vec![
+            ("Break-Even (g = 0)".into(), to_vec(&self.zero_line_points)),
+            (
+                "Expected Growth Rate g(f)".into(),
+                to_vec(&self.growth_curve_points),
+            ),
+        ];
+        if !self.quarter_marker.is_empty() {
+            out.push((
+                "Quarter Kelly (0.25 f*)".into(),
+                to_vec(&self.quarter_marker),
+            ));
+        }
+        if !self.half_marker.is_empty() {
+            out.push(("Half Kelly (0.50 f*)".into(), to_vec(&self.half_marker)));
+        }
+        if !self.full_marker.is_empty() {
+            out.push(("Full Kelly (1.00 f*)".into(), to_vec(&self.full_marker)));
+        }
+        out
+    }
+
     pub fn export_sizing_csv(&self) -> String {
         format_kelly_rows_csv(&self.strategy_rows)
     }
@@ -134,24 +161,6 @@ impl BetSizeCalculatorTool {
                 |path, _| format!("Saved Kelly sizing CSV to {}", path.display()),
             );
         }
-    }
-
-    pub(super) fn build_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut sets = vec![(
-            "Logarithmic Growth Rate g(f)".to_string(),
-            to_pairs(&self.growth_curve_points),
-        )];
-        let markers: Vec<[f64; 2]> = self
-            .quarter_marker
-            .iter()
-            .chain(self.half_marker.iter())
-            .chain(self.full_marker.iter())
-            .map(|p| [p.x, p.y])
-            .collect();
-        if !markers.is_empty() {
-            sets.push(("Kelly Fraction Tiers".to_string(), markers));
-        }
-        sets
     }
 
     pub(super) fn build_export_primitives(&self) -> Vec<ExportPrimitive> {

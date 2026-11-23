@@ -257,3 +257,86 @@ fn test_workspace_version_inheritance_packager_override_and_readme_sync() {
     write_synthetic_readme("0.5.0--rc.1", "0.5.0-rc.1");
     assert!(check_profiles(&members, false));
 }
+
+#[test]
+fn test_member_dev_and_test_shadowing_rejected_and_autofixed() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let temp_dir = TempTestDir::new("unified_verification_profile_dev_test");
+    let _cwd_guard = CurrentDirGuard(env::current_dir().unwrap());
+    env::set_current_dir(&*temp_dir).unwrap();
+
+    fs::write(
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"crates/m_dev\", \"crates/m_test\"]\n[profile.release]\noverflow-checks = true\n",
+    )
+    .unwrap();
+    fs::create_dir_all("crates/m_dev").unwrap();
+    fs::create_dir_all("crates/m_test").unwrap();
+
+    fs::write(
+        "crates/m_dev/Cargo.toml",
+        "[package]\nname = \"m_dev\"\nversion = \"0.1.0\"\n\n[lints]\nworkspace = true\n\n[profile.dev]\nopt-level = 1\n\n[profile.dev.package.\"*\"]\nopt-level = 3\n",
+    )
+    .unwrap();
+    fs::write(
+        "crates/m_test/Cargo.toml",
+        "[package]\nname = \"m_test\"\nversion = \"0.1.0\"\n\n[lints]\nworkspace = true\n\n[profile.test]\nopt-level = 1\n",
+    )
+    .unwrap();
+
+    assert!(
+        !check_profiles(&["crates/m_dev"], false),
+        "check_profiles must reject member [profile.dev] override"
+    );
+    assert!(
+        !check_profiles(&["crates/m_test"], false),
+        "check_profiles must reject member [profile.test] override"
+    );
+
+    let mut cache = ManifestCache::new();
+    assert!(check_profiles_with_cache(
+        &["crates/m_dev", "crates/m_test"],
+        true,
+        &mut cache
+    ));
+    assert!(check_profiles_with_cache(
+        &["crates/m_dev", "crates/m_test"],
+        false,
+        &mut cache
+    ));
+}
+
+#[test]
+fn test_workspace_root_dev_and_test_profiles_configured() {
+    let root_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml");
+    let raw = fs::read_to_string(&root_path).expect("read workspace Cargo.toml");
+    let parsed: Value = toml::from_str(&raw).expect("parse workspace Cargo.toml");
+    let profile = parsed.get("profile").expect("root [profile] table");
+
+    for name in ["dev", "test"] {
+        let section = profile
+            .get(name)
+            .unwrap_or_else(|| panic!("[profile.{name}]"));
+        assert_eq!(
+            section.get("opt-level").and_then(Value::as_integer),
+            Some(0)
+        );
+        assert_eq!(
+            section.get("debug").and_then(Value::as_str),
+            Some("line-tables-only")
+        );
+        let star = section
+            .get("package")
+            .and_then(|p| p.get("*"))
+            .unwrap_or_else(|| panic!("[profile.{name}.package.\"*\"]"));
+        assert_eq!(star.get("opt-level").and_then(Value::as_integer), Some(2));
+        assert_eq!(star.get("debug").and_then(Value::as_bool), Some(false));
+    }
+
+    let release = profile.get("release").expect("[profile.release]");
+    assert_eq!(
+        release.get("overflow-checks").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(release.get("lto").and_then(Value::as_bool), Some(true));
+}
