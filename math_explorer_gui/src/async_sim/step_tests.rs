@@ -1,3 +1,4 @@
+#![cfg_attr(any(), verified(opt_out = "tests"))]
 use super::*;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::AtomicUsize;
@@ -193,4 +194,104 @@ fn test_step_divergence_transitions_to_faulted_and_emits_diagnostic() {
     assert!(crate::accessibility::all_announcements()
         .iter()
         .any(|(msg, prio)| msg.contains("faulted") && prio == "polite"));
+}
+
+static COUNTING_INIT_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+struct CountingModel {
+    step: usize,
+}
+
+impl crate::framework::recovery::FiniteStateGuard for CountingModel {}
+
+impl scientific_metadata::theory::TheoryDescribable for CountingModel {
+    fn theory_description(&self) -> String {
+        "Counting test model".to_string()
+    }
+    fn phonetic_description(&self) -> String {
+        "Counting test model".to_string()
+    }
+    fn theory_citation(&self) -> String {
+        "Test (2026)".to_string()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+impl crate::async_sim::unified::UnifiedModel for CountingModel {
+    fn new(_params: &std::collections::HashMap<String, f64>) -> Self {
+        COUNTING_INIT_CALLS.fetch_add(1, Ordering::SeqCst);
+        Self { step: 0 }
+    }
+    fn step(&mut self, _params: &std::collections::HashMap<String, f64>) {
+        self.step += 1;
+    }
+    fn get_snapshot(&self) -> StateSnapshot {
+        StateSnapshot {
+            width: 0,
+            height: 0,
+            pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
+            custom_data: vec![0.0, 0.0, self.step as f64, (self.step * 2) as f64],
+            structured_data: None,
+            sonification: crate::audio::SonificationFrame::silent(),
+        }
+    }
+    fn parameters(
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        std::collections::HashMap::from([(
+            "rate".to_string(),
+            scientific_metadata::theory::ParameterConstraint {
+                min: 0.1,
+                max: 2.0,
+                step: 0.1,
+                default: None,
+            },
+        )])
+    }
+    fn name() -> &'static str {
+        "Counting Unified Model"
+    }
+}
+
+#[test]
+fn test_unified_sim_tool_persists_step_model_across_gif_frames_and_clears_on_reset() {
+    use crate::async_sim::unified::UnifiedSimTool;
+    use crate::framework::InteractiveTool;
+
+    COUNTING_INIT_CALLS.store(0, Ordering::SeqCst);
+    let mut tool = UnifiedSimTool::<CountingModel>::new();
+    let baseline_inits = COUNTING_INIT_CALLS.load(Ordering::SeqCst);
+
+    let frames = tool.sample_animation_frames(4);
+    assert_eq!(frames.len(), 4);
+    // Only one lazy step_model construction across all 4 GIF frames
+    assert_eq!(
+        COUNTING_INIT_CALLS.load(Ordering::SeqCst),
+        baseline_inits + 1
+    );
+    assert_eq!(frames[0][0].1.last().copied(), Some([5.0, 10.0]));
+    assert_eq!(frames[3][0].1.last().copied(), Some([20.0, 40.0]));
+    assert_eq!(tool.export_datasets(), frames[3]);
+
+    // Reset via try_load_state clears step_model so subsequent sampling starts fresh
+    tool.try_load_state(r#"{"rate": 1.0}"#)
+        .expect("restore valid state");
+    assert!(tool.step_model.is_none());
+    let post_reset = tool.sample_animation_frames(2);
+    assert_eq!(post_reset[0][0].1.last().copied(), Some([5.0, 10.0]));
+    assert_eq!(post_reset[1][0].1.last().copied(), Some([10.0, 20.0]));
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn test_unified_snapshot_datasets_extracts_structured_wave_data() {
+    use crate::async_sim::unified::UnifiedModel;
+    use crate::tabs::quantum::wave_sim::{WaveRunner, WaveSimConfig};
+
+    let runner = WaveRunner::new(Arc::new(std::sync::RwLock::new(WaveSimConfig::default())));
+    let snap = runner.get_snapshot();
+    let ds = CountingModel::snapshot_datasets(&snap);
+    assert_eq!(ds.len(), 3);
+    assert!(ds[0].0.starts_with("Probability |ψ(x, t="));
 }

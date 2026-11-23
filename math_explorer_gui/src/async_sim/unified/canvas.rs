@@ -35,6 +35,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 })
                 .is_ok()
         {
+            self.clear_stepped_state();
             ctx.request_repaint();
         }
     }

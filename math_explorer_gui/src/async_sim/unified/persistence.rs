@@ -51,6 +51,7 @@ pub(super) fn snapshot_formula_payload(
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(crate) fn publish_formula_update(&mut self) {
+        self.clear_stepped_state();
         if !self.custom_formula_enabled {
             *self
                 .shared_formula
