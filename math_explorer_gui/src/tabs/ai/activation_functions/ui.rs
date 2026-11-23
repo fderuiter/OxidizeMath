@@ -107,11 +107,11 @@ impl ActivationFunctionsTool {
                 );
             }
             ActivationFunction::Custom => {
-                render_formula_with_export(
-                    ui,
-                    r"f'(x) \approx \frac{f(x + h) - f(x - h)}{2h}",
-                    Some("f'(x) = (f(x + h) - f(x - h)) / (2 * h)"),
-                );
+                if let Some((latex, plain)) = self.custom_symbolic_derivative() {
+                    render_formula_with_export(ui, &latex, Some(&plain));
+                } else {
+                    render_formula_with_export(ui, r"f'(x) = \frac{df}{dx}", Some("f'(x) = df/dx"));
+                }
             }
         }
     }

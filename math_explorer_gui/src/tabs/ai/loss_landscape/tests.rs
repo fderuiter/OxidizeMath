@@ -455,3 +455,36 @@ fn test_loss_landscape_formula_targets_zero_alloc_and_roundtrip() {
     assert!((restored.huber_delta - 2.0).abs() < 1e-12);
     assert!(restored.evaluate_loss_at(3.0, -2.0).expect("restored") < 1e-12);
 }
+
+#[test]
+fn test_custom_predictor_reverse_mode_gradient_exactness_and_zero_alloc() {
+    use super::evaluator::EmpiricalConfig;
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let ast = math_commons::ast::parse("a * sin(w * x) + b").expect("parse");
+    let compiled =
+        math_commons::ast::CompiledExpr::compile_with_vars(&ast, &["x", "w", "b", "a"]).unwrap();
+    let targets = [[0.5, 1.2], [1.0, 2.1], [1.5, 0.7]];
+    let params = [1.4];
+    let emp = EmpiricalConfig {
+        targets: &targets,
+        metric: LossMetric::Mse,
+        huber_delta: 1.0,
+        is_preset_linear_target: false,
+        custom_predictor: Some((&compiled, &params)),
+    };
+    let (w, b) = (0.85, 0.35);
+    let (grad, metrics) =
+        verified_engine::engine::VerifiedEngine::run_verified(|| emp.gradient_base(w, b));
+    assert_eq!(metrics.memory_loads, 0);
+
+    let (mut exp_dw, mut exp_db) = (0.0, 0.0);
+    for &[x, y] in &targets {
+        let r = 1.4 * (w * x).sin() + b - y;
+        exp_dw += 2.0 * r * (1.4 * x * (w * x).cos());
+        exp_db += 2.0 * r;
+    }
+    assert!((grad.x - exp_dw / 3.0).abs() < 1e-13);
+    assert!((grad.y - exp_db / 3.0).abs() < 1e-13);
+}

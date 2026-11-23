@@ -4,6 +4,7 @@ use super::{
     BifurcationDiagram, CUSTOM_BURN_IN, CUSTOM_ESCAPE_GUARD, CUSTOM_ORBIT_SAMPLES, DEFAULT_X0,
     LYAPUNOV_ITERATIONS,
 };
+use crate::framework::MAX_SYNTHESIZED_PARAMS;
 use egui_plot::PlotPoint;
 use math_commons::ast::CompiledExpr;
 use math_explorer::physics::chaos::logistic::{self, LogisticMap};
@@ -19,7 +20,6 @@ pub const CUSTOM_AST_PLOT_CLAMP: f64 = 10.0;
 const ORBIT_SERIES_STEPS: usize = 96;
 const COBWEB_TRANSIENT_STEPS: usize = 24;
 const COBWEB_CYCLE_STEPS: usize = 24;
-const CUSTOM_FD_EPS: f64 = 1e-6;
 
 /// Clamps raw Lyapunov exponents (such as superstable `-inf` when `f'(x) = 0`) to finite plot bounds.
 #[must_use]
@@ -69,36 +69,47 @@ fn fill_cobweb_staircase<F>(
     }
 }
 
-fn custom_lyapunov_at(
+/// Unified zero-allocation Lyapunov exponent evaluator $\lambda(r, x_0)$ for compiled 1D maps
+/// $x_{n+1} = f(r, x_n; \theta)$, propagating exact `Dual<f64>` tangents (`\partial f / \partial x`)
+/// on stack buffers without finite-difference stencils.
+#[must_use]
+pub(crate) fn eval_compiled_map_lyapunov(
     compiled: &CompiledExpr,
     params: &[f64],
     r: f64,
     x0: f64,
+    burn_in: usize,
     n: usize,
 ) -> Option<f64> {
+    if n == 0 || !r.is_finite() || !x0.is_finite() || x0.abs() > CUSTOM_ESCAPE_GUARD {
+        return None;
+    }
+    let p_len = params.len().min(MAX_SYNTHESIZED_PARAMS);
+    let mut vars = [0.0_f64; 2 + MAX_SYNTHESIZED_PARAMS];
+    vars[0] = r;
+    vars[2..2 + p_len].copy_from_slice(&params[..p_len]);
+
     let mut x = x0;
-    let mut sum_logs = 0.0;
-    let steps = n.max(1);
-    for _ in 0..steps {
-        let f_plus = compiled.eval_2d(r, x + CUSTOM_FD_EPS, params);
-        let f_minus = compiled.eval_2d(r, x - CUSTOM_FD_EPS, params);
-        let next_x = compiled.eval_2d(r, x, params);
-        if !next_x.is_finite()
-            || next_x.abs() > CUSTOM_ESCAPE_GUARD
-            || !f_plus.is_finite()
-            || !f_minus.is_finite()
-        {
+    for _ in 0..burn_in {
+        x = compiled.eval_2d(r, x, &params[..p_len]);
+        if !x.is_finite() || x.abs() > CUSTOM_ESCAPE_GUARD {
             return None;
         }
-        let deriv = ((f_plus - f_minus) / (2.0 * CUSTOM_FD_EPS)).abs();
-        sum_logs += if deriv == 0.0 {
-            LYAPUNOV_PLOT_MIN
-        } else {
-            deriv.ln()
-        };
+    }
+
+    let mut sum_logs = 0.0;
+    for _ in 0..n {
+        vars[1] = x;
+        let dual = compiled.eval_dir_dual(&vars[..2 + p_len], 1);
+        let next_x = dual.re;
+        let deriv = dual.eps;
+        if !next_x.is_finite() || next_x.abs() > CUSTOM_ESCAPE_GUARD || !deriv.is_finite() {
+            return None;
+        }
+        sum_logs += deriv.abs().max(1.0e-15).ln();
         x = next_x;
     }
-    Some(clamp_lyapunov_value(sum_logs / steps as f64))
+    Some(clamp_lyapunov_value(sum_logs / (n as f64)))
 }
 
 fn fill_custom_sweep(
@@ -148,7 +159,7 @@ fn fill_custom_sweep(
     let dr = span / lyap_samples as f64;
     for idx in 0..=lyap_samples {
         let r = r_min + dr * idx as f64;
-        if let Some(lyap) = custom_lyapunov_at(compiled, params, r, x0, 120) {
+        if let Some(lyap) = eval_compiled_map_lyapunov(compiled, params, r, x0, 0, 120) {
             lyapunov_points.push(PlotPoint::new(r, lyap));
         }
     }
@@ -244,7 +255,8 @@ fn fill_custom_coupled(
             escaped = true;
         }
     }
-    *selected_lyapunov = custom_lyapunov_at(compiled, params, selected_r, x0, 200).unwrap_or(0.0);
+    *selected_lyapunov =
+        eval_compiled_map_lyapunov(compiled, params, selected_r, x0, 0, 200).unwrap_or(0.0);
     fill_custom_cobweb(compiled, params, selected_r, x0, (x_lo, x_hi), bufs);
     !escaped
 }

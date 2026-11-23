@@ -111,7 +111,10 @@ pub use analytics::{
     ExposureSummary, TherapeuticWindow, accumulation_ratio, auc_interval, peak_concentration,
     summarize_exposure, trapezoidal_auc, trough_concentration,
 };
-pub use bateman::{BatemanModel, calibrate_ka_from_half_life, half_life, solve_ka, t_max};
+pub use bateman::{
+    BatemanCompartmentDynamics, BatemanModel, calibrate_ka_from_half_life, half_life, solve_ka,
+    t_max,
+};
 pub use enantiomer::EnantiomerModel;
 pub use parameters::{PKParameters, PKParametersBuilder};
 pub use regimen::{

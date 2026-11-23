@@ -1,7 +1,9 @@
 use super::common::{validate_initial_infected, validate_population, validate_rate};
 use crate::error::EpidemiologyError;
 use crate::impl_compartmental_ops;
-use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver, TimeStepper};
+use pure_math::pure_math::analysis::ode::{
+    DualArrayState, OdeSystem, RungeKutta4, Solver, TimeStepper,
+};
 use verified_engine::Theory;
 
 /// State for the SEIR Model.
@@ -54,6 +56,21 @@ impl OdeSystem<SEIRState> for SEIRDynamics {
             i: di,
             r: dr,
         }
+    }
+}
+
+impl OdeSystem<DualArrayState<4>> for SEIRDynamics {
+    /// Evaluates the SEIR vector field over forward-mode `Dual<f64>` scalars (`[S, E, I, R]`).
+    #[verified_engine::verified]
+    fn derivative(&self, _t: f64, state: &DualArrayState<4>) -> DualArrayState<4> {
+        let [s, e, i, _r] = state.0;
+        let inv_n = 1.0 / self.n.max(1.0e-12);
+        let new_exposed = s * i * (self.beta * inv_n);
+        let ds = -new_exposed;
+        let de = new_exposed - e * self.sigma;
+        let di = e * self.sigma - i * self.gamma;
+        let dr = i * self.gamma;
+        DualArrayState([ds, de, di, dr])
     }
 }
 
@@ -286,6 +303,13 @@ impl<S: Solver<SEIRState>> OdeSystem<SEIRState> for SEIRModel<S> {
     }
 }
 
+impl<S: Solver<SEIRState>> OdeSystem<DualArrayState<4>> for SEIRModel<S> {
+    #[verified_engine::verified]
+    fn derivative(&self, t: f64, state: &DualArrayState<4>) -> DualArrayState<4> {
+        self.dynamics.derivative(t, state)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,5 +376,43 @@ mod tests {
 
         // Just check it ran
         assert!(model_euler.state().s <= n);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_seir_dual_rk4_jacobian_matches_central_difference() {
+        use pure_math::pure_math::analysis::ode::rk4_step_dual_jacobian;
+
+        let dyn_sys = SEIRDynamics {
+            n: 1000.0,
+            beta: 0.54,
+            sigma: 0.25,
+            gamma: 0.12,
+        };
+        let x0 = [880.0, 46.0, 32.0, 42.0];
+        let (_, rhs_jac) =
+            pure_math::pure_math::analysis::ode::ode_rhs_dual_jacobian(&dyn_sys, 0.0, &x0);
+        assert!((rhs_jac[0][0] - (-0.54 * 32.0 / 1000.0)).abs() < 1.0e-15);
+        assert!((rhs_jac[1][2] - (0.54 * 880.0 / 1000.0)).abs() < 1.0e-15);
+
+        let dt = 0.25;
+        let (_, jac) = rk4_step_dual_jacobian(&dyn_sys, 0.0, &x0, dt);
+        let eps = 1.0e-5;
+        let mut col = 0;
+        while col < 4 {
+            let mut xp = x0;
+            let mut xm = x0;
+            xp[col] += eps;
+            xm[col] -= eps;
+            let (fp, _) = rk4_step_dual_jacobian(&dyn_sys, 0.0, &xp, dt);
+            let (fm, _) = rk4_step_dual_jacobian(&dyn_sys, 0.0, &xm, dt);
+            let mut row = 0;
+            while row < 4 {
+                let fd = (fp[row] - fm[row]) / (2.0 * eps);
+                assert!((jac[row][col] - fd).abs() < 1.0e-8);
+                row += 1;
+            }
+            col += 1;
+        }
     }
 }

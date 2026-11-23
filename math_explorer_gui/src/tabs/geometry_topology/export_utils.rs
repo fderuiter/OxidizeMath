@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "infrastructure"))]
 
-use math_explorer::pure_math::differential_geometry::surface::ParametricSurface;
+use math_explorer::pure_math::differential_geometry::surface::{
+    clamp_surface_point, ParametricSurface,
+};
 use nalgebra::Vector3;
 use oxidize_core::mesh::{Mesh, Point3D};
 use std::f64::consts::{PI, TAU};
@@ -70,11 +72,15 @@ pub fn polar_surface_to_manifold_mesh(
 ) -> Result<Mesh, String> {
     let nu = clamp_grid_res(u_res);
     let nv = clamp_grid_res(v_res);
-    let north = surface.position(0.0, 0.0);
-    let south = surface.position(0.0, PI);
-    if !north.coords.iter().all(|c| c.is_finite()) || !south.coords.iter().all(|c| c.is_finite()) {
+    let raw_north = surface.position(0.0, 0.0);
+    let raw_south = surface.position(0.0, PI);
+    if !raw_north.coords.iter().all(|c| c.is_finite())
+        || !raw_south.coords.iter().all(|c| c.is_finite())
+    {
         return Err("Surface pole coordinates must be finite".to_string());
     }
+    let north = clamp_surface_point(raw_north);
+    let south = clamp_surface_point(raw_south);
 
     let num_verts = 2 + (nv - 1) * nu;
     let mut vertices = Vec::with_capacity(num_verts);
@@ -88,10 +94,11 @@ pub fn polar_surface_to_manifold_mesh(
         let v = PI * (j as f64 / nv as f64);
         for i in 0..nu {
             let u = TAU * (i as f64 / nu as f64);
-            let p = surface.position(u, v);
-            if !p.coords.iter().all(|c| c.is_finite()) {
+            let raw_p = surface.position(u, v);
+            if !raw_p.coords.iter().all(|c| c.is_finite()) {
                 return Err("Surface position contains non-finite coordinate".to_string());
             }
+            let p = clamp_surface_point(raw_p);
             let radial = safe_unit_vector(p.coords, Vector3::new(0.0, 0.0, 1.0));
             let outward = safe_unit_vector(
                 surface.partial_v(u, v).cross(&surface.partial_u(u, v)),
@@ -148,10 +155,11 @@ pub fn periodic_surface_to_manifold_mesh(
         let u = TAU * (i as f64 / nu as f64);
         for j in 0..nv {
             let v = TAU * (j as f64 / nv as f64);
-            let p = surface.position(u, v);
-            if !p.coords.iter().all(|c| c.is_finite()) {
+            let raw_p = surface.position(u, v);
+            if !raw_p.coords.iter().all(|c| c.is_finite()) {
                 return Err("Surface position contains non-finite coordinate".to_string());
             }
+            let p = clamp_surface_point(raw_p);
             let n = safe_unit_vector(
                 surface.partial_u(u, v).cross(&surface.partial_v(u, v)),
                 Vector3::new(0.0, 0.0, 1.0),
@@ -247,10 +255,11 @@ pub fn extrude_surface_wall_shell(
         let u = TAU * (i as f64 / nu as f64);
         for j in 0..nv {
             let v = TAU * (j as f64 / nv as f64);
-            let p = surface.position(u, v);
-            if !p.coords.iter().all(|c| c.is_finite()) {
+            let raw_p = surface.position(u, v);
+            if !raw_p.coords.iter().all(|c| c.is_finite()) {
                 return Err("Surface position contains non-finite coordinate".to_string());
             }
+            let p = clamp_surface_point(raw_p);
             let n = safe_unit_vector(
                 surface.partial_u(u, v).cross(&surface.partial_v(u, v)),
                 Vector3::new(0.0, 0.0, 1.0),
@@ -352,10 +361,11 @@ pub fn extrude_open_patch_wall_shell(
         let u = u_min + (u_max - u_min) * (i as f64 / nu as f64);
         for j in 0..=nv {
             let v = v_min + (v_max - v_min) * (j as f64 / nv as f64);
-            let p = surface.position(u, v);
-            if !p.coords.iter().all(|c| c.is_finite()) {
+            let raw_p = surface.position(u, v);
+            if !raw_p.coords.iter().all(|c| c.is_finite()) {
                 return Err("Surface position contains non-finite coordinate".to_string());
             }
+            let p = clamp_surface_point(raw_p);
             let n = safe_unit_vector(
                 surface.partial_u(u, v).cross(&surface.partial_v(u, v)),
                 Vector3::new(0.0, 0.0, 1.0),

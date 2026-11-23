@@ -1,5 +1,6 @@
 //! Zero-tidal-force traversable Morris-Thorne wormhole (`StaticMetric<3>`) and 3D embeddings.
 
+use math_commons::engine_symbolic::Dual;
 use nalgebra::{SMatrix, SVector};
 use pure_math::pure_math::tensor::{StaticMetric, TensorError};
 
@@ -115,6 +116,33 @@ impl StaticMetric<3> for MorrisThorneWormhole {
         Ok(SMatrix::<f64, 3, 3>::new(
             -1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, r2,
         ))
+    }
+
+    #[verified_engine::verified]
+    fn metric_dual_at(
+        &self,
+        point: &SVector<Dual<f64>, 3>,
+    ) -> Option<Result<SMatrix<Dual<f64>, 3, 3>, TensorError>> {
+        if !self.throat_radius.is_finite()
+            || self.throat_radius <= 0.0
+            || !point.iter().all(|v| v.re.is_finite())
+        {
+            return Some(Err(TensorError::SingularMetric));
+        }
+        let l = point[1];
+        let r2 = l * l + (self.throat_radius * self.throat_radius);
+        let z = Dual::ZERO;
+        Some(Ok(SMatrix::<Dual<f64>, 3, 3>::new(
+            Dual::constant(-1.0),
+            z,
+            z,
+            z,
+            Dual::ONE,
+            z,
+            z,
+            z,
+            r2,
+        )))
     }
 
     #[verified_engine::verified]

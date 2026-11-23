@@ -1,79 +1,20 @@
-//! Nonlinear `KalmanSystem<f64>` models and zero-allocation stack `FastEkf` mirrors.
+//! Nonlinear `KalmanSystem<f64>` observers and zero-allocation stack `FastEkf` mirrors backed
+//! directly by `#[verified]` domain ODEs lifted over `Dual<f64>` (`rk4_step_dual_jacobian`).
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use math_explorer::applied::algorithms::kalman::{KalmanFilter, KalmanSystem};
+use math_explorer::applied::algorithms::kalman::{
+    rk4_ode_kalman_predict, KalmanFilter, KalmanSystem,
+};
+use math_explorer::applied::pharmacokinetics::BatemanCompartmentDynamics;
+use math_explorer::epidemiology::compartmental::SEIRDynamics;
 use math_explorer::nalgebra::{DMatrix, DVector};
+use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
+use math_explorer::pure_math::analysis::ode::{rk4_step_dual_jacobian, DualArrayState, OdeSystem};
 
 /// Minimum scalar measurement variance floor preventing singular innovation covariance when `sensor_noise == 0.0`.
 pub const MIN_MEASUREMENT_VARIANCE: f64 = 1.0e-8;
 const MIN_COV_DIAG: f64 = 1.0e-12;
-
-/// Propagates an `N`-dimensional ODE state and its exact discrete 4th-order Runge-Kutta tangent Jacobian $F_k = \partial f_{\text{RK4}} / \partial x$.
-pub fn rk4_step_with_jacobian<const N: usize, F>(
-    state: &[f64; N],
-    dt: f64,
-    rhs_and_jac: F,
-) -> ([f64; N], [[f64; N]; N])
-where
-    F: Fn(&[f64; N]) -> ([f64; N], [[f64; N]; N]),
-{
-    let half = 0.5 * dt;
-    let sixth = dt / 6.0;
-
-    let (k1, a1) = rhs_and_jac(state);
-    let x2 = add_scaled_vec(state, &k1, half);
-    let phi2 = identity_plus_scaled(&a1, half);
-    let (k2, a2) = rhs_and_jac(&x2);
-    let big_k2 = mat_mul(&a2, &phi2);
-
-    let x3 = add_scaled_vec(state, &k2, half);
-    let phi3 = identity_plus_scaled(&big_k2, half);
-    let (k3, a3) = rhs_and_jac(&x3);
-    let big_k3 = mat_mul(&a3, &phi3);
-
-    let x4 = add_scaled_vec(state, &k3, dt);
-    let phi4 = identity_plus_scaled(&big_k3, dt);
-    let (k4, a4) = rhs_and_jac(&x4);
-    let big_k4 = mat_mul(&a4, &phi4);
-
-    let mut next_x = *state;
-    let mut jac = identity_mat::<N>();
-    for (i, nx_slot) in next_x.iter_mut().enumerate() {
-        *nx_slot += sixth * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i]);
-        for (j, jac_slot) in jac[i].iter_mut().enumerate() {
-            *jac_slot +=
-                sixth * (a1[i][j] + 2.0 * big_k2[i][j] + 2.0 * big_k3[i][j] + big_k4[i][j]);
-        }
-    }
-    (next_x, jac)
-}
-
-fn identity_mat<const N: usize>() -> [[f64; N]; N] {
-    let mut m = [[0.0; N]; N];
-    for (i, row) in m.iter_mut().enumerate() {
-        row[i] = 1.0;
-    }
-    m
-}
-
-fn add_scaled_vec<const N: usize>(base: &[f64; N], delta: &[f64; N], scale: f64) -> [f64; N] {
-    let mut out = [0.0; N];
-    for ((o, &b), &d) in out.iter_mut().zip(base.iter()).zip(delta.iter()) {
-        *o = b + scale * d;
-    }
-    out
-}
-
-fn identity_plus_scaled<const N: usize>(mat: &[[f64; N]; N], scale: f64) -> [[f64; N]; N] {
-    let mut out = identity_mat::<N>();
-    for (out_row, m_row) in out.iter_mut().zip(mat.iter()) {
-        for (o, &m) in out_row.iter_mut().zip(m_row.iter()) {
-            *o += scale * m;
-        }
-    }
-    out
-}
 
 fn mat_mul<const N: usize>(a: &[[f64; N]; N], b: &[[f64; N]; N]) -> [[f64; N]; N] {
     let mut out = [[0.0; N]; N];
@@ -101,54 +42,14 @@ fn mat_mul_transpose_right<const N: usize>(a: &[[f64; N]; N], b: &[[f64; N]; N])
     out
 }
 
-/// Continuous-time Lorenz vector field and analytical $3 \times 3$ Jacobian at effective Rayleigh number `rho_eff`.
-pub fn lorenz_rhs_and_jac(
-    state: &[f64; 3],
-    sigma: f64,
-    rho_eff: f64,
-    beta: f64,
-) -> ([f64; 3], [[f64; 3]; 3]) {
-    let (x, y, z) = (state[0], state[1], state[2]);
-    let rhs = [sigma * (y - x), x * (rho_eff - z) - y, x * y - beta * z];
-    let jac = [[-sigma, sigma, 0.0], [rho_eff - z, -1.0, -x], [y, x, -beta]];
-    (rhs, jac)
-}
-
-/// Continuous-time SEIR vector field and analytical $4 \times 4$ Jacobian at effective transmission `beta_eff`.
-pub fn seir_rhs_and_jac(
-    state: &[f64; 4],
-    pop_n: f64,
-    beta_eff: f64,
-    sigma: f64,
-    gamma: f64,
-) -> ([f64; 4], [[f64; 4]; 4]) {
-    let (s, e, inf) = (state[0], state[1], state[2]);
-    let inv_n = 1.0 / pop_n.max(1.0);
-    let inf_flow = beta_eff * s * inf * inv_n;
-    let d_s = beta_eff * inf * inv_n;
-    let d_i = beta_eff * s * inv_n;
-    let rhs = [
-        -inf_flow,
-        inf_flow - sigma * e,
-        sigma * e - gamma * inf,
-        gamma * inf,
-    ];
-    let jac = [
-        [-d_s, 0.0, -d_i, 0.0],
-        [d_s, -sigma, d_i, 0.0],
-        [0.0, sigma, -gamma, 0.0],
-        [0.0, 0.0, gamma, 0.0],
-    ];
-    (rhs, jac)
-}
-
-/// Continuous-time nonlinear ADME pharmacokinetic vector field (`[A_g, C_p, k_e]`) and $3 \times 3$ Jacobian.
-pub fn pk_rhs_and_jac(state: &[f64; 3], ka: f64, volume: f64) -> ([f64; 3], [[f64; 3]; 3]) {
-    let (ag, cp, ke) = (state[0], state[1], state[2]);
-    let inv_v = 1.0 / volume.max(1.0e-3);
-    let rhs = [-ka * ag, ka * inv_v * ag - ke * cp, 0.0];
-    let jac = [[-ka, 0.0, 0.0], [ka * inv_v, -ke, -cp], [0.0, 0.0, 0.0]];
-    (rhs, jac)
+/// Builds a stack-resident `#[verified]` [`LorenzSystem`] configured at `rho_eff`.
+#[must_use]
+pub fn build_lorenz_ode(sigma: f64, rho_eff: f64, beta: f64) -> LorenzSystem {
+    LorenzBuilder::new()
+        .sigma(sigma)
+        .rho(rho_eff)
+        .beta(beta)
+        .build(LorenzState::new(0.0, 0.0, 0.0))
 }
 
 /// Nonlinear 3D `KalmanSystem<f64>` observer for `LorenzSystem` from scalar $x(t)$ measurements.
@@ -168,11 +69,8 @@ pub struct LorenzKalmanModel {
 
 impl KalmanSystem<f64> for LorenzKalmanModel {
     fn predict_state(&self, state: &DVector<f64>, dt: f64) -> (DVector<f64>, DMatrix<f64>) {
-        let s = [state[0], state[1], state[2]];
-        let (nx, jac) = rk4_step_with_jacobian(&s, dt, |x| {
-            lorenz_rhs_and_jac(x, self.sigma, self.rho_eff, self.beta)
-        });
-        (array_to_dvec(&nx), array_to_dmat(&jac))
+        let sys = build_lorenz_ode(self.sigma, self.rho_eff, self.beta);
+        rk4_ode_kalman_predict(&sys, 0.0, state, dt)
     }
 
     fn predict_measurement(&self, state: &DVector<f64>) -> (DVector<f64>, DMatrix<f64>) {
@@ -213,13 +111,29 @@ pub struct SeirKalmanModel {
     pub r_var: f64,
 }
 
+impl SeirKalmanModel {
+    /// Returns the `#[verified]` [`SEIRDynamics`] model at the active effective transmission rate.
+    #[must_use]
+    pub fn dynamics(&self) -> SEIRDynamics {
+        SEIRDynamics {
+            n: self.pop_n.max(1.0),
+            beta: self.beta_eff,
+            sigma: self.sigma,
+            gamma: self.gamma,
+        }
+    }
+
+    /// Diagonal process noise entries for `dt`.
+    pub fn q_diag(&self, dt: f64) -> [f64; 4] {
+        let scale = (self.q_var * 80.0 * dt.max(1.0e-4)).max(MIN_COV_DIAG);
+        [scale * 1.5, scale * 2.0, scale, scale * 0.5]
+    }
+}
+
 impl KalmanSystem<f64> for SeirKalmanModel {
     fn predict_state(&self, state: &DVector<f64>, dt: f64) -> (DVector<f64>, DMatrix<f64>) {
-        let s = [state[0], state[1], state[2], state[3]];
-        let (nx, jac) = rk4_step_with_jacobian(&s, dt, |x| {
-            seir_rhs_and_jac(x, self.pop_n, self.beta_eff, self.sigma, self.gamma)
-        });
-        (array_to_dvec(&nx), array_to_dmat(&jac))
+        let dyn_seir = self.dynamics();
+        rk4_ode_kalman_predict(&dyn_seir, 0.0, state, dt)
     }
 
     fn predict_measurement(&self, state: &DVector<f64>) -> (DVector<f64>, DMatrix<f64>) {
@@ -232,14 +146,6 @@ impl KalmanSystem<f64> for SeirKalmanModel {
 
     fn measurement_noise(&self) -> DMatrix<f64> {
         DMatrix::from_element(1, 1, self.r_var.max(MIN_MEASUREMENT_VARIANCE))
-    }
-}
-
-impl SeirKalmanModel {
-    /// Diagonal process noise entries for `dt`.
-    pub fn q_diag(&self, dt: f64) -> [f64; 4] {
-        let scale = (self.q_var * 80.0 * dt.max(1.0e-4)).max(MIN_COV_DIAG);
-        [scale * 1.5, scale * 2.0, scale, scale * 0.5]
     }
 }
 
@@ -260,6 +166,20 @@ pub struct PkKalmanModel {
     pub r_var: f64,
 }
 
+impl PkKalmanModel {
+    /// Returns the `#[verified]` [`BatemanCompartmentDynamics`] model for gut-to-plasma ADME transport.
+    #[must_use]
+    pub const fn dynamics(&self) -> BatemanCompartmentDynamics {
+        BatemanCompartmentDynamics::new(self.ka, self.volume)
+    }
+
+    /// Diagonal process noise entries for `[A_g, C_p, k_e]` over `dt`.
+    pub fn q_diag(&self, dt: f64) -> [f64; 3] {
+        let base = (self.q_var * dt.max(1.0e-4)).max(MIN_COV_DIAG);
+        [base * 4.0, base * 0.04, (base * 0.008).max(1.0e-6)]
+    }
+}
+
 impl KalmanSystem<f64> for PkKalmanModel {
     fn predict_state(&self, state: &DVector<f64>, dt: f64) -> (DVector<f64>, DMatrix<f64>) {
         let dosed = [
@@ -267,8 +187,8 @@ impl KalmanSystem<f64> for PkKalmanModel {
             state[1],
             state[2],
         ];
-        let (nx, jac) =
-            rk4_step_with_jacobian(&dosed, dt, |x| pk_rhs_and_jac(x, self.ka, self.volume));
+        let dyn_pk = self.dynamics();
+        let (nx, jac) = rk4_step_dual_jacobian(&dyn_pk, 0.0, &dosed, dt);
         (array_to_dvec(&nx), array_to_dmat(&jac))
     }
 
@@ -282,14 +202,6 @@ impl KalmanSystem<f64> for PkKalmanModel {
 
     fn measurement_noise(&self) -> DMatrix<f64> {
         DMatrix::from_element(1, 1, self.r_var.max(MIN_MEASUREMENT_VARIANCE))
-    }
-}
-
-impl PkKalmanModel {
-    /// Diagonal process noise entries for `[A_g, C_p, k_e]` over `dt`.
-    pub fn q_diag(&self, dt: f64) -> [f64; 3] {
-        let base = (self.q_var * dt.max(1.0e-4)).max(MIN_COV_DIAG);
-        [base * 4.0, base * 0.04, (base * 0.008).max(1.0e-6)]
     }
 }
 
@@ -346,12 +258,13 @@ impl<const N: usize> FastEkf<N> {
         self.last_innovation_var = MIN_MEASUREMENT_VARIANCE;
     }
 
-    /// Executes EKF state and covariance prediction $P_{k|k-1} = F P_{k-1|k-1} F^T + Q$ on the stack.
-    pub fn predict_rk4<F>(&mut self, dt: f64, q_diag: &[f64; N], rhs_and_jac: F)
+    /// Executes EKF state and covariance prediction $P_{k|k-1} = F P_{k-1|k-1} F^T + Q$ on the stack
+    /// by propagating `Dual<f64>` tangents through a `#[verified]` [`OdeSystem<DualArrayState<N>>`].
+    pub fn predict_ode_rk4<S>(&mut self, system: &S, dt: f64, q_diag: &[f64; N])
     where
-        F: Fn(&[f64; N]) -> ([f64; N], [[f64; N]; N]),
+        S: OdeSystem<DualArrayState<N>> + ?Sized,
     {
-        let (nx, f_mat) = rk4_step_with_jacobian(&self.state, dt, rhs_and_jac);
+        let (nx, f_mat) = rk4_step_dual_jacobian(system, 0.0, &self.state, dt);
         self.state = nx;
         let fp = mat_mul(&f_mat, &self.cov);
         let mut next_cov = mat_mul_transpose_right(&fp, &f_mat);

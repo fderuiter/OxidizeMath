@@ -4,6 +4,7 @@
 //! `nalgebra` [`SVector`] and [`SMatrix`] types so geodesic solvers can run inside
 //! allocation-locked WebAssembly and verification loops.
 
+use engine_symbolic::Dual;
 use nalgebra::{SMatrix, SVector};
 
 use super::types::TensorError;
@@ -35,6 +36,17 @@ pub trait StaticMetric<const N: usize> {
     /// Returns [`TensorError::SingularMetric`] if `point` lies on a coordinate or curvature
     /// singularity or produces non-finite entries.
     fn metric_at(&self, point: &SVector<f64, N>) -> Result<SMatrix<f64, N, N>, TensorError>;
+
+    /// Evaluates $g_{\mu\nu}(x)$ over forward-mode [`Dual<f64>`] coordinates so
+    /// [`static_christoffel_symbols`] computes exact machine-precision metric partials without
+    /// finite-difference stencils.
+    #[verified_engine::verified]
+    fn metric_dual_at(
+        &self,
+        _point: &SVector<Dual<f64>, N>,
+    ) -> Option<Result<SMatrix<Dual<f64>, N, N>, TensorError>> {
+        None
+    }
 
     /// Evaluates the contravariant inverse metric $g^{\mu\nu}(x)$ at `point`.
     ///
@@ -139,6 +151,44 @@ where
     }
 }
 
+/// Forward-mode [`Dual<f64>`]-lifted [`StaticMetric`] adapter evaluating exact metric partials
+/// with zero heap allocations and zero finite-difference truncation error.
+#[derive(Debug, Clone, Copy)]
+pub struct DualStaticRiemannianMetric<F, const N: usize> {
+    metric_fn: F,
+}
+
+impl<F, const N: usize> DualStaticRiemannianMetric<F, N>
+where
+    F: Fn(&SVector<Dual<f64>, N>) -> Result<SMatrix<Dual<f64>, N, N>, TensorError>,
+{
+    /// Wraps a stack-allocated `Dual<f64>` metric evaluation closure.
+    #[verified_engine::verified]
+    pub fn new(metric_fn: F) -> Self {
+        Self { metric_fn }
+    }
+}
+
+impl<F, const N: usize> StaticMetric<N> for DualStaticRiemannianMetric<F, N>
+where
+    F: Fn(&SVector<Dual<f64>, N>) -> Result<SMatrix<Dual<f64>, N, N>, TensorError>,
+{
+    #[verified_engine::verified]
+    fn metric_at(&self, point: &SVector<f64, N>) -> Result<SMatrix<f64, N, N>, TensorError> {
+        let dual_pt = SVector::<Dual<f64>, N>::from_fn(|i, _| Dual::constant(point[i]));
+        let g_dual = (self.metric_fn)(&dual_pt)?;
+        Ok(SMatrix::<f64, N, N>::from_fn(|r, c| g_dual[(r, c)].re))
+    }
+
+    #[verified_engine::verified]
+    fn metric_dual_at(
+        &self,
+        point: &SVector<Dual<f64>, N>,
+    ) -> Option<Result<SMatrix<Dual<f64>, N, N>, TensorError>> {
+        Some((self.metric_fn)(point))
+    }
+}
+
 /// Standard 2-sphere manifold $S^2$ of radius $R$ in $(\theta, \varphi)$ coordinates.
 ///
 /// Line element: $ds^2 = R^2 d\theta^2 + R^2 \sin^2\theta\,d\varphi^2$.
@@ -176,6 +226,26 @@ impl StaticMetric<2> for TwoSphereMetric {
             0.0,
             r2 * sin_theta * sin_theta,
         ))
+    }
+
+    #[verified_engine::verified]
+    fn metric_dual_at(
+        &self,
+        point: &SVector<Dual<f64>, 2>,
+    ) -> Option<Result<SMatrix<Dual<f64>, 2, 2>, TensorError>> {
+        if !self.radius.is_finite() || self.radius <= 0.0 || !point.iter().all(|v| v.re.is_finite())
+        {
+            return Some(Err(TensorError::SingularMetric));
+        }
+        let sin_theta = point[0].sin();
+        let r2 = Dual::constant(self.radius * self.radius);
+        let z = Dual::ZERO;
+        Some(Ok(SMatrix::<Dual<f64>, 2, 2>::new(
+            r2,
+            z,
+            z,
+            sin_theta * sin_theta * (self.radius * self.radius),
+        )))
     }
 
     #[verified_engine::verified]
@@ -235,6 +305,28 @@ fn compute_metric_partials<M: StaticMetric<N> + ?Sized, const N: usize>(
     point: &SVector<f64, N>,
 ) -> Result<[SMatrix<f64, N, N>; N], TensorError> {
     let mut partials = [SMatrix::<f64, N, N>::zeros(); N];
+    let mut dual_pt = SVector::<Dual<f64>, N>::from_fn(|i, _| Dual::constant(point[i]));
+    let mut used_dual = true;
+    for (sigma, slot) in partials.iter_mut().enumerate() {
+        dual_pt[sigma] = Dual::variable(point[sigma]);
+        let maybe_dual = metric.metric_dual_at(&dual_pt);
+        dual_pt[sigma] = Dual::constant(point[sigma]);
+        if let Some(res) = maybe_dual {
+            let g_dual = res?;
+            let diff = SMatrix::<f64, N, N>::from_fn(|r, c| g_dual[(r, c)].eps);
+            if !diff.iter().all(|v| v.is_finite()) {
+                return Err(TensorError::SingularMetric);
+            }
+            *slot = diff;
+        } else {
+            used_dual = false;
+            break;
+        }
+    }
+    if used_dual {
+        return Ok(partials);
+    }
+
     for (sigma, slot) in partials.iter_mut().enumerate() {
         let h = 1e-5 * point[sigma].abs().max(1.0);
         let mut x_plus = *point;
@@ -252,8 +344,9 @@ fn compute_metric_partials<M: StaticMetric<N> + ?Sized, const N: usize>(
     Ok(partials)
 }
 
-/// Computes Christoffel symbols $\Gamma^\mu_{\alpha\beta}(x)$ via second-order central
-/// differences using exclusively stack-allocated [`SVector`] and [`SMatrix`] buffers.
+/// Computes Christoffel symbols $\Gamma^\mu_{\alpha\beta}(x)$ using forward-mode [`Dual<f64>`]
+/// automatic differentiation (or central differences for legacy closure metrics) on stack-allocated
+/// [`SVector`] and [`SMatrix`] buffers.
 ///
 /// Formula:
 /// $$\Gamma^\mu_{\alpha\beta} = \frac{1}{2} g^{\mu\nu} \left(
@@ -261,8 +354,7 @@ fn compute_metric_partials<M: StaticMetric<N> + ?Sized, const N: usize>(
 /// \right)$$
 ///
 /// # Errors
-/// Returns [`TensorError::SingularMetric`] if `point` is non-finite or the metric is singular
-/// at `point` or any central-difference stencil point.
+/// Returns [`TensorError::SingularMetric`] if `point` is non-finite or the metric is singular.
 ///
 /// # Examples
 ///
@@ -277,7 +369,7 @@ fn compute_metric_partials<M: StaticMetric<N> + ?Sized, const N: usize>(
 /// let pt = SVector::<f64, 2>::new(0.9, 1.2);
 /// let exact = sphere.christoffel_at(&pt).unwrap();
 /// let approx = static_christoffel_symbols(&sphere, &pt).unwrap();
-/// assert!((exact[0][(1, 1)] - approx[0][(1, 1)]).abs() < 1e-8);
+/// assert!((exact[0][(1, 1)] - approx[0][(1, 1)]).abs() < 1e-14);
 /// ```
 #[verified_engine::verified]
 pub fn static_christoffel_symbols<M: StaticMetric<N> + ?Sized, const N: usize>(

@@ -1,4 +1,5 @@
 use super::types::{ContravariantVector, CovariantVector, TensorError};
+use engine_symbolic::Dual;
 use nalgebra::{DMatrix, DVector};
 
 /// A trait representing a metric tensor field $g_{ij}(x)$.
@@ -10,6 +11,16 @@ pub trait Metric {
     /// Returns a `TensorError` if the metric calculation fails for the given point.
     #[verified_engine::verified]
     fn metric_at(&self, point: &DVector<f64>) -> Result<DMatrix<f64>, TensorError>;
+
+    /// Evaluates the covariant metric tensor $g_{ij}(x)$ over forward-mode [`Dual<f64>`]
+    /// coordinates when analytical `Dual` lifting is supported by the metric.
+    #[verified_engine::verified]
+    fn metric_dual_at(
+        &self,
+        _point: &[Dual<f64>],
+    ) -> Option<Result<DMatrix<Dual<f64>>, TensorError>> {
+        None
+    }
 
     /// Computes the inverse (contravariant) metric tensor $g^{ij}$ at a given point.
     ///
@@ -105,5 +116,47 @@ where
     fn metric_at(&self, point: &DVector<f64>) -> Result<DMatrix<f64>, TensorError> {
         debug_assert!(!point.is_empty());
         Ok((self.metric_fn)(point))
+    }
+}
+
+/// Forward-mode [`Dual<f64>`]-lifted Riemannian metric evaluating exact metric partial derivatives
+/// without finite-difference truncation or horizon-crossing stencils.
+pub struct DualRiemannianMetric<F>
+where
+    F: Fn(&[Dual<f64>]) -> DMatrix<Dual<f64>>,
+{
+    metric_fn: F,
+}
+
+impl<F> DualRiemannianMetric<F>
+where
+    F: Fn(&[Dual<f64>]) -> DMatrix<Dual<f64>>,
+{
+    /// Wraps a forward-mode `Dual<f64>` metric tensor closure.
+    #[verified_engine::verified]
+    pub fn new(metric_fn: F) -> Self {
+        Self { metric_fn }
+    }
+}
+
+impl<F> Metric for DualRiemannianMetric<F>
+where
+    F: Fn(&[Dual<f64>]) -> DMatrix<Dual<f64>>,
+{
+    #[verified_engine::verified]
+    fn metric_at(&self, point: &DVector<f64>) -> Result<DMatrix<f64>, TensorError> {
+        let dual_pt: Vec<Dual<f64>> = point.iter().copied().map(Dual::constant).collect();
+        let g_dual = (self.metric_fn)(&dual_pt);
+        Ok(DMatrix::from_fn(g_dual.nrows(), g_dual.ncols(), |r, c| {
+            g_dual[(r, c)].re
+        }))
+    }
+
+    #[verified_engine::verified]
+    fn metric_dual_at(
+        &self,
+        point: &[Dual<f64>],
+    ) -> Option<Result<DMatrix<Dual<f64>>, TensorError>> {
+        Some(Ok((self.metric_fn)(point)))
     }
 }

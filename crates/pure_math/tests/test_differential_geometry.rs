@@ -196,3 +196,48 @@ fn test_mean_curvature_flow_shrinkage() {
         r_final
     );
 }
+
+#[test]
+fn test_laplace_beltrami_single_jet2_pass_and_sphere_pole_accuracy() {
+    use pure_math::pure_math::algebra::polynomial::Polynomial;
+    use pure_math::pure_math::differential_geometry::operators::{
+        Jet2Field, laplace_beltrami_jet2,
+    };
+    use std::cell::Cell;
+
+    let sphere = Sphere { radius: 1.0 };
+    let u = 0.7_f64;
+    // Near the north pole (v = 1e-5), finite differences with h = 1e-5 crossed v = 0 (singular!).
+    let v = 1.0e-5_f64;
+
+    let calls = Cell::new(0usize);
+    let field = Jet2Field(
+        |uj: math_commons::ast::Jet2<2>, vj: math_commons::ast::Jet2<2>| {
+            calls.set(calls.get() + 1);
+            // Spherical harmonic Y_2^0 ~ 3 cos^2(v) - 1 has exact eigenvalue -l(l+1) = -6,
+            // plus Y_1^1 ~ sin(v) cos(u) has exact eigenvalue -2.
+            (vj.cos() * vj.cos() * 3.0 - 1.0) + vj.sin() * uj.cos()
+        },
+    );
+    let lb = laplace_beltrami(&sphere, u, v, &field);
+    assert_eq!(
+        calls.get(),
+        1,
+        "expected 1 Jet2 pass instead of 36 primal calls"
+    );
+
+    let exact = -6.0 * (3.0 * v.cos() * v.cos() - 1.0) - 2.0 * (v.sin() * u.cos());
+    let rel_err = (lb - exact).abs() / exact.abs();
+    assert!(
+        rel_err < 1e-11,
+        "sphere-pole Laplace-Beltrami rel err {rel_err:e}: got {lb}, exact {exact}"
+    );
+
+    let lb_direct = laplace_beltrami_jet2(&sphere, u, v, |_, vj| vj.cos());
+    let exact_cos = -2.0 * v.cos();
+    assert!(((lb_direct - exact_cos) / exact_cos.abs()).abs() < 1e-12);
+
+    // Formal algebraic Polynomial::differentiate over integers
+    let poly = Polynomial::new(vec![7_i64, -3, 5, 2]); // 7 - 3x + 5x^2 + 2x^3
+    assert_eq!(poly.differentiate(), Polynomial::new(vec![-3_i64, 10, 6]));
+}

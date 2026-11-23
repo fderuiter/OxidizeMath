@@ -64,7 +64,7 @@ impl CompiledMap1DJob {
         self.compiled.eval_2d(r, x, &p[..self.param_len])
     }
 
-    /// Estimates the Lyapunov exponent $\lambda$ of $x_{n+1} = f(r, x_n)$ on stack buffers.
+    /// Estimates the Lyapunov exponent $\lambda$ of $x_{n+1} = f(r, x_n)$ on stack buffers via exact `Dual` tangents.
     #[must_use]
     pub fn lyapunov(
         &self,
@@ -74,32 +74,20 @@ impl CompiledMap1DJob {
         burn_in: usize,
         n: usize,
     ) -> Option<f64> {
-        if n == 0 || !r.is_finite() || !x0.is_finite() || x0.abs() > CUSTOM_ESCAPE_GUARD {
-            return None;
-        }
-        let mut x = x0;
-        for _ in 0..burn_in {
-            x = self.eval(r, x, param0_override);
-            if !x.is_finite() || x.abs() > CUSTOM_ESCAPE_GUARD {
-                return None;
+        let mut p = self.params;
+        if let Some(p0) = param0_override {
+            if self.param_len > 0 {
+                p[0] = p0;
             }
         }
-        let h = 1e-6;
-        let mut sum_logs = 0.0;
-        for _ in 0..n {
-            let f_plus = self.eval(r, x + h, param0_override);
-            let f_minus = self.eval(r, x - h, param0_override);
-            if !f_plus.is_finite() || !f_minus.is_finite() {
-                return None;
-            }
-            let deriv = ((f_plus - f_minus) / (2.0 * h)).abs().max(1e-15);
-            sum_logs += deriv.ln();
-            x = self.eval(r, x, param0_override);
-            if !x.is_finite() || x.abs() > CUSTOM_ESCAPE_GUARD {
-                return None;
-            }
-        }
-        Some(sum_logs / (n as f64))
+        super::compute::eval_compiled_map_lyapunov(
+            &self.compiled,
+            &p[..self.param_len],
+            r,
+            x0,
+            burn_in,
+            n,
+        )
     }
 }
 

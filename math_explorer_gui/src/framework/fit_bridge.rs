@@ -1,10 +1,10 @@
 //! Bridges `egui_plot` custom regression callbacks to `math_commons::ast::CompiledExpr`
-//! while keeping `egui_plot/Cargo.toml` completely independent of `math_commons`.
+//! using zero-allocation single-pass reverse-mode autodiff (`CompiledExpr::eval_grad_into`).
 
 use std::sync::Arc;
 
 use egui_plot::{CustomFitEvaluator, MAX_FIT_PARAMS};
-use math_commons::ast::{is_universal_constant, parse_equation, CompiledExpr};
+use math_commons::ast::{is_universal_constant, parse_equation, CompiledExpr, SolverWorkspace};
 
 #[derive(Debug)]
 struct CompiledCustomFitEvaluator {
@@ -20,6 +20,37 @@ impl CustomFitEvaluator for CompiledCustomFitEvaluator {
     fn eval(&self, x: f64, params: &[f64]) -> Option<f64> {
         let y = self.compiled.eval_1d(x, params);
         y.is_finite().then_some(y)
+    }
+
+    fn has_analytic_grad(&self) -> bool {
+        true
+    }
+
+    fn eval_grad(
+        &self,
+        x: f64,
+        params: &[f64],
+        grad_out: &mut [f64],
+        workspace: &mut SolverWorkspace,
+    ) -> Option<f64> {
+        let k = self
+            .param_names
+            .len()
+            .min(params.len())
+            .min(grad_out.len())
+            .min(MAX_FIT_PARAMS);
+        let mut vars = [0.0_f64; MAX_FIT_PARAMS + 1];
+        let mut grads = [0.0_f64; MAX_FIT_PARAMS + 1];
+        vars[0] = x;
+        vars[1..=k].copy_from_slice(&params[..k]);
+        let y = self
+            .compiled
+            .eval_grad_into(&vars[..=k], workspace, &mut grads[..=k]);
+        if !y.is_finite() {
+            return None;
+        }
+        grad_out[..k].copy_from_slice(&grads[1..=k]);
+        Some(y)
     }
 }
 

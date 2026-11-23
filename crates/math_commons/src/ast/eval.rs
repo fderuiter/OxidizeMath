@@ -2,7 +2,8 @@
 // [cite:math_commons]
 
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
-use num_complex::{Complex64, ComplexFloat};
+use engine_symbolic::{Dual, DualComplex64};
+use num_complex::Complex64;
 use std::collections::HashMap;
 use std::f64::consts::{E, PI, TAU};
 
@@ -122,6 +123,19 @@ impl Expr {
         self.eval_fast(0, &|name| name.eq_ignore_ascii_case("z").then_some(z))
     }
 
+    /// Evaluates the expression over forward-mode real [`Dual<f64>`] variables.
+    pub fn eval_dual(&self, vars: &HashMap<String, Dual<f64>>) -> Result<Dual<f64>, EvalError> {
+        self.eval_checked(vars, 0)
+    }
+
+    /// Evaluates the expression over forward-mode complex [`DualComplex64`] variables.
+    pub fn eval_complex_dual(
+        &self,
+        vars: &HashMap<String, DualComplex64>,
+    ) -> Result<DualComplex64, EvalError> {
+        self.eval_checked(vars, 0)
+    }
+
     fn eval_checked<T: EvalScalar>(
         &self,
         vars: &HashMap<String, T>,
@@ -206,87 +220,75 @@ fn self_eval_fast<T: EvalScalar, F: Fn(&str) -> Option<T>>(
     expr.eval_fast(depth, resolve_var)
 }
 
-pub(super) trait EvalScalar: ComplexFloat<Real = f64> {
+/// Scalar algebra contract unifying primal (`f64`, `Complex64`) and forward-mode (`Dual`, `Jet2`) AST evaluation.
+pub trait EvalScalar:
+    Copy
+    + PartialEq
+    + core::ops::Add<Output = Self>
+    + core::ops::Sub<Output = Self>
+    + core::ops::Mul<Output = Self>
+    + core::ops::Div<Output = Self>
+    + core::ops::Neg<Output = Self>
+{
+    /// Canonical quiet NaN representation.
     const NAN: Self;
 
+    /// Lifts a real `f64` constant into `Self`.
     fn from_real(val: f64) -> Self;
+    /// Returns the imaginary unit $i$ (or `Self::NAN` on purely real domains).
     fn imag_unit() -> Self;
-    fn real_part(self) -> f64;
+    /// Returns `true` if `self` represents an invalid / NaN scalar.
     fn is_invalid_scalar(self) -> bool;
+    /// Checked division returning `Self::NAN` on zero/singular divisors.
     fn div_checked(self, rhs: Self) -> Self;
+    /// Exponentiation `self ^ rhs`.
     fn pow_scalar(self, rhs: Self) -> Self;
+    /// Resolves domain-specific named constants (such as `i` on complex scalars).
     fn extra_const(name: &str) -> Option<Self> {
         let _ = name;
         None
     }
-}
 
-impl EvalScalar for f64 {
-    const NAN: Self = f64::NAN;
-
-    fn from_real(val: f64) -> Self {
-        val
-    }
-
-    fn imag_unit() -> Self {
-        f64::NAN
-    }
-
-    fn real_part(self) -> f64 {
-        self
-    }
-
-    fn is_invalid_scalar(self) -> bool {
-        self.is_nan()
-    }
-
-    fn div_checked(self, rhs: Self) -> Self {
-        if rhs == 0.0 { f64::NAN } else { self / rhs }
-    }
-
-    fn pow_scalar(self, rhs: Self) -> Self {
-        self.powf(rhs)
-    }
-}
-
-impl EvalScalar for Complex64 {
-    const NAN: Self = Self::new(f64::NAN, f64::NAN);
-
-    fn from_real(val: f64) -> Self {
-        Self::new(val, 0.0)
-    }
-
-    fn imag_unit() -> Self {
-        Self::i()
-    }
-
-    fn real_part(self) -> f64 {
-        self.re
-    }
-
-    fn is_invalid_scalar(self) -> bool {
-        self.re.is_nan() || self.im.is_nan()
-    }
-
-    fn div_checked(self, rhs: Self) -> Self {
-        if rhs.norm_sqr() < 1e-12 {
-            Self::NAN
-        } else {
-            self / rhs
-        }
-    }
-
-    fn pow_scalar(self, rhs: Self) -> Self {
-        if rhs.im == 0.0 {
-            self.powf(rhs.re)
-        } else {
-            self.powc(rhs)
-        }
-    }
-
-    fn extra_const(name: &str) -> Option<Self> {
-        name.eq_ignore_ascii_case("i").then(Self::i)
-    }
+    /// Sine $\sin(x)$.
+    fn sin_s(self) -> Self;
+    /// Cosine $\cos(x)$.
+    fn cos_s(self) -> Self;
+    /// Tangent $\tan(x)$.
+    fn tan_s(self) -> Self;
+    /// Exponential $e^x$.
+    fn exp_s(self) -> Self;
+    /// Natural logarithm $\ln(x)$.
+    fn ln_s(self) -> Self;
+    /// Base-10 logarithm $\log_{10}(x)$.
+    fn log10_s(self) -> Self;
+    /// Square root $\sqrt{x}$.
+    fn sqrt_s(self) -> Self;
+    /// Absolute value $|x|$ with Clarke subgradient.
+    fn abs_s(self) -> Self;
+    /// Hyperbolic sine $\sinh(x)$.
+    fn sinh_s(self) -> Self;
+    /// Hyperbolic cosine $\cosh(x)$.
+    fn cosh_s(self) -> Self;
+    /// Hyperbolic tangent $\tanh(x)$.
+    fn tanh_s(self) -> Self;
+    /// Inverse sine $\arcsin(x)$.
+    fn asin_s(self) -> Self;
+    /// Inverse cosine $\arccos(x)$.
+    fn acos_s(self) -> Self;
+    /// Inverse tangent $\arctan(x)$.
+    fn atan_s(self) -> Self;
+    /// Heaviside step $\operatorname{step}(x)$ with Clarke subgradient.
+    fn step_s(self) -> Self;
+    /// Boxcar pulse $\operatorname{rect}(x)$ with Clarke subgradient.
+    fn rect_s(self) -> Self;
+    /// Minimum $\min(a, b)$ with Clarke subgradient.
+    fn min_s(self, other: Self) -> Self;
+    /// Maximum $\max(a, b)$ with Clarke subgradient.
+    fn max_s(self, other: Self) -> Self;
+    /// Clamping $\operatorname{clamp}(x, \text{lo}, \text{hi})$ with Clarke subgradient.
+    fn clamp_s(self, lo: Self, hi: Self) -> Self;
+    /// Four-quadrant inverse tangent $\operatorname{atan2}(y, x)$.
+    fn atan2_s(self, other: Self) -> Self;
 }
 
 #[inline]
@@ -313,60 +315,26 @@ pub(super) fn eval_func<T: EvalScalar>(func: Func, args: &[T]) -> T {
         return T::NAN;
     }
     match func {
-        Func::Sin => args[0].sin(),
-        Func::Cos => args[0].cos(),
-        Func::Tan => args[0].tan(),
-        Func::Exp => args[0].exp(),
-        Func::Ln => args[0].ln(),
-        Func::Log10 => args[0].log10(),
-        Func::Sqrt => args[0].sqrt(),
-        Func::Abs => T::from_real(args[0].abs()),
-        Func::Sinh => args[0].sinh(),
-        Func::Cosh => args[0].cosh(),
-        Func::Tanh => args[0].tanh(),
-        Func::Asin => args[0].asin(),
-        Func::Acos => args[0].acos(),
-        Func::Atan => args[0].atan(),
-        Func::Step | Func::Rect | Func::Min | Func::Max | Func::Clamp | Func::Atan2 => {
-            eval_real_projected_func(func, args)
-        }
-    }
-}
-
-fn eval_real_projected_func<T: EvalScalar>(func: Func, args: &[T]) -> T {
-    if args.iter().any(|v| v.is_invalid_scalar()) {
-        return T::NAN;
-    }
-    let val = match func {
-        Func::Step => {
-            if args[0].real_part() < 0.0 {
-                0.0
-            } else {
-                1.0
-            }
-        }
-        Func::Rect => {
-            if args[0].real_part().abs() <= 0.5 {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        Func::Min => args[0].real_part().min(args[1].real_part()),
-        Func::Max => args[0].real_part().max(args[1].real_part()),
-        Func::Atan2 => args[0].real_part().atan2(args[1].real_part()),
-        Func::Clamp => {
-            let x = args[0].real_part();
-            let lo = args[1].real_part();
-            let hi = args[2].real_part();
-            if lo > hi { f64::NAN } else { x.max(lo).min(hi) }
-        }
-        _ => f64::NAN,
-    };
-    if val.is_nan() {
-        T::NAN
-    } else {
-        T::from_real(val)
+        Func::Sin => args[0].sin_s(),
+        Func::Cos => args[0].cos_s(),
+        Func::Tan => args[0].tan_s(),
+        Func::Exp => args[0].exp_s(),
+        Func::Ln => args[0].ln_s(),
+        Func::Log10 => args[0].log10_s(),
+        Func::Sqrt => args[0].sqrt_s(),
+        Func::Abs => args[0].abs_s(),
+        Func::Sinh => args[0].sinh_s(),
+        Func::Cosh => args[0].cosh_s(),
+        Func::Tanh => args[0].tanh_s(),
+        Func::Asin => args[0].asin_s(),
+        Func::Acos => args[0].acos_s(),
+        Func::Atan => args[0].atan_s(),
+        Func::Step => args[0].step_s(),
+        Func::Rect => args[0].rect_s(),
+        Func::Min => args[0].min_s(args[1]),
+        Func::Max => args[0].max_s(args[1]),
+        Func::Clamp => args[0].clamp_s(args[1], args[2]),
+        Func::Atan2 => args[0].atan2_s(args[1]),
     }
 }
 

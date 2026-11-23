@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 20 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 21 workspace crates:
 
 ```mermaid
 graph TD
@@ -69,6 +69,7 @@ graph TD
     subgraph Math_Infrastructure
         Pure[pure_math]
         Commons[math_commons]
+        Sym[engine_symbolic]
         Meta[scientific_metadata]
         Registry[federated_registry]
     end
@@ -86,19 +87,20 @@ graph TD
 
     GUI --> Explorer
     GUI --> Plot
-    GUI --> Meta & Registry & Diag
+    GUI --> Sym & Meta & Registry & Diag
     Explorer --> AI & Phys & Bio & App & Clim & Epi
-    Explorer --> Pure & Commons
+    Explorer --> Pure & Commons & Sym
 
     AI --> Commons & Engine & Meta
-    Phys --> Commons & Engine & Meta & Pure
+    Phys --> Commons & Sym & Engine & Meta & Pure
     Bio --> Commons & Engine & Meta & Pure
-    App --> Commons & Engine & Meta & Pure
+    App --> Commons & Sym & Engine & Meta & Pure
     Clim --> Commons & Engine & Meta
-    Epi --> Commons & Engine & Meta & Pure
+    Epi --> Commons & Sym & Engine & Meta & Pure
 
-    Pure --> Commons & Meta
-    Commons --> CoreCrate
+    Pure --> Commons & Sym & Meta
+    Commons --> Sym & CoreCrate
+    Sym --> Engine & CoreCrate
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
 
@@ -111,7 +113,7 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 20 member crates declared in `Cargo.toml`:
+The workspace contains all 21 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
@@ -119,6 +121,7 @@ The workspace contains all 20 member crates declared in `Cargo.toml`:
 | `crates/verified_engine` | Zero-allocation runtime and execution tracking | [zero_allocation_runtime](zero_allocation_runtime.md) |
 | `crates/verified_engine_macros` | Attribute macros (`#[theory]`, `#[verified]`) | [verified_engine](../../crates/verified_engine/src/lib.rs) |
 | `crates/diagnostics` | Static analysis diagnostics and reporting | [diagnostics](../../crates/diagnostics/README.md) |
+| `crates/02_engines/engine_symbolic` | Bounded e-graph saturation and automatic differentiation | [engine_symbolic](../../crates/02_engines/engine_symbolic/README.md) |
 | `crates/math_commons` | Tolerances, constant registries, numeric traits | [math_commons](../../crates/math_commons/README.md) |
 | `crates/pure_math` | Pure mathematics and numerical algorithms | [pure_math](../../crates/pure_math/README.md) |
 | `crates/scientific_metadata` | Theory descriptors and citation metadata | [scientific_metadata](../../crates/scientific_metadata/src/lib.rs) |

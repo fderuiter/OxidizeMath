@@ -4,6 +4,7 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
+engine_symbolic = { path = "../02_engines/engine_symbolic" }
 thiserror = { workspace = true }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 diagnostics = { path = "../diagnostics" }

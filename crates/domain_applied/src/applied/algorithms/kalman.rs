@@ -4,6 +4,13 @@
 //! This module allows for state estimation of linear systems with arbitrary state and measurement dimensions.
 use nalgebra::{DMatrix, DVector, RealField};
 use thiserror::Error;
+
+#[path = "kalman_dual.rs"]
+mod kalman_dual;
+pub use kalman_dual::{
+    DualExtendedKalmanSystem, DualKalmanModel, dual_measurement_jacobian, dual_transition_jacobian,
+    rk4_ode_kalman_predict,
+};
 #[derive(Error, Debug, PartialEq)]
 #[allow(missing_docs)]
 pub enum KalmanError {

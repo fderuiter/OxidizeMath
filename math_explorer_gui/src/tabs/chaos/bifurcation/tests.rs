@@ -404,3 +404,21 @@ fn test_bifurcation_background_runner_lyapunov_and_cobweb_step() {
     assert_eq!(tool.orbit_step_count, 1);
     assert!((tool.orbit_x - 3.8 * x_before * (1.0 - x_before)).abs() < 1e-12);
 }
+
+#[test]
+fn test_unified_dual_lyapunov_matches_logistic_and_handles_superstable_zero_deriv() {
+    let mut bar = crate::framework::MathExpressionInputBar::new("f(x)", "r * x * (1 - x)", vec![])
+        .with_axes(&["r", "x"]);
+    let job = runner::CompiledMap1DJob::from_bar(&bar);
+    let dual_lyap = job
+        .lyapunov(3.83, 0.1, None, 0, LYAPUNOV_ITERATIONS)
+        .unwrap();
+    let exact_lyap = clamp_lyapunov_value(logistic_lyapunov(3.83, 0.1, LYAPUNOV_ITERATIONS));
+    assert!((dual_lyap - exact_lyap).abs() < 1e-12);
+
+    // Superstable quadratic map f(r, x) = x^2 at x0 = 0.0 -> f'(0) = 0 clamps cleanly to LYAPUNOV_PLOT_MIN
+    bar.set_expression("x^2 - r");
+    let quad_job = runner::CompiledMap1DJob::from_bar(&bar);
+    let superstable = quad_job.lyapunov(0.0, 0.0, None, 0, 32).unwrap();
+    assert!((superstable - compute::LYAPUNOV_PLOT_MIN).abs() < 1e-12);
+}

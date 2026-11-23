@@ -44,7 +44,8 @@ pub mod __doctest_facade {
     pub use crate::{math_types, pure_math};
     pub use diagnostics;
     pub use math_commons::{
-        ast, constants, fit, math_kernel, poi, primitives, registry, series, wigner,
+        ast, constants, engine_symbolic, fit, math_kernel, poi, primitives, registry, series,
+        wigner,
     };
     pub use nalgebra;
     pub use num_complex;

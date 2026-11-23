@@ -5,7 +5,9 @@ use super::SurfaceViewer;
 use eframe::egui;
 use egui_plot::LineStyle;
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::pure_math::differential_geometry::surface::ParametricSurface;
+use math_explorer::pure_math::differential_geometry::surface::{
+    clamp_surface_point, ParametricSurface,
+};
 use nalgebra::Point3;
 use std::hash::{Hash as _, Hasher as _};
 
@@ -143,7 +145,7 @@ fn sample_surface_positions(
         let u = u_min + (u_max - u_min) * (i as f64 / u_res.max(1) as f64);
         for j in 0..=v_res {
             let v = v_min + (v_max - v_min) * (j as f64 / v_res.max(1) as f64);
-            out.push(surface.position(u, v));
+            out.push(clamp_surface_point(surface.position(u, v)));
         }
     }
     out

@@ -163,10 +163,19 @@ impl ComplexMappingTool {
         }
         match self.function {
             MappingFunction::Custom => {
-                let h = Complex64::new(1e-7, 0.0);
-                let f_plus = self.eval_z(z + h);
-                let f_minus = self.eval_z(z - h);
-                sanitize_complex_deriv((f_plus - f_minus) / (2.0 * h))
+                self.math_input
+                    .compiled()
+                    .map_or(Complex64::new(0.0, 0.0), |c| {
+                        let out = c.eval_complex_z_params_dual(
+                            engine_symbolic::DualComplex64::variable(z),
+                            self.math_input.param_slice(),
+                        );
+                        if out.re.re.is_finite() && out.re.im.is_finite() {
+                            sanitize_complex_deriv(out.eps)
+                        } else {
+                            Complex64::new(0.0, 0.0)
+                        }
+                    })
             }
             _ => self.function.derivative(z),
         }

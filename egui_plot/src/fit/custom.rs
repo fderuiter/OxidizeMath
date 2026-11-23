@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use math_commons::fit::{MAX_FIT_PARAMS, levenberg_marquardt_numeric, sum_squared_errors_numeric};
+use math_commons::ast::SolverWorkspace;
+use math_commons::fit::{
+    MAX_FIT_PARAMS, ReverseGradFit, levenberg_marquardt_numeric, sum_squared_errors_numeric,
+};
 
 use crate::fit::{FitResult, FitType};
 
@@ -13,6 +16,24 @@ pub trait CustomFitEvaluator: Send + Sync + std::fmt::Debug {
 
     /// Evaluates $f(x; \theta)$ at `x` for `params[..self.param_names().len()]`.
     fn eval(&self, x: f64, params: &[f64]) -> Option<f64>;
+
+    /// Returns `true` when [`Self::eval_grad`] supplies exact single-pass reverse-mode gradients.
+    fn has_analytic_grad(&self) -> bool {
+        false
+    }
+
+    /// Evaluates $f(x; \theta)$ and writes $\partial f / \partial \theta_j$ into `grad_out` in one
+    /// reverse pass using stack-backed `workspace`.
+    fn eval_grad(
+        &self,
+        x: f64,
+        params: &[f64],
+        grad_out: &mut [f64],
+        _workspace: &mut SolverWorkspace,
+    ) -> Option<f64> {
+        let _ = grad_out;
+        self.eval(x, params)
+    }
 
     /// Formats the fitted formula badge string with resolved parameter values.
     fn format_fitted_formula(&self, raw_formula: &str, params: &[f64]) -> String {
@@ -111,7 +132,24 @@ fn solve_custom_parameters(
     let mut best: Option<(f64, Vec<f64>)> = None;
 
     for seed in candidates {
-        if let Ok(fitted_arr) = levenberg_marquardt_numeric(valid, &seed, eval_fn) {
+        let fit_res = if evaluator.has_analytic_grad() {
+            levenberg_marquardt_numeric(
+                valid,
+                &seed,
+                ReverseGradFit {
+                    eval_val: eval_fn,
+                    eval_grad: |x: f64,
+                                p: &[f64],
+                                grad_out: &mut [f64],
+                                ws: &mut SolverWorkspace| {
+                        evaluator.eval_grad(x, p, grad_out, ws)
+                    },
+                },
+            )
+        } else {
+            levenberg_marquardt_numeric(valid, &seed, eval_fn)
+        };
+        if let Ok(fitted_arr) = fit_res {
             let fitted = fitted_arr[..k].to_vec();
             if let Some(sse) = sum_squared_errors_numeric(valid, &fitted, eval_fn)
                 && best.as_ref().is_none_or(|(best_sse, _)| sse < *best_sse)

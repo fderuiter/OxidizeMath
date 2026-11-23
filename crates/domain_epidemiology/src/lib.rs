@@ -16,7 +16,7 @@ pub mod __doctest_facade {
     }
     pub use crate::epidemiology;
     pub use ::pure_math::__doctest_facade::{
-        ast, constants, diagnostics, fit, math_kernel, math_types, mesh, nalgebra, num_complex,
-        petgraph, poi, primitives, pure_math, rand, registry, rng, series, wigner,
+        ast, constants, diagnostics, engine_symbolic, fit, math_kernel, math_types, mesh, nalgebra,
+        num_complex, petgraph, poi, primitives, pure_math, rand, registry, rng, series, wigner,
     };
 }

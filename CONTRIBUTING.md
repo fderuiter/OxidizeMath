@@ -12,7 +12,7 @@ When you submit a PR, you aren't just merging code; you are merging knowledge. E
 
 Before implementing new features or making structural changes, review our centralized architecture documentation:
 
-- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 20 crates.
+- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 21 crates.
 - [CERA Framework Guide](docs/architecture/cera_framework.md): Climate-invariant encoding, representation alignment, and modeling pipelines.
 - [Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md): NASA Power of 10 Rule 3 enforcement and `VerifiedEngine` runtime rules.
 - [Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md): Step-by-step tutorial to implement and register simulation tabs.
@@ -65,7 +65,7 @@ When configured, Git executes `.githooks/pre-commit` before completing any `git 
 - Runs `unified_verification batch-staged` (built with Cargo's default `dev` profile) against the snapshot for staged ADR enforcement (`verify-records --staged`), Cargo release profile & lint inheritance checks (`check-profiles`), file-length limits (`check-file-lengths`), crate documentation audits (`check-docs`), AST clone detection (`check-duplicates`), in-process citation & module traceability (`traceability`), staged secret/entropy scanning (`check-entropy`), touched-crate policy auditing (`test-policy-audit`), and staged duplicate warnings.
 - Runs `.github/` workflow and composite action linting (`lint-workflows`) once via `xtask` when `.github/` paths are staged.
 - Validates internal relative Markdown links against the snapshot when `.md` files are staged, escalating to a full-repository Markdown link scan whenever tracked files are deleted or renamed.
-- Dynamically expands modified member crates across workspace reverse dependents and all 17 web-compiled crates reachable from `math_explorer_gui/Cargo.toml` for targeted host and `wasm32-unknown-unknown` Clippy, and escalates root manifest (`Cargo.toml`), lockfile (`Cargo.lock`), toolchain (`rust-toolchain*`, `.cargo/*`), or lint configuration (`.clippy.toml`, `.rustfmt.toml`, `verification_whitelist.toml`) edits to full-workspace host and `wasm32` Clippy.
+- Dynamically expands modified member crates across workspace reverse dependents and all 18 web-compiled crates reachable from `math_explorer_gui/Cargo.toml` for targeted host and `wasm32-unknown-unknown` Clippy, and escalates root manifest (`Cargo.toml`), lockfile (`Cargo.lock`), toolchain (`rust-toolchain*`, `.cargo/*`), or lint configuration (`.clippy.toml`, `.rustfmt.toml`, `verification_whitelist.toml`) edits to full-workspace host and `wasm32` Clippy.
 - Keeps pre-commit 100% offline by deferring network-bound OSV vulnerability queries (`check-vulnerabilities`) and public API baseline drift (`check-api-drift`) to `cargo run -p xtask -- lint-all`.
 
 If any scoped check fails, `.githooks/pre-commit` exits with a non-zero status and blocks the commit.

@@ -3,6 +3,7 @@
 use std::f64::consts::PI;
 
 use math_commons::constants::{C, G};
+use math_commons::engine_symbolic::Dual;
 use nalgebra::{SMatrix, SVector};
 use pure_math::pure_math::tensor::{StaticMetric, TensorError};
 
@@ -143,6 +144,35 @@ impl StaticMetric<4> for KerrEquatorialMetric {
         g[(2, 2)] = r * r;
         g[(3, 3)] = r * r + a * a + (a * a * rs) / r;
         Ok(g)
+    }
+
+    #[verified_engine::verified]
+    fn metric_dual_at(
+        &self,
+        point: &SVector<Dual<f64>, 4>,
+    ) -> Option<Result<SMatrix<Dual<f64>, 4, 4>, TensorError>> {
+        if !point.iter().all(|v| v.re.is_finite()) {
+            return Some(Err(TensorError::SingularMetric));
+        }
+        let rs = self.schwarzschild_radius;
+        let a = self.spin_a;
+        let r = point[1];
+        if r.re <= self.outer_horizon_radius() {
+            return Some(Err(TensorError::SingularMetric));
+        }
+        let delta = r * r - r * rs + (a * a);
+        if delta.re <= 1e-14 {
+            return Some(Err(TensorError::SingularMetric));
+        }
+        let mut g = SMatrix::<Dual<f64>, 4, 4>::from_element(Dual::ZERO);
+        g[(0, 0)] = -(Dual::ONE - Dual::constant(rs) / r);
+        let g03 = Dual::constant(-(a * rs)) / r;
+        g[(0, 3)] = g03;
+        g[(3, 0)] = g03;
+        g[(1, 1)] = (r * r) / delta;
+        g[(2, 2)] = r * r;
+        g[(3, 3)] = r * r + Dual::constant(a * a) + Dual::constant(a * a * rs) / r;
+        Some(Ok(g))
     }
 
     #[verified_engine::verified]

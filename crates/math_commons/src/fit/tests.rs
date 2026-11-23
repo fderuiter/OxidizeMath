@@ -147,3 +147,67 @@ fn test_six_parameter_levenberg_marquardt_numeric() {
         Err(FitError::UnsupportedDegree { degree: 7 })
     );
 }
+
+#[test]
+fn test_six_parameter_lm_single_reverse_pass_per_point_and_zero_alloc() {
+    use crate::ast::{CompiledExpr, SolverWorkspace, parse};
+    use std::cell::Cell;
+    use verified_engine::engine::VerifiedEngine;
+
+    let expr = parse("p0 + p1 * x + p2 * exp(-p3 * x) + p4 * sin(p5 * x)").expect("parse");
+    let compiled = CompiledExpr::compile_with_vars_and_params(
+        &expr,
+        &["x"],
+        &["p0", "p1", "p2", "p3", "p4", "p5"],
+    )
+    .expect("compile");
+
+    let true_p = [1.2, -0.35, 2.4, 0.6, 0.9, 1.7];
+    let mut pts = [[0.0_f64; 2]; 41];
+    for (i, slot) in pts.iter_mut().enumerate() {
+        let x = (i as f64) * 0.15;
+        *slot = [x, compiled.eval_1d(x, &true_p)];
+    }
+    let seeds = [1.0, -0.2, 2.0, 0.4, 0.6, 1.5];
+
+    // Count reverse passes on the first normal-equation sweep: 1 pass/point (not 13 passes/point).
+    let grad_passes = Cell::new(0usize);
+    let mut ws = SolverWorkspace::new();
+    let cb = ReverseGradFit {
+        eval_val: |x: f64, p: &[f64]| Some(compiled.eval_1d(x, p)),
+        eval_grad: |x: f64, p: &[f64], grad_out: &mut [f64], work: &mut SolverWorkspace| {
+            grad_passes.set(grad_passes.get() + 1);
+            let mut vars = [0.0_f64; 7];
+            let mut grads = [0.0_f64; 7];
+            vars[0] = x;
+            vars[1..7].copy_from_slice(&p[..6]);
+            let y = compiled.eval_grad_into(&vars, work, &mut grads);
+            y.is_finite()
+                .then(|| grad_out[..6].copy_from_slice(&grads[1..7]))
+                .map(|()| y)
+        },
+    };
+    let mut seed_arr = [0.0_f64; MAX_FIT_PARAMS];
+    seed_arr.copy_from_slice(&seeds);
+    for &[x, _] in &pts {
+        let (y, jac) = cb.eval_point_and_jac(x, &seed_arr, 6, &mut ws);
+        assert!(y.is_finite() && jac.iter().all(|v| v.is_finite()));
+    }
+    assert_eq!(
+        grad_passes.get(),
+        pts.len(),
+        "expected exactly 1 reverse pass per point"
+    );
+
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (fitted, _) = VerifiedEngine::run_verified(|| {
+        levenberg_marquardt_numeric(&pts, &seeds, &compiled).expect("6-param reverse-mode LM")
+    });
+    let sse = sum_squared_errors_numeric(&pts, &fitted, &compiled).expect("finite sse");
+    assert!(
+        sse < 1e-18,
+        "expected machine-precision SSE < 1e-18, got {sse}"
+    );
+}

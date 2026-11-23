@@ -15,8 +15,9 @@ use crate::framework::{InteractiveTool, SimulationFramework};
 use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, URL_JSON_BOUNDS};
 use eframe::egui::{self, vec2, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect};
 use math_explorer::applied::algorithms::kalman::{KalmanFilter, KalmanSystem};
-use math_explorer::applied::pharmacokinetics::PharmacokineticModel;
+use math_explorer::applied::pharmacokinetics::{BatemanCompartmentDynamics, PharmacokineticModel};
 use math_explorer::nalgebra::{DMatrix, DVector};
+use math_explorer::pure_math::analysis::ode::rk4_step_dual_jacobian;
 
 fn assert_finite_diff_jacobian<M: KalmanSystem<f64>>(model: &M, x0: &[f64], dt: f64) {
     let n = x0.len();
@@ -94,14 +95,13 @@ fn test_fast_ekf_parity_with_kalman_filter_and_zero_sensor_noise_safety() {
     let mut fast = FastEkf::from_validated_builder(model, dt, init_s, init_c);
 
     let q_diag = model.q_diag(dt);
+    let lorenz_ode = super::ekf::build_lorenz_ode(model.sigma, model.rho_eff, model.beta);
     for step in 0..14 {
         let z = -12.5 + 0.35 * (step as f64 * 0.4).sin();
         kf.predict();
         kf.update(&DVector::from_element(1, z))
             .expect("floored R prevents singular innovation");
-        fast.predict_rk4(dt, &q_diag, |s| {
-            super::ekf::lorenz_rhs_and_jac(s, model.sigma, model.rho_eff, model.beta)
-        });
+        fast.predict_ode_rk4(&lorenz_ode, dt, &q_diag);
         fast.update_unit_obs(0, z, 0.0);
 
         for i in 0..3 {
@@ -129,11 +129,10 @@ fn test_bateman_analytical_parity_and_pk_hidden_clearance_convergence() {
 
     let initial_ke_err = (twin.ekf.state[2] - 0.13).abs();
     // Verify 4th-order RK4 exactness against BatemanModel at fine dt = 0.05 h
+    let pk_dyn = BatemanCompartmentDynamics::new(1.10, 25.0);
     let mut fine_state = [0.85 * 105.0, 0.0, 0.13];
     for step_idx in 1..=20 {
-        let (ns, _) = super::ekf::rk4_step_with_jacobian(&fine_state, 0.05, |s| {
-            super::ekf::pk_rhs_and_jac(s, 1.10, 25.0)
-        });
+        let (ns, _) = rk4_step_dual_jacobian(&pk_dyn, 0.0, &fine_state, 0.05);
         fine_state = ns;
         let exact = twin
             .open_loop_superposition

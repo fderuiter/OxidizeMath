@@ -259,3 +259,41 @@ fn test_weak_field_light_deflection_matches_2_rs_over_b() {
     let expected = 2.0 * rs / b;
     assert_relative_eq!(delta_phi, expected, max_relative = 0.04);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_schwarzschild_christoffel_near_horizon_r_1_00002_within_1e_11() {
+    use nalgebra::DVector;
+    use pure_math::pure_math::tensor::christoffel_symbols;
+
+    let bh = SchwarzschildBlackHole::from_schwarzschild_radius(1.0).unwrap();
+    let r = 1.00002_f64;
+    let theta = 1.15_f64;
+    let spt = SVector::<f64, 4>::new(0.0, r, theta, 0.4);
+    let dpt = DVector::from_vec(vec![0.0, r, theta, 0.4]);
+
+    let exact = bh.christoffel_at(&spt).unwrap();
+    let static_gamma = static_christoffel_symbols(&bh, &spt).unwrap();
+    let dynamic_gamma = christoffel_symbols(&bh, &dpt).unwrap();
+
+    for mu in 0..4 {
+        for a in 0..4 {
+            for b in 0..4 {
+                let ref_val = exact[mu][(a, b)];
+                let err_s = (static_gamma[mu][(a, b)] - ref_val).abs();
+                let err_d = (dynamic_gamma[mu][(a, b)] - ref_val).abs();
+                let scale = ref_val.abs().max(1.0);
+                assert!(
+                    err_s / scale < 1e-11,
+                    "static Gamma^{mu}_{{{a}{b}}} rel err {:e}",
+                    err_s / scale
+                );
+                assert!(
+                    err_d / scale < 1e-11,
+                    "dynamic Gamma^{mu}_{{{a}{b}}} rel err {:e}",
+                    err_d / scale
+                );
+            }
+        }
+    }
+}

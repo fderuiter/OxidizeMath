@@ -6,7 +6,7 @@ use eframe::egui;
 use egui_plot::LineStyle;
 use math_commons::math_kernel::colormap::mapped_gradient;
 use math_explorer::pure_math::differential_geometry::surface::{
-    KleinBottle, ParametricSurface, Sphere, SurfaceAnalysis, Torus,
+    clamp_surface_point, KleinBottle, ParametricSurface, Sphere, SurfaceAnalysis, Torus,
 };
 use nalgebra::Point3;
 use std::hash::{Hash as _, Hasher as _};
@@ -208,11 +208,11 @@ fn sample_positions_and_curvature<T: ParametricSurface>(
         let u = u_min + (u_max - u_min) * (i as f64 / u_res.max(1) as f64);
         for j in 0..=v_res {
             let v = v_min + (v_max - v_min) * (j as f64 / v_res.max(1) as f64);
-            positions.push(surface.position(u, v));
             let raw = match curvature_type {
                 CurvatureType::Gaussian => surface.gaussian_curvature(u, v),
                 CurvatureType::Mean => surface.mean_curvature(u, v),
             };
+            positions.push(clamp_surface_point(surface.position(u, v)));
             let c = if raw.is_finite() {
                 raw.clamp(-1e4, 1e4)
             } else {

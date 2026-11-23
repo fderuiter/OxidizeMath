@@ -2,9 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::ekf::{
-    lorenz_rhs_and_jac, seir_rhs_and_jac, FastEkf, LorenzKalmanModel, SeirKalmanModel,
-};
+use super::ekf::{FastEkf, LorenzKalmanModel, SeirKalmanModel};
 pub use super::plants_pk::PkPlantTwin;
 use super::state::{ClosedLoopState, PlantKind};
 use math_explorer::epidemiology::compartmental::{SEIRModel, SEIRState};
@@ -205,9 +203,7 @@ impl LorenzPlantTwin {
             r_var: lorenz_r_var(cfg.sensor_noise),
         })
         .q_diag(dt);
-        self.ekf.predict_rk4(dt, &q_diag, |s| {
-            lorenz_rhs_and_jac(s, LORENZ_SIGMA, rho_eff, LORENZ_BETA)
-        });
+        self.ekf.predict_ode_rk4(&self.controlled, dt, &q_diag);
 
         let c_vec = self.controlled.state.vec;
         let noise_std = 0.8 * cfg.sensor_noise.max(0.0);
@@ -373,9 +369,8 @@ impl SeirPlantTwin {
             r_var: seir_r_var(cfg.sensor_noise),
         })
         .q_diag(dt);
-        self.ekf.predict_rk4(dt, &q_diag, |s| {
-            seir_rhs_and_jac(s, SEIR_POP_N, beta_eff, SEIR_SIGMA, SEIR_GAMMA)
-        });
+        self.ekf
+            .predict_ode_rk4(&self.controlled.dynamics, dt, &q_diag);
 
         let c_st = *self.controlled.get_state();
         let noise_std = 14.0 * cfg.sensor_noise.max(0.0);

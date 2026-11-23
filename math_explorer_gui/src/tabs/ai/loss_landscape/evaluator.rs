@@ -2,14 +2,15 @@
 
 //! Unified surface evaluator combining analytical potentials, empirical regression objectives
 //! (`MSE`, `MAE`, `Huber`) over preset/formula/table targets, custom compiled `CompiledExpr`
-//! predictors, central finite-difference gradients, and sculpted Gaussian barriers/wells.
+//! predictors, `SolverWorkspace`-backed reverse-mode gradients, and sculpted Gaussian barriers/wells.
 
 use super::data::LossMetric;
 use super::surfaces::{LandscapeSurface, SculptBump};
+use engine_symbolic::SolverWorkspace;
 use math_commons::ast::CompiledExpr;
 use nalgebra::Vector2;
 
-const CUSTOM_FD_STEP: f64 = 1e-5;
+const MAX_PREDICTOR_VARS: usize = 32;
 
 /// Zero-allocation empirical dataset and loss configuration for [`LandscapeSurface::LinearMse`].
 #[derive(Clone, Copy)]
@@ -57,32 +58,56 @@ impl<'a> EmpiricalConfig<'a> {
         if n == 0 {
             return Vector2::zeros();
         }
-        if self.custom_predictor.is_none() {
-            let (mut dw_sum, mut db_sum) = (0.0, 0.0);
-            for &[x, y] in self.targets {
-                let raw = w * x + b - y;
-                if (-1e6..=1e6).contains(&raw) {
-                    let dl = self.metric.point_loss_derivative(raw, self.huber_delta);
-                    dw_sum += dl * x;
-                    db_sum += dl;
+        let inv_n = 1.0 / (n as f64);
+        let (mut dw_sum, mut db_sum) = (0.0, 0.0);
+        match self.custom_predictor {
+            None => {
+                for &[x, y] in self.targets {
+                    let raw = w * x + b - y;
+                    if (-1e6..=1e6).contains(&raw) {
+                        let dl = self.metric.point_loss_derivative(raw, self.huber_delta);
+                        dw_sum += dl * x;
+                        db_sum += dl;
+                    }
                 }
             }
-            let inv_n = 1.0 / (n as f64);
-            return Vector2::new(
-                (dw_sum * inv_n).clamp(-1e6, 1e6),
-                (db_sum * inv_n).clamp(-1e6, 1e6),
-            );
+            Some((compiled, params)) => {
+                let p_len = params.len().min(MAX_PREDICTOR_VARS - 3);
+                let total_vars = 3 + p_len;
+                let mut vars = [0.0_f64; MAX_PREDICTOR_VARS];
+                let mut grad_vars = [0.0_f64; MAX_PREDICTOR_VARS];
+                vars[1] = w;
+                vars[2] = b;
+                vars[3..total_vars].copy_from_slice(&params[..p_len]);
+                let mut ws = SolverWorkspace::new();
+
+                for &[x, y] in self.targets {
+                    vars[0] = x;
+                    let pred = compiled.eval_grad_into(
+                        &vars[..total_vars],
+                        &mut ws,
+                        &mut grad_vars[..total_vars],
+                    );
+                    if !pred.is_finite() {
+                        return Vector2::zeros();
+                    }
+                    let raw = pred - y;
+                    if (-1e6..=1e6).contains(&raw) {
+                        let dl = self.metric.point_loss_derivative(raw, self.huber_delta);
+                        if grad_vars[1].is_finite() {
+                            dw_sum += dl * grad_vars[1];
+                        }
+                        if grad_vars[2].is_finite() {
+                            db_sum += dl * grad_vars[2];
+                        }
+                    }
+                }
+            }
         }
-        let h = CUSTOM_FD_STEP;
-        let dw = match (self.evaluate_base(w + h, b), self.evaluate_base(w - h, b)) {
-            (Some(hi), Some(lo)) => ((hi - lo) / (2.0 * h)).clamp(-1e6, 1e6),
-            _ => 0.0,
-        };
-        let db = match (self.evaluate_base(w, b + h), self.evaluate_base(w, b - h)) {
-            (Some(hi), Some(lo)) => ((hi - lo) / (2.0 * h)).clamp(-1e6, 1e6),
-            _ => 0.0,
-        };
-        Vector2::new(dw, db)
+        Vector2::new(
+            (dw_sum * inv_n).clamp(-1e6, 1e6),
+            (db_sum * inv_n).clamp(-1e6, 1e6),
+        )
     }
 }
 

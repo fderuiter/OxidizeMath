@@ -1,8 +1,9 @@
 // [cite:chaos_theory]
 //! Continuous Chaos (The Lorenz System)
 
+use engine_symbolic::Dual;
 use nalgebra::Vector3;
-use pure_math::pure_math::analysis::ode::{OdeSystem, Solver, TimeStepper};
+use pure_math::pure_math::analysis::ode::{DualArrayState, OdeSystem, Solver, TimeStepper};
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
@@ -185,6 +186,18 @@ impl OdeSystem<Vector3<f64>> for LorenzSystem {
     }
 }
 
+impl OdeSystem<DualArrayState<3>> for LorenzSystem {
+    /// Evaluates the Lorenz vector field over forward-mode [`Dual<f64>`] scalars for exact tangent propagation.
+    #[verified_engine::verified]
+    fn derivative(&self, _t: f64, state: &DualArrayState<3>) -> DualArrayState<3> {
+        let [x, y, z] = state.0;
+        let dx = (y - x) * self.sigma;
+        let dy = x * (Dual::constant(self.rho) - z) - y;
+        let dz = x * y - z * self.beta;
+        DualArrayState([dx, dy, dz])
+    }
+}
+
 #[verified_engine::verified]
 fn lorenz_hopf_rho(sigma: f64, beta: f64) -> Option<f64> {
     let denom = sigma - beta - 1.0;
@@ -257,5 +270,47 @@ impl TheoryDescribable for LorenzSystem {
         let mut map = HashMap::new();
         map.insert("default".to_string(), "Lorenz attractor state".to_string());
         map
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pure_math::pure_math::analysis::ode::rk4_step_dual_jacobian;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_lorenz_dual_rk4_jacobian_matches_central_difference() {
+        let sys = LorenzBuilder::new()
+            .sigma(10.0)
+            .rho(29.2)
+            .beta(8.0 / 3.0)
+            .build(LorenzState::new(0.0, 0.0, 0.0));
+        let x0 = [-12.4, -17.8, 25.6];
+        let (_, rhs_jac) =
+            pure_math::pure_math::analysis::ode::ode_rhs_dual_jacobian(&sys, 0.0, &x0);
+        assert!((rhs_jac[0][0] - (-10.0)).abs() < 1.0e-15);
+        assert!((rhs_jac[1][0] - (29.2 - 25.6)).abs() < 1.0e-15);
+        assert!((rhs_jac[2][1] - (-12.4)).abs() < 1.0e-15);
+
+        let dt = 0.01;
+        let (_, jac) = rk4_step_dual_jacobian(&sys, 0.0, &x0, dt);
+        let eps = 1.0e-5;
+        let mut col = 0;
+        while col < 3 {
+            let mut xp = x0;
+            let mut xm = x0;
+            xp[col] += eps;
+            xm[col] -= eps;
+            let (fp, _) = rk4_step_dual_jacobian(&sys, 0.0, &xp, dt);
+            let (fm, _) = rk4_step_dual_jacobian(&sys, 0.0, &xm, dt);
+            let mut row = 0;
+            while row < 3 {
+                let fd = (fp[row] - fm[row]) / (2.0 * eps);
+                assert!((jac[row][col] - fd).abs() < 1.0e-8);
+                row += 1;
+            }
+            col += 1;
+        }
     }
 }

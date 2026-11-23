@@ -2,14 +2,16 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::ekf::{pk_rhs_and_jac, rk4_step_with_jacobian, FastEkf, PkKalmanModel};
+use super::ekf::{FastEkf, PkKalmanModel};
 use super::plants::{
     positive_control_fraction, quantize_bin, sample_standard_normal, PlantStepOutput,
 };
 use super::state::{ClosedLoopState, PlantKind};
 use math_explorer::applied::pharmacokinetics::{
-    BatemanModel, PKParameters, PharmacokineticModel, SuperpositionModel,
+    BatemanCompartmentDynamics, BatemanModel, PKParameters, PharmacokineticModel,
+    SuperpositionModel,
 };
+use math_explorer::pure_math::analysis::ode::rk4_step_dual_jacobian;
 use math_explorer::rng::OxidizeRng;
 
 const PK_BIOAVAIL: f64 = 0.85;
@@ -114,10 +116,9 @@ impl PkPlantTwin {
         let d_max = 42.0 * cfg.actuation_budget.max(0.0);
         let dose_mg = (positive_control_fraction(raw_action) * d_max).clamp(0.0, d_max);
 
+        let pk_dyn = BatemanCompartmentDynamics::new(PK_KA, PK_VOLUME_L);
         self.controlled_state[0] += PK_BIOAVAIL * dose_mg;
-        let (next_true, _) = rk4_step_with_jacobian(&self.controlled_state, dt, |s| {
-            pk_rhs_and_jac(s, PK_KA, PK_VOLUME_L)
-        });
+        let (next_true, _) = rk4_step_dual_jacobian(&pk_dyn, 0.0, &self.controlled_state, dt);
         self.controlled_state = [next_true[0].max(0.0), next_true[1].max(0.0), next_true[2]];
         self.time += dt;
 
@@ -131,8 +132,7 @@ impl PkPlantTwin {
             r_var: pk_r_var(cfg.sensor_noise),
         })
         .q_diag(dt);
-        self.ekf
-            .predict_rk4(dt, &q_diag, |s| pk_rhs_and_jac(s, PK_KA, PK_VOLUME_L));
+        self.ekf.predict_ode_rk4(&pk_dyn, dt, &q_diag);
 
         let cp_true = self.controlled_state[1];
         let noise_std = 0.28 * cfg.sensor_noise.max(0.0);

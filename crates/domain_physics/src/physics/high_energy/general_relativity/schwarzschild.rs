@@ -3,8 +3,9 @@
 use std::f64::consts::PI;
 
 use math_commons::constants::{C, G};
-use nalgebra::{SMatrix, SVector};
-use pure_math::pure_math::tensor::{StaticMetric, TensorError};
+use math_commons::engine_symbolic::Dual;
+use nalgebra::{DMatrix, DVector, SMatrix, SVector};
+use pure_math::pure_math::tensor::{Metric, StaticMetric, TensorError};
 
 use crate::error::HighEnergyError;
 use crate::physics::high_energy::observer::calculate_lorentz_factor;
@@ -295,6 +296,28 @@ impl StaticMetric<4> for SchwarzschildBlackHole {
     }
 
     #[verified_engine::verified]
+    fn metric_dual_at(
+        &self,
+        point: &SVector<Dual<f64>, 4>,
+    ) -> Option<Result<SMatrix<Dual<f64>, 4, 4>, TensorError>> {
+        let Ok(rs) = self.schwarzschild_radius() else {
+            return Some(Err(TensorError::SingularMetric));
+        };
+        if !point.iter().all(|v| v.re.is_finite()) || point[1].re <= rs {
+            return Some(Err(TensorError::SingularMetric));
+        }
+        let r = point[1];
+        let sin_t = point[2].sin();
+        let f = Dual::ONE - Dual::constant(rs) / r;
+        let mut g = SMatrix::<Dual<f64>, 4, 4>::from_element(Dual::ZERO);
+        g[(0, 0)] = -f;
+        g[(1, 1)] = f.recip();
+        g[(2, 2)] = r * r;
+        g[(3, 3)] = r * r * sin_t * sin_t;
+        Some(Ok(g))
+    }
+
+    #[verified_engine::verified]
     fn inverse_metric_at(
         &self,
         point: &SVector<f64, 4>,
@@ -373,5 +396,40 @@ impl StaticMetric<4> for SchwarzschildBlackHole {
             && theta > 1e-4
             && theta < PI - 1e-4
             && theta.sin() > 1e-4
+    }
+}
+
+impl Metric for SchwarzschildBlackHole {
+    #[verified_engine::verified]
+    fn metric_at(&self, point: &DVector<f64>) -> Result<DMatrix<f64>, TensorError> {
+        if point.len() != 4 {
+            return Err(TensorError::SingularMetric);
+        }
+        let svec = SVector::<f64, 4>::new(point[0], point[1], point[2], point[3]);
+        let g = <Self as StaticMetric<4>>::metric_at(self, &svec)?;
+        Ok(DMatrix::from_fn(4, 4, |r, c| g[(r, c)]))
+    }
+
+    #[verified_engine::verified]
+    fn metric_dual_at(
+        &self,
+        point: &[Dual<f64>],
+    ) -> Option<Result<DMatrix<Dual<f64>>, TensorError>> {
+        if point.len() != 4 {
+            return Some(Err(TensorError::SingularMetric));
+        }
+        let svec = SVector::<Dual<f64>, 4>::new(point[0], point[1], point[2], point[3]);
+        let res = <Self as StaticMetric<4>>::metric_dual_at(self, &svec)?;
+        Some(res.map(|g| DMatrix::from_fn(4, 4, |r, c| g[(r, c)])))
+    }
+
+    #[verified_engine::verified]
+    fn inverse_metric_at(&self, point: &DVector<f64>) -> Result<DMatrix<f64>, TensorError> {
+        if point.len() != 4 {
+            return Err(TensorError::SingularMetric);
+        }
+        let svec = SVector::<f64, 4>::new(point[0], point[1], point[2], point[3]);
+        let g_inv = <Self as StaticMetric<4>>::inverse_metric_at(self, &svec)?;
+        Ok(DMatrix::from_fn(4, 4, |r, c| g_inv[(r, c)]))
     }
 }

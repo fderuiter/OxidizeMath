@@ -19,6 +19,14 @@ fn test_custom_complex_mapping_evaluation() {
     // f'(z) = 3z^2 + 1/z^2 = 3*(4) + 0.25 = 12.25
     assert!((deriv.re - 12.25).abs() < 1e-4);
     assert!(deriv.im.abs() < 1e-4);
+
+    // Verify machine-precision DualComplex64 derivative on Joukowsky map z + a^2 / z
+    tool.math_input.set_expression("z + a^2 / z");
+    tool.math_input.set_param("a", 0.85);
+    let zp = Complex64::new(1.2, 0.4);
+    let exact_joukowsky = Complex64::new(1.0, 0.0) - (0.85 * 0.85) / (zp * zp);
+    let dual_joukowsky = tool.deriv_z(zp);
+    assert!((dual_joukowsky - exact_joukowsky).norm() < 1e-13);
 }
 
 #[test]

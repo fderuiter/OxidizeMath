@@ -220,7 +220,7 @@ impl CompiledExpr {
     }
 
     #[inline]
-    fn exec_bytecode<T: EvalScalar, F: Fn(usize) -> T>(&self, load_var: F) -> T {
+    pub(super) fn exec_bytecode<T: EvalScalar, F: Fn(usize) -> T>(&self, load_var: F) -> T {
         let mut stack = [T::NAN; MAX_EVAL_DEPTH];
         let mut sp = 0usize;
         for &inst in &self.instructions {

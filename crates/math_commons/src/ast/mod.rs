@@ -1,7 +1,9 @@
 //! Native Abstract Syntax Tree (AST) expression parser and dynamic evaluator.
 
 pub mod compiled;
+mod compiled_autodiff;
 pub mod eval;
+mod eval_scalars;
 pub mod expr;
 pub mod glsl;
 mod glsl_helpers;
@@ -9,9 +11,12 @@ pub mod latex;
 pub mod lexer;
 pub mod parser;
 mod parser_diagnostics;
+mod symbolic;
 
 #[cfg(test)]
 mod arity_tests;
+#[cfg(test)]
+mod autodiff_tests;
 #[cfg(test)]
 mod compiled_tests;
 #[cfg(test)]
@@ -24,7 +29,11 @@ mod planar_tests;
 mod tests;
 
 pub use compiled::{CompiledExpr, Instruction};
-pub use eval::{EvalError, MAX_EVAL_DEPTH};
+pub use engine_symbolic::{
+    Dual, Dual64, DualComplex64, DualScalar, EGraph, Jet2, Jet2_3D, Jet2D, MAX_EGRAPH_NODES,
+    MAX_REWRITE_PASSES, SolverWorkspace,
+};
+pub use eval::{EvalError, EvalScalar, MAX_EVAL_DEPTH};
 pub use expr::{BinaryOp, Expr, Func, UnaryOp, is_universal_constant};
 pub use glsl::{GLSL_COMPLEX_HELPERS, GLSL_SCALAR_HELPERS, GlslError, format_glsl_float};
 pub use lexer::{LexError, Span, Token, TokenKind, tokenize};

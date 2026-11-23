@@ -1,4 +1,469 @@
 {
+  "crates/02_engines/engine_symbolic/src/dual.rs": [
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub const NAN : Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub const ONE : Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub const ZERO : Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub const fn constant (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub const fn new (_ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub const fn variable (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn abs (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn acos (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn asin (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn atan (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn atan2 (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn chain (self , _ : (T , T)) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn clamp (self , _ : Self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn cos (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn cosh (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn exp (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn ln (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn log10 (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn max (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn min (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn powf (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn powi (self , _ : i32) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn recip (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn rect (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn sin (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn sin_cos (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn sinh (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn sqrt (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn step (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn tan (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DualScalar > Dual < T > { pub fn tanh (self) -> Self }"
+    },
+    {
+      "signature": "pub struct Dual < T = f64 >"
+    },
+    {
+      "signature": "pub trait DualScalar : Copy + PartialEq + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self >"
+    },
+    {
+      "signature": "pub trait DualScalar { const NAN : Self }"
+    },
+    {
+      "signature": "pub trait DualScalar { const ONE : Self }"
+    },
+    {
+      "signature": "pub trait DualScalar { const ZERO : Self }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn abs_dual (_ : Dual < Self >) -> Dual < Self > }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn acos_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn asin_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn atan2_dual (_ : Dual < Self > , _ : Dual < Self >) -> Dual < Self > }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn atan_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn clamp_dual (_ : Dual < Self > , _ : Dual < Self > , _ : Dual < Self >) -> Dual < Self > }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn cos_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn cosh_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn exp_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn from_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn is_finite_val (self) -> bool }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn is_nan_val (self) -> bool }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn is_zero_val (self) -> bool }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn ln_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn log10_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn max_dual (_ : Dual < Self > , _ : Dual < Self >) -> Dual < Self > }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn min_dual (_ : Dual < Self > , _ : Dual < Self >) -> Dual < Self > }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn pow_dual (_ : Dual < Self > , _ : Dual < Self >) -> Dual < Self > }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn real_part (self) -> f64 }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn rect_dual (_ : Dual < Self >) -> Dual < Self > }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn sin_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn sinh_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn sqrt_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn step_dual (_ : Dual < Self >) -> Dual < Self > }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn tan_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait DualScalar { fn tanh_with_deriv (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub type Dual64 = Dual < f64 >"
+    },
+    {
+      "signature": "pub type DualComplex64 = Dual < Complex < f64 > >"
+    }
+  ],
+  "crates/02_engines/engine_symbolic/src/egraph.rs": [
+    {
+      "signature": "impl EGraph { pub const fn node_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl EGraph { pub fn add (& mut self , _ : SymOp) -> Option < u32 > }"
+    },
+    {
+      "signature": "impl EGraph { pub fn add_symbol (& mut self , _ : & str) -> Option < u32 > }"
+    },
+    {
+      "signature": "impl EGraph { pub fn class_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl EGraph { pub fn extract (& self , _ : u32) -> SymExpr }"
+    },
+    {
+      "signature": "impl EGraph { pub fn find (& self , _ : u32) -> u32 }"
+    },
+    {
+      "signature": "impl EGraph { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl EGraph { pub fn rebuild (& mut self) }"
+    },
+    {
+      "signature": "impl EGraph { pub fn saturate (& mut self , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl EGraph { pub fn symbols (& self) -> & [String] }"
+    },
+    {
+      "signature": "impl EGraph { pub fn union (& mut self , _ : u32 , _ : u32) -> bool }"
+    },
+    {
+      "signature": "pub const MAX_EGRAPH_NODES : usize"
+    },
+    {
+      "signature": "pub const MAX_REWRITE_PASSES : usize"
+    },
+    {
+      "signature": "pub struct EGraph"
+    }
+  ],
+  "crates/02_engines/engine_symbolic/src/jet2.rs": [
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub const NAN : Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub const ONE : Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub const ZERO : Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub const fn constant (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn abs (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn acos (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn asin (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn atan (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn atan2 (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn chain_unary (self , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn clamp (self , _ : Self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn cos (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn cosh (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn exp (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn is_constant_jet (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn ln (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn log10 (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn max (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn min (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn powf (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn powi (self , _ : i32) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn recip (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn rect (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn sin (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn sin_cos (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn sinh (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn sqrt (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn step (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn tan (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn tanh (self) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > Jet2 < N > { pub fn var (_ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl Jet2 < 2 > { pub const fn du (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Jet2 < 2 > { pub const fn duu (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Jet2 < 2 > { pub const fn duv (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Jet2 < 2 > { pub const fn dv (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Jet2 < 2 > { pub const fn dvv (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct Jet2 < const N : usize = 2 >"
+    },
+    {
+      "signature": "pub type Jet2D = Jet2 < 2 >"
+    },
+    {
+      "signature": "pub type Jet2_3D = Jet2 < 3 >"
+    }
+  ],
+  "crates/02_engines/engine_symbolic/src/lib.rs": [
+    {
+      "signature": "pub use dual :: Dual"
+    },
+    {
+      "signature": "pub use dual :: Dual64"
+    },
+    {
+      "signature": "pub use dual :: DualComplex64"
+    },
+    {
+      "signature": "pub use dual :: DualScalar"
+    },
+    {
+      "signature": "pub use egraph :: EGraph"
+    },
+    {
+      "signature": "pub use egraph :: MAX_EGRAPH_NODES"
+    },
+    {
+      "signature": "pub use egraph :: MAX_REWRITE_PASSES"
+    },
+    {
+      "signature": "pub use jet2 :: Jet2"
+    },
+    {
+      "signature": "pub use jet2 :: Jet2D"
+    },
+    {
+      "signature": "pub use jet2 :: Jet2_3D"
+    },
+    {
+      "signature": "pub use sym :: SymExpr"
+    },
+    {
+      "signature": "pub use sym :: SymFunc1"
+    },
+    {
+      "signature": "pub use sym :: SymFunc2"
+    },
+    {
+      "signature": "pub use sym :: SymOp"
+    },
+    {
+      "signature": "pub use sym :: canonical_f64_bits"
+    },
+    {
+      "signature": "pub use workspace :: MAX_WORKSPACE_STACK"
+    },
+    {
+      "signature": "pub use workspace :: MAX_WORKSPACE_TAPE"
+    },
+    {
+      "signature": "pub use workspace :: SolverWorkspace"
+    }
+  ],
+  "crates/02_engines/engine_symbolic/src/sym.rs": [
+    {
+      "signature": "impl SymOp { pub const fn as_f64 (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl SymOp { pub const fn children_into (& self , _ : & mut [u32 ; 3]) -> usize }"
+    },
+    {
+      "signature": "impl SymOp { pub const fn local_cost (& self) -> u64 }"
+    },
+    {
+      "signature": "impl SymOp { pub fn map_children < F : Fn (u32) -> u32 > (self , _ : F) -> Self }"
+    },
+    {
+      "signature": "impl SymOp { pub fn num (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub enum SymFunc1"
+    },
+    {
+      "signature": "pub enum SymFunc2"
+    },
+    {
+      "signature": "pub enum SymOp"
+    },
+    {
+      "signature": "pub fn canonical_f64_bits (_ : f64) -> u64"
+    },
+    {
+      "signature": "pub struct SymExpr"
+    }
+  ],
+  "crates/02_engines/engine_symbolic/src/workspace.rs": [
+    {
+      "signature": "impl SolverWorkspace { pub const fn clear_adjoints (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "pub const MAX_WORKSPACE_STACK : usize"
+    },
+    {
+      "signature": "pub const MAX_WORKSPACE_TAPE : usize"
+    },
+    {
+      "signature": "pub struct SolverWorkspace"
+    }
+  ],
   "crates/diagnostics/src/lib.rs": [
     {
       "signature": "impl DiagnosticBus { pub fn emit (& self , _ : DiagnosticEvent) }"
@@ -1260,6 +1725,21 @@
     },
     {
       "signature": "pub trait KalmanSystem < T : RealField + Copy > { fn process_noise (& self , _ : T) -> DMatrix < T > }"
+    },
+    {
+      "signature": "pub use kalman_dual :: DualExtendedKalmanSystem"
+    },
+    {
+      "signature": "pub use kalman_dual :: DualKalmanModel"
+    },
+    {
+      "signature": "pub use kalman_dual :: dual_measurement_jacobian"
+    },
+    {
+      "signature": "pub use kalman_dual :: dual_transition_jacobian"
+    },
+    {
+      "signature": "pub use kalman_dual :: rk4_ode_kalman_predict"
     }
   ],
   "crates/domain_applied/src/applied/algorithms/mod.rs": [
@@ -3031,6 +3511,12 @@
   ],
   "crates/domain_applied/src/applied/pharmacokinetics/bateman.rs": [
     {
+      "signature": "impl BatemanCompartmentDynamics { pub const fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl BatemanCompartmentDynamics { pub const fn with_input_rate (_ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
       "signature": "impl BatemanModel { pub fn new (_ : PKParameters) -> Self }"
     },
     {
@@ -3047,6 +3533,9 @@
     },
     {
       "signature": "pub fn t_max (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct BatemanCompartmentDynamics"
     },
     {
       "signature": "pub struct BatemanModel"
@@ -3117,6 +3606,9 @@
     },
     {
       "signature": "pub use analytics :: trough_concentration"
+    },
+    {
+      "signature": "pub use bateman :: BatemanCompartmentDynamics"
     },
     {
       "signature": "pub use bateman :: BatemanModel"
@@ -3811,6 +4303,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: engine_symbolic }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: fit }"
@@ -5105,6 +5600,9 @@
       "signature": "pub use common :: basic_reproduction_number"
     },
     {
+      "signature": "pub use seir :: SEIRDynamics"
+    },
+    {
       "signature": "pub use seir :: SEIRModel"
     },
     {
@@ -5458,6 +5956,9 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: engine_symbolic }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: fit }"
     },
     {
@@ -5642,6 +6143,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: engine_symbolic }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: fit }"
@@ -8547,7 +9051,13 @@
       "signature": "impl Expr { pub fn eval_complex (& self , _ : & HashMap < String , Complex64 >) -> Result < Complex64 , EvalError > }"
     },
     {
+      "signature": "impl Expr { pub fn eval_complex_dual (& self , _ : & HashMap < String , DualComplex64 > ,) -> Result < DualComplex64 , EvalError > }"
+    },
+    {
       "signature": "impl Expr { pub fn eval_complex_z (& self , _ : Complex64) -> Complex64 }"
+    },
+    {
+      "signature": "impl Expr { pub fn eval_dual (& self , _ : & HashMap < String , Dual < f64 > >) -> Result < Dual < f64 > , EvalError > }"
     },
     {
       "signature": "impl Expr { pub fn eval_planar (& self , _ : f64 , _ : f64 , _ : f64 , _ : & HashMap < String , f64 >) -> f64 }"
@@ -8557,6 +9067,90 @@
     },
     {
       "signature": "pub enum EvalError"
+    },
+    {
+      "signature": "pub trait EvalScalar : Copy + PartialEq + core :: ops :: Add < Output = Self > + core :: ops :: Sub < Output = Self > + core :: ops :: Mul < Output = Self > + core :: ops :: Div < Output = Self > + core :: ops :: Neg < Output = Self >"
+    },
+    {
+      "signature": "pub trait EvalScalar { const NAN : Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn abs_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn acos_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn asin_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn atan2_s (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn atan_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn clamp_s (self , _ : Self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn cos_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn cosh_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn div_checked (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn exp_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn extra_const (_ : & str) -> Option < Self > }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn from_real (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn imag_unit () -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn is_invalid_scalar (self) -> bool }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn ln_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn log10_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn max_s (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn min_s (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn pow_scalar (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn rect_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn sin_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn sinh_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn sqrt_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn step_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn tan_s (self) -> Self }"
+    },
+    {
+      "signature": "pub trait EvalScalar { fn tanh_s (self) -> Self }"
     }
   ],
   "crates/math_commons/src/ast/expr.rs": [
@@ -8665,7 +9259,43 @@
       "signature": "pub use compiled :: Instruction"
     },
     {
+      "signature": "pub use engine_symbolic :: Dual"
+    },
+    {
+      "signature": "pub use engine_symbolic :: Dual64"
+    },
+    {
+      "signature": "pub use engine_symbolic :: DualComplex64"
+    },
+    {
+      "signature": "pub use engine_symbolic :: DualScalar"
+    },
+    {
+      "signature": "pub use engine_symbolic :: EGraph"
+    },
+    {
+      "signature": "pub use engine_symbolic :: Jet2"
+    },
+    {
+      "signature": "pub use engine_symbolic :: Jet2D"
+    },
+    {
+      "signature": "pub use engine_symbolic :: Jet2_3D"
+    },
+    {
+      "signature": "pub use engine_symbolic :: MAX_EGRAPH_NODES"
+    },
+    {
+      "signature": "pub use engine_symbolic :: MAX_REWRITE_PASSES"
+    },
+    {
+      "signature": "pub use engine_symbolic :: SolverWorkspace"
+    },
+    {
       "signature": "pub use eval :: EvalError"
+    },
+    {
+      "signature": "pub use eval :: EvalScalar"
     },
     {
       "signature": "pub use eval :: MAX_EVAL_DEPTH"
@@ -8852,10 +9482,24 @@
       "signature": "pub fn levenberg_marquardt_filtered < P , F > (_ : & P , _ : & [f64] , _ : fn (f64 , f64) -> bool , _ : F ,) -> Result < [f64 ; 4] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64 ; 4]) -> (f64 , [f64 ; 4]) ,"
     },
     {
-      "signature": "pub fn levenberg_marquardt_numeric < P , F > (_ : & P , _ : & [f64] , _ : F ,) -> Result < [f64 ; MAX_FIT_PARAMS] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
+      "signature": "pub fn levenberg_marquardt_numeric < P , F > (_ : & P , _ : & [f64] , _ : F ,) -> Result < [f64 ; MAX_FIT_PARAMS] , FitError > where P : PointSeries + ? Sized , F : NumericFitCallback ,"
     },
     {
-      "signature": "pub fn sum_squared_errors_numeric < P , F > (_ : & P , _ : & [f64] , _ : F) -> Option < f64 > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
+      "signature": "pub fn sum_squared_errors_numeric < P , F > (_ : & P , _ : & [f64] , _ : F) -> Option < f64 > where P : PointSeries + ? Sized , F : NumericFitCallback ,"
+    }
+  ],
+  "crates/math_commons/src/fit/lm_callback.rs": [
+    {
+      "signature": "pub struct ReverseGradFit < V , G >"
+    },
+    {
+      "signature": "pub trait NumericFitCallback"
+    },
+    {
+      "signature": "pub trait NumericFitCallback { fn eval_point (& self , _ : f64 , _ : & [f64]) -> Option < f64 > }"
+    },
+    {
+      "signature": "pub trait NumericFitCallback { fn eval_point_and_jac (& self , _ : f64 , _ : & [f64 ; MAX_FIT_PARAMS] , _ : usize , _ : & mut SolverWorkspace ,) -> (f64 , [f64 ; MAX_FIT_PARAMS]) }"
     }
   ],
   "crates/math_commons/src/fit/mod.rs": [
@@ -8927,6 +9571,12 @@
     },
     {
       "signature": "pub use lm :: sum_squared_errors_numeric"
+    },
+    {
+      "signature": "pub use lm_callback :: NumericFitCallback"
+    },
+    {
+      "signature": "pub use lm_callback :: ReverseGradFit"
     },
     {
       "signature": "pub use nonlinear :: eval_nonlinear"
@@ -9032,6 +9682,11 @@
     },
     {
       "signature": "pub struct WeightedOlsAccum"
+    }
+  ],
+  "crates/math_commons/src/lib.rs": [
+    {
+      "signature": "pub use engine_symbolic"
     }
   ],
   "crates/math_commons/src/math_kernel/colormap.rs": [
@@ -9925,6 +10580,9 @@
       "signature": "pub mod __doctest_facade { pub use math_commons :: constants }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use math_commons :: engine_symbolic }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use math_commons :: fit }"
     },
     {
@@ -10246,6 +10904,9 @@
   "crates/pure_math/src/pure_math/algebra/polynomial.rs": [
     {
       "signature": "impl < T : Ring > Polynomial < T > { pub fn degree (& self) -> Option < usize > }"
+    },
+    {
+      "signature": "impl < T : Ring > Polynomial < T > { pub fn differentiate (& self) -> Self }"
     },
     {
       "signature": "impl < T : Ring > Polynomial < T > { pub fn eval (& self , _ : T) -> T }"
@@ -10755,6 +11416,23 @@
       "signature": "pub struct PhasePoint2D"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/ode/dual_state.rs": [
+    {
+      "signature": "impl < const N : usize > DualArrayState < N > { pub const fn zeros () -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > DualArrayState < N > { pub fn seed_column (_ : & [f64 ; N] , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn ode_rhs_dual_jacobian < const N : usize , S > (_ : & S , _ : f64 , _ : & [f64 ; N] ,) -> ([f64 ; N] , [[f64 ; N] ; N]) where S : OdeSystem < DualArrayState < N > > + ? Sized ,"
+    },
+    {
+      "signature": "pub fn rk4_step_dual_jacobian < const N : usize , S > (_ : & S , _ : f64 , _ : & [f64 ; N] , _ : f64 ,) -> ([f64 ; N] , [[f64 ; N] ; N]) where S : OdeSystem < DualArrayState < N > > + ? Sized ,"
+    },
+    {
+      "signature": "pub struct DualArrayState < const N : usize >"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/ode/mod.rs": [
     {
       "signature": "impl IntegrationMethod { pub const ALL : [Self ; 3] }"
@@ -10764,6 +11442,15 @@
     },
     {
       "signature": "pub enum IntegrationMethod"
+    },
+    {
+      "signature": "pub use dual_state :: DualArrayState"
+    },
+    {
+      "signature": "pub use dual_state :: ode_rhs_dual_jacobian"
+    },
+    {
+      "signature": "pub use dual_state :: rk4_step_dual_jacobian"
     },
     {
       "signature": "pub use model :: OdeModel"
@@ -11740,27 +12427,30 @@
   ],
   "crates/pure_math/src/pure_math/differential_geometry/operators.rs": [
     {
-      "signature": "pub fn laplace_beltrami < S , F > (_ : & S , _ : f64 , _ : f64 , _ : & F) -> f64 where S : ParametricSurface , F : Fn (f64 , f64) -> f64 ,"
+      "signature": "pub fn laplace_beltrami < S , F > (_ : & S , _ : f64 , _ : f64 , _ : & F) -> f64 where S : ParametricSurface + ? Sized , F : ScalarField2D + ? Sized ,"
+    },
+    {
+      "signature": "pub fn laplace_beltrami_jet2 < S , G > (_ : & S , _ : f64 , _ : f64 , _ : G) -> f64 where S : ParametricSurface + ? Sized , G : FnOnce (Jet2 < 2 > , Jet2 < 2 >) -> Jet2 < 2 > ,"
+    },
+    {
+      "signature": "pub struct Jet2Field < G >"
+    },
+    {
+      "signature": "pub trait ScalarField2D"
+    },
+    {
+      "signature": "pub trait ScalarField2D { fn eval_jet2 (& self , _ : Jet2 < 2 > , _ : Jet2 < 2 >) -> Jet2 < 2 > }"
     }
   ],
   "crates/pure_math/src/pure_math/differential_geometry/surface.rs": [
     {
-      "signature": "impl CompiledHeightfieldSurface { pub const fn compiled (& self) -> & CompiledExpr }"
-    },
-    {
-      "signature": "impl CompiledHeightfieldSurface { pub fn new (_ : CompiledExpr , _ : & [f64]) -> Self }"
-    },
-    {
-      "signature": "impl CompiledParametricSurface { pub fn new (_ : CompiledExpr , _ : CompiledExpr , _ : CompiledExpr , _ : & [f64] ,) -> Self }"
-    },
-    {
       "signature": "pub const MAX_SURFACE_PARAMS : usize"
     },
     {
-      "signature": "pub struct CompiledHeightfieldSurface"
+      "signature": "pub const SURFACE_VIEWPORT_CLAMP : f64"
     },
     {
-      "signature": "pub struct CompiledParametricSurface"
+      "signature": "pub fn clamp_surface_point (_ : Point3 < f64 >) -> Point3 < f64 >"
     },
     {
       "signature": "pub struct KleinBottle"
@@ -11782,6 +12472,9 @@
     },
     {
       "signature": "pub trait ParametricSurface { fn position (& self , _ : f64 , _ : f64) -> Point3 < f64 > }"
+    },
+    {
+      "signature": "pub trait ParametricSurface { fn position_jet2 (& self , _ : Jet2 < 2 > , _ : Jet2 < 2 >) -> [Jet2 < 2 > ; 3] }"
     },
     {
       "signature": "pub trait SurfaceAnalysis"
@@ -11806,6 +12499,12 @@
     },
     {
       "signature": "pub trait SurfaceAnalysis { fn unit_normal (& self , _ : f64 , _ : f64) -> Vector3 < f64 > }"
+    },
+    {
+      "signature": "pub use surface_compiled :: CompiledHeightfieldSurface"
+    },
+    {
+      "signature": "pub use surface_compiled :: CompiledParametricSurface"
     }
   ],
   "crates/pure_math/src/pure_math/elliptic_curves/mod.rs": [
@@ -15312,7 +16011,13 @@
   ],
   "crates/pure_math/src/pure_math/tensor/metric.rs": [
     {
+      "signature": "impl < F > DualRiemannianMetric < F > where F : Fn (& [Dual < f64 >]) -> DMatrix < Dual < f64 > > , { pub fn new (_ : F) -> Self }"
+    },
+    {
       "signature": "impl < F > RiemannianMetric < F > where F : Fn (& DVector < f64 >) -> DMatrix < f64 > , { pub fn new (_ : F) -> Self }"
+    },
+    {
+      "signature": "pub struct DualRiemannianMetric < F > where F : Fn (& [Dual < f64 >]) -> DMatrix < Dual < f64 > > ,"
     },
     {
       "signature": "pub struct RiemannianMetric < F > where F : Fn (& DVector < f64 >) -> DMatrix < f64 > ,"
@@ -15328,6 +16033,9 @@
     },
     {
       "signature": "pub trait Metric { fn metric_at (& self , _ : & DVector < f64 >) -> Result < DMatrix < f64 > , TensorError > }"
+    },
+    {
+      "signature": "pub trait Metric { fn metric_dual_at (& self , _ : & [Dual < f64 >] ,) -> Option < Result < DMatrix < Dual < f64 > > , TensorError > > }"
     },
     {
       "signature": "pub trait Metric { fn raise_index (& self , _ : & CovariantVector , _ : & DVector < f64 > ,) -> Result < ContravariantVector , TensorError > }"
@@ -15350,10 +16058,16 @@
       "signature": "pub use geodesic :: GeodesicSystem"
     },
     {
+      "signature": "pub use metric :: DualRiemannianMetric"
+    },
+    {
       "signature": "pub use metric :: Metric"
     },
     {
       "signature": "pub use metric :: RiemannianMetric"
+    },
+    {
+      "signature": "pub use static_metric :: DualStaticRiemannianMetric"
     },
     {
       "signature": "pub use static_metric :: StaticMetric"
@@ -15379,6 +16093,9 @@
   ],
   "crates/pure_math/src/pure_math/tensor/static_metric.rs": [
     {
+      "signature": "impl < F , const N : usize > DualStaticRiemannianMetric < F , N > where F : Fn (& SVector < Dual < f64 > , N >) -> Result < SMatrix < Dual < f64 > , N , N > , TensorError > , { pub fn new (_ : F) -> Self }"
+    },
+    {
       "signature": "impl < F , const N : usize > StaticRiemannianMetric < F , N > where F : Fn (& SVector < f64 , N >) -> Result < SMatrix < f64 , N , N > , TensorError > , { pub fn new (_ : F) -> Self }"
     },
     {
@@ -15386,6 +16103,9 @@
     },
     {
       "signature": "pub fn static_christoffel_symbols < M : StaticMetric < N > + ? Sized , const N : usize > (_ : & M , _ : & SVector < f64 , N > ,) -> Result < [SMatrix < f64 , N , N > ; N] , TensorError >"
+    },
+    {
+      "signature": "pub struct DualStaticRiemannianMetric < F , const N : usize >"
     },
     {
       "signature": "pub struct StaticRiemannianMetric < F , const N : usize >"
@@ -15407,6 +16127,9 @@
     },
     {
       "signature": "pub trait StaticMetric < const N : usize > { fn metric_at (& self , _ : & SVector < f64 , N >) -> Result < SMatrix < f64 , N , N > , TensorError > }"
+    },
+    {
+      "signature": "pub trait StaticMetric < const N : usize > { fn metric_dual_at (& self , _ : & SVector < Dual < f64 > , N > ,) -> Option < Result < SMatrix < Dual < f64 > , N , N > , TensorError > > }"
     },
     {
       "signature": "pub trait StaticMetric < const N : usize > { fn metric_norm (& self , _ : & SVector < f64 , N > , _ : & SVector < f64 , N > ,) -> Result < f64 , TensorError > }"
@@ -15462,20 +16185,62 @@
     },
     {
       "signature": "pub trait OrthogonalCoordinateSystem { fn scale_factors (& self , _ : & Vector3 < f64 >) -> Vector3 < f64 > }"
+    },
+    {
+      "signature": "pub trait OrthogonalCoordinateSystem { fn scale_factors_dual (& self , _ : & [Dual < f64 > ; 3]) -> [Dual < f64 > ; 3] }"
+    },
+    {
+      "signature": "pub trait OrthogonalCoordinateSystem { fn scale_factors_jet2 (& self , _ : & [Jet2 < 3 > ; 3]) -> [Jet2 < 3 > ; 3] }"
     }
   ],
   "crates/pure_math/src/pure_math/vector_calculus/operators.rs": [
     {
-      "signature": "pub fn curl < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> Vector3 < f64 > ,"
+      "signature": "pub fn curl < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem , F : VectorField3D ,"
     },
     {
-      "signature": "pub fn divergence < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> f64 where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> Vector3 < f64 > ,"
+      "signature": "pub fn curl_dual < S , G > (_ : & S , _ : G , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem , G : Fn (& [Dual < f64 > ; 3]) -> [Dual < f64 > ; 3] ,"
     },
     {
-      "signature": "pub fn gradient < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> f64 ,"
+      "signature": "pub fn divergence < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> f64 where S : OrthogonalCoordinateSystem , F : VectorField3D ,"
     },
     {
-      "signature": "pub fn laplacian < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> f64 where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> f64 ,"
+      "signature": "pub fn divergence_dual < S , G > (_ : & S , _ : G , _ : & Vector3 < f64 >) -> f64 where S : OrthogonalCoordinateSystem , G : Fn (& [Dual < f64 > ; 3]) -> [Dual < f64 > ; 3] ,"
+    },
+    {
+      "signature": "pub fn gradient < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem , F : ScalarField3D ,"
+    },
+    {
+      "signature": "pub fn gradient_dual < S , G > (_ : & S , _ : G , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem , G : Fn (& [Dual < f64 > ; 3]) -> Dual < f64 > ,"
+    },
+    {
+      "signature": "pub fn laplacian < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> f64 where S : OrthogonalCoordinateSystem , F : ScalarField3D ,"
+    },
+    {
+      "signature": "pub fn laplacian_jet2 < S , G > (_ : & S , _ : G , _ : & Vector3 < f64 >) -> f64 where S : OrthogonalCoordinateSystem , G : FnOnce (& [Jet2 < 3 > ; 3]) -> Jet2 < 3 > ,"
+    },
+    {
+      "signature": "pub struct DualScalarField3D < G >"
+    },
+    {
+      "signature": "pub struct DualVectorField3D < G >"
+    },
+    {
+      "signature": "pub struct Jet2ScalarField3D < G >"
+    },
+    {
+      "signature": "pub trait ScalarField3D"
+    },
+    {
+      "signature": "pub trait ScalarField3D { fn eval_dual (& self , _ : & [Dual < f64 > ; 3]) -> Dual < f64 > }"
+    },
+    {
+      "signature": "pub trait ScalarField3D { fn eval_jet2 (& self , _ : & [Jet2 < 3 > ; 3]) -> Jet2 < 3 > }"
+    },
+    {
+      "signature": "pub trait VectorField3D"
+    },
+    {
+      "signature": "pub trait VectorField3D { fn eval_dual (& self , _ : & [Dual < f64 > ; 3]) -> [Dual < f64 > ; 3] }"
     }
   ],
   "crates/pure_math/src/pure_math/vector_calculus/theorems.rs": [
@@ -15829,6 +16594,9 @@
     },
     {
       "signature": "pub use math_commons :: constants"
+    },
+    {
+      "signature": "pub use math_commons :: engine_symbolic"
     },
     {
       "signature": "pub use math_commons :: fit"

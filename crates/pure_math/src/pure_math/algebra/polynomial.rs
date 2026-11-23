@@ -76,6 +76,41 @@ impl<T: Ring> Polynomial<T> {
         }
         Polynomial::new(new_coeffs)
     }
+
+    /// Computes the formal algebraic derivative $\frac{d}{dx} \sum_{k=0}^n c_k x^k = \sum_{k=1}^n (k \cdot c_k) x^{k-1}$
+    /// over any [`Ring`] `T` using $O(\log k)$ binary doubling in the coefficient ring.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn differentiate(&self) -> Self {
+        if self.coeffs.len() <= 1 {
+            return Self::zero();
+        }
+        let mut deriv_coeffs = Vec::with_capacity(self.coeffs.len() - 1);
+        for (k, coeff) in self.coeffs.iter().enumerate().skip(1) {
+            deriv_coeffs.push(ring_mul_usize(coeff, k));
+        }
+        Self::new(deriv_coeffs)
+    }
+}
+
+#[verified_engine::verified]
+fn ring_mul_usize<T: Ring>(val: &T, mut count: usize) -> T {
+    if count == 0 || val.is_zero() {
+        return T::zero();
+    }
+    let mut acc = T::zero();
+    let mut base = val.clone();
+    while count > 0 {
+        if count & 1 == 1 {
+            acc += base.clone();
+        }
+        count >>= 1;
+        if count > 0 {
+            let next = base.clone() + base;
+            base = next;
+        }
+    }
+    acc
 }
 
 impl<T: Ring> Add for Polynomial<T> {

@@ -3,6 +3,7 @@
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoints};
+use engine_symbolic::Dual;
 use math_explorer::ai::deep_learning_theory::calculus::{
     gelu, gelu_prime, relu, relu_prime, sigmoid, sigmoid_prime, tanh, tanh_prime,
 };
@@ -16,7 +17,6 @@ pub(crate) const ACTIVATION_X_MIN_BOUND: f64 = -100.0;
 pub(crate) const ACTIVATION_X_MAX_BOUND: f64 = 100.0;
 pub(super) const ACTIVATION_MIN_SPAN: f64 = 0.1;
 const GELU_ASYMPTOTIC_CUTOFF: f64 = 20.0;
-const CUSTOM_FD_STEP: f64 = 1e-5;
 const DEFAULT_ACTIVATION_EXPR: &str = "clamp(a * x, -1, 1)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -93,6 +93,14 @@ fn evaluate_guarded_gelu(x_vals: &[f64]) -> (Vec<f64>, Vec<f64>) {
 }
 
 impl ActivationFunctionsTool {
+    pub(crate) fn custom_symbolic_derivative(&self) -> Option<(String, String)> {
+        let ast = self.math_input.cached_expr()?;
+        let deriv = ast.differentiate("x");
+        let latex = deriv.to_latex();
+        let plain = deriv.to_glsl_scalar().unwrap_or_else(|_| latex.clone());
+        Some((format!("f'(x) = {latex}"), format!("f'(x) = {plain}")))
+    }
+
     fn evaluate_custom_curves(&self, x_vals: &[f64]) -> (Vec<f64>, Vec<f64>) {
         let Some(compiled) = self.math_input.active_compiled() else {
             return (vec![0.0; x_vals.len()], vec![0.0; x_vals.len()]);
@@ -101,10 +109,9 @@ impl ActivationFunctionsTool {
         let mut y_out = Vec::with_capacity(x_vals.len());
         let mut dy_out = Vec::with_capacity(x_vals.len());
         for &x in x_vals {
-            let y = compiled.eval_1d(x, params);
-            let y_plus = compiled.eval_1d(x + CUSTOM_FD_STEP, params);
-            let y_minus = compiled.eval_1d(x - CUSTOM_FD_STEP, params);
-            let dy = (y_plus - y_minus) / (2.0 * CUSTOM_FD_STEP);
+            let dual = compiled.eval_1d_dual(Dual::variable(x), params);
+            let y = dual.re;
+            let dy = dual.eps;
             y_out.push(if y.is_finite() {
                 y.clamp(-1e6, 1e6)
             } else {
@@ -281,7 +288,7 @@ impl scientific_metadata::theory::TheoryDescribable for ActivationFunctionsTool 
                 "Gaussian Error Linear Unit: $f(x) \\approx 0.5x(1 + \\tanh(\\sqrt{2/\\pi}(x + 0.044715x^3)))$".into()
             }
             ActivationFunction::Custom => {
-                "Custom compiled neural activation $f(x)$ with central finite-difference gradient $f'(x)$".into()
+                "Custom compiled neural activation $f(x)$ with exact Clarke subgradient $f'(x)$".into()
             }
         }
     }
@@ -350,7 +357,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "activation_custom_hardtanh",
         title: "Parameterized HardTanh",
-        description: "Piecewise saturated activation clamp(a*x, -1, 1) and finite-difference gradient f'(x).",
+        description: "Piecewise saturated activation clamp(a*x, -1, 1) and exact Clarke subgradient f'(x).",
         category: "Neural Architectures",
         icon: "🧮",
         domain: "ai",

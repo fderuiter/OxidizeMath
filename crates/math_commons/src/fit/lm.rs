@@ -1,7 +1,9 @@
 //! Stack-allocated damped Levenberg-Marquardt nonlinear least-squares solvers (`k <= 6`).
 // [cite:math_commons]
 
+use super::lm_callback::NumericFitCallback;
 use super::poly::{solve_dense_n_raw, symmetrize_upper};
+use crate::ast::SolverWorkspace;
 use crate::error::FitError;
 use crate::series::PointSeries;
 
@@ -30,7 +32,7 @@ where
         finite_xy,
         false,
         &|x, th| eval_jac(x, th).0,
-        &eval_jac,
+        &mut |x, th| eval_jac(x, th),
     )
 }
 
@@ -52,12 +54,13 @@ where
         domain_ok,
         false,
         &|x, th| eval_jac(x, th).0,
-        &eval_jac,
+        &mut |x, th| eval_jac(x, th),
     )
 }
 
-/// Minimizes nonlinear least squares ($1 \le k \le 6$) for an arbitrary scalar callback `eval_fn`
-/// using central finite-difference Jacobians on stack buffers with zero heap allocations.
+/// Minimizes nonlinear least squares ($1 \le k \le 6$) for [`NumericFitCallback`] `eval_fn`
+/// (single reverse-mode pass per point for [`crate::ast::CompiledExpr`] / [`super::ReverseGradFit`])
+/// on stack buffers with zero heap allocations.
 #[verified_engine::verified]
 pub fn levenberg_marquardt_numeric<P, F>(
     points: &P,
@@ -66,14 +69,15 @@ pub fn levenberg_marquardt_numeric<P, F>(
 ) -> Result<[f64; MAX_FIT_PARAMS], FitError>
 where
     P: PointSeries + ?Sized,
-    F: Fn(f64, &[f64]) -> Option<f64>,
+    F: NumericFitCallback,
 {
     let k = initial_params.len();
+    let mut workspace = SolverWorkspace::new();
     let eval_val = |x: f64, theta: &[f64; MAX_FIT_PARAMS]| -> f64 {
-        eval_fn(x, &theta[..k]).unwrap_or(f64::NAN)
+        eval_fn.eval_point(x, &theta[..k]).unwrap_or(f64::NAN)
     };
-    let eval_jac = |x: f64, theta: &[f64; MAX_FIT_PARAMS]| -> (f64, [f64; MAX_FIT_PARAMS]) {
-        numeric_central_jacobian(x, theta, k, &eval_fn)
+    let mut eval_jac = |x: f64, theta: &[f64; MAX_FIT_PARAMS]| -> (f64, [f64; MAX_FIT_PARAMS]) {
+        eval_fn.eval_point_and_jac(x, theta, k, &mut workspace)
     };
     lm_core::<MAX_FIT_PARAMS, P, _, _>(
         points,
@@ -81,7 +85,7 @@ where
         finite_xy,
         true,
         &eval_val,
-        &eval_jac,
+        &mut eval_jac,
     )
 }
 
@@ -91,7 +95,7 @@ where
 pub fn sum_squared_errors_numeric<P, F>(points: &P, params: &[f64], eval_fn: F) -> Option<f64>
 where
     P: PointSeries + ?Sized,
-    F: Fn(f64, &[f64]) -> Option<f64>,
+    F: NumericFitCallback,
 {
     sum_squared_errors_slice(points, params, &eval_fn)
 }
@@ -99,7 +103,7 @@ where
 fn sum_squared_errors_slice<P, F>(points: &P, params: &[f64], eval_fn: &F) -> Option<f64>
 where
     P: PointSeries + ?Sized,
-    F: Fn(f64, &[f64]) -> Option<f64>,
+    F: NumericFitCallback,
 {
     let mut sse = 0.0_f64;
     let mut any = false;
@@ -108,7 +112,7 @@ where
         if !finite_xy(p[0], p[1]) {
             continue;
         }
-        let y_hat = eval_fn(p[0], params)?;
+        let y_hat = eval_fn.eval_point(p[0], params)?;
         if !y_hat.is_finite() {
             return None;
         }
@@ -122,7 +126,7 @@ where
     any.then_some(sse)
 }
 
-fn numeric_central_jacobian<F>(
+pub(super) fn numeric_central_jacobian<F>(
     x: f64,
     theta: &[f64; MAX_FIT_PARAMS],
     k: usize,
@@ -161,12 +165,12 @@ fn lm_core<const M: usize, P, V, J>(
     domain_ok: fn(f64, f64) -> bool,
     allow_improved: bool,
     eval_val: &V,
-    eval_jac: &J,
+    eval_jac: &mut J,
 ) -> Result<[f64; M], FitError>
 where
     P: PointSeries + ?Sized,
     V: Fn(f64, &[f64; M]) -> f64,
-    J: Fn(f64, &[f64; M]) -> (f64, [f64; M]),
+    J: FnMut(f64, &[f64; M]) -> (f64, [f64; M]),
 {
     let (k, mut theta, initial_sse) = init_lm_state(points, initial_params, domain_ok, eval_val)?;
     if initial_sse <= 1e-24 {
@@ -357,11 +361,11 @@ fn accumulate_normal_system<const M: usize, P, J>(
     theta: &[f64; M],
     k: usize,
     current_sse: f64,
-    eval_jac: &J,
+    eval_jac: &mut J,
 ) -> Result<NormalSystem<M>, FitError>
 where
     P: PointSeries + ?Sized,
-    J: Fn(f64, &[f64; M]) -> (f64, [f64; M]),
+    J: FnMut(f64, &[f64; M]) -> (f64, [f64; M]),
 {
     let mut jtj = [[0.0_f64; M]; M];
     let mut jtr = [0.0_f64; M];

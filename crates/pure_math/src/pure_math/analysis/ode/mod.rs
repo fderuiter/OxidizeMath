@@ -7,6 +7,8 @@
 //! with any vector-like type (e.g., `Vec<f64>`, `nalgebra::Vector3<f64>`, etc.),
 //! avoiding heap allocations when fixed-size arrays are sufficient.
 
+/// Stack-allocated `Dual<f64>` ODE state vector and exact RK4 state-transition Jacobians.
+pub mod dual_state;
 #[allow(missing_docs)]
 pub mod macros;
 #[allow(missing_docs)]
@@ -49,6 +51,7 @@ impl IntegrationMethod {
     }
 }
 
+pub use dual_state::{DualArrayState, ode_rhs_dual_jacobian, rk4_step_dual_jacobian};
 pub use model::OdeModel;
 pub use solvers::{Euler, Heun, RungeKutta4};
 pub use state::{ArrayState, VecState};
