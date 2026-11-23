@@ -1,12 +1,12 @@
 //! Side-panel controls, Kelly `NoEdge` diagnostics, and responsive workspace layout.
 
 use super::{
-    KellyEdgeBadge, ParrondoParadoxTool, ParrondoViewMode, ALLOWED_MODULI, MAX_STEPS, MAX_WALKERS,
-    MIN_STEPS, MIN_WALKERS,
+    ALLOWED_MODULI, KellyEdgeBadge, MAX_STEPS, MAX_WALKERS, MIN_STEPS, MIN_WALKERS,
+    ParrondoParadoxTool, ParrondoViewMode,
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
-use crate::framework::{scoped_panel_id, PaneSidePanel};
+use crate::framework::{PaneSidePanel, scoped_panel_id};
 use eframe::egui;
 
 const SCHEDULE_PRESETS: [&str; 3] = ["ABB", "AABB", "ABAB"];
@@ -166,9 +166,7 @@ impl ParrondoParadoxTool {
                 .changed();
         });
         changed |= ui
-            .add(
-                egui::Slider::new(&mut self.num_walkers, MIN_WALKERS..=MAX_WALKERS).text("Walkers"),
-            )
+            .add(egui::Slider::new(&mut self.num_walkers, MIN_WALKERS..=MAX_WALKERS).text("Walkers"))
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.num_steps, MIN_STEPS..=MAX_STEPS).text("Steps"))
@@ -177,9 +175,7 @@ impl ParrondoParadoxTool {
         ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Rerun Ensemble")
-                .accessible_hover_text(
-                    "Re-simulate zero-allocation OxidizeRng walker trajectories.",
-                )
+                .accessible_hover_text("Re-simulate zero-allocation OxidizeRng walker trajectories.")
                 .clicked()
             {
                 changed = true;
@@ -223,11 +219,7 @@ impl ParrondoParadoxTool {
             ("Pure Game A", report.gain_a, self.kelly_a),
             ("Pure Game B", report.gain_b, self.kelly_b),
             ("Random 50/50 Mix", report.gain_mix, self.kelly_mix),
-            (
-                sched_label.as_str(),
-                report.gain_schedule,
-                self.kelly_schedule,
-            ),
+            (sched_label.as_str(), report.gain_schedule, self.kelly_schedule),
         ] {
             render_strategy_badge_row(ui, palette, name, gain, badge);
         }

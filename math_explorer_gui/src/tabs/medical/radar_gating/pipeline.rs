@@ -274,8 +274,7 @@ impl RadarPipeline {
     fn sample_slow_time_iq(&mut self, disp_m: f64, state: &RadarGatingState) -> Complex<f64> {
         let r_total = state.primary_target.range_m() + disp_m;
         let phase = (4.0 * PI * r_total) / self.wavelength_m;
-        let clutter_mag =
-            state.static_clutter_gain + if self.extra_clutter_active { 1.25 } else { 0.0 };
+        let clutter_mag = state.static_clutter_gain + if self.extra_clutter_active { 1.25 } else { 0.0 };
         let static_clutter = Complex::new(clutter_mag * 0.8, -clutter_mag * 0.6);
         let n_re = (rng_unit_f64(&mut self.rng) - 0.5) * 2.0 * state.noise_sigma * 0.25;
         let n_im = (rng_unit_f64(&mut self.rng) - 0.5) * 2.0 * state.noise_sigma * 0.25;
@@ -352,25 +351,11 @@ impl RadarPipeline {
         push_ring(&mut self.duty_cycle_trace_pct, [t, duty_pct]);
         push_ring(
             &mut self.beam_active_trace,
-            [
-                t,
-                if beam_state == BeamState::BeamActive {
-                    1.0
-                } else {
-                    0.0
-                },
-            ],
+            [t, if beam_state == BeamState::BeamActive { 1.0 } else { 0.0 }],
         );
         push_ring(
             &mut self.beam_hold_trace,
-            [
-                t,
-                if beam_state == BeamState::BeamHold {
-                    1.0
-                } else {
-                    0.0
-                },
-            ],
+            [t, if beam_state == BeamState::BeamHold { 1.0 } else { 0.0 }],
         );
         push_ring(
             &mut self.interlock_trace,
