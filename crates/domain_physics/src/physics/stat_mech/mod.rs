@@ -18,6 +18,7 @@ pub mod ising;
 pub mod phase_field;
 #[allow(missing_docs)]
 pub mod quantum_stats;
+pub mod sandpile;
 
 // [cite:stat_mech]
 // [cite:stochastic_pde]

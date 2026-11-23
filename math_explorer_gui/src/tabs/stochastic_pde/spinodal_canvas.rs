@@ -103,7 +103,6 @@ impl SpinodalDecompositionTool {
         );
         paint_canvas_focus_ring(ui, &response);
         lock_canvas_arrow_keys(ui, &response);
-        self.focused_canvas = response.has_focus().then_some(response.id);
     }
 
     fn handle_droplet_pointer(&mut self, ui: &egui::Ui, response: &egui::Response) {
@@ -254,10 +253,6 @@ impl InteractiveTool for SpinodalDecompositionTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.render_workspace(ui);
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {

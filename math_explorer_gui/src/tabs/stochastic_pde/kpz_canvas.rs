@@ -102,7 +102,6 @@ impl KpzInterfaceTool {
         );
         paint_canvas_focus_ring(ui, &response);
         lock_canvas_arrow_keys(ui, &response);
-        self.focused_canvas = response.has_focus().then_some(response.id);
     }
 
     fn paint_1d_profile(&self, ui: &egui::Ui, response: &egui::Response, painter: &egui::Painter) {
@@ -335,10 +334,6 @@ impl InteractiveTool for KpzInterfaceTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.render_workspace(ui);
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {

@@ -115,7 +115,6 @@ pub struct SpinodalDecompositionTool {
     pub(crate) high_contrast: bool,
     pub(crate) last_step_ms: f64,
     pub(crate) diagnostic: Option<DiagnosticReport>,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) theory: SpinodalTheory,
 }
 
@@ -161,7 +160,6 @@ impl Default for SpinodalDecompositionTool {
             high_contrast: false,
             last_step_ms: 0.0,
             diagnostic: None,
-            focused_canvas: None,
             theory: SpinodalTheory,
         };
         tool.solver.step_n(&mut tool.rng, 2);

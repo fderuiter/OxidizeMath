@@ -94,7 +94,6 @@ pub struct KpzInterfaceTool {
     pub(crate) high_contrast: bool,
     pub(crate) last_step_ms: f64,
     pub(crate) diagnostic: Option<DiagnosticReport>,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) theory: KpzTheory,
 }
 
@@ -134,7 +133,6 @@ impl Default for KpzInterfaceTool {
             high_contrast: false,
             last_step_ms: 0.0,
             diagnostic: None,
-            focused_canvas: None,
             theory: KpzTheory,
         };
         tool.rebuild_and_seed();
