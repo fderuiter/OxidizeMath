@@ -311,6 +311,7 @@ impl SimulationRunner for AtlasRunner {
             pixels: Arc::new(RwLock::new(self.pixels.clone())),
             custom_data: Vec::new(),
             structured_data: Some(Box::new(meta)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 
