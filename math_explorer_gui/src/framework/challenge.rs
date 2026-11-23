@@ -54,10 +54,12 @@ impl ChallengeEvaluation {
 }
 
 impl SimulationFramework {
-    /// Returns the canonical ID of the active challenge, if any.
+    /// Returns the canonical ID of the active challenge (inverse or AST goal), if any.
     #[must_use]
     pub fn active_challenge_id(&self) -> Option<&'static str> {
-        self.active_challenge.map(|meta| meta.id)
+        self.active_challenge
+            .map(|meta| meta.id)
+            .or_else(|| self.active_goal_challenge_id())
     }
 
     /// Resolves a tool index in `available_tools` matching `ChallengeMetadata::tool_name`.
@@ -84,37 +86,53 @@ impl SimulationFramework {
         self.launch_challenge_by_id(card.id, None)
     }
 
-    /// Activates a registered [`ChallengeMetadata`] by `challenge_id`, loading its canonical baseline
-    /// and enforcing locked boundary conditions.
+    /// Activates a registered inverse [`ChallengeMetadata`] or AST [`crate::starter_gallery::GoalChallengeMetadata`]
+    /// by `challenge_id`, loading its canonical baseline.
     pub fn launch_challenge_by_id(
         &mut self,
         challenge_id: &str,
         ctx: Option<&egui::Context>,
     ) -> Result<(), String> {
-        let Some(meta) = find_challenge_metadata(challenge_id) else {
-            let err = format!("Unknown inverse challenge '{challenge_id}'");
-            self.preset_dialog.record_import_error(err.clone());
-            return Err(err);
-        };
-        if !challenge_matches_domain(meta, &self.domain) {
-            let err = format!(
-                "Challenge '{}' belongs to domain '{}', not '{}'",
-                meta.id, meta.domain, self.domain
+        if let Some(meta) = find_challenge_metadata(challenge_id) {
+            if !challenge_matches_domain(meta, &self.domain) {
+                let err = format!(
+                    "Challenge '{}' belongs to domain '{}', not '{}'",
+                    meta.id, meta.domain, self.domain
+                );
+                self.preset_dialog.record_import_error(err.clone());
+                return Err(err);
+            }
+            let target_idx = self.resolve_challenge_tool_index(meta)?;
+            let baseline_raw = meta.generate_baseline_state();
+            let clamped_json = meta.clamp_state_json(&baseline_raw)?;
+            self.commit_challenge_instance(target_idx, meta, &clamped_json)?;
+            self.show_starter_gallery = false;
+            let msg = format!(
+                "Loaded challenge: {}. Locked: {}.",
+                meta.title, meta.locked_inputs
             );
-            self.preset_dialog.record_import_error(err.clone());
-            return Err(err);
+            dispatch_challenge_announcement(ctx, &msg);
+            return Ok(());
         }
-        let target_idx = self.resolve_challenge_tool_index(meta)?;
-        let baseline_raw = meta.generate_baseline_state();
-        let clamped_json = meta.clamp_state_json(&baseline_raw)?;
-        self.commit_challenge_instance(target_idx, meta, &clamped_json)?;
-        self.show_starter_gallery = false;
-        let msg = format!(
-            "Loaded challenge: {}. Locked: {}.",
-            meta.title, meta.locked_inputs
-        );
-        dispatch_challenge_announcement(ctx, &msg);
-        Ok(())
+        if let Some(goal) = crate::starter_gallery::find_goal_challenge_by_id(challenge_id, None) {
+            if !crate::starter_gallery::domain_matches_gallery(goal.domain, &self.domain) {
+                let err = format!(
+                    "Challenge '{}' belongs to domain '{}', not '{}'",
+                    goal.id, goal.domain, self.domain
+                );
+                self.preset_dialog.record_import_error(err.clone());
+                return Err(err);
+            }
+            self.launch_challenge(goal)?;
+            self.show_starter_gallery = false;
+            if let Some(egui_ctx) = ctx {
+                self.flush_hud_announcements(egui_ctx);
+            }
+            return Ok(());
+        }
+        let err = format!("Unknown challenge '{challenge_id}'");
+        self.preset_dialog.record_import_error(err.clone());
+        Err(err)
     }
 
     pub(super) fn commit_challenge_instance(
@@ -149,6 +167,7 @@ impl SimulationFramework {
             candidate.name().to_string(),
             candidate.theory().theory_citation(),
         );
+        self.clear_challenge_hud();
         self.challenge_was_passed = candidate
             .evaluate_challenge()
             .is_some_and(|eval| eval.passed);

@@ -198,6 +198,17 @@ fn test_morphogenesis_starter_gallery_and_spots_stripes_reset_turing_system() {
     )
     .expect("URL preset import via default ExplorerTab hook");
     assert_eq!(morpho_tool(&tab).params.read().unwrap().d_v, 100.0);
+    let share_params = crate::url_state::ShareUrlParams {
+        tab: "morphogenesis".to_string(),
+        tool: Some("MorphogenesisTool".to_string()),
+        state_json: None,
+        preset: Some("turing_stripes".to_string()),
+        challenge: None,
+        step: None,
+    };
+    tab.import_url_share_params(&share_params, None)
+        .expect("URL share params import via default ExplorerTab hook");
+    assert_eq!(morpho_tool(&tab).params.read().unwrap().d_v, 50.0);
 
     // Verify Spots and Stripes quick presets route through try_load_state, updating dt and marking dirty
     let mut tool = MorphogenesisTool::default();
