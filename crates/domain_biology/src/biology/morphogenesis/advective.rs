@@ -75,14 +75,14 @@ impl<const N: usize, K: ReactionKinetics<N>, S: TuringSolverStrategy<N>>
     pub fn pin_solid_species(&mut self, solid_values: [f64; N]) {
         let obs = self.diffusion.obstacles();
         let n = self.state.len().min(obs.len());
-        for s in 0..N {
+        for (s, &fill) in solid_values.iter().enumerate() {
             let slice = &mut self.state.concentrations[s];
             let next_slice = &mut self.next_state.concentrations[s];
-            for i in 0..n {
-                if obs[i] {
-                    slice[i] = solid_values[s];
+            for (i, &is_obs) in obs.iter().enumerate().take(n) {
+                if is_obs {
+                    slice[i] = fill;
                     if i < next_slice.len() {
-                        next_slice[i] = solid_values[s];
+                        next_slice[i] = fill;
                     }
                 }
             }

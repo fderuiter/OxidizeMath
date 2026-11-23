@@ -18,7 +18,6 @@ use crate::framework::{
     ExportCapabilities, FairingStamp, InteractiveTool, ToolMetadata, ToolStateBounds, LBM_CORE_X,
     LBM_CORE_Y, LBM_HEIGHT, LBM_WIDTH,
 };
-use crate::presets::{deserialize_preset_envelope, serialize_preset_envelope};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -334,21 +333,6 @@ impl InteractiveTool for AdvectiveMorphogenesisTool {
         self.engine.refresh_metrics(&self.cfg);
         self.refresh_pixels_in_place();
         Ok(())
-    }
-
-    fn export_preset_json(&self) -> Result<String, String> {
-        serialize_preset_envelope(
-            "Advective Morphogenesis Studio",
-            self.domain(),
-            self.cfg.clone(),
-        )
-    }
-
-    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let config: AdvectiveToolState =
-            deserialize_preset_envelope(json_str, self.domain(), self.name())?;
-        let raw = serde_json::to_string(&config).map_err(|e| e.to_string())?;
-        self.try_load_state(&raw)
     }
 
     #[cfg(test)]

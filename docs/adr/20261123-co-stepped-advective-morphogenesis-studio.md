@@ -1,4 +1,4 @@
-# ADR 0046: Co-Stepped Advective Morphogenesis Studio and Zero-Allocation LBM Velocity Coupling
+# ADR 20261123: Co-Stepped Advective Morphogenesis Studio and Zero-Allocation LBM Velocity Coupling
 
 ## Status
 Accepted (extends [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0022](0022-unify-preset-state-serialization.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))

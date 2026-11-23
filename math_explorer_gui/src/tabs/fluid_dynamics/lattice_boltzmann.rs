@@ -99,7 +99,8 @@ impl LbmUnified {
                     && y < height
                     && (x - cx).pow(2) + (y - cy).pow(2) <= r * r
                 {
-                    self.solver.set_obstacle(x as usize, y as usize, is_obstacle);
+                    self.solver
+                        .set_obstacle(x as usize, y as usize, is_obstacle);
                 }
             }
         }
@@ -112,8 +113,17 @@ impl FiniteStateGuard for LbmUnified {
         if self.diverged {
             return false;
         }
-        self.solver.state.velocity_x().iter().all(|&v| v.is_finite())
-            && self.solver.state.velocity_y().iter().all(|&v| v.is_finite())
+        self.solver
+            .state
+            .velocity_x()
+            .iter()
+            .all(|&v| v.is_finite())
+            && self
+                .solver
+                .state
+                .velocity_y()
+                .iter()
+                .all(|&v| v.is_finite())
             && self.solver.state.density().iter().all(|&v| v.is_finite())
     }
 
@@ -368,7 +378,11 @@ impl UnifiedModel for LbmUnified {
         record_stroke_in_rle(stroke, params, sculpt_state);
     }
 
-    fn apply_sculpt_payload(&mut self, payload: &SculptStatePayload, params: &HashMap<String, f64>) {
+    fn apply_sculpt_payload(
+        &mut self,
+        payload: &SculptStatePayload,
+        params: &HashMap<String, f64>,
+    ) {
         if payload.rle_mask.is_empty() {
             return;
         }
@@ -439,7 +453,7 @@ inventory::submit! {
         id: "LatticeBoltzmannTool",
         display_name: "Lattice Boltzmann (Demo)",
         domain: "fluid_dynamics",
-        tags: &[],
+        tags: &["lbm", "d2q9", "bgk", "vortex street", "navier-stokes", "fluid"],
         build: || Box::new(UnifiedSimTool::<LbmUnified>::new()),
     }
 }
@@ -462,17 +476,7 @@ impl TheoryDescribable for LbmUnified {
     }
 }
 
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "LBM Flow Simulation",
-    "domain": "fluid_dynamics",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "viscosity": 0.02
-  }
-}"#;
+const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"LBM Flow Simulation","domain":"fluid_dynamics","timestamp":"2026-11-16T00:00:00Z"},"config":{"viscosity":0.02}}"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
