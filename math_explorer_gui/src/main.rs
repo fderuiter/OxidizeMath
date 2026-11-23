@@ -11,8 +11,7 @@ pub mod camera;
 mod camera_3d_optout_tests;
 #[cfg(test)]
 mod canvas_accessibility_tests;
-#[allow(missing_docs)]
-pub mod command_palette;
+mod command_palette;
 #[allow(missing_docs)]
 pub mod framework;
 #[cfg(test)]
@@ -29,6 +28,7 @@ mod main_wasm_tests;
 mod markup_tests;
 #[cfg(test)]
 mod modal_accessibility_tests;
+pub mod plot3d_viewport;
 #[cfg(test)]
 mod plot_chrome_tests;
 pub mod presets;

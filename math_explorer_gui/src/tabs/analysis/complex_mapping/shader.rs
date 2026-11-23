@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{ComplexMappingTool, MappingFunction, COMPLEX_COORD_MAX, COMPLEX_COORD_MIN};
+use crate::framework::export_shader::compile_complex_bar_glsl;
 use crate::framework::{InteractiveTool, ShaderDialect};
 use math_commons::ast::{format_glsl_float, GLSL_COMPLEX_HELPERS};
 use math_commons::math_kernel::glsl_colormap::{
@@ -8,48 +9,13 @@ use math_commons::math_kernel::glsl_colormap::{
 };
 use std::fmt::Write;
 
-const SHADER_RESERVED_IDENTS: &[&str] = &[
+const MAPPING_SHADER_RESERVED: &[&str] = &[
     "GRID_DIVS",
     "GRID_MAX",
     "GRID_MIN",
-    "HIGH_CONTRAST",
-    "cabs",
-    "cacos",
-    "carg",
-    "casin",
-    "catan",
-    "catan2",
-    "cclamp",
-    "ccosh",
-    "ccos",
-    "cdiv",
-    "cexp",
-    "cln",
-    "clog10",
-    "cmax",
-    "cmin",
-    "cmul",
-    "cpow",
-    "crect",
-    "csinh",
-    "csin",
-    "csqrt",
-    "cstep",
-    "ctanh",
-    "ctan",
-    "cyclic_cosine_palette",
-    "ensure_dark_canvas_contrast",
     "eval_mapping",
-    "fragColor",
     "grid_line_mask",
-    "iResolution",
-    "linear_channel_to_srgb",
-    "relative_luminance_srgb",
     "render_complex_domain",
-    "srgb_channel_to_linear",
-    "u_mouse",
-    "u_resolution",
-    "u_time",
 ];
 
 impl ComplexMappingTool {
@@ -59,39 +25,13 @@ impl ComplexMappingTool {
             MappingFunction::Exponential => Ok((String::new(), "cexp(z)".to_string())),
             MappingFunction::Sine => Ok((String::new(), "csin(z)".to_string())),
             MappingFunction::Inverse => Ok((String::new(), "cdiv(vec2(1.0, 0.0), z)".to_string())),
-            MappingFunction::Custom => self.compile_custom_mapping_glsl(),
+            MappingFunction::Custom => compile_complex_bar_glsl(
+                &self.math_input,
+                &["z"],
+                MAPPING_SHADER_RESERVED,
+                "Custom complex expression is invalid",
+            ),
         }
-    }
-
-    fn compile_custom_mapping_glsl(&self) -> Result<(String, String), String> {
-        let invalid_err = || {
-            self.math_input
-                .error_message()
-                .unwrap_or_else(|| "Custom complex expression is invalid".to_string())
-        };
-        let expr = self.math_input.expr().ok_or_else(invalid_err)?;
-        let compiled = self.math_input.compiled().ok_or_else(invalid_err)?;
-        let param_names = compiled.param_names();
-        let param_vals = self.math_input.param_slice();
-
-        let mut allowed_vars = Vec::with_capacity(1 + param_names.len());
-        allowed_vars.push("z");
-        let mut param_decls = String::new();
-        for (idx, name) in param_names.iter().enumerate() {
-            if SHADER_RESERVED_IDENTS.contains(&name.as_str()) {
-                return Err(format!(
-                    "Parameter '{name}' collides with a reserved GLSL shader symbol"
-                ));
-            }
-            let val = param_vals.get(idx).copied().unwrap_or(1.0);
-            let lit = format_glsl_float(val).map_err(|e| e.to_string())?;
-            writeln!(param_decls, "    const vec2 {name} = vec2({lit}, 0.0);").unwrap();
-            allowed_vars.push(name.as_str());
-        }
-        let expr_glsl = expr
-            .to_glsl_complex_with_vars(&allowed_vars)
-            .map_err(|e| e.to_string())?;
-        Ok((param_decls, expr_glsl))
     }
 
     pub(super) fn build_glsl_shader(&self, dialect: ShaderDialect) -> Result<String, String> {

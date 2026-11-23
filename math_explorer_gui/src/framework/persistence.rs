@@ -353,6 +353,7 @@ impl SimulationFramework {
         }
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
+        self.clear_challenge_hud();
         self.active_challenge = None;
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(index);

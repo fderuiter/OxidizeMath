@@ -104,4 +104,23 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
     assert!(bloch.iter().any(|c| c.id.contains("bloch")));
     let no_ai_challenges = filter_challenge_cards(&all_challenges, "", Some(AcademicDomain::Ai));
     assert!(no_ai_challenges.is_empty());
+
+    assert_eq!(card_academic_domain("relativity"), AcademicDomain::Physics);
+    assert_eq!(
+        card_academic_domain("elliptic_curves"),
+        AcademicDomain::PureMath
+    );
+    let all_stories = get_all_stories();
+    assert!(!all_stories.is_empty());
+    let filtered_stories = filter_stories(&all_stories, "", Some(AcademicDomain::PureMath));
+    assert!(filtered_stories
+        .iter()
+        .all(|s| card_academic_domain(s.domain) == AcademicDomain::PureMath));
+
+    let all_goals = get_all_goal_challenges();
+    assert!(!all_goals.is_empty());
+    let filtered_goals = filter_goal_challenges(&all_goals, "", Some(AcademicDomain::AppliedMath));
+    assert!(filtered_goals
+        .iter()
+        .all(|g| card_academic_domain(g.domain) == AcademicDomain::AppliedMath));
 }

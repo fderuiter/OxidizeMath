@@ -153,7 +153,7 @@ impl SimulationFramework {
         });
     }
 
-    #[allow(missing_docs)]
+    /// Constructs a [`SimulationFramework`] populated with registered tools for `domain`.
     pub fn new(domain: &str) -> Self {
         let mut available_tools: Vec<&'static super::ToolMetadata> =
             inventory::iter::<super::ToolMetadata>
@@ -195,6 +195,7 @@ impl SimulationFramework {
             diagnostic_report: None,
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
+            challenge_hud: super::ChallengeHudState::default(),
             active_challenge: None,
             challenge_was_passed: false,
             instance_id: next_framework_id(),
@@ -215,6 +216,8 @@ fn default_tool_priority(domain: &str, id: &str) -> u8 {
         ("quantum", "WaveSimulator")
         | ("solid_state", "IsingModelTool")
         | ("medical", "DoseCalculationTool")
+        | ("relativity", "GeodesicPlaygroundTool")
+        | ("elliptic_curves", "WeierstrassPlaygroundTool")
         | ("clinical_trials", "PharmacokineticsTool")
         | ("epidemiology", "SirTool")
         | ("ai", "LossLandscapeTool") => 0,

@@ -1,6 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{ChallengeCard, GallerySelection, StarterCard};
+#[path = "cards.rs"]
+mod cards;
+
+use super::{
+    goal_challenge_to_starter_card, story_to_starter_card, ChallengeCard, GallerySelection,
+    GoalChallengeMetadata, PresetStoryMetadata, StarterCard,
+};
+use cards::{compute_gallery_metrics, FilteredGalleryItems, GalleryOverlayMetrics};
 use eframe::egui;
 
 const DEFER_STARTER_GALLERY_TO_ROOT_KEY: &str = "DEFER_STARTER_GALLERY_TO_ROOT";
@@ -9,11 +16,19 @@ const DEFERRED_STARTER_GALLERY_QUEUE_KEY: &str = "DEFERRED_STARTER_GALLERY_QUEUE
 /// Active sub-tab inside the `StarterGallery` modal.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum StarterGalleryTab {
-    /// Guided forward simulation templates.
+    /// Guided forward simulation templates / snapshots.
     #[default]
     Starters,
-    /// Goal-driven inverse challenges with locked boundary conditions.
+    /// Multi-step narrative tours with synchronized plot callouts.
+    GuidedStories,
+    /// Goal-driven inverse challenges and playable AST target challenges.
     Challenges,
+}
+
+impl StarterGalleryTab {
+    /// Alias for [`Self::Starters`] used by snapshot filter callers.
+    #[allow(non_upper_case_globals)]
+    pub const Snapshots: Self = Self::Starters;
 }
 
 #[derive(Clone)]
@@ -25,239 +40,194 @@ struct DeferredStarterGalleryRequest {
     challenges: Vec<ChallengeCard>,
 }
 
-struct GalleryOverlayMetrics {
-    max_w: f32,
-    max_h: f32,
-    inner_w: f32,
-    scroll_h: f32,
-    card_w: f32,
-    cols: usize,
+fn is_cross_domain_gallery(
+    id_source: &str,
+    cards: &[StarterCard],
+    challenges: &[ChallengeCard],
+) -> bool {
+    if id_source == "global_workspace" {
+        return true;
+    }
+    if let Some(first) = cards.first() {
+        if cards
+            .iter()
+            .any(|c| !super::domain_matches_gallery(c.domain, first.domain))
+        {
+            return true;
+        }
+    }
+    if let Some(first_ch) = challenges.first() {
+        if challenges
+            .iter()
+            .any(|c| !super::domain_matches_gallery(c.domain, first_ch.domain))
+        {
+            return true;
+        }
+    }
+    false
 }
 
-fn compute_gallery_metrics(ctx: &egui::Context) -> GalleryOverlayMetrics {
-    let raw_screen = ctx.content_rect();
-    let avail_w = if raw_screen.width().is_finite() && raw_screen.width() > 64.0 {
-        raw_screen.width()
-    } else {
-        1024.0
-    };
-    let avail_h = if raw_screen.height().is_finite() && raw_screen.height() > 64.0 {
-        raw_screen.height()
-    } else {
-        768.0
-    };
-    let max_w = (avail_w - 32.0).clamp(180.0, 740.0);
-    let max_h = (avail_h - 32.0).clamp(220.0, 620.0);
-    let inner_w = (max_w - 36.0).max(144.0);
-    let scroll_h = (max_h - 196.0).max(88.0);
-    let grid_avail_w = (inner_w - 14.0).max(130.0);
-    let (cols, card_w) = if grid_avail_w >= 660.0 {
-        (3, ((grid_avail_w - 28.0) / 3.0 - 30.0).floor())
-    } else if grid_avail_w >= 430.0 {
-        (2, ((grid_avail_w - 14.0) / 2.0 - 30.0).floor().min(215.0))
-    } else {
-        (1, (grid_avail_w - 30.0).clamp(98.0, 215.0))
-    };
-    GalleryOverlayMetrics {
-        max_w,
-        max_h,
-        inner_w,
-        scroll_h,
-        card_w,
-        cols,
+fn resolve_gallery_domain<'a>(
+    id_source: &'a str,
+    cards: &'a [StarterCard],
+    challenges: &'a [ChallengeCard],
+) -> &'a str {
+    if let Some(first) = cards.first() {
+        return first.domain;
     }
+    if let Some(first_ch) = challenges.first() {
+        return first_ch.domain;
+    }
+    match id_source.rsplit_once('_') {
+        Some((prefix, suffix))
+            if !prefix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            prefix
+        }
+        _ => id_source,
+    }
+}
+
+fn load_gallery_stories_and_goals(
+    id_source: &str,
+    cards: &[StarterCard],
+    challenges: &[ChallengeCard],
+) -> (
+    Vec<&'static PresetStoryMetadata>,
+    Vec<&'static GoalChallengeMetadata>,
+) {
+    if is_cross_domain_gallery(id_source, cards, challenges) {
+        (super::get_all_stories(), super::get_all_goal_challenges())
+    } else {
+        let domain = resolve_gallery_domain(id_source, cards, challenges);
+        (
+            super::get_stories_for_domain(domain),
+            super::get_goal_challenges_for_domain(domain),
+        )
+    }
+}
+
+fn load_active_gallery_tab(
+    ctx: &egui::Context,
+    modal_id: egui::Id,
+    id_source: &str,
+    total_counts: (usize, usize, usize),
+) -> (egui::Id, egui::Id, StarterGalleryTab) {
+    let (starter_count, story_count, challenge_count) = total_counts;
+    let tab_key = modal_id.with("gallery_active_tab");
+    let legacy_key = egui::Id::new((id_source, "starter_gallery_active_tab"));
+    let default_tab = if starter_count == 0 && challenge_count > 0 {
+        StarterGalleryTab::Challenges
+    } else if starter_count == 0 && story_count > 0 {
+        StarterGalleryTab::GuidedStories
+    } else {
+        StarterGalleryTab::Starters
+    };
+    let active_tab = ctx
+        .data(|d| {
+            d.get_temp::<StarterGalleryTab>(legacy_key)
+                .or_else(|| d.get_temp::<StarterGalleryTab>(tab_key))
+        })
+        .unwrap_or(default_tab);
+    (tab_key, legacy_key, active_tab)
 }
 
 fn render_gallery_header_and_tabs(
     ui: &mut egui::Ui,
     frame_ctx: &mut crate::ModalFrameContext,
     modal_id: egui::Id,
-    default_tab: StarterGalleryTab,
-    starter_count: usize,
-    challenge_count: usize,
+    id_source: &str,
+    total_counts: (usize, usize, usize),
+    filtered_counts: (usize, usize, usize),
     inner_w: f32,
 ) -> StarterGalleryTab {
-    let tab_key = modal_id.with("gallery_active_tab");
-    let mut active_tab = ui
-        .ctx()
-        .data(|d| d.get_temp::<StarterGalleryTab>(tab_key))
-        .unwrap_or(default_tab);
+    let (starter_count, story_count, challenge_count) = filtered_counts;
+    let (tab_key, legacy_key, mut active_tab) =
+        load_active_gallery_tab(ui.ctx(), modal_id, id_source, total_counts);
 
     ui.horizontal(|ui| {
         ui.set_width(inner_w);
-        ui.add(
-            egui::Label::new(egui::RichText::new("🚀 Starter & Challenge Gallery").heading())
-                .truncate(),
-        );
+        let heading = egui::RichText::new("🚀 Starter & Challenge Gallery").heading();
+        ui.add(egui::Label::new(heading).truncate());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button("✖ Close Gallery").clicked() {
                 frame_ctx.close();
             }
         });
     });
-
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
-        let starters_label = format!("🚀 Starter Templates ({starter_count})");
-        let challenges_label = format!("🎯 Inverse Challenges ({challenge_count})");
-        if ui
-            .selectable_label(active_tab == StarterGalleryTab::Starters, starters_label)
-            .clicked()
-        {
-            active_tab = StarterGalleryTab::Starters;
-        }
-        if ui
-            .selectable_label(
-                active_tab == StarterGalleryTab::Challenges,
-                challenges_label,
-            )
-            .clicked()
-        {
-            active_tab = StarterGalleryTab::Challenges;
+        let tabs = [
+            (
+                StarterGalleryTab::Starters,
+                format!("🚀 Starter Templates ({starter_count})"),
+            ),
+            (
+                StarterGalleryTab::GuidedStories,
+                format!("📖 Guided Stories ({story_count})"),
+            ),
+            (
+                StarterGalleryTab::Challenges,
+                format!("🎯 Challenges ({challenge_count})"),
+            ),
+        ];
+        for (tab, label) in tabs {
+            if ui.selectable_label(active_tab == tab, label).clicked() {
+                active_tab = tab;
+            }
         }
     });
-    ui.ctx().data_mut(|d| d.insert_temp(tab_key, active_tab));
-
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(tab_key, active_tab);
+        d.insert_temp(legacy_key, active_tab);
+    });
     let subtitle = match active_tab {
         StarterGalleryTab::Starters => {
             "Search or filter across domains to launch pre-configured simulation templates:"
         }
+        StarterGalleryTab::GuidedStories => {
+            "Walk through a multi-step mathematical paradox tour with synchronized plot callouts:"
+        }
         StarterGalleryTab::Challenges => {
-            "Solve an inverse challenge by tuning budgeted controls against locked physical or clinical bounds:"
+            "Solve an inverse boundary challenge or live AST observable target challenge:"
         }
     };
-    ui.add(
-        egui::Label::new(egui::RichText::new(subtitle).color(ui.visuals().weak_text_color()))
-            .wrap(),
-    );
+    let sub_text = egui::RichText::new(subtitle).color(ui.visuals().weak_text_color());
+    ui.add(egui::Label::new(sub_text).wrap());
     ui.add_space(4.0);
     active_tab
-}
-
-fn render_starters_grid(
-    ui: &mut egui::Ui,
-    frame_ctx: &mut crate::ModalFrameContext,
-    cards: &[StarterCard],
-    filter_state: &mut super::filter_ui::GalleryFilterState,
-    m: &GalleryOverlayMetrics,
-) -> Option<GallerySelection> {
-    let filtered = super::filter_ui::filter_starter_cards(
-        cards,
-        &filter_state.query,
-        filter_state.selected_domain,
-    );
-    if filtered.is_empty() {
-        super::filter_ui::render_empty_filtered_state(ui, filter_state, "starter templates");
-        return None;
-    }
-    let mut selected = None;
-    for row in filtered.chunks(m.cols.max(1)) {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-            for card in row {
-                if super::challenges::render_starter_card(ui, card, m.card_w) {
-                    selected = Some(GallerySelection::Starter(card.clone()));
-                    frame_ctx.close();
-                }
-            }
-        });
-    }
-    selected
-}
-
-fn render_challenges_grid(
-    ui: &mut egui::Ui,
-    frame_ctx: &mut crate::ModalFrameContext,
-    challenges: &[ChallengeCard],
-    filter_state: &mut super::filter_ui::GalleryFilterState,
-    m: &GalleryOverlayMetrics,
-) -> Option<GallerySelection> {
-    if challenges.is_empty() {
-        ui.label(
-            "No inverse challenges are registered for this domain yet. Try MRI Physics, Clinical Trials, Fluid Dynamics, or Medical Physics.",
-        );
-        return None;
-    }
-    let filtered = super::filter_ui::filter_challenge_cards(
-        challenges,
-        &filter_state.query,
-        filter_state.selected_domain,
-    );
-    if filtered.is_empty() {
-        super::filter_ui::render_empty_filtered_state(ui, filter_state, "inverse challenges");
-        return None;
-    }
-    let mut selected = None;
-    for row in filtered.chunks(m.cols.max(1)) {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-            for ch in row {
-                if super::challenges::render_challenge_card(ui, ch, m.card_w) {
-                    selected = Some(GallerySelection::Challenge(ch.clone()));
-                    frame_ctx.close();
-                }
-            }
-        });
-    }
-    selected
-}
-
-fn render_gallery_cards_grid(
-    ui: &mut egui::Ui,
-    frame_ctx: &mut crate::ModalFrameContext,
-    active_tab: StarterGalleryTab,
-    cards: &[StarterCard],
-    challenges: &[ChallengeCard],
-    filter_state: &mut super::filter_ui::GalleryFilterState,
-    m: &GalleryOverlayMetrics,
-) -> Option<GallerySelection> {
-    ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-    match active_tab {
-        StarterGalleryTab::Starters => render_starters_grid(ui, frame_ctx, cards, filter_state, m),
-        StarterGalleryTab::Challenges => {
-            render_challenges_grid(ui, frame_ctx, challenges, filter_state, m)
-        }
-    }
 }
 
 fn render_starter_gallery_body(
     ui: &mut egui::Ui,
     frame_ctx: &mut crate::ModalFrameContext,
     modal_id: egui::Id,
+    id_source: &str,
     cards: &[StarterCard],
     challenges: &[ChallengeCard],
     m: &GalleryOverlayMetrics,
 ) -> Option<GallerySelection> {
+    let (stories, goal_challenges) = load_gallery_stories_and_goals(id_source, cards, challenges);
     let mut selected = None;
     let top_y = ui.cursor().top();
     ui.set_max_width(m.inner_w);
     ui.set_width(m.inner_w);
 
-    let default_tab = if cards.is_empty() && !challenges.is_empty() {
-        StarterGalleryTab::Challenges
-    } else {
-        StarterGalleryTab::Starters
-    };
     let mut filter_state = super::filter_ui::load_gallery_filter_state(ui.ctx(), modal_id);
-    let starter_count = super::filter_ui::filter_starter_cards(
-        cards,
-        &filter_state.query,
-        filter_state.selected_domain,
-    )
-    .len();
-    let challenge_count = super::filter_ui::filter_challenge_cards(
-        challenges,
-        &filter_state.query,
-        filter_state.selected_domain,
-    )
-    .len();
+    let filtered =
+        FilteredGalleryItems::build(cards, &stories, challenges, &goal_challenges, &filter_state);
+    let total_counts = (
+        cards.len(),
+        stories.len(),
+        challenges.len() + goal_challenges.len(),
+    );
     let active_tab = render_gallery_header_and_tabs(
         ui,
         frame_ctx,
         modal_id,
-        default_tab,
-        starter_count,
-        challenge_count,
+        id_source,
+        total_counts,
+        filtered.counts(),
         m.inner_w,
     );
     super::filter_ui::render_gallery_filter_bar(ui, frame_ctx, &mut filter_state, m.inner_w);
@@ -275,21 +245,14 @@ fn render_starter_gallery_body(
         .auto_shrink([false, true])
         .show(ui, |ui| {
             ui.set_max_width(m.inner_w);
-            selected = render_gallery_cards_grid(
-                ui,
-                frame_ctx,
-                active_tab,
-                cards,
-                challenges,
-                &mut filter_state,
-                m,
-            );
+            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
+            selected = filtered.render_tab(ui, frame_ctx, active_tab, &mut filter_state, m);
         });
     super::filter_ui::store_gallery_filter_state(ui.ctx(), modal_id, filter_state);
     selected
 }
 
-/// Renders the central canvas starter & inverse challenge gallery overlay clamped to root window bounds.
+/// Renders the central canvas starter, story, & challenge gallery overlay clamped to root window bounds.
 pub fn show_starter_gallery_with_challenges(
     ctx: &egui::Context,
     id_source: &str,
@@ -301,7 +264,9 @@ pub fn show_starter_gallery_with_challenges(
     if !*is_open {
         super::filter_ui::clear_gallery_filter_state(ctx, modal_id);
     }
-    if cards.is_empty() && challenges.is_empty() {
+    let (stories, goal_challenges) = load_gallery_stories_and_goals(id_source, cards, challenges);
+    if cards.is_empty() && challenges.is_empty() && stories.is_empty() && goal_challenges.is_empty()
+    {
         return None;
     }
     let m = compute_gallery_metrics(ctx);
@@ -317,7 +282,9 @@ pub fn show_starter_gallery_with_challenges(
         .max_width(m.max_w)
         .max_height(m.max_h)
         .show(ctx, is_open, |ui, frame_ctx| {
-            selected = render_starter_gallery_body(ui, frame_ctx, modal_id, cards, challenges, &m);
+            selected = render_starter_gallery_body(
+                ui, frame_ctx, modal_id, id_source, cards, challenges, &m,
+            );
         });
 
     if !*is_open || selected.is_some() {
@@ -333,14 +300,16 @@ pub fn show_starter_gallery_overlay(
     cards: &[StarterCard],
     is_open: &mut bool,
 ) -> Option<StarterCard> {
-    let domain = cards.first().map_or(id_source, |c| c.domain);
-    let challenges = if id_source == "global_workspace" {
+    let challenges = if is_cross_domain_gallery(id_source, cards, &[]) {
         super::get_all_challenge_cards()
     } else {
+        let domain = resolve_gallery_domain(id_source, cards, &[]);
         super::get_challenge_cards_for_domain(domain)
     };
     match show_starter_gallery_with_challenges(ctx, id_source, cards, &challenges, is_open) {
         Some(GallerySelection::Starter(card)) => Some(card),
+        Some(GallerySelection::Story(story)) => Some(story_to_starter_card(story)),
+        Some(GallerySelection::GoalChallenge(goal)) => Some(goal_challenge_to_starter_card(goal)),
         Some(GallerySelection::Challenge(_)) | None => None,
     }
 }

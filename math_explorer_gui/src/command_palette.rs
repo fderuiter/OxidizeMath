@@ -214,27 +214,8 @@ impl CommandPalette {
         }
     }
 
-    /// Filters registered domain tabs using word-boundary matching.
-    pub fn filter_tabs(
-        &self,
-        tabs: &[Box<dyn crate::tabs::ExplorerTab>],
-    ) -> Vec<(usize, &'static str)> {
-        let mut matched: Vec<(usize, &'static str, usize)> = tabs
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, tab)| {
-                let tab_name = tab.name();
-                fuzzy_match_score(tab_name, &self.query).map(|score| (idx, tab_name, score))
-            })
-            .collect();
-        matched.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
-        matched
-            .into_iter()
-            .map(|(idx, name, _)| (idx, name))
-            .collect()
-    }
-
     /// Filters commands, domain tabs, simulation tools, and starter presets in one zero-prefix list.
+    #[cfg(test)]
     pub fn filter_items(&self, tabs: &[Box<dyn crate::tabs::ExplorerTab>]) -> Vec<PaletteItem> {
         self.filter_items_with_ctx(None, tabs)
     }

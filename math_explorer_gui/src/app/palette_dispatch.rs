@@ -5,7 +5,7 @@
 use super::{MathExplorerApp, ThemeMode, ViewportLayout};
 use crate::command_palette::{PaletteAction, PaletteSelection};
 use crate::framework::ExportFormat;
-use crate::starter_gallery::{ChallengeCard, GallerySelection, StarterCard};
+use crate::starter_gallery::{GallerySelection, StarterCard};
 use eframe::egui;
 
 impl MathExplorerApp {
@@ -70,24 +70,47 @@ impl MathExplorerApp {
     ) {
         match selection {
             GallerySelection::Starter(card) => {
-                self.launch_starter_card_in_pane(ctx, pane_idx, card)
+                self.launch_starter_card_in_pane(ctx, pane_idx, card);
+            }
+            GallerySelection::Story(story) => {
+                self.launch_domain_gallery_selection_in_pane(
+                    ctx,
+                    pane_idx,
+                    story.domain,
+                    GallerySelection::Story(story),
+                );
             }
             GallerySelection::Challenge(ch) => {
-                self.launch_challenge_card_in_pane(ctx, pane_idx, ch)
+                let domain = ch.domain;
+                self.launch_domain_gallery_selection_in_pane(
+                    ctx,
+                    pane_idx,
+                    domain,
+                    GallerySelection::Challenge(ch),
+                );
+            }
+            GallerySelection::GoalChallenge(goal) => {
+                self.launch_domain_gallery_selection_in_pane(
+                    ctx,
+                    pane_idx,
+                    goal.domain,
+                    GallerySelection::GoalChallenge(goal),
+                );
             }
         }
     }
 
-    fn launch_challenge_card_in_pane(
+    fn launch_domain_gallery_selection_in_pane(
         &mut self,
         ctx: &egui::Context,
         pane_idx: usize,
-        ch: ChallengeCard,
+        domain: &str,
+        selection: GallerySelection,
     ) {
         if self.tabs.is_empty() {
             return;
         }
-        let target_tab = crate::command_palette::resolve_domain_tab_index(&self.tabs, ch.domain);
+        let target_tab = crate::command_palette::resolve_domain_tab_index(&self.tabs, domain);
         let cur_tab = if pane_idx == 0 {
             self.active_primary_tab_index()
         } else {
@@ -98,12 +121,7 @@ impl MathExplorerApp {
         }
         if let Some(tab) = self.pane_tab_mut(pane_idx) {
             let slug = tab.url_slug();
-            tab.apply_starter_gallery_selection(
-                ctx,
-                slug,
-                false,
-                Some(GallerySelection::Challenge(ch)),
-            );
+            tab.apply_starter_gallery_selection(ctx, slug, false, Some(selection));
         }
         self.clear_active_pane_caches();
     }

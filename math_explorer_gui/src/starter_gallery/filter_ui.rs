@@ -144,8 +144,9 @@ pub(crate) fn clear_gallery_filter_state(ctx: &egui::Context, modal_id: egui::Id
 pub fn card_academic_domain(domain: &str) -> AcademicDomain {
     match domain {
         "quantum" | "mri" | "fluid_dynamics" | "chaos" | "solid_state" | "medical"
-        | "astrophysics" => AcademicDomain::Physics,
+        | "astrophysics" | "relativity" => AcademicDomain::Physics,
         "analysis"
+        | "elliptic_curves"
         | "number_theory"
         | "geometry_topology"
         | "graph_theory"
@@ -286,7 +287,70 @@ pub fn filter_challenge_cards(
     scored.into_iter().map(|(_, _, card)| card).collect()
 }
 
-pub(super) fn render_empty_filtered_state(
+/// Filters and ranks guided stories by optional [`AcademicDomain`] pill and word-boundary query.
+pub fn filter_stories(
+    stories: &[&'static super::PresetStoryMetadata],
+    query: &str,
+    selected_domain: Option<AcademicDomain>,
+) -> Vec<&'static super::PresetStoryMetadata> {
+    let trimmed = query.trim();
+    let domain_iter = stories
+        .iter()
+        .copied()
+        .filter(|s| selected_domain.is_none_or(|dom| card_academic_domain(s.domain) == dom));
+    if trimmed.is_empty() {
+        return domain_iter.collect();
+    }
+    let mut scored: Vec<(usize, usize, &'static super::PresetStoryMetadata)> = domain_iter
+        .enumerate()
+        .filter_map(|(idx, s)| {
+            let card = super::story_to_starter_card(s);
+            score_starter_card(&card, trimmed).map(|score| (score, idx, s))
+        })
+        .collect();
+    scored.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then_with(|| a.2.title.cmp(b.2.title))
+            .then_with(|| a.1.cmp(&b.1))
+    });
+    scored.into_iter().map(|(_, _, s)| s).collect()
+}
+
+/// Filters and ranks playable AST goal challenges by optional [`AcademicDomain`] pill and word-boundary query.
+pub fn filter_goal_challenges(
+    goals: &[&'static super::GoalChallengeMetadata],
+    query: &str,
+    selected_domain: Option<AcademicDomain>,
+) -> Vec<&'static super::GoalChallengeMetadata> {
+    let trimmed = query.trim();
+    let domain_iter = goals
+        .iter()
+        .copied()
+        .filter(|g| selected_domain.is_none_or(|dom| card_academic_domain(g.domain) == dom));
+    if trimmed.is_empty() {
+        return domain_iter.collect();
+    }
+    let mut scored: Vec<(usize, usize, &'static super::GoalChallengeMetadata)> = domain_iter
+        .enumerate()
+        .filter_map(|(idx, g)| {
+            let card = super::goal_challenge_to_starter_card(g);
+            let mut best = score_starter_card(&card, trimmed);
+            if let Some(s) = fuzzy_match_score(g.goal_summary, trimmed) {
+                let weighted = s.saturating_add(12);
+                best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
+            }
+            best.map(|score| (score, idx, g))
+        })
+        .collect();
+    scored.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then_with(|| a.2.title.cmp(b.2.title))
+            .then_with(|| a.1.cmp(&b.1))
+    });
+    scored.into_iter().map(|(_, _, g)| g).collect()
+}
+
+pub(crate) fn render_empty_filtered_state(
     ui: &mut egui::Ui,
     filter_state: &mut GalleryFilterState,
     item_noun: &str,
@@ -318,7 +382,7 @@ pub(super) fn render_gallery_filter_bar(
         let edit_w = (inner_w - clear_reserve).max(80.0);
         let edit = egui::TextEdit::singleline(&mut state.query)
             .desired_width(edit_w)
-            .hint_text("🔍 Filter starter templates, equations, or tools...");
+            .hint_text("🔍 Filter starter templates, stories, challenges, or tools...");
         let resp = ui.add(edit);
         if !state.query.is_empty() && ui.small_button("✖").clicked() {
             state.query.clear();
