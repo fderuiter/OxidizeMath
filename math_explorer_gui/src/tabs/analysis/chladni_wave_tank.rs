@@ -5,21 +5,30 @@
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_point_clamp,
+    apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier,
     apply_sponge_layer, BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D,
-    SpectralAnalyzer2D, SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver,
+    SpectralAnalyzer2D, SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver, WaveProbeSample,
 };
 
-use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
+use crate::audio::{mappings::chladni_plate_frame, SonificationFrame};
+use crate::framework::{
+    ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit, ToolStateBounds,
+};
 
 mod canvas;
+#[cfg(feature = "physics")]
+mod metamaterial;
 mod presets;
+mod sculpt;
+mod sculpt_codec;
 mod ui;
 
 #[cfg(test)]
 mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
+#[cfg(test)]
+mod workbench_tests;
 
 pub(crate) const GRID_SIZE: usize = 128;
 pub(crate) const SAND_COUNT: usize = 4_000;
@@ -48,34 +57,12 @@ pub(crate) enum TankPreset {
     AcousticLens,
 }
 
-impl TankPreset {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::SquareChladniPlate => "Square Chladni Plate",
-            Self::CircularDrumhead => "Circular Drumhead",
-            Self::DoubleSlitInterference => "Double-Slit Interference",
-            Self::AcousticLens => "Acoustic Lens",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ClampLayout {
     None,
     CenterPin,
     QuadSymmetry,
     EdgeMidpoints,
-}
-
-impl ClampLayout {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::None => "Free / Perimeter Only",
-            Self::CenterPin => "Center Nodal Pin",
-            Self::QuadSymmetry => "Fourfold Symmetry Pins",
-            Self::EdgeMidpoints => "Edge Midpoint Clamps",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -85,20 +72,11 @@ pub(crate) enum WaveColormap {
     WcagHighContrast,
 }
 
-impl WaveColormap {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::PerceptualThermal => "Perceptual Thermal",
-            Self::BipolarPhase => "Bipolar Wave Phase",
-            Self::WcagHighContrast => "WCAG High Contrast",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum SecondaryPlotMode {
     DetectorCrossSection,
     RadialFftSpectrum,
+    PhononDispersion,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -132,11 +110,20 @@ pub(crate) struct ChladniWaveTankState {
     pub show_nodal_contours: bool,
     pub show_sand_particles: bool,
     pub rng_seed: u64,
+    #[serde(default = "presets::default_pickup_x")]
+    pub pickup_x: f64,
+    #[serde(default = "presets::default_pickup_y")]
+    pub pickup_y: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sculpt_rle: Vec<[u32; 2]>,
 }
 
 pub struct ChladniWaveTankTool {
     pub(crate) state: ChladniWaveTankState,
-    pub(crate) custom_clamps: Vec<[f64; 2]>,
+    pub(crate) sculpt_mask: Vec<u8>,
+    pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) last_brush_grid_pos: Option<[f64; 2]>,
+    pub(crate) pickup_drag_mode: bool,
     pub(crate) solver: Wave2DSolver,
     pub(crate) sand: ChladniSandSystem,
     pub(crate) fft: SpectralAnalyzer2D,
@@ -144,7 +131,13 @@ pub struct ChladniWaveTankTool {
     pub(crate) detector_buf: Vec<f64>,
     pub(crate) radial_spectrum: Vec<f64>,
     pub(crate) radial_counts: Vec<usize>,
+    pub(crate) modal_peaks: [SpectralPeak2D; 8],
+    pub(crate) active_peak_count: usize,
     pub(crate) dominant_peak: SpectralPeak2D,
+    pub(crate) latest_probe: WaveProbeSample,
+    pub(crate) latest_audio_frame: SonificationFrame,
+    #[cfg(feature = "physics")]
+    pub(crate) metamaterial: metamaterial::MetamaterialWorkbench,
     pub(crate) rgba_pixels: Vec<egui::Color32>,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) paused: bool,
@@ -169,7 +162,10 @@ impl Default for ChladniWaveTankTool {
         );
         let mut tool = Self {
             state,
-            custom_clamps: Vec::with_capacity(16),
+            sculpt_mask: vec![0_u8; GRID_SIZE * GRID_SIZE],
+            brush_kit: sculpt::default_chladni_brush_kit(),
+            last_brush_grid_pos: None,
+            pickup_drag_mode: false,
             solver,
             sand,
             fft: SpectralAnalyzer2D::new(GRID_SIZE, GRID_SIZE),
@@ -177,7 +173,13 @@ impl Default for ChladniWaveTankTool {
             detector_buf: vec![0.0; GRID_SIZE],
             radial_spectrum: vec![0.0; GRID_SIZE / 2],
             radial_counts: vec![0; GRID_SIZE / 2],
+            modal_peaks: [SpectralPeak2D::default(); 8],
+            active_peak_count: 0,
             dominant_peak: SpectralPeak2D::default(),
+            latest_probe: WaveProbeSample::default(),
+            latest_audio_frame: SonificationFrame::silent(),
+            #[cfg(feature = "physics")]
+            metamaterial: metamaterial::MetamaterialWorkbench::default(),
             rgba_pixels: vec![egui::Color32::BLACK; GRID_SIZE * GRID_SIZE],
             texture: None,
             paused: false,
@@ -217,7 +219,7 @@ impl ChladniWaveTankTool {
     }
 
     pub(crate) fn apply_preset(&mut self, preset: TankPreset) {
-        self.custom_clamps.clear();
+        self.sculpt_mask.fill(0);
         self.state = presets::default_state_for_preset(preset);
         self.state_rev = self.state_rev.wrapping_add(1);
         let warmup = match preset {
@@ -270,7 +272,7 @@ impl ChladniWaveTankTool {
         if self.state.boundary == BoundaryMode2D::Sponge {
             apply_sponge_layer(&mut self.solver.sponge_mask, GRID_SIZE, GRID_SIZE, 12, 1.8);
         }
-        self.apply_clamp_pins();
+        sculpt::apply_preset_clamp_pins(self.state.clamp_layout, &mut self.solver.wall_mask);
         if self.state.barrier_enabled {
             apply_multi_slit_barrier(
                 &mut self.solver.wall_mask,
@@ -294,37 +296,13 @@ impl ChladniWaveTankTool {
                 self.state.refractive_index,
             );
         }
-    }
-
-    fn apply_clamp_pins(&mut self) {
-        let (pins, radius): (&[(f64, f64)], f64) = match self.state.clamp_layout {
-            ClampLayout::None => (&[], 0.0),
-            ClampLayout::CenterPin => (&[(0.5, 0.5)], 2.0),
-            ClampLayout::QuadSymmetry => (&[(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)], 1.8),
-            ClampLayout::EdgeMidpoints => {
-                (&[(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)], 2.2)
-            }
-        };
-        for &(cx, cy) in pins {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                radius,
-            );
-        }
-        for &[cx, cy] in &self.custom_clamps {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                1.8,
-            );
-        }
+        #[cfg(feature = "physics")]
+        self.metamaterial.apply_ast_to_wave_speed_mask(
+            &mut self.solver.wave_speed_mask,
+            GRID_SIZE,
+            GRID_SIZE,
+        );
+        sculpt::replay_sculpt_mask_on_solver(&self.sculpt_mask, &mut self.solver);
     }
 
     pub(crate) fn advance_physics_step(&mut self) {
@@ -351,12 +329,25 @@ impl ChladniWaveTankTool {
 
     pub(crate) fn refresh_analysis_outputs(&mut self) {
         self.analysis_dirty = false;
+        self.latest_probe = self
+            .solver
+            .sample_probe(self.state.pickup_x, self.state.pickup_y);
         self.solver
             .read_detector_profile(self.state.detector_x, &mut self.detector_buf);
         self.fft.compute_spectrum(self.solver.displacement());
-        self.dominant_peak = self.fft.dominant_peak();
+        self.active_peak_count = self.fft.top_peaks(&mut self.modal_peaks);
+        self.dominant_peak = self.modal_peaks[0];
         self.fft
             .compute_radial_profile(&mut self.radial_spectrum, &mut self.radial_counts);
+        self.latest_audio_frame = chladni_plate_frame(
+            &self.modal_peaks[..self.active_peak_count],
+            self.latest_probe,
+            self.state.medium,
+            self.state.driver_frequency,
+            self.state.wave_speed,
+            self.state.plate_stiffness,
+            self.state.pickup_x,
+        );
         if self.state.show_nodal_contours {
             let field = if self.state.driver_enabled && !self.state.line_source {
                 self.solver.modal_field()
@@ -395,11 +386,17 @@ impl InteractiveTool for ChladniWaveTankTool {
         self.focused_canvas
     }
 
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(stroke) = ctx.brush_stroke {
+            self.apply_sculpt_stroke(stroke);
+        }
+    }
+
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds {
             max_bytes: 8_192,
             max_depth: 6,
-            max_array_len: 32,
+            max_array_len: 1_024,
         }
     }
 
@@ -424,8 +421,8 @@ impl InteractiveTool for ChladniWaveTankTool {
         if !presets::is_valid_state(&parsed) {
             return Err("Chladni Wave Tank parameters out of finite valid bounds".into());
         }
+        sculpt::decode_sculpt_rle_into(&parsed.sculpt_rle, &mut self.sculpt_mask);
         self.state = parsed;
-        self.custom_clamps.clear();
         self.state_rev = self.state_rev.wrapping_add(1);
         self.rebuild_domain_and_warmup(0);
         Ok(())

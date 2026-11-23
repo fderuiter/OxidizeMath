@@ -59,7 +59,11 @@ impl ChladniWaveTankTool {
         crate::accessibility::lock_canvas_arrow_keys(ui, &response);
         self.focused_canvas = response.has_focus().then_some(response.id);
 
-        self.handle_canvas_input(ui, &response, rect);
+        if self.brush_kit.is_sculpting() {
+            self.handle_sculpt_canvas_input(ui, &response, rect);
+        } else {
+            self.handle_canvas_input(ui, &response, rect);
+        }
 
         if let Some(tex) = &self.texture {
             let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
@@ -71,8 +75,9 @@ impl ChladniWaveTankTool {
             DARK_PALETTE
         };
         self.paint_canvas_overlays(&painter, rect, raster_palette);
+        self.paint_sculpt_reticle(ui, &painter, &response, rect);
         crate::accessibility::paint_canvas_focus_ring(ui, &response);
-        ui.small("Drag to steer driver • Shift+Click to pin clamp • Arrows move • Enter pulses");
+        ui.small("Sculpt / Driver / Pickup modes • Arrows move • Space stamps • Enter pulses");
     }
 
     fn handle_canvas_input(&mut self, ui: &mut egui::Ui, response: &egui::Response, rect: Rect) {
@@ -115,25 +120,48 @@ impl ChladniWaveTankTool {
                 crate::accessibility::announce_live_status(&ctx, "Injected Gaussian wave pulse");
             }
         }
+        self.handle_driver_pointer_input(&ctx, response, rect);
+    }
 
-        if (response.clicked() || response.dragged()) && rect.width() > 1.0 && rect.height() > 1.0 {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
-                let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
-                let shift = ctx.input(|i| i.modifiers.shift);
-                if shift && response.clicked() && self.custom_clamps.len() < 16 {
-                    self.custom_clamps.push([nx, ny]);
-                    self.rebuild_masks();
-                } else {
-                    self.state.driver_x = nx;
-                    self.state.driver_y = ny;
-                    if response.clicked() {
-                        self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
-                    }
-                }
-                self.state_rev = self.state_rev.wrapping_add(1);
+    fn handle_driver_pointer_input(
+        &mut self,
+        ctx: &egui::Context,
+        response: &egui::Response,
+        rect: Rect,
+    ) {
+        if !(response.clicked() || response.dragged())
+            || rect.width() <= 1.0
+            || rect.height() <= 1.0
+        {
+            return;
+        }
+        let Some(pos) = response.interact_pointer_pos() else {
+            return;
+        };
+        let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
+        let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
+        let (shift, alt) = ctx.input(|i| (i.modifiers.shift, i.modifiers.alt));
+        if self.pickup_drag_mode || alt {
+            self.state.pickup_x = nx;
+            self.state.pickup_y = ny;
+            self.analysis_dirty = true;
+        } else if shift && response.clicked() {
+            let pt = [nx * (GRID_SIZE as f64), ny * (GRID_SIZE as f64)];
+            self.apply_sculpt_stroke(crate::framework::BrushStroke {
+                start: pt,
+                end: pt,
+                radius: 2.0,
+                mode: crate::framework::BrushMode::Solid,
+                drag_vector: [0.0, 0.0],
+            });
+        } else {
+            self.state.driver_x = nx;
+            self.state.driver_y = ny;
+            if response.clicked() {
+                self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
             }
         }
+        self.state_rev = self.state_rev.wrapping_add(1);
     }
 
     fn paint_canvas_overlays(&self, painter: &egui::Painter, rect: Rect, palette: SemanticPalette) {
@@ -179,12 +207,21 @@ impl ChladniWaveTankTool {
 
         let drv_pos = to_screen(self.state.driver_x, self.state.driver_y);
         painter.circle_stroke(drv_pos, 5.0_f32, Stroke::new(1.8_f32, palette.axis_x));
+        let pkp_pos = to_screen(self.state.pickup_x, self.state.pickup_y);
+        painter.circle_stroke(pkp_pos, 4.5_f32, Stroke::new(1.8_f32, palette.axis_y));
+        painter.circle_filled(pkp_pos, 1.8_f32, palette.axis_y);
     }
 
     fn draw_secondary_analysis_plot(&self, ui: &mut egui::Ui) {
         match self.state.secondary_plot {
             SecondaryPlotMode::DetectorCrossSection => self.draw_detector_cross_section_plot(ui),
             SecondaryPlotMode::RadialFftSpectrum => self.draw_radial_fft_plot(ui),
+            SecondaryPlotMode::PhononDispersion => {
+                #[cfg(feature = "physics")]
+                self.draw_phonon_dispersion_plot(ui);
+                #[cfg(not(feature = "physics"))]
+                self.draw_radial_fft_plot(ui);
+            }
         }
     }
 
@@ -433,11 +470,17 @@ fn populate_field_pixels(
                 }
             };
             let speed_scale = solver.wave_speed_mask[src_idx];
-            if (speed_scale - 1.0).abs() > 1.0e-3 {
+            if speed_scale > 1.02 {
                 out_pixels[dst_idx] = Color32::from_rgb(
-                    rgb[0].saturating_add(18),
-                    rgb[1].saturating_add(34),
-                    rgb[2].saturating_add(52),
+                    rgb[0].saturating_add(44),
+                    rgb[1].saturating_add(30),
+                    rgb[2].saturating_add(8),
+                );
+            } else if speed_scale < 0.98 {
+                out_pixels[dst_idx] = Color32::from_rgb(
+                    rgb[0].saturating_add(16),
+                    rgb[1].saturating_add(36),
+                    rgb[2].saturating_add(56),
                 );
             } else {
                 out_pixels[dst_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);

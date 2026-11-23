@@ -116,6 +116,122 @@ fn test_chladni_url_hash_hydration_roundtrip() {
     assert_eq!(actual_state, expected_state);
 }
 
+fn apply_sample_luthiery_strokes(tool: &mut ChladniWaveTankTool) {
+    use crate::framework::{BrushMode, BrushStroke, InteractionContext, InteractiveTool};
+
+    let ctx = Context::default();
+    let mut dummy_resp = None;
+    let _ = ctx.run(raw_frame(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            dummy_resp = Some(ui.label("probe"));
+        });
+    });
+    let resp = dummy_resp.expect("egui dummy response");
+    tool.state.pickup_x = 0.72;
+    tool.state.pickup_y = 0.34;
+    for (mode, start, end, radius) in [
+        (BrushMode::Solid, [24.0, 24.0], [28.0, 24.0], 2.0),
+        (BrushMode::PotentialBarrier, [40.0, 60.0], [88.0, 60.0], 3.0),
+        (BrushMode::VelocityJet, [32.0, 84.0], [72.0, 84.0], 2.0),
+        (BrushMode::PotentialWell, [80.0, 40.0], [80.0, 40.0], 5.0),
+        (BrushMode::Erase, [24.0, 24.0], [24.0, 24.0], 1.0),
+    ] {
+        let ic = InteractionContext::from_brush_stroke(
+            &resp,
+            BrushStroke {
+                start,
+                end,
+                radius,
+                mode,
+                drag_vector: [end[0] - start[0], end[1] - start[1]],
+            },
+        );
+        tool.on_brush(&ic);
+    }
+}
+
+fn active_chladni_mut(app: &mut MathExplorerApp, tab_idx: usize) -> &mut ChladniWaveTankTool {
+    app.tabs[tab_idx]
+        .framework_mut()
+        .unwrap()
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .as_any_mut()
+        .unwrap()
+        .downcast_mut::<ChladniWaveTankTool>()
+        .unwrap()
+}
+
+#[test]
+fn test_chladni_sculpt_rle_and_pickup_url_roundtrip_under_4kib() {
+    use math_explorer::math_kernel::types::flatten_2d_index;
+
+    use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
+
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    assert!(!ChladniWaveTankTool::default()
+        .save_state()
+        .unwrap()
+        .contains("sculpt_rle"));
+
+    let mut source_app = MathExplorerApp::default();
+    let analysis_idx = source_app
+        .tabs
+        .iter()
+        .position(|t| t.url_slug() == "analysis")
+        .expect("AnalysisTab must exist");
+    source_app.selected_tab = analysis_idx;
+    assert!(source_app.tabs[analysis_idx].select_tool_by_name("ChladniWaveTankTool"));
+
+    let sculpted_json = {
+        let tool = active_chladni_mut(&mut source_app, analysis_idx);
+        apply_sample_luthiery_strokes(tool);
+        tool.rebuild_masks();
+        assert_eq!(
+            tool.solver.wall_mask[flatten_2d_index(28, 24, GRID_SIZE)],
+            0.0
+        );
+        assert!(tool.solver.wave_speed_mask[flatten_2d_index(64, 60, GRID_SIZE)] > 1.4);
+        assert!(tool.solver.wave_speed_mask[flatten_2d_index(80, 40, GRID_SIZE)] < 0.5);
+        tool.save_state().unwrap()
+    };
+    assert!(sculpted_json.contains("sculpt_rle"));
+    assert!(sculpted_json.len() < MAX_DECODED_URL_STATE_BYTES);
+
+    let share_url = source_app.encode_current_share_url().unwrap();
+    let hash = &share_url[share_url.find('#').unwrap()..];
+    let mut restored_app = MathExplorerApp::default();
+    assert!(restored_app
+        .apply_share_location_strings(hash, "", None)
+        .unwrap());
+    let restored = active_chladni_mut(&mut restored_app, analysis_idx);
+    assert_eq!(
+        restored.save_state().as_deref(),
+        Some(sculpted_json.as_str())
+    );
+    assert!((restored.state.pickup_x - 0.72).abs() < 1.0e-12);
+    assert_eq!(
+        restored.solver.wall_mask[flatten_2d_index(28, 24, GRID_SIZE)],
+        0.0
+    );
+}
+
+#[test]
+fn test_chladni_noisy_sculpt_mask_coarsens_under_4kib() {
+    use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
+
+    let mut noisy_tool = ChladniWaveTankTool::default();
+    for idx in 0..noisy_tool.sculpt_mask.len() {
+        noisy_tool.sculpt_mask[idx] = ((idx * 7 + (idx / GRID_SIZE) * 3) % 8) as u8;
+    }
+    noisy_tool.state.sculpt_rle =
+        super::sculpt::encode_bounded_sculpt_rle(&noisy_tool.sculpt_mask, GRID_SIZE, GRID_SIZE);
+    let noisy_json = noisy_tool.save_state().unwrap();
+    assert!(noisy_json.len() < MAX_DECODED_URL_STATE_BYTES);
+    assert!(noisy_tool.try_load_state(&noisy_json).is_ok());
+}
+
 fn collect_focusable_canvas_nodes(
     ctx: &Context,
     tool: &mut ChladniWaveTankTool,

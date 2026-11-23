@@ -22,6 +22,20 @@ impl ChladniWaveTankTool {
                 ui.separator();
                 self.draw_preset_and_transport_controls(ui);
                 ui.separator();
+                crate::audio::render_sonification_panel(
+                    ui,
+                    "chladni_wave_tank",
+                    &self.latest_audio_frame,
+                    self.paused,
+                );
+                ui.separator();
+                self.draw_sculpt_controls(ui);
+                #[cfg(feature = "physics")]
+                {
+                    ui.separator();
+                    self.draw_physics_metamaterial_controls(ui);
+                }
+                ui.separator();
                 self.draw_medium_and_clamp_controls(ui);
                 ui.separator();
                 self.draw_driver_controls(ui);
@@ -68,6 +82,9 @@ impl ChladniWaveTankTool {
             let play_label = if self.paused { "▶ Play" } else { "⏸ Pause" };
             if ui.button(play_label).clicked() {
                 self.paused = !self.paused;
+                if self.paused {
+                    crate::audio::notify_playback_paused();
+                }
             }
             if ui.button("⏭ Step").clicked() {
                 self.advance_physics_step();
@@ -83,6 +100,7 @@ impl ChladniWaveTankTool {
                 self.refresh_analysis_outputs();
             }
             if ui.button("↺ Reset").clicked() {
+                crate::audio::notify_playback_reset();
                 self.rebuild_domain_and_warmup(12);
             }
         });
@@ -158,10 +176,6 @@ impl ChladniWaveTankTool {
                 }
             });
         mask_dirty |= self.state.clamp_layout != prev_clamp;
-        if !self.custom_clamps.is_empty() && ui.small_button("Clear Custom Pins").clicked() {
-            self.custom_clamps.clear();
-            mask_dirty = true;
-        }
         mask_dirty
     }
 
@@ -238,25 +252,21 @@ impl ChladniWaveTankTool {
                 ))
                 .changed();
         });
-        ui.horizontal(|ui| {
-            ui.label("Driver (x, y):");
-            changed |= ui
-                .add(bounded_drag_value(
-                    &mut self.state.driver_x,
-                    0.0..=1.0,
-                    0.01,
-                ))
-                .changed();
-            changed |= ui
-                .add(bounded_drag_value(
-                    &mut self.state.driver_y,
-                    0.0..=1.0,
-                    0.01,
-                ))
-                .changed();
-        });
+        changed |= draw_unit_pair_drags(
+            ui,
+            "Driver (x, y):",
+            &mut self.state.driver_x,
+            &mut self.state.driver_y,
+        );
+        changed |= draw_unit_pair_drags(
+            ui,
+            "Pickup (x, y):",
+            &mut self.state.pickup_x,
+            &mut self.state.pickup_y,
+        );
         if changed {
             self.state_rev = self.state_rev.wrapping_add(1);
+            self.analysis_dirty = true;
             self.solver.reset_detector();
         }
     }
@@ -370,6 +380,7 @@ impl ChladniWaveTankTool {
             .selected_text(match self.state.secondary_plot {
                 SecondaryPlotMode::DetectorCrossSection => "Detector I(y)",
                 SecondaryPlotMode::RadialFftSpectrum => "2D FFT Spectrum",
+                SecondaryPlotMode::PhononDispersion => "Phonon ω(|k|)",
             })
             .show_ui(ui, |ui| {
                 changed |= ui
@@ -386,6 +397,16 @@ impl ChladniWaveTankTool {
                         "2D FFT Spectrum",
                     )
                     .changed();
+                #[cfg(feature = "physics")]
+                {
+                    changed |= ui
+                        .selectable_value(
+                            &mut self.state.secondary_plot,
+                            SecondaryPlotMode::PhononDispersion,
+                            "Phonon ω(|k|)",
+                        )
+                        .changed();
+                }
             });
         changed
     }
@@ -421,4 +442,14 @@ impl ChladniWaveTankTool {
             );
         }
     }
+}
+
+fn draw_unit_pair_drags(ui: &mut egui::Ui, label: &str, x: &mut f64, y: &mut f64) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(label);
+        changed |= ui.add(bounded_drag_value(x, 0.0..=1.0, 0.01)).changed();
+        changed |= ui.add(bounded_drag_value(y, 0.0..=1.0, 0.01)).changed();
+    });
+    changed
 }

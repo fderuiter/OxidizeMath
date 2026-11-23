@@ -9318,9 +9318,6 @@
       "signature": "impl Wave2DSolver { pub fn height (& self) -> usize }"
     },
     {
-      "signature": "impl Wave2DSolver { pub fn inject_gaussian_pulse (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) }"
-    },
-    {
       "signature": "impl Wave2DSolver { pub fn modal_field (& self) -> & [f64] }"
     },
     {
@@ -9328,9 +9325,6 @@
     },
     {
       "signature": "impl Wave2DSolver { pub fn new_unit_square (_ : usize) -> Self }"
-    },
-    {
-      "signature": "impl Wave2DSolver { pub fn read_detector_profile (& self , _ : usize , _ : & mut [f64]) }"
     },
     {
       "signature": "impl Wave2DSolver { pub fn reset_all (& mut self) }"
@@ -9406,6 +9400,9 @@
     },
     {
       "signature": "pub use particles_and_contours :: MarchingSquares2D"
+    },
+    {
+      "signature": "pub use probes :: WaveProbeSample"
     },
     {
       "signature": "pub use spectral :: SpectralAnalyzer2D"
@@ -9507,6 +9504,26 @@
       "signature": "pub struct MarchingSquares2D"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/probes.rs": [
+    {
+      "signature": "impl Wave2DSolver { pub fn inject_gaussian_pulse (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn read_detector_profile (& self , _ : usize , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn sample_displacement_bilinear (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn sample_probe (& self , _ : f64 , _ : f64) -> WaveProbeSample }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn sample_velocity_bilinear (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub struct WaveProbeSample"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/pde/wave_2d/spectral.rs": [
     {
       "signature": "impl SpectralAnalyzer2D { pub fn compute_radial_profile (& self , _ : & mut [f64] , _ : & mut [usize]) }"
@@ -9528,6 +9545,9 @@
     },
     {
       "signature": "impl SpectralAnalyzer2D { pub fn spectrum (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn top_peaks (& self , _ : & mut [SpectralPeak2D]) -> usize }"
     },
     {
       "signature": "impl SpectralAnalyzer2D { pub fn width (& self) -> usize }"

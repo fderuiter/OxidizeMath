@@ -228,3 +228,95 @@ fn test_chladni_sand_drift_and_marching_squares_contours() {
         segs.len()
     );
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_bilinear_signed_probe_and_top_peaks_multi_mode_extraction() {
+    let n = 64_usize;
+    let mut solver = Wave2DSolver::new_unit_square(n);
+    let mut init = vec![0.0; n * n];
+    let denom = (n - 1) as f64;
+    for y in 0..n {
+        let yn = (y as f64) / denom;
+        for x in 0..n {
+            let xn = (x as f64) / denom;
+            let m1 = (2.0 * PI * 3.0 * xn).cos() * (2.0 * PI * 2.0 * yn).cos();
+            let m2 = 0.55 * (2.0 * PI * 6.0 * xn).cos() * (2.0 * PI * 5.0 * yn).cos();
+            init[flatten_2d_index(x, y, n)] = m1 + m2;
+        }
+    }
+    solver.set_stationary_displacement(&init);
+    let p0 = solver.sample_probe(0.5, 0.5);
+    assert!(p0.displacement < -0.3, "Signed trough must stay negative");
+    assert_eq!(p0.velocity, 0.0, "Stationary start velocity must be zero");
+
+    let params = Wave2DParams {
+        medium: Wave2DMedium::BiharmonicPlate,
+        boundary: BoundaryMode2D::Neumann,
+        wave_speed: 0.0,
+        plate_stiffness: 1.0e-3,
+        damping: 0.01,
+    };
+    let mut saw_pos_vel = false;
+    let mut saw_neg_vel = false;
+    for _ in 0..120 {
+        solver.step(&params, 0.002);
+        let s = solver.sample_probe(0.33, 0.25);
+        saw_pos_vel |= s.velocity > 1.0e-3;
+        saw_neg_vel |= s.velocity < -1.0e-3;
+    }
+    assert!(
+        saw_pos_vel && saw_neg_vel,
+        "Signed pickup velocity must capture both positive and negative half-cycles"
+    );
+
+    let mut fft = SpectralAnalyzer2D::new(n, n);
+    fft.compute_spectrum(&init);
+    let mut peaks = [SpectralPeak2D::default(); 8];
+    let count = fft.top_peaks(&mut peaks);
+    assert!(
+        count >= 4,
+        "Expected symmetric (±3,2) and (±6,5) standing-wave modes"
+    );
+    assert_eq!(peaks[0], fft.dominant_peak());
+    assert!(peaks[0].magnitude >= peaks[1].magnitude);
+    assert!(peaks[1].magnitude > peaks[2].magnitude);
+    assert!((peaks[0].k_radial - (13.0_f64).sqrt()).abs() < 1.2);
+    assert!((peaks[1].k_radial - (13.0_f64).sqrt()).abs() < 1.2);
+    assert_eq!(peaks[0].kx, -peaks[1].kx);
+    assert!((peaks[2].k_radial - (61.0_f64).sqrt()).abs() < 1.5);
+    assert!((peaks[3].k_radial - (61.0_f64).sqrt()).abs() < 1.5);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_biharmonic_soundboard_rib_wave_speed_mask_shifts_plate_frequency() {
+    let n = 48_usize;
+    let mut base = Wave2DSolver::new_unit_square(n);
+    let mut braced = Wave2DSolver::new_unit_square(n);
+    for y in 16..32 {
+        for x in 8..40 {
+            braced.wave_speed_mask[flatten_2d_index(x, y, n)] = 1.55;
+        }
+    }
+    base.inject_gaussian_pulse(0.45, 0.45, 0.08, 1.0);
+    braced.inject_gaussian_pulse(0.45, 0.45, 0.08, 1.0);
+    let params = Wave2DParams {
+        medium: Wave2DMedium::BiharmonicPlate,
+        boundary: BoundaryMode2D::Clamped,
+        wave_speed: 0.0,
+        plate_stiffness: 8.0e-4,
+        damping: 0.02,
+    };
+    for _ in 0..40 {
+        base.step(&params, 0.003);
+        braced.step(&params, 0.003);
+    }
+    let pb = base.sample_probe(0.62, 0.50);
+    let pr = braced.sample_probe(0.62, 0.50);
+    assert!(pb.displacement.is_finite() && pr.displacement.is_finite());
+    assert!(
+        (pb.displacement - pr.displacement).abs() > 1.0e-4,
+        "Soundboard bracing mask must alter Kirchhoff-Love flexural propagation"
+    );
+}
