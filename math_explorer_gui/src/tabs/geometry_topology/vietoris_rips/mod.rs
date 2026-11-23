@@ -65,7 +65,9 @@ pub struct VietorisRipsTool {
     pub(super) plot_mode: PersistencePlotMode,
     pub(super) min_persistence: f64,
     pub(super) points: Vec<Point2D>,
+    pub(super) cached_points: Vec<Point2D>,
     pub(crate) points_3d: Vec<Point3D>,
+    pub(super) cached_points_3d: Vec<Point3D>,
     pub(crate) view_center_3d: [f64; 3],
     pub(crate) camera: Camera3D,
     pub(crate) chaos: chaos_bridge::VrChaosState,
@@ -89,6 +91,8 @@ pub struct VietorisRipsTool {
     pub(super) revision: u64,
     #[cfg(test)]
     pub(super) complex_builds: usize,
+    #[cfg(test)]
+    pub(super) distance_computations: usize,
 }
 
 impl Default for VietorisRipsTool {
@@ -105,7 +109,9 @@ impl Default for VietorisRipsTool {
             plot_mode: PersistencePlotMode::Diagram,
             min_persistence: 0.0,
             points: Vec::new(),
+            cached_points: Vec::new(),
             points_3d: Vec::with_capacity(MAX_CHAOS_LANDMARKS),
+            cached_points_3d: Vec::new(),
             view_center_3d: [0.0, 0.0, 25.0],
             camera: Camera3D::new(0.35, 0.55, 1.0),
             chaos: chaos_bridge::VrChaosState::default(),
@@ -133,6 +139,8 @@ impl Default for VietorisRipsTool {
             revision: 1,
             #[cfg(test)]
             complex_builds: 0,
+            #[cfg(test)]
+            distance_computations: 0,
         };
         let pts = generate_preset_points(&desc);
         let _ = tool.rebuild_from_2d(CloudSource::Generator(desc), pts, tool.radius);
@@ -225,6 +233,7 @@ impl VietorisRipsTool {
         };
         match cloud.project_2d(axis_x, axis_y) {
             Ok(projected) => {
+                self.cached_points.clone_from(&projected.points);
                 self.points = projected.points;
                 if let CloudSource::CustomNd {
                     axis_x: ax,
@@ -393,6 +402,16 @@ impl InteractiveTool for VietorisRipsTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         plots::render_workbench(self, ui);
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 

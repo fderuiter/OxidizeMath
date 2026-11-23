@@ -1,9 +1,8 @@
-// @explorer_feature = "physics"
-// @explorer_order = 17
-// Interactive General Relativity tab exposing 3D geodesic integration, Flamm/wormhole
-// embeddings, radial effective potentials, twin clocks, and Christoffel tensor inspection.
+//! Interactive General Relativity tab exposing 3D geodesic integration, Flamm/wormhole
+//! embeddings, radial effective potentials, twin clocks, and Christoffel tensor inspection.
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod inspector;
@@ -11,7 +10,7 @@ pub mod playground;
 pub mod presets;
 
 #[cfg(test)]
-pub use inspector::ChristoffelInspectorTool;
+pub use inspector::{ChristoffelInspectorTool, InspectorManifold};
 #[cfg(test)]
 pub use playground::{
     GeodesicInteractionMode, GeodesicMode, GeodesicPlaygroundTool, LensingBackgroundKind,
@@ -70,10 +69,22 @@ impl ExplorerTab for RelativityTab {
     }
 }
 
+inventory::submit! {
+    TabDescriptor {
+        id: "relativity",
+        order: 17,
+        build: || Box::new(RelativityTab::default()),
+    }
+}
+
 // [cite:general_relativity_geodesics]
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_atlas;
+#[cfg(test)]
+mod tests_lensing;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;

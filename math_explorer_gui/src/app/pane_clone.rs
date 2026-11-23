@@ -28,6 +28,9 @@ impl MathExplorerApp {
         }
 
         self.apply_cloned_state_to_pane(dst_pane, src_tab_idx, &tab_name, saved_json.as_ref());
+        self.pipeline_dag.on_clone_pane(src_pane, dst_pane);
+        self.dataflow_bus.clear_pane(dst_pane);
+        self.prune_incompatible_pipeline_links();
         self.tab_state_cache.invalidate_tab(&tab_name);
         self.clear_active_pane_caches();
         true
@@ -236,16 +239,18 @@ impl MathExplorerApp {
         };
         let mods = base_mod | egui::Modifiers::SHIFT;
         let shortcut = egui_plot::commands::CommandTrigger::Shortcut(mods, egui::Key::Num2);
-        let triggered = egui_plot::commands::CommandRegistryData::register_and_check(
+        let allowed = !self.has_active_modal_or_popup(ctx);
+        let triggered = super::global_shortcuts::register_and_check_shortcut_if_allowed(
             ctx,
-            "Duplicate Focused Pane",
-            "Split or clone the focused simulation pane and its parameters into a comparison pane",
-            shortcut,
-            true,
-            "Viewport",
+            super::global_shortcuts::DesktopShortcutSpec {
+                name: "Duplicate Focused Pane",
+                description: "Split or clone the focused simulation pane and its parameters into a comparison pane",
+                trigger: shortcut,
+                context_name: "Viewport",
+            },
             None,
-            None,
-        ) || consume_physical_shift_num2(ctx, mods);
+            allowed,
+        ) || (allowed && consume_physical_shift_num2(ctx, mods));
         if triggered {
             let _ = self.duplicate_focused_pane(Some(ctx));
         }
@@ -253,7 +258,7 @@ impl MathExplorerApp {
 }
 
 fn consume_physical_shift_num2(ctx: &egui::Context, mods: egui::Modifiers) -> bool {
-    if ctx.wants_keyboard_input() {
+    if crate::framework::is_text_edit_focused(ctx) {
         return false;
     }
     ctx.input_mut(|i| {

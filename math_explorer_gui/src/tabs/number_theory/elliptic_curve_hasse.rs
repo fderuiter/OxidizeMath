@@ -104,14 +104,17 @@ impl HassePlotBuffers {
         if !self.traces.is_empty() {
             datasets.push(("Frobenius trace a_q".to_string(), to_pairs(&self.traces)));
         }
-        if !is_singular {
-            let pts: Vec<[f64; 2]> = points
-                .iter()
-                .filter_map(|pt| pt.coordinates().map(|(x, y)| [x as f64, y as f64]))
-                .collect();
-            if !pts.is_empty() {
-                datasets.push((format!("Curve E(F_{p})"), pts));
-            }
+        let pts: Vec<[f64; 2]> = points
+            .iter()
+            .filter_map(|pt| pt.coordinates().map(|(x, y)| [x as f64, y as f64]))
+            .collect();
+        if !pts.is_empty() {
+            let label = if is_singular {
+                format!("Singular Cubic E(F_{p})")
+            } else {
+                format!("Curve E(F_{p})")
+            };
+            datasets.push((label, pts));
         }
         datasets
     }
@@ -263,7 +266,6 @@ impl EllipticCurvePlayground {
         ctx: &egui::Context,
         outcome: TorusCanvasOutcome,
     ) {
-        self.focused_canvas = outcome.focused_canvas_id;
         if outcome.toggle_selector {
             self.selector = match self.selector {
                 ActivePointSelector::PointP => ActivePointSelector::PointQ,
@@ -311,6 +313,8 @@ impl EllipticCurvePlayground {
             }
         }
         ui.separator();
+        self.render_nt_atlas_and_handoff_controls(ui);
+        ui.separator();
         self.render_parameter_sliders(ui);
         ui.separator();
         self.render_torsion_sonification(ui);
@@ -350,7 +354,9 @@ impl EllipticCurvePlayground {
     }
 
     fn render_parameter_sliders(&mut self, ui: &mut egui::Ui) {
-        self.render_prime_stepper(ui);
+        ui.add_enabled_ui(self.active_challenge.is_none(), |ui| {
+            self.render_prime_stepper(ui);
+        });
         let mut changed = ui
             .add(egui::Slider::new(&mut self.a, -50..=50).text("a"))
             .changed();
@@ -392,10 +398,27 @@ impl EllipticCurvePlayground {
     fn render_algebraic_readout(&self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         if self.is_singular {
-            ui.colored_label(
-                palette.error,
-                format!("Singular: 4a^3 + 27b^2 = 0 (mod {})", self.p),
-            );
+            if let Ok(Some(sing)) =
+                math_explorer::pure_math::elliptic_curves::FpSingularCubic::classify(
+                    self.a, self.b, self.p,
+                )
+            {
+                ui.colored_label(
+                    palette.error,
+                    format!(
+                        "Singular {} at ({}, 0) mod {} ({} affine pts)",
+                        sing.kind.label(),
+                        sing.singular_x,
+                        self.p,
+                        sing.affine_point_count()
+                    ),
+                );
+            } else {
+                ui.colored_label(
+                    palette.error,
+                    format!("Singular: 4a^3 + 27b^2 = 0 (mod {})", self.p),
+                );
+            }
             return;
         }
         let sum = self.chord.map_or(AffinePointFp::Infinity, |c| c.sum);
@@ -445,23 +468,7 @@ impl scientific_metadata::theory::TheoryDescribable for EllipticCurvePlayground 
     }
 }
 
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Torus Secant & Hasse Arch over F_23",
-    "domain": "number_theory",
-    "timestamp": "2026-11-21T00:00:00Z"
-  },
-  "config": {
-    "p": 23,
-    "a": 1,
-    "b": 1,
-    "point_p": { "Finite": { "x": 0, "y": 1 } },
-    "point_q": { "Finite": { "x": 6, "y": 4 } },
-    "scalar_k": 5,
-    "hasse_p_max": 251
-  }
-}"#;
+const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Torus Secant & Hasse Arch over F_23","domain":"number_theory","timestamp":"2026-11-21T00:00:00Z"},"config":{"p":23,"a":1,"b":1,"point_p":{"Finite":{"x":0,"y":1}},"point_q":{"Finite":{"x":6,"y":4}},"scalar_k":5,"hasse_p_max":251}}"#;
 
 inventory::submit! {
     crate::framework::StarterPresetMetadata {

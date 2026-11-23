@@ -106,11 +106,14 @@ impl GeodesicPlaygroundTool {
             SpacetimePreset::Schwarzschild => LensingMetricSpec::Schwarzschild {
                 schwarzschild_radius: rs,
             },
+            SpacetimePreset::CustomRadialLapse => LensingMetricSpec::Schwarzschild {
+                schwarzschild_radius: self.sandbox.estimate_lapse_horizon(rs).clamp(0.5, 5.0),
+            },
             SpacetimePreset::KerrEquatorial => LensingMetricSpec::KerrEquatorial {
                 schwarzschild_radius: rs,
-                spin_a: 0.5 * rs * self.state.spin_chi.clamp(-0.92, 0.92),
+                spin_a: 0.5 * rs * self.state.spin_chi.clamp(-0.95, 0.95),
             },
-            SpacetimePreset::MorrisThorneWormhole => {
+            SpacetimePreset::MorrisThorneWormhole | SpacetimePreset::CustomWormholeProfile => {
                 LensingMetricSpec::MorrisThorne { throat_radius: rs }
             }
         }
@@ -279,8 +282,15 @@ impl GeodesicPlaygroundTool {
         let half_h = 0.5 * rect.height();
         let center = rect.center();
         match self.state.spacetime {
-            SpacetimePreset::Schwarzschild => {
-                let b_einstein = (EINSTEIN_RING_IMPACT_FACTOR * self.state.scale_radius) as f32;
+            SpacetimePreset::Schwarzschild | SpacetimePreset::CustomRadialLapse => {
+                let r_h = if self.state.spacetime == SpacetimePreset::CustomRadialLapse {
+                    self.sandbox
+                        .estimate_lapse_horizon(self.state.scale_radius)
+                        .max(0.5)
+                } else {
+                    self.state.scale_radius
+                };
+                let b_einstein = (EINSTEIN_RING_IMPACT_FACTOR * r_h) as f32;
                 let r_px = (b_einstein / fov_b) * half_h;
                 ui.painter().circle_stroke(
                     center,
@@ -297,7 +307,7 @@ impl GeodesicPlaygroundTool {
                 ui.painter()
                     .circle_filled(egui::pos2(x_ret, center.y), 3.5_f32, palette.warning);
             }
-            SpacetimePreset::MorrisThorneWormhole => {
+            SpacetimePreset::MorrisThorneWormhole | SpacetimePreset::CustomWormholeProfile => {
                 let r_throat = ((self.state.scale_radius as f32) / fov_b) * half_h;
                 ui.painter().circle_stroke(
                     center,

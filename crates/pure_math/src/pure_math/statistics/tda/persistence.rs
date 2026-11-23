@@ -1,11 +1,8 @@
 //! Exact simplicial persistent homology computation and barcode generation over $\mathbb{Z}_2$.
 
-use super::boundary::{
-    FilteredEdge, FilteredTriangle, Z2BoundaryWorkspace, build_cleared_partial_1_workspace,
-    build_partial_2_workspace, collect_sorted_edges, collect_sorted_triangles,
-};
-use super::complex::{MAX_FILTRATION_TRIANGLES, validate_distance_matrix};
+use super::complex::MAX_FILTRATION_TRIANGLES;
 use super::core::{NdPointCloud, PointCloud};
+use super::filtration::compute_rips_persistence_up_to;
 use crate::error::TdaError;
 use std::cmp::Ordering;
 
@@ -288,88 +285,7 @@ pub(crate) fn compute_rips_persistence_bounded(
     dist: &[Vec<f64>],
     max_triangles: usize,
 ) -> Result<RipsPersistenceResult, TdaError> {
-    validate_distance_matrix(dist)?;
-    let n = dist.len();
-    let (edges, edge_lookup, max_radius) = collect_sorted_edges(dist);
-    let (triangles, truncated_triangles) = collect_sorted_triangles(dist, max_triangles);
-
-    let mut partial_2 = build_partial_2_workspace(n, edges.len(), &edge_lookup, &triangles)?;
-    partial_2.reduce();
-
-    let mut partial_1 = build_cleared_partial_1_workspace(n, &edges, &partial_2)?;
-    partial_1.reduce();
-
-    let intervals =
-        assemble_rips_intervals(n, &edges, &triangles, &partial_1, &partial_2, max_radius);
-    Ok(RipsPersistenceResult {
-        intervals,
-        max_radius,
-        truncated_triangles,
-    })
-}
-
-#[verified_engine::verified]
-fn assemble_rips_intervals(
-    n: usize,
-    edges: &[FilteredEdge],
-    triangles: &[FilteredTriangle],
-    partial_1: &Z2BoundaryWorkspace,
-    partial_2: &Z2BoundaryWorkspace,
-    max_radius: f64,
-) -> Vec<RipsInterval> {
-    let mut intervals = Vec::with_capacity(n + edges.len().min(n * 4));
-
-    for v in 0..n {
-        if let Some(e_idx) = partial_1.pivot_col_for_row(v) {
-            let death = edges[e_idx].diameter;
-            if death > 0.0 {
-                intervals.push(RipsInterval {
-                    dimension: 0,
-                    birth: 0.0,
-                    death,
-                    is_essential: false,
-                });
-            }
-        } else {
-            intervals.push(RipsInterval {
-                dimension: 0,
-                birth: 0.0,
-                death: max_radius,
-                is_essential: true,
-            });
-        }
-    }
-
-    for (e_idx, edge) in edges.iter().enumerate() {
-        let birth = edge.diameter;
-        if let Some(t_idx) = partial_2.pivot_col_for_row(e_idx) {
-            let death = triangles[t_idx].diameter;
-            if death > birth {
-                intervals.push(RipsInterval {
-                    dimension: 1,
-                    birth,
-                    death,
-                    is_essential: false,
-                });
-            }
-        } else if !partial_1.is_cleared(e_idx) && partial_1.col_pivot(e_idx).is_none() {
-            intervals.push(RipsInterval {
-                dimension: 1,
-                birth,
-                death: max_radius.max(birth),
-                is_essential: true,
-            });
-        }
-    }
-
-    intervals.sort_by(|a, b| {
-        a.dimension
-            .cmp(&b.dimension)
-            .then_with(|| a.birth.total_cmp(&b.birth))
-            .then_with(|| a.death.total_cmp(&b.death))
-            .then_with(|| a.is_essential.cmp(&b.is_essential))
-    });
-    intervals
+    compute_rips_persistence_up_to(dist, f64::INFINITY, max_triangles)
 }
 
 /// Computes persistence barcode mapped onto caller filtration `radii` via exact $\mathbb{Z}_2$ pairing.
@@ -445,7 +361,10 @@ pub fn compute_persistence_from_distances(
     }
     sorted_radii.sort_by(f64::total_cmp);
 
-    let exact = compute_rips_persistence_from_distances(dist)?;
+    let final_radius = *sorted_radii
+        .last()
+        .ok_or(TdaError::InvalidRadius { value: 0.0 })?;
+    let exact = compute_rips_persistence_up_to(dist, final_radius, MAX_FILTRATION_TRIANGLES)?;
     map_rips_intervals_to_radii(&exact, &sorted_radii)
 }
 

@@ -21,7 +21,7 @@ impl GeodesicPlaygroundTool {
         let rs = format_glsl_float(self.state.scale_radius.clamp(0.5, 5.0))
             .map_err(|e| e.to_string())?;
         let chi =
-            format_glsl_float(self.state.spin_chi.clamp(-0.92, 0.92)).map_err(|e| e.to_string())?;
+            format_glsl_float(self.state.spin_chi.clamp(-0.95, 0.95)).map_err(|e| e.to_string())?;
         let fov = format_glsl_float(self.lensing_fov_b_max()).map_err(|e| e.to_string())?;
         let (b_neg_val, b_pos_val) = self
             .current_lensing_spec()
@@ -30,9 +30,9 @@ impl GeodesicPlaygroundTool {
         let b_neg = format_glsl_float(b_neg_val.abs()).map_err(|e| e.to_string())?;
         let b_pos = format_glsl_float(b_pos_val.abs()).map_err(|e| e.to_string())?;
         let metric_id = match self.state.spacetime {
-            SpacetimePreset::Schwarzschild => 0,
+            SpacetimePreset::Schwarzschild | SpacetimePreset::CustomRadialLapse => 0,
             SpacetimePreset::KerrEquatorial => 1,
-            SpacetimePreset::MorrisThorneWormhole => 2,
+            SpacetimePreset::MorrisThorneWormhole | SpacetimePreset::CustomWormholeProfile => 2,
         };
         let bg_id = match self.state.lensing_background {
             LensingBackgroundKind::GalacticDisk => 0,

@@ -1,6 +1,7 @@
 //! Zero-allocation canvas slingshot tracer injection and galactic surface-brightness sampling.
 
 use super::orbits::{GalacticDiskSystem, OrbitParticleKind, OrbitalState};
+use super::paczynski_wiita::paczynski_wiita_potential_kpc;
 use super::rotation_curves::total_gravitational_potential;
 
 impl GalacticDiskSystem {
@@ -67,6 +68,7 @@ impl GalacticDiskSystem {
             vx_kms: clean_vx,
             vy_kms: clean_vy,
             kind: OrbitParticleKind::SlingshotProbe,
+            captured: false,
         };
         self.reset_slot_trail(slot, [clean_x, clean_y]);
 
@@ -144,20 +146,33 @@ impl GalacticDiskSystem {
         ]
     }
 
-    /// Dimensionless relative drift $|\Delta E| / \max(|E_0|, 10^{-12})$ from the initial ensemble energy.
-    #[must_use]
+    /// Copies the chronological `[x_kpc, y_kpc]` trail of particle `particle_idx` into `out`, returning the number of points written.
     #[verified_engine::verified]
-    pub fn relative_energy_drift(&self) -> f64 {
-        let current = self.total_energy();
-        (current - self.initial_energy).abs() / self.initial_energy.abs().max(1.0e-12)
-    }
-
-    /// Dimensionless relative drift $|\Delta L_z| / \max(|L_{z,0}|, 10^{-12})$ from the initial ensemble angular momentum.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn relative_angular_momentum_drift(&self) -> f64 {
-        let current = self.total_angular_momentum();
-        (current - self.initial_lz).abs() / self.initial_lz.abs().max(1.0e-12)
+    pub fn copy_particle_trail(&self, particle_idx: usize, out: &mut [[f64; 2]]) -> usize {
+        if particle_idx >= self.effective_active_len()
+            || self.trail_len == 0
+            || self.trail_capacity == 0
+        {
+            return 0;
+        }
+        let count = self.trail_len.min(out.len());
+        let cap = self.trail_capacity;
+        let start_slot = if self.trail_len < cap {
+            0
+        } else {
+            self.trail_head
+        };
+        let base = particle_idx.saturating_mul(cap);
+        let mut k = 0;
+        while k < count {
+            let slot = (start_slot + (self.trail_len - count) + k) % cap;
+            let idx = base.saturating_add(slot);
+            if idx < self.trail_ring.len() {
+                out[k] = self.trail_ring[idx];
+            }
+            k += 1;
+        }
+        count
     }
 
     #[verified_engine::verified]
@@ -165,7 +180,8 @@ impl GalacticDiskSystem {
         let p = &self.particles[slot];
         let r = (p.x_kpc * p.x_kpc + p.y_kpc * p.y_kpc).sqrt();
         let v_sq = p.vx_kms * p.vx_kms + p.vy_kms * p.vy_kms;
-        let phi = total_gravitational_potential(r, &self.baryons, &self.halo);
+        let phi = total_gravitational_potential(r, &self.baryons, &self.halo)
+            + paczynski_wiita_potential_kpc(r, &self.central_bh);
         (0.5 * v_sq + phi, p.x_kpc * p.vy_kms - p.y_kpc * p.vx_kms)
     }
 

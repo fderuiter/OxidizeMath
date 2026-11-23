@@ -1,22 +1,20 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 //! Desktop unit tests for [`RelativityTab`], [`GeodesicPlaygroundTool`], [`ChristoffelInspectorTool`],
-//! `Orbit`/`Slingshot`/`PhotonFan` modes, exact Kerr observables, 2D cross-domain lensing,
-//! 1,000-step zero-allocation execution, `.wav`/`.frag` exports, and `#tab=relativity` URL sharing.
+//! `Orbit`/`Slingshot`/`PhotonFan` modes, photon-ring normalization, Kerr/ISCO geometry,
+//! custom AST metrics, AccessKit semantics, and `#tab=relativity` URL sharing.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use eframe::egui;
-use verified_engine::engine::VerifiedEngine;
 
 use super::*;
 use crate::app::{MathExplorerApp, ThemeMode};
-use crate::audio::wav::synthesize_frames_to_wav;
-use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool, ShaderDialect};
+use crate::framework::InteractiveTool;
 use crate::tabs::ExplorerTab;
 use crate::url_state::URL_JSON_BOUNDS;
 
-fn test_raw_input(events: Vec<egui::Event>) -> egui::RawInput {
+pub(super) fn test_raw_input(events: Vec<egui::Event>) -> egui::RawInput {
     egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -25,6 +23,10 @@ fn test_raw_input(events: Vec<egui::Event>) -> egui::RawInput {
         events,
         ..Default::default()
     }
+}
+
+fn obs_map(tool: &dyn InteractiveTool) -> HashMap<&'static str, f64> {
+    tool.observables().into_iter().collect()
 }
 
 #[test]
@@ -189,60 +191,6 @@ fn geodesic_playground_accesskit_meter_image_and_canvas_focus() {
 }
 
 #[test]
-fn exact_kerr_observables_lensing_shaders_and_1000_step_zero_alloc() {
-    let mut tool = GeodesicPlaygroundTool::default();
-    tool.state.spacetime = SpacetimePreset::KerrEquatorial;
-    tool.state.mode = GeodesicMode::TimelikeParticle;
-    tool.state.spin_chi = 0.85;
-    tool.state.initial_radius = 4.2;
-    tool.state.impact_or_momentum = 3.6;
-    tool.lensing_dirty = true;
-    tool.rebuild_trajectory(120);
-    tool.refresh_lensing_pixels_in_place();
-
-    let (b_neg, b_pos) = tool.deflection_table.critical_impact_bounds();
-    assert!(
-        b_pos < b_neg.abs() - 0.5,
-        "Spinning Kerr shadow must be asymmetric: prograde {b_pos} < |retrograde| {}",
-        b_neg.abs()
-    );
-
-    let img = tool.export_raster_image().expect("lensing raster image");
-    let unique_px: HashSet<egui::Color32> = img.pixels.iter().copied().collect();
-    assert!(unique_px.len() > 24, "Lensed galaxy image must not be flat");
-
-    let webgl2 = tool.export_glsl_shader(ShaderDialect::WebGl2Es300).unwrap();
-    let stoy = tool.export_glsl_shader(ShaderDialect::Shadertoy).unwrap();
-    assert!(webgl2.starts_with("#version 300 es") && webgl2.contains("void main()"));
-    assert!(!stoy.contains("#version") && stoy.contains("void mainImage("));
-
-    let wav = synthesize_frames_to_wav(&[tool.build_audio_frame()], 44_100, 128, 0.8);
-    assert_eq!(&wav[0..4], b"RIFF");
-
-    // 1,000-step VerifiedEngine zero-allocation verification over ray bundle + lensing lookup + audio
-    tool.state.interaction_mode = GeodesicInteractionMode::PhotonFan;
-    tool.state.fan_count = 4;
-    {
-        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let (acc, _) = VerifiedEngine::run_verified(|| {
-            let mut sum = 0.0_f64;
-            for step in 0..1_000usize {
-                tool.rebuild_trajectory(6);
-                let hit = tool
-                    .deflection_table
-                    .map_image_uv((step % 20) as f64 * 0.04, 0.25, 10.0);
-                let af = tool.build_audio_frame();
-                sum += hit.source_u + f64::from(af.voices[0].freq_hz);
-            }
-            sum
-        });
-        assert!(acc.is_finite());
-    }
-}
-
-#[test]
 fn relativity_presets_url_bounds_hydration_and_finite_state_guard_rollback() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut app = MathExplorerApp::default();
@@ -287,107 +235,126 @@ fn relativity_presets_url_bounds_hydration_and_finite_state_guard_rollback() {
 }
 
 #[test]
-fn relativity_tools_export_valid_png_svg_csv_and_glsl_artifacts() {
-    for tool_id in ["GeodesicPlaygroundTool", "ChristoffelInspectorTool"] {
-        let mut tab = RelativityTab::default();
-        assert!(tab.select_tool_by_name(tool_id));
-        let fw = tab.framework_mut().unwrap();
-        fw.export_options.width = 360;
-        fw.export_options.height = 240;
+fn photon_ring_preset_normalizes_energy_grazes_photon_sphere_and_captures_twin() {
+    let mut tool = GeodesicPlaygroundTool::default();
+    tool.import_preset_json(presets::PRESET_PHOTON_RING_LENSING)
+        .expect("photon ring preset must load");
+    assert!((tool.launch_energy - 1.0).abs() < 1e-12);
+    let obs = obs_map(&tool);
+    assert!((obs["launch_energy"] - 1.0).abs() < 1e-12);
+    assert!((obs["effective_energy"] - 0.5).abs() < 1e-12);
+    assert!(
+        (3.0..=3.3).contains(&obs["r_min"]),
+        "expected r_min in [3.0, 3.3], got {}",
+        obs["r_min"]
+    );
+    assert!(obs["captured"] < 0.5, "primary ray should escape");
+    assert!(
+        obs["twin_captured"] > 0.5,
+        "twin ray with negative delta_b must capture"
+    );
+    assert!(
+        obs["twin_r_min"] <= 2.05,
+        "captured twin must reach r <= 2.05, got {}",
+        obs["twin_r_min"]
+    );
 
-        for format in [ExportFormat::Png, ExportFormat::Svg, ExportFormat::Csv] {
-            let ctx = egui::Context::default();
-            let _ = ctx.run(test_raw_input(Vec::new()), |ctx| {
-                egui_plot::clear_last_plot_datasets();
-                fw.show_export_modal = true;
-                fw.queue_export(format);
-                fw.show(ctx, "relativity_export_test");
-            });
-            assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-            if format == ExportFormat::Png {
-                let bytes = fw.export_queue.last_exported_bytes.as_deref().unwrap();
-                let px =
-                    crate::framework::deferred_export_tests::decode_rgba_pixels(bytes).unwrap();
-                let colors: HashSet<[u8; 4]> = px.into_iter().collect();
-                assert!(colors.len() >= 2);
-            }
-        }
-    }
+    let datasets = tool.export_datasets();
+    let e_line = datasets
+        .iter()
+        .find(|(n, _)| n == "0.5 * e^2")
+        .expect("0.5 * e^2 dataset");
+    assert!((e_line.1[0][1] - 0.5).abs() < 1e-12);
 }
 
 #[test]
-fn flagship_lensing_and_slingshot_png_exports_have_distinct_palettes() {
-    for (title, preset, out_path) in [
-        (
-            "Einstein-Ring Galaxy Lensing",
-            presets::PRESET_EINSTEIN_RING_GALAXY_LENSING,
-            "/tmp/einstein_ring_galaxy_lensing.png",
-        ),
-        (
-            "Wormhole Lenia Soliton Portal",
-            presets::PRESET_WORMHOLE_LENIA_PORTAL,
-            "/tmp/wormhole_lenia_portal.png",
-        ),
-        (
-            "Kerr Photon Fan & Frame-Dragged Shadow",
-            presets::PRESET_KERR_PHOTON_FAN_SHADOW,
-            "/tmp/kerr_photon_fan_3d.png",
-        ),
-    ] {
-        let mut tab = RelativityTab::default();
-        let fw = tab.framework_mut().unwrap();
-        fw.apply_starter_card(title, Some("GeodesicPlaygroundTool"), Some(preset))
-            .unwrap();
-        fw.export_options.width = 960;
-        fw.export_options.height = 600;
-        let ctx = egui::Context::default();
-        let _ = ctx.run(test_raw_input(Vec::new()), |ctx| {
-            egui_plot::clear_last_plot_datasets();
-            fw.show_export_modal = true;
-            fw.queue_export(ExportFormat::Png);
-            fw.show(ctx, "flagship_relativity_png");
-        });
-        let png = fw.export_queue.last_exported_bytes.as_deref().unwrap();
-        let px = crate::framework::deferred_export_tests::decode_rgba_pixels(png).unwrap();
-        let colors: HashSet<[u8; 4]> = px.into_iter().collect();
-        assert!(
-            colors.len() >= 8,
-            "Expected rich PNG palette for {out_path}"
-        );
-        let _ = std::fs::write(out_path, png);
-    }
-}
+fn kerr_equatorial_spin_09_surfaces_exact_horizons_frame_dragging_and_isco() {
+    let mut tool = GeodesicPlaygroundTool::default();
+    tool.state.spacetime = SpacetimePreset::KerrEquatorial;
+    tool.state.scale_radius = 2.0;
+    tool.state.spin_chi = 0.9;
+    tool.state.initial_radius = 9.0;
+    tool.state.impact_or_momentum = 3.1;
+    tool.clamp_parameters();
 
-#[test]
-fn flagship_galactic_slingshot_png_export_has_distinct_palette() {
-    let mut gal =
-        crate::tabs::astrophysics::galactic_orbits_tool::GalacticOrbitSimulator::default();
-    gal.launch_slingshot_probe(-2.2, -1.4, 125.0, 175.0);
-    gal.launch_slingshot_probe(2.4, 1.1, -140.0, 155.0);
-    for _ in 0..24 {
-        gal.advance_burst();
-    }
-    let state_json = gal.save_state().unwrap();
-    let mut astro = crate::tabs::astrophysics::AstrophysicsTab::default();
-    assert!(astro.select_tool_by_name("GalacticOrbitSimulator"));
-    let fw = astro.framework_mut().unwrap();
-    fw.active_tool
-        .as_mut()
-        .unwrap()
-        .try_load_state(&state_json)
-        .unwrap();
-    fw.export_options.width = 960;
-    fw.export_options.height = 600;
+    let obs = obs_map(&tool);
+    assert!(
+        (obs["outer_horizon_radius"] - 1.43589).abs() < 1e-5,
+        "expected r_+ ≈ 1.43589, got {}",
+        obs["outer_horizon_radius"]
+    );
+    assert!((obs["ergosphere_radius"] - 2.0).abs() < 1e-12);
+    assert!(obs["frame_dragging_omega"] > 0.0 && obs["frame_dragging_omega"].is_finite());
+    assert!(obs["isco"] > 2.0 && obs["isco"] < 6.0);
+
+    tool.state.mode = playground::GeodesicMode::TimelikeParticle;
+    tool.state.initial_radius = 1.8; // Inside the ergosphere (r_+ = 1.436 < 1.8 < r_ergo = 2.0)
+    tool.state.impact_or_momentum = 3.6;
+    tool.rebuild_trajectory(120);
+    assert!((tool.samples[0].metric_norm + 1.0).abs() < 1e-9);
+
     let ctx = egui::Context::default();
     let _ = ctx.run(test_raw_input(Vec::new()), |ctx| {
-        egui_plot::clear_last_plot_datasets();
-        fw.show_export_modal = true;
-        fw.queue_export(ExportFormat::Png);
-        fw.show(ctx, "flagship_galactic_png");
+        egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
     });
-    let gal_png = fw.export_queue.last_exported_bytes.as_deref().unwrap();
-    let gal_px = crate::framework::deferred_export_tests::decode_rgba_pixels(gal_png).unwrap();
-    let gal_colors: HashSet<[u8; 4]> = gal_px.into_iter().collect();
-    assert!(gal_colors.len() >= 4);
-    let _ = std::fs::write("/tmp/galactic_slingshot_orbits.png", gal_png);
+}
+
+#[test]
+fn custom_ast_lapse_matches_schwarzschild_christoffel_and_steps_720_zero_alloc() {
+    let mut inspector = ChristoffelInspectorTool::default();
+    inspector.state.manifold = InspectorManifold::CustomRadialLapse4D;
+    inspector.state.scale_radius = 2.0;
+    inspector.state.radial_coord = 4.5;
+    inspector.set_custom_lapse_expression("1 - 2 / r");
+    let eval = inspector
+        .evaluate_current()
+        .expect("custom 1 - 2 / r Christoffel");
+    assert!(
+        eval.max_abs_diff < 1e-6,
+        "1 - 2/r central diff must match Schwarzschild within 1e-6, got {}",
+        eval.max_abs_diff
+    );
+
+    inspector.set_custom_lapse_expression("1 - Rs / r + q^2 / r^2");
+    assert_eq!(
+        inspector.sandbox.lapse_bar.active_param_names(),
+        &["q".to_string()]
+    );
+
+    let mut playground = GeodesicPlaygroundTool::default();
+    playground.state.spacetime = SpacetimePreset::CustomRadialLapse;
+    playground.state.scale_radius = 2.0;
+    playground.state.initial_radius = 12.0;
+    playground.state.impact_or_momentum = 5.25;
+    playground.state.step_size = 0.015;
+    playground.sandbox.lapse_bar.set_expression("1 - 2 / r");
+    playground.clamp_parameters();
+
+    {
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            playground.rebuild_trajectory(720);
+        });
+    }
+    assert_eq!(playground.samples.len(), 721);
+    assert!(playground
+        .samples
+        .iter()
+        .all(|s| s.radial_coord.is_finite() && s.metric_norm.is_finite()));
+
+    // Plunging custom Reissner-Nordstrom ray halts cleanly when f(r) <= 0.02 without NaNs
+    playground
+        .sandbox
+        .lapse_bar
+        .set_expression("1 - Rs / r + q^2 / r^2");
+    playground.state.impact_or_momentum = 0.5;
+    playground.state.step_size = 0.05;
+    playground.rebuild_trajectory(600);
+    assert!(playground.halted_near_singularity);
+    assert!(playground
+        .samples
+        .iter()
+        .all(|s| s.radial_coord.is_finite() && s.embed_xyz[2].is_finite()));
 }

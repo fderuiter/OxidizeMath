@@ -8,7 +8,6 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
 /// Layout mode for the main simulation viewport container.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -108,91 +107,6 @@ impl TabStateCache {
     }
 }
 
-/// Zero-allocation O(1) state fingerprint used to skip idle and `DragEditing` workspace extractions.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct AppStateFingerprint {
-    selected_tab: usize,
-    secondary_tab: usize,
-    flags: u8,
-    theme_discriminant: u8,
-    split_mode_discriminant: u8,
-    viewport_discriminant: u8,
-    split_ratio_bits: u32,
-    quad_split_ratio_bits: (u32, u32),
-    focused_pane: usize,
-    pane_tabs: [usize; 4],
-    primary_revisions_hash: u64,
-    secondary_revisions_hash: u64,
-    pub(crate) all_revisions_tracked: bool,
-}
-
-impl AppStateFingerprint {
-    pub(crate) fn capture(app: &super::MathExplorerApp) -> Self {
-        let mut primary_hasher = std::collections::hash_map::DefaultHasher::new();
-        let mut all_tracked = true;
-        let active_primary = app.active_primary_tab_index();
-        for (idx, tab) in app.tabs.iter().enumerate() {
-            let rev = tab.state_revision();
-            if idx == active_primary && rev == 0 {
-                all_tracked = false;
-            }
-            idx.hash(&mut primary_hasher);
-            rev.hash(&mut primary_hasher);
-        }
-        let (secondary_hash, secondary_tracked) = app.secondary_slots_revision_hash();
-        all_tracked &= secondary_tracked;
-
-        let mut pane_tabs = [0_usize; 4];
-        for (i, slot) in pane_tabs.iter_mut().enumerate() {
-            *slot = app.pane_tabs.get(i).copied().unwrap_or(i);
-        }
-        pane_tabs[0] = app.selected_tab;
-        if app.viewport_layout != ViewportLayout::QuadGrid {
-            pane_tabs[1] = app.secondary_tab;
-        }
-
-        let flags = u8::from(app.show_info)
-            | (u8::from(app.show_warnings) << 1)
-            | (u8::from(app.show_errors) << 2)
-            | (u8::from(app.show_diagnostics_panel) << 3)
-            | (u8::from(app.compare_sync.link_axes) << 4)
-            | (u8::from(app.compare_sync.link_cursors) << 5)
-            | (u8::from(app.compare_sync.sync_playback) << 6);
-
-        Self {
-            selected_tab: app.selected_tab,
-            secondary_tab: app.secondary_tab,
-            flags,
-            theme_discriminant: match app.theme {
-                ThemeMode::Dark => 0,
-                ThemeMode::Light => 1,
-                ThemeMode::HighContrast => 2,
-            },
-            split_mode_discriminant: match app.split_layout_mode {
-                SplitLayoutMode::Single => 0,
-                SplitLayoutMode::Horizontal => 1,
-                SplitLayoutMode::Vertical => 2,
-            },
-            viewport_discriminant: match app.viewport_layout {
-                ViewportLayout::Single => 0,
-                ViewportLayout::SplitHorizontal => 1,
-                ViewportLayout::SplitVertical => 2,
-                ViewportLayout::QuadGrid => 3,
-            },
-            split_ratio_bits: app.split_ratio.clamp(0.20, 0.80).to_bits(),
-            quad_split_ratio_bits: (
-                app.quad_split_ratios.0.clamp(0.20, 0.80).to_bits(),
-                app.quad_split_ratios.1.clamp(0.20, 0.80).to_bits(),
-            ),
-            focused_pane: app.active_focused_pane(),
-            pane_tabs,
-            primary_revisions_hash: primary_hasher.finish(),
-            secondary_revisions_hash: secondary_hash,
-            all_revisions_tracked: all_tracked,
-        }
-    }
-}
-
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct AppState {
     pub selected_tab: usize,
@@ -228,6 +142,8 @@ pub struct AppState {
     pub pane_tab_states: Vec<HashMap<String, SharedTabJson>>,
     #[serde(default)]
     pub compare_sync: ComparisonSyncConfig,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pipeline_links: Vec<super::dataflow_bus::PaneLink>,
 }
 
 impl Default for AppState {
@@ -252,14 +168,13 @@ impl Default for AppState {
             focused_pane: 0,
             pane_tab_states: Vec::new(),
             compare_sync: ComparisonSyncConfig::default(),
+            pipeline_links: Vec::new(),
         }
     }
 }
 
 impl AppState {
-    /// Extracts the serialized state snapshot from a live `MathExplorerApp` instance,
-    /// reusing cached JSON for tabs outside active panes and clean visible tabs.
-    pub fn extract(app: &super::MathExplorerApp) -> Self {
+    fn collect_primary_tab_states(app: &super::MathExplorerApp) -> HashMap<String, SharedTabJson> {
         let active_primary = app.active_primary_tab_index();
         let mut tab_states = HashMap::with_capacity(app.tabs.len());
         for (idx, tab) in app.tabs.iter().enumerate() {
@@ -272,6 +187,13 @@ impl AppState {
                 tab_states.insert(tab.name().to_string(), tab_str);
             }
         }
+        tab_states
+    }
+
+    /// Extracts the serialized state snapshot from a live `MathExplorerApp` instance,
+    /// reusing cached JSON for tabs outside active panes and clean visible tabs.
+    pub fn extract(app: &super::MathExplorerApp) -> Self {
+        let tab_states = Self::collect_primary_tab_states(app);
         let selected_tab_name = app.tabs.get(app.selected_tab).map(|t| t.name().to_string());
         let secondary_tab_name = app
             .tabs
@@ -317,6 +239,11 @@ impl AppState {
             focused_pane: app.active_focused_pane(),
             pane_tab_states: app.extract_pane_tab_states(),
             compare_sync: app.compare_sync,
+            pipeline_links: if viewport_layout == ViewportLayout::Single {
+                Vec::new()
+            } else {
+                app.pipeline_dag.links().to_vec()
+            },
         }
     }
 
@@ -378,6 +305,17 @@ impl AppState {
         app.tab_state_cache.clear();
         Self::apply_pane_indices_and_focus(&self, app);
         app.restore_pane_tab_states(self.pane_tab_states, &self.tab_states);
+        let active_panes = app.viewport_layout.pane_count();
+        if active_panes <= 1
+            || self.pipeline_links.is_empty()
+            || app
+                .pipeline_dag
+                .restore_links(&self.pipeline_links, active_panes)
+                .is_err()
+        {
+            app.pipeline_dag.clear();
+        }
+        app.prune_incompatible_pipeline_links();
     }
 
     fn resolve_saved_pane_tab(

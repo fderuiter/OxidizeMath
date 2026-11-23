@@ -81,6 +81,35 @@ For time-to-event data, we implement the Kaplan-Meier estimator:
 \end{equation}
 where $d_i$ is the number of events at time $t_i$ and $n_i$ is the number at risk.
 
+\section{Multi-State Markov Progression and Hidden Regime Inference}
+Longitudinal clinical disease progression, component reliability, and strategic possession valuation share a unified stochastic state-space foundation implemented in \texttt{pure\_math::statistics::markov} \cite{norris1997markov}.
+
+\subsection{Absorbing Discrete-Time Markov Chains and Valuation}
+Partitioning a finite row-stochastic transition matrix $P$ into $t$ transient states and $r$ absorbing states yields the canonical block decomposition:
+\begin{equation}
+P = \begin{pmatrix} Q & R \\ 0 & I_r \end{pmatrix}
+\end{equation}
+When the spectral radius satisfies $\rho(Q) < 1$, the fundamental matrix $N = (I_t - Q)^{-1}$ gives the expected visit counts prior to absorption. Expected steps to absorption equal $\tau = N \mathbf{1}_t$, terminal absorption probabilities satisfy $B = N R$, and given terminal reward vector $\mathbf{w} \in \mathbb{R}^r$, the expected possession or clinical state value is $\mathrm{EPV} = B \mathbf{w}$.
+
+\subsection{Continuous-Time Generator Chains and Mean Time to Failure}
+A continuous-time Markov chain (CTMC) on $n$ states is governed by an infinitesimal generator $G \in \mathbb{R}^{n \times n}$ with $G_{ij} \ge 0$ for $i \neq j$ and $\sum_j G_{ij} = 0$ \cite{norris1997markov}. Finite-horizon transition probabilities evolve via the matrix exponential:
+\begin{equation}
+P(t) = \exp(G t)
+\end{equation}
+evaluated numerically via scaling and squaring with Pad\'{e} approximants. Restricting $G$ to transient operational states $G_T$, the mean time to failure (MTTF) vector $\mathbf{m}$ solves the linear system $G_T \mathbf{m} = -\mathbf{1}$.
+
+\subsection{Scaled Forward-Backward, Log-Space Viterbi, and Baum-Welch EM}
+Consider a discrete hidden Markov model $\lambda = (\boldsymbol{\pi}, A, B)$ over $N$ latent regimes and $M$ observation symbols \cite{rabiner1989tutorial}. For an observation sequence $y_{0:T-1}$, unnormalized forward variables underflow exponentially as $T$ grows. Introducing per-step normalization factors $s_t = \sum_{i=1}^N \tilde{\alpha}_t(i)$ produces scaled forward variables $\hat{\alpha}_t(i) = \tilde{\alpha}_t(i) / s_t$ whose sum is unity while preserving exact log-likelihood:
+\begin{equation}
+\ln P(y_{0:T-1} \mid \lambda) = \sum_{t=0}^{T-1} \ln s_t, \qquad P(y_{0:T-1} \mid \lambda) = \exp\!\left(\sum_{t=0}^{T-1} \ln s_t\right).
+\end{equation}
+Maximum a posteriori sequence decoding executes strictly in the logarithmic domain \cite{viterbi1967error}:
+\begin{align}
+\ell_0(i) &= \ln \pi_i + \ln B_{i, y_0}, \\
+\ell_t(j) &= \max_{0 \le i < N} \left[\ell_{t-1}(i) + \ln A_{ij}\right] + \ln B_{j, y_t},
+\end{align}
+storing integer backpointers $\psi_t(j) \in \{0, \dots, N-1\}$ in preallocated workspace buffers so sequences of length $T \ge 10{,}000$ decode with zero heap allocations and zero underflow collapse. Unsupervised parameter estimation applies zero-allocation Baum-Welch Expectation-Maximization with symmetric Dirichlet pseudocounts $\alpha_D \ge 0$ on smoothed posteriors $\gamma_t(i)$ and transition posteriors $\xi_t(i, j)$, guaranteeing monotonic non-decreasing log-likelihood across iterations \cite{rabiner1989tutorial}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 

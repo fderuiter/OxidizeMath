@@ -170,8 +170,14 @@ impl MathExplorerApp {
         }
         if active_pane_count <= 1 {
             self.focused_pane = 0;
-        } else if self.focused_pane >= active_pane_count {
-            self.focused_pane = active_pane_count - 1;
+            self.pipeline_dag.clear();
+            self.dataflow_bus.prune_inactive(1);
+        } else {
+            if self.focused_pane >= active_pane_count {
+                self.focused_pane = active_pane_count - 1;
+            }
+            self.pipeline_dag.prune_inactive(active_pane_count);
+            self.dataflow_bus.prune_inactive(active_pane_count);
         }
     }
 
@@ -184,17 +190,18 @@ impl MathExplorerApp {
             return;
         };
         let keep = self.viewport_layout.pane_count();
-        let in_kept_pane = ctx.read_response(fid).is_some_and(|resp| {
-            ctx.data(|d| {
-                d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"))
-                    .is_none_or(|rects| {
-                        rects
-                            .iter()
-                            .take(keep)
-                            .any(|r| r.contains(resp.rect.center()))
-                    })
-            })
-        });
+        let in_kept_pane =
+            super::viewport::focus::inspect_widget_response(ctx, fid).is_some_and(|resp| {
+                ctx.data(|d| {
+                    d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"))
+                        .is_none_or(|rects| {
+                            rects
+                                .iter()
+                                .take(keep)
+                                .any(|r| r.contains(resp.rect.center()))
+                        })
+                })
+            });
         if !in_kept_pane {
             ctx.memory_mut(|m| m.surrender_focus(fid));
         }
@@ -208,6 +215,8 @@ impl MathExplorerApp {
                 slot.drop_active();
             }
         }
+        self.dataflow_bus.clear_pane(pane_idx);
+        self.prune_incompatible_pipeline_links();
     }
 
     /// Returns a mutable reference to the `ExplorerTab` assigned to `pane_idx`, instantiating lazily for secondary panes.
@@ -251,22 +260,29 @@ impl MathExplorerApp {
         }
     }
 
-    /// Computes a deterministic hash and tracking flag across secondary pane slots.
-    pub(super) fn secondary_slots_revision_hash(&self) -> (u64, bool) {
+    /// Computes deterministic full-state and chrome-free history hashes across secondary pane slots.
+    pub(super) fn secondary_slots_revision_hashes(&self) -> (u64, u64, bool) {
         use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let mut full_h = std::collections::hash_map::DefaultHasher::new();
+        let mut hist_h = std::collections::hash_map::DefaultHasher::new();
         let mut all_tracked = true;
         for (slot_idx, slot) in self.pane_slots.slots.iter().enumerate() {
-            slot_idx.hash(&mut h);
-            slot.initialized.hash(&mut h);
-            slot.saved_states.len().hash(&mut h);
+            slot_idx.hash(&mut full_h);
+            slot_idx.hash(&mut hist_h);
+            slot.initialized.hash(&mut full_h);
+            slot.initialized.hash(&mut hist_h);
+            slot.saved_states.len().hash(&mut full_h);
+            slot.saved_states.len().hash(&mut hist_h);
             if let Some((tab_idx, ref tab)) = slot.active {
-                tab_idx.hash(&mut h);
-                let rev = tab.state_revision();
-                if rev == 0 {
+                tab_idx.hash(&mut full_h);
+                tab_idx.hash(&mut hist_h);
+                let full_rev = tab.state_revision();
+                let hist_rev = tab.history_revision();
+                if full_rev == 0 {
                     all_tracked = false;
                 }
-                rev.hash(&mut h);
+                full_rev.hash(&mut full_h);
+                hist_rev.hash(&mut hist_h);
             } else {
                 let mut saved_xor = 0_u64;
                 for (k, v) in &slot.saved_states {
@@ -275,10 +291,30 @@ impl MathExplorerApp {
                     v.hash(&mut entry_hasher);
                     saved_xor ^= entry_hasher.finish();
                 }
-                saved_xor.hash(&mut h);
+                saved_xor.hash(&mut full_h);
+                saved_xor.hash(&mut hist_h);
             }
         }
-        (h.finish(), all_tracked)
+        (full_h.finish(), hist_h.finish(), all_tracked)
+    }
+
+    pub(super) fn restore_secondary_slot_overlay_chrome(
+        &mut self,
+        pane_idx: usize,
+        tab_name: &str,
+        portal: bool,
+        gallery: bool,
+    ) {
+        if let Some(slot) = self.pane_slots.slot_mut(pane_idx) {
+            if let Some((_, ref mut tab)) = slot.active {
+                if tab.name() == tab_name {
+                    if let Some(fw) = tab.framework_mut() {
+                        fw.restore_overlay_chrome(portal, gallery);
+                    }
+                }
+            }
+            *slot.active_cache.borrow_mut() = None;
+        }
     }
 
     /// Extracts serialized per-pane state maps for `AppState`.
@@ -390,9 +426,10 @@ impl MathExplorerApp {
         if super::viewport::sash::is_any_sash_id(fid) {
             return;
         }
-        let inside_target = ctx.read_response(fid).is_some_and(|resp| {
-            super::viewport::focus::response_belongs_to_pane(&resp, target_pane_rect)
-        });
+        let inside_target =
+            super::viewport::focus::inspect_widget_response(ctx, fid).is_some_and(|resp| {
+                super::viewport::focus::response_belongs_to_pane(&resp, target_pane_rect)
+            });
         if !inside_target {
             ctx.memory_mut(|m| m.surrender_focus(fid));
         }

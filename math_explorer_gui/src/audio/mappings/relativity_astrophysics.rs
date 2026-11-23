@@ -168,7 +168,7 @@ fn select_galactic_tracers(particles: &[OrbitalState], out: &mut [usize; MAX_VOI
             if count >= MAX_VOICES {
                 return count;
             }
-            if p.kind == kind && p.x_kpc.is_finite() && p.vx_kms.is_finite() {
+            if !p.captured && p.kind == kind && p.x_kpc.is_finite() && p.vx_kms.is_finite() {
                 out[count] = idx;
                 count += 1;
             }
@@ -179,7 +179,7 @@ fn select_galactic_tracers(particles: &[OrbitalState], out: &mut [usize; MAX_VOI
         let mut disk_indices = [0usize; 64];
         let mut n_disk = 0;
         for (idx, p) in particles.iter().take(64).enumerate() {
-            if p.kind == OrbitParticleKind::DiskTracer && p.x_kpc.is_finite() {
+            if !p.captured && p.kind == OrbitParticleKind::DiskTracer && p.x_kpc.is_finite() {
                 disk_indices[n_disk] = idx;
                 n_disk += 1;
             }

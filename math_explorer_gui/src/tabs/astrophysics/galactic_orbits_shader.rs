@@ -32,7 +32,7 @@ impl GalacticOrbitSimulator {
             .particles()
             .iter()
             .rev()
-            .find(|p| p.kind == OrbitParticleKind::SlingshotProbe)
+            .find(|p| !p.captured && p.kind == OrbitParticleKind::SlingshotProbe)
             .map(|p| [p.x_kpc, p.y_kpc])
             .unwrap_or([0.0, 0.0]);
         let has_probe = i32::from(self.system.slingshot_probe_count() > 0);
@@ -154,4 +154,61 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {{
 }}
 "#
     )
+}
+
+const PRESET_SPIRAL_WINDING: &str = concat!(
+    r#"{"metadata":{"schema_version":"1.0","title":"Differential Spiral Winding","domain":"astrophysics","timestamp":"2026-11-21T00:00:00Z"},"#,
+    r#""config":{"distance_mpc":16.0,"morphology":"TypeCode10","gas_fraction":0.60,"disk_scale_kpc":0.85,"halo_kind":"NfwCusp","#,
+    r#""halo_log10_mass":10.3,"halo_scale_kpc":2.6,"halo_concentration":13.0,"dt_myr":1.8,"substeps_per_frame":4,"disk_tracers":24,"tidal_tracers":4,"tidal_tangential_ratio":0.70}}"#
+);
+
+const PRESET_TIDAL_PRECESSION: &str = concat!(
+    r#"{"metadata":{"schema_version":"1.0","title":"Dwarf Tidal Stream Precession","domain":"astrophysics","timestamp":"2026-11-21T00:00:00Z"},"#,
+    r#""config":{"distance_mpc":14.0,"morphology":"TypeCode95To99","gas_fraction":0.65,"disk_scale_kpc":0.75,"halo_kind":"BurkertCore","#,
+    r#""halo_log10_mass":10.0,"halo_scale_kpc":2.0,"halo_concentration":11.0,"dt_myr":1.5,"substeps_per_frame":5,"disk_tracers":12,"tidal_tracers":12,"tidal_tangential_ratio":0.48}}"#
+);
+
+const PRESET_SLINGSHOT_CAPTURE: &str = concat!(
+    r#"{"metadata":{"schema_version":"1.0","title":"Hypervelocity Slingshot Arena","domain":"astrophysics","timestamp":"2026-11-23T00:00:00Z"},"#,
+    r#""config":{"distance_mpc":10.0,"morphology":"TypeCode10","gas_fraction":0.55,"disk_scale_kpc":0.90,"halo_kind":"NfwCusp","#,
+    r#""halo_log10_mass":10.6,"halo_scale_kpc":3.0,"halo_concentration":15.0,"dt_myr":1.2,"substeps_per_frame":5,"disk_tracers":16,"tidal_tracers":6,"tidal_tangential_ratio":0.35}}"#
+);
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "galactic_orbits_spiral_winding_starter",
+        title: "Differential Spiral Winding",
+        description: "Shear two-arm disk tracers into differential spiral arcs inside an NFW dark-matter halo.",
+        category: "Galactic Dynamics",
+        icon: "🌀",
+        domain: "astrophysics",
+        tool_name: Some("GalacticOrbitSimulator"),
+        preset_generator: || PRESET_SPIRAL_WINDING,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "galactic_orbits_tidal_precession_starter",
+        title: "Dwarf Tidal Stream Precession",
+        description: "Integrate eccentric satellite stream rosetta orbits inside a cored Burkert (1995) dwarf potential.",
+        category: "Galactic Dynamics",
+        icon: "☄️",
+        domain: "astrophysics",
+        tool_name: Some("GalacticOrbitSimulator"),
+        preset_generator: || PRESET_TIDAL_PRECESSION,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "galactic_orbits_slingshot_arena_starter",
+        title: "Hypervelocity Slingshot Arena",
+        description: "Aim and launch eccentric tracer stars across a massive NFW halo with live Doppler sonification.",
+        category: "Galactic Dynamics",
+        icon: "🚀",
+        domain: "astrophysics",
+        tool_name: Some("GalacticOrbitSimulator"),
+        preset_generator: || PRESET_SLINGSHOT_CAPTURE,
+    }
 }

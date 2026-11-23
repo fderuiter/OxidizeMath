@@ -6,7 +6,7 @@ use crate::app::SemanticPalette;
 use eframe::egui;
 use egui_plot::{Line, PlotPoints, PlotUi, Points};
 
-use super::{GeodesicInteractionMode, GeodesicPlaygroundTool, SpacetimePreset};
+use super::{GeodesicInteractionMode, GeodesicPlaygroundTool};
 
 /// Transient pointer drag and keyboard reticle state for `Slingshot` and `PhotonFan` launches.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -157,8 +157,8 @@ impl GeodesicPlaygroundTool {
         let vy = tip[1] - origin[1];
         let drag_len = vx.hypot(vy);
 
-        if self.state.spacetime != SpacetimePreset::MorrisThorneWormhole {
-            self.state.initial_radius = r_proj.max(1.25 * self.state.scale_radius);
+        if !self.state.spacetime.is_wormhole() {
+            self.state.initial_radius = r_proj.max(self.min_launch_radius());
         } else {
             self.state.initial_radius = r_proj.clamp(1.5, 12.0);
         }

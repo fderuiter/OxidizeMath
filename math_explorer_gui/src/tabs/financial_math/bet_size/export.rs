@@ -5,6 +5,7 @@ use crate::accessibility::{announce_live_assertive_status, announce_live_status}
 use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
 use eframe::egui;
 use egui_plot::export::{copy_text_to_clipboard, escape_csv_field};
+use egui_plot::PlotPoint;
 use std::sync::mpsc::channel;
 
 const CSV_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
@@ -23,7 +24,7 @@ const MD_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
 
 pub(crate) fn format_kelly_rows_csv(rows: &[KellyStrategyRow]) -> String {
     let mut out = String::from(
-        "Strategy,Fraction_Pct,Bet_Amount_USD,Expected_Growth_Rate,Expected_Value_Per_Unit\n",
+        "Strategy,Fraction_Pct,Bet_Amount_USD,Expected_Growth_Rate,Expected_Value_Per_Unit,Drawdown_Floor_Bound_Pct\n",
     );
     for row in rows {
         let label = escape_csv_field(&row.label);
@@ -32,8 +33,11 @@ pub(crate) fn format_kelly_rows_csv(rows: &[KellyStrategyRow]) -> String {
         } else {
             String::from("-inf")
         };
+        let bound = row
+            .barrier_bound
+            .map_or_else(|| String::from("N/A"), |b| format!("{:.2}", b * 100.0));
         out.push_str(&format!(
-            "{label},{:.4},{:.2},{growth},{:.6}\n",
+            "{label},{:.4},{:.2},{growth},{:.6},{bound}\n",
             row.fraction * 100.0,
             row.bet_amount,
             row.ev_per_unit
@@ -44,7 +48,7 @@ pub(crate) fn format_kelly_rows_csv(rows: &[KellyStrategyRow]) -> String {
 
 pub(crate) fn format_kelly_rows_markdown(rows: &[KellyStrategyRow]) -> String {
     let mut out = String::from(
-        "| Strategy | Fraction (%) | Bet Amount ($) | Growth Rate g(f) | EV / $1 |\n| :--- | ---: | ---: | ---: | ---: |\n",
+        "| Strategy | Fraction (%) | Bet Amount ($) | Growth Rate g(f) | EV / $1 | Floor Bound |\n| :--- | ---: | ---: | ---: | ---: | ---: |\n",
     );
     for row in rows {
         let clean_label = row.label.replace('|', "\\|").replace(['\r', '\n'], " ");
@@ -53,8 +57,11 @@ pub(crate) fn format_kelly_rows_markdown(rows: &[KellyStrategyRow]) -> String {
         } else {
             String::from("-inf")
         };
+        let bound = row
+            .barrier_bound
+            .map_or_else(|| String::from("N/A"), |b| format!("{:.1}%", b * 100.0));
         out.push_str(&format!(
-            "| {clean_label} | {:.2}% | ${:.2} | {growth} | ${:.4} |\n",
+            "| {clean_label} | {:.2}% | ${:.2} | {growth} | ${:.4} | {bound} |\n",
             row.fraction * 100.0,
             row.bet_amount,
             row.ev_per_unit
@@ -64,6 +71,33 @@ pub(crate) fn format_kelly_rows_markdown(rows: &[KellyStrategyRow]) -> String {
 }
 
 impl BetSizeCalculatorTool {
+    pub(super) fn build_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        if self.growth_curve_points.is_empty() {
+            return Vec::new();
+        }
+        let to_vec = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect();
+        let mut out = vec![
+            ("Break-Even (g = 0)".into(), to_vec(&self.zero_line_points)),
+            (
+                "Expected Growth Rate g(f)".into(),
+                to_vec(&self.growth_curve_points),
+            ),
+        ];
+        if !self.quarter_marker.is_empty() {
+            out.push((
+                "Quarter Kelly (0.25 f*)".into(),
+                to_vec(&self.quarter_marker),
+            ));
+        }
+        if !self.half_marker.is_empty() {
+            out.push(("Half Kelly (0.50 f*)".into(), to_vec(&self.half_marker)));
+        }
+        if !self.full_marker.is_empty() {
+            out.push(("Full Kelly (1.00 f*)".into(), to_vec(&self.full_marker)));
+        }
+        out
+    }
+
     pub fn export_sizing_csv(&self) -> String {
         format_kelly_rows_csv(&self.strategy_rows)
     }

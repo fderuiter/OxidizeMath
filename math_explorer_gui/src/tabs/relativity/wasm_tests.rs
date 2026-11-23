@@ -1,16 +1,20 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 //! Headless browser `wasm32` tests for [`RelativityTab`], `#tab=relativity` hydration,
-//! `Slingshot`/`PhotonFan` bundles, 2D lensing, `.wav` audio, and `.frag`/PNG/SVG/CSV exports.
+//! `Slingshot`/`PhotonFan` bundles, 2D lensing, custom AST metrics, 2D atlas `1x` convergence,
+//! challenges, `.wav` audio, and `.frag`/PNG/SVG/CSV exports.
 
 use eframe::egui;
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use super::*;
 use crate::app::MathExplorerApp;
+use crate::async_sim::atlas::AtlasTeleportEvent;
 use crate::audio::wav::synthesize_frames_to_wav;
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool, ShaderDialect};
+use crate::starter_gallery::{get_goal_challenges_for_domain, get_stories_for_domain};
 use crate::tabs::ExplorerTab;
+use crate::url_state::{encode_share_fragment, parse_share_location};
 
 fn wasm_input(events: Vec<egui::Event>) -> egui::RawInput {
     egui::RawInput {
@@ -77,4 +81,64 @@ fn wasm_relativity_tab_lensing_slingshot_audio_and_shader_exports() {
         });
         assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
     }
+}
+
+#[wasm_bindgen_test]
+fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
+    assert!(!get_stories_for_domain("relativity").is_empty());
+    assert!(get_goal_challenges_for_domain("relativity").len() >= 2);
+
+    // Verify custom AST Christoffel parity on wasm32
+    let mut inspector = ChristoffelInspectorTool::default();
+    inspector.state.manifold = InspectorManifold::CustomRadialLapse4D;
+    inspector.state.scale_radius = 2.0;
+    inspector.set_custom_lapse_expression("1 - 2 / r");
+    let ev = inspector
+        .evaluate_current()
+        .expect("wasm custom Christoffel");
+    assert!(ev.max_abs_diff < 1e-6);
+
+    // Verify 2D atlas converges to 1x synchronously via cooperative frame budget on wasm32
+    let mut tool = GeodesicPlaygroundTool::default();
+    tool.import_preset_json(presets::PRESET_PHOTON_RING_LENSING)
+        .expect("photon ring preset");
+    assert!((tool.launch_energy - 1.0).abs() < 1e-12);
+    tool.atlas.set_visible(true);
+    tool.state.atlas_visible = true;
+
+    let ctx = egui::Context::default();
+    for _ in 0..80 {
+        let _ = ctx.run(wasm_input(Vec::new()), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
+        });
+        if tool.atlas.is_converged() {
+            break;
+        }
+    }
+    assert_eq!(tool.atlas.current_stride(), 1);
+
+    // Teleport to photon-ring boundary and verify URL fragment round-trip
+    let b_target = playground::kerr_prograde_critical_b(2.0, 0.0) + 0.02;
+    tool.apply_atlas_teleport(AtlasTeleportEvent {
+        x_key: "impact_or_momentum",
+        x_val: b_target,
+        y_key: "initial_radius",
+        y_val: 11.5,
+        regime_label: "Photon-Ring Winding / Rosette",
+    });
+    let url_json = tool.save_url_state().expect("url state");
+    let frag = encode_share_fragment(
+        "relativity",
+        Some("GeodesicPlaygroundTool"),
+        Some(&url_json),
+    )
+    .expect("encode share fragment");
+    let decoded = parse_share_location(&frag, "")
+        .expect("decode")
+        .expect("payload");
+    let mut hydrated = GeodesicPlaygroundTool::default();
+    hydrated
+        .try_load_state(decoded.state_json.as_deref().unwrap())
+        .expect("load state");
+    assert!((hydrated.state.impact_or_momentum - b_target).abs() < 1e-9);
 }

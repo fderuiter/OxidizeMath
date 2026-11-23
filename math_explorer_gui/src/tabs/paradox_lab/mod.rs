@@ -1,7 +1,7 @@
-// @explorer_feature = "applied"
-// @explorer_order = 35
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::accessibility::AccessibleHoverText;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod braess;
@@ -35,14 +35,7 @@ pub(super) fn render_tool_header(ui: &mut egui::Ui, tool_name: &str) {
                 d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL"))
                     .unwrap_or(false)
             });
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
-                if let Some(inst_key) =
-                    d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
-                {
-                    d.insert_temp(inst_key, next);
-                }
-            });
+            crate::framework::record_theory_portal_toggle(ctx, help_btn.id, next);
         }
     });
     ui.separator();
@@ -77,10 +70,6 @@ impl ExplorerTab for ParadoxLabTab {
         self.framework.load_state(state);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
-    }
-
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
     }
@@ -91,6 +80,14 @@ impl ExplorerTab for ParadoxLabTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "paradox_lab",
+        order: 35,
+        build: || Box::new(ParadoxLabTab::default()),
     }
 }
 

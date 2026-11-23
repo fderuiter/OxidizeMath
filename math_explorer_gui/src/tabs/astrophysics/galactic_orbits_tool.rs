@@ -1,5 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::galactic_orbits_relativity::{
+    clamp_bh_config, is_valid_bh_config, OrbitLensOverlayConfig,
+};
 use super::{clamp_finite, HaloKindChoice};
 use crate::audio::frame::SonificationFrame;
 use crate::audio::mappings::galactic_orbits_frame;
@@ -9,8 +12,8 @@ use crate::framework::{
 };
 use eframe::egui;
 use math_explorer::physics::astrophysics::{
-    decompose_rotation_curve, DwarfMorphology, GalacticDiskSystem, Mpc, OrbitParticleKind,
-    OrbitPopulationConfig,
+    decompose_rotation_curve, CentralBlackHoleConfig, DwarfMorphology, GalacticDiskSystem, Mpc,
+    OrbitParticleKind, OrbitPopulationConfig,
 };
 
 pub(super) const TRAIL_CAPACITY: usize = 64;
@@ -35,6 +38,10 @@ pub(crate) struct GalacticOrbitsState {
     pub(crate) disk_tracers: usize,
     pub(crate) tidal_tracers: usize,
     pub(crate) tidal_tangential_ratio: f64,
+    #[serde(default, skip_serializing_if = "CentralBlackHoleConfig::is_default")]
+    pub(crate) central_bh: CentralBlackHoleConfig,
+    #[serde(default, skip_serializing_if = "OrbitLensOverlayConfig::is_default")]
+    pub(crate) lens_overlay: OrbitLensOverlayConfig,
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) is_playing: bool,
 }
@@ -67,6 +74,8 @@ impl Default for GalacticOrbitSimulator {
             disk_tracers: 18,
             tidal_tracers: 8,
             tidal_tangential_ratio: 0.62,
+            central_bh: CentralBlackHoleConfig::default(),
+            lens_overlay: OrbitLensOverlayConfig::default(),
             is_playing: false,
         };
         let halo = cfg.halo_kind.build_profile(
@@ -130,6 +139,14 @@ impl GalacticOrbitSimulator {
                 tidal_tangential_ratio: c.tidal_tangential_ratio,
             },
         );
+        if c.central_bh.enabled {
+            self.system.set_central_black_hole(c.central_bh);
+            self.system.reseed_orbits(
+                c.disk_tracers.max(1),
+                c.tidal_tracers,
+                c.tidal_tangential_ratio,
+            );
+        }
         if prewarm_steps > 0 {
             self.system.step_n_leapfrog(self.cfg.dt_myr, prewarm_steps);
         }
@@ -205,6 +222,9 @@ impl GalacticOrbitSimulator {
     fn collect_orbital_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let (mut disk_pts, mut stream_pts, mut probe_pts) = (Vec::new(), Vec::new(), Vec::new());
         for p in self.system.particles() {
+            if p.captured {
+                continue;
+            }
             match p.kind {
                 OrbitParticleKind::DiskTracer => disk_pts.push([p.x_kpc, p.y_kpc]),
                 OrbitParticleKind::TidalStream => stream_pts.push([p.x_kpc, p.y_kpc]),
@@ -228,6 +248,7 @@ impl GalacticOrbitSimulator {
                 out.push((format!("Tracer {idx} Orbit Trail"), trail_buf[..n].to_vec()));
             }
         }
+        self.append_relativistic_orbit_datasets(&mut out);
         out
     }
 }
@@ -248,6 +269,8 @@ impl FiniteStateGuard for GalacticOrbitSimulator {
         .into_iter()
         .all(f64::is_finite)
             && c.dt_myr > 0.0
+            && is_valid_bh_config(&c.central_bh)
+            && c.lens_overlay.is_valid()
             && self.system.particles().iter().all(|p| {
                 p.x_kpc.is_finite()
                     && p.y_kpc.is_finite()
@@ -274,6 +297,8 @@ impl FiniteStateGuard for GalacticOrbitSimulator {
         c.disk_tracers = c.disk_tracers.clamp(4, 48);
         c.tidal_tracers = c.tidal_tracers.clamp(0, 24);
         c.tidal_tangential_ratio = clamp_finite(c.tidal_tangential_ratio, 0.2, 1.2, 0.62);
+        clamp_bh_config(&mut c.central_bh);
+        c.lens_overlay.clamp_in_place();
         self.rebuild_system(0);
     }
 }
@@ -331,6 +356,8 @@ impl InteractiveTool for GalacticOrbitSimulator {
             || !(1..=16).contains(&s.substeps_per_frame)
             || !(4..=48).contains(&s.disk_tracers)
             || s.tidal_tracers > 24
+            || !is_valid_bh_config(&s.central_bh)
+            || !s.lens_overlay.is_valid()
         {
             return Err("Galactic orbit parameters out of valid physical bounds".into());
         }
@@ -417,62 +444,5 @@ impl scientific_metadata::theory::TheoryDescribable for GalacticOrbitSimulator {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
-    }
-}
-
-const PRESET_SPIRAL_WINDING: &str = concat!(
-    r#"{"metadata":{"schema_version":"1.0","title":"Differential Spiral Winding","domain":"astrophysics","timestamp":"2026-11-21T00:00:00Z"},"#,
-    r#""config":{"distance_mpc":16.0,"morphology":"TypeCode10","gas_fraction":0.60,"disk_scale_kpc":0.85,"halo_kind":"NfwCusp","#,
-    r#""halo_log10_mass":10.3,"halo_scale_kpc":2.6,"halo_concentration":13.0,"dt_myr":1.8,"substeps_per_frame":4,"disk_tracers":24,"tidal_tracers":4,"tidal_tangential_ratio":0.70}}"#
-);
-
-const PRESET_TIDAL_PRECESSION: &str = concat!(
-    r#"{"metadata":{"schema_version":"1.0","title":"Dwarf Tidal Stream Precession","domain":"astrophysics","timestamp":"2026-11-21T00:00:00Z"},"#,
-    r#""config":{"distance_mpc":14.0,"morphology":"TypeCode95To99","gas_fraction":0.65,"disk_scale_kpc":0.75,"halo_kind":"BurkertCore","#,
-    r#""halo_log10_mass":10.0,"halo_scale_kpc":2.0,"halo_concentration":11.0,"dt_myr":1.5,"substeps_per_frame":5,"disk_tracers":12,"tidal_tracers":12,"tidal_tangential_ratio":0.48}}"#
-);
-
-const PRESET_SLINGSHOT_CAPTURE: &str = concat!(
-    r#"{"metadata":{"schema_version":"1.0","title":"Hypervelocity Slingshot Arena","domain":"astrophysics","timestamp":"2026-11-23T00:00:00Z"},"#,
-    r#""config":{"distance_mpc":10.0,"morphology":"TypeCode10","gas_fraction":0.55,"disk_scale_kpc":0.90,"halo_kind":"NfwCusp","#,
-    r#""halo_log10_mass":10.6,"halo_scale_kpc":3.0,"halo_concentration":15.0,"dt_myr":1.2,"substeps_per_frame":5,"disk_tracers":16,"tidal_tracers":6,"tidal_tangential_ratio":0.35}}"#
-);
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "galactic_orbits_spiral_winding_starter",
-        title: "Differential Spiral Winding",
-        description: "Shear two-arm disk tracers into differential spiral arcs inside an NFW dark-matter halo.",
-        category: "Galactic Dynamics",
-        icon: "🌀",
-        domain: "astrophysics",
-        tool_name: Some("GalacticOrbitSimulator"),
-        preset_generator: || PRESET_SPIRAL_WINDING,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "galactic_orbits_tidal_precession_starter",
-        title: "Dwarf Tidal Stream Precession",
-        description: "Integrate eccentric satellite stream rosetta orbits inside a cored Burkert (1995) dwarf potential.",
-        category: "Galactic Dynamics",
-        icon: "☄️",
-        domain: "astrophysics",
-        tool_name: Some("GalacticOrbitSimulator"),
-        preset_generator: || PRESET_TIDAL_PRECESSION,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "galactic_orbits_slingshot_arena_starter",
-        title: "Hypervelocity Slingshot Arena",
-        description: "Aim and launch eccentric tracer stars across a massive NFW halo with live Doppler sonification.",
-        category: "Galactic Dynamics",
-        icon: "🚀",
-        domain: "astrophysics",
-        tool_name: Some("GalacticOrbitSimulator"),
-        preset_generator: || PRESET_SLINGSHOT_CAPTURE,
     }
 }

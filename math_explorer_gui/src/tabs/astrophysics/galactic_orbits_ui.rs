@@ -99,6 +99,7 @@ impl GalacticOrbitSimulator {
                     .text("Stream v_tan / v_circ"),
             )
             .changed();
+        rebuild |= self.render_bh_and_caustic_controls(ui);
         rebuild
     }
 
@@ -208,12 +209,13 @@ impl GalacticOrbitSimulator {
         let scale_ring = self.scale_ring_points(64);
         let domain_r = self.plot_domain_extent();
         let sculpting = self.brush_kit.is_sculpting();
+        let drag_lens = self.cfg.lens_overlay.enabled && self.cfg.lens_overlay.drag_on_canvas;
         let primary_down = ui.ctx().input(|i| i.pointer.primary_down());
 
         let resp = Plot::new("galactic_orbits_midplane_plot")
             .data_aspect(1.0)
             .view_aspect(1.35)
-            .allow_drag(!sculpting)
+            .allow_drag(!sculpting && !drag_lens)
             .x_axis_label("Galactocentric x (kpc)")
             .y_axis_label("Galactocentric y (kpc)")
             .legend(egui_plot::Legend::default())
@@ -224,28 +226,8 @@ impl GalacticOrbitSimulator {
                         .style(LineStyle::Dashed { length: 6.0 }),
                 );
                 self.draw_orbit_trails(plot_ui, &palette);
-                plot_ui.points(
-                    Points::new("Disk Tracer Stars", PlotPoints::new(pts.disk))
-                        .color(palette.accent)
-                        .radius(4.0_f32)
-                        .shape(MarkerShape::Circle),
-                );
-                if !pts.stream.is_empty() {
-                    plot_ui.points(
-                        Points::new("Tidal Stream Stars", PlotPoints::new(pts.stream))
-                            .color(palette.axis_x)
-                            .radius(4.5_f32)
-                            .shape(MarkerShape::Diamond),
-                    );
-                }
-                if !pts.probe.is_empty() {
-                    plot_ui.points(
-                        Points::new("Slingshot Probes", PlotPoints::new(pts.probe))
-                            .color(palette.warning)
-                            .radius(6.0_f32)
-                            .shape(MarkerShape::Asterisk),
-                    );
-                }
+                self.draw_orbit_point_markers(plot_ui, pts, &palette);
+                self.draw_relativistic_orbit_overlays(plot_ui, &palette);
                 let strokes = self.brush_kit.sample_plot(
                     plot_ui,
                     [-domain_r, -domain_r],
@@ -257,6 +239,44 @@ impl GalacticOrbitSimulator {
         self.last_plot_id = Some(resp.response.id);
         if resp.response.clicked() {
             resp.response.request_focus();
+        }
+        if drag_lens && !sculpting && resp.response.dragged() {
+            if let Some(pos) = resp.response.interact_pointer_pos() {
+                let val = resp.transform.value_from_position(pos);
+                self.drag_orbit_lens_to([val.x, val.y]);
+            }
+        }
+    }
+
+    fn draw_orbit_point_markers(
+        &self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        pts: OrbitPointSets,
+        palette: &crate::app::SemanticPalette,
+    ) {
+        if !self.cfg.central_bh.enabled {
+            plot_ui.points(
+                Points::new("Disk Tracer Stars", PlotPoints::new(pts.disk))
+                    .color(palette.accent)
+                    .radius(4.0_f32)
+                    .shape(MarkerShape::Circle),
+            );
+            if !pts.stream.is_empty() {
+                plot_ui.points(
+                    Points::new("Tidal Stream Stars", PlotPoints::new(pts.stream))
+                        .color(palette.axis_x)
+                        .radius(4.5_f32)
+                        .shape(MarkerShape::Diamond),
+                );
+            }
+        }
+        if !pts.probe.is_empty() {
+            plot_ui.points(
+                Points::new("Slingshot Probes", PlotPoints::new(pts.probe))
+                    .color(palette.warning)
+                    .radius(6.0_f32)
+                    .shape(MarkerShape::Asterisk),
+            );
         }
     }
 
@@ -374,6 +394,9 @@ fn partition_orbit_points(
 ) -> OrbitPointSets {
     let mut sets = OrbitPointSets::default();
     for p in particles {
+        if p.captured {
+            continue;
+        }
         match p.kind {
             OrbitParticleKind::DiskTracer => sets.disk.push([p.x_kpc, p.y_kpc]),
             OrbitParticleKind::TidalStream => sets.stream.push([p.x_kpc, p.y_kpc]),

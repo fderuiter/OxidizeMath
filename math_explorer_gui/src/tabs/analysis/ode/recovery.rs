@@ -1,11 +1,127 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::phase_plane::{
+    DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID, MAX_QUIVER_GRID,
+    MAX_SEEDED_ORBITS,
+};
+use super::poincare_map::DEFAULT_MATRIX_A;
+use super::systems::default_coupled_ode_bank;
 use super::OdeSolverTool;
 use crate::framework::recovery::{
     render_recovery_banner, DiagnosticReport, FiniteStateGuard, RecoveryAction,
 };
 use crate::presets::OdePreset;
 use eframe::egui;
+
+impl OdeSolverTool {
+    /// Halves `dt` (floored at `1e-6`) and clamps `total_time` within `MAX_ODE_STEPS`.
+    pub fn auto_scale_step_size(&mut self) {
+        let min_dt = 1e-6;
+        if !self.total_time.is_finite() || self.total_time <= 0.0 {
+            self.total_time = 10.0;
+        } else {
+            self.total_time = self.total_time.min(100.0);
+        }
+        self.dt = if !self.dt.is_finite() || self.dt <= 0.0 {
+            0.05
+        } else {
+            (self.dt * 0.5).max(min_dt)
+        };
+        let max_horizon = self.dt * crate::presets::MAX_ODE_STEPS as f64;
+        if self.total_time > max_horizon {
+            self.total_time = max_horizon;
+            for _ in 0..4 {
+                if crate::presets::checked_ode_step_count(self.dt, self.total_time).is_some()
+                    || self.total_time <= 0.0
+                {
+                    break;
+                }
+                self.total_time = self.total_time.next_down();
+            }
+        }
+        self.recalculate();
+    }
+
+    /// Clamps unstable or non-finite parameters, custom slider maps, planar matrix/orbits, and step settings.
+    pub fn clamp_instability_parameters(&mut self) {
+        clamp_ode_parameters(
+            self.preset,
+            &mut self.param_k,
+            &mut self.param_r,
+            &mut self.param_cap_k,
+            &mut self.ic_y0,
+            &mut self.ic_v0,
+        );
+        self.math_input.clamp_active_params(-10.0..=10.0);
+        self.coupled_bank.clamp_active_params(-10.0..=10.0);
+        self.push_clamped_legacy_params_to_bar();
+
+        clamp_planar_state(
+            &mut self.matrix_a,
+            &mut self.quiver_density,
+            &mut self.seeded_ic,
+        );
+        clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
+        self.recalculate();
+    }
+
+    /// Resets parameters, initial conditions, and seeded orbits for the active preset.
+    pub fn reset_parameters(&mut self) {
+        match self.preset {
+            OdePreset::Exponential => {
+                self.param_k = 1.0;
+                self.ic_y0 = 1.0;
+            }
+            OdePreset::HarmonicOscillator => {
+                self.param_k = 1.0;
+                self.ic_y0 = 1.0;
+                self.ic_v0 = 0.0;
+            }
+            OdePreset::LogisticGrowth => {
+                self.param_r = 1.0;
+                self.param_cap_k = 10.0;
+                self.ic_y0 = 1.0;
+            }
+            OdePreset::LinearSystem2D => {
+                self.matrix_a = DEFAULT_MATRIX_A;
+                self.ic_y0 = 1.0;
+                self.ic_v0 = 0.0;
+            }
+            OdePreset::PlanarCustom => {
+                self.param_k = 1.0;
+                self.param_r = 1.0;
+                self.ic_y0 = 1.0;
+                self.ic_v0 = 0.0;
+                self.planar_x_input.set_expression(DEFAULT_PLANAR_X_EXPR);
+                self.planar_y_input.set_expression(DEFAULT_PLANAR_Y_EXPR);
+            }
+            OdePreset::Custom if self.custom_coupled => {
+                self.ic_y0 = 1.0;
+                self.ic_v0 = 0.0;
+                self.coupled_bank = default_coupled_ode_bank();
+            }
+            OdePreset::Custom => {
+                self.reset_custom_parameters();
+            }
+        }
+        self.seeded_ic.clear();
+        self.dt = 0.05;
+        self.total_time = 10.0;
+        self.pending_sweep_run = None;
+        self.recalculate();
+    }
+}
+
+fn are_seeded_orbits_finite(tool: &OdeSolverTool) -> bool {
+    tool.seeded_ic
+        .iter()
+        .all(|pt| pt[0].is_finite() && pt[1].is_finite())
+        && tool.seeded_trajectories.iter().all(|traj| {
+            traj.time_series.iter().all(|t| t.is_finite())
+                && traj.y_series.iter().all(|x| x.is_finite())
+                && traj.v_series.iter().all(|y| y.is_finite())
+        })
+}
 
 /// Checks whether an [`OdeSolverTool`] is in a completely finite numerical state.
 pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
@@ -27,12 +143,19 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
         }
         OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
         OdePreset::LogisticGrowth => tool.param_r.is_finite() && tool.param_cap_k.is_finite(),
+        OdePreset::LinearSystem2D => {
+            tool.ic_v0.is_finite() && tool.matrix_a.iter().flatten().all(|v| v.is_finite())
+        }
+        OdePreset::PlanarCustom => {
+            tool.param_k.is_finite() && tool.param_r.is_finite() && tool.ic_v0.is_finite()
+        }
     };
     if tool.diverged
         || !tool.dt.is_finite()
         || !tool.total_time.is_finite()
         || !tool.ic_y0.is_finite()
         || !params_finite
+        || !are_seeded_orbits_finite(tool)
     {
         return false;
     }
@@ -89,6 +212,14 @@ impl FiniteStateGuard for OdeSolverTool {
     }
 }
 
+fn clamp_finite(val: &mut f64, lo: f64, hi: f64, fallback: f64) {
+    *val = if val.is_finite() {
+        val.clamp(lo, hi)
+    } else {
+        fallback
+    };
+}
+
 /// Clamps solver parameters and initial conditions to stable, finite bounds.
 pub fn clamp_ode_parameters(
     preset: OdePreset,
@@ -98,62 +229,55 @@ pub fn clamp_ode_parameters(
     ic_y0: &mut f64,
     ic_v0: &mut f64,
 ) {
-    if !ic_y0.is_finite() {
-        *ic_y0 = 1.0;
-    } else {
-        *ic_y0 = ic_y0.clamp(-10.0, 10.0);
-    }
-
-    if !ic_v0.is_finite() {
-        *ic_v0 = 0.0;
-    } else {
-        *ic_v0 = ic_v0.clamp(-10.0, 10.0);
-    }
+    clamp_finite(ic_y0, -10.0, 10.0, 1.0);
+    clamp_finite(ic_v0, -10.0, 10.0, 0.0);
 
     match preset {
-        OdePreset::Exponential => {
-            *param_k = if param_k.is_finite() {
-                param_k.clamp(-5.0, 5.0)
-            } else {
-                1.0
-            };
-        }
-        OdePreset::HarmonicOscillator => {
-            *param_k = if param_k.is_finite() {
-                param_k.clamp(0.01, 10.0)
-            } else {
-                1.0
-            };
-        }
+        OdePreset::Exponential => clamp_finite(param_k, -5.0, 5.0, 1.0),
+        OdePreset::HarmonicOscillator => clamp_finite(param_k, 0.01, 10.0, 1.0),
         OdePreset::LogisticGrowth => {
-            *param_r = if param_r.is_finite() {
-                param_r.clamp(0.01, 5.0)
-            } else {
-                1.0
-            };
-            *param_cap_k = if param_cap_k.is_finite() {
-                param_cap_k.clamp(0.1, 100.0)
-            } else {
-                10.0
-            };
+            clamp_finite(param_r, 0.01, 5.0, 1.0);
+            clamp_finite(param_cap_k, 0.1, 100.0, 10.0);
+        }
+        OdePreset::LinearSystem2D | OdePreset::PlanarCustom => {
+            clamp_finite(param_k, -10.0, 10.0, 1.0);
+            clamp_finite(param_r, -10.0, 10.0, 1.0);
+            clamp_finite(param_cap_k, 0.1, 100.0, 10.0);
         }
         OdePreset::Custom => {
-            *param_k = if param_k.is_finite() {
-                param_k.clamp(-10.0, 10.0)
+            clamp_finite(param_k, -10.0, 10.0, 1.0);
+            clamp_finite(param_r, 0.01, 5.0, 1.0);
+            clamp_finite(param_cap_k, 0.1, 100.0, 10.0);
+        }
+    }
+}
+
+/// Clamps 2D linear matrix entries, quiver density, and seeded orbit initial states.
+pub fn clamp_planar_state(
+    matrix_a: &mut [[f64; 2]; 2],
+    quiver_density: &mut usize,
+    seeded_ic: &mut Vec<[f64; 2]>,
+) {
+    for (row_idx, row) in matrix_a.iter_mut().enumerate() {
+        for (col_idx, val) in row.iter_mut().enumerate() {
+            *val = if val.is_finite() {
+                val.clamp(-10.0, 10.0)
             } else {
-                1.0
-            };
-            *param_r = if param_r.is_finite() {
-                param_r.clamp(0.01, 5.0)
-            } else {
-                1.0
-            };
-            *param_cap_k = if param_cap_k.is_finite() {
-                param_cap_k.clamp(0.1, 100.0)
-            } else {
-                10.0
+                DEFAULT_MATRIX_A[row_idx][col_idx]
             };
         }
+    }
+    if !(2..=MAX_QUIVER_GRID).contains(quiver_density) {
+        *quiver_density = DEFAULT_QUIVER_GRID;
+    }
+    seeded_ic.retain(|pt| pt[0].is_finite() && pt[1].is_finite());
+    if seeded_ic.len() > MAX_SEEDED_ORBITS {
+        let excess = seeded_ic.len() - MAX_SEEDED_ORBITS;
+        seeded_ic.drain(0..excess);
+    }
+    for pt in seeded_ic.iter_mut() {
+        pt[0] = pt[0].clamp(-10.0, 10.0);
+        pt[1] = pt[1].clamp(-10.0, 10.0);
     }
 }
 
@@ -217,6 +341,7 @@ pub fn render_recovery_ui(
 ) {
     if let Some(action) = render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(tool)) {
         apply_recovery_action(tool, action, changed, plot_points_y, plot_points_v);
+        tool.run_sensitivity_analysis(false);
     }
 }
 
@@ -233,5 +358,6 @@ pub(super) fn render_recovery_ui_in_place(
         }
         *changed = true;
         tool.sync_series_cache();
+        tool.run_sensitivity_analysis(false);
     }
 }

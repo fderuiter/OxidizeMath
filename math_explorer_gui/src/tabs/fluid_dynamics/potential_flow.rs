@@ -2,10 +2,13 @@
 
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{
-    BrushMode, CalloutManager, CalloutSpec, InteractionContext, InteractiveTool, SpatialBrushKit,
+    BrushMode, CalloutManager, CalloutSpec, InteractionContext, InteractiveTool,
+    PlotBrushController, PlotBrushFrame, SpatialBrushKit,
 };
 use eframe::egui;
-use egui_plot::{Arrows, Legend, Line, MarkerShape, Plot, Points};
+#[cfg(test)]
+use egui_plot::PlotPoints;
+use egui_plot::{Legend, Plot, PlotPoint};
 use math_explorer::physics::fluid_dynamics::potential_flow::{
     Doublet, FlowElement, PotentialFlowField, Source, UniformFlow, Vortex,
 };
@@ -13,6 +16,8 @@ use std::f64::consts::PI;
 
 #[path = "potential_flow/cache.rs"]
 mod cache;
+#[path = "potential_flow/interact.rs"]
+mod interact;
 #[path = "potential_flow/shader.rs"]
 mod shader;
 #[path = "potential_flow/streamlines.rs"]
@@ -40,6 +45,7 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
     pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) active_drag_element: Option<usize>,
     pub(crate) show_streamlines: bool,
     pub(crate) show_stagnation_points: bool,
     pub(crate) cached_polylines: Vec<Vec<[f64; 2]>>,
@@ -47,7 +53,12 @@ pub struct PotentialFlowTool {
     pub(crate) cached_view_range: f64,
     pub(crate) callout_manager: CalloutManager,
     pub(crate) high_contrast: bool,
-    pub(crate) cache: cache::ArrowFieldCache,
+    pub(crate) origins: Vec<PlotPoint>,
+    pub(crate) tips: Vec<PlotPoint>,
+    pub(crate) grid_revision: u64,
+    pub(crate) cached_revision: u64,
+    pub(crate) cached_grid_size: usize,
+    pub(crate) cached_arrow_view_bits: u64,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -129,6 +140,7 @@ impl Default for PotentialFlowTool {
             new_element_y: 0.0,
             new_element_angle: 0.0,
             brush_kit: Self::default_flow_brush_kit(),
+            active_drag_element: None,
             show_streamlines: true,
             show_stagnation_points: true,
             cached_polylines: Vec::new(),
@@ -136,9 +148,15 @@ impl Default for PotentialFlowTool {
             cached_view_range: 10.0,
             callout_manager: CalloutManager::new(),
             high_contrast: false,
-            cache: cache::ArrowFieldCache::default(),
+            origins: Vec::new(),
+            tips: Vec::new(),
+            grid_revision: 0,
+            cached_revision: 0,
+            cached_grid_size: 0,
+            cached_arrow_view_bits: 0,
         };
         tool.rebuild_field();
+        tool.rebuild_arrows();
         tool
     }
 }
@@ -213,10 +231,16 @@ impl InteractiveTool for PotentialFlowTool {
         Some(self)
     }
 
+    fn on_click(&mut self, ctx: &InteractionContext) {
+        self.handle_flow_click(ctx);
+    }
+
+    fn on_drag(&mut self, ctx: &InteractionContext) {
+        self.handle_flow_drag(ctx);
+    }
+
     fn on_brush(&mut self, ctx: &InteractionContext) {
-        if let Some(ref stroke) = ctx.brush_stroke {
-            self.apply_flow_brush_stroke(stroke);
-        }
+        self.apply_flow_brush_context(ctx);
     }
 
     fn focused_canvas_id(&self) -> Option<egui::Id> {
@@ -230,11 +254,12 @@ impl InteractiveTool for PotentialFlowTool {
         if (self.cached_view_range - self.view_range).abs() > 1e-9 {
             self.refresh_streamline_cache();
         }
-        let (origins, tips) = self.ensure_cached_arrows();
+        self.reconcile_arrows();
         let allow_pan = !self.brush_kit.is_sculpting();
         let vr = self.view_range.max(1.0);
-        let mut strokes = Vec::new();
+        let mut brush_frame: Option<PlotBrushFrame> = None;
         egui::CentralPanel::default().show_inside(ui, |ui| {
+            let dark_mode = ui.visuals().dark_mode || self.high_contrast;
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let plot_resp = Plot::new("potential_flow_plot")
                 .data_aspect(1.0)
@@ -243,59 +268,36 @@ impl InteractiveTool for PotentialFlowTool {
                 .allow_zoom(allow_pan)
                 .legend(Legend::default())
                 .show(ui, |plot_ui| {
-                    self.render_flow_plot_layers(plot_ui, &palette, origins, tips);
-                    strokes = self.brush_kit.sample_plot(
+                    interact::render_flow_layers(
+                        plot_ui,
+                        &palette,
+                        self.show_streamlines
+                            .then_some(self.cached_polylines.as_slice()),
+                        (&self.origins, &self.tips),
+                        self.show_stagnation_points
+                            .then_some(self.cached_stagnation.as_slice()),
+                    );
+                    self.render_singularity_handles(plot_ui, &palette, dark_mode);
+                    self.callout_manager.render_on_plot(plot_ui);
+                    brush_frame = Some(PlotBrushController::capture_plot(
+                        &mut self.brush_kit,
                         plot_ui,
                         [-vr, -vr],
                         [vr, vr],
                         Some(BrushMode::Erase),
-                    );
+                    ));
                 });
-            for stroke in strokes {
-                let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
-                self.on_brush(&ic);
+            if let Some(frame) = brush_frame {
+                if !frame.is_dragging {
+                    self.active_drag_element = None;
+                }
+                frame.dispatch(ui, &plot_resp.response, self);
             }
         });
     }
 }
 
 impl PotentialFlowTool {
-    fn render_flow_plot_layers(
-        &mut self,
-        plot_ui: &mut egui_plot::PlotUi<'_>,
-        palette: &crate::app::SemanticPalette,
-        origins: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
-        tips: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
-    ) {
-        if self.show_streamlines {
-            for (idx, poly) in self.cached_polylines.iter().enumerate() {
-                let name = if idx == 0 { "Streamlines (ψ)" } else { "" };
-                plot_ui.line(
-                    Line::new(name, poly.clone())
-                        .color(palette.series_color(2))
-                        .width(1.4_f32),
-                );
-            }
-        }
-        plot_ui.arrows(
-            Arrows::new(
-                "Vector Field",
-                egui_plot::PlotPoints::from_shared(origins),
-                egui_plot::PlotPoints::from_shared(tips),
-            )
-            .color(palette.series_color(0)),
-        );
-        if self.show_stagnation_points && !self.cached_stagnation.is_empty() {
-            plot_ui.points(
-                Points::new("Stagnation (|V|=0)", self.cached_stagnation.clone())
-                    .shape(MarkerShape::Diamond)
-                    .radius(5.5_f32)
-                    .color(palette.warning),
-            );
-        }
-        self.callout_manager.render_on_plot(plot_ui);
-    }
-
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "potential_flow_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
@@ -316,12 +318,28 @@ impl PotentialFlowTool {
             ui.checkbox(&mut self.show_streamlines, "Show Streamlines (ψ)");
             ui.checkbox(&mut self.show_stagnation_points, "Show Stagnation Points");
             let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
-            self.grid_size = self.grid_size.clamp(2, max_grid);
-            ui.add(
-                egui::Slider::new(&mut self.grid_size, 10..=max_grid)
-                    .text("Visualization - Grid Density"),
-            );
-            ui.add(egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"));
+            let clamped_grid = self.grid_size.clamp(2, max_grid);
+            if clamped_grid != self.grid_size {
+                self.grid_size = clamped_grid;
+                self.grid_revision = self.grid_revision.wrapping_add(1);
+            }
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.grid_size, 10..=max_grid)
+                        .text("Visualization - Grid Density"),
+                )
+                .changed()
+            {
+                self.grid_revision = self.grid_revision.wrapping_add(1);
+            }
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"),
+                )
+                .changed()
+            {
+                self.grid_revision = self.grid_revision.wrapping_add(1);
+            }
             let (u_inf, gamma, lift, drag) = self.aerodynamic_summary();
             ui.separator();
             ui.add(
@@ -350,6 +368,7 @@ impl PotentialFlowTool {
         }
         self.field = field;
         self.refresh_streamline_cache();
+        self.grid_revision = self.grid_revision.wrapping_add(1);
     }
 
     pub(crate) fn add_element(&mut self) {
@@ -365,11 +384,15 @@ impl PotentialFlowTool {
         self.rebuild_field();
     }
 
-    fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
+        self.active_drag_element = None;
         self.elements.clear();
         self.field.clear();
         self.cached_polylines.clear();
         self.cached_stagnation.clear();
+        self.origins.clear();
+        self.tips.clear();
+        self.grid_revision = self.grid_revision.wrapping_add(1);
     }
 }
 
