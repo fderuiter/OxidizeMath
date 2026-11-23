@@ -338,6 +338,7 @@ impl SimulationRunner for MorphogenesisRunner {
             pixels: Arc::new(std::sync::RwLock::new(image.pixels)),
             custom_data: vec![self.peclet, self.damkohler],
             structured_data: Some(Box::new(structured)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

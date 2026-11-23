@@ -1,4 +1,4 @@
-# 40. Couple Lattice Boltzmann and Potential Flow to 2D Upwind Morphogenesis
+# 41. Couple Lattice Boltzmann and Potential Flow to 2D Upwind Morphogenesis
 
 Date: 2026-11-22
 
