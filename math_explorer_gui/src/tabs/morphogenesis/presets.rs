@@ -13,33 +13,8 @@ use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-/// Deterministic PCG-style PRNG used to seed reproducible initial perturbations.
-pub struct SimpleRng {
-    state: u64,
-}
-
-impl SimpleRng {
-    /// Creates a new deterministic PRNG seeded with `seed`.
-    #[must_use]
-    pub fn new(seed: u64) -> Self {
-        Self { state: seed }
-    }
-
-    /// Samples a uniform `f64` in `[0.0, 1.0]`.
-    pub fn next_f64(&mut self) -> f64 {
-        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let x = self.state;
-        let x = x ^ (x >> 18);
-        let rot = (x >> 27) as u32;
-        let val = (x as u32).rotate_right(rot);
-        f64::from(val) / f64::from(u32::MAX)
-    }
-
-    /// Samples a uniform `f64` in `[min, max]`.
-    pub fn range(&mut self, min: f64, max: f64) -> f64 {
-        min + self.next_f64() * (max - min)
-    }
-}
+/// Re-exported deterministic PCG-style PRNG used to seed reproducible initial perturbations.
+pub use crate::volumetric_scene::presets::SimpleRng;
 
 /// Dynamic [`TheoryDescribable`] adapter reflecting the active [`MorphogenesisKinetics`] model.
 #[derive(Clone, Debug)]

@@ -247,6 +247,20 @@ impl MorphogenesisTool {
                 self.apply_gray_scott_preset(0.030, 0.060, 0.2, 0.1, 1.0);
             }
         });
+        if let Some(u_data) = self.worker.latest_snapshot().as_ref().and_then(|s| {
+            s.structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<Vec<f64>>())
+                .map(|u| (u.clone(), s.width, s.height))
+        }) {
+            let splat_count =
+                crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
+                    &u_data.0, u_data.1, u_data.2,
+                )
+                .gaussians
+                .len();
+            ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
+        }
         ui.separator();
         let _ = self.atlas.show_toggle_button(ui);
     }

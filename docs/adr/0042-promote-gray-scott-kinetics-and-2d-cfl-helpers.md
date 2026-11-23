@@ -1,4 +1,4 @@
-# ADR 0041: Promote `GrayScottKinetics` and 2D CFL Stepping Helpers in `domain_biology`
+# ADR 0042: Promote `GrayScottKinetics` and 2D CFL Stepping Helpers in `domain_biology`
 
 ## Status
 Accepted (extends [ADR 0013](0013-scientific-metadata-documentation-standard.md), [ADR 0021](0021-precompute-stencil-reciprocals.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
