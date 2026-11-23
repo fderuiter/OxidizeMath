@@ -36,15 +36,15 @@ fn attr_suppresses_dead_code(attr: &syn::Attribute) -> bool {
     .is_some()
 }
 
-struct DeadCodeVisitor {
-    file_path: String,
-    allowed: Vec<DeadCodeEntry>,
+struct DeadCodeVisitor<'a> {
+    file_path: &'a str,
+    allowed: &'a [DeadCodeEntry],
     has_unauthorized: bool,
     violations: Vec<String>,
 }
 
-impl DeadCodeVisitor {
-    fn new(file_path: String, allowed: Vec<DeadCodeEntry>) -> Self {
+impl<'a> DeadCodeVisitor<'a> {
+    fn new(file_path: &'a str, allowed: &'a [DeadCodeEntry]) -> Self {
         Self {
             file_path,
             allowed,
@@ -59,8 +59,8 @@ impl DeadCodeVisitor {
             require_non_empty: false,
             match_file_name: false,
         };
-        let actual_path = Path::new(&self.file_path);
-        for entry in &self.allowed {
+        let actual_path = Path::new(self.file_path);
+        for entry in self.allowed {
             if crate::whitelist::path_matches_lossy(actual_path, &entry.file, opts) {
                 match (&entry.identifier, ident) {
                     (None, _) => return true,
@@ -73,7 +73,7 @@ impl DeadCodeVisitor {
     }
 
     fn record_violation(&mut self, line: usize, ident: Option<&str>) {
-        let loc = crate::ast_helpers::format_file_line(&self.file_path, line);
+        let loc = crate::ast_helpers::format_file_line(self.file_path, line);
         let (scope, wl_snippet) = match ident {
             Some(id) => (
                 format!("identifier `{id}`"),
@@ -99,56 +99,65 @@ impl DeadCodeVisitor {
             }
         }
     }
+
+    fn check_ident_attrs(&mut self, attrs: &[syn::Attribute], ident: &syn::Ident) {
+        if attrs.iter().any(attr_suppresses_dead_code) {
+            let name = ident.to_string();
+            self.check_attrs(attrs, Some(&name));
+        }
+    }
 }
 
-impl<'ast> Visit<'ast> for DeadCodeVisitor {
+impl<'ast> Visit<'ast> for DeadCodeVisitor<'_> {
     fn visit_file(&mut self, i: &'ast syn::File) {
         self.check_attrs(&i.attrs, None);
         syn::visit::visit_file(self, i);
     }
     fn visit_item_fn(&mut self, i: &'ast syn::ItemFn) {
-        self.check_attrs(&i.attrs, Some(&i.sig.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.sig.ident);
         syn::visit::visit_item_fn(self, i);
     }
     fn visit_item_struct(&mut self, i: &'ast syn::ItemStruct) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_item_struct(self, i);
     }
     fn visit_item_enum(&mut self, i: &'ast syn::ItemEnum) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_item_enum(self, i);
     }
     fn visit_item_union(&mut self, i: &'ast syn::ItemUnion) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_item_union(self, i);
     }
     fn visit_item_type(&mut self, i: &'ast syn::ItemType) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_item_type(self, i);
     }
     fn visit_item_mod(&mut self, i: &'ast syn::ItemMod) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_item_mod(self, i);
     }
     fn visit_item_const(&mut self, i: &'ast syn::ItemConst) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_item_const(self, i);
     }
     fn visit_item_static(&mut self, i: &'ast syn::ItemStatic) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_item_static(self, i);
     }
     fn visit_item_trait(&mut self, i: &'ast syn::ItemTrait) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_item_trait(self, i);
     }
     fn visit_item_trait_alias(&mut self, i: &'ast syn::ItemTraitAlias) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_item_trait_alias(self, i);
     }
     fn visit_item_impl(&mut self, i: &'ast syn::ItemImpl) {
-        let ident = crate::ast_helpers::impl_base_ident(&i.self_ty);
-        self.check_attrs(&i.attrs, ident.as_deref());
+        if i.attrs.iter().any(attr_suppresses_dead_code) {
+            let ident = crate::ast_helpers::impl_base_ident(&i.self_ty);
+            self.check_attrs(&i.attrs, ident.as_deref());
+        }
         syn::visit::visit_item_impl(self, i);
     }
     fn visit_item_use(&mut self, i: &'ast syn::ItemUse) {
@@ -156,8 +165,10 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
         syn::visit::visit_item_use(self, i);
     }
     fn visit_item_macro(&mut self, i: &'ast syn::ItemMacro) {
-        let ident = i.ident.as_ref().map(ToString::to_string);
-        self.check_attrs(&i.attrs, ident.as_deref());
+        if i.attrs.iter().any(attr_suppresses_dead_code) {
+            let ident = i.ident.as_ref().map(ToString::to_string);
+            self.check_attrs(&i.attrs, ident.as_deref());
+        }
         syn::visit::visit_item_macro(self, i);
     }
     fn visit_item_foreign_mod(&mut self, i: &'ast syn::ItemForeignMod) {
@@ -166,55 +177,57 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
     }
     fn visit_field(&mut self, i: &'ast syn::Field) {
         if let Some(ident) = &i.ident {
-            self.check_attrs(&i.attrs, Some(&ident.to_string()));
+            self.check_ident_attrs(&i.attrs, ident);
         } else {
             self.check_attrs(&i.attrs, None);
         }
         syn::visit::visit_field(self, i);
     }
     fn visit_variant(&mut self, i: &'ast syn::Variant) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_variant(self, i);
     }
     fn visit_impl_item_fn(&mut self, i: &'ast syn::ImplItemFn) {
-        self.check_attrs(&i.attrs, Some(&i.sig.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.sig.ident);
         syn::visit::visit_impl_item_fn(self, i);
     }
     fn visit_impl_item_const(&mut self, i: &'ast syn::ImplItemConst) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_impl_item_const(self, i);
     }
     fn visit_impl_item_type(&mut self, i: &'ast syn::ImplItemType) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_impl_item_type(self, i);
     }
     fn visit_trait_item_fn(&mut self, i: &'ast syn::TraitItemFn) {
-        self.check_attrs(&i.attrs, Some(&i.sig.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.sig.ident);
         syn::visit::visit_trait_item_fn(self, i);
     }
     fn visit_trait_item_const(&mut self, i: &'ast syn::TraitItemConst) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_trait_item_const(self, i);
     }
     fn visit_trait_item_type(&mut self, i: &'ast syn::TraitItemType) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_trait_item_type(self, i);
     }
     fn visit_foreign_item_fn(&mut self, i: &'ast syn::ForeignItemFn) {
-        self.check_attrs(&i.attrs, Some(&i.sig.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.sig.ident);
         syn::visit::visit_foreign_item_fn(self, i);
     }
     fn visit_foreign_item_static(&mut self, i: &'ast syn::ForeignItemStatic) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_foreign_item_static(self, i);
     }
     fn visit_foreign_item_type(&mut self, i: &'ast syn::ForeignItemType) {
-        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        self.check_ident_attrs(&i.attrs, &i.ident);
         syn::visit::visit_foreign_item_type(self, i);
     }
     fn visit_local(&mut self, i: &'ast syn::Local) {
-        let ident = crate::ast_helpers::pat_ident_name(&i.pat);
-        self.check_attrs(&i.attrs, ident.as_deref());
+        if i.attrs.iter().any(attr_suppresses_dead_code) {
+            let ident = crate::ast_helpers::pat_ident_name(&i.pat);
+            self.check_attrs(&i.attrs, ident.as_deref());
+        }
         syn::visit::visit_local(self, i);
     }
 }
@@ -238,11 +251,14 @@ fn audit_member_sources(
     for path in crate::utils::collect_rs_files_filtered(&[ctx.member_dir], &["target"]) {
         let file_path = crate::whitelist::lossy_slash_path(&path);
         if let Some(ast) = cache.get_or_load_fs(&path).and_then(|e| e.ast.as_ref()) {
-            dep_visitor.visit_file(ast);
-            doctests::audit_rs_doctests(ast, &path, ctx.member_dir, visited_md, dep_visitor);
+            if !dep_visitor.all_deps_matched() {
+                dep_visitor.visit_file(ast);
+            }
+            if !dep_visitor.all_deps_matched() {
+                doctests::audit_rs_doctests(ast, &path, ctx.member_dir, visited_md, dep_visitor);
+            }
 
-            let mut dc_visitor =
-                DeadCodeVisitor::new(file_path.clone(), ctx.whitelist.dead_code.clone());
+            let mut dc_visitor = DeadCodeVisitor::new(&file_path, &ctx.whitelist.dead_code);
             dc_visitor.visit_file(ast);
             if dc_visitor.has_unauthorized {
                 success = false;
@@ -323,7 +339,7 @@ fn audit_single_member(
         success = false;
     }
 
-    if doctests::is_markdown_tests_crate(member, package_name) {
+    if !dep_visitor.all_deps_matched() && doctests::is_markdown_tests_crate(member, package_name) {
         doctests::audit_workspace_markdown_files(&member_dir, &mut visited_md, &mut dep_visitor);
     }
 

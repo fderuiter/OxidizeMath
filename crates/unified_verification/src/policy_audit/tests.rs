@@ -27,7 +27,7 @@ fn scan_clippy_snippet(source: &str) -> bool {
 
 fn scan_snippet(source: &str, allowed: Vec<DeadCodeEntry>) -> bool {
     let ast = syn::parse_file(source).expect("valid Rust snippet");
-    let mut visitor = DeadCodeVisitor::new("crates/sample/src/lib.rs".to_string(), allowed);
+    let mut visitor = DeadCodeVisitor::new("crates/sample/src/lib.rs", &allowed);
     visitor.visit_file(&ast);
     visitor.has_unauthorized
 }
@@ -462,7 +462,7 @@ fn test_policy_audit_rejects_missing_public_debug_in_mathematical_crate() {
 fn test_dead_code_and_clippy_diagnostics_emit_spans_idents_and_guidance() {
     let dc_src = "pub fn ok() {\n    #[allow(dead_code)]\n    let local_buf = 1;\n}\n#[allow(dead_code)]\nfn hidden_fn() {}\n";
     let dc_ast = syn::parse_file(dc_src).unwrap();
-    let mut dc = DeadCodeVisitor::new("crates/sample/src/lib.rs".to_string(), vec![]);
+    let mut dc = DeadCodeVisitor::new("crates/sample/src/lib.rs", &[]);
     dc.visit_file(&dc_ast);
     assert_eq!(dc.violations.len(), 2);
     assert!(dc.violations[0].contains("crates/sample/src/lib.rs:2 (identifier `local_buf`)"));
@@ -470,7 +470,7 @@ fn test_dead_code_and_clippy_diagnostics_emit_spans_idents_and_guidance() {
     assert!(dc.violations[1].contains("#[cfg(test)]"));
     assert!(dc.violations[1].contains("verification_whitelist.toml"));
 
-    let mut syn_dc = DeadCodeVisitor::new("crates/sample/src/lib.rs".to_string(), vec![]);
+    let mut syn_dc = DeadCodeVisitor::new("crates/sample/src/lib.rs", &[]);
     syn_dc.record_violation(0, Some("macro_fn"));
     assert!(syn_dc.violations[0].contains("at crates/sample/src/lib.rs (identifier `macro_fn`)"));
     assert!(!syn_dc.violations[0].contains(":0"));

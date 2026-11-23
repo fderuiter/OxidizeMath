@@ -3,6 +3,10 @@ use crate::gates::{
     CARGO_DOC_ARGS, HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin, workspace_wasm,
 };
 use crate::markdown_links::{collect_md_files, extract_md_links};
+use crate::smoke::CHECK_BENCHES_ARGS;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
 
 fn local_hooks_path(dir: &Path) -> Option<String> {
     let out = Command::new("git")
@@ -112,12 +116,14 @@ fn test_verification_gates() {
     let help = String::from_utf8_lossy(&output.stdout);
     for cmd in [
         "check-api-drift",
+        "check-benches",
         "check-duplicates",
         "check-profiles",
         "check-public-debug",
         "lint-workflows",
         "check-docs",
         "check-cargo-docs",
+        "smoke-examples",
         "traceability",
         "lint-all",
         "lint-staged",
@@ -195,6 +201,24 @@ fn test_wasm_clippy_args_and_ci_parity() {
             "ci.yml missing pre-flight command: {preflight_cmd}"
         );
     }
+}
+
+#[test]
+fn test_native_bench_and_smoke_ci_parity() {
+    assert_eq!(
+        CHECK_BENCHES_ARGS,
+        &["test", "--workspace", "--benches", "--all-features"]
+    );
+    let ci_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml");
+    let ci_yaml = fs::read_to_string(&ci_path)
+        .expect("failed to read ci.yml")
+        .replace("\r\n", "\n");
+    assert!(ci_yaml.contains(
+        "- name: Check Workspace Benchmarks (Native)\n        if: matrix.target != 'wasm32-unknown-unknown'\n        run: cargo run -p xtask -- check-benches"
+    ));
+    assert!(ci_yaml.contains(
+        "- name: Smoke Test Registered Examples (Native)\n        if: matrix.target != 'wasm32-unknown-unknown'\n        run: cargo run -p xtask -- smoke-examples"
+    ));
 }
 
 #[test]
