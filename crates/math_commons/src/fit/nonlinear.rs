@@ -11,9 +11,11 @@ use super::seeds::{
 use super::{CurveFit, FitModel};
 use crate::error::FitError;
 use crate::series::PointSeries;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 /// Fits a nonlinear [`FitModel`] to `points` on the stack, returning [`FitError`] on failure.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn fit_nonlinear<P: PointSeries + ?Sized>(
     points: &P,
     model: FitModel,
@@ -261,9 +263,10 @@ fn min_finite_x<P: PointSeries + ?Sized>(points: &P) -> f64 {
 fn fit_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitError> {
     let seed = seed_sinusoidal(points)?;
     let x0 = min_finite_x(points);
-    let mut phase_u = (seed[2] + seed[1] * x0).rem_euclid(std::f64::consts::TAU);
-    if phase_u > std::f64::consts::PI {
-        phase_u -= std::f64::consts::TAU;
+    let mut phase_u =
+        num_traits::Euclid::rem_euclid(&(seed[2] + seed[1] * x0), &core::f64::consts::TAU);
+    if phase_u > core::f64::consts::PI {
+        phase_u -= core::f64::consts::TAU;
     }
     let shifted_seed = [seed[0], seed[1], phase_u, seed[3]];
     let refined = levenberg_marquardt(points, &shifted_seed, |x, p| {
@@ -275,11 +278,11 @@ fn fit_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitEr
     let mut phase = refined[2] - refined[1] * x0;
     if amp < 0.0 {
         amp = -amp;
-        phase += std::f64::consts::PI;
+        phase += core::f64::consts::PI;
     }
-    phase = phase.rem_euclid(std::f64::consts::TAU);
-    if phase > std::f64::consts::PI {
-        phase -= std::f64::consts::TAU;
+    phase = num_traits::Euclid::rem_euclid(&phase, &core::f64::consts::TAU);
+    if phase > core::f64::consts::PI {
+        phase -= core::f64::consts::TAU;
     }
     let coeffs = [amp, refined[1], phase, refined[3], 0.0];
     let (r_squared, rmse, valid_n) =
@@ -355,7 +358,7 @@ fn compute_nonlinear_metrics<P: PointSeries + ?Sized>(
 /// Evaluates nonlinear [`FitModel`] `model` with `params` at horizontal coordinate `x`.
 #[inline]
 #[must_use]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn eval_nonlinear(model: FitModel, params: &[f64], x: f64) -> f64 {
     eval_nonlinear_raw(model, params, x)
 }
