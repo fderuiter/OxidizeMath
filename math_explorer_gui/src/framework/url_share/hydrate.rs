@@ -12,6 +12,24 @@ impl SimulationFramework {
         params: &crate::url_state::ShareUrlParams,
         ctx: Option<&egui::Context>,
     ) -> Result<(), String> {
+        self.import_url_share_params_with_bounds(params, ctx, false)
+    }
+
+    /// Atomically validates and hydrates `#ws=...` workspace `ShareUrlParams` (allowing up to 32,768 bytes per pane).
+    pub fn import_workspace_url_share_params(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        self.import_url_share_params_with_bounds(params, ctx, true)
+    }
+
+    fn import_url_share_params_with_bounds(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+        allow_workspace_bounds: bool,
+    ) -> Result<(), String> {
         if let Some(ref challenge_id) = params.challenge {
             if crate::starter_gallery::find_challenge_metadata(challenge_id).is_some() {
                 return self.import_url_inverse_challenge(
@@ -19,14 +37,29 @@ impl SimulationFramework {
                     challenge_id,
                     params.state_json.as_deref(),
                     ctx,
+                    allow_workspace_bounds,
                 );
             }
-            return self.hydrate_url_goal_challenge(challenge_id, params, ctx);
+            return self.hydrate_url_goal_challenge(
+                challenge_id,
+                params,
+                ctx,
+                allow_workspace_bounds,
+            );
         }
         if let Some(ref preset_id) = params.preset {
-            return self.hydrate_url_preset_or_story(preset_id, params, ctx);
+            return self.hydrate_url_preset_or_story(
+                preset_id,
+                params,
+                ctx,
+                allow_workspace_bounds,
+            );
         }
-        self.import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref())
+        self.import_url_preset_with_bounds(
+            params.tool.as_deref(),
+            params.state_json.as_deref(),
+            allow_workspace_bounds,
+        )
     }
 
     pub(super) fn verify_requested_url_tool(
@@ -51,13 +84,14 @@ impl SimulationFramework {
         target_idx: usize,
         base_preset_json: &str,
         override_state_json: Option<&str>,
+        allow_workspace_bounds: bool,
     ) -> Result<Box<dyn InteractiveTool>, String> {
         let meta = self.available_tools[target_idx];
         let mut candidate = (meta.build)();
-        crate::url_state::validate_url_preset_json(base_preset_json)?;
+        validate_json_with_bounds(base_preset_json, allow_workspace_bounds)?;
         candidate.import_preset_json(base_preset_json)?;
         if let Some(extra_json) = override_state_json {
-            crate::url_state::validate_url_preset_json(extra_json)?;
+            validate_json_with_bounds(extra_json, allow_workspace_bounds)?;
             candidate.import_preset_json(extra_json)?;
         }
         if !candidate.has_finite_parameters() {
@@ -75,6 +109,7 @@ impl SimulationFramework {
         challenge_id: &str,
         preset_json: Option<&str>,
         ctx: Option<&egui::Context>,
+        allow_workspace_bounds: bool,
     ) -> Result<(), String> {
         let Some(ch_meta) = crate::starter_gallery::find_challenge_metadata(challenge_id) else {
             return Err(format!("Unknown challenge '{challenge_id}' in shared URL"));
@@ -100,6 +135,7 @@ impl SimulationFramework {
                 json_str,
                 self.available_tools[target_idx],
                 ch_meta,
+                allow_workspace_bounds,
             )?,
             None => ch_meta.clamp_state_json(&ch_meta.generate_baseline_state())?,
         };
@@ -117,6 +153,7 @@ impl SimulationFramework {
         challenge_id: &str,
         params: &crate::url_state::ShareUrlParams,
         ctx: Option<&egui::Context>,
+        allow_workspace_bounds: bool,
     ) -> Result<(), String> {
         let challenge = crate::starter_gallery::find_goal_challenge_by_id(
             challenge_id,
@@ -131,14 +168,19 @@ impl SimulationFramework {
         let target_idx =
             self.verify_requested_url_tool(params.tool.as_deref(), challenge.tool_name)?;
         let base_json = (challenge.initial_preset_generator)();
-        let mut base_candidate =
-            self.validate_candidate_tool_preset(target_idx, base_json, None)?;
+        let mut base_candidate = self.validate_candidate_tool_preset(
+            target_idx,
+            base_json,
+            None,
+            allow_workspace_bounds,
+        )?;
         base_candidate.sync_callouts(challenge.callouts);
         let initial_state = base_candidate.save_url_state();
         let candidate = self.validate_candidate_tool_preset(
             target_idx,
             base_json,
             params.state_json.as_deref(),
+            allow_workspace_bounds,
         )?;
         let compiled = CompiledGoalPredicate::compile(challenge.predicate_expr);
         self.commit_validated_url_candidate(target_idx, candidate);
@@ -166,13 +208,14 @@ impl SimulationFramework {
         preset_id: &str,
         params: &crate::url_state::ShareUrlParams,
         ctx: Option<&egui::Context>,
+        allow_workspace_bounds: bool,
     ) -> Result<(), String> {
         if let Some(story) =
             crate::starter_gallery::find_story_by_id(preset_id, Some(self.domain.as_str()))
         {
-            return self.hydrate_url_story(story, params, ctx);
+            return self.hydrate_url_story(story, params, ctx, allow_workspace_bounds);
         }
-        self.hydrate_url_static_preset(preset_id, params)
+        self.hydrate_url_static_preset(preset_id, params, allow_workspace_bounds)
     }
 
     fn hydrate_url_story(
@@ -180,6 +223,7 @@ impl SimulationFramework {
         story: &'static crate::starter_gallery::PresetStoryMetadata,
         params: &crate::url_state::ShareUrlParams,
         ctx: Option<&egui::Context>,
+        allow_workspace_bounds: bool,
     ) -> Result<(), String> {
         let step_idx = params.step.unwrap_or(0);
         let step = story.steps.get(step_idx).ok_or_else(|| {
@@ -191,14 +235,19 @@ impl SimulationFramework {
         })?;
         let target_idx = self.verify_requested_url_tool(params.tool.as_deref(), story.tool_name)?;
         let step_json = (step.preset_generator)();
-        let mut step_candidate =
-            self.validate_candidate_tool_preset(target_idx, step_json, None)?;
+        let mut step_candidate = self.validate_candidate_tool_preset(
+            target_idx,
+            step_json,
+            None,
+            allow_workspace_bounds,
+        )?;
         step_candidate.sync_callouts(step.callouts);
         let step_state = step_candidate.save_url_state();
         let candidate = self.validate_candidate_tool_preset(
             target_idx,
             step_json,
             params.state_json.as_deref(),
+            allow_workspace_bounds,
         )?;
         self.commit_validated_url_candidate(target_idx, candidate);
         if let Some(tool) = &mut self.active_tool {
@@ -220,6 +269,7 @@ impl SimulationFramework {
         &mut self,
         preset_id: &str,
         params: &crate::url_state::ShareUrlParams,
+        allow_workspace_bounds: bool,
     ) -> Result<(), String> {
         let starter = crate::starter_gallery::find_starter_preset_by_id(
             preset_id,
@@ -245,6 +295,7 @@ impl SimulationFramework {
             target_idx,
             starter.generate_preset(),
             params.state_json.as_deref(),
+            allow_workspace_bounds,
         )?;
         self.commit_validated_url_candidate(target_idx, candidate);
         self.clear_challenge_hud();
@@ -253,12 +304,21 @@ impl SimulationFramework {
     }
 }
 
+fn validate_json_with_bounds(json_str: &str, allow_workspace_bounds: bool) -> Result<(), String> {
+    if allow_workspace_bounds {
+        crate::url_state::validate_workspace_url_preset_json(json_str)
+    } else {
+        crate::url_state::validate_url_preset_json(json_str)
+    }
+}
+
 fn extract_and_clamp_challenge_json(
     json_str: &str,
     tool_meta: &super::super::ToolMetadata,
     ch_meta: &crate::starter_gallery::ChallengeMetadata,
+    allow_workspace_bounds: bool,
 ) -> Result<String, String> {
-    crate::url_state::validate_url_preset_json(json_str)?;
+    validate_json_with_bounds(json_str, allow_workspace_bounds)?;
     let probe = (tool_meta.build)();
     let bounds = probe.state_bounds();
     let parsed: serde_json::Value =
@@ -277,6 +337,6 @@ fn extract_and_clamp_challenge_json(
         json_str.to_string()
     };
     let clamped = ch_meta.clamp_state_json(&raw_inner)?;
-    crate::url_state::validate_url_preset_json(&clamped)?;
+    validate_json_with_bounds(&clamped, allow_workspace_bounds)?;
     Ok(clamped)
 }
