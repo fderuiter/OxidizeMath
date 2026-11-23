@@ -12,7 +12,13 @@ const STEP_KEYS: &[&str] = &[
     "stepsize",
     "delta_t",
 ];
-const UI_ONLY_KEYS: &[&str] = &["camera", "snapshot_manager", "callout_manager"];
+const UI_ONLY_KEYS: &[&str] = &[
+    "camera",
+    "snapshot_manager",
+    "callout_manager",
+    "plot_states",
+    "fixed_callout_offsets",
+];
 
 fn is_non_finite_str(s: &str) -> bool {
     matches!(
