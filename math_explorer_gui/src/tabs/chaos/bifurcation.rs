@@ -252,6 +252,11 @@ impl BifurcationDiagram {
         })
         .ok()
     }
+
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
 }
 
 impl TheoryDescribable for BifurcationDiagram {
@@ -287,13 +292,6 @@ impl TheoryDescribable for BifurcationDiagram {
 
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
         self.build_theory_parameters()
-    }
-}
-
-impl BifurcationDiagram {
-    #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 }
 

@@ -252,6 +252,48 @@ pub(super) fn drain_worker_commands<R: SimulationRunner + ?Sized>(
     true
 }
 
+fn step_twin_sliced_frame_loop<R: SimulationRunner + ?Sized>(
+    runner: &mut R,
+    ring: &mut Option<CheckpointRing>,
+    steps_per_frame: usize,
+    budget: Duration,
+    state: &mut SimWorkerState,
+    state_tx: &SimStateSender,
+) -> bool {
+    let slice_start = crate::web_io::PlatformInstant::now();
+    let mut twin_budget = super::TwinSliceBudget::from_total(budget);
+    if let Some(r) = ring.as_mut() {
+        r.prepare_forward_advance();
+    }
+    for _ in 0..steps_per_frame {
+        if !twin_budget.can_advance_pair(slice_start.elapsed()) {
+            break;
+        }
+        if let Some(r) = ring.as_mut() {
+            r.record_active_params(runner);
+        }
+        let t_a = crate::web_io::PlatformInstant::now();
+        runner.step_branch_a();
+        let dur_a = t_a.elapsed();
+        let t_b = crate::web_io::PlatformInstant::now();
+        runner.step_branch_b();
+        twin_budget.record_pair(dur_a, t_b.elapsed());
+        if !runner.is_finite_state() {
+            *state = SimWorkerState::Faulted;
+            sync_worker_timeline(ring, state_tx);
+            emit_worker_divergence(runner, state_tx);
+            return false;
+        }
+        if let Some(r) = ring.as_mut() {
+            r.on_substep_advanced(runner);
+        }
+        if runner.is_complete() {
+            break;
+        }
+    }
+    true
+}
+
 fn step_running_frame_loop<R: SimulationRunner + ?Sized>(
     runner: &mut R,
     ring: &mut Option<CheckpointRing>,
@@ -260,6 +302,9 @@ fn step_running_frame_loop<R: SimulationRunner + ?Sized>(
     state: &mut SimWorkerState,
     state_tx: &SimStateSender,
 ) -> bool {
+    if let Some(budget) = max_slice.filter(|_| runner.has_counterfactual_twin()) {
+        return step_twin_sliced_frame_loop(runner, ring, steps_per_frame, budget, state, state_tx);
+    }
     let slice_start = max_slice.map(|_| crate::web_io::PlatformInstant::now());
     if let Some(r) = ring.as_mut() {
         r.prepare_forward_advance();
