@@ -1,4 +1,4 @@
-# ADR 0041: Zero-Allocation Variable-Dose Pharmacokinetic Regimen Superposition and Interactive Planner
+# ADR 0042: Zero-Allocation Variable-Dose Pharmacokinetic Regimen Superposition and Interactive Planner
 
 ## Status
 Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0023](0023-separate-metadata-ids-from-display-labels.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
