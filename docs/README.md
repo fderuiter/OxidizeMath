@@ -41,8 +41,9 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0044: Ratchet `missing_docs` Exemptions and Document Core API Entrypoints](adr/0044-ratchet-missing-docs-and-core-api-documentation.md)
 - [ADR 0044: Unify Build-Time and Runtime Traceability Scanning via `TraceabilityEngine`](adr/0044-unify-build-time-traceability-engine.md)
 - [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](adr/0045-spatial-brush-kit-and-field-sculpting.md)
-- [ADR 0045: Zero-Allocation Short-Weierstrass Elliptic Curve Arithmetic and Auto-Discovered `EllipticCurvesTab`](adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md)
-- [ADR 0046: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0046-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
+- [ADR 0045: Short-Weierstrass Elliptic Curves and Modular GUI Tab](adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md)
+- [ADR 0046: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0046-symplectic-hamiltonian-solvers-and-poincare-lab.md)
+- [ADR 0047: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0047-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 
 ## Contributing
 
