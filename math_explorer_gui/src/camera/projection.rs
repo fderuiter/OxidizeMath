@@ -99,4 +99,72 @@ impl Camera3D {
     pub fn project_point_with_depth(&self, point: &nalgebra::Point3<f64>) -> ([f64; 2], f64) {
         self.project_with_depth(&[point.x, point.y, point.z])
     }
+
+    /// Rotates a viewer-aligned `[right, up, viewer_z]` vector back into 3D world `[x, y, z]` coordinates.
+    #[must_use]
+    pub fn rotate_from_camera_space(&self, cam: &[f64; 3]) -> [f64; 3] {
+        let (sy, cy) = (self.yaw as f64).sin_cos();
+        let (sp, cp) = (self.pitch as f64).sin_cos();
+
+        let x1 = cam[0];
+        let y1 = cam[1] * cp + cam[2] * sp;
+        let z1 = -cam[1] * sp + cam[2] * cp;
+
+        let x0 = x1 * cy + y1 * sy;
+        let y0 = -x1 * sy + y1 * cy;
+        [x0, y0, z1]
+    }
+
+    /// Unprojects 2D plot coordinates `[plot_x, plot_y]` onto the visible front hemisphere of the
+    /// unit sphere $S^2$ (clamping outside points smoothly to the silhouette rim) under both
+    /// [`ProjectionMode::Parallel`] and [`ProjectionMode::Perspective`].
+    #[must_use]
+    pub fn unproject_to_unit_sphere(&self, plot_xy: [f64; 2]) -> [f64; 3] {
+        if !plot_xy[0].is_finite() || !plot_xy[1].is_finite() {
+            return self.rotate_from_camera_space(&[0.0, 0.0, 1.0]);
+        }
+        let zoom = f64::from(self.zoom).max(1.0e-6);
+        let dx = plot_xy[0] - f64::from(self.pan_x);
+        let dy = plot_xy[1] - f64::from(self.pan_y);
+
+        let cam_pt = match self.projection {
+            ProjectionMode::Parallel => {
+                let ux = dx / zoom;
+                let uy = dy / zoom;
+                let r2 = ux * ux + uy * uy;
+                if r2 <= 1.0 {
+                    [ux, uy, (1.0 - r2).max(0.0).sqrt()]
+                } else {
+                    let inv_r = 1.0 / r2.sqrt();
+                    [ux * inv_r, uy * inv_r, 0.0]
+                }
+            }
+            ProjectionMode::Perspective => {
+                let dist = self.perspective_distance().max(1.05);
+                let focal = (dist * zoom).max(1.0e-6);
+                let s = dx / focal;
+                let t = dy / focal;
+                let q = s * s + t * t;
+                let disc = 1.0 - q * (dist * dist - 1.0);
+                if disc >= 0.0 {
+                    let vz = (q * dist + disc.sqrt()) / (1.0 + q);
+                    let tz = dist - vz;
+                    [s * tz, t * tz, vz]
+                } else {
+                    let vz = (1.0 / dist).clamp(0.0, 1.0);
+                    let perp = (1.0 - vz * vz).max(0.0).sqrt();
+                    let inv_q = 1.0 / q.sqrt().max(1.0e-12);
+                    [s * inv_q * perp, t * inv_q * perp, vz]
+                }
+            }
+        };
+
+        let world = self.rotate_from_camera_space(&cam_pt);
+        let norm = (world[0] * world[0] + world[1] * world[1] + world[2] * world[2]).sqrt();
+        if norm > 1.0e-12 {
+            [world[0] / norm, world[1] / norm, world[2] / norm]
+        } else {
+            [0.0, 0.0, 1.0]
+        }
+    }
 }

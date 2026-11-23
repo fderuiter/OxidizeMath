@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::lattice_boltzmann_sculpt::{
-    apply_lbm_custom_action, apply_stroke_to_lbm, draw_lbm_brush_panel, export_solver_rle,
-    inspect_solver_solid_and_core, record_stroke_in_rle, reset_solver_preserving_obstacles,
-    seed_initial_lbm_geometry, sync_lbm_parameters,
+    apply_lbm_custom_action, apply_lbm_sculpt_payload, apply_stroke_to_lbm, draw_lbm_brush_panel,
+    export_solver_rle, inspect_solver_solid_and_core, record_stroke_in_rle,
+    reset_solver_preserving_obstacles, seed_initial_lbm_geometry, sync_lbm_parameters,
 };
 use super::lbm_fairing::{
     decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0,
@@ -13,7 +13,7 @@ use super::lbm_fairing_ui::LbmUiExtension;
 use crate::async_sim::unified::{UnifiedModel, UnifiedUiExtension};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::framework::{decode_rle_mask, BrushMode, BrushStroke, SpatialBrushKit};
+use crate::framework::{BrushMode, BrushStroke, SpatialBrushKit};
 use eframe::egui::Color32;
 use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -390,22 +390,13 @@ impl UnifiedModel for LbmUnified {
         payload: &SculptStatePayload,
         params: &HashMap<String, f64>,
     ) {
-        if payload.rle_mask.is_empty() {
-            return;
-        }
-        let w = self.solver.width();
-        let h = self.solver.height();
-        if let Ok(bytes) = decode_rle_mask(&payload.rle_mask, w * h) {
-            for y in 0..h {
-                for x in 0..w {
-                    self.solver
-                        .set_obstacle(x, y, bytes[flatten_2d_index(x, y, w)] != 0);
-                }
-            }
-            let profile = *params.get("naca_profile").unwrap_or(&0.0);
-            let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
-            self.active_profile_param = profile;
-            self.stamped_airfoil = (profile >= 1.0).then_some((profile.round() as u16, aoa));
+        if apply_lbm_sculpt_payload(
+            &mut self.solver,
+            &mut self.active_profile_param,
+            &mut self.stamped_airfoil,
+            payload,
+            params,
+        ) {
             self.refresh_diagnostics();
         }
     }
