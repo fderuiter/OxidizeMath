@@ -63,7 +63,7 @@ fn test_all_registered_tools_have_starter_presets() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 79, "Expected 79 registered starter presets");
+    assert_eq!(presets.len(), 81, "Expected 81 registered starter presets");
 
     for tool in &tools {
         let matching: Vec<_> = presets
@@ -223,8 +223,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        79,
-        "Expected 79 StarterPresetMetadata entries"
+        81,
+        "Expected 81 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -246,7 +246,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(tools.len(), 62, "Expected 62 InteractiveTool registrations");
+    assert_eq!(tools.len(), 63, "Expected 63 InteractiveTool registrations");
 
     for tool_meta in tools {
         let default_tool = (tool_meta.build)();
