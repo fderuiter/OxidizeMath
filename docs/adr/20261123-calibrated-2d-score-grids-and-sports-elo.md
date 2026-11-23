@@ -1,7 +1,7 @@
-# ADR 0047: Calibrated 2D Score Grids and Venue-Adjusted Sports Elo Engine
+# ADR 20261123: Calibrated 2D Score Grids and Venue-Adjusted Sports Elo Engine
 
 ## Status
-Accepted (extends [ADR 0037](0037-glicko2-frozen-period-tournament-simulator.md) and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
+Accepted (extends [ADR 0037](0037-glicko2-frozen-period-tournament-simulator.md) and [ADR 20261123](20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
 
 ## Context
 [`crates/pure_math/src/pure_math/statistics`](../../crates/pure_math/src/pure_math/statistics/mod.rs) previously exported Bayesian [`glicko2`](../../crates/pure_math/src/pure_math/statistics/glicko2/mod.rs), [`kelly`](../../crates/pure_math/src/pure_math/statistics/kelly/mod.rs), and univariate [`zip_regression`](../../crates/pure_math/src/pure_math/statistics/zip_regression/mod.rs), leaving two gaps for quantitative sports rating and match-pricing workflows across native desktop and `wasm32-unknown-unknown`:

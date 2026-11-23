@@ -7,7 +7,7 @@
 use pure_math::pure_math::analysis::pde::wave_2d::particles_and_contours::DEFAULT_SAND_PARTICLES;
 use pure_math::pure_math::analysis::pde::wave_2d::{
     BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D, SpectralAnalyzer2D,
-    Wave2DMedium, Wave2DParams, Wave2DSolver, apply_point_clamp,
+    SpectralMode2D, Wave2DMedium, Wave2DParams, Wave2DSolver, apply_point_clamp,
 };
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
@@ -62,9 +62,11 @@ fn test_100_wave_sand_and_fft_steps_zero_allocations() {
     let mut detector_line = vec![0.0; grid_n];
     let mut radial_bins = vec![0.0; grid_n / 2];
     let mut radial_counts = vec![0_usize; grid_n / 2];
+    let mut top_modes = [SpectralMode2D::default(); 6];
 
-    let (peak_mag, _metrics) = VerifiedEngine::run_verified(|| {
+    let ((peak_mag, extracted_count), _metrics) = VerifiedEngine::run_verified(|| {
         let mut latest_mag = 0.0_f64;
+        let mut latest_count = 0_usize;
         for _ in 0..100 {
             solver.step_driven(&params, &driver, 2.0e-4, Some(grid_n / 2));
             sand.step(
@@ -78,6 +80,7 @@ fn test_100_wave_sand_and_fft_steps_zero_allocations() {
             );
             let _ = fft.compute_spectrum(solver.displacement());
             latest_mag = fft.dominant_peak().magnitude;
+            latest_count = fft.extract_top_modes(&mut top_modes);
             fft.compute_radial_profile(&mut radial_bins, &mut radial_counts);
             let _ = contours.extract_zero_contours(
                 solver.modal_field(),
@@ -88,9 +91,15 @@ fn test_100_wave_sand_and_fft_steps_zero_allocations() {
             );
             solver.read_detector_profile(grid_n / 2, &mut detector_line);
         }
-        latest_mag
+        (latest_mag, latest_count)
     });
 
     assert!(peak_mag.is_finite() && peak_mag > 0.0);
+    assert!(extracted_count >= 1);
+    assert!(
+        top_modes[..extracted_count]
+            .iter()
+            .all(|m| m.magnitude.is_finite() && m.phase.is_finite())
+    );
     assert!(solver.displacement().iter().all(|v| v.is_finite()));
 }
