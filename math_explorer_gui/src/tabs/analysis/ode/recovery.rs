@@ -10,7 +10,15 @@ use eframe::egui;
 /// Checks whether an [`OdeSolverTool`] is in a completely finite numerical state.
 pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
     let params_finite = match tool.preset {
-        OdePreset::Exponential | OdePreset::Custom => tool.param_k.is_finite(),
+        OdePreset::Exponential => tool.param_k.is_finite(),
+        OdePreset::Custom if tool.custom_coupled => {
+            tool.ic_v0.is_finite()
+                && tool.coupled_bank.param_slice().iter().all(|v| v.is_finite())
+        }
+        OdePreset::Custom => {
+            tool.param_k.is_finite()
+                && tool.math_input.param_slice().iter().all(|v| v.is_finite())
+        }
         OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
         OdePreset::LogisticGrowth => tool.param_r.is_finite() && tool.param_cap_k.is_finite(),
     };
@@ -88,37 +96,37 @@ pub fn clamp_ode_parameters(
 
     match preset {
         OdePreset::Exponential => {
-            if !param_k.is_finite() {
-                *param_k = 1.0;
+            *param_k = if param_k.is_finite() {
+                param_k.clamp(-5.0, 5.0)
             } else {
-                *param_k = param_k.clamp(-5.0, 5.0);
-            }
+                1.0
+            };
         }
         OdePreset::HarmonicOscillator => {
-            if !param_k.is_finite() {
-                *param_k = 1.0;
+            *param_k = if param_k.is_finite() {
+                param_k.clamp(0.01, 10.0)
             } else {
-                *param_k = param_k.clamp(0.01, 10.0);
-            }
+                1.0
+            };
         }
         OdePreset::LogisticGrowth => {
-            if !param_r.is_finite() {
-                *param_r = 1.0;
+            *param_r = if param_r.is_finite() {
+                param_r.clamp(0.01, 5.0)
             } else {
-                *param_r = param_r.clamp(0.01, 5.0);
-            }
-            if !param_cap_k.is_finite() {
-                *param_cap_k = 10.0;
+                1.0
+            };
+            *param_cap_k = if param_cap_k.is_finite() {
+                param_cap_k.clamp(0.1, 100.0)
             } else {
-                *param_cap_k = param_cap_k.clamp(0.1, 100.0);
-            }
+                10.0
+            };
         }
         OdePreset::Custom => {
-            if !param_k.is_finite() {
-                *param_k = 1.0;
+            *param_k = if param_k.is_finite() {
+                param_k.clamp(-10.0, 10.0)
             } else {
-                *param_k = param_k.clamp(-10.0, 10.0);
-            }
+                1.0
+            };
         }
     }
 }
