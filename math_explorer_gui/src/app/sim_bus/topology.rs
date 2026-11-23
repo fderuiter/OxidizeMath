@@ -11,9 +11,11 @@ pub const MAX_SHARED_GRAPH_NODES: usize = 256;
 pub const MAX_SHARED_GRAPH_EDGES: usize = 2_048;
 
 /// Maximum neuron count ingested by `NeuralNetworkVizTool` from [`SharedGraphTopology`].
+#[cfg(any(feature = "biology", test))]
 pub const MAX_NEURAL_SHARED_NODES: usize = 32;
 
 /// Maximum 3D chaotic landmark count published in [`SharedPointCloud3D`].
+#[cfg(any(feature = "physics", test))]
 pub const MAX_SHARED_LANDMARKS: usize = 128;
 
 /// Per-tool topology ingestion mode persisted as a compact tag in tool JSON and URL state.
@@ -286,7 +288,7 @@ impl SharedGraphTopology {
 pub struct SharedPointCloud3D {
     /// Monotonically increasing bus revision assigned when published.
     pub revision: u64,
-    /// 3D landmark coordinates `[x, y, z]` (capped at [`MAX_SHARED_LANDMARKS`]).
+    /// 3D landmark coordinates `[x, y, z]` (capped at `128` landmarks).
     pub points: Vec<[f64; 3]>,
     /// Lorenz / flow parameter $\sigma$.
     pub sigma: f64,

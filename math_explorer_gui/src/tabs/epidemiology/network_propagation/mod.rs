@@ -2,19 +2,20 @@
 
 mod analytics;
 mod canvas;
+pub mod challenge;
 mod controls;
 mod presets;
 #[cfg(test)]
 mod tests;
 mod topology_sync;
 
+#[cfg(test)]
 pub(crate) use analytics::compute_network_analytics;
 
 use crate::app::{TopologySource, MAX_SHARED_GRAPH_NODES};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
-use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 /// Default deterministic seed matching [`oxidize_core::rng::OxidizeRng::default`].
@@ -82,6 +83,8 @@ pub struct NetworkPropagationTool {
     pub topology_source: TopologySource,
     pub(super) synced_bus_revision: Option<u64>,
     pub(super) rng: oxidize_core::rng::OxidizeRng,
+    pub(super) baseline_model: NetworkEpidemicModel,
+    pub(super) baseline_rng: oxidize_core::rng::OxidizeRng,
     pub(super) seed: u64,
     pub(super) budget: usize,
     pub(super) vaccinated_nodes: Vec<usize>,
@@ -89,8 +92,10 @@ pub struct NetworkPropagationTool {
     pub(super) interaction_mode: ContainmentMode,
     pub(super) focused_node: usize,
     pub(super) focused_edge: usize,
+    #[cfg(test)]
     pub(super) canvas_id: Option<egui::Id>,
     pub(super) is_running: bool,
+    pub(super) active_challenge: Option<&'static str>,
     pub(super) revision: u64,
     #[cfg(test)]
     pub(super) sim_steps: u64,
@@ -100,12 +105,16 @@ impl Default for NetworkPropagationTool {
     fn default() -> Self {
         let mut rng = oxidize_core::rng::OxidizeRng::new(DEFAULT_NETWORK_SEED);
         let model = NetworkEpidemicModel::new_with_rng(50, 0.05, 0.02, &mut rng);
+        let mut baseline_rng = oxidize_core::rng::OxidizeRng::new(DEFAULT_NETWORK_SEED);
+        let baseline_model = NetworkEpidemicModel::new_with_rng(50, 0.05, 0.02, &mut baseline_rng);
         Self {
             model,
             local_num_nodes: 50,
             topology_source: TopologySource::SharedBus,
             synced_bus_revision: None,
             rng,
+            baseline_model,
+            baseline_rng,
             seed: DEFAULT_NETWORK_SEED,
             budget: DEFAULT_CONTAINMENT_BUDGET,
             vaccinated_nodes: Vec::new(),
@@ -113,8 +122,10 @@ impl Default for NetworkPropagationTool {
             interaction_mode: ContainmentMode::VaccinateNode,
             focused_node: 0,
             focused_edge: 0,
+            #[cfg(test)]
             canvas_id: None,
             is_running: false,
+            active_challenge: None,
             revision: 1,
             #[cfg(test)]
             sim_steps: 0,
@@ -151,6 +162,7 @@ impl NetworkPropagationTool {
     }
 
     pub(super) fn rebuild_seeded_graph(&mut self) {
+        self.synced_bus_revision = None;
         self.rng = oxidize_core::rng::OxidizeRng::new(self.seed);
         self.model
             .initialize_geometric_graph_with_rng(&mut self.rng);
@@ -163,6 +175,7 @@ impl NetworkPropagationTool {
                 .is_some_and(|&[u, v]| self.model.set_edge_quarantined(u, v, true).is_ok())
         });
         self.is_running = false;
+        self.rebuild_baseline_twin();
         self.clamp_focus_indices();
         #[cfg(test)]
         {
@@ -203,6 +216,9 @@ impl NetworkPropagationTool {
     }
 
     pub(crate) fn toggle_node_vaccination(&mut self, node: usize) -> Result<bool, String> {
+        if !self.allows_vaccination() {
+            return Err("Node vaccination is locked during edge quarantine challenge".into());
+        }
         if node >= self.model.num_nodes() {
             return Err(format!("Node {node} is out of range"));
         }
@@ -235,6 +251,9 @@ impl NetworkPropagationTool {
     }
 
     pub(crate) fn toggle_edge_quarantine(&mut self, edge_idx: usize) -> Result<bool, String> {
+        if !self.allows_quarantine() {
+            return Err("Edge quarantine is locked during hub vaccination challenge".into());
+        }
         let &[u, v] = self
             .model
             .edges()
@@ -266,9 +285,9 @@ impl NetworkPropagationTool {
     pub(crate) fn step_once(&mut self) {
         if self.is_running {
             self.is_running = false;
-            self.bump_revision();
         }
-        self.model.step_with_rng(&mut self.rng);
+        self.step_models_lockstep();
+        self.bump_revision();
         #[cfg(test)]
         {
             self.sim_steps = self.sim_steps.saturating_add(1);
@@ -279,77 +298,11 @@ impl NetworkPropagationTool {
     pub(crate) fn sim_steps(&self) -> u64 {
         self.sim_steps
     }
-}
 
-fn validate_unique_indices(items: &[usize], label: &str) -> Result<Vec<usize>, String> {
-    let mut seen = HashSet::with_capacity(items.len());
-    for &idx in items {
-        if !seen.insert(idx) {
-            return Err(format!("Duplicate index {idx} in {label}"));
-        }
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.canvas_id
     }
-    let mut sorted = items.to_vec();
-    sorted.sort_unstable();
-    Ok(sorted)
-}
-
-fn build_validated_candidate(
-    s: &NetPropState,
-) -> Result<
-    (
-        NetworkEpidemicModel,
-        oxidize_core::rng::OxidizeRng,
-        Vec<usize>,
-        Vec<usize>,
-    ),
-    String,
-> {
-    if !(10..=200).contains(&s.num_nodes)
-        || !s.beta.is_finite()
-        || !(0.0..=1.0).contains(&s.beta)
-        || !s.gamma.is_finite()
-        || !(0.0..=1.0).contains(&s.gamma)
-        || s.budget > MAX_CONTAINMENT_BUDGET
-    {
-        return Err("Network propagation parameters out of bounds".into());
-    }
-    if s.vaccinated_nodes
-        .len()
-        .saturating_add(s.quarantined_edges.len())
-        > s.budget
-    {
-        return Err("Containment interventions exceed configured budget".into());
-    }
-    let vax_sorted = validate_unique_indices(&s.vaccinated_nodes, "vaccinated_nodes")?;
-    let edge_sorted = validate_unique_indices(&s.quarantined_edges, "quarantined_edges")?;
-
-    let mut candidate_rng = oxidize_core::rng::OxidizeRng::new(s.seed);
-    let mut candidate =
-        NetworkEpidemicModel::new_with_rng(s.num_nodes, s.beta, s.gamma, &mut candidate_rng);
-
-    for &node in &vax_sorted {
-        if node >= candidate.num_nodes() {
-            return Err(format!("Vaccinated node index {node} out of bounds"));
-        }
-        if candidate.patient_zero() == Some(node)
-            || candidate.states()[node] != NodeState::Susceptible
-        {
-            return Err(format!("Cannot vaccinate patient zero (Node {node})"));
-        }
-        candidate
-            .set_node_vaccinated(node, true)
-            .map_err(|e| e.to_string())?;
-    }
-    for &edge_idx in &edge_sorted {
-        let &[u, v] = candidate
-            .edges()
-            .get(edge_idx)
-            .ok_or_else(|| format!("Quarantined edge index {edge_idx} out of bounds"))?;
-        candidate
-            .set_edge_quarantined(u, v, true)
-            .map_err(|e| e.to_string())?;
-    }
-    Ok((candidate, candidate_rng, vax_sorted, edge_sorted))
 }
 
 impl InteractiveTool for NetworkPropagationTool {
@@ -364,9 +317,6 @@ impl InteractiveTool for NetworkPropagationTool {
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::none()
-    }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
     }
     fn observables(&self) -> Vec<(&'static str, f64)> {
         self.topology_observables()
@@ -389,6 +339,7 @@ impl InteractiveTool for NetworkPropagationTool {
         self.vaccinated_nodes.hash(&mut h);
         self.quarantined_edges.hash(&mut h);
         self.is_running.hash(&mut h);
+        self.active_challenge.hash(&mut h);
         h.finish().max(1)
     }
     fn save_state(&self) -> Option<String> {
@@ -427,7 +378,8 @@ impl InteractiveTool for NetworkPropagationTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: NetPropState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid network propagation state: {e}"))?;
-        let (candidate, candidate_rng, vax_sorted, edge_sorted) = build_validated_candidate(&s)?;
+        let (candidate, candidate_rng, vax_sorted, edge_sorted) =
+            presets::build_validated_candidate(&s)?;
         self.model = candidate;
         self.local_num_nodes = s.num_nodes;
         self.topology_source = s.topology_source;
@@ -438,6 +390,8 @@ impl InteractiveTool for NetworkPropagationTool {
         self.vaccinated_nodes = vax_sorted;
         self.quarantined_edges = edge_sorted;
         self.is_running = s.is_running;
+        self.rebuild_baseline_twin();
+        self.enforce_challenge_locks();
         self.clamp_focus_indices();
         #[cfg(test)]
         {
@@ -447,12 +401,28 @@ impl InteractiveTool for NetworkPropagationTool {
         Ok(())
     }
 
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_epi_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<crate::framework::ChallengeEvaluation> {
+        self.eval_epi_challenge()
+    }
+
+    fn step_simulation(&mut self) {
+        self.step_once();
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.sync_shared_topology(&ctx);
         egui::CentralPanel::default().show_inside(ui, |ui| {
             if self.is_running {
-                self.model.step_with_rng(&mut self.rng);
+                self.step_models_lockstep();
                 #[cfg(test)]
                 {
                     self.sim_steps = self.sim_steps.saturating_add(1);
@@ -482,7 +452,7 @@ inventory::submit! {
         id: "NetworkPropagationTool",
         display_name: "Network Propagation",
         domain: "epidemiology",
-        tags: &["containment", "r0", "vaccination", "quarantine"],
+        tags: &["containment", "r0", "vaccination", "quarantine", "contact network", "sir"],
         build: || Box::new(NetworkPropagationTool::default()),
     }
 }

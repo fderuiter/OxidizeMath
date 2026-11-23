@@ -271,12 +271,31 @@ impl VirtualFileSystem for RootedVfs {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+const HOST_ONLY_WORKSPACE_CRATES: &[&str] = &[
+    "markdown_tests",
+    "unified_verification",
+    "verified_engine",
+    "verified_engine_macros",
+];
+
+#[cfg(not(target_arch = "wasm32"))]
 pub(super) async fn execute_workspace_scan<V: VirtualFileSystem>(
     vfs: V,
     base_dir: String,
 ) -> Result<oxidize_core::traceability::TraceabilityReport, String> {
-    oxidize_core::traceability::TraceabilityEngine::new(vfs)
-        .scan_workspace(&base_dir, false)
+    let engine = oxidize_core::traceability::TraceabilityEngine::new(vfs);
+    let (discovered_dirs, papers_dir) = engine.discover_workspace_dirs(&base_dir).await;
+    let filtered_dirs: Vec<&str> = discovered_dirs
+        .iter()
+        .map(String::as_str)
+        .filter(|dir| {
+            !HOST_ONLY_WORKSPACE_CRATES
+                .iter()
+                .any(|host_crate| dir.ends_with(&format!("crates/{host_crate}/src")))
+        })
+        .collect();
+    engine
+        .scan_repository(&filtered_dirs, &papers_dir, false)
         .await
         .map_err(|e| e.to_string())
 }

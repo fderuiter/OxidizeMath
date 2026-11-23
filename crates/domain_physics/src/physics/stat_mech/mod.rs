@@ -15,6 +15,7 @@ pub mod graph_ising;
 pub mod ising;
 #[allow(missing_docs)]
 pub mod quantum_stats;
+pub mod sandpile;
 
 pub use graph_ising::GraphSpinSystem;
 

@@ -186,7 +186,7 @@ impl ReplicatorDynamicsTool {
         self.shared_mean_degree = None;
 
         let rows = config.payoff_matrix.len();
-        let mut sliders = ParameterSliderBank::new().with_range(-5.0..=10.0, 2.0);
+        let mut sliders = self.symbolic_sliders.clone();
         let (sym_mode, bars, exprs, compiled) = if let Some(ref sym_rows) = config.symbolic_payoffs
         {
             let (bars, exprs) = build_dynamic_symbolic_grid(sym_rows)?;

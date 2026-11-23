@@ -283,7 +283,7 @@ inventory::submit! {
 }
 ```
 
-Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing domain tab's `math_explorer_gui/src/tabs/<domain>/mod.rs` so the module compiles and registers with `inventory`. Do **not** manually edit `math_explorer_gui/src/tabs/mod.rs` — top-level `ExplorerTab` modules are discovered automatically at build time by `math_explorer_gui/build.rs`.
+Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing domain tab's `math_explorer_gui/src/tabs/<domain>/mod.rs` so the module compiles and registers with `inventory` (only new top-level `ExplorerTab` domains declare `pub mod <domain>;` in `math_explorer_gui/src/tabs/mod.rs` and submit a `TabDescriptor` via `inventory::submit!`).
 
 ## Event Handling Hooks
 
@@ -384,7 +384,7 @@ Multi-pane tools that operate on graphs or 3D landmark point clouds can subscrib
 ## Related References
 
 - Interactive tool trait definition: [`math_explorer_gui/src/framework/mod.rs`](../../math_explorer_gui/src/framework/mod.rs)
-- Shared simulation topology & point-cloud bus: [`math_explorer_gui/src/app/sim_bus.rs`](../../math_explorer_gui/src/app/sim_bus.rs) and [ADR 0047: SharedSimulationBus and Zero-Allocation CSR Kernels](../adr/0047-shared-simulation-topology-bus.md)
+- Shared simulation topology & point-cloud bus: [`math_explorer_gui/src/app/sim_bus.rs`](../../math_explorer_gui/src/app/sim_bus.rs) and [ADR 20261123: SharedSimulationBus and Zero-Allocation CSR Kernels](../adr/20261123-shared-simulation-topology-bus.md)
 - Spatial brush kit & field sculpting: [`math_explorer_gui/src/framework/spatial_brush.rs`](../../math_explorer_gui/src/framework/spatial_brush.rs) and [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](../adr/0045-spatial-brush-kit-and-field-sculpting.md)
 - Dual-backend sonification architecture: [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)
 - Example tool implementation (CERA): [`math_explorer_gui/src/tabs/climate/cera.rs`](../../math_explorer_gui/src/tabs/climate/cera.rs)

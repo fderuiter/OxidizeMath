@@ -10,6 +10,7 @@ use crate::async_sim::SimCommand;
 use crate::framework::{
     InputMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
 };
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
 
@@ -67,8 +68,10 @@ impl IsingModelTool {
     fn draw_ferromagnetic_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if ui
             .add(
-                egui::Slider::new(&mut self.temperature, 0.1..=10.0)
-                    .text("Temperature (T) - K (relative)"),
+                AnimatedSlider::new(&mut self.temperature, 0.1..=10.0)
+                    .hard_bounds(0.1..=10.0)
+                    .text("Temperature (T) - K (relative)")
+                    .id_salt("ising_temperature"),
             )
             .changed()
         {
@@ -78,8 +81,10 @@ impl IsingModelTool {
 
         if ui
             .add(
-                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0)
-                    .text("Coupling Constant (J) - J"),
+                AnimatedSlider::new(&mut self.j_coupling, -2.0..=2.0)
+                    .hard_bounds(-2.0..=2.0)
+                    .text("Coupling Constant (J) - J")
+                    .id_salt("ising_j_coupling"),
             )
             .changed()
         {
@@ -89,7 +94,12 @@ impl IsingModelTool {
         ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
 
         if ui
-            .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
+            .add(
+                AnimatedSlider::new(&mut self.h_field, -2.0..=2.0)
+                    .hard_bounds(-2.0..=2.0)
+                    .text("External Field (H) - H")
+                    .id_salt("ising_h_field"),
+            )
             .changed()
         {
             self.sync_shared_params();
@@ -212,6 +222,7 @@ impl IsingModelTool {
                 PlaybackAction::Step => {
                     let _ = self.worker.send_command(SimCommand::Step(1));
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.reset();
                     ctx.request_repaint();

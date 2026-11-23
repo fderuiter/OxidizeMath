@@ -34,10 +34,10 @@ pub struct ReplicatorDynamicsTool {
     playback_speed: f64,
     callout_manager: CalloutManager,
     symbolic_mode: bool,
-    symbolic_bars: Vec<Vec<MathExpressionInputBar>>,
+    pub(crate) symbolic_bars: Vec<Vec<MathExpressionInputBar>>,
     last_valid_exprs: Vec<Vec<Expr>>,
     symbolic_compiled: Vec<Vec<Option<CompiledExpr>>>,
-    symbolic_sliders: ParameterSliderBank,
+    pub(crate) symbolic_sliders: ParameterSliderBank,
     symbolic_error: Option<String>,
     pub topology_source: TopologySource,
     pub(crate) synced_bus_revision: Option<u64>,
@@ -405,7 +405,7 @@ inventory::submit! {
         id: "ReplicatorDynamicsTool",
         display_name: "Replicator Dynamics",
         domain: "game_theory",
-        tags: &[],
+        tags: &["evolutionary", "nash equilibrium", "payoff", "hawk-dove", "simplex"],
         build: || Box::new(ReplicatorDynamicsTool::default()),
     }
 }

@@ -3,12 +3,20 @@
 use math_explorer::error::Result;
 use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::pure_math::statistics::{
-    copula::{Correlation, CorrelationMatrix, Probability, sgp_joint_probability},
+    copula::{
+        Correlation, CorrelationMatrix, Probability, price_correlated_parlay,
+        sgp_joint_probability, simulate_correlated_parlay,
+    },
     glicko2::{
         GlickoPlayer, MatchResult, Rating, RatingDeviation, SystemConstant, Volatility,
         update_rating,
     },
     kelly::{Odds, UnitInterval, kelly_fraction},
+    market_pricing::{
+        DevigMethod, DutchingMode, HedgeMode, compare_outcome_ev_all_methods,
+        devig_additive_detailed_into, dutch_outcomes_into, evaluate_hedge, evaluate_middle,
+        evaluate_two_way_arbitrage,
+    },
     markov::dtmc::{MarkovChain, StateType},
     ou_process::{EulerMaruyama, OuParams, TimeStep},
     zip_regression::{Count, ZipDistribution, ZipParams},
@@ -45,15 +53,44 @@ fn demo_ou_process() -> Result<()> {
 }
 
 fn demo_copula() -> Result<()> {
-    println!("\n3. GAUSSIAN COPULA - Same Game Parlay");
-    let p_star_50 = Probability::new(0.99)?;
+    println!("\n3. GAUSSIAN COPULA - Same Game Parlay Pricing");
+    let p_star_50 = Probability::new(0.01)?;
     let p_win = Probability::new(0.60)?;
     let rho = Correlation::new(-0.15)?;
-    let corr_matrix = CorrelationMatrix::bivariate(rho)?;
-    let joint = sgp_joint_probability(&[p_star_50, p_win], &corr_matrix)?;
-    println!("   Event A: Star scores 50+ (99th percentile)");
-    println!("   Event B: Team wins (60% base)");
-    println!("   Naive: {:.4}, Copula: {:.4}", 0.99 * 0.60, joint.value());
+    let corr_2 = CorrelationMatrix::bivariate(rho)?;
+    let joint_2 = sgp_joint_probability(&[p_star_50, p_win], &corr_2)?;
+    println!("   2-Leg Hero Ball: Star 50+ pts (1% tail) + Team win (60%)");
+    println!(
+        "   Naive: {:.4}, Copula: {:.4}",
+        0.01 * 0.60,
+        joint_2.value()
+    );
+
+    let legs_3 = [
+        Probability::new(0.55)?,
+        Probability::new(0.50)?,
+        Probability::new(0.60)?,
+    ];
+    let corr_3 = CorrelationMatrix::new(DMatrix::from_row_slice(
+        3,
+        3,
+        &[1.0, 0.50, 0.25, 0.50, 1.0, 0.35, 0.25, 0.35, 1.0],
+    ))?;
+    let priced = price_correlated_parlay(&legs_3, &corr_3)?;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let trials = if smoke { 2_500 } else { 25_000 };
+    let mut rng = OxidizeRng::default();
+    let sim = simulate_correlated_parlay(&legs_3, &corr_3, trials, &mut rng)?;
+    println!(
+        "   3-Leg SGP: Naive={:.4}, Genz={:.4} (x{:.2}, Fair Odds={:.2}), MC={:.4} ± {:.4}",
+        priced.naive_probability.value(),
+        priced.joint_probability.value(),
+        priced.correlation_multiplier,
+        priced.fair_decimal_odds,
+        sim.joint_probability.value(),
+        sim.standard_error
+    );
     Ok(())
 }
 
@@ -116,6 +153,62 @@ fn demo_markov_chain() -> Result<()> {
     Ok(())
 }
 
+fn demo_market_pricing() -> Result<()> {
+    println!("\n7. MARKET PRICING & EXECUTION - Devigging, +EV, Arbitrage, Dutching & Hedge");
+    let sharp = [Odds::new(1.35)?, Odds::new(4.80)?, Odds::new(8.50)?];
+    let soft_away = Odds::new(9.50)?;
+    let cmp = compare_outcome_ev_all_methods(&sharp, 2, soft_away)?;
+    println!(
+        "   3-Way Away (9.50 vs 8.50): Multiplicative EV = {:+.2}%, Shin EV = {:+.2}% (phantom edge filtered)",
+        cmp.for_method(DevigMethod::Multiplicative).ev_percent,
+        cmp.for_method(DevigMethod::Shin).ev_percent
+    );
+
+    let pod = [
+        Odds::new(1.90)?,
+        Odds::new(3.25)?,
+        Odds::new(6.50)?,
+        Odds::new(10.0)?,
+        Odds::new(21.0)?,
+        Odds::new(101.0)?,
+    ];
+    let (mut raw, mut clamped) = ([0.0; 6], [0.0; 6]);
+    let meta = devig_additive_detailed_into(&pod, &mut raw, &mut clamped)?;
+    if let Some(diag) = meta.simplex_violation {
+        println!(
+            "   6-Way Additive Guard: outcome #{} raw prob {:.2}% clamped to {:.1}%",
+            diag.worst_outcome_index + 1,
+            diag.min_raw_probability * 100.0,
+            clamped[diag.worst_outcome_index] * 100.0
+        );
+    }
+
+    let (arb, _) = evaluate_two_way_arbitrage(Odds::new(2.10)?, Odds::new(1.980_392)?, 1000.0)?;
+    let mut dutch_stakes = [0.0; 3];
+    let dutch = dutch_outcomes_into(
+        &[Odds::new(3.50)?, Odds::new(4.20)?, Odds::new(6.00)?],
+        DutchingMode::FixedBudget(100.0),
+        &mut dutch_stakes,
+    )?;
+    let minus_110 = Odds::from_american(-110.0)?;
+    let mid = evaluate_middle(minus_110, minus_110, 220.0, Some(UnitInterval::new(0.09)?))?;
+    let hedge = evaluate_hedge(
+        100.0,
+        Odds::from_american(800.0)?,
+        Odds::from_american(-150.0)?,
+        HedgeMode::EqualProfit,
+    )?;
+    println!(
+        "   Execution: Arb +${:.2} | Dutching +${:.2} | Middle BE {:.2}% | Hedge Stake ${:.2} (+${:.2})",
+        arb.guaranteed_profit,
+        dutch.profit_if_hit,
+        mid.break_even_probability * 100.0,
+        hedge.hedge_stake,
+        hedge.guaranteed_floor
+    );
+    Ok(())
+}
+
 fn main() -> Result<()> {
     println!("=== Sports Analytics Framework Demo ===\n");
     demo_zip_regression()?;
@@ -124,6 +217,7 @@ fn main() -> Result<()> {
     demo_glicko2()?;
     demo_kelly()?;
     demo_markov_chain()?;
-    println!("\n✅ All 6 sports analytics modules demonstrated successfully!");
+    demo_market_pricing()?;
+    println!("\n✅ All 7 sports analytics modules demonstrated successfully!");
     Ok(())
 }

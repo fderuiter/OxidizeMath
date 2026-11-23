@@ -1,11 +1,17 @@
-// @explorer_feature = "pure_math"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod bankroll_ensemble;
 pub mod bankroll_growth;
 pub mod bet_size;
+pub mod correlated_risk;
+pub mod market_devig;
+pub mod market_execution;
 pub mod parrondo;
+#[cfg(test)]
+mod tests;
 
 pub struct FinancialMathTab {
     framework: crate::framework::SimulationFramework,
@@ -50,6 +56,14 @@ impl ExplorerTab for FinancialMathTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "financial_math",
+        order: 24,
+        build: || Box::new(FinancialMathTab::default()),
     }
 }
 

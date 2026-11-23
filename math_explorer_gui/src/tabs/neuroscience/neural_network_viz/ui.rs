@@ -26,25 +26,7 @@ impl NeuralNetworkVizTool {
                     self.sync_shared_topology(&ctx);
                 }
                 ui.separator();
-
-                if let Some(action) = PlaybackTransport::in_thread(
-                    "nn_viz_transport",
-                    "Neural Network Viz",
-                    self.is_running,
-                )
-                .show(ui)
-                {
-                    match action {
-                        PlaybackAction::Play => self.is_running = true,
-                        PlaybackAction::Pause => self.is_running = false,
-                        PlaybackAction::Step => self.step_once(),
-                        PlaybackAction::Reset => {
-                            self.reset();
-                            self.sync_shared_topology(&ctx);
-                        }
-                    }
-                }
-
+                self.render_nn_transport(ui, &ctx);
                 ui.separator();
                 crate::audio::render_sonification_panel(
                     ui,
@@ -52,7 +34,6 @@ impl NeuralNetworkVizTool {
                     &self.sonification,
                     !self.is_running,
                 );
-
                 ui.separator();
                 ui.heading("External Current (uA/cm^2)");
                 for i in 0..self.external_input.len() {
@@ -63,13 +44,30 @@ impl NeuralNetworkVizTool {
                         );
                     });
                 }
-
                 ui.separator();
                 ui.label(
                     "Synaptic activity is modeled via CSR conductance pulses: when presynaptic V > 0 mV, scaled synaptic current drives postsynaptic targets.",
                 );
             });
         });
+    }
+
+    fn render_nn_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if let Some(action) =
+            PlaybackTransport::in_thread("nn_viz_transport", "Neural Network Viz", self.is_running)
+                .show(ui)
+        {
+            match action {
+                PlaybackAction::Play => self.is_running = true,
+                PlaybackAction::Pause => self.is_running = false,
+                PlaybackAction::Step => self.step_once(),
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
+                PlaybackAction::Reset => {
+                    self.reset();
+                    self.sync_shared_topology(ctx);
+                }
+            }
+        }
     }
 
     fn draw_synaptic_edges(

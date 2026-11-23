@@ -41,6 +41,7 @@ impl ChaosLandmarkHandoff {
     }
 
     /// Converts [`Self`] landmark coordinates into `[x, y, z]` triples for [`SharedSimulationBus`].
+    #[cfg(any(feature = "physics", test))]
     #[must_use]
     pub fn raw_points(&self) -> Vec<[f64; 3]> {
         self.points.iter().map(|p| [p.x, p.y, p.z]).collect()

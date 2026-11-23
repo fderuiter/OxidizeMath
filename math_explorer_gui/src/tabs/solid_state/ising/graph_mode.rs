@@ -172,6 +172,7 @@ impl IsingModelTool {
                     let trials = self.active_graph_node_count().unwrap_or(16).max(16);
                     self.step_graph_trials(trials);
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     if let Some(ref mut sys) = self.graph_system {
                         sys.randomize();

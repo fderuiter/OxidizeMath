@@ -11,6 +11,12 @@ use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 impl NetworkPropagationTool {
     /// Synchronizes the contact network from [`SharedSimulationBus`] or restores the seeded geometric graph.
     pub fn sync_shared_topology(&mut self, ctx: &egui::Context) {
+        if self.is_challenge_locked() {
+            if self.synced_bus_revision.take().is_some() {
+                self.enforce_challenge_locks();
+            }
+            return;
+        }
         match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
             Some(snap) => {
                 if self.synced_bus_revision != Some(snap.revision)
@@ -41,10 +47,21 @@ impl NetworkPropagationTool {
         let positions = snap.map_positions_to_bounds(-170.0, -170.0, 170.0, 170.0);
         let mut states = vec![NodeState::Susceptible; n];
         states[patient_zero] = NodeState::Infected;
+        let (beta, gamma) = (self.model.beta(), self.model.gamma());
 
         let Ok(built) = NetworkEpidemicModel::builder()
             .num_nodes(n)
-            .parameters(self.model.beta(), self.model.gamma())
+            .parameters(beta, gamma)
+            .states(states.clone())
+            .positions(positions.clone())
+            .csr_adjacency(&snap.sym_row_ptr, &snap.sym_col_idx)
+            .and_then(|b| b.build())
+        else {
+            return false;
+        };
+        let Ok(built_baseline) = NetworkEpidemicModel::builder()
+            .num_nodes(n)
+            .parameters(beta, gamma)
             .states(states)
             .positions(positions)
             .csr_adjacency(&snap.sym_row_ptr, &snap.sym_col_idx)
@@ -54,6 +71,9 @@ impl NetworkPropagationTool {
         };
 
         self.model = built;
+        self.baseline_model = built_baseline;
+        self.rng = oxidize_core::rng::OxidizeRng::new(self.seed);
+        self.baseline_rng = oxidize_core::rng::OxidizeRng::new(self.seed);
         self.vaccinated_nodes.clear();
         self.quarantined_edges.clear();
         self.is_running = false;
@@ -69,13 +89,18 @@ impl NetworkPropagationTool {
     /// Renders the `Topology Source` bar and live heterogeneous $R_0$ readout in controls.
     pub(super) fn render_topology_sync_bar(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        if render_topology_source_bar(
-            ui,
-            "network_propagation",
-            &mut self.topology_source,
-            self.synced_bus_revision,
-            None,
-        ) {
+        let locked = self.is_challenge_locked();
+        let mut changed = false;
+        ui.add_enabled_ui(!locked, |ui| {
+            changed = render_topology_source_bar(
+                ui,
+                "network_propagation",
+                &mut self.topology_source,
+                self.synced_bus_revision,
+                None,
+            );
+        });
+        if changed {
             self.sync_shared_topology(&ctx);
         }
         if self.synced_bus_revision.is_some() {
@@ -120,27 +145,5 @@ impl NetworkPropagationTool {
     #[must_use]
     pub fn active_node_count(&self) -> usize {
         self.model.num_nodes()
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for NetworkPropagationTool {
-    fn theory_description(&self) -> String {
-        let summary = super::compute_network_analytics(&self.model);
-        format!(
-            "Stochastic contact network epidemic propagation and containment: per-contact transmission $\\beta = {:.2}$, recovery $\\gamma = {:.2}$, residual heterogeneous reproduction number $R_0 = \\frac{{\\beta}}{{\\gamma}}\\frac{{\\langle k^2 \\rangle - \\langle k \\rangle}}{{\\langle k \\rangle}} = {:.2}$, and branching extinction probability $P_{{ext}} = {:.2}$ under vertex vaccination and symmetric edge quarantine.",
-            self.model.beta(),
-            self.model.gamma(),
-            summary.effective_r0,
-            summary.extinction_probability,
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Network epidemic propagation, hub vaccination, and edge quarantine theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Epidemic processes in complex networks (Pastor-Satorras et al., 2015); Networks (Newman, 2010); Vulnerability in graphs (Barefoot et al., 1987)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
     }
 }

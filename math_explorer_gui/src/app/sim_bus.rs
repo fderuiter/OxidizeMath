@@ -6,9 +6,13 @@
 #[path = "sim_bus/topology.rs"]
 mod topology;
 
+#[cfg(any(feature = "biology", test))]
+pub use topology::MAX_NEURAL_SHARED_NODES;
+#[cfg(any(feature = "physics", test))]
+pub use topology::MAX_SHARED_LANDMARKS;
 pub use topology::{
-    SharedGraphTopology, SharedPointCloud3D, TopologySource, MAX_NEURAL_SHARED_NODES,
-    MAX_SHARED_GRAPH_EDGES, MAX_SHARED_GRAPH_NODES, MAX_SHARED_LANDMARKS,
+    SharedGraphTopology, SharedPointCloud3D, TopologySource, MAX_SHARED_GRAPH_EDGES,
+    MAX_SHARED_GRAPH_NODES,
 };
 
 use crate::accessibility::announce_live_status;
@@ -172,6 +176,7 @@ impl SharedSimulationBus {
     }
 
     /// Publishes a live 3D landmark point-cloud frame into this workspace bus.
+    #[cfg(any(feature = "physics", test))]
     pub fn publish_point_cloud_3d(
         &self,
         mut points: Vec<[f64; 3]>,
@@ -208,6 +213,7 @@ impl SharedSimulationBus {
     }
 
     /// Submits a one-click 3D landmark handoff payload and optionally requests opening `VietorisRipsTool`.
+    #[cfg(any(feature = "physics", test))]
     pub fn submit_vr_handoff(
         &self,
         mut points: Vec<[f64; 3]>,
@@ -244,6 +250,7 @@ impl SharedSimulationBus {
     }
 
     /// Marks a pending cross-tab navigation request to open `VietorisRipsTool`.
+    #[cfg(any(feature = "physics", test))]
     pub fn request_open_vietoris_rips(&self) {
         if let Ok(mut guard) = self.inner.write() {
             guard.pending_open_vr = true;

@@ -93,11 +93,10 @@ impl NeuralNetworkVizTool {
             })
             .collect();
         let mut weights = vec![vec![0.0; num_neurons]; num_neurons];
-        for i in 0..num_neurons {
-            let next = (i + 1) % num_neurons;
-            let prev = (i + num_neurons - 1) % num_neurons;
-            weights[next][i] = 2.0;
-            weights[prev][i] = -1.0;
+        for (col, next) in (0..num_neurons).map(|i| (i, (i + 1) % num_neurons)) {
+            let prev = (col + num_neurons - 1) % num_neurons;
+            weights[next][col] = 2.0;
+            weights[prev][col] = -1.0;
         }
         let mut external_input = vec![0.0; num_neurons];
         external_input[0] = 10.0;
@@ -182,9 +181,11 @@ impl NeuralNetworkVizTool {
         let mut col_idx = Vec::new();
         let mut csr_weights = Vec::new();
         row_ptr.push(0);
-        for pre in 0..n {
-            let start = snap.row_ptr[pre];
-            let end = snap.row_ptr[pre + 1];
+        for (pre, (&start, &end)) in snap.row_ptr[..n]
+            .iter()
+            .zip(&snap.row_ptr[1..=n])
+            .enumerate()
+        {
             for idx in start..end {
                 let post = snap.col_idx[idx];
                 let w = snap.weights[idx];
@@ -417,7 +418,7 @@ inventory::submit! {
         id: "NeuralNetworkVizTool",
         display_name: "Neural Network Viz",
         domain: "neuroscience",
-        tags: &[],
+        tags: &["synapse", "coupled neurons", "connectome", "membrane", "spiking"],
         build: || Box::new(NeuralNetworkVizTool::default()),
     }
 }
