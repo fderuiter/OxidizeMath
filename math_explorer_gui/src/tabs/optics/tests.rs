@@ -155,3 +155,45 @@ fn test_optics_tab_themes_url_roundtrip_and_png_svg_csv_json_exports() {
         );
     }
 }
+
+#[test]
+fn test_optics_tab_streaming_gif_export_completes_and_restores_state() {
+    let mut tab = OpticsTab::default();
+    assert!(tab.select_tool_by_name("FourierOpticsWorkbenchTool"));
+    let ctx = egui::Context::default();
+    let fw = tab.framework_mut().expect("framework");
+    fw.export_options.width = 160;
+    fw.export_options.height = 160;
+    fw.export_gif_frames = 3;
+    let initial_state = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.save_state())
+        .expect("initial optics state");
+
+    let _ = ctx.run(test_input(Vec::new()), |ctx| {
+        fw.show_export_modal = true;
+        fw.queue_export(ExportFormat::Gif);
+        fw.show(ctx, "optics_gif_export_test");
+    });
+    for _ in 0..200 {
+        if fw.active_gif_progress().is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _ = ctx.run(test_input(Vec::new()), |ctx| {
+            fw.show(ctx, "optics_gif_export_test");
+        });
+    }
+
+    assert!(fw.active_gif_progress().is_none());
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    let gif_bytes = fw
+        .export_queue
+        .last_exported_bytes
+        .as_deref()
+        .expect("encoded GIF bytes");
+    assert!(gif_bytes.starts_with(b"GIF89a"));
+    let restored_state = fw.active_tool.as_ref().and_then(|t| t.save_state());
+    assert_eq!(restored_state.as_deref(), Some(initial_state.as_str()));
+}
