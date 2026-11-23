@@ -1,7 +1,7 @@
 use super::{
-    BoxGeom, MAX_LATEX_DEPTH, MathBox, append_bounded, consume_node,
-    math_box_to_layout_job_bounded, measure_math_box_bounded, paint_math_box_bounded,
-    parse_latex_to_box_bounded, read_command, read_group_arg, skip_whitespace,
+    BoxGeom, MAX_LATEX_DEPTH, MathBox, append_bounded, consume_node, math_box_to_layout_job_mode,
+    measure_math_box_bounded, paint_math_box_bounded, parse_latex_to_box_bounded, read_command,
+    read_group_arg, skip_whitespace,
 };
 use egui::{
     Align, Color32, FontId, Pos2, Stroke, Ui, Vec2,
@@ -21,6 +21,8 @@ pub enum MathDelimiter {
     BracketClose,
     /// Vertical bar `|`.
     Pipe,
+    /// Double vertical norm bar `‖` (`\|`).
+    DoublePipe,
     /// Opening curly brace `{`.
     BraceOpen,
     /// Closing curly brace `}`.
@@ -29,6 +31,14 @@ pub enum MathDelimiter {
     AngleOpen,
     /// Closing angle bracket `⟩`.
     AngleClose,
+    /// Opening floor bracket `⌊` (`\lfloor`).
+    FloorOpen,
+    /// Closing floor bracket `⌋` (`\rfloor`).
+    FloorClose,
+    /// Opening ceiling bracket `⌈` (`\lceil`).
+    CeilOpen,
+    /// Closing ceiling bracket `⌉` (`\rceil`).
+    CeilClose,
     /// Null delimiter `.` (invisible boundary in `\left.` / `\right.`).
     None,
 }
@@ -43,10 +53,15 @@ impl MathDelimiter {
             Self::BracketOpen => "[",
             Self::BracketClose => "]",
             Self::Pipe => "|",
+            Self::DoublePipe => "‖",
             Self::BraceOpen => "{",
             Self::BraceClose => "}",
             Self::AngleOpen => "⟨",
             Self::AngleClose => "⟩",
+            Self::FloorOpen => "⌊",
+            Self::FloorClose => "⌋",
+            Self::CeilOpen => "⌈",
+            Self::CeilClose => "⌉",
             Self::None => "",
         }
     }
@@ -65,6 +80,8 @@ pub enum MathAccent {
     Bar,
     /// Vector arrow (`\vec{x}`).
     VecArrow,
+    /// Tilde wave (`\tilde{\psi}`).
+    Tilde,
 }
 
 impl MathAccent {
@@ -75,7 +92,20 @@ impl MathAccent {
             Self::Hat => '\u{0302}',
             Self::Bar => '\u{0304}',
             Self::VecArrow => '\u{20D7}',
+            Self::Tilde => '\u{0303}',
         }
+    }
+}
+
+pub(super) fn accent_kind_from_cmd(cmd: &str) -> Option<MathAccent> {
+    match cmd {
+        "dot" => Some(MathAccent::Dot),
+        "ddot" => Some(MathAccent::Ddot),
+        "hat" => Some(MathAccent::Hat),
+        "bar" | "overline" => Some(MathAccent::Bar),
+        "vec" => Some(MathAccent::VecArrow),
+        "tilde" => Some(MathAccent::Tilde),
+        _ => None,
     }
 }
 
@@ -99,9 +129,14 @@ pub(super) fn read_delimiter(chars: &[char], i: &mut usize) -> Result<MathDelimi
             match cmd.as_str() {
                 "{" | "lbrace" => Ok(MathDelimiter::BraceOpen),
                 "}" | "rbrace" => Ok(MathDelimiter::BraceClose),
-                "|" | "lvert" | "rvert" | "mid" => Ok(MathDelimiter::Pipe),
+                "|" | "lVert" | "rVert" | "Vert" => Ok(MathDelimiter::DoublePipe),
+                "lvert" | "rvert" | "mid" | "vert" => Ok(MathDelimiter::Pipe),
                 "langle" => Ok(MathDelimiter::AngleOpen),
                 "rangle" => Ok(MathDelimiter::AngleClose),
+                "lfloor" => Ok(MathDelimiter::FloorOpen),
+                "rfloor" => Ok(MathDelimiter::FloorClose),
+                "lceil" => Ok(MathDelimiter::CeilOpen),
+                "rceil" => Ok(MathDelimiter::CeilClose),
                 _ => Ok(MathDelimiter::None),
             }
         }
@@ -386,33 +421,50 @@ pub(super) fn upgrade_tall_plain_delimiters(boxes: Vec<MathBox>) -> Vec<MathBox>
 }
 
 pub(super) fn delimited_to_layout_job(
-    open: MathDelimiter,
-    body: &MathBox,
-    close: MathDelimiter,
-    font_id: &FontId,
-    color: Color32,
+    spec: &DelimPaintSpec<'_>,
     job: &mut LayoutJob,
     depth: usize,
     remaining_chars: &mut usize,
+    inline_fractions: bool,
 ) {
-    let tall = contains_tall_math(body, depth + 1);
+    let tall = !inline_fractions && contains_tall_math(spec.body, depth + 1);
     let delim_size = if tall {
-        font_id.size * 1.3
+        spec.font_id.size * 1.3
     } else {
-        font_id.size
+        spec.font_id.size
     };
     let fmt = TextFormat {
-        font_id: FontId::new(delim_size, font_id.family.clone()),
-        color,
+        font_id: FontId::new(delim_size, spec.font_id.family.clone()),
+        color: spec.color,
         valign: Align::Center,
         ..Default::default()
     };
-    if !open.glyph().is_empty() {
-        append_bounded(job, open.glyph(), 0.0, fmt.clone(), remaining_chars);
+    if !spec.open.glyph().is_empty() {
+        append_bounded(job, spec.open.glyph(), 0.0, fmt.clone(), remaining_chars);
     }
-    math_box_to_layout_job_bounded(body, job, depth + 1, remaining_chars);
-    if !close.glyph().is_empty() {
-        append_bounded(job, close.glyph(), 0.0, fmt, remaining_chars);
+    math_box_to_layout_job_mode(spec.body, job, depth + 1, remaining_chars, inline_fractions);
+    if !spec.close.glyph().is_empty() {
+        append_bounded(job, spec.close.glyph(), 0.0, fmt, remaining_chars);
+    }
+}
+
+fn format_accented_slice(slice: &str, kind: MathAccent) -> String {
+    let mark = kind.combining_mark();
+    if slice.is_empty() {
+        return format!(" {mark}");
+    }
+    if kind == MathAccent::Bar && slice.chars().count() > 1 {
+        let mut out = String::with_capacity(slice.len() * 2);
+        for c in slice.chars() {
+            out.push(c);
+            out.push(mark);
+        }
+        out
+    } else {
+        let mut out = String::with_capacity(slice.len() + mark.len_utf8());
+        out.push_str(slice);
+        out.push(mark);
+        out
     }
 }
 
@@ -423,14 +475,20 @@ pub(super) fn accent_to_layout_job(
     job: &mut LayoutJob,
     depth: usize,
     remaining_chars: &mut usize,
+    inline_fractions: bool,
 ) {
     let mut sub_budget = *remaining_chars;
     let mut base_job = LayoutJob::default();
-    math_box_to_layout_job_bounded(base, &mut base_job, depth + 1, &mut sub_budget);
+    math_box_to_layout_job_mode(
+        base,
+        &mut base_job,
+        depth + 1,
+        &mut sub_budget,
+        inline_fractions,
+    );
     if base_job.sections.is_empty() {
         return;
     }
-    let mark = kind.combining_mark();
     let last_idx = base_job.sections.len() - 1;
     for (idx, section) in base_job.sections.into_iter().enumerate() {
         if *remaining_chars == 0 {
@@ -438,9 +496,7 @@ pub(super) fn accent_to_layout_job(
         }
         let slice = &base_job.text[section.byte_range];
         if idx == last_idx && *remaining_chars > slice.chars().count() {
-            let mut combined = String::with_capacity(slice.len() + mark.len_utf8());
-            combined.push_str(slice);
-            combined.push(mark);
+            let combined = format_accented_slice(slice, kind);
             let mut fmt = section.format;
             fmt.color = color;
             append_bounded(job, &combined, section.leading_space, fmt, remaining_chars);
@@ -460,6 +516,7 @@ fn scaled_delim_width(delim: MathDelimiter, height: f32) -> f32 {
     match delim {
         MathDelimiter::None => 0.0,
         MathDelimiter::Pipe => (height * 0.16).clamp(4.0, 9.0),
+        MathDelimiter::DoublePipe => (height * 0.22).clamp(6.0, 11.0),
         _ => (height * 0.24).clamp(6.0, 15.0),
     }
 }
@@ -583,6 +640,17 @@ fn paint_vector_delimiter(
         MathDelimiter::Pipe => {
             painter.line_segment([Pos2::new(mid_x, top), Pos2::new(mid_x, bot)], stroke);
         }
+        MathDelimiter::DoublePipe => {
+            let sep = ((right - left) * 0.28).clamp(1.2, 2.4);
+            painter.line_segment(
+                [Pos2::new(mid_x - sep, top), Pos2::new(mid_x - sep, bot)],
+                stroke,
+            );
+            painter.line_segment(
+                [Pos2::new(mid_x + sep, top), Pos2::new(mid_x + sep, bot)],
+                stroke,
+            );
+        }
         MathDelimiter::BracketOpen => {
             painter.line_segment([Pos2::new(right, top), Pos2::new(left, top)], stroke);
             painter.line_segment([Pos2::new(left, top), Pos2::new(left, bot)], stroke);
@@ -592,6 +660,22 @@ fn paint_vector_delimiter(
             painter.line_segment([Pos2::new(left, top), Pos2::new(right, top)], stroke);
             painter.line_segment([Pos2::new(right, top), Pos2::new(right, bot)], stroke);
             painter.line_segment([Pos2::new(right, bot), Pos2::new(left, bot)], stroke);
+        }
+        MathDelimiter::FloorOpen => {
+            painter.line_segment([Pos2::new(left, top), Pos2::new(left, bot)], stroke);
+            painter.line_segment([Pos2::new(left, bot), Pos2::new(right, bot)], stroke);
+        }
+        MathDelimiter::FloorClose => {
+            painter.line_segment([Pos2::new(right, top), Pos2::new(right, bot)], stroke);
+            painter.line_segment([Pos2::new(right, bot), Pos2::new(left, bot)], stroke);
+        }
+        MathDelimiter::CeilOpen => {
+            painter.line_segment([Pos2::new(right, top), Pos2::new(left, top)], stroke);
+            painter.line_segment([Pos2::new(left, top), Pos2::new(left, bot)], stroke);
+        }
+        MathDelimiter::CeilClose => {
+            painter.line_segment([Pos2::new(left, top), Pos2::new(right, top)], stroke);
+            painter.line_segment([Pos2::new(right, top), Pos2::new(right, bot)], stroke);
         }
         MathDelimiter::ParenOpen | MathDelimiter::ParenClose => {
             let (tip_x, ctrl_x) = if delim == MathDelimiter::ParenOpen {
@@ -692,6 +776,7 @@ fn truncate_nonneg(v: f32) -> f32 {
     if v.is_finite() && v > 0.0 { v } else { 0.0 }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn paint_accent_box(
     painter: &egui::Painter,
     origin: Pos2,
@@ -711,12 +796,23 @@ pub(super) fn paint_accent_box(
         base_g,
         depth + 1,
     );
-    let cx = origin.x + geom.size.x * 0.5;
-    let cy = origin.y + headroom * 0.48;
-    let r = (base_g.size.y * 0.085).clamp(1.3, 2.3);
+    let center = Pos2::new(origin.x + geom.size.x * 0.5, origin.y + headroom * 0.48);
+    paint_accent_mark(painter, center, base_g.size, kind, color);
+}
+
+fn paint_accent_mark(
+    painter: &egui::Painter,
+    center: Pos2,
+    base_size: Vec2,
+    kind: MathAccent,
+    color: Color32,
+) {
+    let (cx, cy) = (center.x, center.y);
+    let r = (base_size.y * 0.085).clamp(1.3, 2.3);
+    let stroke = Stroke::new(1.2_f32, color);
     match kind {
         MathAccent::Dot => {
-            painter.circle_filled(Pos2::new(cx, cy), r, color);
+            painter.circle_filled(center, r, color);
         }
         MathAccent::Ddot => {
             let sep = (r * 1.75).max(2.2);
@@ -724,15 +820,11 @@ pub(super) fn paint_accent_box(
             painter.circle_filled(Pos2::new(cx + sep, cy), r, color);
         }
         MathAccent::Bar => {
-            let hw = (base_g.size.x * 0.42).max(2.5);
-            painter.line_segment(
-                [Pos2::new(cx - hw, cy), Pos2::new(cx + hw, cy)],
-                Stroke::new(1.2_f32, color),
-            );
+            let hw = (base_size.x * 0.42).max(2.5);
+            painter.line_segment([Pos2::new(cx - hw, cy), Pos2::new(cx + hw, cy)], stroke);
         }
         MathAccent::Hat => {
-            let hw = (base_g.size.x * 0.38).max(2.5);
-            let stroke = Stroke::new(1.2_f32, color);
+            let hw = (base_size.x * 0.38).max(2.5);
             painter.line_segment(
                 [Pos2::new(cx - hw, cy + 1.5), Pos2::new(cx, cy - 1.5)],
                 stroke,
@@ -743,8 +835,7 @@ pub(super) fn paint_accent_box(
             );
         }
         MathAccent::VecArrow => {
-            let hw = (base_g.size.x * 0.42).max(3.0);
-            let stroke = Stroke::new(1.2_f32, color);
+            let hw = (base_size.x * 0.42).max(3.0);
             painter.line_segment([Pos2::new(cx - hw, cy), Pos2::new(cx + hw, cy)], stroke);
             painter.line_segment(
                 [Pos2::new(cx + hw - 2.2, cy - 1.8), Pos2::new(cx + hw, cy)],
@@ -752,6 +843,30 @@ pub(super) fn paint_accent_box(
             );
             painter.line_segment(
                 [Pos2::new(cx + hw - 2.2, cy + 1.8), Pos2::new(cx + hw, cy)],
+                stroke,
+            );
+        }
+        MathAccent::Tilde => {
+            let hw = (base_size.x * 0.38).max(2.8);
+            painter.line_segment(
+                [
+                    Pos2::new(cx - hw, cy + 0.8),
+                    Pos2::new(cx - hw * 0.3, cy - 1.0),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    Pos2::new(cx - hw * 0.3, cy - 1.0),
+                    Pos2::new(cx + hw * 0.3, cy + 1.0),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    Pos2::new(cx + hw * 0.3, cy + 1.0),
+                    Pos2::new(cx + hw, cy - 0.8),
+                ],
                 stroke,
             );
         }

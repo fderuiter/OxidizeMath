@@ -214,4 +214,50 @@ mod tests {
             Some("domain_solver")
         );
     }
+
+    #[derive(Debug)]
+    struct SampleDomainError(&'static str);
+
+    impl std::fmt::Display for SampleDomainError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    impl std::error::Error for SampleDomainError {}
+
+    impl diagnostics::Diagnostic for SampleDomainError {
+        fn severity(&self) -> Severity {
+            Severity::Error
+        }
+
+        fn metadata(&self) -> HashMap<String, String> {
+            let mut map = HashMap::new();
+            map.insert("error_type".to_string(), "SampleDomainError".to_string());
+            map.insert("description".to_string(), self.to_string());
+            map
+        }
+    }
+
+    #[test]
+    fn test_global_registry_receives_emitted_diagnostics_directly() {
+        let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let registry = global_registry();
+        let _ = registry.try_recv_all();
+
+        let err = SampleDomainError("matrix singular");
+        diagnostics::global_bus().emit_diagnostic(&err);
+        diagnostics::global_bus().emit_diagnostic_with_source("epidemiology_solver", &err);
+
+        let events = registry.try_recv_all();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].source, "SampleDomainError");
+        assert_eq!(events[0].severity, Severity::Error);
+        assert_eq!(events[0].message, "matrix singular");
+        assert_eq!(events[1].source, "epidemiology_solver");
+        assert_eq!(
+            events[1].metadata.get("error_type").map(String::as_str),
+            Some("SampleDomainError")
+        );
+    }
 }

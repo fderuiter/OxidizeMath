@@ -8,6 +8,7 @@ mod glsl_helpers;
 pub mod latex;
 pub mod lexer;
 pub mod parser;
+mod parser_diagnostics;
 
 #[cfg(test)]
 mod arity_tests;

@@ -1,4 +1,5 @@
 // [cite:math_commons]
+pub use crate::ast::{EvalError, GlslError, LexError, ParseError};
 use crate::math_kernel::types::Dimension;
 use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
@@ -53,6 +54,12 @@ impl Diagnostic for MathError {
 
 #[allow(missing_docs)]
 pub type MathResult<T> = std::result::Result<T, MathError>;
+
+impl From<String> for MathError {
+    fn from(reason: String) -> Self {
+        Self::ConversionError { reason }
+    }
+}
 
 /// Typed diagnostic error returned by zero-allocation curve-fitting solvers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
@@ -123,5 +130,76 @@ impl Diagnostic for FitError {
             }
         }
         map
+    }
+}
+
+mod umbrella;
+pub use umbrella::MathCommonsError;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error as StdError;
+
+    #[test]
+    fn math_commons_umbrella_preserves_sources_and_diagnostics() {
+        let lex = LexError {
+            start: 0,
+            end: 1,
+            message: "bad char".to_string(),
+        };
+        let parse = ParseError::from(lex.clone());
+        assert!(parse.source().is_some());
+
+        let unknown_fn = ParseError::UnknownFunction {
+            name: "foo".to_string(),
+            span: crate::ast::Span { start: 3, end: 6 },
+        };
+        let unknown_meta = unknown_fn.metadata();
+        assert_eq!(
+            unknown_meta.get("function").map(String::as_str),
+            Some("foo")
+        );
+        assert_eq!(unknown_meta.get("start").map(String::as_str), Some("3"));
+
+        let wrong_arity = ParseError::WrongArgumentCount {
+            func: crate::ast::Func::Atan2,
+            expected: 2,
+            found: 1,
+            span: crate::ast::Span { start: 4, end: 12 },
+        };
+        let arity_meta = wrong_arity.metadata();
+        assert_eq!(
+            arity_meta.get("function").map(String::as_str),
+            Some("atan2")
+        );
+        assert_eq!(arity_meta.get("expected").map(String::as_str), Some("2"));
+        assert_eq!(arity_meta.get("found").map(String::as_str), Some("1"));
+        assert_eq!(arity_meta.get("start").map(String::as_str), Some("4"));
+
+        let variants = [
+            MathCommonsError::from(MathError::DimensionMismatch {
+                expected: Dimension(2),
+                actual: Dimension(3),
+            }),
+            MathCommonsError::from(FitError::SingularMatrix),
+            MathCommonsError::from(lex),
+            MathCommonsError::from(parse),
+            MathCommonsError::from(unknown_fn),
+            MathCommonsError::from(wrong_arity),
+            MathCommonsError::from(EvalError::UnknownVariable("x".to_string())),
+            MathCommonsError::from(GlslError::DepthLimitExceeded(64)),
+        ];
+
+        for err in &variants {
+            assert!(err.source().is_some());
+            assert_eq!(err.severity(), Severity::Error);
+            let meta = err.metadata();
+            assert_eq!(
+                meta.get("umbrella_type").map(String::as_str),
+                Some("MathCommonsError")
+            );
+            assert!(meta.contains_key("error_type"));
+        }
     }
 }
