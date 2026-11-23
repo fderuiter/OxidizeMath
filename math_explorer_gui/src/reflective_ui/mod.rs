@@ -167,7 +167,13 @@ pub fn render_theory_summary_with_export(
         .horizontal_wrapped(|ui| {
             if let Some(latex) = latex_str {
                 if !plain_text.is_empty() && plain_text != latex {
-                    ui.label(plain_text);
+                    let prose_job = egui_plot::parse_prose_with_inline_math(
+                        plain_text,
+                        egui::TextStyle::Body,
+                        ui,
+                        ui.visuals().text_color(),
+                    );
+                    ui.add(egui::Label::new(prose_job).wrap());
                 }
                 egui_plot::render_math_label(
                     ui,
@@ -176,7 +182,7 @@ pub fn render_theory_summary_with_export(
                     ui.visuals().text_color(),
                 );
             } else {
-                let summary_job = egui_plot::parse_latex_to_layout_job(
+                let summary_job = egui_plot::parse_prose_with_inline_math(
                     latex_text,
                     egui::TextStyle::Body,
                     ui,

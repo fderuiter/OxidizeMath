@@ -168,14 +168,9 @@ impl WaveRunner {
         let dx = (self.x_max - self.x_min) / (n as f64 - 1.0);
         self.x_axis = (0..n).map(|i| self.x_min + i as f64 * dx).collect();
         (self.x_left, self.x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
-        self.potential = evaluate_potential_grid(
-            cfg.preset,
-            &self.x_axis,
-            cfg.v0,
-            cfg.width,
-            dx,
-            &cfg.custom_expr,
-        );
+        let expr = &cfg.custom_expr;
+        self.potential =
+            evaluate_potential_grid(cfg.preset, &self.x_axis, cfg.v0, cfg.width, dx, expr);
         self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
         self.propagator = QuantumOperator::new(DMatrix::zeros(n, n));
         self.cached_dt = None;
