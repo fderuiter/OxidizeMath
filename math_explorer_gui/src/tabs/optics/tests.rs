@@ -112,7 +112,7 @@ fn test_state_bounds_validation_and_8bit_slm_mask_export() {
 
 #[test]
 fn test_optics_tab_themes_url_roundtrip_and_png_svg_csv_json_exports() {
-    let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut app = MathExplorerApp::default();
     let hydrated = app
         .apply_share_location_strings("#tab=optics&tool=FourierOpticsWorkbenchTool", "", None)
