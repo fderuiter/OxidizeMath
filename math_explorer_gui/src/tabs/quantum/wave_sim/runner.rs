@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{
-    barrier_interval_for_preset, default_compiled_expr, evaluate_potential_grid,
+    barrier_interval_for_preset, default_compiled_expr, evaluate_potential_grid, finite_or,
     WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME,
     DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS, GRID_X_MAX, GRID_X_MIN, SIGMA_MAX,
     SIGMA_MIN,
@@ -228,8 +228,8 @@ impl WaveRunner {
         self.cached_dt = None;
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
-        let safe_x0 = cfg.x0.is_finite().then_some(cfg.x0).unwrap_or(DEFAULT_X0);
-        let safe_k0 = cfg.k0.is_finite().then_some(cfg.k0).unwrap_or(DEFAULT_K0);
+        let safe_x0 = finite_or(cfg.x0, DEFAULT_X0);
+        let safe_k0 = finite_or(cfg.k0, DEFAULT_K0);
         let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
@@ -383,15 +383,8 @@ impl WaveRunner {
         let prob_density = self.psi.probability_density();
         let obs =
             compute_tunneling_observables(&self.x_axis, &prob_density, self.x_left, self.x_right);
-        let safe_prob: Vec<f64> = prob_density
-            .iter()
-            .map(|&p| if p.is_finite() { p } else { 0.0 })
-            .collect();
-        let safe_potential: Vec<f64> = self
-            .potential
-            .iter()
-            .map(|&v| if v.is_finite() { v } else { 0.0 })
-            .collect();
+        let safe_prob: Vec<f64> = prob_density.iter().map(|&p| finite_or(p, 0.0)).collect();
+        let safe_potential: Vec<f64> = self.potential.iter().map(|&v| finite_or(v, 0.0)).collect();
 
         WaveData {
             time: self.time,

@@ -341,6 +341,16 @@ pub fn wave_parameter_label(name: &str) -> &'static str {
     }
 }
 
+/// Returns `val` when finite, or `fallback` otherwise.
+#[must_use]
+pub const fn finite_or(val: f64, fallback: f64) -> f64 {
+    if val.is_finite() {
+        val
+    } else {
+        fallback
+    }
+}
+
 /// Builds exportable 2D plot series (`|ψ(x, t)|²`, scaled `V(x)`, and horizontal `E0 = k0²/2`).
 #[must_use]
 pub fn build_wave_datasets(wave_data: &WaveData) -> Vec<(String, Vec<[f64; 2]>)> {
