@@ -167,6 +167,7 @@ impl LeniaTool {
         ) != (prev.0, prev.1, prev.2, prev.3, &prev.4)
         {
             self.sync_engine_parameters();
+            let _ = self.reseed_if_extinct_entering_viable();
         }
     }
 
