@@ -340,9 +340,6 @@ impl InteractiveTool for GridWorldTool {
     fn state_revision(&self) -> u64 {
         self.revision
     }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_kit.focused_plot_id()
-    }
     fn on_brush(&mut self, ctx: &InteractionContext) {
         let Some(stroke) = ctx.brush_stroke else {
             return;

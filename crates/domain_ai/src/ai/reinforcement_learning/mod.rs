@@ -108,7 +108,7 @@ pub use maze::{
     ALL_MOVES, DenseRlWorkspace, GridCellRole, MAX_RL_GRID_DIM, MIN_RL_GRID_DIM, SculptedGridMdp,
     index_to_move, move_to_index,
 };
-pub use q_function::TabularQFunction;
+pub use q_function::{DiscreteAction, DiscreteState, FixedArrayQFunction, TabularQFunction};
 pub use strategies::{EpsilonGreedy, ExplorationStrategy};
 pub use types::{Action, MarkovDecisionProcess, Policy, QFunction, State};
 

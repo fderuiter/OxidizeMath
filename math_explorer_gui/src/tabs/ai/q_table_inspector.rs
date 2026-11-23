@@ -343,11 +343,16 @@ impl QTableInspectorTool {
                 });
         });
 
+        let canvas_focused = self
+            .brush_kit
+            .focused_plot_id()
+            .is_some_and(|id| ui.ctx().memory(|m| m.has_focus(id)));
         if let Some(action) =
             PlaybackTransport::from_worker_state("q_table_transport", "Q-Table Inspector", state)
                 .play_label("▶ Train 100")
                 .step_label("⏭ Step Episode")
                 .can_reset(true)
+                .allow_space_shortcut(!canvas_focused)
                 .show(ui)
         {
             self.handle_transport_action(action, ctx);
@@ -396,9 +401,6 @@ impl InteractiveTool for QTableInspectorTool {
     fn state_revision(&self) -> u64 {
         self.revision
     }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_kit.focused_plot_id()
-    }
     fn on_brush(&mut self, ctx: &InteractionContext) {
         let Some(stroke) = ctx.brush_stroke else {
             return;
@@ -445,20 +447,13 @@ impl InteractiveTool for QTableInspectorTool {
             d.get_temp(egui::Id::new("INPUT_MODE"))
                 .unwrap_or(InputMode::Mouse)
         });
-        let touch_min = 44.0_f32;
         let legend_size = if input_mode == InputMode::Touch {
-            15.0_f32.max(touch_min)
+            44.0
         } else {
             15.0
         };
-        let cell_size = if input_mode == InputMode::Touch {
-            60.0_f32.max(touch_min)
-        } else {
-            60.0
-        };
-
         self.draw_side_panel(ui, &ctx, legend_size);
-        self.draw_heatmap(ui, cell_size);
+        self.draw_heatmap(ui, 60.0);
     }
 }
 
