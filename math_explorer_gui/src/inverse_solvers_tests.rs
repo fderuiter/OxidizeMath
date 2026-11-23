@@ -299,3 +299,174 @@ fn test_ground_truth_imrt_beams_cost_gradient_hint_and_zero_alloc() {
         });
     }
 }
+
+#[test]
+fn test_ground_truth_auction_cartographer_and_workspace_zero_alloc() {
+    use crate::async_sim::atlas::RegimeCartographer;
+    use crate::tabs::game_theory::auction::MyersonAuctionTool;
+    use crate::tabs::game_theory::auction::atlas::AuctionCartographer;
+    use crate::tabs::game_theory::auction::math::{
+        AuctionDistEval, AuctionDistributionKind, AuctionEvalInputs, AuctionEvalWorkspace,
+        AuctionRuleMode,
+    };
+    use scientific_metadata::theory::TheoryDescribable;
+
+    let auction_tool = MyersonAuctionTool::default();
+    let dist =
+        AuctionDistEval::from_params(AuctionDistributionKind::Uniform, 0.0, 100.0, 0.1, 2.0, 2.0);
+    let auction_cart = AuctionCartographer::new(
+        &auction_tool.theory_parameters(),
+        ("reserve_price", "n_bidders"),
+        dist.clone(),
+        2,
+        AuctionRuleMode::FirstPrice,
+    );
+    let mut auction_ws = AuctionEvalWorkspace::default();
+
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (ok, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let ac = auction_cart.evaluate_cell(50.0, 2.0);
+        let am = auction_ws.evaluate_analytical(
+            &dist,
+            AuctionEvalInputs {
+                rule: AuctionRuleMode::FirstPrice,
+                reserve: 50.0,
+                n_bidders: 2,
+                focal_v: 100.0,
+                candidate_bid: 62.5,
+                fixed_point_tol: 0.5,
+            },
+        );
+        ac.primary.is_finite() && am.is_equilibrium_fixed_point
+    });
+    assert!(ok);
+}
+
+#[test]
+fn test_ground_truth_ising_cartographer_and_workspace_zero_alloc() {
+    use crate::async_sim::atlas::RegimeCartographer;
+    use crate::tabs::solid_state::ising::atlas::IsingCartographer;
+    use crate::tabs::solid_state::ising::challenge::IsingChallengeWorkspace;
+    use crate::tabs::solid_state::ising::{DropletSeed, IsingModelTool};
+    use scientific_metadata::theory::TheoryDescribable;
+
+    let ising_tool = IsingModelTool::default();
+    let ising_theory = ising_tool.theory_parameters();
+    let ising_cart = IsingCartographer::new(
+        &ising_theory,
+        ("T", "S"),
+        0.08,
+        1.0,
+        0.0,
+        [1.0, -0.1, 1.25, 0.0],
+    );
+    let mut ising_ws = IsingChallengeWorkspace::default();
+    let seed = [DropletSeed {
+        cx: 50,
+        cy: 50,
+        r: 8,
+        spin: 1,
+    }];
+
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (passed_pair, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let ic = ising_cart.evaluate_cell(1.25, -0.1);
+        let inuc = ising_ws.evaluate_ising_nucleation(&seed);
+        let fnuc = ising_ws.evaluate_fermi_nucleation(&seed);
+        assert!(ic.primary.is_finite());
+        (inuc.passed, fnuc.passed)
+    });
+    assert_eq!(passed_pair, (true, true));
+}
+
+#[test]
+fn test_auction_and_ising_federated_challenge_registry_and_stateless_urls() {
+    use crate::app::MathExplorerApp;
+    use crate::starter_gallery::{find_challenge_metadata, get_challenge_cards_for_domain};
+    use crate::url_state::{
+        MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, parse_share_location,
+    };
+
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    assert_eq!(get_challenge_cards_for_domain("game_theory").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("solid_state").len(), 2);
+
+    for (slug, challenge_id) in [
+        ("game_theory", "myerson_welfare_constrained_reserve"),
+        ("game_theory", "first_price_shading_equilibrium"),
+        ("solid_state", "ising_critical_droplet_nucleation"),
+        ("solid_state", "fermi_prisoners_dilemma_nucleation"),
+    ] {
+        let meta = find_challenge_metadata(challenge_id).expect("ChallengeMetadata present");
+        let clamped = meta
+            .clamp_state_json(&meta.generate_baseline_state())
+            .expect("baseline state passes clamp_state_json");
+        assert!(clamped.len() <= MAX_DECODED_URL_STATE_BYTES);
+
+        let bare_hash = format!("#tab={slug}&challenge={challenge_id}");
+        let mut app = MathExplorerApp::default();
+        assert!(
+            app.apply_share_location_strings(&bare_hash, "", None)
+                .unwrap()
+        );
+        let active_fw = app.tabs[app.selected_tab].framework().unwrap();
+        assert_eq!(active_fw.active_challenge_id(), Some(challenge_id));
+        let full_url = app.encode_current_share_url().unwrap();
+        let fragment = &full_url[full_url.find('#').unwrap()..];
+        assert!(fragment.len() <= MAX_URL_FRAGMENT_BYTES);
+        let full_params = parse_share_location(fragment, "").unwrap().unwrap();
+        assert_eq!(full_params.challenge.as_deref(), Some(challenge_id));
+        assert!(full_params.state_json.unwrap().len() <= MAX_DECODED_URL_STATE_BYTES);
+    }
+}
+
+#[test]
+fn test_tampered_auction_challenge_url_clamps_locked_parameters() {
+    use crate::app::MathExplorerApp;
+    use crate::url_state::{encode_base64url, parse_share_location};
+
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let mut app = MathExplorerApp::default();
+    app.apply_share_location_strings(
+        "#tab=game_theory&challenge=myerson_welfare_constrained_reserve",
+        "",
+        None,
+    )
+    .unwrap();
+    let url = app.encode_current_share_url().unwrap();
+    let params = parse_share_location(&url[url.find('#').unwrap()..], "")
+        .unwrap()
+        .unwrap();
+    let mut env: serde_json::Value =
+        serde_json::from_str(params.state_json.as_ref().unwrap()).unwrap();
+    env["config"]["reserve_price"] = serde_json::json!(38.0);
+    env["config"]["n_bidders"] = serde_json::json!(9);
+    env["config"]["uniform_max"] = serde_json::json!(500.0);
+    let b64 = encode_base64url(env.to_string().as_bytes());
+    let tampered = format!(
+        "#tab=game_theory&tool=MyersonAuctionTool&challenge=myerson_welfare_constrained_reserve&state={b64}"
+    );
+    let mut dest = MathExplorerApp::default();
+    assert!(
+        dest.apply_share_location_strings(&tampered, "", None)
+            .unwrap()
+    );
+    let fw = dest.tabs[dest.selected_tab].framework().unwrap();
+    let cfg: serde_json::Value =
+        serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap();
+    assert_eq!(cfg["reserve_price"], serde_json::json!(38.0));
+    assert_eq!(cfg["n_bidders"], serde_json::json!(2));
+    assert_eq!(cfg["uniform_max"], serde_json::json!(100.0));
+    assert!(
+        fw.active_tool
+            .as_ref()
+            .unwrap()
+            .evaluate_challenge()
+            .unwrap()
+            .passed
+    );
+}

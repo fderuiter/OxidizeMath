@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub mod auction;
 pub mod glicko2;
 pub mod markov;
 pub mod replicator;

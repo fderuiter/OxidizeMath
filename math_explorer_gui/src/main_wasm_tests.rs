@@ -243,40 +243,56 @@ fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
 }
 
 #[cfg(feature = "biology")]
-fn assert_wasm_lenia_exports(
+fn step_wasm_lenia_gif_frames(
     ctx: &eframe::egui::Context,
+    raw: &eframe::egui::RawInput,
     framework: &mut crate::framework::SimulationFramework,
 ) {
-    use crate::framework::{ExportFormat, ExportStatusSeverity};
-    for fmt in [
-        ExportFormat::Png,
-        ExportFormat::Gif,
-        ExportFormat::Csv,
-        ExportFormat::Json,
-    ] {
-        let raw = eframe::egui::RawInput {
-            screen_rect: Some(eframe::egui::Rect::from_min_size(
-                eframe::egui::Pos2::ZERO,
-                eframe::egui::vec2(1024.0, 768.0),
-            )),
-            ..Default::default()
-        };
-        let _ = ctx.run(raw, |ctx| {
-            framework.show_export_modal = true;
-            framework.queue_export(fmt);
-            framework.show(ctx, "biology");
-        });
-        assert_eq!(
-            framework.export_status_severity,
-            ExportStatusSeverity::Success
-        );
+    assert_eq!(framework.active_gif_progress(), Some((0, 3)));
+    for expected in [Some((1, 3)), Some((2, 3)), None] {
+        let _ = ctx.run(raw.clone(), |ctx| framework.show(ctx, "biology"));
+        assert_eq!(framework.active_gif_progress(), expected);
     }
+    assert!(
+        framework
+            .export_queue
+            .last_exported_bytes
+            .as_deref()
+            .is_some_and(|b| b.starts_with(b"GIF89a"))
+    );
+}
+
+#[cfg(feature = "biology")]
+fn run_wasm_lenia_export_format(
+    ctx: &eframe::egui::Context,
+    framework: &mut crate::framework::SimulationFramework,
+    fmt: crate::framework::ExportFormat,
+) {
+    let raw = eframe::egui::RawInput {
+        screen_rect: Some(eframe::egui::Rect::from_min_size(
+            eframe::egui::Pos2::ZERO,
+            eframe::egui::vec2(1024.0, 768.0),
+        )),
+        ..Default::default()
+    };
+    let _ = ctx.run(raw.clone(), |ctx| {
+        framework.show_export_modal = true;
+        framework.queue_export(fmt);
+        framework.show(ctx, "biology");
+    });
+    if fmt == crate::framework::ExportFormat::Gif {
+        step_wasm_lenia_gif_frames(ctx, &raw, framework);
+    }
+    assert_eq!(
+        framework.export_status_severity,
+        crate::framework::ExportStatusSeverity::Success
+    );
 }
 
 #[cfg(feature = "biology")]
 #[wasm_bindgen_test]
 fn wasm_lenia_studio_stepping_exports_and_url_roundtrip() {
-    use crate::framework::SimulationFramework;
+    use crate::framework::{ExportFormat, SimulationFramework};
     use crate::tabs::morphogenesis::lenia::presets::PRESET_LENIA_HYDROGEMINIUM;
 
     let ctx = eframe::egui::Context::default();
@@ -294,7 +310,14 @@ fn wasm_lenia_studio_stepping_exports_and_url_roundtrip() {
         )
         .expect("Hydrogeminium preset must load in WASM");
 
-    assert_wasm_lenia_exports(&ctx, &mut framework);
+    for fmt in [
+        ExportFormat::Png,
+        ExportFormat::Gif,
+        ExportFormat::Csv,
+        ExportFormat::Json,
+    ] {
+        run_wasm_lenia_export_format(&ctx, &mut framework, fmt);
+    }
 
     framework
         .apply_starter_card(

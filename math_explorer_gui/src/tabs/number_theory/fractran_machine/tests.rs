@@ -128,6 +128,25 @@ fn test_fractran_csv_json_png_svg_and_gif_exports() {
             framework.queue_export(format);
             framework.show(ctx, "fractran_export_test");
         });
+        if format == ExportFormat::Gif {
+            for _ in 0..250 {
+                if framework.active_gif_progress().is_none() {
+                    break;
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                let _ = ctx.run(raw(), |ctx| {
+                    framework.show(ctx, "fractran_export_test");
+                });
+            }
+            assert!(
+                framework
+                    .export_queue
+                    .last_exported_bytes
+                    .as_deref()
+                    .is_some_and(|b| b.starts_with(b"GIF89a"))
+            );
+        }
         assert_eq!(
             framework.export_status_severity,
             ExportStatusSeverity::Success,

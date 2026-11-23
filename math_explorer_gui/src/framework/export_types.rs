@@ -186,6 +186,18 @@ impl ExportCapabilities {
         self
     }
 
+    /// Enables INRIA-standard `.ply` 3D Gaussian Splatting export while disabling `.stl` and `.obj` with clear hover explanations.
+    #[must_use]
+    pub const fn with_3d_splat_ply(mut self) -> Self {
+        self.stl = false;
+        self.ply = true;
+        self.obj = false;
+        self.ply_disabled_reason = "";
+        self.stl_disabled_reason = "STL export is unavailable: Gaussian Splatting scenes represent volumetric splats rather than triangle meshes; use Export PLY.";
+        self.obj_disabled_reason = "OBJ export is unavailable: Gaussian Splatting scenes represent volumetric splats rather than triangle meshes; use Export PLY.";
+        self
+    }
+
     /// Capability profile for 3D Gaussian Splatting scenes supporting INRIA-standard `.ply` splat export.
     #[must_use]
     pub const fn splat_ply_only() -> Self {

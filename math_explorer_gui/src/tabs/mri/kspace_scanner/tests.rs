@@ -305,6 +305,28 @@ fn test_wcag_keyboard_reticle_arrow_navigation_and_live_announcements() {
     );
 }
 
+fn pump_mri_gif_until_settled(ctx: &egui::Context, tab: &mut MriTab, frame: &mut eframe::Frame) {
+    for _ in 0..250 {
+        if tab.framework.active_gif_progress().is_none() {
+            break;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _ = ctx.run(test_raw_input(), |ctx| {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, frame));
+        });
+    }
+    assert!(
+        tab.framework
+            .export_queue
+            .last_exported_bytes
+            .as_deref()
+            .is_some_and(|b| b.starts_with(b"GIF89a"))
+    );
+}
+
 #[test]
 fn test_three_starter_presets_and_plot_raster_exports() {
     let mut tab = MriTab::default();
@@ -346,6 +368,9 @@ fn test_three_starter_presets_and_plot_raster_exports() {
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| tab.show_inside(ui, &mut frame));
         });
+        if fmt == ExportFormat::Gif {
+            pump_mri_gif_until_settled(&ctx, &mut tab, &mut frame);
+        }
         assert_eq!(
             tab.framework.export_status_severity,
             ExportStatusSeverity::Success

@@ -6,18 +6,157 @@ use std::sync::Arc;
 
 use eframe::egui;
 use egui_plot::export::{
-    ExportOptions, color32_image_to_png, color32_images_to_gif, export_custom_gif,
+    DatasetFrame, ExportOptions, color32_image_to_png, compute_dataset_frames_bounds,
 };
 use egui_plot::export_primitives::{
     ExportPrimitive, compute_primitive_bounds_for_options, datasets_to_primitives,
-    export_primitives_svg, export_raster_gif, export_raster_svg, has_drawable_primitives,
-    has_finite_dataset_points, render_primitives_image, render_primitives_image_with_bounds,
-    scale_color_image,
+    export_primitives_svg, export_raster_svg, has_drawable_primitives, has_finite_dataset_points,
+    render_primitives_image, scale_color_image,
 };
 
 use super::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};
 
-fn resolve_tool_primitives_with_fallback(
+#[derive(Default)]
+pub(super) struct CompactRasterGrid {
+    width: usize,
+    height: usize,
+    pixels: Vec<[u8; 4]>,
+}
+
+impl CompactRasterGrid {
+    pub(super) fn from_color_image(img: egui::ColorImage) -> Self {
+        let width = img.width();
+        let height = img.height();
+        let pixels = img.pixels.iter().map(egui::Color32::to_array).collect();
+        drop(img);
+        Self {
+            width,
+            height,
+            pixels,
+        }
+    }
+
+    pub(super) fn into_scaled_color_image(
+        self,
+        target_w: usize,
+        target_h: usize,
+        options: &ExportOptions,
+    ) -> egui::ColorImage {
+        let color_pixels: Vec<egui::Color32> = self
+            .pixels
+            .into_iter()
+            .map(|[r, g, b, a]| egui::Color32::from_rgba_premultiplied(r, g, b, a))
+            .collect();
+        let raw_img = egui::ColorImage::new([self.width, self.height], color_pixels);
+        let scaled = scale_color_image(&raw_img, target_w, target_h, options);
+        drop(raw_img);
+        scaled
+    }
+}
+
+pub(super) enum GifJobPayload {
+    Raster {
+        grids: Vec<CompactRasterGrid>,
+        target_w: usize,
+        target_h: usize,
+    },
+    Datasets {
+        frames: Vec<DatasetFrame>,
+        bounds: Option<[f64; 4]>,
+    },
+    ProgressivePrimitives {
+        primitives: Vec<ExportPrimitive>,
+        bounds: Option<[f64; 4]>,
+        total_steps: usize,
+    },
+}
+
+pub(super) fn sample_tool_gif_payload(
+    tool: &mut dyn InteractiveTool,
+    fallback_datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+    frame_count: usize,
+) -> Result<GifJobPayload, String> {
+    let (target_w, target_h) = resolve_gif_canvas_dimensions(options)?;
+    let count = frame_count.max(1);
+    let saved_state = tool.save_state();
+    let result = if let Some(first_raster) = valid_raster_image(tool) {
+        Ok(sample_raster_grids(
+            tool,
+            first_raster,
+            count,
+            target_w,
+            target_h,
+        ))
+    } else {
+        sample_plot_or_primitive_payload(tool, fallback_datasets, options, count)
+    };
+    if let Some(state_json) = saved_state {
+        tool.load_state(&state_json);
+    }
+    result
+}
+
+fn sample_raster_grids(
+    tool: &mut dyn InteractiveTool,
+    first_raster: egui::ColorImage,
+    count: usize,
+    target_w: usize,
+    target_h: usize,
+) -> GifJobPayload {
+    let mut grids = Vec::with_capacity(count);
+    grids.push(CompactRasterGrid::from_color_image(first_raster));
+    for _ in 1..count {
+        tool.step_simulation();
+        if let Some(img) = valid_raster_image(tool) {
+            grids.push(CompactRasterGrid::from_color_image(img));
+        }
+    }
+    GifJobPayload::Raster {
+        grids,
+        target_w,
+        target_h,
+    }
+}
+
+fn sample_plot_or_primitive_payload(
+    tool: &mut dyn InteractiveTool,
+    fallback_datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+    count: usize,
+) -> Result<GifJobPayload, String> {
+    let initial_prims = resolve_tool_primitives_with_fallback(tool, fallback_datasets, None);
+    if has_non_polyline_primitives(&initial_prims) && has_drawable_primitives(&initial_prims) {
+        let bounds = compute_primitive_bounds_for_options(&initial_prims, options);
+        return Ok(GifJobPayload::ProgressivePrimitives {
+            primitives: initial_prims,
+            bounds,
+            total_steps: count,
+        });
+    }
+    let sampled = tool.sample_animation_frames(count);
+    if sampled.iter().any(|frame| has_finite_dataset_points(frame)) {
+        let bounds = compute_dataset_frames_bounds(&sampled, options);
+        return Ok(GifJobPayload::Datasets {
+            frames: sampled,
+            bounds,
+        });
+    }
+    if has_drawable_primitives(&initial_prims) {
+        let bounds = compute_primitive_bounds_for_options(&initial_prims, options);
+        return Ok(GifJobPayload::ProgressivePrimitives {
+            primitives: initial_prims,
+            bounds,
+            total_steps: count,
+        });
+    }
+    Err(format!(
+        "{} produced no finite plot data or raster image for GIF export",
+        tool.name()
+    ))
+}
+
+pub(super) fn resolve_tool_primitives_with_fallback(
     tool: &dyn InteractiveTool,
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     preloaded_plot_prims: Option<Vec<ExportPrimitive>>,
@@ -47,9 +186,25 @@ fn resolve_tool_primitives_with_fallback(
     primitives
 }
 
-fn valid_raster_image(tool: &dyn InteractiveTool) -> Option<egui::ColorImage> {
+pub(super) fn valid_raster_image(tool: &dyn InteractiveTool) -> Option<egui::ColorImage> {
     tool.export_raster_image()
         .filter(|img| img.width() > 0 && img.height() > 0 && !img.pixels.is_empty())
+}
+
+pub(super) fn resolve_gif_canvas_dimensions(
+    options: &ExportOptions,
+) -> Result<(usize, usize), String> {
+    let target_w = (options.width as f32 * options.scale).round().max(1.0) as u32;
+    let mut target_h = (options.height as f32 * options.scale).round().max(1.0) as u32;
+    if let Some(ratio) = options.aspect_ratio.ratio().filter(|&r| r > 0.0) {
+        target_h = (target_w as f32 / ratio).round().max(1.0) as u32;
+    }
+    if target_w > egui_plot::MAX_EXPORT_DIMENSION || target_h > egui_plot::MAX_EXPORT_DIMENSION {
+        return Err(format!(
+            "Requested dimensions ({target_w}x{target_h}) exceed maximum limit"
+        ));
+    }
+    Ok((target_w as usize, target_h as usize))
 }
 
 fn render_tool_color_image_with_fallback(
@@ -61,24 +216,8 @@ fn render_tool_color_image_with_fallback(
     if let Some(raster) = valid_raster_image(tool) {
         let plot_prims = tool.export_plot_primitives();
         if !has_drawable_primitives(&plot_prims) {
-            let target_w = (options.width as f32 * options.scale).round().max(1.0) as u32;
-            let mut target_h = (options.height as f32 * options.scale).round().max(1.0) as u32;
-            if let Some(ratio) = options.aspect_ratio.ratio().filter(|&r| r > 0.0) {
-                target_h = (target_w as f32 / ratio).round().max(1.0) as u32;
-            }
-            if target_w > egui_plot::MAX_EXPORT_DIMENSION
-                || target_h > egui_plot::MAX_EXPORT_DIMENSION
-            {
-                return Err(format!(
-                    "Requested dimensions ({target_w}x{target_h}) exceed maximum limit"
-                ));
-            }
-            return Ok(scale_color_image(
-                &raster,
-                target_w as usize,
-                target_h as usize,
-                options,
-            ));
+            let (target_w, target_h) = resolve_gif_canvas_dimensions(options)?;
+            return Ok(scale_color_image(&raster, target_w, target_h, options));
         }
         preloaded_prims = Some(plot_prims);
     }
@@ -126,71 +265,7 @@ fn render_tool_svg_with_fallback(
     export_primitives_svg(&primitives, options)
 }
 
-fn render_tool_gif_with_fallback(
-    tool: &mut dyn InteractiveTool,
-    fallback_datasets: &[(String, Vec<[f64; 2]>)],
-    options: &ExportOptions,
-    frame_count: usize,
-    fps: u32,
-) -> Result<Vec<u8>, String> {
-    let count = frame_count.max(1);
-    let saved_state = tool.save_state();
-
-    let result = if let Some(first_raster) = valid_raster_image(tool) {
-        sample_and_encode_raster_gif(tool, first_raster, options, count, fps)
-    } else {
-        sample_and_encode_plot_gif(tool, fallback_datasets, options, count, fps)
-    };
-
-    if let Some(state_json) = saved_state {
-        tool.load_state(&state_json);
-    }
-    result
-}
-
-fn sample_and_encode_raster_gif(
-    tool: &mut dyn InteractiveTool,
-    first_raster: egui::ColorImage,
-    options: &ExportOptions,
-    count: usize,
-    fps: u32,
-) -> Result<Vec<u8>, String> {
-    let mut frames = Vec::with_capacity(count);
-    frames.push(first_raster);
-    for _ in 1..count {
-        tool.step_simulation();
-        if let Some(img) = valid_raster_image(tool) {
-            frames.push(img);
-        }
-    }
-    export_raster_gif(&frames, options, fps)
-}
-
-fn sample_and_encode_plot_gif(
-    tool: &mut dyn InteractiveTool,
-    fallback_datasets: &[(String, Vec<[f64; 2]>)],
-    options: &ExportOptions,
-    count: usize,
-    fps: u32,
-) -> Result<Vec<u8>, String> {
-    let initial_prims = resolve_tool_primitives_with_fallback(tool, fallback_datasets, None);
-    if has_non_polyline_primitives(&initial_prims) {
-        return encode_progressive_primitive_gif(&initial_prims, options, count, fps);
-    }
-    let sampled = tool.sample_animation_frames(count);
-    if sampled.iter().any(|frame| has_finite_dataset_points(frame)) {
-        return export_custom_gif(&sampled, options, fps);
-    }
-    if has_drawable_primitives(&initial_prims) {
-        return encode_progressive_primitive_gif(&initial_prims, options, count, fps);
-    }
-    Err(format!(
-        "{} produced no finite plot data or raster image for GIF export",
-        tool.name()
-    ))
-}
-
-fn has_non_polyline_primitives(primitives: &[ExportPrimitive]) -> bool {
+pub(super) fn has_non_polyline_primitives(primitives: &[ExportPrimitive]) -> bool {
     primitives.iter().any(|p| {
         matches!(
             p,
@@ -202,23 +277,40 @@ fn has_non_polyline_primitives(primitives: &[ExportPrimitive]) -> bool {
     })
 }
 
-fn encode_progressive_primitive_gif(
+pub(super) fn render_progressive_primitive_slice(
+    primitives: &[ExportPrimitive],
+    bounds: Option<[f64; 4]>,
+    step: usize,
+    total_steps: usize,
+    options: &ExportOptions,
+) -> Result<egui::ColorImage, String> {
+    let total_prims = primitives.len().max(1);
+    let take_n = ((total_prims * step) / total_steps.max(1))
+        .max(1)
+        .min(primitives.len());
+    let slice = &primitives[..take_n];
+    if !has_drawable_primitives(slice) {
+        return Ok(egui::ColorImage::new([0, 0], Vec::new()));
+    }
+    egui_plot::export_primitives::render_primitives_image_with_bounds(slice, options, bounds)
+}
+
+#[cfg(test)]
+pub(super) fn encode_progressive_primitive_gif(
     primitives: &[ExportPrimitive],
     options: &ExportOptions,
     count: usize,
     fps: u32,
 ) -> Result<Vec<u8>, String> {
+    let total_steps = count.max(1);
     let bounds = compute_primitive_bounds_for_options(primitives, options);
-    let total = primitives.len().max(1);
-    let mut images = Vec::with_capacity(count);
-    for step in 1..=count {
-        let take_n = ((total * step) / count).max(1).min(primitives.len());
-        let slice = &primitives[..take_n];
-        if has_drawable_primitives(slice) {
-            images.push(render_primitives_image_with_bounds(slice, options, bounds)?);
-        }
+    let mut encoder = egui_plot::export::StreamingGifEncoder::new(fps)?;
+    for step in 1..=total_steps {
+        let img =
+            render_progressive_primitive_slice(primitives, bounds, step, total_steps, options)?;
+        encoder.encode_color_image(img)?;
     }
-    color32_images_to_gif(&images, fps)
+    encoder.finish()
 }
 
 fn copy_tool_image_to_clipboard_scoped(
@@ -353,38 +445,6 @@ impl SimulationFramework {
             Err(err) => {
                 self.set_export_status(ExportStatusSeverity::Error, format!("Export failed: {err}"))
             }
-        }
-    }
-
-    pub(super) fn dispatch_gif_export(&mut self) {
-        let Some(tool_name) = self.ensure_figure_exportable() else {
-            return;
-        };
-        let filename = Self::build_export_filename(&tool_name, ExportFormat::Gif);
-        let fallback = self.export_datasets_with_fallback();
-        let (frames, fps, opts) = (
-            self.export_gif_frames as usize,
-            self.export_gif_fps,
-            self.export_options.clone(),
-        );
-        let tool = self
-            .active_tool
-            .as_mut()
-            .expect("verified active tool")
-            .as_mut();
-        match render_tool_gif_with_fallback(tool, &fallback, &opts, frames, fps) {
-            Ok(bytes) => self.complete_file_export(
-                ExportFormat::Gif,
-                &filename,
-                &bytes,
-                None,
-                "GIF animation",
-                "GIF export failed",
-            ),
-            Err(err) => self.set_export_status(
-                ExportStatusSeverity::Error,
-                format!("GIF export failed: {err}"),
-            ),
         }
     }
 }

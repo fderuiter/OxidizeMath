@@ -1,5 +1,5 @@
 //! Zero-allocation 9-state stack Markov solver and 2D [`RegimeCartographer`]
-//! for [`super::ParrondoParadoxTool`].
+//! for [`super::ParrondoParadoxTool`] (`Parrondo's Kelly Ratchet`).
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -14,8 +14,11 @@ use math_explorer::pure_math::statistics::markov::parrondo::{
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 
 /// Supported 2D parameter atlas axis pairs for [`ParrondoParadoxTool`].
-pub const PARRONDO_ATLAS_AXIS_PAIRS: &[(&str, &str)] =
-    &[("p_a", "epsilon"), ("p_b0_base", "p_b1_base")];
+pub const PARRONDO_ATLAS_AXIS_PAIRS: &[(&str, &str)] = &[
+    ("p_a", "epsilon"),
+    ("p_a_base", "epsilon"),
+    ("p_b0_base", "p_b1_base"),
+];
 
 pub(super) const WEDGE_PA_MIN: f64 = 0.42;
 pub(super) const WEDGE_PA_MAX: f64 = 0.51;
@@ -259,6 +262,7 @@ pub fn solve_parrondo_ratchet_stack(
 }
 
 /// Zero-allocation 2D parameter cartographer for [`ParrondoParadoxTool`].
+#[derive(Clone, Debug)]
 pub struct ParrondoCartographer {
     axes: AtlasAxisPair,
     modulus: usize,
@@ -287,7 +291,21 @@ fn parrondo_axis_pair(
                 theory,
                 "epsilon",
                 "Bias Perturbation ε",
-                c(WEDGE_EPS_MIN, WEDGE_EPS_MAX, 0.001),
+                c(WEDGE_EPS_MIN, 0.045, 0.0005),
+            ),
+        }),
+        ("p_a_base", "epsilon") => Some(AtlasAxisPair {
+            x: AtlasAxisSpec::from_theory(
+                theory,
+                "p_a_base",
+                "Game A Base Win Prob p_A,0",
+                c(0.35, 0.65, 0.005),
+            ),
+            y: AtlasAxisSpec::from_theory(
+                theory,
+                "epsilon",
+                "Bias Perturbation ε",
+                c(WEDGE_EPS_MIN, 0.045, 0.0005),
             ),
         }),
         ("p_b0_base", "p_b1_base") => Some(AtlasAxisPair {
@@ -295,13 +313,13 @@ fn parrondo_axis_pair(
                 theory,
                 "p_b0_base",
                 "Trap Win Prob p_B0,0 (r = 0)",
-                c(0.05, 0.45, 0.005),
+                c(0.03, 0.50, 0.005),
             ),
             y: AtlasAxisSpec::from_theory(
                 theory,
                 "p_b1_base",
                 "Non-Trap Win Prob p_B1,0 (r ≠ 0)",
-                c(0.55, 0.95, 0.005),
+                c(0.50, 0.95, 0.005),
             ),
         }),
         _ => None,
@@ -309,7 +327,7 @@ fn parrondo_axis_pair(
 }
 
 impl ParrondoCartographer {
-    /// Constructs a stack-resident [`ParrondoCartographer`] for `("p_a", "epsilon")` or `("p_b0_base", "p_b1_base")`.
+    /// Constructs a stack-resident [`ParrondoCartographer`] for any supported [`PARRONDO_ATLAS_AXIS_PAIRS`] pair.
     #[must_use]
     pub fn new(
         tool: &ParrondoParadoxTool,
@@ -342,6 +360,7 @@ impl RegimeCartographer for ParrondoCartographer {
     fn evaluate_cell(&self, p1: f64, p2: f64) -> AtlasCell {
         let (p_a_base, p_b0_base, p_b1_base, eps) = match (self.axes.x.key, self.axes.y.key) {
             ("p_a", "epsilon") => (p1 + p2, self.p_b0_base, self.p_b1_base, p2),
+            ("p_a_base", "epsilon") => (p1, self.p_b0_base, self.p_b1_base, p2),
             _ => (self.p_a_base, p1, p2, self.epsilon),
         };
         let Some(summary) = solve_parrondo_ratchet_stack(
@@ -404,16 +423,16 @@ impl RegimeCartographer for ParrondoCartographer {
     }
 
     fn overlay_contour(&self) -> Option<(&'static str, Vec<[f64; 2]>)> {
-        if (self.axes.x.key, self.axes.y.key) == ("p_a", "epsilon") {
-            Some((
-                "Fair Game A (p_A = 0.5)",
-                vec![
-                    [0.5, self.axes.y.constraint.min],
-                    [0.5, self.axes.y.constraint.max],
-                ],
-            ))
-        } else {
-            None
+        let (y_min, y_max) = (self.axes.y.constraint.min, self.axes.y.constraint.max);
+        match (self.axes.x.key, self.axes.y.key) {
+            ("p_a", "epsilon") => {
+                Some(("Fair Game A (p_A = 0.5)", vec![[0.5, y_min], [0.5, y_max]]))
+            }
+            ("p_a_base", "epsilon") => Some((
+                "Fair Game A (p_A,0 - ε = 0.5)",
+                vec![[0.5 + y_min, y_min], [0.5 + y_max, y_max]],
+            )),
+            _ => None,
         }
     }
 
@@ -428,3 +447,5 @@ impl RegimeCartographer for ParrondoCartographer {
             .collect()
     }
 }
+
+// [cite:clinical_trials_statistics]

@@ -378,12 +378,26 @@ fn dispatch_framework_export(
         )),
         ..Default::default()
     };
-    let _ = ctx.run(raw, |c| {
+    let _ = ctx.run(raw.clone(), |c| {
         egui_plot::clear_last_plot_datasets();
         fw.show_export_modal = fmt != crate::framework::ExportFormat::Csv;
         fw.queue_export(fmt);
         fw.show(c, "cm_export_fw");
     });
+    if fmt == crate::framework::ExportFormat::Gif {
+        assert!(
+            fw.active_gif_progress().is_some(),
+            "GIF export must return without encoding all frames inline"
+        );
+        for _ in 0..250 {
+            if fw.active_gif_progress().is_none() {
+                break;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            let _ = ctx.run(raw.clone(), |c| fw.show(c, "cm_export_fw"));
+        }
+    }
     assert!(
         !fw.is_diverged(),
         "FiniteStateGuard must not diverge on pole contours"

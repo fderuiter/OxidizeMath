@@ -5,6 +5,7 @@ pub mod randomization;
 pub mod randomization_io;
 pub mod sample_size;
 pub mod sample_size_cards;
+pub mod simpson_atlas;
 pub mod simpson_paradox;
 pub mod survival;
 pub mod survival_io;

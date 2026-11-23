@@ -213,8 +213,23 @@ fn test_framework_unified_modal_gif_sampling_and_close_button() {
     assert!(has_ak_text(&out_open, "Target Canvas Size: 640 x 480 px"));
 
     let gif_btn = find_ak_button_center(&out_open, "Save GIF");
-    let out_gif = click_framework_button(&ctx, &mut framework, gif_btn, "sim_modal_test");
+    let mut out_gif = click_framework_button(&ctx, &mut framework, gif_btn, "sim_modal_test");
     assert_eq!(steps.load(Ordering::SeqCst), 5);
+    for _ in 0..250 {
+        if framework.active_gif_progress().is_none() {
+            break;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        out_gif = ctx.run(
+            egui::RawInput {
+                screen_rect,
+                ..Default::default()
+            },
+            |ctx| framework.show(ctx, "sim_modal_test"),
+        );
+    }
+    assert!(framework.active_gif_progress().is_none());
     assert_eq!(
         framework.export_status_message.as_deref(),
         Some("GIF animation saved successfully.")

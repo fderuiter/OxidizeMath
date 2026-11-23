@@ -109,6 +109,7 @@ impl ParrondoParadoxTool {
     pub(super) fn par_atlas_coords(&self, axis_keys: (&str, &str)) -> (f64, f64) {
         match axis_keys {
             ("p_a", "epsilon") => (self.p_a_base - self.epsilon, self.epsilon),
+            ("p_a_base", "epsilon") => (self.p_a_base, self.epsilon),
             ("p_b0_base", "p_b1_base") => (self.p_b0_base, self.p_b1_base),
             _ => (self.p_a_base - self.epsilon, self.epsilon),
         }
@@ -121,7 +122,7 @@ impl ParrondoParadoxTool {
             (g as u8).hash(&mut h);
         }
         match axis_keys {
-            ("p_a", "epsilon") => {
+            ("p_a", "epsilon") | ("p_a_base", "epsilon") => {
                 self.p_b0_base.to_bits().hash(&mut h);
                 self.p_b1_base.to_bits().hash(&mut h);
             }
@@ -134,17 +135,46 @@ impl ParrondoParadoxTool {
     }
 
     pub(super) fn apply_parrondo_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
-        if (ev.x_key, ev.y_key) == ("p_a", "epsilon") {
-            let _ = self.teleport_phase_wedge(ev.x_val, ev.y_val, None);
-        } else if (ev.x_key, ev.y_key) == ("p_b0_base", "p_b1_base") {
-            let b0 = ev.x_val.clamp(0.05, 0.48);
-            let b1 = ev.y_val.clamp(0.52, 0.95);
-            if ParrondoParams::new(self.modulus, self.p_a_base, b0, b1, self.epsilon).is_ok() {
-                self.p_b0_base = b0;
-                self.p_b1_base = b1;
+        match (ev.x_key, ev.y_key) {
+            ("p_a", "epsilon") => {
+                let _ = self.teleport_phase_wedge(ev.x_val, ev.y_val, None);
+            }
+            ("p_a_base", "epsilon") => {
+                self.epsilon = ev.y_val.clamp(-0.02, 0.045);
+                let min_pa = (self.epsilon + 1e-3).max(0.35);
+                let max_pa = (0.999 + self.epsilon).min(0.65);
+                self.p_a_base = ev.x_val.clamp(min_pa, max_pa);
+                let min_b = (self.epsilon + 1e-3).max(0.03);
+                let max_b = (0.999 + self.epsilon).min(0.95);
+                self.p_b0_base = self.p_b0_base.clamp(min_b, 0.50);
+                self.p_b1_base = self.p_b1_base.clamp(0.50, max_b);
+                self.wedge_cursor = Some([self.p_a_base - self.epsilon, self.epsilon]);
                 self.recompute_all();
             }
+            ("p_b0_base", "p_b1_base") => {
+                let min_b = (self.epsilon + 1e-3).max(0.03);
+                let max_b = (0.999 + self.epsilon).min(0.95);
+                let b0 = ev.x_val.clamp(min_b, 0.50);
+                let b1 = ev.y_val.clamp(0.50, max_b);
+                if ParrondoParams::new(self.modulus, self.p_a_base, b0, b1, self.epsilon).is_ok() {
+                    self.p_b0_base = b0;
+                    self.p_b1_base = b1;
+                    self.recompute_all();
+                }
+            }
+            _ => return,
         }
+        let target_x = self.num_steps as f64;
+        let target_y = self
+            .report
+            .as_ref()
+            .map_or(0.0, |r| r.gain_schedule * target_x);
+        self.callouts.set_auto_callout(
+            "atlas_teleport",
+            [target_x, target_y],
+            format!("Atlas: {}", ev.regime_label),
+            [-110.0, -28.0],
+        );
     }
 
     pub(super) fn render_phase_wedge_card(
