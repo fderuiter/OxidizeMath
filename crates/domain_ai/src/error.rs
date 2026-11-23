@@ -23,18 +23,25 @@ pub enum AIError {
     #[error(
         "Model dimension d_model ({d_model}) must be divisible by positive head count h ({heads})"
     )]
-    #[allow(missing_docs)]
-    InvalidHeadConfiguration { d_model: usize, heads: usize },
+    InvalidHeadConfiguration {
+        /// Embedding dimension `d_model`.
+        d_model: usize,
+        /// Requested number of attention heads `h`.
+        heads: usize,
+    },
 
     /// Number of per-head weight matrices did not match head count `h`.
     #[error(
         "Expected {expected} weight matrices per projection type, got w_q: {got_q}, w_k: {got_k}, w_v: {got_v}"
     )]
-    #[allow(missing_docs)]
     HeadCountMismatch {
+        /// Expected number of heads `h`.
         expected: usize,
+        /// Supplied query projection count.
         got_q: usize,
+        /// Supplied key projection count.
         got_k: usize,
+        /// Supplied value projection count.
         got_v: usize,
     },
 
@@ -46,10 +53,12 @@ pub enum AIError {
         actual.0,
         actual.1
     )]
-    #[allow(missing_docs)]
     ProjectionShapeMismatch {
+        /// Name of the projection matrix (`w_o`).
         projection: &'static str,
+        /// Expected `(nrows, ncols)` shape.
         expected: (usize, usize),
+        /// Actual `(nrows, ncols)` shape.
         actual: (usize, usize),
     },
 
@@ -61,11 +70,14 @@ pub enum AIError {
         actual.0,
         actual.1
     )]
-    #[allow(missing_docs)]
     HeadProjectionShapeMismatch {
+        /// Zero-based attention head index.
         head: usize,
+        /// Name of the head projection matrix (`w_q`, `w_k`, or `w_v`).
         projection: &'static str,
+        /// Expected `(nrows, ncols)` shape.
         expected: (usize, usize),
+        /// Actual `(nrows, ncols)` shape.
         actual: (usize, usize),
     },
 

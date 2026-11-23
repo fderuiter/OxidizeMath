@@ -9,7 +9,6 @@ pub mod prelude {
 }
 
 #[doc(hidden)]
-#[allow(missing_docs)]
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::ClimateError;

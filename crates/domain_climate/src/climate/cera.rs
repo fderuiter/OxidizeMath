@@ -34,6 +34,37 @@ impl Cera<Autoencoder, Predictor> {
     /// # Returns
     ///
     /// A result containing the new `Cera` instance or a [`ClimateError`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use domain_climate::__doctest_facade as math_explorer;
+    /// use math_explorer::climate::cera::Cera;
+    /// use math_explorer::climate::config::CeraConfig;
+    /// use math_explorer::nalgebra::DMatrix;
+    ///
+    /// let valid = CeraConfig {
+    ///     learning_rate: 0.001,
+    ///     lambda_pred: 0.1,
+    ///     lambda_emd: 0.05,
+    ///     epochs: 1,
+    ///     batch_size: 2,
+    ///     in_channels: 2,
+    ///     latent_channels: 3,
+    ///     aligned_channels: 2,
+    ///     num_levels: 4,
+    ///     output_size: 3,
+    /// };
+    /// let model = Cera::new(valid.clone()).unwrap();
+    /// let batch = DMatrix::from_element(8, 2, 0.2_f32);
+    /// let pred = model.predict(&batch);
+    /// assert_eq!(pred.shape(), (2, 3));
+    ///
+    /// // Invariant: aligned_channels cannot exceed latent_channels
+    /// let mut invalid = valid;
+    /// invalid.aligned_channels = 5;
+    /// assert!(Cera::new(invalid).is_err());
+    /// ```
     #[verified_engine::verified]
     pub fn new(config: CeraConfig) -> Result<Self, ClimateError> {
         // Validation logic delegated to new_with_models

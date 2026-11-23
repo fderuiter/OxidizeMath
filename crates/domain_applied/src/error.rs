@@ -44,21 +44,26 @@ pub enum GameTheoryError {
     #[error(
         "Box constraint bound lengths must match: min has {min_len} elements, max has {max_len}"
     )]
-    #[allow(missing_docs)]
-    BoundsDimensionMismatch { min_len: usize, max_len: usize },
+    BoundsDimensionMismatch {
+        /// Length of the lower-bound vector.
+        min_len: usize,
+        /// Length of the upper-bound vector.
+        max_len: usize,
+    },
     /// Lower bound exceeded upper bound or was non-finite along a dimension.
     #[error(
         "Invalid box bounds at dimension {dimension}: min ({min}) must be finite and <= max ({max})"
     )]
-    #[allow(missing_docs)]
     InvalidBoxBounds {
+        /// Zero-based coordinate index with invalid bounds.
         dimension: usize,
+        /// Lower bound at `dimension`.
         min: f64,
+        /// Upper bound at `dimension`.
         max: f64,
     },
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
-    #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
 
@@ -77,15 +82,16 @@ pub enum EngineeringError {
     ZeroContrastVariance,
     /// Matrix or vector dimensions are non-conformable.
     #[error("{context}: expected {expected}, got {actual}")]
-    #[allow(missing_docs)]
     DimensionMismatch {
+        /// Invariant context describing the mismatched operand.
         context: &'static str,
+        /// Expected dimension length.
         expected: usize,
+        /// Actual dimension length.
         actual: usize,
     },
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
-    #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
 

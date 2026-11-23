@@ -18,16 +18,24 @@ pub enum EpidemiologyError {
     MissingParameter { name: String },
     /// Basic reproduction number `R0` was non-positive or non-finite.
     #[error("Basic reproduction number R0 must be finite and positive, got {r0}")]
-    #[allow(missing_docs)]
-    InvalidReproductionNumber { r0: f64 },
+    InvalidReproductionNumber {
+        /// Rejected `R0` parameter value.
+        r0: f64,
+    },
     /// Newton-Raphson derivative approached zero during final-size iteration.
     #[error("Final-size solver derivative ({derivative}) approached zero at S_inf = {x}")]
-    #[allow(missing_docs)]
-    NearZeroDerivative { x: f64, derivative: f64 },
+    NearZeroDerivative {
+        /// Current `S_inf` iterate where the derivative vanished.
+        x: f64,
+        /// Evaluated derivative `f'(x)`.
+        derivative: f64,
+    },
     /// Newton-Raphson final-size solver failed to converge within maximum iterations.
     #[error("Final-size Newton-Raphson solver failed to converge within {iterations} iterations")]
-    #[allow(missing_docs)]
-    ConvergenceFailure { iterations: usize },
+    ConvergenceFailure {
+        /// Maximum iteration count exhausted by the solver.
+        iterations: usize,
+    },
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),

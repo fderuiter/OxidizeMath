@@ -56,15 +56,18 @@ pub enum StandardModelError {
     InvalidFlavors { nf: f64 },
     /// Spontaneous symmetry breaking requires a negative mass-squared parameter (`mu2 < 0`).
     #[error("Spontaneous symmetry breaking requires mu^2 < 0, got {mu2}")]
-    #[allow(missing_docs)]
-    UnbrokenSymmetry { mu2: f64 },
+    UnbrokenSymmetry {
+        /// Non-negative mass-squared parameter `mu^2`.
+        mu2: f64,
+    },
     /// Vacuum stability requires a positive quartic self-coupling (`lambda > 0`).
     #[error("Higgs potential stability requires lambda > 0, got {lambda}")]
-    #[allow(missing_docs)]
-    UnstableHiggsPotential { lambda: f64 },
+    UnstableHiggsPotential {
+        /// Non-positive quartic self-coupling `lambda`.
+        lambda: f64,
+    },
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
-    #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
 
@@ -85,22 +88,29 @@ pub enum SolidStateError {
 
     /// Fock state mode index exceeded the number of allocated modes.
     #[error("Fock state index {index} is out of bounds for {len} modes")]
-    #[allow(missing_docs)]
-    FockIndexOutOfBounds { index: usize, len: usize },
+    FockIndexOutOfBounds {
+        /// Out-of-bounds mode index.
+        index: usize,
+        /// Number of allocated Fock modes.
+        len: usize,
+    },
 
     /// Attempted to place more than one fermion into a single quantum state.
     #[error("Pauli exclusion principle violated: fermion occupation count {requested} exceeds 1")]
-    #[allow(missing_docs)]
-    PauliExclusionViolation { requested: u8 },
+    PauliExclusionViolation {
+        /// Invalid requested fermion occupation number.
+        requested: u8,
+    },
 
     /// Bosonic mode occupation reached the maximum representable count (`u8::MAX`).
     #[error("Boson occupation saturated at maximum representable count ({max})")]
-    #[allow(missing_docs)]
-    BosonOccupationOverflow { max: u8 },
+    BosonOccupationOverflow {
+        /// Maximum representable occupation count.
+        max: u8,
+    },
 
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
-    #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
 
@@ -118,14 +128,17 @@ pub enum DoseFluenceError {
     InvalidPhysicalQuantity(String),
     /// Ordinary least-squares linear calibration requires at least two paired samples.
     #[error("Linear calibration requires at least {minimum} data points, got {actual}")]
-    #[allow(missing_docs)]
-    InsufficientCalibrationPoints { minimum: usize, actual: usize },
+    InsufficientCalibrationPoints {
+        /// Minimum required sample count.
+        minimum: usize,
+        /// Supplied sample count.
+        actual: usize,
+    },
     /// Input calibration voltages had zero variance, making the slope undefined.
     #[error("Zero predictor variance in linear calibration; cannot fit line")]
     ZeroCalibrationVariance,
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
-    #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
 
@@ -148,13 +161,21 @@ pub enum RadarError {
 
     /// Antenna weight slice length did not match the configured antenna array size.
     #[error("Antenna weight count ({actual}) must match antenna count ({expected})")]
-    #[allow(missing_docs)]
-    AntennaWeightCountMismatch { expected: usize, actual: usize },
+    AntennaWeightCountMismatch {
+        /// Configured antenna element count.
+        expected: usize,
+        /// Supplied weight vector length.
+        actual: usize,
+    },
 
     /// Invalid scalar parameter passed to a radar tracking filter.
     #[error("Invalid tracking filter parameter {parameter}: {value}")]
-    #[allow(missing_docs)]
-    InvalidTrackingParameter { parameter: &'static str, value: f64 },
+    InvalidTrackingParameter {
+        /// Name of the invalid filter parameter.
+        parameter: &'static str,
+        /// Rejected parameter value.
+        value: f64,
+    },
 
     /// Wrapped centralized mathematical error.
     #[error("Mathematical error: {0}")]
@@ -225,11 +246,14 @@ pub enum FluidError {
     InvalidViscosity { value: f64 },
     /// Lattice Boltzmann grid dimensions overflowed addressable capacity or were empty.
     #[error("Invalid or overflowing Lattice Boltzmann grid dimensions ({width}x{height})")]
-    #[allow(missing_docs)]
-    GridDimensionsOverflow { width: usize, height: usize },
+    GridDimensionsOverflow {
+        /// Requested grid width.
+        width: usize,
+        /// Requested grid height.
+        height: usize,
+    },
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
-    #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
 

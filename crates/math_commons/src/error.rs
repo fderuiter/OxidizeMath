@@ -20,33 +20,33 @@ pub enum MathError {
     /// Floating-point value lies outside an inclusive range `[min, max]` or is non-finite.
     #[error("Value {value} is outside the allowed inclusive range [{min}, {max}]")]
     OutOfBounds {
-        #[allow(missing_docs)]
+        /// Rejected floating-point value.
         value: f64,
-        #[allow(missing_docs)]
+        /// Inclusive lower bound.
         min: f64,
-        #[allow(missing_docs)]
+        /// Inclusive upper bound.
         max: f64,
     },
 
     /// Floating-point value lies outside a strictly open range `(min, max)` or is non-finite.
     #[error("Value {value} is outside the strictly allowed open range ({min}, {max})")]
     StrictlyOutOfBounds {
-        #[allow(missing_docs)]
+        /// Rejected floating-point value.
         value: f64,
-        #[allow(missing_docs)]
+        /// Exclusive lower bound.
         min: f64,
-        #[allow(missing_docs)]
+        /// Exclusive upper bound.
         max: f64,
     },
 
     /// Permutation mapping contains an out-of-range or duplicate target index.
     #[error("Invalid permutation element {value} at index {index} for domain size {len}")]
     InvalidPermutation {
-        #[allow(missing_docs)]
+        /// Position in the input slice where the invalid element occurred.
         index: usize,
-        #[allow(missing_docs)]
+        /// Out-of-range or duplicate target element.
         value: usize,
-        #[allow(missing_docs)]
+        /// Expected permutation domain size `n`.
         len: usize,
     },
 
@@ -205,6 +205,21 @@ mod tests {
         );
         assert_eq!(unknown_meta.get("start").map(String::as_str), Some("3"));
 
+        let wrong_arity = ParseError::WrongArgumentCount {
+            func: crate::ast::Func::Atan2,
+            expected: 2,
+            found: 1,
+            span: crate::ast::Span { start: 4, end: 12 },
+        };
+        let arity_meta = wrong_arity.metadata();
+        assert_eq!(
+            arity_meta.get("function").map(String::as_str),
+            Some("atan2")
+        );
+        assert_eq!(arity_meta.get("expected").map(String::as_str), Some("2"));
+        assert_eq!(arity_meta.get("found").map(String::as_str), Some("1"));
+        assert_eq!(arity_meta.get("start").map(String::as_str), Some("4"));
+
         let variants = [
             MathCommonsError::from(MathError::DimensionMismatch {
                 expected: Dimension(2),
@@ -214,6 +229,7 @@ mod tests {
             MathCommonsError::from(lex),
             MathCommonsError::from(parse),
             MathCommonsError::from(unknown_fn),
+            MathCommonsError::from(wrong_arity),
             MathCommonsError::from(EvalError::UnknownVariable("x".to_string())),
             MathCommonsError::from(GlslError::DepthLimitExceeded(64)),
         ];

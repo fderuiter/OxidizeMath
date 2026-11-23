@@ -10,24 +10,30 @@ pub enum NumberTheoryError {
     #[allow(missing_docs)]
     ParseError(String),
 
+    /// Radix supplied to `Integer::from_str_radix` was outside `2..=36`.
     #[error("Invalid integer radix {radix} (must be between 2 and 36)")]
-    #[allow(missing_docs)]
-    InvalidRadix { radix: u32 },
+    InvalidRadix {
+        /// Invalid numeric base.
+        radix: u32,
+    },
 
+    /// String literal could not be parsed as an integer in the given radix.
     #[error("Failed to parse integer literal in base {radix}")]
-    #[allow(missing_docs)]
-    InvalidIntegerLiteral { radix: u32 },
+    InvalidIntegerLiteral {
+        /// Numeric base used during parsing.
+        radix: u32,
+    },
 
+    /// Modular arithmetic operation received a zero modulus.
     #[error("Modulus must be non-zero")]
-    #[allow(missing_docs)]
     ZeroModulus,
 
+    /// Integer element is not coprime to the modulus and has no multiplicative inverse.
     #[error("Element has no multiplicative inverse for the given modulus")]
-    #[allow(missing_docs)]
     NoModularInverse,
 
+    /// Attempted to invert the additive identity (`0`) in a finite field.
     #[error("Cannot invert zero element in finite field")]
-    #[allow(missing_docs)]
     DivisionByZeroFieldElement,
 
     #[error("Modulo operation failed")]
@@ -42,8 +48,8 @@ pub enum NumberTheoryError {
     #[allow(missing_docs)]
     DivisionByZeroQSeries,
 
+    /// Divisor `QSeries` had a zero constant term `b_0 == 0`.
     #[error("Division by a QSeries with zero constant term")]
-    #[allow(missing_docs)]
     DivisionByZeroConstantTerm,
 }
 
