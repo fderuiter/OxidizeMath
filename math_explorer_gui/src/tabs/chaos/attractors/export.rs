@@ -121,4 +121,46 @@ impl AttractorPlotter {
         }
         Ok(ColoredMesh::new(mesh, colors))
     }
+
+    pub(super) fn collect_export_datasets_2d(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut points_b: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        if points_b.is_empty() && self.is_finite_state() {
+            points_b.push(self.project(self.system.state.vec));
+        }
+        if let Some(ref twin) = self.twin {
+            let mut points_a: Vec<[f64; 2]> =
+                twin.history_a.iter().map(|p| self.project(*p)).collect();
+            if points_a.is_empty() {
+                points_a.push(self.project(twin.system_a.state.vec));
+            }
+            vec![
+                ("Branch B (Active)".to_string(), points_b),
+                ("Branch A (Baseline)".to_string(), points_a),
+            ]
+        } else {
+            vec![("Trajectory".to_string(), points_b)]
+        }
+    }
+
+    pub(super) fn collect_export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let mut points_b: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
+        if points_b.is_empty() && self.is_finite_state() {
+            let v = self.system.state.vec;
+            points_b.push([v.x, v.y, v.z]);
+        }
+        if let Some(ref twin) = self.twin {
+            let mut points_a: Vec<[f64; 3]> =
+                twin.history_a.iter().map(|p| [p.x, p.y, p.z]).collect();
+            if points_a.is_empty() {
+                let va = twin.system_a.state.vec;
+                points_a.push([va.x, va.y, va.z]);
+            }
+            vec![
+                ("Branch B (Active)".to_string(), points_b),
+                ("Branch A (Baseline)".to_string(), points_a),
+            ]
+        } else {
+            vec![("Trajectory".to_string(), points_b)]
+        }
+    }
 }
