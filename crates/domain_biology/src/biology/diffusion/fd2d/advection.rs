@@ -1,3 +1,6 @@
+//! Positivity-preserving 2D donor-cell upwind advection and zero-flux obstacle-masked
+//! reaction-diffusion stepping for [`FiniteDifference2D`].
+
 use super::FiniteDifference2D;
 use crate::biology::diffusion::SpatialDiffusion;
 use crate::biology::morphogenesis::reaction::ReactionKinetics;

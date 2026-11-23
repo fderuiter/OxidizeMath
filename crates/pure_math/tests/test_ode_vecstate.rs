@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test ode vecstate.
 use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, SolverExt, VecState};
 
 /// A simple decay model: dy/dt = -y

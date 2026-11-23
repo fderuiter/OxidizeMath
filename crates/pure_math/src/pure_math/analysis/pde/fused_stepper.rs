@@ -28,7 +28,7 @@ pub struct StencilOperators {
     pub dz: StepSize,
     #[allow(missing_docs)]
     pub inv_dx: f64,
-    #[allow(missing_docs)]
+    /// Precomputed reciprocal vertical grid spacing $1 / \Delta y$.
     pub inv_dy: f64,
     #[allow(missing_docs)]
     pub inv_two_dx: f64,
