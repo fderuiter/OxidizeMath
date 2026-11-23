@@ -9,6 +9,8 @@ mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
 mod share_link;
+pub mod shared_json;
+mod shortcuts;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -61,6 +63,7 @@ mod wasm_tests;
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
+pub use shared_json::SharedTabJson;
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
@@ -293,94 +296,7 @@ impl eframe::App for MathExplorerApp {
         theme::sync_frame_theme(self, ctx, frame);
 
         viewport::focus::register_and_handle_pane_focus_shortcuts(self, ctx);
-
-        // Global Keyboard Shortcut Listener for Cheatsheet Modal
-        let modifiers = if cfg!(target_os = "macos") {
-            egui::Modifiers::MAC_CMD
-        } else {
-            egui::Modifiers::CTRL
-        };
-
-        let palette_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
-            ctx,
-            "Command Palette",
-            "Open command palette to quickly switch simulation tabs",
-            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::K),
-            true,
-            "Global",
-            None,
-            None,
-        );
-
-        if palette_triggered {
-            self.command_palette.toggle();
-            let status_msg = if self.command_palette.is_open {
-                "Command palette opened"
-            } else {
-                "Command palette closed"
-            };
-            crate::accessibility::announce_live_status(ctx, status_msg);
-        }
-
-        let slash_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
-            ctx,
-            "Keyboard Shortcuts",
-            "Toggle keyboard shortcuts modal",
-            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::Slash),
-            true,
-            "Global",
-            None,
-            None,
-        );
-
-        egui_plot::commands::CommandRegistryData::register(
-            ctx,
-            "Keyboard Shortcuts",
-            "Toggle keyboard shortcuts modal",
-            egui_plot::commands::CommandTrigger::Key(egui::Key::Questionmark),
-            true,
-            "Global",
-        );
-
-        let question_triggered = !ctx.wants_keyboard_input()
-            && ctx.input_mut(|i| {
-                i.consume_key(egui::Modifiers::NONE, egui::Key::Questionmark)
-                    || i.consume_key(egui::Modifiers::SHIFT, egui::Key::Questionmark)
-            });
-
-        if slash_triggered || question_triggered {
-            self.show_help_menu = !self.show_help_menu;
-            let status_msg = if self.show_help_menu {
-                "Keyboard shortcuts opened"
-            } else {
-                "Keyboard shortcuts closed"
-            };
-            crate::accessibility::announce_live_status(ctx, status_msg);
-        }
-
-        let shift_modifiers = modifiers | egui::Modifiers::SHIFT;
-        let toggle_diagnostics_triggered =
-            egui_plot::commands::CommandRegistryData::register_and_check(
-                ctx,
-                "Toggle Issues & Diagnostics",
-                "Toggle visibility of the Issues & Diagnostics panel",
-                egui_plot::commands::CommandTrigger::Shortcut(shift_modifiers, egui::Key::D),
-                true,
-                "Global",
-                None,
-                None,
-            );
-
-        if toggle_diagnostics_triggered {
-            self.show_diagnostics_panel = !self.show_diagnostics_panel;
-            let status_msg = if self.show_diagnostics_panel {
-                "Issues & Diagnostics panel opened"
-            } else {
-                "Issues & Diagnostics panel closed"
-            };
-            crate::accessibility::announce_live_status(ctx, status_msg);
-        }
-
+        self.poll_global_overlay_shortcuts(ctx);
         self.poll_share_shortcut_and_clipboard(ctx);
         self.poll_duplicate_pane_shortcut(ctx);
 

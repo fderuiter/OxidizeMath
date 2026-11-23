@@ -3,6 +3,7 @@
 use super::theme::ThemeMode;
 use super::viewport::compare_sync::ComparisonSyncConfig;
 use super::viewport::ViewportLayout;
+use super::SharedTabJson;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::cell::RefCell;
@@ -72,7 +73,7 @@ pub(super) fn has_frame_input(ctx: &egui::Context) -> bool {
 /// Interior-mutable per-tab JSON cache avoiding redundant `ExplorerTab::save_state` calls.
 #[derive(Default)]
 pub(super) struct TabStateCache {
-    entries: RefCell<HashMap<String, (u64, Option<String>)>>,
+    entries: RefCell<HashMap<&'static str, (u64, Option<SharedTabJson>)>>,
 }
 
 impl TabStateCache {
@@ -89,7 +90,7 @@ impl TabStateCache {
         tab: &dyn ExplorerTab,
         is_active_pane: bool,
         had_input: bool,
-    ) -> Option<String> {
+    ) -> Option<SharedTabJson> {
         let rev = tab.state_revision();
         let name = tab.name();
         {
@@ -105,10 +106,8 @@ impl TabStateCache {
                 }
             }
         }
-        let fresh = tab.save_state();
-        self.entries
-            .borrow_mut()
-            .insert(name.to_string(), (rev, fresh.clone()));
+        let fresh = tab.save_state().map(SharedTabJson::from);
+        self.entries.borrow_mut().insert(name, (rev, fresh.clone()));
         fresh
     }
 }
@@ -215,7 +214,7 @@ pub struct AppState {
     pub show_diagnostics_panel: bool,
     #[serde(default)]
     pub theme: ThemeMode,
-    pub tab_states: HashMap<String, String>,
+    pub tab_states: HashMap<String, SharedTabJson>,
     #[serde(default)]
     pub split_layout_mode: SplitLayoutMode,
     #[serde(default = "default_secondary_tab")]
@@ -234,7 +233,7 @@ pub struct AppState {
     #[serde(default)]
     pub focused_pane: usize,
     #[serde(default)]
-    pub pane_tab_states: Vec<HashMap<String, String>>,
+    pub pane_tab_states: Vec<HashMap<String, SharedTabJson>>,
     /// Per-pane `SharedWorkspaceBus` link flags (`0..4`).
     #[serde(default, skip_serializing_if = "is_all_false_links")]
     pub pane_bus_links: Vec<bool>,

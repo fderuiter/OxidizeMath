@@ -155,6 +155,26 @@ pub trait ExplorerTab {
         }
     }
 
+    /// Applies either a starter card or inverse challenge selection from `StarterGallery`.
+    fn apply_starter_gallery_selection(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+        is_open: bool,
+        selected: Option<crate::starter_gallery::GallerySelection>,
+    ) {
+        match selected {
+            Some(crate::starter_gallery::GallerySelection::Starter(card)) => {
+                self.apply_starter_gallery_outcome(ctx, id_source, is_open, Some(card));
+            }
+            other => {
+                if let Some(fw) = self.framework_mut() {
+                    fw.apply_starter_gallery_selection(ctx, id_source, is_open, other);
+                }
+            }
+        }
+    }
+
     /// Synchronizes this tab's active tool with [`crate::app::workspace_bus::SharedWorkspaceBus`] when linked.
     fn sync_workspace_bus(&mut self, bus: &mut crate::app::workspace_bus::SharedWorkspaceBus) {
         if let Some(fw) = self.framework_mut() {
@@ -197,6 +217,11 @@ pub trait ExplorerTab {
         self.framework().and_then(|fw| fw.active_tool_id())
     }
 
+    /// Active inverse `ChallengeMetadata` identifier for `#challenge=<id>` share links.
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.framework().and_then(|fw| fw.active_challenge_id())
+    }
+
     /// Deterministic parameter-only revision token for 300 ms debounced URL sync.
     fn url_state_revision(&self) -> u64 {
         self.framework()
@@ -233,6 +258,25 @@ pub trait ExplorerTab {
             ));
         }
         Ok(())
+    }
+
+    /// Validates and applies shared URL `tool`, `challenge`, and `state` parameters.
+    fn import_url_share_params(
+        &mut self,
+        tool_id: Option<&str>,
+        challenge_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        if challenge_id.is_none() {
+            return self.import_url_preset_json(tool_id, preset_json);
+        }
+        if let Some(fw) = self.framework_mut() {
+            return fw.import_url_share_params(tool_id, challenge_id, preset_json);
+        }
+        Err(format!(
+            "Tab '{}' does not support inverse challenges",
+            self.name()
+        ))
     }
 }
 
