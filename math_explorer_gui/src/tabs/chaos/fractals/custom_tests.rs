@@ -130,7 +130,7 @@ fn test_custom_fractal_glsl_shader_export_and_reserved_ident_guard() {
     assert!(webgl.starts_with("#version 300 es"));
     assert!(webgl.contains("const bool IS_JULIA = true;"));
     assert!(webgl.contains("const vec2 a = vec2(1.25, 0.0);"));
-    assert!(webgl.contains("step_custom_fractal(z, c)"));
+    assert!(webgl.contains("step_fractal(z, c)"));
 
     viewer.mode = FractalMode::CustomMandelbrot;
     let st = viewer
