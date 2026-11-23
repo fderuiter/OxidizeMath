@@ -1,15 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::counterfactual::step_bloch_rotating_frame;
+use super::pulse::{sync_mri_callouts, MriPulseMode, MriPulseWorkspace, RfPulseConfig};
 use super::runner::{
     MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE,
 };
 use super::theory::MriBlochTheory;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::{ExportCapabilities, InteractiveTool};
+use crate::framework::{CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::physics::mri::bloch::BlochSimulator;
-use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
+use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use nalgebra::Vector3;
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
@@ -51,6 +53,9 @@ pub struct MriToolState {
     /// Optional compact counterfactual fork descriptor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork: Option<super::MriForkDescriptor>,
+    /// Optional rotating-frame RF pulse sequence parameters (omitted in default forward mode).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pulse: Option<RfPulseConfig>,
 }
 
 impl MriToolState {
@@ -76,10 +81,13 @@ impl MriToolState {
                 ));
             }
         }
+        if let Some(ref pulse) = self.pulse {
+            pulse.validate()?;
+        }
         Ok(())
     }
 
-    fn resolve_target_state(&self) -> SimWorkerState {
+    pub(super) fn resolve_target_state(&self) -> SimWorkerState {
         self.state.unwrap_or_else(|| {
             if self.paused.unwrap_or(true) {
                 SimWorkerState::Ready
@@ -114,6 +122,14 @@ pub struct MriTool {
     pub twin: Option<super::MriTwinState>,
     /// Shared framework `CounterfactualBranchEngine` state.
     pub branch_engine: crate::framework::CounterfactualBranchEngine,
+    /// Automated target & extremum plot callouts.
+    pub callout_manager: CalloutManager,
+    /// Rotating-frame RF pulse sequence settings.
+    pub pulse_config: RfPulseConfig,
+    /// Preallocated zero-allocation workspace for pulse sequences.
+    pub pulse_workspace: MriPulseWorkspace,
+    /// Active inverse challenge identifier, if any.
+    pub active_challenge: Option<&'static str>,
     theory: MriBlochTheory,
 }
 
@@ -135,6 +151,17 @@ impl Default for MriTool {
 
         let runner = MriRunner::new(Arc::clone(&params), initial_m, m0);
         let worker = BackgroundWorker::new(runner);
+        let mut callout_manager = CalloutManager::new();
+        let pulse_config = RfPulseConfig::default();
+        sync_mri_callouts(
+            &mut callout_manager,
+            MriPulseMode::ContinuousField,
+            m0,
+            DEFAULT_MRI_T2,
+            &pulse_config,
+            0.0,
+            initial_m,
+        );
 
         Self {
             simulator,
@@ -150,48 +177,16 @@ impl Default for MriTool {
             worker,
             twin: None,
             branch_engine: crate::framework::CounterfactualBranchEngine::with_delta(0.0),
+            callout_manager,
+            pulse_config,
+            pulse_workspace: MriPulseWorkspace::default(),
+            active_challenge: None,
             theory: MriBlochTheory,
         }
     }
 }
 
 impl MriTool {
-    #[cfg(test)]
-    #[allow(missing_docs)]
-    pub fn restart_worker(&mut self) {
-        let (t1, t2, b_field) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.t1, p.t2, p.b_field)
-        };
-        self.simulator.t1 = t1;
-        self.simulator.t2 = t2;
-        self.simulator.b_field = b_field;
-        let mut runner_simulator =
-            BlochSimulator::new(self.simulator.magnetization, self.simulator.m0);
-        runner_simulator.set_relaxation(t1, t2);
-        runner_simulator.set_b_field(b_field);
-        let mut history = self.history.clone();
-        if history.is_empty() {
-            history.push_back((self.current_time, self.simulator.magnetization));
-        }
-        let runner = MriRunner {
-            simulator: runner_simulator,
-            solver: RungeKutta4::new(&self.simulator.magnetization),
-            params: Arc::clone(&self.params),
-            current_time: self.current_time,
-            history,
-            max_history: self.max_history,
-            twin: self.twin.clone(),
-        };
-        self.worker = BackgroundWorker::new(runner);
-    }
-
-    #[cfg(test)]
-    #[allow(missing_docs)]
-    pub fn retry(&mut self) {
-        self.restart_worker();
-    }
-
     /// Repopulates cached plot point buffers from `history` while preserving allocated capacity.
     pub fn update_plot_buffers(&mut self) {
         self.mx_points.clear();
@@ -205,6 +200,15 @@ impl MriTool {
             self.my_points.push(PlotPoint::new(*t, m.y));
             self.mz_points.push(PlotPoint::new(*t, m.z));
         }
+        sync_mri_callouts(
+            &mut self.callout_manager,
+            self.pulse_config.mode,
+            self.simulator.m0,
+            self.simulator.t2,
+            &self.pulse_config,
+            self.current_time,
+            self.simulator.magnetization,
+        );
     }
 
     /// Restores factory default `t1`, `t2`, `b_field`, and `time_scale` and resets magnetization to `(M0, 0, 0)`.
@@ -230,13 +234,29 @@ impl MriTool {
         self.mz_points.clear();
         self.twin = None;
         self.branch_engine.clear();
+        if self.active_challenge.is_none() {
+            self.pulse_config = RfPulseConfig::default();
+        }
         let params = Arc::clone(&self.params);
         let m0 = self.simulator.m0;
         self.worker
             .reset_or_respawn(|| MriRunner::new(params, initial_m, m0));
+        if !self.pulse_config.mode.is_continuous() {
+            self.recompute_pulse_sequence();
+        } else {
+            sync_mri_callouts(
+                &mut self.callout_manager,
+                MriPulseMode::ContinuousField,
+                m0,
+                self.simulator.t2,
+                &self.pulse_config,
+                0.0,
+                initial_m,
+            );
+        }
     }
 
-    fn apply_worker_state(&mut self, target_state: SimWorkerState) {
+    pub(super) fn apply_worker_state(&mut self, target_state: SimWorkerState) {
         if target_state == SimWorkerState::Running {
             if !self.worker.is_running() {
                 let _ = self.worker.send_command(SimCommand::Start);
@@ -323,6 +343,10 @@ impl InteractiveTool for MriTool {
     }
 
     fn step_simulation(&mut self) {
+        if !self.pulse_config.mode.is_continuous() {
+            self.recompute_pulse_sequence();
+            return;
+        }
         if self.history.is_empty() {
             self.history
                 .push_back((self.current_time, self.simulator.magnetization));
@@ -336,7 +360,7 @@ impl InteractiveTool for MriTool {
             twin.step_branch_b_spin_echo(&mut self.simulator, &mut self.solver, dt)
         });
         if !used_echo {
-            TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
+            step_bloch_rotating_frame(&mut self.simulator, &mut self.solver, dt, 0.0);
         }
         self.current_time = next_t;
         if self.history.len() >= self.max_history {
@@ -376,52 +400,34 @@ impl InteractiveTool for MriTool {
         } else {
             false.hash(&mut h);
         }
+        self.pulse_config.mode.hash(&mut h);
+        self.pulse_config.b1_amp.to_bits().hash(&mut h);
+        self.pulse_config.duration_tau.to_bits().hash(&mut h);
+        self.pulse_config.phase_deg.to_bits().hash(&mut h);
+        self.pulse_config.detuning_hz.to_bits().hash(&mut h);
+        self.pulse_config.echo_time_te.to_bits().hash(&mut h);
+        self.active_challenge.hash(&mut h);
         h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {
-        let fork = self
-            .twin
-            .as_ref()
-            .map(|t| t.to_descriptor(self.current_step_index()));
-        serde_json::to_string(&MriToolState {
-            t1: self.simulator.t1,
-            t2: self.simulator.t2,
-            bx: self.simulator.b_field.x,
-            by: self.simulator.b_field.y,
-            bz: self.simulator.b_field.z,
-            time_scale: self.time_scale,
-            state: Some(self.worker.state()),
-            paused: None,
-            fork,
-        })
-        .ok()
+        self.serialize_mri_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: MriToolState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid MRI state: {e}"))?;
-        parsed.validate()?;
-        let target_state = parsed.resolve_target_state();
-        let b_field = Vector3::new(parsed.bx, parsed.by, parsed.bz);
-        self.simulator.t1 = parsed.t1;
-        self.simulator.t2 = parsed.t2;
-        self.simulator.b_field = b_field;
-        self.time_scale = parsed.time_scale;
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.t1 = parsed.t1;
-            p.t2 = parsed.t2;
-            p.b_field = b_field;
-            p.time_scale = parsed.time_scale;
-        }
-        if let Some(desc) = parsed.fork {
-            self.apply_mri_fork_descriptor(desc)?;
-        } else {
-            let _ = self.clear_fork();
-        }
-        self.apply_worker_state(target_state);
-        Ok(())
+        self.deserialize_mri_state(state)
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_mri_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.eval_mri_challenge()
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -431,6 +437,7 @@ impl InteractiveTool for MriTool {
             && self.simulator.b_field.y.is_finite()
             && self.simulator.b_field.z.is_finite()
             && self.time_scale.is_finite()
+            && self.pulse_config.validate().is_ok()
             && self.worker.state() != SimWorkerState::Faulted
     }
 }

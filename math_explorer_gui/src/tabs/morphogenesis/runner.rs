@@ -302,6 +302,7 @@ impl SimulationRunner for MorphogenesisRunner {
                 step_count: self.step_count,
                 divergence,
             })),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::pulse::MriPulseMode;
 use super::runner::MriSnapshot;
 use super::tool::MriTool;
 use crate::accessibility::{announce_status, AccessibleHoverText};
@@ -17,27 +18,32 @@ use egui_plot::{Legend, Line, Plot, PlotPoint, Points};
 
 impl MriTool {
     fn draw_relaxation_controls(&mut self, ui: &mut egui::Ui) {
+        let locked = self.active_challenge.is_some();
         ui.collapsing("Relaxation Parameters", |ui| {
-            if ui
-                .add(
-                    egui::Slider::new(&mut self.simulator.t1, 0.1..=5.0)
-                        .logarithmic(true)
-                        .text("Longitudinal (T1) [s]"),
-                )
-                .changed()
-            {
-                self.params.write().unwrap_or_else(|e| e.into_inner()).t1 = self.simulator.t1;
-            }
-            if ui
-                .add(
-                    egui::Slider::new(&mut self.simulator.t2, 0.01..=2.0)
-                        .logarithmic(true)
-                        .text("Transverse (T2) [s]"),
-                )
-                .changed()
-            {
-                self.params.write().unwrap_or_else(|e| e.into_inner()).t2 = self.simulator.t2;
-            }
+            ui.add_enabled_ui(!locked, |ui| {
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.simulator.t1, 0.1..=5.0)
+                            .logarithmic(true)
+                            .text("Longitudinal (T1) [s]"),
+                    )
+                    .changed()
+                {
+                    self.params.write().unwrap_or_else(|e| e.into_inner()).t1 = self.simulator.t1;
+                    self.recompute_pulse_sequence();
+                }
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.simulator.t2, 0.01..=2.0)
+                            .logarithmic(true)
+                            .text("Transverse (T2) [s]"),
+                    )
+                    .changed()
+                {
+                    self.params.write().unwrap_or_else(|e| e.into_inner()).t2 = self.simulator.t2;
+                    self.recompute_pulse_sequence();
+                }
+            });
             if self.simulator.t2 > self.simulator.t1 {
                 let err = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
                 ui.colored_label(err, "Warning: T2 > T1 is unphysical!");
@@ -45,46 +51,151 @@ impl MriTool {
         });
     }
 
-    fn draw_magnetic_field_controls(&mut self, ui: &mut egui::Ui) {
-        ui.collapsing("Magnetic Fields", |ui| {
-            ui.label("Main Field (B0) [T]");
-            ui.horizontal(|ui| {
-                ui.label("Bz");
+    fn draw_rf_pulse_controls(&mut self, ui: &mut egui::Ui) {
+        let challenge_locked = self.active_challenge.is_some();
+        ui.collapsing("RF Pulse Sequence (Rotating Frame)", |ui| {
+            let mut changed = false;
+            ui.add_enabled_ui(!challenge_locked, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Sequence:");
+                    egui::ComboBox::from_id_salt("mri_pulse_mode")
+                        .selected_text(match self.pulse_config.mode {
+                            MriPulseMode::ContinuousField => "Continuous FID",
+                            MriPulseMode::InversionPulse => "RF Inversion Pulse",
+                            MriPulseMode::HahnSpinEcho => "Hahn Spin Echo",
+                        })
+                        .show_ui(ui, |ui| {
+                            changed |= ui
+                                .selectable_value(
+                                    &mut self.pulse_config.mode,
+                                    MriPulseMode::ContinuousField,
+                                    "Continuous FID",
+                                )
+                                .changed();
+                            changed |= ui
+                                .selectable_value(
+                                    &mut self.pulse_config.mode,
+                                    MriPulseMode::InversionPulse,
+                                    "RF Inversion Pulse",
+                                )
+                                .changed();
+                            changed |= ui
+                                .selectable_value(
+                                    &mut self.pulse_config.mode,
+                                    MriPulseMode::HahnSpinEcho,
+                                    "Hahn Spin Echo",
+                                )
+                                .changed();
+                        });
+                });
+            });
+            if !self.pulse_config.mode.is_continuous() {
+                changed |= self.draw_rf_pulse_sliders(ui, challenge_locked);
+            }
+            if changed {
+                if !self.pulse_config.mode.is_continuous() {
+                    let _ = self.worker.send_command(SimCommand::Pause);
+                    self.recompute_pulse_sequence();
+                } else {
+                    self.reset();
+                }
+            }
+        });
+    }
+
+    fn draw_rf_pulse_sliders(&mut self, ui: &mut egui::Ui, challenge_locked: bool) -> bool {
+        let mut changed = false;
+        let mut b1_ut = self.pulse_config.b1_amp * 1.0e6;
+        if ui
+            .add(egui::Slider::new(&mut b1_ut, 0.0..=50.0).text("B1 Amplitude [uT]"))
+            .changed()
+        {
+            self.pulse_config.b1_amp = b1_ut * 1.0e-6;
+            changed = true;
+        }
+        let mut tau_ms = self.pulse_config.duration_tau * 1.0e3;
+        if ui
+            .add(egui::Slider::new(&mut tau_ms, 0.5..=20.0).text("Pulse Duration tau [ms]"))
+            .changed()
+        {
+            self.pulse_config.duration_tau = tau_ms * 1.0e-3;
+            changed = true;
+        }
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut self.pulse_config.phase_deg, -180.0..=180.0)
+                    .text("RF Phase [deg]"),
+            )
+            .changed();
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut self.pulse_config.detuning_hz, -2000.0..=2000.0)
+                    .text("Detuning Offset [Hz]"),
+            )
+            .changed();
+        if self.pulse_config.mode == MriPulseMode::HahnSpinEcho {
+            let mut te_ms = self.pulse_config.echo_time_te * 1.0e3;
+            ui.add_enabled_ui(!challenge_locked, |ui| {
                 if ui
-                    .add(egui::DragValue::new(&mut self.simulator.b_field.z).speed(0.01))
+                    .add(egui::Slider::new(&mut te_ms, 10.0..=120.0).text("Echo Time TE [ms]"))
                     .changed()
                 {
-                    self.params
-                        .write()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .b_field
-                        .z = self.simulator.b_field.z;
+                    self.pulse_config.echo_time_te = te_ms * 1.0e-3;
+                    changed = true;
                 }
             });
-            ui.label("Gradients / RF (B1) [T]");
-            ui.horizontal(|ui| {
-                ui.label("Bx");
-                if ui
-                    .add(egui::DragValue::new(&mut self.simulator.b_field.x).speed(0.001))
-                    .changed()
-                {
-                    self.params
-                        .write()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .b_field
-                        .x = self.simulator.b_field.x;
-                }
-                ui.label("By");
-                if ui
-                    .add(egui::DragValue::new(&mut self.simulator.b_field.y).speed(0.001))
-                    .changed()
-                {
-                    self.params
-                        .write()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .b_field
-                        .y = self.simulator.b_field.y;
-                }
+        }
+        ui.label(format!(
+            "Nominal Flip Angle: {:.1}°",
+            self.pulse_config.nominal_flip_deg()
+        ));
+        changed
+    }
+
+    fn draw_magnetic_field_controls(&mut self, ui: &mut egui::Ui) {
+        let locked = self.active_challenge.is_some();
+        ui.collapsing("Magnetic Fields", |ui| {
+            ui.add_enabled_ui(!locked, |ui| {
+                ui.label("Main Field (B0) [T]");
+                ui.horizontal(|ui| {
+                    ui.label("Bz");
+                    if ui
+                        .add(egui::DragValue::new(&mut self.simulator.b_field.z).speed(0.01))
+                        .changed()
+                    {
+                        self.params
+                            .write()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .b_field
+                            .z = self.simulator.b_field.z;
+                        self.recompute_pulse_sequence();
+                    }
+                });
+                ui.label("Gradients / RF (B1) [T]");
+                ui.horizontal(|ui| {
+                    ui.label("Bx");
+                    if ui
+                        .add(egui::DragValue::new(&mut self.simulator.b_field.x).speed(0.001))
+                        .changed()
+                    {
+                        self.params
+                            .write()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .b_field
+                            .x = self.simulator.b_field.x;
+                    }
+                    ui.label("By");
+                    if ui
+                        .add(egui::DragValue::new(&mut self.simulator.b_field.y).speed(0.001))
+                        .changed()
+                    {
+                        self.params
+                            .write()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .b_field
+                            .y = self.simulator.b_field.y;
+                    }
+                });
             });
         });
     }
@@ -181,10 +292,13 @@ impl MriTool {
 
             self.draw_relaxation_controls(ui);
             self.draw_magnetic_field_controls(ui);
+            self.draw_rf_pulse_controls(ui);
+            let _ = self.callout_manager.render_ui(ui);
             ui.separator();
-            self.draw_playback_controls(ui, &ctx);
-
-            ui.separator();
+            if self.pulse_config.mode.is_continuous() {
+                self.draw_playback_controls(ui, &ctx);
+                ui.separator();
+            }
             ui.label(format!("Time: {:.3} s", self.current_time));
             ui.label(format!("|M|: {:.3}", self.simulator.magnetization.norm()));
             ui.label(format!("Mx: {:.3}", self.simulator.magnetization.x));
@@ -193,7 +307,7 @@ impl MriTool {
         });
     }
 
-    fn draw_central_panel(&self, ui: &mut egui::Ui) {
+    fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Magnetization Vector Evolution");
             if let Some(ref snap) = self.branch_engine.active_snapshot {
@@ -214,15 +328,35 @@ impl MriTool {
                 .y_axis_label("Magnetization (M/M0)")
                 .view_aspect(2.0)
                 .show(ui, |plot_ui| {
-                    self.render_mri_plot_curves(plot_ui, &palette);
+                    render_mri_plot_curves(
+                        self.twin.as_ref(),
+                        &self.mx_points,
+                        &self.my_points,
+                        &self.mz_points,
+                        plot_ui,
+                        &palette,
+                    );
                     if self.mx_points.len() == 1 {
                         let mx0 = [self.mx_points[0].x, self.mx_points[0].y];
                         let my0 = [self.my_points[0].x, self.my_points[0].y];
                         let mz0 = [self.mz_points[0].x, self.mz_points[0].y];
-                        plot_ui.points(Points::new("Mx (t=0)", vec![mx0]).radius(4.5_f32).color(palette.axis_x));
-                        plot_ui.points(Points::new("My (t=0)", vec![my0]).radius(4.5_f32).color(palette.axis_y));
-                        plot_ui.points(Points::new("Mz (t=0)", vec![mz0]).radius(4.5_f32).color(palette.axis_z));
+                        plot_ui.points(
+                            Points::new("Mx (t=0)", vec![mx0])
+                                .radius(4.5_f32)
+                                .color(palette.axis_x),
+                        );
+                        plot_ui.points(
+                            Points::new("My (t=0)", vec![my0])
+                                .radius(4.5_f32)
+                                .color(palette.axis_y),
+                        );
+                        plot_ui.points(
+                            Points::new("Mz (t=0)", vec![mz0])
+                                .radius(4.5_f32)
+                                .color(palette.axis_z),
+                        );
                     }
+                    self.callout_manager.render_on_plot(plot_ui);
                 });
 
             ui.label(
@@ -230,48 +364,6 @@ impl MriTool {
             );
             ui.label("Adjust B-fields to see precession.");
         });
-    }
-
-    fn render_mri_plot_curves<'a>(
-        &'a self,
-        plot_ui: &mut egui_plot::PlotUi<'a>,
-        palette: &SemanticPalette,
-    ) {
-        let to_vec = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-        if let Some(ref twin) = self.twin {
-            let mxa: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.x]).collect();
-            let mya: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.y]).collect();
-            let mza: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.z]).collect();
-            plot_ui.line(branch_a_ghost_line("Mx (Branch A)", mxa, palette.axis_x));
-            plot_ui.line(branch_a_ghost_line("My (Branch A)", mya, palette.axis_y));
-            plot_ui.line(branch_a_ghost_line("Mz (Branch A)", mza, palette.axis_z));
-            plot_ui.line(branch_b_solid_line(
-                "Mx (Branch B)",
-                to_vec(&self.mx_points),
-                palette.axis_x,
-            ));
-            plot_ui.line(branch_b_solid_line(
-                "My (Branch B)",
-                to_vec(&self.my_points),
-                palette.axis_y,
-            ));
-            plot_ui.line(branch_b_solid_line(
-                "Mz (Branch B)",
-                to_vec(&self.mz_points),
-                palette.axis_z,
-            ));
-            let fork_t = twin.tracker.fork_time();
-            plot_ui.vline(fork_marker_vline(palette, fork_t));
-            plot_ui.callout(fork_marker_callout(
-                [fork_t, twin.fork_m.x],
-                fork_t,
-                palette,
-            ));
-        } else {
-            plot_ui.line(Line::new("Mx (Transverse)", &self.mx_points[..]).color(palette.axis_x));
-            plot_ui.line(Line::new("My (Transverse)", &self.my_points[..]).color(palette.axis_y));
-            plot_ui.line(Line::new("Mz (Longitudinal)", &self.mz_points[..]).color(palette.axis_z));
-        }
     }
 
     #[cfg(test)]
@@ -282,18 +374,20 @@ impl MriTool {
     }
 
     pub(crate) fn show_ui_inside(&mut self, ui: &mut egui::Ui) {
-        if let Some(snapshot) = self.worker.update() {
-            if let Some(data) = snapshot
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<MriSnapshot>())
-            {
-                self.current_time = data.current_time;
-                self.simulator.magnetization = data.magnetization;
-                self.history = data.history.clone();
-                self.twin = data.twin.clone();
-                self.update_plot_buffers();
-                self.sync_mri_branch_engine();
+        if self.pulse_config.mode.is_continuous() {
+            if let Some(snapshot) = self.worker.update() {
+                if let Some(data) = snapshot
+                    .structured_data
+                    .as_ref()
+                    .and_then(|d| d.downcast_ref::<MriSnapshot>())
+                {
+                    self.current_time = data.current_time;
+                    self.simulator.magnetization = data.magnetization;
+                    self.history = data.history.clone();
+                    self.twin = data.twin.clone();
+                    self.update_plot_buffers();
+                    self.sync_mri_branch_engine();
+                }
             }
         }
 
@@ -306,5 +400,50 @@ impl MriTool {
 
         self.draw_side_panel(ui);
         self.draw_central_panel(ui);
+    }
+}
+
+fn render_mri_plot_curves<'a>(
+    twin: Option<&super::MriTwinState>,
+    mx_points: &'a [PlotPoint],
+    my_points: &'a [PlotPoint],
+    mz_points: &'a [PlotPoint],
+    plot_ui: &mut egui_plot::PlotUi<'a>,
+    palette: &SemanticPalette,
+) {
+    let to_vec = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+    if let Some(twin) = twin {
+        let mxa: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.x]).collect();
+        let mya: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.y]).collect();
+        let mza: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.z]).collect();
+        plot_ui.line(branch_a_ghost_line("Mx (Branch A)", mxa, palette.axis_x));
+        plot_ui.line(branch_a_ghost_line("My (Branch A)", mya, palette.axis_y));
+        plot_ui.line(branch_a_ghost_line("Mz (Branch A)", mza, palette.axis_z));
+        plot_ui.line(branch_b_solid_line(
+            "Mx (Branch B)",
+            to_vec(mx_points),
+            palette.axis_x,
+        ));
+        plot_ui.line(branch_b_solid_line(
+            "My (Branch B)",
+            to_vec(my_points),
+            palette.axis_y,
+        ));
+        plot_ui.line(branch_b_solid_line(
+            "Mz (Branch B)",
+            to_vec(mz_points),
+            palette.axis_z,
+        ));
+        let fork_t = twin.tracker.fork_time();
+        plot_ui.vline(fork_marker_vline(palette, fork_t));
+        plot_ui.callout(fork_marker_callout(
+            [fork_t, twin.fork_m.x],
+            fork_t,
+            palette,
+        ));
+    } else {
+        plot_ui.line(Line::new("Mx (Transverse)", mx_points).color(palette.axis_x));
+        plot_ui.line(Line::new("My (Transverse)", my_points).color(palette.axis_y));
+        plot_ui.line(Line::new("Mz (Longitudinal)", mz_points).color(palette.axis_z));
     }
 }

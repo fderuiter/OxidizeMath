@@ -4,7 +4,12 @@ use super::flow::{AttractorMode, CompiledFlowJob};
 use super::serde_vec3;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
+use crate::tabs::geometry_topology::vietoris_rips::{
+    handoff::{publish_live_attractor_landmarks, ChaosLandmarkHandoff},
+    MAX_CHAOS_LANDMARKS,
+};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
+use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -267,6 +272,22 @@ impl SimulationRunner for AttractorRunner {
                 break;
             }
         }
+        if self.history.len() >= 16 && self.step_count % 15 < simulation_speed {
+            let pts: Vec<Point3D> = self
+                .history
+                .iter()
+                .map(|v| Point3D::new(v.x, v.y, v.z))
+                .collect();
+            if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
+                publish_live_attractor_landmarks(ChaosLandmarkHandoff {
+                    points: landmarks,
+                    sigma: self.system.sigma,
+                    rho: self.system.rho,
+                    beta: self.system.beta,
+                    dt,
+                });
+            }
+        }
     }
 
     fn step_once(&mut self) {
@@ -280,9 +301,27 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
+        let v = self.system.state.vec;
+        let (dx, dy, dz) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            match (p.mode, p.custom_flow.as_deref()) {
+                (AttractorMode::Custom, Some(job)) => {
+                    let rhs = job.eval_rhs(v);
+                    (rhs.x, rhs.y, rhs.z)
+                }
+                _ => (
+                    self.system.sigma * (v.y - v.x),
+                    v.x * (self.system.rho - v.z) - v.y,
+                    v.x * v.y - self.system.beta * v.z,
+                ),
+            }
+        };
+        let diverged = matches!(self.execution_state, SolverExecutionState::Diverged { .. });
+        let sonification =
+            crate::audio::mappings::attractor_frame([v.x, v.y, v.z], [dx, dy, dz], diverged);
         let snapshot = AttractorSnapshot {
             history: self.history.clone(),
-            current_vec: self.system.state.vec,
+            current_vec: v,
             step_count: self.step_count,
             execution_state: self.execution_state,
             twin: self.twin.clone(),
@@ -291,13 +330,9 @@ impl SimulationRunner for AttractorRunner {
             width: 0,
             height: 0,
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
-            custom_data: vec![
-                self.system.state.vec.x,
-                self.system.state.vec.y,
-                self.system.state.vec.z,
-                self.step_count as f64,
-            ],
+            custom_data: vec![v.x, v.y, v.z, self.step_count as f64],
             structured_data: Some(Box::new(snapshot)),
+            sonification,
         }
     }
 

@@ -2,13 +2,15 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::counterfactual::{MriForkDescriptor, MriTwinState, MRI_STEP_DT};
+use super::counterfactual::{
+    step_bloch_rotating_frame, MriForkDescriptor, MriTwinState, MRI_STEP_DT,
+};
 use super::runner::MriRunner;
 use super::tool::MriTool;
 use crate::async_sim::SimCommand;
 use crate::framework::BranchControlAction;
 use math_explorer::physics::mri::bloch::BlochSimulator;
-use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
+use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use nalgebra::Vector3;
 
 impl MriTool {
@@ -178,7 +180,7 @@ impl MriTool {
         self.history.clear();
         self.history.push_back((0.0, initial_m));
         for _ in 0..desc.fork_step {
-            TimeStepper::step_with(&mut self.simulator, &mut self.solver, MRI_STEP_DT);
+            step_bloch_rotating_frame(&mut self.simulator, &mut self.solver, MRI_STEP_DT, 0.0);
             self.current_time += MRI_STEP_DT;
             self.history
                 .push_back((self.current_time, self.simulator.magnetization));
@@ -190,7 +192,7 @@ impl MriTool {
             let next_t = self.current_time + MRI_STEP_DT;
             twin.step_branch_a(next_t, MRI_STEP_DT, self.max_history);
             if !twin.step_branch_b_spin_echo(&mut self.simulator, &mut self.solver, MRI_STEP_DT) {
-                TimeStepper::step_with(&mut self.simulator, &mut self.solver, MRI_STEP_DT);
+                step_bloch_rotating_frame(&mut self.simulator, &mut self.solver, MRI_STEP_DT, 0.0);
             }
             self.current_time = next_t;
             if self.history.len() >= self.max_history {
@@ -232,5 +234,24 @@ impl MriTool {
                 true
             }
         }
+    }
+
+    #[cfg(test)]
+    #[allow(missing_docs)]
+    pub fn restart_worker(&mut self) {
+        let (t1, t2, b_field) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.t1, p.t2, p.b_field)
+        };
+        self.simulator.t1 = t1;
+        self.simulator.t2 = t2;
+        self.simulator.b_field = b_field;
+        self.sync_mri_worker_with_local_state();
+    }
+
+    #[cfg(test)]
+    #[allow(missing_docs)]
+    pub fn retry(&mut self) {
+        self.restart_worker();
     }
 }

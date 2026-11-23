@@ -317,6 +317,11 @@ impl<'a> PlaybackTransport<'a> {
         action: PlaybackAction,
         should_announce: bool,
     ) {
+        match action {
+            PlaybackAction::Pause => crate::audio::notify_playback_paused(),
+            PlaybackAction::Reset => crate::audio::notify_playback_reset(),
+            PlaybackAction::Play | PlaybackAction::Step => {}
+        }
         if should_announce {
             let announcement = match action {
                 PlaybackAction::Play => format!("Playing {} simulation", self.tool_name),

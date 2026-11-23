@@ -7,7 +7,8 @@ use crate::framework::{
     l2_distance_3d, mri_transverse_echo_gain, sanitize_perturbation_delta, DivergenceSnapshot,
     DomainInterventionDelta, SeparationTracker,
 };
-use math_explorer::physics::mri::bloch::BlochSimulator;
+use math_explorer::physics::mri::bloch::{rotating_frame_effective_field, BlochSimulator};
+use math_explorer::physics::mri::proton;
 use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
 use nalgebra::Vector3;
 use serde::{Deserialize, Serialize};
@@ -65,7 +66,7 @@ impl MriSpinEchoEnsemble {
     pub fn from_mid_decay(base_m: Vector3<f64>, fork_time: f64) -> Self {
         let m_xy = base_m.x.hypot(base_m.y);
         let base_phase = base_m.y.atan2(base_m.x);
-        let gamma = 2.675e8_f64;
+        let gamma = proton::GYROMAGNETIC_RATIO;
         let tau = fork_time.clamp(0.02, 1.0);
 
         let mut bz_offsets = [0.0; ISOCHROMAT_COUNT];
@@ -208,21 +209,22 @@ impl MriTwinState {
         );
     }
 
-    /// Advances `Branch A` by one `dt` increment with zero heap allocations.
+    /// Advances `Branch A` by one `dt` increment in the rotating frame with zero heap allocations.
     pub fn step_branch_a(&mut self, next_time: f64, dt: f64, max_history: usize) {
         if let Some(ref mut ens) = self.spin_echo {
-            let base_b = self.simulator_a.b_field;
             for idx in 0..ISOCHROMAT_COUNT {
                 self.simulator_a.magnetization = ens.spins_a[idx];
-                self.simulator_a.b_field =
-                    Vector3::new(base_b.x, base_b.y, base_b.z + ens.bz_offsets[idx]);
-                TimeStepper::step_with(&mut self.simulator_a, &mut self.solver_a, dt);
+                step_bloch_rotating_frame(
+                    &mut self.simulator_a,
+                    &mut self.solver_a,
+                    dt,
+                    ens.bz_offsets[idx],
+                );
                 ens.spins_a[idx] = self.simulator_a.magnetization;
             }
-            self.simulator_a.b_field = base_b;
             self.simulator_a.magnetization = MriSpinEchoEnsemble::mean_magnetization(&ens.spins_a);
         } else {
-            TimeStepper::step_with(&mut self.simulator_a, &mut self.solver_a, dt);
+            step_bloch_rotating_frame(&mut self.simulator_a, &mut self.solver_a, dt, 0.0);
         }
         let m = self.simulator_a.magnetization;
         if m.x.is_finite() && m.y.is_finite() && m.z.is_finite() {
@@ -243,14 +245,11 @@ impl MriTwinState {
         let Some(ref mut ens) = self.spin_echo else {
             return false;
         };
-        let base_b = simulator_b.b_field;
         for idx in 0..ISOCHROMAT_COUNT {
             simulator_b.magnetization = ens.spins_b[idx];
-            simulator_b.b_field = Vector3::new(base_b.x, base_b.y, base_b.z + ens.bz_offsets[idx]);
-            TimeStepper::step_with(simulator_b, solver_b, dt);
+            step_bloch_rotating_frame(simulator_b, solver_b, dt, ens.bz_offsets[idx]);
             ens.spins_b[idx] = simulator_b.magnetization;
         }
-        simulator_b.b_field = base_b;
         simulator_b.magnetization = MriSpinEchoEnsemble::mean_magnetization(&ens.spins_b);
         true
     }
@@ -365,4 +364,32 @@ impl MriRunner {
             p.b_field = self.simulator.b_field;
         }
     }
+}
+
+/// Steps `sim` by `dt` in the Larmor rotating frame of `sim.b_field.z` (plus optional `bz_offset`),
+/// subdividing large off-resonance phase increments with zero heap allocations.
+pub(crate) fn step_bloch_rotating_frame(
+    sim: &mut BlochSimulator,
+    solver: &mut RungeKutta4<Vector3<f64>>,
+    dt: f64,
+    bz_offset: f64,
+) {
+    let b_lab = sim.b_field;
+    let omega_rf = proton::larmor_frequency(b_lab.z);
+    let b1_amp = b_lab.x.hypot(b_lab.y);
+    let phase_rad = b_lab.y.atan2(b_lab.x);
+    let mut b_rot = rotating_frame_effective_field(b_lab.z, omega_rf, b1_amp, phase_rad);
+    b_rot.z += bz_offset;
+    let max_phase_step = proton::GYROMAGNETIC_RATIO * b_rot.norm() * dt;
+    let sub_steps = if max_phase_step.is_finite() && max_phase_step > 0.25 {
+        (max_phase_step / 0.25).ceil().min(64.0) as usize
+    } else {
+        1
+    };
+    let sub_dt = dt / (sub_steps as f64);
+    sim.b_field = b_rot;
+    for _ in 0..sub_steps {
+        TimeStepper::step_with(sim, solver, sub_dt);
+    }
+    sim.b_field = b_lab;
 }

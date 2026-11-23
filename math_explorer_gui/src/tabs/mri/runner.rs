@@ -1,9 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::counterfactual::step_bloch_rotating_frame;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use math_explorer::physics::mri::bloch::BlochSimulator;
-use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
+use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -105,7 +106,7 @@ impl MriRunner {
                 twin.step_branch_b_spin_echo(&mut self.simulator, &mut self.solver, dt)
             });
             if !used_spin_echo {
-                TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
+                step_bloch_rotating_frame(&mut self.simulator, &mut self.solver, dt, 0.0);
             }
             self.current_time = next_time;
             let m = self.simulator.magnetization;
@@ -203,6 +204,7 @@ impl SimulationRunner for MriRunner {
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data: vec![self.current_time, m.x, m.y, m.z],
             structured_data: Some(Box::new(snapshot)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 
