@@ -3,18 +3,18 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::lbm_fairing::{
-    decode_mask_hex, encode_mask_hex, restore_inlet_and_core_mask, FairingStamp,
-    LbmFairingEvaluator, LbmSerializedState, CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY,
-    LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y, LBM_HEIGHT, LBM_INLET_COLS,
-    LBM_MIN_SOLID_CELLS, LBM_WIDTH,
+    apply_stroke_to_fairing_mask, decode_mask_hex, encode_fairing_mask_rle, encode_mask_hex,
+    restore_inlet_and_core_mask, FairingStamp, LbmFairingEvaluator, LbmSerializedState,
+    CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY, LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X,
+    LBM_CORE_Y, LBM_HEIGHT, LBM_INLET_COLS, LBM_MIN_SOLID_CELLS, LBM_WIDTH,
 };
 use crate::accessibility::{
     announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
     register_canvas_accessibility, AccessibleHoverText,
 };
 use crate::async_sim::unified::UnifiedUiExtension;
-use crate::async_sim::{SimCommand, StateSnapshot};
-use crate::framework::{CalloutManager, ChallengeEvaluation};
+use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
+use crate::framework::{BrushStroke, CalloutManager, ChallengeEvaluation};
 use eframe::egui;
 use egui_plot::{Points, Polygon};
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -127,21 +127,22 @@ impl LbmUiExtension {
         if resp.gained_focus() {
             ctx.request_repaint();
         }
-        ctx.memory_mut(|m| {
-            let filter = egui::EventFilter {
-                tab: false,
-                horizontal_arrows: true,
-                vertical_arrows: true,
-                escape: false,
-            };
-            m.set_focus_lock_filter(resp.id, filter);
-        });
+        let filter = egui::EventFilter {
+            tab: false,
+            horizontal_arrows: true,
+            vertical_arrows: true,
+            escape: false,
+        };
+        ctx.memory_mut(|m| m.set_focus_lock_filter(resp.id, filter));
         let (delta, toggle_pressed) = Self::poll_sculpt_key_input(ctx);
         let mut cmds = Vec::new();
         if delta != (0, 0) {
             let (cx, cy) = self.nudge_cursor(delta.0, delta.1);
-            let is_solid = self.mask[flatten_2d_index(cx as usize, cy as usize, LBM_WIDTH)];
-            let word = if is_solid { "solid" } else { "fluid" };
+            let word = if self.mask[flatten_2d_index(cx as usize, cy as usize, LBM_WIDTH)] {
+                "solid"
+            } else {
+                "fluid"
+            };
             announce_live_status(ctx, format!("Sculpt cursor moved to ({cx}, {cy}), {word}"));
         }
         if toggle_pressed {
@@ -149,13 +150,11 @@ impl LbmUiExtension {
                 Ok((is_solid, toggle_cmds)) => {
                     let word = if is_solid { "solid" } else { "fluid" };
                     let m = &self.evaluator.latest;
-                    announce_live_status(
-                        ctx,
-                        format!(
-                            "Cell ({}, {}) set to {word}; C_D = {:.3}, N_solid = {}",
-                            self.cursor_x, self.cursor_y, m.c_d, m.n_solid
-                        ),
+                    let msg = format!(
+                        "Cell ({}, {}) set to {word}; C_D = {:.3}, N_solid = {}",
+                        self.cursor_x, self.cursor_y, m.c_d, m.n_solid
                     );
+                    announce_live_status(ctx, msg);
                     cmds.extend(toggle_cmds);
                 }
                 Err(reason) => announce_live_status(ctx, reason),
@@ -174,31 +173,24 @@ impl LbmUiExtension {
         let mut cmds = Vec::new();
         ui.label("Fairing Stamps (Keyboard Accessible):");
         ui.horizontal_wrapped(|ui| {
-            for stamp in [
+            let stamps = [
                 FairingStamp::BluffCylinder,
                 FairingStamp::TeardropFairing,
                 FairingStamp::SymmetricWedge,
-            ] {
-                if ui
-                    .button(stamp.label())
-                    .accessible_hover_text(format!(
-                        "Apply {} obstacle profile and reset LBM equilibrium",
-                        stamp.label()
-                    ))
-                    .clicked()
-                {
+            ];
+            for stamp in stamps {
+                let tip = format!("Apply {} obstacle profile and reset LBM", stamp.label());
+                if ui.button(stamp.label()).accessible_hover_text(tip).clicked() {
                     cmds = self.apply_stamp(stamp, CHALLENGE_LBM_VISCOSITY);
                     let m = &self.evaluator.latest;
-                    announce_live_status(
-                        ui.ctx(),
-                        format!(
-                            "Applied {}: C_D = {:.3} ({:.1}% of cylinder), N_solid = {}",
-                            stamp.label(),
-                            m.c_d,
-                            100.0 * m.c_d / m.c_d_cylinder.max(1e-9),
-                            m.n_solid
-                        ),
+                    let pct = 100.0 * m.c_d / m.c_d_cylinder.max(1e-9);
+                    let msg = format!(
+                        "Applied {}: C_D = {:.3} ({pct:.1}% of cylinder), N_solid = {}",
+                        stamp.label(),
+                        m.c_d,
+                        m.n_solid
                     );
+                    announce_live_status(ui.ctx(), msg);
                 }
             }
         });
@@ -210,68 +202,49 @@ impl LbmUiExtension {
         ui: &mut egui::Ui,
         latest_snapshot: Option<&StateSnapshot>,
     ) -> Vec<SimCommand> {
-        let pad_label = format!(
-            "⌨ Sculpt Cursor ({}, {}) — Focus & use Arrow keys + Enter",
-            self.cursor_x, self.cursor_y
-        );
+        let (cx, cy) = (self.cursor_x, self.cursor_y);
+        let pad_label = format!("⌨ Sculpt Cursor ({cx}, {cy}) — Focus & use Arrow keys + Enter");
         let pad_resp = ui.add(egui::Button::new(pad_label).sense(egui::Sense::click()));
+        let coord = format!("({cx}, {cy})");
         register_canvas_accessibility(
             ui,
             &pad_resp,
             egui::accesskit::Role::Application,
             "LBM Fairing Keyboard Sculpt Cursor",
-            Some(&format!("({}, {})", self.cursor_x, self.cursor_y)),
+            Some(&coord),
         );
         if pad_resp.clicked() {
             pad_resp.request_focus();
         }
         let cmds = self.handle_sculpt_keys(ui, &pad_resp);
-
         let m = &self.evaluator.latest;
-        let live_forces = latest_snapshot
-            .filter(|s| s.custom_data.len() >= 6 && s.custom_data[5] >= 20.0)
-            .map(|s| (s.custom_data[0], s.custom_data[1], s.custom_data[2]));
         ui.small(format!(
             "Fairing Readout: F_D = {:.4}, F_L = {:.4}, C_D = {:.3} (Cyl = {:.3})",
             m.f_drag, m.f_lift, m.c_d, m.c_d_cylinder
         ));
-        if let Some((l_fd, l_fl, l_cd)) = live_forces {
+        if let Some(s) = latest_snapshot.filter(|s| s.custom_data.len() >= 6 && s.custom_data[5] >= 20.0) {
             ui.small(format!(
                 "Live Stream: F_D = {:.4}, F_L = {:.4}, C_D = {:.3}",
-                l_fd, l_fl, l_cd
+                s.custom_data[0], s.custom_data[1], s.custom_data[2]
             ));
         }
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let geom_ok = m.n_solid >= LBM_MIN_SOLID_CELLS && m.core_intact;
-        let geom_color = if geom_ok {
-            palette.success
-        } else {
-            palette.warning
-        };
-        ui.colored_label(
-            geom_color,
-            format!(
-                "Solid Cells: {} (min {}) | Core R=4: {}",
-                m.n_solid,
-                LBM_MIN_SOLID_CELLS,
-                if m.core_intact { "Intact" } else { "Breached" }
-            ),
-        );
+        let geom_color = if geom_ok { palette.success } else { palette.warning };
+        let core_txt = if m.core_intact { "Intact" } else { "Breached" };
+        let msg = format!("Solid Cells: {} (min {LBM_MIN_SOLID_CELLS}) | Core R=4: {core_txt}", m.n_solid);
+        ui.colored_label(geom_color, msg);
         cmds
     }
 }
 
 impl UnifiedUiExtension for LbmUiExtension {
     fn save_extra_state(&self, params: &HashMap<String, f64>) -> Option<String> {
+        self.active_challenge?;
         let viscosity = *params.get("viscosity").unwrap_or(&CHALLENGE_LBM_VISCOSITY);
-        let mask_hex = if self.mask != self.default_mask || self.active_challenge.is_some() {
-            Some(encode_mask_hex(&self.mask))
-        } else {
-            None
-        };
         serde_json::to_string(&LbmSerializedState {
             viscosity,
-            mask_hex,
+            mask_hex: Some(encode_mask_hex(&self.mask)),
         })
         .ok()
     }
@@ -281,6 +254,12 @@ impl UnifiedUiExtension for LbmUiExtension {
         state: &str,
         params: &mut HashMap<String, f64>,
     ) -> Option<Result<Vec<SimCommand>, String>> {
+        let has_mask_hex = serde_json::from_str::<serde_json::Value>(state)
+            .ok()
+            .is_some_and(|v| v.get("mask_hex").is_some());
+        if self.active_challenge.is_none() && !has_mask_hex {
+            return None;
+        }
         let parsed: LbmSerializedState = match serde_json::from_str(state) {
             Ok(s) => s,
             Err(e) => return Some(Err(format!("Invalid LBM state JSON: {e}"))),
@@ -325,16 +304,21 @@ impl UnifiedUiExtension for LbmUiExtension {
         match challenge_id {
             None => {
                 self.active_challenge = None;
-                Ok(Vec::new())
+                Ok(vec![SimCommand::Custom("ChallengeLockCore:0".to_string())])
             }
             Some(CHALLENGE_LBM_FAIRING) => {
                 self.active_challenge = Some(CHALLENGE_LBM_FAIRING);
                 params.insert("viscosity".to_string(), CHALLENGE_LBM_VISCOSITY);
+                params.insert("naca_profile".to_string(), 0.0);
+                params.insert("angle_of_attack".to_string(), 0.0);
                 restore_inlet_and_core_mask(&mut self.mask);
                 self.evaluator
                     .evaluate_mask_in_place(&self.mask, CHALLENGE_LBM_VISCOSITY);
                 self.revision_counter = self.revision_counter.wrapping_add(1);
-                Ok(vec![self.sync_mask_command()])
+                Ok(vec![
+                    SimCommand::Custom("ChallengeLockCore:1".to_string()),
+                    self.sync_mask_command(),
+                ])
             }
             Some(other) => Err(format!(
                 "Unsupported challenge '{other}' for LatticeBoltzmannTool"
@@ -355,7 +339,8 @@ impl UnifiedUiExtension for LbmUiExtension {
     }
 
     fn is_parameter_locked(&self, param_name: &str) -> bool {
-        self.active_challenge == Some(CHALLENGE_LBM_FAIRING) && param_name == "viscosity"
+        self.active_challenge == Some(CHALLENGE_LBM_FAIRING)
+            && matches!(param_name, "viscosity" | "naca_profile" | "angle_of_attack")
     }
 
     fn on_reset(&mut self, params: &HashMap<String, f64>) {
@@ -400,6 +385,25 @@ impl UnifiedUiExtension for LbmUiExtension {
             self.revision_counter = self.revision_counter.wrapping_add(1);
         }
         any_changed
+    }
+
+    fn on_brush_stroke(&mut self, stroke: &BrushStroke) -> bool {
+        if apply_stroke_to_fairing_mask(&mut self.mask, stroke, self.active_challenge.is_some()) {
+            self.evaluator
+                .evaluate_mask_in_place(&self.mask, CHALLENGE_LBM_VISCOSITY);
+            self.revision_counter = self.revision_counter.wrapping_add(1);
+        }
+        true
+    }
+
+    fn sync_sculpt_payload(&self, sculpt: &mut SculptStatePayload) {
+        if self.active_challenge.is_none() {
+            sculpt.rle_mask = if self.mask == self.default_mask {
+                Vec::new()
+            } else {
+                encode_fairing_mask_rle(&self.mask)
+            };
+        }
     }
 
     fn on_custom_action(&mut self, action: &str) {

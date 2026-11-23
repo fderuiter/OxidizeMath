@@ -54,37 +54,92 @@ pub enum KellyError {
 
 /// Errors returned by bookmaker devigging, `+EV`, arbitrage, Dutching, middle, and hedge calculators.
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
-#[allow(missing_docs)]
 pub enum MarketPricingError {
+    /// Fewer outcomes were supplied than required by the market or calculator.
     #[error("Insufficient outcomes: got {count}, require at least {min_required}")]
-    InsufficientOutcomes { count: usize, min_required: usize },
+    InsufficientOutcomes {
+        /// Supplied outcome count.
+        count: usize,
+        /// Minimum required outcome count.
+        min_required: usize,
+    },
+    /// Supplied outcome slice exceeds fixed stack capacity `MAX_MARKET_OUTCOMES`.
     #[error("Too many outcomes: got {count}, maximum zero-allocation capacity is {max_supported}")]
-    TooManyOutcomes { count: usize, max_supported: usize },
+    TooManyOutcomes {
+        /// Supplied outcome count.
+        count: usize,
+        /// Maximum supported stack outcome count.
+        max_supported: usize,
+    },
+    /// Input and output slices do not have matching lengths.
     #[error("Slice length mismatch: expected {expected}, got {actual}")]
-    SliceLengthMismatch { expected: usize, actual: usize },
+    SliceLengthMismatch {
+        /// Expected slice length.
+        expected: usize,
+        /// Actual slice length.
+        actual: usize,
+    },
+    /// Outcome index exceeds the market slice length.
     #[error("Outcome index {index} is out of bounds for market of {outcome_count} outcomes")]
-    OutcomeIndexOutOfBounds { index: usize, outcome_count: usize },
+    OutcomeIndexOutOfBounds {
+        /// Requested zero-based outcome index.
+        index: usize,
+        /// Total outcomes in the market slice.
+        outcome_count: usize,
+    },
+    /// Duplicate outcome index supplied in a Dutching subset selection.
     #[error("Duplicate outcome index {index} in subset selection")]
-    DuplicateOutcomeIndex { index: usize },
+    DuplicateOutcomeIndex {
+        /// Repeated zero-based outcome index.
+        index: usize,
+    },
+    /// Non-finite or non-playable decimal odds (`<= 1.0`).
     #[error("Invalid decimal odds: {value} (must be finite and > 1.0)")]
-    InvalidOdds { value: f64 },
+    InvalidOdds {
+        /// Invalid decimal odds value.
+        value: f64,
+    },
+    /// Non-positive or non-finite market booksum (`sum(1 / O_i)`).
     #[error("Market booksum must be finite and positive (got {booksum})")]
-    NonPositiveOverround { booksum: f64 },
+    NonPositiveOverround {
+        /// Computed raw booksum.
+        booksum: f64,
+    },
+    /// Cross-book reciprocal odds sum is `>= 1.0`, leaving no risk-free arbitrage.
     #[error("No arbitrage opportunity: reciprocal sum {reciprocal_sum} >= 1.0")]
-    NoArbitrage { reciprocal_sum: f64 },
+    NoArbitrage {
+        /// Combined implied probability sum `sum(1 / O_i)`.
+        reciprocal_sum: f64,
+    },
+    /// Positive target profit cannot be locked when selected reciprocal sum is `>= 1.0`.
     #[error("Target profit is infeasible when reciprocal sum {reciprocal_sum} >= 1.0")]
-    InfeasibleTargetProfit { reciprocal_sum: f64 },
+    InfeasibleTargetProfit {
+        /// Combined implied probability sum across selected contenders.
+        reciprocal_sum: f64,
+    },
+    /// Non-finite or non-positive stake, budget, or target profit parameter.
     #[error("Stake or budget must be finite and positive (got {value})")]
-    InvalidStakeOrBudget { value: f64 },
+    InvalidStakeOrBudget {
+        /// Invalid stake or budget scalar.
+        value: f64,
+    },
+    /// Requested downside profit floor exceeds the equal-profit hedge ceiling.
     #[error(
         "Target profit floor {floor} exceeds maximum attainable guaranteed profit {max_guaranteed_profit}"
     )]
     UnattainableFloor {
+        /// Requested minimum profit floor.
         floor: f64,
+        /// Maximum equalized profit attainable at current hedge odds.
         max_guaranteed_profit: f64,
     },
+    /// Probability value is non-finite or outside `[0.0, 1.0]`.
     #[error("Invalid probability: {value} (must be finite and in [0.0, 1.0])")]
-    InvalidProbability { value: f64 },
+    InvalidProbability {
+        /// Invalid probability scalar.
+        value: f64,
+    },
+    /// Numerical root-finding failure during `Power` or `Shin` calibration.
     #[error("Root-finding solver failed during devigging: {0}")]
     Solver(#[from] AnalysisError),
 }

@@ -166,6 +166,7 @@ struct ComputedMarketArrays {
     add_clamped: [f64; MAX_MARKET_OUTCOMES],
     power: [f64; MAX_MARKET_OUTCOMES],
     shin: [f64; MAX_MARKET_OUTCOMES],
+    selected: [f64; MAX_MARKET_OUTCOMES],
     selected_meta: DevigMetadata,
     add_meta: DevigMetadata,
 }
@@ -196,6 +197,7 @@ fn compute_all_arrays(
         add_clamped,
         power,
         shin,
+        selected: sel_buf,
         selected_meta,
         add_meta,
     })
@@ -368,7 +370,7 @@ fn render_outcome_table(
                 "Additive (Clamped)",
                 "Power",
                 "Shin",
-                "Shin Fair Odds",
+                "Fair Odds",
             ] {
                 ui.strong(col);
             }
@@ -387,12 +389,12 @@ fn render_outcome_table(
                 ui.label(format!("{:.2}%", arrays.add_clamped[i] * 100.0));
                 ui.label(format!("{:.2}%", arrays.power[i] * 100.0));
                 ui.label(format!("{:.2}%", arrays.shin[i] * 100.0));
-                let shin_fair = if arrays.shin[i] > 0.0 {
-                    format!("{:.2}", 1.0 / arrays.shin[i])
+                let active_fair = if arrays.selected[i] > 0.0 {
+                    format!("{:.2}", 1.0 / arrays.selected[i])
                 } else {
                     "∞".to_string()
                 };
-                ui.label(shin_fair);
+                ui.label(active_fair);
                 ui.end_row();
             }
         });

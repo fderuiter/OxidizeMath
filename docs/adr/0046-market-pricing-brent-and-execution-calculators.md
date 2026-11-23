@@ -1,4 +1,4 @@
-# ADR 0044: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators
+# ADR 0046: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators
 
 ## Status
 Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
@@ -19,4 +19,4 @@ Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctes
 
 ## Consequences
 - **Positive**: `Bisection`, `NewtonRaphson`, `Brent`, and every `market_pricing` routine execute with zero heap allocations inside `VerifiedEngine::run_verified` while matching analytical devigging, `+EV`, arbitrage, Dutching, middle, and hedge benchmarks within `1e-9`.
-- **Neutral**: Workspace contract suites now track 28 crate error enums (50 leaf errors), 72 registered `InteractiveTool` implementations (49 plot-exportable tools), and 103 `StarterPresetMetadata` cards.
+- **Neutral**: Workspace contract suites now track 28 crate error enums (50 leaf errors), 76 registered `InteractiveTool` implementations (53 plot-exportable tools), and 109 `StarterPresetMetadata` cards.

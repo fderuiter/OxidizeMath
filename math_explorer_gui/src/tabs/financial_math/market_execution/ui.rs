@@ -237,7 +237,9 @@ fn render_dutching_output(
     };
     let mut stakes = [0.0; MAX_MARKET_OUTCOMES];
     match dutch_subset_into(&odds, &indices, mode, &mut stakes[..odds.len()]) {
-        Ok(rep) => render_dutching_summary_and_chart(tool, odds.len(), &rep, ui, palette),
+        Ok(rep) => {
+            render_dutching_summary_and_chart(tool, &stakes[..odds.len()], &rep, ui, palette);
+        }
         Err(e) => {
             ui.colored_label(palette.error, format!("Dutching infeasible: {e}"));
         }
@@ -246,11 +248,12 @@ fn render_dutching_output(
 
 fn render_dutching_summary_and_chart(
     tool: &MarketExecutionTool,
-    total_count: usize,
+    stakes: &[f64],
     rep: &DutchingReport,
     ui: &mut egui::Ui,
     palette: &SemanticPalette,
 ) {
+    let total_count = stakes.len();
     let col = if rep.is_profitable_on_hit {
         palette.success
     } else {
@@ -269,6 +272,14 @@ fn render_dutching_summary_and_chart(
             rep.roi_if_hit * 100.0
         ),
     );
+    ui.horizontal_wrapped(|ui| {
+        for (i, &s) in stakes.iter().enumerate() {
+            if tool.dutch_selected[i] {
+                ui.label(format!("Contender #{} Stake: ${:.2}", i + 1, s));
+                ui.separator();
+            }
+        }
+    });
     let pnl_bars: Vec<Bar> = (0..total_count)
         .map(|i| {
             let net = if tool.dutch_selected[i] {
