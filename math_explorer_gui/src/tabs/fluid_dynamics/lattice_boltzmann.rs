@@ -241,6 +241,7 @@ impl UnifiedModel for LbmUnified {
                 self.step_count as f64,
             ],
             structured_data: None,
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

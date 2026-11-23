@@ -67,7 +67,7 @@ pub struct BifurcationDiagram {
     pub(crate) r_min: f64,
     pub(crate) r_max: f64,
     pub(crate) steps: usize,
-    /// Active growth rate `r` tracked by pointer hover, click pin, or keyboard stepping.
+    /// Active growth rate `r` tracked by pointer hover, click pin, keyboard stepping, or audio sweep.
     pub selected_r: f64,
     /// Initial state `x_0` used for orbit, cobweb, and Lyapunov evaluation.
     pub x0: f64,

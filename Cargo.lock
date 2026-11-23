@@ -1138,6 +1138,7 @@ dependencies = [
  "rand",
  "rustfft",
  "scientific_metadata",
+ "serde",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -2469,6 +2470,7 @@ dependencies = [
  "png",
  "rand",
  "rfd",
+ "rustfft",
  "scientific_metadata",
  "serde",
  "serde_json",

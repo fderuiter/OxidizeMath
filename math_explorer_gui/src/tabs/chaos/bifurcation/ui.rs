@@ -68,9 +68,12 @@ impl BifurcationDiagram {
     }
 
     fn draw_parameter_controls(&mut self, ui: &mut egui::Ui, mut full_recompute: bool) {
+        self.selected_r = self.selected_r.clamp(self.r_min, self.r_max);
         let r_changed = ui
             .add(
-                egui::Slider::new(&mut self.selected_r, self.r_min..=self.r_max).text("Selected r"),
+                AnimatedSlider::new(&mut self.selected_r, self.r_min..=self.r_max)
+                    .text("Selected r")
+                    .id_salt("bifurcation_probe_r"),
             )
             .changed();
         let x0_range = match self.map_mode {
@@ -96,6 +99,14 @@ impl BifurcationDiagram {
         } else if r_changed {
             self.recompute_coupled_views();
         }
+
+        self.draw_audio_probe(ui);
+    }
+
+    fn draw_audio_probe(&self, ui: &mut egui::Ui) {
+        ui.separator();
+        let frame = crate::audio::mappings::bifurcation_frame(self.selected_r);
+        crate::audio::render_sonification_panel(ui, "bifurcation", &frame, false);
     }
 
     fn draw_custom_map_controls(&mut self, ui: &mut egui::Ui) -> bool {
