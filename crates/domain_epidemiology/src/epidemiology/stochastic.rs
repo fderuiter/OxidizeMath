@@ -54,8 +54,7 @@ pub fn probability_of_extinction(r0: f64, initial_cases: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use std::error::Error;
+    use crate::error::EpidemiologyDomainError;
 
     #[test]
     #[verified_engine::verified]
@@ -75,7 +74,7 @@ mod tests {
 
     #[test]
     #[verified_engine::verified]
-    fn test_gillespie_solver_deterministic() -> Result<(), Box<dyn Error>> {
+    fn test_gillespie_solver_deterministic() -> Result<(), EpidemiologyDomainError> {
         // Seeded RNG for deterministic test
         let rng = oxidize_core::rng::OxidizeRng::default();
         let mut solver = GillespieSolver::new(rng);
@@ -104,6 +103,10 @@ mod tests {
 
         assert!(s_diff <= 1.0);
         assert!(i_diff >= 1.0); // I changes in both infection and recovery
+
+        let reaction_err: EpidemiologyDomainError = model.react(&mut state, 99).unwrap_err().into();
+        diagnostics::DiagnosticBus::new().emit_diagnostic(&reaction_err);
+        assert!(std::error::Error::source(&reaction_err).is_some());
 
         Ok(())
     }
