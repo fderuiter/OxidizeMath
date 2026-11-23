@@ -8317,6 +8317,41 @@
       "signature": "pub fn multivariate_linear_regression (features : & DMatrix < f64 > , targets : & DVector < f64 > ,) -> Option < DVector < f64 > >"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/tda/boundary.rs": [
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn clear_column (& mut self , col : usize) }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn col_pivot (& self , col : usize) -> Option < usize > }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn is_cleared (& self , col : usize) -> bool }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn new (num_rows : usize , num_cols : usize) -> Result < Self , TdaError > }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn pivot_col_for_row (& self , row : usize) -> Option < usize > }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn rank (& self) -> usize }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn reduce (& mut self) -> usize }"
+    },
+    {
+      "signature": "impl Z2BoundaryWorkspace { pub fn set_column_faces (& mut self , col : usize , faces : & [usize]) -> Result < () , TdaError > }"
+    },
+    {
+      "signature": "pub const MAX_INLINE_BOUNDARY_FACES : usize = 3"
+    },
+    {
+      "signature": "pub fn rank_z2_boundary (num_rows : usize , columns : & [Vec < usize >]) -> Result < usize , TdaError >"
+    },
+    {
+      "signature": "pub struct Z2BoundaryWorkspace"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/tda/complex.rs": [
     {
       "signature": "impl SimplicialComplex { pub fn add_simplex (& mut self , simplex : Simplex) -> Result < () , TdaError > }"
@@ -8337,13 +8372,43 @@
       "signature": "impl SimplicialComplex { pub fn new () -> Self }"
     },
     {
+      "signature": "pub const MAX_FILTRATION_TRIANGLES : usize = 100_000"
+    },
+    {
       "signature": "pub fn vietoris_rips_complex (cloud : & PointCloud , radius : f64 ,) -> Result < SimplicialComplex , TdaError >"
+    },
+    {
+      "signature": "pub fn vietoris_rips_complex_nd (cloud : & NdPointCloud , radius : f64 ,) -> Result < SimplicialComplex , TdaError >"
+    },
+    {
+      "signature": "pub fn vietoris_rips_from_distance_matrix (dist : & [Vec < f64 >] , radius : f64 , max_triangles : usize ,) -> Result < (SimplicialComplex , bool) , TdaError >"
     },
     {
       "signature": "pub struct SimplicialComplex"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/tda/core.rs": [
+    {
+      "signature": "impl NdPointCloud { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn distance_matrix (& self) -> Vec < Vec < f64 > > }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn from_point_cloud_2d (cloud : & PointCloud) -> Result < Self , TdaError > }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn new (points : Vec < Vec < f64 > >) -> Result < Self , TdaError > }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn points (& self) -> & [Vec < f64 >] }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn project_2d (& self , axis_x : usize , axis_y : usize) -> Result < PointCloud , TdaError > }"
+    },
+    {
+      "signature": "impl NdPointCloud { pub fn size (& self) -> usize }"
+    },
     {
       "signature": "impl Point2D { pub fn distance (& self , other : & Point2D) -> f64 }"
     },
@@ -8372,6 +8437,15 @@
       "signature": "impl Simplex { pub fn new (mut vertices : Vec < usize >) -> Result < Self , TdaError > }"
     },
     {
+      "signature": "pub const MAX_TDA_DIMENSION : usize = 32"
+    },
+    {
+      "signature": "pub const MAX_TDA_POINTS : usize = 250"
+    },
+    {
+      "signature": "pub struct NdPointCloud"
+    },
+    {
       "signature": "pub struct Point2D"
     },
     {
@@ -8394,10 +8468,34 @@
   ],
   "crates/pure_math/src/pure_math/statistics/tda/mod.rs": [
     {
+      "signature": "pub use boundary :: Z2BoundaryWorkspace"
+    },
+    {
+      "signature": "pub use boundary :: rank_z2_boundary"
+    },
+    {
+      "signature": "pub use complex :: MAX_FILTRATION_TRIANGLES"
+    },
+    {
       "signature": "pub use complex :: SimplicialComplex"
     },
     {
       "signature": "pub use complex :: vietoris_rips_complex"
+    },
+    {
+      "signature": "pub use complex :: vietoris_rips_complex_nd"
+    },
+    {
+      "signature": "pub use complex :: vietoris_rips_from_distance_matrix"
+    },
+    {
+      "signature": "pub use core :: MAX_TDA_DIMENSION"
+    },
+    {
+      "signature": "pub use core :: MAX_TDA_POINTS"
+    },
+    {
+      "signature": "pub use core :: NdPointCloud"
     },
     {
       "signature": "pub use core :: Point2D"
@@ -8424,7 +8522,22 @@
       "signature": "pub use persistence :: PersistenceInterval"
     },
     {
+      "signature": "pub use persistence :: RipsInterval"
+    },
+    {
+      "signature": "pub use persistence :: RipsPersistenceResult"
+    },
+    {
       "signature": "pub use persistence :: compute_persistence"
+    },
+    {
+      "signature": "pub use persistence :: compute_rips_persistence"
+    },
+    {
+      "signature": "pub use persistence :: compute_rips_persistence_from_distances"
+    },
+    {
+      "signature": "pub use persistence :: compute_rips_persistence_nd"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/tda/persistence.rs": [
@@ -8459,13 +8572,43 @@
       "signature": "impl PersistenceInterval { pub fn persistence (& self) -> f64 }"
     },
     {
+      "signature": "impl RipsInterval { pub fn is_alive_at (& self , epsilon : f64) -> bool }"
+    },
+    {
+      "signature": "impl RipsInterval { pub fn persistence (& self) -> f64 }"
+    },
+    {
+      "signature": "impl RipsInterval { pub fn to_persistence_interval (& self) -> Result < PersistenceInterval , TdaError > }"
+    },
+    {
+      "signature": "impl RipsPersistenceResult { pub fn betti_numbers_at (& self , epsilon : f64) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl RipsPersistenceResult { pub fn to_barcode (& self) -> Result < PersistenceBarcode , TdaError > }"
+    },
+    {
       "signature": "pub fn compute_persistence (cloud : & PointCloud , radii : & [f64] ,) -> Result < PersistenceBarcode , TdaError >"
+    },
+    {
+      "signature": "pub fn compute_rips_persistence (cloud : & PointCloud) -> Result < RipsPersistenceResult , TdaError >"
+    },
+    {
+      "signature": "pub fn compute_rips_persistence_from_distances (dist : & [Vec < f64 >] ,) -> Result < RipsPersistenceResult , TdaError >"
+    },
+    {
+      "signature": "pub fn compute_rips_persistence_nd (cloud : & NdPointCloud ,) -> Result < RipsPersistenceResult , TdaError >"
     },
     {
       "signature": "pub struct PersistenceBarcode"
     },
     {
       "signature": "pub struct PersistenceInterval"
+    },
+    {
+      "signature": "pub struct RipsInterval"
+    },
+    {
+      "signature": "pub struct RipsPersistenceResult"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/zip_regression/core.rs": [
