@@ -1,7 +1,9 @@
+use crate::whitelist::VerificationDebtConfig;
+use oxidize_core::traceability::AstCache;
 use regex::Regex;
 use serde::Serialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Serialize)]
@@ -12,6 +14,12 @@ pub struct IntegrityReport {
     pub verified_modules_density: f64,
     pub unverified_modules_density: f64,
     pub passed: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ReportWriteOptions {
+    pub output_cert: Option<PathBuf>,
+    pub write_tracked: bool,
 }
 
 /// Executes `cargo llvm-cov --all-features --workspace --json` and returns process output.
@@ -60,7 +68,7 @@ where
     Ok(cov_json)
 }
 
-pub fn collect_rs_files() -> Vec<std::path::PathBuf> {
+pub fn collect_rs_files() -> Vec<PathBuf> {
     crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git"])
 }
 
@@ -100,23 +108,18 @@ pub struct FileMetrics {
     pub opt_outs: Vec<(String, String)>,
 }
 
-struct ReportPatterns {
-    assert_re: Regex,
-    fn_re: Regex,
-    opt_out_re: Regex,
-    legacy_re: Regex,
-}
-
-impl ReportPatterns {
-    fn new() -> Self {
+impl FileMetrics {
+    pub(crate) fn empty() -> Self {
         Self {
-            assert_re: Regex::new(r"\b(assert|assert_eq|assert_ne|debug_assert)!\s*\(").unwrap(),
-            fn_re: Regex::new(r"\bfn\s+\w+\s*(?:<[^>]*>)?\s*\(").unwrap(),
-            opt_out_re: Regex::new(
-                r#"#\[(?:verified_engine::)?verified\(opt_out\s*=\s*"([^"]+)"\)\]"#,
-            )
-            .unwrap(),
-            legacy_re: Regex::new(r"\bfn\s+([a-zA-Z0-9_]*_legacy)\b").unwrap(),
+            wasm_paths: 0,
+            wasm_covered: 0,
+            total_funcs: 0.0,
+            total_asserts: 0.0,
+            verified_funcs: 0.0,
+            verified_asserts: 0.0,
+            unverified_funcs: 0.0,
+            unverified_asserts: 0.0,
+            opt_outs: Vec::new(),
         }
     }
 }
@@ -126,112 +129,209 @@ fn normalize_report_path(filepath: &Path) -> String {
     norm.strip_prefix("./").unwrap_or(&norm).to_string()
 }
 
-fn analyze_file_content(
+fn accumulate_ast_for_file(
     filepath: &Path,
-    content: &str,
-    patterns: &ReportPatterns,
+    cache: &mut AstCache,
+    include_prod_metrics: bool,
     m: &mut FileMetrics,
 ) {
-    let is_verified =
-        content.contains("#[verified") || content.contains("#[verified_engine::verified");
-    let funcs = patterns.fn_re.find_iter(content).count() as f64;
-    let asserts = patterns.assert_re.find_iter(content).count() as f64;
     let norm = normalize_report_path(filepath);
-
-    for cap in patterns.opt_out_re.captures_iter(content) {
-        m.opt_outs.push((norm.clone(), cap[1].to_string()));
-    }
-    for cap in patterns.legacy_re.captures_iter(content) {
-        m.opt_outs
-            .push((norm.clone(), format!("Legacy function call: {}", &cap[1])));
+    let key = AstCache::normalize_key(filepath);
+    if cache.get(&key).is_none() && cache.get_or_load_fs(filepath).is_none() {
+        return;
     }
 
-    m.total_funcs += funcs;
-    m.total_asserts += asserts;
-    if is_verified {
-        m.verified_funcs += funcs;
-        m.verified_asserts += asserts;
-    } else {
-        m.unverified_funcs += funcs;
-        m.unverified_asserts += asserts;
+    if let Some(ast) = cache.get(&key).and_then(|entry| entry.ast.as_ref()) {
+        for reason in oxidize_core::ast_visitor::collect_ast_file_debt(ast) {
+            m.opt_outs.push((norm.clone(), reason));
+        }
+        if include_prod_metrics
+            && !crate::wasm_coverage::is_dedicated_test_source_path(filepath)
+            && !oxidize_core::ast_visitor::attrs_require_cfg_test(&ast.attrs)
+        {
+            let mut visitor = oxidize_core::ast_visitor::AstVisitor::new();
+            syn::visit::Visit::visit_file(&mut visitor, ast);
+            let unverified_funcs = visitor.total_funcs.saturating_sub(visitor.verified_funcs);
+            let unverified_asserts = visitor
+                .total_asserts
+                .saturating_sub(visitor.verified_asserts);
+            m.total_funcs += visitor.total_funcs as f64;
+            m.total_asserts += visitor.total_asserts as f64;
+            m.verified_funcs += visitor.verified_funcs as f64;
+            m.verified_asserts += visitor.verified_asserts as f64;
+            m.unverified_funcs += unverified_funcs as f64;
+            m.unverified_asserts += unverified_asserts as f64;
+        }
     }
 
     let (file_wasm_paths, file_wasm_covered) =
-        crate::wasm_coverage::count_file_wasm_coverage(filepath, content);
+        crate::wasm_coverage::count_file_wasm_coverage_cached(filepath, cache);
     m.wasm_paths += file_wasm_paths;
     m.wasm_covered += file_wasm_covered;
 }
 
-pub fn analyze_files(rs_files: &[std::path::PathBuf]) -> FileMetrics {
-    let mut m = FileMetrics {
-        wasm_paths: 0,
-        wasm_covered: 0,
-        total_funcs: 0.0,
-        total_asserts: 0.0,
-        verified_funcs: 0.0,
-        verified_asserts: 0.0,
-        unverified_funcs: 0.0,
-        unverified_asserts: 0.0,
-        opt_outs: Vec::new(),
-    };
-    let patterns = ReportPatterns::new();
+#[cfg(test)]
+fn analyze_file_content(filepath: &Path, content: &str, cache: &mut AstCache, m: &mut FileMetrics) {
+    let key = AstCache::normalize_key(filepath);
+    cache.insert_source(key, content.to_string());
+    accumulate_ast_for_file(filepath, cache, true, m);
+}
 
+#[cfg(test)]
+pub(crate) fn analyze_files(rs_files: &[PathBuf]) -> FileMetrics {
+    let mut cache = AstCache::new();
+    let mut m = FileMetrics::empty();
+    cache.preload_sources(rs_files);
     for filepath in rs_files {
-        if let Ok(content) = fs::read_to_string(filepath) {
-            analyze_file_content(filepath, &content, &patterns, &mut m);
-        }
+        accumulate_ast_for_file(filepath, &mut cache, true, &mut m);
     }
     m.opt_outs.sort();
     m
 }
 
-pub fn check_unverified_modules(members: &[String]) -> Vec<String> {
+pub(crate) fn analyze_workspace_with_cache(
+    rs_files: &[PathBuf],
+    cache: &mut AstCache,
+) -> Result<FileMetrics, String> {
+    let mut m = FileMetrics::empty();
+    cache.preload_sources(rs_files);
+    let ws = oxidize_core::traceability::collect_workspace_ast_metrics_with_cache(cache)
+        .map_err(|err| format!("Failed to collect workspace AST metrics: {err}"))?;
+    let unverified_funcs = ws.total_funcs.saturating_sub(ws.verified_funcs);
+    let unverified_asserts = ws.total_asserts.saturating_sub(ws.verified_asserts);
+    m.total_funcs = ws.total_funcs as f64;
+    m.total_asserts = ws.total_asserts as f64;
+    m.verified_funcs = ws.verified_funcs as f64;
+    m.verified_asserts = ws.verified_asserts as f64;
+    m.unverified_funcs = unverified_funcs as f64;
+    m.unverified_asserts = unverified_asserts as f64;
+
+    for filepath in rs_files {
+        accumulate_ast_for_file(filepath, cache, false, &mut m);
+    }
+    m.opt_outs.sort();
+    Ok(m)
+}
+
+pub(crate) fn check_unverified_modules_with_cache(
+    members: &[String],
+    exempt_crates: &[String],
+    cache: &mut AstCache,
+) -> Vec<String> {
     let mut unverified_modules = Vec::new();
     for fm in members {
-        if fm == "egui_plot" {
+        if crate::whitelist::debt::is_exempt_crate(fm, exempt_crates) {
             continue;
         }
         let mod_dir = Path::new(fm).join("src");
-        if mod_dir.exists() {
-            let has_theory = crate::utils::collect_rs_files_filtered(&[&mod_dir], &["target"])
-                .into_iter()
-                .filter_map(|path| fs::read_to_string(path).ok())
-                .any(|content| {
-                    content.contains("theory_verification!")
-                        || content.contains("stochastic_signature_verification!")
-                });
-            if !has_theory {
-                unverified_modules.push(format!("Unverified Module: {}", fm));
+        if !mod_dir.exists() {
+            continue;
+        }
+        let files = crate::utils::collect_rs_files_filtered(&[&mod_dir], &["target"]);
+        let has_theory = files.into_iter().any(|path| {
+            if crate::wasm_coverage::is_dedicated_test_source_path(&path) {
+                return false;
             }
+            let Some(ast) = cache
+                .get_or_load_fs(&path)
+                .and_then(|entry| entry.ast.as_ref())
+            else {
+                return false;
+            };
+            if oxidize_core::ast_visitor::attrs_require_cfg_test(&ast.attrs) {
+                return false;
+            }
+            let mut visitor = oxidize_core::ast_visitor::AstVisitor::new();
+            syn::visit::Visit::visit_file(&mut visitor, ast);
+            !visitor.module_tiers.is_empty()
+        });
+        if !has_theory {
+            unverified_modules.push(format!("Unverified Module: {fm}"));
         }
     }
     unverified_modules.sort();
     unverified_modules
 }
 
-fn save_report(report: &IntegrityReport, native_cov: f64) {
-    if cfg!(test) {
-        return;
-    }
-    let json_report = serde_json::to_string_pretty(&report).unwrap();
-    fs::write("Verification_Certificate.json", json_report).unwrap();
-    println!("Generated Verification_Certificate.json");
+#[cfg(test)]
+pub fn check_unverified_modules(members: &[String]) -> Vec<String> {
+    let whitelist = crate::whitelist::load_whitelist_or_default(
+        None,
+        crate::whitelist::WORKSPACE_WHITELIST_CANDIDATES,
+    );
+    let exempt = whitelist
+        .verification_debt
+        .map(|d| d.exempt_crates)
+        .unwrap_or_else(|| vec!["egui_plot".to_string()]);
+    let mut cache = AstCache::new();
+    check_unverified_modules_with_cache(members, &exempt, &mut cache)
+}
 
-    if let Ok(mut readme) = fs::read_to_string("README.md") {
-        let badge_color = if native_cov >= 90.0 {
-            "brightgreen"
-        } else {
-            "yellow"
-        };
-        let new_badge = format!(
-            "![Coverage](https://img.shields.io/badge/coverage-{:.1}%25-{})",
-            native_cov, badge_color
-        );
-        let badge_re = Regex::new(r"!\[Coverage\]\(.*?\)").unwrap();
-        readme = badge_re.replace(&readme, new_badge.as_str()).to_string();
-        fs::write("README.md", readme).unwrap();
-        println!("README static badge updated with dynamic metric.");
+fn write_pretty_certificate(path: &Path, json_report: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "Failed to create certificate directory {}: {err}",
+                parent.display()
+            )
+        })?;
     }
+    fs::write(path, format!("{json_report}\n"))
+        .map_err(|err| format!("Failed to write {}: {err}", path.display()))?;
+    println!("Generated {}", path.display());
+    Ok(())
+}
+
+pub(crate) fn save_report_in_dir(
+    base_dir: &Path,
+    report: &IntegrityReport,
+    native_cov: f64,
+    write_opts: &ReportWriteOptions,
+) -> Result<(), String> {
+    if write_opts.output_cert.is_none() && !write_opts.write_tracked {
+        return Ok(());
+    }
+    let json_report = serde_json::to_string_pretty(report)
+        .map_err(|err| format!("Failed to serialize IntegrityReport: {err}"))?;
+
+    if let Some(cert_path) = &write_opts.output_cert {
+        let target = if cert_path.is_absolute() || base_dir == Path::new(".") {
+            cert_path.clone()
+        } else {
+            base_dir.join(cert_path)
+        };
+        write_pretty_certificate(&target, &json_report)?;
+    }
+
+    if write_opts.write_tracked {
+        let tracked_cert = if base_dir == Path::new(".") {
+            PathBuf::from("Verification_Certificate.json")
+        } else {
+            base_dir.join("Verification_Certificate.json")
+        };
+        write_pretty_certificate(&tracked_cert, &json_report)?;
+
+        let readme_path = base_dir.join("README.md");
+        if let Ok(readme) = fs::read_to_string(&readme_path) {
+            let badge_color = if native_cov >= 90.0 {
+                "brightgreen"
+            } else {
+                "yellow"
+            };
+            let new_badge = format!(
+                "![Coverage](https://img.shields.io/badge/coverage-{:.1}%25-{})",
+                native_cov, badge_color
+            );
+            let badge_re = Regex::new(r"!\[Coverage\]\(.*?\)").expect("Valid coverage badge regex");
+            let updated = badge_re.replace(&readme, new_badge.as_str()).to_string();
+            fs::write(&readme_path, updated)
+                .map_err(|err| format!("Failed to write {}: {err}", readme_path.display()))?;
+            println!("README static badge updated with dynamic metric.");
+        }
+    }
+    Ok(())
 }
 
 fn ratio_or_zero(numerator: f64, denominator: f64) -> f64 {
@@ -242,27 +342,87 @@ fn ratio_or_zero(numerator: f64, denominator: f64) -> f64 {
     }
 }
 
-fn print_debt_section(m: &FileMetrics, debt_items: &[String]) {
-    let mut all_debt = Vec::with_capacity(m.opt_outs.len() + debt_items.len());
-    for (file, reason) in &m.opt_outs {
-        all_debt.push(format!("{} bypassed: '{}'", file, reason));
+fn check_density_floors(
+    total_density: f64,
+    verified_density: f64,
+    unverified_density: f64,
+    m: &FileMetrics,
+    debt_cfg: Option<&VerificationDebtConfig>,
+) -> bool {
+    let mut passed = true;
+    let min_verified = debt_cfg.map_or(0.4, |c| c.min_verified_density);
+    if verified_density < min_verified {
+        println!(
+            "\n[!] Assertion Density Failure: Verified modules have a density of {:.3} asserts/fn, which is below the minimum required {:.3} asserts/fn.",
+            verified_density, min_verified
+        );
+        passed = false;
     }
-    all_debt.extend(debt_items.iter().cloned());
 
-    if !all_debt.is_empty() {
-        println!("\n--- Integrity Debt ---");
-        for (idx, item) in all_debt.iter().enumerate() {
-            println!("[{}] {}", idx + 1, item);
+    if let Some(cfg) = debt_cfg {
+        if m.total_funcs > 0.0 && total_density < cfg.min_total_density {
+            println!(
+                "\n[!] Assertion Density Failure: Total assertion density is {:.3} asserts/fn, which is below the minimum required {:.3} asserts/fn.",
+                total_density, cfg.min_total_density
+            );
+            passed = false;
+        }
+        if let Some(min_unverified) = cfg.min_unverified_density
+            && m.unverified_funcs > 0.0
+            && unverified_density < min_unverified
+        {
+            println!(
+                "\n[!] Assertion Density Failure: Unverified modules have a density of {:.3} asserts/fn, which is below the minimum required {:.3} asserts/fn.",
+                unverified_density, min_unverified
+            );
+            passed = false;
         }
     }
+    passed
 }
 
-pub fn print_report(
+fn evaluate_and_print_debt(
+    m: &FileMetrics,
+    debt_items: &[String],
+    debt_cfg: Option<&VerificationDebtConfig>,
+) -> bool {
+    let mut violations = Vec::new();
+    if let Some(cfg) = debt_cfg {
+        violations.extend(crate::whitelist::debt::evaluate_opt_out_caps(
+            cfg,
+            &m.opt_outs,
+        ));
+        if violations.is_empty() && !m.opt_outs.is_empty() {
+            println!(
+                "Authorized opt_out attributes: {} (within [verification_debt] caps)",
+                m.opt_outs.len()
+            );
+        }
+    } else {
+        for (file, reason) in &m.opt_outs {
+            violations.push(format!("{file} bypassed: '{reason}'"));
+        }
+    }
+    violations.extend(debt_items.iter().cloned());
+
+    if !violations.is_empty() {
+        println!("\n--- Integrity Debt ---");
+        for (idx, item) in violations.iter().enumerate() {
+            println!("[{}] {}", idx + 1, item);
+        }
+        return false;
+    }
+    true
+}
+
+pub(crate) fn print_report_with_options(
     native_cov_pct: f64,
     wasm_cov_pct: f64,
     m: &FileMetrics,
     debt_items: &[String],
-) -> bool {
+    debt_cfg: Option<&VerificationDebtConfig>,
+    write_opts: &ReportWriteOptions,
+) -> Result<bool, String> {
     let total_density = ratio_or_zero(m.total_asserts, m.total_funcs);
     let verified_density = ratio_or_zero(m.verified_asserts, m.verified_funcs);
     let unverified_density = ratio_or_zero(m.unverified_asserts, m.unverified_funcs);
@@ -282,17 +442,16 @@ pub fn print_report(
         unverified_density
     );
 
-    let mut passed = true;
-    if verified_density < 0.4 {
-        println!(
-            "\n[!] Assertion Density Failure: Verified modules have a density of {:.2} asserts/fn, which is below the minimum required 0.4 asserts/fn.",
-            verified_density
-        );
+    let mut passed = check_density_floors(
+        total_density,
+        verified_density,
+        unverified_density,
+        m,
+        debt_cfg,
+    );
+    if !evaluate_and_print_debt(m, debt_items, debt_cfg) {
         passed = false;
     }
-
-    print_debt_section(m, debt_items);
-
     if native_cov_pct < 50.0 {
         println!(
             "Coverage {:.2}% is below threshold of 50.0%",
@@ -310,8 +469,26 @@ pub fn print_report(
         passed,
     };
 
-    save_report(&report, native_cov_pct);
-    passed
+    save_report_in_dir(Path::new("."), &report, native_cov_pct, write_opts)?;
+    Ok(passed)
+}
+
+#[cfg(test)]
+pub fn print_report(
+    native_cov_pct: f64,
+    wasm_cov_pct: f64,
+    m: &FileMetrics,
+    debt_items: &[String],
+) -> bool {
+    print_report_with_options(
+        native_cov_pct,
+        wasm_cov_pct,
+        m,
+        debt_items,
+        None,
+        &ReportWriteOptions::default(),
+    )
+    .unwrap_or(false)
 }
 
 #[cfg(test)]

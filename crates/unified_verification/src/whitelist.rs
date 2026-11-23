@@ -3,6 +3,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub(crate) mod debt;
+pub(crate) use debt::VerificationDebtConfig;
+
 pub const WHITELIST_FILE_NAME: &str = "verification_whitelist.toml";
 
 pub const WORKSPACE_WHITELIST_CANDIDATES: &[&str] = &[
@@ -24,6 +27,8 @@ pub(crate) struct VerificationWhitelist {
     pub entropy_guard: Option<EntropyGuardConfig>,
     #[serde(default)]
     pub missing_docs: Option<MissingDocsConfig>,
+    #[serde(default)]
+    pub verification_debt: Option<VerificationDebtConfig>,
     #[serde(default)]
     pub workflow_linter: Option<WorkflowLinterConfig>,
     #[serde(default)]
@@ -174,6 +179,9 @@ fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String
     }
     if let Some(cfg) = &parsed.missing_docs {
         validate_missing_docs_config(cfg, path)?;
+    }
+    if let Some(cfg) = &parsed.verification_debt {
+        debt::validate_verification_debt_config(cfg, path)?;
     }
     if let Some(fences) = parsed
         .doc_verification

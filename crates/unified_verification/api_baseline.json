@@ -9596,6 +9596,32 @@
     },
     {
       "signature": "pub struct AstVisitor"
+    },
+    {
+      "signature": "pub use helpers :: attrs_mark_test_fn"
+    },
+    {
+      "signature": "pub use helpers :: attrs_require_cfg_test"
+    },
+    {
+      "signature": "pub use helpers :: collect_ast_file_debt"
+    },
+    {
+      "signature": "pub use helpers :: extract_opt_out_reasons_from_attr"
+    }
+  ],
+  "crates/oxidize_core/src/ast_visitor/helpers.rs": [
+    {
+      "signature": "pub fn attrs_mark_test_fn (_ : & [Attribute]) -> bool"
+    },
+    {
+      "signature": "pub fn attrs_require_cfg_test (_ : & [Attribute]) -> bool"
+    },
+    {
+      "signature": "pub fn collect_ast_file_debt (_ : & syn :: File) -> Vec < String >"
+    },
+    {
+      "signature": "pub fn extract_opt_out_reasons_from_attr (_ : & Attribute) -> Vec < String >"
     }
   ],
   "crates/oxidize_core/src/boundary.rs": [
@@ -9835,19 +9861,37 @@
       "signature": "pub use cache :: CachedRustFile"
     },
     {
+      "signature": "pub use debt_floors :: DensityFloors"
+    },
+    {
+      "signature": "pub use debt_floors :: load_workspace_density_floors"
+    },
+    {
+      "signature": "pub use debt_floors :: parse_density_floors_toml"
+    },
+    {
       "signature": "pub use manifest :: TraceabilityManifestPayload"
     },
     {
       "signature": "pub use manifest :: VerificationCertificate"
     },
     {
+      "signature": "pub use runner :: WorkspaceAstMetrics"
+    },
+    {
       "signature": "pub use runner :: check_and_print_traceability_errors"
+    },
+    {
+      "signature": "pub use runner :: collect_workspace_ast_metrics_with_cache"
     },
     {
       "signature": "pub use runner :: discover_workspace_code_dirs"
     },
     {
       "signature": "pub use runner :: format_traceability_errors"
+    },
+    {
+      "signature": "pub use runner :: format_traceability_errors_with_floors"
     },
     {
       "signature": "pub use runner :: print_traceability_dashboard"
@@ -9897,6 +9941,17 @@
       "signature": "pub struct CachedRustFile"
     }
   ],
+  "crates/oxidize_core/src/traceability/debt_floors.rs": [
+    {
+      "signature": "pub fn load_workspace_density_floors () -> Result < DensityFloors , std :: io :: Error >"
+    },
+    {
+      "signature": "pub fn parse_density_floors_toml (_ : & str) -> Result < Option < DensityFloors > , String >"
+    },
+    {
+      "signature": "pub struct DensityFloors"
+    }
+  ],
   "crates/oxidize_core/src/traceability/manifest.rs": [
     {
       "signature": "pub struct TraceabilityManifestPayload"
@@ -9910,10 +9965,16 @@
       "signature": "pub fn check_and_print_traceability_errors (_ : & TraceabilityReport) -> bool"
     },
     {
+      "signature": "pub fn collect_workspace_ast_metrics_with_cache (_ : & mut AstCache ,) -> Result < WorkspaceAstMetrics , std :: io :: Error >"
+    },
+    {
       "signature": "pub fn discover_workspace_code_dirs () -> Vec < String >"
     },
     {
       "signature": "pub fn format_traceability_errors (_ : & TraceabilityReport) -> (bool , Vec < String >)"
+    },
+    {
+      "signature": "pub fn format_traceability_errors_with_floors (_ : & TraceabilityReport , _ : super :: DensityFloors ,) -> (bool , Vec < String >)"
     },
     {
       "signature": "pub fn print_traceability_dashboard (_ : & TraceabilityReport)"
@@ -9923,6 +9984,9 @@
     },
     {
       "signature": "pub fn run_workspace_traceability_with_cache (_ : bool , _ : & mut AstCache ,) -> Result < bool , std :: io :: Error >"
+    },
+    {
+      "signature": "pub struct WorkspaceAstMetrics"
     }
   ],
   "crates/oxidize_core/src/vfs.rs": [

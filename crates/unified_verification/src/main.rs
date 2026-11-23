@@ -163,20 +163,45 @@ fn run_security_checks(
     entropy_debt
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct VerifySuiteOptions {
     pub auto_fix: bool,
     pub coverage_only: bool,
+    pub output_cert: Option<std::path::PathBuf>,
+    pub write_tracked: bool,
+}
+
+fn parse_non_empty_cert_path(raw: &str) -> Result<std::path::PathBuf, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("--output-cert requires a non-empty file path".to_string());
+    }
+    Ok(std::path::PathBuf::from(trimmed))
 }
 
 pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOptions, String> {
     let mut opts = VerifySuiteOptions::default();
-    for arg in args {
-        match arg.as_str() {
+    let mut idx = 0;
+    while idx < args.len() {
+        let arg = args[idx].as_str();
+        match arg {
             "--auto-fix" => opts.auto_fix = true,
             "--coverage-only" => opts.coverage_only = true,
+            "--write-tracked" => opts.write_tracked = true,
+            "--output-cert" => {
+                idx += 1;
+                let Some(next) = args.get(idx) else {
+                    return Err("Missing value for --output-cert <path>".to_string());
+                };
+                opts.output_cert = Some(parse_non_empty_cert_path(next)?);
+            }
+            _ if arg.starts_with("--output-cert=") => {
+                let raw = &arg["--output-cert=".len()..];
+                opts.output_cert = Some(parse_non_empty_cert_path(raw)?);
+            }
             other => return Err(format!("Unknown verify-suite argument: {other}")),
         }
+        idx += 1;
     }
     Ok(opts)
 }
@@ -184,7 +209,8 @@ pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOpti
 pub(crate) fn evaluate_coverage_and_report_with<F>(
     members: &[String],
     entropy_debt: Vec<String>,
-    coverage_only: bool,
+    opts: &VerifySuiteOptions,
+    cache: &mut oxidize_core::traceability::AstCache,
     collect_cov: F,
 ) -> Result<bool, String>
 where
@@ -192,13 +218,34 @@ where
 {
     println!("Gathering native execution coverage...");
 
+    let whitelist_path = whitelist::find_whitelist_path();
+    let loaded_whitelist = whitelist::load_whitelist_strict(
+        whitelist_path.as_deref(),
+        whitelist::WORKSPACE_WHITELIST_CANDIDATES,
+    )?;
+    if whitelist_path.is_some() && loaded_whitelist.verification_debt.is_none() {
+        return Err(
+            "Missing required [verification_debt] table in verification_whitelist.toml".to_string(),
+        );
+    }
+
     let cov_json = collect_cov()?;
     let rs_files = report::collect_rs_files();
     let (native_lines_total, native_lines_covered) = report::parse_coverage(&cov_json);
-    let m = report::analyze_files(&rs_files);
+    let m = report::analyze_workspace_with_cache(&rs_files, cache)?;
+    let default_exempt = ["egui_plot".to_string()];
+    let exempt_crates = loaded_whitelist
+        .verification_debt
+        .as_ref()
+        .map(|d| d.exempt_crates.as_slice())
+        .unwrap_or(&default_exempt);
     let mut all_debt = Vec::new();
-    all_debt.extend(report::check_unverified_modules(members));
-    if !coverage_only {
+    all_debt.extend(report::check_unverified_modules_with_cache(
+        members,
+        exempt_crates,
+        cache,
+    ));
+    if !opts.coverage_only {
         all_debt.extend(check_file_lengths(members));
     }
     all_debt.extend(entropy_debt);
@@ -214,25 +261,34 @@ where
         100.0
     };
 
-    Ok(report::print_report(
+    let write_opts = report::ReportWriteOptions {
+        output_cert: opts.output_cert.clone(),
+        write_tracked: opts.write_tracked,
+    };
+    report::print_report_with_options(
         native_cov_pct,
         wasm_cov_pct,
         &m,
         &all_debt,
-    ))
+        loaded_whitelist.verification_debt.as_ref(),
+        &write_opts,
+    )
 }
 
-fn run_default_verify_suite_static_gates(members: &[String], auto_fix: bool) -> Vec<String> {
+fn run_default_verify_suite_static_gates(
+    members: &[String],
+    auto_fix: bool,
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> Vec<String> {
     let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
-    let mut cache = oxidize_core::traceability::AstCache::new();
     let mut manifests = manifest_cache::ManifestCache::new();
-    let entropy_debt = run_security_checks(&member_refs, auto_fix, &mut cache, &mut manifests);
+    let entropy_debt = run_security_checks(&member_refs, auto_fix, cache, &mut manifests);
 
     println!("Running ADR and API drift checks...");
     if !records::verify_records(&[]) {
         std::process::exit(1);
     }
-    if !api_drift::check_api_drift_with_cache(&mut cache) {
+    if !api_drift::check_api_drift_with_cache(cache) {
         std::process::exit(1);
     }
     entropy_debt
@@ -245,15 +301,16 @@ pub(crate) fn run_verify_suite_with<S, C>(
     collect_cov: C,
 ) -> Result<bool, String>
 where
-    S: FnOnce(&[String], bool) -> Vec<String>,
+    S: FnOnce(&[String], bool, &mut oxidize_core::traceability::AstCache) -> Vec<String>,
     C: FnOnce() -> Result<serde_json::Value, String>,
 {
+    let mut cache = oxidize_core::traceability::AstCache::new();
     let entropy_debt = if opts.coverage_only {
         Vec::new()
     } else {
-        run_static_gates(members, opts.auto_fix)
+        run_static_gates(members, opts.auto_fix, &mut cache)
     };
-    evaluate_coverage_and_report_with(members, entropy_debt, opts.coverage_only, collect_cov)
+    evaluate_coverage_and_report_with(members, entropy_debt, &opts, &mut cache, collect_cov)
 }
 
 fn verify_suite(args: &[String]) {
@@ -287,144 +344,4 @@ fn verify_suite(args: &[String]) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::utils::test_utils::CurrentDirGuard;
-
-    fn sample_cov_json(count: u64, covered: u64) -> serde_json::Value {
-        serde_json::json!({
-            "data": [{
-                "files": [{
-                    "summary": {
-                        "lines": {
-                            "count": count,
-                            "covered": covered
-                        }
-                    }
-                }]
-            }]
-        })
-    }
-
-    #[test]
-    fn test_parse_verify_suite_args_flags_and_unknown_rejection() {
-        assert_eq!(
-            parse_verify_suite_args(&[]),
-            Ok(VerifySuiteOptions {
-                auto_fix: false,
-                coverage_only: false,
-            })
-        );
-        assert_eq!(
-            parse_verify_suite_args(&["--coverage-only".to_string()]),
-            Ok(VerifySuiteOptions {
-                auto_fix: false,
-                coverage_only: true,
-            })
-        );
-        assert_eq!(
-            parse_verify_suite_args(&["--auto-fix".to_string(), "--coverage-only".to_string()]),
-            Ok(VerifySuiteOptions {
-                auto_fix: true,
-                coverage_only: true,
-            })
-        );
-        assert!(parse_verify_suite_args(&["--invalid-flag".to_string()]).is_err());
-    }
-
-    #[test]
-    fn test_verify_suite_coverage_only_skips_static_gates_and_enforces_50_pct_threshold() {
-        let _lock = crate::DIR_LOCK.lock().unwrap();
-        let _guard = CurrentDirGuard(env::current_dir().unwrap());
-        let root = manifest_cache::workspace_root_dir();
-        if root != std::path::Path::new(".") {
-            env::set_current_dir(root).unwrap();
-        }
-
-        let (_, members) = manifest_cache::discover_workspace();
-        let cov_only = parse_verify_suite_args(&["--coverage-only".to_string()]).unwrap();
-        let mut static_calls = 0usize;
-
-        let low = run_verify_suite_with(
-            cov_only,
-            &members,
-            |_, _| {
-                static_calls += 1;
-                Vec::new()
-            },
-            || Ok(sample_cov_json(1000, 499)),
-        )
-        .expect("coverage JSON should evaluate cleanly");
-        assert!(!low, "49.9% coverage must fail 50.0% gate");
-        assert_eq!(
-            static_calls, 0,
-            "--coverage-only must skip static/OSV gates"
-        );
-
-        let ok_cov = run_verify_suite_with(
-            cov_only,
-            &members,
-            |_, _| {
-                static_calls += 1;
-                Vec::new()
-            },
-            || Ok(sample_cov_json(1000, 500)),
-        )
-        .expect("coverage JSON should evaluate cleanly");
-        assert!(ok_cov && static_calls == 0, "50.0% coverage must pass");
-
-        let default_opts = parse_verify_suite_args(&[]).unwrap();
-        let full = run_verify_suite_with(
-            default_opts,
-            &members,
-            |_, _| {
-                static_calls += 1;
-                Vec::new()
-            },
-            || Ok(sample_cov_json(1000, 750)),
-        )
-        .expect("default verify-suite should evaluate cleanly");
-        assert!(full && static_calls == 1);
-        assert!(
-            run_verify_suite_with(
-                cov_only,
-                &members,
-                |_, _| Vec::new(),
-                || Err("llvm-cov failed".to_string()),
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn test_verify_suite_security_checks_parse_each_member_manifest_once() {
-        let _lock = crate::DIR_LOCK.lock().unwrap();
-        let _guard = CurrentDirGuard(env::current_dir().unwrap());
-        let root = manifest_cache::workspace_root_dir();
-        if root != std::path::Path::new(".") {
-            env::set_current_dir(root).unwrap();
-        }
-
-        let (_, members) = manifest_cache::discover_workspace();
-        let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
-        let mut ast_cache = oxidize_core::traceability::AstCache::new();
-        let mut manifests = manifest_cache::ManifestCache::new();
-
-        let (passed, entropy_debt) = run_security_checks_with_hooks(
-            &member_refs,
-            false,
-            &mut ast_cache,
-            &mut manifests,
-            || true,
-            || true,
-        );
-        assert!(passed);
-        assert!(entropy_debt.is_empty());
-        assert_eq!(manifests.lint_check_calls(), members.len());
-        assert_eq!(manifests.parse_calls(), members.len() + 1);
-        for member in &members {
-            let manifest = std::path::Path::new(member).join("Cargo.toml");
-            assert_eq!(manifests.parse_count_for(&manifest), 1);
-        }
-    }
-}
+mod tests;

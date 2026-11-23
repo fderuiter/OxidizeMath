@@ -163,6 +163,50 @@ crate = "crates/oxidize_core"
 dependency = "getrandom"
 reason = "Activates the getrandom js backend feature on wasm32-unknown-unknown for rand without direct Rust imports"
 
+[verification_debt]
+# Non-domain infrastructure, tooling, facade, GUI, and vendored crates exempt from theory_verification!
+exempt_crates = [
+    "apps/xtask",
+    "crates/diagnostics",
+    "crates/federated_registry",
+    "crates/markdown_tests",
+    "crates/math_commons",
+    "crates/oxidize_core",
+    "crates/scientific_metadata",
+    "crates/unified_verification",
+    "crates/verified_engine",
+    "crates/verified_engine_macros",
+    "egui_plot",
+    "math_explorer",
+    "math_explorer_gui",
+]
+max_opt_outs_per_file = 1
+min_verified_density = 0.060
+min_total_density = 0.020
+
+[verification_debt.opt_out_reasons]
+"Legacy missing assertions" = 1
+"gui_tool" = 549
+"infrastructure" = 2
+"metadata" = 2
+"tests" = 199
+
+[verification_debt.crate_opt_out_caps]
+"crates/domain_applied" = 1
+"crates/domain_biology" = 1
+"crates/domain_epidemiology" = 1
+"crates/domain_physics" = 2
+"crates/math_commons" = 1
+"crates/pure_math" = 10
+"crates/scientific_metadata" = 2
+"egui_plot" = 1
+"math_explorer_gui" = 734
+
+[verification_debt.file_opt_out_caps]
+"math_explorer_gui/src/tabs/optics_waves/tool.rs" = 2
+"math_explorer_gui/src/tabs/paradox_lab/mod.rs" = 3
+"math_explorer_gui/src/tabs/solid_state/crystal_viewer.rs" = 2
+
 [missing_docs]
 # Only vendored crates may use crate-level #![allow(missing_docs)]
 vendored_crates = [

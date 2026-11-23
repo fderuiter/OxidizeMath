@@ -1,6 +1,8 @@
 mod analysis;
 #[cfg(feature = "ast-analysis")]
 mod cache;
+#[cfg(feature = "ast-analysis")]
+mod debt_floors;
 mod manifest;
 #[cfg(feature = "ast-analysis")]
 mod module_tree;
@@ -9,10 +11,14 @@ mod runner;
 
 #[cfg(feature = "ast-analysis")]
 pub use cache::{AstCache, CachedRustFile};
+#[cfg(feature = "ast-analysis")]
+pub use debt_floors::{DensityFloors, load_workspace_density_floors, parse_density_floors_toml};
 pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
 #[cfg(feature = "ast-analysis")]
 pub use runner::{
-    check_and_print_traceability_errors, discover_workspace_code_dirs, format_traceability_errors,
+    WorkspaceAstMetrics, check_and_print_traceability_errors,
+    collect_workspace_ast_metrics_with_cache, discover_workspace_code_dirs,
+    format_traceability_errors, format_traceability_errors_with_floors,
     print_traceability_dashboard, run_workspace_traceability,
     run_workspace_traceability_with_cache,
 };
@@ -328,6 +334,13 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         if cache.get(&key).is_none() {
             let content = self.vfs.read_to_string(&norm_file).await?;
             cache.insert_source(key.clone(), content);
+        }
+        if cache
+            .get(&key)
+            .and_then(|entry| entry.ast.as_ref())
+            .is_some_and(|ast| crate::ast_visitor::attrs_require_cfg_test(&ast.attrs))
+        {
+            return Ok(());
         }
 
         report.scanned_files += 1;

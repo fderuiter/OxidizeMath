@@ -102,7 +102,7 @@ fn empty_file_metrics() -> FileMetrics {
 
 #[test]
 fn test_wasm_coverage_ignores_theory_and_attribute_comments() {
-    let patterns = ReportPatterns::new();
+    let mut cache = AstCache::new();
     let comment_only_src = r#"
         #[cfg(target_arch = "wasm32")]
         // theory_verification!
@@ -120,7 +120,7 @@ fn test_wasm_coverage_ignores_theory_and_attribute_comments() {
     analyze_file_content(
         Path::new("math_explorer_gui/src/comment_only_probe.rs"),
         comment_only_src,
-        &patterns,
+        &mut cache,
         &mut m,
     );
     assert_eq!(m.wasm_paths, 2);
@@ -132,7 +132,7 @@ fn test_wasm_coverage_ignores_theory_and_attribute_comments() {
 
 #[test]
 fn test_wasm_coverage_counts_real_wasm_bindgen_tests() {
-    let patterns = ReportPatterns::new();
+    let mut cache = AstCache::new();
     let tested_src = r#"
         #[cfg(target_arch = "wasm32")]
         pub fn browser_helper() -> u32 { 42 }
@@ -151,7 +151,7 @@ fn test_wasm_coverage_counts_real_wasm_bindgen_tests() {
     analyze_file_content(
         Path::new("math_explorer_gui/src/tested_probe.rs"),
         tested_src,
-        &patterns,
+        &mut cache,
         &mut m,
     );
     assert_eq!(m.wasm_paths, 1);
@@ -195,4 +195,123 @@ fn test_collect_llvm_cov_json_cleans_only_after_parsing() {
     );
     assert!(bad_res.is_err());
     assert!(!cleaned_on_bad_json);
+}
+
+#[test]
+fn test_comment_markers_in_vfs_and_accessibility_never_mark_files_or_crates_verified() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let ws_root = crate::manifest_cache::workspace_root_dir();
+    let vfs_path = ws_root.join("crates/oxidize_core/src/vfs.rs");
+    let acc_path = ws_root.join("math_explorer_gui/src/accessibility.rs");
+
+    let file_metrics = analyze_files(&[vfs_path, acc_path]);
+    assert_eq!(
+        file_metrics.verified_funcs, 0.0,
+        "comment-only markers in vfs.rs and accessibility.rs must not mark functions verified"
+    );
+
+    let mut cache = AstCache::new();
+    let crates_to_probe = vec![
+        ws_root
+            .join("crates/oxidize_core")
+            .to_string_lossy()
+            .into_owned(),
+        ws_root
+            .join("math_explorer_gui")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let unverified = check_unverified_modules_with_cache(&crates_to_probe, &[], &mut cache);
+    assert_eq!(
+        unverified.len(),
+        2,
+        "// theory_verification! comments in vfs.rs and accessibility.rs must not spoof crate verification: {unverified:?}"
+    );
+}
+
+#[test]
+fn test_print_report_fails_when_debt_items_present() {
+    let metrics = FileMetrics {
+        wasm_paths: 0,
+        wasm_covered: 0,
+        total_funcs: 10.0,
+        total_asserts: 10.0,
+        verified_funcs: 5.0,
+        verified_asserts: 5.0,
+        unverified_funcs: 5.0,
+        unverified_asserts: 5.0,
+        opt_outs: Vec::new(),
+    };
+    assert!(
+        !print_report(
+            85.0,
+            100.0,
+            &metrics,
+            &["Unverified Module: crates/demo".to_string()]
+        ),
+        "print_report must fail whenever debt_items is non-empty"
+    );
+}
+
+#[test]
+fn test_save_report_respects_readonly_output_cert_and_write_tracked_flags() {
+    let tmp = crate::utils::test_utils::TempTestDir::new("report_save_modes");
+    let readme_path = tmp.join("README.md");
+    let orig_readme = "# Demo\n![Coverage](https://img.shields.io/badge/coverage-10.0%25-yellow)\n";
+    fs::write(&readme_path, orig_readme).unwrap();
+    let cert = IntegrityReport {
+        native_execution_coverage_pct: 92.4,
+        wasm_path_coverage_pct: 81.0,
+        total_assertion_density: 0.02,
+        verified_modules_density: 0.06,
+        unverified_modules_density: 0.00,
+        passed: true,
+    };
+
+    save_report_in_dir(&tmp, &cert, 92.4, &ReportWriteOptions::default()).unwrap();
+    assert!(!tmp.join("Verification_Certificate.json").exists());
+    assert_eq!(fs::read_to_string(&readme_path).unwrap(), orig_readme);
+
+    let artifact_rel = PathBuf::from("target/verification/Verification_Certificate.json");
+    let cert_only = ReportWriteOptions {
+        output_cert: Some(artifact_rel.clone()),
+        write_tracked: false,
+    };
+    save_report_in_dir(&tmp, &cert, 92.4, &cert_only).unwrap();
+    let artifact_abs = tmp.join(&artifact_rel);
+    assert!(artifact_abs.is_file() && !tmp.join("Verification_Certificate.json").exists());
+    assert_eq!(fs::read_to_string(&readme_path).unwrap(), orig_readme);
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&artifact_abs).unwrap()).unwrap();
+    let mut keys: Vec<&str> = parsed
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        [
+            "native_execution_coverage_pct",
+            "passed",
+            "total_assertion_density",
+            "unverified_modules_density",
+            "verified_modules_density",
+            "wasm_path_coverage_pct",
+        ]
+    );
+
+    let tracked = ReportWriteOptions {
+        output_cert: None,
+        write_tracked: true,
+    };
+    save_report_in_dir(&tmp, &cert, 92.4, &tracked).unwrap();
+    assert!(tmp.join("Verification_Certificate.json").is_file());
+    assert!(
+        fs::read_to_string(&readme_path)
+            .unwrap()
+            .contains("coverage-92.4%25-brightgreen")
+    );
 }
