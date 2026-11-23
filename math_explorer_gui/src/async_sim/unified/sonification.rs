@@ -113,6 +113,9 @@ impl<M: UnifiedModel> scientific_metadata::theory::TheoryDescribable for Unified
     fn theory_description(&self) -> String {
         self.cached_theory_desc.clone()
     }
+    fn theory_latex_equation(&self) -> Option<String> {
+        self.cached_latex_eq.clone()
+    }
     fn phonetic_description(&self) -> String {
         self.cached_phonetic.clone()
     }

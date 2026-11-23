@@ -55,6 +55,20 @@ impl AttractorPlotter {
         self.is_paused().hash(&mut h);
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
+        for offset in &self.fixed_callout_offsets {
+            let x_bits = if offset.x == 0.0 {
+                0
+            } else {
+                offset.x.to_bits()
+            };
+            let y_bits = if offset.y == 0.0 {
+                0
+            } else {
+                offset.y.to_bits()
+            };
+            x_bits.hash(&mut h);
+            y_bits.hash(&mut h);
+        }
         self.camera.hash_state(&mut h);
         self.audio_settings.gain.to_bits().hash(&mut h);
         self.audio_settings.pitch_scale.to_bits().hash(&mut h);
