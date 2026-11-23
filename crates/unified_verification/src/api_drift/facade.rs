@@ -45,17 +45,20 @@ const REQUIRED_ROOT_EXPORTS: &[&str] = &[
     "ast",
     "constants",
     "diagnostics",
+    "fit",
     "math_kernel",
     "math_types",
     "mesh",
     "nalgebra",
     "num_complex",
     "petgraph",
+    "poi",
     "primitives",
     "pure_math",
     "rand",
     "registry",
     "rng",
+    "series",
     "wigner",
 ];
 
@@ -142,6 +145,7 @@ fn parse_signature_ast(raw_sig: &str) -> Option<syn::File> {
         let trimmed_inner = without_close.trim_end();
         for candidate in [
             format!("{trimmed_inner}; }}"),
+            format!("{trimmed_inner} = todo!(); }}"),
             format!("{trimmed_inner} {{}} }}"),
             s.to_string(),
         ] {
@@ -154,6 +158,7 @@ fn parse_signature_ast(raw_sig: &str) -> Option<syn::File> {
     }
     for candidate in [
         format!("{s};"),
+        format!("{s} = todo!();"),
         format!("{s} {{}}"),
         format!("{s} {{ __f: () }}"),
     ] {
