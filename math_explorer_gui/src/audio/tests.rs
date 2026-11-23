@@ -8,8 +8,9 @@ use super::frame::{
     LIMITER_CEILING_LINEAR,
 };
 use super::mappings::{
-    attractor_frame, bifurcation_frame, hodgkin_huxley_frame, just_intonation_ratio,
-    neural_ring_frame, prime_chord_frame, quantum_wavepacket_frame, spike_analysis_frame,
+    attractor_frame, bifurcation_frame, hodgkin_huxley_frame, imrt_delivery_frame,
+    just_intonation_ratio, neural_ring_frame, prime_chord_frame, quantum_wavepacket_frame,
+    radar_linac_frame, spike_analysis_frame, LinacGatePhase,
 };
 use super::synth::OfflinePcmSynthesizer;
 use super::ui::{format_meter_readout, meter_fill_fraction, render_sonification_panel};
@@ -51,7 +52,7 @@ fn test_zero_alloc_1000_steps_frame_extraction_and_offline_pcm_synthesis() {
         let mut peak = 0.0_f32;
         for step in 0..1_000usize {
             let phase = (step as f64) * 0.05;
-            let frame = match step % 7 {
+            let frame = match step % 9 {
                 0 => hodgkin_huxley_frame(30.0 * phase.sin(), -10.0, 0.8, 0.4, 0.5, 10.0),
                 1 => spike_analysis_frame(25.0 * phase.cos(), -15.0, 0.0, 42.0),
                 2 => {
@@ -67,6 +68,22 @@ fn test_zero_alloc_1000_steps_frame_extraction_and_offline_pcm_synthesis() {
                 }
                 4 => attractor_frame([12.0 * phase.sin(), 8.0, 24.0], [18.0, -12.0, 9.0], false),
                 5 => bifurcation_frame(2.9 + 0.9 * ((step % 10) as f64) * 0.1),
+                6 => radar_linac_frame(
+                    LinacGatePhase::BeamActive,
+                    -2.5 + phase.sin(),
+                    4.0 * phase.cos(),
+                    38.0,
+                    phase,
+                ),
+                7 => imrt_delivery_frame(
+                    LinacGatePhase::BeamActive,
+                    -2.2,
+                    59.0,
+                    60.0,
+                    31.0,
+                    26.0,
+                    5.60,
+                ),
                 _ => prime_chord_frame(&factors, WaveformPreset::JustHarmonic),
             };
             synth.apply_frame(&frame);
@@ -270,4 +287,36 @@ fn test_mute_within_30ms_wav_encoding_and_accessible_ui_themes() {
     assert!(msgs
         .iter()
         .any(|(text, prio)| prio == "polite" && text.contains("suspended cleanly")));
+}
+
+#[test]
+fn test_medical_radar_and_imrt_sonification_frames() {
+    let radar_on = radar_linac_frame(LinacGatePhase::BeamActive, -2.5, -1.0, 42.0, 0.02);
+    let radar_hold = radar_linac_frame(LinacGatePhase::BeamHold, 8.5, 18.0, 42.0, 0.02);
+    let radar_fault = radar_linac_frame(LinacGatePhase::SafetyInterlock, f64::NAN, 0.0, 42.0, 0.1);
+    assert!(radar_on.voices[1].gain > 0.5 && radar_hold.voices[1].gain == 0.0);
+    assert!(!radar_fault.is_audible());
+
+    let imrt_clean = imrt_delivery_frame(
+        LinacGatePhase::BeamActive,
+        -2.4,
+        59.5,
+        60.0,
+        19.0,
+        26.0,
+        5.6,
+    );
+    let imrt_over = imrt_delivery_frame(LinacGatePhase::BeamHold, 9.2, 50.0, 60.0, 38.0, 26.0, 5.6);
+    let imrt_fault = imrt_delivery_frame(
+        LinacGatePhase::SafetyInterlock,
+        0.0,
+        60.0,
+        60.0,
+        20.0,
+        26.0,
+        5.6,
+    );
+    assert!(imrt_clean.voices[0].gain > 0.3 && imrt_clean.noise_gain == 0.0);
+    assert!(imrt_over.voices[0].gain == 0.0 && imrt_over.voices[3].gain > 0.2);
+    assert!(!imrt_fault.is_audible());
 }

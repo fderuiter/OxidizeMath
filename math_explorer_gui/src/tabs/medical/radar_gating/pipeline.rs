@@ -4,6 +4,10 @@
 
 use super::spectra::{build_fmcw_config, compute_range_spectra, SpectralSnapshot};
 use super::state::RadarGatingState;
+use crate::tabs::medical::link_bus::GatingTelemetry;
+use math_explorer::physics::medical::evaluation::{
+    pearson_correlation, root_mean_square_error, spatial_accuracy_error,
+};
 use math_explorer::physics::medical::optical_motion::simulation::cosine_respiratory_curve;
 use math_explorer::physics::medical::radar_gating::surface::weighted_average_height;
 use math_explorer::physics::medical::radar_gating::{
@@ -136,9 +140,13 @@ pub struct RadarPipeline {
     pub beam_hold_trace: Vec<[f64; 2]>,
     /// Preallocated `SafetyInterlock` window indicator (`[t_s, 0_or_1]`).
     pub interlock_trace: Vec<[f64; 2]>,
-    /// Baseline offset aligning the unwrapped phase origin with true respiratory mean.
+    true_disp_ring_mm: Box<[f64; HISTORY_LEN]>,
+    predicted_disp_ring_mm: Box<[f64; HISTORY_LEN]>,
+    /// Verified `[pearson_r, rmse_mm, spatial_err_pct]` tracking summary.
+    pub eval_metrics: [f64; 3],
+    /// Latest `[true_mm, measured_mm, predicted_mm]` respiratory displacements.
+    pub latest_disp_mm: [f64; 3],
     phase_origin_m: f64,
-    /// Cached wavelength in meters for slow-time IQ synthesis.
     wavelength_m: f64,
     /// Duration of the most recent step execution in microseconds.
     pub last_step_us: f64,
@@ -184,6 +192,10 @@ impl RadarPipeline {
             beam_active_trace: vec![[0.0, 0.0]; HISTORY_LEN],
             beam_hold_trace: vec![[0.0, 0.0]; HISTORY_LEN],
             interlock_trace: vec![[0.0, 0.0]; HISTORY_LEN],
+            true_disp_ring_mm: Box::new([0.0; HISTORY_LEN]),
+            predicted_disp_ring_mm: Box::new([0.0; HISTORY_LEN]),
+            eval_metrics: [1.0, 0.0, 0.0],
+            latest_disp_mm: [0.0; 3],
             phase_origin_m: 0.0,
             wavelength_m,
             last_step_us: 0.0,
@@ -285,15 +297,16 @@ impl RadarPipeline {
         self.clutter_filter.filter(raw_iq)
     }
 
-    fn advance_unwrapped_measurement(&mut self, state: &RadarGatingState) -> f64 {
+    fn advance_unwrapped_measurement(&mut self, state: &RadarGatingState) -> (f64, f64) {
         let dt_sub = SIM_DT / CHIRP_SUBSTEPS as f64;
         let mut unwrapped_m = 0.0;
+        let mut z_true = 0.0;
         for _ in 0..CHIRP_SUBSTEPS {
             self.sim_time_s += dt_sub;
             if self.cough_timer_s > 0.0 {
                 self.cough_timer_s = (self.cough_timer_s - dt_sub).max(0.0);
             }
-            let z_true = respiratory_displacement_m(self.sim_time_s, state, self.cough_timer_s);
+            z_true = respiratory_displacement_m(self.sim_time_s, state, self.cough_timer_s);
             let iq = self.sample_slow_time_iq(z_true, state);
             unwrapped_m = self.phase_unwrapper.process(iq) + self.phase_origin_m;
         }
@@ -301,23 +314,23 @@ impl RadarPipeline {
             .chest_surface
             .as_ref()
             .map_or(0.0, |surf| surf.evaluate(0.0, 0.0) - self.surface_wah_m);
-        unwrapped_m + 0.15 * surface_corr
+        (unwrapped_m + 0.15 * surface_corr, z_true)
     }
 
     fn seed_step_with_tracking_filter(&mut self, state: &RadarGatingState) {
-        let measured_m = self.advance_unwrapped_measurement(state);
+        let (measured_m, z_true_m) = self.advance_unwrapped_measurement(state);
         self.tracking_filter.predict();
         self.tracking_filter.update(measured_m);
         let pos = self.tracking_filter.amplitude();
         let vel = self.tracking_filter.velocity();
         let beam_state = self.gating.evaluate(pos, vel);
-        self.record_history_point(measured_m, pos, vel, state.system_latency_ms, beam_state);
+        self.record_history_point(z_true_m, measured_m, pos, vel, state, beam_state);
     }
 
     /// Advances one control step with **zero dynamic memory allocations** under `VerifiedAllocator`.
     pub fn step_zero_alloc(&mut self, state: &RadarGatingState) -> BeamState {
         let start = crate::web_io::PlatformInstant::now();
-        let measured_m = self.advance_unwrapped_measurement(state);
+        let (measured_m, z_true_m) = self.advance_unwrapped_measurement(state);
         self.fast_kalman.predict();
         if !self.nan_fault_active {
             self.fast_kalman.update(measured_m);
@@ -326,17 +339,18 @@ impl RadarPipeline {
         let vel = self.fast_kalman.state[1];
         let eval_pos = if self.nan_fault_active { f64::NAN } else { pos };
         let beam_state = self.gating.evaluate(eval_pos, vel);
-        self.record_history_point(measured_m, pos, vel, state.system_latency_ms, beam_state);
+        self.record_history_point(z_true_m, measured_m, pos, vel, state, beam_state);
         self.last_step_us = start.elapsed().as_secs_f64() * 1.0e6;
         beam_state
     }
 
     fn record_history_point(
         &mut self,
+        true_m: f64,
         measured_m: f64,
         pos_m: f64,
         vel_m_s: f64,
-        latency_ms: f64,
+        state: &RadarGatingState,
         beam_state: BeamState,
     ) {
         self.total_frames = self.total_frames.saturating_add(1);
@@ -344,45 +358,69 @@ impl RadarPipeline {
             self.active_frames = self.active_frames.saturating_add(1);
         }
         let duty_pct = self.duty_cycle_percent();
-        let pred_mm = (pos_m + vel_m_s * (latency_ms * 1.0e-3)) * 1.0e3;
+        let pred_mm = (pos_m + vel_m_s * (state.system_latency_ms * 1.0e-3)) * 1.0e3;
+        let meas_mm = measured_m * 1.0e3;
+        let true_mm = true_m * 1.0e3;
         let t = self.sim_time_s;
 
-        push_ring(&mut self.measured_trace_mm, [t, measured_m * 1.0e3]);
+        push_ring(&mut self.measured_trace_mm, [t, meas_mm]);
         push_ring(&mut self.kalman_trace_mm, [t, pred_mm]);
         push_ring(&mut self.duty_cycle_trace_pct, [t, duty_pct]);
         push_ring(
             &mut self.beam_active_trace,
-            [
-                t,
-                if beam_state == BeamState::BeamActive {
-                    1.0
-                } else {
-                    0.0
-                },
-            ],
+            [t, f64::from(u8::from(beam_state == BeamState::BeamActive))],
         );
         push_ring(
             &mut self.beam_hold_trace,
-            [
-                t,
-                if beam_state == BeamState::BeamHold {
-                    1.0
-                } else {
-                    0.0
-                },
-            ],
+            [t, f64::from(u8::from(beam_state == BeamState::BeamHold))],
         );
         push_ring(
             &mut self.interlock_trace,
             [
                 t,
-                if beam_state == BeamState::SafetyInterlock {
-                    1.0
-                } else {
-                    0.0
-                },
+                f64::from(u8::from(beam_state == BeamState::SafetyInterlock)),
             ],
         );
+        self.update_evaluation_metrics(true_mm, meas_mm, pos_m * 1.0e3, pred_mm, state);
+    }
+
+    fn update_evaluation_metrics(
+        &mut self,
+        true_mm: f64,
+        meas_mm: f64,
+        kalman_pos_mm: f64,
+        pred_mm: f64,
+        state: &RadarGatingState,
+    ) {
+        self.latest_disp_mm = [true_mm, meas_mm, pred_mm];
+        push_ring(&mut *self.true_disp_ring_mm, true_mm);
+        push_ring(&mut *self.predicted_disp_ring_mm, kalman_pos_mm);
+        let r = pearson_correlation(&*self.predicted_disp_ring_mm, &*self.true_disp_ring_mm)
+            .unwrap_or(0.0);
+        let rmse = root_mean_square_error(&*self.predicted_disp_ring_mm, &*self.true_disp_ring_mm)
+            .unwrap_or(0.0);
+        let base_r_mm = state.primary_target.range_m() * 1.0e3;
+        let err = spatial_accuracy_error(base_r_mm + kalman_pos_mm, base_r_mm + true_mm);
+        self.eval_metrics = [r, rmse, if err.is_finite() { err } else { 0.0 }];
+    }
+
+    /// Builds a stack-resident [`GatingTelemetry`] snapshot from the current pipeline state.
+    #[must_use]
+    pub fn latest_telemetry(&self, step_event: bool) -> GatingTelemetry {
+        GatingTelemetry {
+            seq: 0,
+            sim_time_s: self.sim_time_s,
+            true_disp_mm: self.latest_disp_mm[0],
+            measured_disp_mm: self.latest_disp_mm[1],
+            predicted_disp_mm: self.latest_disp_mm[2],
+            velocity_mm_s: self.fast_kalman.state[1] * 1.0e3,
+            duty_cycle_pct: self.duty_cycle_percent(),
+            beam_state: self.gating.state(),
+            pearson_r: self.eval_metrics[0],
+            rmse_mm: self.eval_metrics[1],
+            spatial_err_pct: self.eval_metrics[2],
+            step_event,
+        }
     }
 
     /// Current cumulative LINAC beam-on duty cycle in `[0.0, 100.0]` percent.
@@ -442,13 +480,13 @@ fn rng_unit_f64(rng: &mut OxidizeRng) -> f64 {
     ((rng.next_u64() >> 11) as f64) * (1.0 / ((1_u64 << 53) as f64))
 }
 
-fn push_ring(buf: &mut [[f64; 2]], point: [f64; 2]) {
+fn push_ring<T: Copy>(buf: &mut [T], item: T) {
     let len = buf.len();
     if len > 1 {
         buf.copy_within(1..len, 0);
     }
     if len > 0 {
-        buf[len - 1] = point;
+        buf[len - 1] = item;
     }
 }
 

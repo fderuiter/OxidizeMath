@@ -10,6 +10,7 @@ use super::state::{
 };
 use super::RadarGatingTool;
 use crate::app::theme::SemanticPalette;
+use crate::audio::mappings::radar_linac_frame;
 use crate::framework::{bounded_drag_value, PaneSidePanel, PlaybackAction, PlaybackTransport};
 use eframe::egui::{self, Color32, RichText};
 use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, VLine};
@@ -19,11 +20,12 @@ use math_explorer::physics::medical::radar_gating::BeamState;
 pub fn show_tool_inside(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
     let frame_start = crate::web_io::PlatformInstant::now();
     if tool.playing {
-        let _ = tool.step_gating();
+        handle_step_outcome(tool.step_gating());
         ui.ctx().request_repaint();
     }
 
-    PaneSidePanel::left("radar_gating_controls")
+    let panel_id = crate::framework::scoped_panel_id(ui, "radar_gating_controls");
+    PaneSidePanel::left(panel_id)
         .default_width(305.0)
         .show_inside(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -37,9 +39,28 @@ pub fn show_tool_inside(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
     tool.last_frame_ms = frame_start.elapsed().as_secs_f64() * 1.0e3;
 }
 
+fn handle_step_outcome(state: BeamState) {
+    if state == BeamState::SafetyInterlock {
+        crate::audio::notify_solver_diverged();
+    }
+}
+
 fn render_side_controls(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
     ui.heading("60 GHz MIMO Radar Gating");
     render_transport_and_status(tool, ui);
+    ui.separator();
+    let audio_frame = radar_linac_frame(
+        tool.pipeline.gating.state(),
+        tool.pipeline.latest_disp_mm[1],
+        tool.pipeline.fast_kalman.state[1] * 1.0e3,
+        tool.pipeline.duty_cycle_percent(),
+        tool.pipeline.sim_time_s,
+    );
+    let is_paused = matches!(
+        tool.pipeline.gating.state(),
+        BeamState::Standby | BeamState::SafetyInterlock
+    );
+    crate::audio::render_sonification_panel(ui, "radar_gating", &audio_frame, is_paused);
     ui.separator();
     let rf_changed = render_rf_and_music_controls(&mut tool.state, ui);
     ui.separator();
@@ -49,6 +70,7 @@ fn render_side_controls(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
 
     if gating_changed {
         tool.pipeline.rebuild_all(&tool.state);
+        let _ = tool.publish_status_snapshot(false);
     } else if rf_changed {
         tool.pipeline.refresh_spectra_only(&tool.state);
     }
@@ -63,12 +85,16 @@ fn render_transport_and_status(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
     .show(ui)
     {
         Some(PlaybackAction::Play) => tool.playing = true,
-        Some(PlaybackAction::Pause) => tool.playing = false,
+        Some(PlaybackAction::Pause) => {
+            tool.playing = false;
+            crate::audio::notify_playback_paused();
+        }
         Some(PlaybackAction::Step) => {
-            let _ = tool.step_gating();
+            handle_step_outcome(tool.step_gating());
         }
         Some(PlaybackAction::Reset) => {
             tool.reset_simulation();
+            crate::audio::notify_playback_reset();
         }
         None => {}
     }
@@ -85,6 +111,10 @@ fn render_transport_and_status(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
         tool.pipeline.duty_cycle_percent(),
         tool.pipeline.last_step_us,
         tool.last_frame_ms
+    ));
+    ui.label(format!(
+        "Tracking — r: {:.3} | RMSE: {:.2} mm | Err: {:+.3}%",
+        tool.pipeline.eval_metrics[0], tool.pipeline.eval_metrics[1], tool.pipeline.eval_metrics[2]
     ));
     ui.label(format!(
         "Peaks — Coarse FFT: {} | MUSIC: {} (c/2B = {:.2} cm)",
@@ -258,7 +288,7 @@ fn render_fault_and_interlock_controls(tool: &mut RadarGatingTool, ui: &mut egui
     ui.horizontal_wrapped(|ui| {
         if ui.button("Inject Cough Spike").clicked() {
             tool.inject_cough();
-            let _ = tool.step_gating();
+            handle_step_outcome(tool.step_gating());
         }
         let clutter_label = if tool.pipeline.extra_clutter_active {
             "Clear Couch Reflector"
@@ -267,11 +297,11 @@ fn render_fault_and_interlock_controls(tool: &mut RadarGatingTool, ui: &mut egui
         };
         if ui.button(clutter_label).clicked() {
             tool.pipeline.extra_clutter_active = !tool.pipeline.extra_clutter_active;
-            let _ = tool.step_gating();
+            handle_step_outcome(tool.step_gating());
         }
         if ui.button("Inject NaN Fault").clicked() {
             tool.inject_nan_fault();
-            let _ = tool.step_gating();
+            handle_step_outcome(tool.step_gating());
         }
     });
     ui.horizontal_wrapped(|ui| {
@@ -283,6 +313,7 @@ fn render_fault_and_interlock_controls(tool: &mut RadarGatingTool, ui: &mut egui
         }
         if ui.button("Disarm").clicked() {
             let _ = tool.pipeline.disarm_controller();
+            let _ = tool.publish_status_snapshot(false);
         }
     });
 }

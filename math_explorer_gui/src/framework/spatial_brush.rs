@@ -52,6 +52,10 @@ pub enum BrushMode {
     FlowVortex,
     /// Places or steers a potential-flow doublet singularity.
     FlowDoublet,
+    /// Paints planning target volume (`PTV`) voxels on a radiotherapy phantom.
+    PtvTarget,
+    /// Paints organ-at-risk (`OAR`) voxels on a radiotherapy phantom.
+    OrganAtRisk,
 }
 
 impl BrushMode {
@@ -72,6 +76,8 @@ impl BrushMode {
             Self::FlowSource => "Source / Sink",
             Self::FlowVortex => "Vortex",
             Self::FlowDoublet => "Doublet",
+            Self::PtvTarget => "PTV Target",
+            Self::OrganAtRisk => "Organ at Risk",
         }
     }
 }
