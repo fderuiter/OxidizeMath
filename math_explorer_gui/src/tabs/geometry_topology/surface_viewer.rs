@@ -38,6 +38,10 @@ struct SurfaceViewerSaveState {
     parametric_exprs: Option<[String; 3]>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    u_bounds: Option<[f64; 2]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    v_bounds: Option<[f64; 2]>,
 }
 
 #[derive(serde::Deserialize)]
@@ -64,6 +68,10 @@ struct SurfaceViewerState {
     parametric_exprs: Option<[String; 3]>,
     #[serde(default)]
     custom_params: BTreeMap<String, f64>,
+    #[serde(default)]
+    u_bounds: Option<[f64; 2]>,
+    #[serde(default)]
+    v_bounds: Option<[f64; 2]>,
 }
 
 /// Interactive 3D parametric wireframe manifold viewer with asynchronous `.obj` export.
@@ -125,7 +133,7 @@ impl SurfaceViewer {
     /// Generates serialized Wavefront `.obj` text for the active parametric surface mesh.
     pub fn build_obj_mesh_string(&self) -> Result<String, String> {
         let surface = self.create_surface();
-        let (u_range, v_range) = self.surface_type.uv_domain();
+        let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
         let mesh = super::export_utils::surface_to_mesh_with_domain(
             surface.as_ref(),
             u_range,
@@ -238,6 +246,7 @@ impl InteractiveTool for SurfaceViewer {
     fn save_state(&self) -> Option<String> {
         let (custom_expr, parametric_exprs, custom_params) =
             self.custom_sandbox.export_fields(self.surface_type);
+        let (u_bounds, v_bounds) = self.custom_sandbox.export_domain_bounds(self.surface_type);
         serde_json::to_string(&SurfaceViewerSaveState {
             surface_type: self.surface_type,
             sphere_radius: self.sphere_radius,
@@ -250,6 +259,8 @@ impl InteractiveTool for SurfaceViewer {
             custom_expr,
             parametric_exprs,
             custom_params,
+            u_bounds,
+            v_bounds,
         })
         .ok()
     }
@@ -281,6 +292,11 @@ impl InteractiveTool for SurfaceViewer {
             loaded.yaw,
             loaded.zoom,
             Some(Camera3D::default()),
+        )?;
+        self.custom_sandbox.load_domain_bounds(
+            loaded.surface_type,
+            loaded.u_bounds,
+            loaded.v_bounds,
         )?;
         let cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION;
         self.surface_type = loaded.surface_type;
@@ -366,82 +382,10 @@ impl scientific_metadata::theory::TheoryDescribable for SurfaceViewer {
     }
 }
 
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Parametric Surface Viewer",
-    "domain": "geometry_topology",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "surface_type": "KleinBottle",
-    "sphere_radius": 1.0,
-    "torus_major_radius": 2.0,
-    "torus_minor_radius": 0.5,
-    "klein_radius": 2.2,
-    "u_resolution": 40,
-    "v_resolution": 40,
-    "camera": {
-      "pitch": 0.6,
-      "yaw": 0.4,
-      "zoom": 1.0
-    }
-  }
-}"#;
-
-const CUSTOM_RIPPLE_MANIFOLD_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Custom Ripple Manifold",
-    "domain": "geometry_topology",
-    "timestamp": "2026-11-21T00:00:00Z"
-  },
-  "config": {
-    "surface_type": "CustomHeightfield",
-    "sphere_radius": 1.0,
-    "torus_major_radius": 2.0,
-    "torus_minor_radius": 0.5,
-    "klein_radius": 2.0,
-    "u_resolution": 36,
-    "v_resolution": 36,
-    "camera": {
-      "pitch": 0.55,
-      "yaw": 0.45,
-      "zoom": 1.0
-    },
-    "custom_expr": "a * cos(k * sqrt(x^2 + y^2 + 0.01))",
-    "custom_params": {
-      "a": 0.7,
-      "k": 2.8
-    }
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "surface_viewer_starter",
-        title: "Parametric Surface Viewer",
-        description: "Parametric 3D wireframe manifold visualization for Sphere, Torus, and Klein Bottle surfaces.",
-        category: "Differential Geometry",
-        icon: "🔮",
-        domain: "geometry_topology",
-        tool_name: Some("SurfaceViewer"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "surface_viewer_custom_ripple",
-        title: "Custom Ripple Manifold",
-        description: "z = a*cos(k*sqrt(x^2 + y^2)): Compiled Monge heightfield wireframe with .obj export and live sliders.",
-        category: "Differential Geometry",
-        icon: "🌊",
-        domain: "geometry_topology",
-        tool_name: Some("SurfaceViewer"),
-        preset_generator: || CUSTOM_RIPPLE_MANIFOLD_PRESET_JSON,
-    }
-}
+#[path = "surface_viewer/presets.rs"]
+mod presets;
+#[cfg(test)]
+use presets::{CUSTOM_RIPPLE_MANIFOLD_PRESET_JSON, STARTER_PRESET_JSON};
 
 #[cfg(test)]
 #[path = "surface_viewer_tests.rs"]

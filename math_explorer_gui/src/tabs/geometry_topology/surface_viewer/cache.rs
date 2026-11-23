@@ -60,9 +60,10 @@ impl SurfaceViewer {
             return key;
         }
         let surface = self.create_surface();
+        let uv_domain = self.custom_sandbox.uv_domain_for(self.surface_type);
         self.cache.positions_3d = sample_surface_positions(
             surface.as_ref(),
-            self.surface_type,
+            uv_domain,
             self.u_resolution,
             self.v_resolution,
         );
@@ -128,11 +129,11 @@ impl SurfaceViewer {
 
 fn sample_surface_positions(
     surface: &dyn ParametricSurface,
-    surface_type: SurfaceType,
+    uv_domain: ((f64, f64), (f64, f64)),
     u_res: usize,
     v_res: usize,
 ) -> Vec<Point3<f64>> {
-    let ((u_min, u_max), (v_min, v_max)) = surface_type.uv_domain();
+    let ((u_min, u_max), (v_min, v_max)) = uv_domain;
     let cols = v_res + 1;
     let mut out = Vec::with_capacity((u_res + 1) * cols);
     for i in 0..=u_res {

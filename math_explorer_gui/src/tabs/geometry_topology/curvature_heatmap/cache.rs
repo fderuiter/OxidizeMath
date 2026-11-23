@@ -59,7 +59,7 @@ impl CurvatureHeatmap {
     }
 
     fn evaluate_surface_curvature(&mut self) {
-        let uv = self.surface_type.uv_domain();
+        let uv = self.custom_sandbox.uv_domain_for(self.surface_type);
         let u_res = self.u_resolution;
         let v_res = self.v_resolution;
         let ctype = self.curvature_type;
@@ -125,7 +125,11 @@ impl CurvatureHeatmap {
             self.evaluate_surface_curvature();
             self.cache.surface_key = Some(surf_key);
         }
-        let proj_key = (surf_key, self.camera.pose_fingerprint(), series_color.to_array());
+        let proj_key = (
+            surf_key,
+            self.camera.pose_fingerprint(),
+            series_color.to_array(),
+        );
         if self.cache.proj_key != Some(proj_key) {
             self.rebuild_curvature_scene(series_color);
             self.cache.proj_key = Some(proj_key);
@@ -177,8 +181,11 @@ impl CurvatureHeatmap {
                 );
             }
         }
-        self.scene_builder
-            .record_series("Curvature Surface", &self.cache.positions_3d, series_color);
+        self.scene_builder.record_series(
+            "Curvature Surface",
+            &self.cache.positions_3d,
+            series_color,
+        );
         self.scene_builder.ensure_sorted();
     }
 }

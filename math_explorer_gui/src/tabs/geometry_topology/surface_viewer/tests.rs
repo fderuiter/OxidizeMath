@@ -51,6 +51,45 @@ fn surface_viewer_custom_parametric_union_parameter_cap_preserves_valid_mesh() {
 }
 
 #[test]
+fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
+    let mut tool = SurfaceViewer {
+        surface_type: SurfaceType::CustomHeightfield,
+        u_resolution: 10,
+        v_resolution: 10,
+        ..Default::default()
+    };
+    tool.custom_sandbox
+        .heightfield_bar
+        .set_expression("x + 2 * y");
+    tool.custom_sandbox
+        .set_uv_bounds(SurfaceType::CustomHeightfield, [1.0, 5.0], [-3.0, 4.0])
+        .expect("valid domain bounds");
+
+    let obj = tool.build_obj_string();
+    assert!(obj.contains("v 5.000000 4.000000 13.000000") || obj.contains("v 5 4 13"));
+
+    let saved = tool.save_state().expect("save state");
+    assert!(saved.len() < 4096);
+    let mut restored = SurfaceViewer::default();
+    restored.try_load_state(&saved).expect("load state");
+    assert_eq!(
+        restored
+            .custom_sandbox
+            .uv_domain_for(SurfaceType::CustomHeightfield),
+        ((1.0, 5.0), (-3.0, 4.0))
+    );
+    restored.populate_scene(egui::Color32::WHITE);
+    assert!(!restored
+        .scene_builder
+        .sorted_projected_segments()
+        .is_empty());
+    assert!(tool
+        .custom_sandbox
+        .set_uv_bounds(SurfaceType::CustomHeightfield, [4.0, 1.0], [-1.0, 1.0])
+        .is_err());
+}
+
+#[test]
 fn surface_viewer_clamps_high_res_state_and_reuses_cached_3d_mesh_on_orbit() {
     let mut tool = SurfaceViewer::default();
     let high_res = r#"{"surface_type":"Torus","sphere_radius":1.0,"torus_major_radius":2.0,"torus_minor_radius":0.5,"klein_radius":2.0,"u_resolution":1000,"v_resolution":1000,"pitch":0.5,"yaw":0.5,"zoom":1.0}"#;

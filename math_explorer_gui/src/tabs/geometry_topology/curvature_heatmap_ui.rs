@@ -93,7 +93,8 @@ impl CurvatureHeatmap {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             self.populate_scene(palette.series_color(0));
-            let helper = format!("{CAMERA_3D_HELPER_TEXT} Blue = Low Curvature, Red = High Curvature.");
+            let helper =
+                format!("{CAMERA_3D_HELPER_TEXT} Blue = Low Curvature, Red = High Curvature.");
             let mut camera = self.camera;
             Plot3DViewport::new("curvature_plot", 4.0)
                 .helper_text(&helper)

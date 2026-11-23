@@ -35,6 +35,10 @@ struct CurvatureHeatmapSaveState {
     parametric_exprs: Option<[String; 3]>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    u_bounds: Option<[f64; 2]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    v_bounds: Option<[f64; 2]>,
 }
 
 #[derive(serde::Deserialize)]
@@ -62,6 +66,10 @@ struct CurvatureHeatmapState {
     parametric_exprs: Option<[String; 3]>,
     #[serde(default)]
     custom_params: BTreeMap<String, f64>,
+    #[serde(default)]
+    u_bounds: Option<[f64; 2]>,
+    #[serde(default)]
+    v_bounds: Option<[f64; 2]>,
 }
 
 /// Interactive 3D parametric manifold Gaussian and mean curvature heatmap viewer.
@@ -146,6 +154,7 @@ impl InteractiveTool for CurvatureHeatmap {
     fn save_state(&self) -> Option<String> {
         let (custom_expr, parametric_exprs, custom_params) =
             self.custom_sandbox.export_fields(self.surface_type);
+        let (u_bounds, v_bounds) = self.custom_sandbox.export_domain_bounds(self.surface_type);
         serde_json::to_string(&CurvatureHeatmapSaveState {
             surface_type: self.surface_type,
             curvature_type: self.curvature_type,
@@ -159,6 +168,8 @@ impl InteractiveTool for CurvatureHeatmap {
             custom_expr,
             parametric_exprs,
             custom_params,
+            u_bounds,
+            v_bounds,
         })
         .ok()
     }
@@ -180,6 +191,11 @@ impl InteractiveTool for CurvatureHeatmap {
             loaded.yaw,
             loaded.zoom,
             Some(Camera3D::default()),
+        )?;
+        self.custom_sandbox.load_domain_bounds(
+            loaded.surface_type,
+            loaded.u_bounds,
+            loaded.v_bounds,
         )?;
         let cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION;
         self.surface_type = loaded.surface_type;
