@@ -57,7 +57,7 @@ pub(crate) struct PlaybackBroadcastEvent {
 }
 
 fn detect_workspace_sync_key(ctx: &egui::Context) -> Option<PendingSyncKey> {
-    let shell_or_modal = ctx.wants_keyboard_input()
+    let shell_or_modal = crate::framework::is_text_edit_focused(ctx)
         || egui::Popup::is_any_open(ctx)
         || ctx.memory(|m| m.top_modal_layer().is_some())
         || ctx.data(|d| {
@@ -67,18 +67,18 @@ fn detect_workspace_sync_key(ctx: &egui::Context) -> Option<PendingSyncKey> {
     if shell_or_modal {
         return None;
     }
-    let no_widget_focused = ctx.memory(|m| m.focused().is_none());
+    let activation_allowed = !crate::framework::is_button_activation_focused(ctx);
     ctx.input(|i| {
         if !i.modifiers.is_none() {
             return None;
         }
-        if no_widget_focused && i.key_pressed(egui::Key::Space) {
+        if activation_allowed && i.key_pressed(egui::Key::Space) {
             Some(PendingSyncKey::TogglePlayPause)
         } else if i.key_pressed(egui::Key::Period) {
             Some(PendingSyncKey::StepForward)
         } else if i.key_pressed(egui::Key::Comma) {
             Some(PendingSyncKey::StepBack)
-        } else if no_widget_focused && i.key_pressed(egui::Key::OpenBracket) {
+        } else if activation_allowed && i.key_pressed(egui::Key::OpenBracket) {
             Some(PendingSyncKey::PreviousKeyframe)
         } else {
             None

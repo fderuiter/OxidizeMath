@@ -308,3 +308,174 @@ fn test_runner_pass_latency_budget_64_and_128() {
         );
     }
 }
+
+#[test]
+fn test_mri_kspace_radial_cs_challenge_zero_alloc_metrics_and_clamping() {
+    use super::challenge::{score_kspace_cs, CHALLENGE_MRI_KSPACE_RADIAL_CS};
+    use super::kspace_types::MriKSpaceSnapshot;
+    use crate::starter_gallery::find_challenge_metadata;
+
+    let meta = find_challenge_metadata(CHALLENGE_MRI_KSPACE_RADIAL_CS).expect("registered");
+    let baseline = meta.generate_baseline_state();
+    let mut tool = MriKSpaceTool::default();
+    tool.apply_challenge(Some(CHALLENGE_MRI_KSPACE_RADIAL_CS))
+        .expect("challenge applies");
+    tool.try_load_state(&baseline).expect("baseline loads");
+
+    let mut base_runner = build_runner(tool.config.clone());
+    let base_snap = base_runner
+        .get_snapshot()
+        .structured_data
+        .expect("structured")
+        .downcast::<MriKSpaceSnapshot>()
+        .expect("MriKSpaceSnapshot");
+    assert!((base_snap.acceleration_r - 1.0).abs() < 1e-9);
+    assert!(base_snap.nrmse_pct < 35.0);
+    assert!(!score_kspace_cs(base_snap.acceleration_r, base_snap.nrmse_pct).passed);
+
+    {
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            base_runner.step();
+            let (nrmse, accel) = base_runner.compute_kspace_metrics();
+            assert!(nrmse.is_finite() && accel >= 1.0);
+        });
+    }
+
+    let mut solved_cfg = tool.config.clone();
+    solved_cfg.mask_preset = KSpaceMaskPreset::Radial;
+    solved_cfg.radial_spokes = 16;
+    let solved_runner = build_runner(solved_cfg);
+    let solved_snap = solved_runner
+        .get_snapshot()
+        .structured_data
+        .expect("structured")
+        .downcast::<MriKSpaceSnapshot>()
+        .expect("MriKSpaceSnapshot");
+    assert!(
+        solved_snap.acceleration_r >= 2.5 && solved_snap.nrmse_pct <= 48.0,
+        "Expected R >= 2.5 and NRMSE <= 48%, got R={}, NRMSE={}",
+        solved_snap.acceleration_r,
+        solved_snap.nrmse_pct
+    );
+    assert!(score_kspace_cs(solved_snap.acceleration_r, solved_snap.nrmse_pct).passed);
+
+    let mut tampered_val: serde_json::Value = serde_json::from_str(&baseline).unwrap();
+    tampered_val["phantom"] = serde_json::json!("turing_spots");
+    tampered_val["flip_angle_deg"] = serde_json::json!(30.0);
+    tampered_val["mask_preset"] = serde_json::json!("radial");
+    tampered_val["radial_spokes"] = serde_json::json!(16);
+    let clamped = meta
+        .clamp_state_json(&tampered_val.to_string())
+        .expect("clamps cleanly");
+    let parsed: MriKSpaceToolState = serde_json::from_str(&clamped).unwrap();
+    assert_eq!(parsed.phantom, PhantomPreset::SheppLogan);
+    assert!((parsed.flip_angle_deg - 90.0).abs() < 1e-9);
+    assert_eq!(parsed.mask_preset, KSpaceMaskPreset::Radial);
+    assert_eq!(parsed.radial_spokes, 16);
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen_test::wasm_bindgen_test]
+fn wasm_mri_kspace_radial_cs_challenge_roundtrip() {
+    use super::challenge::CHALLENGE_MRI_KSPACE_RADIAL_CS;
+    use crate::starter_gallery::find_challenge_metadata;
+
+    let meta = find_challenge_metadata(CHALLENGE_MRI_KSPACE_RADIAL_CS).expect("registered");
+    let baseline = meta.generate_baseline_state();
+    let clamped = meta.clamp_state_json(&baseline).expect("clamped");
+    let mut tool = MriKSpaceTool::default();
+    tool.apply_challenge(Some(CHALLENGE_MRI_KSPACE_RADIAL_CS))
+        .expect("challenge enabled");
+    tool.try_load_state(&clamped).expect("loaded");
+    assert!(!tool.evaluate_challenge().expect("eval").passed);
+}
+
+#[test]
+fn test_mri_hahn_echo_scrub_sonification_and_zero_alloc_pulse() {
+    use super::pulse::{
+        MriPulseMode, MriPulseWorkspace, CHALLENGE_BLOCH_HAHN_ECHO, MRI_PULSE_SAMPLES,
+    };
+    use super::tool::MriTool;
+
+    let mut mri = MriTool::default();
+    mri.apply_challenge(Some(CHALLENGE_BLOCH_HAHN_ECHO))
+        .expect("Hahn echo challenge activates");
+    mri.pulse_config.b1_amp = 5.87e-6;
+    mri.pulse_config.duration_tau = 0.002;
+    mri.recompute_pulse_sequence();
+    let eval_before = mri.evaluate_challenge().expect("challenge evaluation");
+    assert!(eval_before.passed);
+
+    let mid_frame = mri.pulse_workspace.sample_sonification_frame(
+        MriPulseMode::HahnSpinEcho,
+        60,
+        mri.simulator.b_field,
+        mri.simulator.m0,
+    );
+    let echo_frame = mri.pulse_workspace.sample_sonification_frame(
+        MriPulseMode::HahnSpinEcho,
+        MRI_PULSE_SAMPLES - 1,
+        mri.simulator.b_field,
+        mri.simulator.m0,
+    );
+    assert_eq!(echo_frame.active_voices, 8);
+    assert!(echo_frame.master_gain > mid_frame.master_gain * 1.4);
+    mri.pulse_workspace.playhead_idx = 60;
+    mri.latest_sonification = mid_frame;
+    assert_eq!(eval_before.score, mri.evaluate_challenge().unwrap().score);
+
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut ws = MriPulseWorkspace::default();
+    let cfg = mri.pulse_config;
+    let b = mri.simulator.b_field;
+    verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let _ = ws.evaluate_hahn_echo(1.5, 1.0, 0.08, 1.0, &cfg);
+        for idx in 0..1_000usize {
+            let _ = ws.sample_sonification_frame(
+                MriPulseMode::HahnSpinEcho,
+                idx % MRI_PULSE_SAMPLES,
+                b,
+                1.0,
+            );
+        }
+    });
+}
+
+#[test]
+fn test_kspace_sonification_gradient_shift_and_theme_panels() {
+    use super::tool::MriTool;
+
+    let mut runner = build_runner(MriKSpaceToolState {
+        grid_size: 64,
+        selected_voxel: [32, 32],
+        ..Default::default()
+    });
+    let f0 = runner.get_snapshot().sonification;
+    assert_eq!(f0.active_voices, 8);
+    runner.params.write().unwrap().config.grad_gx_integral = 3.0e-5;
+    runner.process_command(SimCommand::Custom("sync_view".to_string()));
+    let f_grad = runner.get_snapshot().sonification;
+    assert!((f_grad.voices[0].freq_hz - f0.voices[0].freq_hz).abs() > 10.0);
+
+    let mut mri = MriTool::default();
+    let mut kspace_tool = MriKSpaceTool::default();
+    let ctx = egui::Context::default();
+    for mode in [
+        crate::app::ThemeMode::Dark,
+        crate::app::ThemeMode::Light,
+        crate::app::ThemeMode::HighContrast,
+    ] {
+        mode.apply_to_context(&ctx);
+        let _ = ctx.run(egui::RawInput::default(), |c| {
+            egui::CentralPanel::default().show(c, |ui| {
+                mri.show_inside(ui);
+                kspace_tool.show_inside(ui);
+            });
+        });
+    }
+}

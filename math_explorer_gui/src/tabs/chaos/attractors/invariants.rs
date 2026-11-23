@@ -18,7 +18,7 @@ use nalgebra::Vector3;
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct CachedAttractorInvariants {
-    param_key: Option<(u64, u64, u64, u64, u64, u64, u64)>,
+    param_key: Option<u64>,
     lyapunov: Option<f64>,
     corr_key: Option<(u64, usize)>,
     correlation_sum: Option<f64>,
@@ -55,42 +55,57 @@ impl AttractorPlotter {
 
     /// Computes and caches the largest Lyapunov exponent `λ₁` via Wolf's algorithm.
     pub fn current_lyapunov_exponent(&mut self) -> Option<f64> {
-        if self.mode != super::AttractorMode::Lorenz || !self.is_finite_state() || self.diverged() {
+        if !self.is_finite_state() || self.diverged() {
             return None;
         }
-        let init = self.configured_initial_vec();
-        let key = (
-            self.system.sigma.to_bits(),
-            self.system.rho.to_bits(),
-            self.system.beta.to_bits(),
-            self.dt.to_bits(),
-            init.x.to_bits(),
-            init.y.to_bits(),
-            init.z.to_bits(),
-        );
+        let key = self.flow_config_hash();
         if self.invariants_cache.param_key != Some(key) {
             let step = self.dt.clamp(0.002, 0.02);
-            let mut probe = LorenzBuilder::new()
-                .sigma(self.system.sigma)
-                .rho(self.system.rho)
-                .beta(self.system.beta)
-                .build(LorenzState::new(init.x, init.y, init.z));
-            for _ in 0..1200 {
-                probe.step(step);
-                let v = probe.state.vec;
-                if !(v.x.is_finite() && v.y.is_finite() && v.z.is_finite()) {
-                    break;
-                }
-            }
-            let settled = probe.state.vec;
-            let mut rk4 = RungeKutta4::new(&settled);
-            self.invariants_cache.lyapunov =
-                lorenz_lyapunov(&probe, &mut rk4, settled, step, 160, 0.25)
-                    .ok()
-                    .filter(|v| v.is_finite());
+            let init = self.configured_initial_vec();
+            self.invariants_cache.lyapunov = match self.mode {
+                super::AttractorMode::Lorenz => self.compute_lorenz_lyapunov(init, step),
+                super::AttractorMode::Custom => self.compute_custom_lyapunov(init, step),
+            };
             self.invariants_cache.param_key = Some(key);
         }
         self.invariants_cache.lyapunov
+    }
+
+    fn compute_lorenz_lyapunov(&self, init: Vector3<f64>, step: f64) -> Option<f64> {
+        let mut probe = LorenzBuilder::new()
+            .sigma(self.system.sigma)
+            .rho(self.system.rho)
+            .beta(self.system.beta)
+            .build(LorenzState::new(init.x, init.y, init.z));
+        for _ in 0..1200 {
+            probe.step(step);
+            let v = probe.state.vec;
+            if !(v.x.is_finite() && v.y.is_finite() && v.z.is_finite()) {
+                break;
+            }
+        }
+        let settled = probe.state.vec;
+        let mut rk4 = RungeKutta4::new(&settled);
+        lorenz_lyapunov(&probe, &mut rk4, settled, step, 160, 0.25)
+            .ok()
+            .filter(|v| v.is_finite())
+    }
+
+    fn compute_custom_lyapunov(&self, mut init: Vector3<f64>, step: f64) -> Option<f64> {
+        let job = super::CompiledFlowJob::from_bank(&self.flow_bank);
+        for _ in 0..200 {
+            let next = job.rk4_step(init, step);
+            if !(next.x.is_finite() && next.y.is_finite() && next.z.is_finite())
+                || next.norm() > 1e6
+            {
+                break;
+            }
+            init = next;
+        }
+        let mut rk4 = RungeKutta4::new(&init);
+        lorenz_lyapunov(&job, &mut rk4, init, step, 60, 0.25)
+            .ok()
+            .filter(|v| v.is_finite())
     }
 
     /// Computes and caches Grassberger-Procaccia `(C(ε), D₂)` invariants on the 3D trajectory.
