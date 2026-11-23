@@ -1965,7 +1965,16 @@
       "signature": "pub fn kaplan_meier (_ : & [Observation]) -> Vec < TimePoint >"
     },
     {
+      "signature": "pub fn log_rank_test (_ : & [Observation] , _ : & [Observation] ,) -> Result < LogRankResult , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub fn log_rank_test_into (_ : & [Observation] , _ : & [Observation] , _ : & mut Vec < Observation > , _ : & mut Vec < Observation > ,) -> Result < LogRankResult , ClinicalTrialError >"
+    },
+    {
       "signature": "pub fn try_estimate_hazard_ratio (_ : & [Observation] , _ : & [Observation] ,) -> Result < f64 , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub struct LogRankResult"
     },
     {
       "signature": "pub struct Observation"
@@ -3309,10 +3318,19 @@
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn compare_subjects (& self , _ : & [T] , _ : & [T]) -> ComparisonResult }"
     },
     {
+      "signature": "impl < T > WinRatioAnalysis < T > { pub fn compare_subjects_into_tiers (& self , _ : & [T] , _ : & [T] , _ : & mut [TierOutcomeCounts] ,) -> ComparisonResult }"
+    },
+    {
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn compare_subjects_with_tier (& self , _ : & [T] , _ : & [T] ,) -> (ComparisonResult , Option < usize >) }"
     },
     {
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn evaluate_pairs < P : PairingStrategy < T > > (& self , _ : & [Vec < T >] , _ : & [Vec < T >] , _ : & P ,) -> (i32 , i32) }"
+    },
+    {
+      "signature": "impl < T > WinRatioAnalysis < T > { pub fn evaluate_tiers < P : PairingStrategy < T > > (& self , _ : & [Vec < T >] , _ : & [Vec < T >] , _ : & P ,) -> Result < Vec < TierOutcomeCounts > , ClinicalTrialError > }"
+    },
+    {
+      "signature": "impl < T > WinRatioAnalysis < T > { pub fn evaluate_tiers_into < P : PairingStrategy < T > > (& self , _ : & [Vec < T >] , _ : & [Vec < T >] , _ : & P , _ : & mut [TierOutcomeCounts] ,) -> Result < () , ClinicalTrialError > }"
     },
     {
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn new () -> Self }"
@@ -3321,7 +3339,16 @@
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn num_tiers (& self) -> usize }"
     },
     {
+      "signature": "impl < T > WinRatioAnalysis < T > { pub fn tier_count (& self) -> usize }"
+    },
+    {
       "signature": "impl ThresholdComparator { pub fn new (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TierOutcomeCounts { pub fn decided (& self) -> usize }"
+    },
+    {
+      "signature": "impl TierOutcomeCounts { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
     },
     {
       "signature": "pub enum ComparisonResult"
@@ -3345,6 +3372,9 @@
       "signature": "pub struct ThresholdComparator"
     },
     {
+      "signature": "pub struct TierOutcomeCounts"
+    },
+    {
       "signature": "pub struct UnmatchedPairing"
     },
     {
@@ -3364,6 +3394,9 @@
     },
     {
       "signature": "pub trait PairingStrategy < T > { fn evaluate (& self , _ : & WinRatioAnalysis < T > , _ : & [Vec < T >] , _ : & [Vec < T >] ,) -> (i32 , i32) }"
+    },
+    {
+      "signature": "pub trait PairingStrategy < T > { fn evaluate_tiers_into (& self , _ : & WinRatioAnalysis < T > , _ : & [Vec < T >] , _ : & [Vec < T >] , _ : & mut [TierOutcomeCounts] ,) -> Result < () , ClinicalTrialError > }"
     },
     {
       "signature": "pub use super :: censoring :: CensoredOutcome"
