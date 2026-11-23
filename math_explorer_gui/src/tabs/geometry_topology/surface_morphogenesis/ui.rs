@@ -305,21 +305,16 @@ impl SurfaceMorphogenesisTool {
                 "{CAMERA_3D_HELPER_TEXT} Overlay: {} (Shift+Click or Pulse Brush to paint).",
                 self.overlay_mode.label()
             );
-            let prev_cam = self.camera;
+            let allow_drag = self.interaction_mode != ViewportInteractionMode::PulseBrush
+                && !ui.input(|i| i.modifiers.shift);
             let mut camera = self.camera;
-            let mut painted_primary = false;
             Plot3DViewport::new("surface_morphogenesis_plot", 4.2)
                 .helper_text(&helper)
+                .allow_camera_drag(allow_drag)
                 .show(ui, &mut camera, |plot_ui| {
                     self.scene_builder.finish(plot_ui);
-                    painted_primary = self.sample_viewport_pulse_brush(plot_ui, palette.accent);
+                    let _ = self.sample_viewport_pulse_brush(plot_ui, palette.accent);
                 });
-            if painted_primary && self.interaction_mode == ViewportInteractionMode::PulseBrush {
-                camera.pitch = prev_cam.pitch;
-                camera.yaw = prev_cam.yaw;
-                camera.pan_x = prev_cam.pan_x;
-                camera.pan_y = prev_cam.pan_y;
-            }
             self.camera = camera;
         });
     }

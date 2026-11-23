@@ -262,3 +262,89 @@ fn test_extract_top_modes_rank_conjugate_dedup_and_phase() {
     assert!((modes[0].phase - phase1).abs() < 1.0e-9);
     assert!((modes[1].phase - phase2).abs() < 1.0e-9);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_effective_courant_scales_with_sub_unity_refractive_index() {
+    let mut solver = Wave2DSolver::new(32, 32, 1.0, 1.0);
+    let params = Wave2DParams {
+        medium: Wave2DMedium::AcousticWave,
+        boundary: BoundaryMode2D::Sponge,
+        wave_speed: 1.0,
+        plate_stiffness: 0.0,
+        damping: 0.002,
+    };
+    assert!((solver.effective_courant(&params, 0.40) - 0.40).abs() < 1.0e-12);
+
+    // Slow lens (n = 1.65 -> s = 1 / 1.65 < 1.0): ambient tank still sets peak speed = 1.0
+    solver.wave_speed_mask[flatten_2d_index(16, 16, 32)] = 1.0 / 1.65;
+    assert!((solver.effective_courant(&params, 0.40) - 0.40).abs() < 1.0e-12);
+
+    // Fast-wave metamaterial (n = 0.6 -> s = 1.6667): 2 substeps (dt_sub = 0.20), Courant = 0.3333
+    solver.wave_speed_mask[flatten_2d_index(16, 16, 32)] = 1.0 / 0.6;
+    let (substeps, dt_sub) = solver.safe_substep_plan(&params, 0.40);
+    assert_eq!(substeps, 2);
+    assert!((dt_sub - 0.20).abs() < 1.0e-12);
+    let cfl = solver.effective_courant(&params, 0.40);
+    assert!(
+        (cfl - (1.0 / 3.0)).abs() < 1.0e-6,
+        "Expected peak Courant 0.3333 at n = 0.6, got {cfl:.6}"
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_square_chladni_plate_resonant_mode_13_correlation_at_60s() {
+    let n = 48_usize;
+    let mut solver = Wave2DSolver::new_unit_square(n);
+    masks::apply_point_clamp(&mut solver.wall_mask, n, n, 0.5, 0.5, 1.0);
+    let denom = (n - 1) as f64;
+    let mut target_mode = vec![0.0; n * n];
+    for y in 0..n {
+        let yn = (y as f64) / denom;
+        for x in 0..n {
+            let idx = flatten_2d_index(x, y, n);
+            if solver.wall_mask[idx] > 0.5 {
+                let xn = (x as f64) / denom;
+                target_mode[idx] = 0.45
+                    * ((3.0 * PI * xn).cos() * (PI * yn).cos()
+                        - (PI * xn).cos() * (3.0 * PI * yn).cos());
+            }
+        }
+    }
+    solver.set_stationary_displacement(&target_mode);
+
+    let params = Wave2DParams {
+        medium: Wave2DMedium::BiharmonicPlate,
+        boundary: BoundaryMode2D::Neumann,
+        wave_speed: 0.0,
+        plate_stiffness: 0.0004,
+        damping: 0.08,
+    };
+    let driver = DriverConfig2D {
+        enabled: true,
+        line_source: false,
+        x_norm: 0.35,
+        y_norm: 0.08,
+        frequency: 0.3142,
+        amplitude: 65.0,
+        radius_cells: 1.5,
+    };
+    while solver.time() < 60.0 {
+        solver.step_driven(&params, &driver, 0.01, None);
+    }
+
+    let modal = solver.modal_field();
+    let dot: f64 = modal
+        .iter()
+        .zip(target_mode.iter())
+        .map(|(a, b)| a * b)
+        .sum();
+    let norm_a: f64 = modal.iter().map(|a| a * a).sum::<f64>().sqrt();
+    let norm_b: f64 = target_mode.iter().map(|b| b * b).sum::<f64>().sqrt();
+    let corr = (dot / (norm_a * norm_b).max(1.0e-12)).abs();
+    assert!(
+        corr >= 0.60,
+        "Expected modal_field correlation >= 0.60 at t = 60 s, got {corr:.4}"
+    );
+}
