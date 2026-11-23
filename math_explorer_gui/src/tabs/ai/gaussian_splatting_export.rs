@@ -11,11 +11,20 @@ use egui_plot::export_primitives::ExportPrimitive;
 use nalgebra::Point3;
 use oxidize_core::mesh::{export_splats_to_ply_binary, GaussianSplatPly};
 
-fn map_viewport_to_grid(pt: [f64; 2], pan: [f64; 2]) -> [f64; 2] {
-    let span = 2.0 * VIEWPORT_HALF_EXTENT;
+fn safe_half_extent(half: f64) -> f64 {
+    if half.is_finite() && half > 0.1 {
+        half
+    } else {
+        VIEWPORT_HALF_EXTENT
+    }
+}
+
+fn map_viewport_to_grid(pt: [f64; 2], x_half: f64, y_half: f64) -> [f64; 2] {
+    let sx = safe_half_extent(x_half);
+    let sy = safe_half_extent(y_half);
     let w = SPLAT_GRID_SIZE as f64;
-    let gx = ((pt[0] - (pan[0] - VIEWPORT_HALF_EXTENT)) / span) * w;
-    let gy = ((pt[1] - (pan[1] - VIEWPORT_HALF_EXTENT)) / span) * w;
+    let gx = ((pt[0] + sx) / (2.0 * sx)) * w;
+    let gy = ((pt[1] + sy) / (2.0 * sy)) * w;
     [gx, gy]
 }
 
@@ -47,8 +56,8 @@ impl GaussianSplattingTool {
         self.project_into(&mut projected, &mut rings, &mut rings_3d, &mut centers);
 
         let mut pixels = vec![egui::Color32::TRANSPARENT; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE];
-        let pan = [f64::from(self.camera.pan_x), f64::from(self.camera.pan_y)];
-        rasterize_splats_into(&projected, pan, &mut pixels);
+        let (x_half, y_half) = self.frustum_half_extents;
+        rasterize_splats_into(&projected, x_half, y_half, &mut pixels);
 
         let bg = egui::Visuals::dark().extreme_bg_color;
         for px in &mut pixels {
@@ -69,17 +78,17 @@ impl GaussianSplattingTool {
         let mut centers = Vec::with_capacity(self.scene.gaussians.len());
         self.project_into(&mut projected, &mut rings, &mut rings_3d, &mut centers);
 
-        let pan = [f64::from(self.camera.pan_x), f64::from(self.camera.pan_y)];
+        let (x_half, y_half) = self.frustum_half_extents;
         let mut prims = Vec::with_capacity(rings.len() + 5);
 
-        let origin = map_viewport_to_grid(self.project_splat_point(Point3::origin()), pan);
+        let origin = map_viewport_to_grid(self.project_splat_point(Point3::origin()), x_half, y_half);
         let axes = [
             (Point3::new(1.2, 0.0, 0.0), palette.axis_x, "X"),
             (Point3::new(0.0, 1.2, 0.0), palette.axis_y, "Y"),
             (Point3::new(0.0, 0.0, 1.2), palette.axis_z, "Z"),
         ];
         for (tip_world, color, label) in axes {
-            let tip = map_viewport_to_grid(self.project_splat_point(tip_world), pan);
+            let tip = map_viewport_to_grid(self.project_splat_point(tip_world), x_half, y_half);
             prims.push(ExportPrimitive::Arrow {
                 name: format!("Axis {label}"),
                 origin,
@@ -92,7 +101,7 @@ impl GaussianSplattingTool {
         for (idx, (ring, color)) in rings.iter().enumerate() {
             let points: Vec<[f64; 2]> = ring
                 .iter()
-                .map(|&pt| map_viewport_to_grid(pt, pan))
+                .map(|&pt| map_viewport_to_grid(pt, x_half, y_half))
                 .collect();
             prims.push(ExportPrimitive::Polyline {
                 name: format!("Splat {idx} Covariance"),
@@ -106,7 +115,7 @@ impl GaussianSplattingTool {
 
         let mapped_centers: Vec<[f64; 2]> = centers
             .iter()
-            .map(|&pt| map_viewport_to_grid(pt, pan))
+            .map(|&pt| map_viewport_to_grid(pt, x_half, y_half))
             .collect();
         if !mapped_centers.is_empty() {
             prims.push(ExportPrimitive::Points {

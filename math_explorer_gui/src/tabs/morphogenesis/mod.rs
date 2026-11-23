@@ -382,6 +382,19 @@ impl ExplorerTab for MorphogenesisTab {
         }
         Ok(())
     }
+
+    fn import_url_share_params(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        self.framework.import_url_share_params(params, ctx)?;
+        if self.framework.active_tool_id() == Some("MorphogenesisTool") {
+            let cfg = self.export_config();
+            self.sync_shared_params_from_config(&cfg);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

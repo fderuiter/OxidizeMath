@@ -2,8 +2,9 @@
 // theory_verification!
 
 use eframe::egui;
-use oxidize_core::traceability::TraceabilityReport;
-use serde::{Deserialize, Serialize};
+pub use oxidize_core::traceability::{
+    TraceabilityManifestPayload, TraceabilityReport, VerificationCertificate,
+};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -19,26 +20,6 @@ const GITHUB_PAPERS_BASE: &str = "https://github.com/fderuiter/OxidizeMath/blob/
 pub(super) struct PaperStatus {
     pub name: String,
     pub linked_code: Vec<String>,
-}
-
-/// Deserializable schema matching `Verification_Certificate.json`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct VerificationCertificate {
-    pub native_execution_coverage_pct: f64,
-    pub wasm_path_coverage_pct: f64,
-    pub total_assertion_density: f64,
-    pub verified_modules_density: f64,
-    pub unverified_modules_density: f64,
-    pub passed: bool,
-}
-
-/// Deserializable web manifest envelope flattening [`TraceabilityReport`] with optional certificate metadata.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct TraceabilityManifestPayload {
-    #[serde(flatten)]
-    pub report: TraceabilityReport,
-    #[serde(default)]
-    pub certificate: Option<VerificationCertificate>,
 }
 
 /// Parses a `traceability_manifest.json` payload into a [`TraceabilityReport`] and optional [`VerificationCertificate`].

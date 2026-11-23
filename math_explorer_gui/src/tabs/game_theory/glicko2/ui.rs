@@ -2,13 +2,12 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{BottomViewTab, Glicko2PlotMode, Glicko2TournamentTool};
+use super::{BottomViewTab, Glicko2TournamentTool};
 use crate::accessibility::AccessibleHoverText;
+use crate::app::SemanticPalette;
 use crate::framework::InteractiveTool;
 use crate::presets::{Glicko2PairingMode, MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS};
-use crate::app::SemanticPalette;
 use eframe::egui;
-use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints, Points};
 use math_explorer::pure_math::statistics::glicko2::{
     head_to_head_win_probability, pairwise_win_matrix, GlickoPlayer, Rating, RatingDeviation,
     Volatility,
@@ -22,12 +21,27 @@ fn edit_initial_player(ui: &mut egui::Ui, initial: &mut GlickoPlayer) -> bool {
     let mut r0 = initial.rating.value();
     let mut rd0 = initial.rating_deviation.value();
     let mut sig0 = initial.volatility.value();
-    let chg = ui.add(egui::DragValue::new(&mut r0).speed(5.0).range(100.0..=4000.0)).changed()
-        | ui.add(egui::DragValue::new(&mut rd0).speed(2.0).range(1.0..=600.0)).changed()
-        | ui.add(egui::DragValue::new(&mut sig0).speed(0.002).range(0.001..=1.5)).changed();
-    if let (true, Ok(r), Ok(d), Ok(v)) =
-        (chg, Rating::new(r0), RatingDeviation::new(rd0), Volatility::new(sig0))
-    {
+    let chg = ui
+        .add(
+            egui::DragValue::new(&mut r0)
+                .speed(5.0)
+                .range(100.0..=4000.0),
+        )
+        .changed()
+        | ui.add(egui::DragValue::new(&mut rd0).speed(2.0).range(1.0..=600.0))
+            .changed()
+        | ui.add(
+            egui::DragValue::new(&mut sig0)
+                .speed(0.002)
+                .range(0.001..=1.5),
+        )
+        .changed();
+    if let (true, Ok(r), Ok(d), Ok(v)) = (
+        chg,
+        Rating::new(r0),
+        RatingDeviation::new(rd0),
+        Volatility::new(sig0),
+    ) {
         *initial = GlickoPlayer::new(r, d, v);
         return true;
     }
@@ -35,11 +49,14 @@ fn edit_initial_player(ui: &mut egui::Ui, initial: &mut GlickoPlayer) -> bool {
 }
 
 impl Glicko2TournamentTool {
-    fn show_preset_and_schedule_controls(&mut self, ui: &mut egui::Ui) {
+    fn show_starter_scenario_buttons(&mut self, ui: &mut egui::Ui) {
         ui.label("Starter Scenarios:");
         ui.horizontal_wrapped(|ui| {
-            if io_btn(ui, "♟ Swiss Upset", "Load 5-player Swiss upset and volatility spike scenario")
-            {
+            if io_btn(
+                ui,
+                "♟ Swiss Upset",
+                "Load 5-player Swiss upset and volatility spike scenario",
+            ) {
                 let _ = self.import_preset_json(crate::starter_gallery::PRESET_GLICKO2_SWISS_UPSET);
             }
             if io_btn(
@@ -47,10 +64,14 @@ impl Glicko2TournamentTool {
                 "🎯 Round-Robin Drift",
                 "Load 4-player Round-Robin frozen vs sequential drift",
             ) {
-                let _ =
-                    self.import_preset_json(crate::starter_gallery::PRESET_GLICKO2_ROUND_ROBIN_DRIFT);
+                let _ = self
+                    .import_preset_json(crate::starter_gallery::PRESET_GLICKO2_ROUND_ROBIN_DRIFT);
             }
         });
+    }
+
+    fn show_preset_and_schedule_controls(&mut self, ui: &mut egui::Ui) {
+        self.show_starter_scenario_buttons(ui);
         ui.separator();
         ui.heading("System & Schedule");
         let rebuild = ui
@@ -65,7 +86,10 @@ impl Glicko2TournamentTool {
         ui.horizontal(|ui| {
             ui.label("Pairing:");
             for mode in [Glicko2PairingMode::Swiss, Glicko2PairingMode::RoundRobin] {
-                if ui.selectable_value(&mut self.pairing_mode, mode, mode.label()).changed() {
+                if ui
+                    .selectable_value(&mut self.pairing_mode, mode, mode.label())
+                    .changed()
+                {
                     self.refresh_next_pairings();
                     self.bump_revision();
                 }
@@ -74,7 +98,9 @@ impl Glicko2TournamentTool {
         ui.horizontal(|ui| {
             ui.label("Rounds:");
             if ui
-                .add(egui::DragValue::new(&mut self.target_rounds).range(1..=MAX_TOURNAMENT_PERIODS))
+                .add(
+                    egui::DragValue::new(&mut self.target_rounds).range(1..=MAX_TOURNAMENT_PERIODS),
+                )
                 .changed()
             {
                 self.bump_revision();
@@ -94,18 +120,29 @@ impl Glicko2TournamentTool {
 
     fn show_execution_controls(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
-            if io_btn(ui, "▶ Simulate Period", "Simulate next scheduled rating period with OxidizeRng")
-            {
+            if io_btn(
+                ui,
+                "▶ Simulate Period",
+                "Simulate next scheduled rating period with OxidizeRng",
+            ) {
                 if let Err(err) = self.simulate_next_period() {
                     self.io_state.status_message = Some((true, err));
                 }
             }
-            if io_btn(ui, "⏩ Run to Target", "Simulate remaining periods up to Target Rounds") {
+            if io_btn(
+                ui,
+                "⏩ Run to Target",
+                "Simulate remaining periods up to Target Rounds",
+            ) {
                 if let Err(err) = self.simulate_to_target_rounds() {
                     self.io_state.status_message = Some((true, err));
                 }
             }
-            if io_btn(ui, "↺ Reset Periods", "Clear completed match periods back to Period 0") {
+            if io_btn(
+                ui,
+                "↺ Reset Periods",
+                "Clear completed match periods back to Period 0",
+            ) {
                 self.reset_periods();
             }
         });
@@ -126,18 +163,34 @@ impl Glicko2TournamentTool {
         ui.separator();
         ui.heading("Offline Match Logs & Exports");
         ui.horizontal_wrapped(|ui| {
-            if io_btn(ui, "📂 Import CSV/JSON", "Import local CSV or JSON match log atomically") {
+            if io_btn(
+                ui,
+                "📂 Import CSV/JSON",
+                "Import local CSV or JSON match log atomically",
+            ) {
                 self.io_state.trigger_import_dialog();
             }
-            if io_btn(ui, "💾 Standings CSV", "Export standings and 95% confidence bands as CSV") {
+            if io_btn(
+                ui,
+                "💾 Standings CSV",
+                "Export standings and 95% confidence bands as CSV",
+            ) {
                 self.io_state
                     .trigger_save_csv("glicko2_standings.csv", self.format_standings_csv());
             }
-            if io_btn(ui, "💾 Standings JSON", "Export standings and 95% confidence bands as JSON") {
+            if io_btn(
+                ui,
+                "💾 Standings JSON",
+                "Export standings and 95% confidence bands as JSON",
+            ) {
                 self.io_state
                     .trigger_save_json("glicko2_standings.json", self.format_standings_json());
             }
-            if io_btn(ui, "💾 Pairings CSV", "Export upcoming pairings and win probabilities as CSV") {
+            if io_btn(
+                ui,
+                "💾 Pairings CSV",
+                "Export upcoming pairings and win probabilities as CSV",
+            ) {
                 self.io_state
                     .trigger_save_csv("glicko2_pairings.csv", self.format_pairings_csv());
             }
@@ -148,13 +201,23 @@ impl Glicko2TournamentTool {
         });
         if let Some((is_err, ref msg)) = self.io_state.status_message {
             let palette = SemanticPalette::from_visuals(ui.visuals());
-            ui.colored_label(if is_err { palette.error } else { palette.success }, msg);
+            ui.colored_label(
+                if is_err {
+                    palette.error
+                } else {
+                    palette.success
+                },
+                msg,
+            );
         }
     }
 
     fn show_roster_editor(&mut self, ui: &mut egui::Ui) {
         ui.separator();
-        ui.heading(format!("Roster ({}/{MAX_TOURNAMENT_PLAYERS})", self.competitors.len()));
+        ui.heading(format!(
+            "Roster ({}/{MAX_TOURNAMENT_PLAYERS})",
+            self.competitors.len()
+        ));
         ui.horizontal(|ui| {
             ui.add(egui::TextEdit::singleline(&mut self.new_player_name).desired_width(120.0));
             if ui
@@ -171,29 +234,34 @@ impl Glicko2TournamentTool {
 
         let can_remove = self.competitors.len() > 2;
         let (mut remove_idx, mut rebuild, mut refresh_pairings) = (None, false, false);
-        egui::Grid::new("glicko2_roster_grid").striped(true).show(ui, |ui| {
-            for h in ["Name", "r₀", "RD₀", "σ₀", "Idle", ""] {
-                ui.strong(h);
-            }
-            ui.end_row();
-            for (idx, comp) in self.competitors.iter_mut().enumerate() {
-                ui.label(&comp.name);
-                rebuild |= edit_initial_player(ui, &mut comp.initial);
-                if ui
-                    .checkbox(&mut comp.inactive, "")
-                    .accessible_hover_text("Sit out upcoming periods (inflates RD)")
-                    .changed()
-                {
-                    refresh_pairings = true;
-                }
-                if can_remove
-                    && ui.small_button("✖").accessible_hover_text("Remove competitor").clicked()
-                {
-                    remove_idx = Some(idx);
+        egui::Grid::new("glicko2_roster_grid")
+            .striped(true)
+            .show(ui, |ui| {
+                for h in ["Name", "r₀", "RD₀", "σ₀", "Idle", ""] {
+                    ui.strong(h);
                 }
                 ui.end_row();
-            }
-        });
+                for (idx, comp) in self.competitors.iter_mut().enumerate() {
+                    ui.label(&comp.name);
+                    rebuild |= edit_initial_player(ui, &mut comp.initial);
+                    if ui
+                        .checkbox(&mut comp.inactive, "")
+                        .accessible_hover_text("Sit out upcoming periods (inflates RD)")
+                        .changed()
+                    {
+                        refresh_pairings = true;
+                    }
+                    if can_remove
+                        && ui
+                            .small_button("✖")
+                            .accessible_hover_text("Remove competitor")
+                            .clicked()
+                    {
+                        remove_idx = Some(idx);
+                    }
+                    ui.end_row();
+                }
+            });
         if let Some(idx) = remove_idx {
             let _ = self.remove_competitor(idx);
         } else if rebuild {
@@ -220,13 +288,21 @@ impl Glicko2TournamentTool {
             .min_height(185.0)
             .show_inside(parent_ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.bottom_tab, BottomViewTab::Standings, "🏆 Standings & Drift");
+                    ui.selectable_value(
+                        &mut self.bottom_tab,
+                        BottomViewTab::Standings,
+                        "🏆 Standings & Drift",
+                    );
                     ui.selectable_value(
                         &mut self.bottom_tab,
                         BottomViewTab::NextPairings,
                         format!("⚔ Period {} Pairings", self.completed_periods.len() + 1),
                     );
-                    ui.selectable_value(&mut self.bottom_tab, BottomViewTab::WinMatrixTable, "🎯 Win Matrix");
+                    ui.selectable_value(
+                        &mut self.bottom_tab,
+                        BottomViewTab::WinMatrixTable,
+                        "🎯 Win Matrix",
+                    );
                 });
                 ui.separator();
                 egui::ScrollArea::both().show(ui, |ui| match self.bottom_tab {
@@ -239,27 +315,40 @@ impl Glicko2TournamentTool {
 
     fn show_standings_table(&self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
-        egui::Grid::new("glicko2_standings_grid").striped(true).min_col_width(56.0).show(ui, |ui| {
-            for h in ["#", "Competitor", "Rating r", "RD", "95% Band [r ± 2RD]", "σ (Vol)", "Pts", "W-D-L-B", "Seq Drift Δr"] {
-                ui.strong(h);
-            }
-            ui.end_row();
-            for (rank_zero, idx) in self.standings_order().into_iter().enumerate() {
-                let c = &self.competitors[idx];
-                let (r, rd) = (c.current.rating.value(), c.current.rating_deviation.value());
-                let drift = c.sequential.rating.value() - r;
-                ui.label(format!("{}", rank_zero + 1));
-                ui.colored_label(palette.series_color(idx), &c.name);
-                ui.label(format!("{r:.1}"));
-                ui.label(format!("{rd:.1}"));
-                ui.label(format!("[{:.0}, {:.0}]", r - 2.0 * rd, r + 2.0 * rd));
-                ui.label(format!("{:.4}", c.current.volatility.value()));
-                ui.label(format!("{:.1}", c.points));
-                ui.label(format!("{}-{}-{}-{}", c.wins, c.draws, c.losses, c.byes));
-                ui.label(format!("{drift:+.2}"));
+        egui::Grid::new("glicko2_standings_grid")
+            .striped(true)
+            .min_col_width(56.0)
+            .show(ui, |ui| {
+                for h in [
+                    "#",
+                    "Competitor",
+                    "Rating r",
+                    "RD",
+                    "95% Band [r ± 2RD]",
+                    "σ (Vol)",
+                    "Pts",
+                    "W-D-L-B",
+                    "Seq Drift Δr",
+                ] {
+                    ui.strong(h);
+                }
                 ui.end_row();
-            }
-        });
+                for (rank_zero, idx) in self.standings_order().into_iter().enumerate() {
+                    let c = &self.competitors[idx];
+                    let (r, rd) = (c.current.rating.value(), c.current.rating_deviation.value());
+                    let drift = c.sequential.rating.value() - r;
+                    ui.label(format!("{}", rank_zero + 1));
+                    ui.colored_label(palette.series_color(idx), &c.name);
+                    ui.label(format!("{r:.1}"));
+                    ui.label(format!("{rd:.1}"));
+                    ui.label(format!("[{:.0}, {:.0}]", r - 2.0 * rd, r + 2.0 * rd));
+                    ui.label(format!("{:.4}", c.current.volatility.value()));
+                    ui.label(format!("{:.1}", c.points));
+                    ui.label(format!("{}-{}-{}-{}", c.wins, c.draws, c.losses, c.byes));
+                    ui.label(format!("{drift:+.2}"));
+                    ui.end_row();
+                }
+            });
     }
 
     fn show_pairings_table(&mut self, ui: &mut egui::Ui) {
@@ -274,34 +363,48 @@ impl Glicko2TournamentTool {
                 commit_clicked = true;
             }
             if let Some(bye_idx) = self.next_bye_player {
-                ui.label(format!("Odd-Roster Bye (+1.0 pt): {}", self.competitors[bye_idx].name));
+                ui.label(format!(
+                    "Odd-Roster Bye (+1.0 pt): {}",
+                    self.competitors[bye_idx].name
+                ));
             }
         });
-        egui::Grid::new("glicko2_pairings_grid").striped(true).show(ui, |ui| {
-            for h in ["Board", "Player A", "Player B", "P(A Wins)", "Manual Outcome"] {
-                ui.strong(h);
-            }
-            ui.end_row();
-            for (b_idx, row) in self.next_pairings.iter_mut().enumerate() {
-                let (ca, cb) = (
-                    &self.competitors[row.pairing.player_a],
-                    &self.competitors[row.pairing.player_b],
-                );
-                let win_p = head_to_head_win_probability(&ca.current, &cb.current);
-                ui.label(format!("#{}", b_idx + 1));
-                ui.label(format!("{} ({:.0})", ca.name, ca.current.rating.value()));
-                ui.label(format!("{} ({:.0})", cb.name, cb.current.rating.value()));
-                ui.label(format!("{:.1}%", win_p * 100.0));
-                ui.horizontal(|ui| {
-                    for (val, lbl) in [(1.0, "1-0"), (0.5, "½-½"), (0.0, "0-1")] {
-                        if ui.selectable_label((row.manual_score_a - val).abs() < 0.05, lbl).clicked() {
-                            row.manual_score_a = val;
-                        }
-                    }
-                });
+        egui::Grid::new("glicko2_pairings_grid")
+            .striped(true)
+            .show(ui, |ui| {
+                for h in [
+                    "Board",
+                    "Player A",
+                    "Player B",
+                    "P(A Wins)",
+                    "Manual Outcome",
+                ] {
+                    ui.strong(h);
+                }
                 ui.end_row();
-            }
-        });
+                for (b_idx, row) in self.next_pairings.iter_mut().enumerate() {
+                    let (ca, cb) = (
+                        &self.competitors[row.pairing.player_a],
+                        &self.competitors[row.pairing.player_b],
+                    );
+                    let win_p = head_to_head_win_probability(&ca.current, &cb.current);
+                    ui.label(format!("#{}", b_idx + 1));
+                    ui.label(format!("{} ({:.0})", ca.name, ca.current.rating.value()));
+                    ui.label(format!("{} ({:.0})", cb.name, cb.current.rating.value()));
+                    ui.label(format!("{:.1}%", win_p * 100.0));
+                    ui.horizontal(|ui| {
+                        for (val, lbl) in [(1.0, "1-0"), (0.5, "½-½"), (0.0, "0-1")] {
+                            if ui
+                                .selectable_label((row.manual_score_a - val).abs() < 0.05, lbl)
+                                .clicked()
+                            {
+                                row.manual_score_a = val;
+                            }
+                        }
+                    });
+                    ui.end_row();
+                }
+            });
         if commit_clicked {
             if let Err(err) = self.commit_manual_period() {
                 self.io_state.status_message = Some((true, err));
@@ -312,169 +415,25 @@ impl Glicko2TournamentTool {
     fn show_win_matrix_table(&self, ui: &mut egui::Ui) {
         let players: Vec<GlickoPlayer> = self.competitors.iter().map(|c| c.current).collect();
         let matrix = pairwise_win_matrix(&players);
-        egui::Grid::new("glicko2_win_matrix_grid").striped(true).show(ui, |ui| {
-            ui.strong("Row \\ Col");
-            for c in &self.competitors {
-                ui.strong(&c.name);
-            }
-            ui.end_row();
-            for (i, row_comp) in self.competitors.iter().enumerate() {
-                ui.strong(&row_comp.name);
-                for j in 0..self.competitors.len() {
-                    if i == j {
-                        ui.label("—");
-                    } else {
-                        ui.label(format!("{:.1}%", matrix[(i, j)] * 100.0));
-                    }
+        egui::Grid::new("glicko2_win_matrix_grid")
+            .striped(true)
+            .show(ui, |ui| {
+                ui.strong("Row \\ Col");
+                for c in &self.competitors {
+                    ui.strong(&c.name);
                 }
                 ui.end_row();
-            }
-        });
-    }
-
-    pub(super) fn show_central_plot(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            for (mode, label) in [
-                (Glicko2PlotMode::ConfidenceBands, "r ± 2RD Confidence Bands"),
-                (Glicko2PlotMode::Volatility, "σ Volatility Shifts"),
-                (Glicko2PlotMode::WinMatrix, "Pairwise Win Matrix"),
-                (Glicko2PlotMode::SequentialDrift, "Frozen vs. Sequential Drift"),
-            ] {
-                ui.selectable_value(&mut self.plot_mode, mode, label);
-            }
-            ui.separator();
-            egui::ComboBox::from_label("Focus")
-                .selected_text(match self.focus_player {
-                    Some(i) => self.competitors.get(i).map_or("All", |c| c.name.as_str()),
-                    None => "All Competitors",
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.focus_player, None, "All Competitors");
-                    for (i, c) in self.competitors.iter().enumerate() {
-                        ui.selectable_value(&mut self.focus_player, Some(i), &c.name);
+                for (i, row_comp) in self.competitors.iter().enumerate() {
+                    ui.strong(&row_comp.name);
+                    for j in 0..self.competitors.len() {
+                        if i == j {
+                            ui.label("—");
+                        } else {
+                            ui.label(format!("{:.1}%", matrix[(i, j)] * 100.0));
+                        }
                     }
-                });
-        });
-
-        let indices: Vec<usize> = match self.focus_player {
-            Some(idx) if idx < self.competitors.len() => vec![idx],
-            _ => (0..self.competitors.len()).collect(),
-        };
-
-        let palette = SemanticPalette::from_visuals(ui.visuals());
-        Plot::new("glicko2_primary_plot")
-            .legend(Legend::default())
-            .allow_drag(true)
-            .allow_zoom(true)
-            .show(ui, |plot_ui| match self.plot_mode {
-                Glicko2PlotMode::ConfidenceBands => {
-                    self.plot_confidence_bands(plot_ui, &indices, palette)
-                }
-                Glicko2PlotMode::Volatility => {
-                    self.plot_volatility_series(plot_ui, &indices, palette)
-                }
-                Glicko2PlotMode::WinMatrix => {
-                    self.plot_win_matrix_series(plot_ui, &indices, palette)
-                }
-                Glicko2PlotMode::SequentialDrift => {
-                    self.plot_drift_series(plot_ui, &indices, palette)
+                    ui.end_row();
                 }
             });
-    }
-
-    fn plot_confidence_bands(
-        &self,
-        plot_ui: &mut egui_plot::PlotUi<'_>,
-        indices: &[usize],
-        palette: SemanticPalette,
-    ) {
-        for &i in indices {
-            let (color, name) = (palette.series_color(i), &self.competitors[i].name);
-            let mean: PlotPoints = self
-                .snapshots
-                .iter()
-                .map(|s| [s.period as f64, s.frozen[i].rating.value()])
-                .collect();
-            let upper: PlotPoints = self
-                .snapshots
-                .iter()
-                .map(|s| [s.period as f64, s.frozen[i].rating.value() + 2.0 * s.frozen[i].rating_deviation.value()])
-                .collect();
-            let lower: PlotPoints = self
-                .snapshots
-                .iter()
-                .map(|s| [s.period as f64, s.frozen[i].rating.value() - 2.0 * s.frozen[i].rating_deviation.value()])
-                .collect();
-            plot_ui.line(Line::new(format!("{name} (r)"), mean).color(color).width(2.2_f32));
-            plot_ui.line(Line::new(format!("{name} (+2RD)"), upper).color(color).style(LineStyle::dashed_dense()));
-            plot_ui.line(Line::new(format!("{name} (-2RD)"), lower).color(color).style(LineStyle::dashed_dense()));
-        }
-    }
-
-    fn plot_volatility_series(
-        &self,
-        plot_ui: &mut egui_plot::PlotUi<'_>,
-        indices: &[usize],
-        palette: SemanticPalette,
-    ) {
-        for &i in indices {
-            let pts: PlotPoints = self
-                .snapshots
-                .iter()
-                .map(|s| [s.period as f64, s.frozen[i].volatility.value()])
-                .collect();
-            plot_ui.line(
-                Line::new(format!("{} (σ)", self.competitors[i].name), pts)
-                    .color(palette.series_color(i))
-                    .width(2.0_f32),
-            );
-        }
-    }
-
-    fn plot_win_matrix_series(
-        &self,
-        plot_ui: &mut egui_plot::PlotUi<'_>,
-        indices: &[usize],
-        palette: SemanticPalette,
-    ) {
-        let players: Vec<GlickoPlayer> = self.competitors.iter().map(|c| c.current).collect();
-        let mat = pairwise_win_matrix(&players);
-        for &i in indices {
-            let color = palette.series_color(i);
-            let pts: Vec<[f64; 2]> = (0..self.competitors.len()).map(|j| [j as f64, mat[(i, j)]]).collect();
-            plot_ui.line(
-                Line::new(format!("P({} beats j)", self.competitors[i].name), pts.clone())
-                    .color(color)
-                    .width(2.0_f32),
-            );
-            plot_ui.points(Points::new(format!("{} vs Roster", self.competitors[i].name), pts).color(color).radius(4.5_f32));
-        }
-    }
-
-    fn plot_drift_series(
-        &self,
-        plot_ui: &mut egui_plot::PlotUi<'_>,
-        indices: &[usize],
-        palette: SemanticPalette,
-    ) {
-        for &i in indices {
-            let (color, name) = (palette.series_color(i), &self.competitors[i].name);
-            let frozen_pts: PlotPoints = self
-                .snapshots
-                .iter()
-                .map(|s| [s.period as f64, s.frozen[i].rating.value()])
-                .collect();
-            let seq_pts: PlotPoints = self
-                .snapshots
-                .iter()
-                .map(|s| [s.period as f64, s.sequential[i].rating.value()])
-                .collect();
-            plot_ui.line(Line::new(format!("{name} (Frozen)"), frozen_pts).color(color).width(2.2_f32));
-            plot_ui.line(
-                Line::new(format!("{name} (Sequential)"), seq_pts)
-                    .color(color)
-                    .style(LineStyle::dashed_loose()),
-            );
-        }
     }
 }

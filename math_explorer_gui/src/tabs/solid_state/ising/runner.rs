@@ -168,7 +168,13 @@ impl IsingRunner {
     fn evolve_trials(&mut self, num_trials: usize) {
         let (mode, temp, j, h, payoffs) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.mode, p.temperature, p.j_coupling, p.h_field, p.game_payoffs)
+            (
+                p.mode,
+                p.temperature,
+                p.j_coupling,
+                p.h_field,
+                p.game_payoffs,
+            )
         };
         if !temp.is_finite() {
             return;
@@ -193,7 +199,8 @@ impl IsingRunner {
             }
         }
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        p.total_trials.fetch_add(num_trials as u64, Ordering::Relaxed);
+        p.total_trials
+            .fetch_add(num_trials as u64, Ordering::Relaxed);
     }
 }
 

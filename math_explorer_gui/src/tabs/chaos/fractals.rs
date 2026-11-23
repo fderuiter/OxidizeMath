@@ -106,7 +106,10 @@ impl TheoryDescribable for FractalViewer {
                 self.julia_c.re, self.julia_c.im
             ),
             FractalMode::CustomMandelbrot => {
-                format!("Custom escape fractal z_{{n+1}} = {}", self.math_input.raw_text)
+                format!(
+                    "Custom escape fractal z_{{n+1}} = {}",
+                    self.math_input.raw_text
+                )
             }
             FractalMode::CustomJulia => format!(
                 "Custom Julia fractal z_{{n+1}} = {} with c=({:.2}, {:.2})",
@@ -155,7 +158,10 @@ impl InteractiveTool for FractalViewer {
         self.build_fractal_export_tables()
     }
 
-    fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {
+    fn export_glsl_shader(
+        &self,
+        dialect: crate::framework::ShaderDialect,
+    ) -> Result<String, String> {
         self.build_glsl_shader(dialect)
     }
 
@@ -367,9 +373,8 @@ impl FractalViewer {
                     let shared = Arc::clone(&self.shared_request);
                     let latest = Arc::clone(&self.latest_generation);
                     let formula = Arc::clone(&self.shared_formula);
-                    self.worker = BackgroundWorker::new(FractalRunner::with_formula(
-                        shared, latest, formula,
-                    ));
+                    self.worker =
+                        BackgroundWorker::new(FractalRunner::with_formula(shared, latest, formula));
                     let _ = self.worker.send_command(SimCommand::Start);
                 }
                 SimWorkerState::Uninitialized | SimWorkerState::Stepping => {}
