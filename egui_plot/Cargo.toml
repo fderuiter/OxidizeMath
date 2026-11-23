@@ -82,6 +82,9 @@ features = ["accesskit"]
 version = "0.33.0"
 default-features = false
 
+[dependencies.math_commons]
+path = "../crates/math_commons"
+
 [dependencies.serde]
 version = "1"
 features = ["derive"]
