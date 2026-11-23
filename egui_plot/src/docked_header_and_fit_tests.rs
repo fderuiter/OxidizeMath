@@ -401,6 +401,8 @@ fn test_scientific_readout_formatting_and_5409_log_ticks_zero_noise() {
                     ),
                     show_x: true,
                     show_y: true,
+                    sidecar_3d: None,
+                    world_point: None,
                 };
                 let (_, lines) = format_value_tooltip_content(
                     crate::PlotPoint::new(4.9e-7, -3.2e8),
