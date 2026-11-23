@@ -53,6 +53,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::AnalysisError::ConvergenceError(1.0), bus),
         check_leaf(error::CopulaError::NotSymmetric, bus),
         check_leaf(error::EllipticCurveError::InvalidDegree, bus),
+        check_leaf(error::EloError::InvalidScale { value: 0.0 }, bus),
         check_leaf(error::EvolutionError::BoundsError, bus),
         check_leaf(error::FractranError::InvalidFractionSyntax, bus),
         check_leaf(error::Glicko2Error::EmptyMatchResults, bus),
@@ -70,6 +71,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
             },
             bus,
         ),
+        check_leaf(error::MatchModelError::InvalidGoalRate { value: 0.0 }, bus),
         check_leaf(error::NumberTheoryError::ConversionError, bus),
         check_leaf(error::OptimizationError::ConversionError, bus),
         check_leaf(error::OuError::InvalidVolatility { value: -0.1 }, bus),
@@ -203,13 +205,13 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 51);
-    assert_eq!(*events.lock().unwrap(), 51);
+    assert_eq!(converted.len(), 53);
+    assert_eq!(*events.lock().unwrap(), 53);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 57);
+    assert_eq!(*events.lock().unwrap(), 59);
     let _shader_emit = check_leaf(error::ShaderEmitError::RecursionLimitExceeded(64), &bus);
-    assert_eq!(*events.lock().unwrap(), 58);
+    assert_eq!(*events.lock().unwrap(), 60);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -286,6 +288,7 @@ pub fn verify_prelude_error_reexports() {
         p::AnalysisError,
         p::CopulaError,
         p::EllipticCurveError,
+        p::EloError,
         p::EvolutionError,
         p::FractranError,
         p::Glicko2Error,
@@ -293,6 +296,7 @@ pub fn verify_prelude_error_reexports() {
         p::LinearAlgebraError,
         p::MarketPricingError,
         p::MarkovError,
+        p::MatchModelError,
         p::NumberTheoryError,
         p::OptimizationError,
         p::OuError,
