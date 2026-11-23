@@ -135,10 +135,7 @@ impl VietorisRipsTool {
             .max(radius);
         self.persistence = persistence;
         self.radius = radius;
-        self.workspace
-            .load_points_3d(&self.points_3d)
-            .map_err(|e| format!("{e:?}"))?;
-        self.sync_barcode_intervals_from_rips();
+        let _ = self.recompute_filtration_zero_alloc(radius)?;
         self.apply_3d_complex(complex, truncated);
         self.refresh_url_budget_flag();
         self.bump_revision();
