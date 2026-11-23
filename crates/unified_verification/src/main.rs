@@ -222,16 +222,13 @@ fn evaluate_coverage_and_report(
 ) -> bool {
     println!("Gathering native execution coverage...");
 
-    let output = report::get_llvm_cov_output(mode);
-    if !output.status.success() {
-        eprintln!(
-            "Error running cargo llvm-cov:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        std::process::exit(1);
-    }
-    let cov_json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("Failed to parse coverage JSON");
+    let cov_json = match report::collect_llvm_cov_json(mode) {
+        Ok(json) => json,
+        Err(err) => {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
+    };
 
     let rs_files = report::collect_rs_files();
     let (native_lines_total, native_lines_covered) = report::parse_coverage(&cov_json);

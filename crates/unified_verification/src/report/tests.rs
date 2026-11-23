@@ -1,12 +1,14 @@
 use super::certificate::{
     format_coverage_badge, verify_certificate_against_report, write_certificate_and_readme,
 };
+use super::coverage::collect_llvm_cov_json_with;
 use super::*;
 use crate::utils::test_utils::TempTestDir;
 use crate::whitelist::{OptOutAllowEntry, VerifySuiteConfig};
 use oxidize_core::traceability::AstCache;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 fn analyze_snippet(rel_path: &str, content: &str) -> FileMetrics {
     let mut cache = AstCache::new();
@@ -250,4 +252,43 @@ fn test_certificate_check_mode_is_read_only_and_enforces_parity() {
     );
     assert_eq!(fs::read_to_string(&cert_path).unwrap(), cert_before);
     assert_eq!(fs::read_to_string(&readme_path).unwrap(), readme_before);
+}
+
+#[test]
+fn test_collect_llvm_cov_json_cleans_only_after_parsing() {
+    let ok_status = Command::new("cargo")
+        .arg("--version")
+        .status()
+        .expect("cargo --version must succeed");
+    let mut cleaned = false;
+    let parsed = collect_llvm_cov_json_with(
+        || std::process::Output {
+            status: ok_status,
+            stdout: br#"{"data":[{"files":[{"summary":{"lines":{"count":80,"covered":60}}}]}]}"#
+                .to_vec(),
+            stderr: Vec::new(),
+        },
+        || {
+            cleaned = true;
+            Ok(())
+        },
+    )
+    .expect("valid coverage JSON should parse and clean");
+    assert!(cleaned, "llvm-cov clean must run after JSON parsing");
+    assert_eq!(parse_coverage(&parsed), (80.0, 60.0));
+
+    let mut cleaned_on_bad_json = false;
+    let bad_res = collect_llvm_cov_json_with(
+        || std::process::Output {
+            status: ok_status,
+            stdout: b"not-json".to_vec(),
+            stderr: Vec::new(),
+        },
+        || {
+            cleaned_on_bad_json = true;
+            Ok(())
+        },
+    );
+    assert!(bad_res.is_err());
+    assert!(!cleaned_on_bad_json);
 }

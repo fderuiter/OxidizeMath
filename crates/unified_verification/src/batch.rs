@@ -109,7 +109,7 @@ pub(crate) fn run_batch_static_with_caches(
     }
 
     println!("\n--- Static Gate 5: Crate Documentation Audit ---");
-    if !crate::doc_audit::run_doc_audit(&[]) {
+    if !crate::doc_audit::run_doc_audit_for_members(&members, &[]) {
         passed = false;
     }
 
@@ -170,6 +170,7 @@ fn git_cached_paths(extra_args: &[&str]) -> Vec<String> {
         "core.quotepath=false",
         "diff",
         "--cached",
+        "--no-renames",
         "--name-only",
     ];
     args.extend_from_slice(extra_args);
@@ -186,14 +187,26 @@ fn git_cached_paths(extra_args: &[&str]) -> Vec<String> {
         .collect()
 }
 
+pub(crate) fn is_root_escalation_path(path: &str) -> bool {
+    matches!(
+        path,
+        "Cargo.toml"
+            | "Cargo.lock"
+            | "rust-toolchain.toml"
+            | "rust-toolchain"
+            | ".clippy.toml"
+            | "clippy.toml"
+            | ".rustfmt.toml"
+            | "rustfmt.toml"
+            | crate::whitelist::WHITELIST_FILE_NAME
+    ) || path.starts_with(".cargo/")
+}
+
 pub(crate) fn select_touched_policy_members(
     all_staged: &[String],
     workspace_members: &[String],
 ) -> Vec<String> {
-    if all_staged
-        .iter()
-        .any(|p| p == "Cargo.toml" || p == crate::whitelist::WHITELIST_FILE_NAME)
-    {
+    if all_staged.iter().any(|p| is_root_escalation_path(p)) {
         return workspace_members.to_vec();
     }
 
@@ -215,6 +228,48 @@ pub(crate) fn select_touched_policy_members(
     touched
 }
 
+fn run_staged_ast_and_policy_gates(
+    all_staged: &[String],
+    existing_staged: &[String],
+    workspace_members: &[String],
+    escalate: bool,
+    cache: &mut AstCache,
+    manifest_cache: &mut crate::manifest_cache::ManifestCache,
+) -> bool {
+    let mut passed = true;
+
+    if !workspace_members.is_empty() {
+        if !crate::ast_visitor::run_clone_detector_with_cache(cache) {
+            passed = false;
+        }
+        if (escalate || should_run_staged_traceability(all_staged, workspace_members))
+            && !run_traceability_with_cache(false, cache)
+        {
+            passed = false;
+        }
+    }
+
+    let entropy_targets: &[String] = if escalate { &[] } else { existing_staged };
+    if ((escalate && !workspace_members.is_empty()) || !existing_staged.is_empty())
+        && !print_debt_items(crate::entropy_guard::check_entropy_with_cache(
+            entropy_targets,
+            cache,
+        ))
+    {
+        passed = false;
+    }
+
+    let touched_members = select_touched_policy_members(all_staged, workspace_members);
+    if !touched_members.is_empty() {
+        let member_refs: Vec<&str> = touched_members.iter().map(String::as_str).collect();
+        if !crate::policy_audit::run_policy_audit_with_caches(&member_refs, cache, manifest_cache) {
+            passed = false;
+        }
+    }
+
+    passed
+}
+
 pub(crate) fn run_batch_staged_for_paths_in_dir(
     repo_dir: &Path,
     all_staged: &[String],
@@ -231,47 +286,51 @@ pub(crate) fn run_batch_staged_for_paths_in_dir(
         passed = false;
     }
 
-    let staged_rs: Vec<String> = existing_staged
-        .iter()
-        .filter(|p| p.ends_with(".rs"))
-        .cloned()
-        .collect();
+    let escalate = all_staged.iter().any(|p| is_root_escalation_path(p));
+    let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
 
-    if !staged_rs.is_empty() && !print_debt_items(crate::utils::check_file_lengths(&staged_rs)) {
-        passed = false;
-    }
-
-    if !existing_staged.is_empty()
-        && !print_debt_items(crate::entropy_guard::check_entropy_with_cache(
-            existing_staged,
-            cache,
-        ))
-    {
-        passed = false;
-    }
-
-    let touched_members = select_touched_policy_members(all_staged, workspace_members);
-    if !touched_members.is_empty() {
-        let member_refs: Vec<&str> = touched_members.iter().map(String::as_str).collect();
-        if !crate::policy_audit::run_policy_audit_with_cache(&member_refs, cache) {
+    if !workspace_members.is_empty() {
+        let all_member_refs: Vec<&str> = workspace_members.iter().map(String::as_str).collect();
+        if !crate::profile::check_profiles_with_cache(&all_member_refs, false, &mut manifest_cache)
+        {
             passed = false;
         }
     }
 
-    if should_run_staged_traceability(all_staged, workspace_members)
-        && !run_traceability_with_cache(false, cache)
+    let length_targets: Vec<String> = if escalate {
+        workspace_members.to_vec()
+    } else {
+        existing_staged
+            .iter()
+            .filter(|p| p.ends_with(".rs"))
+            .cloned()
+            .collect()
+    };
+    if !length_targets.is_empty()
+        && !print_debt_items(crate::utils::check_file_lengths(&length_targets))
     {
+        passed = false;
+    }
+
+    if !workspace_members.is_empty()
+        && !crate::doc_audit::run_doc_audit_for_members(workspace_members, &[])
+    {
+        passed = false;
+    }
+
+    if !run_staged_ast_and_policy_gates(
+        all_staged,
+        existing_staged,
+        workspace_members,
+        escalate,
+        cache,
+        &mut manifest_cache,
+    ) {
         passed = false;
     }
 
     if repo_dir == Path::new(".") {
         crate::utils::check_staged_duplicates();
-    }
-
-    if all_staged.iter().any(|p| p.starts_with(".github/"))
-        && !crate::workflow_linter::lint_workflows()
-    {
-        passed = false;
     }
 
     passed
@@ -294,12 +353,12 @@ pub(crate) fn run_batch_staged_for_paths(
 
 pub fn run_batch_staged() -> bool {
     let _root_guard = crate::manifest_cache::WorkspaceRootGuard::enter();
+    let (_, members) = crate::manifest_cache::discover_workspace();
     let all_staged = git_cached_paths(&[]);
-    let existing_staged: Vec<String> = git_cached_paths(&["--diff-filter=ACMR"])
+    let existing_staged: Vec<String> = git_cached_paths(&["--diff-filter=ACMRT"])
         .into_iter()
         .filter(|p| Path::new(p).is_file())
         .collect();
-    let (_, members) = crate::manifest_cache::discover_workspace();
     let mut cache = AstCache::new();
     run_batch_staged_for_paths(&all_staged, &existing_staged, &members, &mut cache)
 }

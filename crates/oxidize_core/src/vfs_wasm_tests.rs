@@ -5,25 +5,18 @@ use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
-async fn wasm_vfs_lists_embedded_papers_and_rejects_unknown_directory() {
-    let entries = WasmVfs
+async fn wasm_vfs_list_dir_returns_unsupported() {
+    let err = WasmVfs
         .list_dir("papers")
         .await
-        .expect("embedded papers directory should be listed by WasmVfs");
-    assert!(
-        !entries.is_empty(),
-        "embedded papers directory should not be empty"
-    );
-    assert!(
-        entries.iter().any(|name| name.ends_with(".tex")),
-        "embedded papers directory should contain .tex manuscripts"
-    );
+        .expect_err("WasmVfs::list_dir should reject browser directory listing");
+    assert_eq!(err.kind(), ErrorKind::Unsupported);
 
-    let missing_err = (DefaultVfs {})
+    let default_err = (DefaultVfs {})
         .list_dir("nonexistent_wasm_vfs_directory_404")
         .await
-        .expect_err("unknown VFS directory should return an error");
-    assert_eq!(missing_err.kind(), ErrorKind::NotFound);
+        .expect_err("DefaultVfs::list_dir alias should reject browser directory listing");
+    assert_eq!(default_err.kind(), ErrorKind::Unsupported);
 }
 
 #[wasm_bindgen_test]

@@ -29,6 +29,32 @@ impl From<[f64; 2]> for PlotPoint {
     }
 }
 
+impl math_commons::series::Sample2D for PlotPoint {
+    #[inline(always)]
+    fn sample_x(&self) -> f64 {
+        self.x
+    }
+
+    #[inline(always)]
+    fn sample_y(&self) -> f64 {
+        self.y
+    }
+
+    #[inline(always)]
+    fn advance_slice_plateau(
+        slice: &[Self],
+        start: usize,
+        end: usize,
+        flat_y: f64,
+        x_min: f64,
+        x_max: f64,
+    ) -> usize {
+        math_commons::advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |p| (
+            p.x, p.y
+        ))
+    }
+}
+
 impl PlotPoint {
     #[inline(always)]
     pub fn new(x: impl Into<f64>, y: impl Into<f64>) -> Self {

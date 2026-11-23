@@ -1,4 +1,5 @@
 use crate::markdown_links::check_markdown_links;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -7,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub mod workspace_wasm;
 
 static VERIFICATION_BUILT: AtomicBool = AtomicBool::new(false);
+const MAX_ANCESTOR_DEPTH: usize = 32;
 
 pub(crate) fn resolve_workspace_root() -> PathBuf {
     std::env::current_dir()
@@ -64,10 +66,64 @@ pub fn run_cmd_with_env(cmd: &str, args: &[&str], envs: &[(&str, &str)]) {
     }
 }
 
-pub(crate) fn unified_verification_bin() -> PathBuf {
-    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("target"));
+pub(crate) fn run_cmd_in_dir_with_env(cmd: &str, args: &[&str], dir: &Path, envs: &[(&str, &str)]) {
+    println!("Running (in {}): {} {}", dir.display(), cmd, args.join(" "));
+    let mut command = Command::new(cmd);
+    command.current_dir(dir).args(args);
+    for (k, v) in envs {
+        command.env(k, v);
+    }
+    let status = command.status();
+    match status {
+        Ok(s) if s.success() => (),
+        _ => {
+            eprintln!("Command failed!");
+            exit(1);
+        }
+    }
+}
+
+fn has_workspace_section(manifest_path: &Path) -> bool {
+    fs::read_to_string(manifest_path)
+        .map(|content| content.contains("[workspace]"))
+        .unwrap_or(false)
+}
+
+pub(crate) fn workspace_root() -> PathBuf {
+    if let Some(top) = git_trim_stdout_in_dir(
+        Path::new("."),
+        &["--no-optional-locks", "rev-parse", "--show-toplevel"],
+    ) {
+        let candidate = PathBuf::from(top);
+        if has_workspace_section(&candidate.join("Cargo.toml")) {
+            return candidate;
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        for ancestor in cwd.ancestors().take(MAX_ANCESTOR_DEPTH) {
+            if has_workspace_section(&ancestor.join("Cargo.toml")) {
+                return ancestor.to_path_buf();
+            }
+        }
+    }
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+pub(crate) fn resolve_target_dir(root: &Path) -> PathBuf {
+    match std::env::var_os("CARGO_TARGET_DIR") {
+        Some(raw) => {
+            let path = PathBuf::from(raw);
+            if path.is_absolute() {
+                path
+            } else {
+                root.join(path)
+            }
+        }
+        None => root.join("target"),
+    }
+}
+
+fn unified_verification_bin_for_target(target_dir: &Path) -> PathBuf {
     let mut bin = target_dir.join("debug").join("unified_verification");
     if !std::env::consts::EXE_EXTENSION.is_empty() {
         bin.set_extension(std::env::consts::EXE_EXTENSION);
@@ -75,20 +131,54 @@ pub(crate) fn unified_verification_bin() -> PathBuf {
     bin
 }
 
-fn ensure_verification_built() -> PathBuf {
+pub(crate) fn unified_verification_bin() -> PathBuf {
+    let root = workspace_root();
+    unified_verification_bin_for_target(&resolve_target_dir(&root))
+}
+
+pub(crate) fn ensure_verification_built_in(build_dir: &Path, target_dir: &Path) -> PathBuf {
     if !VERIFICATION_BUILT.swap(true, Ordering::SeqCst) {
-        run_cmd("cargo", &["build", "-p", "unified_verification", "-q"]);
+        let target_str = target_dir.to_string_lossy();
+        run_cmd_in_dir_with_env(
+            "cargo",
+            &["build", "-p", "unified_verification", "-q"],
+            build_dir,
+            &[("CARGO_TARGET_DIR", target_str.as_ref())],
+        );
     }
+    unified_verification_bin_for_target(target_dir)
+}
+
+fn ensure_verification_built() -> PathBuf {
+    let root = workspace_root();
+    let target_dir = resolve_target_dir(&root);
+    let _ = ensure_verification_built_in(&root, &target_dir);
     unified_verification_bin()
 }
 
+pub(crate) fn run_verification_in_dir_with_env(
+    subcmd: &str,
+    extra_args: &[&str],
+    build_and_run_dir: &Path,
+    target_dir: &Path,
+    envs: &[(&str, &str)],
+) {
+    let bin = ensure_verification_built_in(build_and_run_dir, target_dir);
+    let bin_str = bin.to_string_lossy();
+    let mut args = Vec::with_capacity(1 + extra_args.len());
+    args.push(subcmd);
+    args.extend_from_slice(extra_args);
+    run_cmd_in_dir_with_env(&bin_str, &args, build_and_run_dir, envs);
+}
+
 pub fn run_verification_with_env(subcmd: &str, extra_args: &[&str], envs: &[(&str, &str)]) {
+    let root = workspace_root();
     let bin = ensure_verification_built();
     let bin_str = bin.to_string_lossy();
     let mut args = Vec::with_capacity(1 + extra_args.len());
     args.push(subcmd);
     args.extend_from_slice(extra_args);
-    run_cmd_with_env(&bin_str, &args, envs);
+    run_cmd_in_dir_with_env(&bin_str, &args, &root, envs);
 }
 
 pub fn run_verification_with_args(subcmd: &str, extra_args: &[&str]) {
@@ -143,7 +233,7 @@ pub(crate) fn branch_records_base_sha_in_dir(
 
 fn branch_records_base_sha() -> Option<String> {
     let raw_base = std::env::var("BASE_SHA").ok();
-    branch_records_base_sha_in_dir(Path::new("."), raw_base.as_deref())
+    branch_records_base_sha_in_dir(&workspace_root(), raw_base.as_deref())
 }
 
 fn run_clippy_lints() {
@@ -372,76 +462,4 @@ pub fn test_wasm(args: &[String]) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::sync::atomic::AtomicUsize;
-
-    static GATE_REPO_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-    fn git(dir: &Path, args: &[&str]) -> String {
-        let out = Command::new("git")
-            .current_dir(dir)
-            .args(args)
-            .output()
-            .unwrap();
-        assert!(out.status.success(), "git {:?} failed", args);
-        String::from_utf8_lossy(&out.stdout).trim().to_string()
-    }
-
-    fn init_gate_repo() -> PathBuf {
-        let id = GATE_REPO_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir =
-            std::env::temp_dir().join(format!("xtask_gates_test_{}_{}", std::process::id(), id));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        git(&dir, &["init"]);
-        git(&dir, &["branch", "-M", "main"]);
-        git(&dir, &["config", "user.email", "test@example.com"]);
-        git(&dir, &["config", "user.name", "Test"]);
-        fs::write(dir.join("README.md"), "init\n").unwrap();
-        git(&dir, &["add", "."]);
-        git(&dir, &["commit", "-m", "init"]);
-        dir
-    }
-
-    #[test]
-    fn test_branch_records_base_sha_handles_staged_files_and_origin_main() {
-        let dir = init_gate_repo();
-        let base = git(&dir, &["rev-parse", "HEAD"]);
-        assert_eq!(branch_records_base_sha_in_dir(&dir, None), None);
-
-        // Set refs/remotes/origin/main to base, then commit directly on local main
-        git(&dir, &["update-ref", "refs/remotes/origin/main", &base]);
-        fs::write(dir.join("crates_touch.txt"), "branch edit\n").unwrap();
-        git(&dir, &["add", "crates_touch.txt"]);
-        git(
-            &dir,
-            &["commit", "-m", "commit on local main ahead of origin/main"],
-        );
-
-        // Prefer origin/main over local main when local main == HEAD
-        assert_eq!(
-            branch_records_base_sha_in_dir(&dir, None),
-            Some(base.clone())
-        );
-
-        // Staged files must NOT clear branch_records_base_sha
-        fs::write(dir.join("staged_note.txt"), "staged\n").unwrap();
-        git(&dir, &["add", "staged_note.txt"]);
-        assert_eq!(
-            branch_records_base_sha_in_dir(&dir, None),
-            Some(base.clone())
-        );
-
-        // Zero BASE_SHA still computes merge-base; explicit non-zero BASE_SHA defers to caller
-        let zero40 = "0".repeat(40);
-        assert_eq!(
-            branch_records_base_sha_in_dir(&dir, Some(&zero40)),
-            Some(base)
-        );
-        assert_eq!(branch_records_base_sha_in_dir(&dir, Some("deadbeef")), None);
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-}
+mod tests;

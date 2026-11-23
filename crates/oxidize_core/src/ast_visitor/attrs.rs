@@ -1,12 +1,24 @@
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
-use syn::{Attribute, Block, Expr, ImplItemFn, ItemFn, Lit, Macro, Meta, Path, Token, TraitItemFn};
+use syn::{
+    AttrStyle, Attribute, Block, Expr, ImplItemFn, ItemFn, Lit, Macro, Meta, Path, Token,
+    TraitItemFn,
+};
 
 pub(super) struct AttrScanResult {
     pub opt_outs: Vec<String>,
     pub is_verified: bool,
     pub has_semantic: bool,
+    pub modules_with_lines: Vec<(String, usize)>,
+}
+
+fn style_matches(style: &AttrStyle, allow_inner: bool, allow_outer: bool) -> bool {
+    match style {
+        AttrStyle::Inner(_) => allow_inner,
+        AttrStyle::Outer => allow_outer,
+    }
 }
 
 fn is_verified_path(path: &Path) -> bool {
@@ -68,12 +80,27 @@ fn parse_meta_list(list: &syn::MetaList) -> Vec<Meta> {
         .unwrap_or_default()
 }
 
-pub(super) fn extract_opt_outs_only(attrs: &[Attribute]) -> Vec<String> {
-    let mut dummy = Vec::new();
-    scan_attributes(attrs, &mut dummy).opt_outs
+pub(super) fn extract_opt_outs_filtered(
+    attrs: &[Attribute],
+    allow_inner: bool,
+    allow_outer: bool,
+) -> Vec<String> {
+    let mut result = AttrScanResult {
+        opt_outs: Vec::new(),
+        is_verified: false,
+        has_semantic: false,
+        modules_with_lines: Vec::new(),
+    };
+    for attr in attrs {
+        if !style_matches(&attr.style, allow_inner, allow_outer) || attr.path().is_ident("doc") {
+            continue;
+        }
+        scan_meta_tree(attr.meta.clone(), attr.span().start().line, &mut result);
+    }
+    result.opt_outs
 }
 
-fn scan_meta_tree(root: Meta, result: &mut AttrScanResult, verified_modules: &mut Vec<String>) {
+fn scan_meta_tree(root: Meta, attr_line: usize, result: &mut AttrScanResult) {
     let mut stack = vec![root];
     let mut safety = 0usize;
     while let Some(meta) = stack.pop() {
@@ -107,7 +134,7 @@ fn scan_meta_tree(root: Meta, result: &mut AttrScanResult, verified_modules: &mu
                 result.is_verified = true;
                 result.has_semantic = true;
                 if let Some(module_name) = extract_embed_theory_module(&list) {
-                    verified_modules.push(module_name);
+                    result.modules_with_lines.push((module_name, attr_line));
                 }
             }
             _ => {}
@@ -115,17 +142,16 @@ fn scan_meta_tree(root: Meta, result: &mut AttrScanResult, verified_modules: &mu
     }
 }
 
-pub(super) fn scan_attributes(
-    attrs: &[Attribute],
-    verified_modules: &mut Vec<String>,
-) -> AttrScanResult {
+pub(super) fn scan_attributes(attrs: &[Attribute]) -> AttrScanResult {
     let mut result = AttrScanResult {
         opt_outs: Vec::new(),
         is_verified: false,
         has_semantic: false,
+        modules_with_lines: Vec::new(),
     };
 
     for attr in attrs {
+        let attr_line = attr.span().start().line;
         if attr.path().is_ident("doc") {
             if let Meta::NameValue(nv) = &attr.meta
                 && let Expr::Lit(expr_lit) = &nv.value
@@ -136,20 +162,26 @@ pub(super) fn scan_attributes(
                 >::extract_citations(&lit_str.value());
                 if !extracted.is_empty() {
                     result.has_semantic = true;
-                    verified_modules.extend(extracted);
+                    for cite in extracted {
+                        result.modules_with_lines.push((cite, attr_line));
+                    }
                 }
             }
             continue;
         }
-        scan_meta_tree(attr.meta.clone(), &mut result, verified_modules);
+        scan_meta_tree(attr.meta.clone(), attr_line, &mut result);
     }
 
     result
 }
 
-pub(super) fn attrs_mention_cfg_test(attrs: &[Attribute]) -> bool {
+pub(super) fn attrs_mention_cfg_test_filtered(
+    attrs: &[Attribute],
+    allow_inner: bool,
+    allow_outer: bool,
+) -> bool {
     for attr in attrs {
-        if !attr.path().is_ident("cfg") {
+        if !style_matches(&attr.style, allow_inner, allow_outer) || !attr.path().is_ident("cfg") {
             continue;
         }
         let Ok(list) = attr.meta.require_list() else {
@@ -179,7 +211,7 @@ pub(super) fn attrs_mention_cfg_test(attrs: &[Attribute]) -> bool {
 }
 
 pub(super) fn attrs_mark_test_fn(attrs: &[Attribute]) -> bool {
-    if attrs_mention_cfg_test(attrs) {
+    if attrs_mention_cfg_test_filtered(attrs, true, true) {
         return true;
     }
     for attr in attrs {
@@ -285,16 +317,9 @@ fn count_top_level_semicolons(stream: TokenStream) -> usize {
 pub(super) struct ParsedVerificationMacro {
     pub module_name: Option<String>,
     pub assert_count: usize,
-    pub has_vacuous_bypass: bool,
 }
 
 pub(super) fn parse_verification_macro_tokens(tokens: &TokenStream) -> ParsedVerificationMacro {
-    let rendered = tokens.to_string();
-    let has_vacuous_bypass = rendered.contains("zeros(")
-        || rendered.contains("zeros_like")
-        || rendered.contains("0.0")
-        || rendered.contains("fill(0)");
-
     let items: Vec<TokenTree> = tokens.clone().into_iter().collect();
     let mut module_name = None;
     let mut assert_count = 0usize;
@@ -336,6 +361,5 @@ pub(super) fn parse_verification_macro_tokens(tokens: &TokenStream) -> ParsedVer
     ParsedVerificationMacro {
         module_name,
         assert_count,
-        has_vacuous_bypass,
     }
 }

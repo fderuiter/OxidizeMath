@@ -1,11 +1,13 @@
 pub mod certificate;
+mod coverage;
+
+pub use coverage::{collect_llvm_cov_json, parse_coverage};
 
 use crate::whitelist::{VerifySuiteConfig, WORKSPACE_WHITELIST_CANDIDATES, load_whitelist_strict};
 use oxidize_core::ast_visitor::{AstVisitor, is_dedicated_test_path};
 use oxidize_core::traceability::AstCache;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use syn::visit::Visit;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,41 +76,8 @@ pub fn load_verify_suite_config_strict(
 
 pub const VERIFY_SUITE_WRITE_ENV: &str = "OXIDIZE_VERIFY_SUITE_WRITE";
 
-pub fn get_llvm_cov_output(mode: ReportMode) -> std::process::Output {
-    let mut cmd = Command::new("cargo");
-    cmd.args(["llvm-cov", "--all-features", "--workspace", "--json"]);
-    if mode == ReportMode::Write {
-        cmd.env(VERIFY_SUITE_WRITE_ENV, "1");
-    }
-    cmd.output().expect("Failed to run cargo llvm-cov")
-}
-
 pub fn collect_rs_files() -> Vec<PathBuf> {
     crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git"])
-}
-
-pub fn parse_coverage(cov_json: &serde_json::Value) -> (f64, f64) {
-    let mut native_lines_total = 0.0;
-    let mut native_lines_covered = 0.0;
-
-    if let Some(files) = cov_json
-        .get("data")
-        .and_then(|d| d.as_array())
-        .and_then(|a| a.first())
-        .and_then(|data| data.get("files"))
-        .and_then(|f| f.as_array())
-    {
-        for f in files {
-            if let Some(summary) = f.get("summary").and_then(|s| s.get("lines")) {
-                native_lines_total += summary.get("count").and_then(|c| c.as_f64()).unwrap_or(0.0);
-                native_lines_covered += summary
-                    .get("covered")
-                    .and_then(|c| c.as_f64())
-                    .unwrap_or(0.0);
-            }
-        }
-    }
-    (native_lines_total, native_lines_covered)
 }
 
 fn normalize_report_path(filepath: &Path) -> String {

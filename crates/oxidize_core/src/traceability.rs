@@ -4,13 +4,13 @@ mod runner;
 
 pub use cache::{AstCache, CachedRustFile};
 pub use runner::{
-    check_and_print_traceability_errors, discover_workspace_code_dirs,
+    check_and_print_traceability_errors, discover_workspace_code_dirs, format_traceability_errors,
     print_traceability_dashboard, run_workspace_traceability,
     run_workspace_traceability_with_cache,
 };
 
 use crate::vfs::VirtualFileSystem;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -24,6 +24,9 @@ pub struct TraceabilityReport {
     pub orphaned_papers: Vec<String>,
     #[allow(missing_docs)]
     pub unlinked_code: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[allow(missing_docs)]
+    pub unlinked_module_details: Vec<(String, String, usize)>,
     #[allow(missing_docs)]
     pub unverified_modules: Vec<String>,
     #[allow(missing_docs)]
@@ -42,6 +45,18 @@ pub struct TraceabilityReport {
     pub vacuous_bypasses: Vec<String>,
     #[allow(missing_docs)]
     pub semantic_integrity_status: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[allow(missing_docs)]
+    pub invalid_link_lines: BTreeMap<String, usize>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[allow(missing_docs)]
+    pub unverified_module_spans: BTreeMap<String, (String, usize)>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[allow(missing_docs)]
+    pub vacuous_bypass_spans: BTreeMap<String, usize>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[allow(missing_docs)]
+    pub file_verified_counts: BTreeMap<String, [usize; 2]>,
 }
 
 #[allow(missing_docs)]
@@ -63,10 +78,12 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         let mut registry_content =
             futures::executor::block_on(vfs.read_to_string("traceability.toml"))
                 .unwrap_or_default();
-        if registry_content.is_empty() {
+        if registry_content.is_empty()
+            && let Some(root) = crate::workspace::find_workspace_root()
+        {
+            let candidate = crate::path_utils::normalize_path(root.join("traceability.toml"));
             registry_content =
-                futures::executor::block_on(vfs.read_to_string("../../traceability.toml"))
-                    .unwrap_or_default();
+                futures::executor::block_on(vfs.read_to_string(&candidate)).unwrap_or_default();
         }
         analysis::is_module_in_registry_toml(&registry_content, module_name)
     }
@@ -80,25 +97,10 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
 
     /// Extract citations matching the regex `\[cite:([a-zA-Z0-9_.-]+)\]` manually to avoid heavy regex compilation.
     pub fn extract_citations(content: &str) -> Vec<String> {
-        let mut cites = Vec::new();
-        let mut search_idx = 0;
-        while let Some(start) = content[search_idx..].find("[cite:") {
-            let real_start = search_idx + start + 6;
-            if let Some(end) = content[real_start..].find(']') {
-                let paper_name = content[real_start..real_start + end].to_string();
-                if paper_name
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
-                    && !paper_name.is_empty()
-                {
-                    cites.push(paper_name);
-                }
-                search_idx = real_start + end + 1;
-            } else {
-                break;
-            }
-        }
-        cites
+        analysis::extract_citations_with_lines(content)
+            .into_iter()
+            .map(|(cite, _)| cite)
+            .collect()
     }
 
     async fn scan_papers_dir(
@@ -349,7 +351,7 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
 
         let citations = cache
             .get(&key)
-            .map(|entry| Self::extract_citations(&entry.content))
+            .map(|entry| analysis::extract_citations_with_lines(&entry.content))
             .unwrap_or_default();
 
         let final_citations = if auto_fix {
@@ -408,8 +410,9 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         }
         active_files.insert(norm_file_path.clone());
 
-        let submodules = collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
-        let dir_path = module_child_dir(&norm_file_path);
+        let submodules =
+            analysis::collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
+        let dir_path = analysis::module_child_dir(&norm_file_path);
         for submodule in submodules {
             let path1 = crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}.rs"));
             let path2 =
@@ -423,42 +426,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         }
         Ok(())
     }
-}
-
-#[derive(Default)]
-struct SubmoduleCollector {
-    submodules: Vec<String>,
-}
-
-impl<'ast> syn::visit::Visit<'ast> for SubmoduleCollector {
-    fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
-        if node.content.is_none() {
-            self.submodules.push(node.ident.to_string());
-        }
-        syn::visit::visit_item_mod(self, node);
-    }
-}
-
-fn collect_external_submodules(ast: Option<&syn::File>) -> Vec<String> {
-    let Some(ast) = ast else {
-        return Vec::new();
-    };
-    let mut collector = SubmoduleCollector::default();
-    syn::visit::Visit::visit_file(&mut collector, ast);
-    collector.submodules
-}
-
-fn module_child_dir(norm_file_path: &str) -> String {
-    let mut dir_parts: Vec<&str> = norm_file_path.split('/').collect();
-    let is_mod_rs = norm_file_path.ends_with("mod.rs")
-        || norm_file_path.ends_with("lib.rs")
-        || norm_file_path.ends_with("main.rs");
-    if is_mod_rs {
-        dir_parts.pop();
-    } else if let Some(stem) = dir_parts.pop().map(|s| s.strip_suffix(".rs").unwrap_or(s)) {
-        dir_parts.push(stem);
-    }
-    dir_parts.join("/")
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]

@@ -35,7 +35,24 @@ fn test_select_touched_policy_members_and_global_triggers() {
         select_touched_policy_members(&["verification_whitelist.toml".to_string()], &members),
         members
     );
+    for root_cfg in [
+        "Cargo.toml",
+        "Cargo.lock",
+        "rust-toolchain.toml",
+        ".clippy.toml",
+        ".rustfmt.toml",
+        ".cargo/config.toml",
+    ] {
+        assert_eq!(
+            select_touched_policy_members(&[root_cfg.to_string()], &members),
+            members,
+            "Expected full member escalation for {root_cfg}"
+        );
+    }
+}
 
+#[test]
+fn test_select_touched_policy_members_includes_markdown_tests_for_md_edits() {
     let full_members = vec![
         "crates/diagnostics".to_string(),
         "crates/domain_physics".to_string(),
@@ -69,7 +86,7 @@ fn test_should_run_staged_traceability_scopes_domain_and_registry_edits() {
     assert!(!should_run_staged_traceability(
         &[
             "README.md".to_string(),
-            "docs/adr/0037-test.md".to_string(),
+            "docs/adr/0041-test.md".to_string(),
             "crates/unified_verification/src/main.rs".to_string(),
             "apps/xtask/src/main.rs".to_string(),
             "math_explorer_gui/src/app/theme.rs".to_string(),
@@ -95,7 +112,41 @@ fn test_should_run_staged_traceability_scopes_domain_and_registry_edits() {
 }
 
 #[test]
-fn test_batch_ast_and_report_parse_each_unique_workspace_file_at_most_once() {
+fn test_run_batch_staged_for_paths_catches_profile_and_doc_failures() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let tmp = TempTestDir::new("batch_staged_profile_doc");
+    let orig = env::current_dir().unwrap();
+    let _guard = CurrentDirGuard(orig);
+
+    env::set_current_dir(&*tmp).unwrap();
+    fs::create_dir_all("crates/demo/src").unwrap();
+    fs::write(
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"crates/demo\"]\n\n[profile.release]\noverflow-checks = false\n",
+    )
+    .unwrap();
+    fs::write(
+        "crates/demo/Cargo.toml",
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lints]\nworkspace = true\n",
+    )
+    .unwrap();
+    fs::write(
+        "crates/demo/src/lib.rs",
+        "//! Demo crate.\npub fn ok() {}\n",
+    )
+    .unwrap();
+
+    let staged = vec!["Cargo.toml".to_string()];
+    let members = vec!["crates/demo".to_string()];
+    let mut cache = AstCache::new();
+    assert!(
+        !run_batch_staged_for_paths(&staged, &staged, &members, &mut cache),
+        "Disabled overflow-checks or missing crate README must fail batch-staged"
+    );
+}
+
+#[test]
+fn test_batch_ast_parses_each_unique_workspace_file_at_most_once() {
     let _lock = crate::DIR_LOCK.lock().unwrap();
     let orig = env::current_dir().unwrap();
     let _guard = CurrentDirGuard(orig);

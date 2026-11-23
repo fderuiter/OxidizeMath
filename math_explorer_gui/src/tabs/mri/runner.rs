@@ -90,9 +90,28 @@ impl MriRunner {
     }
 
     fn advance_bloch_ticks(&mut self, ticks: usize) {
+        use math_explorer::physics::mri::bloch::rotating_frame_effective_field;
+        use math_explorer::physics::mri::proton;
+
         let dt = 0.001;
+        let b_lab = self.simulator.b_field;
+        let omega_rf = proton::larmor_frequency(b_lab.z);
+        let b1_amp = b_lab.x.hypot(b_lab.y);
+        let phase_rad = b_lab.y.atan2(b_lab.x);
+        let b_rot = rotating_frame_effective_field(b_lab.z, omega_rf, b1_amp, phase_rad);
+        let max_phase_step = proton::GYROMAGNETIC_RATIO * b_rot.norm() * dt;
+        let sub_steps = if max_phase_step.is_finite() && max_phase_step > 0.25 {
+            (max_phase_step / 0.25).ceil().min(64.0) as usize
+        } else {
+            1
+        };
+        let sub_dt = dt / (sub_steps as f64);
+
+        self.simulator.b_field = b_rot;
         for _ in 0..ticks {
-            TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
+            for _ in 0..sub_steps {
+                TimeStepper::step_with(&mut self.simulator, &mut self.solver, sub_dt);
+            }
             self.current_time += dt;
             let m = self.simulator.magnetization;
             if !m.x.is_finite() || !m.y.is_finite() || !m.z.is_finite() {
@@ -103,6 +122,7 @@ impl MriRunner {
             }
             self.history.push_back((self.current_time, m));
         }
+        self.simulator.b_field = b_lab;
     }
 }
 
@@ -146,6 +166,7 @@ impl SimulationRunner for MriRunner {
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data: vec![self.current_time, m.x, m.y, m.z],
             structured_data: Some(Box::new(snapshot)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

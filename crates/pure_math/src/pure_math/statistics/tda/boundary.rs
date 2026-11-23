@@ -178,7 +178,6 @@ impl Z2BoundaryWorkspace {
         self.rank
     }
 
-    #[verified_engine::verified]
     fn reduce_single_column(&mut self, col: usize) {
         let Some(mut top_word) = self.load_input_column(col) else {
             return;
@@ -201,7 +200,6 @@ impl Z2BoundaryWorkspace {
         self.work_col[..=top_word].fill(0);
     }
 
-    #[verified_engine::verified]
     fn load_input_column(&mut self, col: usize) -> Option<usize> {
         let faces = self.input_cols[col];
         let mut max_word = 0_usize;
@@ -221,7 +219,6 @@ impl Z2BoundaryWorkspace {
         any_set.then_some(max_word)
     }
 
-    #[verified_engine::verified]
     fn xor_pivot_slot(&mut self, slot: usize, up_to_word: usize) {
         let start = slot * self.words_per_col;
         let end = start + up_to_word + 1;
@@ -251,7 +248,6 @@ impl Z2BoundaryWorkspace {
     }
 }
 
-#[verified_engine::verified]
 fn highest_set_bit(words: &[u64], max_word: usize) -> Option<(usize, usize)> {
     let limit = max_word.min(words.len().saturating_sub(1));
     for rev in 0..=limit {
@@ -288,7 +284,7 @@ pub(super) struct FilteredEdge {
 }
 
 impl FilteredEdge {
-    #[verified_engine::verified]
+    #[inline]
     pub(super) fn cmp_filtration(&self, other: &Self) -> std::cmp::Ordering {
         self.diameter
             .total_cmp(&other.diameter)
@@ -303,7 +299,7 @@ pub(super) struct FilteredTriangle {
 }
 
 impl FilteredTriangle {
-    #[verified_engine::verified]
+    #[inline]
     pub(super) fn cmp_filtration(&self, other: &Self) -> std::cmp::Ordering {
         self.diameter
             .total_cmp(&other.diameter)
@@ -311,7 +307,6 @@ impl FilteredTriangle {
     }
 }
 
-#[verified_engine::verified]
 pub(super) fn collect_sorted_edges(dist: &[Vec<f64>]) -> (Vec<FilteredEdge>, Vec<u32>, f64) {
     let n = dist.len();
     let mut edges = Vec::with_capacity(n.saturating_mul(n.saturating_sub(1)) / 2);
@@ -341,7 +336,6 @@ pub(super) fn collect_sorted_edges(dist: &[Vec<f64>]) -> (Vec<FilteredEdge>, Vec
     (edges, lookup, max_radius)
 }
 
-#[verified_engine::verified]
 pub(super) fn collect_sorted_triangles(
     dist: &[Vec<f64>],
     max_triangles: usize,
