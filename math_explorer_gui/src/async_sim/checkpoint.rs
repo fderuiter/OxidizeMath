@@ -10,7 +10,7 @@ use std::collections::{HashMap, VecDeque};
 pub const MAX_CHECKPOINT_RING_BYTES: usize = crate::framework::MAX_TOOL_STATE_BYTES;
 
 /// Maximum inline scalar slots stored without heap allocation in a checkpoint.
-pub const MAX_INLINE_CHECKPOINT_SCALARS: usize = 8;
+pub const MAX_INLINE_CHECKPOINT_SCALARS: usize = 10;
 
 /// Snapshot of the worker's scrubbable timeline bounds exposed to UI transport controls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

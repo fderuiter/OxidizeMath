@@ -4,7 +4,7 @@ use crate::tabs::chaos::attractors::{
     default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
 };
 use crate::tabs::morphogenesis::{
-    MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
+    MorphogenesisKineticsRunner, MorphogenesisSharedParams, MorphogenesisTab,
 };
 use crate::tabs::mri::{MriRunner, MriSharedParams};
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
@@ -18,7 +18,10 @@ fn make_morpho_runner(
     dt: f64,
     d_v: f64,
     noise_amplitude: f64,
-) -> (MorphogenesisRunner, Arc<RwLock<MorphogenesisSharedParams>>) {
+) -> (
+    MorphogenesisKineticsRunner,
+    Arc<RwLock<MorphogenesisSharedParams>>,
+) {
     let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
         a: 0.14,
         b: 0.86,

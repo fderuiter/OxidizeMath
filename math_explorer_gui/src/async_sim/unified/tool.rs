@@ -27,6 +27,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) dirty: bool,
     stepped_snapshot: Option<StateSnapshot>,
     cached_theory_desc: String,
+    cached_latex_eq: Option<String>,
     cached_phonetic: String,
     cached_citation: String,
     pub(super) cached_descs: HashMap<String, String>,
@@ -90,6 +91,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             dirty: true,
             stepped_snapshot: None,
             cached_theory_desc: temp_model.theory_description(),
+            cached_latex_eq: temp_model.theory_latex_equation(),
             cached_phonetic: temp_model.phonetic_description(),
             cached_citation: temp_model.theory_citation(),
             cached_descs: temp_model.available_descriptions(),
@@ -479,6 +481,9 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
 impl<M: UnifiedModel> scientific_metadata::theory::TheoryDescribable for UnifiedSimTool<M> {
     fn theory_description(&self) -> String {
         self.cached_theory_desc.clone()
+    }
+    fn theory_latex_equation(&self) -> Option<String> {
+        self.cached_latex_eq.clone()
     }
     fn phonetic_description(&self) -> String {
         self.cached_phonetic.clone()
