@@ -217,6 +217,15 @@ impl CurveFit {
         &self.coeffs[..self.coeff_len]
     }
 
+    /// Returns `(u_mean, u_scale, centered_coeffs)` when centered polynomial conditioning was used.
+    #[inline]
+    #[must_use]
+    pub fn centered_polynomial(&self) -> Option<(f64, f64, &[f64])> {
+        self.poly_center_scale
+            .as_ref()
+            .map(|(m, s, c)| (*m, *s, &c[..self.coeff_len]))
+    }
+
     /// Evaluates the fitted curve at original data coordinate `x` with zero heap allocations.
     #[inline]
     #[must_use]

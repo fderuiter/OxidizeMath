@@ -217,20 +217,42 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 71, "Expected 71 Plot dataset+figure tools");
-    assert_eq!(raster_tool_count, 8, "Expected 8 raster figure tools");
+    assert_expected_capability_counts([
+        plot_tool_count,
+        raster_tool_count,
+        dataset_only_tool_count,
+        unsupported_tool_count,
+        solid_3d_count,
+        splat_3d_count,
+        shader_tool_count,
+        non_shader_tool_count,
+    ]);
+}
+
+fn assert_expected_capability_counts(counts: [usize; 8]) {
+    let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
+    let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
+    let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
+    let expected_plot = (if has_surface_morpho { 69 } else { 68 }) + bio_extra;
+    let expected_solid = if has_surface_morpho { 8 } else { 7 };
+    let expected_non_shader = (if has_surface_morpho { 86 } else { 85 }) + bio_extra;
     assert_eq!(
-        dataset_only_tool_count, 0,
-        "Expected 0 dataset-only registered tools"
+        plot, expected_plot,
+        "Expected {expected_plot} Plot dataset+figure tools"
     );
-    assert_eq!(unsupported_tool_count, 12, "Expected 12 non-figure tools");
-    assert_eq!(solid_3d_count, 7, "Expected 7 solid 3D geometric tools");
-    assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
+    assert_eq!(raster, 8, "Expected 8 raster figure tools");
+    assert_eq!(dataset_only, 0, "Expected 0 dataset-only registered tools");
+    assert_eq!(unsupported, 12, "Expected 12 non-figure tools");
     assert_eq!(
-        shader_tool_count, 3,
-        "Expected 3 analytical GLSL shader tools"
+        solid_3d, expected_solid,
+        "Expected {expected_solid} solid 3D geometric tools"
     );
-    assert_eq!(non_shader_tool_count, 88, "Expected 88 non-shader tools");
+    assert_eq!(splat_3d, 1, "Expected 1 3DGS splat PLY tool");
+    assert_eq!(shader, 3, "Expected 3 analytical GLSL shader tools");
+    assert_eq!(
+        non_shader, expected_non_shader,
+        "Expected {expected_non_shader} non-shader tools"
+    );
 }
 
 #[derive(Default)]
@@ -352,6 +374,8 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
     let solid_ids = [
         "SurfaceViewer",
         "CurvatureHeatmap",
+        #[cfg(all(feature = "pure_math", feature = "biology"))]
+        "SurfaceMorphogenesisTool",
         "AttractorPlotter",
         "CrystalViewer",
         "SpinVisualizer",

@@ -56,6 +56,7 @@ impl SimulationFramework {
                 }
             });
         let can_escape = !self.show_export_modal
+            && !self.show_code_export_modal
             && !self.show_starter_gallery
             && !egui::Popup::is_any_open(&ctx)
             && ctx.memory(|m| m.top_modal_layer().is_none());

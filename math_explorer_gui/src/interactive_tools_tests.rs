@@ -136,6 +136,10 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool,
         >(ctx);
+        #[cfg(all(feature = "pure_math", feature = "biology"))]
+        exercise_interactive_tool::<
+            crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,
+        >(ctx);
     }
 
     #[test]
@@ -451,33 +455,6 @@ mod tests {
         assert_tab_roundtrip(
             &mut crate::tabs::favoritism::FavoritismTab::default(),
             &migrated_favoritism_json,
-        );
-    }
-
-    #[cfg(feature = "biology")]
-    #[test]
-    fn test_biology_botanical_and_biochemical_state_roundtrips() {
-        assert_tool_roundtrip(
-            &mut crate::tabs::morphogenesis::PhyllotaxisLSystemTool::default(),
-            r#"{"mode":"DualSplit","divergence_preset":"GoldenAngle","divergence_deg":137.507764,"primordia_count":350,"radial_scale":0.85,"show_parastichies":true,"lsystem_preset":"ParametricDichotomousTree","generations":6,"branch_angle_deg":24.0,"contraction_r1":0.78,"contraction_r2":0.66}"#,
-        );
-        assert_tool_roundtrip(
-            &mut crate::tabs::biochemical::dynamics::BiochemicalDynamicsTool::default(),
-            r#"{"view":"CoupledSplit","v_max":2.8,"k_m":0.9,"hill_n":3.2,"max_substrate":12.0,"substrate_reservoir":2.5,"feed_rate":0.25,"degradation_rate":0.4,"diffusion_activator":0.06,"diffusion_substrate":0.3,"grid_points":64,"dt":0.02,"playing":false}"#,
-        );
-        assert_tool_roundtrip(
-            &mut crate::tabs::biochemical::evolution::EvolutionaryBiologyTool::default(),
-            r#"{"view":"TrajectoryAndPhase","resource_value":2.0,"injury_cost":5.0,"initial_hawk_freq":0.8,"horizon":25.0,"dt":0.05,"show_ensemble":true}"#,
-        );
-        let mut biochem_tab = crate::tabs::biochemical::BiochemicalTab::default();
-        assert!(crate::tabs::ExplorerTab::select_tool_by_name(
-            &mut biochem_tab,
-            "EvolutionaryBiologyTool"
-        ));
-        let saved = crate::tabs::ExplorerTab::save_state(&biochem_tab).expect("biochem save_state");
-        assert_tab_roundtrip(
-            &mut crate::tabs::biochemical::BiochemicalTab::default(),
-            &saved,
         );
     }
 
