@@ -156,7 +156,14 @@ fn test_interactive_orbit_caustic_drag_and_nfw_vs_burkert_exports() {
     let mut rc = RotationCurveExplorer::default();
     rc.cfg.relativity.enabled = true;
     rc.cfg.relativity.central_bh_rs_kpc = 0.20;
-    rc.recalculate();
+    {
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            rc.recalculate_zero_alloc();
+        });
+    }
     assert_ne!(
         rc.nfw_lens_samples[12].shear,
         rc.burkert_lens_samples[12].shear
@@ -190,9 +197,67 @@ fn assert_valid_dataset_and_figure_exports(datasets: &[(String, Vec<[f64; 2]>)])
     assert!(png.starts_with(b"\x89PNG\r\n\x1a\n") && png.len() > 256);
 }
 
+#[test]
+fn test_astrophysics_mystery_halo_fit_zero_alloc_residuals_and_clamping() {
+    use super::challenge::{
+        CHALLENGE_ASTRO_MYSTERY_HALO_FIT, LOCKED_DISTANCE_MPC, MYSTERY_DWARF_TARGETS,
+    };
+    use crate::starter_gallery::find_challenge_metadata;
+
+    assert_eq!(MYSTERY_DWARF_TARGETS.len(), 16);
+    let meta = find_challenge_metadata(CHALLENGE_ASTRO_MYSTERY_HALO_FIT).expect("registered");
+    let baseline = meta.generate_baseline_state();
+    let mut tool = RotationCurveExplorer::default();
+    tool.apply_challenge(Some(CHALLENGE_ASTRO_MYSTERY_HALO_FIT))
+        .expect("challenge applies");
+    tool.try_load_state(&baseline).expect("baseline loads");
+
+    let base_eval = tool.evaluate_challenge().expect("eval");
+    assert!(!base_eval.passed, "Baseline NFW halo must fail fit");
+    assert!(tool.rmse_kms > 10.0 && tool.reduced_chi_sq > 10.0);
+
+    {
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            tool.cfg.halo_kind = HaloKindChoice::BurkertCore;
+            tool.cfg.halo_log10_mass = 10.15;
+            tool.cfg.halo_scale_kpc = 2.40;
+            tool.cfg.halo_concentration = 13.0;
+            tool.recalculate_zero_alloc();
+        });
+    }
+
+    let solved_eval = tool.evaluate_challenge().expect("eval");
+    assert!(
+        solved_eval.passed,
+        "Cored Burkert profile must pass mystery dwarf fit: {solved_eval:?}"
+    );
+    assert!(tool.rmse_kms <= 2.40 && tool.reduced_chi_sq <= 1.35);
+    assert!(
+        tool.counterpart_reduced_chi_sq > 5.0,
+        "NFW counterpart at identical parameters must fail cored inner slope"
+    );
+
+    tool.sync_rotation_callouts();
+    assert!(tool.callout_manager.callouts().len() >= 2);
+
+    let tampered = r#"{"distance_mpc":88.0,"abs_magnitude_v":-19.0,"use_absolute_magnitude":true,"morphology":"GeneralIrregular","gas_fraction":0.10,"disk_scale_kpc":3.0,"halo_kind":"BurkertCore","halo_log10_mass":10.15,"halo_scale_kpc":2.40,"halo_concentration":13.0,"max_radius_kpc":22.0,"compare_counterpart":true}"#;
+    let clamped = meta.clamp_state_json(tampered).expect("clamps cleanly");
+    let parsed: super::rotation_curve_tool::RotationCurveState =
+        serde_json::from_str(&clamped).unwrap();
+    assert!((parsed.distance_mpc - LOCKED_DISTANCE_MPC).abs() < 1e-9);
+    assert!(!parsed.use_absolute_magnitude);
+    assert_eq!(parsed.morphology, DwarfMorphology::TypeCode10);
+}
+
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen_test]
 fn wasm_astrophysics_tab_url_roundtrip_and_symplectic_stepping() {
+    use super::challenge::CHALLENGE_ASTRO_MYSTERY_HALO_FIT;
+    use crate::starter_gallery::find_challenge_metadata;
+
     let mut tab = AstrophysicsTab::default();
     assert_eq!(tab.url_slug(), "astrophysics");
     assert_eq!(tab.academic_domain(), "Physics");
@@ -209,6 +274,13 @@ fn wasm_astrophysics_tab_url_roundtrip_and_symplectic_stepping() {
     tab.import_url_preset_json(Some("RotationCurveExplorer"), Some(&exported))
         .expect("import url preset");
     assert!(tab.export_url_preset_json().unwrap().is_some());
+
+    let meta = find_challenge_metadata(CHALLENGE_ASTRO_MYSTERY_HALO_FIT).expect("registered");
+    rc.apply_challenge(Some(CHALLENGE_ASTRO_MYSTERY_HALO_FIT))
+        .expect("challenge enabled");
+    rc.try_load_state(&meta.generate_baseline_state())
+        .expect("baseline loaded");
+    assert!(!rc.evaluate_challenge().expect("eval").passed);
 
     let mut orbits = GalacticOrbitSimulator::default();
     orbits.cfg.central_bh.enabled = true;

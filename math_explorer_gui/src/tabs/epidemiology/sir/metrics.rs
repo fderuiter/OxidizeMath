@@ -5,10 +5,78 @@ use egui_plot::{Line, Plot, PlotPoint, PlotPoints};
 use math_explorer::epidemiology::compartmental::SIRModel;
 use std::sync::Arc;
 
-use super::SirTool;
+use super::{SirForkDescriptor, SirTool, SIR_STEP_DT};
+use crate::app::SemanticPalette;
+use crate::framework::{
+    branch_a_ghost_line, branch_b_solid_line, fork_marker_callout, fork_marker_vline,
+    render_divergence_strip, InteractiveTool, TraceSeries,
+};
 use crate::reflective_ui::render_copyable_metric;
 
+pub(super) fn validate_sir_fork_descriptor(
+    f: &SirForkDescriptor,
+    max_steps: usize,
+) -> Result<(), String> {
+    if f.fork_step == 0
+        || f.fork_step > max_steps
+        || ![
+            f.baseline_n,
+            f.baseline_i0,
+            f.baseline_beta,
+            f.baseline_gamma,
+            f.delta_x,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
+        || !(100.0..=100_000.0).contains(&f.baseline_n)
+        || !(1.0..=f.baseline_n).contains(&f.baseline_i0)
+        || !(0.0..=5.0).contains(&f.baseline_beta)
+        || !(0.0..=1.0).contains(&f.baseline_gamma)
+    {
+        return Err("SIR fork descriptor out of bounds".into());
+    }
+    Ok(())
+}
+
 impl SirTool {
+    pub(super) fn collect_sir_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut datasets = Vec::new();
+        if !self.s_points.is_empty() {
+            let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+            if self.cf.fork.is_some() {
+                datasets.push((
+                    "Susceptible (Branch B)".to_string(),
+                    to_pairs(&self.s_points),
+                ));
+                datasets.push(("Infected (Branch B)".to_string(), to_pairs(&self.i_points)));
+                datasets.push(("Recovered (Branch B)".to_string(), to_pairs(&self.r_points)));
+                datasets.push((
+                    "Susceptible (Branch A)".to_string(),
+                    to_pairs(&self.cf.s_points_a),
+                ));
+                datasets.push((
+                    "Infected (Branch A)".to_string(),
+                    to_pairs(&self.cf.i_points_a),
+                ));
+                datasets.push((
+                    "Recovered (Branch A)".to_string(),
+                    to_pairs(&self.cf.r_points_a),
+                ));
+            } else {
+                datasets.push(("Susceptible".to_string(), to_pairs(&self.s_points)));
+                datasets.push(("Infected".to_string(), to_pairs(&self.i_points)));
+                datasets.push(("Recovered".to_string(), to_pairs(&self.r_points)));
+            }
+        }
+        datasets.extend(self.snapshot_manager.export_datasets());
+        for (name, pts) in egui_plot::get_last_plot_datasets() {
+            if !datasets.iter().any(|(existing, _)| existing == &name) {
+                datasets.push((name, pts));
+            }
+        }
+        datasets
+    }
+
     pub(super) fn current_series_key(&self) -> (usize, usize, usize, usize, usize, usize) {
         (
             self.s_points.as_ptr() as usize,
@@ -52,7 +120,17 @@ impl SirTool {
         }
     }
 
-    pub(super) fn evaluate_sensitivity(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn evaluate_sensitivity(&mut self, ui: &mut egui::Ui, defer_gesture: bool) {
+        if defer_gesture {
+            self.sensitivity_engine.defer_for_gesture();
+            crate::sensitivity::render_sensitivity_panel_ui(
+                ui,
+                &self.sensitivity_engine,
+                "sir_tool",
+            );
+            return;
+        }
+
         let params = [
             ("N", self.n),
             ("I0", self.i0),
@@ -83,6 +161,26 @@ impl SirTool {
 
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "sir_tool");
     }
+
+    pub(super) fn render_snapshot_bar(&mut self, ui: &mut egui::Ui) {
+        let param_summary = self.param_summary();
+        let current_len = self.snapshot_manager.len();
+        let s_points = &self.s_points;
+        let i_points = &self.i_points;
+        let r_points = &self.r_points;
+        if self.snapshot_manager.render_ui(ui, move || {
+            let label = format!("Baseline {}", current_len + 1);
+            let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+            let series = vec![
+                TraceSeries::new("Susceptible", to_pairs(s_points)),
+                TraceSeries::new("Infected", to_pairs(i_points)),
+                TraceSeries::new("Recovered", to_pairs(r_points)),
+            ];
+            Some((label, param_summary, series))
+        }) {
+            self.revision = self.revision.wrapping_add(1).max(1);
+        }
+    }
 }
 
 /// Computes interpolated `(peak_day, peak_infected)` from simulated `Infected` points.
@@ -97,11 +195,13 @@ pub(super) fn render_epidemic_metrics(ui: &mut egui::Ui, tool: &SirTool) {
     } else {
         f64::INFINITY
     };
-    render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{r0:.2}"));
-    if let Some((peak_day, peak_infected)) = tool.epidemic_peak() {
-        render_copyable_metric(ui, "Peak Infected", &format!("{peak_infected:.1}"));
-        render_copyable_metric(ui, "Peak Day", &format!("Day {peak_day:.2}"));
-    }
+    ui.horizontal_wrapped(|ui| {
+        render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{r0:.2}"));
+        if let Some((peak_day, peak_infected)) = tool.epidemic_peak() {
+            render_copyable_metric(ui, "Peak Infected", &format!("{peak_infected:.1}"));
+            render_copyable_metric(ui, "Peak Day", &format!("Day {peak_day:.2}"));
+        }
+    });
 }
 
 /// Renders the SIR simulation plot.
@@ -109,7 +209,11 @@ pub(super) fn render_simulation_plot(ui: &mut egui::Ui, tool: &SirTool) {
     let plot_id = ui.make_persistent_id("sir_plot");
     ui.heading("Simulation");
 
-    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+    if let Some(ref snap) = tool.cf.branch_engine.active_snapshot {
+        render_divergence_strip(ui, tool.name(), snap);
+    }
+
+    let palette = SemanticPalette::from_visuals(ui.visuals());
     let plot_height = (ui.available_width() * 0.5).clamp(220.0, 340.0);
     let plot = Plot::new("sir_plot")
         .id(plot_id)
@@ -117,27 +221,58 @@ pub(super) fn render_simulation_plot(ui: &mut egui::Ui, tool: &SirTool) {
         .legend(egui_plot::Legend::default());
 
     plot.show(ui, |plot_ui| {
-        plot_ui.line(
-            Line::new(
-                "Susceptible",
-                PlotPoints::from_shared(Arc::clone(&tool.display_s)),
-            )
-            .color(palette.axis_z),
-        );
-        plot_ui.line(
-            Line::new(
-                "Infected",
-                PlotPoints::from_shared(Arc::clone(&tool.display_i)),
-            )
-            .color(palette.axis_x),
-        );
-        plot_ui.line(
-            Line::new(
-                "Recovered",
-                PlotPoints::from_shared(Arc::clone(&tool.display_r)),
-            )
-            .color(palette.axis_y),
-        );
-        tool.snapshot_manager.render_on_plot(plot_ui);
+        render_sir_plot_curves(tool, plot_ui, &palette);
     });
+}
+
+fn render_sir_plot_curves<'a>(
+    tool: &'a SirTool,
+    plot_ui: &mut egui_plot::PlotUi<'a>,
+    palette: &SemanticPalette,
+) {
+    let shared = |arc: &Arc<Vec<PlotPoint>>| PlotPoints::from_shared(Arc::clone(arc));
+    if let Some(ref desc) = tool.cf.fork {
+        plot_ui.line(branch_a_ghost_line(
+            "Susceptible (Branch A)",
+            shared(&tool.cf.display_s_a),
+            palette.axis_z,
+        ));
+        plot_ui.line(branch_a_ghost_line(
+            "Infected (Branch A)",
+            shared(&tool.cf.display_i_a),
+            palette.axis_x,
+        ));
+        plot_ui.line(branch_a_ghost_line(
+            "Recovered (Branch A)",
+            shared(&tool.cf.display_r_a),
+            palette.axis_y,
+        ));
+        plot_ui.line(branch_b_solid_line(
+            "Susceptible (Branch B)",
+            shared(&tool.display_s),
+            palette.axis_z,
+        ));
+        plot_ui.line(branch_b_solid_line(
+            "Infected (Branch B)",
+            shared(&tool.display_i),
+            palette.axis_x,
+        ));
+        plot_ui.line(branch_b_solid_line(
+            "Recovered (Branch B)",
+            shared(&tool.display_r),
+            palette.axis_y,
+        ));
+        let fork_t = desc.fork_step as f64 * SIR_STEP_DT;
+        plot_ui.vline(fork_marker_vline(palette, fork_t));
+        plot_ui.callout(fork_marker_callout(
+            [fork_t, tool.cf.fork_infected_y],
+            fork_t,
+            palette,
+        ));
+    } else {
+        plot_ui.line(Line::new("Susceptible", shared(&tool.display_s)).color(palette.axis_z));
+        plot_ui.line(Line::new("Infected", shared(&tool.display_i)).color(palette.axis_x));
+        plot_ui.line(Line::new("Recovered", shared(&tool.display_r)).color(palette.axis_y));
+    }
+    tool.snapshot_manager.render_on_plot(plot_ui);
 }

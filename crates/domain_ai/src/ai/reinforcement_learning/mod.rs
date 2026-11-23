@@ -87,16 +87,28 @@
 pub mod algorithms;
 #[allow(missing_docs)]
 pub mod bellman;
+pub mod bellman_solver;
+pub mod maze;
 #[allow(missing_docs)]
 pub mod q_function;
+pub mod rollouts;
 #[allow(missing_docs)]
 pub mod strategies;
 #[allow(missing_docs)]
 pub mod types;
+pub mod workspace;
 
 // Re-exports for ease of use
-pub use algorithms::QLearningAgent;
-pub use q_function::TabularQFunction;
+pub use algorithms::{
+    QLearningAgent, RlStepOutcome, TabularQAgent, compute_softmax_pg_delta, softmax_action_probs,
+    step_softmax_pg_into, step_tabular_q_into,
+};
+pub use bellman_solver::{BellmanSolution, TabularGridPolicy};
+pub use maze::{
+    ALL_MOVES, DenseRlWorkspace, GridCellRole, MAX_RL_GRID_DIM, MIN_RL_GRID_DIM, SculptedGridMdp,
+    index_to_move, move_to_index,
+};
+pub use q_function::{DiscreteAction, DiscreteState, FixedArrayQFunction, TabularQFunction};
 pub use strategies::{EpsilonGreedy, ExplorationStrategy};
 pub use types::{Action, MarkovDecisionProcess, Policy, QFunction, State};
 
