@@ -3,15 +3,30 @@
 use super::core::OuParams;
 use super::solver::{EulerMaruyama, TimeStep};
 use crate::error::OuError;
+use engine_prob::variance_reduction::control_variate_from_slices;
+use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
+
+/// Variance-reduction mode for [`OuAnalyzer::try_monte_carlo_forecast_variance_reduced`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OuVarianceReduction {
+    /// Standard independent identically distributed Euler-Maruyama terminal sampling.
+    None,
+    /// Coupled antithetic Gaussian increments $(+Z_k, -Z_k)$ per path pair.
+    Antithetic,
+    /// Optimal linear control variate against exact discrete terminal mean $\mathbb{E}\[X_n\]$.
+    ControlVariate,
+}
 
 /// Performance statistics from Monte Carlo simulation.
 ///
-/// Contains summary statistics from multiple simulated trajectories.
-#[derive(Debug, Clone)]
+/// Contains summary statistics and Monte Carlo standard errors across simulated terminal states.
+#[derive(Debug, Clone, PartialEq)]
 pub struct PerformanceStats {
     /// Mean of final values across all paths.
     pub mean_final: f64,
+    /// Standard error of `mean_final`.
+    pub mean_std_error: f64,
     /// Standard deviation of final values.
     pub std_final: f64,
     /// Median of final values.
@@ -22,6 +37,8 @@ pub struct PerformanceStats {
     pub percentile_95: f64,
     /// Probability of exceeding a threshold.
     pub prob_above_threshold: Option<f64>,
+    /// Standard error of `prob_above_threshold` when `threshold` is `Some(_)`.
+    pub prob_above_threshold_std_error: Option<f64>,
 }
 
 /// Player momentum classifier based on mean reversion rate.
@@ -39,14 +56,6 @@ pub enum MomentumType {
 
 impl MomentumType {
     /// Classifies a player based on their mean reversion rate.
-    ///
-    /// # Arguments
-    ///
-    /// * `theta` - The mean reversion rate
-    ///
-    /// # Returns
-    ///
-    /// The momentum type classification
     ///
     /// # Example
     ///
@@ -81,6 +90,96 @@ impl MomentumType {
     }
 }
 
+fn validate_forecast_inputs(
+    x0: f64,
+    time_horizon: f64,
+    n_paths: usize,
+    threshold: Option<f64>,
+) -> Result<(), OuError> {
+    if !x0.is_finite() {
+        return Err(OuError::InvalidSimulationParams {
+            reason: "initial state x0 must be finite".to_string(),
+        });
+    }
+    if threshold.is_some_and(|t| !t.is_finite()) {
+        return Err(OuError::InvalidSimulationParams {
+            reason: "threshold must be finite".to_string(),
+        });
+    }
+    if !time_horizon.is_finite() || time_horizon <= 0.0 {
+        return Err(OuError::InvalidTimeStep {
+            value: time_horizon,
+        });
+    }
+    if n_paths == 0 {
+        return Err(OuError::InsufficientData {
+            required: 1,
+            actual: 0,
+        });
+    }
+    Ok(())
+}
+
+fn summarize_sorted_terminals(
+    final_values: &mut [f64],
+    threshold: Option<f64>,
+) -> PerformanceStats {
+    let n = final_values.len();
+    final_values.sort_unstable_by(f64::total_cmp);
+
+    let nf = n as f64;
+    let mean_final = final_values.iter().sum::<f64>() / nf;
+    let ss: f64 = final_values.iter().map(|&x| (x - mean_final).powi(2)).sum();
+    let std_final = (ss / nf).sqrt();
+    let mean_std_error = if n > 1 {
+        ((ss / ((n - 1) as f64)) / nf).sqrt()
+    } else {
+        0.0
+    };
+
+    let median_final = final_values[n / 2];
+    let idx_05 = ((nf * 0.05) as usize).min(n - 1);
+    let idx_95 = ((nf * 0.95) as usize).min(n - 1);
+    let (prob_above_threshold, prob_above_threshold_std_error) = match threshold {
+        Some(t) => {
+            let hits = final_values.iter().filter(|&&x| x > t).count();
+            let p = (hits as f64) / nf;
+            let se = if n > 1 {
+                (p * (1.0 - p) / ((n - 1) as f64)).sqrt()
+            } else {
+                0.0
+            };
+            (Some(p), Some(se))
+        }
+        None => (None, None),
+    };
+
+    PerformanceStats {
+        mean_final,
+        mean_std_error,
+        std_final,
+        median_final,
+        percentile_05: final_values[idx_05],
+        percentile_95: final_values[idx_95],
+        prob_above_threshold,
+        prob_above_threshold_std_error,
+    }
+}
+
+fn paired_se(pair_values: &[f64]) -> (f64, f64) {
+    let m = pair_values.len();
+    if m == 0 {
+        return (0.0, 0.0);
+    }
+    let mf = m as f64;
+    let mean = pair_values.iter().sum::<f64>() / mf;
+    if m <= 1 {
+        return (mean, 0.0);
+    }
+    let var = pair_values.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / ((m - 1) as f64);
+    (mean, (var / mf).sqrt())
+}
+
 /// OU process analyzer for sports analytics.
 ///
 /// Provides high-level analysis functions for betting and performance prediction.
@@ -91,11 +190,6 @@ pub struct OuAnalyzer {
 
 impl OuAnalyzer {
     /// Creates a new OU analyzer.
-    ///
-    /// # Arguments
-    ///
-    /// * `params` - The OU process parameters
-    /// * `dt` - The time step for simulation
     ///
     /// # Example
     ///
@@ -113,36 +207,109 @@ impl OuAnalyzer {
     }
 
     /// Classifies the momentum type based on the mean reversion rate.
-    ///
-    /// # Returns
-    ///
-    /// The momentum type classification
     #[verified_engine::verified]
     pub fn momentum_type(&self) -> MomentumType {
         MomentumType::classify(self.params.theta.value())
     }
 
-    /// Runs Monte Carlo simulation to estimate final performance distribution.
-    ///
-    /// # Arguments
-    ///
-    /// * `x0` - Initial performance level
-    /// * `time_horizon` - Total simulation time
-    /// * `n_paths` - Number of Monte Carlo paths
-    /// * `threshold` - Optional threshold for computing exceedance probability
-    /// * `rng` - Mutable reference to a random number generator
-    ///
-    /// # Returns
-    ///
-    /// Performance statistics from the simulation
+    /// Fallible Monte Carlo terminal distribution forecast bypassing full trajectory allocations.
+    #[verified_engine::verified]
+    pub fn try_monte_carlo_forecast<R: Rng>(
+        &self,
+        x0: f64,
+        time_horizon: f64,
+        n_paths: usize,
+        threshold: Option<f64>,
+        rng: &mut R,
+    ) -> Result<PerformanceStats, OuError> {
+        validate_forecast_inputs(x0, time_horizon, n_paths, threshold)?;
+        let n_steps = (time_horizon / self.dt.value()).ceil() as usize;
+        let solver = EulerMaruyama::new(self.params, self.dt);
+        let mut final_values = vec![0.0_f64; n_paths];
+        solver.simulate_terminals_into(x0, n_steps, &mut final_values, rng);
+        if final_values.iter().any(|v| !v.is_finite()) {
+            return Err(OuError::InvalidSimulationParams {
+                reason: "simulated terminal state overflowed to non-finite value".to_string(),
+            });
+        }
+        Ok(summarize_sorted_terminals(&mut final_values, threshold))
+    }
+
+    /// Fallible variance-reduced Monte Carlo forecast supporting antithetic and control-variate modes.
+    #[verified_engine::verified]
+    pub fn try_monte_carlo_forecast_variance_reduced(
+        &self,
+        x0: f64,
+        time_horizon: f64,
+        n_paths: usize,
+        threshold: Option<f64>,
+        mode: OuVarianceReduction,
+        rng: &mut OxidizeRng,
+    ) -> Result<PerformanceStats, OuError> {
+        if mode == OuVarianceReduction::None {
+            return self.try_monte_carlo_forecast(x0, time_horizon, n_paths, threshold, rng);
+        }
+        validate_forecast_inputs(x0, time_horizon, n_paths, threshold)?;
+        let n_steps = (time_horizon / self.dt.value()).ceil() as usize;
+        let solver = EulerMaruyama::new(self.params, self.dt);
+
+        if mode == OuVarianceReduction::Antithetic {
+            let n_pairs = n_paths.div_ceil(2);
+            let mut terminals = Vec::with_capacity(2 * n_pairs);
+            let mut pair_means = Vec::with_capacity(n_pairs);
+            let mut pair_hits = Vec::with_capacity(if threshold.is_some() { n_pairs } else { 0 });
+            for _ in 0..n_pairs {
+                let (xp, xn) = solver.simulate_antithetic_terminal_pair(x0, n_steps, rng);
+                terminals.push(xp);
+                terminals.push(xn);
+                pair_means.push(0.5 * (xp + xn));
+                if let Some(t) = threshold {
+                    pair_hits
+                        .push(0.5 * (f64::from(u8::from(xp > t)) + f64::from(u8::from(xn > t))));
+                }
+            }
+            let mut stats = summarize_sorted_terminals(&mut terminals, threshold);
+            let (m_est, m_se) = paired_se(&pair_means);
+            stats.mean_final = m_est;
+            stats.mean_std_error = m_se;
+            if threshold.is_some() {
+                let (p_est, p_se) = paired_se(&pair_hits);
+                stats.prob_above_threshold = Some(p_est.clamp(0.0, 1.0));
+                stats.prob_above_threshold_std_error = Some(p_se);
+            }
+            return Ok(stats);
+        }
+
+        let mut terminals = vec![0.0_f64; n_paths];
+        solver.simulate_terminals_into(x0, n_steps, &mut terminals, rng);
+        let c_exp = solver.discrete_terminal_mean(x0, n_steps);
+        let cv_prob = if let Some(t) = threshold {
+            let indicators: Vec<f64> = terminals
+                .iter()
+                .map(|&v| if v > t { 1.0 } else { 0.0 })
+                .collect();
+            control_variate_from_slices(&indicators, &terminals, c_exp).ok()
+        } else {
+            None
+        };
+        let mut stats = summarize_sorted_terminals(&mut terminals, threshold);
+        stats.mean_final = c_exp;
+        stats.mean_std_error = 0.0;
+        if let Some(cv) = cv_prob {
+            stats.prob_above_threshold = Some(cv.mean.clamp(0.0, 1.0));
+            stats.prob_above_threshold_std_error = Some(cv.std_error);
+        }
+        Ok(stats)
+    }
+
+    /// Runs Monte Carlo simulation to estimate final performance distribution without panicking
+    /// on `n_paths == 0` or `NaN` inputs.
     ///
     /// # Example
     ///
     /// ```
     /// # use pure_math::__doctest_facade as math_explorer;
     /// use math_explorer::pure_math::statistics::ou_process::{OuAnalyzer, OuParams, TimeStep};
-    /// use math_explorer::rand::SeedableRng;
-    /// use math_explorer::rand::rngs::StdRng;
     ///
     /// let params = OuParams::from_values(0.45, 1.0, 0.15).unwrap();
     /// let dt = TimeStep::new(0.01).unwrap();
@@ -150,6 +317,7 @@ impl OuAnalyzer {
     ///
     /// let mut rng = math_explorer::rng::OxidizeRng::default();
     /// let stats = analyzer.monte_carlo_forecast(0.50, 1.0, 10000, Some(0.48), &mut rng);
+    /// assert!(stats.mean_std_error > 0.0);
     /// ```
     #[verified_engine::verified]
     pub fn monte_carlo_forecast<R: Rng>(
@@ -160,58 +328,34 @@ impl OuAnalyzer {
         threshold: Option<f64>,
         rng: &mut R,
     ) -> PerformanceStats {
-        let n_steps = (time_horizon / self.dt.value()).ceil() as usize;
-        let solver = EulerMaruyama::new(self.params, self.dt);
-
-        // Simulate paths
-        let paths = solver.simulate_paths(x0, n_steps, n_paths, rng);
-
-        // Extract final values
-        let mut final_values: Vec<f64> = paths.iter().map(|p| *p.last().unwrap()).collect();
-        // Optimization: Use sort_unstable_by instead of sort_by for primitive f64s to avoid O(N) allocation overhead
-        final_values.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-
-        // Compute statistics
-        let mean_final = final_values.iter().sum::<f64>() / n_paths as f64;
-        let variance = final_values
-            .iter()
-            .map(|&x| (x - mean_final).powi(2))
-            .sum::<f64>()
-            / n_paths as f64;
-        let std_final = variance.sqrt();
-
-        let median_final = final_values[n_paths / 2];
-        let percentile_05 = final_values[(n_paths as f64 * 0.05) as usize];
-        let percentile_95 = final_values[(n_paths as f64 * 0.95) as usize];
-
-        let prob_above_threshold = threshold.map(|t| {
-            let count = final_values.iter().filter(|&&x| x > t).count();
-            count as f64 / n_paths as f64
-        });
-
+        if let Ok(stats) = self.try_monte_carlo_forecast(x0, time_horizon, n_paths, threshold, rng)
+        {
+            return stats;
+        }
+        let fallback = if x0.is_finite() {
+            x0
+        } else {
+            self.params.mu.value()
+        };
         PerformanceStats {
-            mean_final,
-            std_final,
-            median_final,
-            percentile_05,
-            percentile_95,
-            prob_above_threshold,
+            mean_final: fallback,
+            mean_std_error: 0.0,
+            std_final: 0.0,
+            median_final: fallback,
+            percentile_05: fallback,
+            percentile_95: fallback,
+            prob_above_threshold: threshold.map(|t| {
+                if t.is_finite() && n_paths > 0 && fallback > t {
+                    1.0
+                } else {
+                    0.0
+                }
+            }),
+            prob_above_threshold_std_error: threshold.map(|_| 0.0),
         }
     }
 
     /// Estimates the probability of a comeback given current deficit.
-    ///
-    /// # Arguments
-    ///
-    /// * `current_score` - Current performance/score level
-    /// * `target_score` - Target level to exceed
-    /// * `time_remaining` - Time remaining in simulation units
-    /// * `n_paths` - Number of Monte Carlo paths
-    /// * `rng` - Mutable reference to a random number generator
-    ///
-    /// # Returns
-    ///
-    /// The probability of reaching the target
     #[verified_engine::verified]
     pub fn comeback_probability<R: Rng>(
         &self,
@@ -240,15 +384,6 @@ impl OuAnalyzer {
 
 /// Estimates OU parameters from observed data using simple method of moments.
 ///
-/// # Arguments
-///
-/// * `observations` - Time series of observations
-/// * `dt` - Time step between observations
-///
-/// # Returns
-///
-/// * `Result<OuParams, OuError>` - Estimated parameters or an error
-///
 /// # Example
 ///
 /// ```
@@ -268,15 +403,11 @@ pub fn estimate_ou_params(observations: &[f64], dt: f64) -> Result<OuParams, OuE
         });
     }
 
-    // Estimate mu as sample mean
     let mu = observations.iter().sum::<f64>() / observations.len() as f64;
-
-    // Estimate sigma from sample variance
     let variance = observations.iter().map(|&x| (x - mu).powi(2)).sum::<f64>()
         / (observations.len() - 1) as f64;
     let sigma = variance.sqrt();
 
-    // Estimate theta from lag-1 autocorrelation
     let mut numerator = 0.0;
     let mut denominator = 0.0;
     for i in 0..observations.len() - 1 {
@@ -289,98 +420,17 @@ pub fn estimate_ou_params(observations: &[f64], dt: f64) -> Result<OuParams, OuE
     let rho1 = if denominator > math_commons::registry::TOLERANCE_HIGH {
         numerator / denominator
     } else {
-        0.5 // Default if variance is too small
+        0.5
     };
-
-    // theta ≈ -ln(ρ₁) / Δt
     let theta = if rho1 > 0.0 && rho1 < 1.0 {
         -rho1.ln() / dt
     } else {
-        1.0 // Default if autocorrelation is out of range
+        1.0
     };
 
     OuParams::from_values(mu, theta.max(0.01), sigma.max(0.01))
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_momentum_type_classification() {
-        assert_eq!(MomentumType::classify(3.0), MomentumType::FlashInPan);
-        assert_eq!(MomentumType::classify(1.0), MomentumType::Normal);
-        assert_eq!(MomentumType::classify(0.3), MomentumType::HeatCheck);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_ou_analyzer_creation() {
-        let params = OuParams::from_values(0.45, 1.0, 0.15).unwrap();
-        let dt = TimeStep::new(0.01).unwrap();
-        let analyzer = OuAnalyzer::new(params, dt);
-
-        assert_eq!(analyzer.momentum_type(), MomentumType::Normal);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_monte_carlo_forecast() {
-        let params = OuParams::from_values(0.5, 1.0, 0.2).unwrap();
-        let dt = TimeStep::new(0.01).unwrap();
-        let analyzer = OuAnalyzer::new(params, dt);
-
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
-        let stats = analyzer.monte_carlo_forecast(0.6, 1.0, 1000, Some(0.5), &mut rng);
-
-        // Mean should be close to long-term mean
-        assert!((stats.mean_final - 0.5).abs() < 0.1);
-        assert!(stats.std_final > 0.0);
-        assert!(stats.prob_above_threshold.is_some());
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_comeback_probability() {
-        let params = OuParams::from_values(0.5, 1.0, 0.3).unwrap();
-        let dt = TimeStep::new(0.01).unwrap();
-        let analyzer = OuAnalyzer::new(params, dt);
-
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
-        let prob = analyzer.comeback_probability(0.3, 0.5, 1.0, 1000, &mut rng);
-
-        // Should be between 0 and 1
-        assert!((0.0..=1.0).contains(&prob));
-        // Should be non-zero since 0.5 is the mean
-        assert!(prob > 0.0);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_estimate_ou_params() {
-        // Generate synthetic data from known OU process
-        let true_params = OuParams::from_values(0.5, 1.0, 0.2).unwrap();
-        let dt = TimeStep::new(0.1).unwrap();
-        let solver = EulerMaruyama::new(true_params, dt);
-
-        let mut rng = oxidize_core::rng::OxidizeRng::new(12345);
-        let trajectory = solver.simulate(0.6, 100, &mut rng);
-
-        // Estimate parameters
-        let estimated = estimate_ou_params(&trajectory, 0.1).unwrap();
-
-        // Should be reasonably close (within 50% for this small sample)
-        assert!((estimated.mu.value() - 0.5).abs() < 0.25);
-        assert!(estimated.theta.value() > 0.0);
-        assert!(estimated.sigma.value() > 0.0);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_estimate_ou_params_insufficient_data() {
-        let observations = vec![0.5, 0.6];
-        let result = estimate_ou_params(&observations, 1.0);
-        assert!(result.is_err());
-    }
-}
+#[path = "analysis_tests.rs"]
+mod tests;

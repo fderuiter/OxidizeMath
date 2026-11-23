@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 20 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 21 workspace crates:
 
 ```mermaid
 graph TD
@@ -68,6 +68,7 @@ graph TD
 
     subgraph Math_Infrastructure
         Pure[pure_math]
+        Prob[engine_prob]
         Commons[math_commons]
         Meta[scientific_metadata]
         Registry[federated_registry]
@@ -88,16 +89,17 @@ graph TD
     GUI --> Plot
     GUI --> Meta & Registry & Diag
     Explorer --> AI & Phys & Bio & App & Clim & Epi
-    Explorer --> Pure & Commons
+    Explorer --> Pure & Commons & Prob
 
     AI --> Commons & Engine & Meta
     Phys --> Commons & Engine & Meta & Pure
     Bio --> Commons & Engine & Meta & Pure
-    App --> Commons & Engine & Meta & Pure
+    App --> Commons & Engine & Meta & Pure & Prob
     Clim --> Commons & Engine & Meta
     Epi --> Commons & Engine & Meta & Pure
 
-    Pure --> Commons & Meta
+    Pure --> Commons & Meta & Prob
+    Prob --> CoreCrate
     Commons --> CoreCrate
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
@@ -111,11 +113,12 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 20 member crates declared in `Cargo.toml`:
+The workspace contains all 21 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
 | `crates/oxidize_core` | Core utilities, file systems, and traceability | [oxidize_core](../../crates/oxidize_core/README.md) |
+| `crates/02_engines/engine_prob` | `#![no_std]` QMC cubature, variance reduction, and bootstrap | [engine_prob](../../crates/02_engines/engine_prob/README.md) |
 | `crates/verified_engine` | Zero-allocation runtime and execution tracking | [zero_allocation_runtime](zero_allocation_runtime.md) |
 | `crates/verified_engine_macros` | Attribute macros (`#[theory]`, `#[verified]`) | [verified_engine](../../crates/verified_engine/src/lib.rs) |
 | `crates/diagnostics` | Static analysis diagnostics and reporting | [diagnostics](../../crates/diagnostics/README.md) |

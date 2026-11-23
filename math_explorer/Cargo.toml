@@ -17,6 +17,7 @@ domain_epidemiology = { path = "../crates/domain_epidemiology", optional = true 
 nalgebra = { workspace = true, optional = true }
 num-complex = { workspace = true, optional = true }
 oxidize_core = { path = "../crates/oxidize_core", optional = true }
+engine_prob = { path = "../crates/02_engines/engine_prob", features = ["std"], optional = true }
 petgraph = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 scientific_metadata = { path = "../crates/scientific_metadata" }
@@ -26,6 +27,7 @@ verified_engine = { path = "../crates/verified_engine" }
 default = []
 pure_math = [
     "dep:pure_math",
+    "dep:engine_prob",
     "dep:nalgebra",
     "dep:num-complex",
     "dep:oxidize_core",

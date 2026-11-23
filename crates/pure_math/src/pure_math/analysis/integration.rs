@@ -5,6 +5,11 @@
 
 use quadrature::clenshaw_curtis;
 
+pub use super::cubature::{
+    CubatureConfig, CubatureEstimate, CubatureIntegrator, CubatureRule, HaltonCubature,
+    RichtmyerCubature, SobolCubature, SolverWorkspace, integrate_hyperrect, integrate_unit_cube,
+};
+
 /// Result of an integration operation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct IntegrationResult {

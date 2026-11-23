@@ -2,6 +2,11 @@
 //! [`super::simulation::SimulationParams`].
 
 use crate::applied::clinical_trials::types::ClinicalTrialError;
+use engine_prob::bootstrap::{
+    bootstrap_workspace_indices, percentile_bootstrap_mean, percentile_workspace_floats,
+};
+use engine_prob::math::{Z_95_TWO_SIDED, mean_and_sample_variance};
+use engine_prob::workspace::SolverWorkspace;
 use oxidize_core::rng::OxidizeRng;
 
 use super::censoring::{RightCensoredComparator, TierCount};
@@ -58,38 +63,33 @@ impl PowerSweepConfig {
     /// Validates all sample-size, replicate, censoring, and significance bounds.
     #[verified_engine::verified]
     pub fn validate(&self) -> Result<(), ClinicalTrialError> {
+        let err = |msg: String| Err(ClinicalTrialError::InvalidData(msg));
         if self.n_min < 2 || self.n_max < self.n_min || self.n_max > MAX_ARM_SIZE {
-            return Err(ClinicalTrialError::InvalidData(format!(
+            return err(format!(
                 "Arm sizes must satisfy 2 <= n_min <= n_max <= {MAX_ARM_SIZE}, got {}..={}",
                 self.n_min, self.n_max
-            )));
+            ));
         }
         if self.n_steps == 0 || self.n_steps > MAX_SWEEP_STEPS {
-            return Err(ClinicalTrialError::InvalidData(format!(
+            return err(format!(
                 "n_steps must be in 1..={MAX_SWEEP_STEPS}, got {}",
                 self.n_steps
-            )));
+            ));
         }
         if self.replicates == 0 || self.replicates > MAX_SWEEP_REPLICATES {
-            return Err(ClinicalTrialError::InvalidData(format!(
+            return err(format!(
                 "replicates must be in 1..={MAX_SWEEP_REPLICATES}, got {}",
                 self.replicates
-            )));
+            ));
         }
         if !self.censor_horizon.is_finite() || self.censor_horizon <= 0.0 {
-            return Err(ClinicalTrialError::InvalidData(
-                "censor_horizon must be positive and finite".to_string(),
-            ));
+            return err("censor_horizon must be positive and finite".to_string());
         }
         if !self.dropout_rate.is_finite() || self.dropout_rate < 0.0 {
-            return Err(ClinicalTrialError::InvalidData(
-                "dropout_rate must be non-negative and finite".to_string(),
-            ));
+            return err("dropout_rate must be non-negative and finite".to_string());
         }
         if !self.sig_alpha.is_finite() || self.sig_alpha <= 0.0 || self.sig_alpha >= 1.0 {
-            return Err(ClinicalTrialError::InvalidData(
-                "sig_alpha must be finite in (0, 1)".to_string(),
-            ));
+            return err("sig_alpha must be finite in (0, 1)".to_string());
         }
         Ok(())
     }
@@ -114,8 +114,20 @@ pub struct SampleSizePowerPoint {
     pub n_per_arm: usize,
     /// Empirical rejection rate ($\Pr(p < \alpha)$) across Monte Carlo replicates.
     pub empirical_power: f64,
+    /// Monte Carlo binomial standard error $\sqrt{\hat{p}(1 - \hat{p}) / R}$ of `empirical_power`.
+    pub power_std_error: f64,
+    /// Lower 95% Wilson score confidence bound on `empirical_power` in `[0, 1]`.
+    pub power_ci_lower: f64,
+    /// Upper 95% Wilson score confidence bound on `empirical_power` in `[0, 1]`.
+    pub power_ci_upper: f64,
     /// Mean finite win ratio across replicates (geometric mean on log-scale).
     pub mean_win_ratio: f64,
+    /// Monte Carlo standard error of $\ln(\text{WR})$ across finite replicates.
+    pub log_win_ratio_std_error: f64,
+    /// Deterministic 95% bootstrap lower confidence bound on `mean_win_ratio`.
+    pub bootstrap_wr_ci_lower: f64,
+    /// Deterministic 95% bootstrap upper confidence bound on `mean_win_ratio`.
+    pub bootstrap_wr_ci_upper: f64,
     /// Mean Tier 1 (fatal) win fraction across replicates.
     pub tier1_win_fraction: f64,
     /// Mean Tier 1 (fatal) loss fraction across replicates.
@@ -287,21 +299,68 @@ pub fn simulate_weibull_trial_into(
     ))
 }
 
+const SWEEP_BOOT_RESAMPLES: usize = 200;
+const SWEEP_BOOT_FLOATS: usize =
+    percentile_workspace_floats(MAX_SWEEP_REPLICATES, SWEEP_BOOT_RESAMPLES);
+const SWEEP_BOOT_INDICES: usize = bootstrap_workspace_indices(MAX_SWEEP_REPLICATES);
+
+fn wilson_power_bounds(rejections: usize, replicates: usize) -> (f64, f64, f64) {
+    let n = replicates as f64;
+    let p = (rejections as f64) / n;
+    let se = (p * (1.0 - p) / n).max(0.0).sqrt();
+    let z = Z_95_TWO_SIDED;
+    let z2 = z * z;
+    let denom = 1.0 + z2 / n;
+    let center = (p + z2 / (2.0 * n)) / denom;
+    let half = (z / denom) * ((p * (1.0 - p) / n + z2 / (4.0 * n * n)).max(0.0)).sqrt();
+    (
+        (center - half).clamp(0.0, 1.0),
+        (center + half).clamp(0.0, 1.0),
+        se,
+    )
+}
+
+fn summarize_ln_wr_bootstrap(
+    ln_wrs: &[f64],
+    fallback_wr: f64,
+    boot_seed: u64,
+) -> (f64, f64, f64, f64) {
+    if ln_wrs.is_empty() {
+        return (fallback_wr, 0.0, fallback_wr, fallback_wr);
+    }
+    let (mean_ln, var_ln) = mean_and_sample_variance(ln_wrs).unwrap_or((0.0, 0.0));
+    let mean_wr = mean_ln.exp();
+    if ln_wrs.len() < 2 {
+        return (mean_wr, 0.0, mean_wr, mean_wr);
+    }
+    let se_ln = (var_ln / (ln_wrs.len() as f64)).sqrt();
+    let mut f_buf = [0.0_f64; SWEEP_BOOT_FLOATS];
+    let mut i_buf = [0_usize; SWEEP_BOOT_INDICES];
+    let mut ws = SolverWorkspace::new(&mut f_buf, &mut i_buf);
+    let mut boot_rng = OxidizeRng::new(boot_seed);
+    match percentile_bootstrap_mean(ln_wrs, SWEEP_BOOT_RESAMPLES, 0.95, &mut boot_rng, &mut ws) {
+        Ok(ci) => (mean_wr, se_ln, ci.lower.exp(), ci.upper.exp()),
+        Err(_) => (mean_wr, se_ln, mean_wr, mean_wr),
+    }
+}
+
+type SweepStepOut = (
+    SampleSizePowerPoint,
+    Option<UnmatchedWinRatioSummary>,
+    [TierCount; 2],
+);
+
 fn sweep_single_arm_size(
     params: &SimulationParams,
     cfg: &PowerSweepConfig,
     n_arm: usize,
+    boot_seed: u64,
     rng: &mut OxidizeRng,
     workspace: &mut PowerSweepWorkspace,
-) -> Result<
-    (
-        SampleSizePowerPoint,
-        Option<UnmatchedWinRatioSummary>,
-        [TierCount; 2],
-    ),
-    ClinicalTrialError,
-> {
-    let (mut rejections, mut sum_ln_wr, mut finite_cnt) = (0usize, 0.0, 0usize);
+) -> Result<SweepStepOut, ClinicalTrialError> {
+    let mut rejections = 0usize;
+    let mut ln_wrs = [0.0_f64; MAX_SWEEP_REPLICATES];
+    let mut finite_cnt = 0usize;
     let mut frac_acc = [0.0_f64; 5];
     let mut last_summary = None;
     let mut last_tiers = [TierCount::default(); 2];
@@ -325,7 +384,7 @@ fn sweep_single_arm_size(
         if let Some(s) = summary_opt {
             rejections += usize::from(s.p_value < cfg.sig_alpha);
             if s.win_ratio.is_finite() && s.win_ratio > 0.0 {
-                sum_ln_wr += s.win_ratio.ln();
+                ln_wrs[finite_cnt] = s.win_ratio.ln();
                 finite_cnt += 1;
             }
             last_summary = Some(s);
@@ -334,15 +393,21 @@ fn sweep_single_arm_size(
     }
 
     let inv_rep = 1.0 / (cfg.replicates as f64);
-    let mean_win_ratio = if finite_cnt > 0 {
-        (sum_ln_wr / (finite_cnt as f64)).exp()
-    } else {
-        super::simulation::win_ratio_parameter(params)
-    };
+    let (power_ci_lower, power_ci_upper, power_std_error) =
+        wilson_power_bounds(rejections, cfg.replicates);
+    let fallback_wr = super::simulation::win_ratio_parameter(params);
+    let (mean_win_ratio, log_win_ratio_std_error, bootstrap_wr_ci_lower, bootstrap_wr_ci_upper) =
+        summarize_ln_wr_bootstrap(&ln_wrs[..finite_cnt], fallback_wr, boot_seed);
     let pt = SampleSizePowerPoint {
         n_per_arm: n_arm,
         empirical_power: (rejections as f64) * inv_rep,
+        power_std_error,
+        power_ci_lower,
+        power_ci_upper,
         mean_win_ratio,
+        log_win_ratio_std_error,
+        bootstrap_wr_ci_lower,
+        bootstrap_wr_ci_upper,
         tier1_win_fraction: frac_acc[0] * inv_rep,
         tier1_loss_fraction: frac_acc[1] * inv_rep,
         tier2_win_fraction: frac_acc[2] * inv_rep,
@@ -379,8 +444,9 @@ pub fn run_power_sweep_into(
     let mut rep_tiers = [TierCount::default(); 2];
     for step_idx in 0..cfg.n_steps {
         let n_arm = cfg.sample_size_at(step_idx);
+        let boot_seed = seed ^ ((step_idx as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
         let (pt, last_sum, last_tiers) =
-            sweep_single_arm_size(params, cfg, n_arm, &mut rng, workspace)?;
+            sweep_single_arm_size(params, cfg, n_arm, boot_seed, &mut rng, workspace)?;
         workspace.points_buf[step_idx] = pt;
         if let Some(s) = last_sum {
             rep_summary = Some(s);

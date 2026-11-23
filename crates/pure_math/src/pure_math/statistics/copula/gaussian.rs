@@ -1,8 +1,12 @@
 //! Gaussian copula implementation with stack-buffered and caller-scratch evaluation.
 
 use super::core::{Correlation, CorrelationMatrix, Probability};
-use super::multivariate::{evaluate_copula_cdf_with_scratch, required_scratch_len};
+use super::multivariate::{
+    evaluate_copula_cdf_estimate_with_scratch, evaluate_copula_cdf_with_scratch,
+    required_scratch_len,
+};
 use crate::error::CopulaError;
+use engine_prob::CubatureEstimate;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 
@@ -112,6 +116,44 @@ impl GaussianCopula {
         scratch: &mut [f64],
     ) -> Result<Probability, CopulaError> {
         evaluate_copula_cdf_with_scratch(u, &self.correlation, scratch)
+    }
+
+    /// Evaluates `C(u_1, ..., u_d)` alongside Cranley-Patterson Richtmyer shift error bounds
+    /// via [`engine_prob::cubature::genz_semidefinite_richtmyer_qmc`] (`n_shifts >= 2` for non-zero SE).
+    #[verified_engine::verified]
+    pub fn cdf_with_shift_bounds(
+        &self,
+        u: &[Probability],
+        n_shifts: usize,
+        seed: u64,
+    ) -> Result<CubatureEstimate, CopulaError> {
+        let d = self.correlation.dimension();
+        if u.len() != d {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(d),
+                actual: Dimension(u.len()),
+            }));
+        }
+        if d <= MAX_STACK_LEGS {
+            let mut stack_scratch = [0.0_f64; MAX_STACK_SCRATCH];
+            return evaluate_copula_cdf_estimate_with_scratch(
+                u,
+                &self.correlation,
+                n_shifts,
+                seed,
+                &mut stack_scratch[..required_scratch_len(d)],
+            )
+            .map(|(_, est)| est);
+        }
+        let mut heap_scratch = vec![0.0_f64; required_scratch_len(d)];
+        evaluate_copula_cdf_estimate_with_scratch(
+            u,
+            &self.correlation,
+            n_shifts,
+            seed,
+            &mut heap_scratch,
+        )
+        .map(|(_, est)| est)
     }
 
     /// Returns the underlying correlation matrix.
@@ -270,5 +312,24 @@ mod tests {
             CorrelationMatrix::new(invalid),
             Err(CopulaError::NotPositiveDefinite)
         ));
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_gaussian_copula_shift_bounds_zero_alloc() {
+        let mat = DMatrix::from_row_slice(3, 3, &[1.0, 0.4, 0.25, 0.4, 1.0, 0.3, 0.25, 0.3, 1.0]);
+        let copula = GaussianCopula::new(CorrelationMatrix::new(mat).unwrap());
+        let u = [
+            Probability::new(0.45).unwrap(),
+            Probability::new(0.55).unwrap(),
+            Probability::new(0.60).unwrap(),
+        ];
+        let base = copula.cdf(&u).unwrap().value();
+        let (shifted, _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            copula.cdf_with_shift_bounds(&u, 8, 0xABCD_1234).unwrap()
+        });
+        assert!(shifted.std_error >= 0.0 && shifted.std_error < 1e-3);
+        assert!((shifted.value - base).abs() < 1e-3);
+        assert!(shifted.lower_95 <= shifted.value && shifted.value <= shifted.upper_95);
     }
 }

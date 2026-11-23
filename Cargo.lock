@@ -1073,6 +1073,7 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "diagnostics",
+ "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
  "oxidize_core",
@@ -1350,6 +1351,14 @@ name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
+
+[[package]]
+name = "engine_prob"
+version = "0.4.0"
+dependencies = [
+ "libm",
+ "oxidize_core",
+]
 
 [[package]]
 name = "enumflags2"
@@ -2444,6 +2453,7 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
+ "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",
@@ -3150,6 +3160,7 @@ dependencies = [
  "futures",
  "getrandom 0.2.17",
  "js-sys",
+ "libm",
  "proc-macro2",
  "quote",
  "rand",
@@ -3381,6 +3392,7 @@ dependencies = [
  "approx",
  "dashu",
  "diagnostics",
+ "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",

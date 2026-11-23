@@ -33,6 +33,8 @@ pub use domain_physics::error::{
 };
 
 #[cfg(feature = "pure_math")]
+pub use engine_prob::ProbError;
+#[cfg(feature = "pure_math")]
 pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
     FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarketPricingError, MarkovError,
@@ -214,6 +216,9 @@ pub enum Error {
     /// Ornstein-Uhlenbeck process error.
     #[cfg(feature = "pure_math")]
     Ou(OuError),
+    /// `#![no_std]` probability engine error.
+    #[cfg(feature = "pure_math")]
+    Prob(ProbError),
     /// Stochastic simulation error.
     #[cfg(feature = "pure_math")]
     Stochastic(StochasticError),

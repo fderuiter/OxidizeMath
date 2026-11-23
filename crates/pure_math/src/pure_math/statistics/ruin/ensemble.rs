@@ -3,32 +3,19 @@
 use super::analytical::PortfolioBet;
 use super::barrier::ProportionalPortfolioBet;
 use crate::error::KellyError;
-use crate::pure_math::statistics::validation::Z_95_TWO_SIDED;
+use engine_prob::bootstrap::{
+    BootstrapInterval, BootstrapMethod, bca_bootstrap_median, percentile_bootstrap_median,
+};
+use engine_prob::workspace::SolverWorkspace;
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
-use statrs::distribution::{ContinuousCDF, Normal};
+
+#[path = "wilson.rs"]
+mod wilson;
+
+pub use wilson::{WilsonInterval, wilson_interval_95, wilson_score_interval};
 
 const INV_TWO_POW_53: f64 = 1.0 / 9_007_199_254_740_992.0;
-
-/// Wilson score binomial proportion confidence interval.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct WilsonInterval {
-    /// Empirical proportion $\hat{p} = k / n$.
-    pub estimate: f64,
-    /// Lower confidence bound in $[0, 1]$.
-    pub lower: f64,
-    /// Upper confidence bound in $[0, 1]$.
-    pub upper: f64,
-}
-
-impl WilsonInterval {
-    /// Full interval width (`upper - lower`).
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn width(&self) -> f64 {
-        self.upper - self.lower
-    }
-}
 
 /// Realized peak-to-trough maximum drawdown quantiles across simulated ensemble paths.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -62,58 +49,6 @@ pub struct EnsembleSolvencyReport {
     pub terminal_mean_wealth: f64,
     /// Empirical peak-to-trough maximum drawdown quantiles.
     pub drawdown_quantiles: DrawdownQuantiles,
-}
-
-fn wilson_from_z(successes: usize, trials: usize, z: f64) -> Result<WilsonInterval, KellyError> {
-    if trials == 0 {
-        return Err(KellyError::InsufficientBets {
-            required: 1,
-            actual: 0,
-        });
-    }
-    if successes > trials {
-        return Err(KellyError::DimensionMismatch {
-            expected: trials,
-            actual: successes,
-        });
-    }
-    let nf = trials as f64;
-    let p_hat = (successes as f64) / nf;
-    let z2 = z * z;
-    let denom = 1.0 + z2 / nf;
-    let center = (p_hat + z2 / (2.0 * nf)) / denom;
-    let rad = (p_hat * (1.0 - p_hat) / nf + z2 / (4.0 * nf * nf))
-        .max(0.0)
-        .sqrt();
-    let half = (z / denom) * rad;
-    Ok(WilsonInterval {
-        estimate: p_hat,
-        lower: (center - half).clamp(0.0, 1.0),
-        upper: (center + half).clamp(0.0, 1.0),
-    })
-}
-
-/// Computes the 95% Wilson score interval for `successes` out of `trials` with zero allocations.
-#[verified_engine::verified]
-pub fn wilson_interval_95(successes: usize, trials: usize) -> Result<WilsonInterval, KellyError> {
-    wilson_from_z(successes, trials, Z_95_TWO_SIDED)
-}
-
-/// Computes a Wilson score interval at arbitrary `confidence` level in $(0, 1)$.
-#[verified_engine::verified]
-pub fn wilson_score_interval(
-    successes: usize,
-    trials: usize,
-    confidence: f64,
-) -> Result<WilsonInterval, KellyError> {
-    if !confidence.is_finite() || confidence <= 0.0 || confidence >= 1.0 {
-        return Err(KellyError::InvalidProbability { value: confidence });
-    }
-    let normal = Normal::new(0.0, 1.0).map_err(|_| KellyError::ConvergenceFailed {
-        reason: "standard normal initialization failed",
-    })?;
-    let z = normal.inverse_cdf(0.5 * (1.0 + confidence));
-    wilson_from_z(successes, trials, z)
 }
 
 fn sorted_quantile(sorted: &[f64], q: f64) -> f64 {
@@ -411,6 +346,66 @@ impl BankrollEnsembleWorkspace {
     #[verified_engine::verified]
     pub fn max_drawdowns(&self) -> &[f64] {
         &self.max_drawdown
+    }
+
+    /// Advances all walkers by a single proportional-Kelly wager with zero heap allocations
+    /// and returns the current sample median wealth.
+    #[verified_engine::verified]
+    pub fn step_proportional_once(
+        &mut self,
+        bet: &ProportionalPortfolioBet,
+        barrier_floor: f64,
+        rng: &mut OxidizeRng,
+    ) -> f64 {
+        let p = bet.win_prob.value();
+        let f = bet.fraction.value();
+        let win_mult = 1.0 + f * bet.odds.net_profit_multiplier();
+        let loss_mult = (1.0 - f).max(0.0);
+        for idx in 0..self.wealth.len() {
+            let u = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
+            let w = self.wealth[idx] * if u < p { win_mult } else { loss_mult };
+            self.record_walker_wealth(idx, w, barrier_floor);
+        }
+        let med = self.fast_median_from_wealth();
+        let next_step = self.steps_recorded.saturating_add(1);
+        if next_step < self.median_trajectory.len() {
+            self.median_trajectory[next_step] = med;
+            self.steps_recorded = next_step;
+        }
+        med
+    }
+
+    /// Finalizes [`EnsembleSolvencyReport`] from current walker states after `num_steps` wagers.
+    #[verified_engine::verified]
+    pub fn current_solvency_report(
+        &mut self,
+        num_steps: usize,
+    ) -> Result<EnsembleSolvencyReport, KellyError> {
+        self.finalize_report(num_steps)
+    }
+
+    /// Computes a zero-allocation percentile or BCa bootstrap confidence interval for current
+    /// median walker wealth over `workspace` (`n_resamples + 2 * num_paths` floats).
+    #[verified_engine::verified]
+    pub fn bootstrap_median_wealth(
+        &self,
+        method: BootstrapMethod,
+        n_resamples: usize,
+        confidence: f64,
+        rng: &mut OxidizeRng,
+        workspace: &mut SolverWorkspace<'_>,
+    ) -> Result<BootstrapInterval, KellyError> {
+        let res = match method {
+            BootstrapMethod::Percentile => {
+                percentile_bootstrap_median(&self.wealth, n_resamples, confidence, rng, workspace)
+            }
+            BootstrapMethod::BCa => {
+                bca_bootstrap_median(&self.wealth, n_resamples, confidence, rng, workspace)
+            }
+        };
+        res.map_err(|_| KellyError::ConvergenceFailed {
+            reason: "bootstrap workspace or parameter validation failed",
+        })
     }
 }
 

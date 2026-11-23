@@ -478,6 +478,7 @@ pub use crate::pure_math::{
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };
+pub use engine_prob::ProbError;
 pub use sports::{EloError, MatchModelError};
 pub use umbrella::PureMathError;
 

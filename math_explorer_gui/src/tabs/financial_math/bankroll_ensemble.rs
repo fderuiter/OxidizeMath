@@ -8,12 +8,13 @@
 
 use crate::framework::CalloutManager;
 use egui_plot::PlotPoint;
+use math_explorer::prob::{bootstrap::bca_workspace_floats, SolverWorkspace};
 use math_explorer::pure_math::statistics::kelly::{
     expected_growth_rate, expected_value, kelly_fraction, BankrollFraction, Odds, UnitInterval,
 };
 use math_explorer::pure_math::statistics::ruin::{
-    kelly_barrier_risk, BankrollEnsembleWorkspace, EnsembleSolvencyReport, KellyBarrierRisk,
-    ProportionalPortfolioBet,
+    kelly_barrier_risk, BankrollEnsembleWorkspace, BootstrapInterval, BootstrapMethod,
+    EnsembleSolvencyReport, KellyBarrierRisk, ProportionalPortfolioBet,
 };
 use oxidize_core::rng::{OxidizeRng, BASE_SEED};
 
@@ -24,6 +25,10 @@ mod ui;
 pub const MAX_ENSEMBLE_BETS: usize = 1000;
 /// Number of Monte Carlo ensemble trajectories simulated per rerun.
 pub const ENSEMBLE_PATH_COUNT: usize = 1000;
+/// Bootstrap resamples evaluated per trajectory knot for interactive frame rates.
+pub const ENSEMBLE_BOOT_RESAMPLES: usize = 128;
+/// Maximum bootstrap knot evaluations along `1..=steps` (`<= 40` knots for 60+ FPS).
+pub const MAX_BOOTSTRAP_KNOTS: usize = 40;
 /// Upper bound on custom wager fraction `f` so `ln(1 - f)` remains finite.
 pub const MAX_CUSTOM_FRACTION: f64 = 0.95;
 /// Default custom wager fraction demonstrating overbetting volatility drag.
@@ -70,9 +75,17 @@ pub struct BankrollEnsembleLab {
     pub median_points: Vec<PlotPoint>,
     /// Empirical median trajectory across `ENSEMBLE_PATH_COUNT` stochastic paths.
     pub empirical_median_points: Vec<PlotPoint>,
+    /// Lower 95% nonparametric bootstrap confidence band on the ensemble median path.
+    pub median_ci_lower_points: Vec<PlotPoint>,
+    /// Upper 95% nonparametric bootstrap confidence band on the ensemble median path.
+    pub median_ci_upper_points: Vec<PlotPoint>,
     /// Horizontal drawdown floor line `[0, B_floor] .. [T, B_floor]`.
     pub barrier_points: Vec<PlotPoint>,
+    /// Selected nonparametric bootstrap estimator (`Percentile` or `BCa`).
+    pub bootstrap_method: BootstrapMethod,
     workspace: BankrollEnsembleWorkspace,
+    boot_floats: Vec<f64>,
+    boot_indices: Vec<usize>,
     /// Latest logarithmic growth rate $g(f)$ from `expected_growth_rate`.
     pub last_growth_rate: f64,
     /// Latest optimal Kelly fraction $f^*$ when positive edge exists.
@@ -81,6 +94,8 @@ pub struct BankrollEnsembleLab {
     pub last_expected_terminal: f64,
     /// Latest terminal median wealth $W_{\text{median}}(T)$.
     pub last_median_terminal: f64,
+    /// Latest terminal 95% bootstrap confidence interval on the empirical median wealth.
+    pub last_terminal_median_ci: Option<BootstrapInterval>,
     /// Whether `f > 2 * f*` (or `g(f) < 0` despite positive edge), flagging asymptotic decay.
     pub is_ruin_zone: bool,
     /// Analytical diffusion and log-return Lundberg barrier bounds for `barrier_floor_ratio`.
@@ -95,12 +110,21 @@ impl Default for BankrollEnsembleLab {
     }
 }
 
+fn interp_band_point(prev_y: f64, curr_y: f64, alpha: f64) -> f64 {
+    if prev_y > 1e-12 && curr_y > 1e-12 {
+        (prev_y.ln() * (1.0 - alpha) + curr_y.ln() * alpha).exp()
+    } else {
+        prev_y * (1.0 - alpha) + curr_y * alpha
+    }
+}
+
 impl BankrollEnsembleLab {
-    /// Constructs a new ensemble lab backed by a preallocated [`BankrollEnsembleWorkspace`].
+    /// Constructs a new ensemble lab backed by preallocated [`BankrollEnsembleWorkspace`] and bootstrap slices.
     pub fn new() -> Self {
         let workspace =
             BankrollEnsembleWorkspace::with_capacity(ENSEMBLE_PATH_COUNT, MAX_ENSEMBLE_BETS)
                 .expect("positive ensemble path capacity");
+        let n_boot_floats = bca_workspace_floats(ENSEMBLE_PATH_COUNT, ENSEMBLE_BOOT_RESAMPLES);
         Self {
             custom_fraction: DEFAULT_CUSTOM_FRACTION,
             barrier_floor_ratio: DEFAULT_BARRIER_FLOOR_RATIO,
@@ -109,22 +133,29 @@ impl BankrollEnsembleLab {
             expected_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
             median_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
             empirical_median_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
+            median_ci_lower_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
+            median_ci_upper_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
             barrier_points: Vec::with_capacity(2),
+            bootstrap_method: BootstrapMethod::Percentile,
             workspace,
+            boot_floats: vec![0.0_f64; n_boot_floats],
+            boot_indices: vec![0_usize; ENSEMBLE_PATH_COUNT],
             last_growth_rate: 0.0,
             last_f_star: None,
             last_expected_terminal: 0.0,
             last_median_terminal: 0.0,
+            last_terminal_median_ci: None,
             is_ruin_zone: false,
             last_barrier_risk: None,
             last_solvency_report: None,
         }
     }
 
-    /// Resets custom fraction, barrier floor, hypothesis state, and callouts to defaults.
+    /// Resets custom fraction, barrier floor, bootstrap method, hypothesis state, and callouts to defaults.
     pub fn reset_defaults(&mut self) {
         self.custom_fraction = DEFAULT_CUSTOM_FRACTION;
         self.barrier_floor_ratio = DEFAULT_BARRIER_FLOOR_RATIO;
+        self.bootstrap_method = BootstrapMethod::Percentile;
         self.hypothesis = None;
         self.callout_manager.clear_auto();
     }
@@ -145,7 +176,7 @@ impl BankrollEnsembleLab {
         }
     }
 
-    /// Evaluates analytical curves, barrier bounds, and stochastic paths with zero heap allocations.
+    /// Evaluates analytical curves, barrier bounds, stochastic paths, and bootstrap median bands with zero heap allocations.
     pub fn evaluate_in_place(
         &mut self,
         initial_bankroll: f64,
@@ -172,14 +203,86 @@ impl BankrollEnsembleLab {
 
         let barrier_floor = w0 * self.barrier_floor_ratio;
         let mut rng = OxidizeRng::from_seed(BASE_SEED ^ seed_counter.wrapping_mul(0x9E37_79B9));
+        let mut boot_rng = OxidizeRng::from_seed(
+            BASE_SEED ^ 0xB007_57AB ^ seed_counter.wrapping_mul(0x517C_C1B7_2722_0A95),
+        );
         self.last_solvency_report = ProportionalPortfolioBet::unit_weight(*p, *o, frac)
             .and_then(|bet| {
-                self.workspace
-                    .simulate_proportional(w0, barrier_floor, &bet, steps, &mut rng)
+                self.simulate_and_bootstrap_band(
+                    w0,
+                    barrier_floor,
+                    &bet,
+                    steps,
+                    &mut rng,
+                    &mut boot_rng,
+                )
             })
             .ok();
 
         self.populate_plot_series(w0, barrier_floor, ev, f_clamped, g, steps);
+    }
+
+    fn simulate_and_bootstrap_band(
+        &mut self,
+        w0: f64,
+        barrier_floor: f64,
+        bet: &ProportionalPortfolioBet,
+        steps: usize,
+        rng: &mut OxidizeRng,
+        boot_rng: &mut OxidizeRng,
+    ) -> Result<EnsembleSolvencyReport, math_explorer::error::KellyError> {
+        self.workspace.reset(w0);
+        self.median_ci_lower_points.clear();
+        self.median_ci_upper_points.clear();
+        self.median_ci_lower_points.push(PlotPoint::new(0.0, w0));
+        self.median_ci_upper_points.push(PlotPoint::new(0.0, w0));
+        self.last_terminal_median_ci = None;
+
+        let stride = (steps / MAX_BOOTSTRAP_KNOTS).max(1);
+        let (mut prev_t, mut prev_lo, mut prev_hi) = (0usize, w0, w0);
+        for t in 1..=steps {
+            let emp_med = self
+                .workspace
+                .step_proportional_once(bet, barrier_floor, rng);
+            if t % stride == 0 || t == steps {
+                let mut ws = SolverWorkspace::new(&mut self.boot_floats, &mut self.boot_indices);
+                let ci = self
+                    .workspace
+                    .bootstrap_median_wealth(
+                        self.bootstrap_method,
+                        ENSEMBLE_BOOT_RESAMPLES,
+                        0.95,
+                        boot_rng,
+                        &mut ws,
+                    )
+                    .unwrap_or(BootstrapInterval {
+                        point_estimate: emp_med,
+                        lower: emp_med,
+                        upper: emp_med,
+                        std_error: 0.0,
+                        confidence: 0.95,
+                        bias_z0: 0.0,
+                        acceleration: 0.0,
+                    });
+                let span = (t - prev_t) as f64;
+                for s in (prev_t + 1)..=t {
+                    let alpha = ((s - prev_t) as f64) / span;
+                    let lo = interp_band_point(prev_lo, ci.lower.max(0.0), alpha);
+                    let hi = interp_band_point(prev_hi, ci.upper.max(lo), alpha);
+                    self.median_ci_lower_points
+                        .push(PlotPoint::new(s as f64, lo));
+                    self.median_ci_upper_points
+                        .push(PlotPoint::new(s as f64, hi));
+                }
+                prev_t = t;
+                prev_lo = ci.lower.max(0.0);
+                prev_hi = ci.upper.max(prev_lo);
+                if t == steps {
+                    self.last_terminal_median_ci = Some(ci);
+                }
+            }
+        }
+        self.workspace.current_solvency_report(steps)
     }
 
     fn populate_plot_series(
@@ -275,6 +378,37 @@ impl BankrollEnsembleLab {
         {
             self.callout_manager.remove_callout(id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bootstrap_median_bands_deterministic_and_zero_alloc() {
+        let mut lab_a = BankrollEnsembleLab::new();
+        let mut lab_b = BankrollEnsembleLab::new();
+        let p = UnitInterval::new(0.55).unwrap();
+        let o = Odds::from_net_odds(1.0).unwrap();
+
+        let ((), _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            lab_a.evaluate_in_place(100.0, &p, &o, 80, 0);
+            lab_b.evaluate_in_place(100.0, &p, &o, 80, 0);
+        });
+        assert_eq!(lab_a.median_ci_lower_points.len(), 81);
+        assert_eq!(lab_a.median_ci_upper_points.len(), 81);
+        assert_eq!(lab_a.last_terminal_median_ci, lab_b.last_terminal_median_ci);
+        let term_ci = lab_a.last_terminal_median_ci.unwrap();
+        let emp_term = lab_a.empirical_median_points.last().unwrap().y;
+        assert!(term_ci.lower <= emp_term + 1e-9 && emp_term <= term_ci.upper + 1e-9);
+
+        lab_a.bootstrap_method = BootstrapMethod::BCa;
+        let ((), _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            lab_a.evaluate_in_place(100.0, &p, &o, 80, 0);
+        });
+        let bca_ci = lab_a.last_terminal_median_ci.unwrap();
+        assert!(bca_ci.lower <= bca_ci.upper);
     }
 }
 

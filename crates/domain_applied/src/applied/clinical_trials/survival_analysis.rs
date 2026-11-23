@@ -1,6 +1,13 @@
 use super::types::{ClinicalTrialError, SurvivalTime};
 use statrs::distribution::{ChiSquared, ContinuousCDF};
 
+#[path = "survival_bootstrap.rs"]
+mod survival_bootstrap;
+pub use survival_bootstrap::{
+    BootstrapSurvivalPoint, kaplan_meier_bootstrap, kaplan_meier_bootstrap_into,
+    workspace_floats_for_km_bootstrap, workspace_indices_for_km_bootstrap,
+};
+
 /// Represents a single subject's outcome in a survival analysis study.
 #[derive(Debug, Clone, Copy)]
 pub struct Observation {

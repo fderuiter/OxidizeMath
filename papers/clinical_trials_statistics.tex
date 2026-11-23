@@ -75,11 +75,26 @@ OR &= \frac{ad}{bc}
 Confidence intervals are calculated using the standard error of the natural log of these estimates.
 
 \section{Survival Analysis}
-For time-to-event data, we implement the Kaplan-Meier estimator:
+For time-to-event data, we implement the Kaplan-Meier product-limit estimator \cite{kaplan1958nonparametric}:
 \begin{equation}
 \hat{S}(t) = \prod_{t_i \le t} \left(1 - \frac{d_i}{n_i}\right)
 \end{equation}
 where $d_i$ is the number of events at time $t_i$ and $n_i$ is the number at risk.
+
+\subsection{Nonparametric Bootstrap Confidence Bands}
+Asymptotic Greenwood normal intervals can violate $[0, 1]$ boundaries or suffer finite-sample skewness under heavy right censoring. To obtain range-preserving uncertainty bands without parametric hazard assumptions, \texttt{kaplan\_meier\_bootstrap\_into} implements Efron's censored case-resampling bootstrap \cite{efron1981censored} backed by zero-allocation \texttt{engine\_prob} workspace slices. Given $n$ observed pairs $\mathcal{D} = \{(T_i, \delta_i)\}_{i=1}^n$ pre-ordered by follow-up time, each deterministic bootstrap replicate $b \in \{1, \dots, B\}$ draws multinomial multiplicities $\mathbf{m}^*_b \sim \mathrm{Multinomial}(n; n^{-1}\mathbf{1}_n)$ via \texttt{OxidizeRng} and evaluates the right-continuous resampled survival curve at every distinct anchor time $t_k$:
+\begin{equation}
+\hat{S}^*_b(t_k) = \prod_{j \le k} \left(1 - \frac{d^*_{b,j}}{n^*_{b,j}}\right), \qquad d^*_{b,j} = \sum_{i \in \mathcal{G}_j} m^*_{b,i}\,\delta_i, \qquad n^*_{b,j} = \sum_{r \ge j} \sum_{i \in \mathcal{G}_r} m^*_{b,i}.
+\end{equation}
+Sorting $\{\hat{S}^*_b(t_k)\}_{b=1}^B$ into ascending order $\hat{S}^*_{(1)}(t_k) \le \dots \le \hat{S}^*_{(B)}(t_k)$ yields the bootstrap standard error $\widehat{\mathrm{SE}}_{\mathrm{boot}}(t_k)$ and two-sided $(1-\alpha)$ percentile interval $[\hat{S}^*_{(\alpha/2)}(t_k),\, \hat{S}^*_{(1-\alpha/2)}(t_k)] \subset [0, 1]$. For second-order accuracy under median-bias and skewness, the bias-corrected and accelerated ($\mathrm{BC}_a$) band \cite{efron1987better} evaluates adjusted quantile levels:
+\begin{equation}
+\tilde{\alpha}_q(t_k) = \Phi\!\left(\hat{z}_0(t_k) + \frac{\hat{z}_0(t_k) + z_q}{1 - \hat{a}(t_k)\bigl(\hat{z}_0(t_k) + z_q\bigr)}\right), \qquad q \in \left\{\tfrac{\alpha}{2},\, 1 - \tfrac{\alpha}{2}\right\},
+\end{equation}
+where $\hat{z}_0(t_k) = \Phi^{-1}\!\bigl(B^{-1}\sum_{b=1}^B \mathbb{I}[\hat{S}^*_b(t_k) < \hat{S}(t_k)]\bigr)$ corrects median bias and leave-one-out jackknife survival curves $\hat{S}_{(-i)}(t_k)$ determine skewness acceleration:
+\begin{equation}
+\hat{a}(t_k) = \frac{\sum_{i=1}^n \bigl(\bar{S}_{(\cdot)}(t_k) - \hat{S}_{(-i)}(t_k)\bigr)^3}{6 \left[\sum_{i=1}^n \bigl(\bar{S}_{(\cdot)}(t_k) - \hat{S}_{(-i)}(t_k)\bigr)^2\right]^{3/2}}, \qquad \bar{S}_{(\cdot)}(t_k) = \frac{1}{n}\sum_{i=1}^n \hat{S}_{(-i)}(t_k).
+\end{equation}
+Enforcing monotonic non-increasing bounds across $t_1 < \dots < t_M$ guarantees right-continuous survival envelopes strictly inside $[0, 1]$.
 
 \section{Multi-State Markov Progression and Hidden Regime Inference}
 Longitudinal clinical disease progression, component reliability, and strategic possession valuation share a unified stochastic state-space foundation implemented in \texttt{pure\_math::statistics::markov} \cite{norris1997markov}.

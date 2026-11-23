@@ -105,6 +105,7 @@ impl_error_from!(@cfg "pure_math":
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,
     OuError => Ou,
+    ProbError => Prob,
     StochasticError => Stochastic,
     TdaError => Tda,
     TensorError => Tensor,

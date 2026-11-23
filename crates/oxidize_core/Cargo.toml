@@ -4,8 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = []
-ast-analysis = ["dep:futures", "dep:proc-macro2", "dep:quote", "dep:syn", "dep:toml"]
+default = ["std"]
+std = [
+    "rand/std",
+    "rand/alloc",
+    "rand_chacha/std",
+    "dep:serde",
+    "dep:getrandom",
+    "dep:wasm-bindgen",
+    "dep:js-sys",
+    "dep:web-sys",
+    "dep:wasm-bindgen-futures",
+]
+ast-analysis = ["std", "dep:futures", "dep:proc-macro2", "dep:quote", "dep:syn", "dep:toml"]
 
 [[bin]]
 name = "traceability_cli"
@@ -14,20 +25,21 @@ required-features = ["ast-analysis"]
 
 [dependencies]
 futures = { workspace = true, optional = true }
+libm = { workspace = true }
 proc-macro2 = { workspace = true, optional = true }
 quote = { workspace = true, optional = true }
-rand = { workspace = true, features = ["std", "alloc"] }
-rand_chacha = { workspace = true, features = ["std"] }
-serde = { workspace = true, features = ["derive"] }
+rand = { version = "0.8.6", default-features = false }
+rand_chacha = { version = "0.3.1", default-features = false }
+serde = { workspace = true, features = ["derive"], optional = true }
 syn = { workspace = true, features = ["full", "visit"], optional = true }
 toml = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { workspace = true }
-wasm-bindgen = { workspace = true }
-js-sys = { workspace = true }
-web-sys = { workspace = true, features = ["Window", "Document", "HtmlElement", "Blob", "Url", "BlobPropertyBag", "Response"] }
-wasm-bindgen-futures = { workspace = true }
+getrandom = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+web-sys = { workspace = true, features = ["Window", "Document", "HtmlElement", "Blob", "Url", "BlobPropertyBag", "Response"], optional = true }
+wasm-bindgen-futures = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = { workspace = true }

@@ -4,6 +4,10 @@ use super::{
     MAX_MODULUS, ParrondoGame, ParrondoParams, ParrondoSchedule, Result, solve_parrondo_ratchet,
 };
 use crate::error::MarkovError;
+use engine_prob::bootstrap::{
+    BootstrapInterval, BootstrapMethod, bca_bootstrap_mean, percentile_bootstrap_mean,
+};
+use engine_prob::workspace::SolverWorkspace;
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
 
@@ -14,6 +18,8 @@ const INV_TWO_POW_53: f64 = 1.0 / 9_007_199_254_740_992.0;
 pub struct ParrondoEnsemble {
     wealth: Vec<i64>,
     mean_trajectory: Vec<f64>,
+    std_error_trajectory: Vec<f64>,
+    wealth_f64_scratch: Vec<f64>,
     occupancy_counts: [u64; MAX_MODULUS],
     steps_recorded: usize,
 }
@@ -30,9 +36,12 @@ impl ParrondoEnsemble {
                 reason: "Ensemble num_walkers must be at least 1".to_string(),
             });
         }
+        let traj_len = max_steps.saturating_add(1);
         Ok(Self {
             wealth: vec![0_i64; num_walkers],
-            mean_trajectory: vec![0.0_f64; max_steps.saturating_add(1)],
+            mean_trajectory: vec![0.0_f64; traj_len],
+            std_error_trajectory: vec![0.0_f64; traj_len],
+            wealth_f64_scratch: vec![0.0_f64; num_walkers],
             occupancy_counts: [0_u64; MAX_MODULUS],
             steps_recorded: 0,
         })
@@ -45,6 +54,7 @@ impl ParrondoEnsemble {
         self.occupancy_counts = [0_u64; MAX_MODULUS];
         if !self.mean_trajectory.is_empty() {
             self.mean_trajectory[0] = 0.0;
+            self.std_error_trajectory[0] = 0.0;
         }
         self.steps_recorded = 0;
     }
@@ -58,23 +68,27 @@ impl ParrondoEnsemble {
         rng: &mut OxidizeRng,
     ) -> f64 {
         let m_i64 = params.modulus() as i64;
-        let mut sum_wealth: i64 = 0;
+        let mut sum_wealth: f64 = 0.0;
+        let mut sum_wealth_sq: f64 = 0.0;
         for w in &mut self.wealth {
             let residue = w.rem_euclid(m_i64) as usize;
             self.occupancy_counts[residue] = self.occupancy_counts[residue].saturating_add(1);
             let p_win = params.win_probability(game, residue);
             let u = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
             *w += if u < p_win { 1 } else { -1 };
-            sum_wealth += *w;
+            let wf = *w as f64;
+            sum_wealth += wf;
+            sum_wealth_sq += wf * wf;
         }
-        self.record_mean_step(sum_wealth)
+        self.record_mean_step(sum_wealth, sum_wealth_sq)
     }
 
     /// Advances all walkers by one 50/50 random-mixture step without heap allocations.
     #[verified_engine::verified]
     pub fn step_mixture(&mut self, params: &ParrondoParams, rng: &mut OxidizeRng) -> f64 {
         let m_i64 = params.modulus() as i64;
-        let mut sum_wealth: i64 = 0;
+        let mut sum_wealth: f64 = 0.0;
+        let mut sum_wealth_sq: f64 = 0.0;
         for w in &mut self.wealth {
             let residue = w.rem_euclid(m_i64) as usize;
             self.occupancy_counts[residue] = self.occupancy_counts[residue].saturating_add(1);
@@ -86,17 +100,28 @@ impl ParrondoEnsemble {
             let p_win = params.win_probability(game, residue);
             let u = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
             *w += if u < p_win { 1 } else { -1 };
-            sum_wealth += *w;
+            let wf = *w as f64;
+            sum_wealth += wf;
+            sum_wealth_sq += wf * wf;
         }
-        self.record_mean_step(sum_wealth)
+        self.record_mean_step(sum_wealth, sum_wealth_sq)
     }
 
     #[verified_engine::verified]
-    fn record_mean_step(&mut self, sum_wealth: i64) -> f64 {
-        let mean_w = (sum_wealth as f64) / (self.wealth.len() as f64);
+    fn record_mean_step(&mut self, sum_wealth: f64, sum_wealth_sq: f64) -> f64 {
+        let n = self.wealth.len();
+        let nf = n as f64;
+        let mean_w = sum_wealth / nf;
+        let std_err = if n > 1 {
+            let sample_var = ((sum_wealth_sq - nf * mean_w * mean_w) / (nf - 1.0)).max(0.0);
+            (sample_var / nf).sqrt()
+        } else {
+            0.0
+        };
         let next_idx = self.steps_recorded.saturating_add(1);
         if next_idx < self.mean_trajectory.len() {
             self.mean_trajectory[next_idx] = mean_w;
+            self.std_error_trajectory[next_idx] = std_err;
             self.steps_recorded = next_idx;
         }
         mean_w
@@ -161,6 +186,58 @@ impl ParrondoEnsemble {
     #[verified_engine::verified]
     pub fn mean_trajectory(&self) -> &[f64] {
         &self.mean_trajectory[..=self.steps_recorded]
+    }
+
+    /// Returns the recorded standard error trajectory slice `0..=steps_recorded`.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn std_error_trajectory(&self) -> &[f64] {
+        &self.std_error_trajectory[..=self.steps_recorded]
+    }
+
+    /// Returns the latest Monte Carlo standard error of walker mean wealth.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn current_std_error(&self) -> f64 {
+        self.std_error_trajectory
+            .get(self.steps_recorded)
+            .copied()
+            .unwrap_or(0.0)
+    }
+
+    /// Computes a zero-allocation percentile or BCa bootstrap interval for current mean wealth
+    /// via [`engine_prob::bootstrap`].
+    #[verified_engine::verified]
+    pub fn bootstrap_mean_wealth(
+        &mut self,
+        method: BootstrapMethod,
+        n_resamples: usize,
+        confidence: f64,
+        rng: &mut OxidizeRng,
+        workspace: &mut SolverWorkspace<'_>,
+    ) -> Result<BootstrapInterval> {
+        for (dst, &w) in self.wealth_f64_scratch.iter_mut().zip(self.wealth.iter()) {
+            *dst = w as f64;
+        }
+        let res = match method {
+            BootstrapMethod::Percentile => percentile_bootstrap_mean(
+                &self.wealth_f64_scratch,
+                n_resamples,
+                confidence,
+                rng,
+                workspace,
+            ),
+            BootstrapMethod::BCa => bca_bootstrap_mean(
+                &self.wealth_f64_scratch,
+                n_resamples,
+                confidence,
+                rng,
+                workspace,
+            ),
+        };
+        res.map_err(|e| MarkovError::InvalidState {
+            reason: e.to_string(),
+        })
     }
 
     /// Returns walker wealth slice for inspection.

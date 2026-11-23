@@ -22,6 +22,8 @@ impl<T: std::error::Error + Diagnostic + 'static> FacadeInnerError for T {
 enum InnerErrorRef<'a> {
     Domain(&'a dyn FacadeInnerError),
     Io(&'a std::io::Error),
+    #[cfg(feature = "pure_math")]
+    Prob(&'a super::ProbError),
 }
 
 impl Error {
@@ -159,6 +161,8 @@ impl Error {
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
             Self::Io(err) => Some(InnerErrorRef::Io(err)),
+            #[cfg(feature = "pure_math")]
+            Self::Prob(err) => Some(InnerErrorRef::Prob(err)),
             #[cfg(any(
                 feature = "pure_math",
                 feature = "ai",
@@ -179,6 +183,8 @@ impl std::fmt::Display for Error {
         match self.classify() {
             Some(InnerErrorRef::Domain(err)) => std::fmt::Display::fmt(err.as_std_error(), f),
             Some(InnerErrorRef::Io(err)) => std::fmt::Display::fmt(err, f),
+            #[cfg(feature = "pure_math")]
+            Some(InnerErrorRef::Prob(err)) => std::fmt::Display::fmt(err, f),
             None => Ok(()),
         }
     }
@@ -190,6 +196,8 @@ impl std::error::Error for Error {
         match self.classify() {
             Some(InnerErrorRef::Domain(err)) => Some(err.as_std_error()),
             Some(InnerErrorRef::Io(err)) => Some(err),
+            #[cfg(feature = "pure_math")]
+            Some(InnerErrorRef::Prob(err)) => Some(err),
             None => None,
         }
     }
@@ -200,6 +208,8 @@ impl Diagnostic for Error {
     fn severity(&self) -> Severity {
         match self.classify() {
             Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().severity(),
+            #[cfg(feature = "pure_math")]
+            Some(InnerErrorRef::Prob(_)) => Severity::Error,
             Some(InnerErrorRef::Io(_)) | None => Severity::Error,
         }
     }
@@ -211,6 +221,13 @@ impl Diagnostic for Error {
             Some(InnerErrorRef::Io(err)) => {
                 let mut m = HashMap::new();
                 m.insert("error_type".to_string(), "IoError".to_string());
+                m.insert("description".to_string(), err.to_string());
+                m
+            }
+            #[cfg(feature = "pure_math")]
+            Some(InnerErrorRef::Prob(err)) => {
+                let mut m = HashMap::new();
+                m.insert("error_type".to_string(), "ProbError".to_string());
                 m.insert("description".to_string(), err.to_string());
                 m
             }

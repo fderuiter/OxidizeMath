@@ -5,12 +5,11 @@ use super::core::{CorrelationMatrix, Probability};
 use super::gaussian::{MAX_STACK_LEGS, evaluate_copula_cdf, sgp_joint_probability_with_scratch};
 use super::transforms::fast_norm_inv;
 use crate::error::CopulaError;
+use engine_prob::variance_reduction::simulate_orthant_antithetic_col_major;
+use engine_prob::workspace::SolverWorkspace;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
-use nalgebra::DMatrix;
 use oxidize_core::rng::OxidizeRng;
-use rand::Rng;
-use rand_distr::StandardNormal;
 
 /// Summary pricing and simulation metrics for a correlated Same Game Parlay (SGP).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -116,55 +115,6 @@ pub fn price_correlated_parlay_with_scratch(
     build_report(marginals, joint.value(), 0.0)
 }
 
-fn run_antithetic_cholesky_pairs(
-    cholesky: &DMatrix<f64>,
-    thresholds: &[f64],
-    eps: &mut [f64],
-    n_pairs: usize,
-    rng: &mut OxidizeRng,
-) -> (u64, u64) {
-    let d = thresholds.len();
-    let mut both_hits = 0_u64;
-    let mut single_hits = 0_u64;
-
-    for _ in 0..n_pairs {
-        let mut pos_ok = true;
-        let mut neg_ok = true;
-        for i in 0..d {
-            eps[i] = rng.sample(StandardNormal);
-            let mut z_i = 0.0;
-            for j in 0..=i {
-                z_i += cholesky[(i, j)] * eps[j];
-            }
-            let bound = thresholds[i];
-            pos_ok &= z_i <= bound;
-            neg_ok &= -z_i <= bound;
-            if !pos_ok && !neg_ok {
-                break;
-            }
-        }
-        if pos_ok && neg_ok {
-            both_hits += 1;
-        } else if pos_ok || neg_ok {
-            single_hits += 1;
-        }
-    }
-    (both_hits, single_hits)
-}
-
-fn summarize_antithetic_counts(both_hits: u64, single_hits: u64, n_pairs: usize) -> (f64, f64) {
-    let m = n_pairs as f64;
-    let sum_y = (both_hits as f64) + 0.5 * (single_hits as f64);
-    let mean = sum_y / m;
-    if n_pairs <= 1 {
-        return (mean, 0.0);
-    }
-    let sum_y_sq = (both_hits as f64) + 0.25 * (single_hits as f64);
-    let sample_var = ((sum_y_sq - m * mean * mean) / (m - 1.0)).max(0.0);
-    let std_err = (sample_var / m).sqrt();
-    (mean, std_err)
-}
-
 /// Runs zero-allocation antithetic Cholesky Monte Carlo simulation for a correlated parlay
 /// into caller-supplied `scratch` (`scratch.len() >= parlay_simulation_scratch_len(d)`, or
 /// `>= d` when `d <= 16`).
@@ -222,34 +172,31 @@ pub fn simulate_correlated_parlay_into(
     }
 
     let n_pairs = n_trials.div_ceil(2);
-    let (both_hits, single_hits) = if scratch.len() >= 2 * d {
+    let chol_slice = correlation_matrix.cholesky_factor().as_slice();
+    let summary = if scratch.len() >= 2 * d {
         let (thresholds, rest) = scratch.split_at_mut(d);
         for (slot, p) in thresholds.iter_mut().zip(marginals.iter()) {
             *slot = fast_norm_inv(p.value());
         }
-        run_antithetic_cholesky_pairs(
-            correlation_matrix.cholesky_factor(),
-            thresholds,
-            &mut rest[..d],
-            n_pairs,
-            rng,
-        )
+        let mut ws = SolverWorkspace::from_floats(&mut rest[..d]);
+        simulate_orthant_antithetic_col_major(chol_slice, thresholds, n_pairs, rng, &mut ws)
     } else {
         let mut stack_thresholds = [0.0_f64; MAX_STACK_LEGS];
         for (slot, p) in stack_thresholds[..d].iter_mut().zip(marginals.iter()) {
             *slot = fast_norm_inv(p.value());
         }
-        run_antithetic_cholesky_pairs(
-            correlation_matrix.cholesky_factor(),
+        let mut ws = SolverWorkspace::from_floats(&mut scratch[..d]);
+        simulate_orthant_antithetic_col_major(
+            chol_slice,
             &stack_thresholds[..d],
-            &mut scratch[..d],
             n_pairs,
             rng,
+            &mut ws,
         )
-    };
+    }
+    .map_err(|e| CopulaError::Math(MathError::from(e.to_string())))?;
 
-    let (mean, std_err) = summarize_antithetic_counts(both_hits, single_hits, n_pairs);
-    build_report(marginals, mean, std_err)
+    build_report(marginals, summary.joint_prob, summary.joint_std_error)
 }
 
 /// Simulates a correlated Same Game Parlay using antithetic Cholesky Monte Carlo and [`OxidizeRng`].
@@ -285,6 +232,7 @@ pub fn simulate_correlated_parlay(
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
+    use nalgebra::DMatrix;
 
     #[test]
     #[verified_engine::verified]

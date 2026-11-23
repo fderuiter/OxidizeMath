@@ -2011,6 +2011,21 @@
     },
     {
       "signature": "pub struct TimePoint"
+    },
+    {
+      "signature": "pub use survival_bootstrap :: BootstrapSurvivalPoint"
+    },
+    {
+      "signature": "pub use survival_bootstrap :: kaplan_meier_bootstrap"
+    },
+    {
+      "signature": "pub use survival_bootstrap :: kaplan_meier_bootstrap_into"
+    },
+    {
+      "signature": "pub use survival_bootstrap :: workspace_floats_for_km_bootstrap"
+    },
+    {
+      "signature": "pub use survival_bootstrap :: workspace_indices_for_km_bootstrap"
     }
   ],
   "crates/domain_applied/src/applied/clinical_trials/types.rs": [
@@ -2637,6 +2652,9 @@
   ],
   "crates/domain_applied/src/applied/game_theory/mechanism_design.rs": [
     {
+      "signature": "pub enum AuctionVarianceReduction"
+    },
+    {
       "signature": "pub fn optimal_reserve_price < D : ValuationDistribution > (_ : & D , _ : f64 , _ : f64 ,) -> f64"
     },
     {
@@ -2647,6 +2665,18 @@
     },
     {
       "signature": "pub fn simulate_optimal_revenue_with_rng < D : ValuationDistribution , R : Rng + ? Sized > (_ : & D , _ : usize , _ : usize , _ : & mut R ,) -> f64"
+    },
+    {
+      "signature": "pub fn try_simulate_optimal_revenue < D : ValuationDistribution > (_ : & D , _ : usize , _ : usize ,) -> Result < RevenueSimulationReport , GameTheoryError >"
+    },
+    {
+      "signature": "pub fn try_simulate_optimal_revenue_variance_reduced < D : ValuationDistribution > (_ : & D , _ : usize , _ : usize , _ : AuctionVarianceReduction , _ : & mut OxidizeRng ,) -> Result < RevenueSimulationReport , GameTheoryError >"
+    },
+    {
+      "signature": "pub fn try_simulate_optimal_revenue_with_rng < D : ValuationDistribution , R : Rng + ? Sized > (_ : & D , _ : usize , _ : usize , _ : & mut R ,) -> Result < RevenueSimulationReport , GameTheoryError >"
+    },
+    {
+      "signature": "pub struct RevenueSimulationReport"
     },
     {
       "signature": "pub trait ValuationDistribution : Continuous < f64 , f64 > + ContinuousCDF < f64 , f64 > + Distribution < f64 > + RandDistribution < f64 >"
@@ -3838,6 +3868,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: primitives }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: prob }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
@@ -9470,10 +9503,55 @@
       "signature": "impl OxidizeRng { pub fn new (_ : u64) -> Self }"
     },
     {
+      "signature": "impl OxidizeRng { pub fn next_f64 (& mut self) -> f64 }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn next_f64_open01 (& mut self) -> f64 }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn next_index (& mut self , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn raw_u32 (& mut self) -> u32 }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn raw_u64 (& mut self) -> u64 }"
+    },
+    {
       "signature": "pub const BASE_SEED : u64"
     },
     {
       "signature": "pub struct OxidizeRng"
+    },
+    {
+      "signature": "pub use qmc :: HaltonSequence"
+    },
+    {
+      "signature": "pub use qmc :: MAX_QMC_DIM"
+    },
+    {
+      "signature": "pub use qmc :: PRIMES_64"
+    },
+    {
+      "signature": "pub use qmc :: RichtmyerSequence"
+    },
+    {
+      "signature": "pub use qmc :: baker_tent"
+    },
+    {
+      "signature": "pub use qmc :: prime_at"
+    },
+    {
+      "signature": "pub use qmc :: radical_inverse"
+    },
+    {
+      "signature": "pub use qmc :: richtmyer_generator"
+    },
+    {
+      "signature": "pub use sobol :: MAX_SOBOL_DIM"
+    },
+    {
+      "signature": "pub use sobol :: SobolSequence"
     }
   ],
   "crates/oxidize_core/src/traceability.rs": [
@@ -9727,6 +9805,9 @@
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
+      "signature": "pub use engine_prob :: ProbError"
+    },
+    {
       "signature": "pub use sports :: EloError"
     },
     {
@@ -9803,6 +9884,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OuError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ProbError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PureMathError as Error } }"
@@ -9917,6 +10001,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use engine_prob as prob }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use math_commons :: ast }"
@@ -10612,6 +10699,71 @@
       "signature": "pub trait RiemannSurface { fn num_sheets (& self) -> Option < usize > }"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/cubature.rs": [
+    {
+      "signature": "impl HaltonCubature { pub const fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl RichtmyerCubature { pub const fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl RichtmyerCubature { pub const fn with_shifts (self , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl SobolCubature { pub const fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct HaltonCubature"
+    },
+    {
+      "signature": "pub struct RichtmyerCubature"
+    },
+    {
+      "signature": "pub struct SobolCubature"
+    },
+    {
+      "signature": "pub trait CubatureIntegrator : Send + Sync"
+    },
+    {
+      "signature": "pub trait CubatureIntegrator { fn config (& self) -> CubatureConfig }"
+    },
+    {
+      "signature": "pub trait CubatureIntegrator { fn integrate_box < F : FnMut (& [f64]) -> f64 > (& self , _ : & [f64] , _ : & [f64] , _ : F ,) -> Result < CubatureEstimate , ProbError > }"
+    },
+    {
+      "signature": "pub trait CubatureIntegrator { fn integrate_cube < F : FnMut (& [f64]) -> f64 > (& self , _ : usize , _ : F ,) -> Result < CubatureEstimate , ProbError > }"
+    },
+    {
+      "signature": "pub trait CubatureIntegrator { fn integrate_hyperrect_into < F : FnMut (& [f64]) -> f64 > (& self , _ : & [f64] , _ : & [f64] , _ : & mut SolverWorkspace < '_ > , _ : F ,) -> Result < CubatureEstimate , ProbError > }"
+    },
+    {
+      "signature": "pub trait CubatureIntegrator { fn integrate_unit_cube_into < F : FnMut (& [f64]) -> f64 > (& self , _ : usize , _ : & mut SolverWorkspace < '_ > , _ : F ,) -> Result < CubatureEstimate , ProbError > }"
+    },
+    {
+      "signature": "pub use engine_prob :: cubature :: CubatureConfig"
+    },
+    {
+      "signature": "pub use engine_prob :: cubature :: CubatureEstimate"
+    },
+    {
+      "signature": "pub use engine_prob :: cubature :: CubatureRule"
+    },
+    {
+      "signature": "pub use engine_prob :: cubature :: integrate_hyperrect"
+    },
+    {
+      "signature": "pub use engine_prob :: cubature :: integrate_unit_cube"
+    },
+    {
+      "signature": "pub use engine_prob :: cubature :: workspace_floats_for_cubature"
+    },
+    {
+      "signature": "pub use engine_prob :: error :: ProbError"
+    },
+    {
+      "signature": "pub use engine_prob :: workspace :: SolverWorkspace"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/evolution.rs": [
     {
       "signature": "pub enum EvolutionError"
@@ -10659,6 +10811,36 @@
     },
     {
       "signature": "pub trait Integrator { fn integrate < F > (& self , _ : F , _ : f64 , _ : f64 , _ : f64) -> IntegrationResult where F : Fn (f64) -> f64 }"
+    },
+    {
+      "signature": "pub use super :: cubature :: CubatureConfig"
+    },
+    {
+      "signature": "pub use super :: cubature :: CubatureEstimate"
+    },
+    {
+      "signature": "pub use super :: cubature :: CubatureIntegrator"
+    },
+    {
+      "signature": "pub use super :: cubature :: CubatureRule"
+    },
+    {
+      "signature": "pub use super :: cubature :: HaltonCubature"
+    },
+    {
+      "signature": "pub use super :: cubature :: RichtmyerCubature"
+    },
+    {
+      "signature": "pub use super :: cubature :: SobolCubature"
+    },
+    {
+      "signature": "pub use super :: cubature :: SolverWorkspace"
+    },
+    {
+      "signature": "pub use super :: cubature :: integrate_hyperrect"
+    },
+    {
+      "signature": "pub use super :: cubature :: integrate_unit_cube"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/mod.rs": [
@@ -12557,6 +12739,9 @@
       "signature": "impl GaussianCopula { pub fn cdf_with_scratch (& self , _ : & [Probability] , _ : & mut [f64] ,) -> Result < Probability , CopulaError > }"
     },
     {
+      "signature": "impl GaussianCopula { pub fn cdf_with_shift_bounds (& self , _ : & [Probability] , _ : usize , _ : u64 ,) -> Result < CubatureEstimate , CopulaError > }"
+    },
+    {
       "signature": "impl GaussianCopula { pub fn correlation (& self) -> & CorrelationMatrix }"
     },
     {
@@ -12593,6 +12778,9 @@
     },
     {
       "signature": "pub use core :: Probability"
+    },
+    {
+      "signature": "pub use engine_prob :: CubatureEstimate"
     },
     {
       "signature": "pub use gaussian :: GaussianCopula"
@@ -13831,6 +14019,12 @@
   ],
   "crates/pure_math/src/pure_math/statistics/markov/parrondo/ensemble.rs": [
     {
+      "signature": "impl ParrondoEnsemble { pub fn bootstrap_mean_wealth (& mut self , _ : BootstrapMethod , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : & mut SolverWorkspace < '_ > ,) -> Result < BootstrapInterval > }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn current_std_error (& self) -> f64 }"
+    },
+    {
       "signature": "impl ParrondoEnsemble { pub fn mean_trajectory (& self) -> & [f64] }"
     },
     {
@@ -13847,6 +14041,9 @@
     },
     {
       "signature": "impl ParrondoEnsemble { pub fn simulate_schedule (& mut self , _ : & ParrondoParams , _ : & ParrondoSchedule , _ : usize , _ : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn std_error_trajectory (& self) -> & [f64] }"
     },
     {
       "signature": "impl ParrondoEnsemble { pub fn step_game (& mut self , _ : & ParrondoParams , _ : ParrondoGame , _ : & mut OxidizeRng ,) -> f64 }"
@@ -14291,7 +14488,16 @@
       "signature": "impl OuAnalyzer { pub fn params (& self) -> OuParams }"
     },
     {
+      "signature": "impl OuAnalyzer { pub fn try_monte_carlo_forecast < R : Rng > (& self , _ : f64 , _ : f64 , _ : usize , _ : Option < f64 > , _ : & mut R ,) -> Result < PerformanceStats , OuError > }"
+    },
+    {
+      "signature": "impl OuAnalyzer { pub fn try_monte_carlo_forecast_variance_reduced (& self , _ : f64 , _ : f64 , _ : usize , _ : Option < f64 > , _ : OuVarianceReduction , _ : & mut OxidizeRng ,) -> Result < PerformanceStats , OuError > }"
+    },
+    {
       "signature": "pub enum MomentumType"
+    },
+    {
+      "signature": "pub enum OuVarianceReduction"
     },
     {
       "signature": "pub fn estimate_ou_params (_ : & [f64] , _ : f64) -> Result < OuParams , OuError >"
@@ -14331,6 +14537,9 @@
       "signature": "pub use analysis :: OuAnalyzer"
     },
     {
+      "signature": "pub use analysis :: OuVarianceReduction"
+    },
+    {
       "signature": "pub use analysis :: PerformanceStats"
     },
     {
@@ -14351,6 +14560,9 @@
   ],
   "crates/pure_math/src/pure_math/statistics/ou_process/solver.rs": [
     {
+      "signature": "impl EulerMaruyama { pub fn discrete_terminal_mean (& self , _ : f64 , _ : usize) -> f64 }"
+    },
+    {
       "signature": "impl EulerMaruyama { pub fn new (_ : OuParams , _ : TimeStep) -> Self }"
     },
     {
@@ -14360,7 +14572,16 @@
       "signature": "impl EulerMaruyama { pub fn simulate < R : Rng > (& self , _ : f64 , _ : usize , _ : & mut R) -> Vec < f64 > }"
     },
     {
+      "signature": "impl EulerMaruyama { pub fn simulate_antithetic_terminal_pair (& self , _ : f64 , _ : usize , _ : & mut OxidizeRng ,) -> (f64 , f64) }"
+    },
+    {
       "signature": "impl EulerMaruyama { pub fn simulate_paths < R : Rng > (& self , _ : f64 , _ : usize , _ : usize , _ : & mut R ,) -> Vec < Vec < f64 > > }"
+    },
+    {
+      "signature": "impl EulerMaruyama { pub fn simulate_terminal < R : Rng > (& self , _ : f64 , _ : usize , _ : & mut R) -> f64 }"
+    },
+    {
+      "signature": "impl EulerMaruyama { pub fn simulate_terminals_into < R : Rng > (& self , _ : f64 , _ : usize , _ : & mut [f64] , _ : & mut R ,) }"
     },
     {
       "signature": "impl EulerMaruyama { pub fn step < R : Rng > (& self , _ : f64 , _ : & mut R) -> f64 }"
@@ -14437,6 +14658,12 @@
   ],
   "crates/pure_math/src/pure_math/statistics/ruin/ensemble.rs": [
     {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn bootstrap_median_wealth (& self , _ : BootstrapMethod , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : & mut SolverWorkspace < '_ > ,) -> Result < BootstrapInterval , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn current_solvency_report (& mut self , _ : usize ,) -> Result < EnsembleSolvencyReport , KellyError > }"
+    },
+    {
       "signature": "impl BankrollEnsembleWorkspace { pub fn drawdown_quantile (& mut self , _ : f64) -> Result < f64 , KellyError > }"
     },
     {
@@ -14458,19 +14685,13 @@
       "signature": "impl BankrollEnsembleWorkspace { pub fn simulate_proportional_portfolio (& mut self , _ : f64 , _ : f64 , _ : & [ProportionalPortfolioBet] , _ : usize , _ : & mut OxidizeRng ,) -> Result < EnsembleSolvencyReport , KellyError > }"
     },
     {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn step_proportional_once (& mut self , _ : & ProportionalPortfolioBet , _ : f64 , _ : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
       "signature": "impl BankrollEnsembleWorkspace { pub fn terminal_wealths (& self) -> & [f64] }"
     },
     {
       "signature": "impl BankrollEnsembleWorkspace { pub fn with_capacity (_ : usize , _ : usize) -> Result < Self , KellyError > }"
-    },
-    {
-      "signature": "impl WilsonInterval { pub fn width (& self) -> f64 }"
-    },
-    {
-      "signature": "pub fn wilson_interval_95 (_ : usize , _ : usize) -> Result < WilsonInterval , KellyError >"
-    },
-    {
-      "signature": "pub fn wilson_score_interval (_ : usize , _ : usize , _ : f64 ,) -> Result < WilsonInterval , KellyError >"
     },
     {
       "signature": "pub struct BankrollEnsembleWorkspace"
@@ -14482,7 +14703,13 @@
       "signature": "pub struct EnsembleSolvencyReport"
     },
     {
-      "signature": "pub struct WilsonInterval"
+      "signature": "pub use wilson :: WilsonInterval"
+    },
+    {
+      "signature": "pub use wilson :: wilson_interval_95"
+    },
+    {
+      "signature": "pub use wilson :: wilson_score_interval"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/ruin/mod.rs": [
@@ -14518,6 +14745,12 @@
     },
     {
       "signature": "pub use barrier :: portfolio_kelly_barrier_risk"
+    },
+    {
+      "signature": "pub use engine_prob :: BootstrapInterval"
+    },
+    {
+      "signature": "pub use engine_prob :: BootstrapMethod"
     },
     {
       "signature": "pub use ensemble :: BankrollEnsembleWorkspace"
@@ -15712,6 +15945,9 @@
       "signature": "pub use domain_physics :: error :: StatMechError"
     },
     {
+      "signature": "pub use engine_prob :: ProbError"
+    },
+    {
       "signature": "pub use math_commons :: error :: EvalError"
     },
     {
@@ -15823,6 +16059,9 @@
     },
     {
       "signature": "pub use domain_physics :: physics"
+    },
+    {
+      "signature": "pub use engine_prob :: self as prob"
     },
     {
       "signature": "pub use math_commons :: ast"

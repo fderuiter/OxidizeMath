@@ -56,6 +56,7 @@ pub use analytical::{
 pub use barrier::{
     KellyBarrierRisk, ProportionalPortfolioBet, kelly_barrier_risk, portfolio_kelly_barrier_risk,
 };
+pub use engine_prob::{BootstrapInterval, BootstrapMethod};
 pub use ensemble::{
     BankrollEnsembleWorkspace, DrawdownQuantiles, EnsembleSolvencyReport, WilsonInterval,
     wilson_interval_95, wilson_score_interval,

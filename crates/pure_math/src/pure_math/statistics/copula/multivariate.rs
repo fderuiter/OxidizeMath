@@ -1,12 +1,15 @@
 //! Multivariate Gaussian copula evaluation via exact boundary reduction and Genz (1992)
-//! separation-of-variables over a deterministic Richtmyer quasi-Monte Carlo sequence.
+//! separation-of-variables delegated to [`engine_prob::cubature::genz_semidefinite_richtmyer_qmc`].
 
 use super::bivariate::bivariate_copula_cdf;
 use super::core::{Correlation, CorrelationMatrix, Probability};
 use super::transforms::{fast_norm_cdf, fast_norm_inv};
 use crate::error::CopulaError;
+use engine_prob::cubature::{CubatureEstimate, genz_semidefinite_richtmyer_qmc};
+use engine_prob::workspace::SolverWorkspace;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::{Dimension, flatten_2d_index};
+use oxidize_core::rng::BASE_SEED;
 use std::f64::consts::TAU;
 
 /// Number of antithetic Richtmyer quasi-Monte Carlo pairs (`8,192` total integrand evaluations).
@@ -14,44 +17,6 @@ const RICHTMYER_PAIRS: usize = 4096;
 
 /// Pivot threshold for semidefinite Cholesky factorization during Genz variable reordering.
 const GENZ_PIVOT_EPS: f64 = 1e-12;
-
-/// First 32 prime numbers used to construct Richtmyer irrational generators `sqrt(p_j) mod 1`.
-const FIRST_PRIMES: [u32; 32] = [
-    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
-    101, 103, 107, 109, 113, 127, 131,
-];
-
-fn is_prime(candidate: u32) -> bool {
-    if candidate < 2 {
-        return false;
-    }
-    let mut div = 2_u32;
-    while div * div <= candidate {
-        if candidate.is_multiple_of(div) {
-            return false;
-        }
-        div += 1;
-    }
-    true
-}
-
-fn prime_at(index: usize) -> u32 {
-    if index < FIRST_PRIMES.len() {
-        return FIRST_PRIMES[index];
-    }
-    let mut count = FIRST_PRIMES.len();
-    let mut candidate = FIRST_PRIMES[FIRST_PRIMES.len() - 1] + 2;
-    while count <= index {
-        if is_prime(candidate) {
-            if count == index {
-                return candidate;
-            }
-            count += 1;
-        }
-        candidate += 2;
-    }
-    candidate
-}
 
 /// Scratch length in `f64` elements required by [`evaluate_copula_cdf_with_scratch`] for `d` legs.
 #[verified_engine::verified]
@@ -80,9 +45,9 @@ fn select_genz_pivot(chol: &[f64], bounds: &[f64], y_mean: &[f64], k: usize, ste
     for cand in step..k {
         let mut mean_shift = 0.0;
         let mut used_var = 0.0;
-        for col in 0..step {
+        for (col, &ym) in y_mean.iter().enumerate().take(step) {
             let l_val = chol[flatten_2d_index(col, cand, k)];
-            mean_shift += l_val * y_mean[col];
+            mean_shift += l_val * ym;
             used_var += l_val * l_val;
         }
         let rem_var = chol[flatten_2d_index(cand, cand, k)] - used_var;
@@ -115,10 +80,10 @@ fn factorize_genz_pivoted(
 
         let mut diag_used = 0.0;
         let mut mean_shift = 0.0;
-        for j in 0..i {
+        for (j, &ym) in y_mean.iter().enumerate().take(i) {
             let l_ij = chol[flatten_2d_index(j, i, k)];
             diag_used += l_ij * l_ij;
-            mean_shift += l_ij * y_mean[j];
+            mean_shift += l_ij * ym;
         }
         let rem = chol[flatten_2d_index(i, i, k)] - diag_used;
         if rem > GENZ_PIVOT_EPS {
@@ -148,99 +113,11 @@ fn factorize_genz_pivoted(
     true
 }
 
-struct QmcProblem<'a> {
-    chol: &'a [f64],
-    bounds: &'a [f64],
-    alphas: &'a [f64],
-    k: usize,
-    e0: f64,
-}
-
-fn evaluate_single_qmc_point(
-    prob: &QmcProblem<'_>,
-    y_buf: &mut [f64],
-    step_offset: f64,
-    antithetic: bool,
-) -> f64 {
-    let k = prob.k;
-    let mut prod = prob.e0;
-    let mut prev_e = prob.e0;
-    for i in 1..k {
-        let prev_diag = prob.chol[flatten_2d_index(i - 1, i - 1, k)];
-        if prev_diag > 0.0 {
-            let raw = (step_offset * prob.alphas[i - 1]).fract();
-            let tent = 1.0 - (2.0 * raw - 1.0).abs();
-            let u_draw = if antithetic { 1.0 - tent } else { tent };
-            let scaled = (u_draw.clamp(1e-15, 1.0 - 1e-15) * prev_e).clamp(1e-16, 1.0 - 1e-16);
-            y_buf[i - 1] = fast_norm_inv(scaled);
-        } else {
-            y_buf[i - 1] = 0.0;
-        }
-
-        let mut shift = 0.0;
-        for (j, &y_val) in y_buf.iter().enumerate().take(i) {
-            shift += prob.chol[flatten_2d_index(j, i, k)] * y_val;
-        }
-        let diag = prob.chol[flatten_2d_index(i, i, k)];
-        let ei = if diag > 0.0 {
-            fast_norm_cdf((prob.bounds[i] - shift) / diag)
-        } else if shift <= prob.bounds[i] {
-            1.0
-        } else {
-            0.0
-        };
-        prev_e = ei;
-        prod *= ei;
-        if prod == 0.0 {
-            break;
-        }
-    }
-    prod
-}
-
-fn run_richtmyer_genz_qmc(
-    chol: &[f64],
-    bounds: &[f64],
-    alphas: &mut [f64],
-    y_buf: &mut [f64],
-    k: usize,
-) -> f64 {
-    for (j, alpha_slot) in alphas.iter_mut().take(k - 1).enumerate() {
-        *alpha_slot = f64::from(prime_at(j)).sqrt().fract();
-    }
-    let l00 = chol[flatten_2d_index(0, 0, k)];
-    let e0 = if l00 > 0.0 {
-        fast_norm_cdf(bounds[0] / l00)
-    } else if bounds[0] >= 0.0 {
-        1.0
-    } else {
-        0.0
-    };
-    if e0 == 0.0 {
-        return 0.0;
-    }
-
-    let prob = QmcProblem {
-        chol,
-        bounds,
-        alphas,
-        k,
-        e0,
-    };
-    let mut total = 0.0;
-    for n in 1..=RICHTMYER_PAIRS {
-        let offset = n as f64 - 0.5;
-        total += evaluate_single_qmc_point(&prob, y_buf, offset, false);
-        total += evaluate_single_qmc_point(&prob, y_buf, offset, true);
-    }
-    total / ((2 * RICHTMYER_PAIRS) as f64)
-}
-
 fn populate_active_subproblem(
     u: &[Probability],
     corr: &CorrelationMatrix,
     bounds: &mut [f64],
-    y_buf: &mut [f64],
+    idx_scratch: &mut [f64],
     chol: &mut [f64],
 ) -> (usize, f64, f64) {
     let mut k = 0;
@@ -250,7 +127,7 @@ fn populate_active_subproblem(
         let val = prob.value();
         if val < 1.0 {
             bounds[k] = fast_norm_inv(val);
-            y_buf[k] = idx as f64;
+            idx_scratch[k] = idx as f64;
             sum_u += val;
             min_u = min_u.min(val);
             k += 1;
@@ -258,9 +135,9 @@ fn populate_active_subproblem(
     }
     let mat = corr.matrix();
     for r in 0..k {
-        let orig_r = y_buf[r] as usize;
+        let orig_r = idx_scratch[r] as usize;
         for c in 0..k {
-            let orig_c = y_buf[c] as usize;
+            let orig_c = idx_scratch[c] as usize;
             chol[flatten_2d_index(c, r, k)] = mat[(orig_r, orig_c)];
         }
     }
@@ -268,13 +145,66 @@ fn populate_active_subproblem(
     (k, frechet_lo, min_u)
 }
 
-/// Evaluates `C(u_1, ..., u_d; Sigma)` with zero heap allocations using `scratch`.
-#[verified_engine::verified]
-pub(crate) fn evaluate_copula_cdf_with_scratch(
+#[inline]
+const fn exact_cubature_estimate(val: f64, n_shifts: usize) -> CubatureEstimate {
+    CubatureEstimate {
+        value: val,
+        std_error: 0.0,
+        lower_95: val,
+        upper_95: val,
+        n_points: 1,
+        n_shifts: if n_shifts == 0 { 1 } else { n_shifts },
+        n_evaluations: 1,
+    }
+}
+
+fn check_boundary_reduction(
     u: &[Probability],
     corr: &CorrelationMatrix,
+    n_shifts: usize,
+) -> Result<Option<(Probability, CubatureEstimate)>, CopulaError> {
+    if u.iter().any(|p| p.value() == 0.0) {
+        let p = Probability::new(0.0)?;
+        return Ok(Some((p, exact_cubature_estimate(0.0, n_shifts))));
+    }
+    let mut active_first = [0_usize; 2];
+    let mut active_count = 0_usize;
+    for (idx, p) in u.iter().enumerate() {
+        if p.value() < 1.0 {
+            if active_count < 2 {
+                active_first[active_count] = idx;
+            }
+            active_count += 1;
+        }
+    }
+    match active_count {
+        0 => {
+            let p = Probability::new(1.0)?;
+            Ok(Some((p, exact_cubature_estimate(1.0, n_shifts))))
+        }
+        1 => {
+            let p = u[active_first[0]];
+            Ok(Some((p, exact_cubature_estimate(p.value(), n_shifts))))
+        }
+        2 => {
+            let (i0, i1) = (active_first[0], active_first[1]);
+            let rho = Correlation::new(corr.matrix()[(i0, i1)].clamp(-1.0, 1.0))?;
+            let p = bivariate_copula_cdf(u[i0], u[i1], rho)?;
+            Ok(Some((p, exact_cubature_estimate(p.value(), n_shifts))))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Evaluates `C(u_1, ..., u_d; Sigma)` and optional Cranley-Patterson shift bounds via [`engine_prob`].
+#[verified_engine::verified]
+pub(crate) fn evaluate_copula_cdf_estimate_with_scratch(
+    u: &[Probability],
+    corr: &CorrelationMatrix,
+    n_shifts: usize,
+    seed: u64,
     scratch: &mut [f64],
-) -> Result<Probability, CopulaError> {
+) -> Result<(Probability, CubatureEstimate), CopulaError> {
     let d = corr.dimension();
     if u.len() != d {
         return Err(CopulaError::Math(MathError::DimensionMismatch {
@@ -289,41 +219,48 @@ pub(crate) fn evaluate_copula_cdf_with_scratch(
             actual: Dimension(scratch.len()),
         }));
     }
-    if u.iter().any(|p| p.value() == 0.0) {
-        return Probability::new(0.0);
-    }
-
-    let mut active_first = [0_usize; 2];
-    let mut active_count = 0_usize;
-    for (idx, p) in u.iter().enumerate() {
-        if p.value() < 1.0 {
-            if active_count < 2 {
-                active_first[active_count] = idx;
-            }
-            active_count += 1;
-        }
-    }
-    if active_count == 0 {
-        return Probability::new(1.0);
-    }
-    if active_count == 1 {
-        return Ok(u[active_first[0]]);
-    }
-    if active_count == 2 {
-        let i0 = active_first[0];
-        let i1 = active_first[1];
-        let rho = Correlation::new(corr.matrix()[(i0, i1)].clamp(-1.0, 1.0))?;
-        return bivariate_copula_cdf(u[i0], u[i1], rho);
+    if let Some(reduced) = check_boundary_reduction(u, corr, n_shifts)? {
+        return Ok(reduced);
     }
 
     let (bounds, rest1) = scratch.split_at_mut(d);
-    let (y_mean, rest2) = rest1.split_at_mut(d);
-    let (y_buf, rest3) = rest2.split_at_mut(d);
-    let (alphas, chol) = rest3.split_at_mut(d);
-    let (k, frechet_lo, frechet_hi) = populate_active_subproblem(u, corr, bounds, y_buf, chol);
-    if !factorize_genz_pivoted(chol, bounds, y_mean, k) {
-        return Probability::new(frechet_lo);
+    let (work_3d, chol) = rest1.split_at_mut(3 * d);
+    let (k, frechet_lo, frechet_hi) =
+        populate_active_subproblem(u, corr, bounds, &mut work_3d[..d], chol);
+    if !factorize_genz_pivoted(chol, bounds, &mut work_3d[..d], k) {
+        let p = Probability::new(frechet_lo)?;
+        return Ok((p, exact_cubature_estimate(frechet_lo, n_shifts)));
     }
-    let est = run_richtmyer_genz_qmc(chol, bounds, alphas, y_buf, k);
-    Probability::new(est.clamp(frechet_lo, frechet_hi))
+
+    let mut ws = SolverWorkspace::from_floats(work_3d);
+    let raw_est = genz_semidefinite_richtmyer_qmc(
+        &chol[..k * k],
+        &bounds[..k],
+        k,
+        RICHTMYER_PAIRS,
+        n_shifts,
+        seed,
+        &mut ws,
+    )
+    .map_err(|e| CopulaError::Math(MathError::from(e.to_string())))?;
+
+    let clamped = raw_est.value.clamp(frechet_lo, frechet_hi);
+    let prob = Probability::new(clamped)?;
+    let est = CubatureEstimate {
+        value: clamped,
+        lower_95: raw_est.lower_95.clamp(frechet_lo, frechet_hi),
+        upper_95: raw_est.upper_95.clamp(frechet_lo, frechet_hi),
+        ..raw_est
+    };
+    Ok((prob, est))
+}
+
+/// Evaluates `C(u_1, ..., u_d; Sigma)` with zero heap allocations using `scratch`.
+#[verified_engine::verified]
+pub(crate) fn evaluate_copula_cdf_with_scratch(
+    u: &[Probability],
+    corr: &CorrelationMatrix,
+    scratch: &mut [f64],
+) -> Result<Probability, CopulaError> {
+    evaluate_copula_cdf_estimate_with_scratch(u, corr, 0, BASE_SEED, scratch).map(|(p, _)| p)
 }

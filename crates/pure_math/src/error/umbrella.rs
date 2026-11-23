@@ -84,6 +84,9 @@ pub enum PureMathError {
     /// Foundational `math_commons` umbrella error.
     #[error("{0}")]
     MathCommons(#[from] MathCommonsError),
+    /// `#![no_std]` probability engine error.
+    #[error("{0}")]
+    Prob(#[from] engine_prob::ProbError),
 }
 
 impl From<EvalError> for PureMathError {
@@ -123,31 +126,32 @@ impl From<String> for PureMathError {
 
 impl PureMathError {
     #[verified_engine::verified]
-    fn as_diagnostic(&self) -> &dyn Diagnostic {
+    fn as_diagnostic(&self) -> Option<&dyn Diagnostic> {
         match self {
-            Self::Copula(err) => err,
-            Self::Elo(err) => err,
-            Self::Glicko2(err) => err,
-            Self::Kelly(err) => err,
-            Self::MarketPricing(err) => err,
-            Self::Markov(err) => err,
-            Self::MatchModel(err) => err,
-            Self::NumberTheory(err) => err,
-            Self::Ou(err) => err,
-            Self::Tda(err) => err,
-            Self::Zip(err) => err,
-            Self::Ambs(err) => err,
-            Self::Analysis(err) => err,
-            Self::EllipticCurve(err) => err,
-            Self::Evolution(err) => err,
-            Self::Fractran(err) => err,
-            Self::LinearAlgebra(err) => err,
-            Self::Optimization(err) => err,
-            Self::Stochastic(err) => err,
-            Self::Tensor(err) => err,
-            Self::Transform(err) => err,
-            Self::Math(err) => err,
-            Self::MathCommons(err) => err,
+            Self::Copula(err) => Some(err),
+            Self::Elo(err) => Some(err),
+            Self::Glicko2(err) => Some(err),
+            Self::Kelly(err) => Some(err),
+            Self::MarketPricing(err) => Some(err),
+            Self::Markov(err) => Some(err),
+            Self::MatchModel(err) => Some(err),
+            Self::NumberTheory(err) => Some(err),
+            Self::Ou(err) => Some(err),
+            Self::Tda(err) => Some(err),
+            Self::Zip(err) => Some(err),
+            Self::Ambs(err) => Some(err),
+            Self::Analysis(err) => Some(err),
+            Self::EllipticCurve(err) => Some(err),
+            Self::Evolution(err) => Some(err),
+            Self::Fractran(err) => Some(err),
+            Self::LinearAlgebra(err) => Some(err),
+            Self::Optimization(err) => Some(err),
+            Self::Stochastic(err) => Some(err),
+            Self::Tensor(err) => Some(err),
+            Self::Transform(err) => Some(err),
+            Self::Math(err) => Some(err),
+            Self::MathCommons(err) => Some(err),
+            Self::Prob(_) => None,
         }
     }
 }
@@ -155,12 +159,20 @@ impl PureMathError {
 impl Diagnostic for PureMathError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        self.as_diagnostic().severity()
+        self.as_diagnostic()
+            .map_or(Severity::Error, Diagnostic::severity)
     }
 
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        let mut map = self.as_diagnostic().metadata();
+        let mut map = if let Some(diag) = self.as_diagnostic() {
+            diag.metadata()
+        } else {
+            let mut m = HashMap::new();
+            m.insert("error_type".to_string(), "ProbError".to_string());
+            m.insert("description".to_string(), self.to_string());
+            m
+        };
         map.insert("umbrella_type".to_string(), "PureMathError".to_string());
         map
     }

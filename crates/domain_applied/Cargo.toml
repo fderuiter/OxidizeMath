@@ -13,6 +13,7 @@ verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
 math_commons = { path = "../math_commons" }
 diagnostics = { path = "../diagnostics" }
+engine_prob = { path = "../02_engines/engine_prob", features = ["std"] }
 pure_math = { path = "../pure_math" }
 
 [dev-dependencies]

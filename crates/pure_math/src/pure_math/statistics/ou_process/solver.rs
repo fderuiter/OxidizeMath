@@ -2,6 +2,8 @@
 
 use super::core::OuParams;
 use crate::error::OuError;
+use engine_prob::math::box_muller_pair;
+use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
 use rand_distr::{Distribution, Normal};
 
@@ -225,6 +227,73 @@ impl EulerMaruyama {
         (0..n_paths)
             .map(|_| self.simulate(x0, n_steps, rng))
             .collect()
+    }
+
+    /// Simulates only the terminal state $X_n$ after `n_steps` without allocating a path vector.
+    #[verified_engine::verified]
+    pub fn simulate_terminal<R: Rng>(&self, x0: f64, n_steps: usize, rng: &mut R) -> f64 {
+        let mut x = x0;
+        for _ in 0..n_steps {
+            x = self.step(x, rng);
+        }
+        x
+    }
+
+    /// Simulates terminal states $X_n$ for `out.len()` paths directly into `out` with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn simulate_terminals_into<R: Rng>(
+        &self,
+        x0: f64,
+        n_steps: usize,
+        out: &mut [f64],
+        rng: &mut R,
+    ) {
+        for slot in out.iter_mut() {
+            *slot = self.simulate_terminal(x0, n_steps, rng);
+        }
+    }
+
+    /// Simulates a coupled antithetic terminal pair $(X_n^+, X_n^-)$ driven by $(+Z_k, -Z_k)$
+    /// with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn simulate_antithetic_terminal_pair(
+        &self,
+        x0: f64,
+        n_steps: usize,
+        rng: &mut OxidizeRng,
+    ) -> (f64, f64) {
+        let mu = self.params.mu.value();
+        let theta_dt = self.params.theta.value() * self.dt.value();
+        let diff_scale = self.diffusion_factor;
+        let (mut x_pos, mut x_neg) = (x0, x0);
+        let mut step_idx = 0;
+        while step_idx < n_steps {
+            let (z0, z1) = box_muller_pair(rng);
+            x_pos += theta_dt * (mu - x_pos) + diff_scale * z0;
+            x_neg += theta_dt * (mu - x_neg) - diff_scale * z0;
+            step_idx += 1;
+            if step_idx < n_steps {
+                x_pos += theta_dt * (mu - x_pos) + diff_scale * z1;
+                x_neg += theta_dt * (mu - x_neg) - diff_scale * z1;
+                step_idx += 1;
+            }
+        }
+        (x_pos, x_neg)
+    }
+
+    /// Exact analytical expectation $\mathbb{E}\[X_n\] = \mu + (x_0 - \mu)(1 - \theta\Delta t)^n$
+    /// of the discrete Euler-Maruyama OU recursion, suitable as an exact linear control variate.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn discrete_terminal_mean(&self, x0: f64, n_steps: usize) -> f64 {
+        let mu = self.params.mu.value();
+        let decay = 1.0 - self.params.theta.value() * self.dt.value();
+        let factor = if let Ok(k) = i32::try_from(n_steps) {
+            decay.powi(k)
+        } else {
+            decay.powf(n_steps as f64)
+        };
+        mu + (x0 - mu) * factor
     }
 
     /// Returns the parameters of the OU process.

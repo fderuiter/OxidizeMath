@@ -3,12 +3,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    BankrollEnsembleLab, VolatilityHypothesis, ENSEMBLE_PATH_COUNT, MAX_BARRIER_FLOOR_RATIO,
-    MAX_CUSTOM_FRACTION, MIN_BARRIER_FLOOR_RATIO,
+    BankrollEnsembleLab, VolatilityHypothesis, ENSEMBLE_BOOT_RESAMPLES, ENSEMBLE_PATH_COUNT,
+    MAX_BARRIER_FLOOR_RATIO, MAX_CUSTOM_FRACTION, MIN_BARRIER_FLOOR_RATIO,
 };
 use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 use egui_plot::{Line, LineStyle, Plot};
+use math_explorer::pure_math::statistics::ruin::BootstrapMethod;
 
 impl BankrollEnsembleLab {
     /// Renders the hypothesis prompt, fraction/barrier sliders, solvency telemetry, and plot.
@@ -103,6 +104,27 @@ impl BankrollEnsembleLab {
                 "Relative wealth floor defining finite-drawdown barrier ruin (0.50 = 50% bankroll loss)",
             )
             .changed();
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Median Bootstrap Band:");
+            changed |= ui
+                .radio_value(
+                    &mut self.bootstrap_method,
+                    BootstrapMethod::Percentile,
+                    "95% Percentile",
+                )
+                .accessible_hover_text("Zero-allocation empirical percentile bootstrap median band")
+                .changed();
+            changed |= ui
+                .radio_value(
+                    &mut self.bootstrap_method,
+                    BootstrapMethod::BCa,
+                    "95% BCa (Jackknife)",
+                )
+                .accessible_hover_text(
+                    "Zero-allocation Efron BCa bootstrap median band with leave-one-out jackknife acceleration",
+                )
+                .changed();
+        });
         changed |= self.render_benchmark_buttons(ui, initial_bankroll, probability, odds, num_bets);
         changed
     }
@@ -194,6 +216,17 @@ impl BankrollEnsembleLab {
                 med_color,
                 format!("W_median({num_bets}): {:.4}", self.last_median_terminal),
             );
+            if let Some(ci) = self.last_terminal_median_ci {
+                ui.separator();
+                let tag = match self.bootstrap_method {
+                    BootstrapMethod::Percentile => "Pct",
+                    BootstrapMethod::BCa => "BCa",
+                };
+                ui.label(format!(
+                    "95% {tag} Median CI: [{:.3}, {:.3}]",
+                    ci.lower, ci.upper
+                ));
+            }
         });
     }
 
@@ -263,6 +296,26 @@ impl BankrollEnsembleLab {
                     &self.empirical_median_points[..],
                 )
                 .color(palette.series_color(5)),
+            );
+            let band_label = match self.bootstrap_method {
+                BootstrapMethod::Percentile => "Percentile",
+                BootstrapMethod::BCa => "BCa",
+            };
+            plot_ui.line(
+                Line::new(
+                    format!("95% {band_label} Upper ({ENSEMBLE_BOOT_RESAMPLES} Resamples)"),
+                    &self.median_ci_upper_points[..],
+                )
+                .color(palette.info)
+                .style(LineStyle::Dotted { spacing: 5.0 }),
+            );
+            plot_ui.line(
+                Line::new(
+                    format!("95% {band_label} Lower ({ENSEMBLE_BOOT_RESAMPLES} Resamples)"),
+                    &self.median_ci_lower_points[..],
+                )
+                .color(palette.info)
+                .style(LineStyle::Dotted { spacing: 5.0 }),
             );
             plot_ui.line(
                 Line::new("Drawdown Barrier Floor B_floor", &self.barrier_points[..])

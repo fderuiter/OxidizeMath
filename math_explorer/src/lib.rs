@@ -31,6 +31,8 @@ pub use domain_physics::physics;
 #[cfg(feature = "pure_math")]
 pub use ::pure_math::{math_types, pure_math};
 #[cfg(feature = "pure_math")]
+pub use engine_prob::{self as prob};
+#[cfg(feature = "pure_math")]
 pub use nalgebra;
 #[cfg(feature = "pure_math")]
 pub use num_complex;
