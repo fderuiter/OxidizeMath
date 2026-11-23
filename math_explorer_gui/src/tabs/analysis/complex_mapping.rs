@@ -218,7 +218,6 @@ impl InteractiveTool for ComplexMappingTool {
     ) -> Vec<egui_plot::export::DatasetFrame> {
         Vec::new()
     }
-
     fn export_glsl_shader(
         &self,
         dialect: crate::framework::ShaderDialect,
@@ -322,7 +321,7 @@ inventory::submit! {
         id: "ComplexMappingTool",
         display_name: "Complex Mapping",
         domain: "analysis",
-        tags: &[],
+        tags: &["conformal", "holomorphic", "cauchy-riemann", "complex plane", "domain coloring"],
         build: || Box::new(ComplexMappingTool::default()),
     }
 }

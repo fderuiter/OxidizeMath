@@ -120,6 +120,11 @@ impl Default for NuclearStabilityTool {
 }
 
 impl NuclearStabilityTool {
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     pub(crate) fn clamp_in_place(&mut self) {
         let s = &mut self.state;
         s.selected_z = s.selected_z.clamp(1, 96);
@@ -329,10 +334,6 @@ impl InteractiveTool for NuclearStabilityTool {
 
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {

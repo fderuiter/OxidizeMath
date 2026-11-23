@@ -19,7 +19,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`standard_model`**: Electroweak gauge couplings and Weinberg mixing (`GaugeCouplings`), Higgs spontaneous symmetry breaking and $W^\pm/Z^0$ masses (`HiggsPotential`, `boson_masses`), CKM quark mixing and Jarlskog invariants (`construct_ckm`, `jarlskog_invariant`), 1-loop QCD asymptotic freedom (`running_coupling`), and three-flavor PMNS + constant-density MSW matter neutrino oscillations (`PmnsParameters`, `msw_oscillation_probabilities`).
 - **`high_energy`**: General-relativistic black-hole and wormhole metrics (`SchwarzschildBlackHole`, `KerrEquatorialMetric`, `MorrisThorneWormhole`), special-relativistic `FourVector` Lorentz boosts and Doppler beaming factors (`relativistic_doppler_factor`, `apparent_transverse_beta`), synchrotron and inverse-Compton radiation (`synchrotron_power`), relativistic shock hydrodynamics, and Li-Ma photon counting significance (`li_ma_significance`).
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
-- **`stat_mech`**: Ising spin lattices and canonical ensemble thermodynamic calculations.
+- **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, and zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`).
 - **`optics`**: Geometric ray tracing, refractive boundary equations, and closed-form Fraunhofer wave diffraction (complemented by full-field 2D time-domain multi-slit and refractive-lens wave tank simulation in `pure_math::analysis::pde::wave_2d`).
 
 ---

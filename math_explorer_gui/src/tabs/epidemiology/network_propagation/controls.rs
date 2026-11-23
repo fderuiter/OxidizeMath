@@ -19,7 +19,15 @@ impl NetworkPropagationTool {
         ui.separator();
 
         let summary = compute_network_analytics(&self.model);
-        render_compartment_and_analytics_panel(ui, &summary, self.used_budget(), self.budget);
+        render_compartment_and_analytics_panel(
+            ui,
+            &summary,
+            (self.used_budget(), self.budget),
+            (
+                self.counterfactual_infections_averted(),
+                self.unmitigated_cumulative_infections(),
+            ),
+        );
     }
 
     fn render_transport_controls(&mut self, ui: &mut egui::Ui) {
@@ -45,15 +53,20 @@ impl NetworkPropagationTool {
                     }
                 }
                 PlaybackAction::Step => self.step_once(),
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => self.reset_network(),
             }
         }
     }
 
     fn render_network_sliders(&mut self, ui: &mut egui::Ui) {
+        let locked = self.is_challenge_locked();
         let mut num_nodes = self.model.num_nodes();
         if ui
-            .add(egui::Slider::new(&mut num_nodes, 10..=200).text("Nodes"))
+            .add_enabled(
+                !locked,
+                egui::Slider::new(&mut num_nodes, 10..=200).text("Nodes"),
+            )
             .changed()
         {
             let _ = self.model.set_num_nodes(num_nodes);
@@ -64,26 +77,37 @@ impl NetworkPropagationTool {
 
         let mut beta = self.model.beta();
         if ui
-            .add(egui::Slider::new(&mut beta, 0.0..=1.0).text("Transmission (beta)"))
+            .add_enabled(
+                !locked,
+                egui::Slider::new(&mut beta, 0.0..=1.0).text("Transmission (beta)"),
+            )
             .changed()
         {
             let _ = self.model.set_beta(beta);
+            let _ = self.baseline_model.set_beta(beta);
             self.bump_revision();
         }
 
         let mut gamma = self.model.gamma();
         if ui
-            .add(egui::Slider::new(&mut gamma, 0.0..=1.0).text("Recovery (gamma)"))
+            .add_enabled(
+                !locked,
+                egui::Slider::new(&mut gamma, 0.0..=1.0).text("Recovery (gamma)"),
+            )
             .changed()
         {
             let _ = self.model.set_gamma(gamma);
+            let _ = self.baseline_model.set_gamma(gamma);
             self.bump_revision();
         }
 
         let slider_max = MAX_SLIDER_BUDGET.max(self.budget);
         let mut budget = self.budget;
         if ui
-            .add(egui::Slider::new(&mut budget, 0..=slider_max).text("Containment Budget"))
+            .add_enabled(
+                !locked,
+                egui::Slider::new(&mut budget, 0..=slider_max).text("Containment Budget"),
+            )
             .changed()
         {
             self.budget = budget;
@@ -93,18 +117,21 @@ impl NetworkPropagationTool {
     }
 
     fn render_containment_controls(&mut self, ui: &mut egui::Ui) {
+        let locked = self.is_challenge_locked();
+        let allow_vax = self.allows_vaccination();
+        let allow_quar = self.allows_quarantine();
         ui.horizontal(|ui| {
             ui.label("Seed:");
             let mut seed = self.seed;
             if ui
-                .add(egui::DragValue::new(&mut seed).speed(1.0))
+                .add_enabled(!locked, egui::DragValue::new(&mut seed).speed(1.0))
                 .accessible_hover_text("Deterministic network topology seed")
                 .changed()
             {
                 self.set_seed_and_reset(seed);
             }
             if ui
-                .button("🎲 Reseed")
+                .add_enabled(!locked, egui::Button::new("🎲 Reseed"))
                 .accessible_hover_text("Generate next deterministic network seed")
                 .clicked()
             {
@@ -115,18 +142,22 @@ impl NetworkPropagationTool {
         });
 
         ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(
-                &mut self.interaction_mode,
-                ContainmentMode::VaccinateNode,
-                "💉 Vaccinate Node",
-            )
-            .accessible_hover_text("Click or press Space/Enter on canvas to vaccinate nodes");
-            ui.selectable_value(
-                &mut self.interaction_mode,
-                ContainmentMode::QuarantineEdge,
-                "✂ Quarantine Edge",
-            )
-            .accessible_hover_text("Click or press Space/Enter on canvas to quarantine edges");
+            ui.add_enabled_ui(allow_vax, |ui| {
+                ui.selectable_value(
+                    &mut self.interaction_mode,
+                    ContainmentMode::VaccinateNode,
+                    "💉 Vaccinate Node",
+                )
+                .accessible_hover_text("Click or press Space/Enter on canvas to vaccinate nodes");
+            });
+            ui.add_enabled_ui(allow_quar, |ui| {
+                ui.selectable_value(
+                    &mut self.interaction_mode,
+                    ContainmentMode::QuarantineEdge,
+                    "✂ Quarantine Edge",
+                )
+                .accessible_hover_text("Click or press Space/Enter on canvas to quarantine edges");
+            });
         });
 
         if ui

@@ -1,5 +1,5 @@
 use super::ApiItem;
-use super::{is_facade_reachable_file, parse_exported_idents_in_file, parse_signature_ast};
+use super::{ParsedSignatureMap, is_facade_reachable_file, parse_exported_idents_in_file};
 use oxidize_core::traceability::AstCache;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -34,10 +34,7 @@ fn is_reachable_error_ident(ident: &str, rel_path: &str) -> bool {
     ident.ends_with("Error") || ident == "Error" || is_crate_error_module_path(rel_path)
 }
 
-fn extract_defined_error_idents(sig: &str, rel_path: &str) -> Vec<String> {
-    let Some(file) = parse_signature_ast(sig) else {
-        return Vec::new();
-    };
+fn extract_defined_error_idents(file: &syn::File, rel_path: &str) -> Vec<String> {
     let mut found = Vec::new();
     for item in &file.items {
         let candidate = match item {
@@ -56,6 +53,7 @@ fn extract_defined_error_idents(sig: &str, rel_path: &str) -> Vec<String> {
 
 fn audit_reachable_submodule_errors(
     apis: &BTreeMap<String, Vec<ApiItem>>,
+    parsed_sigs: &ParsedSignatureMap<'_>,
     facade_errors: &std::collections::BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
@@ -69,7 +67,10 @@ fn audit_reachable_submodule_errors(
             if item.signature.starts_with("pub mod __doctest_facade") {
                 continue;
             }
-            for err_name in extract_defined_error_idents(&item.signature, path) {
+            let Some(Some(file)) = parsed_sigs.get(item.signature.as_str()) else {
+                continue;
+            };
+            for err_name in extract_defined_error_idents(file, path) {
                 definitions_by_name
                     .entry(err_name.clone())
                     .or_default()
@@ -96,6 +97,7 @@ fn audit_reachable_submodule_errors(
 pub(super) fn check_crate_error_reexports(
     workspace_root: &Path,
     apis: &BTreeMap<String, Vec<ApiItem>>,
+    parsed_sigs: &ParsedSignatureMap<'_>,
     cache: &mut AstCache,
     violations: &mut Vec<String>,
 ) {
@@ -130,5 +132,5 @@ pub(super) fn check_crate_error_reexports(
             ));
         }
     }
-    audit_reachable_submodule_errors(apis, &facade_errors, violations);
+    audit_reachable_submodule_errors(apis, parsed_sigs, &facade_errors, violations);
 }

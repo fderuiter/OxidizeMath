@@ -1,8 +1,9 @@
-// @explorer_feature = "physics"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 // Interactive Subatomic Physics tab exposing nuclear stability & Bateman decay chains,
 // Standard Model flavor/electroweak/QCD/MSW neutrino physics, and relativistic synchrotron jets.
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod nuclear_chart;
@@ -21,7 +22,7 @@ pub use relativistic_jet_tool::RelativisticJetTool;
 #[cfg(test)]
 pub use standard_model_tool::StandardModelTool;
 
-/// Auto-discovered Explorer tab grouping Nuclear, Standard Model, and Relativistic Jet laboratories.
+/// Explorer tab grouping Nuclear, Standard Model, and Relativistic Jet laboratories.
 pub struct SubatomicPhysicsTab {
     /// Underlying tool-switching, recovery, and export simulation framework.
     pub framework: crate::framework::SimulationFramework,
@@ -46,10 +47,6 @@ impl ExplorerTab for SubatomicPhysicsTab {
 
     fn url_slug(&self) -> &'static str {
         "subatomic"
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -78,6 +75,14 @@ impl ExplorerTab for SubatomicPhysicsTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "subatomic",
+        order: 18,
+        build: || Box::new(SubatomicPhysicsTab::default()),
     }
 }
 

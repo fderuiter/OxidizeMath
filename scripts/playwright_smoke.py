@@ -1005,20 +1005,37 @@ def run_parallel_preload_and_sw_http_cache_check(
                 return
 
             rev = revision_state["rev"]
-            br_target = dist_dir / f"{rel_name}.br"
-            accept_enc = self.headers.get("Accept-Encoding", "")
-            use_br = (
-                not (clean_path == "/bootstrap.js" and rev > 1)
-                and any(tok.strip().split(";")[0] == "br" for tok in accept_enc.split(","))
+            content_encoding: str | None = None
+            accept_tokens = {
+                tok.split(";")[0].strip().lower()
+                for tok in self.headers.get("Accept-Encoding", "").split(",")
+                if tok.strip()
+            }
+            br_target = Path(f"{target}.br")
+            gz_target = Path(f"{target}.gz")
+            if clean_path == "/bootstrap.js" and rev > 1:
+                payload = target.read_bytes() + f"\n// origin-rev-{rev}\n".encode("utf-8")
+            elif (
+                clean_path.endswith(".wasm")
+                and "br" in accept_tokens
                 and br_target.is_file()
-            )
-            if use_br:
+                and br_target.stat().st_size > 0
+            ):
                 payload = br_target.read_bytes()
+                content_encoding = "br"
+            elif (
+                clean_path.endswith(".wasm")
+                and "gzip" in accept_tokens
+                and gz_target.is_file()
+                and gz_target.stat().st_size > 0
+            ):
+                payload = gz_target.read_bytes()
+                content_encoding = "gzip"
             else:
                 payload = target.read_bytes()
-                if clean_path == "/bootstrap.js" and rev > 1:
-                    payload = payload + f"\n// origin-rev-{rev}\n".encode("utf-8")
-            etag = f'"{rel_name}-v{rev}-{"br-" if use_br else ""}{len(payload)}"'
+
+            enc_tag = content_encoding or "identity"
+            etag = f'"{rel_name}-{enc_tag}-v{rev}-{len(payload)}"'
             content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
 
             if self.headers.get("If-None-Match") == etag:
@@ -1026,8 +1043,9 @@ def run_parallel_preload_and_sw_http_cache_check(
                     origin_hits.append((clean_path, 304))
                 self.send_response(304)
                 self.send_header("ETag", etag)
-                self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Cache-Control", "public, max-age=600")
+                if clean_path.endswith(".wasm"):
+                    self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Content-Security-Policy", csp)
                 self.end_headers()
                 return
@@ -1036,9 +1054,10 @@ def run_parallel_preload_and_sw_http_cache_check(
                 origin_hits.append((clean_path, 200))
             self.send_response(200)
             self.send_header("Content-Type", content_type)
-            if use_br:
-                self.send_header("Content-Encoding", "br")
-            self.send_header("Vary", "Accept-Encoding")
+            if content_encoding:
+                self.send_header("Content-Encoding", content_encoding)
+            if clean_path.endswith(".wasm"):
+                self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("ETag", etag)
             self.send_header("Cache-Control", "public, max-age=600")
