@@ -18,11 +18,13 @@ pub mod fd1d;
 #[allow(missing_docs)]
 pub mod fd2d;
 pub mod fd3d;
+pub mod laplace_beltrami;
 
 pub use advection_2d::AdvectionDiffusion2D;
 pub use fd1d::FiniteDifference1D;
 pub use fd2d::{CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole};
 pub use fd3d::FiniteDifference3D;
+pub use laplace_beltrami::LaplaceBeltramiDiffusion2D;
 use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 
 /// Defines a strategy for computing spatial diffusion.
