@@ -65,7 +65,7 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    let expected_tools = 88
+    let expected_tools = 90
         + usize::from(cfg!(all(feature = "pure_math", feature = "biology")))
         + usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(
@@ -77,7 +77,7 @@ fn test_all_registered_tools_have_starter_presets() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 149
+    let expected_presets = 153
         + 4 * usize::from(cfg!(all(feature = "pure_math", feature = "biology")))
         + 4 * usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(
@@ -242,7 +242,7 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 149
+    let expected_presets = 153
         + 4 * usize::from(cfg!(all(feature = "pure_math", feature = "biology")))
         + 4 * usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(
@@ -270,7 +270,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_tools = 88
+    let expected_tools = 90
         + usize::from(cfg!(all(feature = "pure_math", feature = "biology")))
         + usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(

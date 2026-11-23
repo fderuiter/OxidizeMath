@@ -56,7 +56,7 @@ fn test_all_57_starter_cards_launch_and_sync_framework_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 149
+    let expected_presets = 153
         + 4 * usize::from(cfg!(all(feature = "pure_math", feature = "biology")))
         + 4 * usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(presets.len(), expected_presets);
