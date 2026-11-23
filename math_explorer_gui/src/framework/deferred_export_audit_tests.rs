@@ -239,22 +239,22 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         counts.record_tool(meta.id, (meta.build)());
     }
-    assert_eq!(counts.plot, 65, "Expected 65 Plot dataset+figure tools");
-    assert_eq!(counts.raster, 7, "Expected 7 raster figure tools");
+    assert_eq!(counts.plot, 68, "Expected 68 Plot dataset+figure tools");
+    assert_eq!(counts.raster, 8, "Expected 8 raster figure tools");
     assert_eq!(
         counts.dataset_only, 0,
         "Expected 0 dataset-only registered tools"
     );
     assert_eq!(
-        counts.unsupported, 9,
-        "Expected 9 non-figure, non-topology tools"
+        counts.unsupported, 7,
+        "Expected 7 non-figure, non-topology tools"
     );
     assert_eq!(counts.topology, 7, "Expected 7 graph topology tools");
-    assert_eq!(counts.non_topology, 79, "Expected 79 non-topology tools");
-    assert_eq!(counts.solid_3d, 6, "Expected 6 solid 3D geometric tools");
+    assert_eq!(counts.non_topology, 81, "Expected 81 non-topology tools");
+    assert_eq!(counts.solid_3d, 7, "Expected 7 solid 3D geometric tools");
     assert_eq!(counts.splat_3d, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(counts.shader, 3, "Expected 3 analytical GLSL shader tools");
-    assert_eq!(counts.non_shader, 83, "Expected 83 non-shader tools");
+    assert_eq!(counts.non_shader, 85, "Expected 85 non-shader tools");
 }
 
 #[derive(Default)]
@@ -380,6 +380,7 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         "CrystalViewer",
         "SpinVisualizer",
         "CorticalMorphometryTool",
+        "VolumetricFieldStudioTool",
     ];
     for id in solid_ids {
         let meta = inventory::iter::<crate::framework::ToolMetadata>

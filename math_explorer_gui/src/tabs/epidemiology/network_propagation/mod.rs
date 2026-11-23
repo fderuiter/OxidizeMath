@@ -4,8 +4,8 @@ mod analytics;
 mod canvas;
 pub mod challenge;
 mod controls;
+mod dataflow;
 mod presets;
-mod state;
 #[cfg(test)]
 mod tests;
 mod topology_io;
@@ -16,7 +16,7 @@ pub(crate) use analytics::compute_network_analytics;
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
-use state::{build_validated_candidate, NetPropState};
+use presets::{build_validated_candidate, NetPropState};
 use std::hash::{Hash, Hasher};
 use topology_io::NetPropTopologyUi;
 
@@ -57,6 +57,8 @@ pub struct NetworkPropagationTool {
     pub(super) active_challenge: Option<&'static str>,
     pub(super) revision: u64,
     topology_ui: NetPropTopologyUi,
+    pub(super) last_upstream_graph_rev: u64,
+    pub(super) upstream_linked: bool,
     #[cfg(test)]
     pub(super) sim_steps: u64,
 }
@@ -85,6 +87,8 @@ impl Default for NetworkPropagationTool {
             active_challenge: None,
             revision: 1,
             topology_ui: NetPropTopologyUi::default(),
+            last_upstream_graph_rev: 0,
+            upstream_linked: false,
             #[cfg(test)]
             sim_steps: 0,
         }
@@ -120,6 +124,7 @@ impl NetworkPropagationTool {
     }
 
     pub(super) fn rebuild_seeded_graph(&mut self) {
+        self.last_upstream_graph_rev = 0;
         self.rng = oxidize_core::rng::OxidizeRng::new(self.seed);
         self.model
             .initialize_geometric_graph_with_rng(&mut self.rng);
@@ -251,16 +256,6 @@ impl NetworkPropagationTool {
             self.sim_steps = self.sim_steps.saturating_add(1);
         }
     }
-
-    #[cfg(test)]
-    pub(crate) fn sim_steps(&self) -> u64 {
-        self.sim_steps
-    }
-
-    #[cfg(test)]
-    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
-    }
 }
 
 impl InteractiveTool for NetworkPropagationTool {
@@ -293,12 +288,16 @@ impl InteractiveTool for NetworkPropagationTool {
         self.reset_to_seeded_graph();
     }
     fn has_finite_parameters(&self) -> bool {
-        let n_ok = if self.topology_ui.custom.is_some() {
-            (1..=500).contains(&self.model.num_nodes())
+        let external = self.topology_ui.custom.is_some() || self.last_upstream_graph_rev != 0;
+        let min_nodes = if external { 1 } else { 10 };
+        let max_nodes = if self.topology_ui.custom.is_some() {
+            500
         } else {
-            (10..=200).contains(&self.model.num_nodes())
+            200
         };
-        self.model.beta().is_finite() && self.model.gamma().is_finite() && n_ok
+        self.model.beta().is_finite()
+            && self.model.gamma().is_finite()
+            && (min_nodes..=max_nodes).contains(&self.model.num_nodes())
     }
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -315,33 +314,33 @@ impl InteractiveTool for NetworkPropagationTool {
         h.finish().max(1)
     }
     fn save_state(&self) -> Option<String> {
-        let custom = self.topology_ui.custom.is_some();
+        let external = self.topology_ui.custom.is_some() || self.last_upstream_graph_rev != 0;
+        let (num_nodes, vaccinated_nodes, quarantined_edges) = if external {
+            (
+                self.model.num_nodes().clamp(10, 200),
+                Vec::new(),
+                Vec::new(),
+            )
+        } else {
+            (
+                self.model.num_nodes(),
+                self.vaccinated_nodes.clone(),
+                self.quarantined_edges.clone(),
+            )
+        };
         serde_json::to_string(&NetPropState {
-            num_nodes: if custom {
-                self.model.num_nodes().clamp(10, 200)
-            } else {
-                self.model.num_nodes()
-            },
+            num_nodes,
             beta: self.model.beta(),
             gamma: self.model.gamma(),
             seed: self.seed,
             budget: self.budget,
-            vaccinated_nodes: if custom {
-                Vec::new()
-            } else {
-                self.vaccinated_nodes.clone()
-            },
-            quarantined_edges: if custom {
-                Vec::new()
-            } else {
-                self.quarantined_edges.clone()
-            },
+            vaccinated_nodes,
+            quarantined_edges,
             is_running: self.is_running,
         })
         .ok()
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
@@ -351,6 +350,7 @@ impl InteractiveTool for NetworkPropagationTool {
             .map_err(|e| format!("Invalid network propagation state: {e}"))?;
         let (candidate, candidate_rng, vax_sorted, edge_sorted) = build_validated_candidate(&s)?;
         self.topology_ui.custom = None;
+        self.last_upstream_graph_rev = 0;
         self.model = candidate;
         self.rng = candidate_rng;
         self.seed = s.seed;
@@ -386,6 +386,7 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.poll_upstream_graph(ui.ctx());
         egui::CentralPanel::default().show_inside(ui, |ui| {
             if self.is_running {
                 self.step_models_lockstep();

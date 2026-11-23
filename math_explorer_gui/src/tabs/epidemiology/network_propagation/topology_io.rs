@@ -100,6 +100,9 @@ impl NetworkPropagationTool {
             positions,
             adjacency,
         });
+        if !self.upstream_linked {
+            self.last_upstream_graph_rev = 0;
+        }
         self.vaccinated_nodes.clear();
         self.quarantined_edges.clear();
         self.rebuild_active_graph();

@@ -372,7 +372,6 @@ impl InteractiveTool for NetworkMetricsTool {
     fn reset_default_topology(&mut self) {
         self.restore_sample_wheel();
     }
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }

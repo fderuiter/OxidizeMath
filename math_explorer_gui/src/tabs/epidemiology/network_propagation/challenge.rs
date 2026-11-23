@@ -118,7 +118,10 @@ impl NetworkPropagationTool {
         vax_only: bool,
     ) {
         let had_custom = self.topology_ui.custom.take().is_some();
+        let had_upstream = self.last_upstream_graph_rev != 0;
+        self.last_upstream_graph_rev = 0;
         let topology_changed = had_custom
+            || had_upstream
             || self.model.num_nodes() != nodes
             || (self.model.beta() - beta).abs() > 1.0e-12
             || (self.model.gamma() - gamma).abs() > 1.0e-12

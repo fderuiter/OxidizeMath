@@ -357,7 +357,6 @@ impl InteractiveTool for AlgorithmVisualizerTool {
         self.restore_sample_grid();
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
