@@ -9,6 +9,7 @@ mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
 mod share_link;
+pub mod shared_json;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -53,6 +54,7 @@ mod wasm_tests;
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
+pub use shared_json::SharedTabJson;
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{

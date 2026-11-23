@@ -85,7 +85,7 @@ fn read_and_validate_reusable_workflow(
     let wrap = |e: String| format!("Local reusable workflow '{}': {}", uses_str, e);
     super::validate_permissions_with_exceptions(&yaml, Some(canonical_wf), state.exceptions)
         .map_err(wrap)?;
-    super::validate_concurrency_block(&yaml).map_err(|e| wrap(e.to_string()))?;
+    super::validate_concurrency_block(&yaml).map_err(wrap)?;
     super::validate_job_timeouts(&yaml).map_err(wrap)?;
     super::validate_run_script_expressions(&yaml).map_err(wrap)?;
     validate_workflow_jobs(&yaml, repo_root, state).map_err(wrap)
