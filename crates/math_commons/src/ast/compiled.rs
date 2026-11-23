@@ -1,4 +1,5 @@
 //! Flat postfix stack bytecode compiler and zero-allocation iterative evaluator.
+// [cite:math_commons]
 
 use super::eval::{
     EvalError, EvalScalar, MAX_EVAL_DEPTH, eval_binop, eval_func, eval_unary,

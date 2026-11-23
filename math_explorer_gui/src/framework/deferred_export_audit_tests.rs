@@ -151,9 +151,9 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     }
 
     let (exp_plot, exp_unsup, exp_solid, exp_non_shader) = if cfg!(feature = "applied") {
-        (40, 16, 6, 60)
+        (42, 16, 6, 62)
     } else {
-        (35, 12, 5, 51)
+        (37, 12, 5, 53)
     };
     assert_eq!(plot_tool_count, exp_plot);
     assert_eq!(raster_tool_count, 7);

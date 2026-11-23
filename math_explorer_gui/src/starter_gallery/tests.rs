@@ -53,7 +53,7 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    let expected_tools = if cfg!(feature = "applied") { 63 } else { 54 };
+    let expected_tools = if cfg!(feature = "applied") { 65 } else { 56 };
     assert_eq!(
         tools.len(),
         expected_tools,
@@ -63,7 +63,7 @@ fn test_all_registered_tools_have_starter_presets() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = if cfg!(feature = "applied") { 81 } else { 69 };
+    let expected_presets = if cfg!(feature = "applied") { 85 } else { 73 };
     assert_eq!(
         presets.len(),
         expected_presets,
@@ -226,7 +226,7 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = if cfg!(feature = "applied") { 81 } else { 69 };
+    let expected_presets = if cfg!(feature = "applied") { 85 } else { 73 };
     assert_eq!(
         presets.len(),
         expected_presets,
@@ -252,7 +252,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_tools = if cfg!(feature = "applied") { 63 } else { 54 };
+    let expected_tools = if cfg!(feature = "applied") { 65 } else { 56 };
     assert_eq!(
         tools.len(),
         expected_tools,

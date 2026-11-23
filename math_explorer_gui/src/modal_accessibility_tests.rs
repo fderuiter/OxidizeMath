@@ -32,7 +32,7 @@ impl crate::tabs::ExplorerTab for DummyTab {
     fn name(&self) -> &'static str {
         self.0
     }
-    fn show(&mut self, _ctx: &Context, _frame: &mut eframe::Frame) {}
+    fn show_inside(&mut self, _ui: &mut egui::Ui, _frame: &mut eframe::Frame) {}
 }
 
 #[test]

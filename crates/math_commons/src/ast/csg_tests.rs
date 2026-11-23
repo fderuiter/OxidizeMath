@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "tests"))]
+
 use super::*;
 use num_complex::Complex64;
 use std::collections::HashMap;

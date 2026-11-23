@@ -86,7 +86,7 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
 fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut source_app = MathExplorerApp::default();
-    assert_eq!(source_app.tabs.len(), 21, "Expected all 21 ExplorerTabs");
+    assert_eq!(source_app.tabs.len(), 22, "Expected all 22 ExplorerTabs");
 
     let mut slugs = HashSet::new();
     for tab in &source_app.tabs {
@@ -134,7 +134,7 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
 fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    let expected_tools = if cfg!(feature = "applied") { 63 } else { 54 };
+    let expected_tools = if cfg!(feature = "applied") { 65 } else { 56 };
     assert_eq!(
         tools.len(),
         expected_tools,
@@ -198,7 +198,7 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = if cfg!(feature = "applied") { 81 } else { 69 };
+    let expected_presets = if cfg!(feature = "applied") { 85 } else { 73 };
     assert_eq!(
         presets.len(),
         expected_presets,

@@ -174,6 +174,17 @@ pub fn spawn_save_direct_file(
     spawn_save_direct_file_impl(tx, config, path, content);
 }
 
+/// Sanitizes `default_filename` and writes raw binary `bytes` via a native `rfd` save dialog
+/// or a WebAssembly browser `Blob` download, delivering the saved [`PathBuf`] over `tx`.
+pub fn spawn_save_binary_file_dialog(
+    tx: Sender<Result<PathBuf, String>>,
+    config: SaveAsDialogConfig,
+    default_filename: &str,
+    bytes: Vec<u8>,
+) {
+    spawn_save_as_bytes_dialog(tx, config, default_filename, bytes, |path, _| path);
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn spawn_open_file_dialog_impl<T, F>(
     tx: Sender<Result<(T, String), String>>,

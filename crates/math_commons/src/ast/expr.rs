@@ -1,4 +1,5 @@
 //! Abstract Syntax Tree (AST) definitions for mathematical expressions.
+// [cite:math_commons]
 
 /// Supported binary mathematical operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
