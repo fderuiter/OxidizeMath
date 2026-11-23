@@ -243,8 +243,8 @@ fn assert_rust_toolchain_pin_parity(root: &Path, ci_yaml: &Value) {
         }
     }
     assert_eq!(
-        toolchain_step_count, 5,
-        "Expected five dtolnay/rust-toolchain steps across ci.yml Rust jobs"
+        toolchain_step_count, 6,
+        "Expected six dtolnay/rust-toolchain steps across ci.yml Rust jobs"
     );
 }
 
@@ -258,7 +258,7 @@ fn find_job_cargo_cache_step<'a>(ci_yaml: &'a Value, job: &str) -> &'a Value {
 }
 
 fn assert_ci_cache_scoping_and_seeding(ci_yaml: &Value) {
-    for job in ["pre-flight", "feature-matrix", "package"] {
+    for job in ["pre-flight", "feature-matrix", "package", "publish-release"] {
         let cache_step = find_job_cargo_cache_step(ci_yaml, job);
         assert!(
             cache_step["with"].get("extra-files").is_none(),

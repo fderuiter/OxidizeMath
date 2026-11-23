@@ -243,6 +243,26 @@ pub(crate) fn rotate_airfoil_in_place(
     solver.set_inlet(0, 0, 2, h, u_in, 0.0);
 }
 
+pub(crate) fn sync_lbm_parameters(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    stamped_airfoil: &mut Option<(u16, f64)>,
+    display_vorticity: &mut bool,
+    params: &HashMap<String, f64>,
+) {
+    let viscosity = *params.get("viscosity").unwrap_or(&0.02);
+    if viscosity.is_finite() && viscosity > 0.0 {
+        solver.collision_model.tau = 3.0 * viscosity + 0.5;
+    }
+    if let Some((code, prev_aoa)) = *stamped_airfoil {
+        let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+        if aoa.is_finite() && (aoa - prev_aoa).abs() > 1e-6 {
+            rotate_airfoil_in_place(solver, code, prev_aoa, aoa);
+            *stamped_airfoil = Some((code, aoa));
+        }
+    }
+    *display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
+}
+
 fn sync_live_aoa_slider(
     ui: &egui::Ui,
     raw_code: f64,
