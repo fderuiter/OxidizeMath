@@ -1,4 +1,4 @@
-# ADR 0037: Client-Side Symbolic WGSL/GLSL Shader Foundry, Analytical Palettes, and Smooth Escape / Domain Coloring
+# ADR 0038: Client-Side Symbolic WGSL/GLSL Shader Foundry, Analytical Palettes, and Smooth Escape / Domain Coloring
 
 ## Status
 Accepted (extends [ADR 0017](0017-native-ast-expression-parser-and-live-input.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0026](0026-bounded-ast-height-and-iterative-traversal.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md), and [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md))
