@@ -1158,6 +1158,86 @@
       "signature": "pub use crate :: error :: BatteryError"
     }
   ],
+  "crates/domain_applied/src/applied/cannibalism/age_structured.rs": [
+    {
+      "signature": "impl AgeStructuredConfig { pub fn diekmann_hopf () -> Self }"
+    },
+    {
+      "signature": "impl AgeStructuredConfig { pub fn diekmann_subcritical () -> Self }"
+    },
+    {
+      "signature": "impl AgeStructuredConfig { pub fn tribolium_cycles (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn adult_population (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn ages (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn callow_population (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn config (& self) -> & AgeStructuredConfig }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn da (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn density (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn diekmann_equilibrium (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn juvenile_population (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn larval_population (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn last_birth_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn new (_ : AgeStructuredConfig) -> Self }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn reconfigure (& mut self , _ : AgeStructuredConfig) }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn seed_perturbed_equilibrium (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn set_density_slice (& mut self , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn step (& mut self) }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn step_n (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AgeStructuredSolver { pub fn total_population (& self) -> f64 }"
+    },
+    {
+      "signature": "pub const MAX_GRID_SIZE : usize"
+    },
+    {
+      "signature": "pub const MIN_GRID_SIZE : usize"
+    },
+    {
+      "signature": "pub enum PredationRegime"
+    },
+    {
+      "signature": "pub struct AgeStructuredConfig"
+    },
+    {
+      "signature": "pub struct AgeStructuredSolver"
+    }
+  ],
   "crates/domain_applied/src/applied/cannibalism/death_rate.rs": [
     {
       "signature": "pub fn death_rate (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
@@ -1169,6 +1249,15 @@
     },
     {
       "signature": "pub fn juvenile_dynamics (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn juvenile_upwind_transport (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn step_juvenile_adult_coupled (_ : & mut [f64] , _ : & mut [f64] , _ : & [f64] , _ : f64 , _ : JuvenileAdultParams ,) -> f64"
+    },
+    {
+      "signature": "pub struct JuvenileAdultParams"
     }
   ],
   "crates/domain_applied/src/applied/cannibalism/mckendrick_von_foerster.rs": [
@@ -1176,10 +1265,22 @@
       "signature": "pub fn birth_rate (_ : f64) -> f64"
     },
     {
+      "signature": "pub fn characteristic_survival_step (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn mckendrick_upwind_transport (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
       "signature": "pub fn mckendrick_von_foerster (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn renewal_birth_rate (_ : & [f64] , _ : & [f64] , _ : f64) -> f64"
     }
   ],
   "crates/domain_applied/src/applied/cannibalism/mod.rs": [
+    {
+      "signature": "pub use age_structured :: *"
+    },
     {
       "signature": "pub use death_rate :: *"
     },
@@ -1190,12 +1291,35 @@
       "signature": "pub use mckendrick_von_foerster :: *"
     },
     {
+      "signature": "pub use tribolium :: *"
+    },
+    {
       "signature": "pub use two_dimensional_ode :: *"
+    }
+  ],
+  "crates/domain_applied/src/applied/cannibalism/tribolium.rs": [
+    {
+      "signature": "impl TriboliumLpaModel { pub fn costantino_science_1997 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TriboliumLpaModel { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TriboliumLpaModel { pub fn step (& self , _ : [f64 ; 3]) -> [f64 ; 3] }"
+    },
+    {
+      "signature": "impl TriboliumLpaModel { pub fn two_cycle_preset (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct TriboliumLpaModel"
     }
   ],
   "crates/domain_applied/src/applied/cannibalism/two_dimensional_ode.rs": [
     {
       "signature": "impl CannibalismModel { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl CannibalismModel { pub fn with_handling_time (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
     },
     {
       "signature": "pub struct CannibalismModel"

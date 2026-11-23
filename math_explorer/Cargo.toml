@@ -153,6 +153,10 @@ name = "security_repro_lbm"
 required-features = ["physics"]
 
 [[example]]
+name = "cannibalism_demo"
+required-features = ["applied"]
+
+[[example]]
 name = "favoritism_demo"
 required-features = ["applied"]
 

@@ -1,15 +1,21 @@
-#[allow(missing_docs)]
+/// Zero-allocation characteristic-shift McKendrick-von Foerster PDE solver.
+pub mod age_structured;
+/// Diekmann et al. natural and cannibalistic per-capita mortality rate operator.
 pub mod death_rate;
-#[allow(missing_docs)]
+/// Coupled van den Bosch juvenile age-transport and adult maturation dynamics.
 pub mod juvenile_adult_dynamics;
-#[allow(missing_docs)]
+/// McKendrick-von Foerster characteristic, upwind Eulerian, and renewal operators.
 pub mod mckendrick_von_foerster;
-#[allow(missing_docs)]
+/// Stage-structured *Tribolium* Larvae-Pupae-Adults (LPA) cannibalism map.
+pub mod tribolium;
+/// Guarded Holling Type I/II two-dimensional normal-cannibal ODE system.
 pub mod two_dimensional_ode;
 
+pub use age_structured::*;
 pub use death_rate::*;
 pub use juvenile_adult_dynamics::*;
 pub use mckendrick_von_foerster::*;
+pub use tribolium::*;
 pub use two_dimensional_ode::*;
 
 use pure_math::theory_verification;

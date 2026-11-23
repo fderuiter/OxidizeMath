@@ -101,6 +101,7 @@ pub trait ExplorerTab {
             | "Solid State Physics" => "Physics",
 
             "Battery Degradation"
+            | "Cannibalism"
             | "Clinical Trials"
             | "Favoritism"
             | "Game Theory"
@@ -174,6 +175,7 @@ pub trait ExplorerTab {
             "Analysis & Calculus" => "analysis",
             "Astrophysics" => "astrophysics",
             "Battery Degradation" => "battery_degradation",
+            "Cannibalism" => "cannibalism",
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
             "Clinical Trials" => "clinical_trials",

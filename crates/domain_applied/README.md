@@ -20,7 +20,7 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.
 - **`game_theory`**: Mean Field Games, evolutionary matrix dynamics, and mechanism design.
 - **`lorahub` & `grpo`**: Machine learning parameter merging and group relative policy optimization.
-- **`cannibalism` & `favoritism`**: Specialized population dynamics models and socio-mathematical scoring functions.
+- **`cannibalism` & `favoritism`**: Zero-allocation McKendrick-von Foerster age-structured cannibalism PDE solver (`AgeStructuredSolver`), *Tribolium* LPA cohort bifurcation maps (`TriboliumLpaModel`), guarded Holling predation ODEs (`CannibalismModel`), and socio-mathematical scoring functions.
 
 ---
 

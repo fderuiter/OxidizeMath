@@ -19,6 +19,7 @@ Run any example using Cargo by passing its required domain feature flag:
 - `bench_lorahub`: LoRA module ensemble linear combination benchmark.
 - `bench_mfg`: Mean-field game fixed-point solver benchmark.
 - `bench_replicator`: Evolutionary game theory replicator dynamics benchmark.
+- `cannibalism_demo`: McKendrick-von Foerster cohort Hopf waves, Tribolium 2-cycles, and Holling predation.
 - `favoritism_demo`: Satirical multi-factor model determining the favorite child.
 - `grpo_demo`: Group Relative Policy Optimization advantage normalization and objective.
 - `isosurface_torus`: Marching Cubes algorithm for 3D torus mesh extraction.
