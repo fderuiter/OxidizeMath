@@ -1,7 +1,7 @@
-# ADR 0047: Deterministic Genz Gaussian Copula Solvers, Cholesky PSD Validation, and Zero-Allocation Parlay Engine
+# ADR 20261123: Deterministic Genz Gaussian Copula Solvers, Cholesky PSD Validation, and Zero-Allocation Parlay Engine
 
 ## Status
-Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
+Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md), and [ADR 20261123](20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
 
 ## Context
 [`crates/pure_math/src/pure_math/statistics/copula`](../../crates/pure_math/src/pure_math/statistics/copula/mod.rs) previously exhibited four numerical and architectural limitations for Same Game Parlay (SGP) pricing and stochastic simulation:

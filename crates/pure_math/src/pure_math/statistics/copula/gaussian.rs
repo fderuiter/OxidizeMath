@@ -249,4 +249,26 @@ mod tests {
             sgp_joint_probability(&[p_a, p_b, Probability::new(1.0).unwrap()], &corr3).unwrap();
         assert_relative_eq!(reduced.value(), joint2.value(), epsilon = 1e-15);
     }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_multivariate_cholesky_validation() {
+        let mat = DMatrix::from_row_slice(3, 3, &[1.0, 0.2, 0.1, 0.2, 1.0, 0.3, 0.1, 0.3, 1.0]);
+        let corr = CorrelationMatrix::new(mat).unwrap();
+        let copula = GaussianCopula::new(corr);
+        let u = [
+            Probability::new(0.4).unwrap(),
+            Probability::new(0.5).unwrap(),
+            Probability::new(0.6).unwrap(),
+        ];
+        let joint = copula.cdf(&u).unwrap().value();
+        assert!(joint > 0.4 * 0.5 * 0.6 && joint <= 0.4);
+
+        let invalid =
+            DMatrix::from_row_slice(3, 3, &[1.0, 0.9, 0.9, 0.9, 1.0, -0.9, 0.9, -0.9, 1.0]);
+        assert!(matches!(
+            CorrelationMatrix::new(invalid),
+            Err(CopulaError::NotPositiveDefinite)
+        ));
+    }
 }
