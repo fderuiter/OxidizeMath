@@ -73,9 +73,10 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "UalbfWidget" => &["ualbf_quasiperfect"],
         "EllipticCurvePlayground" => &["modular_polynomials_review"],
         "RadarGatingTool" => &["mmwave_radiotherapy_setup"],
-        "TokenizationTool" | "FactorizationTool" | "FractranMachineTool" => {
-            &["algorithmic_information_rust"]
-        }
+        "TokenizationTool"
+        | "FactorizationTool"
+        | "FractranMachineTool"
+        | "AlgorithmicFractranTool" => &["algorithmic_information_rust"],
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         _ => &[],
@@ -94,6 +95,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "chaos" => &["chaos_theory"],
         "game_theory" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
+        "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" => &["clinical_trials_statistics"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
