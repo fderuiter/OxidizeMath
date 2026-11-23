@@ -33,6 +33,7 @@ mod tests {
         check_tool!(crate::tabs::clinical_trials::survival::SurvivalAnalysisTool);
         check_tool!(crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool);
         check_tool!(crate::tabs::clinical_trials::randomization::RandomizationTool);
+        check_tool!(crate::tabs::clinical_trials::win_ratio::WinRatioWorkbenchTool);
         check_tool!(crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool);
         check_tool!(crate::tabs::climate::cera::CeraTool);
         check_tool!(crate::tabs::climate::co2_projections::Co2ProjectionsTool);
@@ -48,6 +49,7 @@ mod tests {
         check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
         check_tool!(crate::tabs::medical::radar_gating::RadarGatingTool);
         check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
+        check_tool!(crate::tabs::chaos::hamiltonian::HamiltonianChaosLab);
         check_tool!(crate::tabs::algorithmic_information::state::FractranMachineTool);
         check_tool!(crate::tabs::number_theory::fractran_machine::FractranMachineTool);
         check_tool!(crate::tabs::number_theory::ualbf_widget::UalbfWidget);
