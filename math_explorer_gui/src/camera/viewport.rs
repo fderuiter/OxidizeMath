@@ -11,18 +11,48 @@ use super::{Camera3D, CAMERA_3D_HELPER_TEXT};
 /// never gets cancelled by auto-bounds, and delegates 3D gestures to [`Camera3D`].
 pub struct Plot3DViewport<'a> {
     id_source: egui::Id,
+    plot_key: String,
     title: Option<String>,
     half_extent: f64,
     helper_text: Option<&'a str>,
+}
+
+fn base_3d_plot(
+    id_source: egui::Id,
+    plot_height: f32,
+    x_half: f64,
+    y_half: f64,
+) -> egui_plot::Plot<'static> {
+    egui_plot::Plot::new(id_source)
+        .height(plot_height)
+        .data_aspect(1.0)
+        .allow_2d_analysis(false)
+        .allow_csv_import(false)
+        .show_x(false)
+        .show_y(false)
+        .show_axes(false)
+        .show_grid(false)
+        .allow_drag(false)
+        .allow_zoom(false)
+        .allow_axis_zoom_drag(false)
+        .allow_scroll(false)
+        .allow_boxed_zoom(false)
+        .allow_double_click_reset(false)
+        .show_navigation_controls(false)
+        .show_toolbar(false)
+        .show_settings_button(false)
+        .default_x_bounds(-x_half, x_half)
+        .default_y_bounds(-y_half, y_half)
 }
 
 impl<'a> Plot3DViewport<'a> {
     /// Creates a 3D viewport with locked symmetric half-extent in projected plot units.
     #[must_use]
     pub fn new(id_source: impl egui_plot::PlotIdSource, half_extent: f64) -> Self {
-        let (id_source, title) = id_source.into_plot_id_and_title();
+        let (id_source, plot_key, title) = id_source.into_plot_id_key_and_title();
         Self {
             id_source,
+            plot_key,
             title,
             half_extent: half_extent.max(0.1),
             helper_text: Some(CAMERA_3D_HELPER_TEXT),
@@ -59,23 +89,8 @@ impl<'a> Plot3DViewport<'a> {
         let y_half = self.half_extent;
 
         let mut captured_plot_id = None;
-        let mut plot = egui_plot::Plot::new(self.id_source)
-            .height(plot_height)
-            .data_aspect(1.0)
-            .allow_2d_analysis(false)
-            .show_x(false)
-            .show_y(false)
-            .show_axes(false)
-            .show_grid(false)
-            .allow_drag(false)
-            .allow_zoom(false)
-            .allow_axis_zoom_drag(false)
-            .allow_scroll(false)
-            .allow_boxed_zoom(false)
-            .allow_double_click_reset(false)
-            .show_navigation_controls(false)
-            .default_x_bounds(-x_half, x_half)
-            .default_y_bounds(-y_half, y_half);
+        let mut plot =
+            base_3d_plot(self.id_source, plot_height, x_half, y_half).plot_key(self.plot_key);
         if let Some(title) = self.title {
             plot = plot.title(title);
         }

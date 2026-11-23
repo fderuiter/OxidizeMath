@@ -1,3 +1,4 @@
+#![cfg(all(feature = "biology", feature = "epidemiology", feature = "physics"))]
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::viewport::sash::{quad_horizontal_sash_id, quad_vertical_sash_id};

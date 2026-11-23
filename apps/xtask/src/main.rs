@@ -61,7 +61,9 @@ fn print_help() {
     println!("Usage: xtask <command> [args...]\n");
     println!("Active Quality Gates:");
     println!("  check-api-drift          - Validate public API surface against baseline");
-    println!("  check-cargo-docs         - Verify workspace documentation builds without warnings");
+    println!(
+        "  check-cargo-docs         - Verify workspace documentation builds with --all-features and zero warnings"
+    );
     println!("  check-docs               - Run crate documentation audit");
     println!("  check-duplicates         - Run AST-level code clone detector across crates");
     println!("  check-entropy            - Scan codebase for high entropy strings and secrets");
@@ -74,6 +76,9 @@ fn print_help() {
     println!("  check-profiles           - Verify Cargo release profile invariants");
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
+    println!(
+        "  compile-papers           - Compile academic papers with TeXLive (pdflatex and BibTeX)"
+    );
     println!(
         "  lint-all                 - Run format, profile, AST duplicate, API drift, ADR, file-length, clippy, doc, doctest, markdown-link, workflow, traceability, entropy, vulnerability, and policy audit checks"
     );
@@ -92,7 +97,6 @@ fn print_help() {
     );
     println!("  verify-suite             - Run high-integrity verified suite\n");
     println!("Legacy Utility Tasks:");
-    println!("  compile-papers           - Compile academic papers with Tectonic");
     println!("  regenerate-baseline      - Regenerate public API baseline");
     println!("  setup                    - Run setup script and configure git hooks");
 }
@@ -205,7 +209,8 @@ fn test_features(args: &[String]) {
 mod tests {
     use super::*;
     use crate::gates::{
-        HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin, workspace_wasm,
+        CARGO_DOC_ARGS, HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin,
+        workspace_wasm,
     };
     use crate::markdown_links::{collect_md_files, extract_md_links};
 
@@ -327,6 +332,7 @@ mod tests {
             "lint-staged",
             "check-entropy",
             "check-vulnerabilities",
+            "compile-papers",
             "test-policy-audit",
             "test-wasm",
             "verify-records",
@@ -335,6 +341,7 @@ mod tests {
         ] {
             assert!(help.contains(cmd), "Missing help entry for {cmd}");
         }
+        assert!(!help.contains("Tectonic"));
     }
 
     #[test]
@@ -380,6 +387,9 @@ mod tests {
         let expected_wasm_cmd = format!("cargo {}", WASM_CLIPPY_ARGS.join(" "));
         assert!(ci_yaml.contains("name: Run Clippy (WASM)"));
         assert!(ci_yaml.contains(&expected_wasm_cmd));
+        let expected_doc_cmd = format!("cargo {}", CARGO_DOC_ARGS.join(" "));
+        assert!(ci_yaml.contains("name: Check Workspace Documentation"));
+        assert!(ci_yaml.contains(&expected_doc_cmd));
         assert!(ci_yaml.contains(
             "- name: Run Workspace Tests (Native)\n        if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'\n        run: cargo test --workspace --lib --tests --all-features"
         ));
@@ -453,4 +463,21 @@ mod tests {
         assert!(report.contains("0.2.130"));
         assert!(report.contains("Fix:"));
     }
+
+    #[test]
+    fn test_ci_scoped_change_path_filters() {
+        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ci_yaml = fs::read_to_string(ws_root.join(".github/workflows/ci.yml"))
+            .expect("failed to read ci.yml")
+            .replace("\r\n", "\n");
+        let root_toml =
+            fs::read_to_string(ws_root.join("Cargo.toml")).expect("failed to read Cargo.toml");
+        let (step, blocks) = crate::ci_filter_tests::extract_detect_changes_step(&ci_yaml);
+        crate::ci_filter_tests::assert_detect_changes_invariants(&ci_yaml, &step);
+        crate::ci_filter_tests::assert_workspace_members_parity(&blocks, &root_toml);
+        crate::ci_filter_tests::assert_scoped_triggers_and_skips(&blocks);
+    }
 }
+
+#[cfg(test)]
+mod ci_filter_tests;

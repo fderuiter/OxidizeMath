@@ -39,7 +39,9 @@ pub(super) fn build_mws_envelope(repo_path: &str) -> String {
     let mut tab_states = std::collections::HashMap::new();
     tab_states.insert(
         "Traceability Portal".to_string(),
-        serde_json::json!({ "repo_path": repo_path }).to_string(),
+        serde_json::json!({ "repo_path": repo_path })
+            .to_string()
+            .into(),
     );
     let state = crate::app::AppState {
         selected_tab_name: Some("Traceability Portal".to_string()),

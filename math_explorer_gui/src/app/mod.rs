@@ -9,6 +9,7 @@ mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
 mod share_link;
+pub mod shared_json;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -16,24 +17,13 @@ pub(crate) mod viewport;
 
 #[cfg(test)]
 mod tests;
-#[cfg(all(
-    test,
-    feature = "biology",
-    feature = "epidemiology",
-    feature = "physics"
-))]
+#[cfg(test)]
 mod tests_adaptive_chrome;
-#[cfg(all(test, feature = "climate", feature = "physics", feature = "pure_math"))]
+#[cfg(all(test, feature = "climate", feature = "physics"))]
 mod tests_command_palette;
 #[cfg(test)]
 mod tests_diagnostics;
-#[cfg(all(
-    test,
-    feature = "biology",
-    feature = "climate",
-    feature = "epidemiology",
-    feature = "physics"
-))]
+#[cfg(test)]
 mod tests_domain_bar;
 #[cfg(all(test, feature = "ai", feature = "pure_math"))]
 mod tests_focus_routing;
@@ -64,6 +54,7 @@ mod wasm_tests;
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
+pub use shared_json::SharedTabJson;
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
@@ -279,6 +270,13 @@ impl eframe::App for MathExplorerApp {
 
         crate::accessibility::ensure_plot_live_bridge();
         crate::accessibility::sync_context_live_messages(ctx, true);
+        if ctx.input(|i| {
+            i.events
+                .iter()
+                .any(|e| matches!(e, egui::Event::WindowFocused(false)))
+        }) {
+            crate::audio::notify_window_blurred();
+        }
 
         self.flush_stale_pane_focus(ctx);
         let mut session_mgr = std::mem::take(&mut self.session_manager);
@@ -454,6 +452,7 @@ impl eframe::App for MathExplorerApp {
         };
 
         self.prune_inactive_pane_slots(active_layout.pane_count());
+        domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
         self.sync_workspace_history_bridge(ctx);
 
         if active_layout != ViewportLayout::Single {

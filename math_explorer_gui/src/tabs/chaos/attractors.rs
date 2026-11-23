@@ -1,7 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::async_sim::{BackgroundWorker, SimCommand};
-use crate::framework::{Camera3D, CoupledExpressionBank, InteractiveTool, Scene3DBuilder};
+use crate::framework::{
+    Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
+};
 use eframe::egui;
 use egui_plot::{LineStyle, MarkerShape};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
@@ -13,15 +15,22 @@ use std::sync::Arc;
 pub mod flow;
 pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
 
-#[path = "attractors/serde_vec3.rs"]
-mod serde_vec3;
+#[path = "attractors/invariants.rs"]
+mod invariants;
 
 #[path = "attractors/runner.rs"]
 mod runner;
+#[path = "attractors/serde_vec3.rs"]
+mod serde_vec3;
 pub use runner::*;
 
 #[path = "attractors/ui.rs"]
 mod ui;
+
+#[path = "attractors/export.rs"]
+pub mod export;
+
+pub(crate) const DEFAULT_FIXED_CALLOUT_OFFSETS: [[f32; 2]; 2] = [[35.0, -25.0], [-35.0, 25.0]];
 
 pub struct AttractorPlotter {
     pub(crate) mode: AttractorMode,
@@ -31,6 +40,7 @@ pub struct AttractorPlotter {
     pub(crate) step_count: usize,
     pub(crate) simulation_speed: usize,
     pub(crate) dt: f64,
+    pub(crate) tube_radius: f64,
     pub(crate) history: VecDeque<Vector3<f64>>,
     pub(crate) max_points: usize,
     pub(crate) camera: Camera3D,
@@ -41,6 +51,8 @@ pub struct AttractorPlotter {
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
+    pub(super) latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
 }
 
 impl Default for AttractorPlotter {
@@ -71,6 +83,7 @@ impl Default for AttractorPlotter {
             step_count: 0,
             simulation_speed: 5,
             dt: 0.01,
+            tube_radius: export::DEFAULT_TUBE_RADIUS,
             history: VecDeque::with_capacity(2000),
             max_points: 2000,
             camera,
@@ -79,8 +92,14 @@ impl Default for AttractorPlotter {
             params,
             worker,
             show_annotations: true,
-            fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
+            fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
+            latest_sonification: crate::audio::mappings::attractor_frame(
+                [1.0, 1.0, 1.0],
+                [0.0, 26.0, -1.67],
+                false,
+            ),
+            invariants_cache: invariants::CachedAttractorInvariants::default(),
         }
     }
 }
@@ -111,6 +130,7 @@ impl AttractorPlotter {
             && v.z.is_finite()
             && lorenz_ok
             && self.dt.is_finite()
+            && self.tube_radius.is_finite()
             && self.flow_bank.param_slice().iter().all(|x| x.is_finite())
     }
 
@@ -197,6 +217,8 @@ impl AttractorPlotter {
         self.system.beta = 8.0 / 3.0;
         self.flow_bank = default_flow_bank();
         self.dt = 0.01;
+        self.tube_radius = export::DEFAULT_TUBE_RADIUS;
+        self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
         self.reset();
     }
 
@@ -280,11 +302,26 @@ impl InteractiveTool for AttractorPlotter {
         self.system.rho.to_bits().hash(&mut h);
         self.system.beta.to_bits().hash(&mut h);
         self.dt.to_bits().hash(&mut h);
+        self.tube_radius.to_bits().hash(&mut h);
         self.simulation_speed.hash(&mut h);
         self.max_points.hash(&mut h);
         self.is_paused().hash(&mut h);
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
+        for offset in &self.fixed_callout_offsets {
+            let x_bits = if offset.x == 0.0 {
+                0
+            } else {
+                offset.x.to_bits()
+            };
+            let y_bits = if offset.y == 0.0 {
+                0
+            } else {
+                offset.y.to_bits()
+            };
+            x_bits.hash(&mut h);
+            y_bits.hash(&mut h);
+        }
         self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
@@ -346,6 +383,18 @@ impl InteractiveTool for AttractorPlotter {
         }
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        Some(self.build_trajectory_mesh_3d())
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        Some(self.build_trajectory_colored_mesh_3d())
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
         if points.is_empty() && self.is_finite_state() {
@@ -378,6 +427,7 @@ impl InteractiveTool for AttractorPlotter {
         let ui_diverged = self.diverged();
         let was_paused = self.is_paused();
         if let Some(snapshot) = self.worker.update() {
+            self.latest_sonification = snapshot.sonification;
             if !ui_diverged {
                 if let Some(data) = snapshot
                     .structured_data
@@ -397,6 +447,10 @@ impl InteractiveTool for AttractorPlotter {
         }
 
         let worker_faulted = self.worker.state().is_faulted();
+        if self.diverged() || worker_faulted {
+            self.latest_sonification = crate::audio::SonificationFrame::silent();
+            crate::audio::notify_solver_diverged();
+        }
         if !self.is_paused() && !worker_faulted {
             if !self.worker.is_running() {
                 let _ = self.worker.send_command(SimCommand::Start);
@@ -435,3 +489,7 @@ mod attractor_tests;
 #[cfg(test)]
 #[path = "attractors/custom_flow_tests.rs"]
 mod custom_flow_tests;
+
+#[cfg(test)]
+#[path = "attractors/export_tests.rs"]
+mod export_tests;

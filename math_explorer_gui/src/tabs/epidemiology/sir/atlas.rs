@@ -340,7 +340,8 @@ impl SirTool {
             TraceSeries::new("Infected", to_pairs(&self.i_points)),
             TraceSeries::new("Recovered", to_pairs(&self.r_points)),
         ];
-        self.snapshot_manager.push_history_run(&prev_summary, series);
+        self.snapshot_manager
+            .push_history_run(&prev_summary, series);
         self.recalculate();
     }
 
@@ -359,44 +360,48 @@ impl SirTool {
         ui.horizontal(|ui| {
             let _ = self.atlas.show_toggle_button(ui);
         });
+        self.render_sir_atlas_panel(ui);
+    }
 
-        if self.atlas.is_visible() {
-            let (xk, yk) = self.atlas.axis_keys();
-            let get_val = |k: &str| match k {
-                "beta" => self.beta,
-                "gamma" => self.gamma,
-                "I0" => self.i0,
-                _ => 0.0,
-            };
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            self.n.to_bits().hash(&mut h);
-            if xk != "I0" && yk != "I0" {
-                self.i0.to_bits().hash(&mut h);
-            }
-            if xk != "gamma" && yk != "gamma" {
-                self.gamma.to_bits().hash(&mut h);
-            }
-            let theory_params = self.theory_parameters();
-            let (n, i0, beta, gamma) = (self.n, self.i0, self.beta, self.gamma);
-            if let Some(ev) = self.atlas.show_panel(
-                ui,
-                "sir",
-                get_val(xk),
-                get_val(yk),
-                h.finish(),
-                move |keys| {
-                    Arc::new(SirCartographer::new(
-                        &theory_params,
-                        keys,
-                        n,
-                        i0,
-                        beta,
-                        gamma,
-                    ))
-                },
-            ) {
-                self.apply_atlas_teleport(ev);
-            }
+    fn render_sir_atlas_panel(&mut self, ui: &mut egui::Ui) {
+        if !self.atlas.is_visible() {
+            return;
+        }
+        let (xk, yk) = self.atlas.axis_keys();
+        let get_val = |k: &str| match k {
+            "beta" => self.beta,
+            "gamma" => self.gamma,
+            "I0" => self.i0,
+            _ => 0.0,
+        };
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.n.to_bits().hash(&mut h);
+        if xk != "I0" && yk != "I0" {
+            self.i0.to_bits().hash(&mut h);
+        }
+        if xk != "gamma" && yk != "gamma" {
+            self.gamma.to_bits().hash(&mut h);
+        }
+        let theory_params = self.theory_parameters();
+        let (n, i0, beta, gamma) = (self.n, self.i0, self.beta, self.gamma);
+        if let Some(ev) = self.atlas.show_panel(
+            ui,
+            "sir",
+            get_val(xk),
+            get_val(yk),
+            h.finish(),
+            move |keys| {
+                Arc::new(SirCartographer::new(
+                    &theory_params,
+                    keys,
+                    n,
+                    i0,
+                    beta,
+                    gamma,
+                ))
+            },
+        ) {
+            self.apply_atlas_teleport(ev);
         }
     }
 }

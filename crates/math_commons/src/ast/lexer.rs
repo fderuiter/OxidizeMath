@@ -1,4 +1,5 @@
 //! Lexical analyzer / tokenizer for mathematical expressions.
+// [cite:math_commons]
 
 use std::fmt;
 
@@ -97,6 +98,21 @@ impl LexError {
     pub fn user_message(&self) -> String {
         let char_pos = self.start + 1;
         format!("{} at character {char_pos}", self.message)
+    }
+}
+
+impl diagnostics::Diagnostic for LexError {
+    fn severity(&self) -> diagnostics::Severity {
+        diagnostics::Severity::Error
+    }
+
+    fn metadata(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("error_type".to_string(), "LexError".to_string());
+        map.insert("start".to_string(), self.start.to_string());
+        map.insert("end".to_string(), self.end.to_string());
+        map.insert("description".to_string(), self.to_string());
+        map
     }
 }
 

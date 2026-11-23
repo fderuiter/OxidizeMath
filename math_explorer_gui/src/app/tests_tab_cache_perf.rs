@@ -84,8 +84,8 @@ impl ExplorerTab for CountingTab {
     fn name(&self) -> &'static str {
         self.inner.name()
     }
-    fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        self.inner.show(ctx, frame);
+    fn show_inside(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.inner.show_inside(ui, frame);
     }
     fn state_revision(&self) -> u64 {
         let base = self.inner.state_revision();
@@ -180,7 +180,7 @@ fn build_heavy_sir_framework_json() -> String {
 ))]
 fn instrument_app_with_heavy_hidden_tabs() -> (MathExplorerApp, Vec<TabCounter>) {
     let mut app = MathExplorerApp::default();
-    assert_eq!(app.tabs.len(), 21);
+    assert_eq!(app.tabs.len(), 24);
 
     let ode_fw_json = build_heavy_ode_framework_json();
     let sir_fw_json = build_heavy_sir_framework_json();
@@ -270,7 +270,7 @@ fn test_idle_21_tab_extraction_under_half_ms_with_zero_save_state_calls() {
     let iterations = 20;
     for _ in 0..iterations {
         let extracted = AppState::extract(&app);
-        assert_eq!(extracted.tab_states.len(), 21);
+        assert_eq!(extracted.tab_states.len(), 24);
     }
     let avg_ms = (start.elapsed().as_secs_f64() * 1000.0) / f64::from(iterations);
     let extract_calls: usize = counters
@@ -417,4 +417,25 @@ fn test_mws_envelope_and_layouts_preserve_baselines_and_callouts() {
     sm.track_frame_changes(&ctx, &autosaved_app);
     assert!(!sm.is_restoring());
     autosaved_app.session_manager = sm;
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn test_shared_tab_json_zero_copy_arc_sharing_across_extractions() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+    let (app, _) = instrument_app_with_heavy_hidden_tabs();
+
+    let first = AppState::extract(&app);
+    let second = AppState::extract(&app);
+    let first_ode = first
+        .tab_states
+        .get("Analysis & Calculus")
+        .expect("Analysis & Calculus state");
+    let second_ode = second
+        .tab_states
+        .get("Analysis & Calculus")
+        .expect("Analysis & Calculus state");
+
+    assert_eq!(first_ode.as_str().as_ptr(), second_ode.as_str().as_ptr());
+    assert_eq!(first_ode.len(), second_ode.len());
 }

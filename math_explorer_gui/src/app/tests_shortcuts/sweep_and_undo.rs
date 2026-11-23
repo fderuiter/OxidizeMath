@@ -314,7 +314,7 @@ fn test_single_layout_ctrl_z_and_ctrl_y_across_all_explorer_tabs_and_strip_short
         feature = "epidemiology",
         feature = "physics"
     )) {
-        assert_eq!(app.tabs.len(), 21);
+        assert_eq!(app.tabs.len(), 24);
     }
 
     app.set_layout(ViewportLayout::Single);

@@ -22,32 +22,8 @@ pub fn softmax_row_wise(matrix: &DMatrix<f64>) -> DMatrix<f64> {
         return result;
     }
 
-    for r in 0..nrows {
-        let mut max_val = matrix[(r, 0)];
-        for c in 1..ncols {
-            let val = matrix[(r, c)];
-            if val > max_val {
-                max_val = val;
-            }
-        }
-
-        let mut sum_exps = 0.0;
-        for c in 0..ncols {
-            let exp_val = (matrix[(r, c)] - max_val).exp();
-            result[(r, c)] = exp_val;
-            sum_exps += exp_val;
-        }
-
-        if sum_exps > 0.0 {
-            for c in 0..ncols {
-                result[(r, c)] /= sum_exps;
-            }
-        } else {
-            // When sum_exps equals zero or NaN, preserve an all-zero row output
-            for c in 0..ncols {
-                result[(r, c)] = 0.0;
-            }
-        }
+    for (src_row, mut dst_row) in matrix.row_iter().zip(result.row_iter_mut()) {
+        kernel::softmax_into(&src_row, &mut dst_row);
     }
     result
 }
@@ -253,6 +229,36 @@ mod tests {
                 let idx = r * matrix.ncols() + c;
                 assert_eq!(matrix[(r, c)], vector_relu[idx]);
             }
+        }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_matrix_vector_softmax_equivalence_and_trailing_nan() {
+        use crate::ai::deep_learning_theory::probability;
+        use nalgebra::DVector;
+
+        let row0 = [-1.5, 0.25, 2.0, 4.5];
+        let row1 = [1.0, f64::NAN, 2.0, 3.0];
+        let mut flat = Vec::with_capacity(8);
+        flat.extend_from_slice(&row0);
+        flat.extend_from_slice(&row1);
+
+        let matrix = DMatrix::from_row_slice(2, 4, &flat);
+        let mat_out = softmax_row_wise(&matrix);
+        let vec_out0 = probability::softmax(&DVector::from_row_slice(&row0));
+        let vec_out1 = probability::softmax(&DVector::from_row_slice(&row1));
+
+        for (c, &v) in vec_out0.iter().enumerate() {
+            assert_relative_eq!(
+                mat_out[(0, c)],
+                v,
+                epsilon = math_commons::registry::TOLERANCE_FAST
+            );
+        }
+        for (c, &v) in vec_out1.iter().enumerate() {
+            assert_eq!(v, 0.0);
+            assert_eq!(mat_out[(1, c)], 0.0);
         }
     }
 }

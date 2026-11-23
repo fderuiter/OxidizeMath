@@ -53,17 +53,17 @@ classDiagram
     class ExplorerTab {
         <<interface>>
         +name() String
-        +show(ctx, frame)
+        +show_inside(ui, frame)
     }
 
     class MriTab {
         -simulator: BlochSimulator
-        +show()
+        +show_inside(ui, frame)
     }
 
     class MorphogenesisTab {
         -system: TuringSystem
-        +show()
+        +show_inside(ui, frame)
     }
 
     MathExplorerApp o-- ExplorerTab
@@ -73,32 +73,28 @@ classDiagram
 
 ### Key Components
 
-*   **`MathExplorerApp`**: The root component implementing `eframe::App`. It renders the top navigation bar and delegates the main content area to the active tab.
-*   **`ExplorerTab`**: The trait that all visualization modules must implement. It provides a standard interface for the app to interact with different simulations.
+*   **`MathExplorerApp`**: The root component implementing `eframe::App`. It renders the top navigation bar and delegates each viewport pane's scoped `egui::Ui` to the active tab via `ExplorerTab::show_inside`.
+*   **`ExplorerTab`**: The trait that all visualization modules must implement. It provides a standard interface for the app to interact with different simulations inside single-pane and multi-pane layouts.
 *   **`math_explorer` Dependency**: All heavy mathematical logic (physics, biology, etc.) resides in the core `math_explorer` crate. The GUI crate should focus **only** on visualization and input handling.
 
 ##  Contributing
 
-Follow these steps to add a new visualization module (e.g., for `fluid_dynamics`).
+Follow these steps to add a new visualization tab or simulation tool to `math_explorer_gui`.
 
-### 1. Create the Module
-You can create a single file `src/tabs/fluid_dynamics.rs` or a directory `src/tabs/fluid_dynamics/mod.rs` for complex modules.
+### 1. Create the Tab Module
+Create either a single file `src/tabs/<tab_name>.rs` or a directory `src/tabs/<tab_name>/mod.rs` implementing `ExplorerTab` and `Default`. Optional header directives configure Cargo feature gating (`// @explorer_feature = "<domain>"`) and navigation ordering (`// @explorer_order = <n>`):
 
-**Example `src/tabs/fluid_dynamics.rs`:**
+```rust,ignore
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+// @explorer_feature = "physics"
+// @explorer_order = 10
 
-```text
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+#[derive(Default)]
 pub struct FluidDynamicsTab {
-    // State goes here
     velocity: f64,
-}
-
-impl Default for FluidDynamicsTab {
-    fn default() -> Self {
-        Self { velocity: 0.0 }
-    }
 }
 
 impl ExplorerTab for FluidDynamicsTab {
@@ -106,8 +102,8 @@ impl ExplorerTab for FluidDynamicsTab {
         "Fluid Dynamics"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Fluid Simulation");
             ui.add(egui::Slider::new(&mut self.velocity, 0.0..=100.0).text("Velocity"));
         });
@@ -115,22 +111,17 @@ impl ExplorerTab for FluidDynamicsTab {
 }
 ```
 
-### 2. Register the Module
-In `src/tabs/mod.rs`, add your module:
+### 2. Automated Plugin Discovery (`build.rs`)
+Do **not** manually edit `src/tabs/mod.rs` or `src/app/mod.rs` to register your new tab. At compile time, [`build.rs`](build.rs) automatically scans `src/tabs/` (and workspace path dependencies) for `impl ExplorerTab for <Struct>` definitions (requiring `Default`) and generates `$OUT_DIR/generated_tabs.rs` (`instantiate_tabs()` and `instantiate_tab()`), which [`src/tabs/mod.rs`](src/tabs/mod.rs) includes automatically:
 
-```text
-pub mod fluid_dynamics;
-```
+*   `// @explorer_feature = "physics"`: Optional header comment gating the module behind a Cargo feature.
+*   `// @explorer_order = 10`: Optional header comment controlling navigation bar sort order (lower numbers appear first).
 
-### 3. Add to App
-In `src/app.rs` (or wherever the tabs are initialized, likely in `MathExplorerApp::default`), add your tab to the list:
-
-```text
-Box::new(FluidDynamicsTab::default()),
-```
+### 3. Adding Interactive Tools Within a Domain Tab
+Most multi-tool domain tabs wrap `SimulationFramework::new("<domain>")` and discover individual tools via `inventory::submit!`. To add a new simulation tool (implementing `InteractiveTool` and `TheoryDescribable`) inside an existing domain folder (`src/tabs/<domain>/<tool>.rs`), declare `pub mod <tool>;` in `src/tabs/<domain>/mod.rs` and follow the step-by-step [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_walkthrough.md).
 
 ### Design Principles
 
 1.  **Separation of Concerns**: Keep simulation logic in `math_explorer`. If you need a new simulation model, add it to the core library first, then visualize it here.
-2.  **Immediate Mode**: `egui` is an immediate mode GUI. This means the `show()` function is called every frame. Avoid heavy computations directly in `show()`. Use a separate thread or perform small updates per frame.
+2.  **Immediate Mode**: `egui` is an immediate mode GUI. This means the `show_inside()` function is called every frame. Avoid heavy computations directly in `show_inside()`. Use a separate thread or perform small updates per frame.
 3.  **No Heavy Dependencies**: We try to keep the GUI crate lightweight. Avoid adding heavy dependencies like `rand` if a simple internal implementation or a dependency from `math_explorer` suffices.

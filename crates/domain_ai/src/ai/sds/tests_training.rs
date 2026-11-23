@@ -73,3 +73,34 @@ fn test_sgd_step() {
         epsilon = math_commons::registry::TOLERANCE_FAST
     );
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_sds_adam_matches_pure_math_adam_and_shares_shape_checks() {
+    use pure_math::pure_math::analysis::optimization::{Adam, Optimizer as CoreOptimizer};
+
+    let mut sds_adam = AdamOptimizer::new(PositiveFloat::new(0.05).unwrap());
+    let mut core_adam = Adam::<f64, ()>::new(0.05).unwrap();
+
+    let mut sds_params = DMatrix::from_row_slice(2, 2, &[0.8, -0.3, 1.2, 0.05]);
+    let mut core_params = sds_params.clone();
+    let grads = DMatrix::from_row_slice(2, 2, &[0.25, -0.4, 0.1, -0.15]);
+
+    for step_idx in 1..=5 {
+        sds_params = sds_adam.step(&sds_params, &grads).unwrap();
+        core_adam
+            .update_matrix((), &mut core_params, &grads)
+            .unwrap();
+        assert_eq!(sds_adam.t, step_idx);
+        assert_eq!(sds_params, core_params);
+    }
+
+    let bad_grads = DMatrix::zeros(2, 3);
+    assert!(sds_adam.step(&sds_params, &bad_grads).is_err());
+
+    let mut sds_sgd = SgdOptimizer::new(
+        PositiveFloat::new(0.05).unwrap(),
+        UnitInterval::new(0.9).unwrap(),
+    );
+    assert!(sds_sgd.step(&sds_params, &bad_grads).is_err());
+}

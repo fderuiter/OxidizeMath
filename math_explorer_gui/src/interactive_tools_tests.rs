@@ -15,34 +15,39 @@ mod tests {
     }
 
     #[cfg(feature = "pure_math")]
-    #[test]
-    fn test_additional_interactive_tools() {
-        let ctx = eframe::egui::Context::default();
-        macro_rules! check_tools {
-            ($($tool_ty:ty),+ $(,)?) => {
-                $(verify_interactive_tool::<$tool_ty>(&ctx);)+
-            };
-        }
+    macro_rules! check_tools {
+        ($ctx:expr; $($tool_ty:ty),+ $(,)?) => {
+            $(verify_interactive_tool::<$tool_ty>($ctx);)+
+        };
+    }
 
+    #[cfg(feature = "pure_math")]
+    fn verify_math_and_ai_tools(ctx: &eframe::egui::Context) {
         check_tools!(
+            ctx;
+            crate::tabs::algorithmic_information::state::FractranMachineTool,
             crate::tabs::financial_math::bet_size::BetSizeCalculatorTool,
             crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool,
             crate::tabs::graph_theory::network_metrics::NetworkMetricsTool,
             crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool,
+            crate::tabs::number_theory::fractran_machine::FractranMachineTool,
             crate::tabs::number_theory::ualbf_widget::UalbfWidget,
             crate::tabs::number_theory::partitions_widget::PartitionsWidget,
             crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget,
         );
         #[cfg(feature = "applied")]
         check_tools!(
+            ctx;
             crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool,
             crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool,
+            crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool,
             crate::tabs::clinical_trials::survival::SurvivalAnalysisTool,
             crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool,
             crate::tabs::clinical_trials::randomization::RandomizationTool,
         );
         #[cfg(feature = "ai")]
         check_tools!(
+            ctx;
             crate::tabs::ai::q_table_inspector::QTableInspectorTool,
             crate::tabs::ai::attention_maps::AttentionMapsTool,
             crate::tabs::ai::tokenization::TokenizationTool,
@@ -52,21 +57,30 @@ mod tests {
             crate::tabs::ai::loss_landscape::LossLandscapeTool,
             crate::tabs::ai::grid_world::GridWorldTool,
         );
+    }
+
+    #[cfg(feature = "pure_math")]
+    fn verify_domain_science_tools(ctx: &eframe::egui::Context) {
+        let _ = ctx;
         #[cfg(feature = "biology")]
         check_tools!(
+            ctx;
+            crate::tabs::morphogenesis::lenia::LeniaTool,
             crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool,
             crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool,
         );
         #[cfg(feature = "climate")]
         check_tools!(
+            ctx;
             crate::tabs::climate::cera::CeraTool,
             crate::tabs::climate::co2_projections::Co2ProjectionsTool,
             crate::tabs::climate::temperature::TemperatureAnomaliesTool,
         );
         #[cfg(feature = "epidemiology")]
-        check_tools!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
+        check_tools!(ctx; crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
         #[cfg(feature = "physics")]
         check_tools!(
+            ctx;
             crate::tabs::solid_state::band_structure::BandStructureTool,
             crate::tabs::solid_state::ising::IsingModelTool,
             crate::tabs::quantum::clebsch::ClebschGordanTool,
@@ -76,6 +90,14 @@ mod tests {
             crate::tabs::medical::dose::DoseCalculationTool,
             crate::tabs::medical::radar_gating::RadarGatingTool,
         );
+    }
+
+    #[cfg(feature = "pure_math")]
+    #[test]
+    fn test_additional_interactive_tools() {
+        let ctx = eframe::egui::Context::default();
+        verify_math_and_ai_tools(&ctx);
+        verify_domain_science_tools(&ctx);
     }
 
     #[test]
