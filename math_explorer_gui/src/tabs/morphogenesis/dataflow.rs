@@ -77,4 +77,64 @@ impl MorphogenesisTool {
     pub(crate) fn invalidate_scalar_field_cache(&mut self) {
         self.field_stream.invalidate();
     }
+
+    pub(crate) fn advance_morpho_step(&mut self) {
+        if self.is_forked() {
+            self.step_lockstep(5);
+            let snap = crate::async_sim::SimulationRunner::get_snapshot(&self.local_runner);
+            self.field_stream.record_snapshot(&snap);
+            return;
+        }
+        let runner = self.step_runner.get_or_insert_with(|| {
+            Self::create_kinetics_runner(
+                &self.params,
+                &self.kinetics_state,
+                &self.mask_rle,
+                self.width,
+                self.height,
+            )
+        });
+        for _ in 0..5 {
+            crate::async_sim::SimulationRunner::step(runner);
+        }
+        let snap = crate::async_sim::SimulationRunner::get_snapshot(runner);
+        self.field_stream.record_snapshot(&snap);
+        let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
+        self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+    }
+
+    pub(crate) fn export_morpho_raster_image(&self) -> Option<egui::ColorImage> {
+        if self.is_forked() {
+            return Some(self.render_current_heatmap_image());
+        }
+        if let Some((w, h, ref px)) = self.stepped_pixels {
+            if w > 0 && h > 0 && px.len() == w * h {
+                return Some(egui::ColorImage {
+                    size: [w, h],
+                    pixels: px.clone(),
+                    ..Default::default()
+                });
+            }
+        }
+        if !self.dirty && self.pixels.len() == self.width * self.height && !self.pixels.is_empty() {
+            return Some(egui::ColorImage {
+                size: [self.width, self.height],
+                pixels: self.pixels.clone(),
+                ..Default::default()
+            });
+        }
+        let snapshot = self.worker.latest_snapshot()?;
+        let px = snapshot.pixels.read().unwrap_or_else(|e| e.into_inner());
+        if snapshot.width == 0
+            || snapshot.height == 0
+            || px.len() != snapshot.width * snapshot.height
+        {
+            return None;
+        }
+        Some(egui::ColorImage {
+            size: [snapshot.width, snapshot.height],
+            pixels: px.clone(),
+            ..Default::default()
+        })
+    }
 }

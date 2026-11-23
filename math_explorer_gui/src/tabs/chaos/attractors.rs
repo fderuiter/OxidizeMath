@@ -6,7 +6,6 @@ use crate::framework::{
     Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
 };
 use eframe::egui;
-use egui_plot::{LineStyle, MarkerShape};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
@@ -17,6 +16,10 @@ pub mod atlas;
 use atlas::ATTRACTOR_ATLAS_AXIS_PAIRS;
 #[cfg(test)]
 pub use atlas::{lorenz_hopf_threshold, AttractorCartographer};
+
+#[path = "attractors/counterfactual.rs"]
+mod counterfactual;
+pub use counterfactual::*;
 
 #[path = "attractors/flow.rs"]
 pub mod flow;
@@ -35,6 +38,8 @@ pub use runner::*;
 
 #[path = "attractors/theory.rs"]
 mod theory;
+#[path = "attractors/timeline.rs"]
+mod timeline;
 
 #[path = "attractors/ui.rs"]
 mod ui;
@@ -63,6 +68,8 @@ pub struct AttractorPlotter {
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
+    pub(crate) twin: Option<AttractorTwinState>,
+    pub branch_engine: crate::framework::CounterfactualBranchEngine,
     pub(super) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
     pub(crate) atlas: ParameterAtlasController,
@@ -98,7 +105,7 @@ impl Default for AttractorPlotter {
             simulation_speed: 5,
             dt: 0.01,
             tube_radius: export::DEFAULT_TUBE_RADIUS,
-            history: VecDeque::with_capacity(2000),
+            history: VecDeque::with_capacity(ATTRACTOR_RING_CAPACITY),
             max_points: 2000,
             camera,
             scene_builder: Scene3DBuilder::new(camera),
@@ -108,6 +115,8 @@ impl Default for AttractorPlotter {
             show_annotations: true,
             fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
+            twin: None,
+            branch_engine: crate::framework::CounterfactualBranchEngine::default(),
             latest_sonification: crate::audio::mappings::attractor_frame(
                 [1.0, 1.0, 1.0],
                 [0.0, 26.0, -1.67],
@@ -209,6 +218,8 @@ impl AttractorPlotter {
             .build(initial_state);
         self.history.clear();
         self.step_count = 0;
+        self.twin = None;
+        self.branch_engine.clear();
         self.execution_state = SolverExecutionState::Ready;
         let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
         {
@@ -248,49 +259,6 @@ impl AttractorPlotter {
         self.camera
             .project(&[p_centered.x, p_centered.y, p_centered.z])
     }
-
-    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
-    pub fn populate_scene(&mut self, series_color: egui::Color32) {
-        let origin_offset = match self.mode {
-            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
-            AttractorMode::Custom => Point3::origin(),
-        };
-        self.scene_builder.begin(self.camera);
-        self.scene_builder.set_origin_offset(origin_offset);
-        self.trajectory_scratch.clear();
-        self.trajectory_scratch
-            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
-        if !self.trajectory_scratch.is_empty() {
-            if self.trajectory_scratch.len() == 1 {
-                self.scene_builder.add_points(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    4.0_f32,
-                    series_color,
-                    MarkerShape::Circle,
-                    true,
-                );
-            } else {
-                self.scene_builder.add_polyline(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    egui::Stroke::new(1.5_f32, series_color),
-                    LineStyle::Solid,
-                    true,
-                );
-            }
-        } else if self.is_finite_state() {
-            let v = self.system.state.vec;
-            self.scene_builder.add_points(
-                "Initial State",
-                &[Point3::new(v.x, v.y, v.z)],
-                4.0_f32,
-                series_color,
-                MarkerShape::Circle,
-                true,
-            );
-        }
-    }
 }
 
 impl InteractiveTool for AttractorPlotter {
@@ -324,6 +292,27 @@ impl InteractiveTool for AttractorPlotter {
         self.advance_step_simulation();
     }
 
+    fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
+        self.twin
+            .as_ref()
+            .map(|t| t.snapshot(self.step_count, self.dt))
+    }
+
+    fn apply_counterfactual_action(
+        &mut self,
+        action: crate::framework::BranchControlAction,
+    ) -> bool {
+        match action {
+            crate::framework::BranchControlAction::ForkHere => self.fork_here(),
+            crate::framework::BranchControlAction::SwapBranches => self.swap_branches(),
+            crate::framework::BranchControlAction::ClearFork => self.clear_fork(),
+            crate::framework::BranchControlAction::SetPerturbation(delta) => {
+                self.branch_engine.set_effective_delta(delta);
+                true
+            }
+        }
+    }
+
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot().with_3d_solid()
     }
@@ -337,20 +326,11 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-        if points.is_empty() && self.is_finite_state() {
-            points.push(self.project(self.system.state.vec));
-        }
-        vec![("Trajectory".to_string(), points)]
+        self.collect_export_datasets_2d()
     }
 
     fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
-        let mut points: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
-        if points.is_empty() && self.is_finite_state() {
-            let v = self.system.state.vec;
-            points.push([v.x, v.y, v.z]);
-        }
-        vec![("Trajectory".to_string(), points)]
+        self.collect_export_datasets_3d()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -378,12 +358,14 @@ impl InteractiveTool for AttractorPlotter {
                     self.history = data.history.clone();
                     self.system.state.vec = data.current_vec;
                     self.step_count = data.step_count;
+                    self.twin = data.twin.clone();
                     if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
                         || !was_paused
                     {
                         self.execution_state = data.execution_state;
                     }
                 }
+                self.sync_local_branch_engine();
             }
         }
 
@@ -421,22 +403,16 @@ impl InteractiveTool for AttractorPlotter {
     }
 }
 
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "AttractorPlotter",
-        display_name: "Attractor Plotter",
-        domain: "chaos",
-        tags: &["lorenz", "attractor", "chaos"],
-        build: || Box::new(AttractorPlotter::default()),
-    }
-}
-
 #[path = "attractors/preset.rs"]
 mod preset;
 
 #[cfg(test)]
 #[path = "attractors/attractor_tests.rs"]
 mod attractor_tests;
+
+#[cfg(test)]
+#[path = "attractors/counterfactual_tests.rs"]
+mod counterfactual_tests;
 
 #[cfg(test)]
 #[path = "attractors/custom_flow_tests.rs"]

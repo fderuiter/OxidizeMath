@@ -12,10 +12,10 @@ use eframe::egui::{self, accesskit::Role, Color32, Key, Pos2, Rect, Sense, Strok
 
 /// Outcome of rendering and interacting with the 2D phase-portrait perturbation pad.
 pub struct PhaseCanvasInteraction {
-    /// Canvas widget ID when it holds keyboard focus.
-    pub focused_id: Option<egui::Id>,
     /// Normalized `[dx, dy]` perturbation kick requested via pointer click or keyboard.
     pub kick_request: Option<[f64; 2]>,
+    /// Widget ID when the phase-portrait canvas currently holds keyboard focus.
+    pub focused_id: Option<egui::Id>,
 }
 
 /// Renders the interactive 2D phase portrait, EKF `1-sigma` ellipse, and click-to-kick pad.
@@ -82,8 +82,8 @@ pub fn show_phase_kick_canvas(
     paint_canvas_focus_ring(ui, &response);
 
     PhaseCanvasInteraction {
-        focused_id: response.has_focus().then_some(response.id),
         kick_request,
+        focused_id: response.has_focus().then_some(response.id),
     }
 }
 

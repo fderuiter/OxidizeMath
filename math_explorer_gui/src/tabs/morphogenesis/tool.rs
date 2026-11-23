@@ -1,23 +1,23 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::MORPHO_ATLAS_AXIS_PAIRS;
+use super::counterfactual::MorphogenesisHeatmapMode;
 use super::presets::MorphogenesisTheory;
 pub use super::presets::MorphogenesisToolState;
 use super::runner::{
-    MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
-    MorphogenesisSharedParams,
+    MorphogenesisKineticsRunner, MorphogenesisKineticsState, MorphogenesisSharedParams,
 };
 use super::sculpt::default_morpho_brush_kit;
+use crate::app::ThemeMode;
 use crate::async_sim::atlas::ParameterAtlasController;
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{
-    decode_rle_mask, ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit,
+    BranchControlAction, CounterfactualBranchEngine, DivergenceSnapshot, ExportCapabilities,
+    InteractionContext, InteractiveTool, SpatialBrushKit,
 };
 use eframe::egui;
 use eframe::egui::ColorImage;
-use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::TuringSystem;
 use scientific_metadata::theory::TheoryDescribable;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -39,8 +39,11 @@ pub struct MorphogenesisTool {
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     pub(crate) step_runner: Option<MorphogenesisKineticsRunner>,
+    pub(crate) local_runner: MorphogenesisKineticsRunner,
     pub(crate) pending_initial_start: bool,
-    pub(crate) last_high_contrast: Option<bool>,
+    pub(crate) last_theme_mode: Option<ThemeMode>,
+    /// Counterfactual shadow twin branch state & perturbation settings.
+    pub branch_engine: CounterfactualBranchEngine,
     pub(crate) theory: MorphogenesisTheory,
     pub(crate) field_stream: super::dataflow::MorphoFieldStreamState,
 }
@@ -56,12 +59,16 @@ impl Default for MorphogenesisTool {
             d_v: 100.0,
             dt: 0.05,
             high_contrast: false,
+            theme_mode: ThemeMode::Dark,
+            heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
         }));
         let kinetics_state =
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
 
         let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
         let runner =
+            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
+        let local_runner =
             Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
         let worker = BackgroundWorker::new(runner);
 
@@ -79,8 +86,10 @@ impl Default for MorphogenesisTool {
             dirty: true,
             stepped_pixels: None,
             step_runner: None,
+            local_runner,
             pending_initial_start: true,
-            last_high_contrast: None,
+            last_theme_mode: None,
+            branch_engine: CounterfactualBranchEngine::default(),
             theory: MorphogenesisTheory::default(),
             field_stream: super::dataflow::MorphoFieldStreamState::default(),
         }
@@ -94,9 +103,7 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) -> MorphogenesisKineticsRunner {
-        let ks = Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
-        let mask = Arc::new(std::sync::RwLock::new(Vec::new()));
-        Self::create_kinetics_runner(params, &ks, &mask, width, height)
+        MorphogenesisKineticsRunner::new_seeded(params, width, height)
     }
 
     pub(crate) fn create_kinetics_runner(
@@ -106,55 +113,25 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) -> MorphogenesisKineticsRunner {
-        use math_explorer::biology::morphogenesis::DiffusionCoeff;
-        use math_explorer::math_kernel::types::{Dimension, StepSize};
-        let (a, b, d_u, d_v) = {
-            let p = params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v)
-        };
-        let (mode, f, k) = {
-            let ks = kinetics_state.read().unwrap_or_else(|e| e.into_inner());
-            (ks.mode, ks.f, ks.k)
-        };
-        let kinetics = MorphogenesisKineticsAdapter { mode, a, b, f, k };
-        let diffusion = FiniteDifference2D::new(
-            Dimension(width),
-            Dimension(height),
-            StepSize(1.0),
-            StepSize(1.0),
-        )
-        .with_mask();
-        let mut system = TuringSystem::new_with_kinetics(
-            Dimension(width * height),
-            DiffusionCoeff(d_u),
-            DiffusionCoeff(d_v),
-            kinetics,
-            diffusion,
-        );
-        Self::initialize_adapter_system(&mut system, width, height);
-        let rle = mask_rle.read().unwrap_or_else(|e| e.into_inner()).clone();
-        if !rle.is_empty() {
-            if let Ok(bytes) = decode_rle_mask(&rle, width * height) {
-                let _ = system.diffusion.mask.set_roles_slice(&bytes);
-            }
-        }
-        let mut runner = MorphogenesisKineticsRunner {
-            system,
-            params: Arc::clone(params),
-            kinetics_state: Arc::clone(kinetics_state),
+        MorphogenesisKineticsRunner::new_with_kinetics(
+            params,
+            kinetics_state,
+            mask_rle,
             width,
             height,
-            step_count: 0,
-            rng: oxidize_core::rng::OxidizeRng::new(super::runner::DEFAULT_MORPHOGENESIS_SEED),
-            noise_amplitude: 0.0,
-        };
-        runner.enforce_mask_concentrations();
-        runner
+        )
     }
 
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
+        self.local_runner = Self::create_kinetics_runner(
+            &self.params,
+            &self.kinetics_state,
+            &self.mask_rle,
+            self.width,
+            self.height,
+        );
         let runner = Self::create_kinetics_runner(
             &self.params,
             &self.kinetics_state,
@@ -163,6 +140,7 @@ impl MorphogenesisTool {
             self.height,
         );
         self.worker = BackgroundWorker::new(runner);
+        self.branch_engine.clear();
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
@@ -176,13 +154,15 @@ impl MorphogenesisTool {
         self.restart_worker();
     }
 
-    /// Resets the worker in place or respawns a disconnected worker in `Ready` state.
+    /// Resets the worker in place (or respawns if disconnected) and clears any active fork.
     pub fn reset(&mut self) {
         let params = Arc::clone(&self.params);
         let ks = Arc::clone(&self.kinetics_state);
         let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
+        self.local_runner = Self::create_kinetics_runner(&params, &ks, &mask, width, height);
+        self.branch_engine.clear();
         self.worker
             .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
         self.stepped_pixels = None;
@@ -208,58 +188,23 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        if self.is_forked() {
+            ExportCapabilities::plot()
+        } else {
+            ExportCapabilities::raster_only()
+        }
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.export_morpho_twin_datasets()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && px.len() == w * h {
-                return Some(ColorImage {
-                    size: [w, h],
-                    pixels: px.clone(),
-                    ..Default::default()
-                });
-            }
-        }
-        if !self.dirty && self.pixels.len() == self.width * self.height && !self.pixels.is_empty() {
-            return Some(ColorImage {
-                size: [self.width, self.height],
-                pixels: self.pixels.clone(),
-                ..Default::default()
-            });
-        }
-        let snapshot = self.worker.latest_snapshot()?;
-        let px = snapshot.pixels.read().unwrap_or_else(|e| e.into_inner());
-        if snapshot.width == 0
-            || snapshot.height == 0
-            || px.len() != snapshot.width * snapshot.height
-        {
-            return None;
-        }
-        Some(ColorImage {
-            size: [snapshot.width, snapshot.height],
-            pixels: px.clone(),
-            ..Default::default()
-        })
+        self.export_morpho_raster_image()
     }
 
     fn step_simulation(&mut self) {
-        let runner = self.step_runner.get_or_insert_with(|| {
-            Self::create_kinetics_runner(
-                &self.params,
-                &self.kinetics_state,
-                &self.mask_rle,
-                self.width,
-                self.height,
-            )
-        });
-        for _ in 0..5 {
-            runner.step();
-        }
-        let snap = runner.get_snapshot();
-        self.field_stream.record_snapshot(&snap);
-        let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
-        self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+        self.advance_morpho_step();
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
@@ -270,14 +215,13 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        let high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
-            == crate::app::ThemeMode::HighContrast;
-        if self.last_high_contrast != Some(high_contrast) {
-            self.last_high_contrast = Some(high_contrast);
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .high_contrast = high_contrast;
+        let theme_mode = ThemeMode::from_visuals(ui.visuals());
+        if self.last_theme_mode != Some(theme_mode) {
+            self.last_theme_mode = Some(theme_mode);
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.theme_mode = theme_mode;
+            p.high_contrast = theme_mode == ThemeMode::HighContrast;
+            drop(p);
             self.dirty = true;
         }
         if std::mem::take(&mut self.pending_initial_start) && self.worker.state().is_ready() {
@@ -285,6 +229,7 @@ impl InteractiveTool for MorphogenesisTool {
         }
         if let Some(snap) = self.worker.update() {
             self.field_stream.record_snapshot(snap);
+            self.pull_latest_worker_snapshot();
             self.dirty = true;
         }
         self.publish_bus_scalar_field(&ctx);
@@ -296,6 +241,18 @@ impl InteractiveTool for MorphogenesisTool {
         ) {
             ctx.request_repaint();
         }
+    }
+
+    fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
+        let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+        self.local_runner
+            .twin
+            .as_ref()
+            .map(|t| t.snapshot(self.local_runner.step_count, dt))
+    }
+
+    fn apply_counterfactual_action(&mut self, action: BranchControlAction) -> bool {
+        self.apply_morpho_branch_action(action)
     }
 
     fn theory(&self) -> &dyn TheoryDescribable {
@@ -320,9 +277,12 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u.to_bits().hash(&mut h);
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
+            p.heatmap_mode.hash(&mut h);
         }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
+        self.is_forked().hash(&mut h);
+        self.local_runner.step_count.hash(&mut h);
         self.mask_rle
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -342,10 +302,15 @@ impl InteractiveTool for MorphogenesisTool {
                 .unwrap_or_else(|e| e.into_inner());
             (ks.mode, ks.f, ks.k)
         };
-        let (a, b, d_u, d_v, dt) = {
+        let (a, b, d_u, d_v, dt, heatmap_mode) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
+            (p.a, p.b, p.d_u, p.d_v, p.dt, p.heatmap_mode)
         };
+        let fork = self
+            .local_runner
+            .twin
+            .as_ref()
+            .map(|t| t.to_descriptor(heatmap_mode));
         let mask_rle = self
             .mask_rle
             .read()
@@ -371,6 +336,7 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            fork,
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes,
@@ -410,14 +376,27 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u = parsed.d_u;
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
+            p.heatmap_mode = parsed
+                .fork
+                .map_or(MorphogenesisHeatmapMode::ActiveUb, |fk| fk.heatmap_mode);
         }
         *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
-        self.apply_dimensions_and_target_state(
-            parsed.width,
-            parsed.height,
-            target_state,
-            parsed.pending_initial_start,
-        );
+        if let Some(fork_desc) = parsed.fork {
+            self.apply_loaded_fork_state(
+                parsed.width,
+                parsed.height,
+                fork_desc,
+                target_state,
+                parsed.pending_initial_start,
+            )?;
+        } else {
+            self.apply_dimensions_and_target_state(
+                parsed.width,
+                parsed.height,
+                target_state,
+                parsed.pending_initial_start,
+            );
+        }
         Ok(())
     }
 
