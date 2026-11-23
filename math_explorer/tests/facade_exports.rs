@@ -150,11 +150,13 @@ fn assert_pure_math_twenty_one_errors() {
         e::CopulaError::NotSymmetric.severity(),
         e::EloError::InvalidScale { value: 0.0 }.severity(),
         e::Glicko2Error::EmptyMatchResults.severity(),
+        e::GraphTheoryError::UnknownEndpoint { node: 7 }.severity(),
         e::MatchModelError::InvalidGoalRate { value: 0.0 }.severity(),
         e::AnalysisError::ConvergenceError(0.0).severity(),
         e::EllipticCurveError::InvalidDegree.severity(),
         e::EvolutionError::InvalidState.severity(),
         e::FractranError::InvalidFractionSyntax.severity(),
+        e::HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.severity(),
         e::OptimizationError::ConversionError.severity(),
         e::StochasticError::InvalidReactionIndex(1).severity(),
         e::TensorError::IndexOutOfBounds.severity(),
@@ -254,6 +256,10 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_twenty_one_erro
     .expect("valid Dixon-Coles params");
     assert!(dc.default_grid().expect("valid score grid").prob(0, 0) > 0.09);
     assert_pure_math_twenty_one_errors();
+
+    let graph_err = math_explorer::prelude::GraphTheoryError::UnknownEndpoint { node: 7 };
+    let facade_graph_err: math_explorer::prelude::Error = graph_err.clone().into();
+    assert_eq!(facade_graph_err.to_string(), graph_err.to_string());
 }
 
 #[cfg(feature = "ai")]
@@ -461,7 +467,7 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     feature = "physics"
 ))]
 #[test]
-fn all_fifty_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
+fn all_fifty_one_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
     umbrella_checks::verify_prelude_error_reexports();
     umbrella_checks::verify_bus_capture_and_zero_alloc_facade_result();
 }
