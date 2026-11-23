@@ -221,7 +221,7 @@ fn find_hyperlink_center(out: &egui::FullOutput, prefix: &str) -> Option<egui::P
 
 fn run_portal_frame(
     ctx: &egui::Context,
-    framework: &SimulationFramework,
+    framework: &mut SimulationFramework,
     screen_rect: Option<egui::Rect>,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
@@ -240,7 +240,7 @@ fn run_portal_frame(
 }
 
 fn assert_portal_hyperlink_opens_url(
-    framework: &SimulationFramework,
+    framework: &mut SimulationFramework,
     screen_rect: Option<egui::Rect>,
     prefix: &str,
     expected_url_substr: &str,
@@ -303,18 +303,18 @@ fn test_all_registered_tools_render_clean_portal_latex_and_hyperlinks() {
             let tool_id = framework.available_tools[idx].id;
             let ctx = egui::Context::default();
             ctx.enable_accesskit();
-            let out = run_portal_frame(&ctx, &framework, screen_rect, Vec::new());
+            let out = run_portal_frame(&ctx, &mut framework, screen_rect, Vec::new());
             let _ = assert_clean_portal_output(tool_id, &out);
             if tool_id == "SpinVisualizer" {
                 assert_portal_hyperlink_opens_url(
-                    &framework,
+                    &mut framework,
                     screen_rect,
                     "📄 View PDF",
                     "quantum_mechanics.pdf",
                 );
             } else if tool_id == "CeraTool" {
                 assert_portal_hyperlink_opens_url(
-                    &framework,
+                    &mut framework,
                     screen_rect,
                     "🔗 arXiv:2509.00010",
                     "https://arxiv.org/abs/2509.00010",
