@@ -86,7 +86,6 @@ wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 web-sys = { workspace = true, features = [
     "CssStyleDeclaration",
-    "DedicatedWorkerGlobalScope",
     "Document",
     "Element",
     "ErrorEvent",
@@ -97,15 +96,11 @@ web-sys = { workspace = true, features = [
     "HtmlElement",
     "Location",
     "MediaQueryList",
-    "MessageEvent",
     "Node",
     "NodeList",
     "Response",
     "Storage",
     "Window",
-    "Worker",
-    "WorkerOptions",
-    "WorkerType",
 ] }
 
 [target.wasm32-unknown-unknown.dependencies]
