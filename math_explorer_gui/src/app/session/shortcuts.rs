@@ -134,6 +134,7 @@ impl MathExplorerApp {
     pub(super) fn wants_non_canvas_keyboard_input(&self, ctx: &egui::Context) -> bool {
         if self.command_palette.is_open
             || self.show_help_menu
+            || self.show_starter_gallery
             || egui::Popup::is_any_open(ctx)
             || egui_plot::active_top_modal_layer(ctx).is_some()
         {

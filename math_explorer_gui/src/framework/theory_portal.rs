@@ -49,22 +49,7 @@ impl SimulationFramework {
         PaneSidePanel::right(panel_id)
             .resizable(true)
             .show_inside(ui, |ui| {
-                ui.horizontal(|ui| {
-                    let heading = match &self.active_tool {
-                        Some(tool) => format!("Theory: {}", tool.name()),
-                        None => "Theory Context Portal".to_string(),
-                    };
-                    ui.heading(heading);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .button("Close")
-                            .accessible_hover_text("Close Theory Context Portal")
-                            .clicked()
-                        {
-                            close_clicked = true;
-                        }
-                    });
-                });
+                close_clicked = render_theory_portal_header(self, ui);
                 ui.separator();
                 if let Some(tool) = self.active_tool.as_deref() {
                     render_active_tool_theory_body(self, ui, tool);
@@ -80,6 +65,35 @@ impl SimulationFramework {
             self.close_theory_portal_and_restore_focus(&ctx, id_source);
         }
     }
+}
+
+fn render_theory_portal_header(framework: &SimulationFramework, ui: &mut egui::Ui) -> bool {
+    let mut close_clicked = false;
+    let heading = match &framework.active_tool {
+        Some(tool) => format!("Theory: {}", tool.name()),
+        None => "Theory Context Portal".to_string(),
+    };
+    ui.horizontal(|ui| {
+        let heading_max_w = (ui.available_width() - 64.0).max(48.0);
+        ui.allocate_ui_with_layout(
+            egui::vec2(heading_max_w, 0.0),
+            egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
+            |ui| {
+                ui.set_max_width(heading_max_w);
+                ui.add(egui::Label::new(egui::RichText::new(heading).heading()).wrap());
+            },
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui
+                .button("Close")
+                .accessible_hover_text("Close Theory Context Portal")
+                .clicked()
+            {
+                close_clicked = true;
+            }
+        });
+    });
+    close_clicked
 }
 
 fn render_active_tool_theory_body(

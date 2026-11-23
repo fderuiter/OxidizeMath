@@ -133,6 +133,7 @@ pub(crate) fn register_and_handle_pane_focus_shortcuts(
     );
 
     let modal_blocked = app.command_palette.is_open
+        || app.show_starter_gallery
         || app.show_help_menu
         || egui::Popup::is_any_open(ctx)
         || egui_plot::active_top_modal_layer(ctx).is_some();
@@ -164,6 +165,7 @@ pub(super) fn sync_focused_pane_from_widget_focus(
         || app.dragging_quad_axes != (false, false)
         || sash_focused
         || app.command_palette.is_open
+        || app.show_starter_gallery
         || app.show_help_menu
         || egui::Popup::is_any_open(ctx)
         || egui_plot::active_top_modal_layer(ctx).is_some();

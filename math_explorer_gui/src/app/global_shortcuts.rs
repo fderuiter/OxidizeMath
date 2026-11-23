@@ -56,11 +56,14 @@ fn cmd_modifiers() -> egui::Modifiers {
 impl MathExplorerApp {
     /// Returns `true` when any foreground modal dialog or popup menu currently holds focus.
     pub(crate) fn has_active_modal_or_popup(&self, ctx: &egui::Context) -> bool {
-        is_context_modal_or_popup_open(ctx) || self.command_palette.is_open || self.show_help_menu
+        is_context_modal_or_popup_open(ctx)
+            || self.command_palette.is_open
+            || self.show_help_menu
+            || self.show_starter_gallery
     }
 
     pub(crate) fn can_trigger_command_palette_shortcut(&self, ctx: &egui::Context) -> bool {
-        if egui::Popup::is_any_open(ctx) || self.show_help_menu {
+        if egui::Popup::is_any_open(ctx) || self.show_help_menu || self.show_starter_gallery {
             return false;
         }
         let palette_layer = egui::LayerId::new(
@@ -74,7 +77,10 @@ impl MathExplorerApp {
     }
 
     pub(crate) fn can_trigger_help_shortcut(&self, ctx: &egui::Context) -> bool {
-        if egui::Popup::is_any_open(ctx) || self.command_palette.is_open {
+        if egui::Popup::is_any_open(ctx)
+            || self.command_palette.is_open
+            || self.show_starter_gallery
+        {
             return false;
         }
         let help_layer = egui::LayerId::new(
@@ -96,7 +102,8 @@ impl MathExplorerApp {
             ctx,
             DesktopShortcutSpec {
                 name: "Command Palette",
-                description: "Open command palette to quickly switch simulation tabs",
+                description:
+                    "Open unified command palette for actions, tabs, tools, and starter presets",
                 trigger: CommandTrigger::Shortcut(modifiers, egui::Key::K),
                 context_name: "Global",
             },

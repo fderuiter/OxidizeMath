@@ -3,12 +3,12 @@
 use super::{AccessibleHoverText, BrushMode, BrushStroke, InteractiveTool, PaneSidePanel};
 use eframe::egui;
 
-/// Active pointer/touch input modality for an interactive simulation pane.
+/// Active pointer or touch input modality for an interactive simulation pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
-    /// Desktop mouse/trackpad pointer input.
+    /// Desktop mouse or trackpad pointer input.
     Mouse,
-    /// Direct multi-touch gesture input.
+    /// Direct single- or multi-touch gesture input.
     Touch,
 }
 
@@ -24,15 +24,15 @@ pub struct InteractionContext<'a> {
     pub is_clicked: bool,
     /// Underlying `egui` widget response for the canvas region.
     pub response: &'a egui::Response,
-    /// Active pointer or touch input mode.
+    /// Active pointer or touch input mode (`Mouse` or `Touch`).
     pub input_mode: InputMode,
     /// Active multi-touch gesture state, when present.
     pub multi_touch: Option<egui::MultiTouchInfo>,
-    /// Set of keyboard keys currently held down.
+    /// Set of keyboard keys currently held down during this frame.
     pub keys_down: std::collections::HashSet<egui::Key>,
     /// Active keyboard modifiers (`Ctrl`, `Shift`, `Alt`, `Cmd`).
     pub modifiers: egui::Modifiers,
-    /// Optional spatial brush stroke synthesized from pointer drag events.
+    /// Optional spatial [`BrushStroke`] synthesized from pointer drag events for [`InteractiveTool::on_brush`].
     pub brush_stroke: Option<BrushStroke>,
 }
 
