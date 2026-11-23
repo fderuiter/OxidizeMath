@@ -442,4 +442,3 @@ mod tests {
         assert!(fit.r_squared >= 0.99);
     }
 }
-

@@ -1,10 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use eframe::egui;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::Arc;
 
+#[path = "trace_overlay/codec.rs"]
+mod codec;
 #[path = "trace_overlay/ui.rs"]
 mod ui;
 
@@ -99,18 +101,6 @@ impl PartialEq<Vec<[f64; 2]>> for TracePoints {
 impl PartialEq<[[f64; 2]]> for TracePoints {
     fn eq(&self, other: &[[f64; 2]]) -> bool {
         self.0.as_ref() == other
-    }
-}
-
-impl Serialize for TracePoints {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.0.as_ref().serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for TracePoints {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        Vec::<[f64; 2]>::deserialize(deserializer).map(Self::from)
     }
 }
 

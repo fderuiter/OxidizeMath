@@ -206,3 +206,34 @@ fn test_trace_overlay_buttons_announce_and_dismiss_on_escape() {
         verify_trace_hover_and_escape(&ctx, &mut full_manager, btn, tooltip);
     }
 }
+
+#[test]
+fn test_trace_points_compact_codec_lossless_and_legacy_compat() {
+    let mut curve: Vec<[f64; 2]> = (0..128)
+        .map(|i| [i as f64 * 0.1, 800.0 - i as f64 * 0.5])
+        .collect();
+    curve.push([-0.0, f64::INFINITY]);
+    curve.push([f64::NEG_INFINITY, f64::NAN]);
+    let pts = TracePoints::from(curve.clone());
+
+    let json = serde_json::to_string(&pts).expect("compact serialize");
+    assert!(
+        json.starts_with("\"tp1:"),
+        "Expected compact tp1: string, got {json}"
+    );
+    let decoded: TracePoints = serde_json::from_str(&json).expect("compact deserialize");
+    assert_eq!(decoded.len(), curve.len());
+    for (orig, got) in curve.iter().zip(decoded.iter()) {
+        assert_eq!(orig[0].to_bits(), got[0].to_bits());
+        assert_eq!(orig[1].to_bits(), got[1].to_bits());
+    }
+
+    let legacy_json = "[[0.0,1.5],[2.25,-3.75],[4.5,6.0]]";
+    let legacy_pts: TracePoints = serde_json::from_str(legacy_json).expect("legacy array");
+    assert_eq!(
+        legacy_pts.as_ref(),
+        &[[0.0, 1.5], [2.25, -3.75], [4.5, 6.0]]
+    );
+    assert!(serde_json::from_str::<TracePoints>("\"tp1:AAAA\"").is_err());
+    assert!(serde_json::from_str::<TracePoints>("\"invalid_prefix\"").is_err());
+}

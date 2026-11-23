@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::theme::ThemeMode;
+use super::viewport::compare_sync::ComparisonSyncConfig;
 use super::viewport::ViewportLayout;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
@@ -64,47 +65,104 @@ pub(super) fn has_frame_input(ctx: &egui::Context) -> bool {
     })
 }
 
+#[derive(Default)]
+struct TabCacheInner {
+    slots: Vec<Option<(&'static str, u64, Option<String>)>>,
+    assembled: HashMap<String, String>,
+    assembled_valid: bool,
+}
+
+impl TabCacheInner {
+    fn refresh_slot(
+        &mut self,
+        idx: usize,
+        tab: &dyn ExplorerTab,
+        is_active: bool,
+        had_input: bool,
+    ) -> bool {
+        let rev = tab.state_revision();
+        let name = tab.name();
+        if self.slots[idx].as_ref().is_some_and(|(n, _, _)| *n != name) {
+            self.assembled_valid = false;
+        }
+        let hit = self.slots[idx].as_ref().is_some_and(|(n, c_rev, _)| {
+            *n == name
+                && if !is_active || rev > 0 {
+                    *c_rev == rev
+                } else {
+                    !had_input
+                }
+        });
+        if hit {
+            return false;
+        }
+        let fresh = tab.save_state();
+        match &fresh {
+            Some(s) => {
+                self.assembled.insert(name.to_string(), s.clone());
+            }
+            None => {
+                self.assembled.remove(name);
+            }
+        }
+        self.slots[idx] = Some((name, rev, fresh));
+        true
+    }
+}
+
 /// Interior-mutable per-tab JSON cache avoiding redundant `ExplorerTab::save_state` calls.
 #[derive(Default)]
 pub(super) struct TabStateCache {
-    entries: RefCell<HashMap<String, (u64, Option<String>)>>,
+    inner: RefCell<TabCacheInner>,
 }
 
 impl TabStateCache {
     pub(super) fn clear(&self) {
-        self.entries.borrow_mut().clear();
+        let mut guard = self.inner.borrow_mut();
+        guard.slots.clear();
+        guard.assembled.clear();
+        guard.assembled_valid = false;
     }
 
     pub(super) fn invalidate_tab(&self, name: &str) {
-        self.entries.borrow_mut().remove(name);
-    }
-
-    pub(super) fn extract_tab_json(
-        &self,
-        tab: &dyn ExplorerTab,
-        is_active_pane: bool,
-        had_input: bool,
-    ) -> Option<String> {
-        let rev = tab.state_revision();
-        let name = tab.name();
-        {
-            let guard = self.entries.borrow();
-            if let Some((cached_rev, cached_json)) = guard.get(name) {
-                let can_reuse = if !is_active_pane || rev > 0 {
-                    *cached_rev == rev
-                } else {
-                    !had_input
-                };
-                if can_reuse {
-                    return cached_json.clone();
-                }
+        let mut guard = self.inner.borrow_mut();
+        for slot in &mut guard.slots {
+            if slot.as_ref().is_some_and(|(n, _, _)| *n == name) {
+                *slot = None;
             }
         }
-        let fresh = tab.save_state();
-        self.entries
-            .borrow_mut()
-            .insert(name.to_string(), (rev, fresh.clone()));
-        fresh
+        guard.assembled_valid = false;
+    }
+
+    pub(super) fn extract_all_tabs(
+        &self,
+        tabs: &[Box<dyn ExplorerTab>],
+        active_primary: usize,
+        had_input: bool,
+    ) -> HashMap<String, String> {
+        let mut guard = self.inner.borrow_mut();
+        let cache = &mut *guard;
+        if cache.slots.len() != tabs.len() {
+            cache.slots.resize_with(tabs.len(), || None);
+            cache.assembled.clear();
+            cache.assembled_valid = false;
+        }
+        let mut any_miss = !cache.assembled_valid;
+        for (idx, tab) in tabs.iter().enumerate() {
+            if cache.refresh_slot(idx, tab.as_ref(), idx == active_primary, had_input) {
+                any_miss = true;
+            }
+        }
+        if any_miss && !cache.assembled_valid {
+            cache.assembled.clear();
+            for slot in cache.slots.iter().flatten() {
+                if let Some(ref s) = slot.2 {
+                    cache.assembled.insert(slot.0.to_string(), s.clone());
+                }
+            }
+            cache.assembled_valid = true;
+        }
+        cache.assembled.clone()
     }
 }
 
@@ -154,7 +212,10 @@ impl AppStateFingerprint {
         let flags = u8::from(app.show_info)
             | (u8::from(app.show_warnings) << 1)
             | (u8::from(app.show_errors) << 2)
-            | (u8::from(app.show_diagnostics_panel) << 3);
+            | (u8::from(app.show_diagnostics_panel) << 3)
+            | (u8::from(app.compare_sync.link_axes) << 4)
+            | (u8::from(app.compare_sync.link_cursors) << 5)
+            | (u8::from(app.compare_sync.sync_playback) << 6);
 
         Self {
             selected_tab: app.selected_tab,
@@ -221,6 +282,8 @@ pub struct AppState {
     pub focused_pane: usize,
     #[serde(default)]
     pub pane_tab_states: Vec<HashMap<String, String>>,
+    #[serde(default)]
+    pub compare_sync: ComparisonSyncConfig,
 }
 
 impl Default for AppState {
@@ -243,6 +306,7 @@ impl Default for AppState {
             pane_tabs: vec![0, 1, 2, 3],
             focused_pane: 0,
             pane_tab_states: Vec::new(),
+            compare_sync: ComparisonSyncConfig::default(),
         }
     }
 }
@@ -252,17 +316,11 @@ impl AppState {
     /// reusing cached JSON for tabs outside active panes and clean visible tabs.
     pub fn extract(app: &super::MathExplorerApp) -> Self {
         let active_primary = app.active_primary_tab_index();
-        let mut tab_states = HashMap::with_capacity(app.tabs.len());
-        for (idx, tab) in app.tabs.iter().enumerate() {
-            let is_active = idx == active_primary;
-            if let Some(tab_str) = app.tab_state_cache.extract_tab_json(
-                tab.as_ref(),
-                is_active,
-                app.last_frame_had_input,
-            ) {
-                tab_states.insert(tab.name().to_string(), tab_str);
-            }
-        }
+        let tab_states = app.tab_state_cache.extract_all_tabs(
+            &app.tabs,
+            active_primary,
+            app.last_frame_had_input,
+        );
         let selected_tab_name = app.tabs.get(app.selected_tab).map(|t| t.name().to_string());
         let secondary_tab_name = app
             .tabs
@@ -297,6 +355,7 @@ impl AppState {
             pane_tabs,
             focused_pane: app.active_focused_pane(),
             pane_tab_states: app.extract_pane_tab_states(),
+            compare_sync: app.compare_sync,
         }
     }
 
@@ -336,6 +395,7 @@ impl AppState {
             self.quad_split_ratios.1.clamp(0.20, 0.80),
         );
         app.viewport_layout = self.viewport_layout;
+        app.compare_sync = self.compare_sync;
 
         if app.viewport_layout == ViewportLayout::Single
             && app.split_layout_mode != SplitLayoutMode::Single

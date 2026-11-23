@@ -5,7 +5,6 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 struct RawToolStates<'a> {
@@ -137,19 +136,40 @@ pub(super) fn capture_isolated_tool_datasets(
     tool: &dyn InteractiveTool,
 ) -> Vec<(String, Vec<[f64; 2]>)> {
     let prev = egui_plot::get_last_plot_datasets();
+    let prev_3d = egui_plot::get_last_plot_datasets_3d();
     let prev_prims = egui_plot::get_last_plot_primitives();
     egui_plot::clear_last_plot_datasets();
-    egui_plot::clear_last_plot_primitives();
     let datasets = tool.export_datasets();
     egui_plot::clear_last_plot_datasets();
-    egui_plot::clear_last_plot_primitives();
     if !prev.is_empty() {
         egui_plot::append_last_plot_datasets(&prev);
+    }
+    if !prev_3d.is_empty() {
+        egui_plot::append_last_plot_datasets_3d(&prev_3d);
     }
     if !prev_prims.is_empty() {
         egui_plot::append_last_plot_primitives(&prev_prims);
     }
     datasets
+}
+
+fn capture_isolated_tool_datasets_3d(tool: &dyn InteractiveTool) -> Vec<(String, Vec<[f64; 3]>)> {
+    let prev = egui_plot::get_last_plot_datasets();
+    let prev_3d = egui_plot::get_last_plot_datasets_3d();
+    let prev_prims = egui_plot::get_last_plot_primitives();
+    egui_plot::clear_last_plot_datasets();
+    let datasets_3d = tool.export_datasets_3d();
+    egui_plot::clear_last_plot_datasets();
+    if !prev.is_empty() {
+        egui_plot::append_last_plot_datasets(&prev);
+    }
+    if !prev_3d.is_empty() {
+        egui_plot::append_last_plot_datasets_3d(&prev_3d);
+    }
+    if !prev_prims.is_empty() {
+        egui_plot::append_last_plot_primitives(&prev_prims);
+    }
+    datasets_3d
 }
 
 impl SimulationFramework {
@@ -163,24 +183,33 @@ impl SimulationFramework {
 
     /// Computes a deterministic O(1) revision token for this framework's persisted state.
     pub fn state_revision(&self) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        self.rev_cache.framework_revision.hash(&mut hasher);
-        self.selected_tool_index.hash(&mut hasher);
-        self.show_theory_portal.hash(&mut hasher);
-        self.show_starter_gallery.hash(&mut hasher);
-        self.saved_tool_states.len().hash(&mut hasher);
+        #[inline]
+        fn mix64(acc: u64, val: u64) -> u64 {
+            (acc ^ val)
+                .wrapping_mul(0x517c_c1b7_2722_0a95)
+                .rotate_left(17)
+        }
+        let mut h = mix64(0x9e37_79b9_7f4a_7c15, self.rev_cache.framework_revision);
+        h = mix64(
+            h,
+            self.selected_tool_index.map_or(u64::MAX, |idx| idx as u64),
+        );
+        let flags =
+            u64::from(self.show_theory_portal) | (u64::from(self.show_starter_gallery) << 1);
+        h = mix64(h, flags);
+        h = mix64(h, self.saved_tool_states.len() as u64);
         if let Some(tool) = &self.active_tool {
-            tool.name().hash(&mut hasher);
+            let name = tool.name();
+            h = mix64(h, name.as_ptr() as usize as u64);
+            h = mix64(h, name.len() as u64);
             let tool_rev = tool.state_revision();
             if tool_rev > 0 {
-                1_u8.hash(&mut hasher);
-                tool_rev.hash(&mut hasher);
+                h = mix64(mix64(h, 1), tool_rev);
             } else {
-                0_u8.hash(&mut hasher);
-                self.rev_cache.untracked_tool_revision.hash(&mut hasher);
+                h = mix64(mix64(h, 0), self.rev_cache.untracked_tool_revision);
             }
         }
-        hasher.finish().max(1)
+        h.max(1)
     }
 
     pub(super) fn serialized_active_tool(&self) -> Option<(&'static str, Arc<str>)> {
@@ -292,10 +321,12 @@ impl SimulationFramework {
                 }
             }
             let refreshed = capture_isolated_tool_datasets(tool.as_ref());
+            let refreshed_3d = capture_isolated_tool_datasets_3d(tool.as_ref());
             let recovery = tool.save_recovery_state();
             let rev = tool.state_revision();
             self.sync_state.datasets_owner_tool = Some(tool.name());
             self.current_valid_plot_datasets = refreshed.clone();
+            self.current_valid_plot_datasets_3d = refreshed_3d;
             self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
             self.last_valid_snapshot = Some(StateSnapshot {
                 tool_state: recovery,
@@ -338,8 +369,10 @@ impl SimulationFramework {
         let recovery_state = new_tool.save_recovery_state();
         let rev = new_tool.state_revision();
         let initial_datasets = capture_isolated_tool_datasets(new_tool.as_ref());
+        let initial_datasets_3d = capture_isolated_tool_datasets_3d(new_tool.as_ref());
         self.sync_state.datasets_owner_tool = Some(new_tool.name());
         self.current_valid_plot_datasets = initial_datasets.clone();
+        self.current_valid_plot_datasets_3d = initial_datasets_3d;
         self.rev_cache.last_snapshot_rev = (rev > 0).then_some((new_tool.name(), rev));
         self.last_valid_snapshot = Some(StateSnapshot {
             tool_state: recovery_state,

@@ -33,8 +33,8 @@ cargo check --workspace
 cargo build --workspace --all-features
 
 # Run fast diff-scoped pre-commit checks on staged paths (executed automatically by .githooks/pre-commit;
-# checks staged formatting, file lengths, entropy, policy audit, staged duplicates, .github/-gated workflows,
-# .md-gated links, and targeted host/wasm32 Clippy without OSV network calls, API drift, or ADR checks)
+# checks staged formatting, ADR records, file lengths, entropy, policy audit, staged duplicates,
+# .github/-gated workflows, .md-gated links, and targeted host/wasm32 Clippy without OSV network calls or API drift)
 cargo run -p xtask -- lint-staged
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
@@ -91,9 +91,9 @@ cargo run -p unified_verification --release -- check-file-lengths
 cargo run -p unified_verification --release -- check-entropy
 cargo run -p unified_verification --release -- traceability
 
-# Verify architectural decision records across staged index edits or commit ranges when core crates change
+# Verify architectural decision records (NNNN-slug.md, # and ## Status headings, unique IDs, and ACMR updates) across staged index edits or commit ranges
 cargo run -p unified_verification --release -- verify-records --staged
-BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
+BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 
 # Run the full high-integrity verified suite (including cargo llvm-cov coverage and Verification_Certificate.json)
 cargo run -p unified_verification --release -- verify-suite
@@ -175,7 +175,7 @@ cargo run -p xtask -- test-wasm
 The `package` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) defines a static three-OS matrix (`ubuntu-latest`/`deb`, `macos-latest`/`dmg`, and `windows-latest`/`wix`) so every workflow event posts deterministic `Package Installers` check runs across all three operating systems:
 
 - **Linux (`deb`)**: Runs on every `pull_request`, `merge_group`, `push`, and `workflow_dispatch` event.
-- **macOS (`dmg`) & Windows (`wix`)**: Run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `pre-flight` sets `installer_changed=true` (diffs touching `math_explorer_gui/**`, [Cargo.toml](Cargo.toml), `Cargo.lock`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when git diff falls back). On unrelated pull requests (`installer_changed=false`), the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` and skip build, manifest, and upload steps via `if:`.
+- **macOS (`dmg`) & Windows (`wix`)**: Because `pull_request` runs gate direct merges to `main` (without relying solely on `merge_group`), these legs run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `pre-flight` sets `installer_changed=true` — matching `crates/*` (after ignoring non-linked `crates/markdown_tests/*` and `crates/unified_verification/*`), `math_explorer_gui/*`, `math_explorer/*`, `egui_plot/*`, [LICENSE](LICENSE), `papers/*`, [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*` (see [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml)), and [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back because `BASE_SHA` or `HEAD_SHA` is missing or unreachable. When a `pull_request` touches only paths outside those globs (such as `docs/*`, `AGENTS.md`, [CONTRIBUTING.md](CONTRIBUTING.md), `crates/markdown_tests/*`, or `crates/unified_verification/*`), `installer_changed` is `false` and the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` to post passing check runs while skipping build, manifest, and upload steps via `if:`.
 
 ### Prerequisites (Ubuntu / Debian)
 
@@ -233,7 +233,7 @@ rm -rf math_explorer_gui/dist
 
 ## 6. Local Academic Paper Compilation Checks
 
-Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits, [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `pre-flight` sets `papers_changed=true` on `pull_request` (diffs touching `papers/**`, `apps/xtask/src/papers*`, [traceability.toml](traceability.toml), or [.github/workflows/ci.yml](.github/workflows/ci.yml), or on git diff fallback) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`.
+Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits — and because `pull_request` runs gate direct merges to `main` — [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `pre-flight` sets `papers_changed=true` on `pull_request` (diffs touching `papers/*`, `apps/xtask/*`, [traceability.toml](traceability.toml), [Verification_Certificate.json](Verification_Certificate.json), [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`. Pull requests limited to paths outside those globs (such as `docs/*`, `crates/markdown_tests/*`, or `crates/unified_verification/*`) set `papers_changed=false` and skip `compile-papers`.
 
 ### Prerequisites (Ubuntu / Debian)
 

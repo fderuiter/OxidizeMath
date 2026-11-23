@@ -135,9 +135,21 @@ impl OdeSolverTool {
                 continue;
             }
             match name {
-                "k" => self.param_k = val,
-                "r" => self.param_r = val,
-                "K" | "cap_k" => self.param_cap_k = val,
+                "k" => {
+                    self.param_k = val;
+                    scalar_map.insert("k".to_string(), val);
+                }
+                "r" => {
+                    self.param_r = val;
+                    scalar_map.insert("r".to_string(), val);
+                }
+                "K" | "cap_k" => {
+                    self.param_cap_k = val;
+                    scalar_map.insert("cap_k".to_string(), val);
+                    if scalar_map.contains_key("K") {
+                        scalar_map.insert("K".to_string(), val);
+                    }
+                }
                 "y0" => self.ic_y0 = val,
                 "v0" => self.ic_v0 = val,
                 other => {
