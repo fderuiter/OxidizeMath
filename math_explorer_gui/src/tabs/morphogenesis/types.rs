@@ -1,9 +1,8 @@
+//! Coupled reaction, hydrodynamic flow, brush, and overlay mode enums and dimensionless metrics.
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub use crate::presets::MorphogenesisKineticsMode;
-use math_explorer::biology::morphogenesis::{
-    GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics,
-};
 use serde::{Deserialize, Serialize};
 
 /// Selectable hydrodynamic velocity coupling mode for [`super::MorphogenesisTool`].
@@ -20,16 +19,23 @@ pub enum MorphogenesisFlowMode {
 
 impl MorphogenesisFlowMode {
     /// Display label shown in UI selectors.
-    pub fn label(self) -> &'static str {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
         match self {
             Self::None => "None (Zero Drift)",
             Self::LbmVortexWake => "LBM Vortex Wake",
             Self::PotentialFlow => "Potential Flow",
         }
     }
+
+    /// Returns `true` when this flow mode equals [`Self::None`].
+    #[must_use]
+    pub const fn is_default(&self) -> bool {
+        matches!(self, Self::None)
+    }
 }
 
-/// Interactive pointer brush behavior on the morphogenesis canvas.
+/// Interactive pointer brush behavior for coupled obstacle and reagent sculpting.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MorphogenesisBrushMode {
     /// Primary click/drag paints solid no-flux obstacles; secondary click/drag erases obstacles.
@@ -45,13 +51,20 @@ pub enum MorphogenesisBrushMode {
 
 impl MorphogenesisBrushMode {
     /// Display label shown in UI selectors.
-    pub fn label(self) -> &'static str {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Obstacle => "Paint Obstacle",
             Self::EraseObstacle => "Erase Obstacle",
             Self::Reagent => "Seed Reagent",
             Self::PanZoom => "Pan / Zoom",
         }
+    }
+
+    /// Returns `true` when this brush mode equals [`Self::Obstacle`].
+    #[must_use]
+    pub const fn is_default(&self) -> bool {
+        matches!(self, Self::Obstacle)
     }
 }
 
@@ -69,70 +82,86 @@ pub enum MorphogenesisOverlayMode {
 
 impl MorphogenesisOverlayMode {
     /// Display label shown in UI selectors.
-    pub fn label(self) -> &'static str {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Concentration => "Concentration",
             Self::Vorticity => "Vorticity (ω_z)",
             Self::DualOverlay => "Dual (Conc + ω_z)",
         }
     }
+
+    /// Returns `true` when this overlay mode equals [`Self::Concentration`].
+    #[must_use]
+    pub const fn is_default(&self) -> bool {
+        matches!(self, Self::Concentration)
+    }
 }
 
-/// Unified zero-allocation kinetics adapter switching cleanly between Schnakenberg `(a, b)`
-/// and Gray-Scott `(f, k)`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MorphogenesisKinetics {
-    /// Active reaction model variant.
-    pub mode: MorphogenesisKineticsMode,
-    /// Schnakenberg activator production rate `a`.
+/// Shared reaction-diffusion parameters synchronized between the UI thread and worker runner.
+#[derive(Clone, Copy, Debug)]
+pub struct MorphogenesisSharedParams {
+    /// Schnakenberg activator feed rate `a`.
     pub a: f64,
-    /// Schnakenberg inhibitor production rate `b`.
+    /// Schnakenberg inhibitor feed rate `b`.
     pub b: f64,
-    /// Gray-Scott substrate feed rate `f`.
-    pub f: f64,
-    /// Gray-Scott autocatalyst kill rate `k`.
-    pub k: f64,
+    /// Primary species diffusion coefficient `D_u`.
+    pub d_u: f64,
+    /// Secondary species diffusion coefficient `D_v`.
+    pub d_v: f64,
+    /// Integration step size `dt`.
+    pub dt: f64,
+    /// Whether high-contrast palette rendering is active.
+    pub high_contrast: bool,
 }
 
-impl Default for MorphogenesisKinetics {
+impl Default for MorphogenesisSharedParams {
     fn default() -> Self {
-        let gs = GrayScottKinetics::mitosis();
         Self {
-            mode: MorphogenesisKineticsMode::Schnakenberg,
             a: 0.1,
             b: 0.9,
-            f: gs.f,
-            k: gs.k,
+            d_u: 1.0,
+            d_v: 100.0,
+            dt: 0.05,
+            high_contrast: false,
         }
     }
 }
 
-impl ReactionKinetics<2> for MorphogenesisKinetics {
-    fn reaction(&self, concentrations: [f64; 2]) -> [f64; 2] {
-        match self.mode {
-            MorphogenesisKineticsMode::Schnakenberg => {
-                SchnakenbergKinetics::new(self.a, self.b).reaction(concentrations)
-            }
-            MorphogenesisKineticsMode::GrayScott => {
-                GrayScottKinetics::new(self.f, self.k).reaction(concentrations)
-            }
-        }
-    }
+/// Shared hydrodynamic coupling, overlay, and reagent brush configuration synchronized with the worker.
+#[derive(Clone, Copy, Debug)]
+pub struct MorphogenesisFlowState {
+    /// Active hydrodynamic velocity coupling mode.
+    pub flow_mode: MorphogenesisFlowMode,
+    /// Horizontal freestream / inlet velocity magnitude `U`.
+    pub inlet_velocity: f64,
+    /// Kinematic fluid viscosity `\nu` for D2Q9 BGK relaxation.
+    pub viscosity: f64,
+    /// Analytical vortex circulation `\Gamma` for potential flow.
+    pub circulation: f64,
+    /// Active visualization overlay mode.
+    pub overlay_mode: MorphogenesisOverlayMode,
+    /// Current theme mode for theme-reactive snapshot rendering.
+    pub theme_mode: crate::app::ThemeMode,
+    /// Coupled obstacle/reagent brush mode used by `SimCommand::ApplyBrush`.
+    pub brush_mode: MorphogenesisBrushMode,
+    /// Coupled brush radius in grid cells.
+    pub brush_radius: i32,
 }
 
-/// Structured worker snapshot payload enabling theme-reactive recoloring and dimensionless readouts.
-#[derive(Clone, Debug)]
-pub struct MorphogenesisSnapshotData {
-    /// Visualized species concentration slice (`u` for Schnakenberg, `v` for Gray-Scott).
-    pub concentration: Vec<f64>,
-    /// Row-major discrete vorticity field `\omega_z`.
-    pub vorticity: Vec<f64>,
-    /// Row-major solid obstacle mask.
-    pub obstacles: Vec<bool>,
-    /// Dimensionless Péclet number `\mathrm{Pe} = U L / D_u`.
-    pub peclet: f64,
-    /// Dimensionless Damköhler number `\mathrm{Da}`.
-    pub damkohler: f64,
+impl Default for MorphogenesisFlowState {
+    fn default() -> Self {
+        Self {
+            flow_mode: MorphogenesisFlowMode::None,
+            inlet_velocity: 0.0,
+            viscosity: default_viscosity(),
+            circulation: 0.0,
+            overlay_mode: MorphogenesisOverlayMode::Concentration,
+            theme_mode: crate::app::ThemeMode::Dark,
+            brush_mode: MorphogenesisBrushMode::Obstacle,
+            brush_radius: default_brush_radius(),
+        }
+    }
 }
 
 /// Computes live dimensionless Péclet (`Pe = U L / D_u`) and Damköhler (`Da`) numbers.
@@ -175,58 +204,22 @@ pub fn compute_peclet_damkohler(
     (peclet, damkohler)
 }
 
+pub(crate) fn is_zero_f64(val: &f64) -> bool {
+    *val == 0.0
+}
+
 pub(crate) fn default_viscosity() -> f64 {
     0.02
+}
+
+pub(crate) fn is_default_viscosity(val: &f64) -> bool {
+    (*val - default_viscosity()).abs() < 1e-12
 }
 
 pub(crate) fn default_brush_radius() -> i32 {
     3
 }
 
-/// Thread-safe shared configuration synced between UI controls and [`super::runner::MorphogenesisRunner`].
-#[allow(missing_docs)]
-#[derive(Clone, Debug)]
-pub struct MorphogenesisSharedParams {
-    pub a: f64,
-    pub b: f64,
-    pub f: f64,
-    pub k: f64,
-    pub d_u: f64,
-    pub d_v: f64,
-    pub dt: f64,
-    pub high_contrast: bool,
-    pub theme_mode: crate::app::ThemeMode,
-    pub kinetics_mode: MorphogenesisKineticsMode,
-    pub flow_mode: MorphogenesisFlowMode,
-    pub inlet_velocity: f64,
-    pub viscosity: f64,
-    pub circulation: f64,
-    pub overlay_mode: MorphogenesisOverlayMode,
-    pub brush_mode: MorphogenesisBrushMode,
-    pub brush_radius: i32,
-}
-
-impl Default for MorphogenesisSharedParams {
-    fn default() -> Self {
-        let gs = GrayScottKinetics::mitosis();
-        Self {
-            a: 0.1,
-            b: 0.9,
-            f: gs.f,
-            k: gs.k,
-            d_u: 1.0,
-            d_v: 100.0,
-            dt: 0.05,
-            high_contrast: false,
-            theme_mode: crate::app::ThemeMode::Dark,
-            kinetics_mode: MorphogenesisKineticsMode::Schnakenberg,
-            flow_mode: MorphogenesisFlowMode::None,
-            inlet_velocity: 0.0,
-            viscosity: 0.02,
-            circulation: 0.0,
-            overlay_mode: MorphogenesisOverlayMode::Concentration,
-            brush_mode: MorphogenesisBrushMode::Obstacle,
-            brush_radius: 3,
-        }
-    }
+pub(crate) fn is_default_brush_radius(val: &i32) -> bool {
+    *val == default_brush_radius()
 }

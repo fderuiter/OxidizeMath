@@ -1,10 +1,15 @@
+//! Control panel widgets, dimensionless Péclet/Damköhler badges, microfluidic brush controls,
+//! time-travel transport, and CFL stabilization actions.
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{PRESET_GRAY_SCOTT_SPIRAL_FLOW, PRESET_KARMAN_TURING_WAKE};
+use super::runner::{MorphoSnapshotData, MorphogenesisKineticsState};
+use super::sculpt::{build_maze_rle, draw_morpho_sculpt_controls};
 use super::types::{
     compute_peclet_damkohler, MorphogenesisBrushMode, MorphogenesisFlowMode,
-    MorphogenesisKineticsMode, MorphogenesisOverlayMode, MorphogenesisSharedParams,
-    MorphogenesisSnapshotData,
+    MorphogenesisFlowState, MorphogenesisKineticsMode, MorphogenesisOverlayMode,
+    MorphogenesisSharedParams,
 };
 use super::MorphogenesisTool;
 use crate::app::SemanticPalette;
@@ -18,30 +23,31 @@ use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 
 impl MorphogenesisTool {
     pub(crate) fn current_peclet_damkohler(&self) -> (f64, f64) {
-        let p = self
-            .params
+        let p = *self.params.read().unwrap_or_else(|e| e.into_inner());
+        let ks = *self
+            .kinetics_state
             .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let u_est = match p.flow_mode {
+            .unwrap_or_else(|e| e.into_inner());
+        let flow = *self.flow_state.read().unwrap_or_else(|e| e.into_inner());
+        let u_est = match flow.flow_mode {
             MorphogenesisFlowMode::None => 0.0,
-            MorphogenesisFlowMode::LbmVortexWake => p.inlet_velocity,
+            MorphogenesisFlowMode::LbmVortexWake => flow.inlet_velocity,
             MorphogenesisFlowMode::PotentialFlow => {
                 let r = ((self.height as f64) / 10.0).max(2.0);
-                p.inlet_velocity + p.circulation.abs() / (2.0 * std::f64::consts::PI * r)
+                flow.inlet_velocity + flow.circulation.abs() / (2.0 * std::f64::consts::PI * r)
             }
         };
         if self.worker.is_running()
-            && (self.live_peclet > 0.0 || p.flow_mode == MorphogenesisFlowMode::None)
+            && (self.live_peclet > 0.0 || flow.flow_mode == MorphogenesisFlowMode::None)
         {
             (self.live_peclet, self.live_damkohler)
         } else {
             let length = ((self.height as f64) / 6.0).max(1.0);
-            let (r1, r2) = match p.kinetics_mode {
+            let (r1, r2) = match ks.mode {
                 MorphogenesisKineticsMode::Schnakenberg => (p.a, p.b),
-                MorphogenesisKineticsMode::GrayScott => (p.f, p.k),
+                MorphogenesisKineticsMode::GrayScott => (ks.f, ks.k),
             };
-            compute_peclet_damkohler(u_est, length, p.d_u, r1, r2, p.kinetics_mode)
+            compute_peclet_damkohler(u_est, length, p.d_u, r1, r2, ks.mode)
         }
     }
 
@@ -116,13 +122,17 @@ impl MorphogenesisTool {
         changed
     }
 
-    fn render_gray_scott_sliders(ui: &mut egui::Ui, p: &mut MorphogenesisSharedParams) -> bool {
+    fn render_gray_scott_sliders(
+        ui: &mut egui::Ui,
+        p: &mut MorphogenesisSharedParams,
+        ks: &mut MorphogenesisKineticsState,
+    ) -> bool {
         let mut changed = false;
         changed |= ui
-            .add(egui::Slider::new(&mut p.f, 0.01..=0.09).text("f (feed)"))
+            .add(egui::Slider::new(&mut ks.f, 0.01..=0.09).text("f (feed)"))
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut p.k, 0.03..=0.08).text("k (kill)"))
+            .add(egui::Slider::new(&mut ks.k, 0.03..=0.08).text("k (kill)"))
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut p.d_u, 0.05..=0.40).text("D_u"))
@@ -133,11 +143,31 @@ impl MorphogenesisTool {
         changed
     }
 
-    fn render_reaction_param_sliders(
+    fn render_kinetics_mode_toggle(
         ui: &mut egui::Ui,
-        p: &mut MorphogenesisSharedParams,
-        constraints: &std::collections::HashMap<String, ParameterConstraint>,
-    ) -> (bool, f64, f64) {
+        current_mode: MorphogenesisKineticsMode,
+    ) -> Option<MorphogenesisKineticsMode> {
+        let mut switched_to = None;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Kinetics:");
+            for mode in [
+                MorphogenesisKineticsMode::Schnakenberg,
+                MorphogenesisKineticsMode::GrayScott,
+            ] {
+                if ui
+                    .selectable_label(current_mode == mode, mode.label())
+                    .clicked()
+                    && current_mode != mode
+                {
+                    switched_to = Some(mode);
+                }
+            }
+        });
+        switched_to
+    }
+
+    fn draw_kinetics_and_reaction_sliders(&mut self, ui: &mut egui::Ui) {
+        let constraints = self.theory.theory_parameters();
         let cdt = constraints
             .get("dt")
             .cloned()
@@ -146,49 +176,38 @@ impl MorphogenesisTool {
                 max: 0.1,
                 step: 5e-4,
             });
-        let (mut changed, max_dt) = match p.kinetics_mode {
-            MorphogenesisKineticsMode::Schnakenberg => (
-                Self::render_schnakenberg_sliders(ui, p, constraints),
-                cdt.max,
-            ),
-            MorphogenesisKineticsMode::GrayScott => (Self::render_gray_scott_sliders(ui, p), 1.5),
-        };
-        changed |= ui
-            .add(
-                egui::Slider::new(&mut p.dt, cdt.min..=max_dt)
-                    .logarithmic(true)
-                    .text("dt"),
-            )
-            .changed();
-        (changed, cdt.min, max_dt)
-    }
-
-    fn draw_kinetics_and_reaction_sliders(&mut self, ui: &mut egui::Ui) {
-        let constraints = self.theory.theory_parameters();
-        let mut switched_to = None;
-        let (changed, cfl_exceeded, dt_bounds) = {
+        let flow_mode = self
+            .flow_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .flow_mode;
+        let (switched_to, changed, cfl_exceeded, max_dt) = {
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            let current_mode = p.kinetics_mode;
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Kinetics:");
-                for mode in [
-                    MorphogenesisKineticsMode::Schnakenberg,
-                    MorphogenesisKineticsMode::GrayScott,
-                ] {
-                    if ui
-                        .selectable_label(current_mode == mode, mode.label())
-                        .clicked()
-                        && current_mode != mode
-                    {
-                        switched_to = Some(mode);
-                    }
+            let current_mode = ks.mode;
+            let sw = Self::render_kinetics_mode_toggle(ui, current_mode);
+            let (mut ch, dt_hi) = match current_mode {
+                MorphogenesisKineticsMode::Schnakenberg => (
+                    Self::render_schnakenberg_sliders(ui, &mut p, &constraints),
+                    cdt.max,
+                ),
+                MorphogenesisKineticsMode::GrayScott => {
+                    (Self::render_gray_scott_sliders(ui, &mut p, &mut ks), 1.5)
                 }
-            });
-            let (changed, min_dt, max_dt) =
-                Self::render_reaction_param_sliders(ui, &mut p, &constraints);
-            let cfl_bad = p.flow_mode == MorphogenesisFlowMode::None
+            };
+            ch |= ui
+                .add(
+                    egui::Slider::new(&mut p.dt, cdt.min..=dt_hi)
+                        .logarithmic(true)
+                        .text("dt"),
+                )
+                .changed();
+            let cfl_bad = flow_mode == MorphogenesisFlowMode::None
                 && 4.0 * p.d_u.max(p.d_v) * p.dt >= 1.0;
-            (changed, cfl_bad, (min_dt, max_dt))
+            (sw, ch, cfl_bad, dt_hi)
         };
 
         if let Some(new_mode) = switched_to {
@@ -205,16 +224,16 @@ impl MorphogenesisTool {
             let _ = self.reseed_if_washed_out_entering_pattern();
         }
         if cfl_exceeded && ui.button("⚡ Stabilize Step (CFL)").clicked() {
-            self.stabilize_cfl_step(ui.ctx(), dt_bounds.0, dt_bounds.1);
+            self.stabilize_cfl_step(ui.ctx(), cdt.min, max_dt);
         }
     }
 
-    fn draw_flow_controls(&mut self, ui: &mut egui::Ui) {
-        let mut flow_changed = false;
+    fn draw_flow_and_overlay_controls(&mut self, ui: &mut egui::Ui) {
+        let mut mark_dirty = false;
         {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            let mut flow = self.flow_state.write().unwrap_or_else(|e| e.into_inner());
             egui::ComboBox::from_label("Flow Field")
-                .selected_text(p.flow_mode.label())
+                .selected_text(flow.flow_mode.label())
                 .show_ui(ui, |ui| {
                     for mode in [
                         MorphogenesisFlowMode::None,
@@ -222,73 +241,62 @@ impl MorphogenesisTool {
                         MorphogenesisFlowMode::PotentialFlow,
                     ] {
                         if ui
-                            .selectable_value(&mut p.flow_mode, mode, mode.label())
+                            .selectable_value(&mut flow.flow_mode, mode, mode.label())
                             .changed()
                         {
-                            if mode != MorphogenesisFlowMode::None && p.inlet_velocity <= 0.0 {
-                                p.inlet_velocity = 0.08;
+                            if mode != MorphogenesisFlowMode::None && flow.inlet_velocity <= 0.0 {
+                                flow.inlet_velocity = 0.08;
                             }
-                            flow_changed = true;
+                            mark_dirty = true;
                         }
                     }
                 });
-            if p.flow_mode != MorphogenesisFlowMode::None {
-                ui.add(egui::Slider::new(&mut p.inlet_velocity, 0.0..=0.22).text("Inlet U"));
+            if flow.flow_mode != MorphogenesisFlowMode::None {
+                ui.add(egui::Slider::new(&mut flow.inlet_velocity, 0.0..=0.22).text("Inlet U"));
             }
-            if p.flow_mode == MorphogenesisFlowMode::LbmVortexWake {
-                ui.add(egui::Slider::new(&mut p.viscosity, 0.005..=0.15).text("Viscosity ν"));
+            if flow.flow_mode == MorphogenesisFlowMode::LbmVortexWake {
+                ui.add(egui::Slider::new(&mut flow.viscosity, 0.005..=0.15).text("Viscosity ν"));
             }
-            if p.flow_mode == MorphogenesisFlowMode::PotentialFlow {
-                ui.add(egui::Slider::new(&mut p.circulation, -15.0..=15.0).text("Circulation Γ"));
+            if flow.flow_mode == MorphogenesisFlowMode::PotentialFlow {
+                ui.add(
+                    egui::Slider::new(&mut flow.circulation, -15.0..=15.0).text("Circulation Γ"),
+                );
             }
-        }
-        if flow_changed {
-            self.dirty = true;
-        }
-    }
-
-    fn draw_overlay_and_brush_controls(&mut self, ui: &mut egui::Ui) {
-        let mut clear_obstacles = false;
-        let mut overlay_changed = false;
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             egui::ComboBox::from_label("Overlay")
-                .selected_text(p.overlay_mode.label())
+                .selected_text(flow.overlay_mode.label())
                 .show_ui(ui, |ui| {
                     for ov in [
                         MorphogenesisOverlayMode::Concentration,
                         MorphogenesisOverlayMode::Vorticity,
                         MorphogenesisOverlayMode::DualOverlay,
                     ] {
-                        overlay_changed |= ui
-                            .selectable_value(&mut p.overlay_mode, ov, ov.label())
+                        mark_dirty |= ui
+                            .selectable_value(&mut flow.overlay_mode, ov, ov.label())
                             .changed();
                     }
                 });
-            egui::ComboBox::from_label("Sculpt Brush")
-                .selected_text(p.brush_mode.label())
-                .show_ui(ui, |ui| {
-                    for bm in [
-                        MorphogenesisBrushMode::Obstacle,
-                        MorphogenesisBrushMode::EraseObstacle,
-                        MorphogenesisBrushMode::Reagent,
-                        MorphogenesisBrushMode::PanZoom,
-                    ] {
-                        ui.selectable_value(&mut p.brush_mode, bm, bm.label());
-                    }
-                });
-            ui.add(egui::Slider::new(&mut p.brush_radius, 1..=12).text("Brush r"));
-            if ui.button("Clear Obstacles").clicked() {
-                clear_obstacles = true;
+            if flow.flow_mode != MorphogenesisFlowMode::None {
+                Self::draw_flow_brush_combo(ui, &mut flow);
             }
         }
-        if overlay_changed {
+        if mark_dirty {
             self.dirty = true;
         }
-        if clear_obstacles {
-            let _ = self.worker.send_command(SimCommand::ClearObstacles);
-            self.dirty = true;
-        }
+    }
+
+    fn draw_flow_brush_combo(ui: &mut egui::Ui, flow: &mut MorphogenesisFlowState) {
+        egui::ComboBox::from_label("Flow Brush")
+            .selected_text(flow.brush_mode.label())
+            .show_ui(ui, |ui| {
+                for bm in [
+                    MorphogenesisBrushMode::Obstacle,
+                    MorphogenesisBrushMode::EraseObstacle,
+                    MorphogenesisBrushMode::Reagent,
+                    MorphogenesisBrushMode::PanZoom,
+                ] {
+                    ui.selectable_value(&mut flow.brush_mode, bm, bm.label());
+                }
+            });
     }
 
     fn draw_presets(&mut self, ui: &mut egui::Ui) {
@@ -317,14 +325,14 @@ impl MorphogenesisTool {
             }
         });
         if let Some(snapshot) = self.worker.latest_snapshot() {
-            if let Some(data) = snapshot
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<MorphogenesisSnapshotData>())
-            {
+            if let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
+                d.downcast_ref::<MorphoSnapshotData>()
+                    .map(|m| m.u_data.as_slice())
+                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+            }) {
                 let splat_count =
                     crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
-                        &data.concentration,
+                        u_data,
                         snapshot.width,
                         snapshot.height,
                     )
@@ -362,6 +370,40 @@ impl MorphogenesisTool {
         }
     }
 
+    fn draw_playback_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let Some(action) = PlaybackTransport::from_worker_state(
+            "morphogenesis_transport",
+            "Morphogenesis",
+            self.worker.state(),
+        )
+        .timeline(self.worker.timeline_metadata())
+        .can_reset(true)
+        .show(ui) else {
+            return;
+        };
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            PlaybackAction::Pause => {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                let _ = self.worker.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::StepBack => {
+                let _ = self.worker.send_command(SimCommand::StepBack(1));
+            }
+            PlaybackAction::ScrubTo(step) => {
+                let _ = self.worker.send_command(SimCommand::SeekStep(step));
+            }
+            PlaybackAction::Reset => {
+                self.reset();
+                ctx.request_repaint();
+            }
+        }
+    }
+
     pub(crate) fn draw_controls(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(ui, "morphogenesis_controls");
@@ -370,40 +412,37 @@ impl MorphogenesisTool {
                 ui.heading("Morphogenesis Controls");
                 self.draw_dimensionless_readouts(ui);
                 ui.separator();
-
                 self.draw_fault_and_recovery(ui, &ctx);
                 self.draw_kinetics_and_reaction_sliders(ui);
                 ui.separator();
+                self.draw_playback_transport(ui, &ctx);
+                ui.separator();
+                self.draw_flow_and_overlay_controls(ui);
 
-                if let Some(action) = PlaybackTransport::from_worker_state(
-                    "morphogenesis_transport",
-                    "Morphogenesis",
-                    self.worker.state(),
-                )
-                .can_reset(true)
-                .show(ui)
-                {
-                    match action {
-                        PlaybackAction::Play => {
-                            let _ = self.worker.send_command(SimCommand::Start);
-                        }
-                        PlaybackAction::Pause => {
-                            let _ = self.worker.send_command(SimCommand::Pause);
-                        }
-                        PlaybackAction::Step => {
-                            let _ = self.worker.send_command(SimCommand::Step(1));
-                        }
-                        PlaybackAction::Reset => {
-                            self.reset();
+                if let Some(cmd) = draw_morpho_sculpt_controls(ui, &mut self.brush_kit) {
+                    match cmd {
+                        "stamp_maze" => {
+                            *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
+                                build_maze_rle(self.width, self.height);
+                            let _ = self
+                                .worker
+                                .send_command(SimCommand::Custom("stamp_maze".to_string()));
+                            self.dirty = true;
                             ctx.request_repaint();
                         }
+                        "clear_mask" => {
+                            self.mask_rle
+                                .write()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .clear();
+                            let _ = self.worker.send_command(SimCommand::ClearObstacles);
+                            self.dirty = true;
+                            ctx.request_repaint();
+                        }
+                        _ => {}
                     }
                 }
-
                 self.draw_presets(ui);
-                ui.separator();
-                self.draw_flow_controls(ui);
-                self.draw_overlay_and_brush_controls(ui);
             });
         });
     }

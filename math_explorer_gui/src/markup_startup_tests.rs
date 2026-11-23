@@ -36,6 +36,12 @@ fn test_service_worker_caches_shell_only_and_returns_valid_offline_responses() {
         SW_JS.contains("status: 503") && SW_JS.contains("new Response("),
         "sw.js must resolve uncached offline requests with an HTTP 503 Response"
     );
+    for forbidden_cache_override in ["cache: 'no-cache'", "cache: 'reload'"] {
+        assert!(
+            !SW_JS.contains(forbidden_cache_override),
+            "sw.js must honor fresh HTTP cache entries without forcing {forbidden_cache_override}"
+        );
+    }
     assert!(
         RELOAD_JS.contains("serviceWorker.register('./sw.js')"),
         "reload.js must register ./sw.js asynchronously"
@@ -107,18 +113,26 @@ fn test_reload_precedes_bootstrap_and_exposes_abort_and_split_timeouts() {
 
 #[test]
 fn test_bootstrap_dynamic_import_abort_signal_and_fallback_reload_bindings() {
-    assert!(
-        !BOOTSTRAP_JS.contains("import createInitializer from"),
-        "bootstrap.js must dynamically import initializer.js inside bootstrap() rather than statically"
-    );
-    assert!(
-        BOOTSTRAP_JS.contains("await import(INITIALIZER_PATH)"),
-        "bootstrap.js must dynamically import INITIALIZER_PATH inside bootstrap()"
-    );
+    for forbidden_serial in [
+        "import createInitializer from",
+        "await import(INITIALIZER_PATH)",
+        "await import(MODULE_PATH)",
+    ] {
+        assert!(
+            !BOOTSTRAP_JS.contains(forbidden_serial),
+            "bootstrap.js must avoid static or serial module import '{forbidden_serial}'"
+        );
+    }
     for contract in [
         "const WASM_SOURCE_SIZE = 0;",
         "const WASM_BROTLI_SIZE = 0;",
         "const WASM_GZIP_SIZE = 0;",
+        "import(INITIALIZER_PATH)",
+        "import(MODULE_PATH)",
+        "fetchWasmWithProgress(WASM_PATH, hooksProxy, signal, recordStreamError)",
+        "await Promise.all([",
+        "createStartupProgressProxy",
+        "attachAssetPath(",
         "fetchInit.signal = signal",
         "reader.cancel",
         "isBootAborted(signal)",
@@ -126,7 +140,7 @@ fn test_bootstrap_dynamic_import_abort_signal_and_fallback_reload_bindings() {
     ] {
         assert!(
             BOOTSTRAP_JS.contains(contract),
-            "bootstrap.js must include startup cancellation/recovery contract: {contract}"
+            "bootstrap.js must include parallel startup and recovery contract: {contract}"
         );
     }
     assert!(

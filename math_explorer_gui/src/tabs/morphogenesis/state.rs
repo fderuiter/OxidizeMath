@@ -1,13 +1,17 @@
+//! Validated serializable state schema for `MorphogenesisTool`.
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::{
     default_morpho_atlas_axes, is_default_morpho_atlas_axes, MORPHO_ATLAS_AXIS_PAIRS,
 };
 use super::types::{
-    default_brush_radius, default_viscosity, MorphogenesisBrushMode, MorphogenesisFlowMode,
-    MorphogenesisKineticsMode, MorphogenesisOverlayMode,
+    default_brush_radius, default_viscosity, is_default_brush_radius, is_default_viscosity,
+    is_zero_f64, MorphogenesisBrushMode, MorphogenesisFlowMode, MorphogenesisKineticsMode,
+    MorphogenesisOverlayMode,
 };
 use crate::async_sim::SimWorkerState;
+use crate::framework::decode_rle_mask;
 use math_explorer::biology::morphogenesis::GrayScottKinetics;
 use serde::{Deserialize, Serialize};
 
@@ -32,7 +36,7 @@ fn default_gray_scott_k() -> f64 {
 }
 
 /// Complete validated state schema for [`super::MorphogenesisTool`], compatible with `PRESET_TURING_*`,
-/// `PRESET_GRAY_SCOTT_MITOSIS`, and advected flow presets.
+/// `PRESET_GRAY_SCOTT_MITOSIS`, microfluidic `mask_rle` sharing, and advected flow presets.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MorphogenesisToolState {
@@ -42,11 +46,11 @@ pub struct MorphogenesisToolState {
     /// Schnakenberg inhibitor production rate `b` (`0.0..=2.0`).
     #[serde(default = "default_morpho_b")]
     pub b: f64,
-    /// Activator/substrate diffusion coefficient `D_u` (`0.005..=5.0`).
+    /// Primary species diffusion coefficient `D_u`.
     pub d_u: f64,
-    /// Inhibitor/autocatalyst diffusion coefficient `D_v` (`0.005..=200.0`).
+    /// Secondary species diffusion coefficient `D_v`.
     pub d_v: f64,
-    /// Integration time step `dt` (`1e-4..=2.0`).
+    /// Integration time step `dt`.
     pub dt: f64,
     /// Spatial grid width (`1..=512`).
     #[serde(default = "default_grid_dim")]
@@ -64,25 +68,28 @@ pub struct MorphogenesisToolState {
     #[serde(default = "default_gray_scott_k")]
     pub k: f64,
     /// Hydrodynamic velocity coupling mode (`None`, `LbmVortexWake`, `PotentialFlow`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "MorphogenesisFlowMode::is_default")]
     pub flow_mode: MorphogenesisFlowMode,
     /// Horizontal inlet / freestream velocity magnitude (`0.0..=2.0`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
     pub inlet_velocity: f64,
     /// Kinematic fluid viscosity `\nu` (`0.003..=0.5`).
-    #[serde(default = "default_viscosity")]
+    #[serde(default = "default_viscosity", skip_serializing_if = "is_default_viscosity")]
     pub viscosity: f64,
     /// Analytical vortex circulation `\Gamma` (`-25.0..=25.0`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
     pub circulation: f64,
     /// Visualization overlay mode (`Concentration`, `Vorticity`, `DualOverlay`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "MorphogenesisOverlayMode::is_default")]
     pub overlay_mode: MorphogenesisOverlayMode,
-    /// Active pointer sculpting brush mode.
-    #[serde(default)]
+    /// Coupled obstacle/reagent sculpting brush mode.
+    #[serde(default, skip_serializing_if = "MorphogenesisBrushMode::is_default")]
     pub brush_mode: MorphogenesisBrushMode,
-    /// Pointer sculpting brush radius in cells (`1..=25`).
-    #[serde(default = "default_brush_radius")]
+    /// Coupled sculpting brush radius in cells (`1..=25`).
+    #[serde(
+        default = "default_brush_radius",
+        skip_serializing_if = "is_default_brush_radius"
+    )]
     pub brush_radius: i32,
     /// Optional worker execution state (`Running` when omitted unless `paused == Some(true)`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -93,6 +100,9 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Optional RLE-encoded `ReactionCellRole` mask (`[role, run_len]` pairs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mask_rle: Vec<[u32; 2]>,
     /// Persisted visibility of the progressive 2D parameter atlas (never raster pixels).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub atlas_visible: bool,
@@ -104,22 +114,68 @@ pub struct MorphogenesisToolState {
     pub atlas_axes: [String; 2],
 }
 
+impl Default for MorphogenesisToolState {
+    fn default() -> Self {
+        Self {
+            a: default_morpho_a(),
+            b: default_morpho_b(),
+            d_u: 1.0,
+            d_v: 100.0,
+            dt: 0.05,
+            width: default_grid_dim(),
+            height: default_grid_dim(),
+            kinetics_mode: MorphogenesisKineticsMode::Schnakenberg,
+            f: default_gray_scott_f(),
+            k: default_gray_scott_k(),
+            flow_mode: MorphogenesisFlowMode::None,
+            inlet_velocity: 0.0,
+            viscosity: default_viscosity(),
+            circulation: 0.0,
+            overlay_mode: MorphogenesisOverlayMode::Concentration,
+            brush_mode: MorphogenesisBrushMode::Obstacle,
+            brush_radius: default_brush_radius(),
+            state: None,
+            paused: None,
+            pending_initial_start: false,
+            mask_rle: Vec::new(),
+            atlas_visible: false,
+            atlas_axes: default_morpho_atlas_axes(),
+        }
+    }
+}
+
 impl MorphogenesisToolState {
-    /// Validates finiteness, domain bounds, and atlas axis keys for all morphogenesis parameters.
+    /// Validates finiteness, mode-specific domain bounds, RLE mask bounds, and atlas axis keys.
     pub fn validate(&self) -> Result<(), String> {
-        let checks = [
+        let base_checks = [
             ("a", self.a, 0.0, 1.0),
             ("b", self.b, 0.0, 2.0),
             ("f", self.f, 0.0, 0.12),
             ("k", self.k, 0.0, 0.12),
-            ("d_u", self.d_u, 0.005, 5.0),
-            ("d_v", self.d_v, 0.005, 200.0),
-            ("dt", self.dt, 1e-4, 2.0),
             ("inlet_velocity", self.inlet_velocity, 0.0, 2.0),
             ("viscosity", self.viscosity, 0.003, 0.5),
             ("circulation", self.circulation, -25.0, 25.0),
         ];
-        for (name, val, min, max) in checks {
+        for (name, val, min, max) in base_checks {
+            if !val.is_finite() || val < min || val > max {
+                return Err(format!(
+                    "Morphogenesis parameter '{name}' = {val} must be finite within [{min}, {max}]"
+                ));
+            }
+        }
+        let transport_checks = match self.kinetics_mode {
+            MorphogenesisKineticsMode::Schnakenberg => [
+                ("d_u", self.d_u, 0.1, 5.0),
+                ("d_v", self.d_v, 10.0, 200.0),
+                ("dt", self.dt, 1e-4, 0.1),
+            ],
+            MorphogenesisKineticsMode::GrayScott => [
+                ("d_u", self.d_u, 0.01, 1.0),
+                ("d_v", self.d_v, 0.005, 1.0),
+                ("dt", self.dt, 1e-4, 2.0),
+            ],
+        };
+        for (name, val, min, max) in transport_checks {
             if !val.is_finite() || val < min || val > max {
                 return Err(format!(
                     "Morphogenesis parameter '{name}' = {val} must be finite within [{min}, {max}]"
@@ -137,6 +193,9 @@ impl MorphogenesisToolState {
                 "Morphogenesis dimensions {}x{} must be within 1..=512",
                 self.width, self.height
             ));
+        }
+        if !self.mask_rle.is_empty() {
+            decode_rle_mask(&self.mask_rle, self.width * self.height)?;
         }
         let valid_axes = MORPHO_ATLAS_AXIS_PAIRS
             .iter()
@@ -158,96 +217,5 @@ impl MorphogenesisToolState {
                 SimWorkerState::Running
             }
         })
-    }
-}
-
-impl super::MorphogenesisTool {
-    pub(crate) fn apply_named_preset(&mut self, a: f64, b: f64, d_u: f64, d_v: f64, dt: f64) {
-        let p = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        self.apply_full_preset(
-            MorphogenesisKineticsMode::Schnakenberg,
-            a,
-            b,
-            p.f,
-            p.k,
-            d_u,
-            d_v,
-            dt,
-        );
-    }
-
-    pub(crate) fn apply_gray_scott_preset(&mut self, f: f64, k: f64) {
-        let p = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        self.apply_full_preset(
-            MorphogenesisKineticsMode::GrayScott,
-            p.a,
-            p.b,
-            f,
-            k,
-            0.16,
-            0.08,
-            1.0,
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn apply_full_preset(
-        &mut self,
-        kinetics_mode: MorphogenesisKineticsMode,
-        a: f64,
-        b: f64,
-        f: f64,
-        k: f64,
-        d_u: f64,
-        d_v: f64,
-        dt: f64,
-    ) {
-        use crate::framework::InteractiveTool;
-        let target_state = if self.worker.is_running() {
-            SimWorkerState::Running
-        } else {
-            SimWorkerState::Ready
-        };
-        let p = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let (xk, yk) = self.atlas.axis_keys();
-        let preset_state = MorphogenesisToolState {
-            a,
-            b,
-            d_u,
-            d_v,
-            dt,
-            width: self.width,
-            height: self.height,
-            kinetics_mode,
-            f,
-            k,
-            flow_mode: p.flow_mode,
-            inlet_velocity: p.inlet_velocity,
-            viscosity: p.viscosity,
-            circulation: p.circulation,
-            overlay_mode: p.overlay_mode,
-            brush_mode: p.brush_mode,
-            brush_radius: p.brush_radius,
-            state: Some(target_state),
-            paused: None,
-            pending_initial_start: false,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
-        };
-        if let Ok(json) = serde_json::to_string(&preset_state) {
-            let _ = self.try_load_state(&json);
-        }
     }
 }

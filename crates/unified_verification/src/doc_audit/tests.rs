@@ -129,7 +129,9 @@ fn test_load_allowlist_merges_and_falls_back() {
     let test_dir = create_test_dir();
     let missing = test_dir.join("missing.toml");
     let defaults = load_allowlist(&missing);
-    assert!(defaults.contains("crates/diagnostics"));
+    assert!(defaults.contains("egui_plot"));
+    assert!(!defaults.contains("crates/diagnostics"));
+    assert!(!defaults.contains("math_explorer"));
 
     let valid = test_dir.join("valid.toml");
     fs::write(
@@ -138,7 +140,7 @@ fn test_load_allowlist_merges_and_falls_back() {
     )
     .unwrap();
     let merged = load_allowlist(&valid);
-    assert!(merged.contains("crates/diagnostics"));
+    assert!(merged.contains("egui_plot"));
     assert!(merged.contains("crates/extra"));
 
     let broken = test_dir.join("broken.toml");

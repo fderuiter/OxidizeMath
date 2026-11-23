@@ -60,6 +60,14 @@ pub struct PlotMemory {
     #[cfg_attr(feature = "serde", serde(default = "default_true"))]
     pub show_y_labels: bool,
 
+    /// Visibility of hover crosshairs, point tooltips, and keyboard point focus popups.
+    #[cfg_attr(feature = "serde", serde(default = "default_true"))]
+    pub show_hover: bool,
+
+    /// Whether the docked plot action header bar is collapsed.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub toolbar_collapsed: bool,
+
     /// Clamp grid lines to actual data range.
     #[cfg_attr(feature = "serde", serde(default))]
     pub clamp_grid: bool,
@@ -74,6 +82,10 @@ pub struct PlotMemory {
 
     /// Last right-click position captured in plot coordinates.
     pub last_right_click_coord: Option<[f64; 2]>,
+
+    /// Transient per-plot memoization cache for series, curve fits, and critical points.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) runtime_cache: crate::runtime_cache::PlotRuntimeCache,
 }
 
 /// Persisted canvas callout annotation data.

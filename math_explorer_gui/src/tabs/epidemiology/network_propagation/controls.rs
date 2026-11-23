@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::analytics::{compute_network_analytics, render_compartment_and_analytics_panel};
-use super::{ContainmentMode, MAX_SLIDER_BUDGET, NetworkPropagationTool};
-use crate::accessibility::{AccessibleHoverText, announce_live_status};
+use super::{ContainmentMode, NetworkPropagationTool, MAX_SLIDER_BUDGET};
+use crate::accessibility::{announce_live_status, AccessibleHoverText};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
 
@@ -45,6 +45,7 @@ impl NetworkPropagationTool {
                     }
                 }
                 PlaybackAction::Step => self.step_once(),
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => self.reset_network(),
             }
         }

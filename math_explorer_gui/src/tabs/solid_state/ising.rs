@@ -145,7 +145,10 @@ impl IsingModelTool {
 impl Default for IsingModelTool {
     fn default() -> Self {
         let (temperature, j_coupling, h_field, steps_per_frame) = (2.269, 1.0, 0.0, 5000);
-        let (mode, game_preset) = (IsingInteractionMode::Ferromagnetic, FermiGamePreset::default());
+        let (mode, game_preset) = (
+            IsingInteractionMode::Ferromagnetic,
+            FermiGamePreset::default(),
+        );
         let game_payoffs = preset::default_game_payoffs();
         let params = Arc::new(std::sync::RwLock::new(IsingSharedParams {
             temperature,

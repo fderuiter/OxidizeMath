@@ -8,9 +8,7 @@ use crate::accessibility::{
     lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
 };
 use crate::app::theme::SemanticPalette;
-use eframe::egui::{
-    self, accesskit::Role, Key, Pos2, Rect, Sense, Stroke, Vec2,
-};
+use eframe::egui::{self, accesskit::Role, Key, Pos2, Rect, Sense, Stroke, Vec2};
 
 const ROOM_HALF_WIDTH_M: f32 = 1.25;
 const ROOM_MIN_DEPTH_M: f32 = 0.0;
@@ -39,13 +37,8 @@ pub fn show_room_canvas(
     );
     let rect = response.rect;
 
-    let mut changed = handle_pointer_interaction(
-        &response,
-        rect,
-        state,
-        selected_target,
-        dragging_target,
-    );
+    let mut changed =
+        handle_pointer_interaction(&response, rect, state, selected_target, dragging_target);
     if response.has_focus() {
         lock_canvas_arrow_keys(ui, &response);
         if handle_keyboard_navigation(ui, state, selected_target) {
@@ -90,7 +83,8 @@ fn world_to_screen(rect: Rect, x_m: f64, y_m: f64) -> Pos2 {
     let pad = 16.0;
     let inner = rect.shrink(pad);
     let u = ((x_m as f32 + ROOM_HALF_WIDTH_M) / (2.0 * ROOM_HALF_WIDTH_M)).clamp(0.0, 1.0);
-    let v = ((y_m as f32 - ROOM_MIN_DEPTH_M) / (ROOM_MAX_DEPTH_M - ROOM_MIN_DEPTH_M)).clamp(0.0, 1.0);
+    let v =
+        ((y_m as f32 - ROOM_MIN_DEPTH_M) / (ROOM_MAX_DEPTH_M - ROOM_MIN_DEPTH_M)).clamp(0.0, 1.0);
     Pos2::new(
         inner.left() + u * inner.width(),
         inner.bottom() - v * inner.height(),
@@ -267,10 +261,7 @@ fn paint_steering_cone(
         palette.info.gamma_multiply(0.16),
         Stroke::new(1.0_f32, palette.info.gamma_multiply(0.55)),
     ));
-    painter.line_segment(
-        [origin, p_center],
-        Stroke::new(1.8_f32, palette.info),
-    );
+    painter.line_segment([origin, p_center], Stroke::new(1.8_f32, palette.info));
 }
 
 fn paint_scatterer_markers(

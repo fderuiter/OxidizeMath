@@ -29,9 +29,9 @@ pub struct StencilOperators {
     pub dy: StepSize,
     #[allow(missing_docs)]
     pub dz: StepSize,
-    #[allow(missing_docs)]
+    /// Reciprocal x-grid spacing `1.0 / dx`.
     pub inv_dx: f64,
-    #[allow(missing_docs)]
+    /// Reciprocal y-grid spacing `1.0 / dy`.
     pub inv_dy: f64,
     #[allow(missing_docs)]
     pub inv_two_dx: f64,

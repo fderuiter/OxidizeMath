@@ -25,7 +25,14 @@ fn wasm_coupled_morphogenesis_presets_sculpting_and_overlays() {
 
     tool.import_preset_json(PRESET_GRAY_SCOTT_SPIRAL_FLOW)
         .expect("Gray-Scott swirl preset must load on wasm32");
-    let mut runner = MorphogenesisTab::create_runner(&tool.params, 24, 24);
+    let mut runner = MorphogenesisTool::create_coupled_runner(
+        &tool.params,
+        &tool.kinetics_state,
+        &tool.flow_state,
+        &tool.mask_rle,
+        24,
+        24,
+    );
     runner.process_command(SimCommand::ApplyBrush {
         cx: 8,
         cy: 8,

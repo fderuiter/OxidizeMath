@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test optical motion.
 use domain_physics::physics::medical::{
     evaluation::{
         pearson_correlation as eval_pearson_correlation,

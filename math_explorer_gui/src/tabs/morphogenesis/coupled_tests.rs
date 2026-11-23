@@ -3,6 +3,7 @@
 use super::presets::{
     PRESET_GRAY_SCOTT_MITOSIS, PRESET_GRAY_SCOTT_SPIRAL_FLOW, PRESET_KARMAN_TURING_WAKE,
 };
+use super::runner::MorphogenesisKineticsState;
 use super::*;
 use crate::app::{contrast_ratio, ThemeMode};
 use crate::async_sim::{SimCommand, SimulationRunner};
@@ -67,12 +68,15 @@ fn test_legacy_presets_load_zero_velocity_and_advected_presets_roundtrip() {
 
 #[test]
 fn test_brush_sculpting_obstacles_reagents_and_clear_obstacles() {
-    let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
+    let params = Arc::new(RwLock::new(MorphogenesisSharedParams::default()));
+    let ks = Arc::new(RwLock::new(MorphogenesisKineticsState::default()));
+    let flow = Arc::new(RwLock::new(MorphogenesisFlowState {
         brush_mode: MorphogenesisBrushMode::Obstacle,
         brush_radius: 2,
-        ..MorphogenesisSharedParams::default()
+        ..MorphogenesisFlowState::default()
     }));
-    let mut runner = MorphogenesisTab::create_runner(&params, 30, 30);
+    let mask = Arc::new(RwLock::new(Vec::new()));
+    let mut runner = MorphogenesisTool::create_coupled_runner(&params, &ks, &flow, &mask, 30, 30);
 
     runner.process_command(SimCommand::ApplyBrush {
         cx: 12,
@@ -86,7 +90,7 @@ fn test_brush_sculpting_obstacles_reagents_and_clear_obstacles() {
     assert!(runner.lbm.is_obstacle(12, 14));
 
     // Switch to Reagent brush and inject activator pulse away from obstacle
-    params.write().unwrap().brush_mode = MorphogenesisBrushMode::Reagent;
+    flow.write().unwrap().brush_mode = MorphogenesisBrushMode::Reagent;
     let reagent_idx = flatten_2d_index(22, 14, 30);
     let u_before = runner.system.u()[reagent_idx];
     runner.process_command(SimCommand::ApplyBrush {
@@ -113,14 +117,18 @@ fn test_lbm_coupling_zero_alloc_step_and_live_peclet_damkohler() {
         d_u: 0.4,
         d_v: 16.0,
         dt: 0.02,
-        kinetics_mode: MorphogenesisKineticsMode::Schnakenberg,
+        high_contrast: false,
+    }));
+    let ks = Arc::new(RwLock::new(MorphogenesisKineticsState::default()));
+    let flow = Arc::new(RwLock::new(MorphogenesisFlowState {
         flow_mode: MorphogenesisFlowMode::LbmVortexWake,
         inlet_velocity: 0.09,
         viscosity: 0.018,
         overlay_mode: MorphogenesisOverlayMode::DualOverlay,
-        ..MorphogenesisSharedParams::default()
+        ..MorphogenesisFlowState::default()
     }));
-    let mut runner = MorphogenesisTab::create_runner(&params, 40, 24);
+    let mask = Arc::new(RwLock::new(Vec::new()));
+    let mut runner = MorphogenesisTool::create_coupled_runner(&params, &ks, &flow, &mask, 40, 24);
     runner.step();
 
     {
@@ -140,7 +148,7 @@ fn test_lbm_coupling_zero_alloc_step_and_live_peclet_damkohler() {
 
     let pe_low_inlet = runner.peclet;
     let da_low_inlet = runner.damkohler;
-    params.write().unwrap().inlet_velocity = 0.18;
+    flow.write().unwrap().inlet_velocity = 0.18;
     runner.step();
     assert!(runner.peclet > pe_low_inlet);
     assert!(runner.damkohler < da_low_inlet);
@@ -150,22 +158,30 @@ fn test_lbm_coupling_zero_alloc_step_and_live_peclet_damkohler() {
 #[test]
 fn test_potential_flow_gray_scott_zero_alloc_and_circulation_readouts() {
     let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
-        f: 0.037,
-        k: 0.060,
+        a: 0.1,
+        b: 0.9,
         d_u: 0.20,
         d_v: 0.10,
         dt: 0.40,
-        kinetics_mode: MorphogenesisKineticsMode::GrayScott,
+        high_contrast: false,
+    }));
+    let ks = Arc::new(RwLock::new(MorphogenesisKineticsState {
+        mode: MorphogenesisKineticsMode::GrayScott,
+        f: 0.037,
+        k: 0.060,
+    }));
+    let flow = Arc::new(RwLock::new(MorphogenesisFlowState {
         flow_mode: MorphogenesisFlowMode::PotentialFlow,
         inlet_velocity: 0.08,
         circulation: 2.0,
         overlay_mode: MorphogenesisOverlayMode::DualOverlay,
-        ..MorphogenesisSharedParams::default()
+        ..MorphogenesisFlowState::default()
     }));
-    let mut runner = MorphogenesisTab::create_runner(&params, 40, 24);
+    let mask = Arc::new(RwLock::new(Vec::new()));
+    let mut runner = MorphogenesisTool::create_coupled_runner(&params, &ks, &flow, &mask, 40, 24);
     runner.step();
     let pe_circ_low = runner.peclet;
-    params.write().unwrap().circulation = 10.0;
+    flow.write().unwrap().circulation = 10.0;
     runner.step();
     assert!(runner.peclet > pe_circ_low);
 

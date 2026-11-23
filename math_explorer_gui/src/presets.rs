@@ -31,14 +31,184 @@ pub struct PresetWrapper<T> {
     pub config: T,
 }
 
-#[path = "presets/configs.rs"]
-mod configs;
+/// ODE System preset type enum.
+#[derive(Serialize, Deserialize, PartialEq, Clone, Copy, Debug)]
+pub enum OdePreset {
+    /// Exponential growth/decay model.
+    Exponential,
+    /// Harmonic oscillator spring model.
+    HarmonicOscillator,
+    /// Logistic population growth model.
+    LogisticGrowth,
+    /// Custom dynamic user equation.
+    Custom,
+}
 
-pub use configs::{
-    checked_ode_step_count, MorphogenesisKineticsMode, MorphogenesisPresetConfig, OdePreset,
-    ReplicatorPresetConfig, MAX_INTERACTIVE_GRID_SIZE, MAX_INTERACTIVE_SURFACE_RESOLUTION,
-    MAX_ODE_STEPS,
-};
+impl OdePreset {
+    /// User-friendly display name of the ODE preset.
+    pub fn name(&self) -> &'static str {
+        match self {
+            OdePreset::Exponential => "y' = k*y (Exponential)",
+            OdePreset::HarmonicOscillator => "y'' = -k*y (Harmonic Oscillator)",
+            OdePreset::LogisticGrowth => "y' = r*y*(1 - y/K) (Logistic Growth)",
+            OdePreset::Custom => "y' = f(t, y) (Custom Equation)",
+        }
+    }
+}
+
+/// Maximum allowed integration step count for ODE solvers.
+pub const MAX_ODE_STEPS: usize = 200_000;
+
+/// Maximum interactive parametric UV grid resolution for 3D surface tools (`120`).
+pub const MAX_INTERACTIVE_SURFACE_RESOLUTION: usize = 120;
+
+/// Maximum interactive 2D vector and conformal-contour grid density (`100`).
+pub const MAX_INTERACTIVE_GRID_SIZE: usize = 100;
+
+/// Computes a bounded ODE integration step count when `dt` and `total_time` are finite,
+/// strictly positive, and require at most [`MAX_ODE_STEPS`] steps.
+#[must_use]
+pub fn checked_ode_step_count(dt: f64, total_time: f64) -> Option<usize> {
+    if !dt.is_finite() || dt <= 0.0 || !total_time.is_finite() || total_time <= 0.0 {
+        return None;
+    }
+    let steps = (total_time / dt).ceil();
+    if !steps.is_finite() || !(0.0..=MAX_ODE_STEPS as f64).contains(&steps) {
+        return None;
+    }
+    Some(steps as usize)
+}
+
+/// Reaction kinetics model selector for 2D morphogenesis presets.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum MorphogenesisKineticsMode {
+    /// Classical activator-inhibitor Turing spots and stripes (`SchnakenbergKinetics`).
+    #[default]
+    Schnakenberg,
+    /// Autocatalytic substrate-depletion mitosis and coral waves (`GrayScottKinetics`).
+    GrayScott,
+}
+
+impl MorphogenesisKineticsMode {
+    /// Human-readable display label for UI selectors.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Schnakenberg => "Schnakenberg (Turing)",
+            Self::GrayScott => "Gray-Scott (Mitosis / Coral)",
+        }
+    }
+}
+/// Configuration struct for Replicator Dynamics evolutionary game parameters.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ReplicatorPresetConfig {
+    /// Payoff matrix (rows x cols).
+    pub payoff_matrix: Vec<Vec<f64>>,
+    /// Initial population proportions per strategy.
+    pub initial_population: Vec<f64>,
+    /// Total simulation duration.
+    pub time_horizon: f64,
+    /// Integration time step size.
+    pub dt: f64,
+    /// Descriptive strategy names.
+    pub strategy_names: Vec<String>,
+    /// Optional symbolic payoff cell formulas `(rows x cols)` evaluated via `CompiledExpr`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbolic_payoffs: Option<Vec<Vec<String>>>,
+    /// Shared parameter values for symbolic payoff cells (e.g. `v`, `c` in Hawk-Dove).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub symbolic_params: std::collections::BTreeMap<String, f64>,
+}
+
+impl ReplicatorPresetConfig {
+    /// Validates matrix dimensions, strategy counts, and optional symbolic payoff formulas.
+    pub fn validate(&self) -> Result<(), String> {
+        let rows = self.payoff_matrix.len();
+        if rows == 0 {
+            return Err("Payoff matrix must not be empty".to_string());
+        }
+        for (i, row) in self.payoff_matrix.iter().enumerate() {
+            if row.len() != rows {
+                return Err(format!(
+                    "Payoff matrix must be square (row {} has length {}, expected {})",
+                    i,
+                    row.len(),
+                    rows
+                ));
+            }
+        }
+        if self.strategy_names.len() != rows {
+            return Err(format!(
+                "Strategy names count ({}) does not match payoff matrix dimensions ({}x{})",
+                self.strategy_names.len(),
+                rows,
+                rows
+            ));
+        }
+        if self.initial_population.len() != rows {
+            return Err(format!(
+                "Initial population count ({}) does not match strategy count ({})",
+                self.initial_population.len(),
+                rows
+            ));
+        }
+        self.validate_symbolic(rows)
+    }
+
+    fn validate_symbolic(&self, rows: usize) -> Result<(), String> {
+        match &self.symbolic_payoffs {
+            Some(sym_rows) => {
+                if sym_rows.len() != rows {
+                    return Err(format!(
+                        "Symbolic payoff matrix row count ({}) does not match dimensions ({rows}x{rows})",
+                        sym_rows.len()
+                    ));
+                }
+                for (i, row) in sym_rows.iter().enumerate() {
+                    if row.len() != rows {
+                        return Err(format!(
+                            "Symbolic payoff row {i} has length {}, expected {rows}",
+                            row.len()
+                        ));
+                    }
+                    for (j, expr_str) in row.iter().enumerate() {
+                        let trimmed = expr_str.trim();
+                        if trimmed.is_empty() || trimmed.len() > 256 {
+                            return Err(format!(
+                                "Symbolic payoff cell ({i}, {j}) must be non-empty and <= 256 chars"
+                            ));
+                        }
+                    }
+                }
+                if self.symbolic_params.len() > crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
+                {
+                    return Err(format!(
+                        "Symbolic parameter count ({}) exceeds maximum ({})",
+                        self.symbolic_params.len(),
+                        crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
+                    ));
+                }
+                for (name, &val) in &self.symbolic_params {
+                    if !val.is_finite() || !(-1e4..=1e4).contains(&val) {
+                        return Err(format!(
+                            "Symbolic parameter '{name}' must be finite and within [-10000, 10000]"
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            None => {
+                if !self.symbolic_params.is_empty() {
+                    return Err(
+                        "symbolic_params cannot be specified without symbolic_payoffs".to_string(),
+                    );
+                }
+                Ok(())
+            }
+        }
+    }
+}
 
 #[path = "presets/glicko2.rs"]
 mod glicko2_preset_validation;
@@ -111,21 +281,6 @@ pub fn deserialize_preset_envelope_bounded<T: for<'de> Deserialize<'de>>(
         ));
     }
     Ok(envelope.config)
-}
-
-/// Strips any UTF-8 BOM, enforces default preset envelope bounds, parses a [`PresetWrapper`]
-/// JSON envelope, and validates `metadata.domain`.
-pub fn deserialize_preset_envelope<T: for<'de> Deserialize<'de>>(
-    json_str: &str,
-    expected_domain: &str,
-    target_name: &str,
-) -> Result<T, String> {
-    deserialize_preset_envelope_bounded(
-        json_str,
-        expected_domain,
-        target_name,
-        crate::framework::ToolStateBounds::DEFAULT,
-    )
 }
 
 /// UI helper state for non-blocking file operations and user warnings/toasts.
@@ -257,56 +412,6 @@ impl PresetDialogState {
         }
         loaded
     }
-}
-
-/// Renders Export/Import buttons and any active inline toast message in the egui UI.
-pub fn render_preset_buttons<T, E, I>(
-    dialog_state: &mut PresetDialogState,
-    ui: &mut eframe::egui::Ui,
-    target: &mut T,
-    file_prefix: &str,
-    export_json: E,
-    import_json: I,
-) -> bool
-where
-    E: FnOnce(&T) -> Result<String, String>,
-    I: FnOnce(&mut T, &str) -> Result<(), String>,
-{
-    ui.separator();
-    ui.heading("Preset Import / Export");
-    let mut changed = false;
-
-    ui.horizontal(|ui| {
-        if ui.button("📥 Import Preset JSON").clicked() {
-            dialog_state.trigger_import();
-        }
-        if ui.button("📤 Export Preset JSON").clicked() {
-            dialog_state.export_preset_result(export_json(target), file_prefix);
-        }
-    });
-
-    if dialog_state.poll_pending_import(|json_str| import_json(target, json_str)) {
-        changed = true;
-    }
-
-    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-    if let Some(ref msg) = dialog_state.toast_info {
-        ui.add_space(4.0);
-        ui.colored_label(palette.success, format!("ℹ️ {}", msg));
-        if ui.small_button("Dismiss").clicked() {
-            dialog_state.toast_info = None;
-        }
-    }
-
-    if let Some(ref err) = dialog_state.toast_error {
-        ui.add_space(4.0);
-        ui.colored_label(palette.error, format!("⚠️ {}", err));
-        if ui.small_button("Dismiss Warning").clicked() {
-            dialog_state.toast_error = None;
-        }
-    }
-
-    changed
 }
 
 #[cfg(test)]

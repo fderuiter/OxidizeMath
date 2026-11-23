@@ -1057,3 +1057,55 @@ fn test_header_and_poi_series_cell_tooltips_dismiss_on_escape_without_closing_mo
     );
     assert!(!open, "Next Escape with no open tooltip closes modal");
 }
+
+#[test]
+fn test_plot_scene_3d_mode_clears_log_axes_hides_2d_settings_and_keeps_exports() {
+    let (ctx, id) = (Context::default(), Id::new("scene_3d_mode_plot"));
+    let show = |c: &Context| {
+        egui::CentralPanel::default().show(c, |ui| {
+            Plot::new("scene_3d")
+                .id(id)
+                .scene_3d_mode(true)
+                .default_x_bounds(-5.0, 5.0)
+                .default_y_bounds(-5.0, 5.0)
+                .show(ui, |p| {
+                    p.line(crate::Line::new(
+                        "wire",
+                        crate::PlotPoints::new(vec![[-4.0, -3.0], [0.0, 0.0], [4.0, 3.0]]),
+                    ));
+                });
+        });
+    };
+
+    let _ = ctx.run(screen_input(), show);
+    let mut mem = crate::PlotMemory::load(&ctx, id).expect("PlotMemory initialized");
+    mem.log_x = true;
+    mem.log_y = true;
+    mem.show_grid = egui::Vec2b::TRUE;
+    mem.show_settings_modal = true;
+    mem.transform.set_log_axis(egui::Vec2b::TRUE);
+    mem.store(&ctx, id);
+
+    let out = ctx.run(screen_input(), show);
+    let cleaned = crate::PlotMemory::load(&ctx, id).expect("PlotMemory sanitized");
+    assert!(!cleaned.log_x && !cleaned.log_y && !cleaned.show_settings_modal);
+    assert_eq!(cleaned.show_grid, egui::Vec2b::FALSE);
+    assert_eq!(cleaned.transform.log_axis(), egui::Vec2b::FALSE);
+    assert!(
+        cleaned
+            .transform
+            .is_point_valid_for_scale(&PlotPoint::new(-4.0, -3.0))
+    );
+
+    assert!(find_text_center(&out, "Save PNG").is_some());
+    assert!(find_text_center(&out, "Export CSV").is_some());
+    assert!(find_text_center(&out, "Export JSON").is_some());
+    assert!(find_text_center(&out, "Table View").is_some());
+    assert!(find_text_center(&out, "🔧 Settings").is_none());
+    assert!(find_text_center(&out, "Fit Curve").is_none());
+    assert!(find_text_center(&out, "Logarithmic X-Axis").is_none());
+
+    let menu = click_at(&ctx, pos2(640.0, 400.0), PointerButton::Secondary, show);
+    assert!(find_text_center(&menu, "🔧 Plot Settings").is_none());
+    assert!(find_text_center(&menu, "Fit Curve").is_none());
+}

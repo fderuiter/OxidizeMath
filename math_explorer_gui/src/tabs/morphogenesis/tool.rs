@@ -1,37 +1,55 @@
+//! Interactive tool lifecycle and framework integration for 2D morphogenesis.
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::MORPHO_ATLAS_AXIS_PAIRS;
+use super::diffusion::CoupledMorphoDiffusion;
 use super::presets::MorphogenesisTheory;
-use super::runner::MorphogenesisRunner;
-use super::state::MorphogenesisToolState;
+use super::runner::{
+    MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
+    DEFAULT_MORPHOGENESIS_SEED,
+};
+use super::sculpt::default_morpho_brush_kit;
 use super::types::{
-    MorphogenesisKineticsMode, MorphogenesisOverlayMode, MorphogenesisSharedParams,
+    MorphogenesisFlowMode, MorphogenesisFlowState, MorphogenesisOverlayMode,
+    MorphogenesisSharedParams,
 };
 use crate::app::ThemeMode;
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::framework::{ExportCapabilities, InteractiveTool};
+use crate::framework::recovery::FiniteStateGuard;
+use crate::framework::{
+    decode_rle_mask, ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit,
+};
 use eframe::egui;
 use eframe::egui::ColorImage;
+use math_explorer::biology::morphogenesis::{DiffusionCoeff, TuringSystem};
+use math_explorer::math_kernel::types::{Dimension, StepSize};
+#[cfg(feature = "physics")]
+use math_explorer::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD2Q9;
+#[cfg(feature = "physics")]
+use math_explorer::physics::fluid_dynamics::potential_flow::PotentialFlowField;
 use scientific_metadata::theory::TheoryDescribable;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-/// Interactive tool for 2D upwind advected Turing & Gray-Scott morphogenesis.
+/// Interactive tool for 2D upwind advected Turing & Gray-Scott morphogenesis with microfluidic sculpting.
 pub struct MorphogenesisTool {
     /// Asynchronous simulation worker controller.
-    pub worker: BackgroundWorker<MorphogenesisRunner>,
+    pub worker: BackgroundWorker<MorphogenesisKineticsRunner>,
     /// Progressive 2D parameter regime atlas controller.
     pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+    pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+    pub(crate) flow_state: Arc<std::sync::RwLock<MorphogenesisFlowState>>,
+    pub(crate) mask_rle: Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+    pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) width: usize,
     pub(crate) height: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) pixels: Vec<egui::Color32>,
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
-    pub(crate) step_runner: Option<MorphogenesisRunner>,
+    pub(crate) step_runner: Option<MorphogenesisKineticsRunner>,
     pub(crate) pending_initial_start: bool,
     pub(crate) last_high_contrast: Option<bool>,
     pub(crate) last_theme_mode: Option<ThemeMode>,
@@ -46,7 +64,18 @@ impl Default for MorphogenesisTool {
         let width = 100;
         let height = 100;
         let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams::default()));
-        let runner = Self::create_runner(&params, width, height);
+        let kinetics_state =
+            Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
+        let flow_state = Arc::new(std::sync::RwLock::new(MorphogenesisFlowState::default()));
+        let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
+        let runner = Self::create_coupled_runner(
+            &params,
+            &kinetics_state,
+            &flow_state,
+            &mask_rle,
+            width,
+            height,
+        );
         let peclet = runner.peclet;
         let damkohler = runner.damkohler;
         let worker = BackgroundWorker::new(runner);
@@ -55,6 +84,10 @@ impl Default for MorphogenesisTool {
             worker,
             atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
+            kinetics_state,
+            flow_state,
+            mask_rle,
+            brush_kit: default_morpho_brush_kit(),
             width,
             height,
             texture: None,
@@ -74,18 +107,131 @@ impl Default for MorphogenesisTool {
 }
 
 impl MorphogenesisTool {
+    #[cfg(test)]
     pub(crate) fn create_runner(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         width: usize,
         height: usize,
-    ) -> MorphogenesisRunner {
-        MorphogenesisRunner::new(params, width, height)
+    ) -> MorphogenesisKineticsRunner {
+        let ks = Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
+        let mask = Arc::new(std::sync::RwLock::new(Vec::new()));
+        Self::create_kinetics_runner(params, &ks, &mask, width, height)
     }
 
     #[cfg(test)]
-    #[allow(missing_docs)]
+    pub(crate) fn create_kinetics_runner(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisKineticsRunner {
+        let flow_state = Arc::new(std::sync::RwLock::new(MorphogenesisFlowState::default()));
+        Self::create_coupled_runner(params, kinetics_state, &flow_state, mask_rle, width, height)
+    }
+
+    fn build_coupled_system(
+        p: MorphogenesisSharedParams,
+        ks: MorphogenesisKineticsState,
+        flow: MorphogenesisFlowState,
+        rle: &[[u32; 2]],
+        width: usize,
+        height: usize,
+    ) -> TuringSystem<2, MorphogenesisKineticsAdapter, CoupledMorphoDiffusion> {
+        let kinetics = MorphogenesisKineticsAdapter {
+            mode: ks.mode,
+            a: p.a,
+            b: p.b,
+            f: ks.f,
+            k: ks.k,
+        };
+        let mut diffusion = CoupledMorphoDiffusion::new(
+            Dimension(width),
+            Dimension(height),
+            StepSize(1.0),
+            StepSize(1.0),
+        );
+        diffusion.flow_active = flow.flow_mode != MorphogenesisFlowMode::None;
+        let mut system = TuringSystem::new_with_kinetics(
+            Dimension(width * height),
+            DiffusionCoeff(p.d_u),
+            DiffusionCoeff(p.d_v),
+            kinetics,
+            diffusion,
+        );
+        Self::initialize_adapter_system(&mut system, width, height);
+        if !rle.is_empty() {
+            if let Ok(bytes) = decode_rle_mask(rle, width * height) {
+                let _ = system.diffusion.mask.set_roles_slice(&bytes);
+            }
+        }
+        system
+    }
+
+    pub(crate) fn create_coupled_runner(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+        flow_state: &Arc<std::sync::RwLock<MorphogenesisFlowState>>,
+        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisKineticsRunner {
+        let p = *params.read().unwrap_or_else(|e| e.into_inner());
+        let ks = *kinetics_state.read().unwrap_or_else(|e| e.into_inner());
+        let flow = *flow_state.read().unwrap_or_else(|e| e.into_inner());
+        let rle = mask_rle.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let system = Self::build_coupled_system(p, ks, flow, &rle, width, height);
+        #[cfg(feature = "physics")]
+        let tau = (3.0 * flow.viscosity + 0.5).max(0.51);
+        let mut runner = MorphogenesisKineticsRunner {
+            system,
+            params: Arc::clone(params),
+            kinetics_state: Arc::clone(kinetics_state),
+            flow_state: Arc::clone(flow_state),
+            width,
+            height,
+            step_count: 0,
+            rng: oxidize_core::rng::OxidizeRng::new(DEFAULT_MORPHOGENESIS_SEED),
+            noise_amplitude: 0.0,
+            vorticity_buf: vec![0.0; width * height],
+            peclet: 0.0,
+            damkohler: 0.0,
+            last_flow_mode: flow.flow_mode,
+            #[cfg(feature = "physics")]
+            lbm: LatticeBoltzmannD2Q9::new(width.max(1), height.max(1), tau),
+            #[cfg(feature = "physics")]
+            potential_flow: PotentialFlowField::new(),
+            #[cfg(feature = "physics")]
+            last_potential_key: (u64::MAX, u64::MAX),
+            #[cfg(feature = "physics")]
+            potential_dirty: true,
+        };
+        runner.enforce_mask_concentrations();
+        runner.sync_mask_to_hydrodynamics();
+        if flow.flow_mode != MorphogenesisFlowMode::None
+            && !runner.system.diffusion.obstacles().iter().any(|&b| b)
+        {
+            runner.seed_default_bluff_obstacle();
+        }
+        #[cfg(feature = "physics")]
+        if flow.flow_mode == MorphogenesisFlowMode::PotentialFlow {
+            runner.rebuild_potential_elements(flow.inlet_velocity, flow.circulation);
+        }
+        runner.refresh_diagnostics();
+        runner
+    }
+
+    /// Respawns a fresh worker instance in `Ready` state for testing.
+    #[cfg(test)]
     pub fn restart_worker(&mut self) {
-        let runner = Self::create_runner(&self.params, self.width, self.height);
+        let runner = Self::create_coupled_runner(
+            &self.params,
+            &self.kinetics_state,
+            &self.flow_state,
+            &self.mask_rle,
+            self.width,
+            self.height,
+        );
         self.live_peclet = runner.peclet;
         self.live_damkohler = runner.damkohler;
         self.worker = BackgroundWorker::new(runner);
@@ -95,8 +241,8 @@ impl MorphogenesisTool {
         self.dirty = true;
     }
 
+    /// Alias for [`Self::restart_worker`] used in fault-recovery tests.
     #[cfg(test)]
-    #[allow(missing_docs)]
     pub fn retry(&mut self) {
         self.restart_worker();
     }
@@ -104,10 +250,14 @@ impl MorphogenesisTool {
     /// Resets the worker in place or respawns a disconnected worker in `Ready` state.
     pub fn reset(&mut self) {
         let params = Arc::clone(&self.params);
+        let ks = Arc::clone(&self.kinetics_state);
+        let flow = Arc::clone(&self.flow_state);
+        let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
-        self.worker
-            .reset_or_respawn(|| Self::create_runner(&params, width, height));
+        self.worker.reset_or_respawn(|| {
+            Self::create_coupled_runner(&params, &ks, &flow, &mask, width, height)
+        });
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
@@ -122,10 +272,16 @@ impl MorphogenesisTool {
     fn sync_visual_preferences(&mut self, visuals: &egui::Visuals) {
         let theme_mode = ThemeMode::from_visuals(visuals);
         let high_contrast = theme_mode == ThemeMode::HighContrast;
-        let (kinetics_mode, overlay_mode) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.kinetics_mode, p.overlay_mode)
-        };
+        let kinetics_mode = self
+            .kinetics_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .mode;
+        let overlay_mode = self
+            .flow_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .overlay_mode;
         self.theory.set_mode(kinetics_mode);
         if self.last_theme_mode != Some(theme_mode)
             || self.last_high_contrast != Some(high_contrast)
@@ -134,72 +290,16 @@ impl MorphogenesisTool {
             self.last_theme_mode = Some(theme_mode);
             self.last_high_contrast = Some(high_contrast);
             self.last_overlay_mode = Some(overlay_mode);
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.theme_mode = theme_mode;
-            p.high_contrast = high_contrast;
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .high_contrast = high_contrast;
+            self.flow_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .theme_mode = theme_mode;
             self.dirty = true;
         }
-    }
-}
-
-impl FiniteStateGuard for MorphogenesisTool {
-    fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.worker.diagnostic_report()
-    }
-
-    fn diverged(&self) -> bool {
-        !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.dt = (p.dt * 0.5).max(1e-4);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn clamp_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = p.a.clamp(0.0, 1.0);
-        p.b = p.b.clamp(0.0, 2.0);
-        p.f = p.f.clamp(0.0, 0.12);
-        p.k = p.k.clamp(0.0, 0.12);
-        match p.kinetics_mode {
-            MorphogenesisKineticsMode::Schnakenberg => {
-                p.d_u = p.d_u.clamp(0.1, 5.0);
-                p.d_v = p.d_v.clamp(10.0, 200.0);
-                p.dt = p.dt.clamp(0.001, 0.1);
-            }
-            MorphogenesisKineticsMode::GrayScott => {
-                p.d_u = p.d_u.clamp(0.01, 1.0);
-                p.d_v = p.d_v.clamp(0.005, 1.0);
-                p.dt = p.dt.clamp(0.001, 2.0);
-            }
-        }
-        p.inlet_velocity = p.inlet_velocity.clamp(0.0, 2.0);
-        p.viscosity = p.viscosity.clamp(0.003, 0.5);
-        p.circulation = p.circulation.clamp(-25.0, 25.0);
-        p.brush_radius = p.brush_radius.clamp(1, 25);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn reset_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        let hc = p.high_contrast;
-        let tm = p.theme_mode;
-        *p = MorphogenesisSharedParams {
-            high_contrast: hc,
-            theme_mode: tm,
-            ..MorphogenesisSharedParams::default()
-        };
-        drop(p);
-        self.theory.set_mode(MorphogenesisKineticsMode::Schnakenberg);
-        self.reset_system();
     }
 }
 
@@ -249,9 +349,16 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn step_simulation(&mut self) {
-        let runner = self
-            .step_runner
-            .get_or_insert_with(|| Self::create_runner(&self.params, self.width, self.height));
+        let runner = self.step_runner.get_or_insert_with(|| {
+            Self::create_coupled_runner(
+                &self.params,
+                &self.kinetics_state,
+                &self.flow_state,
+                &self.mask_rle,
+                self.width,
+                self.height,
+            )
+        });
         for _ in 0..5 {
             runner.step();
         }
@@ -260,6 +367,16 @@ impl InteractiveTool for MorphogenesisTool {
         let snap = runner.get_snapshot();
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+    }
+
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(stroke) = ctx.brush_stroke {
+            self.dispatch_brush_stroke(stroke, Some(&ctx.response.ctx));
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -286,113 +403,15 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn state_revision(&self) -> u64 {
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            p.a.to_bits().hash(&mut h);
-            p.b.to_bits().hash(&mut h);
-            p.f.to_bits().hash(&mut h);
-            p.k.to_bits().hash(&mut h);
-            p.d_u.to_bits().hash(&mut h);
-            p.d_v.to_bits().hash(&mut h);
-            p.dt.to_bits().hash(&mut h);
-            p.kinetics_mode.hash(&mut h);
-            p.flow_mode.hash(&mut h);
-            p.inlet_velocity.to_bits().hash(&mut h);
-            p.viscosity.to_bits().hash(&mut h);
-            p.circulation.to_bits().hash(&mut h);
-            p.overlay_mode.hash(&mut h);
-            p.brush_mode.hash(&mut h);
-            p.brush_radius.hash(&mut h);
-        }
-        self.width.hash(&mut h);
-        self.height.hash(&mut h);
-        std::mem::discriminant(&self.worker.state()).hash(&mut h);
-        self.pending_initial_start.hash(&mut h);
-        self.atlas.is_visible().hash(&mut h);
-        self.atlas.axis_keys().hash(&mut h);
-        h.finish().max(1)
+        self.compute_state_revision()
     }
 
     fn save_state(&self) -> Option<String> {
-        let p = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let (xk, yk) = self.atlas.axis_keys();
-        serde_json::to_string(&MorphogenesisToolState {
-            a: p.a,
-            b: p.b,
-            d_u: p.d_u,
-            d_v: p.d_v,
-            dt: p.dt,
-            width: self.width,
-            height: self.height,
-            kinetics_mode: p.kinetics_mode,
-            f: p.f,
-            k: p.k,
-            flow_mode: p.flow_mode,
-            inlet_velocity: p.inlet_velocity,
-            viscosity: p.viscosity,
-            circulation: p.circulation,
-            overlay_mode: p.overlay_mode,
-            brush_mode: p.brush_mode,
-            brush_radius: p.brush_radius,
-            state: Some(self.worker.state()),
-            paused: None,
-            pending_initial_start: self.pending_initial_start,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
-        })
-        .ok()
+        self.serialize_tool_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        self.state_bounds().validate_json(state)?;
-        let parsed: MorphogenesisToolState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
-        parsed.validate()?;
-        self.atlas
-            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
-        self.atlas.set_visible(parsed.atlas_visible);
-        let target_state = parsed.resolve_target_state();
-        self.theory.set_mode(parsed.kinetics_mode);
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.a = parsed.a;
-            p.b = parsed.b;
-            p.f = parsed.f;
-            p.k = parsed.k;
-            p.d_u = parsed.d_u;
-            p.d_v = parsed.d_v;
-            p.dt = parsed.dt;
-            p.kinetics_mode = parsed.kinetics_mode;
-            p.flow_mode = parsed.flow_mode;
-            p.inlet_velocity = parsed.inlet_velocity;
-            p.viscosity = parsed.viscosity;
-            p.circulation = parsed.circulation;
-            p.overlay_mode = parsed.overlay_mode;
-            p.brush_mode = parsed.brush_mode;
-            p.brush_radius = parsed.brush_radius;
-        }
-        self.width = parsed.width;
-        self.height = parsed.height;
-        let runner = Self::create_runner(&self.params, self.width, self.height);
-        self.live_peclet = runner.peclet;
-        self.live_damkohler = runner.damkohler;
-        self.worker = BackgroundWorker::new(runner);
-        self.stepped_pixels = None;
-        self.step_runner = None;
-        self.dirty = true;
-
-        if target_state == SimWorkerState::Running {
-            self.pending_initial_start = false;
-            let _ = self.worker.send_command(SimCommand::Start);
-        } else {
-            self.pending_initial_start = parsed.pending_initial_start;
-        }
-        Ok(())
+        self.load_tool_state(state)
     }
 
     #[cfg(test)]
@@ -406,17 +425,7 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn has_finite_parameters(&self) -> bool {
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        p.a.is_finite()
-            && p.b.is_finite()
-            && p.f.is_finite()
-            && p.k.is_finite()
-            && p.d_u.is_finite()
-            && p.d_v.is_finite()
-            && p.dt.is_finite()
-            && p.inlet_velocity.is_finite()
-            && p.viscosity.is_finite()
-            && p.circulation.is_finite()
+        self.params_are_finite()
     }
 
     fn clamp_parameters(&mut self) -> bool {

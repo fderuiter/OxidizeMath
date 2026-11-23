@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for bench rk4 alloc.
 #![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
 use math_explorer::pure_math::analysis::ode::{OdeSystem, VectorOperations};
 use std::ops::{Add, AddAssign, Mul, MulAssign};

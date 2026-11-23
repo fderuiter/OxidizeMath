@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for grpo.
 use domain_applied::applied::grpo::formulas::*;
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;

@@ -1,3 +1,5 @@
+//! Starter gallery registrations, PRNG re-export, and dynamic `TheoryDescribable` adapter.
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::types::MorphogenesisKineticsMode;

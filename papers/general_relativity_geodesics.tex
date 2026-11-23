@@ -1,0 +1,106 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath, amssymb}
+\usepackage{geometry}
+\usepackage{accessibility}
+
+\geometry{margin=1in}
+
+\title{Zero-Allocation Geodesic Integration on Curved Spacetimes in Rust}
+\author{OxidizeMath Project}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present the mathematical formulation and stack-allocated software architecture behind the differential-geometry geodesic engine in \texttt{pure\_math::tensor} and its relativistic spacetime realizations in \texttt{domain\_physics::physics::high\_energy}. By parameterizing fixed-dimension manifolds via \texttt{StaticMetric<const N: usize>} over fixed-size \texttt{nalgebra} vectors and matrices, both second-order central-difference Christoffel symbols and fourth-order Runge--Kutta (\texttt{RungeKutta4}) geodesic integration execute with zero dynamic heap allocations under \texttt{VerifiedAllocator}. We validate closed-form and numerical connections across Schwarzschild, equatorial Kerr, traversable Morris--Thorne wormhole, and 2-sphere geometries, alongside isometric Flamm and wormhole embeddings, radial effective potentials, and combined gravitational--kinematic clock dilation.
+\end{abstract}
+
+\section{Stack-Allocated Metric Tensors and Connections}
+
+Let $(\mathcal{M}, g)$ be an $N$-dimensional pseudo-Riemannian manifold with local coordinates $x^\mu$ ($\mu \in \{0, \dots, N-1\}$) and metric tensor $g_{\mu\nu}(x)$ of Lorentzian signature $(-, +, \dots, +)$ or Riemannian signature $(+, \dots, +)$. The Levi-Civita connection coefficients (Christoffel symbols of the second kind) are uniquely determined by metric compatibility $\nabla_\lambda g_{\mu\nu} = 0$ and torsion-freeness $\Gamma^\mu_{\alpha\beta} = \Gamma^\mu_{\beta\alpha}$ \cite{misner1973gravitation}:
+\begin{equation}
+\Gamma^\mu_{\alpha\beta}(x) = \frac{1}{2} g^{\mu\nu}(x) \left(
+    \frac{\partial g_{\nu\beta}}{\partial x^\alpha}
+  + \frac{\partial g_{\nu\alpha}}{\partial x^\beta}
+  - \frac{\partial g_{\alpha\beta}}{\partial x^\nu}
+\right),
+\label{eq:christoffel}
+\end{equation}
+where $g^{\mu\rho} g_{\rho\nu} = \delta^\mu_\nu$.
+
+In \texttt{pure\_math::tensor::static\_metric}, \texttt{StaticMetric<const N: usize>} represents $g_{\mu\nu}(x)$ as a stack-allocated \texttt{SMatrix<f64, N, N>} and $\Gamma^\mu_{\alpha\beta}(x)$ as \texttt{[SMatrix<f64, N, N>; N]}. When closed-form derivatives are unavailable or cross-checked numerically, \texttt{static\_christoffel\_symbols} evaluates partial derivatives via scale-aware second-order central differences,
+\begin{equation}
+\frac{\partial g_{\alpha\beta}}{\partial x^\sigma} \approx
+\frac{g_{\alpha\beta}(x + h_\sigma e_\sigma) - g_{\alpha\beta}(x - h_\sigma e_\sigma)}{2 h_\sigma},
+\qquad h_\sigma = 10^{-5} \max(|x^\sigma|, 1),
+\end{equation}
+achieving $\mathcal{O}(h_\sigma^2)$ truncation accuracy ($\le 10^{-6}$ discrepancy against analytical connections) with zero heap allocations.
+
+\section{First-Order Geodesic ODE System and Singularity Guards}
+
+An affinely parameterized geodesic $x^\mu(\lambda)$ extremizes proper interval and satisfies
+\begin{equation}
+\frac{d^2 x^\mu}{d\lambda^2} + \Gamma^\mu_{\alpha\beta}(x)\, \frac{dx^\alpha}{d\lambda}\frac{dx^\beta}{d\lambda} = 0.
+\end{equation}
+Introducing tangent components $v^\mu = dx^\mu / d\lambda$ yields a first-order system on $\mathbb{R}^{2N}$ backed by \texttt{ArrayState}:
+\begin{equation}
+\frac{dx^\mu}{d\lambda} = v^\mu, \qquad
+\frac{dv^\mu}{d\lambda} = -\sum_{\alpha,\beta=0}^{N-1} \Gamma^\mu_{\alpha\beta}(x)\, v^\alpha v^\beta.
+\end{equation}
+Along exact solutions, metric compatibility preserves the quadratic tangent norm
+\begin{equation}
+\mathcal{N}(x, v) = g_{\mu\nu}(x)\, v^\mu v^\nu = -\kappa,
+\end{equation}
+with $\kappa = 1$ for timelike worldlines parameterized by $c\tau$ and $\kappa = 0$ for null rays. To prevent numerical divergence near coordinate poles or event horizons, \texttt{GeodesicSystem::step\_rk4} checks \texttt{StaticMetric::is\_regular\_at} before and after each trial \texttt{RungeKutta4} step, halting cleanly prior to $r \le 1.02\,R_s$ or $\sin\theta \le 10^{-4}$.
+
+\section{Relativistic Spacetime Realizations}
+
+\subsection{Schwarzschild Geometry, Lensing, and Twin Clocks}
+
+In coordinates $(ct, r, \theta, \varphi)$ with Schwarzschild radius $R_s = 2GM / c^2$, the vacuum exterior metric \cite{schwarzschild1916} is
+\begin{equation}
+ds^2 = -\left(1 - \frac{R_s}{r}\right) d(ct)^2
+     + \left(1 - \frac{R_s}{r}\right)^{-1} dr^2
+     + r^2 d\theta^2 + r^2 \sin^2\theta\, d\varphi^2.
+\end{equation}
+Equatorial motion ($\theta = \pi/2$) with conserved energy $e = (1 - R_s/r)\dot{x}^0$ and specific angular momentum $\ell = r^2\dot{\varphi}$ obeys $\frac{1}{2}\dot{r}^2 + V_{\text{eff}}(r) = \frac{1}{2}e^2$ with
+\begin{equation}
+V_{\text{eff}}(r) = \frac{1}{2}\left(1 - \frac{R_s}{r}\right)\left(\kappa + \frac{\ell^2}{r^2}\right).
+\end{equation}
+Null rays ($\kappa = 0$) exhibit an unstable circular photon sphere at $r_{\text{ph}} = \frac{3}{2} R_s$ with critical impact parameter $b_{\text{crit}} = \frac{3\sqrt{3}}{2} R_s$, and weak-field asymptotic bending $\Delta\varphi \approx 2 R_s / b$. Massive test particles ($\kappa = 1$) admit stable circular orbits down to the innermost stable circular orbit (ISCO) at $r_{\text{ISCO}} = 3 R_s$.
+
+Isometric embedding of the constant-$t$, $\theta = \pi/2$ slice into Euclidean cylindrical coordinates $(r, \varphi, z)$ yields Flamm's paraboloid,
+\begin{equation}
+z(r) = 2\sqrt{R_s(r - R_s)}, \qquad r \ge R_s.
+\end{equation}
+For an observer at radius $r > R_s$ moving with speed $v$ relative to a local static shell observer, gravitational redshift and special-relativistic Lorentz dilation factorize as
+\begin{equation}
+\frac{d\tau}{dt} = \sqrt{1 - \frac{R_s}{r}}\,\sqrt{1 - \frac{v^2}{c^2}} = \frac{\sqrt{1 - R_s/r}}{\gamma(v)}.
+\end{equation}
+
+\subsection{Equatorial Kerr Spacetime}
+
+For a rotating black hole with mass scale $R_s$ and spin length $a = J / (Mc)$ satisfying $|a| < R_s/2$, the equatorial Boyer--Lindquist metric \cite{kerr1963} with $\Delta = r^2 - R_s r + a^2$ is
+\begin{equation}
+ds^2 = -\left(1 - \frac{R_s}{r}\right) d(ct)^2
+     - \frac{2 a R_s}{r} d(ct)\,d\varphi
+     + \frac{r^2}{\Delta} dr^2 + r^2 d\theta^2
+     + \left(r^2 + a^2 + \frac{a^2 R_s}{r}\right) d\varphi^2,
+\end{equation}
+with outer event horizon $r_+ = \frac{1}{2}(R_s + \sqrt{R_s^2 - 4a^2})$ and zero-angular-momentum frame-dragging rate $\omega(r) = -g_{03}/g_{33}$.
+
+\subsection{Traversable Morris--Thorne Wormhole}
+
+The zero-tidal-force Morris--Thorne wormhole \cite{morris1988wormholes} in proper radial coordinate $l \in (-\infty, +\infty)$ with throat radius $b_0 > 0$ has line element
+\begin{equation}
+ds^2 = -d(ct)^2 + dl^2 + \left(b_0^2 + l^2\right) d\varphi^2,
+\end{equation}
+with non-vanishing connection components $\Gamma^l_{\varphi\varphi} = -l$ and $\Gamma^\varphi_{l\varphi} = \Gamma^\varphi_{\varphi l} = l / (b_0^2 + l^2)$. Its spatial slice embeds isometrically into $\mathbb{R}^3$ via cylindrical radius $r(l) = \sqrt{b_0^2 + l^2}$ and vertical coordinate $z(l) = b_0 \operatorname{arsinh}(l / b_0)$, allowing smooth trajectory transit across the throat $l = 0$ whenever $|\ell / e| < b_0$.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

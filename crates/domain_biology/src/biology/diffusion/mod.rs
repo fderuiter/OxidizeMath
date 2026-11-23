@@ -11,7 +11,7 @@
 //! 2. Unroll loops for better instruction pipelining.
 //! 3. Use `unsafe` indexing (with rigorous safety proofs) to eliminate bounds checks.
 
-#[allow(missing_docs)]
+/// Two-dimensional conservative upwind advection-diffusion operators.
 pub mod advection_2d;
 #[allow(missing_docs)]
 pub mod fd1d;
@@ -21,7 +21,7 @@ pub mod fd3d;
 
 pub use advection_2d::AdvectionDiffusion2D;
 pub use fd1d::FiniteDifference1D;
-pub use fd2d::FiniteDifference2D;
+pub use fd2d::{CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole};
 pub use fd3d::FiniteDifference3D;
 use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 
