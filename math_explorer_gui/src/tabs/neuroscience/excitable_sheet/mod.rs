@@ -242,10 +242,6 @@ impl InteractiveTool for ExcitableSheetTool {
         self.handle_keyboard(ctx);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     fn state_revision(&self) -> u64 {
         self.revision
     }
