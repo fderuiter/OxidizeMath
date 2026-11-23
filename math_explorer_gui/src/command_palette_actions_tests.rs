@@ -7,7 +7,7 @@ use crate::starter_gallery::StarterPresetMetadata;
 #[test]
 fn test_all_registered_tools_have_lowercase_curated_tags() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 79, "Expected all 79 registered ToolMetadata");
+    assert_eq!(tools.len(), 86, "Expected all 86 registered ToolMetadata");
 
     for meta in tools {
         assert!(
@@ -58,10 +58,10 @@ fn test_command_palette_indexes_all_tabs_tools_starter_presets_and_commands() {
         .count();
 
     assert_eq!(tab_count, 27, "Expected 27 ExplorerTab entries");
-    assert_eq!(tool_count, 79, "Expected 79 ToolMetadata entries");
+    assert_eq!(tool_count, 86, "Expected 86 ToolMetadata entries");
     assert_eq!(
-        preset_count, 116,
-        "Expected 116 StarterPresetMetadata cards"
+        preset_count, 138,
+        "Expected 138 StarterPresetMetadata cards"
     );
     assert_eq!(
         command_count,
@@ -76,7 +76,7 @@ fn verify_every_preset_title_matches(tabs: &[Box<dyn crate::tabs::ExplorerTab>])
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 116);
+    assert_eq!(presets.len(), 138);
 
     for target in presets {
         let palette = CommandPalette {
@@ -144,6 +144,11 @@ fn test_synonym_and_command_queries_match_expected_models_and_actions() {
         ("copula", "Correlated Risk"),
         ("win ratio", "Win Ratio"),
         ("freesurfer", "Cortical Morphometry"),
+        ("sandpile", "Sandpile"),
+        ("grpo", "Closed-Loop"),
+        ("baum-welch", "Markov"),
+        ("devig", "Devig"),
+        ("arbitrage", "Arbitrage, Dutching & Hedge"),
         ("explore catalog", "Explore Catalog"),
         ("2x2 quad", "2x2 Quad Grid"),
         ("high contrast", "High Contrast"),

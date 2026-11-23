@@ -454,6 +454,7 @@ impl SimulationFramework {
         self.render_challenge_hud_panel(ui, &ctx, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
+        self.show_framework_atlas_panel(ui, id_source);
         self.render_scoped_active_tool(ui, &ctx);
 
         if !interactive_input

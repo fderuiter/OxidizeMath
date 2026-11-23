@@ -1,10 +1,14 @@
 #![cfg(target_os = "macos")]
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub(crate) mod edit;
+
 use super::macos_menu_view::{build_view_menu, handle_focus_pane_event, handle_view_layout_event};
 use super::{MathExplorerApp, ThemeMode};
 use eframe::egui;
 use muda::{Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+
+pub(super) use edit::sync_macos_edit_menu;
 
 fn build_file_menu() -> Submenu {
     let file_menu = Submenu::new("File", true);
@@ -38,15 +42,6 @@ fn build_file_menu() -> Submenu {
     file_menu.append(&PredefinedMenuItem::separator()).unwrap();
     file_menu.append(&share_link_item).unwrap();
     file_menu
-}
-
-fn build_edit_menu() -> Submenu {
-    let edit_menu = Submenu::new("Edit", true);
-    let undo_item = MenuItem::with_id(MenuId::new("edit_undo"), "Undo", true, None);
-    let redo_item = MenuItem::with_id(MenuId::new("edit_redo"), "Redo", true, None);
-    edit_menu.append(&undo_item).unwrap();
-    edit_menu.append(&redo_item).unwrap();
-    edit_menu
 }
 
 fn build_appearance_menu() -> Submenu {
@@ -102,7 +97,7 @@ pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     menu.append(&app_menu).unwrap();
 
     menu.append(&build_file_menu()).unwrap();
-    menu.append(&build_edit_menu()).unwrap();
+    menu.append(&edit::build_edit_menu(app)).unwrap();
     menu.append(&build_view_menu(app)).unwrap();
     menu.append(&build_appearance_menu()).unwrap();
     menu.append(&build_help_menu()).unwrap();
@@ -177,23 +172,18 @@ pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Co
     if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
         let id = event.id.0.as_str();
         if handle_file_event(app, ctx, id)
+            || edit::handle_edit_menu_action(app, ctx, id)
             || handle_view_layout_event(app, ctx, id)
             || handle_focus_pane_event(app, ctx, id)
             || handle_palette_theme_event(app, ctx, id)
         {
             return;
         }
-        match id {
-            "edit_undo" => app.undo(),
-            "edit_redo" => app.redo(),
-            _ => {
-                if let Some(idx) = id
-                    .strip_prefix("tab_")
-                    .and_then(|s| s.parse::<usize>().ok())
-                {
-                    super::domain_bar::select_primary_tab(app, ctx, idx);
-                }
-            }
+        if let Some(idx) = id
+            .strip_prefix("tab_")
+            .and_then(|s| s.parse::<usize>().ok())
+        {
+            super::domain_bar::select_primary_tab(app, ctx, idx);
         }
     }
 }
@@ -361,5 +351,15 @@ mod tests {
         let copied =
             crate::url_state::take_last_copied_share_url().expect("macOS menu copied share link");
         assert!(copied.starts_with("https://fderuiter.github.io/OxidizeMath/#tab="));
+        sync_macos_edit_menu(&app);
+        use muda::accelerator::{Accelerator, Code, Modifiers};
+        assert_eq!(
+            edit::undo_accelerator(),
+            Accelerator::new(Some(Modifiers::SUPER), Code::KeyZ)
+        );
+        assert_eq!(
+            edit::redo_accelerator(),
+            Accelerator::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyZ)
+        );
     }
 }

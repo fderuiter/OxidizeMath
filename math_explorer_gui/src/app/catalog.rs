@@ -45,9 +45,10 @@ impl MathExplorerApp {
         ctx.request_repaint();
     }
 
-    fn sync_starter_gallery_flags(&mut self, ctx: &egui::Context) {
+    pub(super) fn sync_starter_gallery_flags(&mut self, ctx: &egui::Context) {
         if self.show_starter_gallery != self.last_synced_show_starter_gallery {
             if self.show_starter_gallery {
+                self.close_pane_starter_galleries();
                 self.starter_gallery.open_all(ctx);
             } else {
                 self.starter_gallery.close_silently();
@@ -70,6 +71,10 @@ impl MathExplorerApp {
         if self.selected_tab != 0
             || self.viewport_layout != ViewportLayout::Single
             || self.split_layout_mode != SplitLayoutMode::Single
+            || (self.split_ratio - 0.5).abs() > 1e-6
+            || self.quad_split_ratios != (0.5, 0.5)
+            || self.session_manager.can_undo()
+            || self.session_manager.can_redo()
             || self.command_palette.is_open
             || self.show_help_menu
             || self.show_diagnostics_panel

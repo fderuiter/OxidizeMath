@@ -94,6 +94,13 @@ struct PrimeSpiralState {
     tempo_bpm: f64,
 }
 
+impl PrimeSpiralWidget {
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+}
+
 impl InteractiveTool for PrimeSpiralWidget {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -105,10 +112,6 @@ impl InteractiveTool for PrimeSpiralWidget {
 
     fn domain(&self) -> &'static str {
         "number_theory"
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn state_revision(&self) -> u64 {

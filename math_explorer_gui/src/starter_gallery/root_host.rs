@@ -82,6 +82,16 @@ impl GlobalStarterGallery {
         self.was_open = false;
     }
 
+    pub(crate) fn chrome_flags(&self) -> (bool, bool) {
+        (self.is_open, self.is_cold_boot)
+    }
+
+    pub(crate) fn restore_chrome_flags(&mut self, flags: (bool, bool)) {
+        self.is_open = flags.0;
+        self.is_cold_boot = flags.1;
+        self.was_open = flags.0;
+    }
+
     /// Renders the global starter, story & challenge gallery via `ModalLifecycle`.
     pub fn show(&mut self, ctx: &egui::Context) -> Option<GallerySelection> {
         let cards = super::get_all_starter_cards();

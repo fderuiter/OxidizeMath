@@ -165,3 +165,34 @@ fn test_deterministic_simulation() {
         assert_eq!(traj1[i], traj2[i]);
     }
 }
+
+#[test]
+fn test_ctmc_serde_roundtrip_and_invalid_generator_rejection() {
+    use serde::Deserialize;
+    use serde::de::value::{Error as ValErr, MapDeserializer, SeqDeserializer};
+
+    let generator = DMatrix::from_row_slice(2, 2, &[-2.0, 2.0, 3.0, -3.0]);
+    let chain = ContinuousMarkovChain::new(generator).unwrap();
+    let json = serde_json::to_string(&chain).unwrap();
+    let decoded: ContinuousMarkovChain<f64> = serde_json::from_str(&json).unwrap();
+    assert_eq!(decoded.num_states(), 2);
+    assert_relative_eq!(decoded.generator()[(0, 1)], 2.0, epsilon = 1e-12);
+
+    // Reject row not summing to 0 and negative off-diagonal rates via MarkovError::InvalidGenerator
+    let bad_sum = r#"{"generator":[[-1.0,2.0],[3.0,-3.0]]}"#;
+    let err = serde_json::from_str::<ContinuousMarkovChain<f64>>(bad_sum).unwrap_err();
+    assert!(err.to_string().contains("Invalid generator matrix"));
+
+    let bad_off_diag = r#"{"generator":[[1.0,-1.0],[3.0,-3.0]]}"#;
+    let err2 = serde_json::from_str::<ContinuousMarkovChain<f64>>(bad_off_diag).unwrap_err();
+    assert!(err2.to_string().contains("Invalid generator matrix"));
+
+    // Reject NaN generator entries via MarkovError::InvalidGenerator
+    let rows = vec![vec![f64::NAN, 0.0], vec![0.0, 0.0]];
+    let de: MapDeserializer<'_, _, ValErr> = MapDeserializer::new(std::iter::once((
+        "generator",
+        SeqDeserializer::new(rows.into_iter()),
+    )));
+    let nan_err = ContinuousMarkovChain::<f64>::deserialize(de).unwrap_err();
+    assert!(nan_err.to_string().contains("Invalid generator matrix"));
+}
