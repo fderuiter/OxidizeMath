@@ -92,7 +92,6 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         tokens.push(clean.clone());
     }
     let aliases: &[&str] = match clean.as_str() {
-        "algorithmic_information" => &["algorithmic_information_rust"],
         "chaos" => &["chaos_theory"],
         "game_theory" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
@@ -100,6 +99,8 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "financial_math" => &["clinical_trials_statistics"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
         "ai" => &["graph_parameters_rust"],
+        "algorithmic_information" => &["algorithmic_information_rust"],
+        "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         _ => &[],
     };
     tokens.extend(aliases.iter().map(|s| (*s).to_string()));
