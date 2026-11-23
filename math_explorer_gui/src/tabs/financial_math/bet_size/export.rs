@@ -24,7 +24,7 @@ const MD_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
 
 pub(crate) fn format_kelly_rows_csv(rows: &[KellyStrategyRow]) -> String {
     let mut out = String::from(
-        "Strategy,Fraction_Pct,Bet_Amount_USD,Expected_Growth_Rate,Expected_Value_Per_Unit\n",
+        "Strategy,Fraction_Pct,Bet_Amount_USD,Expected_Growth_Rate,Expected_Value_Per_Unit,Drawdown_Floor_Bound_Pct\n",
     );
     for row in rows {
         let label = escape_csv_field(&row.label);
@@ -33,8 +33,11 @@ pub(crate) fn format_kelly_rows_csv(rows: &[KellyStrategyRow]) -> String {
         } else {
             String::from("-inf")
         };
+        let bound = row
+            .barrier_bound
+            .map_or_else(|| String::from("N/A"), |b| format!("{:.2}", b * 100.0));
         out.push_str(&format!(
-            "{label},{:.4},{:.2},{growth},{:.6}\n",
+            "{label},{:.4},{:.2},{growth},{:.6},{bound}\n",
             row.fraction * 100.0,
             row.bet_amount,
             row.ev_per_unit
@@ -45,7 +48,7 @@ pub(crate) fn format_kelly_rows_csv(rows: &[KellyStrategyRow]) -> String {
 
 pub(crate) fn format_kelly_rows_markdown(rows: &[KellyStrategyRow]) -> String {
     let mut out = String::from(
-        "| Strategy | Fraction (%) | Bet Amount ($) | Growth Rate g(f) | EV / $1 |\n| :--- | ---: | ---: | ---: | ---: |\n",
+        "| Strategy | Fraction (%) | Bet Amount ($) | Growth Rate g(f) | EV / $1 | Floor Bound |\n| :--- | ---: | ---: | ---: | ---: | ---: |\n",
     );
     for row in rows {
         let clean_label = row.label.replace('|', "\\|").replace(['\r', '\n'], " ");
@@ -54,8 +57,11 @@ pub(crate) fn format_kelly_rows_markdown(rows: &[KellyStrategyRow]) -> String {
         } else {
             String::from("-inf")
         };
+        let bound = row
+            .barrier_bound
+            .map_or_else(|| String::from("N/A"), |b| format!("{:.1}%", b * 100.0));
         out.push_str(&format!(
-            "| {clean_label} | {:.2}% | ${:.2} | {growth} | ${:.4} |\n",
+            "| {clean_label} | {:.2}% | ${:.2} | {growth} | ${:.4} | {bound} |\n",
             row.fraction * 100.0,
             row.bet_amount,
             row.ev_per_unit

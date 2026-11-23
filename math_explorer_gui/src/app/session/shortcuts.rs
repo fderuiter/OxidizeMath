@@ -126,9 +126,14 @@ impl MathExplorerApp {
             || self.show_starter_gallery
             || self.show_help_menu
             || egui::Popup::is_any_open(ctx)
-            || ctx.memory(|m| m.top_modal_layer().is_some())
+            || egui_plot::active_top_modal_layer(ctx).is_some()
         {
             return true;
+        }
+        if ctx.memory(|m| m.focused()).is_some_and(|fid| {
+            (0..4).any(|idx| self.pane_tab(idx).and_then(|t| t.focused_canvas_id()) == Some(fid))
+        }) {
+            return false;
         }
         crate::framework::is_text_edit_focused(ctx)
     }
@@ -142,8 +147,12 @@ impl WorkspaceSessionManager {
         cat: &str,
         k: egui::Key,
         m: egui::Modifiers,
+        allowed: bool,
     ) -> bool {
         CommandRegistryData::register(ctx, name, desc, CommandTrigger::Shortcut(m, k), true, cat);
+        if !allowed {
+            return false;
+        }
         consume_and_strip_shortcut(ctx, m, k, name)
     }
 
@@ -157,7 +166,9 @@ impl WorkspaceSessionManager {
         let shift_modifiers = modifiers | egui::Modifiers::SHIFT;
 
         let (undo, redo) = Self::check_history_shortcuts(ctx, app, modifiers, shift_modifiers);
-        let (open, save_as, save) = Self::check_file_shortcuts(ctx, modifiers, shift_modifiers);
+        let file_allowed = !app.has_active_modal_or_popup(ctx);
+        let (open, save_as, save) =
+            Self::check_file_shortcuts_with_guard(ctx, modifiers, shift_modifiers, file_allowed);
 
         if undo {
             self.execute_undo(app);
@@ -233,10 +244,21 @@ impl WorkspaceSessionManager {
         (undo, redo)
     }
 
+    #[cfg(test)]
     pub(crate) fn check_file_shortcuts(
         ctx: &egui::Context,
         m: egui::Modifiers,
         sm: egui::Modifiers,
+    ) -> (bool, bool, bool) {
+        let allowed = !crate::app::global_shortcuts::is_context_modal_or_popup_open(ctx);
+        Self::check_file_shortcuts_with_guard(ctx, m, sm, allowed)
+    }
+
+    fn check_file_shortcuts_with_guard(
+        ctx: &egui::Context,
+        m: egui::Modifiers,
+        sm: egui::Modifiers,
+        allowed: bool,
     ) -> (bool, bool, bool) {
         let open = Self::reg_shortcut(
             ctx,
@@ -245,6 +267,7 @@ impl WorkspaceSessionManager {
             "File",
             egui::Key::O,
             m,
+            allowed,
         );
         let save_as = Self::reg_shortcut(
             ctx,
@@ -253,6 +276,7 @@ impl WorkspaceSessionManager {
             "File",
             egui::Key::S,
             sm,
+            allowed,
         );
         let save = Self::reg_shortcut(
             ctx,
@@ -261,6 +285,7 @@ impl WorkspaceSessionManager {
             "File",
             egui::Key::S,
             m,
+            allowed,
         );
         (open, save_as, save)
     }
