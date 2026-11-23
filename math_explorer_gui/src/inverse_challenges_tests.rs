@@ -42,14 +42,17 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .map(ChallengeMetadata::to_card)
         .collect();
     assert!(
-        cards.len() >= 5,
-        "Expected at least 5 registered ChallengeMetadata entries, got {}",
+        cards.len() >= 8,
+        "Expected at least 8 registered ChallengeMetadata entries, got {}",
         cards.len()
     );
     for required_id in [
         "bloch_pi_inversion",
         "bloch_hahn_spin_echo",
         "pk_therapeutic_window",
+        "win_ratio_severity_reversal",
+        "copula_heavy_tail_kelly",
+        "hmm_trellis_branch_rescue",
         "lbm_low_drag_fairing",
         "imrt_oar_sparing",
     ] {
@@ -63,7 +66,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
     }
 
     assert_eq!(get_challenge_cards_for_domain("mri").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("financial_math").len(), 2);
     assert_eq!(get_challenge_cards_for_domain("fluid_dynamics").len(), 1);
     assert_eq!(get_challenge_cards_for_domain("medical").len(), 1);
 
@@ -170,6 +174,9 @@ fn test_stateless_challenge_urls_within_size_budget() {
         ("mri", "bloch_pi_inversion"),
         ("mri", "bloch_hahn_spin_echo"),
         ("clinical_trials", "pk_therapeutic_window"),
+        ("clinical_trials", "win_ratio_severity_reversal"),
+        ("financial_math", "copula_heavy_tail_kelly"),
+        ("financial_math", "hmm_trellis_branch_rescue"),
         ("fluid_dynamics", "lbm_low_drag_fairing"),
         ("medical", "imrt_oar_sparing"),
     ] {

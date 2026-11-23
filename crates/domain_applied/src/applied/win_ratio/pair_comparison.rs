@@ -239,7 +239,7 @@ pub fn calculate_win_ratio(wins: i32, losses: i32) -> f64 {
 }
 
 /// Statistical results for a Win Ratio analysis.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WinRatioStats {
     /// The calculated win ratio ($N_W / N_L$).
     pub win_ratio: f64,

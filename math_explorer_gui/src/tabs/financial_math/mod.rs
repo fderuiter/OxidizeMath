@@ -5,7 +5,9 @@ use eframe::egui;
 pub mod bankroll_ensemble;
 pub mod bankroll_growth;
 pub mod bet_size;
+pub mod copula_tail_risk;
 pub mod correlated_risk;
+pub mod hmm_paradox;
 pub mod parrondo;
 
 pub struct FinancialMathTab {

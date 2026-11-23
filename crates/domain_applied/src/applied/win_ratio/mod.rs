@@ -89,7 +89,10 @@ pub mod bmi;
 pub mod pair_comparison;
 pub mod probability_win_ratio;
 pub mod sample_win_ratio;
+pub mod scratch;
 pub mod simulation;
+
+pub use scratch::{WinRatioBreakdown, WinRatioScratch};
 
 // [cite:win_ratio]
 

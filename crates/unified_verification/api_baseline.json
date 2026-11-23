@@ -2322,6 +2322,14 @@
       "signature": "pub fn calculate_bmi (_ : f64 , _ : f64) -> f64"
     }
   ],
+  "crates/domain_applied/src/applied/win_ratio/mod.rs": [
+    {
+      "signature": "pub use scratch :: WinRatioBreakdown"
+    },
+    {
+      "signature": "pub use scratch :: WinRatioScratch"
+    }
+  ],
   "crates/domain_applied/src/applied/win_ratio/pair_comparison.rs": [
     {
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn add_strategy (self , _ : Box < dyn OutcomeComparator < T > >) -> Self }"
@@ -2428,6 +2436,50 @@
     },
     {
       "signature": "pub struct WinLossCounts"
+    }
+  ],
+  "crates/domain_applied/src/applied/win_ratio/scratch.rs": [
+    {
+      "signature": "impl < T > WinRatioAnalysis < T > { pub fn evaluate_flat_matched (& self , _ : & [T] , _ : & [T] , _ : usize ,) -> (i32 , i32) }"
+    },
+    {
+      "signature": "impl < T > WinRatioAnalysis < T > { pub fn evaluate_flat_unmatched (& self , _ : & [T] , _ : & [T] , _ : usize ,) -> (i32 , i32) }"
+    },
+    {
+      "signature": "impl WinRatioBreakdown { pub fn total_losses (& self) -> i32 }"
+    },
+    {
+      "signature": "impl WinRatioBreakdown { pub fn total_wins (& self) -> i32 }"
+    },
+    {
+      "signature": "impl WinRatioScratch { pub fn control_two_tier (& self , _ : usize) -> & [f64] }"
+    },
+    {
+      "signature": "impl WinRatioScratch { pub fn control_two_tier_mut (& mut self , _ : usize) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl WinRatioScratch { pub fn evaluate_staged_two_tier (& self , _ : usize , _ : usize , _ : bool ,) -> WinRatioBreakdown }"
+    },
+    {
+      "signature": "impl WinRatioScratch { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl WinRatioScratch { pub fn regime_cell (& self , _ : usize , _ : usize) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl WinRatioScratch { pub fn set_regime_cell (& mut self , _ : usize , _ : usize , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl WinRatioScratch { pub fn treatment_two_tier (& self , _ : usize) -> & [f64] }"
+    },
+    {
+      "signature": "impl WinRatioScratch { pub fn treatment_two_tier_mut (& mut self , _ : usize) -> & mut [f64] }"
+    },
+    {
+      "signature": "pub struct WinRatioBreakdown"
+    },
+    {
+      "signature": "pub struct WinRatioScratch"
     }
   ],
   "crates/domain_applied/src/applied/win_ratio/simulation.rs": [
@@ -10439,6 +10491,21 @@
       "signature": "pub use gaussian :: sgp_joint_probability"
     },
     {
+      "signature": "pub use student_t :: BivariateCopulaScratch"
+    },
+    {
+      "signature": "pub use student_t :: CopulaTailComparison"
+    },
+    {
+      "signature": "pub use student_t :: StudentTCopula"
+    },
+    {
+      "signature": "pub use student_t :: gauss_legendre_bivariate_normal_cdf"
+    },
+    {
+      "signature": "pub use student_t :: gauss_legendre_bivariate_student_t_cdf"
+    },
+    {
       "signature": "pub use transforms :: NormalTransform"
     },
     {
@@ -10449,6 +10516,62 @@
     },
     {
       "signature": "pub use transforms :: standard_normal_cdf"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/copula/student_t.rs": [
+    {
+      "signature": "impl BivariateCopulaScratch { pub fn evaluate_gaussian_joint (& self , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl BivariateCopulaScratch { pub fn evaluate_student_t_joint (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl BivariateCopulaScratch { pub fn evaluate_tail_comparison (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> CopulaTailComparison }"
+    },
+    {
+      "signature": "impl BivariateCopulaScratch { pub fn gaussian_tail_at (& self , _ : usize , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl BivariateCopulaScratch { pub fn multiplier_at (& self , _ : usize , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl BivariateCopulaScratch { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl BivariateCopulaScratch { pub fn populate_tail_regime_grid (& mut self , _ : & [f64] , _ : & [f64] , _ : f64) }"
+    },
+    {
+      "signature": "impl BivariateCopulaScratch { pub fn student_t_tail_at (& self , _ : usize , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl StudentTCopula { pub fn cdf (& self , _ : Probability , _ : Probability) -> Result < Probability , CopulaError > }"
+    },
+    {
+      "signature": "impl StudentTCopula { pub fn correlation (& self) -> Correlation }"
+    },
+    {
+      "signature": "impl StudentTCopula { pub fn degrees_of_freedom (& self) -> f64 }"
+    },
+    {
+      "signature": "impl StudentTCopula { pub fn new (_ : Correlation , _ : f64) -> Result < Self , CopulaError > }"
+    },
+    {
+      "signature": "impl StudentTCopula { pub fn tail_dependence_coefficient (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn gauss_legendre_bivariate_normal_cdf (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn gauss_legendre_bivariate_student_t_cdf (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct BivariateCopulaScratch"
+    },
+    {
+      "signature": "pub struct CopulaTailComparison"
+    },
+    {
+      "signature": "pub struct StudentTCopula"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/copula/transforms.rs": [
@@ -10850,6 +10973,9 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn forward (& self , _ : & [usize]) -> Result < T > }"
     },
     {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn forward_log_likelihood (& self , _ : & [usize]) -> Result < T > }"
+    },
+    {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn posterior_probabilities (& self , _ : & [usize]) -> Result < DMatrix < T > > }"
     },
     {
@@ -10867,6 +10993,12 @@
   "crates/pure_math/src/pure_math/statistics/markov/hmm/mod.rs": [
     {
       "signature": "pub use model :: HiddenMarkovModel"
+    },
+    {
+      "signature": "pub use workspace :: HmmEvaluation"
+    },
+    {
+      "signature": "pub use workspace :: HmmScratch"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/model.rs": [
@@ -10901,6 +11033,47 @@
     },
     {
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/hmm/workspace.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn evaluate_with_scratch (& self , _ : & [usize] , _ : & mut HmmScratch < T > ,) -> std :: result :: Result < HmmEvaluation < T > , MarkovError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn path_joint_probability (& self , _ : & [usize] , _ : & [usize] ,) -> std :: result :: Result < T , MarkovError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > HmmScratch < T > { pub fn alpha_at (& self , _ : usize , _ : usize) -> T }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > HmmScratch < T > { pub fn filter_slice (& self , _ : usize) -> & [T] }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > HmmScratch < T > { pub fn gamma_at (& self , _ : usize , _ : usize) -> T }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > HmmScratch < T > { pub fn marginal_slice (& self , _ : usize) -> & [usize] }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > HmmScratch < T > { pub fn max_states (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > HmmScratch < T > { pub fn max_steps (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > HmmScratch < T > { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > HmmScratch < T > { pub fn scaling_slice (& self , _ : usize) -> & [T] }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > HmmScratch < T > { pub fn viterbi_slice (& self , _ : usize) -> & [usize] }"
+    },
+    {
+      "signature": "pub struct HmmEvaluation < T >"
+    },
+    {
+      "signature": "pub struct HmmScratch < T >"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/mod.rs": [

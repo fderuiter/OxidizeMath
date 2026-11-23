@@ -98,10 +98,15 @@
 
 pub mod core;
 pub mod gaussian;
+pub mod student_t;
 pub mod transforms;
 
 pub use core::{Correlation, CorrelationMatrix, Probability};
 pub use gaussian::{GaussianCopula, sgp_joint_probability};
+pub use student_t::{
+    BivariateCopulaScratch, CopulaTailComparison, StudentTCopula,
+    gauss_legendre_bivariate_normal_cdf, gauss_legendre_bivariate_student_t_cdf,
+};
 pub use transforms::{
     NormalTransform, ProbabilityTransform, inverse_standard_normal, standard_normal_cdf,
 };

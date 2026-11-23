@@ -159,41 +159,12 @@ impl GaussianCopula {
         Ok(prob)
     }
 
-    /// Numerical integration for bivariate normal CDF.
+    /// Numerical integration for bivariate normal CDF via 16-point Gauss-Legendre Plackett quadrature.
     #[verified_engine::verified]
     fn integrate_bivariate_normal(&self, z1: f64, z2: f64, rho: f64) -> Result<f64, CopulaError> {
-        // Use a simple grid-based integration
-        let n_points = 100;
-        let x_min = -10.0;
-        let x_max = z1;
-        let y_min = -10.0;
-        let y_max = z2;
-
-        if x_max < x_min || y_max < y_min {
-            return Ok(0.0);
-        }
-
-        let dx = (x_max - x_min) / n_points as f64;
-        let dy = (y_max - y_min) / n_points as f64;
-
-        let mut sum = 0.0;
-        let rho_sq = rho * rho;
-        let denom = 2.0 * std::f64::consts::PI * (1.0 - rho_sq).sqrt();
-        let factor = -1.0 / (2.0 * (1.0 - rho_sq));
-
-        for i in 0..n_points {
-            let x = x_min + (i as f64 + 0.5) * dx;
-            for j in 0..n_points {
-                let y = y_min + (j as f64 + 0.5) * dy;
-
-                // Bivariate normal PDF
-                let exponent = factor * (x * x - 2.0 * rho * x * y + y * y);
-                let pdf = (1.0 / denom) * exponent.exp();
-                sum += pdf * dx * dy;
-            }
-        }
-
-        Ok(sum.clamp(0.0, 1.0))
+        Ok(super::student_t::gauss_legendre_bivariate_normal_cdf(
+            z1, z2, rho,
+        ))
     }
 
     /// Multivariate Gaussian copula CDF (general case).

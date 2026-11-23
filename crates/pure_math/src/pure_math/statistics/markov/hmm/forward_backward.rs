@@ -28,12 +28,26 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
     /// The probability of the observation sequence.
     #[verified_engine::verified]
     pub fn forward(&self, observations: &[usize]) -> Result<T> {
-        let (alpha, _) = self.forward_probabilities(observations)?;
+        let (_, scaling_factors) = self.forward_probabilities(observations)?;
+        let one = T::one();
+        Ok(scaling_factors.iter().fold(one, |acc, &c| acc * c))
+    }
+
+    /// Computes log P(observations) from the forward scaling factors to avoid underflow.
+    ///
+    /// Returns `-infinity` (`T::zero().ln()`) when the observation sequence has zero likelihood.
+    #[verified_engine::verified]
+    pub fn forward_log_likelihood(&self, observations: &[usize]) -> Result<T> {
+        let (_, scaling_factors) = self.forward_probabilities(observations)?;
         let zero = T::zero();
-        Ok(alpha
-            .column(alpha.ncols() - 1)
-            .iter()
-            .fold(zero, |acc, &x| acc + x))
+        let mut log_likelihood = zero;
+        for &c in &scaling_factors {
+            if c <= zero {
+                return Ok(zero.ln());
+            }
+            log_likelihood += c.ln();
+        }
+        Ok(log_likelihood)
     }
 
     /// Computes forward probabilities α(t, i) for all t and i.
@@ -143,13 +157,20 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         let zero = T::zero();
 
         // Initialize: β(T, i) = 1
+        let last_scale = scaling_factors[t_max - 1];
+        let init_beta = if last_scale > zero {
+            one / last_scale
+        } else {
+            zero
+        };
         for i in 0..self.num_states {
-            beta[(i, t_max - 1)] = one / scaling_factors[t_max - 1];
+            beta[(i, t_max - 1)] = init_beta;
         }
 
         // Recursion (backward)
         for t in (0..t_max - 1).rev() {
             let y_next = observations[t + 1];
+            let scale_t = scaling_factors[t];
 
             for i in 0..self.num_states {
                 let mut sum = zero;
@@ -157,7 +178,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
                     sum +=
                         self.transitions[(i, j)] * self.emissions[(j, y_next)] * beta[(j, t + 1)];
                 }
-                beta[(i, t)] = sum / scaling_factors[t];
+                beta[(i, t)] = if scale_t > zero { sum / scale_t } else { zero };
             }
         }
 
