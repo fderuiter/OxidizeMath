@@ -408,3 +408,34 @@ fn static_frames_reuse_cached_pois_and_defer_export_primitive_materialization() 
         1
     );
 }
+
+#[test]
+fn plateau_fast_forward_preserves_y_intercept_nan_and_interior_spikes() {
+    let mut pts = Vec::with_capacity(64);
+    pts.push([-25.0, 0.0]);
+    for i in -24..=12 {
+        let y = if i == 6 { 7.5 } else { 4.0 };
+        pts.push([i as f64, y]);
+    }
+    pts.push([13.0, 1.0]);
+    pts.push([14.0, f64::NAN]);
+    for i in 15..=30 {
+        pts.push([i as f64, 4.0]);
+    }
+    pts.push([31.0, 1.0]);
+
+    let items: Vec<Box<dyn PlotItem>> = vec![Box::new(Line::new("SignedPlateau", pts))];
+    let pois = detect_critical_points(&items, &make_transform([-30.0, -5.0], [40.0, 10.0]));
+
+    assert!(
+        pois.iter()
+            .any(|p| p.kind == CriticalPointKind::YIntercept && (p.point[1] - 4.0).abs() < 1e-9),
+        "y-intercept inside horizontal plateau must be preserved"
+    );
+    assert!(
+        pois.iter().any(|p| p.kind == CriticalPointKind::LocalMax
+            && (p.point[0] - 6.0).abs() < 1e-9
+            && (p.point[1] - 7.5).abs() < 1e-9),
+        "single-sample spike inside plateau must not be skipped"
+    );
+}
