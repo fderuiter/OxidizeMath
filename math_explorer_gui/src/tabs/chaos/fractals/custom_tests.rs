@@ -140,3 +140,35 @@ fn test_custom_fractal_glsl_shader_export() {
     assert!(shadertoy.contains("const bool IS_CUSTOM = true;"));
     assert!(shadertoy.contains("void mainImage("));
 }
+
+#[test]
+fn test_mode_switch_preserves_separate_c_plane_and_z_plane_viewports() {
+    let mut viewer = FractalViewer {
+        center: Complex::new(-0.7436, 0.1318),
+        zoom: 12.5,
+        ..Default::default()
+    };
+    viewer.switch_mode(FractalMode::Julia);
+    assert!((viewer.center.re - 0.0).abs() < 1e-12);
+    assert!((viewer.zoom - 1.0).abs() < 1e-12);
+
+    viewer.center = Complex::new(0.25, -0.15);
+    viewer.zoom = 4.2;
+    viewer.switch_mode(FractalMode::Mandelbrot);
+    assert!((viewer.center.re + 0.7436).abs() < 1e-12);
+    assert!((viewer.zoom - 12.5).abs() < 1e-12);
+
+    viewer.switch_mode(FractalMode::CustomJulia);
+    assert!((viewer.center.re - 0.25).abs() < 1e-12);
+    assert!((viewer.zoom - 4.2).abs() < 1e-12);
+
+    let job = CompiledFractalJob::quadratic();
+    let mut buf = [Complex::new(0.0, 0.0); 16];
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (n, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        job.trace_critical_orbit(Complex::new(-0.12, 0.75), &mut buf)
+    });
+    assert_eq!(n, 16);
+}

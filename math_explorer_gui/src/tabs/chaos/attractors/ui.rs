@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AttractorMode, AttractorPlotter, SolverExecutionState};
+use super::{AttractorPlotter, SolverExecutionState};
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::{
     render_custom_fault_banner, render_empty_plot_guidance, render_worker_fault_banner,
@@ -9,8 +9,8 @@ use crate::async_sim::ui::{
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
-use egui_plot::{Callout, LineStyle, MarkerShape, PlotPoint};
-use nalgebra::{Point3, Vector3};
+use egui_plot::{Callout, PlotPoint};
+use nalgebra::Vector3;
 
 impl AttractorPlotter {
     pub(super) fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -41,18 +41,19 @@ impl AttractorPlotter {
                     "Custom 3D Flow",
                 );
                 if self.mode != prev_mode {
+                    if self.mode == super::AttractorMode::Custom {
+                        let _ = self.atlas.set_axis_keys("param_0", "param_1");
+                    } else if self.atlas.axis_keys().0 == "param_0" {
+                        let _ = self.atlas.set_axis_keys("sigma", "rho");
+                    }
                     self.reset();
                     ctx.request_repaint();
                 }
             });
+            let _ = self.atlas.show_toggle_button(ui);
             ui.separator();
 
             self.draw_parameter_sliders(ui);
-            if self.mode == super::AttractorMode::Lorenz {
-                self.draw_lyapunov_badges_and_regime_atlas(ui, ctx);
-            } else {
-                self.draw_custom_correlation_badge(ui);
-            }
             self.draw_simulation_controls(ui, ctx, worker_faulted);
             ui.separator();
             crate::audio::render_sonification_panel(
@@ -135,6 +136,34 @@ impl AttractorPlotter {
         });
     }
 
+    fn handle_transport_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.try_resume();
+            }
+            PlaybackAction::Pause => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::StepBack => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::StepBack(1));
+            }
+            PlaybackAction::ScrubTo(step) => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::SeekStep(step));
+            }
+            PlaybackAction::Reset => {
+                self.reset();
+                ctx.request_repaint();
+            }
+        }
+    }
+
     fn draw_simulation_controls(
         &mut self,
         ui: &mut egui::Ui,
@@ -159,10 +188,11 @@ impl AttractorPlotter {
                     "Attractor Plotter",
                     transport_state,
                 )
+                .timeline(self.worker.timeline_metadata())
                 .can_reset(true)
                 .show(ui)
                 {
-                    self.handle_playback_action(action, ctx);
+                    self.handle_transport_action(action, ctx);
                 }
 
                 self.draw_simulation_sliders(ui);
@@ -190,26 +220,6 @@ impl AttractorPlotter {
             .changed()
         {
             self.on_slider_changed();
-        }
-    }
-
-    fn handle_playback_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
-        match action {
-            PlaybackAction::Play => {
-                let _ = self.try_resume();
-            }
-            PlaybackAction::Pause => {
-                self.execution_state = SolverExecutionState::Paused;
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-            PlaybackAction::Step => {
-                self.execution_state = SolverExecutionState::Paused;
-                let _ = self.worker.send_command(SimCommand::Step(1));
-            }
-            PlaybackAction::Reset => {
-                self.reset();
-                ctx.request_repaint();
-            }
         }
     }
 
@@ -413,72 +423,45 @@ impl AttractorPlotter {
         plot_ui.callout(callout_neg);
     }
 
+    fn draw_3d_viewport(&mut self, ui: &mut egui::Ui) {
+        if self.history.is_empty() && !self.diverged() {
+            render_empty_plot_guidance(
+                ui,
+                "Initial state (1, 1, 1) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
+            );
+        }
+        let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
+        self.populate_scene(series0);
+        let mut camera = self.camera;
+        let response = Plot3DViewport::new("attractor_plot", 32.0)
+            .show(ui, &mut camera, |plot_ui| {
+                self.scene_builder.finish(plot_ui);
+                self.draw_fixed_point_callouts(plot_ui);
+            })
+            .response;
+        self.camera = camera;
+        if self.mode == super::AttractorMode::Lorenz {
+            response.accessible_theory_hover(&self.system);
+        } else {
+            response.accessible_theory_hover(self);
+        }
+    }
+
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.draw_central_fault_banner(ui, ctx);
-
-            if self.history.is_empty() && !self.diverged() {
-                render_empty_plot_guidance(
-                    ui,
-                    "Initial Lorenz state (1, 1, 1) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
-                );
-            }
-
-            let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
-            self.populate_scene(series0);
-            let mut camera = self.camera;
-            let response = Plot3DViewport::new("attractor_plot", 32.0)
-                .show(ui, &mut camera, |plot_ui| {
-                    self.scene_builder.finish(plot_ui);
-                    self.draw_fixed_point_callouts(plot_ui);
-                })
-                .response;
-            self.camera = camera;
-
-            response.accessible_theory_hover(&self.system);
-        });
-    }
-
-    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
-    pub fn populate_scene(&mut self, series_color: egui::Color32) {
-        let origin_offset = match self.mode {
-            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
-            AttractorMode::Custom => Point3::origin(),
-        };
-        self.scene_builder.begin(self.camera);
-        self.scene_builder.set_origin_offset(origin_offset);
-        self.trajectory_scratch.clear();
-        self.trajectory_scratch
-            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
-        if !self.trajectory_scratch.is_empty() {
-            if self.trajectory_scratch.len() == 1 {
-                self.scene_builder.add_points(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    4.0_f32,
-                    series_color,
-                    MarkerShape::Circle,
-                    true,
-                );
+            if self.atlas.is_visible() && ui.available_width() >= 620.0 {
+                ui.columns(2, |cols| {
+                    self.draw_3d_viewport(&mut cols[0]);
+                    self.render_attractor_atlas_panel(&mut cols[1]);
+                });
             } else {
-                self.scene_builder.add_polyline(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    egui::Stroke::new(1.5_f32, series_color),
-                    LineStyle::Solid,
-                    true,
-                );
+                if self.atlas.is_visible() {
+                    self.render_attractor_atlas_panel(ui);
+                    ui.separator();
+                }
+                self.draw_3d_viewport(ui);
             }
-        } else if self.is_finite_state() {
-            let v = self.system.state.vec;
-            self.scene_builder.add_points(
-                "Initial State",
-                &[Point3::new(v.x, v.y, v.z)],
-                4.0_f32,
-                series_color,
-                MarkerShape::Circle,
-                true,
-            );
-        }
+        });
     }
 }

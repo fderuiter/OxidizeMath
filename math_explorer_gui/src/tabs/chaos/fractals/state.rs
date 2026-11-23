@@ -57,6 +57,13 @@ pub(super) struct FractalState {
     pub(super) custom_expr: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(super) custom_params: BTreeMap<String, f64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(super) atlas_visible: bool,
+    #[serde(
+        default = "super::atlas::default_fractal_atlas_axes",
+        skip_serializing_if = "super::atlas::is_default_fractal_atlas_axes"
+    )]
+    pub(super) atlas_axes: [String; 2],
 }
 
 impl FractalState {

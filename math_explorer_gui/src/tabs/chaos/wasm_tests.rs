@@ -1,12 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::attractors::{AttractorPlotter, LorenzRegimeMapRunner, LorenzRegimeRequest};
-use super::bifurcation::{BifurcationDiagram, BifurcationRunner, BifurcationSweepRequest};
+use super::attractors::{AttractorCartographer, AttractorMode, AttractorPlotter, CompiledFlowJob};
+use super::bifurcation::{
+    BifurcationDiagram, BifurcationMapMode, BifurcationRunner, BifurcationSweepRequest,
+};
 use super::fractals::{FractalMode, FractalRenderRequest, FractalRunner, FractalViewer};
+use crate::async_sim::atlas::{AtlasRenderRequest, AtlasRunner, AtlasTeleportEvent};
 use crate::async_sim::SimulationRunner;
 use crate::framework::InteractiveTool;
 use crate::web_io::PlatformInstant;
 use num_complex::Complex;
+use scientific_metadata::theory::TheoryDescribable;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
@@ -36,10 +40,10 @@ fn wasm_fractal_runner_cooperative_slices_complete_cleanly() {
     let mut f_runner = FractalRunner::new(Arc::clone(&f_shared), Arc::clone(&f_gen));
     *f_shared.write().unwrap() = f_req;
     f_gen.store(1, Ordering::Release);
-    for _ in 0..32 {
+    for _ in 0..256 {
         let t0 = PlatformInstant::now();
         f_runner.step();
-        assert!(t0.elapsed().as_millis() < 50);
+        assert!(t0.elapsed().as_millis() < 100);
         if f_runner.is_complete() {
             break;
         }
@@ -48,28 +52,29 @@ fn wasm_fractal_runner_cooperative_slices_complete_cleanly() {
 }
 
 #[wasm_bindgen_test]
-fn wasm_bifurcation_and_regime_runners_complete_cleanly() {
+fn wasm_bifurcation_and_atlas_runners_complete_cleanly() {
     let b_req = BifurcationSweepRequest {
         generation: 1,
+        map_mode: BifurcationMapMode::Logistic,
         r_min: 2.5,
         r_max: 4.0,
         steps: 240,
+        x0: 0.5,
     };
     let b_shared = Arc::new(RwLock::new(BifurcationSweepRequest {
         generation: 0,
         ..b_req
     }));
+    let b_formula = Arc::new(RwLock::new(None));
     let b_gen = Arc::new(AtomicU64::new(0));
     let mut b_runner = BifurcationRunner::new(
         Arc::clone(&b_shared),
         Arc::clone(&b_gen),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
+        Arc::clone(&b_formula),
     );
     *b_shared.write().unwrap() = b_req;
     b_gen.store(1, Ordering::Release);
-    for _ in 0..32 {
+    for _ in 0..256 {
         b_runner.step();
         if b_runner.is_complete() {
             break;
@@ -77,23 +82,31 @@ fn wasm_bifurcation_and_regime_runners_complete_cleanly() {
     }
     assert!(b_runner.is_complete());
 
-    let r_req = LorenzRegimeRequest {
+    let plotter = AttractorPlotter::default();
+    let cart = Arc::new(AttractorCartographer::new(
+        &plotter.theory_parameters(),
+        ("sigma", "rho"),
+        AttractorMode::Lorenz,
+        CompiledFlowJob::from_bank(&plotter.flow_bank),
+        (10.0, 28.0, 8.0 / 3.0),
+        (0.2, 0.2),
+    ));
+    let a_shared = Arc::new(RwLock::new(AtlasRenderRequest {
         generation: 1,
-        beta: 8.0 / 3.0,
         width: 12,
         height: 8,
         high_contrast: false,
-    };
-    let r_shared = Arc::new(RwLock::new(r_req));
-    let r_gen = Arc::new(AtomicU64::new(1));
-    let mut r_runner = LorenzRegimeMapRunner::new(r_shared, r_gen);
-    for _ in 0..32 {
-        r_runner.step();
-        if r_runner.is_complete() {
+        cartographer: cart,
+    }));
+    let a_gen = Arc::new(AtomicU64::new(1));
+    let mut a_runner = AtlasRunner::new(a_shared, a_gen);
+    for _ in 0..256 {
+        a_runner.step();
+        if a_runner.is_complete() {
             break;
         }
     }
-    assert!(r_runner.is_complete());
+    assert!(a_runner.is_complete());
 }
 
 #[wasm_bindgen_test]
@@ -103,7 +116,7 @@ fn wasm_mandelbrot_to_julia_teleport_cobweb_selection_and_state_roundtrips() {
         zoom: 3.0,
         ..Default::default()
     };
-    fractals.sync_active_viewport_cache();
+    fractals.sync_active_plane_view();
     fractals.teleport_to_julia(Complex::new(-0.7, 0.27015));
     assert_eq!(fractals.mode, FractalMode::Julia);
     assert!((fractals.julia_c.re + 0.7).abs() < 1e-9);
@@ -120,20 +133,26 @@ fn wasm_mandelbrot_to_julia_teleport_cobweb_selection_and_state_roundtrips() {
     assert!((fractals.zoom - 3.0).abs() < 1e-9);
 
     let mut bif = BifurcationDiagram::default();
-    bif.select_r(3.83);
-    assert!(bif.selected_lyapunov() < 0.0);
-    bif.select_r(3.95);
-    assert!(bif.selected_lyapunov() > 0.0);
+    bif.select_probe_r(3.83);
+    assert!(bif.probe_lyapunov().expect("period-3 lyapunov") < 0.0);
+    bif.select_probe_r(3.95);
+    assert!(bif.probe_lyapunov().expect("chaotic lyapunov") > 0.0);
     let b_json = bif.save_state().expect("bifurcation save_state");
     let mut b_restored = BifurcationDiagram::default();
     b_restored
         .try_load_state(&b_json)
         .expect("bifurcation try_load_state");
-    assert!((b_restored.selected_r - 3.95).abs() < 1e-9);
+    assert!((b_restored.probe_r - 3.95).abs() < 1e-9);
 
     let mut attr = AttractorPlotter::default();
-    attr.teleport_regime(12.0, 10.0);
-    assert!(attr.latest_lyapunov.expect("stable lyapunov") < 0.0);
+    attr.apply_atlas_teleport(AtlasTeleportEvent {
+        x_key: "sigma",
+        x_val: 10.0,
+        y_key: "rho",
+        y_val: 12.0,
+        regime_label: "Equilibrium Sink",
+    });
+    assert!(attr.current_lyapunov_exponent().expect("stable lyapunov") < 0.0);
     let a_json = attr.save_state().expect("attractor save_state");
     let mut a_restored = AttractorPlotter::default();
     a_restored

@@ -1,14 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{
-    build_cobweb_and_orbit, build_custom_cobweb_and_orbit, BifurcationDiagram, BifurcationMapMode,
-    COBWEB_ORBIT_STEPS,
-};
+use super::{BifurcationDiagram, BifurcationMapMode, CUSTOM_ESCAPE_GUARD};
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use crate::framework::bounded_drag_value;
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
-use egui_plot::{HLine, Line, Plot, PlotPoints, Points, VLine};
+use egui_plot::{HLine, Line, LineStyle, Plot, Points, VLine};
 
 impl BifurcationDiagram {
     fn draw_map_mode_selector(&mut self, ui: &mut egui::Ui) -> bool {
@@ -20,6 +17,7 @@ impl BifurcationDiagram {
             {
                 self.r_min = self.r_min.clamp(0.0, 3.95);
                 self.r_max = self.r_max.clamp(self.r_min + 0.05, 4.0);
+                self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
                 changed = true;
             }
             if ui
@@ -33,204 +31,227 @@ impl BifurcationDiagram {
                 changed = true;
             }
         });
+        ui.add_space(4.0);
         if self.map_mode == BifurcationMapMode::Custom {
-            ui.add_space(4.0);
             changed |= self.math_input.ui(ui);
-            changed |= ui
-                .add(bounded_drag_value(&mut self.x0, -10.0..=10.0, 0.02).prefix("Initial x₀: "))
-                .changed();
+        }
+        if ui
+            .add(bounded_drag_value(&mut self.x0, -10.0..=10.0, 0.02).prefix("Initial x₀: "))
+            .changed()
+        {
+            self.reset_live_orbit();
+            changed |= self.map_mode == BifurcationMapMode::Custom;
         }
         changed
     }
 
-    fn draw_lyapunov_controls(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn draw_controls(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        ui.heading("1D Map Bifurcation");
         ui.separator();
-        let (sel_lo, sel_hi) = (self.r_min, self.r_max.max(self.r_min));
-        self.selected_r = self.selected_r.clamp(sel_lo, sel_hi);
-        ui.add(egui::Slider::new(&mut self.selected_r, sel_lo..=sel_hi).text("Selected r"));
+        let _ = self.atlas.show_toggle_button(ui);
 
-        if self.map_mode == BifurcationMapMode::Logistic {
-            ui.checkbox(&mut self.show_lyapunov, "Overlay Lyapunov λ(r)");
-            ui.add(egui::Slider::new(&mut self.orbit_x0, 0.01..=0.99).text("Orbit Seed (x₀)"));
-            let lambda = self.selected_lyapunov();
-            let regime = if lambda > 0.0 {
-                "Chaotic (λ > 0)"
-            } else {
-                "Stable / Periodic (λ ≤ 0)"
-            };
-            ui.label(format!(
-                "λ({:.3}) = {:+.4} — {regime}",
-                self.selected_r, lambda
-            ));
+        let mut changed = self.draw_map_mode_selector(ui);
+        let (lo_bound, hi_bound) = match self.map_mode {
+            BifurcationMapMode::Logistic => (0.0, 4.0),
+            BifurcationMapMode::Custom => (-6.0, 6.0),
+        };
+        changed |= ui
+            .add(
+                AnimatedSlider::new(&mut self.r_min, lo_bound..=hi_bound)
+                    .text("Min r")
+                    .id_salt("bifurcation_r_min"),
+            )
+            .changed();
+        if self.r_max <= self.r_min {
+            self.r_max = (self.r_min + 0.05).min(hi_bound);
         }
-        if let Some((done, total)) = self.sweep_progress {
-            ui.small(format!("Sweeping r: {done}/{total}"));
+        changed |= ui
+            .add(
+                AnimatedSlider::new(&mut self.r_max, self.r_min..=hi_bound)
+                    .text("Max r")
+                    .id_salt("bifurcation_r_max"),
+            )
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut self.steps, 100..=2000).text("Resolution (steps)"))
+            .changed();
+
+        if ui
+            .button("▶ Recompute")
+            .accessible_hover_text("Regenerate the bifurcation diagram on the background worker")
+            .clicked()
+            || changed
+        {
+            self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
+            self.reset_live_orbit();
+            self.dispatch_sweep_request(&ctx);
         }
+
+        self.draw_audio_and_orbit_probe(ui);
+
         ui.separator();
-        ui.small("Click bifurcation plot to inspect cobweb & x_n orbit.");
+        ui.label("Click diagram to set probe r • Wheel to zoom.");
     }
 
-    pub(super) fn draw_side_panel(&mut self, ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(ui, "bifurcation_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
-            ui.heading("1D Map Bifurcation");
-            ui.separator();
-
-            let mut sweep_changed = self.draw_map_mode_selector(ui);
-            let (lo_bound, hi_bound): (f64, f64) = match self.map_mode {
-                BifurcationMapMode::Logistic => (0.0, 4.0),
-                BifurcationMapMode::Custom => (-6.0, 6.0),
-            };
-            let max_r_min = (hi_bound - 0.01).max(lo_bound);
-            sweep_changed |= ui
-                .add(
-                    AnimatedSlider::new(&mut self.r_min, lo_bound..=max_r_min)
-                        .text("Min r")
-                        .id_salt("bifurcation_r_min"),
-                )
-                .changed();
-
-            let min_bound = (self.r_min + 0.01).min(hi_bound);
-            if self.r_max < min_bound {
-                self.r_max = min_bound;
-            }
-            sweep_changed |= ui
-                .add(
-                    AnimatedSlider::new(&mut self.r_max, min_bound..=hi_bound)
-                        .text("Max r")
-                        .id_salt("bifurcation_r_max"),
-                )
-                .changed();
-            sweep_changed |= ui
-                .add(egui::Slider::new(&mut self.steps, 100..=2000).text("Resolution (steps)"))
-                .changed();
-
-            if ui
-                .button("▶ Recompute")
-                .accessible_hover_text(
-                    "Regenerate the bifurcation diagram with the current parameters",
-                )
-                .clicked()
-                || sweep_changed
-            {
-                self.sanitize_bounds();
-                self.dirty = true;
-            }
-            self.draw_lyapunov_controls(ui);
-            self.draw_audio_probe(ui);
-        });
-    }
-
-    fn draw_audio_probe(&mut self, ui: &mut egui::Ui) {
+    fn draw_audio_and_orbit_probe(&mut self, ui: &mut egui::Ui) {
         self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
         ui.separator();
-        let _ = ui.add(
-            AnimatedSlider::new(&mut self.probe_r, self.r_min..=self.r_max)
-                .text("Sweep r (Audio)")
-                .id_salt("bifurcation_probe_r"),
-        );
+        if ui
+            .add(
+                AnimatedSlider::new(&mut self.probe_r, self.r_min..=self.r_max)
+                    .text("Sweep r (Probe & Audio)")
+                    .id_salt("bifurcation_probe_r"),
+            )
+            .changed()
+        {
+            self.reset_live_orbit();
+        }
+        ui.horizontal(|ui| {
+            if ui.button("⏭ Step Orbit").clicked() {
+                <Self as crate::framework::InteractiveTool>::step_simulation(self);
+            }
+            if ui.button("↺ Reset Orbit").clicked() {
+                self.reset_live_orbit();
+            }
+        });
+        let lam_txt = self
+            .probe_lyapunov()
+            .map_or_else(|| "divergent".to_string(), |l| format!("{l:+.3}"));
+        ui.small(format!(
+            "Step {}: x_n = {:.4}  |  λ(r={:.3}) = {}",
+            self.orbit_step_count, self.orbit_x, self.probe_r, lam_txt
+        ));
         let frame = crate::audio::mappings::bifurcation_frame(self.probe_r);
         crate::audio::render_sonification_panel(ui, "bifurcation", &frame, false);
     }
 
-    fn draw_inspector_plots(&self, ui: &mut egui::Ui, palette: &crate::app::SemanticPalette) {
-        let bottom_h = ui.available_height().max(100.0);
-        let (series, diag_bounds) = match self.map_mode {
-            BifurcationMapMode::Logistic => (
-                build_cobweb_and_orbit(self.selected_r, self.orbit_x0, COBWEB_ORBIT_STEPS),
-                [0.0, 1.0],
-            ),
-            BifurcationMapMode::Custom => {
-                let s = build_custom_cobweb_and_orbit(
-                    self.selected_r,
-                    self.x0,
-                    COBWEB_ORBIT_STEPS,
-                    &self.math_input,
+    pub(super) fn draw_bifurcation_and_cobweb(&mut self, ui: &mut egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let mut clicked_r: Option<f64> = None;
+        let top_h = (ui.available_height() * 0.56).max(170.0);
+
+        let response = Plot::new("bifurcation_plot")
+            .height(top_h)
+            .x_axis_label("Control Parameter (r)")
+            .y_axis_label("State (x) / Lyapunov (λ)")
+            .show(ui, |plot_ui| {
+                plot_ui.points(
+                    Points::new("Attractor", &self.points[..])
+                        .radius(1.0_f32)
+                        .color(palette.series_color(0)),
                 );
-                let lo = s.parabola.first().map_or(-1.0, |p| p[0]);
-                let hi = s.parabola.last().map_or(1.0, |p| p[0]);
-                (s, [lo, hi])
-            }
-        };
-        ui.columns(2, |cols| {
-            Plot::new("logistic_cobweb_plot")
-                .height(bottom_h)
-                .x_axis_label("x_n")
-                .y_axis_label("x_{n+1}")
-                .show(&mut cols[0], |plot_ui| {
+                if !self.lyapunov_points.is_empty() {
                     plot_ui.line(
-                        Line::new("f_r(x)", PlotPoints::new(series.parabola))
-                            .color(palette.series_color(0)),
+                        Line::new("Lyapunov λ(r)", &self.lyapunov_points[..])
+                            .color(palette.series_color(1))
+                            .width(1.5_f32),
                     );
-                    plot_ui.line(
-                        Line::new(
-                            "y = x",
-                            PlotPoints::new(vec![
-                                [diag_bounds[0], diag_bounds[0]],
-                                [diag_bounds[1], diag_bounds[1]],
-                            ]),
-                        )
-                        .color(palette.series_color(2)),
+                }
+                plot_ui.hline(
+                    HLine::new("λ = 0", 0.0)
+                        .color(palette.graph_edge)
+                        .style(LineStyle::Dashed { length: 4.0 }),
+                );
+                plot_ui.vline(VLine::new("Probe r", self.probe_r).color(palette.warning));
+                if self.orbit_x.is_finite() && self.orbit_x.abs() <= CUSTOM_ESCAPE_GUARD {
+                    plot_ui.points(
+                        Points::new("Live Orbit x_n", vec![[self.probe_r, self.orbit_x]])
+                            .radius(4.5_f32)
+                            .color(palette.accent),
                     );
-                    plot_ui.line(
-                        Line::new("Cobweb", PlotPoints::new(series.cobweb))
-                            .color(palette.series_color(1)),
-                    );
-                });
-            Plot::new("logistic_orbit_plot")
-                .height(bottom_h)
-                .x_axis_label("Iteration (n)")
-                .y_axis_label("State (x_n)")
-                .show(&mut cols[1], |plot_ui| {
-                    plot_ui.line(
-                        Line::new("Orbit x_n", PlotPoints::new(series.orbit))
-                            .color(palette.series_color(3)),
-                    );
-                });
-        });
+                }
+                if plot_ui.response().clicked() && !plot_ui.response().dragged() {
+                    if let Some(pt) = plot_ui.pointer_coordinate() {
+                        clicked_r = Some(pt.x.clamp(self.r_min, self.r_max));
+                    }
+                }
+            })
+            .response;
+        response.accessible_theory_hover(self);
+        if let Some(nr) = clicked_r {
+            self.select_probe_r(nr);
+        }
+
+        ui.separator();
+        let bottom_h = ui.available_height().max(110.0);
+        if ui.available_width() >= 420.0 {
+            ui.columns(2, |cols| {
+                self.draw_cobweb_plot(&mut cols[0], palette, bottom_h);
+                self.draw_orbit_series_plot(&mut cols[1], palette, bottom_h);
+            });
+        } else {
+            self.draw_cobweb_plot(ui, palette, bottom_h);
+        }
     }
 
-    pub(super) fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let top_h = (ui.available_height().max(240.0) * 0.56).max(130.0);
-            let mut clicked_r: Option<f64> = None;
-            let is_logistic = self.map_mode == BifurcationMapMode::Logistic;
-
-            let plot_resp = Plot::new("bifurcation_plot")
-                .height(top_h)
-                .x_axis_label("Control Parameter (r)")
-                .y_axis_label("Population (x) / Lyapunov (λ)")
-                .show(ui, |plot_ui| {
+    fn draw_cobweb_plot(
+        &self,
+        ui: &mut egui::Ui,
+        palette: crate::app::SemanticPalette,
+        height: f32,
+    ) {
+        let next_y = self.eval_active_map(self.probe_r, self.orbit_x);
+        let (d_lo, d_hi) = match self.map_mode {
+            BifurcationMapMode::Logistic => (0.0, 1.0),
+            BifurcationMapMode::Custom => (-2.0, 2.0),
+        };
+        Plot::new("bifurcation_cobweb_plot")
+            .height(height)
+            .x_axis_label("x_n")
+            .y_axis_label("x_{n+1}")
+            .show(ui, |plot_ui| {
+                plot_ui.line(
+                    Line::new("Identity y = x", vec![[d_lo, d_lo], [d_hi, d_hi]])
+                        .color(palette.graph_edge)
+                        .style(LineStyle::Dashed { length: 4.0 }),
+                );
+                plot_ui.line(
+                    Line::new("Return Map f(r, x)", &self.cobweb_curve[..])
+                        .color(palette.series_color(0))
+                        .width(2.0_f32),
+                );
+                plot_ui.line(
+                    Line::new("Cobweb Staircase", &self.cobweb_points[..])
+                        .color(palette.warning)
+                        .width(1.4_f32),
+                );
+                if self.orbit_x.is_finite() && next_y.is_finite() {
                     plot_ui.points(
-                        Points::new("Attractor", &self.points[..])
-                            .radius(1.0_f32)
-                            .color(palette.series_color(0)),
+                        Points::new("Current Iterate", vec![[self.orbit_x, next_y]])
+                            .radius(5.0_f32)
+                            .color(palette.accent),
                     );
-                    if is_logistic && self.show_lyapunov && !self.lyapunov_points.is_empty() {
-                        plot_ui.hline(
-                            HLine::new("Stability Threshold (λ = 0)", 0.0)
-                                .color(palette.series_color(2)),
-                        );
-                        plot_ui.line(
-                            Line::new("Lyapunov λ(r)", &self.lyapunov_points[..])
-                                .color(palette.series_color(1)),
-                        );
-                    }
-                    plot_ui.vline(
-                        VLine::new("Selected r", self.selected_r).color(palette.series_color(3)),
+                }
+            });
+    }
+
+    fn draw_orbit_series_plot(
+        &self,
+        ui: &mut egui::Ui,
+        palette: crate::app::SemanticPalette,
+        height: f32,
+    ) {
+        Plot::new("bifurcation_orbit_plot")
+            .height(height)
+            .x_axis_label("Iteration (n)")
+            .y_axis_label("State (x_n)")
+            .show(ui, |plot_ui| {
+                plot_ui.line(
+                    Line::new("Orbit x_n", &self.orbit_series[..])
+                        .color(palette.series_color(3))
+                        .width(1.6_f32),
+                );
+                if self.orbit_x.is_finite() && self.orbit_x.abs() <= CUSTOM_ESCAPE_GUARD {
+                    plot_ui.points(
+                        Points::new(
+                            "Active Step",
+                            vec![[self.orbit_step_count as f64, self.orbit_x]],
+                        )
+                        .radius(4.5_f32)
+                        .color(palette.accent),
                     );
-                    plot_ui.vline(VLine::new("Audio Probe r", self.probe_r).color(palette.warning));
-                    if plot_ui.response().clicked() && !plot_ui.response().dragged() {
-                        clicked_r = plot_ui.pointer_coordinate().map(|c| c.x);
-                    }
-                });
-            plot_resp.response.accessible_theory_hover(self);
-            if let Some(r_val) = clicked_r {
-                self.select_r(r_val);
-            }
-            ui.separator();
-            self.draw_inspector_plots(ui, &palette);
-        });
+                }
+            });
     }
 }

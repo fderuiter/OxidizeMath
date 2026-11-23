@@ -4,47 +4,41 @@ use super::{
     BifurcationDiagram, BifurcationMapMode, CUSTOM_BURN_IN, CUSTOM_ESCAPE_GUARD,
     CUSTOM_ORBIT_SAMPLES, CUSTOM_R_BOUND,
 };
-use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
-use crate::framework::{
-    recovery::DiagnosticReport, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS,
+use crate::async_sim::{
+    BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
 };
+use crate::framework::recovery::DiagnosticReport;
+use crate::framework::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
+use eframe::egui;
 use egui_plot::PlotPoint;
 use math_commons::ast::{parse, CompiledExpr};
-use math_explorer::physics::chaos::logistic::{ATTRACTOR_POINTS, TRANSIENT_STEPS};
+use math_explorer::physics::chaos::logistic::{
+    self, LogisticMap, ATTRACTOR_POINTS, TRANSIENT_STEPS,
+};
 use math_explorer::physics::chaos::metrics::logistic_lyapunov;
-use scientific_metadata::theory::TheoryDescribable;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-/// Iteration count passed to `logistic_lyapunov` per parameter slice.
-pub const BIFURCATION_LYAPUNOV_ITERS: usize = 250;
-/// Non-critical initial seed $x_0$ passed to `logistic_lyapunov`.
-pub const BIFURCATION_LYAPUNOV_X0: f64 = 0.1;
-/// Visual clamp floor for plotting $\lambda(r)$ alongside $x \in [0, 1]$.
-pub const LYAPUNOV_PLOT_FLOOR: f64 = -1.25;
-/// Visual clamp ceiling for plotting $\lambda(r)$ alongside $x \in [0, 1]$.
-pub const LYAPUNOV_PLOT_CEIL: f64 = 1.0;
-
 const WORKER_STEP_BUDGET: Duration = Duration::from_millis(8);
+const LOGISTIC_SLICE_STEPS: usize = 64;
+const LYAPUNOV_STEPS: usize = 96;
 
-/// Immutable, `Arc`-shareable compiled 1D map $x_{n+1} = f(r, x)$ for background sweeps.
+/// Immutable, `Arc`-shareable compiled 1D map $x_{n+1} = f(r, x)$ evaluated without heap allocation.
 #[derive(Clone, Debug)]
-pub struct CompiledBifurcationJob {
+pub struct CompiledMap1DJob {
     compiled: CompiledExpr,
     params: [f64; MAX_SYNTHESIZED_PARAMS],
     param_len: usize,
-    x0: f64,
 }
 
-impl CompiledBifurcationJob {
-    /// Captures the compiled bytecode and inline parameter slice from `bar`.
+impl CompiledMap1DJob {
+    /// Snapshots the active 1D map [`CompiledExpr`] and synthesized parameters from `bar`.
     #[must_use]
-    pub fn from_bar(bar: &MathExpressionInputBar, x0: f64) -> Self {
+    pub fn from_bar(bar: &MathExpressionInputBar) -> Self {
         let compiled = bar.active_compiled().cloned().unwrap_or_else(|| {
-            let fallback = parse("r * sin(pi * x)").expect("fallback parses");
-            CompiledExpr::compile_with_vars(&fallback, &["r", "x"]).expect("fallback compiles")
+            let ast = parse("r * x * (1 - x)").expect("fallback parses");
+            CompiledExpr::compile_with_vars(&ast, &["r", "x"]).expect("fallback compiles")
         });
         let slice = bar.param_slice();
         let param_len = slice.len().min(MAX_SYNTHESIZED_PARAMS);
@@ -54,185 +48,144 @@ impl CompiledBifurcationJob {
             compiled,
             params,
             param_len,
-            x0,
         }
     }
 
+    /// Evaluates $f(r, x)$ on stack buffers with an optional override for `param_0`.
     #[inline]
-    pub(super) fn eval(&self, r: f64, x: f64) -> f64 {
-        self.compiled.eval_2d(r, x, &self.params[..self.param_len])
+    #[must_use]
+    pub fn eval(&self, r: f64, x: f64, param0_override: Option<f64>) -> f64 {
+        let mut p = self.params;
+        if let Some(p0) = param0_override {
+            if self.param_len > 0 {
+                p[0] = p0;
+            }
+        }
+        self.compiled.eval_2d(r, x, &p[..self.param_len])
+    }
+
+    /// Estimates the Lyapunov exponent $\lambda$ of $x_{n+1} = f(r, x_n)$ on stack buffers.
+    #[must_use]
+    pub fn lyapunov(
+        &self,
+        r: f64,
+        x0: f64,
+        param0_override: Option<f64>,
+        burn_in: usize,
+        n: usize,
+    ) -> Option<f64> {
+        if n == 0 || !r.is_finite() || !x0.is_finite() || x0.abs() > CUSTOM_ESCAPE_GUARD {
+            return None;
+        }
+        let mut x = x0;
+        for _ in 0..burn_in {
+            x = self.eval(r, x, param0_override);
+            if !x.is_finite() || x.abs() > CUSTOM_ESCAPE_GUARD {
+                return None;
+            }
+        }
+        let h = 1e-6;
+        let mut sum_logs = 0.0;
+        for _ in 0..n {
+            let f_plus = self.eval(r, x + h, param0_override);
+            let f_minus = self.eval(r, x - h, param0_override);
+            if !f_plus.is_finite() || !f_minus.is_finite() {
+                return None;
+            }
+            let deriv = ((f_plus - f_minus) / (2.0 * h)).abs().max(1e-15);
+            sum_logs += deriv.ln();
+            x = self.eval(r, x, param0_override);
+            if !x.is_finite() || x.abs() > CUSTOM_ESCAPE_GUARD {
+                return None;
+            }
+        }
+        Some(sum_logs / (n as f64))
     }
 }
 
-/// Immutable parameter bundle describing a progressive bifurcation + Lyapunov sweep request.
+/// Evaluates burned-in logistic Lyapunov exponent $\lambda(r, x_0)$ without heap allocation.
+#[inline]
+#[must_use]
+pub fn burned_logistic_lyapunov(r: f64, x0: f64, n: usize) -> Option<f64> {
+    if !r.is_finite() || !x0.is_finite() || x0.abs() > CUSTOM_ESCAPE_GUARD {
+        return None;
+    }
+    let mut map = LogisticMap::new(r, x0);
+    for _ in 0..TRANSIENT_STEPS {
+        let _ = map.next();
+        if !map.state.is_finite() || map.state.abs() > CUSTOM_ESCAPE_GUARD {
+            return None;
+        }
+    }
+    let lam = logistic_lyapunov(r, map.state, n);
+    lam.is_finite().then_some(lam)
+}
+
+/// Request payload dispatched from [`super::BifurcationDiagram`] to [`BifurcationRunner`].
 #[derive(Clone, Copy, Debug)]
 pub struct BifurcationSweepRequest {
     /// Monotonic request generation for mid-sweep cancellation.
     pub generation: u64,
-    /// Lower control-parameter bound (`r_min < r_max`).
+    /// Logistic or custom map mode.
+    pub map_mode: BifurcationMapMode,
+    /// Lower `r` bound.
     pub r_min: f64,
-    /// Upper control-parameter bound (`r_min < r_max`).
+    /// Upper `r` bound.
     pub r_max: f64,
-    /// Number of parameter subdivisions in `100..=2000`.
+    /// Number of parameter subdivisions.
     pub steps: usize,
+    /// Initial seed $x_0$.
+    pub x0: f64,
 }
 
-/// Snapshot payload emitted by [`BifurcationRunner`] after each cooperative `8ms` slice.
-#[derive(Clone)]
+/// Progressive sweep payload emitted by [`BifurcationRunner`].
+#[derive(Clone, Debug)]
 pub struct BifurcationSweepSnapshot {
     /// Request generation that produced this snapshot.
     pub generation: u64,
-    /// Accumulated `(r, x)` attractor points up to `completed_steps`.
-    pub points: Arc<Vec<PlotPoint>>,
-    /// Accumulated `(r, clamp(lambda))` overlay curve points.
-    pub lyapunov_points: Arc<Vec<PlotPoint>>,
-    /// Unclamped `[r, lambda]` samples for exact stability inspection.
-    pub raw_lyapunov: Arc<Vec<[f64; 2]>>,
-    /// Number of `r` columns processed so far (`0..=total_steps + 1`).
-    pub completed_steps: usize,
-    /// Total `steps` requested (`total_steps + 1` columns).
-    pub total_steps: usize,
-    /// `true` once all `0..=steps` columns have finished for `generation`.
+    /// `true` once all columns have finished for `generation`.
     pub is_final: bool,
+    /// Accumulated `(r, x)` attractor points.
+    pub points: Vec<PlotPoint>,
+    /// Accumulated `(r, lambda)` Lyapunov points.
+    pub lyapunov_points: Vec<PlotPoint>,
 }
 
-fn sample_logistic_column(
-    r: f64,
-    points: &mut Vec<PlotPoint>,
-    lyapunov_points: &mut Vec<PlotPoint>,
-    raw_lyapunov: &mut Vec<[f64; 2]>,
-) {
-    let safe_r = r.clamp(0.0, 4.0);
-    let mut x = 0.5_f64;
-    for _ in 0..TRANSIENT_STEPS {
-        x = safe_r * x * (1.0 - x);
-    }
-    let mut seen_bins = [0_u64; 8];
-    for _ in 0..ATTRACTOR_POINTS {
-        x = safe_r * x * (1.0 - x);
-        if x.is_finite() {
-            let y = x.clamp(0.0, 1.0);
-            let bin = ((y * 500.0).round() as usize).min(500);
-            let mask = 1_u64 << (bin & 63);
-            if seen_bins[bin >> 6] & mask == 0 {
-                seen_bins[bin >> 6] |= mask;
-                points.push(PlotPoint::new(safe_r, y));
-            }
-        }
-    }
-    let lambda = logistic_lyapunov(safe_r, BIFURCATION_LYAPUNOV_X0, BIFURCATION_LYAPUNOV_ITERS);
-    if lambda.is_finite() {
-        raw_lyapunov.push([safe_r, lambda]);
-        lyapunov_points.push(PlotPoint::new(
-            safe_r,
-            lambda.clamp(LYAPUNOV_PLOT_FLOOR, LYAPUNOV_PLOT_CEIL),
-        ));
-    }
-}
-
-fn sample_custom_column(r: f64, job: &CompiledBifurcationJob, points: &mut Vec<PlotPoint>) {
-    let mut x = job.x0;
-    let mut bounded = x.is_finite() && x.abs() <= CUSTOM_ESCAPE_GUARD;
-    for _ in 0..CUSTOM_BURN_IN {
-        if !bounded {
-            break;
-        }
-        x = job.eval(r, x);
-        bounded = x.is_finite() && x.abs() <= CUSTOM_ESCAPE_GUARD;
-    }
-    if !bounded {
-        return;
-    }
-    for _ in 0..CUSTOM_ORBIT_SAMPLES {
-        x = job.eval(r, x);
-        if !x.is_finite() || x.abs() > CUSTOM_ESCAPE_GUARD {
-            break;
-        }
-        points.push(PlotPoint::new(r, x));
-    }
-}
-
-/// Synchronously evaluates the bifurcation diagram and `logistic_lyapunov` curve (used for initial seeding).
-#[must_use]
-pub fn compute_bifurcation_and_lyapunov_sync(
-    r_min: f64,
-    r_max: f64,
-    steps: usize,
-) -> (Vec<PlotPoint>, Vec<PlotPoint>, Vec<[f64; 2]>) {
-    let clamped_steps = steps.clamp(1, 2000);
-    let lo = r_min.clamp(0.0, 4.0);
-    let hi = r_max.clamp((lo + 1e-6).min(4.0), 4.0);
-    let step_size = (hi - lo) / clamped_steps as f64;
-
-    let mut points = Vec::with_capacity((clamped_steps + 1) * ATTRACTOR_POINTS);
-    let mut lyapunov_points = Vec::with_capacity(clamped_steps + 1);
-    let mut raw_lyapunov = Vec::with_capacity(clamped_steps + 1);
-    for i in 0..=clamped_steps {
-        let r = lo + step_size * i as f64;
-        sample_logistic_column(r, &mut points, &mut lyapunov_points, &mut raw_lyapunov);
-    }
-    (points, lyapunov_points, raw_lyapunov)
-}
-
-/// Cooperative `BackgroundWorker` runner computing bifurcation and Lyapunov sweeps in `8ms` slices.
+/// Background worker runner executing `8ms` slices over logistic and custom 1D bifurcation sweeps.
 pub struct BifurcationRunner {
     shared_request: Arc<RwLock<BifurcationSweepRequest>>,
-    shared_custom: Arc<RwLock<Option<Arc<CompiledBifurcationJob>>>>,
+    shared_formula: Arc<RwLock<Option<Arc<CompiledMap1DJob>>>>,
     latest_generation: Arc<AtomicU64>,
     active: BifurcationSweepRequest,
-    active_custom: Option<Arc<CompiledBifurcationJob>>,
+    active_formula: Option<Arc<CompiledMap1DJob>>,
     next_step_idx: usize,
     points_buf: Vec<PlotPoint>,
     lyapunov_buf: Vec<PlotPoint>,
-    raw_lyapunov_buf: Vec<[f64; 2]>,
 }
 
 impl BifurcationRunner {
-    /// Creates a new [`BifurcationRunner`] initialized in an idle state matching `shared_request`.
-    #[cfg(test)]
+    /// Creates a [`BifurcationRunner`] sharing request and compiled formula slots with the UI.
     #[must_use]
     pub fn new(
         shared_request: Arc<RwLock<BifurcationSweepRequest>>,
         latest_generation: Arc<AtomicU64>,
-        seed_points: Vec<PlotPoint>,
-        seed_lyapunov: Vec<PlotPoint>,
-        seed_raw: Vec<[f64; 2]>,
+        shared_formula: Arc<RwLock<Option<Arc<CompiledMap1DJob>>>>,
     ) -> Self {
-        Self::with_custom(
-            shared_request,
-            Arc::new(RwLock::new(None)),
-            latest_generation,
-            seed_points,
-            seed_lyapunov,
-            seed_raw,
-        )
-    }
-
-    /// Creates a [`BifurcationRunner`] sharing an optional [`CompiledBifurcationJob`] slot.
-    #[must_use]
-    pub fn with_custom(
-        shared_request: Arc<RwLock<BifurcationSweepRequest>>,
-        shared_custom: Arc<RwLock<Option<Arc<CompiledBifurcationJob>>>>,
-        latest_generation: Arc<AtomicU64>,
-        seed_points: Vec<PlotPoint>,
-        seed_lyapunov: Vec<PlotPoint>,
-        seed_raw: Vec<[f64; 2]>,
-    ) -> Self {
-        let initial = *shared_request.read().unwrap_or_else(|e| e.into_inner());
-        let active_custom = shared_custom
+        let active = *shared_request.read().unwrap_or_else(|e| e.into_inner());
+        let active_formula = shared_formula
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        let total = active.steps.saturating_add(1);
         Self {
             shared_request,
-            shared_custom,
+            shared_formula,
             latest_generation,
-            active: initial,
-            active_custom,
-            next_step_idx: initial.steps.saturating_add(1),
-            points_buf: seed_points,
-            lyapunov_buf: seed_lyapunov,
-            raw_lyapunov_buf: seed_raw,
+            active,
+            active_formula,
+            next_step_idx: total,
+            points_buf: Vec::new(),
+            lyapunov_buf: Vec::new(),
         }
     }
 
@@ -241,30 +194,99 @@ impl BifurcationRunner {
         if target_gen == self.active.generation {
             return false;
         }
-        let mut req = *self
+        let req = *self
             .shared_request
             .read()
             .unwrap_or_else(|e| e.into_inner());
-        let custom = self
-            .shared_custom
+        let formula = self
+            .shared_formula
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        req.steps = req.steps.clamp(100, 2000);
-        if custom.is_some() {
-            req.r_min = req.r_min.clamp(-CUSTOM_R_BOUND, CUSTOM_R_BOUND - 1e-6);
-            req.r_max = req.r_max.clamp(req.r_min + 1e-6, CUSTOM_R_BOUND);
-        } else {
-            req.r_min = req.r_min.clamp(0.0, 3.999_999);
-            req.r_max = req.r_max.clamp(req.r_min + 1e-6, 4.0);
-        }
         self.active = req;
-        self.active_custom = custom;
+        self.active_formula = formula;
         self.next_step_idx = 0;
         self.points_buf.clear();
         self.lyapunov_buf.clear();
-        self.raw_lyapunov_buf.clear();
         true
+    }
+
+    fn step_logistic_chunk(&mut self, total_r_samples: usize) {
+        let steps = self.active.steps.max(1);
+        let step_size = (self.active.r_max - self.active.r_min) / (steps as f64);
+        let remaining = total_r_samples.saturating_sub(self.next_step_idx);
+        let count = remaining.min(LOGISTIC_SLICE_STEPS);
+        if count == 0 {
+            return;
+        }
+        let start_idx = self.next_step_idx;
+        if count >= 2 {
+            let sub_steps = count - 1;
+            let sub_r_min = self.active.r_min + step_size * (start_idx as f64);
+            let sub_r_max = self.active.r_min + step_size * ((start_idx + sub_steps) as f64);
+            let raw = logistic::generate_bifurcation_diagram(sub_r_min, sub_r_max, sub_steps);
+            for (r, x) in raw {
+                self.points_buf.push(PlotPoint::new(r, x));
+            }
+        } else {
+            let r = self.active.r_min + step_size * (start_idx as f64);
+            let raw = logistic::generate_bifurcation_diagram(r, r, 1);
+            for (pr, px) in raw.into_iter().take(ATTRACTOR_POINTS) {
+                self.points_buf.push(PlotPoint::new(pr, px));
+            }
+        }
+        let seed = if (self.active.x0 - 0.5).abs() < 1e-9 {
+            0.314_159
+        } else {
+            self.active.x0.clamp(1e-4, 1.0 - 1e-4)
+        };
+        for offset in 0..count {
+            let r = self.active.r_min + step_size * ((start_idx + offset) as f64);
+            if let Some(lam) = burned_logistic_lyapunov(r, seed, LYAPUNOV_STEPS) {
+                self.lyapunov_buf.push(PlotPoint::new(r, lam));
+            }
+        }
+        self.next_step_idx += count;
+    }
+
+    fn step_custom_single(&mut self, step_idx: usize, steps: usize) {
+        let Some(job) = self.active_formula.as_deref() else {
+            self.next_step_idx = steps;
+            return;
+        };
+        let denom = (steps.saturating_sub(1).max(1)) as f64;
+        let r =
+            self.active.r_min + (step_idx as f64 / denom) * (self.active.r_max - self.active.r_min);
+        let mut x = self.active.x0;
+        let mut bounded = x.is_finite() && x.abs() <= CUSTOM_ESCAPE_GUARD;
+        for _ in 0..CUSTOM_BURN_IN {
+            if !bounded {
+                break;
+            }
+            x = job.eval(r, x, None);
+            bounded = x.is_finite() && x.abs() <= CUSTOM_ESCAPE_GUARD;
+        }
+        if bounded {
+            let lyap_seed = x;
+            for _ in 0..CUSTOM_ORBIT_SAMPLES {
+                x = job.eval(r, x, None);
+                if !x.is_finite() || x.abs() > CUSTOM_ESCAPE_GUARD {
+                    break;
+                }
+                self.points_buf.push(PlotPoint::new(r, x));
+            }
+            if let Some(lam) = job.lyapunov(r, lyap_seed, None, 0, LYAPUNOV_STEPS) {
+                self.lyapunov_buf.push(PlotPoint::new(r, lam));
+            }
+        }
+        self.next_step_idx = step_idx + 1;
+    }
+
+    fn target_sample_count(&self) -> usize {
+        match self.active.map_mode {
+            BifurcationMapMode::Logistic => self.active.steps.clamp(2, 2000) + 1,
+            BifurcationMapMode::Custom => self.active.steps.clamp(2, 2000),
+        }
     }
 }
 
@@ -277,59 +299,45 @@ impl SimulationRunner for BifurcationRunner {
 
     fn step(&mut self) {
         let _ = self.sync_request();
-        if self.next_step_idx > self.active.steps || !self.is_finite_state() {
+        let total = self.target_sample_count();
+        if self.next_step_idx >= total || !self.is_finite_state() {
             return;
         }
-
-        let total = self.active.steps.max(1);
-        let step_size = (self.active.r_max - self.active.r_min) / total as f64;
         let slice_start = crate::web_io::PlatformInstant::now();
-
-        while self.next_step_idx <= total {
+        while self.next_step_idx < total {
             if self.latest_generation.load(Ordering::Relaxed) != self.active.generation {
                 let _ = self.sync_request();
                 return;
             }
-            let r = self.active.r_min + step_size * self.next_step_idx as f64;
-            if let Some(ref job) = self.active_custom {
-                sample_custom_column(r, job, &mut self.points_buf);
-            } else {
-                sample_logistic_column(
-                    r,
-                    &mut self.points_buf,
-                    &mut self.lyapunov_buf,
-                    &mut self.raw_lyapunov_buf,
-                );
+            match self.active.map_mode {
+                BifurcationMapMode::Logistic => self.step_logistic_chunk(total),
+                BifurcationMapMode::Custom => {
+                    let steps = self.active.steps.clamp(2, 2000);
+                    self.step_custom_single(self.next_step_idx, steps);
+                }
             }
-            self.next_step_idx += 1;
-            if self.next_step_idx <= total && slice_start.elapsed() >= WORKER_STEP_BUDGET {
+            if self.next_step_idx < total && slice_start.elapsed() >= WORKER_STEP_BUDGET {
                 return;
             }
         }
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let is_final = self.next_step_idx > self.active.steps
+        let total = self.target_sample_count();
+        let is_final = self.next_step_idx >= total
             && self.latest_generation.load(Ordering::Acquire) == self.active.generation;
-        let snap = BifurcationSweepSnapshot {
+        let payload = BifurcationSweepSnapshot {
             generation: self.active.generation,
-            points: Arc::new(self.points_buf.clone()),
-            lyapunov_points: Arc::new(self.lyapunov_buf.clone()),
-            raw_lyapunov: Arc::new(self.raw_lyapunov_buf.clone()),
-            completed_steps: self.next_step_idx,
-            total_steps: self.active.steps,
             is_final,
+            points: self.points_buf.clone(),
+            lyapunov_points: self.lyapunov_buf.clone(),
         };
         StateSnapshot {
             width: 0,
             height: 0,
             pixels: Arc::new(RwLock::new(Vec::new())),
-            custom_data: vec![
-                self.active.r_min,
-                self.active.r_max,
-                self.next_step_idx as f64,
-            ],
-            structured_data: Some(Box::new(snap)),
+            custom_data: vec![self.active.r_min, self.active.r_max],
+            structured_data: Some(Box::new(payload)),
             sonification: crate::audio::SonificationFrame::silent(),
         }
     }
@@ -340,20 +348,21 @@ impl SimulationRunner for BifurcationRunner {
 
     fn is_complete(&self) -> bool {
         self.latest_generation.load(Ordering::Acquire) == self.active.generation
-            && self.next_step_idx > self.active.steps
+            && self.next_step_idx >= self.target_sample_count()
     }
 
     fn is_finite_state(&self) -> bool {
-        let bounds = if self.active_custom.is_some() {
-            -CUSTOM_R_BOUND..=CUSTOM_R_BOUND
-        } else {
-            0.0..=4.0
+        let r_bounds = match self.active.map_mode {
+            BifurcationMapMode::Logistic => 0.0..=4.0,
+            BifurcationMapMode::Custom => -CUSTOM_R_BOUND..=CUSTOM_R_BOUND,
         };
         self.active.r_min.is_finite()
             && self.active.r_max.is_finite()
-            && bounds.contains(&self.active.r_min)
-            && bounds.contains(&self.active.r_max)
             && self.active.r_min < self.active.r_max
+            && r_bounds.contains(&self.active.r_min)
+            && r_bounds.contains(&self.active.r_max)
+            && self.active.x0.is_finite()
+            && (-10.0..=10.0).contains(&self.active.x0)
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
@@ -361,44 +370,84 @@ impl SimulationRunner for BifurcationRunner {
             DiagnosticReport::new(
                 0.0,
                 0,
-                "bifurcation_bounds",
-                "Invalid or non-finite bifurcation parameter bounds",
+                "bifurcation_parameters",
+                "Non-finite or out-of-range bifurcation sweep parameter encountered",
             )
         })
     }
 }
 
-impl TheoryDescribable for BifurcationDiagram {
-    fn theory_description(&self) -> String {
-        match self.map_mode {
-            BifurcationMapMode::Logistic => format!(
-                "Logistic map bifurcation diagram, r range: {:.2} to {:.2}, selected r={:.3} (λ={:+.3})",
-                self.r_min,
-                self.r_max,
-                self.selected_r,
-                self.selected_lyapunov()
-            ),
-            BifurcationMapMode::Custom => format!(
-                "Custom 1D map bifurcation x_{{n+1}} = {}, r range: {:.2} to {:.2}",
-                self.math_input.raw_text, self.r_min, self.r_max
-            ),
+impl BifurcationDiagram {
+    pub(crate) fn dispatch_sweep_request(&mut self, ctx: &egui::Context) {
+        if self.map_mode == BifurcationMapMode::Custom
+            && self.math_input.active_compiled().is_none()
+        {
+            return;
         }
+        self.request_generation = self.request_generation.wrapping_add(1).max(1);
+        let formula = (self.map_mode == BifurcationMapMode::Custom)
+            .then(|| Arc::new(CompiledMap1DJob::from_bar(&self.math_input)));
+        *self
+            .shared_formula
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = formula;
+        *self
+            .shared_request
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = BifurcationSweepRequest {
+            generation: self.request_generation,
+            map_mode: self.map_mode,
+            r_min: self.r_min,
+            r_max: self.r_max,
+            steps: self.steps.clamp(2, 2000),
+            x0: self.x0,
+        };
+        self.latest_generation
+            .store(self.request_generation, Ordering::Release);
+
+        match self.worker.state() {
+            SimWorkerState::Ready => {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            SimWorkerState::Running => {
+                let _ = self
+                    .worker
+                    .send_command(SimCommand::Custom("cancel_sweep".to_string()));
+            }
+            SimWorkerState::Faulted | SimWorkerState::Terminated => {
+                self.worker = BackgroundWorker::new(BifurcationRunner::new(
+                    Arc::clone(&self.shared_request),
+                    Arc::clone(&self.latest_generation),
+                    Arc::clone(&self.shared_formula),
+                ));
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            SimWorkerState::Uninitialized | SimWorkerState::Stepping => {}
+        }
+        ctx.request_repaint();
     }
 
-    fn phonetic_description(&self) -> String {
-        self.theory_description()
-    }
-
-    fn theory_citation(&self) -> String {
-        "May, R. M. (1976). Simple mathematical models with very complicated dynamics. Nature, 261(5560), 459-467; Feigenbaum, M. J. (1978). Quantitative universality for a class of nonlinear transformations. Journal of Statistical Physics, 19(1), 25-52.".to_string()
-    }
-
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert(
-            "default".to_string(),
-            "Logistic map bifurcation diagram".to_string(),
-        );
-        map
+    pub(super) fn sync_from_worker(&mut self, ctx: &egui::Context) {
+        if let Some(snap) = self.worker.update() {
+            if let Some(data) = snap
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<BifurcationSweepSnapshot>())
+            {
+                if data.generation == self.request_generation {
+                    self.points.clone_from(&data.points);
+                    self.lyapunov_points.clone_from(&data.lyapunov_points);
+                    if data.is_final {
+                        self.completed_generation = data.generation;
+                    }
+                }
+            }
+        }
+        if self.completed_generation != self.request_generation && self.worker.state().is_ready() {
+            let _ = self.worker.send_command(SimCommand::Start);
+        }
+        if self.completed_generation != self.request_generation || self.worker.is_running() {
+            ctx.request_repaint();
+        }
     }
 }

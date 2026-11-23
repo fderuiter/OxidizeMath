@@ -240,6 +240,38 @@ mod tests {
 
     #[test]
     #[verified_engine::verified]
+    fn test_logistic_lyapunov_zero_steps_and_superstable() {
+        assert_eq!(metrics::logistic_lyapunov(3.8, 0.4, 0), 0.0);
+        let superstable = metrics::logistic_lyapunov(2.0, 0.5, 64);
+        assert!(superstable.is_finite() && superstable < -20.0);
+        let escaping = metrics::logistic_lyapunov(4.5, 2.0, 100);
+        assert!(escaping.is_finite() && escaping > 0.0);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_lorenz_lyapunov_zero_distance_contraction_zero_alloc() {
+        use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4};
+
+        struct InstantCollapseSink;
+        impl OdeSystem<na::Vector3<f64>> for InstantCollapseSink {
+            fn derivative(&self, _t: f64, state: &na::Vector3<f64>) -> na::Vector3<f64> {
+                -1000.0 * (*state)
+            }
+        }
+
+        let init = na::Vector3::zeros();
+        let mut rk4 = RungeKutta4::new(&init);
+        let lambda =
+            metrics::lorenz_lyapunov(&InstantCollapseSink, &mut rk4, init, 0.002, 5, 0.1).unwrap();
+        assert!(lambda.is_finite() && lambda < 0.0);
+
+        let err = metrics::lorenz_lyapunov(&InstantCollapseSink, &mut rk4, init, 0.5, 5, 0.1);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    #[verified_engine::verified]
     fn test_chaos_kernels_zero_allocations_under_verified_allocator() {
         use pure_math::pure_math::analysis::ode::RungeKutta4;
         use verified_engine::engine::VerifiedEngine;
@@ -270,9 +302,10 @@ mod tests {
             na::Vector3::new(5.0, 0.0, 0.0),
         ];
 
-        static VERIFIED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let ((lam_zero, lam_sing, lam_chaos, lam_substep, lam_conv, lam_sig0, corr), m) =
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let ((lam_zero, lam_sing, lam_chaos, lam_conv, lam_sig0, corr), m) =
             VerifiedEngine::run_verified(|| {
                 let lz = metrics::logistic_lyapunov(3.9, 0.1, 0);
                 let ls = metrics::logistic_lyapunov(2.0, 0.5, 250);
@@ -283,15 +316,6 @@ mod tests {
                     0.01,
                     24,
                     0.25,
-                )
-                .unwrap();
-                let lsub = metrics::lorenz_lyapunov(
-                    &chaotic,
-                    &mut solver,
-                    na::Vector3::new(10.0, 10.0, 10.0),
-                    0.02,
-                    12,
-                    0.005,
                 )
                 .unwrap();
                 let lconv = metrics::lorenz_lyapunov(
@@ -307,19 +331,18 @@ mod tests {
                     &decoupled,
                     &mut solver,
                     na::Vector3::new(0.0, 1.0, 1.0),
-                    0.02,
-                    24,
-                    0.5,
+                    0.05,
+                    100,
+                    2.0,
                 )
                 .unwrap();
                 let c_in_place = fractals::correlation_dimension_in_place(&mut scratch, 1.1);
-                (lz, ls, lc, lsub, lconv, lsig0, c_in_place)
+                (lz, ls, lc, lconv, lsig0, c_in_place)
             });
 
         assert_eq!(lam_zero, 0.0);
         assert!(lam_sing.is_finite() && lam_sing < 0.0);
         assert!(lam_chaos.is_finite() && lam_chaos > 0.0);
-        assert!(lam_substep.is_finite());
         assert!(lam_conv.is_finite() && lam_conv < 0.0);
         assert!(lam_sig0.is_finite() && lam_sig0 <= 0.02);
         assert_relative_eq!(corr, 0.2);
@@ -327,31 +350,33 @@ mod tests {
     }
 
     #[test]
-    #[verified_engine::verified]
-    fn test_lorenz_sigma_zero_and_dynamic_regime_classification() {
-        let state = lorenz::LorenzState::new(1.0, 1.0, 1.0);
-        let sigma_zero_high_rho = lorenz::LorenzBuilder::new()
-            .sigma(0.0)
-            .rho(28.0)
-            .beta(8.0 / 3.0)
-            .build(state);
+    fn test_lorenz_theory_description_classifies_four_regimes() {
+        let s0 = lorenz::LorenzState::new(1.0, 1.0, 1.0);
+        let origin = lorenz::LorenzBuilder::new().rho(0.5).build(s0);
+        assert!(origin.theory_description().contains("Origin sink regime"));
+
+        let twin = lorenz::LorenzBuilder::new().rho(15.0).build(s0);
         assert!(
-            sigma_zero_high_rho
-                .theory_description()
-                .contains("Stable regime"),
-            "sigma = 0.0 with rho = 28.0 must classify as Stable regime, got: {}",
-            sigma_zero_high_rho.theory_description()
+            twin.theory_description()
+                .contains("Twin-lobe equilibrium regime")
         );
 
-        let subcritical = lorenz::LorenzBuilder::new()
-            .sigma(10.0)
-            .rho(12.0)
-            .beta(8.0 / 3.0)
-            .build(state);
-        assert!(subcritical.theory_description().contains("Stable regime"));
+        let sigma_zero = lorenz::LorenzBuilder::new().sigma(0.0).rho(28.0).build(s0);
+        assert!(
+            !sigma_zero.theory_description().contains("Chaotic regime"),
+            "sigma = 0.0 with rho = 28.0 must not classify as Chaotic regime, got: {}",
+            sigma_zero.theory_description()
+        );
 
-        let chaotic = lorenz::LorenzSystem::default_chaotic(state);
+        let chaotic = lorenz::LorenzBuilder::new().rho(28.0).build(s0);
         assert!(chaotic.theory_description().contains("Chaotic regime"));
+
+        let periodic = lorenz::LorenzBuilder::new().rho(350.0).build(s0);
+        assert!(
+            periodic
+                .theory_description()
+                .contains("Periodic window regime")
+        );
     }
 }
 

@@ -1,14 +1,22 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::{
     Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
 };
 use eframe::egui;
+use egui_plot::{LineStyle, MarkerShape};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+#[path = "attractors/atlas.rs"]
+pub mod atlas;
+use atlas::ATTRACTOR_ATLAS_AXIS_PAIRS;
+#[cfg(test)]
+pub use atlas::{lorenz_hopf_threshold, AttractorCartographer};
 
 #[path = "attractors/flow.rs"]
 pub mod flow;
@@ -23,12 +31,8 @@ mod runner;
 mod serde_vec3;
 pub use runner::*;
 
-#[path = "attractors/regime_map.rs"]
-mod regime_map;
-pub use regime_map::*;
-
-#[path = "attractors/regime_ui.rs"]
-mod regime_ui;
+#[path = "attractors/theory.rs"]
+mod theory;
 
 #[path = "attractors/ui.rs"]
 mod ui;
@@ -54,14 +58,12 @@ pub struct AttractorPlotter {
     pub(crate) trajectory_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
-    pub(crate) latest_lyapunov: Option<f64>,
-    pub(crate) latest_correlation_sum: Option<f64>,
-    pub(crate) regime_atlas: LorenzRegimeAtlasState,
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
     pub(super) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
+    pub(crate) atlas: ParameterAtlasController,
 }
 
 impl Default for AttractorPlotter {
@@ -82,9 +84,6 @@ impl Default for AttractorPlotter {
         }));
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
-        let empty_hist = VecDeque::new();
-        let (initial_lyap, _) = compute_cached_attractor_metrics(&system, 0.01, &empty_hist);
-        let initial_beta = system.beta;
 
         let camera = Camera3D::new(0.0, 0.0, 1.0).with_perspective_distance(75.0);
         Self {
@@ -103,9 +102,6 @@ impl Default for AttractorPlotter {
             trajectory_scratch: Vec::with_capacity(2000),
             params,
             worker,
-            latest_lyapunov: initial_lyap,
-            latest_correlation_sum: None,
-            regime_atlas: LorenzRegimeAtlasState::new(initial_beta),
             show_annotations: true,
             fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
@@ -115,6 +111,7 @@ impl Default for AttractorPlotter {
                 false,
             ),
             invariants_cache: invariants::CachedAttractorInvariants::default(),
+            atlas: ParameterAtlasController::new(ATTRACTOR_ATLAS_AXIS_PAIRS.to_vec()),
         }
     }
 }
@@ -180,22 +177,6 @@ impl AttractorPlotter {
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
         }
-        self.refresh_local_metrics();
-    }
-
-    fn refresh_local_metrics(&mut self) {
-        if self.diverged() || !self.is_finite_state() {
-            self.latest_lyapunov = None;
-            self.latest_correlation_sum = None;
-        } else if self.mode == AttractorMode::Custom {
-            self.latest_lyapunov = None;
-            self.latest_correlation_sum = compute_cached_correlation_only(&self.history);
-        } else {
-            let (lyap, corr) =
-                compute_cached_attractor_metrics(&self.system, self.dt, &self.history);
-            self.latest_lyapunov = lyap;
-            self.latest_correlation_sum = corr;
-        }
     }
 
     pub fn reset(&mut self) {
@@ -227,11 +208,11 @@ impl AttractorPlotter {
         self.history.clear();
         self.step_count = 0;
         self.execution_state = SolverExecutionState::Ready;
+        self.invariants_cache.invalidate();
         self.sync_shared_params();
         let params = Arc::clone(&self.params);
         self.worker
             .reset_or_respawn(|| AttractorRunner::from_params(params));
-        self.refresh_local_metrics();
     }
 
     pub fn reset_parameters(&mut self) {
@@ -254,6 +235,49 @@ impl AttractorPlotter {
         let p_centered = p - center_offset;
         self.camera
             .project(&[p_centered.x, p_centered.y, p_centered.z])
+    }
+
+    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
+    pub fn populate_scene(&mut self, series_color: egui::Color32) {
+        let origin_offset = match self.mode {
+            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
+            AttractorMode::Custom => Point3::origin(),
+        };
+        self.scene_builder.begin(self.camera);
+        self.scene_builder.set_origin_offset(origin_offset);
+        self.trajectory_scratch.clear();
+        self.trajectory_scratch
+            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
+        if !self.trajectory_scratch.is_empty() {
+            if self.trajectory_scratch.len() == 1 {
+                self.scene_builder.add_points(
+                    "Trajectory",
+                    &self.trajectory_scratch,
+                    4.0_f32,
+                    series_color,
+                    MarkerShape::Circle,
+                    true,
+                );
+            } else {
+                self.scene_builder.add_polyline(
+                    "Trajectory",
+                    &self.trajectory_scratch,
+                    egui::Stroke::new(1.5_f32, series_color),
+                    LineStyle::Solid,
+                    true,
+                );
+            }
+        } else if self.is_finite_state() {
+            let v = self.system.state.vec;
+            self.scene_builder.add_points(
+                "Initial State",
+                &[Point3::new(v.x, v.y, v.z)],
+                4.0_f32,
+                series_color,
+                MarkerShape::Circle,
+                true,
+            );
+        }
     }
 
     fn sync_worker_snapshot(&mut self) {
@@ -279,8 +303,6 @@ impl AttractorPlotter {
                     self.history = data.history.clone();
                     self.system.state.vec = data.current_vec;
                     self.step_count = data.step_count;
-                    self.latest_lyapunov = data.lyapunov_exponent;
-                    self.latest_correlation_sum = data.correlation_sum;
                     if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
                         || !was_paused
                     {
@@ -288,10 +310,6 @@ impl AttractorPlotter {
                     }
                 }
             }
-        }
-        if self.diverged() {
-            self.latest_lyapunov = None;
-            self.latest_correlation_sum = None;
         }
     }
 }
@@ -308,32 +326,7 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.mode as u8).hash(&mut h);
-        for bar in self.flow_bank.bars() {
-            bar.raw_text.hash(&mut h);
-        }
-        for &pv in self.flow_bank.param_slice() {
-            pv.to_bits().hash(&mut h);
-        }
-        self.system.sigma.to_bits().hash(&mut h);
-        self.system.rho.to_bits().hash(&mut h);
-        self.system.beta.to_bits().hash(&mut h);
-        self.dt.to_bits().hash(&mut h);
-        self.tube_radius.to_bits().hash(&mut h);
-        self.simulation_speed.hash(&mut h);
-        self.max_points.hash(&mut h);
-        self.is_paused().hash(&mut h);
-        self.diverged().hash(&mut h);
-        self.show_annotations.hash(&mut h);
-        let f32_bits = |v: f32| if v == 0.0 { 0 } else { v.to_bits() };
-        for offset in &self.fixed_callout_offsets {
-            f32_bits(offset.x).hash(&mut h);
-            f32_bits(offset.y).hash(&mut h);
-        }
-        self.camera.hash_state(&mut h);
-        h.finish().max(1)
+        self.compute_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -350,8 +343,6 @@ impl InteractiveTool for AttractorPlotter {
 
     fn step_simulation(&mut self) {
         if self.diverged() {
-            self.latest_lyapunov = None;
-            self.latest_correlation_sum = None;
             return;
         }
         if self.execution_state == SolverExecutionState::Ready {
@@ -393,7 +384,6 @@ impl InteractiveTool for AttractorPlotter {
             }
             self.history.push_back(vec);
         }
-        self.refresh_local_metrics();
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
@@ -428,9 +418,6 @@ impl InteractiveTool for AttractorPlotter {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.sync_worker_snapshot();
-        let high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
-            == crate::app::ThemeMode::HighContrast;
-        self.sync_regime_atlas(&ctx, high_contrast);
 
         let worker_faulted = self.worker.state().is_faulted();
         if self.diverged() || worker_faulted {
