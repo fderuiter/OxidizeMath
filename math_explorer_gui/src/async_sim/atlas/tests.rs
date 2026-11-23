@@ -12,9 +12,18 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-#[cfg(any(feature = "biology", feature = "epidemiology"))]
+#[cfg(any(feature = "biology", feature = "epidemiology", feature = "physics"))]
 #[path = "domain_tests.rs"]
 mod domain_tests;
+
+#[cfg(any(
+    feature = "biology",
+    feature = "pure_math",
+    feature = "physics",
+    feature = "applied"
+))]
+#[path = "domain_tests_ext.rs"]
+mod domain_tests_ext;
 
 pub(super) fn wcag_contrast_on_black(color: egui::Color32) -> f64 {
     let to_lin = |ch: u8| {
@@ -310,4 +319,133 @@ fn test_controller_lazy_worker_visibility_and_aria_teleport() {
     assert!((ev.y_val - 0.0).abs() < 1e-12);
     let announced = crate::accessibility::with_live_region(|r| r.slots[r.active_slot].clone());
     assert!(announced.contains("Parameter atlas teleported"));
+}
+
+#[cfg(all(feature = "biology", feature = "applied", feature = "physics"))]
+fn render_cartographer_preview_ppm(
+    cart: &dyn RegimeCartographer,
+    active: (f64, f64),
+    high_contrast: bool,
+    out_path: &str,
+) {
+    let n: usize = 240;
+    let axes = cart.axes();
+    let mut rgb = vec![0_u8; n * n * 3];
+    let mut put = |px: i32, py: i32, r: u8, g: u8, b: u8| {
+        if (0..n as i32).contains(&px) && (0..n as i32).contains(&py) {
+            let off = (py as usize * n + px as usize) * 3;
+            rgb[off] = r;
+            rgb[off + 1] = g;
+            rgb[off + 2] = b;
+        }
+    };
+    for py in 0..n {
+        let ty = 1.0 - (py as f64 + 0.5) / (n as f64);
+        let y_val = axes.y.constraint.min + ty * (axes.y.constraint.max - axes.y.constraint.min);
+        for px in 0..n {
+            let tx = (px as f64 + 0.5) / (n as f64);
+            let x_val =
+                axes.x.constraint.min + tx * (axes.x.constraint.max - axes.x.constraint.min);
+            let c = cart.color_for_cell(cart.evaluate_cell(x_val, y_val), high_contrast);
+            put(px as i32, py as i32, c.r(), c.g(), c.b());
+        }
+    }
+    if let Some((_, pts)) = cart.overlay_contour() {
+        for seg in pts.windows(2) {
+            for s in 0..=48 {
+                let t = s as f64 / 48.0;
+                let x = seg[0][0] + t * (seg[1][0] - seg[0][0]);
+                let y = seg[0][1] + t * (seg[1][1] - seg[0][1]);
+                let fx =
+                    (x - axes.x.constraint.min) / (axes.x.constraint.max - axes.x.constraint.min);
+                let fy = 1.0
+                    - (y - axes.y.constraint.min) / (axes.y.constraint.max - axes.y.constraint.min);
+                put(
+                    (fx * (n as f64 - 1.0)).round() as i32,
+                    (fy * (n as f64 - 1.0)).round() as i32,
+                    255,
+                    255,
+                    255,
+                );
+            }
+        }
+    }
+    let ax = ((active.0 - axes.x.constraint.min) / (axes.x.constraint.max - axes.x.constraint.min)
+        * (n as f64 - 1.0))
+        .round()
+        .clamp(5.0, n as f64 - 6.0) as i32;
+    let ay = ((1.0
+        - (active.1 - axes.y.constraint.min) / (axes.y.constraint.max - axes.y.constraint.min))
+        * (n as f64 - 1.0))
+        .round()
+        .clamp(5.0, n as f64 - 6.0) as i32;
+    for d in -5..=5_i32 {
+        put(ax + d, ay, 255, 255, 255);
+        put(ax, ay + d, 255, 255, 255);
+    }
+    let mut buf = format!("P6\n{n} {n}\n255\n").into_bytes();
+    buf.extend_from_slice(&rgb);
+    let _ = std::fs::write(out_path, buf);
+}
+
+#[cfg(all(feature = "biology", feature = "applied", feature = "physics"))]
+#[test]
+fn test_export_atlas_verification_previews() {
+    use crate::async_sim::unified::UnifiedModel;
+    use crate::framework::InteractiveTool;
+    use crate::presets::MorphogenesisKineticsMode;
+    use crate::tabs::financial_math::parrondo::ParrondoParadoxTool;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+    use crate::tabs::morphogenesis::gray_scott_atlas::GrayScottCartographer;
+    use crate::tabs::morphogenesis::lenia::LeniaTool;
+    use crate::tabs::morphogenesis::presets::MorphogenesisTheory;
+    use scientific_metadata::theory::TheoryDescribable;
+
+    let mut m_theory = MorphogenesisTheory::default();
+    m_theory.mode = MorphogenesisKineticsMode::GrayScott;
+    let gs_theory = m_theory.theory_parameters();
+    let gs_cart =
+        GrayScottCartographer::new(&gs_theory, ("f", "k"), 0.0367, 0.0649, 0.16, 0.08, 1.0);
+    render_cartographer_preview_ppm(
+        &gs_cart,
+        (0.0367, 0.0649),
+        false,
+        "/tmp/atlas_gray_scott_fold.ppm",
+    );
+
+    let lenia = LeniaTool::default();
+    let lenia_cart = lenia
+        .build_atlas_cartographer(("mu", "sigma"))
+        .expect("lenia cart");
+    render_cartographer_preview_ppm(
+        lenia_cart.as_ref(),
+        lenia.active_atlas_coords(("mu", "sigma")),
+        false,
+        "/tmp/atlas_lenia_soliton.ppm",
+    );
+
+    let parrondo = ParrondoParadoxTool::default();
+    let par_cart = parrondo
+        .build_atlas_cartographer(("p_a", "epsilon"))
+        .expect("parrondo cart");
+    render_cartographer_preview_ppm(
+        par_cart.as_ref(),
+        parrondo.active_atlas_coords(("p_a", "epsilon")),
+        true,
+        "/tmp/atlas_parrondo_wedge_hc.ppm",
+    );
+
+    let lbm_params: std::collections::HashMap<String, f64> = LbmUnified::parameters()
+        .into_iter()
+        .map(|(k, c)| (k, 0.5 * (c.min + c.max)))
+        .collect();
+    let lbm_cart =
+        LbmUnified::build_atlas_cartographer(&lbm_params, ("viscosity", "inlet_velocity"))
+            .expect("lbm cart");
+    render_cartographer_preview_ppm(
+        lbm_cart.as_ref(),
+        (0.02, 0.10),
+        false,
+        "/tmp/atlas_lbm_vortex.ppm",
+    );
 }

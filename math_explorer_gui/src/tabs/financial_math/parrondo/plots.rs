@@ -79,34 +79,23 @@ impl ParrondoParadoxTool {
         let avail_h = ui.available_height().max(260.0);
         match self.view_mode {
             ParrondoViewMode::SplitOverview => {
-                let top_h = (avail_h * 0.46).max(150.0);
-                let bot_h = (avail_h - top_h - 16.0).max(160.0);
+                let top_h = (avail_h * 0.48).max(160.0);
+                let bot_h = (avail_h - top_h - 16.0).max(150.0);
                 self.render_trajectories_card(ui, &report, &palette, top_h);
                 ui.add_space(6.0);
-                if self.atlas.is_visible() {
-                    ui.columns(2, |cols| {
-                        self.render_trap_occupancy_card(&mut cols[0], &report, &palette, bot_h);
-                        self.render_phase_atlas_card(&mut cols[1], bot_h);
-                    });
-                } else {
-                    self.render_trap_occupancy_card(ui, &report, &palette, bot_h);
-                }
+                ui.columns(2, |cols| {
+                    self.render_trap_occupancy_card(&mut cols[0], &report, &palette, bot_h);
+                    self.render_phase_wedge_card(&mut cols[1], &report, &palette, bot_h);
+                });
             }
             ParrondoViewMode::WealthTrajectories => {
                 self.render_trajectories_card(ui, &report, &palette, avail_h - 28.0);
-                if self.atlas.is_visible() {
-                    self.render_phase_atlas_card(ui, 220.0);
-                }
             }
             ParrondoViewMode::TrapOccupancy => {
                 self.render_trap_occupancy_card(ui, &report, &palette, avail_h - 28.0);
-                if self.atlas.is_visible() {
-                    self.render_phase_atlas_card(ui, 220.0);
-                }
             }
             ParrondoViewMode::PhaseWedge => {
-                self.atlas.set_visible(true);
-                self.render_phase_atlas_card(ui, avail_h - 28.0);
+                self.render_phase_wedge_card(ui, &report, &palette, avail_h - 28.0);
             }
         }
     }

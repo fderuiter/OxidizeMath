@@ -156,7 +156,6 @@ impl BraessNetworkParadoxTool {
         let width = ui.available_width().max(240.0);
         let (response, painter) =
             ui.allocate_painter(egui::Vec2::new(width, 132.0), egui::Sense::click());
-        self.canvas_id = Some(response.id);
 
         let toggled_key = response.has_focus()
             && ui.input(|i| i.key_pressed(egui::Key::Space) || i.key_pressed(egui::Key::Enter));

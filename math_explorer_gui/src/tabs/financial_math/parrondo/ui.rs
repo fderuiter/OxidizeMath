@@ -29,7 +29,6 @@ impl ParrondoParadoxTool {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.heading("Parrondo's Kelly Ratchet");
         self.render_view_mode_selector(ui);
-        let _ = self.atlas.show_toggle_button(ui);
         ui.separator();
 
         let mut markov_changed = false;

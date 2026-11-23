@@ -1,480 +1,450 @@
-//! Zero-allocation 2D parameter regime atlas for [`super::ParrondoParadoxTool`] (`Parrondo's Kelly Ratchet`).
+//! Zero-allocation 9-state stack Markov solver and 2D [`RegimeCartographer`]
+//! for [`super::ParrondoParadoxTool`] (`Parrondo's Kelly Ratchet`).
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::ParrondoParadoxTool;
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
-    RegimeCartographer,
+    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
 };
 use eframe::egui;
 use math_explorer::pure_math::statistics::markov::parrondo::{
-    ParrondoGame, ParrondoSchedule, MAX_MODULUS,
+    ParrondoGame, ALLOWED_MODULI, MAX_MODULUS, MAX_SCHEDULE_LEN,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 
-const MAX_SCHEDULE_STEPS: usize = 16;
-const PROB_FLOOR: f64 = 1e-4;
+/// Supported 2D parameter atlas axis pairs for [`ParrondoParadoxTool`].
+pub const PARRONDO_ATLAS_AXIS_PAIRS: &[(&str, &str)] = &[
+    ("p_a", "epsilon"),
+    ("p_a_base", "epsilon"),
+    ("p_b0_base", "p_b1_base"),
+];
 
-/// Discrete drift and Kelly-edge regime across the Parrondo parameter plane.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum ParrondoKellyRegime {
-    /// Periodic schedule has negative expected step drift ($E[\Delta W_{\text{sched}}] < 0$).
-    LosingTrap = 0,
-    /// Periodic schedule wins while both pure games lose ($E[\Delta W_A] < 0, E[\Delta W_B] < 0$).
-    ParadoxRatchet = 1,
-    /// Near-fair critical boundary ($|E[\Delta W_{\text{sched}}]| \le 10^{-4}$).
-    NeutralBoundary = 2,
-    /// Schedule wins and at least one standalone game already has non-negative edge.
-    DirectPositiveEdge = 3,
+pub(super) const WEDGE_PA_MIN: f64 = 0.42;
+pub(super) const WEDGE_PA_MAX: f64 = 0.51;
+pub(super) const WEDGE_EPS_MIN: f64 = -0.02;
+pub(super) const WEDGE_EPS_MAX: f64 = 0.05;
+
+/// Stack-resident stationary drift and trap-occupancy summary matching `solve_parrondo_ratchet`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StackParrondoSummary {
+    /// Stationary expected step gain of isolated Game A.
+    pub gain_a: f64,
+    /// Stationary expected step gain of isolated Game B.
+    pub gain_b: f64,
+    /// Stationary expected step gain of 50/50 random mixture.
+    pub gain_mix: f64,
+    /// Cycle-averaged stationary step gain of the periodic schedule.
+    pub gain_schedule: f64,
+    /// Stationary trap residue `r = 0` probability under isolated Game B.
+    pub pi_b_trap: f64,
+    /// Cycle-averaged trap residue `r = 0` probability under the schedule.
+    pub pi_sched_trap: f64,
+    /// `true` iff `gain_a < 0`, `gain_b < 0`, and `gain_schedule > 0`.
+    pub is_paradox: bool,
 }
 
-impl ParrondoKellyRegime {
-    /// Converts a raw `u8` regime index into [`ParrondoKellyRegime`].
-    #[must_use]
-    pub const fn from_u8(val: u8) -> Self {
-        match val {
-            0 => Self::LosingTrap,
-            1 => Self::ParadoxRatchet,
-            2 => Self::NeutralBoundary,
-            _ => Self::DirectPositiveEdge,
-        }
-    }
+type StackMatrix = [[f64; MAX_MODULUS]; MAX_MODULUS];
+type StackVec = [f64; MAX_MODULUS];
 
-    /// Human-readable regime title for tooltips and legends.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::LosingTrap => "Losing Drift (NoEdge)",
-            Self::ParadoxRatchet => "Paradox Wedge (A<0, B<0, Sched>0)",
-            Self::NeutralBoundary => "Critical Fair Boundary",
-            Self::DirectPositiveEdge => "Direct Positive Edge",
-        }
-    }
-}
-
-/// Stack-allocated modulo-$M$ ($M \le 9$) Markov ratchet evaluator (`zero` heap allocations).
-#[derive(Clone, Debug)]
-pub struct ParrondoKellyCartographer {
-    axes: AtlasAxisPair,
-    modulus: usize,
-    schedule_steps: [ParrondoGame; MAX_SCHEDULE_STEPS],
-    schedule_len: usize,
-    base_p_a: f64,
-    base_p_b0: f64,
-    base_p_b1: f64,
-    base_eps: f64,
-}
-
-impl ParrondoKellyCartographer {
-    /// Constructs a [`ParrondoKellyCartographer`] for `(x_key, y_key)`.
-    #[must_use]
-    pub fn new(
-        theory: &HashMap<String, ParameterConstraint>,
-        keys: (&'static str, &'static str),
-        modulus: usize,
-        schedule: &ParrondoSchedule,
-        base_probs: [f64; 4],
-    ) -> Self {
-        let mut schedule_steps = [ParrondoGame::GameA; MAX_SCHEDULE_STEPS];
-        let raw_steps = schedule.steps();
-        let schedule_len = raw_steps.len().clamp(1, MAX_SCHEDULE_STEPS);
-        for (idx, &game) in raw_steps.iter().take(schedule_len).enumerate() {
-            schedule_steps[idx] = game;
-        }
-        Self {
-            axes: AtlasAxisPair {
-                x: kelly_axis_spec(theory, keys.0),
-                y: kelly_axis_spec(theory, keys.1),
-            },
-            modulus: modulus.clamp(3, MAX_MODULUS),
-            schedule_steps,
-            schedule_len,
-            base_p_a: base_probs[0],
-            base_p_b0: base_probs[1],
-            base_p_b1: base_probs[2],
-            base_eps: base_probs[3],
-        }
-    }
-}
-
-fn kelly_axis_spec(
-    theory: &HashMap<String, ParameterConstraint>,
-    key: &'static str,
-) -> AtlasAxisSpec {
-    let (k, label, min, max, step) = match key {
-        "epsilon" => ("epsilon", "Bias Perturbation (ε)", -0.02, 0.045, 0.0005),
-        "p_b0_base" => ("p_b0_base", "Game B Trap Prob (p_B0)", 0.03, 0.50, 0.005),
-        "p_b1_base" => (
-            "p_b1_base",
-            "Game B Non-Trap Prob (p_B1)",
-            0.50,
-            0.95,
-            0.005,
-        ),
-        _ => (
-            "p_a_base",
-            "Game A Base Win Prob (p_A,0)",
-            0.35,
-            0.65,
-            0.005,
-        ),
-    };
-    AtlasAxisSpec::from_theory(theory, k, label, ParameterConstraint { min, max, step })
-}
-
-/// Evaluates `(gain_a, gain_b, gain_schedule)` on fixed `[f64; 9]` stack buffers with zero heap allocations.
-#[must_use]
-pub fn evaluate_modulo_ratchet_stack(
-    modulus: usize,
-    p_a: f64,
-    p_b0: f64,
-    p_b1: f64,
-    schedule_steps: &[ParrondoGame],
-) -> (f64, f64, f64) {
-    let m = modulus.clamp(3, MAX_MODULUS);
-    let pa = p_a.clamp(PROB_FLOOR, 1.0 - PROB_FLOOR);
-    let pb0 = p_b0.clamp(PROB_FLOOR, 1.0 - PROB_FLOOR);
-    let pb1 = p_b1.clamp(PROB_FLOOR, 1.0 - PROB_FLOOR);
-
-    let (mat_a, mat_b) = build_modulo_matrices(m, pa, pb0, pb1);
-    let pi_b = solve_stationary_9(&mat_b, m);
-    let gain_a = 2.0 * pa - 1.0;
-    let mut gain_b = 0.0;
-    for (s, &prob_s) in pi_b.iter().enumerate().take(m) {
-        let p_s = if s == 0 { pb0 } else { pb1 };
-        gain_b += prob_s * (2.0 * p_s - 1.0);
-    }
-
-    let mut prod = identity_9(m);
-    for &step in schedule_steps {
-        let rhs = match step {
-            ParrondoGame::GameA => &mat_a,
-            ParrondoGame::GameB => &mat_b,
-        };
-        prod = mul_9(&prod, rhs, m);
-    }
-    let mut dist = solve_stationary_9(&prod, m);
-    let mut total_gain = 0.0;
-    for &step in schedule_steps {
-        match step {
-            ParrondoGame::GameA => {
-                total_gain += gain_a;
-                dist = step_dist_9(&mat_a, &dist, m);
-            }
-            ParrondoGame::GameB => {
-                for (s, &prob_s) in dist.iter().enumerate().take(m) {
-                    let p_s = if s == 0 { pb0 } else { pb1 };
-                    total_gain += prob_s * (2.0 * p_s - 1.0);
-                }
-                dist = step_dist_9(&mat_b, &dist, m);
-            }
-        }
-    }
-    let len = schedule_steps.len().max(1) as f64;
-    (gain_a, gain_b, total_gain / len)
-}
-
-fn identity_9(m: usize) -> [[f64; MAX_MODULUS]; MAX_MODULUS] {
+fn build_transition_stack(m: usize, p_zero: f64, p_other: f64) -> StackMatrix {
     let mut mat = [[0.0; MAX_MODULUS]; MAX_MODULUS];
-    for (idx, row) in mat.iter_mut().enumerate().take(m) {
-        row[idx] = 1.0;
+    for (s, row) in mat.iter_mut().enumerate().take(m) {
+        let p_win = if s == 0 { p_zero } else { p_other };
+        row[(s + 1) % m] += p_win;
+        row[(s + m - 1) % m] += 1.0 - p_win;
     }
     mat
 }
 
-fn build_modulo_matrices(
-    m: usize,
-    pa: f64,
-    pb0: f64,
-    pb1: f64,
-) -> (
-    [[f64; MAX_MODULUS]; MAX_MODULUS],
-    [[f64; MAX_MODULUS]; MAX_MODULUS],
-) {
-    let mut mat_a = [[0.0; MAX_MODULUS]; MAX_MODULUS];
-    let mut mat_b = [[0.0; MAX_MODULUS]; MAX_MODULUS];
-    for s in 0..m {
-        let next = (s + 1) % m;
-        let prev = (s + m - 1) % m;
-        mat_a[s][next] += pa;
-        mat_a[s][prev] += 1.0 - pa;
-        let pb = if s == 0 { pb0 } else { pb1 };
-        mat_b[s][next] += pb;
-        mat_b[s][prev] += 1.0 - pb;
-    }
-    (mat_a, mat_b)
-}
-
-fn mul_9(
-    lhs: &[[f64; MAX_MODULUS]; MAX_MODULUS],
-    rhs: &[[f64; MAX_MODULUS]; MAX_MODULUS],
-    m: usize,
-) -> [[f64; MAX_MODULUS]; MAX_MODULUS] {
+fn mat_mul_stack(lhs: &StackMatrix, rhs: &StackMatrix, m: usize) -> StackMatrix {
     let mut out = [[0.0; MAX_MODULUS]; MAX_MODULUS];
     for i in 0..m {
         for k in 0..m {
-            let aik = lhs[i][k];
-            if aik == 0.0 {
-                continue;
-            }
-            for j in 0..m {
-                out[i][j] += aik * rhs[k][j];
+            let a = lhs[i][k];
+            if a != 0.0 {
+                for j in 0..m {
+                    out[i][j] += a * rhs[k][j];
+                }
             }
         }
     }
     out
 }
 
-fn step_dist_9(
-    mat: &[[f64; MAX_MODULUS]; MAX_MODULUS],
-    dist: &[f64; MAX_MODULUS],
-    m: usize,
-) -> [f64; MAX_MODULUS] {
-    let mut next = [0.0; MAX_MODULUS];
+fn row_vec_mul_stack(vec: &StackVec, mat: &StackMatrix, m: usize) -> StackVec {
+    let mut out = [0.0; MAX_MODULUS];
     for i in 0..m {
-        let di = dist[i];
-        for j in 0..m {
-            next[j] += di * mat[i][j];
+        let v = vec[i];
+        if v != 0.0 {
+            for j in 0..m {
+                out[j] += v * mat[i][j];
+            }
         }
     }
-    next
+    out
 }
 
-fn solve_stationary_9(p: &[[f64; MAX_MODULUS]; MAX_MODULUS], m: usize) -> [f64; MAX_MODULUS] {
-    let mut aug = [[0.0_f64; MAX_MODULUS + 1]; MAX_MODULUS];
-    for r in 0..(m - 1) {
-        for c in 0..m {
-            aug[r][c] = p[c][r] - if c == r { 1.0 } else { 0.0 };
+fn power_iter_stationary_stack(mat: &StackMatrix, m: usize) -> StackVec {
+    let mut pi = [0.0; MAX_MODULUS];
+    let inv = 1.0 / (m as f64);
+    for v in pi.iter_mut().take(m) {
+        *v = inv;
+    }
+    for _ in 0..256 {
+        let stepped = row_vec_mul_stack(&pi, mat, m);
+        let mut diff = 0.0_f64;
+        for s in 0..m {
+            let next = 0.5 * pi[s] + 0.5 * stepped[s];
+            diff = diff.max((next - pi[s]).abs());
+            pi[s] = next;
+        }
+        if diff < 1e-14 {
+            break;
         }
     }
-    for val in aug[m - 1].iter_mut().take(m) {
-        *val = 1.0;
+    pi
+}
+
+fn solve_stationary_stack(mat: &StackMatrix, m: usize) -> StackVec {
+    let mut aug = [[0.0; MAX_MODULUS + 1]; MAX_MODULUS];
+    for r in 0..(m - 1) {
+        for c in 0..m {
+            aug[r][c] = mat[c][r] - if r == c { 1.0 } else { 0.0 };
+        }
     }
+    aug[m - 1][..m].fill(1.0);
     aug[m - 1][m] = 1.0;
 
     for col in 0..m {
         let mut pivot = col;
         let mut best = aug[col][col].abs();
-        for (row, candidate) in aug.iter().enumerate().take(m).skip(col + 1) {
-            let mag = candidate[col].abs();
-            if mag > best {
-                best = mag;
-                pivot = row;
+        for (r, row) in aug.iter().enumerate().take(m).skip(col + 1) {
+            let cand = row[col].abs();
+            if cand > best {
+                best = cand;
+                pivot = r;
             }
         }
-        if best <= 1e-14 {
-            return uniform_9(m);
+        if best < 1e-13 {
+            return power_iter_stationary_stack(mat, m);
         }
         if pivot != col {
             aug.swap(col, pivot);
         }
-        let inv = 1.0 / aug[col][col];
         let pivot_row = aug[col];
-        for row_vals in aug.iter_mut().take(m).skip(col + 1) {
-            let factor = row_vals[col] * inv;
-            if factor == 0.0 {
-                continue;
-            }
-            for (dst, &src) in row_vals[col..=m].iter_mut().zip(&pivot_row[col..=m]) {
-                *dst -= factor * src;
+        let inv_diag = 1.0 / pivot_row[col];
+        for row in aug.iter_mut().take(m).skip(col + 1) {
+            let factor = row[col] * inv_diag;
+            if factor != 0.0 {
+                for (dst, &piv) in row[col..=m].iter_mut().zip(&pivot_row[col..=m]) {
+                    *dst -= factor * piv;
+                }
             }
         }
     }
 
-    let mut pi = [0.0; MAX_MODULUS];
+    let mut sol = [0.0; MAX_MODULUS];
     for r in (0..m).rev() {
         let mut rhs = aug[r][m];
         for c in (r + 1)..m {
-            rhs -= aug[r][c] * pi[c];
+            rhs -= aug[r][c] * sol[c];
         }
-        pi[r] = (rhs / aug[r][r]).max(0.0);
+        sol[r] = (rhs / aug[r][r]).max(0.0);
     }
-    let sum: f64 = pi.iter().take(m).sum();
-    if sum <= 1e-12 || !sum.is_finite() {
-        return uniform_9(m);
+    let sum: f64 = sol.iter().take(m).sum();
+    if sum > 0.0 {
+        for v in sol.iter_mut().take(m) {
+            *v /= sum;
+        }
     }
-    for val in pi.iter_mut().take(m) {
-        *val /= sum;
-    }
-    pi
+    sol
 }
 
-fn uniform_9(m: usize) -> [f64; MAX_MODULUS] {
-    let mut pi = [0.0; MAX_MODULUS];
-    let inv = 1.0 / (m.max(1) as f64);
-    for val in pi.iter_mut().take(m) {
-        *val = inv;
+#[inline]
+fn step_gain_b_stack(pi: &StackVec, m: usize, p_b0: f64, p_b1: f64) -> f64 {
+    let mut p_win = 0.0;
+    for (s, &weight) in pi.iter().enumerate().take(m) {
+        p_win += weight * if s == 0 { p_b0 } else { p_b1 };
     }
-    pi
+    2.0 * p_win - 1.0
 }
 
-impl RegimeCartographer for ParrondoKellyCartographer {
+fn evaluate_cycle_schedule_stack(
+    mat_a: &StackMatrix,
+    mat_b: &StackMatrix,
+    m: usize,
+    gain_a: f64,
+    p_b0: f64,
+    p_b1: f64,
+    schedule: &[ParrondoGame],
+) -> (f64, f64) {
+    let mut mat_cycle = [[0.0; MAX_MODULUS]; MAX_MODULUS];
+    for (i, row) in mat_cycle.iter_mut().enumerate().take(m) {
+        row[i] = 1.0;
+    }
+    for &g in schedule {
+        let step_mat = match g {
+            ParrondoGame::GameA => mat_a,
+            ParrondoGame::GameB => mat_b,
+        };
+        mat_cycle = mat_mul_stack(&mat_cycle, step_mat, m);
+    }
+
+    let mut pi_step = solve_stationary_stack(&mat_cycle, m);
+    let mut pi_sched_trap = 0.0;
+    let mut gain_sum = 0.0;
+    for &g in schedule {
+        pi_sched_trap += pi_step[0];
+        match g {
+            ParrondoGame::GameA => {
+                gain_sum += gain_a;
+                pi_step = row_vec_mul_stack(&pi_step, mat_a, m);
+            }
+            ParrondoGame::GameB => {
+                gain_sum += step_gain_b_stack(&pi_step, m, p_b0, p_b1);
+                pi_step = row_vec_mul_stack(&pi_step, mat_b, m);
+            }
+        }
+    }
+    let inv_len = 1.0 / (schedule.len() as f64);
+    (gain_sum * inv_len, pi_sched_trap * inv_len)
+}
+
+/// Solves the modulo-`M` (`M <= 9`) Parrondo Markov chain entirely on the stack with zero heap allocations.
+#[must_use]
+pub fn solve_parrondo_ratchet_stack(
+    modulus: usize,
+    p_a_base: f64,
+    p_b0_base: f64,
+    p_b1_base: f64,
+    epsilon: f64,
+    schedule: &[ParrondoGame],
+) -> Option<StackParrondoSummary> {
+    if !ALLOWED_MODULI.contains(&modulus) || schedule.is_empty() {
+        return None;
+    }
+    let (p_a, p_b0, p_b1) = (p_a_base - epsilon, p_b0_base - epsilon, p_b1_base - epsilon);
+    if ![p_a, p_b0, p_b1]
+        .into_iter()
+        .all(|p| p.is_finite() && p > 0.0 && p < 1.0)
+    {
+        return None;
+    }
+
+    let m = modulus;
+    let mat_a = build_transition_stack(m, p_a, p_a);
+    let mat_b = build_transition_stack(m, p_b0, p_b1);
+    let mut mat_mix = [[0.0; MAX_MODULUS]; MAX_MODULUS];
+    for r in 0..m {
+        for c in 0..m {
+            mat_mix[r][c] = 0.5 * (mat_a[r][c] + mat_b[r][c]);
+        }
+    }
+
+    let gain_a = 2.0 * p_a - 1.0;
+    let pi_b = solve_stationary_stack(&mat_b, m);
+    let gain_b = step_gain_b_stack(&pi_b, m, p_b0, p_b1);
+    let pi_mix = solve_stationary_stack(&mat_mix, m);
+    let gain_mix = 0.5 * gain_a + 0.5 * step_gain_b_stack(&pi_mix, m, p_b0, p_b1);
+    let (gain_schedule, pi_sched_trap) =
+        evaluate_cycle_schedule_stack(&mat_a, &mat_b, m, gain_a, p_b0, p_b1, schedule);
+
+    Some(StackParrondoSummary {
+        gain_a,
+        gain_b,
+        gain_mix,
+        gain_schedule,
+        pi_b_trap: pi_b[0],
+        pi_sched_trap,
+        is_paradox: gain_a < 0.0 && gain_b < 0.0 && gain_schedule > 0.0,
+    })
+}
+
+/// Zero-allocation 2D parameter cartographer for [`ParrondoParadoxTool`].
+#[derive(Clone, Debug)]
+pub struct ParrondoCartographer {
+    axes: AtlasAxisPair,
+    modulus: usize,
+    p_a_base: f64,
+    p_b0_base: f64,
+    p_b1_base: f64,
+    epsilon: f64,
+    schedule: [ParrondoGame; MAX_SCHEDULE_LEN],
+    schedule_len: usize,
+}
+
+fn parrondo_axis_pair(
+    theory: &std::collections::HashMap<String, ParameterConstraint>,
+    axis_keys: (&'static str, &'static str),
+) -> Option<AtlasAxisPair> {
+    let c = |min, max, step| ParameterConstraint { min, max, step };
+    match axis_keys {
+        ("p_a", "epsilon") => Some(AtlasAxisPair {
+            x: AtlasAxisSpec::from_theory(
+                theory,
+                "p_a",
+                "Effective Game A Win Prob p_A",
+                c(WEDGE_PA_MIN, WEDGE_PA_MAX, 0.002),
+            ),
+            y: AtlasAxisSpec::from_theory(
+                theory,
+                "epsilon",
+                "Bias Perturbation ε",
+                c(WEDGE_EPS_MIN, 0.045, 0.0005),
+            ),
+        }),
+        ("p_a_base", "epsilon") => Some(AtlasAxisPair {
+            x: AtlasAxisSpec::from_theory(
+                theory,
+                "p_a_base",
+                "Game A Base Win Prob p_A,0",
+                c(0.35, 0.65, 0.005),
+            ),
+            y: AtlasAxisSpec::from_theory(
+                theory,
+                "epsilon",
+                "Bias Perturbation ε",
+                c(WEDGE_EPS_MIN, 0.045, 0.0005),
+            ),
+        }),
+        ("p_b0_base", "p_b1_base") => Some(AtlasAxisPair {
+            x: AtlasAxisSpec::from_theory(
+                theory,
+                "p_b0_base",
+                "Trap Win Prob p_B0,0 (r = 0)",
+                c(0.03, 0.50, 0.005),
+            ),
+            y: AtlasAxisSpec::from_theory(
+                theory,
+                "p_b1_base",
+                "Non-Trap Win Prob p_B1,0 (r ≠ 0)",
+                c(0.50, 0.95, 0.005),
+            ),
+        }),
+        _ => None,
+    }
+}
+
+impl ParrondoCartographer {
+    /// Constructs a stack-resident [`ParrondoCartographer`] for any supported [`PARRONDO_ATLAS_AXIS_PAIRS`] pair.
+    #[must_use]
+    pub fn new(
+        tool: &ParrondoParadoxTool,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<Self> {
+        let theory = tool.theory_parameters();
+        let axes = parrondo_axis_pair(&theory, axis_keys)?;
+        let mut schedule = [ParrondoGame::GameA; MAX_SCHEDULE_LEN];
+        let steps = tool.active_schedule.steps();
+        let schedule_len = steps.len().min(MAX_SCHEDULE_LEN);
+        schedule[..schedule_len].copy_from_slice(&steps[..schedule_len]);
+        Some(Self {
+            axes,
+            modulus: tool.modulus,
+            p_a_base: tool.p_a_base,
+            p_b0_base: tool.p_b0_base,
+            p_b1_base: tool.p_b1_base,
+            epsilon: tool.epsilon,
+            schedule,
+            schedule_len,
+        })
+    }
+}
+
+impl RegimeCartographer for ParrondoCartographer {
     fn axes(&self) -> AtlasAxisPair {
         self.axes.clone()
     }
 
     fn evaluate_cell(&self, p1: f64, p2: f64) -> AtlasCell {
-        let mut pa_base = self.base_p_a;
-        let mut pb0_base = self.base_p_b0;
-        let mut pb1_base = self.base_p_b1;
-        let mut eps = self.base_eps;
-        for (k, v) in [(self.axes.x.key, p1), (self.axes.y.key, p2)] {
-            match k {
-                "p_a_base" => pa_base = v,
-                "epsilon" => eps = v,
-                "p_b0_base" => pb0_base = v,
-                "p_b1_base" => pb1_base = v,
-                _ => {}
-            }
-        }
-        let (gain_a, gain_b, gain_sched) = evaluate_modulo_ratchet_stack(
+        let (p_a_base, p_b0_base, p_b1_base, eps) = match (self.axes.x.key, self.axes.y.key) {
+            ("p_a", "epsilon") => (p1 + p2, self.p_b0_base, self.p_b1_base, p2),
+            ("p_a_base", "epsilon") => (p1, self.p_b0_base, self.p_b1_base, p2),
+            _ => (self.p_a_base, p1, p2, self.epsilon),
+        };
+        let Some(summary) = solve_parrondo_ratchet_stack(
             self.modulus,
-            pa_base - eps,
-            pb0_base - eps,
-            pb1_base - eps,
-            &self.schedule_steps[..self.schedule_len],
-        );
-        let regime = if gain_sched.abs() <= 1e-4 {
-            ParrondoKellyRegime::NeutralBoundary
-        } else if gain_sched < 0.0 {
-            ParrondoKellyRegime::LosingTrap
-        } else if gain_a < 0.0 && gain_b < 0.0 {
-            ParrondoKellyRegime::ParadoxRatchet
+            p_a_base,
+            p_b0_base,
+            p_b1_base,
+            eps,
+            &self.schedule[..self.schedule_len],
+        ) else {
+            return AtlasCell {
+                regime: 3,
+                primary: -1.0,
+                secondary: 0.0,
+            };
+        };
+        let regime = if summary.is_paradox {
+            1
+        } else if summary.gain_schedule.abs() <= 1e-4 {
+            2
+        } else if summary.gain_schedule > 0.0 {
+            0
         } else {
-            ParrondoKellyRegime::DirectPositiveEdge
+            3
         };
         AtlasCell {
-            regime: regime as u8,
-            primary: gain_sched,
-            secondary: gain_a.max(gain_b),
+            regime,
+            primary: summary.gain_schedule,
+            secondary: summary.pi_sched_trap,
         }
     }
 
     fn color_for_cell(&self, cell: AtlasCell, high_contrast: bool) -> egui::Color32 {
-        let intensity = (cell.primary.abs() / 0.12).clamp(0.0, 1.0);
+        let intensity = (0.5 + 15.0 * cell.primary).clamp(0.0, 1.0);
         atlas_regime_color(cell.regime, 4, intensity, high_contrast)
     }
 
     fn regime_label(&self, regime: u8) -> &'static str {
-        ParrondoKellyRegime::from_u8(regime).label()
+        match regime {
+            0 => "Positive Drift (Non-Paradox)",
+            1 => "Paradox Wedge (A<0, B<0, Sched>0)",
+            2 => "Fair Ratchet Boundary (|g| ≤ 1e-4)",
+            _ => "Negative Ratchet Drift (E[ΔW] < 0)",
+        }
     }
 
     fn primary_metric_label(&self) -> &'static str {
-        "Schedule Drift E[ΔW_sched]"
+        "Schedule Drift E[ΔW]"
     }
 
     fn format_hover_tooltip(&self, p1: f64, p2: f64, cell: AtlasCell) -> String {
         format!(
-            "{} = {:.4}, {} = {:.4}\nRegime: {}\nSchedule Drift E[ΔW_sched] = {:+.5}  |  max(E[ΔW_A], E[ΔW_B]) = {:+.5}",
-            self.axes.x.key,
-            p1,
-            self.axes.y.key,
-            p2,
+            "{} = {p1:.4}, {} = {p2:.4}\nRegime: {}\nE[ΔW_sched] = {:+.5} | Trap π(0) = {:.4}",
+            self.axes.x.label,
+            self.axes.y.label,
             self.regime_label(cell.regime),
             cell.primary,
             cell.secondary
         )
     }
 
+    fn overlay_contour(&self) -> Option<(&'static str, Vec<[f64; 2]>)> {
+        let (y_min, y_max) = (self.axes.y.constraint.min, self.axes.y.constraint.max);
+        match (self.axes.x.key, self.axes.y.key) {
+            ("p_a", "epsilon") => {
+                Some(("Fair Game A (p_A = 0.5)", vec![[0.5, y_min], [0.5, y_max]]))
+            }
+            ("p_a_base", "epsilon") => Some((
+                "Fair Game A (p_A,0 - ε = 0.5)",
+                vec![[0.5 + y_min, y_min], [0.5 + y_max, y_max]],
+            )),
+            _ => None,
+        }
+    }
+
     fn legend_entries(&self, high_contrast: bool) -> Vec<(&'static str, egui::Color32)> {
-        [
-            ParrondoKellyRegime::ParadoxRatchet,
-            ParrondoKellyRegime::DirectPositiveEdge,
-            ParrondoKellyRegime::NeutralBoundary,
-            ParrondoKellyRegime::LosingTrap,
-        ]
-        .into_iter()
-        .map(|r| {
-            (
-                r.label(),
-                atlas_regime_color(r as u8, 4, 0.75, high_contrast),
-            )
-        })
-        .collect()
-    }
-}
-
-impl ParrondoParadoxTool {
-    /// Applies a 2D atlas click or keyboard teleport across `100%` of slider bounds and updates plot callouts.
-    pub fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
-        for (key, val) in [(ev.x_key, ev.x_val), (ev.y_key, ev.y_val)] {
-            match key {
-                "p_a_base" => self.p_a_base = val.clamp(0.35, 0.65),
-                "epsilon" => self.epsilon = val.clamp(-0.02, 0.045),
-                "p_b0_base" => self.p_b0_base = val.clamp(0.03, 0.50),
-                "p_b1_base" => self.p_b1_base = val.clamp(0.50, 0.95),
-                _ => {}
-            }
-        }
-        let min_safe = (self.epsilon + 1e-3).max(0.03);
-        let max_safe = (0.999 + self.epsilon).min(0.95);
-        self.p_a_base = self.p_a_base.clamp(min_safe.max(0.35), max_safe.min(0.65));
-        self.p_b0_base = self.p_b0_base.clamp(min_safe, 0.50);
-        self.p_b1_base = self.p_b1_base.clamp(0.50, max_safe);
-        self.recompute_all();
-        let target_x = self.num_steps as f64;
-        let target_y = self
-            .report
-            .as_ref()
-            .map_or(0.0, |r| r.gain_schedule * target_x);
-        let msg = format!("Atlas: {}", ev.regime_label);
-        self.callouts.set_auto_callout(
-            "atlas_teleport",
-            [target_x, target_y],
-            msg,
-            [-110.0, -28.0],
-        );
-    }
-
-    pub(super) fn render_phase_atlas_card(&mut self, ui: &mut egui::Ui, _height: f32) {
-        if !self.atlas.is_visible() {
-            ui.small("2D Parameter Atlas hidden — toggle '2D Parameter Atlas' in the side panel.");
-            return;
-        }
-        let (xk, yk) = self.atlas.axis_keys();
-        let val_of = |k: &str| match k {
-            "p_a_base" => self.p_a_base,
-            "epsilon" => self.epsilon,
-            "p_b0_base" => self.p_b0_base,
-            "p_b1_base" => self.p_b1_base,
-            _ => 0.0,
-        };
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        self.modulus.hash(&mut hasher);
-        self.active_schedule.as_string().hash(&mut hasher);
-        for (k, v) in [
-            ("p_a_base", self.p_a_base),
-            ("epsilon", self.epsilon),
-            ("p_b0_base", self.p_b0_base),
-            ("p_b1_base", self.p_b1_base),
-        ] {
-            if k != xk && k != yk {
-                v.to_bits().hash(&mut hasher);
-            }
-        }
-        let theory = self.theory_parameters();
-        let modulus = self.modulus;
-        let sched = self.active_schedule;
-        let base_probs = [self.p_a_base, self.p_b0_base, self.p_b1_base, self.epsilon];
-        if let Some(ev) = self.atlas.show_panel(
-            ui,
-            "parrondo_kelly_atlas",
-            val_of(xk),
-            val_of(yk),
-            hasher.finish(),
-            move |keys| {
-                Arc::new(ParrondoKellyCartographer::new(
-                    &theory, keys, modulus, &sched, base_probs,
-                ))
-            },
-        ) {
-            self.apply_atlas_teleport(ev);
-        }
+        (0..4_u8)
+            .map(|r| {
+                (
+                    self.regime_label(r),
+                    atlas_regime_color(r, 4, 0.75, high_contrast),
+                )
+            })
+            .collect()
     }
 }
 

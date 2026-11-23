@@ -5,7 +5,6 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 struct RawToolStates<'a> {
@@ -140,19 +139,50 @@ struct FrameworkStateDeserialize {
     plot_states: plot_persistence::SavedPlotStatesMap,
 }
 
-pub(super) fn capture_isolated_tool_datasets(
-    tool: &dyn InteractiveTool,
-) -> Vec<(String, egui_plot::SharedPoints)> {
+fn tool_json_eq(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    match (
+        serde_json::from_str::<serde_json::Value>(a),
+        serde_json::from_str::<serde_json::Value>(b),
+    ) {
+        (Ok(va), Ok(vb)) => va == vb,
+        _ => false,
+    }
+}
+
+/// Compares two serialized framework JSON payloads while ignoring transient overlay chrome
+/// (`show_theory_portal` and `show_starter_gallery`).
+pub(crate) fn framework_json_semantically_eq(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    let ca = egui_plot::export::strip_utf8_bom(a);
+    let cb = egui_plot::export::strip_utf8_bom(b);
+    let (Ok(da), Ok(db)) = (
+        serde_json::from_str::<FrameworkStateDeserialize>(ca),
+        serde_json::from_str::<FrameworkStateDeserialize>(cb),
+    ) else {
+        return ca == cb;
+    };
+    da.selected_tool_index == db.selected_tool_index
+        && da.selected_tool_name == db.selected_tool_name
+        && da.plot_states == db.plot_states
+        && da.tool_states.len() == db.tool_states.len()
+        && da
+            .tool_states
+            .iter()
+            .all(|(k, va)| db.tool_states.get(k).is_some_and(|vb| tool_json_eq(va, vb)))
+}
+
+fn with_isolated_plot_globals<R>(f: impl FnOnce() -> R) -> R {
     let prev = egui_plot::get_last_plot_shared_datasets();
     let prev_3d = egui_plot::get_last_plot_datasets_3d();
     let prev_prims = egui_plot::get_last_plot_primitives();
     egui_plot::clear_last_plot_datasets();
     egui_plot::clear_last_plot_primitives();
-    let datasets: Vec<(String, egui_plot::SharedPoints)> = tool
-        .export_datasets()
-        .into_iter()
-        .map(|(name, pts)| (name, egui_plot::SharedPoints::from(pts)))
-        .collect();
+    let out = f();
     egui_plot::clear_last_plot_datasets();
     if !prev.is_empty() {
         egui_plot::append_last_plot_shared_datasets(&prev);
@@ -163,83 +193,27 @@ pub(super) fn capture_isolated_tool_datasets(
     if !prev_prims.is_empty() {
         egui_plot::append_last_plot_primitives(&prev_prims);
     }
-    datasets
+    out
+}
+
+pub(super) fn capture_isolated_tool_datasets(
+    tool: &dyn InteractiveTool,
+) -> Vec<(String, egui_plot::SharedPoints)> {
+    with_isolated_plot_globals(|| {
+        tool.export_datasets()
+            .into_iter()
+            .map(|(name, pts)| (name, egui_plot::SharedPoints::from(pts)))
+            .collect()
+    })
 }
 
 pub(super) fn capture_isolated_tool_datasets_3d(
     tool: &dyn InteractiveTool,
 ) -> Vec<(String, Vec<[f64; 3]>)> {
-    let prev = egui_plot::get_last_plot_shared_datasets();
-    let prev_3d = egui_plot::get_last_plot_datasets_3d();
-    let prev_prims = egui_plot::get_last_plot_primitives();
-    egui_plot::clear_last_plot_datasets();
-    egui_plot::clear_last_plot_primitives();
-    let datasets_3d = tool.export_datasets_3d();
-    egui_plot::clear_last_plot_datasets();
-    if !prev.is_empty() {
-        egui_plot::append_last_plot_shared_datasets(&prev);
-    }
-    if !prev_3d.is_empty() {
-        egui_plot::append_last_plot_datasets_3d(&prev_3d);
-    }
-    if !prev_prims.is_empty() {
-        egui_plot::append_last_plot_primitives(&prev_prims);
-    }
-    datasets_3d
+    with_isolated_plot_globals(|| tool.export_datasets_3d())
 }
 
 impl SimulationFramework {
-    /// Creates a new simulation framework discovering registered tools for `domain`.
-    pub fn new(domain: &str) -> Self {
-        let mut available_tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>
-            .into_iter()
-            .filter(|t| t.domain == domain)
-            .collect();
-        available_tools.sort_by_key(|t| (t.display_name, t.id));
-        let mut framework = Self {
-            available_tools,
-            active_tool: None,
-            selected_tool_index: None,
-            input_mode: InputMode::Mouse,
-            show_theory_portal: false,
-            show_starter_gallery: false,
-            saved_tool_states: HashMap::new(),
-            saved_plot_states: std::collections::BTreeMap::new(),
-            plot_sync_generation: 1,
-            search_query: String::new(),
-            last_announced_count: None,
-            last_announced_query: String::new(),
-            show_export_modal: false,
-            export_options: egui_plot::export::ExportOptions::default(),
-            export_bg_dark: true,
-            export_gif_fps: 15,
-            export_gif_frames: 20,
-            export_status_message: None,
-            export_status_severity: ExportStatusSeverity::Success,
-            domain: domain.to_string(),
-            preset_dialog: crate::presets::PresetDialogState::default(),
-            export_queue: ExportQueue::default(),
-            last_valid_snapshot: None,
-            baseline_tool_state: None,
-            current_valid_plot_datasets: Vec::new(),
-            current_valid_plot_datasets_3d: Vec::new(),
-            is_diverged: false,
-            diagnostic_report: None,
-            step_counter: 0,
-            start_time: crate::web_io::PlatformInstant::now(),
-            challenge_hud: ChallengeHudState::default(),
-            active_challenge: None,
-            challenge_was_passed: false,
-            instance_id: overlay_sync::next_framework_id(),
-            sync_state: FrameworkSyncState::default(),
-            rev_cache: FrameworkRevisionCache::default(),
-        };
-        if !framework.available_tools.is_empty() {
-            framework.select_tool(0);
-        }
-        framework
-    }
-
     pub(super) fn bump_framework_revision(&mut self) {
         self.rev_cache.framework_revision = self.rev_cache.framework_revision.wrapping_add(1);
         self.rev_cache.untracked_tool_revision =
@@ -248,29 +222,6 @@ impl SimulationFramework {
         *self.rev_cache.active_tool_json.borrow_mut() = None;
         self.rev_cache.last_snapshot_rev = None;
         self.rev_cache.last_snapshot_source_datasets.clear();
-    }
-
-    /// Computes a deterministic O(1) revision token for this framework's persisted state.
-    pub fn state_revision(&self) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        self.rev_cache.framework_revision.hash(&mut hasher);
-        self.selected_tool_index.hash(&mut hasher);
-        self.show_theory_portal.hash(&mut hasher);
-        self.show_starter_gallery.hash(&mut hasher);
-        self.saved_tool_states.len().hash(&mut hasher);
-        self.hash_saved_plot_states(&mut hasher);
-        if let Some(tool) = &self.active_tool {
-            tool.name().hash(&mut hasher);
-            let tool_rev = tool.state_revision();
-            if tool_rev > 0 {
-                1_u8.hash(&mut hasher);
-                tool_rev.hash(&mut hasher);
-            } else {
-                0_u8.hash(&mut hasher);
-                self.rev_cache.untracked_tool_revision.hash(&mut hasher);
-            }
-        }
-        hasher.finish().max(1)
     }
 
     pub(super) fn serialized_active_tool(&self) -> Option<(&'static str, Arc<str>)> {
@@ -418,6 +369,7 @@ impl SimulationFramework {
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
         self.clear_challenge_hud();
+        self.atlas_host.reset_for_tool_switch();
         self.active_challenge = None;
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(index);
@@ -474,12 +426,5 @@ impl SimulationFramework {
         } else {
             false
         }
-    }
-
-    /// Returns the active tool's interactive canvas `Id` if applicable.
-    pub fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.active_tool
-            .as_ref()
-            .and_then(|t| t.focused_canvas_id())
     }
 }

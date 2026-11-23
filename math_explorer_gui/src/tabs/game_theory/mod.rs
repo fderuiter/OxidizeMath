@@ -1,8 +1,10 @@
-// @explorer_feature = "applied"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod glicko2;
+pub mod markov;
 pub mod replicator;
 
 pub struct GameTheoryTab {
@@ -48,6 +50,14 @@ impl ExplorerTab for GameTheoryTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "game_theory",
+        order: 30,
+        build: || Box::new(GameTheoryTab::default()),
     }
 }
 

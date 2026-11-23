@@ -29,9 +29,9 @@ pub(super) fn compute_gallery_metrics(ctx: &egui::Context) -> GalleryOverlayMetr
         768.0
     };
     let max_w = (avail_w - 32.0).clamp(180.0, 740.0);
-    let max_h = (avail_h - 32.0).clamp(160.0, 540.0);
+    let max_h = (avail_h - 32.0).clamp(220.0, 620.0);
     let inner_w = (max_w - 36.0).max(144.0);
-    let scroll_h = (max_h - 156.0).max(64.0);
+    let scroll_h = (max_h - 196.0).max(88.0);
     let grid_avail_w = (inner_w - 14.0).max(130.0);
     let (cols, card_w) = if grid_avail_w >= 660.0 {
         (3, ((grid_avail_w - 28.0) / 3.0 - 30.0).floor())
@@ -169,7 +169,7 @@ pub(super) fn render_challenges_grid(
 ) -> Option<GallerySelection> {
     if challenges.is_empty() && goal_challenges.is_empty() {
         ui.label(
-            "No challenges are registered for this domain yet. Try Financial Math, Game Theory, MRI Physics, Clinical Trials, Fluid Dynamics, or Medical Physics.",
+            "No challenges are registered for this domain yet. Try Quantum Mechanics, Financial Math, Game Theory, MRI Physics, Clinical Trials, Fluid Dynamics, Medical Physics, Epidemiology, or Astrophysics.",
         );
         return None;
     }
@@ -226,4 +226,99 @@ pub(super) fn render_stories_grid(
         });
     }
     selected
+}
+
+pub(super) struct FilteredGalleryItems {
+    pub starters: Vec<StarterCard>,
+    pub stories: Vec<&'static PresetStoryMetadata>,
+    pub challenges: Vec<ChallengeCard>,
+    pub goals: Vec<&'static GoalChallengeMetadata>,
+    pub has_starters: bool,
+    pub has_stories: bool,
+    pub has_challenges: bool,
+}
+
+impl FilteredGalleryItems {
+    pub(super) fn build(
+        cards: &[StarterCard],
+        stories: &[&'static PresetStoryMetadata],
+        challenges: &[ChallengeCard],
+        goals: &[&'static GoalChallengeMetadata],
+        filter_state: &crate::starter_gallery::filter_ui::GalleryFilterState,
+    ) -> Self {
+        use crate::starter_gallery::filter_ui::{
+            filter_challenge_cards, filter_goal_challenges, filter_starter_cards, filter_stories,
+        };
+        Self {
+            starters: filter_starter_cards(
+                cards,
+                &filter_state.query,
+                filter_state.selected_domain,
+            ),
+            stories: filter_stories(stories, &filter_state.query, filter_state.selected_domain),
+            challenges: filter_challenge_cards(
+                challenges,
+                &filter_state.query,
+                filter_state.selected_domain,
+            ),
+            goals: filter_goal_challenges(goals, &filter_state.query, filter_state.selected_domain),
+            has_starters: !cards.is_empty(),
+            has_stories: !stories.is_empty(),
+            has_challenges: !challenges.is_empty() || !goals.is_empty(),
+        }
+    }
+
+    pub(super) fn counts(&self) -> (usize, usize, usize) {
+        (
+            self.starters.len(),
+            self.stories.len(),
+            self.challenges.len() + self.goals.len(),
+        )
+    }
+
+    pub(super) fn render_tab(
+        &self,
+        ui: &mut egui::Ui,
+        frame_ctx: &mut crate::ModalFrameContext,
+        active_tab: super::StarterGalleryTab,
+        filter_state: &mut crate::starter_gallery::filter_ui::GalleryFilterState,
+        m: &GalleryOverlayMetrics,
+    ) -> Option<GallerySelection> {
+        use crate::starter_gallery::filter_ui::render_empty_filtered_state;
+        match active_tab {
+            super::StarterGalleryTab::Starters => {
+                if self.starters.is_empty() && self.has_starters {
+                    render_empty_filtered_state(ui, filter_state, "starter templates");
+                    return None;
+                }
+                let mut selected = None;
+                for row in self.starters.chunks(m.cols.max(1)) {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
+                        for card in row {
+                            if render_starter_card(ui, card, m.card_w, "▶ Launch") {
+                                selected = Some(GallerySelection::Starter(card.clone()));
+                                frame_ctx.close();
+                            }
+                        }
+                    });
+                }
+                selected
+            }
+            super::StarterGalleryTab::GuidedStories => {
+                if self.stories.is_empty() && self.has_stories {
+                    render_empty_filtered_state(ui, filter_state, "guided stories");
+                    return None;
+                }
+                render_stories_grid(ui, frame_ctx, &self.stories, m)
+            }
+            super::StarterGalleryTab::Challenges => {
+                if self.challenges.is_empty() && self.goals.is_empty() && self.has_challenges {
+                    render_empty_filtered_state(ui, filter_state, "challenges");
+                    return None;
+                }
+                render_challenges_grid(ui, frame_ctx, &self.challenges, &self.goals, m)
+            }
+        }
+    }
 }

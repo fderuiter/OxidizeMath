@@ -12,14 +12,15 @@ use crate::starter_gallery::{GoalChallengeMetadata, PresetStoryMetadata};
 use crate::tabs::clinical_trials::randomization::RandomizationTool;
 use crate::tabs::clinical_trials::simpson_atlas::{simpson_theory_parameters, SimpsonCartographer};
 use crate::tabs::clinical_trials::simpson_paradox::SimpsonParadoxLab;
-use crate::tabs::financial_math::parrondo::atlas::ParrondoKellyCartographer;
-use crate::tabs::financial_math::parrondo::ParrondoParadoxTool as KellyParrondoTool;
+use crate::tabs::financial_math::parrondo::atlas::ParrondoCartographer;
+use crate::tabs::financial_math::parrondo::{
+    ParrondoParadoxTool as KellyParrondoTool, PARRONDO_ATLAS_AXIS_PAIRS,
+};
 use crate::tabs::paradox_lab::braess::{BraessNetworkParadoxTool, BraessState};
 use crate::tabs::paradox_lab::braess_atlas::BraessCartographer;
 use crate::tabs::paradox_lab::parrondo::{ParrondoJumpRatchetTool, ParrondoVariant};
 use crate::tabs::paradox_lab::parrondo_atlas::ParrondoJumpCartographer;
 use eframe::egui;
-use math_explorer::pure_math::statistics::markov::parrondo::ParrondoSchedule;
 use scientific_metadata::citation_registry::CitationRegistry;
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashSet;
@@ -192,16 +193,8 @@ fn test_legacy_parrondo_session_alias_routing() {
 #[test]
 fn test_all_four_paradox_cartographers_zero_alloc_and_high_contrast() {
     let kelly = KellyParrondoTool::default();
-    let kelly_theory = kelly.theory_parameters();
-    let sched = ParrondoSchedule::parse("ABB").unwrap();
-    for pair in [("p_a_base", "epsilon"), ("p_b0_base", "p_b1_base")] {
-        let cart = ParrondoKellyCartographer::new(
-            &kelly_theory,
-            pair,
-            3,
-            &sched,
-            [0.50, 0.10, 0.75, 0.005],
-        );
+    for &pair in PARRONDO_ATLAS_AXIS_PAIRS {
+        let cart = ParrondoCartographer::new(&kelly, pair).expect("Kelly cartographer");
         assert_cartographer_zero_alloc_and_contrast(&cart);
     }
 
@@ -448,12 +441,29 @@ fn test_live_ast_sandbox_custom_bounds_and_controller_teleport_clamping() {
     assert_eq!(simpson_fw.challenge_hud.sandbox.last_eval, Ok(true));
 
     let ctx = egui::Context::default();
-    let mut kelly = KellyParrondoTool::default();
+    let mut kelly_fw = SimulationFramework::new("financial_math");
+    assert!(kelly_fw.select_tool_by_name("ParrondoParadoxTool"));
+    kelly_fw.set_parameter_atlas_visible(true);
+    {
+        let tool_ref = kelly_fw.active_tool.as_deref().unwrap();
+        kelly_fw
+            .atlas_host
+            .ensure_controller_for(tool_ref)
+            .unwrap()
+            .set_axis_keys("p_a_base", "epsilon")
+            .unwrap();
+    }
     let _ = ctx.run(egui::RawInput::default(), |egui_ctx| {
-        egui::CentralPanel::default().show(egui_ctx, |ui| kelly.show_inside(ui));
+        egui::CentralPanel::default().show(egui_ctx, |ui| {
+            kelly_fw.show_inside(ui, "financial_math");
+        });
     });
-    let low = kelly.atlas.teleport_to(Some(&ctx), -99.0, -99.0).unwrap();
-    let high = kelly.atlas.teleport_to(Some(&ctx), 99.0, 99.0).unwrap();
+    let ctrl = kelly_fw
+        .atlas_host
+        .ensure_controller_for(kelly_fw.active_tool.as_deref().unwrap())
+        .unwrap();
+    let low = ctrl.teleport_to(Some(&ctx), -99.0, -99.0).unwrap();
+    let high = ctrl.teleport_to(Some(&ctx), 99.0, 99.0).unwrap();
     assert!((low.x_val - 0.35).abs() < 1e-9 && (low.y_val - (-0.02)).abs() < 1e-9);
     assert!((high.x_val - 0.65).abs() < 1e-9 && (high.y_val - 0.045).abs() < 1e-9);
 }

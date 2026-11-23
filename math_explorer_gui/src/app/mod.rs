@@ -1,9 +1,13 @@
 pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+#[cfg(all(test, not(target_os = "macos")))]
+#[path = "macos_menu/edit.rs"]
+pub(crate) mod macos_menu_edit;
 #[cfg(target_os = "macos")]
 mod macos_menu_view;
 pub mod palette;
+mod palette_dispatch;
 mod pane_clone;
 mod pane_ops;
 mod pane_slots;
@@ -11,6 +15,7 @@ pub(crate) mod session;
 mod share_link;
 pub mod shared_json;
 mod state;
+pub(crate) mod state_history;
 pub mod theme;
 pub(crate) mod ui_panels;
 pub(crate) mod viewport;
@@ -20,6 +25,8 @@ mod tests;
 #[cfg(test)]
 mod tests_adaptive_chrome;
 #[cfg(test)]
+mod tests_cold_start_and_palette;
+#[cfg(test)]
 mod tests_command_palette;
 #[cfg(test)]
 mod tests_diagnostics;
@@ -27,6 +34,8 @@ mod tests_diagnostics;
 mod tests_domain_bar;
 #[cfg(test)]
 mod tests_focus_routing;
+#[cfg(test)]
+mod tests_history_toolbar;
 #[cfg(test)]
 mod tests_multi_pane;
 #[cfg(test)]
@@ -82,6 +91,7 @@ pub struct MathExplorerApp {
     pub(super) show_warnings: bool,
     pub(super) show_errors: bool,
     pub(super) show_help_menu: bool,
+    pub show_starter_gallery: bool,
     pub theme: ThemeMode,
     pub(super) last_synced_theme: Option<ThemeMode>,
     pub command_palette: CommandPalette,
@@ -120,6 +130,7 @@ impl Default for MathExplorerApp {
             show_warnings: true,
             show_errors: true,
             show_help_menu: false,
+            show_starter_gallery: false,
             theme: ThemeMode::Dark,
             last_synced_theme: Some(ThemeMode::Dark),
             command_palette: CommandPalette::default(),
@@ -141,11 +152,6 @@ impl Default for MathExplorerApp {
 }
 
 impl MathExplorerApp {
-    /// Swaps the primary and secondary pane active tabs and their per-pane states immediately.
-    pub fn swap_panes(&mut self) {
-        self.swap_pane_pair(0, 1);
-    }
-
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
         theme::init_startup_theme(&mut app, cc);
@@ -155,43 +161,6 @@ impl MathExplorerApp {
         macos_menu::setup_macos_menu(&app);
 
         app
-    }
-
-    /// Sets the assigned tab index for a specific pane.
-    pub fn set_pane_tab(&mut self, pane_idx: usize, tab_idx: usize) {
-        if pane_idx < self.pane_tabs.len() && tab_idx < self.tabs.len() {
-            self.pane_tabs[pane_idx] = tab_idx;
-            if pane_idx == 0 {
-                self.selected_tab = tab_idx;
-            } else if pane_idx == 1 {
-                self.secondary_tab = tab_idx;
-            }
-            self.on_pane_tab_assigned(pane_idx, tab_idx);
-        }
-    }
-
-    /// Sets the authoritative viewport layout preset and synchronizes legacy layout mode.
-    pub fn set_layout(&mut self, layout: ViewportLayout) {
-        self.seed_uninitialized_panes_on_initial_split(layout);
-        self.viewport_layout = layout;
-        self.sync_layout();
-        if !self.pane_tabs.is_empty() {
-            self.pane_tabs[0] = self.selected_tab;
-        }
-        if layout != ViewportLayout::Single && self.pane_tabs.len() > 1 {
-            self.pane_tabs[1] = self.secondary_tab;
-        }
-        self.prune_inactive_pane_slots(layout.pane_count());
-    }
-
-    /// Synchronizes legacy `split_layout_mode` with current `viewport_layout`.
-    pub fn sync_layout(&mut self) {
-        self.split_layout_mode = match self.viewport_layout {
-            ViewportLayout::Single => SplitLayoutMode::Single,
-            ViewportLayout::SplitHorizontal => SplitLayoutMode::Horizontal,
-            ViewportLayout::SplitVertical => SplitLayoutMode::Vertical,
-            ViewportLayout::QuadGrid => SplitLayoutMode::Single,
-        };
     }
 
     /// Extracts current application state into an `AppState` struct.
@@ -297,7 +266,7 @@ impl eframe::App for MathExplorerApp {
         let palette_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
             "Command Palette",
-            "Open command palette to quickly switch simulation tabs",
+            "Open unified command palette for actions, tabs, tools, and starter presets",
             egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::K),
             true,
             "Global",
@@ -335,7 +304,10 @@ impl eframe::App for MathExplorerApp {
             "Global",
         );
 
-        let question_triggered = !ctx.wants_keyboard_input()
+        let question_triggered = !crate::framework::is_text_edit_focused(ctx)
+            && !self.command_palette.is_open
+            && !self.show_starter_gallery
+            && !egui::Popup::is_any_open(ctx)
             && ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::NONE, egui::Key::Questionmark)
                     || i.consume_key(egui::Modifiers::SHIFT, egui::Key::Questionmark)
@@ -394,7 +366,6 @@ impl eframe::App for MathExplorerApp {
         }
         self.diagnostic_events.extend(new_events);
 
-        // Issues & Diagnostics Panel
         if self.show_diagnostics_panel {
             ui_panels::render_issues_panel(
                 ctx,
@@ -407,22 +378,21 @@ impl eframe::App for MathExplorerApp {
         }
 
         #[cfg(target_os = "macos")]
-        macos_menu::handle_macos_menu_events(self, ctx);
-
-        #[cfg(target_os = "macos")]
-        if self.session_manager.toast().is_some() {
-            egui::TopBottomPanel::top("toast_panel").show(ctx, |ui| {
-                self.session_manager.render_toast(ui);
-            });
+        {
+            macos_menu::sync_macos_edit_menu(self);
+            macos_menu::handle_macos_menu_events(self, ctx);
+            if self.session_manager.toast().is_some() {
+                egui::TopBottomPanel::top("toast_panel").show(ctx, |ui| {
+                    self.session_manager.render_toast(ui);
+                });
+            }
         }
 
-        // Render Menu Bar (Native fallback for non-macOS or inside the app)
         #[cfg(not(target_os = "macos"))]
         egui::TopBottomPanel::top("main_menu").show(ctx, |ui| {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
-        // Render Persistent Categorized Domain Switcher Bar
         egui::TopBottomPanel::top("domain_switcher_bar")
             .exact_height(34.0)
             .show(ctx, |ui| {
@@ -463,6 +433,7 @@ impl eframe::App for MathExplorerApp {
         self.drain_workspace_history_bridge(ctx);
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
+        self.render_global_starter_gallery(ctx);
 
         // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);
@@ -473,6 +444,9 @@ impl eframe::App for MathExplorerApp {
         let mut session_manager = std::mem::take(&mut self.session_manager);
         session_manager.track_frame_changes(ctx, self);
         self.session_manager = session_manager;
+        #[cfg(target_os = "macos")]
+        macos_menu::sync_macos_edit_menu(self);
+        crate::framework::record_focused_widget_type_from_output(ctx);
         theme::sync_frame_theme(self, ctx, frame);
         self.tick_url_sync(ctx);
     }
