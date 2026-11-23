@@ -139,10 +139,6 @@ allowlist = [
     "docs/adr/0040-galactic-dynamics-and-astrophysics-tab.md",
     "docs/adr/0040-promote-zero-alloc-curve-solvers-to-math-commons.md",
     "docs/adr/0040-staged-index-snapshot-and-graph-scoped-gates.md",
-    "docs/adr/0042-2d-chladni-plate-and-wave-tank-solver.md",
-    "docs/adr/0042-fft-lenia-engine-and-gray-scott-kinetics.md",
-    "docs/adr/0042-fractran-vm-kolmogorov-and-algorithmic-info-tab.md",
-    "docs/adr/0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md",
     "docs/adr/0043-paradox-lab-interactive-tab.md",
     "docs/adr/0043-repair-guides-and-enforce-static-doc-gates.md",
     "docs/adr/0044-geodesic-engine-and-relativity-tab.md",
@@ -345,7 +341,7 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/vector_calculus/theorems.rs" = 2
 "crates/pure_math/src/theory_macro.rs" = 2
 "math_explorer_gui/src/accessibility.rs" = 7
-"math_explorer_gui/src/async_sim/mod.rs" = 34
+"math_explorer_gui/src/async_sim/mod.rs" = 22
 "math_explorer_gui/src/async_sim/registry.rs" = 7
 "math_explorer_gui/src/async_sim/state.rs" = 32
 "math_explorer_gui/src/async_sim/unified/mod.rs" = 2
@@ -358,7 +354,6 @@ vendored_crates = [
 "math_explorer_gui/src/tabs/ai/reward_plots.rs" = 4
 "math_explorer_gui/src/tabs/chaos/attractors/runner.rs" = 3
 "math_explorer_gui/src/tabs/epidemiology/sir.rs" = 2
-"math_explorer_gui/src/tabs/morphogenesis/runner.rs" = 2
 "math_explorer_gui/src/tabs/morphogenesis/tool.rs" = 2
 "math_explorer_gui/src/tabs/mri/runner.rs" = 3
 "math_explorer_gui/src/tabs/mri/tool.rs" = 2

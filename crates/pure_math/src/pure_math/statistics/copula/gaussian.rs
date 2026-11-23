@@ -3,8 +3,6 @@
 use super::core::{Correlation, CorrelationMatrix, Probability};
 use super::transforms::{inverse_standard_normal, standard_normal_cdf};
 use crate::error::CopulaError;
-use nalgebra::DVector;
-use statrs::distribution::MultivariateNormal;
 
 /// Bivariate Gaussian copula.
 ///
@@ -208,16 +206,15 @@ impl GaussianCopula {
             z_scores.push(inverse_standard_normal(ui)?);
         }
 
-        // Create multivariate normal distribution
-        let mean = DVector::zeros(u.len());
+        // Validate correlation matrix positive-definiteness via Cholesky decomposition
         let cov = self.correlation.matrix().clone();
-
-        let _mvn = MultivariateNormal::new(mean.as_slice().to_vec(), cov.as_slice().to_vec())
-            .map_err(|e| {
-                crate::error::CopulaError::Math(math_commons::error::MathError::NumericalError {
-                    reason: format!("Failed to create MVN: {}", e),
-                })
-            })?;
+        if cov.cholesky().is_none() {
+            return Err(crate::error::CopulaError::Math(
+                math_commons::error::MathError::NumericalError {
+                    reason: "Correlation matrix is not positive definite".to_string(),
+                },
+            ));
+        }
 
         // Compute CDF by Monte Carlo or numerical integration
         // For now, return an error as full MVN CDF is complex
@@ -387,5 +384,24 @@ mod tests {
                 assert!(joint.value() >= 0.0 && joint.value() <= 1.0);
             }
         }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_multivariate_cholesky_validation() {
+        let mat =
+            nalgebra::DMatrix::from_row_slice(3, 3, &[1.0, 0.2, 0.1, 0.2, 1.0, 0.3, 0.1, 0.3, 1.0]);
+        let corr = CorrelationMatrix::new(mat).unwrap();
+        let copula = GaussianCopula::new(corr);
+        let u = [
+            Probability::new(0.4).unwrap(),
+            Probability::new(0.5).unwrap(),
+            Probability::new(0.6).unwrap(),
+        ];
+        let err = copula.cdf(&u).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Multivariate CDF not yet implemented")
+        );
     }
 }

@@ -1004,7 +1004,14 @@ def run_parallel_preload_and_sw_http_cache_check(
                 self.wfile.write(b"Not Found")
                 return
 
-            payload = target.read_bytes()
+            accept_enc = self.headers.get("Accept-Encoding", "")
+            br_target = Path(f"{target}.br")
+            use_brotli = (
+                clean_path.endswith(".wasm")
+                and "br" in accept_enc
+                and br_target.is_file()
+            )
+            payload = br_target.read_bytes() if use_brotli else target.read_bytes()
             rev = revision_state["rev"]
             if clean_path == "/bootstrap.js" and rev > 1:
                 payload = payload + f"\n// origin-rev-{rev}\n".encode("utf-8")
@@ -1017,6 +1024,8 @@ def run_parallel_preload_and_sw_http_cache_check(
                 self.send_response(304)
                 self.send_header("ETag", etag)
                 self.send_header("Cache-Control", "public, max-age=600")
+                if use_brotli:
+                    self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Content-Security-Policy", csp)
                 self.end_headers()
                 return
@@ -1025,6 +1034,9 @@ def run_parallel_preload_and_sw_http_cache_check(
                 origin_hits.append((clean_path, 200))
             self.send_response(200)
             self.send_header("Content-Type", content_type)
+            if use_brotli:
+                self.send_header("Content-Encoding", "br")
+                self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("ETag", etag)
             self.send_header("Cache-Control", "public, max-age=600")
