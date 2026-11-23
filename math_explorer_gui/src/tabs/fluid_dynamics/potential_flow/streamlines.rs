@@ -4,6 +4,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{ElementType, PotentialFlowTool};
+use egui_plot::PlotPoint;
 use math_explorer::physics::fluid_dynamics::potential_flow::{FlowElement, Vortex};
 use std::f64::consts::PI;
 
@@ -18,21 +19,31 @@ impl PotentialFlowTool {
         self.cached_polylines = chain_segments_into_polylines(&segments);
     }
 
-    pub(crate) fn compute_arrow_field(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
+    pub(super) fn populate_arrow_buffers(
+        &self,
+        origins: &mut Vec<PlotPoint>,
+        tips: &mut Vec<PlotPoint>,
+    ) {
+        origins.clear();
+        tips.clear();
         if !self.view_range.is_finite()
             || self.view_range <= 0.0
             || !(2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_size)
         {
-            return (Vec::new(), Vec::new());
+            return;
         }
         let step = (2.0 * self.view_range) / (self.grid_size as f64);
         if !step.is_finite() || step <= 0.0 {
-            return (Vec::new(), Vec::new());
+            return;
+        }
+        let target_cap = (self.grid_size + 1).pow(2);
+        origins.reserve(target_cap);
+        tips.reserve(target_cap);
+        if self.elements.is_empty() {
+            return;
         }
         let min = -self.view_range;
         let cyl = self.inferred_cylinder();
-        let mut origins = Vec::new();
-        let mut tips = Vec::new();
         for ix in 0..=self.grid_size {
             let x = min + (ix as f64) * step;
             for iy in 0..=self.grid_size {
@@ -46,14 +57,25 @@ impl PotentialFlowTool {
                     continue;
                 }
                 let arrow_len = (mag * 0.1).min(step * 0.8);
-                let end = [x + (v.x / mag) * arrow_len, y + (v.y / mag) * arrow_len];
+                let dir = v.normalize();
+                let end = [x + dir.x * arrow_len, y + dir.y * arrow_len];
                 if arrow_len > 0.0 && end[0].is_finite() && end[1].is_finite() {
-                    origins.push([x, y]);
-                    tips.push(end);
+                    origins.push(PlotPoint::new(x, y));
+                    tips.push(PlotPoint::new(end[0], end[1]));
                 }
             }
         }
-        (origins, tips)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn compute_arrow_field(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
+        let mut origins = Vec::new();
+        let mut tips = Vec::new();
+        self.populate_arrow_buffers(&mut origins, &mut tips);
+        (
+            origins.into_iter().map(|p| [p.x, p.y]).collect(),
+            tips.into_iter().map(|p| [p.x, p.y]).collect(),
+        )
     }
 
     pub(crate) fn aerodynamic_summary(&self) -> (f64, f64, f64, f64) {

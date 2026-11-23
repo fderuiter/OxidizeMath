@@ -394,10 +394,12 @@ impl InteractiveTool for SirTool {
             self.sync_series_cache();
             ui.vertical(|ui| {
                 ui.heading("Parameters");
-                let sweeps_before = crate::reflective_ui::slider::live_active_sweep_count(ui.ctx());
+                let sweeps_before =
+                    crate::reflective_ui::slider::current_pass_active_sweep_count(ui.ctx());
                 let changed = self.render_parameter_controls(ui);
                 let sweep_active =
-                    crate::reflective_ui::slider::live_active_sweep_count(ui.ctx()) > sweeps_before;
+                    crate::reflective_ui::slider::current_pass_active_sweep_count(ui.ctx())
+                        > sweeps_before;
                 if changed {
                     self.record_history_and_recalculate(sweep_active);
                 }
@@ -422,7 +424,9 @@ impl InteractiveTool for SirTool {
                 }) {
                     self.revision = self.revision.wrapping_add(1).max(1);
                 }
-                self.evaluate_sensitivity(ui);
+                let defer_sensitivity =
+                    crate::sensitivity::is_transient_parameter_gesture(ui.ctx(), sweep_active);
+                self.evaluate_sensitivity(ui, defer_sensitivity);
             });
         });
     }

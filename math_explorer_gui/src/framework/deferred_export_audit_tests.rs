@@ -111,6 +111,7 @@ struct ExportCapabilityCounts {
     total_tools: usize,
     plot_tool_count: usize,
     raster_tool_count: usize,
+    dataset_only_tool_count: usize,
     unsupported_tool_count: usize,
     solid_3d_count: usize,
     splat_3d_count: usize,
@@ -127,7 +128,10 @@ fn assert_export_capability_partitions(c: &ExportCapabilityCounts) {
     assert!(c.raster_tool_count > 0, "Expected raster figure tools");
     assert!(c.unsupported_tool_count > 0, "Expected non-figure tools");
     assert_eq!(
-        c.plot_tool_count + c.raster_tool_count + c.unsupported_tool_count,
+        c.plot_tool_count
+            + c.raster_tool_count
+            + c.dataset_only_tool_count
+            + c.unsupported_tool_count,
         c.total_tools,
         "Figure export buckets must exhaustively partition registered tools"
     );
@@ -144,6 +148,79 @@ fn assert_export_capability_partitions(c: &ExportCapabilityCounts) {
         c.total_tools,
         "Shader capability buckets must exhaustively partition registered tools"
     );
+}
+
+fn verify_dataset_only_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
+    let mut framework = SimulationFramework::new("__audit_dataset_only__");
+    framework.active_tool = Some(tool);
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Csv, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Success,
+        "Deferred CSV failed for {meta_name}: {:?}",
+        framework.export_status_message
+    );
+    let csv = framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .unwrap_or_else(|| panic!("Missing CSV content for {meta_name}"));
+    assert!(
+        csv.starts_with("Dataset,X,Y\n") && csv.lines().count() >= 2,
+        "Invalid CSV content for {meta_name}: {csv}"
+    );
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Json, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Success,
+        "Deferred JSON failed for {meta_name}: {:?}",
+        framework.export_status_message
+    );
+    let json = framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .unwrap_or_else(|| panic!("Missing JSON content for {meta_name}"));
+    assert!(
+        json.contains("\"dataset\":") && !json.contains("NaN"),
+        "Invalid JSON content for {meta_name}: {json}"
+    );
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Png, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Warning,
+        "Expected Warning on PNG export for dataset_only tool {meta_name}"
+    );
+}
+
+fn verify_non_figure_tool(
+    meta_id: &str,
+    tool: Box<dyn InteractiveTool>,
+    caps: ExportCapabilities,
+    dataset_only_tool_count: &mut usize,
+    unsupported_tool_count: &mut usize,
+) {
+    assert!(
+        !caps.figure_disabled_reason.is_empty(),
+        "{meta_id} disables figure export without an explanatory reason"
+    );
+    if caps.dataset {
+        *dataset_only_tool_count += 1;
+        assert!(
+            caps.dataset_disabled_reason.is_empty(),
+            "{meta_id} advertises dataset export but has non-empty disabled reason"
+        );
+        verify_dataset_only_tool(meta_id, tool);
+    } else {
+        *unsupported_tool_count += 1;
+        assert!(
+            !caps.dataset_disabled_reason.is_empty(),
+            "{meta_id} disables dataset export without an explanatory reason"
+        );
+    }
 }
 
 #[test]
@@ -164,19 +241,16 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         } else {
             counts.non_shader_tool_count += 1;
         }
-
         if !caps.figure {
-            counts.unsupported_tool_count += 1;
-            assert!(
-                !caps.dataset,
-                "{} should disable dataset export when figure is unsupported",
-                meta.id
+            verify_non_figure_tool(
+                meta.id,
+                tool,
+                caps,
+                &mut counts.dataset_only_tool_count,
+                &mut counts.unsupported_tool_count,
             );
-            assert!(!caps.dataset_disabled_reason.is_empty());
-            assert!(!caps.figure_disabled_reason.is_empty());
             continue;
         }
-
         if caps.dataset {
             counts.plot_tool_count += 1;
         } else {
@@ -186,6 +260,59 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     }
 
     assert_export_capability_partitions(&counts);
+}
+
+#[derive(Default)]
+struct DatasetOnlyFixtureTool;
+
+impl scientific_metadata::theory::TheoryDescribable for DatasetOnlyFixtureTool {
+    fn theory_description(&self) -> String {
+        "Dataset-only fixture".into()
+    }
+    fn phonetic_description(&self) -> String {
+        "Dataset-only fixture".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Fixture".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+impl InteractiveTool for DatasetOnlyFixtureTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+    fn name(&self) -> &'static str {
+        "DatasetOnlyFixture"
+    }
+    fn domain(&self) -> &'static str {
+        "financial_math"
+    }
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::dataset_only()
+    }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        vec![("FixtureSeries".into(), vec![[0.0, 1.0], [1.0, 2.0]])]
+    }
+    fn show_inside(&mut self, _ui: &mut egui::Ui) {}
+}
+
+#[test]
+fn test_dataset_only_capability_profile_exports_csv_json_and_warns_on_png() {
+    let tool: Box<dyn InteractiveTool> = Box::new(DatasetOnlyFixtureTool);
+    let caps = tool.export_capabilities();
+    let (mut dataset_only_count, mut unsupported_count) = (0usize, 0usize);
+    verify_non_figure_tool(
+        "DatasetOnlyFixtureTool",
+        tool,
+        caps,
+        &mut dataset_only_count,
+        &mut unsupported_count,
+    );
+    assert_eq!(dataset_only_count, 1);
+    assert_eq!(unsupported_count, 0);
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {

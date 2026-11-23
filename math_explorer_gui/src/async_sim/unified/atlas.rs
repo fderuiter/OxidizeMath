@@ -43,7 +43,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         {
             let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
             for (key, val) in [(ev.x_key, ev.x_val), (ev.y_key, ev.y_val)] {
-                if let Some((_, c)) = self.param_metadata.iter().find(|(k, _)| k == key) {
+                let locked = self
+                    .ui_extension
+                    .as_ref()
+                    .is_some_and(|ext| ext.is_parameter_locked(key));
+                if !locked && let Some((_, c)) = self.param_metadata.iter().find(|(k, _)| k == key)
+                {
                     guard.insert(key.to_string(), val.clamp(c.min, c.max));
                 }
             }

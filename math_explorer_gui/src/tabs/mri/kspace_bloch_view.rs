@@ -4,7 +4,7 @@ use super::kspace_tool::MriKSpaceTool;
 use super::kspace_types::ISOCHROMAT_COUNT;
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::SimWorkerState;
-use crate::framework::Plot3DViewport;
+use crate::framework::{Plot3DViewport, bounded_drag_value};
 use eframe::egui;
 use egui_plot::{Line, PlotPoint, Points};
 
@@ -35,6 +35,46 @@ impl MriKSpaceTool {
         ui.small(format!(
             "ρ={rho:.2}, T1={t1:.2}s, T2={t2:.3}s, ΔB0={db0:.2e}T"
         ));
+        crate::reflective_ui::render_copyable_metric(
+            ui,
+            "Recon NRMSE vs ρ",
+            &format!("{:.1}%", self.latest.nrmse_pct),
+        );
+        crate::reflective_ui::render_copyable_metric(
+            ui,
+            "Scan Acceleration R",
+            &format!("{:.2}x", self.latest.acceleration_r),
+        );
+    }
+
+    pub(crate) fn draw_gradient_controls(&mut self, ui: &mut egui::Ui) {
+        let mut grad_changed = false;
+        ui.horizontal(|ui| {
+            ui.label("∫Gx dt");
+            grad_changed |= ui
+                .add(bounded_drag_value(
+                    &mut self.config.grad_gx_integral,
+                    -5.0e-5..=5.0e-5,
+                    5.0e-7,
+                ))
+                .changed();
+            ui.label("∫Gy dt");
+            grad_changed |= ui
+                .add(bounded_drag_value(
+                    &mut self.config.grad_gy_integral,
+                    -5.0e-5..=5.0e-5,
+                    5.0e-7,
+                ))
+                .changed();
+        });
+        if grad_changed {
+            self.sync_and_notify("sync_view");
+        }
+        let [kx, ky] = self.latest.k_coord_cycles_per_m;
+        ui.small(format!(
+            "k = ({kx:.1}, {ky:.1}) m⁻¹ | φ_grad = {:.2} rad",
+            self.latest.selected_grad_phase_rad
+        ));
     }
 
     pub(crate) fn paint_voxel_crosshair(&self, ui: &egui::Ui, rect: egui::Rect) {
@@ -52,6 +92,7 @@ impl MriKSpaceTool {
 
     pub(crate) fn draw_bloch_3d_readout(&mut self, ui: &mut egui::Ui) {
         ui.heading("Selected Voxel 3D Bloch Sphere Readout");
+        self.sync_kspace_callouts();
         let equator = project_sphere_ring(&self.config.camera, 0);
         let meridian_a = project_sphere_ring(&self.config.camera, 1);
         let meridian_b = project_sphere_ring(&self.config.camera, 2);
@@ -107,6 +148,7 @@ impl MriKSpaceTool {
                         .radius(5.0_f32)
                         .color(palette.accent),
                 );
+                self.callout_manager.render_on_plot(plot_ui);
             })
             .response;
         resp.accessible_theory_hover(&self.theory);

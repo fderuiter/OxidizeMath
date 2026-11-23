@@ -87,13 +87,41 @@ fn test_sir_sensitivity_converges_in_two_frames_and_invalidates_on_duration() {
     // Changing duration invalidates the 4-parameter sensitivity cache
     tool.duration = 180.0;
     tool.recalculate();
-    let out_after_duration = ctx.run(input, |ctx| tool.show(ctx));
+    let out_after_duration = ctx.run(input.clone(), |ctx| tool.show(ctx));
     assert!(!tool.sensitivity_engine.is_converged());
     assert!(
         out_after_duration.viewport_output[&egui::ViewportId::ROOT]
             .repaint_delay
             .is_zero()
     );
+    let _ = ctx.run(input.clone(), |ctx| tool.show(ctx));
+    assert!(tool.sensitivity_engine.is_converged());
+
+    // Pointer-down drag defers SIR perturbations and settles on release
+    let settled_baseline = tool.sensitivity_engine.baseline_output;
+    tool.beta = 1.2;
+    tool.recalculate();
+    let mut drag_in = input.clone();
+    drag_in.events.push(egui::Event::PointerButton {
+        pos: egui::pos2(50.0, 50.0),
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let _ = ctx.run(drag_in, |ctx| tool.show(ctx));
+    assert_eq!(tool.sensitivity_engine.baseline_output, settled_baseline);
+
+    let mut release_in = input.clone();
+    release_in.events.push(egui::Event::PointerButton {
+        pos: egui::pos2(50.0, 50.0),
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let _ = ctx.run(release_in, |ctx| tool.show(ctx));
+    let _ = ctx.run(input, |ctx| tool.show(ctx));
+    assert!(tool.sensitivity_engine.is_converged());
+    assert!((tool.sensitivity_engine.baseline_output - settled_baseline).abs() > 1.0);
 }
 
 #[test]

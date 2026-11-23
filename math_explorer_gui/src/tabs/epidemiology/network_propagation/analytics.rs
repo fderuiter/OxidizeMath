@@ -78,8 +78,8 @@ pub(crate) fn compute_network_analytics(model: &NetworkEpidemicModel) -> Network
 pub(super) fn render_compartment_and_analytics_panel(
     ui: &mut egui::Ui,
     summary: &NetworkAnalyticsSummary,
-    used_budget: usize,
-    budget: usize,
+    (used_budget, budget): (usize, usize),
+    (averted_infections, unmitigated_total): (usize, usize),
 ) {
     let palette = SemanticPalette::from_visuals(ui.visuals());
     let remaining = budget.saturating_sub(used_budget);
@@ -127,4 +127,34 @@ pub(super) fn render_compartment_and_analytics_panel(
         "Expected Additional Infections",
         &format!("{:.1}", summary.expected_additional_infections),
     );
+    render_copyable_metric(
+        ui,
+        "Counterfactual Infections Averted",
+        &format!("{averted_infections} (twin ever-infected: {unmitigated_total})"),
+    );
 }
+
+impl scientific_metadata::theory::TheoryDescribable for super::NetworkPropagationTool {
+    fn theory_description(&self) -> String {
+        let summary = compute_network_analytics(&self.model);
+        format!(
+            "Stochastic contact network epidemic propagation and containment: per-contact transmission $\\beta = {:.2}$, recovery $\\gamma = {:.2}$, residual heterogeneous reproduction number $R_0 = \\frac{{\\beta}}{{\\gamma}}\\frac{{\\langle k^2 \\rangle - \\langle k \\rangle}}{{\\langle k \\rangle}} = {:.2}$, and branching extinction probability $P_{{ext}} = {:.2}$ under vertex vaccination and symmetric edge quarantine.",
+            self.model.beta(),
+            self.model.gamma(),
+            summary.effective_r0,
+            summary.extinction_probability,
+        )
+    }
+    fn phonetic_description(&self) -> String {
+        "Network epidemic propagation, hub vaccination, and edge quarantine theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Epidemic processes in complex networks (Pastor-Satorras et al., 2015); Networks (Newman, 2010); Vulnerability in graphs (Barefoot et al., 1987)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+// [cite:algorithmic_information_rust]
+// [cite:graph_parameters_rust]

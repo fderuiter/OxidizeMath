@@ -310,6 +310,90 @@ fn test_runner_pass_latency_budget_64_and_128() {
 }
 
 #[test]
+fn test_mri_kspace_radial_cs_challenge_zero_alloc_metrics_and_clamping() {
+    use super::challenge::{CHALLENGE_MRI_KSPACE_RADIAL_CS, score_kspace_cs};
+    use super::kspace_types::MriKSpaceSnapshot;
+    use crate::starter_gallery::find_challenge_metadata;
+
+    let meta = find_challenge_metadata(CHALLENGE_MRI_KSPACE_RADIAL_CS).expect("registered");
+    let baseline = meta.generate_baseline_state();
+    let mut tool = MriKSpaceTool::default();
+    tool.apply_challenge(Some(CHALLENGE_MRI_KSPACE_RADIAL_CS))
+        .expect("challenge applies");
+    tool.try_load_state(&baseline).expect("baseline loads");
+
+    let mut base_runner = build_runner(tool.config.clone());
+    let base_snap = base_runner
+        .get_snapshot()
+        .structured_data
+        .expect("structured")
+        .downcast::<MriKSpaceSnapshot>()
+        .expect("MriKSpaceSnapshot");
+    assert!((base_snap.acceleration_r - 1.0).abs() < 1e-9);
+    assert!(base_snap.nrmse_pct < 35.0);
+    assert!(!score_kspace_cs(base_snap.acceleration_r, base_snap.nrmse_pct).passed);
+
+    {
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            base_runner.step();
+            let (nrmse, accel) = base_runner.compute_kspace_metrics();
+            assert!(nrmse.is_finite() && accel >= 1.0);
+        });
+    }
+
+    let mut solved_cfg = tool.config.clone();
+    solved_cfg.mask_preset = KSpaceMaskPreset::Radial;
+    solved_cfg.radial_spokes = 16;
+    let solved_runner = build_runner(solved_cfg);
+    let solved_snap = solved_runner
+        .get_snapshot()
+        .structured_data
+        .expect("structured")
+        .downcast::<MriKSpaceSnapshot>()
+        .expect("MriKSpaceSnapshot");
+    assert!(
+        solved_snap.acceleration_r >= 2.5 && solved_snap.nrmse_pct <= 48.0,
+        "Expected R >= 2.5 and NRMSE <= 48%, got R={}, NRMSE={}",
+        solved_snap.acceleration_r,
+        solved_snap.nrmse_pct
+    );
+    assert!(score_kspace_cs(solved_snap.acceleration_r, solved_snap.nrmse_pct).passed);
+
+    let mut tampered_val: serde_json::Value = serde_json::from_str(&baseline).unwrap();
+    tampered_val["phantom"] = serde_json::json!("turing_spots");
+    tampered_val["flip_angle_deg"] = serde_json::json!(30.0);
+    tampered_val["mask_preset"] = serde_json::json!("radial");
+    tampered_val["radial_spokes"] = serde_json::json!(16);
+    let clamped = meta
+        .clamp_state_json(&tampered_val.to_string())
+        .expect("clamps cleanly");
+    let parsed: MriKSpaceToolState = serde_json::from_str(&clamped).unwrap();
+    assert_eq!(parsed.phantom, PhantomPreset::SheppLogan);
+    assert!((parsed.flip_angle_deg - 90.0).abs() < 1e-9);
+    assert_eq!(parsed.mask_preset, KSpaceMaskPreset::Radial);
+    assert_eq!(parsed.radial_spokes, 16);
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen_test::wasm_bindgen_test]
+fn wasm_mri_kspace_radial_cs_challenge_roundtrip() {
+    use super::challenge::CHALLENGE_MRI_KSPACE_RADIAL_CS;
+    use crate::starter_gallery::find_challenge_metadata;
+
+    let meta = find_challenge_metadata(CHALLENGE_MRI_KSPACE_RADIAL_CS).expect("registered");
+    let baseline = meta.generate_baseline_state();
+    let clamped = meta.clamp_state_json(&baseline).expect("clamped");
+    let mut tool = MriKSpaceTool::default();
+    tool.apply_challenge(Some(CHALLENGE_MRI_KSPACE_RADIAL_CS))
+        .expect("challenge enabled");
+    tool.try_load_state(&clamped).expect("loaded");
+    assert!(!tool.evaluate_challenge().expect("eval").passed);
+}
+
+#[test]
 fn test_mri_hahn_echo_scrub_sonification_and_zero_alloc_pulse() {
     use super::pulse::{
         CHALLENGE_BLOCH_HAHN_ECHO, MRI_PULSE_SAMPLES, MriPulseMode, MriPulseWorkspace,

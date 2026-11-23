@@ -218,3 +218,185 @@ fn test_ode_custom_logistic_preset_yields_finite_sensitivity_metrics() {
         );
     }
 }
+
+fn pointer_button_input(pressed: bool) -> egui::RawInput {
+    let mut input = compact_input();
+    input.events.push(egui::Event::PointerButton {
+        pos: egui::pos2(820.0, 520.0),
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    });
+    input
+}
+
+#[test]
+fn test_ode_sweep_defers_perturbations_then_settles_on_pause() {
+    use crate::reflective_ui::slider::{AnimatedSliderState, SweepMode, save_slider_state};
+
+    let ctx = egui::Context::default();
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Exponential,
+        param_k: 0.4,
+        ic_y0: 1.0,
+        dt: 0.05,
+        total_time: 4.0,
+        ..Default::default()
+    };
+    tool.recalculate();
+    let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
+    assert!(tool.sensitivity_engine.is_converged());
+    let pre_sweep_baseline = tool.sensitivity_engine.baseline_output;
+
+    let slider_id = egui::Id::new("ode_param_k_exp");
+    save_slider_state(
+        &ctx,
+        slider_id,
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Increasing,
+        },
+    );
+    for _ in 0..3 {
+        let mut sweep_in = compact_input();
+        sweep_in.predicted_dt = 0.05;
+        let _ = ctx.run(sweep_in, |ctx| tool.show(ctx));
+        assert!(tool.param_k > 0.4);
+        assert_eq!(tool.sensitivity_engine.baseline_output, pre_sweep_baseline);
+        assert_eq!(tool.sensitivity_engine.metrics[0].baseline_value, 0.4);
+    }
+
+    save_slider_state(
+        &ctx,
+        slider_id,
+        AnimatedSliderState {
+            playing: false,
+            direction: 1.0,
+            sweep_mode: SweepMode::Increasing,
+        },
+    );
+    let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
+    assert!(tool.sensitivity_engine.is_converged());
+    assert_eq!(
+        tool.sensitivity_engine.baseline_output.to_bits(),
+        tool.y_series.last().expect("final y").to_bits()
+    );
+}
+
+#[test]
+fn test_ode_pointer_drag_defers_sensitivity_and_settles_on_release() {
+    let ctx = egui::Context::default();
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Exponential,
+        param_k: 0.5,
+        ic_y0: 1.0,
+        dt: 0.05,
+        total_time: 4.0,
+        ..Default::default()
+    };
+    tool.recalculate();
+    let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
+    let settled_baseline = tool.sensitivity_engine.baseline_output;
+
+    tool.param_k = 0.85;
+    tool.recalculate();
+    let _ = ctx.run(pointer_button_input(true), |ctx| tool.show(ctx));
+    assert_eq!(tool.sensitivity_engine.baseline_output, settled_baseline);
+
+    let _ = ctx.run(pointer_button_input(false), |ctx| tool.show(ctx));
+    assert!(tool.sensitivity_engine.is_converged());
+    assert_eq!(
+        tool.sensitivity_engine.baseline_output.to_bits(),
+        tool.y_series.last().expect("released final y").to_bits()
+    );
+}
+
+#[test]
+fn test_ode_baseline_fallbacks_and_recovery_sensitivity_sync() {
+    use std::collections::BTreeMap;
+
+    let ctx = egui::Context::default();
+    let mut custom_shadow = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 2.0,
+        dt: 0.1,
+        total_time: 1.0,
+        ..Default::default()
+    };
+    custom_shadow.math_input.set_expression("y0 * y");
+    custom_shadow
+        .math_input
+        .set_params_map(&BTreeMap::from([("y0".to_string(), 0.5)]));
+    custom_shadow.recalculate();
+    let _ = ctx.run(compact_input(), |ctx| custom_shadow.show(ctx));
+    assert!(custom_shadow.sensitivity_engine.is_converged());
+    assert!(custom_shadow.sensitivity_engine.baseline_output.is_finite());
+
+    custom_shadow.math_input.set_expression("x * y");
+    custom_shadow.recalculate();
+    let _ = ctx.run(compact_input(), |ctx| custom_shadow.show(ctx));
+    assert!(custom_shadow.sensitivity_engine.is_converged());
+
+    let mut div_tool = OdeSolverTool {
+        preset: OdePreset::Exponential,
+        param_k: 1e200,
+        ic_y0: 1e200,
+        dt: 0.1,
+        total_time: 5.0,
+        ..Default::default()
+    };
+    div_tool.recalculate();
+    let _ = ctx.run(compact_input(), |ctx| div_tool.show(ctx));
+    assert!(!div_tool.sensitivity_engine.baseline_output.is_finite());
+
+    let (mut changed, mut py, mut pv) = (false, Vec::new(), Vec::new());
+    recovery::apply_recovery_action(
+        &mut div_tool,
+        crate::framework::recovery::RecoveryAction::ClampParameters,
+        &mut changed,
+        &mut py,
+        &mut pv,
+    );
+    div_tool.run_sensitivity_analysis(false);
+    assert!(div_tool.sensitivity_engine.is_converged());
+    assert!(div_tool.sensitivity_engine.baseline_output.is_finite());
+}
+
+#[test]
+fn test_ode_custom_gesture_timing_with_platform_instant() {
+    use crate::web_io::PlatformInstant;
+
+    let ctx = egui::Context::default();
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 1.0,
+        dt: 0.001,
+        total_time: 10.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("-k * y * sin(t)");
+    tool.recalculate();
+    let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
+    let settled_before = tool.sensitivity_engine.baseline_output;
+
+    let start = PlatformInstant::now();
+    let _ = ctx.run(pointer_button_input(true), |ctx| tool.show(ctx));
+    for step_k in [1.2, 1.4, 1.6] {
+        tool.param_k = step_k;
+        tool.recalculate();
+        let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
+        assert_eq!(tool.sensitivity_engine.baseline_output, settled_before);
+    }
+    let drag_elapsed = start.elapsed();
+
+    let release_start = PlatformInstant::now();
+    let _ = ctx.run(pointer_button_input(false), |ctx| tool.show(ctx));
+    let release_elapsed = release_start.elapsed();
+    assert!(tool.sensitivity_engine.is_converged());
+    assert_eq!(
+        tool.sensitivity_engine.baseline_output.to_bits(),
+        tool.y_series.last().expect("final custom y").to_bits()
+    );
+    assert!(drag_elapsed.as_secs_f64() >= 0.0 && release_elapsed.as_secs_f64() >= 0.0);
+}

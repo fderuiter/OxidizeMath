@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod capacity_fade;
+pub mod capacity_fade_atlas;
 pub mod lifetime_estimator;
 
 crate::declare_simulation_tab!(

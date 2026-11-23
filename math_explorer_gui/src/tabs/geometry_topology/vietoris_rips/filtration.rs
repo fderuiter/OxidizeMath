@@ -9,6 +9,7 @@ use math_explorer::pure_math::statistics::tda::core::{NdPointCloud, Point2D, Poi
 use math_explorer::pure_math::statistics::tda::{
     MAX_FILTRATION_TRIANGLES, Point3D, PointCloud3D, SimplicialComplex,
     compute_rips_persistence_from_distances, vietoris_rips_from_distance_matrix,
+    vietoris_rips_from_distances,
 };
 
 impl VietorisRipsTool {
@@ -33,13 +34,14 @@ impl VietorisRipsTool {
             _ => explicit_pts,
         };
         let cloud = PointCloud::new(pts.clone()).map_err(|e| format!("{e}"))?;
-        let dist = cloud.distance_matrix();
+        let dist = self.compute_distances_2d(&cloud);
         let persistence =
             compute_rips_persistence_from_distances(&dist).map_err(|e| format!("{e}"))?;
         let (complex, truncated) = self.build_complex_slice(&dist, radius)?;
 
         self.mode = VrSourceMode::Points2D;
         self.source = source;
+        self.cached_points.clone_from(&pts);
         self.points = pts;
         self.distance_matrix = dist;
         self.max_slider_radius = (persistence.max_radius * 1.05).max(15.0).max(radius);
@@ -62,7 +64,7 @@ impl VietorisRipsTool {
         let projected = cloud
             .project_2d(axis_x, axis_y)
             .map_err(|e| format!("{e}"))?;
-        let dist = cloud.distance_matrix();
+        let dist = self.compute_distances_nd(&cloud);
         let persistence =
             compute_rips_persistence_from_distances(&dist).map_err(|e| format!("{e}"))?;
         let (complex, truncated) = self.build_complex_slice(&dist, radius)?;
@@ -73,6 +75,7 @@ impl VietorisRipsTool {
             axis_x,
             axis_y,
         };
+        self.cached_points.clone_from(&projected.points);
         self.points = projected.points;
         self.distance_matrix = dist;
         self.max_slider_radius = (persistence.max_radius * 1.05).max(15.0).max(radius);
@@ -119,12 +122,13 @@ impl VietorisRipsTool {
         recenter: bool,
     ) -> Result<(), String> {
         let cloud = PointCloud3D::new(pts.clone()).map_err(|e| format!("{e}"))?;
-        let dist = cloud.distance_matrix();
+        let dist = self.compute_distances_3d(&cloud);
         let persistence =
             compute_rips_persistence_from_distances(&dist).map_err(|e| format!("{e}"))?;
         let (complex, truncated) = self.build_complex_slice(&dist, radius)?;
 
         self.mode = mode;
+        self.cached_points_3d.clone_from(&pts);
         self.points_3d = pts;
         if recenter {
             self.update_view_center_3d();
@@ -140,6 +144,30 @@ impl VietorisRipsTool {
         self.refresh_url_budget_flag();
         self.bump_revision();
         Ok(())
+    }
+
+    fn compute_distances_2d(&mut self, cloud: &PointCloud) -> Vec<Vec<f64>> {
+        #[cfg(test)]
+        {
+            self.distance_computations += 1;
+        }
+        cloud.distance_matrix()
+    }
+
+    fn compute_distances_nd(&mut self, cloud: &NdPointCloud) -> Vec<Vec<f64>> {
+        #[cfg(test)]
+        {
+            self.distance_computations += 1;
+        }
+        cloud.distance_matrix()
+    }
+
+    fn compute_distances_3d(&mut self, cloud: &PointCloud3D) -> Vec<Vec<f64>> {
+        #[cfg(test)]
+        {
+            self.distance_computations += 1;
+        }
+        cloud.distance_matrix()
     }
 
     /// Evaluates active Betti numbers and 24-step persistence barcode in-place with zero heap allocations.
@@ -180,8 +208,26 @@ impl VietorisRipsTool {
         {
             self.complex_builds += 1;
         }
-        vietoris_rips_from_distance_matrix(dist, radius, MAX_FILTRATION_TRIANGLES)
-            .map_err(|e| e.to_string())
+        Self::build_complex_from_distances(dist, radius)
+    }
+
+    fn build_complex_from_distances(
+        dist: &[Vec<f64>],
+        radius: f64,
+    ) -> Result<(SimplicialComplex, bool), String> {
+        let n = dist.len();
+        let max_tris = n
+            .saturating_mul(n.saturating_sub(1))
+            .saturating_mul(n.saturating_sub(2))
+            / 6;
+        if max_tris <= MAX_FILTRATION_TRIANGLES {
+            vietoris_rips_from_distances(dist, radius)
+                .map(|c| (c, false))
+                .map_err(|e| e.to_string())
+        } else {
+            vietoris_rips_from_distance_matrix(dist, radius, MAX_FILTRATION_TRIANGLES)
+                .map_err(|e| e.to_string())
+        }
     }
 
     fn sync_barcode_intervals_from_rips(&mut self) {
@@ -210,116 +256,117 @@ impl VietorisRipsTool {
         self.complex = complex;
         self.complex_truncated = truncated;
         self.betti = self.persistence.betti_numbers_at(self.radius);
-        self.cached_triangles_3d = self
-            .complex
-            .get_simplices(2)
-            .into_iter()
-            .filter_map(|t| {
-                Some([
-                    *self.points_3d.get(t.vertices[0])?,
-                    *self.points_3d.get(t.vertices[1])?,
-                    *self.points_3d.get(t.vertices[2])?,
-                ])
-            })
-            .collect();
-        self.cached_edges_3d = self
-            .complex
-            .get_simplices(1)
-            .into_iter()
-            .filter_map(|e| {
-                Some([
-                    *self.points_3d.get(e.vertices[0])?,
-                    *self.points_3d.get(e.vertices[1])?,
-                ])
-            })
-            .collect();
+        self.cached_triangles_3d.clear();
+        if let Some(tris) = self.complex.simplices.get(2) {
+            self.cached_triangles_3d.reserve(tris.len());
+            for t in tris {
+                if let (Some(&p0), Some(&p1), Some(&p2)) = (
+                    self.points_3d.get(t.vertices[0]),
+                    self.points_3d.get(t.vertices[1]),
+                    self.points_3d.get(t.vertices[2]),
+                ) {
+                    self.cached_triangles_3d.push([p0, p1, p2]);
+                }
+            }
+        }
+        self.cached_edges_3d.clear();
+        if let Some(edges) = self.complex.simplices.get(1) {
+            self.cached_edges_3d.reserve(edges.len());
+            for e in edges {
+                if let (Some(&p0), Some(&p1)) = (
+                    self.points_3d.get(e.vertices[0]),
+                    self.points_3d.get(e.vertices[1]),
+                ) {
+                    self.cached_edges_3d.push([p0, p1]);
+                }
+            }
+        }
         self.refresh_projected_3d_export_geometry();
         self.chaos.refresh_invariants(&self.points_3d, self.radius);
         self.error_msg = None;
     }
 
     pub(super) fn refresh_projected_3d_export_geometry(&mut self) {
-        self.cached_triangles = self
-            .cached_triangles_3d
-            .iter()
-            .map(|&[a, b, c]| {
-                let (pa, pb, pc) = (self.project_3d(a), self.project_3d(b), self.project_3d(c));
-                [
-                    PlotPoint::new(pa[0], pa[1]),
-                    PlotPoint::new(pb[0], pb[1]),
-                    PlotPoint::new(pc[0], pc[1]),
-                ]
-            })
-            .collect();
-        self.cached_edges = self
-            .cached_edges_3d
-            .iter()
-            .map(|&[a, b]| {
-                let (pa, pb) = (self.project_3d(a), self.project_3d(b));
-                [PlotPoint::new(pa[0], pa[1]), PlotPoint::new(pb[0], pb[1])]
-            })
-            .collect();
-        self.cached_vertices = self
-            .points_3d
-            .iter()
-            .map(|&p| {
-                let xy = self.project_3d(p);
-                PlotPoint::new(xy[0], xy[1])
-            })
-            .collect();
+        let tris_len = self.cached_triangles_3d.len();
+        self.cached_triangles.clear();
+        self.cached_triangles.reserve(tris_len);
+        for idx in 0..tris_len {
+            let [a, b, c] = self.cached_triangles_3d[idx];
+            let (pa, pb, pc) = (self.project_3d(a), self.project_3d(b), self.project_3d(c));
+            self.cached_triangles.push([
+                PlotPoint::new(pa[0], pa[1]),
+                PlotPoint::new(pb[0], pb[1]),
+                PlotPoint::new(pc[0], pc[1]),
+            ]);
+        }
+        let edges_len = self.cached_edges_3d.len();
+        self.cached_edges.clear();
+        self.cached_edges.reserve(edges_len);
+        for idx in 0..edges_len {
+            let [a, b] = self.cached_edges_3d[idx];
+            let (pa, pb) = (self.project_3d(a), self.project_3d(b));
+            self.cached_edges
+                .push([PlotPoint::new(pa[0], pa[1]), PlotPoint::new(pb[0], pb[1])]);
+        }
+        let pts_len = self.points_3d.len();
+        self.cached_vertices.clear();
+        self.cached_vertices.reserve(pts_len);
+        for idx in 0..pts_len {
+            let xy = self.project_3d(self.points_3d[idx]);
+            self.cached_vertices.push(PlotPoint::new(xy[0], xy[1]));
+        }
     }
 
     pub(super) fn refresh_plot_geometry(&mut self) {
-        self.cached_triangles = self
-            .complex
-            .get_simplices(2)
-            .into_iter()
-            .filter_map(|t| {
-                let (p0, p1, p2) = (
-                    self.points.get(t.vertices[0])?,
-                    self.points.get(t.vertices[1])?,
-                    self.points.get(t.vertices[2])?,
-                );
-                Some([
-                    PlotPoint::new(p0.x, p0.y),
-                    PlotPoint::new(p1.x, p1.y),
-                    PlotPoint::new(p2.x, p2.y),
-                ])
-            })
-            .collect();
-        self.cached_edges = self
-            .complex
-            .get_simplices(1)
-            .into_iter()
-            .filter_map(|e| {
-                let (p0, p1) = (
-                    self.points.get(e.vertices[0])?,
-                    self.points.get(e.vertices[1])?,
-                );
-                Some([PlotPoint::new(p0.x, p0.y), PlotPoint::new(p1.x, p1.y)])
-            })
-            .collect();
-        self.cached_vertices = self
-            .points
-            .iter()
-            .map(|p| PlotPoint::new(p.x, p.y))
-            .collect();
+        self.cached_triangles.clear();
+        if let Some(tris) = self.complex.simplices.get(2) {
+            self.cached_triangles.reserve(tris.len());
+            for t in tris {
+                if let (Some(p0), Some(p1), Some(p2)) = (
+                    self.points.get(t.vertices[0]),
+                    self.points.get(t.vertices[1]),
+                    self.points.get(t.vertices[2]),
+                ) {
+                    self.cached_triangles.push([
+                        PlotPoint::new(p0.x, p0.y),
+                        PlotPoint::new(p1.x, p1.y),
+                        PlotPoint::new(p2.x, p2.y),
+                    ]);
+                }
+            }
+        }
+        self.cached_edges.clear();
+        if let Some(edges) = self.complex.simplices.get(1) {
+            self.cached_edges.reserve(edges.len());
+            for e in edges {
+                if let (Some(p0), Some(p1)) = (
+                    self.points.get(e.vertices[0]),
+                    self.points.get(e.vertices[1]),
+                ) {
+                    self.cached_edges
+                        .push([PlotPoint::new(p0.x, p0.y), PlotPoint::new(p1.x, p1.y)]);
+                }
+            }
+        }
+        self.cached_vertices.clear();
+        self.cached_vertices.reserve(self.points.len());
+        for p in &self.points {
+            self.cached_vertices.push(PlotPoint::new(p.x, p.y));
+        }
     }
 
     pub(super) fn update_complex(&mut self) {
         self.bump_revision();
-        let active_len = if self.mode.is_3d() {
-            self.points_3d.len()
-        } else {
-            self.points.len()
-        };
-        if active_len == 0 || self.distance_matrix.len() != active_len {
+        if let Err(msg) = self.ensure_cached_distances() {
             self.clear_cache();
-            self.error_msg = Some("Error building point cloud: empty point cloud".to_string());
+            self.error_msg = Some(msg);
             return;
         }
-        let dist = self.distance_matrix.clone();
-        match self.build_complex_slice(&dist, self.radius) {
+        #[cfg(test)]
+        {
+            self.complex_builds += 1;
+        }
+        match Self::build_complex_from_distances(&self.distance_matrix, self.radius) {
             Ok((complex, truncated)) => {
                 if self.mode.is_3d() {
                     self.apply_3d_complex(complex, truncated);
@@ -332,6 +379,49 @@ impl VietorisRipsTool {
                 self.error_msg = Some(format!("Error building complex: {e}"));
             }
         }
+    }
+
+    fn ensure_cached_distances(&mut self) -> Result<(), String> {
+        if self.mode.is_3d() {
+            if self.points_3d.is_empty() {
+                self.cached_points_3d.clear();
+                self.distance_matrix.clear();
+                return Err("Error building point cloud: empty point cloud".to_string());
+            }
+            if self.points_3d != self.cached_points_3d
+                || self.distance_matrix.len() != self.points_3d.len()
+            {
+                let cloud =
+                    PointCloud3D::new(self.points_3d.clone()).map_err(|e| format!("{e}"))?;
+                let dist = self.compute_distances_3d(&cloud);
+                self.persistence =
+                    compute_rips_persistence_from_distances(&dist).map_err(|e| format!("{e}"))?;
+                self.cached_points_3d.clone_from(&self.points_3d);
+                self.distance_matrix = dist;
+            }
+            return Ok(());
+        }
+
+        if self.points.is_empty() {
+            self.cached_points.clear();
+            self.distance_matrix.clear();
+            return Err("Error building point cloud: empty point cloud".to_string());
+        }
+        if !matches!(self.source, CloudSource::CustomNd { .. })
+            && (self.points != self.cached_points
+                || self.distance_matrix.len() != self.points.len())
+        {
+            let cloud = PointCloud::new(self.points.clone()).map_err(|e| format!("{e}"))?;
+            let dist = self.compute_distances_2d(&cloud);
+            self.persistence =
+                compute_rips_persistence_from_distances(&dist).map_err(|e| format!("{e}"))?;
+            self.sync_barcode_intervals_from_rips();
+            self.cached_points.clone_from(&self.points);
+            self.distance_matrix = dist;
+        } else if self.distance_matrix.len() != self.points.len() {
+            return Err("Error building point cloud: empty point cloud".to_string());
+        }
+        Ok(())
     }
 
     fn fill_filtration_radii(&mut self, n: usize) {

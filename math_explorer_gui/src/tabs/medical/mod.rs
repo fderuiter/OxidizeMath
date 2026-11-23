@@ -3,6 +3,7 @@
 pub mod beam_profiling;
 pub mod dose;
 pub mod imrt;
+pub mod pharmacokinetic_regimen;
 pub mod radar_gating;
 
 crate::declare_simulation_tab!(
@@ -14,3 +15,4 @@ crate::declare_simulation_tab!(
 );
 
 // [cite:graph_parameters_rust]
+// [cite:pharmacokinetics]

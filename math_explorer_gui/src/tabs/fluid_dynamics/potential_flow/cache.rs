@@ -4,9 +4,7 @@ use super::{
     ElementType, FLOW_ANGLE_MAX, FLOW_ANGLE_MIN, FLOW_POS_MAX, FLOW_POS_MIN, FLOW_STRENGTH_MAX,
     FLOW_STRENGTH_MIN, FLOW_VIEW_MAX, FLOW_VIEW_MIN, PotentialFlowTool, SerializedFlowElement,
 };
-use egui_plot::PlotPoint;
 use std::hash::{Hash as _, Hasher as _};
-use std::sync::Arc;
 
 const fn default_element_strength() -> f64 {
     10.0
@@ -48,15 +46,7 @@ impl PotentialFlowState {
     }
 }
 
-#[derive(Default)]
-pub(crate) struct ArrowFieldCache {
-    key: Option<u64>,
-    origins: Arc<Vec<PlotPoint>>,
-    tips: Arc<Vec<PlotPoint>>,
-    pub(crate) eval_count: usize,
-}
-
-fn canonical_bits(val: f64) -> u64 {
+pub(super) fn canonical_bits(val: f64) -> u64 {
     if val == 0.0 { 0 } else { val.to_bits() }
 }
 
@@ -128,26 +118,26 @@ impl PotentialFlowTool {
         h.finish().max(1)
     }
 
-    pub(crate) fn ensure_cached_arrows(&mut self) -> (Arc<Vec<PlotPoint>>, Arc<Vec<PlotPoint>>) {
-        let key = self.field_geometry_key();
-        if self.cache.key != Some(key) {
-            let (raw_origins, raw_tips) = self.compute_arrow_field();
-            let origins = raw_origins
-                .into_iter()
-                .map(|[x, y]| PlotPoint::new(x, y))
-                .collect();
-            let tips = raw_tips
-                .into_iter()
-                .map(|[x, y]| PlotPoint::new(x, y))
-                .collect();
-            self.cache.origins = Arc::new(origins);
-            self.cache.tips = Arc::new(tips);
-            self.cache.key = Some(key);
-            self.cache.eval_count += 1;
+    pub(crate) fn rebuild_arrows(&mut self) {
+        let mut origins = std::mem::take(&mut self.origins);
+        let mut tips = std::mem::take(&mut self.tips);
+        self.populate_arrow_buffers(&mut origins, &mut tips);
+        self.origins = origins;
+        self.tips = tips;
+        self.cached_grid_size = self.grid_size;
+        self.cached_arrow_view_bits = canonical_bits(self.view_range);
+        self.cached_revision = self.grid_revision;
+    }
+
+    pub(crate) fn reconcile_arrows(&mut self) {
+        if self.cached_revision == self.grid_revision
+            && (self.grid_size != self.cached_grid_size
+                || canonical_bits(self.view_range) != self.cached_arrow_view_bits)
+        {
+            self.grid_revision = self.grid_revision.wrapping_add(1);
         }
-        (
-            Arc::clone(&self.cache.origins),
-            Arc::clone(&self.cache.tips),
-        )
+        if self.cached_revision != self.grid_revision {
+            self.rebuild_arrows();
+        }
     }
 }

@@ -303,4 +303,81 @@ fn test_canvas_arrow_nudge_and_non_trapping_escape_and_tab() {
     assert_ne!(tool.focused_canvas_id(), Some(canvas_id));
 }
 
+#[test]
+fn test_radar_cough_zero_miss_challenge_z_true_delay_ring_and_clamping() {
+    use super::challenge::{CHALLENGE_RADAR_COUGH_ZERO_MISS, CHALLENGE_RADAR_LATENCY_MS};
+    use crate::starter_gallery::find_challenge_metadata;
+
+    let meta = find_challenge_metadata(CHALLENGE_RADAR_COUGH_ZERO_MISS).expect("registered");
+    let baseline = meta.generate_baseline_state();
+    let mut tool = RadarGatingTool::default();
+    tool.apply_challenge(Some(CHALLENGE_RADAR_COUGH_ZERO_MISS))
+        .expect("challenge applies");
+    tool.try_load_state(&baseline).expect("baseline loads");
+
+    assert!(tool.pipeline.scheduled_cough_enabled);
+    assert!(tool.pipeline.geographic_miss_frames > 0);
+    let base_eval = tool.evaluate_challenge().expect("eval present");
+    assert!(
+        !base_eval.passed,
+        "Sluggish baseline must fail cough miss check"
+    );
+
+    {
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            for _ in 0..32 {
+                let _ = tool.step_gating();
+            }
+        });
+    }
+
+    let mut solved_state = tool.state.clone();
+    solved_state.clutter_window = 56;
+    solved_state.kalman_process_var = 5.0e-3;
+    solved_state.kalman_meas_var = 1.0e-7;
+    solved_state.gating_threshold_mm = -4.2;
+    solved_state.gating_hysteresis_mm = 0.30;
+    let solved_json = serde_json::to_string(&solved_state).unwrap();
+    tool.try_load_state(&solved_json)
+        .expect("tuned controller loads");
+    let solved_eval = tool.evaluate_challenge().expect("eval present");
+    assert_eq!(tool.pipeline.geographic_miss_frames, 0);
+    assert!(tool.pipeline.physical_duty_cycle_percent() >= 22.0);
+    assert!(
+        solved_eval.passed,
+        "Tuned Kalman+Schmitt must pass: {solved_eval:?}"
+    );
+
+    tool.sync_radar_callouts();
+    assert!(tool.callout_manager.callouts().len() >= 2);
+
+    let mut tampered_val: serde_json::Value = serde_json::from_str(&solved_json).unwrap();
+    tampered_val["system_latency_ms"] = serde_json::json!(0.0);
+    tampered_val["breath_amplitude_mm"] = serde_json::json!(1.0);
+    let clamped = meta
+        .clamp_state_json(&tampered_val.to_string())
+        .expect("clamped");
+    let parsed: RadarGatingState = serde_json::from_str(&clamped).unwrap();
+    assert!((parsed.system_latency_ms - CHALLENGE_RADAR_LATENCY_MS).abs() < 1e-9);
+    assert!((parsed.breath_amplitude_mm - 6.0).abs() < 1e-9);
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen_test::wasm_bindgen_test]
+fn wasm_radar_cough_zero_miss_challenge_evaluation() {
+    use super::challenge::CHALLENGE_RADAR_COUGH_ZERO_MISS;
+    use crate::starter_gallery::find_challenge_metadata;
+
+    let meta = find_challenge_metadata(CHALLENGE_RADAR_COUGH_ZERO_MISS).expect("registered");
+    let mut tool = RadarGatingTool::default();
+    tool.apply_challenge(Some(CHALLENGE_RADAR_COUGH_ZERO_MISS))
+        .expect("applied");
+    tool.try_load_state(&meta.generate_baseline_state())
+        .expect("loaded");
+    assert!(!tool.evaluate_challenge().expect("eval").passed);
+}
+
 // [cite:mmwave_radiotherapy_setup]

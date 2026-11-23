@@ -4,6 +4,7 @@ use super::{BetSizeCalculatorTool, KellyStrategyRow};
 use crate::accessibility::{announce_live_assertive_status, announce_live_status};
 use crate::web_io::{SaveAsDialogConfig, spawn_save_as_file_dialog};
 use eframe::egui;
+use egui_plot::PlotPoint;
 use egui_plot::export::{copy_text_to_clipboard, escape_csv_field};
 use std::sync::mpsc::channel;
 
@@ -64,6 +65,33 @@ pub(crate) fn format_kelly_rows_markdown(rows: &[KellyStrategyRow]) -> String {
 }
 
 impl BetSizeCalculatorTool {
+    pub(super) fn build_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        if self.growth_curve_points.is_empty() {
+            return Vec::new();
+        }
+        let to_vec = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect();
+        let mut out = vec![
+            ("Break-Even (g = 0)".into(), to_vec(&self.zero_line_points)),
+            (
+                "Expected Growth Rate g(f)".into(),
+                to_vec(&self.growth_curve_points),
+            ),
+        ];
+        if !self.quarter_marker.is_empty() {
+            out.push((
+                "Quarter Kelly (0.25 f*)".into(),
+                to_vec(&self.quarter_marker),
+            ));
+        }
+        if !self.half_marker.is_empty() {
+            out.push(("Half Kelly (0.50 f*)".into(), to_vec(&self.half_marker)));
+        }
+        if !self.full_marker.is_empty() {
+            out.push(("Full Kelly (1.00 f*)".into(), to_vec(&self.full_marker)));
+        }
+        out
+    }
+
     pub fn export_sizing_csv(&self) -> String {
         format_kelly_rows_csv(&self.strategy_rows)
     }

@@ -158,6 +158,7 @@ impl WaveSimulatorTool {
         self.dt.to_bits().hash(&mut hasher);
         self.steps_per_frame.hash(&mut hasher);
         self.math_input.raw_text.hash(&mut hasher);
+        self.active_challenge.hash(&mut hasher);
         for &(idx, val) in &self.sparse_potential {
             idx.hash(&mut hasher);
             val.to_bits().hash(&mut hasher);
@@ -221,6 +222,7 @@ impl WaveSimulatorTool {
         if let Some(expr) = self.math_input.expr() {
             self.last_valid_expr = expr.clone();
         }
+        self.enforce_challenge_locks();
         self.sync_config_and_reset(None);
         Ok(())
     }
@@ -270,6 +272,7 @@ impl WaveSimulatorTool {
                 self.last_valid_expr = expr.clone();
             }
         }
+        self.enforce_challenge_locks();
         self.sync_config_and_reset(None);
     }
 }

@@ -3,6 +3,7 @@
 pub mod band_structure;
 pub mod crystal_viewer;
 pub mod ising;
+pub mod sandpile;
 
 crate::declare_simulation_tab!(
     pub struct SolidStateTab,

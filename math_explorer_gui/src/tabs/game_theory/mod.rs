@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod glicko2;
+pub mod markov;
 pub mod replicator;
 
 crate::declare_simulation_tab!(

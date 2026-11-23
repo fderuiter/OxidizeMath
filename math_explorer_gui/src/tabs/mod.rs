@@ -57,7 +57,7 @@ pub mod solid_state;
 pub mod traceability;
 
 /// Declares a [`crate::framework::SimulationFramework`]-backed [`ExplorerTab`] struct, forwards
-/// standard lifecycle, state persistence, focus, and framework inspection methods, and registers
+/// standard lifecycle, state persistence, and framework inspection methods, and registers
 /// its static [`TabDescriptor`] via [`inventory::submit!`].
 #[macro_export]
 macro_rules! declare_simulation_tab {
@@ -110,10 +110,6 @@ macro_rules! declare_simulation_tab {
 
             fn load_state(&mut self, state: &str) {
                 self.framework.load_state(state);
-            }
-
-            fn focused_canvas_id(&self) -> Option<eframe::egui::Id> {
-                self.framework.focused_canvas_id()
             }
 
             fn select_tool_by_name(&mut self, name: &str) -> bool {
@@ -247,6 +243,12 @@ pub trait ExplorerTab {
         0
     }
 
+    /// Deterministic revision token excluding transient framework chrome (`show_theory_portal`, `show_starter_gallery`).
+    fn history_revision(&self) -> u64 {
+        self.framework()
+            .map_or_else(|| self.state_revision(), |fw| fw.history_revision())
+    }
+
     /// Serializes the tab's parameter and panel state into a String.
     fn save_state(&self) -> Option<String> {
         None
@@ -254,11 +256,6 @@ pub trait ExplorerTab {
 
     /// Deserializes and restores the tab's parameter and panel state from a String.
     fn load_state(&mut self, _state: &str) {}
-
-    /// Returns the active tool's interactive canvas `Id` when focus is owned by a non-text canvas.
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        None
-    }
 
     /// Activates a tool within this tab by name.
     /// Returns true if a matching tool was found and activated.

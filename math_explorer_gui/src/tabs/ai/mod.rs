@@ -2,6 +2,7 @@
 
 pub mod activation_functions;
 pub mod attention_maps;
+pub mod closed_loop_control;
 pub mod gaussian_splatting;
 pub mod grid_world;
 pub mod loss_landscape;

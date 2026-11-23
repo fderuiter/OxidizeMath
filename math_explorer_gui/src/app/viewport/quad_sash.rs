@@ -194,6 +194,7 @@ pub(super) fn interact_quad_sashes(
     let mut vert_resp = ui.interact(vert_rect, quad_vertical_sash_id(), sense);
     let mut horiz_resp = ui.interact(horiz_rect, quad_horizontal_sash_id(), sense);
     let modal_open = app.command_palette.is_open
+        || app.show_starter_gallery
         || app.show_help_menu
         || egui::Popup::is_any_open(ctx)
         || ctx.memory(|m| m.top_modal_layer().is_some());

@@ -9,7 +9,6 @@ use crate::async_sim::ui::{WorkerFaultAction, render_worker_fault_banner};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{
     InputMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
-    bounded_drag_value,
 };
 use eframe::egui;
 use eframe::egui::ColorImage;
@@ -34,7 +33,6 @@ impl MriKSpaceTool {
             ui.ctx().request_repaint();
         }
 
-        self.focused_canvas = None;
         self.draw_studio_side_panel(ui);
         self.draw_studio_central_panel(ui);
     }
@@ -168,36 +166,6 @@ impl MriKSpaceTool {
         });
     }
 
-    fn draw_gradient_controls(&mut self, ui: &mut egui::Ui) {
-        let mut grad_changed = false;
-        ui.horizontal(|ui| {
-            ui.label("∫Gx dt");
-            grad_changed |= ui
-                .add(bounded_drag_value(
-                    &mut self.config.grad_gx_integral,
-                    -5.0e-5..=5.0e-5,
-                    5.0e-7,
-                ))
-                .changed();
-            ui.label("∫Gy dt");
-            grad_changed |= ui
-                .add(bounded_drag_value(
-                    &mut self.config.grad_gy_integral,
-                    -5.0e-5..=5.0e-5,
-                    5.0e-7,
-                ))
-                .changed();
-        });
-        if grad_changed {
-            self.sync_and_notify("sync_view");
-        }
-        let [kx, ky] = self.latest.k_coord_cycles_per_m;
-        ui.small(format!(
-            "k = ({kx:.1}, {ky:.1}) m⁻¹ | φ_grad = {:.2} rad",
-            self.latest.selected_grad_phase_rad
-        ));
-    }
-
     fn draw_mask_and_brush_controls(&mut self, ui: &mut egui::Ui) {
         ui.collapsing("k-Space Masks & Brush Studio", |ui| {
             let mut mask_changed = false;
@@ -228,33 +196,46 @@ impl MriKSpaceTool {
             if mask_changed {
                 self.sync_and_notify("sync_mask");
             }
-
-            egui::ComboBox::from_label("Brush")
-                .selected_text(self.config.brush_mode.label())
-                .show_ui(ui, |ui| {
-                    for b in [
-                        StudioBrushMode::KSpaceMaskErase,
-                        StudioBrushMode::KSpaceMaskPaint,
-                        StudioBrushMode::KSpaceRfSpike,
-                        StudioBrushMode::SpatialFlipAnglePulse,
-                        StudioBrushMode::SpatialDeltaB0Pocket,
-                    ] {
-                        let _ = ui.selectable_value(&mut self.config.brush_mode, b, b.label());
-                    }
-                });
-            if ui
-                .add(egui::Slider::new(&mut self.config.brush_radius, 1..=16).text("Radius"))
-                .changed()
-            {
-                self.params
-                    .write()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .config = self.config.clone();
-            }
-            if ui.button("🧹 Clear Painted Strokes").clicked() {
-                self.clear_painted_strokes();
-            }
+            self.draw_brush_controls(ui);
         });
+    }
+
+    fn draw_brush_controls(&mut self, ui: &mut egui::Ui) {
+        egui::ComboBox::from_label("Brush")
+            .selected_text(self.config.brush_mode.label())
+            .show_ui(ui, |ui| {
+                for b in [
+                    StudioBrushMode::KSpaceMaskErase,
+                    StudioBrushMode::KSpaceMaskPaint,
+                    StudioBrushMode::KSpaceRfSpike,
+                    StudioBrushMode::SpatialFlipAnglePulse,
+                    StudioBrushMode::SpatialDeltaB0Pocket,
+                ] {
+                    let ok = !self.is_challenge_locked()
+                        || b.targets_kspace() && b != StudioBrushMode::KSpaceRfSpike;
+                    if ui
+                        .add_enabled(
+                            ok,
+                            egui::Button::selectable(self.config.brush_mode == b, b.label()),
+                        )
+                        .clicked()
+                    {
+                        self.config.brush_mode = b;
+                    }
+                }
+            });
+        if ui
+            .add(egui::Slider::new(&mut self.config.brush_radius, 1..=16).text("Radius"))
+            .changed()
+        {
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .config = self.config.clone();
+        }
+        if ui.button("🧹 Clear Painted Strokes").clicked() {
+            self.clear_painted_strokes();
+        }
     }
 
     fn draw_studio_side_panel(&mut self, ui: &mut egui::Ui) {
@@ -277,8 +258,11 @@ impl MriKSpaceTool {
                 ui.separator();
             }
 
-            self.draw_phantom_and_grid_controls(ui);
-            self.draw_rf_and_sequence_controls(ui);
+            let locked = self.is_challenge_locked();
+            ui.add_enabled_ui(!locked, |ui| {
+                self.draw_phantom_and_grid_controls(ui);
+                self.draw_rf_and_sequence_controls(ui);
+            });
             self.draw_mask_and_brush_controls(ui);
             ui.separator();
 
@@ -351,9 +335,6 @@ impl MriKSpaceTool {
             );
             lock_canvas_arrow_keys(ui, &response);
             paint_canvas_focus_ring(ui, &response);
-            if response.has_focus() {
-                self.focused_canvas = Some(response.id);
-            }
             self.handle_tile_interaction(ui, &response, kind);
             if kind != StudioCanvasKind::KSpace {
                 self.paint_voxel_crosshair(ui, response.rect);

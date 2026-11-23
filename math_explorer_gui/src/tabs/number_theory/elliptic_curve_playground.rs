@@ -86,7 +86,6 @@ pub struct EllipticCurvePlayground {
     pub(crate) ray_segments: Vec<([f32; 2], [f32; 2])>,
     pub(crate) plot_buffers: HassePlotBuffers,
     pub(crate) status_summary: String,
-    pub(super) focused_canvas: Option<egui::Id>,
     revision: u64,
 }
 
@@ -133,7 +132,6 @@ impl Default for EllipticCurvePlayground {
             ray_segments: Vec::with_capacity(MAX_RAY_SEGMENTS_CAP),
             plot_buffers: HassePlotBuffers::with_capacity(MAX_HASSE_PRIMES_CAP),
             status_summary: String::with_capacity(256),
-            focused_canvas: None,
             revision: 1,
         };
         tool.recompute_all();
@@ -335,9 +333,6 @@ impl InteractiveTool for EllipticCurvePlayground {
     }
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds::new(4096, 8, 16)
-    }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()

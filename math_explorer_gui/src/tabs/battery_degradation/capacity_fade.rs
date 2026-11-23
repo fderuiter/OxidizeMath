@@ -1,3 +1,5 @@
+use super::capacity_fade_atlas::{CAPACITY_FADE_ATLAS_AXIS_PAIRS, CapacityFadeCartographer};
+use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::framework::InteractiveTool;
 use crate::reflective_ui::{AnimatedSlider, render_copyable_metric};
 use eframe::egui;
@@ -7,9 +9,9 @@ use math_explorer::applied::battery_degradation::{
 };
 
 pub struct CapacityFadeTool {
-    dod: f64,
-    temperature: f64,
-    cycles_to_simulate: f64,
+    pub(crate) dod: f64,
+    pub(crate) temperature: f64,
+    pub(crate) cycles_to_simulate: f64,
 }
 
 impl Default for CapacityFadeTool {
@@ -39,6 +41,49 @@ impl InteractiveTool for CapacityFadeTool {
     }
     fn domain(&self) -> &'static str {
         "battery_degradation"
+    }
+
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.dod.to_bits().hash(&mut h);
+        self.temperature.to_bits().hash(&mut h);
+        self.cycles_to_simulate.to_bits().hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        CAPACITY_FADE_ATLAS_AXIS_PAIRS
+    }
+
+    fn active_atlas_coords(&self, _axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        (self.dod, self.cycles_to_simulate)
+    }
+
+    fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
+        self.temperature.to_bits()
+    }
+
+    fn build_atlas_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<std::sync::Arc<dyn RegimeCartographer>> {
+        CapacityFadeCartographer::new(self, axis_keys)
+            .map(|c| std::sync::Arc::new(c) as std::sync::Arc<dyn RegimeCartographer>)
+    }
+
+    fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
+        self.apply_capacity_fade_teleport(ev);
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn save_state(&self) -> Option<String> {
@@ -211,6 +256,18 @@ impl scientific_metadata::theory::TheoryDescribable for CapacityFadeTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
+    }
+
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        let c = |min, max, step| ParameterConstraint { min, max, step };
+        std::collections::HashMap::from([
+            ("dod".to_string(), c(5.0, 100.0, 1.0)),
+            ("temperature".to_string(), c(-20.0, 60.0, 1.0)),
+            ("cycles_to_simulate".to_string(), c(100.0, 10_000.0, 50.0)),
+        ])
     }
 }
 
