@@ -236,6 +236,84 @@ pub enum Glicko2Error {
     DimensionMismatch { expected: usize, actual: usize },
 }
 
+/// Errors returned by sports Elo rating updates, batch schedules, and line converters.
+#[derive(Debug, Clone, PartialEq, Error)]
+#[allow(missing_docs)]
+pub enum EloError {
+    #[error("Elo rating must be finite (got {value})")]
+    InvalidRating { value: f64 },
+    #[error("Elo logistic scale must be positive and finite (got {value})")]
+    InvalidScale { value: f64 },
+    #[error("Elo K-factor must be positive and finite (got {value})")]
+    InvalidKFactor { value: f64 },
+    #[error("Elo home-advantage offset must be finite (got {value})")]
+    InvalidHomeAdvantage { value: f64 },
+    #[error("match score must be in [0.0, 1.0] and finite (got {value})")]
+    InvalidScore { value: f64 },
+    #[error("regression factor theta must be in [0.0, 1.0] and finite (got {value})")]
+    InvalidRegressionFactor { value: f64 },
+    #[error("Elo points-per-goal scale must be positive and finite (got {value})")]
+    InvalidPointsPerElo { value: f64 },
+    #[error(
+        "win probability must lie strictly in (0.0, 1.0) to quote moneyline odds (got {value})"
+    )]
+    DegenerateProbability { value: f64 },
+    #[error("team index {index} is out of bounds for roster of length {roster_len}")]
+    PlayerIndexOutOfBounds { index: usize, roster_len: usize },
+    #[error("self-match is not permitted for team index {team_index}")]
+    SelfMatch { team_index: usize },
+    #[error("buffer length mismatch (expected {expected}, got {actual})")]
+    DimensionMismatch { expected: usize, actual: usize },
+}
+
+/// Errors returned by 2D score grids, Poisson/Dixon-Coles models, market pricers, and MLE calibration.
+#[derive(Debug, Clone, PartialEq, Error)]
+#[allow(missing_docs)]
+pub enum MatchModelError {
+    #[error("max_goals {max_goals} exceeds supported grid limit {limit}")]
+    InvalidMaxGoals { max_goals: usize, limit: usize },
+    #[error("expected goal rate must be strictly positive and finite (got {value})")]
+    InvalidGoalRate { value: f64 },
+    #[error("bivariate Poisson component rate must be non-negative and finite (got {value})")]
+    InvalidSharedRate { value: f64 },
+    #[error("shared covariance {covariance} must lie in [0.0, {max_allowed}]")]
+    InvalidCovariance { covariance: f64, max_allowed: f64 },
+    #[error("Dixon-Coles rho {rho} is outside feasible bounds [{min}, {max}]")]
+    InvalidCorrelation { rho: f64, min: f64, max: f64 },
+    #[error("score grid total probability mass must be positive and finite (got {mass})")]
+    InvalidProbabilityMass { mass: f64 },
+    #[error("negative cell probability {value} at score ({home}, {away})")]
+    NegativeCellProbability {
+        home: usize,
+        away: usize,
+        value: f64,
+    },
+    #[error("score ({home}, {away}) exceeds grid max_goals {max_goals}")]
+    ScoreOutOfBounds {
+        home: usize,
+        away: usize,
+        max_goals: usize,
+    },
+    #[error("market line {line} must be finite, valid for market, and aligned to 0.25 increments")]
+    InvalidLine { line: f64 },
+    #[error("market quote is degenerate with active probability {probability}")]
+    DegenerateMarket { probability: f64 },
+    #[error("time-decay parameter xi must be non-negative and finite (got {value})")]
+    InvalidDecayRate { value: f64 },
+    #[error("historical match age must be non-negative and finite (got {value})")]
+    InvalidMatchAge { value: f64 },
+    #[error("insufficient historical matches (required at least {required}, got {actual})")]
+    InsufficientMatches { required: usize, actual: usize },
+    #[error("at least 2 teams are required for calibration (got {count})")]
+    InsufficientTeams { count: usize },
+    #[error("team index {index} is out of bounds for {num_teams} teams")]
+    TeamIndexOutOfBounds { index: usize, num_teams: usize },
+    #[error("self-match is not permitted for team index {team_index}")]
+    SelfMatch { team_index: usize },
+    #[error("Dixon-Coles MLE failed to produce finite parameters after {iterations} iterations")]
+    CalibrationFailed { iterations: usize },
+}
+
 impl std::fmt::Display for MarkovError {
     #[verified_engine::verified]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

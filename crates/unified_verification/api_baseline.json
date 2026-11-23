@@ -7450,6 +7450,9 @@
       "signature": "pub enum CopulaError"
     },
     {
+      "signature": "pub enum EloError"
+    },
+    {
       "signature": "pub enum Glicko2Error"
     },
     {
@@ -7457,6 +7460,9 @@
     },
     {
       "signature": "pub enum MarkovError"
+    },
+    {
+      "signature": "pub enum MatchModelError"
     },
     {
       "signature": "pub enum NumberTheoryError"
@@ -9822,6 +9828,229 @@
       "signature": "pub trait ProbabilityTransform { fn to_uniform (& self , _ : f64) -> Result < Probability , CopulaError > }"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/elo/batch.rs": [
+    {
+      "signature": "impl EloBatchMatch { pub fn from_goals (_ : usize , _ : usize , _ : u32 , _ : u32 , _ : Venue ,) -> Result < Self , EloError > }"
+    },
+    {
+      "signature": "impl EloBatchMatch { pub fn new (_ : usize , _ : usize , _ : f64 , _ : u32 , _ : Venue ,) -> Result < Self , EloError > }"
+    },
+    {
+      "signature": "impl EloBatchMatch { pub fn score_away (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn evaluate_elo_batch (_ : & [EloRating] , _ : & [EloBatchMatch] , _ : & EloConfig ,) -> Result < Vec < EloRating > , EloError >"
+    },
+    {
+      "signature": "pub fn evaluate_elo_batch_into (_ : & [EloRating] , _ : & [EloBatchMatch] , _ : & EloConfig , _ : & mut [f64] , _ : & mut [EloRating] ,) -> Result < () , EloError >"
+    },
+    {
+      "signature": "pub fn evaluate_elo_sequential (_ : & [EloRating] , _ : & [EloBatchMatch] , _ : & EloConfig ,) -> Result < Vec < EloRating > , EloError >"
+    },
+    {
+      "signature": "pub fn evaluate_elo_sequential_into (_ : & [EloRating] , _ : & [EloBatchMatch] , _ : & EloConfig , _ : & mut [EloRating] ,) -> Result < () , EloError >"
+    },
+    {
+      "signature": "pub struct EloBatchMatch"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/elo/core.rs": [
+    {
+      "signature": "impl EloConfig { pub fn home_advantage (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EloConfig { pub fn k_factor (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EloConfig { pub fn margin_scaling (& self) -> MarginScaling }"
+    },
+    {
+      "signature": "impl EloConfig { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : MarginScaling ,) -> Result < Self , EloError > }"
+    },
+    {
+      "signature": "impl EloConfig { pub fn scale (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EloConfig { pub fn with_margin_scaling (self , _ : MarginScaling) -> Self }"
+    },
+    {
+      "signature": "impl EloRating { pub fn new (_ : f64) -> Result < Self , EloError > }"
+    },
+    {
+      "signature": "impl EloRating { pub fn value (& self) -> f64 }"
+    },
+    {
+      "signature": "pub const DEFAULT_ELO_K_FACTOR : f64"
+    },
+    {
+      "signature": "pub const DEFAULT_ELO_RATING : f64"
+    },
+    {
+      "signature": "pub const DEFAULT_ELO_SCALE : f64"
+    },
+    {
+      "signature": "pub const DEFAULT_HOME_ADVANTAGE : f64"
+    },
+    {
+      "signature": "pub enum MarginScaling"
+    },
+    {
+      "signature": "pub enum Venue"
+    },
+    {
+      "signature": "pub struct EloConfig"
+    },
+    {
+      "signature": "pub struct EloRating"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/elo/markets.rs": [
+    {
+      "signature": "pub fn elo_expected_margin (_ : EloRating , _ : EloRating , _ : Venue , _ : & EloConfig , _ : f64 ,) -> Result < f64 , EloError >"
+    },
+    {
+      "signature": "pub fn elo_moneyline_odds (_ : EloRating , _ : EloRating , _ : Venue , _ : & EloConfig ,) -> Result < (Odds , Odds) , EloError >"
+    },
+    {
+      "signature": "pub fn elo_point_spread (_ : EloRating , _ : EloRating , _ : Venue , _ : & EloConfig , _ : f64 ,) -> Result < f64 , EloError >"
+    },
+    {
+      "signature": "pub fn elo_win_probability (_ : EloRating , _ : EloRating , _ : Venue , _ : & EloConfig ,) -> Result < UnitInterval , EloError >"
+    },
+    {
+      "signature": "pub fn probability_to_fair_odds (_ : UnitInterval) -> Result < Odds , EloError >"
+    },
+    {
+      "signature": "pub fn spread_to_elo_diff (_ : f64 , _ : f64) -> Result < f64 , EloError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/elo/mod.rs": [
+    {
+      "signature": "pub use batch :: EloBatchMatch"
+    },
+    {
+      "signature": "pub use batch :: evaluate_elo_batch"
+    },
+    {
+      "signature": "pub use batch :: evaluate_elo_batch_into"
+    },
+    {
+      "signature": "pub use batch :: evaluate_elo_sequential"
+    },
+    {
+      "signature": "pub use batch :: evaluate_elo_sequential_into"
+    },
+    {
+      "signature": "pub use core :: DEFAULT_ELO_K_FACTOR"
+    },
+    {
+      "signature": "pub use core :: DEFAULT_ELO_RATING"
+    },
+    {
+      "signature": "pub use core :: DEFAULT_ELO_SCALE"
+    },
+    {
+      "signature": "pub use core :: DEFAULT_HOME_ADVANTAGE"
+    },
+    {
+      "signature": "pub use core :: EloConfig"
+    },
+    {
+      "signature": "pub use core :: EloRating"
+    },
+    {
+      "signature": "pub use core :: MarginScaling"
+    },
+    {
+      "signature": "pub use core :: Venue"
+    },
+    {
+      "signature": "pub use markets :: elo_expected_margin"
+    },
+    {
+      "signature": "pub use markets :: elo_moneyline_odds"
+    },
+    {
+      "signature": "pub use markets :: elo_point_spread"
+    },
+    {
+      "signature": "pub use markets :: elo_win_probability"
+    },
+    {
+      "signature": "pub use markets :: probability_to_fair_odds"
+    },
+    {
+      "signature": "pub use markets :: spread_to_elo_diff"
+    },
+    {
+      "signature": "pub use update :: adjusted_rating_diff"
+    },
+    {
+      "signature": "pub use update :: autocorrelated_margin_multiplier"
+    },
+    {
+      "signature": "pub use update :: elo_rating_delta"
+    },
+    {
+      "signature": "pub use update :: expected_score"
+    },
+    {
+      "signature": "pub use update :: expected_score_with_config"
+    },
+    {
+      "signature": "pub use update :: log_margin_multiplier"
+    },
+    {
+      "signature": "pub use update :: margin_multiplier"
+    },
+    {
+      "signature": "pub use update :: regress_roster_into"
+    },
+    {
+      "signature": "pub use update :: regress_to_mean"
+    },
+    {
+      "signature": "pub use update :: update_elo_from_goals"
+    },
+    {
+      "signature": "pub use update :: update_elo_ratings"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/elo/update.rs": [
+    {
+      "signature": "pub fn adjusted_rating_diff (_ : EloRating , _ : EloRating , _ : Venue , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn autocorrelated_margin_multiplier (_ : u32 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn elo_rating_delta (_ : EloRating , _ : EloRating , _ : f64 , _ : u32 , _ : Venue , _ : & EloConfig ,) -> Result < f64 , EloError >"
+    },
+    {
+      "signature": "pub fn expected_score (_ : EloRating , _ : EloRating , _ : f64 , _ : f64 ,) -> Result < f64 , EloError >"
+    },
+    {
+      "signature": "pub fn expected_score_with_config (_ : EloRating , _ : EloRating , _ : Venue , _ : & EloConfig ,) -> Result < f64 , EloError >"
+    },
+    {
+      "signature": "pub fn log_margin_multiplier (_ : u32) -> f64"
+    },
+    {
+      "signature": "pub fn margin_multiplier (_ : MarginScaling , _ : u32 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn regress_roster_into (_ : & [EloRating] , _ : EloRating , _ : f64 , _ : & mut [EloRating] ,) -> Result < () , EloError >"
+    },
+    {
+      "signature": "pub fn regress_to_mean (_ : EloRating , _ : EloRating , _ : f64 ,) -> Result < EloRating , EloError >"
+    },
+    {
+      "signature": "pub fn update_elo_from_goals (_ : EloRating , _ : EloRating , _ : u32 , _ : u32 , _ : Venue , _ : & EloConfig ,) -> Result < (EloRating , EloRating) , EloError >"
+    },
+    {
+      "signature": "pub fn update_elo_ratings (_ : EloRating , _ : EloRating , _ : f64 , _ : u32 , _ : Venue , _ : & EloConfig ,) -> Result < (EloRating , EloRating) , EloError >"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/glicko2/core.rs": [
     {
       "signature": "impl GlickoPlayer { pub fn new (_ : Rating , _ : RatingDeviation , _ : Volatility) -> Self }"
@@ -10513,6 +10742,344 @@
     },
     {
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/bivariate_poisson.rs": [
+    {
+      "signature": "impl BivariatePoissonParams { pub fn default_grid (& self) -> Result < ScoreGrid , MatchModelError > }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn from_components (_ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn from_marginals (_ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn lambda_1 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn lambda_2 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn lambda_3 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn marginal_away (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn marginal_home (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "pub fn bivariate_poisson_grid (_ : & BivariatePoissonParams , _ : usize , _ : bool ,) -> Result < ScoreGrid , MatchModelError >"
+    },
+    {
+      "signature": "pub fn bivariate_poisson_pmf (_ : & BivariatePoissonParams , _ : usize , _ : usize) -> f64"
+    },
+    {
+      "signature": "pub struct BivariatePoissonParams"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/calibration.rs": [
+    {
+      "signature": "impl DixonColesMleConfig { pub fn decay_xi (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DixonColesMleConfig { pub fn grad_clip (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DixonColesMleConfig { pub fn learning_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DixonColesMleConfig { pub fn max_iterations (& self) -> usize }"
+    },
+    {
+      "signature": "impl DixonColesMleConfig { pub fn new (_ : f64 , _ : f64 , _ : usize , _ : f64 , _ : f64 ,) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl DixonColesMleConfig { pub fn tolerance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl FittedDixonColes { pub fn match_params (& self , _ : usize , _ : usize ,) -> Result < DixonColesParams , MatchModelError > }"
+    },
+    {
+      "signature": "impl FittedDixonColes { pub fn predict_grid (& self , _ : usize , _ : usize , _ : usize , _ : bool ,) -> Result < ScoreGrid , MatchModelError > }"
+    },
+    {
+      "signature": "impl HistoricalMatch { pub fn new (_ : usize , _ : usize , _ : u32 , _ : u32 , _ : f64 ,) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "pub fn fit_dixon_coles_mle (_ : & [HistoricalMatch] , _ : usize , _ : & DixonColesMleConfig ,) -> Result < FittedDixonColes , MatchModelError >"
+    },
+    {
+      "signature": "pub fn fit_dixon_coles_with_optimizer (_ : & [HistoricalMatch] , _ : usize , _ : & DixonColesMleConfig , _ : & mut dyn Optimizer < f64 , usize > ,) -> Result < FittedDixonColes , MatchModelError >"
+    },
+    {
+      "signature": "pub struct DixonColesMleConfig"
+    },
+    {
+      "signature": "pub struct FittedDixonColes"
+    },
+    {
+      "signature": "pub struct HistoricalMatch"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/dixon_coles.rs": [
+    {
+      "signature": "impl DixonColesParams { pub fn default_grid (& self) -> Result < ScoreGrid , MatchModelError > }"
+    },
+    {
+      "signature": "impl DixonColesParams { pub fn lambda (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DixonColesParams { pub fn mu (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DixonColesParams { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl DixonColesParams { pub fn rho (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn dixon_coles_grid (_ : & DixonColesParams , _ : usize , _ : bool ,) -> Result < ScoreGrid , MatchModelError >"
+    },
+    {
+      "signature": "pub fn dixon_coles_rho_bounds (_ : f64 , _ : f64) -> Result < (f64 , f64) , MatchModelError >"
+    },
+    {
+      "signature": "pub fn dixon_coles_tau (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct DixonColesParams"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/grid.rs": [
+    {
+      "signature": "impl ScoreGrid { pub fn active_mass (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn expected_away_goals (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn expected_home_goals (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn from_fn < F > (_ : usize , _ : bool , _ : F) -> Result < Self , MatchModelError > where F : FnMut (usize , usize) -> f64 , }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn from_row_major_slice (_ : usize , _ : & [f64] , _ : bool ,) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn is_normalized (& self) -> bool }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn max_goals (& self) -> usize }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn normalized (& self) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn prob (& self , _ : usize , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn tail_mass (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn try_prob (& self , _ : usize , _ : usize) -> Result < f64 , MatchModelError > }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn unnormalized_mass (& self) -> f64 }"
+    },
+    {
+      "signature": "pub const DEFAULT_MAX_GOALS : usize"
+    },
+    {
+      "signature": "pub const GRID_CAPACITY : usize"
+    },
+    {
+      "signature": "pub const GRID_STRIDE : usize"
+    },
+    {
+      "signature": "pub const MAX_GOALS_LIMIT : usize"
+    },
+    {
+      "signature": "pub struct ScoreGrid"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/markets.rs": [
+    {
+      "signature": "impl AsianHandicapQuote { pub fn fair_odds (& self) -> Result < (Odds , Odds) , MatchModelError > }"
+    },
+    {
+      "signature": "impl BttsQuote { pub fn fair_odds (& self) -> Result < (Odds , Odds) , MatchModelError > }"
+    },
+    {
+      "signature": "impl DrawNoBetQuote { pub fn fair_odds (& self) -> Result < (Odds , Odds) , MatchModelError > }"
+    },
+    {
+      "signature": "impl OneXTwoQuote { pub fn fair_odds (& self) -> Result < (Odds , Odds , Odds) , MatchModelError > }"
+    },
+    {
+      "signature": "impl OverUnderQuote { pub fn fair_odds (& self) -> Result < (Odds , Odds) , MatchModelError > }"
+    },
+    {
+      "signature": "pub fn asian_handicap (_ : & ScoreGrid , _ : f64) -> Result < AsianHandicapQuote , MatchModelError >"
+    },
+    {
+      "signature": "pub fn btts (_ : & ScoreGrid) -> BttsQuote"
+    },
+    {
+      "signature": "pub fn draw_no_bet (_ : & ScoreGrid) -> Result < DrawNoBetQuote , MatchModelError >"
+    },
+    {
+      "signature": "pub fn one_x_two (_ : & ScoreGrid) -> OneXTwoQuote"
+    },
+    {
+      "signature": "pub fn over_under (_ : & ScoreGrid , _ : f64) -> Result < OverUnderQuote , MatchModelError >"
+    },
+    {
+      "signature": "pub struct AsianHandicapQuote"
+    },
+    {
+      "signature": "pub struct BttsQuote"
+    },
+    {
+      "signature": "pub struct DrawNoBetQuote"
+    },
+    {
+      "signature": "pub struct OneXTwoQuote"
+    },
+    {
+      "signature": "pub struct OverUnderQuote"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/mod.rs": [
+    {
+      "signature": "pub use bivariate_poisson :: BivariatePoissonParams"
+    },
+    {
+      "signature": "pub use bivariate_poisson :: bivariate_poisson_grid"
+    },
+    {
+      "signature": "pub use bivariate_poisson :: bivariate_poisson_pmf"
+    },
+    {
+      "signature": "pub use calibration :: DixonColesMleConfig"
+    },
+    {
+      "signature": "pub use calibration :: FittedDixonColes"
+    },
+    {
+      "signature": "pub use calibration :: HistoricalMatch"
+    },
+    {
+      "signature": "pub use calibration :: fit_dixon_coles_mle"
+    },
+    {
+      "signature": "pub use calibration :: fit_dixon_coles_with_optimizer"
+    },
+    {
+      "signature": "pub use dixon_coles :: DixonColesParams"
+    },
+    {
+      "signature": "pub use dixon_coles :: dixon_coles_grid"
+    },
+    {
+      "signature": "pub use dixon_coles :: dixon_coles_rho_bounds"
+    },
+    {
+      "signature": "pub use dixon_coles :: dixon_coles_tau"
+    },
+    {
+      "signature": "pub use grid :: DEFAULT_MAX_GOALS"
+    },
+    {
+      "signature": "pub use grid :: GRID_CAPACITY"
+    },
+    {
+      "signature": "pub use grid :: GRID_STRIDE"
+    },
+    {
+      "signature": "pub use grid :: MAX_GOALS_LIMIT"
+    },
+    {
+      "signature": "pub use grid :: ScoreGrid"
+    },
+    {
+      "signature": "pub use markets :: AsianHandicapQuote"
+    },
+    {
+      "signature": "pub use markets :: BttsQuote"
+    },
+    {
+      "signature": "pub use markets :: DrawNoBetQuote"
+    },
+    {
+      "signature": "pub use markets :: OneXTwoQuote"
+    },
+    {
+      "signature": "pub use markets :: OverUnderQuote"
+    },
+    {
+      "signature": "pub use markets :: asian_handicap"
+    },
+    {
+      "signature": "pub use markets :: btts"
+    },
+    {
+      "signature": "pub use markets :: draw_no_bet"
+    },
+    {
+      "signature": "pub use markets :: one_x_two"
+    },
+    {
+      "signature": "pub use markets :: over_under"
+    },
+    {
+      "signature": "pub use poisson :: IndependentPoissonParams"
+    },
+    {
+      "signature": "pub use poisson :: independent_poisson_grid"
+    },
+    {
+      "signature": "pub use poisson :: log_factorial"
+    },
+    {
+      "signature": "pub use poisson :: poisson_log_pmf"
+    },
+    {
+      "signature": "pub use poisson :: poisson_pmf"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/poisson.rs": [
+    {
+      "signature": "impl IndependentPoissonParams { pub fn default_grid (& self) -> Result < ScoreGrid , MatchModelError > }"
+    },
+    {
+      "signature": "impl IndependentPoissonParams { pub fn lambda (& self) -> f64 }"
+    },
+    {
+      "signature": "impl IndependentPoissonParams { pub fn mu (& self) -> f64 }"
+    },
+    {
+      "signature": "impl IndependentPoissonParams { pub fn new (_ : f64 , _ : f64) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "pub fn independent_poisson_grid (_ : & IndependentPoissonParams , _ : usize , _ : bool ,) -> Result < ScoreGrid , MatchModelError >"
+    },
+    {
+      "signature": "pub fn log_factorial (_ : usize) -> f64"
+    },
+    {
+      "signature": "pub fn poisson_log_pmf (_ : f64 , _ : usize) -> f64"
+    },
+    {
+      "signature": "pub fn poisson_pmf (_ : f64 , _ : usize) -> f64"
+    },
+    {
+      "signature": "pub struct IndependentPoissonParams"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/ou_process/analysis.rs": [
@@ -11600,6 +12167,9 @@
       "signature": "pub use pure_math :: error :: EllipticCurveError"
     },
     {
+      "signature": "pub use pure_math :: error :: EloError"
+    },
+    {
       "signature": "pub use pure_math :: error :: EvolutionError"
     },
     {
@@ -11616,6 +12186,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: MarkovError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: MatchModelError"
     },
     {
       "signature": "pub use pure_math :: error :: NumberTheoryError"

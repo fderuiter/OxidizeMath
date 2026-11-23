@@ -1,6 +1,6 @@
 use super::{
-    CopulaError, Glicko2Error, KellyError, MarkovError, NumberTheoryError, OuError, TdaError,
-    ZipError,
+    CopulaError, EloError, Glicko2Error, KellyError, MarkovError, MatchModelError,
+    NumberTheoryError, OuError, TdaError, ZipError,
 };
 use crate::pure_math::{
     algebra::linear_algebra::numerical::LinearAlgebraError,
@@ -116,6 +116,30 @@ impl Diagnostic for Glicko2Error {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("Glicko2Error", self.to_string())
+    }
+}
+
+impl Diagnostic for EloError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("EloError", self.to_string())
+    }
+}
+
+impl Diagnostic for MatchModelError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("MatchModelError", self.to_string())
     }
 }
 

@@ -9,8 +9,13 @@
 //! ## Core Domains
 //!
 //! ###  Competitive Ranking
+//! *   **[Sports Elo](elo)**: Venue-adjusted club ratings with win-margin multipliers, seasonal mean regression,
+//!     frozen-period batch updates, and fair moneyline/spread converters.
 //! *   **[Glicko-2](glicko2)**: The gold standard for player rating systems (Chess, CS:GO).
 //!     Tracks rating volatility and deviation to handle inactive players correctly.
+//! *   **[Match Score Models](match_models)**: Bounded 2D score grids for independent Poisson,
+//!     Karlis-Ntzoufras bivariate Poisson, and calibrated Dixon-Coles models with exact 1X2, DNB,
+//!     Asian handicap, Over/Under, and BTTS pricing.
 //!
 //! ###  Stochastic Processes
 //! *   **[Markov Chains](markov)**: Discrete-Time (DTMC), Continuous-Time (CTMC), and Hidden Markov Models (HMM).
@@ -97,9 +102,11 @@
 //! ```
 
 pub mod copula;
+pub mod elo;
 pub mod glicko2;
 pub mod kelly;
 pub mod markov;
+pub mod match_models;
 pub mod ou_process;
 pub mod regression;
 pub mod tda;

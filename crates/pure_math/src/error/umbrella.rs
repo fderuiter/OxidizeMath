@@ -1,7 +1,8 @@
 use super::{
-    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
-    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
+    FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarkovError, MatchModelError,
+    NumberTheoryError, OptimizationError, OuError, StochasticError, TdaError, TensorError,
+    TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -17,6 +18,9 @@ pub enum PureMathError {
     /// Copula modeling error.
     #[error("{0}")]
     Copula(#[from] CopulaError),
+    /// Sports Elo rating error.
+    #[error("{0}")]
+    Elo(#[from] EloError),
     /// Glicko-2 rating error.
     #[error("{0}")]
     Glicko2(#[from] Glicko2Error),
@@ -26,6 +30,9 @@ pub enum PureMathError {
     /// Markov process error.
     #[error("{0}")]
     Markov(#[from] MarkovError),
+    /// Calibrated 2D score-grid match model error.
+    #[error("{0}")]
+    MatchModel(#[from] MatchModelError),
     /// Number theory error.
     #[error("{0}")]
     NumberTheory(#[from] NumberTheoryError),
@@ -116,9 +123,11 @@ impl PureMathError {
     fn as_diagnostic(&self) -> &dyn Diagnostic {
         match self {
             Self::Copula(err) => err,
+            Self::Elo(err) => err,
             Self::Glicko2(err) => err,
             Self::Kelly(err) => err,
             Self::Markov(err) => err,
+            Self::MatchModel(err) => err,
             Self::NumberTheory(err) => err,
             Self::Ou(err) => err,
             Self::Tda(err) => err,

@@ -144,7 +144,9 @@ fn assert_pure_math_eighteen_errors() {
         e::ZipError::InvalidCount { value: -1.0 }.severity(),
         e::TdaError::EmptyPointCloud.severity(),
         e::CopulaError::NotSymmetric.severity(),
+        e::EloError::InvalidScale { value: 0.0 }.severity(),
         e::Glicko2Error::EmptyMatchResults.severity(),
+        e::MatchModelError::InvalidGoalRate { value: 0.0 }.severity(),
         e::AnalysisError::ConvergenceError(0.0).severity(),
         e::EllipticCurveError::InvalidDegree.severity(),
         e::EvolutionError::InvalidState.severity(),
@@ -197,6 +199,13 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors
     let (a, b) = (g.add_node("a"), g.add_node("b"));
     g.add_edge(a, b, 1.0);
     assert_eq!(g.node_count(), 2);
+    let r = math_explorer::pure_math::statistics::elo::EloRating::default();
+    assert_eq!(r.value(), 1500.0);
+    let dc = math_explorer::pure_math::statistics::match_models::DixonColesParams::new(
+        1.35, 1.15, -0.13,
+    )
+    .expect("valid Dixon-Coles params");
+    assert!(dc.default_grid().expect("valid score grid").prob(0, 0) > 0.09);
     assert_pure_math_eighteen_errors();
 }
 

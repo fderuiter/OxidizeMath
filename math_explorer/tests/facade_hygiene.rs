@@ -157,7 +157,7 @@ mod native {
                 }
             }
         }
-        assert_eq!(crate_enums.len(), 27);
+        assert_eq!(crate_enums.len(), 29);
         for enum_name in &crate_enums {
             assert!(
                 facade_error_src.contains(enum_name),
