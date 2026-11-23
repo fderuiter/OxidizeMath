@@ -79,6 +79,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         | "AlgorithmicFractranTool"
         | "AlgorithmicComplexityTool" => &["algorithmic_information_rust"],
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
+        "PhysarumTool" => &["biology", "dijkstra"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
         _ => &[],
@@ -98,11 +99,9 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
         "game_theory" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
-        "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" => &["clinical_trials_statistics"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
-        "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
         "ai" => &["graph_parameters_rust"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         "relativity" => &[

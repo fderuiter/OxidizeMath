@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 pub mod atlas;
 pub mod lenia;
+pub mod physarum;
 pub mod presets;
 pub mod runner;
 mod seeding;
@@ -57,7 +58,7 @@ pub struct LegacyMorphoState {
     pub pending_initial_start: bool,
 }
 
-/// Biology tab hosting [`MorphogenesisTool`] and [`lenia::LeniaTool`] inside [`crate::framework::SimulationFramework`].
+/// Biology tab hosting [`MorphogenesisTool`], [`lenia::LeniaTool`], and [`physarum::PhysarumTool`] inside [`crate::framework::SimulationFramework`].
 pub struct MorphogenesisTab {
     /// Underlying simulation framework managing exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,
