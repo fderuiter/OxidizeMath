@@ -267,10 +267,12 @@ mod tests {
                 [dod as f64, life70]
             })
             .collect();
-        let fit = egui_plot::fit_model(
+        let fit = egui_plot::fit_model_with_axes(
             &n70_curve,
             egui_plot::FitType::PowerLaw,
             "PowerLawModel::n70",
+            false,
+            false,
             false,
         )
         .expect("power law fit");

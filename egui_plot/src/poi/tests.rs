@@ -249,8 +249,8 @@ fn clicking_poi_marker_pins_saved_callout_and_formats_table_exports() {
 
     let items: Vec<Box<dyn PlotItem>> = vec![Box::new(Line::new("Ramp", pts))];
     let pois = detect_critical_points(&items, &make_transform([-3.0, -3.0], [3.0, 3.0]));
-    let tsv = crate::format_pois_tsv(&pois);
-    let csv = crate::format_pois_csv(&pois);
+    let tsv = crate::data_table::format::format_pois_tsv(&pois);
+    let csv = crate::data_table::format::format_pois_csv(&pois);
     assert!(tsv.contains("Category\tSeries\tX\tY\nRoot\tRamp\t"));
     assert!(csv.contains("Category,Series,X,Y\nRoot,Ramp,"));
 }
