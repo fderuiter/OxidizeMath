@@ -73,7 +73,11 @@ impl PotentialFlowTool {
         }
         let u_inf = ux.hypot(uy);
         let lift = -u_inf * gamma;
-        let drag = if net_q.abs() <= 1e-6 { 0.0 } else { (u_inf * net_q).abs() };
+        let drag = if net_q.abs() <= 1e-6 {
+            0.0
+        } else {
+            (u_inf * net_q).abs()
+        };
         (u_inf, gamma, lift, drag)
     }
 
@@ -120,10 +124,9 @@ impl PotentialFlowTool {
 
     fn is_near_singularity(&self, x: f64, y: f64) -> bool {
         let min_r = (self.view_range * 0.025).max(0.12);
-        self.elements.iter().any(|el| {
-            el.element_type != ElementType::Uniform
-                && (x - el.x).hypot(y - el.y) < min_r
-        })
+        self.elements
+            .iter()
+            .any(|el| el.element_type != ElementType::Uniform && (x - el.x).hypot(y - el.y) < min_r)
     }
 
     fn max_source_jump(&self) -> f64 {
@@ -148,7 +151,11 @@ impl PotentialFlowTool {
         }
         let jump_cap = {
             let q = self.max_source_jump();
-            if q > 1e-6 { 0.42 * q } else { f64::INFINITY }
+            if q > 1e-6 {
+                0.42 * q
+            } else {
+                f64::INFINITY
+            }
         };
         let step = (2.0 * self.view_range) / (CONTOUR_GRID_N as f64);
         let min = -self.view_range;
@@ -166,7 +173,12 @@ impl PotentialFlowTool {
                 let Some(vals) = unpack_cell(cell, jump_cap) else {
                     continue;
                 };
-                let corners = [[x0, y0], [x0 + step, y0], [x0 + step, y0 + step], [x0, y0 + step]];
+                let corners = [
+                    [x0, y0],
+                    [x0 + step, y0],
+                    [x0 + step, y0 + step],
+                    [x0, y0 + step],
+                ];
                 for &lvl in &levels {
                     emit_cell_iso_segments(corners, vals, lvl, &mut segments);
                 }
@@ -241,7 +253,10 @@ impl PotentialFlowTool {
                     continue;
                 }
                 if let Some(pt) = self.refine_stagnation(seed, ref_speed, cyl) {
-                    if found.iter().all(|p| (p[0] - pt[0]).hypot(p[1] - pt[1]) > 0.25) {
+                    if found
+                        .iter()
+                        .all(|p| (p[0] - pt[0]).hypot(p[1] - pt[1]) > 0.25)
+                    {
                         found.push(pt);
                     }
                 }
@@ -265,8 +280,10 @@ impl PotentialFlowTool {
             if v.norm() < ref_speed * 1e-4 {
                 break;
             }
-            let vx = (self.field.velocity(p[0] + h, p[1]) - self.field.velocity(p[0] - h, p[1])) / (2.0 * h);
-            let vy = (self.field.velocity(p[0], p[1] + h) - self.field.velocity(p[0], p[1] - h)) / (2.0 * h);
+            let vx = (self.field.velocity(p[0] + h, p[1]) - self.field.velocity(p[0] - h, p[1]))
+                / (2.0 * h);
+            let vy = (self.field.velocity(p[0], p[1] + h) - self.field.velocity(p[0], p[1] - h))
+                / (2.0 * h);
             let det = vx.x * vy.y - vx.y * vy.x;
             if !det.is_finite() || det.abs() < 1e-10 {
                 return None;
@@ -372,8 +389,15 @@ mod tests {
     #[test]
     fn test_cylinder_streamlines_stagnation_and_kutta_lift() {
         let tool = PotentialFlowTool::default();
-        assert!(!tool.cached_polylines.is_empty(), "streamline contours must be generated");
-        assert_eq!(tool.cached_stagnation.len(), 2, "symmetric cylinder has 2 stagnation points");
+        assert!(
+            !tool.cached_polylines.is_empty(),
+            "streamline contours must be generated"
+        );
+        assert_eq!(
+            tool.cached_stagnation.len(),
+            2,
+            "symmetric cylinder has 2 stagnation points"
+        );
 
         let mut spinning = PotentialFlowTool::default();
         spinning.elements.push(SerializedFlowElement {
@@ -385,7 +409,11 @@ mod tests {
         });
         spinning.rebuild_field();
         let obs = spinning.flow_observables();
-        let lift = obs.iter().find(|(k, _)| *k == "kutta_joukowski_lift").unwrap().1;
+        let lift = obs
+            .iter()
+            .find(|(k, _)| *k == "kutta_joukowski_lift")
+            .unwrap()
+            .1;
         let drag = obs.iter().find(|(k, _)| *k == "pressure_drag").unwrap().1;
         assert!(lift > 1250.0 && drag.abs() < 1e-9);
         assert_eq!(spinning.cached_stagnation.len(), 2);

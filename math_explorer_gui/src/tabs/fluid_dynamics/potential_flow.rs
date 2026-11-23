@@ -251,14 +251,29 @@ impl PotentialFlowTool {
             }
             ui.separator();
             ui.label("Strength / Velocity");
-            ui.add(bounded_drag_value(&mut self.new_element_strength, FLOW_STRENGTH_MIN..=FLOW_STRENGTH_MAX, 0.1));
+            ui.add(bounded_drag_value(
+                &mut self.new_element_strength,
+                FLOW_STRENGTH_MIN..=FLOW_STRENGTH_MAX,
+                0.1,
+            ));
             if self.selected_element_type == ElementType::Uniform {
-                ui.add(egui::Slider::new(&mut self.new_element_angle, FLOW_ANGLE_MIN..=FLOW_ANGLE_MAX).text("Angle (degrees)"));
+                ui.add(
+                    egui::Slider::new(&mut self.new_element_angle, FLOW_ANGLE_MIN..=FLOW_ANGLE_MAX)
+                        .text("Angle (degrees)"),
+                );
             } else {
                 ui.label("Position X");
-                ui.add(bounded_drag_value(&mut self.new_element_x, FLOW_POS_MIN..=FLOW_POS_MAX, 0.1));
+                ui.add(bounded_drag_value(
+                    &mut self.new_element_x,
+                    FLOW_POS_MIN..=FLOW_POS_MAX,
+                    0.1,
+                ));
                 ui.label("Position Y");
-                ui.add(bounded_drag_value(&mut self.new_element_y, FLOW_POS_MIN..=FLOW_POS_MAX, 0.1));
+                ui.add(bounded_drag_value(
+                    &mut self.new_element_y,
+                    FLOW_POS_MIN..=FLOW_POS_MAX,
+                    0.1,
+                ));
             }
             if ui
                 .button("➕ Add Element")
@@ -318,9 +333,7 @@ impl PotentialFlowTool {
                 egui::Slider::new(&mut self.grid_size, 10..=max_grid)
                     .text("Visualization - Grid Density"),
             );
-            ui.add(
-                egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"),
-            );
+            ui.add(egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"));
             let (u_inf, gamma, lift, drag) = self.aerodynamic_summary();
             ui.separator();
             ui.add(

@@ -102,7 +102,9 @@ impl ReplicatorDynamicsTool {
             }
             if ui
                 .button("🔒 Prisoner's Dilemma")
-                .accessible_hover_text("Load Prisoner's Dilemma where Defection lowers mean fitness")
+                .accessible_hover_text(
+                    "Load Prisoner's Dilemma where Defection lowers mean fitness",
+                )
                 .clicked()
             {
                 self.load_preset_prisoners_dilemma();

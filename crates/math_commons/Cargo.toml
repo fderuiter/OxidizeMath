@@ -17,11 +17,5 @@ num-complex = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 
-[dev-dependencies]
-approx = { workspace = true }
-
 [lints]
 workspace = true
-
-[package.metadata.cargo-machete]
-ignored = ["serde"]
