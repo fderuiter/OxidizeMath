@@ -1091,9 +1091,11 @@ dependencies = [
  "domain_applied",
  "math_commons",
  "nalgebra 0.34.2",
+ "num-complex",
  "oxidize_core",
  "pure_math",
  "rand",
+ "rustfft",
  "thiserror 2.0.21",
  "verified_engine",
 ]

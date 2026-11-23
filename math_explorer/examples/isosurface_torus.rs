@@ -34,7 +34,7 @@ fn generate_torus_sdf(
     depth: usize,
     major_radius: f32,
     minor_radius: f32,
-) -> VoxelGrid {
+) -> math_explorer::error::Result<VoxelGrid> {
     let min_bound = -4.0;
     let max_bound = 4.0;
     let range = max_bound - min_bound;
@@ -56,18 +56,18 @@ fn generate_torus_sdf(
         }
     }
 
-    VoxelGrid::builder()
+    let grid = VoxelGrid::builder()
         .dimensions(width, height, depth)
         .data(data)
         .voxel_size(Point3D::new(step, step, step))
         .origin(Point3D::new(min_bound, min_bound, min_bound))
-        .build()
-        .unwrap()
+        .build()?;
+    Ok(grid)
 }
 
 /// This example generates a mesh for a Torus using the Marching Cubes algorithm
 /// and exports it to a Wavefront OBJ file.
-fn main() -> std::io::Result<()> {
+fn main() -> math_explorer::error::Result<()> {
     // Header
     println!();
     println!("{}🍩 Torus Generator 3000{}", Color::Magenta, Color::Reset);
@@ -105,14 +105,14 @@ fn main() -> std::io::Result<()> {
     );
     println!();
 
-    let grid = generate_torus_sdf(width, height, depth, major_radius, minor_radius);
+    let grid = generate_torus_sdf(width, height, depth, major_radius, minor_radius)?;
 
     println!(
         "{}⛏️  Extracting Isosurface using Marching Cubes...{}",
         Color::Yellow,
         Color::Reset
     );
-    let mesh = extract_isosurface(&grid, 0.0).expect("Failed to extract isosurface");
+    let mesh = extract_isosurface(&grid, 0.0)?;
     println!(
         "   Generated {}{}{} triangles.",
         Color::Bold,
@@ -123,7 +123,7 @@ fn main() -> std::io::Result<()> {
 
     // Export to OBJ
     let filename = "torus.obj";
-    let obj_str = math_explorer::mesh::export_mesh_to_obj_string(&mesh).unwrap();
+    let obj_str = math_explorer::mesh::export_mesh_to_obj_string(&mesh)?;
     let mut file = File::create(filename)?;
     file.write_all(obj_str.as_bytes())?;
 
