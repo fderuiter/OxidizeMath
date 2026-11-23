@@ -24,7 +24,7 @@ fn render_tool_frame(tool: &mut dyn InteractiveTool) {
 }
 
 #[test]
-fn solid_state_tab_selects_all_five_tools() {
+fn solid_state_tab_selects_all_six_tools() {
     let mut tab = SolidStateTab::default();
     for id in [
         "BandStructureTool",
@@ -32,6 +32,7 @@ fn solid_state_tab_selects_all_five_tools() {
         "IsingModelTool",
         "QuasicrystalDiffractionTool",
         "BcsSuperconductivityTool",
+        "AbelianSandpileStudio",
     ] {
         assert!(
             tab.select_tool_by_name(id),

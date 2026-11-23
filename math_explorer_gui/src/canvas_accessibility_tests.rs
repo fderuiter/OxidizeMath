@@ -89,6 +89,12 @@ fn test_ai_custom_canvases_receive_tab_focus_and_accesskit_labels() {
 
     let mut grid_world = crate::tabs::ai::grid_world::GridWorldTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut grid_world, "Grid World Visualization");
+
+    let mut closed_loop = crate::tabs::ai::closed_loop_control::ClosedLoopControlTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut closed_loop,
+        "Closed-Loop Phase & Perturbation Visualization",
+    );
 }
 
 #[cfg(feature = "pure_math")]
@@ -177,5 +183,11 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
     assert_tool_canvas_tab_focus_and_accesskit_label(
         &mut qc,
         "Reciprocal-Space Bragg Diffraction Map",
+    );
+
+    let mut sandpile = crate::tabs::solid_state::sandpile::AbelianSandpileStudio::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut sandpile,
+        "2D Abelian Sandpile Lattice & Recurrent Crystal",
     );
 }

@@ -147,7 +147,6 @@ pub struct QuasicrystalDiffractionTool {
     pub(crate) bragg_ws: BraggWorkspace,
     pub(crate) periodic_coords: Vec<[f64; 2]>,
     pub(crate) texture: Option<egui::TextureHandle>,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) last_theme: Option<ThemeMode>,
     pub(crate) dirty: bool,
     pub(crate) state_rev: u64,
@@ -161,7 +160,6 @@ impl Default for QuasicrystalDiffractionTool {
             bragg_ws: BraggWorkspace::new(128),
             periodic_coords: Vec::with_capacity(512),
             texture: None,
-            focused_canvas: None,
             last_theme: None,
             dirty: true,
             state_rev: 1,
@@ -272,9 +270,6 @@ impl InteractiveTool for QuasicrystalDiffractionTool {
     }
     fn state_revision(&self) -> u64 {
         self.state_rev
-    }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds {

@@ -8,6 +8,7 @@ pub mod bcs_superconductivity;
 pub mod crystal_viewer;
 pub mod ising;
 pub mod quasicrystal_diffraction;
+pub mod sandpile;
 
 #[cfg(test)]
 mod tests;

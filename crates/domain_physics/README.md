@@ -17,7 +17,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
 - **`solid_state`**: Periodic Bravais lattices (`SimpleCubic`, `BodyCenteredCubic`, `FaceCenteredCubic`), cut-and-project quasicrystals (`Fibonacci1D`, `Penrose5Fold`, `AmmannBeenker8Fold`, `Penrose10Fold`, `Stampfli12Fold`) with phason flip tracking, reciprocal-lattice bases, Brillouin zones, zero-allocation kinematic Bragg structure factors (`BraggWorkspace`), 1D Fibonacci and Aubry-André quasiperiodic eigensolvers (`QuasiperiodicWorkspace`), isotropic s-wave BCS pairing (`BcsGapSolver`, `IsotropicBCSModel`, `coherence_factors_strong`), Debye/Einstein phonons, Fröhlich coupling, and Thomas-Fermi/Yukawa screening.
-- **`stat_mech`**: Ising spin lattices and canonical ensemble thermodynamic calculations.
+- **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, and zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`).
 - **`optics`**: Geometric ray tracing, refractive boundary equations, and closed-form Fraunhofer wave diffraction (complemented by full-field 2D time-domain multi-slit and refractive-lens wave tank simulation in `pure_math::analysis::pde::wave_2d`).
 
 ---
