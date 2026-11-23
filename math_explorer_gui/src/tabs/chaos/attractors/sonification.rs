@@ -88,8 +88,8 @@ impl AttractorPlotter {
             .build(LorenzState::new(v.x, v.y, v.z));
         let dt = self.dt.clamp(0.001, 0.05);
         let substeps = self.simulation_speed.clamp(1, super::MAX_SIMULATION_SPEED);
-        let custom_job =
-            (self.mode == AttractorMode::Custom).then(|| CompiledFlowJob::from_bank(&self.flow_bank));
+        let custom_job = (self.mode == AttractorMode::Custom)
+            .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
         let mut out = Vec::with_capacity(count);
         for _ in 0..count {
             let mut bad = false;

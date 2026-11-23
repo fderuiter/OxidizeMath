@@ -122,15 +122,16 @@ fn test_ast_visitor_allow_recursion_preserves_verification_counts() {
 }
 
 #[test]
-fn test_doc_examples_mentioning_verified_or_embed_theory_are_ignored() {
+fn test_ast_visitor_ignores_macro_examples_in_doc_comments() {
     let code = r#"
+        /// Example:
         /// ```rust
         /// use verified_engine_macros::embed_theory;
         /// #[embed_theory("papers/mmwave_radiotherapy_setup.tex", label = "eq:range")]
         /// #[verified]
         /// pub fn demo() {}
         /// ```
-        pub fn proc_macro_stub() {}
+        pub fn macro_entrypoint() {}
 
         /// Documented reference [cite:ai]
         #[verified]
