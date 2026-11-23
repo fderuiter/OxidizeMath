@@ -1,18 +1,23 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 //! Zero-allocation 3D triangle projection, cutting-plane contour tracing, radial node counting,
-//! and manifold Wavefront `.obj` export for [`super::VolumetricEngine`].
+//! and watertight millimeter-scaled 3D solid mesh export for [`super::VolumetricEngine`].
 // [cite:isosurface_extraction]
 
-use super::super::state::{VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT};
+use super::super::state::{FieldSourceMode, VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT};
 use super::VolumetricEngine;
 use crate::camera::Camera3D;
 use crate::volumetric_scene::VolumeCutFilter;
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::applied::isosurface::{
-    CentralDifferenceEstimator, IsosurfaceWorkspace, MarchingCubes, VoxelGrid,
+    extract_capped_isosurface, extract_capped_isosurface_into, CutPlaneCap, VoxelGrid,
 };
-use oxidize_core::mesh::{export_mesh_to_obj_string, Mesh, Point3D as CorePoint3D};
+use math_explorer::biology::diffusion::FiniteDifference3D;
+use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use math_explorer::math_kernel::types::flatten_3d_index;
+#[cfg(test)]
+use oxidize_core::mesh::export_mesh_to_obj_string;
+use oxidize_core::mesh::{scale_mesh_to_millimeters, Mesh, Point3D as CorePoint3D};
 
 /// Maximum painter facets emitted per frame to keep `egui_plot::Polygon` crisp at 60 FPS.
 pub const MAX_RENDERED_FACETS: usize = 2_400;
@@ -44,6 +49,12 @@ pub fn project_meshes_into(
     if cap == 0 {
         return;
     }
+    let effective_cap = if let Some(c) = cut {
+        let frac = (((c.max_coord / STUDIO_VIEWPORT_EXTENT.max(1e-6)) + 1.0) * 0.5).clamp(0.2, 0.9);
+        ((cap as f64) * frac).round().max(1.0) as usize
+    } else {
+        cap
+    };
     let total_tris = (pos_mesh.indices.len() / 3)
         + if has_neg {
             neg_mesh.indices.len() / 3
@@ -53,21 +64,19 @@ pub fn project_meshes_into(
     if total_tris == 0 {
         return;
     }
-    let stride = (total_tris / cap).max(1);
+    let stride = total_tris.div_ceil(effective_cap).max(1);
     let pos_base = [58_u8, 170_u8, 250_u8];
     let neg_base = [248_u8, 118_u8, 62_u8];
-    append_projected_mesh(pos_mesh, pos_base, false, stride, cut, camera, cap, out);
-    if has_neg && out.len() < cap {
-        append_projected_mesh(neg_mesh, neg_base, true, stride, cut, camera, cap, out);
+    append_projected_mesh(pos_mesh, pos_base, stride, cut, camera, effective_cap, out);
+    if has_neg && out.len() < effective_cap {
+        append_projected_mesh(neg_mesh, neg_base, stride, cut, camera, effective_cap, out);
     }
     out.sort_unstable_by(|a, b| a.depth.total_cmp(&b.depth));
 }
 
-#[allow(clippy::too_many_arguments)]
 fn append_projected_mesh(
     mesh: &Mesh,
     rgb: [u8; 3],
-    invert_normal: bool,
     stride: usize,
     cut: Option<VolumeCutFilter>,
     camera: &Camera3D,
@@ -88,7 +97,7 @@ fn append_projected_mesh(
             let cx = ((v0.x + v1.x + v2.x) as f64) / 3.0;
             let cy = ((v0.y + v1.y + v2.y) as f64) / 3.0;
             let cz = ((v0.z + v1.z + v2.z) as f64) / 3.0;
-            if [cx, cy, cz][c.axis.min(2)] > c.max_coord {
+            if [cx, cy, cz][c.axis.min(2)] > c.max_coord + 1.0e-3 {
                 continue;
             }
         }
@@ -100,12 +109,7 @@ fn append_projected_mesh(
             .get(i0)
             .copied()
             .unwrap_or(CorePoint3D::new(0.0, 0.0, 1.0));
-        let sign = if invert_normal { -1.0 } else { 1.0 };
-        let nc = camera.rotate_to_camera_space(&[
-            sign * (n_raw.x as f64),
-            sign * (n_raw.y as f64),
-            sign * (n_raw.z as f64),
-        ]);
+        let nc = camera.rotate_to_camera_space(&[n_raw.x as f64, n_raw.y as f64, n_raw.z as f64]);
         let lambert = (nc[0] * light[0] + nc[1] * light[1] + nc[2] * light[2]).abs();
         let shade = (0.38 + 0.62 * lambert).clamp(0.35, 1.0) as f32;
         let fill = egui::Color32::from_rgba_unmultiplied(
@@ -140,19 +144,56 @@ pub fn extract_slice_contours_into(
     let Some(c) = cut else {
         return;
     };
-    let dim = grid.width();
-    if dim < 2 || out.capacity() == 0 {
+    let ax = c.axis.min(2);
+    let orig = grid.origin();
+    let vs = grid.voxel_size();
+    let (min_a, step_a, len_a) = match ax {
+        0 => (orig.x as f64, vs.x as f64, grid.width()),
+        1 => (orig.y as f64, vs.y as f64, grid.height()),
+        _ => (orig.z as f64, vs.z as f64, grid.depth()),
+    };
+    if len_a < 2 || out.capacity() == 0 {
         return;
     }
-    let frac =
-        ((c.max_coord + STUDIO_VIEWPORT_EXTENT) / (2.0 * STUDIO_VIEWPORT_EXTENT)).clamp(0.0, 1.0);
-    let slice_idx = ((frac * ((dim - 1) as f64)).round() as usize).min(dim - 1);
+    let slice_idx = (((c.max_coord - min_a) / step_a.max(1e-6))
+        .round()
+        .clamp(0.0, (len_a - 1) as f64)) as usize;
     if signed {
-        trace_slice_level(grid, c.axis.min(2), slice_idx, c.max_coord, 0.0, out);
+        trace_slice_level(grid, ax, slice_idx, c.max_coord, 0.0, out);
     }
-    trace_slice_level(grid, c.axis.min(2), slice_idx, c.max_coord, iso, out);
+    trace_slice_level(grid, ax, slice_idx, c.max_coord, iso, out);
     if signed {
-        trace_slice_level(grid, c.axis.min(2), slice_idx, c.max_coord, -iso, out);
+        trace_slice_level(grid, ax, slice_idx, c.max_coord, -iso, out);
+    }
+}
+
+fn slice_plane_geometry(grid: &VoxelGrid, axis: usize) -> (usize, usize, f64, f64, f64, f64) {
+    let (o, s) = (grid.origin(), grid.voxel_size());
+    match axis {
+        0 => (
+            grid.height(),
+            grid.depth(),
+            o.y as f64,
+            o.z as f64,
+            s.y as f64,
+            s.z as f64,
+        ),
+        1 => (
+            grid.width(),
+            grid.depth(),
+            o.x as f64,
+            o.z as f64,
+            s.x as f64,
+            s.z as f64,
+        ),
+        _ => (
+            grid.width(),
+            grid.height(),
+            o.x as f64,
+            o.y as f64,
+            s.x as f64,
+            s.y as f64,
+        ),
     }
 }
 
@@ -164,9 +205,7 @@ fn trace_slice_level(
     level: f32,
     out: &mut Vec<[[f64; 3]; 2]>,
 ) {
-    let dim = grid.width();
-    let orig = grid.origin().x as f64;
-    let step = grid.voxel_size().x as f64;
+    let (dim_u, dim_v, orig_u, orig_v, step_u, step_v) = slice_plane_geometry(grid, axis);
     let sample = |u: usize, v: usize| -> f32 {
         match axis {
             0 => grid.get(slice_idx, u, v),
@@ -175,16 +214,16 @@ fn trace_slice_level(
         }
     };
     let to_world = |u: f64, v: f64| -> [f64; 3] {
-        let cu = orig + u * step;
-        let cv = orig + v * step;
+        let cu = orig_u + u * step_u;
+        let cv = orig_v + v * step_v;
         match axis {
             0 => [plane_coord, cu, cv],
             1 => [cu, plane_coord, cv],
             _ => [cu, cv, plane_coord],
         }
     };
-    for v in 0..(dim - 1) {
-        for u in 0..(dim - 1) {
+    for v in 0..dim_v.saturating_sub(1) {
+        for u in 0..dim_u.saturating_sub(1) {
             if out.len() >= out.capacity() {
                 return;
             }
@@ -250,102 +289,125 @@ impl VolumetricEngine {
         crossings
     }
 
-    /// Exports the active `MarchingCubes` surface(s) to Wavefront `.obj` text with finite unit normals.
-    pub fn export_obj_string(&self, cfg: &VolumetricStudioConfig) -> Result<String, String> {
-        let mut combined = Mesh::new();
-        let cut = cfg.active_cut_filter();
-        let iso = (cfg.iso_threshold as f32).clamp(0.001, 2.0);
-        if self.pos_mesh.vertices.is_empty() && self.neg_mesh.vertices.is_empty() {
-            let mut ws =
-                IsosurfaceWorkspace::new_lazy(self.voxel_grid.width(), self.voxel_grid.height());
-            let mut tmp_pos = Mesh::new();
-            let _ = MarchingCubes::new(&self.voxel_grid, CentralDifferenceEstimator).extract_into(
-                iso,
-                &mut ws,
-                &mut tmp_pos,
-            );
-            append_sanitized_mesh(&tmp_pos, false, cut, &mut combined);
-        } else {
-            append_sanitized_mesh(&self.pos_mesh, false, cut, &mut combined);
-            append_sanitized_mesh(&self.neg_mesh, true, cut, &mut combined);
-        }
-        if combined.indices.is_empty() && cut.is_some() {
-            append_sanitized_mesh(&self.pos_mesh, false, None, &mut combined);
-            append_sanitized_mesh(&self.neg_mesh, true, None, &mut combined);
+    /// Extracts a closed, outward-wound 2-manifold [`Mesh`] scaled to `cfg.export_size_mm` millimeters.
+    pub fn export_solid_mesh_3d(&self, cfg: &VolumetricStudioConfig) -> Result<Mesh, String> {
+        let cut_cap = cfg.active_cut_filter().map(to_cut_plane_cap);
+        let signed = is_signed_export_source(cfg);
+        let mut combined = self.build_capped_export_mesh(cfg, signed, cut_cap)?;
+        if combined.indices.is_empty() && cut_cap.is_some() {
+            combined = self.build_capped_export_mesh(cfg, signed, None)?;
         }
         if combined.indices.is_empty() {
-            return Err("No isosurface triangles at current iso_threshold to export.".into());
+            return Err("No solid volume at current level / iso_threshold to export.".into());
         }
-        export_mesh_to_obj_string(&combined).map_err(|e| format!("OBJ export error: {e}"))
+        scale_mesh_to_millimeters(&mut combined, cfg.export_size_mm as f32)
+            .map_err(|e| format!("Millimeter mesh scaling error: {e}"))?;
+        Ok(combined)
     }
-}
 
-fn append_sanitized_mesh(
-    src: &Mesh,
-    flip_winding: bool,
-    cut: Option<VolumeCutFilter>,
-    dst: &mut Mesh,
-) {
-    let mut remap = vec![usize::MAX; src.vertices.len()];
-    for &[i0, i1, i2] in src.indices.as_chunks::<3>().0 {
-        let (v0, v1, v2) = (src.vertices[i0], src.vertices[i1], src.vertices[i2]);
-        if let Some(c) = cut {
-            let cent = [
-                ((v0.x + v1.x + v2.x) as f64) / 3.0,
-                ((v0.y + v1.y + v2.y) as f64) / 3.0,
-                ((v0.z + v1.z + v2.z) as f64) / 3.0,
-            ];
-            if cent[c.axis.min(2)] > c.max_coord {
-                continue;
-            }
-        }
-        let face_n = sanitize_normal((v1 - v0).cross(v2 - v0));
-        let ordered = if flip_winding {
-            [i0, i2, i1]
+    fn build_capped_export_mesh(
+        &self,
+        cfg: &VolumetricStudioConfig,
+        signed: bool,
+        cut_cap: Option<CutPlaneCap>,
+    ) -> Result<Mesh, String> {
+        let pos_thresh = if cfg.source == FieldSourceMode::CustomImplicit {
+            0.0_f32
         } else {
-            [i0, i1, i2]
+            (cfg.iso_threshold as f32).clamp(0.001, 2.0)
         };
-        for idx in ordered {
-            if remap[idx] == usize::MAX {
-                let new_idx = dst.vertices.len();
-                remap[idx] = new_idx;
-                let v = src.vertices[idx];
-                dst.vertices.push(sanitize_point(v));
-                let raw_n = src.normals.get(idx).copied().unwrap_or(face_n);
-                let signed_n = if flip_winding { -raw_n } else { raw_n };
-                dst.normals
-                    .push(sanitize_normal_with_fallback(signed_n, face_n));
-            }
-            dst.indices.push(remap[idx]);
+        let mut combined = extract_capped_isosurface(&self.voxel_grid, pos_thresh, false, cut_cap)
+            .map_err(|e| format!("Isosurface export error: {e}"))?;
+        if signed {
+            let neg = extract_capped_isosurface(&self.voxel_grid, -pos_thresh, true, cut_cap)
+                .map_err(|e| format!("Negative lobe export error: {e}"))?;
+            append_mesh_component(&neg, &mut combined);
         }
+        Ok(combined)
+    }
+
+    /// Exports the active watertight solid surface(s) to Wavefront `.obj` text with finite unit normals.
+    #[cfg(test)]
+    pub fn export_obj_string(&self, cfg: &VolumetricStudioConfig) -> Result<String, String> {
+        let mesh = self.export_solid_mesh_3d(cfg)?;
+        export_mesh_to_obj_string(&mesh).map_err(|e| format!("OBJ export error: {e}"))
     }
 }
 
-fn sanitize_point(p: CorePoint3D) -> CorePoint3D {
-    CorePoint3D::new(
-        if p.x.is_finite() { p.x } else { 0.0 },
-        if p.y.is_finite() { p.y } else { 0.0 },
-        if p.z.is_finite() { p.z } else { 0.0 },
+fn is_signed_export_source(cfg: &VolumetricStudioConfig) -> bool {
+    matches!(
+        (cfg.source, cfg.observable),
+        (
+            FieldSourceMode::QuantumSuperposition,
+            super::super::state::QuantumObservableChoice::SignedWavefunction
+        )
+    ) || matches!(cfg.source, FieldSourceMode::TuringMorphogenesis)
+}
+
+fn to_cut_plane_cap(c: VolumeCutFilter) -> CutPlaneCap {
+    CutPlaneCap {
+        axis: c.axis.min(2),
+        max_coord: c.max_coord as f32,
+    }
+}
+
+fn append_mesh_component(src: &Mesh, dst: &mut Mesh) {
+    if src.indices.is_empty() {
+        return;
+    }
+    let offset = dst.vertices.len();
+    dst.vertices.extend_from_slice(&src.vertices);
+    dst.normals.extend_from_slice(&src.normals);
+    dst.indices
+        .extend(src.indices.iter().map(|&idx| offset + idx));
+}
+
+pub(super) fn sample_voxel_nearest(grid: &VoxelGrid, world_pt: [f64; 3]) -> f32 {
+    let orig = grid.origin();
+    let vs = grid.voxel_size();
+    let idx = |c: f64, o: f32, s: f32, len: usize| -> usize {
+        let max_i = len.saturating_sub(1);
+        (((c - f64::from(o)) / f64::from(s.max(1e-6)))
+            .round()
+            .clamp(0.0, max_i as f64)) as usize
+    };
+    grid.get(
+        idx(world_pt[0], orig.x, vs.x, grid.width()),
+        idx(world_pt[1], orig.y, vs.y, grid.height()),
+        idx(world_pt[2], orig.z, vs.z, grid.depth()),
     )
 }
 
-fn sanitize_normal(n: CorePoint3D) -> CorePoint3D {
-    let clean = sanitize_point(n);
-    let u = clean.normalize();
-    if u.magnitude() > 0.5 {
-        u
-    } else {
-        CorePoint3D::new(0.0, 0.0, 1.0)
-    }
-}
-
-fn sanitize_normal_with_fallback(n: CorePoint3D, fallback: CorePoint3D) -> CorePoint3D {
-    let clean = sanitize_point(n);
-    let u = clean.normalize();
-    if u.magnitude() > 0.5 {
-        u
-    } else {
-        fallback
+pub(super) fn inject_turing_pulse(
+    sys: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference3D>,
+    dim: usize,
+    world_pt: [f64; 3],
+) {
+    let to_idx = |c: f64| {
+        (((c + STUDIO_VIEWPORT_EXTENT) / (2.0 * STUDIO_VIEWPORT_EXTENT)) * ((dim - 1) as f64))
+            .round()
+            .clamp(0.0, (dim - 1) as f64) as isize
+    };
+    let (cx, cy, cz) = (
+        to_idx(world_pt[0]),
+        to_idx(world_pt[1]),
+        to_idx(world_pt[2]),
+    );
+    let rad = (dim as isize / 7).clamp(2, 5);
+    let sigma_sq = ((rad as f64) * 0.65).powi(2).max(0.5);
+    for dz in -rad..=rad {
+        let z = (cz + dz).clamp(0, (dim - 1) as isize) as usize;
+        for dy in -rad..=rad {
+            let y = (cy + dy).clamp(0, (dim - 1) as isize) as usize;
+            for dx in -rad..=rad {
+                let x = (cx + dx).clamp(0, (dim - 1) as isize) as usize;
+                let r2 = ((dx * dx + dy * dy + dz * dz) as f64) / sigma_sq;
+                let env = (-0.5 * r2).exp();
+                let idx = flatten_3d_index(x, y, z, dim, dim);
+                sys.u_mut()[idx] = (sys.u()[idx] + 0.85 * env).clamp(0.02, 6.0);
+                sys.v_mut()[idx] = (sys.v()[idx] - 0.25 * env).clamp(0.02, 6.0);
+            }
+        }
     }
 }
 
@@ -358,10 +420,31 @@ impl VolumetricEngine {
         cut: Option<VolumeCutFilter>,
     ) {
         if cfg.render_mode.uses_mesh() {
-            let mc = MarchingCubes::new(&self.voxel_grid, CentralDifferenceEstimator);
-            let _ = mc.extract_into(iso, &mut self.iso_ws, &mut self.pos_mesh);
+            let cut_cap = cut.map(to_cut_plane_cap);
+            let pos_thresh = if cfg.source == FieldSourceMode::CustomImplicit {
+                0.0_f32
+            } else {
+                iso
+            };
+            let _ = extract_capped_isosurface_into(
+                &self.voxel_grid,
+                pos_thresh,
+                false,
+                cut_cap,
+                &mut self.padded_grid,
+                &mut self.iso_ws,
+                &mut self.pos_mesh,
+            );
             if signed {
-                let _ = mc.extract_into(-iso, &mut self.iso_ws, &mut self.neg_mesh);
+                let _ = extract_capped_isosurface_into(
+                    &self.voxel_grid,
+                    -iso,
+                    true,
+                    cut_cap,
+                    &mut self.padded_grid,
+                    &mut self.iso_ws,
+                    &mut self.neg_mesh,
+                );
             } else {
                 self.neg_mesh.clear();
             }

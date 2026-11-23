@@ -55,6 +55,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Zero-Allocation FreeSurfer Cortical Surface Physics, Potts MRF Segmentation, and 3D Cortical Morphometry Studio](adr/20261123-freesurfer-deformable-mrf-and-cortical-morphometry.md)
 - [ADR 20261123: Deterministic Genz Gaussian Copula and Parlay Engine](adr/20261123-genz-gaussian-copula-and-parlay-engine.md)
 - [ADR 20261123: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics](adr/20261123-glicko2-copula-ou-workbenches-and-kelly-net-odds.md)
+- [ADR 20261123: Implicit CAD Volumetric Studio, Boundary-Capped Marching Cubes, and Millimeter STL Export](adr/20261123-implicit-cad-capped-isosurface-and-mm-stl.md)
 - [ADR 20261123: Static Inventory Tab Registration and Scoped Build Scripts](adr/20261123-inventory-tabs-and-scoped-build-scripts.md)
 - [ADR 20261123: Variable-Dose Pharmacokinetic Regimen Superposition and Interactive Planner](adr/20261123-pharmacokinetic-regimen-superposition-and-analytics.md)
 - [ADR 20261123: Precompiled Verification Patterns, AST Source Prefetch, and Zero-Allocation Scans](adr/20261123-precompiled-verification-patterns-and-ast-prefetch.md)
