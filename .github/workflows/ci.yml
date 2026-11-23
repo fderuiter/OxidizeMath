@@ -60,12 +60,14 @@ jobs:
               while IFS= read -r file_path; do
                 [ -z "$file_path" ] && continue
                 case "$file_path" in
-                  papers/*|apps/xtask/src/papers*|traceability.toml|.github/workflows/ci.yml)
+                  papers/*|apps/xtask/*|traceability.toml|Verification_Certificate.json|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/workflows/ci.yml)
                     papers_changed="true"
                     ;;
                 esac
                 case "$file_path" in
-                  math_explorer_gui/*|Cargo.toml|Cargo.lock|.github/workflows/ci.yml)
+                  crates/markdown_tests/*|crates/unified_verification/*)
+                    ;;
+                  crates/*|math_explorer_gui/*|math_explorer/*|egui_plot/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/workflows/ci.yml)
                     installer_changed="true"
                     ;;
                 esac
@@ -487,7 +489,7 @@ jobs:
     steps:
       - name: Skip Unchanged Cross-OS Installer Build
         if: matrix.os != 'ubuntu-latest' && github.event_name == 'pull_request' && needs.pre-flight.outputs.installer_changed != 'true'
-        run: echo "No GUI or workspace manifest changes detected; skipping ${{ matrix.target }} installer build on pull_request."
+        run: echo "No GUI, linked crate, packaging input, toolchain, cache action, or workflow changes detected; skipping ${{ matrix.target }} installer build on pull_request."
 
       - name: Checkout code
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
