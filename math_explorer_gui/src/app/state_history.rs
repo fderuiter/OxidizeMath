@@ -18,6 +18,7 @@ struct HistoryFingerprint {
     split_ratio_bits: u32,
     quad_split_ratio_bits: (u32, u32),
     pane_tabs: [usize; 4],
+    pane_bus_links_mask: u8,
     primary_history_hash: u64,
     secondary_history_hash: u64,
     pipeline_links_hash: u64,
@@ -80,6 +81,10 @@ fn hash_app_chrome_fields(app: &MathExplorerApp, hasher: &mut impl Hasher) {
     app.active_focused_pane().hash(hasher);
 }
 
+const fn pack_pane_links_mask(links: [bool; 4]) -> u8 {
+    (links[0] as u8) | ((links[1] as u8) << 1) | ((links[2] as u8) << 2) | ((links[3] as u8) << 3)
+}
+
 fn build_history_fingerprint(
     app: &MathExplorerApp,
     primary_history_hash: u64,
@@ -123,6 +128,7 @@ fn build_history_fingerprint(
             app.quad_split_ratios.1.clamp(0.20, 0.80).to_bits(),
         ),
         pane_tabs,
+        pane_bus_links_mask: pack_pane_links_mask(app.pane_bus_links),
         primary_history_hash,
         secondary_history_hash,
         pipeline_links_hash: pipe_hasher.finish(),
@@ -246,6 +252,7 @@ impl AppState {
             && self.viewport_layout == other.viewport_layout
             && self.compare_sync == other.compare_sync
             && self.pane_tabs == other.pane_tabs
+            && self.pane_bus_links == other.pane_bus_links
             && self.pipeline_links == other.pipeline_links
             && tab_maps_semantically_eq(&self.tab_states, &other.tab_states)
             && pane_tab_maps_semantically_eq(&self.pane_tab_states, &other.pane_tab_states)

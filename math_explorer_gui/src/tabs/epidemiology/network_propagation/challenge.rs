@@ -148,11 +148,19 @@ impl NetworkPropagationTool {
                 Ok(())
             }
             Some(CHALLENGE_EPI_HUB_VACCINATION) => {
+                self.using_bus_topology = false;
+                self.synced_bus_revision = None;
+                self.upstream_linked = false;
+                self.last_upstream_graph_rev = 0;
                 self.active_challenge = Some(CHALLENGE_EPI_HUB_VACCINATION);
                 self.enforce_challenge_locks();
                 Ok(())
             }
             Some(CHALLENGE_EPI_BRIDGE_QUARANTINE) => {
+                self.using_bus_topology = false;
+                self.synced_bus_revision = None;
+                self.upstream_linked = false;
+                self.last_upstream_graph_rev = 0;
                 self.active_challenge = Some(CHALLENGE_EPI_BRIDGE_QUARANTINE);
                 self.enforce_challenge_locks();
                 Ok(())

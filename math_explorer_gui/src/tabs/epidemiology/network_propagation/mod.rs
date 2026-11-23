@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 mod analytics;
+mod bus_sync;
 mod canvas;
 pub mod challenge;
 mod controls;
@@ -11,11 +12,12 @@ mod tests;
 
 #[cfg(test)]
 pub(crate) use analytics::compute_network_analytics;
+use presets::build_validated_candidate;
+pub(crate) use presets::NetPropState;
 
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
-use presets::{build_validated_candidate, NetPropState};
 use std::hash::{Hash, Hasher};
 
 /// Default deterministic seed matching [`oxidize_core::rng::OxidizeRng::default`].
@@ -51,6 +53,9 @@ pub struct NetworkPropagationTool {
     pub(super) focused_edge: usize,
     #[cfg(test)]
     pub(super) canvas_id: Option<egui::Id>,
+    pub(super) standalone_num_nodes: usize,
+    pub(super) synced_bus_revision: Option<u64>,
+    pub(super) using_bus_topology: bool,
     pub(super) is_running: bool,
     pub(super) active_challenge: Option<&'static str>,
     pub(super) revision: u64,
@@ -80,6 +85,9 @@ impl Default for NetworkPropagationTool {
             focused_edge: 0,
             #[cfg(test)]
             canvas_id: None,
+            standalone_num_nodes: 50,
+            synced_bus_revision: None,
+            using_bus_topology: false,
             is_running: false,
             active_challenge: None,
             revision: 1,
@@ -142,13 +150,21 @@ impl NetworkPropagationTool {
     }
 
     pub(super) fn reset_network(&mut self) {
-        self.rebuild_seeded_graph();
+        if self.using_bus_topology {
+            self.reset_bus_topology_states();
+        } else {
+            self.rebuild_seeded_graph();
+        }
     }
 
     pub(crate) fn clear_interventions(&mut self) {
-        self.vaccinated_nodes.clear();
-        self.quarantined_edges.clear();
-        self.rebuild_seeded_graph();
+        if self.using_bus_topology {
+            self.reset_bus_topology_states();
+        } else {
+            self.vaccinated_nodes.clear();
+            self.quarantined_edges.clear();
+            self.rebuild_seeded_graph();
+        }
     }
 
     pub(super) fn set_seed_and_reset(&mut self, next_seed: u64) {
@@ -265,15 +281,16 @@ impl InteractiveTool for NetworkPropagationTool {
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::none()
     }
+    fn sync_workspace_bus(&mut self, bus: &mut crate::app::workspace_bus::SharedWorkspaceBus) {
+        self.ingest_topology_channel(&bus.topology);
+    }
     fn has_finite_parameters(&self) -> bool {
-        let min_nodes = if self.last_upstream_graph_rev != 0 {
-            1
-        } else {
-            10
-        };
+        let external_topo = self.using_bus_topology || self.last_upstream_graph_rev != 0;
+        let node_bounds = if external_topo { 1..=256 } else { 10..=200 };
         self.model.beta().is_finite()
             && self.model.gamma().is_finite()
-            && (min_nodes..=200).contains(&self.model.num_nodes())
+            && (10..=200).contains(&self.standalone_num_nodes)
+            && node_bounds.contains(&self.model.num_nodes())
     }
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -290,8 +307,9 @@ impl InteractiveTool for NetworkPropagationTool {
         h.finish().max(1)
     }
     fn save_state(&self) -> Option<String> {
-        let (num_nodes, vaccinated_nodes, quarantined_edges) = if self.last_upstream_graph_rev != 0
-        {
+        let (num_nodes, vaccinated_nodes, quarantined_edges) = if self.using_bus_topology {
+            (self.standalone_num_nodes, Vec::new(), Vec::new())
+        } else if self.last_upstream_graph_rev != 0 {
             (
                 self.model.num_nodes().clamp(10, 200),
                 Vec::new(),
@@ -317,8 +335,11 @@ impl InteractiveTool for NetworkPropagationTool {
         .ok()
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
 
@@ -326,14 +347,23 @@ impl InteractiveTool for NetworkPropagationTool {
         let s: NetPropState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid network propagation state: {e}"))?;
         let (candidate, candidate_rng, vax_sorted, edge_sorted) = build_validated_candidate(&s)?;
-        self.model = candidate;
-        self.rng = candidate_rng;
+        self.standalone_num_nodes = s.num_nodes;
         self.seed = s.seed;
         self.budget = s.budget;
-        self.vaccinated_nodes = vax_sorted;
-        self.quarantined_edges = edge_sorted;
+        if self.using_bus_topology {
+            let _ = self.model.set_beta(s.beta);
+            let _ = self.model.set_gamma(s.gamma);
+            let _ = self.baseline_model.set_beta(s.beta);
+            let _ = self.baseline_model.set_gamma(s.gamma);
+            self.enforce_budget_cap();
+        } else {
+            self.model = candidate;
+            self.rng = candidate_rng;
+            self.vaccinated_nodes = vax_sorted;
+            self.quarantined_edges = edge_sorted;
+            self.rebuild_baseline_twin();
+        }
         self.is_running = s.is_running;
-        self.rebuild_baseline_twin();
         self.enforce_challenge_locks();
         self.clamp_focus_indices();
         #[cfg(test)]
@@ -363,6 +393,14 @@ impl InteractiveTool for NetworkPropagationTool {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.poll_upstream_graph(ui.ctx());
         egui::CentralPanel::default().show_inside(ui, |ui| {
+            if !self.upstream_linked
+                && crate::app::workspace_bus::with_linked_bus(|bus| {
+                    self.ingest_topology_channel(&bus.topology);
+                })
+                .is_none()
+            {
+                self.on_bus_unlinked();
+            }
             if self.is_running {
                 self.step_models_lockstep();
                 #[cfg(test)]

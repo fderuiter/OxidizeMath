@@ -31,6 +31,7 @@
 //! *   **[Double Pendulum](double_pendulum)**: Canonical non-separable Hamiltonian double pendulum.
 //! *   **[Fractals](fractals)**: Geometric structures with fractional dimension (e.g., Cantor Set).
 //! *   **[Hénon-Heiles](henon_heiles)**: Separable 2-DOF galactic Hamiltonian with KAM islands and chaotic seas.
+//! *   **[Kuramoto Oscillators](kuramoto)**: Coupled phase-oscillator network synchronization dynamics.
 //! *   **[Logistic Map](logistic)**: Discrete-time demographic model $x_{n+1} = r x_n (1 - x_n)$.
 //! *   **[Lorenz System](lorenz)**: Continuous-time atmospheric convection model (The "Butterfly" attractor).
 //! *   **[Metrics](metrics)**: Tools to quantify chaos (Lyapunov Exponents, Correlation Dimension).
@@ -75,6 +76,7 @@
 pub mod double_pendulum;
 pub mod fractals;
 pub mod henon_heiles;
+pub mod kuramoto;
 pub mod logistic;
 pub mod lorenz;
 pub mod metrics;

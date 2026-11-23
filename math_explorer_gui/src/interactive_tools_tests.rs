@@ -113,6 +113,7 @@ mod tests {
             crate::tabs::epidemiology::network_propagation::NetworkPropagationTool,
         >(ctx);
         exercise_interactive_tool::<crate::tabs::chaos::hamiltonian::HamiltonianChaosLab>(ctx);
+        exercise_interactive_tool::<crate::tabs::chaos::kuramoto::KuramotoOscillatorTool>(ctx);
         exercise_interactive_tool::<crate::tabs::algorithmic_information::state::FractranMachineTool>(
             ctx,
         );

@@ -68,6 +68,17 @@ impl NetworkPropagationTool {
             );
             return;
         }
+        if self.using_bus_topology && !locked {
+            ui.label(
+                egui::RichText::new(format!(
+                    "🔗 Linked Topology ({} nodes, rev {})",
+                    self.model.num_nodes(),
+                    self.synced_bus_revision.unwrap_or(0)
+                ))
+                .strong(),
+            );
+            return;
+        }
         let mut num_nodes = self.model.num_nodes();
         if ui
             .add_enabled(
@@ -76,6 +87,7 @@ impl NetworkPropagationTool {
             )
             .changed()
         {
+            self.standalone_num_nodes = num_nodes;
             let _ = self.model.set_num_nodes(num_nodes);
             self.vaccinated_nodes.clear();
             self.quarantined_edges.clear();
@@ -132,26 +144,28 @@ impl NetworkPropagationTool {
         let locked = self.is_challenge_locked();
         let allow_vax = self.allows_vaccination();
         let allow_quar = self.allows_quarantine();
-        ui.horizontal(|ui| {
-            ui.label("Seed:");
-            let mut seed = self.seed;
-            if ui
-                .add_enabled(!locked, egui::DragValue::new(&mut seed).speed(1.0))
-                .accessible_hover_text("Deterministic network topology seed")
-                .changed()
-            {
-                self.set_seed_and_reset(seed);
-            }
-            if ui
-                .add_enabled(!locked, egui::Button::new("🎲 Reseed"))
-                .accessible_hover_text("Generate next deterministic network seed")
-                .clicked()
-            {
-                let next = self.seed.wrapping_add(1);
-                self.set_seed_and_reset(next);
-                announce_live_status(ui.ctx(), format!("Network reseeded to {next}"));
-            }
-        });
+        if !self.using_bus_topology && !self.upstream_linked {
+            ui.horizontal(|ui| {
+                ui.label("Seed:");
+                let mut seed = self.seed;
+                if ui
+                    .add_enabled(!locked, egui::DragValue::new(&mut seed).speed(1.0))
+                    .accessible_hover_text("Deterministic network topology seed")
+                    .changed()
+                {
+                    self.set_seed_and_reset(seed);
+                }
+                if ui
+                    .add_enabled(!locked, egui::Button::new("🎲 Reseed"))
+                    .accessible_hover_text("Generate next deterministic network seed")
+                    .clicked()
+                {
+                    let next = self.seed.wrapping_add(1);
+                    self.set_seed_and_reset(next);
+                    announce_live_status(ui.ctx(), format!("Network reseeded to {next}"));
+                }
+            });
+        }
 
         ui.horizontal_wrapped(|ui| {
             ui.add_enabled_ui(allow_vax, |ui| {

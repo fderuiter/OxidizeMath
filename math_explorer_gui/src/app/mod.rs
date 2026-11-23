@@ -21,6 +21,7 @@ pub(crate) mod state_history;
 pub mod theme;
 pub(crate) mod ui_panels;
 pub(crate) mod viewport;
+pub mod workspace_bus;
 
 #[cfg(test)]
 mod tests;
@@ -68,6 +69,13 @@ mod tests_shortcuts;
 mod tests_split_view;
 #[cfg(test)]
 mod tests_tab_cache_perf;
+#[cfg(all(
+    test,
+    feature = "pure_math",
+    feature = "epidemiology",
+    feature = "physics"
+))]
+mod tests_workspace_bus;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
@@ -84,6 +92,8 @@ pub use theme::{
 };
 pub use viewport::compare_sync::ComparisonSyncConfig;
 pub use viewport::ViewportLayout;
+#[allow(unused_imports)]
+pub use workspace_bus::{GraphTopologyChannel, ScalarSignalChannel, SharedWorkspaceBus};
 
 use crate::command_palette::CommandPalette;
 use crate::tabs::ExplorerTab;
@@ -124,6 +134,10 @@ pub struct MathExplorerApp {
     pub dataflow_bus: PaneDataflowBus,
     pub pipeline_dag: PanePipelineDag,
     pub(super) url_sync: crate::url_state::UrlSyncController,
+    /// Shared typed revision-counted bus for opt-in cross-pane coupling.
+    pub workspace_bus: workspace_bus::SharedWorkspaceBus,
+    /// Explicit per-pane workspace bus link bindings (`false` = isolated).
+    pub pane_bus_links: [bool; 4],
 }
 
 impl Default for MathExplorerApp {
@@ -164,6 +178,8 @@ impl Default for MathExplorerApp {
             dataflow_bus: PaneDataflowBus::default(),
             pipeline_dag: PanePipelineDag::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
+            workspace_bus: workspace_bus::SharedWorkspaceBus::default(),
+            pane_bus_links: [false; 4],
         }
     }
 }

@@ -588,6 +588,34 @@ fn chunked_plateau_preserves_y_intercept_and_nan_break_semantics() {
 }
 
 #[test]
+fn flat_plateau_chunk_skip_preserves_y_intercept_and_nan_reset() {
+    let tf = make_transform([-80.0, -10.0], [80.0, 10.0]);
+    let mut pts = vec![[-75.0, 0.0]];
+    for k in 0..35 {
+        pts.push([-74.0 + k as f64, -4.0]);
+    }
+    pts.push([-39.0, 0.0]);
+    for k in 0..37 {
+        pts.push([-20.0 + k as f64, 4.0]);
+    }
+    pts.push([18.0, 0.0]);
+
+    let items: Vec<Box<dyn PlotItem>> = vec![Box::new(Line::new("Plateau", pts))];
+    let pois = detect_critical_points(&items, &tf);
+    assert!(
+        pois.iter()
+            .any(|p| p.kind == CriticalPointKind::YIntercept && (p.point[1] - 4.0).abs() < 1e-9),
+        "expected y-intercept on flat plateau crossing x = 0, got {pois:?}"
+    );
+    assert!(pois.iter().any(|p| p.kind == CriticalPointKind::LocalMin
+        && (p.point[0] + 57.0).abs() < 1e-9
+        && (p.point[1] + 4.0).abs() < 1e-9));
+    assert!(pois.iter().any(|p| p.kind == CriticalPointKind::LocalMax
+        && (p.point[0] + 2.0).abs() < 1e-9
+        && (p.point[1] - 4.0).abs() < 1e-9));
+}
+
+#[test]
 fn shared_plateau_200k_series_detects_extrema_under_5ms() {
     let mut pts = Vec::with_capacity(200_000);
     pts.push([0.0, 0.0]);

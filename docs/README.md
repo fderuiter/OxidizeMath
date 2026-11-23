@@ -75,6 +75,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Precompiled Verification Patterns, AST Source Prefetch, and Zero-Allocation Scans](adr/20261123-precompiled-verification-patterns-and-ast-prefetch.md)
 - [ADR 20261123: Live 4D Radar-Gated IMRT Contouring Workbench](adr/20261123-radar-gated-4d-imrt-contouring-workbench.md)
 - [ADR 20261123: Zero-Allocation Fixed-Size Christoffel Symbols, Relativistic Thin-Lens Splat Jacobians, and Paczyński-Wiita Galactic Orbits](adr/20261123-relativistic-lensed-splats-and-orbits.md)
+- [ADR 20261123: SharedWorkspaceBus Per-Pane Graph Coupling and Zero-Allocation Kuramoto Solver](adr/20261123-shared-workspace-bus-and-kuramoto-oscillators.md)
 - [ADR 20261123: Zero-Allocation Laplace-Beltrami Surface Morphogenesis and Mean-Curvature Buckling](adr/20261123-surface-morphogenesis-laplace-beltrami-buckling.md)
 - [ADR 20261123: Tridiagonal Crank-Nicolson 1D Quantum Propagation and Persistent Unified GIF Stepping](adr/20261123-tridiagonal-crank-nicolson-quantum-propagation.md)
 - [ADR 20261123: Unified RL Maze Sculpting, Exact Bellman Solvers, and TD Surprise Sonification](adr/20261123-unified-rl-maze-sculpting-bellman-and-sonification.md)

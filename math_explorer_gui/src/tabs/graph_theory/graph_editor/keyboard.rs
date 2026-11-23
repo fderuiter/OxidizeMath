@@ -134,7 +134,6 @@ impl GraphEditorTool {
     }
 
     pub(super) fn configure_canvas_focus(&mut self, ui: &mut egui::Ui, response: &egui::Response) {
-        self.canvas_id = Some(response.id);
         self.apply_dispatched_graph_commands(ui.ctx(), response.rect);
         if response.clicked() || response.drag_started() {
             response.request_focus();

@@ -45,6 +45,10 @@ fn default_quad_split_ratios() -> (f32, f32) {
     (0.5, 0.5)
 }
 
+fn is_all_false_links(links: &[bool]) -> bool {
+    links.iter().all(|&linked| !linked)
+}
+
 pub(super) fn has_frame_input(ctx: &egui::Context) -> bool {
     ctx.input(|i| {
         i.pointer.any_down()
@@ -140,6 +144,9 @@ pub struct AppState {
     pub focused_pane: usize,
     #[serde(default)]
     pub pane_tab_states: Vec<HashMap<String, SharedTabJson>>,
+    /// Per-pane `SharedWorkspaceBus` link flags (`0..4`).
+    #[serde(default, skip_serializing_if = "is_all_false_links")]
+    pub pane_bus_links: Vec<bool>,
     #[serde(default)]
     pub compare_sync: ComparisonSyncConfig,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -167,6 +174,7 @@ impl Default for AppState {
             pane_tab_names: Vec::new(),
             focused_pane: 0,
             pane_tab_states: Vec::new(),
+            pane_bus_links: Vec::new(),
             compare_sync: ComparisonSyncConfig::default(),
             pipeline_links: Vec::new(),
         }
@@ -194,11 +202,7 @@ impl AppState {
     /// reusing cached JSON for tabs outside active panes and clean visible tabs.
     pub fn extract(app: &super::MathExplorerApp) -> Self {
         let tab_states = Self::collect_primary_tab_states(app);
-        let selected_tab_name = app.tabs.get(app.selected_tab).map(|t| t.name().to_string());
-        let secondary_tab_name = app
-            .tabs
-            .get(app.secondary_tab)
-            .map(|t| t.name().to_string());
+        let tab_name = |i: usize| app.tabs.get(i).map(|t| t.name().to_string());
         let mut pane_tabs = app.pane_tabs.clone();
         if !pane_tabs.is_empty() {
             pane_tabs[0] = app.selected_tab;
@@ -208,17 +212,12 @@ impl AppState {
         }
         let pane_tab_names = pane_tabs
             .iter()
-            .map(|&i| {
-                app.tabs
-                    .get(i)
-                    .map(|t| t.name().to_string())
-                    .unwrap_or_default()
-            })
+            .map(|&i| tab_name(i).unwrap_or_default())
             .collect();
         let (split_layout_mode, viewport_layout) = Self::resolve_extract_layouts(app);
         Self {
             selected_tab: app.selected_tab,
-            selected_tab_name,
+            selected_tab_name: tab_name(app.selected_tab),
             show_info: app.show_info,
             show_warnings: app.show_warnings,
             show_errors: app.show_errors,
@@ -227,7 +226,7 @@ impl AppState {
             tab_states,
             split_layout_mode,
             secondary_tab: app.secondary_tab,
-            secondary_tab_name,
+            secondary_tab_name: tab_name(app.secondary_tab),
             split_ratio: app.split_ratio.clamp(0.20, 0.80),
             quad_split_ratios: (
                 app.quad_split_ratios.0.clamp(0.20, 0.80),
@@ -238,6 +237,11 @@ impl AppState {
             pane_tab_names,
             focused_pane: app.active_focused_pane(),
             pane_tab_states: app.extract_pane_tab_states(),
+            pane_bus_links: if is_all_false_links(&app.pane_bus_links) {
+                Vec::new()
+            } else {
+                app.pane_bus_links.to_vec()
+            },
             compare_sync: app.compare_sync,
             pipeline_links: if viewport_layout == ViewportLayout::Single {
                 Vec::new()
@@ -304,13 +308,31 @@ impl AppState {
         }
         app.tab_state_cache.clear();
         Self::apply_pane_indices_and_focus(&self, app);
+        let restored_bus_links = self.pane_bus_links.clone();
+        let restored_pipeline_links = self.pipeline_links.clone();
         app.restore_pane_tab_states(self.pane_tab_states, &self.tab_states);
+        Self::restore_bus_and_pipeline_links(app, &restored_bus_links, &restored_pipeline_links);
+    }
+
+    fn restore_bus_and_pipeline_links(
+        app: &mut super::MathExplorerApp,
+        pane_bus_links: &[bool],
+        pipeline_links: &[super::dataflow_bus::PaneLink],
+    ) {
+        let mut restored_links = [false; 4];
+        for (slot, &linked) in restored_links.iter_mut().zip(pane_bus_links.iter()) {
+            *slot = linked;
+        }
+        app.pane_bus_links = restored_links;
+        app.workspace_bus.reset();
+        app.sync_linked_panes_bus();
+
         let active_panes = app.viewport_layout.pane_count();
         if active_panes <= 1
-            || self.pipeline_links.is_empty()
+            || pipeline_links.is_empty()
             || app
                 .pipeline_dag
-                .restore_links(&self.pipeline_links, active_panes)
+                .restore_links(pipeline_links, active_panes)
                 .is_err()
         {
             app.pipeline_dag.clear();

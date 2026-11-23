@@ -9,6 +9,8 @@ use eframe::egui;
 use federated_registry::Severity;
 use std::time::Duration;
 
+mod workspace_url;
+
 const APP_SHARE_CLIPBOARD_ID: &str = "app_share_clipboard_status";
 
 impl MathExplorerApp {
@@ -25,16 +27,17 @@ impl MathExplorerApp {
     #[must_use]
     pub fn current_url_signature(&self) -> UrlStateSignature {
         let mut base = if let Some((selected_tab, tab)) = self.active_share_tab() {
+            let state_revision = self.workspace_url_revision_mix(tab.url_state_revision());
             UrlStateSignature {
                 selected_tab,
                 active_tool_id: tab.active_tool_id(),
-                state_revision: tab.url_state_revision(),
+                state_revision,
             }
         } else {
             UrlStateSignature {
                 selected_tab: self.selected_tab,
                 active_tool_id: None,
-                state_revision: 0,
+                state_revision: self.workspace_url_revision_mix(0),
             }
         };
         if self.viewport_layout != ViewportLayout::Single && !self.pipeline_dag.is_empty() {
@@ -83,7 +86,7 @@ impl MathExplorerApp {
         build_pane_url_entry(temp.url_slug(), temp.active_tool_id(), json.as_deref())
     }
 
-    /// Encodes the active focused simulation pane's state (and active multi-pane pipeline when linked) as `#tab=...`.
+    /// Encodes the active focused simulation pane's state (plus active multi-pane pipeline or workspace bus bindings) as `#tab=...`.
     pub fn encode_current_share_fragment(&self) -> Result<String, String> {
         let (_, tab) = self
             .active_share_tab()
@@ -106,7 +109,12 @@ impl MathExplorerApp {
                 env,
             );
         }
-        tab.encode_url_share_fragment()
+        let base_fragment = tab.encode_url_share_fragment()?;
+        let workspace_json = self.encode_workspace_link_url_json()?;
+        crate::url_state::append_workspace_to_share_fragment(
+            &base_fragment,
+            workspace_json.as_deref(),
+        )
     }
 
     /// Encodes a full shareable web URL (`https://...#tab=...`) for the primary simulation tab.
@@ -200,16 +208,36 @@ impl MathExplorerApp {
             return Err(err);
         };
 
-        if let Err(err) = self.tabs[tab_idx].import_url_share_params(&params, ctx) {
-            self.record_invalid_share_url(err.clone(), ctx);
-            return Err(err);
-        }
+        if let Some(ref ws_json) = params.workspace_json {
+            let rollback = self.get_app_state();
+            if let Err(err) = self.apply_workspace_link_url_json(ws_json) {
+                self.record_invalid_share_url(err.clone(), ctx);
+                return Err(err);
+            }
+            if params.preset.is_some() || params.challenge.is_some() {
+                if let Some(tab) = self.focused_pane_tab_mut() {
+                    if let Err(err) = tab.import_url_share_params(&params, ctx) {
+                        self.apply_app_state(rollback);
+                        self.record_invalid_share_url(err.clone(), ctx);
+                        return Err(err);
+                    }
+                }
+                self.sync_linked_panes_bus();
+            }
+        } else {
+            if let Err(err) = self.tabs[tab_idx].import_url_share_params(&params, ctx) {
+                self.record_invalid_share_url(err.clone(), ctx);
+                return Err(err);
+            }
 
-        let tab_name = self.tabs[tab_idx].name();
-        self.tab_state_cache.invalidate_tab(tab_name);
-        self.selected_tab = tab_idx;
-        self.focused_pane = 0;
-        self.set_layout(ViewportLayout::Single);
+            let tab_name = self.tabs[tab_idx].name();
+            self.tab_state_cache.invalidate_tab(tab_name);
+            self.selected_tab = tab_idx;
+            self.focused_pane = 0;
+            self.pane_bus_links = [false; 4];
+            self.workspace_bus.reset();
+            self.set_layout(ViewportLayout::Single);
+        }
         self.session_manager.clear_toast();
         self.finish_hydrated_url_sync(raw_hash);
         Ok(true)
@@ -298,6 +326,8 @@ impl MathExplorerApp {
         self.sync_layout();
         self.prune_inactive_pane_slots(layout.pane_count());
         self.focused_pane = focused_pane.min(layout.pane_count().saturating_sub(1));
+        self.pane_bus_links = [false; 4];
+        self.workspace_bus.reset();
         let _ = self.pipeline_dag.restore_links(links, layout.pane_count());
         self.prune_incompatible_pipeline_links();
     }
