@@ -1,8 +1,7 @@
-# ADR 0035: Right-Censored Win-Ratio U-Statistics, Bivariate Weibull Power Sweeps, and Interactive Stress Tester
+# ADR 0037: Right-Censored Win-Ratio U-Statistics, Bivariate Weibull Power Sweeps, and Interactive Stress Tester
 
-- **Status:** Accepted
-- **Date:** 2026-11-21
-- **Deciders:** Applied Mathematics & Interactive GUI Maintainers
+## Status
+Accepted (2026-11-21)
 
 ## Context
 

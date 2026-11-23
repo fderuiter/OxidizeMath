@@ -33,7 +33,7 @@ pure_math = [
     "dep:rand",
 ]
 applied = ["pure_math", "dep:domain_applied"]
-ai = ["pure_math", "dep:domain_ai"]
+ai = ["applied", "pure_math", "dep:domain_ai"]
 biology = ["applied", "pure_math", "dep:domain_biology"]
 climate = ["ai", "pure_math", "dep:domain_climate"]
 epidemiology = ["pure_math", "dep:domain_epidemiology"]
@@ -41,7 +41,6 @@ physics = ["applied", "pure_math", "dep:domain_physics"]
 
 [dev-dependencies]
 approx = { workspace = true }
-serde_json = { workspace = true }
 criterion = { workspace = true }
 
 [[bench]]

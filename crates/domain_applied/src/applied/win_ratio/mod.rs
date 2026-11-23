@@ -105,6 +105,7 @@ theory_verification!(
         TIE = 0.5;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(TIE, 0.5, epsilon = math_commons::registry::TOLERANCE_FAST);
     }
 );

@@ -12,11 +12,12 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 
 - **`win_ratio`**: Prioritized composite endpoint evaluation for clinical research:
   - `WinRatioAnalysis`: Configurable hierarchical comparison engine for patient pairs with matched and unmatched (`evaluate_unmatched`, `evaluate_unmatched_into`) evaluation.
+  - Comparison strategies (`HigherIsBetter`, `LowerIsBetter`, `UnmatchedPairing`).
   - `censoring`: Right-censored time-to-event outcomes (`CensoredOutcome`), Pocock/Finkelstein-Schoenfeld comparators (`RightCensoredComparator`), and hierarchical tier waterfall counters (`TierCount`).
   - `u_statistic`: Pocock/Bebu-Lachin two-sample U-statistic variance projection (`UnmatchedWinRatioSummary`, `UnmatchedScratch`, `compute_unmatched_u_statistics`) calibrating confidence intervals and Type I error across dependent all-pairs comparisons.
   - `simulation`, `weibull_sampler`, & `power_sweep`: Exact two-step inverse-CDF `BivariateWeibullModel` sampling driven by `OxidizeRng` and zero-allocation Monte Carlo power sweeps (`run_power_sweep_into`, `run_weibull_power_sweep`).
 - **`clinical_trials`**: Biostatistical trial design, analytical sample-size and power curves (`calculate_power_means`, `calculate_power_proportions`), binary risk metrics (`calculate_risk_metrics`), and Kaplan-Meier / hazard-ratio survival analysis (`try_estimate_hazard_ratio`).
-- **`pharmacokinetics`**: Bateman function models for drug absorption, distribution, metabolism, and elimination (ADME).
+- **`pharmacokinetics`**: One-compartment oral ADME kinetics (`PKParameters`, `BatemanModel`, `half_life`, `t_max`, `solve_ka`), multi-dose linear superposition (`SuperpositionModel`), biphasic extended-release formulations (`TwoPulseModel`), and stereoselective chiral mixtures (`EnantiomerModel`).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
 - **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.
@@ -74,8 +75,31 @@ assert_eq!(tiers[0].wins + tiers[1].wins, 4);
 assert!(summary.win_ratio > 1.0);
 ```
 
+### Modeling Multi-Dose ADME Pharmacokinetics
+
+Calibrate oral absorption rates from target peak times and evaluate multi-dose plasma curves across immediate-release, biphasic two-pulse, or chiral enantiomer regimens:
+
+```rust
+# use domain_applied::__doctest_facade as math_explorer;
+use math_explorer::applied::pharmacokinetics::{
+    half_life, solve_ka, t_max, BatemanModel, PKParameters, PharmacokineticModel,
+    SuperpositionModel, TwoPulseModel,
+};
+
+let ke = std::f64::consts::LN_2 / 8.0;
+let ka = solve_ka(2.0, ke, 1.0, 100, 1.0e-7).expect("Convergent absorption rate");
+assert!((half_life(ke) - 8.0).abs() < 1.0e-9);
+assert!((t_max(ka, ke) - 2.0).abs() < 1.0e-6);
+
+let params = PKParameters::new(0.85, 100.0, ka, ke, 35.0).expect("Valid PK parameters");
+let xr_pulse = TwoPulseModel::new(BatemanModel::new(params), 4.0, 0.5, 0.5);
+let regimen = SuperpositionModel::new(xr_pulse, vec![0.0, 12.0, 24.0]);
+
+assert!(regimen.concentration(26.0) > regimen.concentration(2.0));
+```
+
 ---
 
 ## 3. Ecosystem Integration
 
-Algorithms from `domain_applied` feed interactive simulation calculators in `math_explorer_gui`—including `WinRatioStressTesterTool`, `SampleSizeCalculatorTool`, and `SurvivalAnalysisTool`—enabling visual scenario exploration and reproducible protocol exports for clinical biostatisticians, battery engineers, and data scientists.
+Algorithms from `domain_applied` feed interactive simulation calculators in `math_explorer_gui`—including `WinRatioStressTesterTool`, the `Pharmacokinetics (ADME)` multi-dose regimen planner, `SampleSizeCalculatorTool`, and `SurvivalAnalysisTool` in `ClinicalTrialsTab`—enabling visual scenario exploration and reproducible protocol exports for clinical biostatisticians, pharmacometricians, battery engineers, and data scientists.
