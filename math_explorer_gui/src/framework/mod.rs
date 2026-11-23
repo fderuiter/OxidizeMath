@@ -11,6 +11,7 @@ pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_3d;
+mod export_audio;
 mod export_dataset;
 mod export_figure;
 mod export_queue;
@@ -332,6 +333,30 @@ pub trait InteractiveTool {
     fn export_glsl_shader(&self, _dialect: ShaderDialect) -> Result<String, String> {
         Err(format!(
             "GLSL shader export is not supported for {}",
+            self.name()
+        ))
+    }
+
+    /// Optional cold-path hook to synthesize deterministic stereo PCM16 `.wav` bytes (`1..=15 s` at `44.1`/`48 kHz`).
+    fn export_wav_audio(&self, _sample_rate: u32, _duration_secs: f32) -> Result<Vec<u8>, String> {
+        Err(format!(
+            "WAV audio export is not supported for {}",
+            self.name()
+        ))
+    }
+
+    /// Optional cold-path hook to serialize a polyphonic SMF Format 1 `.mid` score (`1..=15 s`).
+    fn export_midi_score(&self, _duration_secs: f32) -> Result<Vec<u8>, String> {
+        Err(format!(
+            "MIDI score export is not supported for {}",
+            self.name()
+        ))
+    }
+
+    /// Optional cold-path hook to serialize a Huygens-Fokker `(scl_text, kbm_text)` tuning pair.
+    fn export_scala_tuning(&self) -> Result<(String, String), String> {
+        Err(format!(
+            "Scala tuning export is not supported for {}",
             self.name()
         ))
     }

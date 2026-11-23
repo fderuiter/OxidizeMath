@@ -28,6 +28,8 @@ impl ChladniWaveTankTool {
                 ui.separator();
                 self.draw_optics_and_barrier_controls(ui);
                 ui.separator();
+                self.draw_acoustics_section(ui);
+                ui.separator();
                 self.draw_visual_and_metric_readouts(ui);
             });
         });
@@ -420,5 +422,54 @@ impl ChladniWaveTankTool {
                 &format!("{:.2} Hz", omega11 / std::f64::consts::TAU),
             );
         }
+    }
+
+    fn draw_acoustics_section(&mut self, ui: &mut egui::Ui) {
+        ui.label("Stereo Pickups & Sonification:");
+        let mut moved = false;
+        ui.horizontal(|ui| {
+            ui.label("L (x, y):");
+            moved |= ui
+                .add(bounded_drag_value(
+                    &mut self.state.pickup_left[0],
+                    0.02..=0.98,
+                    0.01,
+                ))
+                .changed();
+            moved |= ui
+                .add(bounded_drag_value(
+                    &mut self.state.pickup_left[1],
+                    0.02..=0.98,
+                    0.01,
+                ))
+                .changed();
+        });
+        ui.horizontal(|ui| {
+            ui.label("R (x, y):");
+            moved |= ui
+                .add(bounded_drag_value(
+                    &mut self.state.pickup_right[0],
+                    0.02..=0.98,
+                    0.01,
+                ))
+                .changed();
+            moved |= ui
+                .add(bounded_drag_value(
+                    &mut self.state.pickup_right[1],
+                    0.02..=0.98,
+                    0.01,
+                ))
+                .changed();
+            if ui.small_button("Reset L/R").clicked() {
+                self.state.pickup_left = acoustics::default_pickup_left();
+                self.state.pickup_right = acoustics::default_pickup_right();
+                moved = true;
+            }
+        });
+        if moved {
+            self.state_rev = self.state_rev.wrapping_add(1);
+        }
+        let frame = self.live_sonification_frame();
+        crate::audio::render_sonification_panel(ui, "chladni_wave_tank", &frame, self.paused);
     }
 }

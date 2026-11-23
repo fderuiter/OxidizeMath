@@ -290,6 +290,38 @@ impl InteractiveTool for BifurcationDiagram {
         "chaos"
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot().with_audio_score()
+    }
+
+    fn export_wav_audio(&self, sample_rate: u32, duration_secs: f32) -> Result<Vec<u8>, String> {
+        let r0 = self.r_min;
+        let span = (self.r_max - self.r_min).max(0.0);
+        let dur = f64::from(duration_secs.clamp(1.0, 15.0));
+        Ok(crate::audio::render_frames_wav(
+            sample_rate,
+            duration_secs,
+            |_, t_sec| {
+                let frac = (t_sec / dur).clamp(0.0, 1.0);
+                crate::audio::mappings::bifurcation_frame(r0 + frac * span)
+            },
+        ))
+    }
+
+    fn export_midi_score(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
+        let r0 = self.r_min;
+        let span = (self.r_max - self.r_min).max(0.0);
+        let dur = f64::from(duration_secs.clamp(1.0, 15.0));
+        Ok(crate::audio::render_frames_midi(
+            self.name(),
+            duration_secs,
+            |_, t_sec| {
+                let frac = (t_sec / dur).clamp(0.0, 1.0);
+                crate::audio::mappings::bifurcation_frame(r0 + frac * span)
+            },
+        ))
+    }
+
     fn save_state(&self) -> Option<String> {
         let is_custom = self.map_mode == BifurcationMapMode::Custom;
         let custom_expr = (is_custom || self.math_input.raw_text != DEFAULT_CUSTOM_MAP_EXPR)

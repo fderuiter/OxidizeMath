@@ -121,4 +121,116 @@ impl AttractorPlotter {
         }
         Ok(ColoredMesh::new(mesh, colors))
     }
+
+    pub(super) fn compute_attractor_state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.mode as u8).hash(&mut h);
+        for bar in self.flow_bank.bars() {
+            bar.raw_text.hash(&mut h);
+        }
+        for &pv in self.flow_bank.param_slice() {
+            pv.to_bits().hash(&mut h);
+        }
+        self.system.sigma.to_bits().hash(&mut h);
+        self.system.rho.to_bits().hash(&mut h);
+        self.system.beta.to_bits().hash(&mut h);
+        self.dt.to_bits().hash(&mut h);
+        self.tube_radius.to_bits().hash(&mut h);
+        self.simulation_speed.hash(&mut h);
+        self.max_points.hash(&mut h);
+        self.is_paused().hash(&mut h);
+        self.diverged().hash(&mut h);
+        self.show_annotations.hash(&mut h);
+        for offset in &self.fixed_callout_offsets {
+            let x_bits = if offset.x == 0.0 {
+                0
+            } else {
+                offset.x.to_bits()
+            };
+            let y_bits = if offset.y == 0.0 {
+                0
+            } else {
+                offset.y.to_bits()
+            };
+            x_bits.hash(&mut h);
+            y_bits.hash(&mut h);
+        }
+        self.camera.hash_state(&mut h);
+        h.finish().max(1)
+    }
+
+    fn build_offline_sonification_stepper(
+        &self,
+    ) -> Result<impl FnMut(usize, f64) -> crate::audio::SonificationFrame, String> {
+        if self.diverged() || !self.is_finite_state() {
+            return Err("Cannot export audio while attractor state is non-finite.".to_string());
+        }
+        let mode = self.mode;
+        let dt = self.dt.clamp(0.001, 0.05);
+        let speed = self.simulation_speed.clamp(1, super::MAX_SIMULATION_SPEED);
+        let start = self.system.state.vec;
+        let mut lorenz = LorenzBuilder::new()
+            .sigma(self.system.sigma)
+            .rho(self.system.rho)
+            .beta(self.system.beta)
+            .build(LorenzState::new(start.x, start.y, start.z));
+        let custom =
+            (mode == AttractorMode::Custom).then(|| CompiledFlowJob::from_bank(&self.flow_bank));
+        let mut curr = start;
+        let mut diverged = false;
+
+        Ok(move |_, _| {
+            for _ in 0..speed {
+                if diverged {
+                    break;
+                }
+                if let Some(ref job) = custom {
+                    curr = job.rk4_step(curr, dt);
+                } else {
+                    lorenz.step(dt);
+                    curr = lorenz.state.vec;
+                }
+                if !curr.x.is_finite() || !curr.y.is_finite() || !curr.z.is_finite() {
+                    diverged = true;
+                }
+            }
+            let rhs = if let Some(ref job) = custom {
+                job.eval_rhs(curr)
+            } else {
+                Vector3::new(
+                    lorenz.sigma * (curr.y - curr.x),
+                    curr.x * (lorenz.rho - curr.z) - curr.y,
+                    curr.x * curr.y - lorenz.beta * curr.z,
+                )
+            };
+            crate::audio::mappings::attractor_frame(
+                [curr.x, curr.y, curr.z],
+                [rhs.x, rhs.y, rhs.z],
+                diverged,
+            )
+        })
+    }
+
+    pub(super) fn export_attractor_wav(
+        &self,
+        sample_rate: u32,
+        duration_secs: f32,
+    ) -> Result<Vec<u8>, String> {
+        let stepper = self.build_offline_sonification_stepper()?;
+        Ok(crate::audio::render_frames_wav(
+            sample_rate,
+            duration_secs,
+            stepper,
+        ))
+    }
+
+    pub(super) fn export_attractor_midi(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
+        let stepper = self.build_offline_sonification_stepper()?;
+        Ok(crate::audio::render_frames_midi(
+            "Attractor Plotter",
+            duration_secs,
+            stepper,
+        ))
+    }
 }

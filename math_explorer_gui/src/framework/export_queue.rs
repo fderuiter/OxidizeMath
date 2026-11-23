@@ -25,6 +25,14 @@ pub(crate) enum ExportFormat {
     GlslWebGl2,
     /// Standalone Shadertoy (`mainImage`) fragment shader (`.frag`).
     GlslShadertoy,
+    /// Stereo 16-bit RIFF WAVE audio or impulse response (`.wav`).
+    Wav,
+    /// Standard MIDI File Format 1 polyphonic microtonal score (`.mid`).
+    Midi,
+    /// Huygens-Fokker Scala microtonal tuning table (`.scl`).
+    ScalaScl,
+    /// Huygens-Fokker Scala keyboard root-key mapping (`.kbm`).
+    ScalaKbm,
 }
 
 impl ExportFormat {
@@ -50,6 +58,10 @@ impl ExportFormat {
                 "Shadertoy Fragment Shader",
                 "shadertoy",
             ),
+            Self::Wav => ("wav", "WAV", "WAV Audio", "audio"),
+            Self::Midi => ("mid", "MIDI", "Standard MIDI File", "score"),
+            Self::ScalaScl => ("scl", "Scala Scale", "Scala Tuning Scale", "scale"),
+            Self::ScalaKbm => ("kbm", "Scala Keymap", "Scala Keyboard Mapping", "keymap"),
         }
     }
 
@@ -254,6 +266,15 @@ impl SimulationFramework {
             }
             (ExportFormat::GlslWebGl2 | ExportFormat::GlslShadertoy, target) => {
                 self.dispatch_shader_export(req.format, target, ctx);
+            }
+            (
+                ExportFormat::Wav
+                | ExportFormat::Midi
+                | ExportFormat::ScalaScl
+                | ExportFormat::ScalaKbm,
+                target,
+            ) => {
+                self.dispatch_audio_export(req.format, target, ctx);
             }
         }
     }

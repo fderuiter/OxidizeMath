@@ -36,4 +36,22 @@ fn wasm_audio_controller_lifecycle_and_wav_export() {
         snapshot_ui_state().waveform_override,
         Some(WaveformPreset::Sine)
     );
+
+    super::set_offline_duration_secs(6.5);
+    super::set_offline_sample_rate(48_000);
+    let updated = snapshot_ui_state();
+    assert!((updated.offline_duration_secs - 6.5).abs() < 1e-4);
+    assert_eq!(updated.offline_sample_rate, 48_000);
+    super::export_current_tool_midi("attractors");
+
+    assert_eq!(egui_plot::export::infer_mime_type("ir.wav"), "audio/wav");
+    assert_eq!(
+        egui_plot::export::infer_mime_type("score.mid"),
+        "audio/midi"
+    );
+    assert_eq!(
+        egui_plot::export::infer_mime_type("scale.scl"),
+        "text/plain"
+    );
+    assert_eq!(egui_plot::export::infer_mime_type("map.kbm"), "text/plain");
 }

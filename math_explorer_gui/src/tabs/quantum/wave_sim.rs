@@ -221,7 +221,39 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_audio_score()
+    }
+
+    fn export_wav_audio(&self, sample_rate: u32, duration_secs: f32) -> Result<Vec<u8>, String> {
+        let mut runner = WaveRunner::new(Arc::clone(&self.shared_config));
+        let dt = self.dt.clamp(1.0e-4, 0.25);
+        let substeps = self.steps_per_frame.max(1);
+        Ok(crate::audio::render_frames_wav(
+            sample_rate,
+            duration_secs,
+            |_, _| {
+                for _ in 0..substeps {
+                    runner.step_with_dt(dt);
+                }
+                runner.sonification_frame()
+            },
+        ))
+    }
+
+    fn export_midi_score(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
+        let mut runner = WaveRunner::new(Arc::clone(&self.shared_config));
+        let dt = self.dt.clamp(1.0e-4, 0.25);
+        let substeps = self.steps_per_frame.max(1);
+        Ok(crate::audio::render_frames_midi(
+            self.name(),
+            duration_secs,
+            |_, _| {
+                for _ in 0..substeps {
+                    runner.step_with_dt(dt);
+                }
+                runner.sonification_frame()
+            },
+        ))
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {

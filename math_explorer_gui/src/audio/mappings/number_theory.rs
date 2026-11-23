@@ -9,6 +9,25 @@ use crate::audio::frame::{
 /// Root reference pitch (`A3 = 220.0 Hz`) for prime-power harmonic chords.
 pub const PRIME_CHORD_ROOT_HZ: f32 = 220.0;
 
+/// Computes the exact reduced octave-normalized rational `(numerator, denominator)` in `[1, 2]`
+/// for a positive integer or prime `n` (`2 -> 2/1`, `3 -> 3/2`, `5 -> 5/4`, `7 -> 7/4`).
+#[must_use]
+pub const fn just_intonation_rational(n: u64) -> (u64, u64) {
+    if n <= 1 {
+        return (1, 1);
+    }
+    if n.is_power_of_two() {
+        return (2, 1);
+    }
+    let log2_floor = 63_u32.saturating_sub(n.leading_zeros());
+    let exp = if log2_floor < 62 { log2_floor } else { 62 };
+    let denom = 1_u64 << exp;
+    let nz = n.trailing_zeros();
+    let dz = denom.trailing_zeros();
+    let shift = if nz < dz { nz } else { dz };
+    (n >> shift, denom >> shift)
+}
+
 /// Computes the octave-normalized just-intonation harmonic ratio for prime `p`.
 ///
 /// Maps `p = 2 -> 2.0` (`2:1` octave), `p = 3 -> 1.5` (`3:2` fifth),
@@ -16,15 +35,8 @@ pub const PRIME_CHORD_ROOT_HZ: f32 = 220.0;
 /// and general odd prime `p -> p / 2^floor(log2(p))` in `(1.0, 2.0)`.
 #[must_use]
 pub fn just_intonation_ratio(prime: u64) -> f32 {
-    if prime <= 1 {
-        return 1.0;
-    }
-    if prime == 2 {
-        return 2.0;
-    }
-    let log2_floor = 63_u32.saturating_sub(prime.leading_zeros());
-    let denom = (1_u64 << log2_floor.min(62)) as f64;
-    ((prime as f64) / denom).clamp(1.0, 2.0) as f32
+    let (num, den) = just_intonation_rational(prime);
+    ((num as f64) / (den as f64)).clamp(1.0, 2.0) as f32
 }
 
 /// Maps prime-power pairs `(p, e)` to up to 8 just-intonation harmonic voices weighted by `e`.

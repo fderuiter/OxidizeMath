@@ -5,13 +5,13 @@
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_point_clamp,
-    apply_sponge_layer, BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D,
-    SpectralAnalyzer2D, SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver,
+    BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D, SpectralAnalyzer2D,
+    SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver,
 };
 
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 
+pub(crate) mod acoustics;
 mod canvas;
 mod presets;
 mod ui;
@@ -132,6 +132,10 @@ pub(crate) struct ChladniWaveTankState {
     pub show_nodal_contours: bool,
     pub show_sand_particles: bool,
     pub rng_seed: u64,
+    #[serde(default = "acoustics::default_pickup_left")]
+    pub pickup_left: [f64; 2],
+    #[serde(default = "acoustics::default_pickup_right")]
+    pub pickup_right: [f64; 2],
 }
 
 pub struct ChladniWaveTankTool {
@@ -154,6 +158,7 @@ pub struct ChladniWaveTankTool {
     pub(crate) state_rev: u64,
     pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) analysis_dirty: bool,
+    pub(crate) active_drag: acoustics::CanvasDragTarget,
 }
 
 impl Default for ChladniWaveTankTool {
@@ -187,6 +192,7 @@ impl Default for ChladniWaveTankTool {
             state_rev: 1,
             focused_canvas: None,
             analysis_dirty: true,
+            active_drag: acoustics::CanvasDragTarget::None,
         };
         tool.rebuild_domain_and_warmup(0);
         tool
@@ -260,71 +266,7 @@ impl ChladniWaveTankTool {
     }
 
     pub(crate) fn rebuild_masks(&mut self) {
-        self.solver.wall_mask.fill(1.0);
-        self.solver.sponge_mask.fill(0.0);
-        self.solver.wave_speed_mask.fill(1.0);
-
-        if self.state.preset == TankPreset::CircularDrumhead {
-            apply_circular_drumhead_mask(&mut self.solver.wall_mask, GRID_SIZE, GRID_SIZE, 0.45);
-        }
-        if self.state.boundary == BoundaryMode2D::Sponge {
-            apply_sponge_layer(&mut self.solver.sponge_mask, GRID_SIZE, GRID_SIZE, 12, 1.8);
-        }
-        self.apply_clamp_pins();
-        if self.state.barrier_enabled {
-            apply_multi_slit_barrier(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                self.state.barrier_x,
-                2,
-                self.state.slit_count,
-                self.state.slit_width,
-                self.state.slit_separation,
-            );
-        }
-        if self.state.lens_enabled {
-            apply_biconvex_lens(
-                &mut self.solver.wave_speed_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                44,
-                self.state.lens_aperture,
-                8.0,
-                self.state.refractive_index,
-            );
-        }
-    }
-
-    fn apply_clamp_pins(&mut self) {
-        let (pins, radius): (&[(f64, f64)], f64) = match self.state.clamp_layout {
-            ClampLayout::None => (&[], 0.0),
-            ClampLayout::CenterPin => (&[(0.5, 0.5)], 2.0),
-            ClampLayout::QuadSymmetry => (&[(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)], 1.8),
-            ClampLayout::EdgeMidpoints => {
-                (&[(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)], 2.2)
-            }
-        };
-        for &(cx, cy) in pins {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                radius,
-            );
-        }
-        for &[cx, cy] in &self.custom_clamps {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                1.8,
-            );
-        }
+        acoustics::configure_domain_masks(&mut self.solver, &self.state, &self.custom_clamps);
     }
 
     pub(crate) fn advance_physics_step(&mut self) {
@@ -432,7 +374,19 @@ impl InteractiveTool for ChladniWaveTankTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_microtonal_studio()
+    }
+
+    fn export_wav_audio(&self, sample_rate: u32, duration_secs: f32) -> Result<Vec<u8>, String> {
+        self.export_chladni_wav(sample_rate, duration_secs)
+    }
+
+    fn export_midi_score(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
+        self.export_chladni_midi(duration_secs)
+    }
+
+    fn export_scala_tuning(&self) -> Result<(String, String), String> {
+        self.export_chladni_scala()
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {

@@ -43,7 +43,59 @@ impl InteractiveTool for FactorizationTool {
         "Factorization Tool"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::none().with_microtonal_studio()
+    }
+
+    fn export_wav_audio(&self, sample_rate: u32, duration_secs: f32) -> Result<Vec<u8>, String> {
+        let (_num, factors) = self.active_export_factors();
+        let chord = crate::audio::mappings::prime_chord_frame(
+            &factors,
+            crate::audio::WaveformPreset::JustHarmonic,
+        );
+        Ok(crate::audio::render_frames_wav(
+            sample_rate,
+            duration_secs,
+            move |_step, _t_sec| chord,
+        ))
+    }
+
+    fn export_midi_score(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
+        let (num, factors) = self.active_export_factors();
+        let cfg = crate::audio::OfflineRenderConfig {
+            duration_secs,
+            ..Default::default()
+        }
+        .sanitized();
+        let total_ticks =
+            crate::audio::midi::seconds_to_ticks(f64::from(cfg.duration_secs)).max(96);
+        let chord = crate::audio::mappings::prime_chord_frame(
+            &factors,
+            crate::audio::WaveformPreset::JustHarmonic,
+        );
+        let count = usize::from(chord.active_voices);
+        let mut tracks = Vec::with_capacity(count);
+        for voice in &chord.voices[..count] {
+            let vel = ((voice.gain * 112.0).round() as u8).clamp(24, 124);
+            tracks.push(vec![crate::audio::midi::MidiNoteSpan {
+                start_tick: 0,
+                duration_ticks: total_ticks,
+                freq_hz: voice.freq_hz,
+                velocity: vel,
+                pan: voice.pan,
+            }]);
+        }
+        let title = format!("Prime Chord N={num}");
+        Ok(crate::audio::midi::encode_midi_voice_tracks(
+            &title, &tracks,
+        ))
+    }
+
+    fn export_scala_tuning(&self) -> Result<(String, String), String> {
+        let (num, factors) = self.active_export_factors();
+        let stem = format!("prime_chord_{num}");
+        let desc = format!("Just-Intonation Prime Factorization Scale for N = {num}");
+        let scale = crate::audio::scala::ScalaScale::from_prime_factors(&stem, &desc, &factors);
+        Ok(scale.to_scl_and_kbm_default())
     }
     fn domain(&self) -> &'static str {
         "number_theory"
@@ -90,6 +142,22 @@ impl InteractiveTool for FactorizationTool {
 }
 
 impl FactorizationTool {
+    fn active_export_factors(&self) -> (u64, Vec<(u64, u32)>) {
+        if let Some(Ok((num, _, ref factors))) = self.results {
+            if !factors.is_empty() {
+                return (num, factors.clone());
+            }
+        }
+        if let Ok(num) = self.input_text.trim().parse::<u64>() {
+            if let Ok((n, _, factors)) = factorize_bounded(num) {
+                if !factors.is_empty() {
+                    return (n, factors);
+                }
+            }
+        }
+        (210, vec![(2, 1), (3, 1), (5, 1), (7, 1)])
+    }
+
     fn analyze_current_input(&mut self) {
         self.results = Some(match self.input_text.trim().parse::<u64>() {
             Ok(num) => factorize_bounded(num),
@@ -342,5 +410,36 @@ mod tests {
         ctx.enable_accesskit();
         click_analyze_button(&ctx, &mut tool);
         assert!(matches!(tool.results, Some(Err(_))));
+    }
+
+    #[test]
+    fn test_factorization_wav_midi_and_scala_just_intonation_exports() {
+        let mut tool = FactorizationTool {
+            input_text: "210".to_string(),
+            results: None,
+        };
+        tool.analyze_current_input();
+
+        let wav = tool
+            .export_wav_audio(48_000, 1.0)
+            .expect("Factorization WAV");
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(u32::from_le_bytes(wav[24..28].try_into().unwrap()), 48_000);
+        assert_eq!(wav.len(), 44 + 48_000 * 4);
+
+        let midi = tool.export_midi_score(1.5).expect("Factorization MIDI");
+        assert_eq!(&midi[0..4], b"MThd");
+        assert_eq!(u16::from_be_bytes(midi[8..10].try_into().unwrap()), 1);
+        assert_eq!(u16::from_be_bytes(midi[10..12].try_into().unwrap()), 5);
+
+        let (scl, kbm) = tool.export_scala_tuning().expect("Factorization Scala");
+        assert!(
+            scl.contains("5/4")
+                && scl.contains("3/2")
+                && scl.contains("7/4")
+                && scl.contains("2/1")
+        );
+        assert!(kbm.contains("220.000000"));
     }
 }

@@ -7,13 +7,17 @@ use eframe::egui;
 use super::frame::{
     MeterReading, SonificationFrame, WaveformPreset, FLOOR_DBFS, LIMITER_CEILING_DBFS,
 };
+use super::wav::{
+    MAX_OFFLINE_DURATION_SECS, MIN_OFFLINE_DURATION_SECS, WAV_EXPORT_SAMPLE_RATE,
+    WAV_STUDIO_SAMPLE_RATE,
+};
 use crate::accessibility::{
     paint_canvas_focus_ring, register_canvas_accessibility, AccessibleHoverText,
 };
 use crate::app::palette::SemanticPalette;
 
-/// Renders the sonification mute/unlock control, timbre preset, `.wav` export button,
-/// and WCAG AA high-contrast visual `dBFS` + `Hz` meter.
+/// Renders the sonification mute/unlock control, timbre preset, offline duration (`1..=15 s`),
+/// sample rate (`44.1`/`48 kHz`), `.wav`/`.mid` export buttons, and WCAG AA visual `dBFS` + `Hz` meter.
 pub fn render_sonification_panel(
     ui: &mut egui::Ui,
     tool_id: &'static str,
@@ -28,6 +32,7 @@ pub fn render_sonification_panel(
             ui.label(egui::RichText::new("Sonification").strong());
             render_mute_button(ui, state.muted);
             render_wav_export_button(ui, tool_id);
+            render_midi_export_button(ui, tool_id);
         });
 
         ui.horizontal_wrapped(|ui| {
@@ -45,6 +50,7 @@ pub fn render_sonification_panel(
             }
         });
 
+        render_offline_render_controls(ui, state.offline_duration_secs, state.offline_sample_rate);
         render_timbre_selector(ui, state.waveform_override, frame.waveform);
         render_visual_meter(ui, &state.meter, state.muted);
     });
@@ -69,11 +75,69 @@ fn render_mute_button(ui: &mut egui::Ui, is_muted: bool) {
 fn render_wav_export_button(ui: &mut egui::Ui, tool_id: &'static str) {
     if ui
         .button("Export .wav")
-        .accessible_hover_text("Synthesize and download a 16-bit stereo WAV recording")
+        .accessible_hover_text(
+            "Synthesize and download a deterministic 16-bit stereo WAV recording (1s to 15s)",
+        )
         .clicked()
     {
         super::export_current_tool_wav(tool_id);
     }
+}
+
+fn render_midi_export_button(ui: &mut egui::Ui, tool_id: &'static str) {
+    if ui
+        .button("Export .mid")
+        .accessible_hover_text(
+            "Serialize and download a polyphonic SMF Format 1 MIDI score with 14-bit pitch bends",
+        )
+        .clicked()
+    {
+        super::export_current_tool_midi(tool_id);
+    }
+}
+
+fn render_offline_render_controls(ui: &mut egui::Ui, duration_secs: f32, sample_rate: u32) {
+    ui.horizontal_wrapped(|ui| {
+        let mut dur = duration_secs;
+        ui.label("Clip:");
+        let drag = egui::DragValue::new(&mut dur)
+            .range(MIN_OFFLINE_DURATION_SECS..=MAX_OFFLINE_DURATION_SECS)
+            .speed(0.25)
+            .suffix(" s")
+            .fixed_decimals(1);
+        if ui
+            .add(drag)
+            .accessible_hover_text(
+                "Offline WAV and MIDI export duration in seconds (1.0s to 15.0s)",
+            )
+            .changed()
+        {
+            super::set_offline_duration_secs(dur);
+        }
+
+        let rate_label = if sample_rate >= 46_000 {
+            "48 kHz"
+        } else {
+            "44.1 kHz"
+        };
+        egui::ComboBox::from_id_salt("sonification_offline_sample_rate")
+            .selected_text(rate_label)
+            .width(78.0)
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(sample_rate < 46_000, "44.1 kHz")
+                    .clicked()
+                {
+                    super::set_offline_sample_rate(WAV_EXPORT_SAMPLE_RATE);
+                }
+                if ui
+                    .selectable_label(sample_rate >= 46_000, "48 kHz")
+                    .clicked()
+                {
+                    super::set_offline_sample_rate(WAV_STUDIO_SAMPLE_RATE);
+                }
+            });
+    });
 }
 
 fn render_timbre_selector(

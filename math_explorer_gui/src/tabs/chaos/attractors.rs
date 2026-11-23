@@ -289,41 +289,7 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.mode as u8).hash(&mut h);
-        for bar in self.flow_bank.bars() {
-            bar.raw_text.hash(&mut h);
-        }
-        for &pv in self.flow_bank.param_slice() {
-            pv.to_bits().hash(&mut h);
-        }
-        self.system.sigma.to_bits().hash(&mut h);
-        self.system.rho.to_bits().hash(&mut h);
-        self.system.beta.to_bits().hash(&mut h);
-        self.dt.to_bits().hash(&mut h);
-        self.tube_radius.to_bits().hash(&mut h);
-        self.simulation_speed.hash(&mut h);
-        self.max_points.hash(&mut h);
-        self.is_paused().hash(&mut h);
-        self.diverged().hash(&mut h);
-        self.show_annotations.hash(&mut h);
-        for offset in &self.fixed_callout_offsets {
-            let x_bits = if offset.x == 0.0 {
-                0
-            } else {
-                offset.x.to_bits()
-            };
-            let y_bits = if offset.y == 0.0 {
-                0
-            } else {
-                offset.y.to_bits()
-            };
-            x_bits.hash(&mut h);
-            y_bits.hash(&mut h);
-        }
-        self.camera.hash_state(&mut h);
-        h.finish().max(1)
+        self.compute_attractor_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -384,7 +350,17 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot().with_3d_solid()
+        ExportCapabilities::plot()
+            .with_3d_solid()
+            .with_audio_score()
+    }
+
+    fn export_wav_audio(&self, sample_rate: u32, duration_secs: f32) -> Result<Vec<u8>, String> {
+        self.export_attractor_wav(sample_rate, duration_secs)
+    }
+
+    fn export_midi_score(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
+        self.export_attractor_midi(duration_secs)
     }
 
     fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {

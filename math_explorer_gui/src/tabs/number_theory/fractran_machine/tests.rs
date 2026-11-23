@@ -158,3 +158,52 @@ fn test_state_revision_tracks_persisted_fields_and_ignores_runtime_steps() {
     let rev3 = tool.state_revision();
     assert!(rev3 > 0 && rev3 != rev2);
 }
+
+#[test]
+fn test_fractran_wav_midi_scala_exports_and_zero_alloc_pcm() {
+    crate::audio::set_offline_duration_secs(1.0);
+    let tool = FractranMachineTool::default();
+    let wav = tool.export_wav_audio(44_100, 1.0).expect("FRACTRAN WAV");
+    assert_eq!(&wav[0..4], b"RIFF");
+    assert_eq!(&wav[8..12], b"WAVE");
+    assert_eq!(wav.len(), 44 + 44_100 * 4);
+    let non_silent = wav[44..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .any(|b| i16::from_le_bytes(*b).unsigned_abs() > 64);
+    assert!(
+        non_silent,
+        "FRACTRAN OfflinePcmSynthesizer WAV must be audible"
+    );
+
+    let midi = tool.export_midi_score(1.5).expect("FRACTRAN MIDI");
+    assert_eq!(&midi[0..4], b"MThd");
+    assert_eq!(u16::from_be_bytes(midi[8..10].try_into().unwrap()), 1);
+
+    let (scl, kbm) = tool.export_scala_tuning().expect("FRACTRAN Scala");
+    assert!(scl.contains("3/2") && scl.contains("5/4") && scl.contains("2/1"));
+    assert!(kbm.contains("220.000000"));
+
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut regs = tool.vm.encode_value(2).expect("initial regs");
+    let mut scratch = [(0_u64, 0_u32); crate::audio::frame::MAX_VOICES];
+    let mut synth = crate::audio::OfflinePcmSynthesizer::new(44_100, 735);
+    let _ = crate::audio::SonificationBackend::set_muted_from_user_gesture(&mut synth, false);
+    let mut pcm = vec![0.0_f32; 7_350 * 2];
+    let (written, _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        acoustics::render_fractran_pcm_into(
+            &tool.vm,
+            &mut regs,
+            &mut scratch,
+            &mut synth,
+            735,
+            2,
+            &mut pcm,
+        )
+    });
+    assert_eq!(written, 7_350);
+    assert!(pcm.iter().any(|s| s.abs() > 0.01));
+}

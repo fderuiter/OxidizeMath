@@ -41,12 +41,15 @@ impl ChladniWaveTankTool {
         let rect = response.rect;
 
         let summary = format!(
-            "Preset {}, medium {:?}, driver ({:.2}, {:.2}) at {:.2} Hz, dominant |k| {:.2}",
+            "Preset {}, medium {:?}, driver ({:.2}, {:.2}), pickups L({:.2}, {:.2}) R({:.2}, {:.2}), dominant |k| {:.2}",
             self.state.preset.label(),
             self.state.medium,
             self.state.driver_x,
             self.state.driver_y,
-            self.state.driver_frequency,
+            self.state.pickup_left[0],
+            self.state.pickup_left[1],
+            self.state.pickup_right[0],
+            self.state.pickup_right[1],
             self.dominant_peak.k_radial
         );
         crate::accessibility::register_canvas_accessibility(
@@ -72,7 +75,9 @@ impl ChladniWaveTankTool {
         };
         self.paint_canvas_overlays(&painter, rect, raster_palette);
         crate::accessibility::paint_canvas_focus_ring(ui, &response);
-        ui.small("Drag to steer driver • Shift+Click to pin clamp • Arrows move • Enter pulses");
+        ui.small(
+            "Drag L/R pickups or driver • Shift+Click clamp • Arrows move driver • Enter pulses",
+        );
     }
 
     fn handle_canvas_input(&mut self, ui: &mut egui::Ui, response: &egui::Response, rect: Rect) {
@@ -116,24 +121,7 @@ impl ChladniWaveTankTool {
             }
         }
 
-        if (response.clicked() || response.dragged()) && rect.width() > 1.0 && rect.height() > 1.0 {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
-                let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
-                let shift = ctx.input(|i| i.modifiers.shift);
-                if shift && response.clicked() && self.custom_clamps.len() < 16 {
-                    self.custom_clamps.push([nx, ny]);
-                    self.rebuild_masks();
-                } else {
-                    self.state.driver_x = nx;
-                    self.state.driver_y = ny;
-                    if response.clicked() {
-                        self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
-                    }
-                }
-                self.state_rev = self.state_rev.wrapping_add(1);
-            }
-        }
+        self.handle_canvas_pointer(&ctx, response, rect);
     }
 
     fn paint_canvas_overlays(&self, painter: &egui::Painter, rect: Rect, palette: SemanticPalette) {
@@ -179,6 +167,22 @@ impl ChladniWaveTankTool {
 
         let drv_pos = to_screen(self.state.driver_x, self.state.driver_y);
         painter.circle_stroke(drv_pos, 5.0_f32, Stroke::new(1.8_f32, palette.axis_x));
+
+        for (pt, label, col) in [
+            (self.state.pickup_left, "L", palette.series_color(0)),
+            (self.state.pickup_right, "R", palette.series_color(2)),
+        ] {
+            let p_scr = to_screen(pt[0], pt[1]);
+            painter.circle_filled(p_scr, 4.0_f32, col.gamma_multiply(0.85));
+            painter.circle_stroke(p_scr, 7.5_f32, Stroke::new(1.7_f32, col));
+            painter.text(
+                p_scr + Vec2::new(9.0, -7.0),
+                egui::Align2::LEFT_CENTER,
+                label,
+                egui::FontId::proportional(11.0),
+                col,
+            );
+        }
     }
 
     fn draw_secondary_analysis_plot(&self, ui: &mut egui::Ui) {

@@ -34,8 +34,17 @@ pub fn infer_mime_type(filename: &str) -> &'static str {
         "text/csv"
     } else if lower.ends_with(".tsv") {
         "text/tab-separated-values"
-    } else if lower.ends_with(".txt") || lower.ends_with(".frag") || lower.ends_with(".glsl") {
+    } else if lower.ends_with(".txt")
+        || lower.ends_with(".frag")
+        || lower.ends_with(".glsl")
+        || lower.ends_with(".scl")
+        || lower.ends_with(".kbm")
+    {
         "text/plain"
+    } else if lower.ends_with(".wav") {
+        "audio/wav"
+    } else if lower.ends_with(".mid") || lower.ends_with(".midi") {
+        "audio/midi"
     } else if lower.ends_with(".svg") {
         "image/svg+xml"
     } else if lower.ends_with(".png") {

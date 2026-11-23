@@ -1,5 +1,6 @@
 //! Interactive FRACTRAN prime-exponent virtual machine and Minsky counter-machine explorer.
 
+pub(crate) mod acoustics;
 pub mod diagram;
 mod panels;
 
@@ -334,7 +335,19 @@ impl InteractiveTool for FractranMachineTool {
         "number_theory"
     }
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_microtonal_studio()
+    }
+
+    fn export_wav_audio(&self, sample_rate: u32, duration_secs: f32) -> Result<Vec<u8>, String> {
+        self.export_fractran_wav(sample_rate, duration_secs)
+    }
+
+    fn export_midi_score(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
+        self.export_fractran_midi(duration_secs)
+    }
+
+    fn export_scala_tuning(&self) -> Result<(String, String), String> {
+        self.export_fractran_scala()
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -393,6 +406,13 @@ impl InteractiveTool for FractranMachineTool {
                     self.stop_reason,
                     self.validation_error.as_deref(),
                     &self.primes_found,
+                );
+                let son_frame = self.current_sonification_frame();
+                crate::audio::render_sonification_panel(
+                    ui,
+                    "fractran_machine",
+                    &son_frame,
+                    !self.is_playing,
                 );
                 draw_fraction_rules_strip(ui, &self.program.fractions, self.last_fired_rule);
                 ui.add_space(4.0);

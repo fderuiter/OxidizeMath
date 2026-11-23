@@ -46,6 +46,14 @@ pub(super) fn is_valid_state(s: &ChladniWaveTankState) -> bool {
         && (REFRACTIVE_MIN..=REFRACTIVE_MAX).contains(&s.refractive_index)
         && s.lens_aperture.is_finite()
         && (8.0..=56.0).contains(&s.lens_aperture)
+        && s.pickup_left[0].is_finite()
+        && (0.0..=1.0).contains(&s.pickup_left[0])
+        && s.pickup_left[1].is_finite()
+        && (0.0..=1.0).contains(&s.pickup_left[1])
+        && s.pickup_right[0].is_finite()
+        && (0.0..=1.0).contains(&s.pickup_right[0])
+        && s.pickup_right[1].is_finite()
+        && (0.0..=1.0).contains(&s.pickup_right[1])
 }
 
 pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
@@ -64,6 +72,10 @@ pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
     s.detector_x = s.detector_x.clamp(8, GRID_SIZE - 4);
     s.refractive_index = sanitize_bounded(s.refractive_index, REFRACTIVE_MIN, REFRACTIVE_MAX, 1.6);
     s.lens_aperture = sanitize_bounded(s.lens_aperture, 8.0, 56.0, 34.0);
+    s.pickup_left[0] = sanitize_bounded(s.pickup_left[0], 0.02, 0.98, 0.31);
+    s.pickup_left[1] = sanitize_bounded(s.pickup_left[1], 0.02, 0.98, 0.43);
+    s.pickup_right[0] = sanitize_bounded(s.pickup_right[0], 0.02, 0.98, 0.69);
+    s.pickup_right[1] = sanitize_bounded(s.pickup_right[1], 0.02, 0.98, 0.57);
 }
 
 fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
@@ -96,6 +108,8 @@ fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
         show_nodal_contours: true,
         show_sand_particles: false,
         rng_seed: 0xC41A_D21E,
+        pickup_left: super::acoustics::default_pickup_left(),
+        pickup_right: super::acoustics::default_pickup_right(),
     }
 }
 

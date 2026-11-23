@@ -220,6 +220,10 @@ impl WaveRunner {
         );
     }
 
+    pub(crate) const fn sonification_frame(&self) -> crate::audio::SonificationFrame {
+        self.sonification
+    }
+
     fn refresh_propagator(&mut self, dt: f64) {
         if self.cached_dt != Some(dt) {
             self.propagator = time_evolution_operator(&self.hamiltonian, dt, 1.0);

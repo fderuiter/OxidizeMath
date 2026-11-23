@@ -207,6 +207,30 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
     }
+
+    fn build_deterministic_export_model(&self) -> Result<(M, HashMap<String, f64>), String> {
+        let params = self
+            .params
+            .read()
+            .map_err(|_| "Failed to read simulation parameters".to_string())?
+            .clone();
+        let mut model = M::new(&params);
+        if self.custom_formula_enabled {
+            let payload = self
+                .shared_formula
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            model.apply_compiled_formula(payload.as_ref(), &params);
+        }
+        if M::supports_spatial_brush() {
+            let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+            if !sculpt.is_empty() {
+                model.apply_sculpt_payload(&sculpt, &params);
+            }
+        }
+        Ok((model, params))
+    }
 }
 
 impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
@@ -221,11 +245,58 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        if M::is_raster_model() {
+        let base = if M::is_raster_model() {
             crate::framework::ExportCapabilities::raster_only()
         } else {
             crate::framework::ExportCapabilities::plot()
+        };
+        if M::sonification_tool_id().is_some() {
+            base.with_audio_score()
+        } else {
+            base
         }
+    }
+
+    fn export_wav_audio(&self, sample_rate: u32, duration_secs: f32) -> Result<Vec<u8>, String> {
+        if M::sonification_tool_id().is_none() {
+            return Err(format!(
+                "WAV audio export is not supported for {}",
+                M::name()
+            ));
+        }
+        let (mut model, params) = self.build_deterministic_export_model()?;
+        let substeps = self.steps_per_frame.max(1);
+        Ok(crate::audio::render_frames_wav(
+            sample_rate,
+            duration_secs,
+            |_, _| {
+                for _ in 0..substeps {
+                    model.step(&params);
+                }
+                model.get_snapshot().sonification
+            },
+        ))
+    }
+
+    fn export_midi_score(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
+        if M::sonification_tool_id().is_none() {
+            return Err(format!(
+                "MIDI score export is not supported for {}",
+                M::name()
+            ));
+        }
+        let (mut model, params) = self.build_deterministic_export_model()?;
+        let substeps = self.steps_per_frame.max(1);
+        Ok(crate::audio::render_frames_midi(
+            M::name(),
+            duration_secs,
+            |_, _| {
+                for _ in 0..substeps {
+                    model.step(&params);
+                }
+                model.get_snapshot().sonification
+            },
+        ))
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {

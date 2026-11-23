@@ -26,8 +26,14 @@ impl ShaderDialect {
 
 const DEFAULT_SHADER_DISABLED_REASON: &str =
     "GLSL shader export is unavailable: this tool does not expose a closed-form analytical 2D fragment field.";
+const DEFAULT_WAV_DISABLED_REASON: &str =
+    "WAV audio export is unavailable: this tool does not expose an acoustic or modal synthesis model.";
+const DEFAULT_MIDI_DISABLED_REASON: &str =
+    "MIDI score export is unavailable: this tool does not expose a polyphonic pitch timeline.";
+const DEFAULT_SCALA_DISABLED_REASON: &str =
+    "Scala tuning export is unavailable: this tool does not expose harmonic ratios or modal eigenfrequencies.";
 
-/// Declares dataset, figure, 3D mesh/splat, and analytical GLSL shader export capabilities for an [`super::InteractiveTool`].
+/// Declares dataset, figure, 3D mesh/splat, shader, and acoustic/microtonal export capabilities for an [`super::InteractiveTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExportCapabilities {
     /// Whether tabular dataset exports (`CSV`, `JSON`) are supported.
@@ -42,6 +48,12 @@ pub struct ExportCapabilities {
     pub obj: bool,
     /// Whether standalone GLSL fragment shader exports (`WebGL2`, `Shadertoy`) are supported.
     pub shader: bool,
+    /// Whether deterministic stereo PCM16 `.wav` audio export is supported.
+    pub wav: bool,
+    /// Whether Standard MIDI File Format 1 `.mid` score export is supported.
+    pub midi: bool,
+    /// Whether Huygens-Fokker Scala `.scl` and `.kbm` microtonal tuning exports are supported.
+    pub scala: bool,
     /// Explanatory hover text shown when `CSV` / `JSON` buttons are disabled.
     pub dataset_disabled_reason: &'static str,
     /// Explanatory hover text shown when `PNG` / `SVG` / `GIF` buttons are disabled.
@@ -54,6 +66,12 @@ pub struct ExportCapabilities {
     pub obj_disabled_reason: &'static str,
     /// Explanatory reason surfaced when GLSL shader export is unavailable.
     pub shader_disabled_reason: &'static str,
+    /// Explanatory reason surfaced when WAV audio export is unavailable.
+    pub wav_disabled_reason: &'static str,
+    /// Explanatory reason surfaced when MIDI score export is unavailable.
+    pub midi_disabled_reason: &'static str,
+    /// Explanatory reason surfaced when Scala `.scl` / `.kbm` export is unavailable.
+    pub scala_disabled_reason: &'static str,
 }
 
 impl Default for ExportCapabilities {
@@ -80,12 +98,18 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            wav: false,
+            midi: false,
+            scala: false,
             dataset_disabled_reason: "",
             figure_disabled_reason: "",
             stl_disabled_reason: DEFAULT_STL_DISABLED,
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            wav_disabled_reason: DEFAULT_WAV_DISABLED_REASON,
+            midi_disabled_reason: DEFAULT_MIDI_DISABLED_REASON,
+            scala_disabled_reason: DEFAULT_SCALA_DISABLED_REASON,
         }
     }
 
@@ -99,12 +123,18 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            wav: false,
+            midi: false,
+            scala: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool renders a 2D raster field rather than tabular (X, Y) series.",
             figure_disabled_reason: "",
             stl_disabled_reason: DEFAULT_STL_DISABLED,
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            wav_disabled_reason: DEFAULT_WAV_DISABLED_REASON,
+            midi_disabled_reason: DEFAULT_MIDI_DISABLED_REASON,
+            scala_disabled_reason: DEFAULT_SCALA_DISABLED_REASON,
         }
     }
 
@@ -118,12 +148,18 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            wav: false,
+            midi: false,
+            scala: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool does not produce tabular plot series.",
             figure_disabled_reason: "Figure export is unavailable: this tool does not render an offscreen plot or raster field.",
             stl_disabled_reason: DEFAULT_STL_DISABLED,
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            wav_disabled_reason: DEFAULT_WAV_DISABLED_REASON,
+            midi_disabled_reason: DEFAULT_MIDI_DISABLED_REASON,
+            scala_disabled_reason: DEFAULT_SCALA_DISABLED_REASON,
         }
     }
 
@@ -164,6 +200,48 @@ impl ExportCapabilities {
         self.shader = true;
         self.shader_disabled_reason = "";
         self
+    }
+
+    /// Enables deterministic multi-second stereo PCM16 `.wav` export on this capability profile.
+    #[must_use]
+    pub const fn with_wav(mut self) -> Self {
+        self.wav = true;
+        self.wav_disabled_reason = "";
+        self
+    }
+
+    /// Enables polyphonic SMF Format 1 `.mid` score export on this capability profile.
+    #[must_use]
+    pub const fn with_midi(mut self) -> Self {
+        self.midi = true;
+        self.midi_disabled_reason = "";
+        self
+    }
+
+    /// Enables Huygens-Fokker `.scl` and `.kbm` microtonal tuning exports on this capability profile.
+    #[must_use]
+    pub const fn with_scala(mut self) -> Self {
+        self.scala = true;
+        self.scala_disabled_reason = "";
+        self
+    }
+
+    /// Enables both deterministic `.wav` audio and SMF Format 1 `.mid` score exports.
+    #[must_use]
+    pub const fn with_audio_score(self) -> Self {
+        self.with_wav().with_midi()
+    }
+
+    /// Enables full studio exports (`.wav` audio, `.mid` score, and `.scl`/`.kbm` Scala tunings).
+    #[must_use]
+    pub const fn with_microtonal_studio(self) -> Self {
+        self.with_wav().with_midi().with_scala()
+    }
+
+    /// Returns `true` when at least one acoustic or microtonal export (`.wav`, `.mid`, `.scl`/`.kbm`) is supported.
+    #[must_use]
+    pub const fn has_audio_export(&self) -> bool {
+        self.wav || self.midi || self.scala
     }
 }
 

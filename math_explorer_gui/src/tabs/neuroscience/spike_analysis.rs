@@ -64,6 +64,26 @@ impl InteractiveTool for SpikeAnalysisTool {
         "neuroscience"
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot().with_audio_score()
+    }
+
+    fn export_wav_audio(&self, sample_rate: u32, duration_secs: f32) -> Result<Vec<u8>, String> {
+        Ok(crate::audio::render_frames_wav(
+            sample_rate,
+            duration_secs,
+            self.offline_spike_stepper(),
+        ))
+    }
+
+    fn export_midi_score(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
+        Ok(crate::audio::render_frames_midi(
+            self.name(),
+            duration_secs,
+            self.offline_spike_stepper(),
+        ))
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&SpikeAnalysisState {
             input_current: self.input_current,
@@ -330,6 +350,42 @@ impl SpikeAnalysisTool {
         self.sonification = crate::audio::SonificationFrame::silent();
     }
 
+    fn offline_spike_stepper(&self) -> impl FnMut(usize, f64) -> crate::audio::SonificationFrame {
+        let mut neuron = HodgkinHuxleyNeuron::new(-65.0);
+        let mut time = 0.0_f64;
+        let mut last_spike_t: Option<f64> = None;
+        let mut rate_hz = self.mean_firing_rate_hz();
+        let speed = self.simulation_speed.clamp(1, 100);
+        let i_ext = self.input_current.clamp(0.0, 50.0);
+        let thresh = self.spike_threshold.clamp(-50.0, 20.0);
+        move |_, _| {
+            let start_v = neuron.v();
+            let mut prev_v = start_v;
+            let mut spiked = false;
+            for _ in 0..speed {
+                neuron.update(0.01, i_ext);
+                time += 0.01;
+                let v = neuron.v();
+                if v >= thresh && prev_v < thresh {
+                    spiked = true;
+                    if let Some(prev_t) = last_spike_t {
+                        rate_hz = 1000.0 / (time - prev_t).max(1.0e-3);
+                    }
+                    last_spike_t = Some(time);
+                }
+                prev_v = v;
+            }
+            let cur_v = neuron.v();
+            let ref_prev = if spiked { thresh - 5.0 } else { start_v };
+            let ref_cur = if spiked {
+                cur_v.max(thresh + 5.0)
+            } else {
+                cur_v
+            };
+            crate::audio::mappings::spike_analysis_frame(ref_cur, ref_prev, thresh, rate_hz)
+        }
+    }
+
     fn compute_histogram(&self, num_bins: usize) -> Vec<Bar> {
         if self.isis.is_empty() {
             return Vec::new();
@@ -399,65 +455,8 @@ impl scientific_metadata::theory::TheoryDescribable for SpikeAnalysisTool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_spike_analysis_simulation_and_borrowed_slices() {
-        let mut tool = SpikeAnalysisTool::default();
-        assert!(tool.history_points.is_empty());
-        assert!(tool.spike_plot_points.is_empty());
-
-        tool.step_once();
-        assert!(!tool.is_running);
-        assert_eq!(tool.history_points.len(), 1);
-        assert!((tool.time - 0.01).abs() < 1e-9);
-
-        tool.simulation_speed = 50;
-        tool.input_current = 20.0;
-        for _ in 0..100 {
-            tool.step_simulation();
-        }
-
-        assert!(!tool.history_points.is_empty());
-
-        {
-            let history_slice: &[PlotPoint] = &tool.history_points[..];
-            let history_points: egui_plot::PlotPoints<'_> = history_slice.into();
-            assert!(matches!(history_points, egui_plot::PlotPoints::Borrowed(_)));
-            assert_eq!(history_points.points().len(), tool.history_points.len());
-
-            let spike_slice: &[PlotPoint] = &tool.spike_plot_points[..];
-            let spike_plot_points: egui_plot::PlotPoints<'_> = spike_slice.into();
-            assert!(matches!(
-                spike_plot_points,
-                egui_plot::PlotPoints::Borrowed(_)
-            ));
-            assert_eq!(
-                spike_plot_points.points().len(),
-                tool.spike_plot_points.len()
-            );
-        }
-
-        let old_threshold = tool.spike_threshold;
-        tool.record_spike(12.34);
-        assert!(!tool.spike_plot_points.is_empty());
-        assert_eq!(tool.spike_plot_points.last().unwrap().y, old_threshold);
-
-        let new_threshold = 15.0;
-        tool.spike_threshold = new_threshold;
-        for pt in &mut tool.spike_plot_points {
-            pt.y = tool.spike_threshold;
-        }
-        assert_eq!(tool.spike_plot_points.last().unwrap().y, new_threshold);
-
-        tool.reset();
-        assert!(tool.history_points.is_empty());
-        assert!(tool.spike_plot_points.is_empty());
-        assert!(tool.spike_times.is_empty());
-        assert_eq!(tool.time, 0.0);
-    }
-}
+#[path = "spike_analysis_tests.rs"]
+mod tests;
 
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {

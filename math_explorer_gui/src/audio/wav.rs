@@ -3,11 +3,140 @@
 // theory_verification!
 
 use super::backend::SonificationBackend;
-use super::frame::{SonificationFrame, LIMITER_CEILING_LINEAR};
+use super::frame::{sanitize_f32, SonificationFrame, LIMITER_CEILING_LINEAR};
 use super::synth::OfflinePcmSynthesizer;
 
-/// Default sample rate (`44.1 kHz`) used when exporting `.wav` clips.
+/// Default CD-quality sample rate (`44.1 kHz`) used when exporting `.wav` clips.
 pub const WAV_EXPORT_SAMPLE_RATE: u32 = 44_100;
+
+/// Studio broadcast sample rate (`48.0 kHz`) selectable for offline `.wav` rendering.
+pub const WAV_STUDIO_SAMPLE_RATE: u32 = 48_000;
+
+/// Minimum deterministic offline export duration (`1.0 s`).
+pub const MIN_OFFLINE_DURATION_SECS: f32 = 1.0;
+
+/// Maximum deterministic offline export duration (`15.0 s`) to keep synchronous browser exports responsive.
+pub const MAX_OFFLINE_DURATION_SECS: f32 = 15.0;
+
+/// Default deterministic offline export duration (`5.0 s`).
+pub const DEFAULT_OFFLINE_DURATION_SECS: f32 = 5.0;
+
+/// Hard upper bound on stereo sample frames (`15.0 s * 48,000 Hz = 720,000` frames).
+pub const MAX_OFFLINE_STEREO_FRAMES: usize = 720_000;
+
+/// Control-frame update rate (`60 Hz`) used during deterministic offline `.wav` & `.mid` rendering.
+pub const OFFLINE_CONTROL_RATE_HZ: usize = 60;
+
+/// Validated configuration for deterministic frame-rate-independent offline `.wav` synthesis.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OfflineRenderConfig {
+    /// Output sample rate (`44_100` or `48_000 Hz`).
+    pub sample_rate: u32,
+    /// Target clip duration in seconds (`1.0..=15.0 s`).
+    pub duration_secs: f32,
+    /// Master gain multiplier (`0.0..=1.0`).
+    pub master_volume: f32,
+}
+
+impl Default for OfflineRenderConfig {
+    fn default() -> Self {
+        Self {
+            sample_rate: WAV_EXPORT_SAMPLE_RATE,
+            duration_secs: DEFAULT_OFFLINE_DURATION_SECS,
+            master_volume: 0.80,
+        }
+    }
+}
+
+impl OfflineRenderConfig {
+    /// Normalizes sample rate to `44.1 kHz` or `48 kHz` and clamps duration to `[1.0, 15.0] s`.
+    #[must_use]
+    pub fn sanitized(self) -> Self {
+        let sample_rate = if self.sample_rate >= 46_000 {
+            WAV_STUDIO_SAMPLE_RATE
+        } else {
+            WAV_EXPORT_SAMPLE_RATE
+        };
+        let duration_secs = sanitize_f32(
+            self.duration_secs,
+            DEFAULT_OFFLINE_DURATION_SECS,
+            MIN_OFFLINE_DURATION_SECS,
+            MAX_OFFLINE_DURATION_SECS,
+        );
+        let master_volume = sanitize_f32(self.master_volume, 0.80, 0.0, 1.0);
+        Self {
+            sample_rate,
+            duration_secs,
+            master_volume,
+        }
+    }
+
+    /// Computes exact stereo sample frame count bounded by [`MAX_OFFLINE_STEREO_FRAMES`].
+    #[must_use]
+    pub fn total_stereo_frames(self) -> usize {
+        let clean = self.sanitized();
+        let raw = (f64::from(clean.duration_secs) * f64::from(clean.sample_rate)).round() as usize;
+        raw.clamp(clean.sample_rate as usize, MAX_OFFLINE_STEREO_FRAMES)
+    }
+
+    /// Computes stereo frames per `60 Hz` control step (`735` at `44.1 kHz`, `800` at `48 kHz`).
+    #[must_use]
+    pub fn step_stereo_frames(self) -> usize {
+        let clean = self.sanitized();
+        ((clean.sample_rate as usize) / OFFLINE_CONTROL_RATE_HZ).max(64)
+    }
+}
+
+/// Renders deterministic offline PCM stereo samples into pre-allocated `out_interleaved`
+/// using pre-allocated `synth` with **zero dynamic heap allocations** inside the loop.
+pub fn render_offline_pcm_into<F>(
+    synth: &mut OfflinePcmSynthesizer,
+    step_frames: usize,
+    out_interleaved: &mut [f32],
+    mut frame_at_step: F,
+) -> usize
+where
+    F: FnMut(usize, f64) -> SonificationFrame,
+{
+    let total_frames = (out_interleaved.len() / 2).min(MAX_OFFLINE_STEREO_FRAMES);
+    let chunk_cap = step_frames.max(64).min(synth.capacity_frames().max(1));
+    let inv_sr = 1.0 / f64::from(synth.sample_rate().max(1));
+    let mut written_frames = 0_usize;
+    let mut step_idx = 0_usize;
+
+    while written_frames < total_frames {
+        let chunk_frames = (total_frames - written_frames).min(chunk_cap);
+        let t_sec = (written_frames as f64) * inv_sr;
+        let frame = frame_at_step(step_idx, t_sec);
+        synth.apply_frame(&frame);
+        let rendered = synth.render_frames(chunk_frames);
+        let start = written_frames * 2;
+        let end = start + rendered.len();
+        out_interleaved[start..end].copy_from_slice(rendered);
+        written_frames += rendered.len() / 2;
+        step_idx += 1;
+    }
+    written_frames
+}
+
+/// Pre-allocates synthesis buffers, steps `frame_at_step` deterministically over `config`,
+/// and encodes a 16-bit stereo RIFF `WAVE` file.
+#[must_use]
+pub fn synthesize_offline_wav<F>(config: OfflineRenderConfig, frame_at_step: F) -> Vec<u8>
+where
+    F: FnMut(usize, f64) -> SonificationFrame,
+{
+    let clean = config.sanitized();
+    let total_frames = clean.total_stereo_frames();
+    let step_frames = clean.step_stereo_frames();
+    let mut synth = OfflinePcmSynthesizer::new(clean.sample_rate, step_frames);
+    synth.set_master_volume(clean.master_volume);
+    let _ = synth.set_muted_from_user_gesture(false);
+
+    let mut samples = vec![0.0_f32; total_frames * 2];
+    let _ = render_offline_pcm_into(&mut synth, step_frames, &mut samples, frame_at_step);
+    encode_wav_stereo_pcm16(clean.sample_rate, &samples)
+}
 
 /// Encodes interleaved stereo `[-1.0, 1.0]` samples into a 44-byte RIFF `WAVE` PCM16 byte buffer.
 #[must_use]

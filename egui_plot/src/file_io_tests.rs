@@ -12,6 +12,14 @@ fn test_infer_mime_type_all_supported_extensions() {
     assert_eq!(infer_mime_type(" DOMAIN_COLOR.FRAG "), "text/plain");
     assert_eq!(infer_mime_type("potential_flow.glsl"), "text/plain");
     assert_eq!(infer_mime_type("KERNEL.GLSL"), "text/plain");
+    assert_eq!(infer_mime_type("prime_scale.scl"), "text/plain");
+    assert_eq!(infer_mime_type(" CHLADNI_MODES.SCL "), "text/plain");
+    assert_eq!(infer_mime_type("prime_keymap.kbm"), "text/plain");
+    assert_eq!(infer_mime_type("ROOT_A3.KBM"), "text/plain");
+    assert_eq!(infer_mime_type("chladni_ir.wav"), "audio/wav");
+    assert_eq!(infer_mime_type("PLATE_IMPULSE.WAV"), "audio/wav");
+    assert_eq!(infer_mime_type("fractran_score.mid"), "audio/midi");
+    assert_eq!(infer_mime_type("PRIMEGAME.MIDI"), "audio/midi");
     assert_eq!(infer_mime_type("chart.png"), "image/png");
     assert_eq!(infer_mime_type("chart.svg"), "image/svg+xml");
     assert_eq!(infer_mime_type("anim.gif"), "image/gif");

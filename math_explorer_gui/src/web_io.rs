@@ -353,6 +353,10 @@ mod tests {
         assert_eq!(infer_mime_type("manifold.stl"), "model/stl");
         assert_eq!(infer_mime_type("splats.ply"), "model/ply");
         assert_eq!(infer_mime_type("surface.obj"), "model/obj");
+        assert_eq!(infer_mime_type("impulse.wav"), "audio/wav");
+        assert_eq!(infer_mime_type("polyphony.mid"), "audio/midi");
+        assert_eq!(infer_mime_type("just.scl"), "text/plain");
+        assert_eq!(infer_mime_type("just.kbm"), "text/plain");
         assert_eq!(infer_mime_type("raw.bin"), "application/octet-stream");
     }
 

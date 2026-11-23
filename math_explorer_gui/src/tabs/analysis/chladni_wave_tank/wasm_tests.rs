@@ -39,4 +39,13 @@ fn wasm_smoke_chladni_wave_tank_presets_stepping_and_exports() {
         let json = format_json(&datasets);
         assert!(json.starts_with('['));
     }
+
+    let wav = tool
+        .export_wav_audio(44_100, 1.0)
+        .expect("WASM Chladni WAV IR");
+    assert_eq!(&wav[0..4], b"RIFF");
+    let midi = tool.export_midi_score(1.0).expect("WASM Chladni MIDI");
+    assert_eq!(&midi[0..4], b"MThd");
+    let (scl, kbm) = tool.export_scala_tuning().expect("WASM Chladni Scala");
+    assert!(!scl.is_empty() && !kbm.is_empty());
 }

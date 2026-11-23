@@ -99,6 +99,21 @@ impl NeuralNetworkVizTool {
         self.sonification = crate::audio::mappings::neural_ring_frame(&after, &before, 0.0);
     }
 
+    fn build_offline_clone(&self) -> Self {
+        Self {
+            neurons: (0..self.neurons.len())
+                .map(|_| HodgkinHuxleyNeuron::new(-65.0))
+                .collect(),
+            positions: self.positions.clone(),
+            weights: self.weights.clone(),
+            external_input: self.external_input.clone(),
+            is_running: true,
+            dt: self.dt.clamp(0.001, 0.5),
+            prev_ring_v: [-65.0; 5],
+            sonification: crate::audio::SonificationFrame::silent(),
+        }
+    }
+
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "nn_viz_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
@@ -164,8 +179,7 @@ impl NeuralNetworkVizTool {
                     } else {
                         palette.error
                     };
-                    let color =
-                        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
+                    let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
                     painter.line_segment([p2, p1], (1.0 + weight.abs() as f32, color));
                 }
             }
@@ -176,10 +190,8 @@ impl NeuralNetworkVizTool {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Network Visualization");
 
-            let (response, painter) = ui.allocate_painter(
-                ui.available_size(),
-                egui::Sense::focusable_noninteractive(),
-            );
+            let (response, painter) =
+                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
             let label = "Neural Network Visualization: Showing interconnected neurons";
             let _ = response.clone().accessible_hover_text(label);
             let summary = format!("{} interconnected neurons", self.neurons.len());
@@ -242,7 +254,35 @@ impl InteractiveTool for NeuralNetworkVizTool {
         "Neural Network Viz"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::none().with_audio_score()
+    }
+
+    fn export_wav_audio(&self, sample_rate: u32, duration_secs: f32) -> Result<Vec<u8>, String> {
+        let mut sim = self.build_offline_clone();
+        Ok(crate::audio::render_frames_wav(
+            sample_rate,
+            duration_secs,
+            |_, _| {
+                for _ in 0..10 {
+                    sim.step();
+                }
+                sim.sonification
+            },
+        ))
+    }
+
+    fn export_midi_score(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
+        let mut sim = self.build_offline_clone();
+        Ok(crate::audio::render_frames_midi(
+            self.name(),
+            duration_secs,
+            |_, _| {
+                for _ in 0..10 {
+                    sim.step();
+                }
+                sim.sonification
+            },
+        ))
     }
     fn domain(&self) -> &'static str {
         "neuroscience"
