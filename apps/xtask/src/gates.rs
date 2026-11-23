@@ -319,13 +319,11 @@ pub fn check_docs() {
     run_verification("check-docs");
 }
 
+pub const CARGO_DOC_ARGS: &[&str] = &["doc", "--workspace", "--no-deps", "--all-features"];
+
 pub fn check_cargo_docs() {
     println!("=== Cargo Doc Verification ===");
-    run_cmd_with_env(
-        "cargo",
-        &["doc", "--workspace", "--no-deps"],
-        &[("RUSTDOCFLAGS", "-D warnings")],
-    );
+    run_cmd_with_env("cargo", CARGO_DOC_ARGS, &[("RUSTDOCFLAGS", "-D warnings")]);
 }
 
 pub fn check_file_lengths() {

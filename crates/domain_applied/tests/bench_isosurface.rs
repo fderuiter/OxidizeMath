@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for bench isosurface.
 use domain_applied::applied::isosurface::{Point3D, VoxelGrid, extract_isosurface};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;

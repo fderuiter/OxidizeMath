@@ -12,7 +12,9 @@ mod web_snapshot;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use scanner::execute_workspace_scan;
+pub(crate) use web_snapshot::embedded_traceability_report;
 use web_snapshot::PaperStatus;
+pub use web_snapshot::{paper_tex_url, render_paper_links};
 
 pub struct TraceabilityTab {
     papers: HashMap<String, PaperStatus>,
@@ -22,9 +24,7 @@ pub struct TraceabilityTab {
     repo_path: Option<String>,
     user_picked_repo: bool,
     report_rx: Option<
-        std::sync::mpsc::Receiver<
-            Result<oxidize_core::traceability::TraceabilityReport, String>,
-        >,
+        std::sync::mpsc::Receiver<Result<oxidize_core::traceability::TraceabilityReport, String>>,
     >,
     cert_rx: Option<std::sync::mpsc::Receiver<Option<web_snapshot::VerificationCertificate>>>,
     certificate: Option<web_snapshot::VerificationCertificate>,
@@ -73,10 +73,7 @@ impl TraceabilityTab {
     }
 
     #[cfg(all(test, not(target_arch = "wasm32")))]
-    pub(crate) fn join_relative_segments(
-        base: &std::path::Path,
-        rel: &str,
-    ) -> std::path::PathBuf {
+    pub(crate) fn join_relative_segments(base: &std::path::Path, rel: &str) -> std::path::PathBuf {
         scanner::join_relative_segments(base, rel)
     }
 

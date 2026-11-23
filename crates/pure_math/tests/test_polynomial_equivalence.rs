@@ -1,4 +1,5 @@
-#![allow(missing_docs, clippy::needless_range_loop)]
+//! Integration tests for test polynomial equivalence.
+#![allow(clippy::needless_range_loop)]
 
 use pure_math::pure_math::algebra::polynomial::Polynomial;
 use pure_math::pure_math::algebra::traits::Ring;

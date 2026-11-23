@@ -49,11 +49,11 @@ fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
     ));
     super::wait_for_scan_completion(&mut tab);
     assert_eq!(tab.state, TraceabilityScanState::Ready);
-    assert_eq!(tab.papers.len(), 28);
+    assert_eq!(tab.papers.len(), 29);
     assert!(tab.orphaned_papers.is_empty());
     assert!(tab.certificate.as_ref().is_some_and(|c| c.passed));
     assert!(render_tab_text_hit(&mut tab, "100% Parity Achieved"));
-    assert!(render_tab_text_hit(&mut tab, "Total Papers: 28"));
+    assert!(render_tab_text_hit(&mut tab, "Total Papers: 29"));
     assert!(render_tab_text_hit(
         &mut tab,
         "Verification Certificate: Passed"
@@ -189,36 +189,50 @@ fn test_ci_pages_workflow_verifies_all_28_paper_pdfs_and_sw_shell_scope() {
     let ci_yaml = std::fs::read_to_string(ws_root.join(".github").join("workflows").join("ci.yml"))
         .expect("read ci.yml");
 
-    assert!(ci_yaml.contains("name: wasm_web_dist"));
-    assert!(ci_yaml.contains("name: compiled_papers"));
-    assert!(ci_yaml.contains("needs: [pre-flight, build-and-test, compile-papers, feature-matrix]"));
-    assert!(ci_yaml.contains("pages_dist/${stem}.pdf"));
-    assert!(ci_yaml.contains("pages_dist/papers/${stem}.pdf"));
+    for required in [
+        "name: wasm_web_dist",
+        "name: compiled_papers",
+        "name: verification-certificate-linux_artifact",
+        "needs: [pre-flight, build-and-test, compile-papers, feature-matrix]",
+        "papers/output/pages-index.html",
+        "pages_dist/${stem}.pdf",
+        "pages_dist/papers/index.html",
+        "pages_dist/traceability_manifest.json",
+    ] {
+        assert!(ci_yaml.contains(required), "ci.yml missing {required}");
+    }
+    assert!(!ci_yaml.contains("pages_dist/papers/${stem}.pdf"));
 
-    let stage_idx = ci_yaml
-        .find("Stage Compiled PDFs and Refresh SHA-256 Manifest")
-        .expect("PDF staging step in deploy-pages");
+    let cert_dl_idx = ci_yaml
+        .find("name: verification-certificate-linux_artifact")
+        .expect("certificate download in deploy-pages");
+    let stage_idx = ci_yaml[cert_dl_idx..]
+        .find("Assemble Live Manifest, Stage Papers, and Generate SHA-256 Manifest")
+        .expect("live manifest and paper staging step in deploy-pages")
+        + cert_dl_idx;
     let upload_idx = ci_yaml[stage_idx..]
         .find("actions/upload-pages-artifact@")
-        .expect("upload-pages-artifact after PDF staging")
+        .expect("upload-pages-artifact after staging")
         + stage_idx;
     let deploy_idx = ci_yaml[upload_idx..]
         .find("actions/deploy-pages@")
         .expect("deploy-pages after upload-pages-artifact")
         + upload_idx;
-    assert!(stage_idx < upload_idx && upload_idx < deploy_idx);
+    assert!(cert_dl_idx < stage_idx && stage_idx < upload_idx && upload_idx < deploy_idx);
 
     let tex_count = std::fs::read_dir(ws_root.join("papers"))
         .expect("read papers/")
         .flatten()
         .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("tex"))
         .count();
-    assert_eq!(tex_count, 28);
+    assert_eq!(tex_count, 29);
 
     let sw_js = std::fs::read_to_string(ws_root.join("math_explorer_gui").join("sw.js"))
         .expect("read sw.js");
     assert!(
-        sw_js.contains("isShellNavigationPath") && sw_js.contains(r"/\.pdf$/i.test(relPath)"),
-        "sw.js must keep staged paper PDF navigations out of the app-shell index.html cache"
+        sw_js.contains("isShellNavigationPath")
+            && sw_js.contains(r"/\.pdf$/i.test(relPath)")
+            && !sw_js.contains("papers/index.html"),
+        "sw.js must keep staged paper PDFs and papers/index.html out of the app-shell cache"
     );
 }

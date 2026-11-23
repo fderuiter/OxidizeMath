@@ -1,26 +1,6 @@
-#![allow(missing_docs)]
+//! Integration tests for test turing regression.
 use domain_biology::biology::diffusion::FiniteDifference1D;
-use domain_biology::biology::morphogenesis::{ReactionKinetics, TuringSystem};
-
-struct GrayScottKinetics {
-    f: f64,
-    k: f64,
-}
-
-impl ReactionKinetics<2> for GrayScottKinetics {
-    #[verified_engine::verified]
-    fn reaction(&self, concentrations: [f64; 2]) -> [f64; 2] {
-        let u = concentrations[0];
-        let v = concentrations[1];
-        // Gray-Scott model:
-        // u_t = -uv^2 + f(1-u)
-        // v_t = uv^2 - (f+k)v
-        let uv_sq = u * v.powi(2);
-        let reaction_u = -uv_sq + self.f * (1.0 - u);
-        let reaction_v = uv_sq - (self.f + self.k) * v;
-        [reaction_u, reaction_v]
-    }
-}
+use domain_biology::biology::morphogenesis::{GrayScottKinetics, TuringSystem};
 
 #[test]
 #[verified_engine::verified]

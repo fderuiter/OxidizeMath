@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test pde special funcs.
 use approx::assert_abs_diff_eq;
 use pure_math::pure_math::analysis::pde::{
     greens::GreenFunctionSolver1D, heat::HeatEquation1D, laplace::LaplaceEquation2D,
@@ -221,4 +221,65 @@ fn test_bessel_y_non_integer_orders() {
             epsilon = math_commons::registry::TOLERANCE_STANDARD
         );
     }
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_associated_laguerre_and_spherical_harmonics() {
+    for n in 0..=4 {
+        assert_abs_diff_eq!(
+            polynomials::associated_laguerre(n, 0.0, 1.75),
+            polynomials::laguerre(n, 1.75),
+            epsilon = 1e-12
+        );
+    }
+    // L_2^(1)(x) = 0.5 * (x^2 - 6x + 6)
+    let x = 2.0;
+    assert_abs_diff_eq!(
+        polynomials::associated_laguerre(2, 1.0, x),
+        0.5 * (x * x - 6.0 * x + 6.0),
+        epsilon = 1e-12
+    );
+
+    // P_2^{-1}(x) = -(1/6) P_2^1(x)
+    let p_pos = legendre::legendre_p_associated(2, 1, 0.4);
+    let p_neg = legendre::legendre_p_associated(2, -1, 0.4);
+    assert_abs_diff_eq!(p_neg, -(1.0 / 6.0) * p_pos, epsilon = 1e-12);
+
+    // Y_{0,0} = 1 / sqrt(4 pi)
+    let y00 = legendre::real_spherical_harmonic(0, 0, 0.3, 1.1);
+    assert_abs_diff_eq!(
+        y00,
+        (1.0 / (4.0 * std::f64::consts::PI)).sqrt(),
+        epsilon = 1e-12
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_3d_coupled_neumann_mass_conservation() {
+    use math_commons::math_kernel::types::StepSize;
+    use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
+
+    let stepper = FusedStencilStepper::new_3d(StepSize(0.5), StepSize(0.5), StepSize(0.5));
+    let mut src = vec![0.0; 6 * 6 * 6];
+    let mut dst = vec![0.0; 6 * 6 * 6];
+    src[math_commons::math_kernel::types::flatten_3d_index(2, 3, 2, 6, 6)] = 8.0;
+    let initial_mass: f64 = src.iter().sum();
+
+    stepper.step_3d_coupled_neumann(
+        (6, 6, 6),
+        [&src],
+        [&mut dst],
+        0.02,
+        1.0,
+        |_idx, curr, nb, ops| {
+            [ops.central_diff_2nd_3d(
+                curr[0],
+                [nb.xm[0], nb.xp[0], nb.ym[0], nb.yp[0], nb.zm[0], nb.zp[0]],
+            )]
+        },
+    );
+    let final_mass: f64 = dst.iter().sum();
+    assert_abs_diff_eq!(initial_mass, final_mass, epsilon = 1e-11);
 }

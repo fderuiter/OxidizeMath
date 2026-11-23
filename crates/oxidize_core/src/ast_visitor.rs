@@ -38,7 +38,7 @@ pub struct AstVisitor {
     pub has_vacuous_bypass: bool,
     #[allow(missing_docs)]
     pub vacuous_bypass_line: Option<usize>,
-    #[allow(missing_docs)]
+    /// Whether the file invokes `theory_verification!` or `stochastic_signature_verification!`.
     pub has_verification_macro: bool,
     #[allow(missing_docs)]
     pub first_unverified_fn: Option<(String, usize)>,
@@ -50,33 +50,33 @@ pub struct AstVisitor {
     pub verified_funcs: usize,
     #[allow(missing_docs)]
     pub verified_asserts: usize,
-    #[allow(missing_docs)]
+    /// Total non-test production functions visited in the file.
     pub prod_funcs: usize,
-    #[allow(missing_docs)]
+    /// Total assertions recorded inside non-test production functions.
     pub prod_asserts: usize,
-    #[allow(missing_docs)]
+    /// Count of `#[verified]` non-test production functions.
     pub verified_prod_funcs: usize,
-    #[allow(missing_docs)]
+    /// Assertions recorded inside `#[verified]` non-test production functions.
     pub verified_prod_asserts: usize,
-    #[allow(missing_docs)]
+    /// Total test-scoped functions (`#[test]`, `#[cfg(test)]`, dedicated test files, or verification macros).
     pub test_funcs: usize,
-    #[allow(missing_docs)]
+    /// Total assertions recorded inside test-scoped functions and verification macros.
     pub test_asserts: usize,
-    #[allow(missing_docs)]
+    /// Count of `#[verified]` test-scoped functions and verification macro blocks.
     pub verified_test_funcs: usize,
-    #[allow(missing_docs)]
+    /// Assertions recorded inside `#[verified]` test-scoped functions and verification macro blocks.
     pub verified_test_asserts: usize,
     #[allow(missing_docs)]
     pub semantic_integrity_funcs: usize,
-    #[allow(missing_docs)]
+    /// Count of functions explicitly exempted via `opt_out = "..."`.
     pub opted_out_funcs: usize,
     #[allow(missing_docs)]
     pub active_submodules: Vec<String>,
     #[allow(missing_docs)]
     pub opted_out: bool,
-    #[allow(missing_docs)]
+    /// Ordered list of `opt_out` reason strings encountered across file and item attributes.
     pub opt_outs: Vec<String>,
-    #[allow(missing_docs)]
+    /// Function identifiers ending with `_legacy` discovered in the AST.
     pub legacy_funcs: Vec<String>,
     in_opt_out_scope: bool,
     in_test_scope: bool,

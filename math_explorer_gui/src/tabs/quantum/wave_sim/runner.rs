@@ -10,8 +10,8 @@ use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_commons::ast::Expr;
 use math_explorer::physics::quantum::{
-    construct_1d_hamiltonian, evolve_state_in_place, gaussian_wavepacket, time_evolution_operator,
-    QuantumOperator, QuantumState,
+    construct_1d_hamiltonian, evolve_state_in_place, gaussian_wavepacket, state_norm_squared,
+    time_evolution_operator, QuantumOperator, QuantumState,
 };
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
@@ -44,6 +44,8 @@ pub struct WaveSimConfig {
     pub steps_per_frame: usize,
     /// Last valid compiled AST expression for `V(x)`.
     pub custom_expr: Expr,
+    /// Optional sparse `(index, value)` sculpted potential overrides.
+    pub sparse_potential: Vec<(u16, f64)>,
 }
 
 impl Default for WaveSimConfig {
@@ -58,6 +60,7 @@ impl Default for WaveSimConfig {
             dt: DEFAULT_DT,
             steps_per_frame: DEFAULT_STEPS_PER_FRAME,
             custom_expr: default_compiled_expr(),
+            sparse_potential: Vec::new(),
         }
     }
 }
@@ -89,17 +92,20 @@ pub struct WaveData {
     pub x_right: f64,
     /// Incident wavepacket kinetic energy $E_0 = k_0^2 / 2$.
     pub kinetic_energy: f64,
+    /// Unitary state norm squared $\|\psi\|^2$.
+    pub norm_sq: f64,
 }
 
 /// Background worker runner evolving the 1D time-dependent Schrödinger equation with zero per-step allocations.
 pub struct WaveRunner {
-    config: Arc<RwLock<WaveSimConfig>>,
+    pub(crate) config: Arc<RwLock<WaveSimConfig>>,
     pub(crate) psi: QuantumState,
     pub(crate) hamiltonian: QuantumOperator,
     pub(crate) propagator: QuantumOperator,
     pub(crate) cached_dt: Option<f64>,
     pub(crate) scratch: DVector<Complex<f64>>,
     pub(crate) potential: DVector<f64>,
+    pub(crate) base_potential: Vec<f64>,
     pub(crate) x_axis: Vec<f64>,
     pub(crate) x_left: f64,
     pub(crate) x_right: f64,
@@ -113,13 +119,13 @@ pub struct WaveRunner {
     pub(crate) x_max: f64,
     steps_per_frame: usize,
     observables: TunnelingObservables,
-    entered_barrier: bool,
-    wall_arrived: bool,
-    latched_transmission: Option<f64>,
+    pub(crate) entered_barrier: bool,
+    pub(crate) wall_arrived: bool,
+    pub(crate) latched_transmission: Option<f64>,
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
-    prev_mode_phases: [f64; 8],
+    pub(crate) prev_mode_phases: [f64; 8],
     sonification: crate::audio::SonificationFrame,
 }
 
@@ -136,6 +142,7 @@ impl WaveRunner {
             cached_dt: None,
             scratch: DVector::from_element(GRID_POINTS, Complex::new(0.0, 0.0)),
             potential: DVector::zeros(GRID_POINTS),
+            base_potential: vec![0.0; GRID_POINTS],
             x_axis: Vec::new(),
             x_left: -0.25,
             x_right: 0.25,
@@ -167,9 +174,7 @@ impl WaveRunner {
         let n = self.n_points.max(2);
         let dx = (self.x_max - self.x_min) / (n as f64 - 1.0);
         self.x_axis = (0..n).map(|i| self.x_min + i as f64 * dx).collect();
-        let (x_left, x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
-        self.x_left = x_left;
-        self.x_right = x_right;
+        (self.x_left, self.x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
         self.potential = evaluate_potential_grid(
             cfg.preset,
             &self.x_axis,
@@ -178,6 +183,7 @@ impl WaveRunner {
             dx,
             &cfg.custom_expr,
         );
+        self.sync_base_and_sparse_potential(&cfg.sparse_potential);
         self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
         self.propagator = QuantumOperator::new(DMatrix::zeros(n, n));
         self.cached_dt = None;
@@ -205,7 +211,7 @@ impl WaveRunner {
         self.refresh_sonification(cfg.dt);
     }
 
-    fn refresh_sonification(&mut self, dt: f64) {
+    pub(crate) fn refresh_sonification(&mut self, dt: f64) {
         let modes = self.psi.project_spatial_modes::<8>();
         self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
             &modes,
@@ -222,7 +228,7 @@ impl WaveRunner {
     }
 
     /// Updates Born R/B/T integrals and pre-wall `T_scatter` latch in-place with zero heap allocations.
-    fn update_observables_in_place(&mut self) {
+    pub(crate) fn update_observables_in_place(&mut self) {
         let mut obs = TunnelingObservables::default();
         let vec_slice = self.psi.vector.as_slice();
         for (&x, c) in self.x_axis.iter().zip(vec_slice.iter()) {
@@ -374,6 +380,7 @@ impl WaveRunner {
             x_left: self.x_left,
             x_right: self.x_right,
             kinetic_energy: self.kinetic_energy,
+            norm_sq: state_norm_squared(&self.psi),
         }
     }
 
@@ -382,32 +389,6 @@ impl WaveRunner {
     #[must_use]
     pub fn latched_transmission(&self) -> Option<f64> {
         self.latched_transmission
-    }
-}
-
-impl FiniteStateGuard for WaveRunner {
-    fn is_finite_state(&self) -> bool {
-        if self.diverged {
-            return false;
-        }
-        self.psi
-            .vector
-            .iter()
-            .all(|c| c.re.is_finite() && c.im.is_finite())
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.diagnostic_report.as_ref()
-    }
-
-    fn diverged(&self) -> bool {
-        self.diverged || !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn reset_parameters(&mut self) {
-        self.diverged = false;
-        self.diagnostic_report = None;
-        self.step_count = 0;
     }
 }
 
@@ -428,7 +409,7 @@ impl SimulationRunner for WaveRunner {
             SimCommand::SetSpeed(speed) => {
                 self.steps_per_frame = speed.max(1);
             }
-            _ => {}
+            other => self.handle_sculpt_command(other),
         }
     }
 

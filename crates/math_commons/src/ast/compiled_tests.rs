@@ -45,7 +45,7 @@ fn test_multi_arity_and_piecewise_functions_real_and_complex() {
 #[test]
 fn test_exact_arity_checking_in_eval_and_compile() {
     let vars = HashMap::new();
-    let bad_min = parse("min(1)").expect("parse 1-arg min");
+    let bad_min = Expr::function(Func::Min, vec![Expr::Number(1.0)]);
     assert_eq!(
         bad_min.eval(&vars),
         Err(EvalError::WrongArgumentCount {
@@ -63,7 +63,7 @@ fn test_exact_arity_checking_in_eval_and_compile() {
         })
     );
 
-    let bad_clamp = parse("clamp(1, 2)").expect("parse 2-arg clamp");
+    let bad_clamp = Expr::function(Func::Clamp, vec![Expr::Number(1.0), Expr::Number(2.0)]);
     assert_eq!(
         CompiledExpr::compile(&bad_clamp),
         Err(EvalError::WrongArgumentCount {

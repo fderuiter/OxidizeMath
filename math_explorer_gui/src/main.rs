@@ -29,6 +29,9 @@ mod main_wasm_tests;
 mod markup_tests;
 #[cfg(test)]
 mod modal_accessibility_tests;
+pub mod plot3d_viewport;
+#[cfg(test)]
+mod plot_chrome_tests;
 pub mod presets;
 mod reflective_ui;
 #[allow(missing_docs)]
@@ -37,6 +40,8 @@ pub mod starter_gallery;
 mod tabs;
 mod telemetry;
 pub mod url_state;
+#[cfg(any(feature = "ai", feature = "biology", feature = "physics"))]
+pub mod volumetric_scene;
 pub mod web_io;
 #[cfg(target_arch = "wasm32")]
 mod webgl_recovery;

@@ -3,7 +3,7 @@
 ![CI/CD](https://github.com/fderuiter/OxidizeMath/actions/workflows/ci.yml/badge.svg)
 ![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)
 ![License](https://img.shields.io/badge/license-AGPL-blue.svg)
-![Coverage](https://img.shields.io/badge/coverage-84.4%25-yellow)
+![Coverage](https://img.shields.io/badge/coverage-84.1%25-yellow)
 
 **Math Explorer** is a comprehensive Rust library that bridges the gap between rigorous academic theory and executable code. From simulating Quantum Mechanics to modeling Social Favoritism, this repository serves as a verifiable playground for complex algorithms.
 
@@ -18,10 +18,8 @@ git clone https://github.com/fderuiter/OxidizeMath.git
 cd OxidizeMath
 
 # Check prerequisites, build the core library, run tests, and automatically configure Git hooks
-# Note: To compile academic papers, ensure Tectonic is installed.
-# Install Tectonic 0.15.0:
-# curl -sL "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.15.0/tectonic-0.15.0-x86_64-unknown-linux-gnu.tar.gz" | tar xz
-# sudo mv tectonic /usr/local/bin/
+# Note: To compile academic papers (`cargo run -p xtask -- compile-papers`), ensure TeXLive `pdflatex` and `bibtex` are installed:
+# sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science texlive-binaries
 cargo run -p xtask -- setup
 ```
 
@@ -40,7 +38,7 @@ cargo build --release --package math_explorer
 Experience the library in action by running our pre-built Quantum Mechanics example within 30 seconds of installation:
 
 ```bash
-cargo run --package math_explorer --example hello_world
+cargo run --package math_explorer --features physics --example hello_world
 ```
 
 ### 1. The Interactive GUI (Recommended)

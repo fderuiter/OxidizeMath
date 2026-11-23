@@ -1,4 +1,10 @@
-pub(super) const INDEX_HTML_HEADER: &str = r#"<!DOCTYPE html>
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum IndexTarget {
+    Archive,
+    GitHubPages,
+}
+
+const INDEX_HTML_HEAD: &str = r#"<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -28,14 +34,8 @@ pub(super) const INDEX_HTML_HEADER: &str = r#"<!DOCTYPE html>
   <div class="container">
     <header>
       <h1>OxidizeMath Academic Papers</h1>
-      <p class="subtitle">Permanent theoretical foundation and empirical verification publications (28 papers)</p>
+      <p class="subtitle">Permanent theoretical foundation and empirical verification publications (29 papers)</p>
       <div class="actions-bar">
-        <a class="btn" href="papers-bundle.tar.gz">📦 Download All Papers (.tar.gz)</a>
-        <a class="btn" href="SHA256SUMS">🔒 Checksum Manifest (SHA256)</a>
-        <a class="btn" href="https://github.com/fderuiter/OxidizeMath">💻 GitHub Repository</a>
-      </div>
-    </header>
-    <main class="grid">
 "#;
 
 pub(super) const INDEX_HTML_FOOTER: &str = r#"    </main>
@@ -47,31 +47,69 @@ pub(super) const INDEX_HTML_FOOTER: &str = r#"    </main>
 </html>
 "#;
 
+pub(super) fn render_index_header(target: IndexTarget) -> String {
+    let (bundle_href, bundle_label, checksums_href) = match target {
+        IndexTarget::Archive => (
+            "papers-bundle.tar.gz",
+            "📦 Download All Papers (.tar.gz)",
+            "SHA256SUMS",
+        ),
+        IndexTarget::GitHubPages => (
+            "https://github.com/fderuiter/OxidizeMath/releases",
+            "📦 GitHub Releases (.tar.gz)",
+            "../SHA256SUMS",
+        ),
+    };
+    format!(
+        r#"{INDEX_HTML_HEAD}        <a class="btn" href="{bundle_href}">{bundle_label}</a>
+        <a class="btn" href="{checksums_href}">🔒 Checksum Manifest (SHA256)</a>
+        <a class="btn" href="https://github.com/fderuiter/OxidizeMath">💻 GitHub Repository</a>
+      </div>
+    </header>
+    <main class="grid">
+"#
+    )
+}
+
+#[cfg(test)]
 pub(super) fn render_paper_card(
     stem: &str,
     title: &str,
     author: &str,
     abstract_text: &str,
 ) -> String {
+    render_paper_card_for_target(stem, title, author, abstract_text, IndexTarget::Archive)
+}
+
+pub(super) fn render_paper_card_for_target(
+    stem: &str,
+    title: &str,
+    author: &str,
+    abstract_text: &str,
+    target: IndexTarget,
+) -> String {
     let escaped_stem = escape_html(stem);
     let encoded_stem = escape_html(&encode_uri_component(stem));
     let escaped_title = escape_html(title);
     let escaped_author = escape_html(author);
     let escaped_abstract = escape_html(abstract_text);
+    let pdf_prefix = match target {
+        IndexTarget::Archive => "",
+        IndexTarget::GitHubPages => "../",
+    };
 
     format!(
         r#"      <article class="card">
         <div>
-          <h2 class="card-title">{}</h2>
-          <div class="card-meta">By {} &bull; <code>{}.pdf</code></div>
-          <p class="card-abstract">{}</p>
+          <h2 class="card-title">{escaped_title}</h2>
+          <div class="card-meta">By {escaped_author} &bull; <code>{escaped_stem}.pdf</code></div>
+          <p class="card-abstract">{escaped_abstract}</p>
         </div>
         <div class="card-links">
-          <a class="btn" href="{}.pdf" target="_blank" rel="noopener">📄 Read PDF</a>
+          <a class="btn" href="{pdf_prefix}{encoded_stem}.pdf" target="_blank" rel="noopener">📄 Read PDF</a>
         </div>
       </article>
-"#,
-        escaped_title, escaped_author, escaped_stem, escaped_abstract, encoded_stem
+"#
     )
 }
 

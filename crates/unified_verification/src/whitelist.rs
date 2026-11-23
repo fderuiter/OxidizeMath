@@ -1,4 +1,11 @@
+mod verify_suite;
+
+#[cfg(test)]
+pub use verify_suite::OptOutAllowEntry;
+pub use verify_suite::VerifySuiteConfig;
+
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -22,6 +29,8 @@ pub(crate) struct VerificationWhitelist {
     #[serde(default)]
     pub entropy_guard: Option<EntropyGuardConfig>,
     #[serde(default)]
+    pub missing_docs: Option<MissingDocsConfig>,
+    #[serde(default)]
     pub workflow_linter: Option<WorkflowLinterConfig>,
     #[serde(default)]
     pub verify_suite: Option<VerifySuiteConfig>,
@@ -31,92 +40,16 @@ pub(crate) struct VerificationWhitelist {
     pub unused_dependencies: Vec<UnusedDependencyEntry>,
 }
 
-fn default_min_verified_density() -> f64 {
-    0.40
-}
-
-fn default_coverage_tolerance_pct() -> f64 {
-    1.5
-}
-
-/// Configuration for `verify-suite` and `check-certificate` loaded from `[verify_suite]`.
-#[derive(Deserialize, Debug, Clone)]
+/// Configuration for `missing_docs` ratcheted caps loaded from `[missing_docs]`.
+#[derive(Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct VerifySuiteConfig {
-    /// Minimum required combined assertion density across verified functions (default `0.40`).
-    #[serde(default = "default_min_verified_density")]
-    pub min_verified_assertion_density: f64,
-    /// Ratcheted minimum production assertion density across all non-test functions.
-    #[serde(default)]
-    pub min_total_production_density: f64,
-    /// Ratcheted minimum production assertion density across `#[verified]` non-test functions.
-    #[serde(default)]
-    pub min_verified_production_density: f64,
-    /// Allowed percentage-point tolerance for `native_execution_coverage_pct` in `--check` mode.
-    #[serde(default = "default_coverage_tolerance_pct")]
-    pub coverage_tolerance_pct: f64,
-    /// Non-domain workspace crates permitted to omit `theory_verification!` / `stochastic_signature_verification!`.
-    #[serde(default)]
-    pub unverified_modules: Vec<String>,
-    /// Authorized opt-out attributes (`path` + `reason`) permitted without failing `verify-suite`.
-    #[serde(default)]
-    pub opt_outs: Vec<OptOutAllowEntry>,
-}
-
-impl Default for VerifySuiteConfig {
-    fn default() -> Self {
-        Self {
-            min_verified_assertion_density: default_min_verified_density(),
-            min_total_production_density: 0.0,
-            min_verified_production_density: 0.0,
-            coverage_tolerance_pct: default_coverage_tolerance_pct(),
-            unverified_modules: Vec::new(),
-            opt_outs: Vec::new(),
-        }
-    }
-}
-
-impl VerifySuiteConfig {
-    /// Returns `true` when `member` is explicitly listed as an allowed non-domain unverified crate.
-    pub fn is_unverified_module_allowed(&self, member: &str) -> bool {
-        let norm_member = member.replace('\\', "/");
-        let clean_member = norm_member.trim_start_matches("./").trim_end_matches('/');
-        self.unverified_modules.iter().any(|allowed| {
-            let norm_allowed = allowed.replace('\\', "/");
-            norm_allowed.trim_start_matches("./").trim_end_matches('/') == clean_member
-        })
-    }
-
-    /// Returns `true` when `(file, reason)` matches an authorized `[[verify_suite.opt_outs]]` rule.
-    pub fn is_opt_out_allowed(&self, file: &str, reason: &str) -> bool {
-        let norm_file = file.replace('\\', "/");
-        let clean_file = norm_file.trim_start_matches("./");
-        self.opt_outs.iter().any(|entry| {
-            if entry.reason != reason {
-                return false;
-            }
-            let norm_pat = entry.path.replace('\\', "/");
-            let clean_pat = norm_pat.trim_start_matches("./");
-            if clean_pat.is_empty() {
-                return false;
-            }
-            if clean_pat.ends_with('/') {
-                clean_file.starts_with(clean_pat)
-            } else {
-                clean_file == clean_pat
-            }
-        })
-    }
-}
-
-/// Authorized opt-out rule matching an exact file path or directory prefix and opt-out reason.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct OptOutAllowEntry {
-    /// Exact workspace-relative file path or directory prefix ending in `/`.
-    pub path: String,
-    /// Exact `opt_out` reason string permitted at `path`.
-    pub reason: String,
+pub(crate) struct MissingDocsConfig {
+    /// Vendored workspace crates explicitly exempt from `missing_docs` AST checks (e.g., `["egui_plot"]`).
+    #[serde(default, alias = "vendored_allowlist")]
+    pub vendored_crates: Vec<String>,
+    /// Per-file maximum `#[allow(missing_docs)]` counts (`>= 1`).
+    #[serde(default, alias = "caps", alias = "max_counts")]
+    pub files: BTreeMap<String, usize>,
 }
 
 /// Configuration for `records` ADR verification loaded from `[adr_verification]`.
@@ -210,6 +143,24 @@ pub fn find_whitelist_path() -> Option<PathBuf> {
     })
 }
 
+fn validate_missing_docs_config(cfg: &MissingDocsConfig, path: &Path) -> Result<(), String> {
+    if cfg.vendored_crates.iter().any(|c| c.trim().is_empty()) {
+        return Err(format!(
+            "Invalid [missing_docs] vendored_crates in {}: entries must be non-empty",
+            path.display()
+        ));
+    }
+    for (file, &cap) in &cfg.files {
+        if file.trim().is_empty() || cap == 0 {
+            return Err(format!(
+                "Invalid [missing_docs.files] entry `{file}` in {}: path must be non-empty and cap must be >= 1",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String> {
     let content = fs::read_to_string(path)
         .map_err(|err| format!("Failed to read {}: {}", path.display(), err))?;
@@ -225,6 +176,9 @@ fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String
                 path.display()
             ));
         }
+    }
+    if let Some(cfg) = &parsed.missing_docs {
+        validate_missing_docs_config(cfg, path)?;
     }
     Ok(parsed)
 }
@@ -328,6 +282,8 @@ mod tests {
                 "[doc_verification]\nallowlist = [\"crates/demo\"]\n",
                 "[entropy_guard]\nscan_targets = [\"crates\"]\n",
                 "file_extensions = [\"rs\"]\npath_exemptions = [\"allow.rs\"]\n",
+                "[missing_docs]\nvendored_crates = [\"egui_plot\"]\n",
+                "[missing_docs.files]\n\"crates/demo/src/lib.rs\" = 2\n",
                 "[[workflow_linter.allowed_job_permissions]]\n",
                 "workflow = \".github/workflows/ci.yml\"\njob = \"deploy\"\nwrite_scopes = [\"pages\"]\n",
                 "[[dead_code]]\nfile = \"crates/demo/src/lib.rs\"\nidentifier = \"Item\"\n",
@@ -355,6 +311,17 @@ mod tests {
         );
         assert_eq!(parsed.dead_code.len(), 1);
         assert_eq!(parsed.unused_dependencies.len(), 1);
+        let md_cfg = parsed.missing_docs.unwrap();
+        assert_eq!(md_cfg.vendored_crates, vec!["egui_plot".to_string()]);
+        assert_eq!(md_cfg.files.get("crates/demo/src/lib.rs"), Some(&2));
+
+        let zero_cap = dir.join("zero_cap.toml");
+        fs::write(
+            &zero_cap,
+            "[missing_docs.files]\n\"crates/demo/src/lib.rs\" = 0\n",
+        )
+        .unwrap();
+        assert!(load_whitelist_strict(Some(&zero_cap), &[] as &[&Path]).is_err());
 
         let empty_reason = dir.join("empty_reason.toml");
         fs::write(

@@ -193,8 +193,7 @@ impl TraceabilityTab {
                     });
                 }
                 Err(err) => {
-                    ui.ctx()
-                        .data_mut(|d| d.insert_temp(toast_id, (true, err)));
+                    ui.ctx().data_mut(|d| d.insert_temp(toast_id, (true, err)));
                 }
             }
         }

@@ -62,7 +62,9 @@ fn print_help() {
     println!("Usage: xtask <command> [args...]\n");
     println!("Active Quality Gates:");
     println!("  check-api-drift          - Validate public API surface against baseline");
-    println!("  check-cargo-docs         - Verify workspace documentation builds without warnings");
+    println!(
+        "  check-cargo-docs         - Verify workspace documentation builds with --all-features and zero warnings"
+    );
     println!("  check-certificate        - Verify Verification_Certificate.json AST parity");
     println!("  check-docs               - Run crate documentation audit");
     println!("  check-duplicates         - Run AST-level code clone detector across crates");
@@ -76,6 +78,9 @@ fn print_help() {
     println!("  check-profiles           - Verify Cargo release profile invariants");
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
+    println!(
+        "  compile-papers           - Compile academic papers with TeXLive (pdflatex and BibTeX)"
+    );
     println!(
         "  lint-all                 - Run format, profile, AST duplicate, API drift, ADR, file-length, clippy, doc, doctest, markdown-link, workflow, traceability, entropy, vulnerability, and policy audit checks"
     );
@@ -94,7 +99,6 @@ fn print_help() {
     );
     println!("  verify-suite             - Run high-integrity verified suite\n");
     println!("Legacy Utility Tasks:");
-    println!("  compile-papers           - Compile academic papers with Tectonic");
     println!("  regenerate-baseline      - Regenerate public API baseline");
     println!("  setup                    - Run setup script and configure git hooks");
 }
@@ -221,7 +225,8 @@ fn test_features(args: &[String]) {
 mod tests {
     use super::*;
     use crate::gates::{
-        HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin, workspace_wasm,
+        CARGO_DOC_ARGS, HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin,
+        workspace_wasm,
     };
     use crate::markdown_links::{collect_md_files, extract_md_links};
 
@@ -344,6 +349,7 @@ mod tests {
             "lint-staged",
             "check-entropy",
             "check-vulnerabilities",
+            "compile-papers",
             "test-policy-audit",
             "test-wasm",
             "verify-records",
@@ -352,6 +358,7 @@ mod tests {
         ] {
             assert!(help.contains(cmd), "Missing help entry for {cmd}");
         }
+        assert!(!help.contains("Tectonic"));
     }
 
     #[test]
@@ -397,6 +404,9 @@ mod tests {
         let expected_wasm_cmd = format!("cargo {}", WASM_CLIPPY_ARGS.join(" "));
         assert!(ci_yaml.contains("name: Run Clippy (WASM)"));
         assert!(ci_yaml.contains(&expected_wasm_cmd));
+        let expected_doc_cmd = format!("cargo {}", CARGO_DOC_ARGS.join(" "));
+        assert!(ci_yaml.contains("name: Check Workspace Documentation"));
+        assert!(ci_yaml.contains(&expected_doc_cmd));
         assert!(ci_yaml.contains(
             "- name: Run Workspace Tests (Native)\n        if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'\n        run: cargo test --workspace --lib --tests --all-features"
         ));

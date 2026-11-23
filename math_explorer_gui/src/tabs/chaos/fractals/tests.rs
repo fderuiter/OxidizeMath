@@ -148,8 +148,12 @@ fn test_drag_140_pixels_updates_center_and_cancels_active_worker_pass() {
     let initial_im = viewer.center.im;
 
     let start_pos = img_rect.center();
-    let drag_elapsed =
-        run_drag_sequence(&ctx, &mut viewer, start_pos, start_pos + egui::vec2(140.0, 0.0));
+    let drag_elapsed = run_drag_sequence(
+        &ctx,
+        &mut viewer,
+        start_pos,
+        start_pos + egui::vec2(140.0, 0.0),
+    );
 
     let scale_y = 3.0 / viewer.zoom;
     let scale_x = scale_y * (view_w / view_h);

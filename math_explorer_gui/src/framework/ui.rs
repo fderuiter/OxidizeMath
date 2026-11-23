@@ -83,8 +83,15 @@ impl SimulationFramework {
 
                     ui.separator();
                     ui.heading("Citations");
-                    render_theory_summary_with_export(ui, &theory.theory_citation(), None)
+                    let citation_text = theory.theory_citation();
+                    render_theory_summary_with_export(ui, &citation_text, None)
                         .accessible_hover_text("Academic citations");
+                    super::theory_links::render_portal_links_for_framework(
+                        self,
+                        ui,
+                        tool.as_ref(),
+                        &citation_text,
+                    );
 
                     let mut entries: Vec<(String, String)> = theory
                         .available_descriptions()
@@ -321,8 +328,20 @@ impl SimulationFramework {
                 is_open = false;
                 ctx.request_repaint();
             }
+            Some(crate::starter_gallery::GallerySelection::Story(story)) => {
+                let _ = self.launch_story(story, 0);
+                self.flush_hud_announcements(ctx);
+                is_open = false;
+                ctx.request_repaint();
+            }
             Some(crate::starter_gallery::GallerySelection::Challenge(ch)) => {
                 let _ = self.launch_challenge_by_id(ch.id, Some(ctx));
+                is_open = false;
+                ctx.request_repaint();
+            }
+            Some(crate::starter_gallery::GallerySelection::GoalChallenge(goal)) => {
+                let _ = self.launch_challenge(goal);
+                self.flush_hud_announcements(ctx);
                 is_open = false;
                 ctx.request_repaint();
             }
@@ -422,9 +441,11 @@ impl SimulationFramework {
 
         self.show_export_action_bar(ui, id_source);
         self.show_challenge_hud(ui, id_source);
+        self.render_challenge_hud_panel(ui, &ctx, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
 
+        self.begin_plot_scope(&ctx);
         if !self.is_diverged {
             self.cache_valid_snapshot();
             if let Some(tool) = &mut self.active_tool {
@@ -434,6 +455,8 @@ impl SimulationFramework {
             if self.is_diverged {
                 crate::audio::notify_solver_diverged();
                 ctx.request_repaint();
+            } else {
+                let _ = self.evaluate_challenge_predicates(Some(&ctx));
             }
         } else if let Some(tool) = &mut self.active_tool {
             // Solver execution halted: keep last valid plot data active in egui_plot
@@ -448,6 +471,7 @@ impl SimulationFramework {
                 self.show_quick_start_cards(ui);
             });
         }
+        self.end_plot_scope(&ctx);
 
         if !interactive_input
             && crate::reflective_ui::slider::live_sweep_mutation_count(&ctx) > sweep_mut_before
