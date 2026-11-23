@@ -165,6 +165,7 @@ impl AttractorPlotter {
             .x_axis_label("Time t")
             .y_axis_label("log₁₀(||δx(t)||)")
             .legend(Legend::default())
+            .allow_2d_analysis(false)
             .allow_drag(false)
             .allow_zoom(false)
             .allow_scroll(false)

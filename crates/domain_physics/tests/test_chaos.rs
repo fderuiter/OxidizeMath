@@ -23,7 +23,6 @@ fn test_lorenz_on_attractor_twin_divergence_and_wolf_lyapunov() {
         .sigma(10.0)
         .rho(28.0)
         .beta(8.0 / 3.0)
-        .dt(dt)
         .build(LorenzState::new(1.0, 1.0, 1.0));
     let mut rk4 = RungeKutta4::new(&Vector3::zeros());
 
@@ -71,7 +70,6 @@ fn test_rossler_boundedness_and_positive_lyapunov() {
         .a(0.2)
         .b(0.2)
         .c(5.7)
-        .dt(0.01)
         .build(RosslerState::new(0.1, 0.0, 0.0));
 
     for _ in 0..4000 {
@@ -91,7 +89,7 @@ fn test_rossler_boundedness_and_positive_lyapunov() {
 #[verified_engine::verified]
 fn test_double_pendulum_energy_conservation_and_lyapunov() {
     let initial = DoublePendulumState::new(2.4, 2.4, 0.0, 0.0);
-    let mut pendulum = DoublePendulumBuilder::new().dt(0.005).build(initial);
+    let mut pendulum = DoublePendulumBuilder::new().build(initial);
     let initial_energy = pendulum.total_energy();
 
     for _ in 0..2000 {

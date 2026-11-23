@@ -78,11 +78,9 @@ pub mod lorenz;
 pub mod metrics;
 pub mod rossler;
 
-pub use double_pendulum::{
-    DoublePendulum, DoublePendulumBuilder, DoublePendulumConfig, DoublePendulumState,
-};
-pub use lorenz::{LorenzBuilder, LorenzConfig, LorenzState, LorenzSystem};
-pub use rossler::{RosslerBuilder, RosslerConfig, RosslerState, RosslerSystem};
+pub use double_pendulum::{DoublePendulum, DoublePendulumBuilder, DoublePendulumState};
+pub use lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
+pub use rossler::{RosslerBuilder, RosslerState, RosslerSystem};
 
 #[cfg(test)]
 mod tests {

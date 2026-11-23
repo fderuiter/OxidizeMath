@@ -2,12 +2,10 @@
 //! Mechanical Chaos (The Planar Double Pendulum)
 
 use nalgebra::Vector3;
-use oxidize_core::{ModelConfig, ModelState, SimulationModel};
 use pure_math::pure_math::analysis::ode::{
-    ArrayState, Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver, TimeStepper,
+    ArrayState, OdeSystem, RungeKutta4, Solver, TimeStepper,
 };
 use scientific_metadata::theory::TheoryDescribable;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Represents the 4D state $[\theta_1, \theta_2, \omega_1, \omega_2]$ of a planar double pendulum.
@@ -92,8 +90,6 @@ pub struct DoublePendulumBuilder {
     l1: f64,
     l2: f64,
     g: f64,
-    dt: f64,
-    integration_method: IntegrationMethod,
 }
 
 impl Default for DoublePendulumBuilder {
@@ -105,8 +101,6 @@ impl Default for DoublePendulumBuilder {
             l1: 1.0,
             l2: 1.0,
             g: 9.81,
-            dt: 0.005,
-            integration_method: IntegrationMethod::RungeKutta4,
         }
     }
 }
@@ -153,20 +147,6 @@ impl DoublePendulumBuilder {
         self
     }
 
-    /// Sets default integration step size `dt`.
-    #[verified_engine::verified]
-    pub fn dt(mut self, val: f64) -> Self {
-        self.dt = val;
-        self
-    }
-
-    /// Sets the numerical integration method.
-    #[verified_engine::verified]
-    pub fn integration_method(mut self, val: IntegrationMethod) -> Self {
-        self.integration_method = val;
-        self
-    }
-
     /// Builds a [`DoublePendulum`] with pre-allocated `RungeKutta4<ArrayState<4>>` scratch buffers.
     #[verified_engine::verified]
     pub fn build(self, state: DoublePendulumState) -> DoublePendulum {
@@ -178,8 +158,6 @@ impl DoublePendulumBuilder {
             l2: self.l2,
             g: self.g,
             state,
-            dt: self.dt,
-            integration_method: self.integration_method,
             solver,
         }
     }
@@ -219,10 +197,6 @@ pub struct DoublePendulum {
     pub g: f64,
     /// Current 4D state $[\theta_1, \theta_2, \omega_1, \omega_2]$.
     pub state: DoublePendulumState,
-    /// Default integration time step `dt`.
-    pub dt: f64,
-    /// Active numerical integration scheme.
-    pub integration_method: IntegrationMethod,
     solver: RungeKutta4<ArrayState<4>>,
 }
 
@@ -336,77 +310,5 @@ impl TheoryDescribable for DoublePendulum {
         let mut map = HashMap::new();
         map.insert("default".to_string(), "Double pendulum state".to_string());
         map
-    }
-}
-
-/// Serializable configuration for [`DoublePendulum`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DoublePendulumConfig {
-    /// Upper bob mass $m_1$.
-    pub m1: f64,
-    /// Lower bob mass $m_2$.
-    pub m2: f64,
-    /// Upper rod length $l_1$.
-    pub l1: f64,
-    /// Lower rod length $l_2$.
-    pub l2: f64,
-    /// Gravitational acceleration $g$.
-    pub g: f64,
-    /// Integration step size `dt`.
-    pub dt: f64,
-    /// Numerical integration scheme.
-    #[serde(default)]
-    pub integration_method: IntegrationMethod,
-}
-
-impl ModelConfig for DoublePendulumConfig {}
-impl ModelState for DoublePendulumState {}
-
-impl SimulationModel for DoublePendulum {
-    type Config = DoublePendulumConfig;
-    type State = DoublePendulumState;
-    type Error = std::io::Error;
-
-    #[verified_engine::verified]
-    fn initialize<R: rand::RngCore>(
-        config: Self::Config,
-        _provider: R,
-    ) -> Result<Self, Self::Error> {
-        let state = DoublePendulumState::new(2.4, 2.4, 0.0, 0.0);
-        Ok(DoublePendulumBuilder::new()
-            .m1(config.m1)
-            .m2(config.m2)
-            .l1(config.l1)
-            .l2(config.l2)
-            .g(config.g)
-            .dt(config.dt)
-            .integration_method(config.integration_method)
-            .build(state))
-    }
-
-    #[verified_engine::verified]
-    fn step(&mut self) -> Result<(), Self::Error> {
-        let dt = self.dt;
-        let dyn_params = self.dynamics();
-        match self.integration_method {
-            IntegrationMethod::Euler => {
-                let mut solver = Euler::new(&self.state.state);
-                solver.step(&dyn_params, 0.0, &mut self.state.state, dt);
-            }
-            IntegrationMethod::Heun => {
-                let mut solver = Heun::new(&self.state.state);
-                solver.step(&dyn_params, 0.0, &mut self.state.state, dt);
-            }
-            IntegrationMethod::RungeKutta4 => {
-                self.solver
-                    .step(&dyn_params, 0.0, &mut self.state.state, dt);
-            }
-        }
-        Ok(())
-    }
-
-    #[verified_engine::verified]
-    fn get_state(&self) -> Self::State {
-        self.state
     }
 }

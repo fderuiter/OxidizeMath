@@ -2,12 +2,8 @@
 //! Continuous Chaos (The Rössler System)
 
 use nalgebra::Vector3;
-use oxidize_core::{ModelConfig, ModelState, SimulationModel};
-use pure_math::pure_math::analysis::ode::{
-    Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver, TimeStepper,
-};
+use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver, TimeStepper};
 use scientific_metadata::theory::TheoryDescribable;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Represents the 3D phase-space state $(x, y, z)$ of the Rössler system.
@@ -60,8 +56,6 @@ pub struct RosslerBuilder {
     a: f64,
     b: f64,
     c: f64,
-    dt: f64,
-    integration_method: IntegrationMethod,
 }
 
 impl Default for RosslerBuilder {
@@ -71,8 +65,6 @@ impl Default for RosslerBuilder {
             a: 0.2,
             b: 0.2,
             c: 5.7,
-            dt: 0.01,
-            integration_method: IntegrationMethod::RungeKutta4,
         }
     }
 }
@@ -105,20 +97,6 @@ impl RosslerBuilder {
         self
     }
 
-    /// Sets default integration step size `dt`.
-    #[verified_engine::verified]
-    pub fn dt(mut self, val: f64) -> Self {
-        self.dt = val;
-        self
-    }
-
-    /// Sets the numerical integration method.
-    #[verified_engine::verified]
-    pub fn integration_method(mut self, val: IntegrationMethod) -> Self {
-        self.integration_method = val;
-        self
-    }
-
     /// Builds a [`RosslerSystem`] with pre-allocated `RungeKutta4` scratch buffers.
     #[verified_engine::verified]
     pub fn build(self, state: RosslerState) -> RosslerSystem {
@@ -128,8 +106,6 @@ impl RosslerBuilder {
             b: self.b,
             c: self.c,
             state,
-            dt: self.dt,
-            integration_method: self.integration_method,
             solver,
         }
     }
@@ -165,10 +141,6 @@ pub struct RosslerSystem {
     pub c: f64,
     /// Current phase-space state $(x, y, z)$.
     pub state: RosslerState,
-    /// Default integration time step `dt`.
-    pub dt: f64,
-    /// Active numerical integration scheme.
-    pub integration_method: IntegrationMethod,
     solver: RungeKutta4<Vector3<f64>>,
 }
 
@@ -255,70 +227,5 @@ impl TheoryDescribable for RosslerSystem {
         let mut map = HashMap::new();
         map.insert("default".to_string(), "Rossler attractor state".to_string());
         map
-    }
-}
-
-/// Serializable configuration for [`RosslerSystem`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RosslerConfig {
-    /// Spiral-expansion parameter $a$.
-    pub a: f64,
-    /// Vertical injection parameter $b$.
-    pub b: f64,
-    /// Nonlinear folding threshold $c$.
-    pub c: f64,
-    /// Integration time step `dt`.
-    pub dt: f64,
-    /// Numerical integration scheme.
-    #[serde(default)]
-    pub integration_method: IntegrationMethod,
-}
-
-impl ModelConfig for RosslerConfig {}
-impl ModelState for RosslerState {}
-
-impl SimulationModel for RosslerSystem {
-    type Config = RosslerConfig;
-    type State = RosslerState;
-    type Error = std::io::Error;
-
-    #[verified_engine::verified]
-    fn initialize<R: rand::RngCore>(
-        config: Self::Config,
-        _provider: R,
-    ) -> Result<Self, Self::Error> {
-        let state = RosslerState::new(0.1, 0.0, 0.0);
-        Ok(RosslerBuilder::new()
-            .a(config.a)
-            .b(config.b)
-            .c(config.c)
-            .dt(config.dt)
-            .integration_method(config.integration_method)
-            .build(state))
-    }
-
-    #[verified_engine::verified]
-    fn step(&mut self) -> Result<(), Self::Error> {
-        let dt = self.dt;
-        let dyn_params = self.dynamics();
-        match self.integration_method {
-            IntegrationMethod::Euler => {
-                let mut solver = Euler::new(&self.state.vec);
-                solver.step(&dyn_params, 0.0, &mut self.state.vec, dt);
-            }
-            IntegrationMethod::Heun => {
-                let mut solver = Heun::new(&self.state.vec);
-                solver.step(&dyn_params, 0.0, &mut self.state.vec, dt);
-            }
-            IntegrationMethod::RungeKutta4 => {
-                self.solver.step(&dyn_params, 0.0, &mut self.state.vec, dt);
-            }
-        }
-        Ok(())
-    }
-
-    #[verified_engine::verified]
-    fn get_state(&self) -> Self::State {
-        self.state
     }
 }

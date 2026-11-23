@@ -408,7 +408,6 @@ fn compute_lorenz_wolf((sigma, rho, beta): (f64, f64, f64), initial: [f64; 3], d
         .sigma(sigma)
         .rho(rho)
         .beta(beta)
-        .dt(dt)
         .build(LorenzState::new(initial[0], initial[1], initial[2]));
     let mut rk4 = RungeKutta4::new(&Vector3::zeros());
     let mut start = Vector3::new(initial[0], initial[1], initial[2]);
@@ -429,7 +428,6 @@ fn compute_rossler_wolf(extra: &ExtraChaosParams, initial: [f64; 3], dt: f64) ->
         .a(extra.rossler_a)
         .b(extra.rossler_b)
         .c(extra.rossler_c)
-        .dt(dt)
         .build(RosslerState::new(initial[0], initial[1], initial[2]));
     let mut rk4 = RungeKutta4::new(&Vector3::zeros());
     let mut start = Vector3::new(initial[0], initial[1], initial[2]);
@@ -453,7 +451,6 @@ fn compute_pendulum_wolf(extra: &ExtraChaosParams, initial: [f64; 3], dt: f64) -
         .l1(extra.pendulum_l1)
         .l2(extra.pendulum_l2)
         .g(extra.pendulum_g)
-        .dt(dt)
         .build(state);
     let mut rk4 = RungeKutta4::new(&ArrayState([0.0; 4]));
     double_pendulum_lyapunov(
