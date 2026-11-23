@@ -85,11 +85,21 @@ version = "0.5.1"
 default-features = false
 features = ["html_reports"]
 
+[profile.dev]
+opt-level = 0
+debug = "line-tables-only"
+
 [profile.dev.package."*"]
 opt-level = 2
+debug = false
 
 [profile.test]
-opt-level = 1
+opt-level = 0
+debug = "line-tables-only"
+
+[profile.test.package."*"]
+opt-level = 2
+debug = false
 
 [profile.dev-fast]
 inherits = "dev"

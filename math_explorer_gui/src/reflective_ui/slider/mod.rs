@@ -10,15 +10,13 @@ mod tests;
 
 #[cfg(all(test, feature = "physics"))]
 pub use state::active_sweep_count;
-#[cfg(feature = "pure_math")]
-pub use state::live_active_sweep_count;
 #[cfg(all(test, feature = "pure_math"))]
 pub use state::SweepFrameFlags;
 pub use state::{
-    begin_pane_sweep_scope, has_active_sweeps, has_sweep_mutation, live_sweep_mutation_count,
-    load_slider_settings, load_slider_state, merge_pane_sweep_flags, reset_frame_sweep_flags,
-    resolve_scoped_slider_id, save_slider_settings, save_slider_state, AnimatedSliderState,
-    SweepMode,
+    begin_pane_sweep_scope, current_pass_active_sweep_count, has_active_sweeps, has_sweep_mutation,
+    live_sweep_mutation_count, load_slider_settings, load_slider_state, merge_pane_sweep_flags,
+    reset_frame_sweep_flags, resolve_scoped_slider_id, save_slider_settings, save_slider_state,
+    AnimatedSliderState, SweepMode,
 };
 
 use crate::accessibility::{announce_status, AccessibleHoverText};

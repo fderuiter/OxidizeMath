@@ -51,6 +51,13 @@ pub struct SensitivityMetric {
     pub is_high_sensitivity: bool,
 }
 
+/// Returns `true` when parameters are mid-gesture (pointer held down or local `AnimatedSlider` sweep active),
+/// matching continuous-edit coalescing in `WorkspaceSessionManager` while scoping sweeps to the current pass/pane.
+#[must_use]
+pub fn is_transient_parameter_gesture(ctx: &egui::Context, sweep_active: bool) -> bool {
+    sweep_active || ctx.input(|i| i.pointer.any_down())
+}
+
 /// Sensitivity analysis engine for parameter perturbation calculations.
 #[derive(Debug, Clone, Default)]
 pub struct SensitivityEngine {
@@ -64,6 +71,7 @@ pub struct SensitivityEngine {
     cached_context_hash: Option<u64>,
     evaluated_count: usize,
     baseline_map: HashMap<String, f64>,
+    gesture_deferred: bool,
 }
 
 impl SensitivityEngine {
@@ -110,6 +118,7 @@ impl SensitivityEngine {
         self.cached_context_hash = None;
         self.evaluated_count = 0;
         self.batch_offset = 0;
+        self.gesture_deferred = false;
     }
 
     fn sync_cache_on_miss<K: AsRef<str>>(&mut self, params: &[(K, f64)], context_hash: u64) {
@@ -157,11 +166,35 @@ impl SensitivityEngine {
         self.compute_with_context(params, &(), eval_fn)
     }
 
+    /// Defers finite-difference perturbations during an active drag or animated sweep gesture,
+    /// retaining settled `metrics` and suppressing unconverged repaint requests until release.
+    pub fn defer_for_gesture(&mut self) -> &Vec<SensitivityMetric> {
+        self.gesture_deferred = true;
+        &self.metrics
+    }
+
     /// Evaluates normalized sensitivity indices memoized by canonical parameter bits and `context`.
     pub fn compute_with_context<K, C, F>(
         &mut self,
         params: &[(K, f64)],
         context: &C,
+        eval_fn: F,
+    ) -> &Vec<SensitivityMetric>
+    where
+        K: AsRef<str>,
+        C: Hash,
+        F: FnMut(&HashMap<String, f64>) -> f64,
+    {
+        self.compute_with_baseline(params, context, None, eval_fn)
+    }
+
+    /// Evaluates normalized sensitivity indices memoized by canonical parameter bits and `context`,
+    /// reusing `baseline_output_hint` on cache misses when finite instead of invoking `eval_fn` for the baseline.
+    pub fn compute_with_baseline<K, C, F>(
+        &mut self,
+        params: &[(K, f64)],
+        context: &C,
+        baseline_output_hint: Option<f64>,
         mut eval_fn: F,
     ) -> &Vec<SensitivityMetric>
     where
@@ -169,6 +202,7 @@ impl SensitivityEngine {
         C: Hash,
         F: FnMut(&HashMap<String, f64>) -> f64,
     {
+        self.gesture_deferred = false;
         if params.is_empty() {
             self.reset_empty();
             return &self.metrics;
@@ -185,7 +219,9 @@ impl SensitivityEngine {
             }
         } else {
             self.sync_cache_on_miss(params, context_hash);
-            self.baseline_output = eval_fn(&self.baseline_map);
+            self.baseline_output = baseline_output_hint
+                .filter(|v| v.is_finite())
+                .unwrap_or_else(|| eval_fn(&self.baseline_map));
         }
 
         let num_params = params.len();
@@ -287,7 +323,7 @@ pub fn render_labeled_sensitivity_panel_ui(
         format!("Baseline {}: {:.4}", metric_label, engine.baseline_output)
     };
 
-    if !engine.is_converged() {
+    if !engine.is_converged() && !engine.gesture_deferred {
         ui.ctx().request_repaint();
     }
 

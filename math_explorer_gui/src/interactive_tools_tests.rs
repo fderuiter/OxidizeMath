@@ -31,6 +31,8 @@ mod tests {
             crate::tabs::financial_math::bet_size::BetSizeCalculatorTool,
             crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool,
             crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool,
+            crate::tabs::financial_math::market_devig::MarketDeviggingTool,
+            crate::tabs::financial_math::market_execution::MarketExecutionTool,
             crate::tabs::graph_theory::network_metrics::NetworkMetricsTool,
             crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool,
             crate::tabs::number_theory::fractran_machine::FractranMachineTool,
@@ -48,6 +50,7 @@ mod tests {
             crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool,
             crate::tabs::clinical_trials::randomization::RandomizationTool,
             crate::tabs::game_theory::glicko2::Glicko2TournamentTool,
+            crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool,
         );
         #[cfg(feature = "ai")]
         check_tools!(
@@ -60,6 +63,7 @@ mod tests {
             crate::tabs::ai::training_monitor::TrainingMonitorTool,
             crate::tabs::ai::loss_landscape::LossLandscapeTool,
             crate::tabs::ai::grid_world::GridWorldTool,
+            crate::tabs::ai::closed_loop_control::ClosedLoopControlTool,
         );
     }
 
@@ -93,6 +97,7 @@ mod tests {
             crate::tabs::fluid_dynamics::turbulence::TurbulenceTool,
             crate::tabs::medical::beam_profiling::BeamProfilingTool,
             crate::tabs::medical::dose::DoseCalculationTool,
+            crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool,
             crate::tabs::medical::radar_gating::RadarGatingTool,
             crate::tabs::chaos::hamiltonian::HamiltonianChaosLab,
             crate::tabs::relativity::inspector::ChristoffelInspectorTool,
@@ -399,6 +404,14 @@ mod tests {
         assert_tool_roundtrip(
             &mut crate::tabs::financial_math::bet_size::BetSizeCalculatorTool::default(),
             r#"{"probability_input":60.0,"odds_format":"American","decimal_odds":2.2,"american_odds":120.0,"fractional_numerator":6.0,"fractional_denominator":5.0,"bankroll":2000.0}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::financial_math::market_devig::MarketDeviggingTool::default(),
+            r#"{"bankroll":2500.0,"quote_format":"Decimal","method":"Additive","decimal_quotes":[1.9,3.25,6.5,10.0,21.0,101.0],"target_outcome":5,"offered_decimal_odds":110.0}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::financial_math::market_execution::MarketExecutionTool::default(),
+            r#"{"budget":500.0,"mode":"Hedge","arb_odds":[2.1,1.98],"dutch_odds":[2.2,3.5,4.2],"dutch_selected":[false,true,true],"dutch_target_profit_mode":false,"dutch_target_profit":50.0,"middle_odds_a":1.91,"middle_odds_b":1.91,"middle_hit_prob_pct":9.0,"hedge_orig_stake":100.0,"hedge_orig_odds":9.0,"hedge_live_odds":1.67,"hedge_use_target_floor":true,"hedge_target_floor":0.0}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::solid_state::band_structure::BandStructureTool::default(),
