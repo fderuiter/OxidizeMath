@@ -59,6 +59,26 @@
 //! assert_eq!(alloc.stakes()[2], 0.0);
 //! ```
 //!
+//! ## Example: Converting Odds Formats
+//!
+//! ```rust
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::kelly::Odds;
+//!
+//! // American odds (including -100 and +100 even-money boundaries)
+//! let underdog = Odds::from_american(200.0).unwrap(); // +200
+//! assert!((underdog.value() - 3.0).abs() < 1e-9);
+//! assert!((underdog.to_american() - 200.0).abs() < 1e-9);
+//!
+//! let favorite = Odds::from_american(-150.0).unwrap(); // -150
+//! assert_eq!(favorite.to_fractional(1000), (2, 3));
+//!
+//! // Fractional odds and implied probability
+//! let odds_5_to_2 = Odds::from_fractional(5.0, 2.0).unwrap();
+//! let from_prob = Odds::from_implied_probability(odds_5_to_2.implied_probability()).unwrap();
+//! assert!((from_prob.value() - odds_5_to_2.value()).abs() < 1e-9);
+//! ```
+//!
 //! ## References
 //!
 //! - Kelly, J. L. (1956). *A New Interpretation of Information Rate*. Bell System Technical Journal, 35(4), 917-926.

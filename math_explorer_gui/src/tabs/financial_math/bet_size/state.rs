@@ -1,6 +1,23 @@
-//! Serializable configuration state and defaults for [`super::BetSizeCalculatorTool`].
+//! Serializable configuration state, bounds, and odds-sync helpers for [`super::BetSizeCalculatorTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use math_explorer::error::KellyError;
+use math_explorer::pure_math::statistics::kelly::Odds;
+
+pub(super) const PROBABILITY_MIN: f64 = 0.0;
+pub(super) const PROBABILITY_MAX: f64 = 100.0;
+pub(super) const DECIMAL_ODDS_MIN: f64 = 1.01;
+pub(super) const DECIMAL_ODDS_MAX: f64 = 1000.0;
+pub(super) const AMERICAN_ODDS_MIN: f64 = -10_000.0;
+pub(super) const AMERICAN_ODDS_MAX: f64 = 10_000.0;
+pub(super) const FRACTIONAL_MIN: f64 = 1.0;
+pub(super) const FRACTIONAL_MAX: f64 = 1000.0;
+pub(super) const FRACTIONAL_MAX_DENOMINATOR: u64 = 1000;
+pub(super) const IMPLIED_PROB_MIN: f64 = 0.1;
+pub(super) const IMPLIED_PROB_MAX: f64 = 99.0;
+pub(super) const BANKROLL_MIN: f64 = 1.0;
+pub(super) const BANKROLL_MAX: f64 = 1_000_000.0;
 
 /// Supported sportsbook odds representations in [`super::BetSizeCalculatorTool`].
 #[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -11,6 +28,36 @@ pub enum OddsFormat {
     American,
     /// Fractional net profit odds (e.g. `10 / 11`).
     Fractional,
+    /// Bookmaker implied win probability in percent (e.g. `40.0%`).
+    ImpliedProbability,
+}
+
+/// Jumps `american_odds` across the invalid `(-100.0, 100.0)` moneyline dead zone during scrubs.
+pub(crate) fn skip_american_dead_zone(prev: f64, next: f64) -> f64 {
+    let clamped = next.clamp(AMERICAN_ODDS_MIN, AMERICAN_ODDS_MAX);
+    if clamped.abs() >= 100.0 {
+        clamped
+    } else if prev <= -100.0 || (prev < 100.0 && clamped >= 0.0) {
+        100.0
+    } else {
+        -100.0
+    }
+}
+
+pub(super) fn resolve_odds_for(
+    format: OddsFormat,
+    dec: f64,
+    am: f64,
+    num: f64,
+    den: f64,
+    imp_pct: f64,
+) -> Result<Odds, KellyError> {
+    match format {
+        OddsFormat::Decimal => Odds::new(dec),
+        OddsFormat::American => Odds::from_american(am),
+        OddsFormat::Fractional => Odds::from_fractional(num, den),
+        OddsFormat::ImpliedProbability => Odds::from_implied_probability(imp_pct / 100.0),
+    }
 }
 
 /// Active multi-state or portfolio Kelly solver mode in [`super::BetSizeCalculatorTool`].
@@ -21,7 +68,7 @@ pub enum BetSizingMode {
     Binary,
     /// Three-state integer spread / total wager with push refund (`+b`, `0`, `-1`).
     PushSpread,
-    /// Five-state Asian handicap quarter-line split wager (`+b`, `+b/2`, `0`, `-1/2`, `-1`).
+    /// Five-state Asian handicap quarter-line split wager (`+b`, `+b/2`, 0, `-1/2`, `-1`).
     QuarterLine,
     /// Mutually exclusive `N`-outcome market solved via Smoczynski-Tomkins active set.
     MutuallyExclusive,
@@ -212,6 +259,8 @@ pub(super) struct BetSizeState {
     pub american_odds: f64,
     pub fractional_numerator: f64,
     pub fractional_denominator: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub implied_probability_input: Option<f64>,
     pub bankroll: f64,
     #[serde(default, skip_serializing_if = "is_default_mode")]
     pub mode: BetSizingMode,
@@ -267,7 +316,10 @@ pub(super) struct BetSizeState {
 }
 
 impl BetSizeState {
-    pub(super) fn validate(&self) -> Result<(), String> {
+    pub(super) fn validate(&self) -> Result<Odds, String> {
+        let imp_ok = self
+            .implied_probability_input
+            .is_none_or(|v| v.is_finite() && (IMPLIED_PROB_MIN..=IMPLIED_PROB_MAX).contains(&v));
         let scalars = [
             self.probability_input,
             self.decimal_odds,
@@ -287,18 +339,32 @@ impl BetSizeState {
             self.drawdown_alpha,
             self.drawdown_beta,
         ];
+        let in_bounds = (PROBABILITY_MIN..=PROBABILITY_MAX).contains(&self.probability_input)
+            && (DECIMAL_ODDS_MIN..=DECIMAL_ODDS_MAX).contains(&self.decimal_odds)
+            && (AMERICAN_ODDS_MIN..=AMERICAN_ODDS_MAX).contains(&self.american_odds)
+            && self.american_odds.abs() >= 100.0
+            && (FRACTIONAL_MIN..=FRACTIONAL_MAX).contains(&self.fractional_numerator)
+            && (FRACTIONAL_MIN..=FRACTIONAL_MAX).contains(&self.fractional_denominator)
+            && (BANKROLL_MIN..=BANKROLL_MAX).contains(&self.bankroll);
         if !scalars.iter().all(|v| v.is_finite())
-            || !(0.0..=100.0).contains(&self.probability_input)
-            || !(1.01..=1000.0).contains(&self.decimal_odds)
-            || !(-10_000.0..=10_000.0).contains(&self.american_odds)
-            || !(1.0..=1000.0).contains(&self.fractional_numerator)
-            || !(1.0..=1000.0).contains(&self.fractional_denominator)
-            || !(1.0..=1_000_000.0).contains(&self.bankroll)
+            || !imp_ok
+            || !in_bounds
             || !self.validate_extended_bounds()
         {
             return Err("Bet size parameters out of bounds".into());
         }
-        Ok(())
+        let imp = self.implied_probability_input.unwrap_or_else(|| {
+            (100.0 / self.decimal_odds).clamp(IMPLIED_PROB_MIN, IMPLIED_PROB_MAX)
+        });
+        resolve_odds_for(
+            self.odds_format,
+            self.decimal_odds,
+            self.american_odds,
+            self.fractional_numerator,
+            self.fractional_denominator,
+            imp,
+        )
+        .map_err(|e| format!("Invalid odds state: {e}"))
     }
 
     fn validate_extended_bounds(&self) -> bool {
@@ -316,7 +382,7 @@ impl BetSizeState {
             r.probability_pct.is_finite()
                 && r.decimal_odds.is_finite()
                 && (0.0..=100.0).contains(&r.probability_pct)
-                && (1.01..=1000.0).contains(&r.decimal_odds)
+                && (DECIMAL_ODDS_MIN..=DECIMAL_ODDS_MAX).contains(&r.decimal_odds)
         });
         pct_fields.iter().all(|p| (0.0..=100.0).contains(p))
             && rows_valid

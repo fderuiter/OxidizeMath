@@ -10,17 +10,21 @@ mod state;
 mod tests;
 mod ui;
 
+pub(crate) use state::skip_american_dead_zone;
 use state::{
-    default_market_rows, BetSizeState, DEFAULT_DRAWDOWN_ALPHA, DEFAULT_DRAWDOWN_BETA,
-    DEFAULT_MARKET_COUNT, DEFAULT_PUSH_PCT, DEFAULT_QL_FULL_LOSS_PCT, DEFAULT_QL_FULL_WIN_PCT,
-    DEFAULT_QL_HALF_LOSS_PCT, DEFAULT_QL_HALF_WIN_PCT, DEFAULT_QL_PUSH_PCT, DEFAULT_SLATE_COUNT,
-    DEFAULT_SLATE_NET_ODDS, DEFAULT_SLATE_PUSH_PCT, DEFAULT_SLATE_WIN_PCT,
+    default_market_rows, resolve_odds_for, BetSizeState, DECIMAL_ODDS_MAX, DECIMAL_ODDS_MIN,
+    DEFAULT_DRAWDOWN_ALPHA, DEFAULT_DRAWDOWN_BETA, DEFAULT_MARKET_COUNT, DEFAULT_PUSH_PCT,
+    DEFAULT_QL_FULL_LOSS_PCT, DEFAULT_QL_FULL_WIN_PCT, DEFAULT_QL_HALF_LOSS_PCT,
+    DEFAULT_QL_HALF_WIN_PCT, DEFAULT_QL_PUSH_PCT, DEFAULT_SLATE_COUNT, DEFAULT_SLATE_NET_ODDS,
+    DEFAULT_SLATE_PUSH_PCT, DEFAULT_SLATE_WIN_PCT, FRACTIONAL_MAX, FRACTIONAL_MAX_DENOMINATOR,
+    FRACTIONAL_MIN, IMPLIED_PROB_MAX, IMPLIED_PROB_MIN,
 };
 pub use state::{BetSizingMode, MarketRowConfig, OddsFormat, UI_MAX_MARKET_ROWS};
 
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui_plot::PlotPoint;
+use math_explorer::error::KellyError;
 use math_explorer::pure_math::statistics::kelly::{
     DrawdownConstraint, MarketScratch, Odds, SlateScratch,
 };
@@ -44,6 +48,7 @@ pub struct BetSizeCalculatorTool {
     pub(crate) american_odds: f64,
     pub(crate) fractional_numerator: f64,
     pub(crate) fractional_denominator: f64,
+    pub(crate) implied_probability_input: f64,
     pub(crate) bankroll: f64,
     pub(super) mode: BetSizingMode,
     pub(super) push_probability_pct: f64,
@@ -85,6 +90,7 @@ impl Default for BetSizeCalculatorTool {
             american_odds: 100.0,
             fractional_numerator: 1.0,
             fractional_denominator: 1.0,
+            implied_probability_input: 50.0,
             bankroll: 1000.0,
             mode: BetSizingMode::Binary,
             push_probability_pct: DEFAULT_PUSH_PCT,
@@ -129,6 +135,9 @@ impl BetSizeCalculatorTool {
         self.push_probability_pct = 10.0;
         self.odds_format = OddsFormat::American;
         self.american_odds = -110.0;
+        if let Ok(odds) = Odds::from_american(-110.0) {
+            self.sync_from_odds(odds, OddsFormat::American);
+        }
         self.recalculate();
     }
 
@@ -142,6 +151,9 @@ impl BetSizeCalculatorTool {
         self.ql_full_loss_pct = 44.0;
         self.odds_format = OddsFormat::American;
         self.american_odds = -110.0;
+        if let Ok(odds) = Odds::from_american(-110.0) {
+            self.sync_from_odds(odds, OddsFormat::American);
+        }
         self.recalculate();
     }
 
@@ -163,13 +175,36 @@ impl BetSizeCalculatorTool {
         self.recalculate();
     }
 
-    pub(crate) fn active_odds(&self) -> Result<Odds, math_explorer::error::KellyError> {
-        match self.odds_format {
-            OddsFormat::Decimal => Odds::new(self.decimal_odds),
-            OddsFormat::American => Odds::from_american(self.american_odds),
-            OddsFormat::Fractional => {
-                Odds::from_fractional(self.fractional_numerator, self.fractional_denominator)
-            }
+    pub(crate) fn resolve_active_odds(&self) -> Result<Odds, KellyError> {
+        resolve_odds_for(
+            self.odds_format,
+            self.decimal_odds,
+            self.american_odds,
+            self.fractional_numerator,
+            self.fractional_denominator,
+            self.implied_probability_input,
+        )
+    }
+
+    pub(crate) fn active_odds(&self) -> Result<Odds, KellyError> {
+        self.resolve_active_odds()
+    }
+
+    pub(crate) fn sync_from_odds(&mut self, odds: Odds, source: OddsFormat) {
+        if source != OddsFormat::Decimal {
+            self.decimal_odds = odds.value().clamp(DECIMAL_ODDS_MIN, DECIMAL_ODDS_MAX);
+        }
+        if source != OddsFormat::American {
+            self.american_odds = skip_american_dead_zone(100.0, odds.to_american());
+        }
+        if source != OddsFormat::Fractional {
+            let (num, den) = odds.to_fractional(FRACTIONAL_MAX_DENOMINATOR);
+            self.fractional_numerator = (num as f64).clamp(FRACTIONAL_MIN, FRACTIONAL_MAX);
+            self.fractional_denominator = (den as f64).clamp(FRACTIONAL_MIN, FRACTIONAL_MAX);
+        }
+        if source != OddsFormat::ImpliedProbability {
+            self.implied_probability_input =
+                (odds.implied_probability() * 100.0).clamp(IMPLIED_PROB_MIN, IMPLIED_PROB_MAX);
         }
     }
 
@@ -177,7 +212,7 @@ impl BetSizeCalculatorTool {
         DrawdownConstraint::new(self.drawdown_alpha, self.drawdown_beta).ok()
     }
 
-    fn to_serializable_state(&self) -> BetSizeState {
+    fn to_serializable_state(&self, include_imp: bool) -> BetSizeState {
         BetSizeState {
             probability_input: self.probability_input,
             odds_format: self.odds_format,
@@ -185,6 +220,7 @@ impl BetSizeCalculatorTool {
             american_odds: self.american_odds,
             fractional_numerator: self.fractional_numerator,
             fractional_denominator: self.fractional_denominator,
+            implied_probability_input: include_imp.then_some(self.implied_probability_input),
             bankroll: self.bankroll,
             mode: self.mode,
             push_probability_pct: self.push_probability_pct,
@@ -204,13 +240,16 @@ impl BetSizeCalculatorTool {
         }
     }
 
-    fn apply_validated_state(&mut self, s: BetSizeState) {
+    fn apply_validated_state(&mut self, s: BetSizeState, odds: Odds) {
+        let default_imp =
+            (odds.implied_probability() * 100.0).clamp(IMPLIED_PROB_MIN, IMPLIED_PROB_MAX);
         self.probability_input = s.probability_input;
         self.odds_format = s.odds_format;
         self.decimal_odds = s.decimal_odds;
         self.american_odds = s.american_odds;
         self.fractional_numerator = s.fractional_numerator;
         self.fractional_denominator = s.fractional_denominator;
+        self.implied_probability_input = s.implied_probability_input.unwrap_or(default_imp);
         self.bankroll = s.bankroll;
         self.mode = s.mode;
         self.push_probability_pct = s.push_probability_pct;
@@ -227,7 +266,30 @@ impl BetSizeCalculatorTool {
         self.slate_net_odds = s.slate_net_odds;
         self.drawdown_alpha = s.drawdown_alpha;
         self.drawdown_beta = s.drawdown_beta;
+        self.reconcile_loaded_odds(s.odds_format, odds, default_imp);
         self.recalculate();
+    }
+
+    fn reconcile_loaded_odds(&mut self, fmt: OddsFormat, odds: Odds, default_imp: f64) {
+        let expected_dec = odds.value().clamp(DECIMAL_ODDS_MIN, DECIMAL_ODDS_MAX);
+        if (self.decimal_odds - expected_dec).abs() > 1e-6 {
+            self.decimal_odds = expected_dec;
+        }
+        let expected_am = skip_american_dead_zone(self.american_odds, odds.to_american());
+        if fmt != OddsFormat::American && (self.american_odds - expected_am).abs() > 1e-6 {
+            self.american_odds = expected_am;
+        }
+        let frac_val = (self.fractional_numerator / self.fractional_denominator) + 1.0;
+        if fmt != OddsFormat::Fractional && (frac_val - odds.value()).abs() > 1e-3 {
+            let (num, den) = odds.to_fractional(FRACTIONAL_MAX_DENOMINATOR);
+            self.fractional_numerator = (num as f64).clamp(FRACTIONAL_MIN, FRACTIONAL_MAX);
+            self.fractional_denominator = (den as f64).clamp(FRACTIONAL_MIN, FRACTIONAL_MAX);
+        }
+        if fmt != OddsFormat::ImpliedProbability
+            && (self.implied_probability_input - default_imp).abs() > 1e-6
+        {
+            self.implied_probability_input = default_imp;
+        }
     }
 }
 
@@ -249,42 +311,34 @@ impl InteractiveTool for BetSizeCalculatorTool {
     }
 
     fn has_finite_parameters(&self) -> bool {
-        let scalars = [
-            self.probability_input,
-            self.decimal_odds,
-            self.american_odds,
-            self.fractional_numerator,
-            self.fractional_denominator,
-            self.bankroll,
-            self.push_probability_pct,
-            self.ql_full_win_pct,
-            self.ql_half_win_pct,
-            self.ql_push_pct,
-            self.ql_half_loss_pct,
-            self.ql_full_loss_pct,
-            self.slate_win_pct,
-            self.slate_push_pct,
-            self.slate_net_odds,
-            self.drawdown_alpha,
-            self.drawdown_beta,
-        ];
-        scalars.iter().all(|v| v.is_finite())
-            && self
-                .market_rows
-                .iter()
-                .all(|r| r.probability_pct.is_finite() && r.decimal_odds.is_finite())
+        self.to_serializable_state(true).validate().is_ok()
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.build_export_datasets()
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&self.to_serializable_state()).ok()
+        let include_imp = self.odds_format == OddsFormat::ImpliedProbability;
+        serde_json::to_string(&self.to_serializable_state(include_imp)).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: BetSizeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid bet size state: {e}"))?;
-        s.validate()?;
-        self.apply_validated_state(s);
+        let odds = s.validate()?;
+        self.apply_validated_state(s, odds);
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -304,10 +358,10 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
     fn theory_description(&self) -> String {
-        let net_b = self
-            .active_odds()
-            .map(|o| o.net_profit_multiplier())
-            .unwrap_or(self.decimal_odds - 1.0);
+        let net_b = self.resolve_active_odds().map_or_else(
+            |_| (self.decimal_odds - 1.0).max(0.01),
+            |o| o.net_profit_multiplier(),
+        );
         format!(
             "Multi-state convex Kelly criterion allocation maximizing expected logarithmic growth $\\mathbb{{E}}[\\ln(1 + f^\\top X)]$ subject to Busseti-Ryu-Boyd drawdown risk bounds $\\mathbb{{E}}[R^{{-\\lambda}}] \\le 1$ (win probability $p = {:.1}\\%$, net odds $b = {:.2}$).",
             self.probability_input, net_b
@@ -336,23 +390,7 @@ impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
     }
 }
 
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Kelly Criterion Allocation",
-    "domain": "financial_math",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "probability_input": 60.0,
-    "odds_format": "Decimal",
-    "decimal_odds": 2.0,
-    "american_odds": 100.0,
-    "fractional_numerator": 1.0,
-    "fractional_denominator": 1.0,
-    "bankroll": 2500.0
-  }
-}"#;
+const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Kelly Criterion Allocation","domain":"financial_math","timestamp":"2026-11-16T00:00:00Z"},"config":{"probability_input":60.0,"odds_format":"Decimal","decimal_odds":2.0,"american_odds":100.0,"fractional_numerator":1.0,"fractional_denominator":1.0,"bankroll":2500.0}}"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {

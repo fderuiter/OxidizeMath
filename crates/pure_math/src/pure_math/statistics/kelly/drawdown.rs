@@ -40,7 +40,11 @@ where
     let root = match solver.find_root(&h_fn, low, f_unconstrained) {
         Ok(r) => r,
         Err(AnalysisError::ConvergenceError(best)) => best,
-        Err(AnalysisError::InvalidParameters(_)) => {
+        Err(
+            AnalysisError::RootNotBracketed { .. }
+            | AnalysisError::DerivativeTooSmall { .. }
+            | AnalysisError::InvalidBracket { .. },
+        ) => {
             return Err(KellyError::ConvergenceFailed {
                 iterations: DRAWDOWN_ROOT_ITERS,
                 residual: h_fn(low).abs(),

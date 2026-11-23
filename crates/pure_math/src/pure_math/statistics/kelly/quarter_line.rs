@@ -246,7 +246,11 @@ pub fn quarter_line_kelly_fraction(
     let root = match solver.find_root(|f| growth_derivative_inner(wager, f), 0.0, upper) {
         Ok(r) => r,
         Err(AnalysisError::ConvergenceError(best)) => best,
-        Err(AnalysisError::InvalidParameters(_)) => {
+        Err(
+            AnalysisError::RootNotBracketed { .. }
+            | AnalysisError::DerivativeTooSmall { .. }
+            | AnalysisError::InvalidBracket { .. },
+        ) => {
             return Err(KellyError::ConvergenceFailed {
                 iterations: QUARTER_LINE_ROOT_ITERS,
                 residual: growth_derivative_inner(wager, upper).abs(),

@@ -1,4 +1,4 @@
-//! Verifies that all 28 public error enums re-exported by `math_explorer::error`
+//! Verifies that all 30 public error enums re-exported by `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -15,9 +15,10 @@ use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
     AIError, BatteryError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
     EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
-    HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarkovError,
-    MathError, NumberTheoryError, OuError, PharmacokineticsError, RadarError, SolidStateError,
-    StandardModelError, StatMechError, TdaError, ZipError,
+    HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError,
+    MarketPricingError, MarkovError, MathError, NumberTheoryError, OuError, PharmacokineticsError,
+    RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError, TdaError,
+    ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -63,7 +64,42 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         "NumberTheoryError",
         &NumberTheoryError::DivisionByZeroQSeries,
     );
+    assert_readable_diagnostic(
+        "MarkovError",
+        &MarkovError::InvalidProbability { value: 1.5 },
+    );
+    assert_readable_diagnostic("OuError", &OuError::InvalidVolatility { value: -0.1 });
+    assert_readable_diagnostic("ZipError", &ZipError::InvalidRate { value: -0.5 });
+    assert_readable_diagnostic("TdaError", &TdaError::EmptyPointCloud);
+    assert_readable_diagnostic("CopulaError", &CopulaError::NotPositiveDefinite);
+    assert_readable_diagnostic(
+        "Glicko2Error",
+        &Glicko2Error::InvalidSystemConstant { value: 0.0 },
+    );
+}
+
+#[test]
+fn kelly_and_market_pricing_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic("KellyError", &KellyError::InvalidBankroll { value: -1.0 });
+    assert_readable_diagnostic(
+        "KellyError::InvalidNetOdds",
+        &KellyError::InvalidNetOdds { value: 0.0 },
+    );
+    assert_readable_diagnostic(
+        "KellyError::InvalidAmericanOdds",
+        &KellyError::InvalidAmericanOdds { value: 50.0 },
+    );
+    assert_readable_diagnostic(
+        "KellyError::InvalidFractionalOdds",
+        &KellyError::InvalidFractionalOdds {
+            numerator: -1.0,
+            denominator: 2.0,
+        },
+    );
+    assert_readable_diagnostic(
+        "KellyError::InvalidImpliedProbability",
+        &KellyError::InvalidImpliedProbability { value: 1.0 },
+    );
     assert_readable_diagnostic(
         "KellyError::InvalidProbabilityDistribution",
         &KellyError::InvalidProbabilityDistribution { sum: 1.05 },
@@ -92,16 +128,10 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         },
     );
     assert_readable_diagnostic(
-        "MarkovError",
-        &MarkovError::InvalidProbability { value: 1.5 },
-    );
-    assert_readable_diagnostic("OuError", &OuError::InvalidVolatility { value: -0.1 });
-    assert_readable_diagnostic("ZipError", &ZipError::InvalidRate { value: -0.5 });
-    assert_readable_diagnostic("TdaError", &TdaError::EmptyPointCloud);
-    assert_readable_diagnostic("CopulaError", &CopulaError::NotPositiveDefinite);
-    assert_readable_diagnostic(
-        "Glicko2Error",
-        &Glicko2Error::InvalidSystemConstant { value: 0.0 },
+        "MarketPricingError",
+        &MarketPricingError::NoArbitrage {
+            reciprocal_sum: 1.05,
+        },
     );
 }
 
@@ -176,6 +206,14 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         &RadarError::AntennaWeightCountMismatch {
             expected: 4,
             actual: 2,
+        },
+    );
+    assert_readable_diagnostic(
+        "SandpileError",
+        &SandpileError::InvalidDimensions {
+            width: 0,
+            height: 8,
+            max_dim: 128,
         },
     );
     assert_readable_diagnostic(
