@@ -224,9 +224,7 @@ impl MorphogenesisKineticsRunner {
             &mut self.rng,
             noise_amp,
         );
-        if self.system.diffusion.mask.has_active_cells() {
-            self.enforce_mask_concentrations();
-        }
+        self.enforce_mask_concentrations();
         self.step_count += 1;
     }
 

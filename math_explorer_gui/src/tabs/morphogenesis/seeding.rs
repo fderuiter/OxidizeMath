@@ -127,6 +127,7 @@ impl MorphogenesisTool {
         self.live_velocity_peaks = [0.0, 0.0];
         self.pending_initial_start = false;
         self.dirty = true;
+        self.invalidate_scalar_field_cache();
     }
 
     pub(crate) fn reset_system(&mut self) {
@@ -266,6 +267,7 @@ impl MorphogenesisTool {
             self.step_runner = None;
             self.live_velocity_peaks = [0.0, 0.0];
             self.dirty = true;
+            self.invalidate_scalar_field_cache();
         } else {
             self.reset();
             let rle_mask = self

@@ -16,6 +16,7 @@ pub mod fd1d;
 #[allow(missing_docs)]
 pub mod fd2d;
 pub mod fd3d;
+pub mod laplace_beltrami;
 
 pub use fd1d::FiniteDifference1D;
 pub use fd2d::{
@@ -23,6 +24,7 @@ pub use fd2d::{
     ReactionCellRole,
 };
 pub use fd3d::FiniteDifference3D;
+pub use laplace_beltrami::LaplaceBeltramiDiffusion2D;
 use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 
 /// Defines a strategy for computing spatial diffusion.
