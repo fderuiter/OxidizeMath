@@ -52,23 +52,20 @@ impl SpinVisualizer {
             (Point3D::new(0.0, 0.0, 1.22), VertexColor::new(82, 148, 236)),
         ];
         for (tip, color) in axis_specs {
-            let axis_arrow =
-                build_arrow(Point3D::new(0.0, 0.0, 0.0), tip, 0.018, 0.048, 0.12, 10)
-                    .map_err(|e| e.to_string())?;
+            let axis_arrow = build_arrow(Point3D::new(0.0, 0.0, 0.0), tip, 0.018, 0.048, 0.12, 10)
+                .map_err(|e| e.to_string())?;
             append_colored_part(&mut combined, &axis_arrow, color);
         }
 
         let tip = Point3D::new(ex as f32, ey as f32, ez as f32) * 1.12;
         let spin_color = VertexColor::new(248, 192, 58);
         if tip.magnitude() > 0.05 {
-            let spin_arrow =
-                build_arrow(Point3D::new(0.0, 0.0, 0.0), tip, 0.042, 0.105, 0.22, 16)
-                    .map_err(|e| e.to_string())?;
+            let spin_arrow = build_arrow(Point3D::new(0.0, 0.0, 0.0), tip, 0.042, 0.105, 0.22, 16)
+                .map_err(|e| e.to_string())?;
             append_colored_part(&mut combined, &spin_arrow, spin_color);
         } else {
-            let mixed_marker =
-                build_uv_sphere(Point3D::new(0.0, 0.0, 0.0), 0.12, 14, 10)
-                    .map_err(|e| e.to_string())?;
+            let mixed_marker = build_uv_sphere(Point3D::new(0.0, 0.0, 0.0), 0.12, 14, 10)
+                .map_err(|e| e.to_string())?;
             append_colored_part(&mut combined, &mixed_marker, spin_color);
         }
 
