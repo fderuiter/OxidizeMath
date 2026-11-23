@@ -39,6 +39,8 @@ pub mod q_series;
 pub mod ualbf;
 
 // Re-exports for convenience
+pub use crate::error::NumberTheoryError;
+pub use ambs::AmbsError;
 pub use primes::{is_prime, primes_up_to};
 
 // [cite:mmwave_radiotherapy_setup]

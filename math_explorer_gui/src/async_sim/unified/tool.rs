@@ -27,9 +27,10 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(super) dirty: bool,
     pub(super) stepped_snapshot: Option<StateSnapshot>,
-    cached_theory_desc: String,
-    cached_phonetic: String,
-    cached_citation: String,
+    pub(super) cached_theory_desc: String,
+    pub(super) cached_latex_eq: Option<String>,
+    pub(super) cached_phonetic: String,
+    pub(super) cached_citation: String,
     pub(super) cached_descs: HashMap<String, String>,
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
@@ -94,6 +95,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             dirty: true,
             stepped_snapshot: None,
             cached_theory_desc: temp_model.theory_description(),
+            cached_latex_eq: temp_model.theory_latex_equation(),
             cached_phonetic: temp_model.phonetic_description(),
             cached_citation: temp_model.theory_citation(),
             cached_descs: temp_model.available_descriptions(),
@@ -477,23 +479,5 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         {
             ui.ctx().request_repaint();
         }
-    }
-}
-
-impl<M: UnifiedModel> scientific_metadata::theory::TheoryDescribable for UnifiedSimTool<M> {
-    fn theory_description(&self) -> String {
-        self.cached_theory_desc.clone()
-    }
-    fn phonetic_description(&self) -> String {
-        self.cached_phonetic.clone()
-    }
-    fn theory_citation(&self) -> String {
-        self.cached_citation.clone()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        self.cached_descs.clone()
-    }
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        self.param_metadata.iter().cloned().collect()
     }
 }

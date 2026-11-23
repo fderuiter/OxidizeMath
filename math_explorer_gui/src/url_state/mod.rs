@@ -35,7 +35,7 @@ pub use codec::{
     encode_share_fragment, encode_share_fragment_with_challenge, matches_tab_slug,
     parse_share_location, quantize_bounded_url_series, quantize_url_centi,
     validate_url_preset_json, ShareUrlParams, CANONICAL_WEB_BASE_URL, CUSTOM_POTENTIAL_POINTS,
-    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, URL_JSON_BOUNDS,
 };
 pub use sync::{UrlStateSignature, UrlSyncController, URL_SYNC_DEBOUNCE_MS};
 

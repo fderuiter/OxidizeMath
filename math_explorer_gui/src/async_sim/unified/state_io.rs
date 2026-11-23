@@ -372,3 +372,26 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Ok(())
     }
 }
+
+impl<M: UnifiedModel> scientific_metadata::theory::TheoryDescribable for UnifiedSimTool<M> {
+    fn theory_description(&self) -> String {
+        self.cached_theory_desc.clone()
+    }
+    fn theory_latex_equation(&self) -> Option<String> {
+        self.cached_latex_eq.clone()
+    }
+    fn phonetic_description(&self) -> String {
+        self.cached_phonetic.clone()
+    }
+    fn theory_citation(&self) -> String {
+        self.cached_citation.clone()
+    }
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        self.cached_descs.clone()
+    }
+    fn theory_parameters(
+        &self,
+    ) -> HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        self.param_metadata.iter().cloned().collect()
+    }
+}
