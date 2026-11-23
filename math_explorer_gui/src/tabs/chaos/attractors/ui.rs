@@ -9,7 +9,7 @@ use crate::async_sim::ui::{
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
-use egui_plot::{Callout, Line, PlotPoint, PlotPoints, Points};
+use egui_plot::{Callout, PlotPoint};
 use nalgebra::Vector3;
 
 impl AttractorPlotter {
@@ -17,7 +17,7 @@ impl AttractorPlotter {
         let worker_faulted = self.worker.state() == SimWorkerState::Faulted;
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "attractor_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Lorenz Attractor");
+            ui.heading("3D Chaotic Attractor");
             ui.separator();
 
             if worker_faulted && !self.diverged() {
@@ -32,6 +32,21 @@ impl AttractorPlotter {
                 }
             }
 
+            ui.horizontal(|ui| {
+                let prev_mode = self.mode;
+                ui.radio_value(&mut self.mode, super::AttractorMode::Lorenz, "Lorenz");
+                ui.radio_value(
+                    &mut self.mode,
+                    super::AttractorMode::Custom,
+                    "Custom 3D Flow",
+                );
+                if self.mode != prev_mode {
+                    self.reset();
+                    ctx.request_repaint();
+                }
+            });
+            ui.separator();
+
             self.draw_parameter_sliders(ui);
             self.draw_simulation_controls(ui, ctx, worker_faulted);
 
@@ -39,8 +54,10 @@ impl AttractorPlotter {
                 .default_open(true)
                 .show(ui, |ui| self.camera.ui(ui));
 
-            ui.separator();
-            ui.checkbox(&mut self.show_annotations, "Show Fixed Points");
+            if self.mode == super::AttractorMode::Lorenz {
+                ui.separator();
+                ui.checkbox(&mut self.show_annotations, "Show Fixed Points");
+            }
 
             ui.separator();
             let state = self.system.state.vec;
@@ -51,11 +68,22 @@ impl AttractorPlotter {
     }
 
     fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
+        if self.mode == super::AttractorMode::Custom {
+            egui::CollapsingHeader::new("Vector Field Equations")
+                .default_open(true)
+                .show(ui, |ui| {
+                    if self.flow_bank.ui(ui) {
+                        self.on_slider_changed();
+                    }
+                });
+            return;
+        }
         ui.collapsing("Parameters", |ui| {
             if ui
                 .add(
-                    egui::Slider::new(&mut self.system.sigma, 0.0..=50.0)
-                        .text("Prandtl Number (σ)"),
+                    crate::reflective_ui::AnimatedSlider::new(&mut self.system.sigma, 0.0..=50.0)
+                        .text("Prandtl Number (σ)")
+                        .id_salt("lorenz_sigma"),
                 )
                 .changed()
             {
@@ -63,8 +91,9 @@ impl AttractorPlotter {
             }
             if ui
                 .add(
-                    egui::Slider::new(&mut self.system.rho, 0.0..=100.0)
-                        .text("Rayleigh Number (ρ)"),
+                    crate::reflective_ui::AnimatedSlider::new(&mut self.system.rho, 0.0..=100.0)
+                        .text("Rayleigh Number (ρ)")
+                        .id_salt("lorenz_rho"),
                 )
                 .changed()
             {
@@ -72,8 +101,9 @@ impl AttractorPlotter {
             }
             if ui
                 .add(
-                    egui::Slider::new(&mut self.system.beta, 0.0..=10.0)
-                        .text("Geometric Factor (β)"),
+                    crate::reflective_ui::AnimatedSlider::new(&mut self.system.beta, 0.0..=10.0)
+                        .text("Geometric Factor (β)")
+                        .id_salt("lorenz_beta"),
                 )
                 .changed()
             {
@@ -109,29 +139,16 @@ impl AttractorPlotter {
                 .can_reset(true)
                 .show(ui)
                 {
-                    match action {
-                        PlaybackAction::Play => {
-                            let _ = self.try_resume();
-                        }
-                        PlaybackAction::Pause => {
-                            self.execution_state = SolverExecutionState::Paused;
-                            let _ = self.worker.send_command(SimCommand::Pause);
-                        }
-                        PlaybackAction::Step => {
-                            self.execution_state = SolverExecutionState::Paused;
-                            let _ = self.worker.send_command(SimCommand::Step(1));
-                        }
-                        PlaybackAction::Reset => {
-                            self.reset();
-                            ctx.request_repaint();
-                        }
-                    }
+                    self.handle_playback_action(action, ctx);
                 }
 
                 if ui
                     .add(
-                        egui::Slider::new(&mut self.simulation_speed, 1..=super::MAX_SIMULATION_SPEED)
-                            .text("Speed (steps/frame)"),
+                        egui::Slider::new(
+                            &mut self.simulation_speed,
+                            1..=super::MAX_SIMULATION_SPEED,
+                        )
+                        .text("Speed (steps/frame)"),
                     )
                     .changed()
                 {
@@ -150,6 +167,26 @@ impl AttractorPlotter {
                     self.on_slider_changed();
                 }
             });
+    }
+
+    fn handle_playback_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.try_resume();
+            }
+            PlaybackAction::Pause => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::Reset => {
+                self.reset();
+                ctx.request_repaint();
+            }
+        }
     }
 
     fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {
@@ -242,8 +279,7 @@ impl AttractorPlotter {
     ) -> egui::Rect {
         let ctx = plot_ui.ctx();
         let font_id = egui::TextStyle::Small.resolve(&ctx.style());
-        let galley =
-            ctx.fonts_mut(|f| f.layout_no_wrap(label.to_owned(), font_id, Color32::WHITE));
+        let galley = ctx.fonts_mut(|f| f.layout_no_wrap(label.to_owned(), font_id, Color32::WHITE));
         let target_pos = plot_ui.screen_from_plot(PlotPoint::new(target[0], target[1]));
         let padding = Vec2::new(6.0, 4.0);
         egui::Align2::CENTER_CENTER.anchor_size(target_pos + offset, galley.size() + 2.0 * padding)
@@ -297,7 +333,8 @@ impl AttractorPlotter {
     }
 
     fn draw_fixed_point_callouts(&mut self, plot_ui: &mut egui_plot::PlotUi<'_>) {
-        if !self.show_annotations
+        if self.mode != super::AttractorMode::Lorenz
+            || !self.show_annotations
             || self.system.rho <= 1.0
             || self.system.beta <= 0.0
             || !self.system.rho.is_finite()
@@ -363,22 +400,12 @@ impl AttractorPlotter {
                 );
             }
 
-            let points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-            let initial_pt = (points.is_empty() && self.is_finite_state())
-                .then(|| self.project(self.system.state.vec));
-
             let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
+            self.populate_scene(series0);
             let mut camera = self.camera;
             let response = Plot3DViewport::new("attractor_plot", 32.0)
                 .show(ui, &mut camera, |plot_ui| {
-                    plot_ui.line(Line::new("Trajectory", PlotPoints::new(points)).color(series0));
-                    if let Some(pt) = initial_pt {
-                        plot_ui.points(
-                            Points::new("Initial State", vec![pt])
-                                .radius(4.0_f32)
-                                .color(series0),
-                        );
-                    }
+                    self.scene_builder.finish(plot_ui);
                     self.draw_fixed_point_callouts(plot_ui);
                 })
                 .response;

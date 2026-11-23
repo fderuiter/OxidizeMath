@@ -1,4 +1,4 @@
-# ADR 0035: Auto-Discovered Paradox Lab Tab for Stochastic Ratchets and Network Congestion
+# ADR 0037: Auto-Discovered Paradox Lab Tab for Stochastic Ratchets and Network Congestion
 
 ## Status
 Accepted (extends [ADR 0001](0001-dynamic-workspace-discovery.md), [ADR 0008](0008-finite-state-solver-guard.md), and [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md))
@@ -17,4 +17,4 @@ Several verified mathematical engines across `pure_math` and `domain_applied`—
 
 ## Consequences
 - **Positive**: Exposes both stochastic ratchets and game-theoretic congestion/mean-field PDE solvers in native desktop and `wasm32-unknown-unknown` builds with shareable `#tab=paradox_lab` URLs, starter presets, `SemanticPalette` contrast, AccessKit keyboard navigation, and offline plot/dataset exports.
-- **Neutral**: Inventory contract suites track 22 `ExplorerTab` modules (6 under Applied Math), 57 `InteractiveTool` entries, 61 `StarterPresetMetadata` cards, and 34 plot-exportable tools.
+- **Neutral**: Inventory contract suites track 22 `ExplorerTab` modules (6 under Applied Math), 62 `InteractiveTool` entries, 73 `StarterPresetMetadata` cards, and 39 plot-exportable tools.
