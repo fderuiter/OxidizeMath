@@ -169,7 +169,7 @@ pub(super) fn render_challenges_grid(
 ) -> Option<GallerySelection> {
     if challenges.is_empty() && goal_challenges.is_empty() {
         ui.label(
-            "No challenges are registered for this domain yet. Try Financial Math, Game Theory, MRI Physics, Clinical Trials, Fluid Dynamics, or Medical Physics.",
+            "No challenges are registered for this domain yet. Try Quantum Mechanics, Financial Math, Game Theory, MRI Physics, Clinical Trials, Fluid Dynamics, Medical Physics, Epidemiology, or Astrophysics.",
         );
         return None;
     }

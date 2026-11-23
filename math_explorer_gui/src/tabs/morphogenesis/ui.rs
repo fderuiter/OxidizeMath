@@ -192,16 +192,32 @@ impl MorphogenesisTool {
         match mode {
             MorphogenesisKineticsMode::Schnakenberg => self.draw_schnakenberg_sliders(ui),
             MorphogenesisKineticsMode::GrayScott => {
-                let mut ks = self
-                    .kinetics_state
-                    .write()
-                    .unwrap_or_else(|e| e.into_inner());
-                let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
-                ui.add(egui::Slider::new(&mut ks.f, 0.01..=0.09).text("f (feed)"));
-                ui.add(egui::Slider::new(&mut ks.k, 0.03..=0.08).text("k (kill)"));
-                ui.add(egui::Slider::new(&mut params.d_u, 0.05..=0.40).text("D_u"));
-                ui.add(egui::Slider::new(&mut params.d_v, 0.02..=0.25).text("D_v"));
-                ui.add(egui::Slider::new(&mut params.dt, 0.1..=1.5).text("dt"));
+                let mut changed = false;
+                {
+                    let mut ks = self
+                        .kinetics_state
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
+                    let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
+                    changed |= ui
+                        .add(egui::Slider::new(&mut ks.f, 0.01..=0.09).text("f (feed)"))
+                        .changed();
+                    changed |= ui
+                        .add(egui::Slider::new(&mut ks.k, 0.03..=0.08).text("k (kill)"))
+                        .changed();
+                    changed |= ui
+                        .add(egui::Slider::new(&mut params.d_u, 0.05..=0.40).text("D_u"))
+                        .changed();
+                    changed |= ui
+                        .add(egui::Slider::new(&mut params.d_v, 0.02..=0.25).text("D_v"))
+                        .changed();
+                    changed |= ui
+                        .add(egui::Slider::new(&mut params.dt, 0.1..=1.5).text("dt"))
+                        .changed();
+                }
+                if changed {
+                    let _ = self.reseed_if_washed_out_entering_pattern();
+                }
             }
         }
     }
@@ -275,6 +291,11 @@ impl MorphogenesisTool {
     }
 
     fn draw_playback_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let canvas_sculpt_focused = self.brush_kit.is_sculpting()
+            && self
+                .brush_kit
+                .focused_plot_id()
+                .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         let Some(action) = PlaybackTransport::from_worker_state(
             "morphogenesis_transport",
             "Morphogenesis",
@@ -282,6 +303,7 @@ impl MorphogenesisTool {
         )
         .timeline(self.worker.timeline_metadata())
         .can_reset(true)
+        .allow_space_shortcut(!canvas_sculpt_focused)
         .show(ui) else {
             return;
         };
@@ -396,44 +418,30 @@ impl MorphogenesisTool {
                 self.draw_turing_field_plot(ui);
                 return;
             }
+            let current_mode = self
+                .kinetics_state
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .mode;
+            self.sync_atlas_options_for_mode(current_mode);
             let (ax, ay) = self.active_axis_values();
             let sig = self.non_axis_context_sig();
-            let cartographer_params = {
-                let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-                (p.a, p.b, p.d_u, p.d_v, p.dt)
-            };
-            let theory_params = self.theory.theory_parameters();
+            let cart = self.build_active_morpho_cartographer(self.atlas.axis_keys());
             let mut teleport = None;
             if ui.available_width() >= 620.0 {
                 ui.columns(2, |cols| {
                     self.draw_turing_field_plot(&mut cols[0]);
                     teleport =
                         self.atlas
-                            .show_panel(&mut cols[1], "morphogenesis", ax, ay, sig, |keys| {
-                                std::sync::Arc::new(super::atlas::MorphogenesisCartographer::new(
-                                    &theory_params,
-                                    keys,
-                                    cartographer_params.0,
-                                    cartographer_params.1,
-                                    cartographer_params.2,
-                                    cartographer_params.3,
-                                    cartographer_params.4,
-                                ))
+                            .show_panel(&mut cols[1], "morphogenesis", ax, ay, sig, |_| {
+                                std::sync::Arc::clone(&cart)
                             });
                 });
             } else {
                 teleport = self
                     .atlas
-                    .show_panel(ui, "morphogenesis", ax, ay, sig, |keys| {
-                        std::sync::Arc::new(super::atlas::MorphogenesisCartographer::new(
-                            &theory_params,
-                            keys,
-                            cartographer_params.0,
-                            cartographer_params.1,
-                            cartographer_params.2,
-                            cartographer_params.3,
-                            cartographer_params.4,
-                        ))
+                    .show_panel(ui, "morphogenesis", ax, ay, sig, |_| {
+                        std::sync::Arc::clone(&cart)
                     });
                 ui.separator();
                 self.draw_turing_field_plot(ui);

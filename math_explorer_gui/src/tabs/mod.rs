@@ -148,6 +148,12 @@ pub trait ExplorerTab {
         0
     }
 
+    /// Deterministic revision token excluding transient framework chrome (`show_theory_portal`, `show_starter_gallery`).
+    fn history_revision(&self) -> u64 {
+        self.framework()
+            .map_or_else(|| self.state_revision(), |fw| fw.history_revision())
+    }
+
     /// Serializes the tab's parameter and panel state into a String.
     fn save_state(&self) -> Option<String> {
         None

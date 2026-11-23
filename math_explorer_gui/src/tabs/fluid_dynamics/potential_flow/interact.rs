@@ -11,8 +11,43 @@ use crate::accessibility::announce_live_status;
 use crate::app::SemanticPalette;
 use crate::framework::{BrushMode, BrushStroke, InteractionContext, MAX_JSON_ARRAY_LEN};
 use eframe::egui::Color32;
-use egui_plot::{MarkerShape, PlotUi, Points};
+use egui_plot::{Arrows, Line, MarkerShape, PlotPoint, PlotPoints, PlotUi, Points};
 use math_commons::math_kernel::colormap::ensure_dark_canvas_contrast;
+
+pub(super) fn render_flow_layers<'a>(
+    plot_ui: &mut PlotUi<'a>,
+    palette: &SemanticPalette,
+    polylines: Option<&[Vec<[f64; 2]>]>,
+    arrows: (&'a [PlotPoint], &'a [PlotPoint]),
+    stagnation: Option<&[[f64; 2]]>,
+) {
+    if let Some(polys) = polylines {
+        for (idx, poly) in polys.iter().enumerate() {
+            let name = if idx == 0 { "Streamlines (ψ)" } else { "" };
+            plot_ui.line(
+                Line::new(name, poly.clone())
+                    .color(palette.series_color(2))
+                    .width(1.4_f32),
+            );
+        }
+    }
+    plot_ui.arrows(
+        Arrows::new(
+            "Vector Field",
+            PlotPoints::Borrowed(arrows.0),
+            PlotPoints::Borrowed(arrows.1),
+        )
+        .color(palette.series_color(0)),
+    );
+    if let Some(stag) = stagnation.filter(|pts| !pts.is_empty()) {
+        plot_ui.points(
+            Points::new("Stagnation (|V|=0)", stag.to_vec())
+                .shape(MarkerShape::Diamond)
+                .radius(5.5_f32)
+                .color(palette.warning),
+        );
+    }
+}
 
 fn contrast_safe_color(base: Color32, dark_mode: bool) -> Color32 {
     if dark_mode {

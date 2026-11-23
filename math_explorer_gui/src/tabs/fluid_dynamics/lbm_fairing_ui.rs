@@ -7,7 +7,7 @@ use super::lbm_fairing::{
     apply_stroke_to_fairing_mask, decode_mask_hex, encode_fairing_mask_rle, encode_mask_hex,
     restore_inlet_and_core_mask, FairingStamp, LbmFairingEvaluator, LbmSerializedState,
     CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY, LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X,
-    LBM_CORE_Y, LBM_HEIGHT, LBM_INLET_COLS, LBM_MIN_SOLID_CELLS, LBM_WIDTH,
+    LBM_CORE_Y, LBM_HEIGHT, LBM_INLET_COLS, LBM_MIN_SOLID_CELLS, LBM_U_IN, LBM_WIDTH,
 };
 use crate::accessibility::{
     announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
@@ -322,6 +322,7 @@ impl UnifiedUiExtension for LbmUiExtension {
             Some(CHALLENGE_LBM_FAIRING) => {
                 self.active_challenge = Some(CHALLENGE_LBM_FAIRING);
                 params.insert("viscosity".to_string(), CHALLENGE_LBM_VISCOSITY);
+                params.insert("inlet_velocity".to_string(), LBM_U_IN);
                 params.insert("naca_profile".to_string(), 0.0);
                 params.insert("angle_of_attack".to_string(), 0.0);
                 restore_inlet_and_core_mask(&mut self.mask);
@@ -353,7 +354,10 @@ impl UnifiedUiExtension for LbmUiExtension {
 
     fn is_parameter_locked(&self, param_name: &str) -> bool {
         self.active_challenge == Some(CHALLENGE_LBM_FAIRING)
-            && matches!(param_name, "viscosity" | "naca_profile" | "angle_of_attack")
+            && matches!(
+                param_name,
+                "viscosity" | "inlet_velocity" | "naca_profile" | "angle_of_attack"
+            )
     }
 
     fn on_reset(&mut self, params: &HashMap<String, f64>) {
