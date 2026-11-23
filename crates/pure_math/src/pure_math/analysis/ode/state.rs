@@ -93,6 +93,43 @@ impl VectorOperations for VecState {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ArrayState<const N: usize>(pub [f64; N]);
 
+impl<const N: usize> Default for ArrayState<N> {
+    #[verified_engine::verified]
+    fn default() -> Self {
+        Self([0.0; N])
+    }
+}
+
+impl<const N: usize> ArrayState<N> {
+    /// Constructs a zero-initialized stack state vector of dimension `N`.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn zeros() -> Self {
+        Self([0.0; N])
+    }
+
+    /// Computes the $L_\infty$ (maximum absolute component) difference between two states.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn max_abs_diff(&self, other: &Self) -> f64 {
+        let mut max_diff = 0.0_f64;
+        for (a, b) in self.0.iter().zip(other.0.iter()) {
+            let diff = (*a - *b).abs();
+            if diff > max_diff {
+                max_diff = diff;
+            }
+        }
+        max_diff
+    }
+
+    /// Returns `true` if every component of the state vector is finite (`!NaN && !Infinite`).
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn is_finite(&self) -> bool {
+        self.0.iter().all(|v| v.is_finite())
+    }
+}
+
 impl<const N: usize> Add for ArrayState<N> {
     type Output = Self;
     #[verified_engine::verified]
