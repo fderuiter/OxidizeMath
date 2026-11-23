@@ -85,6 +85,28 @@ impl AsRef<[[f64; 2]]> for SharedPoints {
     }
 }
 
+impl math_commons::series::PointSeries for SharedPoints {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline(always)]
+    fn x_at(&self, index: usize) -> f64 {
+        self.0[index][0]
+    }
+
+    #[inline(always)]
+    fn y_at(&self, index: usize) -> f64 {
+        self.0[index][1]
+    }
+
+    #[inline(always)]
+    fn point_at(&self, index: usize) -> [f64; 2] {
+        self.0[index]
+    }
+}
+
 impl From<Vec<[f64; 2]>> for SharedPoints {
     #[inline]
     fn from(points: Vec<[f64; 2]>) -> Self {

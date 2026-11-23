@@ -21,14 +21,14 @@ fn compute_harmonic_root_from_pairs(
         return None;
     }
     let crossings = if series_finite {
-        egui_plot::poi::interpolate_threshold_crossings_pairs(y_points, 0.0)
+        egui_plot::poi::interpolate_threshold_crossings(y_points, 0.0)
     } else {
         let filtered: Vec<[f64; 2]> = y_points
             .iter()
             .copied()
             .filter(|[t, y]| t.is_finite() && y.is_finite())
             .collect();
-        egui_plot::poi::interpolate_threshold_crossings_pairs(&filtered, 0.0)
+        egui_plot::poi::interpolate_threshold_crossings(&filtered, 0.0)
     };
     let mid = 0.5 * total_time;
     crossings

@@ -292,6 +292,36 @@ fn fitted_curve_and_residual_series_appear_in_exported_datasets() {
     assert!(exported.iter().any(|(n, _)| n == "Decay Residuals"));
 }
 
+fn reference_slab_crossing(
+    a0: [f64; 2],
+    a1: [f64; 2],
+    b0: [f64; 2],
+    b1: [f64; 2],
+    x0: f64,
+    x1: f64,
+) -> Option<[f64; 2]> {
+    let ya0 = crate::poi::eval_segment_at_x(a0, a1, x0);
+    let ya1 = crate::poi::eval_segment_at_x(a0, a1, x1);
+    let yb0 = crate::poi::eval_segment_at_x(b0, b1, x0);
+    let yb1 = crate::poi::eval_segment_at_x(b0, b1, x1);
+    let d0 = ya0 - yb0;
+    let d1 = ya1 - yb1;
+    if d0.abs() <= 1e-12 && d1.abs() <= 1e-12 {
+        None
+    } else if d0.abs() <= 1e-12 {
+        Some([x0, 0.5 * (ya0 + yb0)])
+    } else if d1.abs() <= 1e-12 {
+        Some([x1, 0.5 * (ya1 + yb1)])
+    } else if (d0 < 0.0 && d1 > 0.0) || (d0 > 0.0 && d1 < 0.0) {
+        let t = (d0 / (d0 - d1)).clamp(0.0, 1.0);
+        let xh = x0 + t * (x1 - x0);
+        let yh = 0.5 * ((ya0 + t * (ya1 - ya0)) + (yb0 + t * (yb1 - yb0)));
+        Some([xh, yh])
+    } else {
+        None
+    }
+}
+
 fn reference_merged_knots_intersections(
     a: &[[f64; 2]],
     b: &[[f64; 2]],
@@ -316,16 +346,25 @@ fn reference_merged_knots_intersections(
     merged_knots.sort_by(|u, v| u.total_cmp(v));
     merged_knots.dedup_by(|u, v| (*u - *v).abs() <= 1e-12);
 
-    let mut ia = 0_usize;
-    let mut ib = 0_usize;
-    let mut hits = Vec::new();
-    for k in 0..merged_knots.len().saturating_sub(1) {
-        let (x0, x1) = (merged_knots[k], merged_knots[k + 1]);
-        if x1 > x0 {
-            let is_last = k + 2 == merged_knots.len();
-            super::intersect::evaluate_knot_interval(
-                a, b, x0, x1, is_last, &mut ia, &mut ib, &mut hits,
-            );
+    let (mut ia, mut ib) = (0_usize, 0_usize);
+    let mut hits: Vec<[f64; 2]> = Vec::new();
+    for w in merged_knots.windows(2) {
+        let (x0, x1) = (w[0], w[1]);
+        if x1 <= x0 + 1e-13 {
+            continue;
+        }
+        while ia + 2 < a.len() && a[ia + 1][0] <= x0 + 1e-12 {
+            ia += 1;
+        }
+        while ib + 2 < b.len() && b[ib + 1][0] <= x0 + 1e-12 {
+            ib += 1;
+        }
+        if let Some(pt) = reference_slab_crossing(a[ia], a[ia + 1], b[ib], b[ib + 1], x0, x1)
+            && !hits
+                .iter()
+                .any(|p| (p[0] - pt[0]).abs() <= 1e-7 && (p[1] - pt[1]).abs() <= 1e-7)
+        {
+            hits.push(pt);
         }
     }
     hits.into_iter()

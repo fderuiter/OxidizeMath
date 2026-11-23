@@ -398,6 +398,7 @@ fn compute_requested_fit(req: &FitRequest<'_>) -> (Option<Arc<FitResult>>, Optio
             req.log_y,
             req.fit_log_mode,
         )
+        .ok()
         .map(Arc::new);
         (solved, None)
     }

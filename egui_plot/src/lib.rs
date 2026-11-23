@@ -62,7 +62,7 @@ pub use crate::{
         has_finite_shared_dataset_points, render_primitives_image, shared_datasets_to_primitives,
     },
     fit::{
-        CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, FitResult, FitType,
+        CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, FitError, FitResult, FitType,
         MAX_FIT_PARAMS, fit_custom_evaluator, fit_model_with_axes,
     },
     fit_overlay::{

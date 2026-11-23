@@ -4,6 +4,7 @@ pub mod accessibility;
 mod app;
 #[allow(missing_docs)]
 pub mod async_sim;
+pub mod audio;
 #[allow(missing_docs)]
 pub mod camera;
 #[cfg(test)]
