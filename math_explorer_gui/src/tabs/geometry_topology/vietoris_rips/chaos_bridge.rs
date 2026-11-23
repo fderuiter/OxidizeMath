@@ -1,10 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::MAX_VIETORIS_RIPS_POINTS;
 use super::state::{VrChaosConfig, VrSourceMode};
+use super::MAX_VIETORIS_RIPS_POINTS;
 use crate::web_io::PlatformInstant;
 use math_explorer::pure_math::statistics::tda::{
-    Point3D, farthest_point_landmarks_into, takens_delay_embedding_3d,
+    farthest_point_landmarks_into, takens_delay_embedding_3d, Point3D,
 };
 
 const WARMUP_STEPS: usize = 600;
@@ -172,7 +172,8 @@ impl VrChaosState {
                 let embedded = takens_delay_embedding_3d(&self.scalar_trace, lag)
                     .map_err(|e| format!("Takens embedding error: {e:?}"))?;
                 if self.min_dist_sq.len() < embedded.points.len() {
-                    self.min_dist_sq.resize(embedded.points.len(), f64::INFINITY);
+                    self.min_dist_sq
+                        .resize(embedded.points.len(), f64::INFINITY);
                 }
                 let written = farthest_point_landmarks_into(
                     &embedded.points,
@@ -215,8 +216,7 @@ impl VrChaosState {
                     compute_physics_lyapunov(self.sigma, self.rho, self.beta, self.dt);
                 self.lyapunov_key = Some(key);
             }
-            let (c_sum, d2) =
-                compute_physics_correlation(active_3d, &self.trajectory_buf, radius);
+            let (c_sum, d2) = compute_physics_correlation(active_3d, &self.trajectory_buf, radius);
             self.cached_correlation_sum = c_sum;
             self.cached_correlation_dim = d2;
         }
@@ -252,7 +252,8 @@ fn step_lorenz_point(s: Point3D, dt: f64, sigma: f64, rho: f64, beta: f64) -> Po
             p.x * p.y - beta * p.z,
         )
     };
-    let add = |a: Point3D, b: Point3D, w: f64| Point3D::new(a.x + w * b.x, a.y + w * b.y, a.z + w * b.z);
+    let add =
+        |a: Point3D, b: Point3D, w: f64| Point3D::new(a.x + w * b.x, a.y + w * b.y, a.z + w * b.z);
     let k1 = deriv(s);
     let k2 = deriv(add(s, k1, 0.5 * dt));
     let k3 = deriv(add(s, k2, 0.5 * dt));

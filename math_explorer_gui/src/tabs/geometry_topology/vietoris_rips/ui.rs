@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::handoff::{poll_live_attractor_landmarks, take_chaos_landmark_handoff};
-use super::state::{MAX_VR_RADIUS, SculptBrush, VrSourceMode};
-use super::{DEFAULT_2D_POINTS, MAX_VIETORIS_RIPS_POINTS, VietorisRipsTool};
+use super::state::{SculptBrush, VrSourceMode, MAX_VR_RADIUS};
+use super::{VietorisRipsTool, DEFAULT_2D_POINTS, MAX_VIETORIS_RIPS_POINTS};
 use crate::accessibility::AccessibleTheoryHover;
 use crate::app::SemanticPalette;
 use crate::framework::Plot3DViewport;
@@ -91,7 +91,11 @@ impl VietorisRipsTool {
             self.on_source_mode_switched();
         }
 
-        let max_r = if self.mode.is_3d() { MAX_VR_RADIUS } else { 15.0 };
+        let max_r = if self.mode.is_3d() {
+            MAX_VR_RADIUS
+        } else {
+            15.0
+        };
         let prev_radius = self.radius;
         ui.add(egui::Slider::new(&mut self.radius, 0.0..=max_r).text("Radius (ε)"));
         if (self.radius - prev_radius).abs() > f64::EPSILON {
@@ -146,7 +150,11 @@ impl VietorisRipsTool {
     fn draw_chaos_and_takens_section(&mut self, ui: &mut egui::Ui) {
         ui.label("Strange Attractor & Delay Controls");
         ui.horizontal(|ui| {
-            let play_label = if self.chaos.playing { "⏸ Pause" } else { "▶ Stream" };
+            let play_label = if self.chaos.playing {
+                "⏸ Pause"
+            } else {
+                "▶ Stream"
+            };
             if ui.button(play_label).clicked() {
                 self.chaos.playing = !self.chaos.playing;
             }
@@ -190,7 +198,11 @@ impl VietorisRipsTool {
     fn draw_sculpt_brush_section(&mut self, ui: &mut egui::Ui) {
         ui.label("Tactile Landmark Brush");
         ui.horizontal_wrapped(|ui| {
-            let orbit_lbl = if self.mode.is_3d() { "🌐 Orbit" } else { "✋ Pan" };
+            let orbit_lbl = if self.mode.is_3d() {
+                "🌐 Orbit"
+            } else {
+                "✋ Pan"
+            };
             ui.selectable_value(&mut self.brush, SculptBrush::OrbitOrPan, orbit_lbl);
             ui.selectable_value(&mut self.brush, SculptBrush::Move, "✥ Move");
             ui.selectable_value(&mut self.brush, SculptBrush::Add, "＋ Add");
@@ -350,7 +362,12 @@ impl VietorisRipsTool {
             "24-Step Persistence Barcode (β₀ blue, β₁ loops accent | active ε = {:.2})",
             self.radius
         ));
-        let max_x = self.filtration_radii.last().copied().unwrap_or(15.0).max(1.0);
+        let max_x = self
+            .filtration_radii
+            .last()
+            .copied()
+            .unwrap_or(15.0)
+            .max(1.0);
         Plot::new("vietoris_rips_barcode")
             .height(height)
             .allow_drag(false)
@@ -370,7 +387,12 @@ impl VietorisRipsTool {
                     );
                     row -= 1.0;
                 }
-                for iv in self.barcode_intervals.iter().filter(|iv| iv.dimension == 0).take(16) {
+                for iv in self
+                    .barcode_intervals
+                    .iter()
+                    .filter(|iv| iv.dimension == 0)
+                    .take(16)
+                {
                     plot_ui.line(
                         Line::new("β₀ Interval", vec![[iv.birth, row], [iv.death, row]])
                             .color(c0)

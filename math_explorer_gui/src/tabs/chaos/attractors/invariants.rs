@@ -2,30 +2,49 @@
 
 use super::AttractorPlotter;
 use crate::tabs::geometry_topology::vietoris_rips::{
+    handoff::{request_open_vietoris_rips, submit_chaos_landmark_handoff, ChaosLandmarkHandoff},
     MAX_VIETORIS_RIPS_POINTS,
-    handoff::{ChaosLandmarkHandoff, request_open_vietoris_rips, submit_chaos_landmark_handoff},
 };
 use eframe::egui;
 use math_explorer::physics::chaos::fractals::correlation_dimension;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
 use math_explorer::physics::chaos::metrics::lorenz_lyapunov;
 use math_explorer::pure_math::analysis::ode::RungeKutta4;
-use math_explorer::pure_math::statistics::tda::{Point3D, farthest_point_landmarks};
+use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
 use nalgebra::Vector3;
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct CachedAttractorInvariants {
     param_key: Option<(u64, u64, u64, u64)>,
     lyapunov: Option<f64>,
-    corr_key: Option<(u64, u64, u64, usize)>,
+    corr_key: Option<(u64, usize)>,
     correlation_sum: Option<f64>,
     correlation_dim: Option<f64>,
 }
 
 impl AttractorPlotter {
+    fn flow_config_hash(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.mode as u8).hash(&mut h);
+        self.system.sigma.to_bits().hash(&mut h);
+        self.system.rho.to_bits().hash(&mut h);
+        self.system.beta.to_bits().hash(&mut h);
+        self.dt.to_bits().hash(&mut h);
+        if self.mode == super::AttractorMode::Custom {
+            for bar in self.flow_bank.bars() {
+                bar.raw_text.hash(&mut h);
+            }
+            for &pv in self.flow_bank.param_slice() {
+                pv.to_bits().hash(&mut h);
+            }
+        }
+        h.finish()
+    }
+
     /// Computes and caches the largest Lyapunov exponent `λ₁` via Wolf's algorithm.
     pub fn current_lyapunov_exponent(&mut self) -> Option<f64> {
-        if !self.is_finite_state() || self.diverged() {
+        if self.mode != super::AttractorMode::Lorenz || !self.is_finite_state() || self.diverged() {
             return None;
         }
         let key = (
@@ -57,13 +76,7 @@ impl AttractorPlotter {
         if !self.is_finite_state() || self.diverged() {
             return None;
         }
-        let bucket = self.step_count / 25;
-        let key = (
-            self.system.sigma.to_bits(),
-            self.system.rho.to_bits(),
-            self.system.beta.to_bits(),
-            bucket,
-        );
+        let key = (self.flow_config_hash(), self.step_count / 25);
         if self.invariants_cache.corr_key != Some(key) {
             let sample = self.collect_or_seed_trajectory(600);
             let c1 = correlation_dimension(&sample, 2.5);
@@ -83,6 +96,31 @@ impl AttractorPlotter {
         ))
     }
 
+    fn seed_custom_trajectory(&self, dt: f64, fallback_steps: usize) -> Vec<Vector3<f64>> {
+        let job = super::CompiledFlowJob::from_bank(&self.flow_bank);
+        let mut pos = Vector3::new(1.0, 1.0, 1.0);
+        for _ in 0..400 {
+            let next = job.rk4_step(pos, dt);
+            if !(next.x.is_finite() && next.y.is_finite() && next.z.is_finite()) {
+                break;
+            }
+            pos = next;
+        }
+        let mut out = Vec::with_capacity(fallback_steps);
+        for _ in 0..fallback_steps {
+            pos = job.rk4_step(pos, dt);
+            if pos.x.is_finite() && pos.y.is_finite() && pos.z.is_finite() {
+                out.push(pos);
+            } else {
+                break;
+            }
+        }
+        if out.is_empty() {
+            out.push(Vector3::new(1.0, 1.0, 1.0));
+        }
+        out
+    }
+
     fn collect_or_seed_trajectory(&self, fallback_steps: usize) -> Vec<Vector3<f64>> {
         let finite_hist: Vec<Vector3<f64>> = self
             .history
@@ -94,6 +132,9 @@ impl AttractorPlotter {
             return finite_hist;
         }
         let dt = self.dt.clamp(0.001, 0.05);
+        if self.mode == super::AttractorMode::Custom {
+            return self.seed_custom_trajectory(dt, fallback_steps);
+        }
         let mut sim = LorenzBuilder::new()
             .sigma(self.system.sigma)
             .rho(self.system.rho)

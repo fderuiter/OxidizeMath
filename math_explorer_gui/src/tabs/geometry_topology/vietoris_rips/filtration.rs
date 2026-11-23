@@ -1,11 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::state::VrSourceMode;
-use super::{FILTRATION_RADII_STEPS, VietorisRipsTool};
+use super::{VietorisRipsTool, FILTRATION_RADII_STEPS};
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::tda::{
-    Point2D, Point3D, PointCloud, PointCloud3D, SimplicialComplex, vietoris_rips_complex,
-    vietoris_rips_complex_3d,
+    vietoris_rips_complex, vietoris_rips_complex_3d, Point2D, Point3D, PointCloud, PointCloud3D,
+    SimplicialComplex,
 };
 
 impl VietorisRipsTool {
@@ -66,7 +66,10 @@ impl VietorisRipsTool {
     }
 
     /// Evaluates active Betti numbers and 24-step persistence barcode in-place with zero heap allocations.
-    pub fn recompute_filtration_zero_alloc(&mut self, radius: f64) -> Result<(usize, usize), String> {
+    pub fn recompute_filtration_zero_alloc(
+        &mut self,
+        radius: f64,
+    ) -> Result<(usize, usize), String> {
         let n = if self.mode.is_3d() {
             self.workspace
                 .load_points_3d(&self.points_3d)

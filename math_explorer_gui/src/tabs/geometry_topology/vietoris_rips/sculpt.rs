@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::state::{MAX_VR_COORD_ABS, SculptBrush, VrSourceMode};
-use super::{MAX_VIETORIS_RIPS_POINTS, VietorisRipsTool};
+use super::state::{SculptBrush, VrSourceMode, MAX_VR_COORD_ABS};
+use super::{VietorisRipsTool, MAX_VIETORIS_RIPS_POINTS};
 use math_explorer::pure_math::statistics::tda::{Point2D, Point3D};
 
 impl VietorisRipsTool {
@@ -53,10 +53,7 @@ impl VietorisRipsTool {
         if !plot_xy[0].is_finite() || !plot_xy[1].is_finite() || !hit_radius.is_finite() {
             return false;
         }
-        let clamped = Point2D::new(
-            plot_xy[0].clamp(-50.0, 50.0),
-            plot_xy[1].clamp(-50.0, 50.0),
-        );
+        let clamped = Point2D::new(plot_xy[0].clamp(-50.0, 50.0), plot_xy[1].clamp(-50.0, 50.0));
         let r2 = hit_radius.max(0.05).powi(2);
         match brush {
             SculptBrush::OrbitOrPan => false,

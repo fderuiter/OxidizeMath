@@ -90,7 +90,9 @@ fn test_vietoris_rips_try_load_state_bounds_and_64_point_cap() {
     let mut tool = VietorisRipsTool::default();
     let before = tool.complex_builds;
 
-    assert!(tool.try_load_state(r#"{"radius":1.5,"points":[]}"#).is_err());
+    assert!(tool
+        .try_load_state(r#"{"radius":1.5,"points":[]}"#)
+        .is_err());
     assert!(tool
         .try_load_state(r#"{"radius":1.5,"points":[[0.0,"NaN"]]}"#)
         .is_err());
@@ -136,7 +138,10 @@ fn test_vietoris_rips_3d_lorenz_and_takens_sweeps() {
             break;
         }
     }
-    assert!(saw_two_wings, "Lorenz 3D landmarks must lock onto beta_1 = 2");
+    assert!(
+        saw_two_wings,
+        "Lorenz 3D landmarks must lock onto beta_1 = 2"
+    );
 
     // Sweep Takens lag tau from collapsed diagonal (tau = 1) to unfolded attractor (tau = 10).
     let takens_cfg = r#"{"mode":"takens_3d","radius":7.0,"chaos":{"sigma":10.0,"rho":28.0,"beta":2.6666666666666665,"dt":0.01,"landmark_count":64,"takens_lag":1},"camera":{"pitch":0.45,"yaw":-0.6,"zoom":1.0}}"#;
@@ -226,7 +231,10 @@ fn test_attractor_plotter_invariants_and_one_click_handoff_to_vietoris_rips() {
     let lyap = plotter
         .current_lyapunov_exponent()
         .expect("finite lorenz_lyapunov");
-    assert!(lyap > 0.2, "Standard chaotic Lorenz rho=28 must have positive lambda_1, got {lyap}");
+    assert!(
+        lyap > 0.2,
+        "Standard chaotic Lorenz rho=28 must have positive lambda_1, got {lyap}"
+    );
     let (c_eps, d2) = plotter
         .current_correlation_invariants()
         .expect("finite correlation invariants");
@@ -238,7 +246,10 @@ fn test_attractor_plotter_invariants_and_one_click_handoff_to_vietoris_rips() {
     let sub_lyap = plotter
         .current_lyapunov_exponent()
         .expect("finite subcritical lyapunov");
-    assert!(sub_lyap < 0.0, "Subcritical Lorenz rho=14 must have negative lambda_1, got {sub_lyap}");
+    assert!(
+        sub_lyap < 0.0,
+        "Subcritical Lorenz rho=14 must have negative lambda_1, got {sub_lyap}"
+    );
 
     // Restore chaotic rho = 28 and execute one-click handoff into MathExplorerApp.
     plotter.system.rho = 28.0;
@@ -261,5 +272,10 @@ fn test_attractor_plotter_invariants_and_one_click_handoff_to_vietoris_rips() {
     assert_eq!(vr.points_3d.len(), MAX_VIETORIS_RIPS_POINTS);
     assert!(vr.chaos.lyapunov_exponent().is_some_and(|v| v.is_finite()));
     assert!(vr.chaos.correlation_sum().is_some_and(|v| v.is_finite()));
-    assert!(crate::web_io::PlatformInstant::now().duration_since(t0).as_secs_f64() < 5.0);
+    assert!(
+        crate::web_io::PlatformInstant::now()
+            .duration_since(t0)
+            .as_secs_f64()
+            < 5.0
+    );
 }

@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MAX_VIETORIS_RIPS_POINTS, VietorisRipsTool};
+use super::{VietorisRipsTool, MAX_VIETORIS_RIPS_POINTS};
 use crate::framework::{Camera3D, InteractiveTool};
 use math_explorer::pure_math::statistics::tda::{Point2D, Point3D};
 
@@ -237,7 +237,9 @@ impl VietorisRipsTool {
                 "points_3d must contain 1..={MAX_VIETORIS_RIPS_POINTS} finite bounded coordinates"
             ));
         }
-        let cam = wire.camera.unwrap_or_else(|| Camera3D::new(0.35, 0.55, 1.0));
+        let cam = wire
+            .camera
+            .unwrap_or_else(|| Camera3D::new(0.35, 0.55, 1.0));
         let pts: Vec<Point3D> = raw
             .into_iter()
             .map(|[x, y, z]| Point3D::new(x, y, z))
@@ -251,7 +253,9 @@ impl VietorisRipsTool {
             .chaos
             .ok_or_else(|| "missing 'chaos' configuration for chaotic 3D mode".to_string())?;
         cfg.validate()?;
-        let cam = wire.camera.unwrap_or_else(|| Camera3D::new(0.35, 0.55, 1.0));
+        let cam = wire
+            .camera
+            .unwrap_or_else(|| Camera3D::new(0.35, 0.55, 1.0));
         self.camera.apply_pose(cam);
         self.mode = mode;
         self.radius = wire.radius;

@@ -4,8 +4,8 @@ use crate::framework::{Camera3D, InteractiveTool};
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::tda::{
-    PersistenceInterval, Point2D, Point3D, SimplicialComplex, TdaFiltrationWorkspace,
-    farthest_point_landmarks,
+    farthest_point_landmarks, PersistenceInterval, Point2D, Point3D, SimplicialComplex,
+    TdaFiltrationWorkspace,
 };
 use rand::Rng;
 
@@ -107,8 +107,10 @@ impl VietorisRipsTool {
         let capped = count.clamp(1, MAX_VIETORIS_RIPS_POINTS);
         self.points.clear();
         for _ in 0..capped {
-            self.points
-                .push(Point2D::new(rng.gen_range(0.0..10.0), rng.gen_range(0.0..10.0)));
+            self.points.push(Point2D::new(
+                rng.gen_range(0.0..10.0),
+                rng.gen_range(0.0..10.0),
+            ));
         }
         self.update_complex();
     }
