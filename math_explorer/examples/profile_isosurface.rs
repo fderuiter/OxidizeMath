@@ -1,6 +1,7 @@
 //! Profile Isosurface Demo
 //!
 //! This example benchmarks the isosurface extraction process.
+#![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
 
 use math_explorer::applied::isosurface::{Point3D, VoxelGrid, extract_isosurface};
 use std::time::Instant;
