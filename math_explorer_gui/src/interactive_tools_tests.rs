@@ -136,6 +136,18 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool,
         >(ctx);
+        #[cfg(all(feature = "pure_math", feature = "biology"))]
+        exercise_interactive_tool::<
+            crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,
+        >(ctx);
+        #[cfg(feature = "pure_math")]
+        exercise_interactive_tool::<crate::tabs::analysis::soliton_collision::SolitonCollisionTool>(
+            ctx,
+        );
+        #[cfg(feature = "physics")]
+        exercise_interactive_tool::<crate::tabs::quantum::superfluid_vortex::SuperfluidVortexTool>(
+            ctx,
+        );
     }
 
     #[test]
