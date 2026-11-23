@@ -224,12 +224,7 @@ fn render_stratum_row(ui: &mut egui::Ui, label: &str, c: &mut TableCounts) -> bo
     changed
 }
 
-fn render_eval_row(
-    ui: &mut egui::Ui,
-    name: &str,
-    ev: &TableEvaluation,
-    rr_color: egui::Color32,
-) {
+fn render_eval_row(ui: &mut egui::Ui, name: &str, ev: &TableEvaluation, rr_color: egui::Color32) {
     let t_tot = ev.table.treatment_event + ev.table.treatment_no_event;
     let c_tot = ev.table.control_event + ev.table.control_no_event;
     ui.label(name);
@@ -252,7 +247,10 @@ fn render_eval_row(
             ev.risk.relative_risk, ev.risk.rr_ci.0, ev.risk.rr_ci.1
         ),
     );
-    ui.label(format!("{:.2} ({:.3})", ev.chi_sq.statistic, ev.chi_sq.p_value));
+    ui.label(format!(
+        "{:.2} ({:.3})",
+        ev.chi_sq.statistic, ev.chi_sq.p_value
+    ));
     ui.end_row();
 }
 

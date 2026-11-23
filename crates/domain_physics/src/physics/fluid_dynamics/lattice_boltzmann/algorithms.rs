@@ -395,52 +395,6 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
     }
 }
 
-use oxidize_core::{ModelConfig, ModelState, SimulationModel};
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Serialize, Deserialize)]
-#[allow(missing_docs)]
-pub struct LbmConfig {
-    #[allow(missing_docs)]
-    pub width: usize,
-    #[allow(missing_docs)]
-    pub height: usize,
-    #[allow(missing_docs)]
-    pub tau: f64,
-}
-
-impl ModelConfig for LbmConfig {}
-
-impl<const Q: usize> ModelState for LatticeState<Q> {}
-
-impl SimulationModel for LatticeBoltzmannD2Q9<BgkCollision> {
-    type Config = LbmConfig;
-    type State = LatticeState<9>;
-    type Error = std::io::Error;
-
-    #[verified_engine::verified]
-    fn initialize<R: rand::RngCore>(
-        config: Self::Config,
-        _provider: R,
-    ) -> Result<Self, Self::Error> {
-        Ok(Self::new(config.width, config.height, config.tau))
-    }
-
-    #[verified_engine::verified(opt_out = "inherent method call false positive")]
-    fn step(&mut self) -> Result<(), Self::Error> {
-        self.step();
-        pure_math::pure_math::analysis::evolution::DoubleBufferedState::swap_buffers(
-            &mut self.state,
-        );
-        Ok(())
-    }
-
-    #[verified_engine::verified]
-    fn get_state(&self) -> Self::State {
-        self.state.clone()
-    }
-}
-
 use pure_math::pure_math::analysis::evolution::{EvolutionEngine, EvolutionError};
 use rand::RngCore;
 

@@ -151,9 +151,7 @@ impl SimpsonParadoxConfig {
         if !self.mild_counts.has_valid_nonzero_cells()
             || !self.severe_counts.has_valid_nonzero_cells()
         {
-            return Err(
-                "All 2x2 cell counts must be >= 1 for RR and Chi-Square evaluation".into(),
-            );
+            return Err("All 2x2 cell counts must be >= 1 for RR and Chi-Square evaluation".into());
         }
         Ok(())
     }
@@ -314,7 +312,10 @@ impl SimpsonParadoxLab {
             return;
         }
 
-        let pooled_counts = self.config.mild_counts.pooled_with(self.config.severe_counts);
+        let pooled_counts = self
+            .config
+            .mild_counts
+            .pooled_with(self.config.severe_counts);
         match (
             evaluate_single_table(self.config.mild_counts),
             evaluate_single_table(self.config.severe_counts),

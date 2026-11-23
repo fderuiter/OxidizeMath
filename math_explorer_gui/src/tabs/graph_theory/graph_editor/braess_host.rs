@@ -80,8 +80,7 @@ impl GraphEditorTool {
         let weight = lat.b;
         self.edges.push((u, v, weight));
         self.braess.edge_latencies.push(lat);
-        if let (Some(&u_idx), Some(&v_idx)) =
-            (self.node_indices.get(&u), self.node_indices.get(&v))
+        if let (Some(&u_idx), Some(&v_idx)) = (self.node_indices.get(&u), self.node_indices.get(&v))
         {
             self.graph.add_edge(u_idx, v_idx, weight);
         } else {

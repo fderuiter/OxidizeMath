@@ -279,7 +279,11 @@ pub fn solve_wardrop_in_place(
     let Ok(t_idx) = scratch.dense_nodes.binary_search(&sink_id) else {
         return Err(WardropError::MissingTerminal);
     };
-    let d_pos = if demand.is_finite() { demand.max(0.0) } else { 0.0 };
+    let d_pos = if demand.is_finite() {
+        demand.max(0.0)
+    } else {
+        0.0
+    };
     out_flows.fill(0.0);
 
     if !scratch.shortest_path_in_place(s_idx, t_idx, out_flows, skip_edge)

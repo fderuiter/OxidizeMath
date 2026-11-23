@@ -182,7 +182,10 @@ impl BraessCongestionLab {
         let mut action = BraessUiAction::None;
         ui.heading("Braess Congestion Lab");
         if ui
-            .checkbox(&mut self.config.enabled, "Enable Wardrop Congestion Routing")
+            .checkbox(
+                &mut self.config.enabled,
+                "Enable Wardrop Congestion Routing",
+            )
             .changed()
         {
             action = BraessUiAction::Recompute;
@@ -254,8 +257,13 @@ impl BraessCongestionLab {
         let mut out = None;
         let mut shortcut = self.config.shortcut_enabled;
         if ui
-            .checkbox(&mut shortcut, "⚡ Enable Zero-Cost u -> v Shortcut (1 -> 2)")
-            .accessible_hover_text("Toggle zero-latency shortcut edge 1 -> 2 to test Braess's paradox")
+            .checkbox(
+                &mut shortcut,
+                "⚡ Enable Zero-Cost u -> v Shortcut (1 -> 2)",
+            )
+            .accessible_hover_text(
+                "Toggle zero-latency shortcut edge 1 -> 2 to test Braess's paradox",
+            )
             .changed()
         {
             return Some(BraessUiAction::ToggleShortcut(shortcut));
@@ -263,11 +271,17 @@ impl BraessCongestionLab {
 
         ui.horizontal(|ui| {
             ui.label("Source s:");
-            if ui.add(egui::DragValue::new(&mut self.config.source_node)).changed() {
+            if ui
+                .add(egui::DragValue::new(&mut self.config.source_node))
+                .changed()
+            {
                 out = Some(BraessUiAction::Recompute);
             }
             ui.label("Sink t:");
-            if ui.add(egui::DragValue::new(&mut self.config.sink_node)).changed() {
+            if ui
+                .add(egui::DragValue::new(&mut self.config.sink_node))
+                .changed()
+            {
                 out = Some(BraessUiAction::Recompute);
             }
         });
@@ -279,26 +293,48 @@ impl BraessCongestionLab {
         }
 
         egui::CollapsingHeader::new("Affine Edge Latencies l_e(f) = a·f + b").show(ui, |ui| {
-            self.sync_with_edges(edges);
-            for (i, edge) in edges.iter_mut().enumerate() {
-                let lat = &mut self.edge_latencies[i];
-                ui.horizontal(|ui| {
-                    ui.label(format!("{}->{}:", edge.0, edge.1));
-                    let a_ch = ui
-                        .add(egui::DragValue::new(&mut lat.a).speed(0.05).range(0.0..=20.0).prefix("a="))
-                        .changed();
-                    let b_ch = ui
-                        .add(egui::DragValue::new(&mut lat.b).speed(0.05).range(0.0..=20.0).prefix("b="))
-                        .changed();
-                    if a_ch || b_ch {
-                        *lat = AffineLatency::clamped(lat.a, lat.b);
-                        edge.2 = lat.b;
-                        out = Some(BraessUiAction::Recompute);
-                    }
-                });
+            if self.render_edge_latency_editors(ui, edges) {
+                out = Some(BraessUiAction::Recompute);
             }
         });
         out
+    }
+
+    fn render_edge_latency_editors(
+        &mut self,
+        ui: &mut egui::Ui,
+        edges: &mut [(usize, usize, f64)],
+    ) -> bool {
+        let mut changed = false;
+        self.sync_with_edges(edges);
+        for (i, edge) in edges.iter_mut().enumerate() {
+            let lat = &mut self.edge_latencies[i];
+            ui.horizontal(|ui| {
+                ui.label(format!("{}->{}:", edge.0, edge.1));
+                let a_ch = ui
+                    .add(
+                        egui::DragValue::new(&mut lat.a)
+                            .speed(0.05)
+                            .range(0.0..=20.0)
+                            .prefix("a="),
+                    )
+                    .changed();
+                let b_ch = ui
+                    .add(
+                        egui::DragValue::new(&mut lat.b)
+                            .speed(0.05)
+                            .range(0.0..=20.0)
+                            .prefix("b="),
+                    )
+                    .changed();
+                if a_ch || b_ch {
+                    *lat = AffineLatency::clamped(lat.a, lat.b);
+                    edge.2 = lat.b;
+                    changed = true;
+                }
+            });
+        }
+        changed
     }
 
     fn render_equilibrium_readout(&self, ui: &mut egui::Ui) {
@@ -308,7 +344,11 @@ impl BraessCongestionLab {
                 let trap = self
                     .without_shortcut_latency
                     .filter(|&b| summary.commuter_latency > b + 1e-6);
-                let col = if trap.is_some() { palette.error } else { palette.success };
+                let col = if trap.is_some() {
+                    palette.error
+                } else {
+                    palette.success
+                };
                 ui.colored_label(
                     col,
                     format!("Commuter Latency: {:.2}", summary.commuter_latency),

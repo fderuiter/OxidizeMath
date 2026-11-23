@@ -22,31 +22,53 @@ fn test_custom_complex_mapping_evaluation() {
 }
 
 #[test]
-fn test_custom_complex_mapping_division_by_zero_safe() {
+fn test_custom_complex_mapping_division_by_zero_splits_contours_without_fallback_spikes() {
     let mut tool = ComplexMappingTool {
         function: MappingFunction::Custom,
         ..Default::default()
     };
-    tool.math_input.set_expression("1/z");
+    tool.math_input.set_expression("z^3 - 1/z");
 
     let z_zero = Complex64::new(0.0, 0.0);
     let w_zero = tool.eval_z(z_zero);
-    assert_eq!(w_zero, Complex64::new(1e6, 1e6));
+    assert!(w_zero.re.is_nan() && w_zero.im.is_nan());
+
+    // Sweep real axis [-2, 2] across z = 0: must split into >= 2 segments and emit 0 (1e6, 1e6) vertices
+    let segments = ui::split_contour_segments(161, 4.0, |j| {
+        let x = -2.0 + 4.0 * (j as f64) / 160.0;
+        tool.eval_z(Complex64::new(x, 0.0))
+    });
+    assert!(
+        segments.len() >= 2,
+        "Expected contour across z = 0 pole to split into at least 2 segments, got {}",
+        segments.len()
+    );
+    for seg in &segments {
+        for pt in seg {
+            assert!(pt[0].is_finite() && pt[1].is_finite());
+            assert_ne!(*pt, [1e6, 1e6]);
+        }
+    }
 }
 
 #[test]
-fn test_custom_expr_state_roundtrip_and_legacy_compat() {
+fn test_custom_expr_and_params_state_roundtrip_and_legacy_compat() {
     let mut tool = ComplexMappingTool {
         function: MappingFunction::Custom,
         ..Default::default()
     };
-    tool.math_input.set_expression("sin(z) + z^2");
-    let saved = tool.save_state().expect("serialize ComplexMappingTool");
+    tool.math_input.set_expression("z + a^2 / z");
+    let mut params = BTreeMap::new();
+    params.insert("a".to_string(), 0.85);
+    tool.math_input.set_params_map(&params);
 
+    let saved = tool.save_state().expect("serialize ComplexMappingTool");
     let mut restored = ComplexMappingTool::default();
     restored.try_load_state(&saved).expect("load saved state");
-    assert_eq!(restored.math_input.raw_text, "sin(z) + z^2");
-    assert!(restored.math_input.is_valid());
+    assert_eq!(restored.math_input.raw_text, "z + a^2 / z");
+    assert_eq!(restored.math_input.params_map().get("a"), Some(&0.85));
+    let w = restored.eval_z(Complex64::new(1.0, 0.0));
+    assert!((w.re - (1.0 + 0.85 * 0.85)).abs() < 1e-12);
     assert!(restored.import_preset_json(STARTER_PRESET_JSON).is_ok());
 }
 
@@ -82,4 +104,25 @@ fn test_exponential_and_sine_guards_and_bounds_validation() {
             r#"{"function":"Sine","grid_min":-2.0,"grid_max":2.0,"grid_density":10,"inspection_point":[55.0,1.0]}"#
         )
         .is_err());
+}
+
+#[test]
+fn test_complex_mapping_clamps_grid_density_and_caches_contours_across_probe_moves() {
+    let mut tool = ComplexMappingTool::default();
+    tool.try_load_state(
+        r#"{"function":"ZSquared","grid_min":-2.0,"grid_max":2.0,"grid_density":1000,"inspection_point":[1.0,0.5]}"#,
+    )
+    .expect("grid_density 1000 should load and clamp");
+    assert_eq!(tool.grid_density, crate::presets::MAX_INTERACTIVE_GRID_SIZE);
+    assert!(tool.has_finite_parameters());
+
+    let mut live = ComplexMappingTool::default();
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |c| live.show(c));
+    let _ = ctx.run(egui::RawInput::default(), |c| live.show(c));
+    assert_eq!(live.cache.eval_count, 1);
+
+    live.inspection_point = [-0.75, 1.25];
+    let _ = ctx.run(egui::RawInput::default(), |c| live.show(c));
+    assert_eq!(live.cache.eval_count, 1);
 }

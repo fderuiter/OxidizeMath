@@ -163,7 +163,8 @@ impl BankrollEnsembleLab {
             let x = t as f64;
             self.expected_points.push(PlotPoint::new(x, ew));
             self.median_points.push(PlotPoint::new(x, w_med));
-            self.empirical_median_points.push(PlotPoint::new(x, emp_med));
+            self.empirical_median_points
+                .push(PlotPoint::new(x, emp_med));
         }
 
         self.last_expected_terminal = self.expected_points.last().map_or(w0, |pt| pt.y);
@@ -211,7 +212,10 @@ impl BankrollEnsembleLab {
             [24.0, -26.0],
         );
 
-        if let Some(fs) = self.last_f_star.filter(|&fs| self.custom_fraction > 2.0 * fs) {
+        if let Some(fs) = self
+            .last_f_star
+            .filter(|&fs| self.custom_fraction > 2.0 * fs)
+        {
             let end_x = steps as f64;
             self.callout_manager.set_auto_callout(
                 "ruin_warning",
@@ -341,15 +345,22 @@ impl BankrollEnsembleLab {
 
     fn render_metrics_banner(&self, ui: &mut egui::Ui, num_bets: usize) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let f_star_text = self
-            .last_f_star
-            .map_or_else(|| "No positive edge".to_string(), |fs| format!("{fs:.3} (2f* = {:.3})", 2.0 * fs));
+        let f_star_text = self.last_f_star.map_or_else(
+            || "No positive edge".to_string(),
+            |fs| format!("{fs:.3} (2f* = {:.3})", 2.0 * fs),
+        );
         ui.horizontal_wrapped(|ui| {
             ui.label(format!("Optimal f*: {f_star_text}"));
             ui.separator();
-            ui.label(format!("Growth Rate g(f): {:+.5}/bet", self.last_growth_rate));
+            ui.label(format!(
+                "Growth Rate g(f): {:+.5}/bet",
+                self.last_growth_rate
+            ));
             ui.separator();
-            ui.label(format!("E[W_{num_bets}]: {:.2}", self.last_expected_terminal));
+            ui.label(format!(
+                "E[W_{num_bets}]: {:.2}",
+                self.last_expected_terminal
+            ));
             ui.separator();
             let med_color = if self.is_ruin_zone {
                 palette.error
