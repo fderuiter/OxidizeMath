@@ -8,8 +8,11 @@ use super::{MorphogenesisTool, SimpleRng};
 use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
 use crate::framework::InteractiveTool;
 use crate::presets::MorphogenesisKineticsMode;
+#[cfg(test)]
 use eframe::egui;
+#[cfg(test)]
 use eframe::egui::ColorImage;
+#[cfg(test)]
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
 #[cfg(test)]
@@ -102,6 +105,7 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            fork: None,
             mask_rle: self
                 .mask_rle
                 .read()
@@ -125,6 +129,13 @@ impl MorphogenesisTool {
         if width != self.width || height != self.height {
             self.width = width;
             self.height = height;
+            self.local_runner = Self::create_kinetics_runner(
+                &self.params,
+                &self.kinetics_state,
+                &self.mask_rle,
+                self.width,
+                self.height,
+            );
             let runner = Self::create_kinetics_runner(
                 &self.params,
                 &self.kinetics_state,
@@ -133,6 +144,7 @@ impl MorphogenesisTool {
                 self.height,
             );
             self.worker = BackgroundWorker::new(runner);
+            self.branch_engine.clear();
             self.stepped_pixels = None;
             self.step_runner = None;
             self.dirty = true;
@@ -199,10 +211,19 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) {
+        let mut rng = SimpleRng::new(12345);
+        Self::initialize_adapter_system_with_rng(system, width, height, &mut rng);
+    }
+
+    pub(crate) fn initialize_adapter_system_with_rng<D: SpatialDiffusion<2>>(
+        system: &mut TuringSystem<2, MorphogenesisKineticsAdapter, D>,
+        width: usize,
+        height: usize,
+        rng: &mut SimpleRng,
+    ) {
         match system.kinetics.mode {
             MorphogenesisKineticsMode::Schnakenberg => {
                 let n = width * height;
-                let mut rng = SimpleRng::new(12345);
                 let u_eq = system.kinetics.a + system.kinetics.b;
                 let v_eq = if u_eq.abs() > 1e-9 {
                     system.kinetics.b / (u_eq * u_eq)
@@ -268,6 +289,7 @@ impl MorphogenesisTool {
         Self::plot_concentration_with_contrast(data, width, height, false)
     }
 
+    #[cfg(test)]
     pub(crate) fn plot_concentration_with_contrast(
         data: &[f64],
         width: usize,

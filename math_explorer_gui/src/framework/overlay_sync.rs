@@ -9,6 +9,37 @@ pub(crate) struct FrameworkSyncState {
     pub(super) starter_gallery: Option<bool>,
     pub(super) datasets_owner_tool: Option<&'static str>,
     pub(super) last_modal_scope_id: Option<egui::Id>,
+    pub(super) theory_portal_trigger: Option<egui::Id>,
+    pub(super) default_theory_toggle: Option<egui::Id>,
+}
+
+pub(crate) fn record_default_theory_portal_toggle(ctx: &egui::Context, toggle_id: egui::Id) {
+    ctx.data_mut(|d| {
+        if let Some(inst_key) =
+            d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
+        {
+            d.insert_temp(inst_key.with("default_toggle_id"), toggle_id);
+        }
+    });
+}
+
+pub(crate) fn record_theory_portal_toggle(
+    ctx: &egui::Context,
+    trigger_id: egui::Id,
+    next_open: bool,
+) {
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next_open);
+        if let Some(inst_key) =
+            d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
+        {
+            d.insert_temp(inst_key, next_open);
+            if next_open {
+                d.insert_temp(inst_key.with("trigger_id"), trigger_id);
+            }
+        }
+    });
+    ctx.request_repaint();
 }
 
 #[derive(Clone, Copy)]
@@ -111,9 +142,68 @@ impl SimulationFramework {
             (p, g)
         });
 
+        let prev_portal = self.sync_state.theory_portal.unwrap_or(false);
         self.show_theory_portal = portal;
         self.show_starter_gallery = gallery;
+        if portal && !prev_portal {
+            self.capture_theory_portal_trigger(ctx, id_source);
+        }
         self.write_overlay_keys(ctx, id_source);
+    }
+
+    pub(super) fn capture_theory_portal_trigger(&mut self, ctx: &egui::Context, id_source: &str) {
+        let inst_portal = egui::Id::new(("SHOW_THEORY_PORTAL_INST", id_source, self.instance_id));
+        let (recorded_trigger, default_toggle) = ctx.data(|d| {
+            (
+                d.get_temp::<egui::Id>(inst_portal.with("trigger_id")),
+                d.get_temp::<egui::Id>(inst_portal.with("default_toggle_id")),
+            )
+        });
+        if let Some(def_id) = default_toggle {
+            self.sync_state.default_theory_toggle = Some(def_id);
+        }
+        if let Some(trig_id) = recorded_trigger {
+            self.sync_state.theory_portal_trigger = Some(trig_id);
+        } else if let Some(focused) = ctx.memory(|m| m.focused()) {
+            self.sync_state.theory_portal_trigger = Some(focused);
+        }
+    }
+
+    pub(super) fn refresh_default_theory_toggle(&mut self, ctx: &egui::Context, id_source: &str) {
+        let inst_portal = egui::Id::new(("SHOW_THEORY_PORTAL_INST", id_source, self.instance_id));
+        let (recorded_trigger, default_toggle) = ctx.data_mut(|d| {
+            let key = inst_portal.with("trigger_id");
+            let trig = d.get_temp::<egui::Id>(key);
+            d.remove::<egui::Id>(key);
+            let def = d.get_temp::<egui::Id>(inst_portal.with("default_toggle_id"));
+            (trig, def)
+        });
+        if let Some(def_id) = default_toggle {
+            self.sync_state.default_theory_toggle = Some(def_id);
+        }
+        if let Some(trig_id) = recorded_trigger {
+            self.sync_state.theory_portal_trigger = Some(trig_id);
+        }
+    }
+
+    pub(super) fn close_theory_portal_and_restore_focus(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+    ) {
+        self.show_theory_portal = false;
+        self.sync_state.theory_portal = Some(false);
+        self.write_overlay_keys(ctx, id_source);
+        let restore_id = self
+            .sync_state
+            .theory_portal_trigger
+            .take()
+            .or(self.sync_state.default_theory_toggle);
+        if let Some(target_id) = restore_id {
+            ctx.memory_mut(|m| m.request_focus(target_id));
+        }
+        crate::accessibility::announce_live_status(ctx, "Theory Context Portal closed");
+        ctx.request_repaint();
     }
 
     pub(super) fn sync_overlays_after_frame(&mut self, ctx: &egui::Context, id_source: &str) {
@@ -128,6 +218,29 @@ impl SimulationFramework {
         self.write_overlay_keys(ctx, id_source);
         self.sync_state.theory_portal = Some(self.show_theory_portal);
         self.sync_state.starter_gallery = Some(self.show_starter_gallery);
+        self.sync_counterfactual_snapshot();
+    }
+
+    /// Synchronizes `branch_engine` with the active tool's latest counterfactual divergence snapshot.
+    pub fn sync_counterfactual_snapshot(&mut self) {
+        let snap = self
+            .active_tool
+            .as_ref()
+            .and_then(|tool| tool.counterfactual_snapshot());
+        self.branch_engine.sync_snapshot(snap);
+    }
+
+    /// Dispatches a `CounterfactualBranchEngine` control action to the active tool and refreshes `branch_engine`.
+    pub fn dispatch_branch_action(&mut self, action: super::BranchControlAction) -> bool {
+        if let super::BranchControlAction::SetPerturbation(delta) = action {
+            self.branch_engine.set_effective_delta(delta);
+        }
+        let applied = self
+            .active_tool
+            .as_mut()
+            .is_some_and(|tool| tool.apply_counterfactual_action(action));
+        self.sync_counterfactual_snapshot();
+        applied
     }
 
     pub(crate) fn sync_starter_gallery_state(&mut self, ctx: &egui::Context, id_source: &str) {
@@ -207,6 +320,7 @@ impl SimulationFramework {
             is_diverged: false,
             diagnostic_report: None,
             step_counter: 0,
+            branch_engine: super::CounterfactualBranchEngine::default(),
             start_time: crate::web_io::PlatformInstant::now(),
             challenge_hud: super::ChallengeHudState::default(),
             active_challenge: None,

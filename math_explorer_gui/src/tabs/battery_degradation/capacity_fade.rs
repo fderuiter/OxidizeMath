@@ -1,28 +1,68 @@
+//! Coupled Li-ion capacity fade calculator with Arrhenius thermal kinetics,
+//! C-rate stress, stretched exponent $z$, and live Levenberg-Marquardt CSV calibration.
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+// [cite:battery_degradation]
+
+mod code_export;
+pub mod io;
+#[cfg(test)]
+mod tests;
+mod ui;
+
 use super::capacity_fade_atlas::{CapacityFadeCartographer, CAPACITY_FADE_ATLAS_AXIS_PAIRS};
+use super::cell_card::{BatteryCellCard, BatteryDialogIo, ChemistryChoice};
 use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::framework::{CodeArtifact, ExportCapabilities, InteractiveTool};
-use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
 use eframe::egui;
-use egui_plot::{HLine, Line, Plot, PlotPoints};
-use math_commons::ast::{format_latex_scalar, format_python_float, format_rust_f64};
+use io::CalibratedLabSummary;
 use math_explorer::applied::battery_degradation::{
-    Capacity, Cycles, DepthOfDischarge, PowerLawModel,
+    Capacity, ChemistryPreset, Cycles, DepthOfDischarge, ElectrochemicalAgingModel, MAX_C_RATE,
+    MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z, MIN_TEMPERATURE_C,
 };
+
+const CURVE_SAMPLE_STEPS: usize = 500;
+
+fn default_c_rate() -> f64 {
+    1.0
+}
+
+fn is_default_c_rate(val: &f64) -> bool {
+    (*val - 1.0).abs() < 1e-12
+}
 
 pub struct CapacityFadeTool {
     pub(crate) dod: f64,
     pub(crate) temperature: f64,
     pub(crate) cycles_to_simulate: f64,
+    pub(crate) chemistry: ChemistryChoice,
+    pub(crate) c_rate: f64,
+    pub(crate) exponent_z: f64,
+    pub(crate) calibrated_alpha: Option<f64>,
+    pub(crate) show_residuals: bool,
+    pub(crate) lab_samples: Vec<[f64; 2]>,
+    pub(crate) last_fit: Option<CalibratedLabSummary>,
+    pub(crate) io_status: Option<(bool, String)>,
+    pub(crate) dialogs: BatteryDialogIo,
 }
 
 impl Default for CapacityFadeTool {
     fn default() -> Self {
+        let preset = ChemistryPreset::Nmc811;
         Self {
             dod: 80.0,
             temperature: 25.0,
             cycles_to_simulate: 2000.0,
+            chemistry: ChemistryChoice::Nmc811,
+            c_rate: 1.0,
+            exponent_z: preset.default_exponent_z(),
+            calibrated_alpha: None,
+            show_residuals: true,
+            lab_samples: Vec::new(),
+            last_fit: None,
+            io_status: None,
+            dialogs: BatteryDialogIo::default(),
         }
     }
 }
@@ -33,6 +73,14 @@ struct CapacityFadeState {
     dod: f64,
     temperature: f64,
     cycles_to_simulate: f64,
+    #[serde(default, skip_serializing_if = "ChemistryChoice::is_default")]
+    chemistry: ChemistryChoice,
+    #[serde(default = "default_c_rate", skip_serializing_if = "is_default_c_rate")]
+    c_rate: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exponent_z: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    calibrated_alpha: Option<f64>,
 }
 
 impl InteractiveTool for CapacityFadeTool {
@@ -50,8 +98,15 @@ impl InteractiveTool for CapacityFadeTool {
         self.dod.is_finite()
             && self.temperature.is_finite()
             && self.cycles_to_simulate.is_finite()
+            && self.c_rate.is_finite()
+            && self.exponent_z.is_finite()
+            && self
+                .calibrated_alpha
+                .is_none_or(|a| a.is_finite() && (1.0..=1.0e9).contains(&a))
             && (0.0..=100.0).contains(&self.dod)
-            && (-20.0..=60.0).contains(&self.temperature)
+            && (MIN_TEMPERATURE_C..=MAX_TEMPERATURE_C).contains(&self.temperature)
+            && (MIN_C_RATE..=MAX_C_RATE).contains(&self.c_rate)
+            && (MIN_EXPONENT_Z..=MAX_EXPONENT_Z).contains(&self.exponent_z)
             && (100.0..=10_000.0).contains(&self.cycles_to_simulate)
     }
 
@@ -69,6 +124,10 @@ impl InteractiveTool for CapacityFadeTool {
         self.dod.to_bits().hash(&mut h);
         self.temperature.to_bits().hash(&mut h);
         self.cycles_to_simulate.to_bits().hash(&mut h);
+        self.chemistry.hash(&mut h);
+        self.c_rate.to_bits().hash(&mut h);
+        self.exponent_z.to_bits().hash(&mut h);
+        self.calibrated_alpha.map(f64::to_bits).hash(&mut h);
         h.finish().max(1)
     }
 
@@ -81,7 +140,14 @@ impl InteractiveTool for CapacityFadeTool {
     }
 
     fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
-        self.temperature.to_bits()
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.temperature.to_bits().hash(&mut h);
+        self.chemistry.hash(&mut h);
+        self.c_rate.to_bits().hash(&mut h);
+        self.exponent_z.to_bits().hash(&mut h);
+        self.calibrated_alpha.map(f64::to_bits).hash(&mut h);
+        h.finish()
     }
 
     fn build_atlas_cartographer(
@@ -107,10 +173,20 @@ impl InteractiveTool for CapacityFadeTool {
     }
 
     fn save_state(&self) -> Option<String> {
+        let default_z = self.chemistry.to_preset().default_exponent_z();
+        let custom_z = if (self.exponent_z - default_z).abs() > 1e-9 {
+            Some(self.exponent_z)
+        } else {
+            None
+        };
         serde_json::to_string(&CapacityFadeState {
             dod: self.dod,
             temperature: self.temperature,
             cycles_to_simulate: self.cycles_to_simulate,
+            chemistry: self.chemistry,
+            c_rate: self.c_rate,
+            exponent_z: custom_z,
+            calibrated_alpha: self.calibrated_alpha,
         })
         .ok()
     }
@@ -118,215 +194,158 @@ impl InteractiveTool for CapacityFadeTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: CapacityFadeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid capacity fade state: {e}"))?;
-        if !s.dod.is_finite()
-            || !(0.0..=100.0).contains(&s.dod)
-            || !s.temperature.is_finite()
-            || !(-20.0..=60.0).contains(&s.temperature)
-            || !s.cycles_to_simulate.is_finite()
-            || !(100.0..=10_000.0).contains(&s.cycles_to_simulate)
-        {
-            return Err("Capacity fade parameters out of bounds".into());
-        }
+        validate_capacity_fade_state(&s)?;
+        let preset = s.chemistry.to_preset();
         self.dod = s.dod;
         self.temperature = s.temperature;
         self.cycles_to_simulate = s.cycles_to_simulate;
+        self.chemistry = s.chemistry;
+        self.c_rate = s.c_rate;
+        self.exponent_z = s.exponent_z.unwrap_or_else(|| preset.default_exponent_z());
+        self.calibrated_alpha = s.calibrated_alpha;
         Ok(())
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        vec![("Capacity".to_string(), self.capacity_curve_points())]
+        let mut out = vec![("Capacity".to_string(), self.capacity_curve_points())];
+        if !self.lab_samples.is_empty() {
+            out.push(("Measured SOH".to_string(), self.lab_samples.clone()));
+            out.push((
+                "Residuals (Measured - Model)".to_string(),
+                self.residual_points(),
+            ));
+        }
+        out
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        self.dod = self.dod.clamp(0.0, 100.0);
-        self.cycles_to_simulate = self.cycles_to_simulate.max(100.0);
+        self.clamp_operating_bounds();
+        self.poll_dialog_channels();
         self.render_controls_panel(ui);
         self.render_projection_panel(ui);
     }
 }
 
+fn validate_capacity_fade_state(s: &CapacityFadeState) -> Result<(), String> {
+    let basic_valid = s.dod.is_finite()
+        && (0.0..=100.0).contains(&s.dod)
+        && s.temperature.is_finite()
+        && (MIN_TEMPERATURE_C..=MAX_TEMPERATURE_C).contains(&s.temperature)
+        && s.cycles_to_simulate.is_finite()
+        && (100.0..=10_000.0).contains(&s.cycles_to_simulate)
+        && s.c_rate.is_finite()
+        && (MIN_C_RATE..=MAX_C_RATE).contains(&s.c_rate);
+    if !basic_valid {
+        return Err("Capacity fade parameters out of bounds".into());
+    }
+    if let Some(z) = s.exponent_z {
+        if !z.is_finite() || !(MIN_EXPONENT_Z..=MAX_EXPONENT_Z).contains(&z) {
+            return Err("Stretched exponent z out of bounds [0.1, 2.0]".into());
+        }
+    }
+    if let Some(alpha) = s.calibrated_alpha {
+        if !alpha.is_finite() || !(1.0..=1.0e9).contains(&alpha) {
+            return Err("Calibrated prefactor alpha out of bounds".into());
+        }
+    }
+    Ok(())
+}
+
 impl CapacityFadeTool {
+    pub(crate) fn clamp_operating_bounds(&mut self) {
+        self.dod = self.dod.clamp(0.0, 100.0);
+        self.temperature = self.temperature.clamp(MIN_TEMPERATURE_C, MAX_TEMPERATURE_C);
+        self.c_rate = self.c_rate.clamp(MIN_C_RATE, MAX_C_RATE);
+        self.exponent_z = self.exponent_z.clamp(MIN_EXPONENT_Z, MAX_EXPONENT_Z);
+        self.cycles_to_simulate = self.cycles_to_simulate.clamp(100.0, 10_000.0);
+    }
+
+    #[must_use]
+    pub fn active_model(&self) -> ElectrochemicalAgingModel {
+        let preset = self.chemistry.to_preset();
+        let alpha = self
+            .calibrated_alpha
+            .unwrap_or_else(|| preset.default_alpha());
+        ElectrochemicalAgingModel::new(
+            preset,
+            alpha,
+            preset.default_beta(),
+            self.exponent_z,
+            self.temperature,
+            self.c_rate,
+        )
+    }
+
+    pub(crate) fn apply_chemistry_preset(&mut self, choice: ChemistryChoice) {
+        self.chemistry = choice;
+        self.exponent_z = choice.to_preset().default_exponent_z();
+        self.calibrated_alpha = None;
+        self.last_fit = None;
+    }
+
     pub(crate) fn capacity_curve_points(&self) -> Vec<[f64; 2]> {
-        let model = PowerLawModel::standard();
-        let dod_val = DepthOfDischarge::new(self.dod);
-        (0..=100)
+        let model = self.active_model();
+        let dod_opt = DepthOfDischarge::new(self.dod).ok();
+        (0..=CURVE_SAMPLE_STEPS)
             .map(|i| {
-                let cycle = (self.cycles_to_simulate / 100.0) * (i as f64);
-                if let (Ok(c), Ok(d)) = (Cycles::new(cycle), dod_val.clone()) {
-                    [cycle, model.capacity(c, d).as_f64()]
-                } else {
-                    [cycle, 0.0]
+                let cycle = (self.cycles_to_simulate / CURVE_SAMPLE_STEPS as f64) * (i as f64);
+                match (Cycles::new(cycle).ok(), dod_opt) {
+                    (Some(c), Some(d)) if self.dod > 0.0 => [cycle, model.capacity(c, d).as_f64()],
+                    _ => [cycle, 1.0],
                 }
             })
             .collect()
     }
 
-    pub(crate) fn projected_life_cycles(dod_percent: f64) -> (f64, f64) {
-        let model = PowerLawModel::standard();
-        if let Ok(d) = DepthOfDischarge::new(dod_percent) {
+    pub(crate) fn residual_points(&self) -> Vec<[f64; 2]> {
+        let model = self.active_model();
+        let dod = DepthOfDischarge::new_clamped(self.dod.max(0.1));
+        self.lab_samples
+            .iter()
+            .map(|&[cyc, measured]| {
+                let pred = model.capacity(Cycles::new_clamped(cyc), dod).as_f64();
+                [cyc, measured - pred]
+            })
+            .collect()
+    }
+
+    pub(crate) fn projected_life_cycles_coupled(&self) -> (f64, f64) {
+        if self.dod <= 0.0 {
+            return (0.0, 0.0);
+        }
+        let model = self.active_model();
+        if let Ok(d) = DepthOfDischarge::new(self.dod) {
             let n80 = model
                 .cycles_to_capacity(Capacity::new_clamped(0.8), d)
                 .as_f64();
-            let n70 = model.n70(d).as_f64();
-            (n80, n70)
+            (n80, model.n70(d).as_f64())
         } else {
             (0.0, 0.0)
         }
     }
 
-    fn render_controls_panel(&mut self, ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(ui, "battery_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
-            ui.heading("Parameters");
-            ui.add_space(5.0);
-            ui.add(
-                AnimatedSlider::new(&mut self.dod, 0.0..=100.0)
-                    .hard_bounds(0.0..=100.0)
-                    .text("Depth of Discharge (DoD) - %")
-                    .id_salt("capacity_fade_dod"),
-            );
-            ui.small("Percentage of battery capacity used per cycle.");
-            ui.add_space(10.0);
-            ui.add_enabled_ui(false, |ui| {
-                ui.add(
-                    AnimatedSlider::new(&mut self.temperature, -20.0..=60.0)
-                        .hard_bounds(-20.0..=60.0)
-                        .text("Temperature (°C)")
-                        .id_salt("capacity_fade_temperature"),
-                );
-            })
-            .response
-            .on_disabled_hover_text(
-                "Temperature dependency is not yet implemented in the core model.",
-            );
-            ui.add_space(10.0);
-            ui.add(
-                AnimatedSlider::new(&mut self.cycles_to_simulate, 100.0..=10000.0)
-                    .hard_bounds(100.0..=10000.0)
-                    .text("Simulation Range - Cycles")
-                    .id_salt("capacity_fade_cycles"),
-            );
-        });
-    }
-
-    fn render_projection_panel(&self, ui: &mut egui::Ui) {
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading("Capacity Fade Projection");
-            ui.label("Estimation based on Power Law Model for Li-ion batteries.");
-
-            let points = self.capacity_curve_points();
-
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            Plot::new("capacity_fade_plot")
-                .view_aspect(2.0)
-                .x_axis_label("Cycles")
-                .y_axis_label("State of Health (Capacity)")
-                .include_y(0.0)
-                .include_y(1.0)
-                .show(ui, |plot_ui| {
-                    plot_ui.line(Line::new("Capacity", PlotPoints::new(points)));
-                    plot_ui.hline(
-                        HLine::new("End of Life (70%)", 0.7)
-                            .color(palette.error)
-                            .style(egui_plot::LineStyle::Dashed { length: 10.0 }),
-                    );
-                    plot_ui.hline(
-                        HLine::new("First Life (80%)", 0.8)
-                            .color(palette.warning)
-                            .style(egui_plot::LineStyle::Dashed { length: 10.0 }),
-                    );
-                });
-
-            ui.add_space(10.0);
-            let (n80, n70) = Self::projected_life_cycles(self.dod);
-            render_copyable_metric(ui, "First Life (80%)", &format!("{n80:.0} cycles"));
-            render_copyable_metric(
-                ui,
-                "Projected Cycle Life (to 70%)",
-                &format!("{n70:.0} cycles"),
-            );
-        });
-    }
-
-    fn build_code_artifact(&self) -> Option<CodeArtifact> {
-        if !self.has_finite_parameters() || self.dod <= 0.0 {
-            return None;
+    #[cfg(test)]
+    pub(crate) fn projected_life_cycles(dod_percent: f64) -> (f64, f64) {
+        if dod_percent <= 0.0 {
+            return (0.0, 0.0);
         }
-        let model = PowerLawModel::standard();
-        let n70 = DepthOfDischarge::new(self.dod)
-            .ok()
-            .map(|d| model.n70(d).as_f64())?;
-        let dod_tex = format_latex_scalar(self.dod).ok()?;
-        let n70_tex = format_latex_scalar(n70).ok()?;
-        let cyc_tex = format_latex_scalar(self.cycles_to_simulate).ok()?;
-
-        let symbolic_latex = "\\begin{aligned}\nN_{70}(\\text{DoD}) &= \\alpha \\cdot \\text{DoD}^{\\beta} \\\\\nC(N) &= 0.7^{N / N_{70}(\\text{DoD})}\n\\end{aligned}".to_string();
-        let calibrated_latex = format!(
-            "\\begin{{aligned}}\nN_{{70}}({dod_tex}\\%) &= 101900 \\cdot {dod_tex}^{{-1.2639}} \\approx {n70_tex} \\\\\nC(N) &= 0.7^{{N / {n70_tex}}}, \\quad N \\in [0, {cyc_tex}]\n\\end{{aligned}}"
-        );
-        let rust_source = self.build_capacity_rust()?;
-        let python_source = self.build_capacity_python()?;
-
-        Some(CodeArtifact {
-            symbolic_latex,
-            calibrated_latex,
-            rust_source,
-            python_source,
-        })
+        let model = ElectrochemicalAgingModel::from_preset(ChemistryPreset::Nmc811);
+        if let Ok(d) = DepthOfDischarge::new(dod_percent) {
+            let n80 = model
+                .cycles_to_capacity(Capacity::new_clamped(0.8), d)
+                .as_f64();
+            (n80, model.n70(d).as_f64())
+        } else {
+            (0.0, 0.0)
+        }
     }
 
-    fn build_capacity_rust(&self) -> Option<String> {
-        let dod_rs = format_rust_f64(self.dod).ok()?;
-        let cyc_rs = format_rust_f64(self.cycles_to_simulate).ok()?;
-        Some(format!(
-            "// Standalone Rust 2024 Li-ion Power-Law capacity fade model generated by OxidizeMath\n\
-             pub const ALPHA: f64 = 101900.0_f64;\n\
-             pub const BETA: f64 = -1.2639_f64;\n\n\
-             pub fn n70_cycles(dod_pct: f64) -> f64 {{\n\
-             \x20   (ALPHA * dod_pct.clamp(0.0, 100.0).powf(BETA)).max(0.0)\n\
-             }}\n\n\
-             pub fn capacity_retention(cycles: f64, dod_pct: f64) -> f64 {{\n\
-             \x20   let n70 = n70_cycles(dod_pct);\n\
-             \x20   if n70 <= 0.0 {{\n\
-             \x20       return 0.0;\n\
-             \x20   }}\n\
-             \x20   0.7_f64.powf(cycles.max(0.0) / n70).clamp(0.0, 1.0)\n\
-             }}\n\n\
-             fn main() {{\n\
-             \x20   let dod: f64 = {dod_rs};\n\
-             \x20   let max_cycles: f64 = {cyc_rs};\n\
-             \x20   for i in 0..=100 {{\n\
-             \x20       let c = (max_cycles / 100.0) * (i as f64);\n\
-             \x20       println!(\"{{c:.1}},{{:.9}}\", capacity_retention(c, dod));\n\
-             \x20   }}\n\
-             }}\n"
-        ))
-    }
-
-    fn build_capacity_python(&self) -> Option<String> {
-        let dod_py = format_python_float(self.dod).ok()?;
-        let cyc_py = format_python_float(self.cycles_to_simulate).ok()?;
-        Some(format!(
-            "\"\"\"Standalone Python Li-ion Power-Law capacity fade model generated by OxidizeMath.\"\"\"\n\
-             import numpy as np\n\n\
-             ALPHA = 101900.0\n\
-             BETA = -1.2639\n\n\
-             def n70_cycles(dod_pct: float) -> float:\n\
-             \x20   return float(max(0.0, ALPHA * (np.clip(dod_pct, 0.0, 100.0) ** BETA)))\n\n\
-             def capacity_retention(cycles: float | np.ndarray, dod_pct: float):\n\
-             \x20   n70 = n70_cycles(dod_pct)\n\
-             \x20   if n70 <= 0.0:\n\
-             \x20       return np.zeros_like(cycles, dtype=np.float64)\n\
-             \x20   return np.clip(0.7 ** (np.maximum(cycles, 0.0) / n70), 0.0, 1.0)\n\n\
-             if __name__ == \"__main__\":\n\
-             \x20   cycles = np.linspace(0.0, {cyc_py}, 101)\n\
-             \x20   soh = capacity_retention(cycles, {dod_py})\n\
-             \x20   print(f\"N70={{n70_cycles({dod_py}):.1f}} cycles, final SoH={{float(soh[-1]):.9f}}\")\n"
-        ))
+    #[must_use]
+    pub fn build_cell_card(&self) -> BatteryCellCard {
+        let cal = self.last_fit.as_ref().map(|f| (f.rmse, f.sample_count));
+        BatteryCellCard::from_model("CapacityFadeTool", &self.active_model(), self.dod, cal)
     }
 }
-
-// [cite:mmwave_radiotherapy_setup]
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -341,15 +360,19 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for CapacityFadeTool {
     fn theory_description(&self) -> String {
         format!(
-            "Lithium-ion capacity fade power-law degradation: remaining capacity $C(N) = C_0 \\left(1 - 0.3 (N / N_{{70}})^z\\right)$ at {:.1}% depth of discharge and {:.1}°C operating temperature.",
-            self.dod, self.temperature
+            "Coupled {} capacity fade model: $C(N) = C_0 (1 - 0.3 (N / N_{{70}}(D, T, I_c))^z)$ with Arrhenius acceleration $\\exp(-E_a / (R T))$ at {:.1}% DoD, {:.1}°C, {:.2}C, and $z = {:.2}$.",
+            self.chemistry.label(),
+            self.dod,
+            self.temperature,
+            self.c_rate,
+            self.exponent_z
         )
     }
     fn phonetic_description(&self) -> String {
-        "Battery capacity fade power-law degradation theory".into()
+        "Coupled electrochemical battery capacity fade and Arrhenius aging theory".into()
     }
     fn theory_citation(&self) -> String {
-        "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into()
+        "Cycle-life model for graphite-LiFePO4 cells (Wang et al., 2011); Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into()
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
@@ -363,6 +386,8 @@ impl scientific_metadata::theory::TheoryDescribable for CapacityFadeTool {
         std::collections::HashMap::from([
             ("dod".to_string(), c(5.0, 100.0, 1.0)),
             ("temperature".to_string(), c(-20.0, 60.0, 1.0)),
+            ("c_rate".to_string(), c(0.05, 10.0, 0.05)),
+            ("exponent_z".to_string(), c(0.1, 2.0, 0.05)),
             ("cycles_to_simulate".to_string(), c(100.0, 10_000.0, 50.0)),
         ])
     }
@@ -386,79 +411,11 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "capacity_fade_starter",
         title: "Capacity Fade",
-        description: "Power-law lithium-ion state-of-health capacity retention curve across charge-discharge cycles.",
+        description: "Coupled Arrhenius and stretched-exponent lithium-ion capacity retention with live CSV calibration.",
         category: "Electrochemistry",
         icon: "🔋",
         domain: "battery_degradation",
         tool_name: Some("CapacityFadeTool"),
         preset_generator: || STARTER_PRESET_JSON,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::framework::InteractiveTool;
-
-    #[test]
-    fn test_first_life_80_threshold_error_and_power_law_fit() {
-        let mut tool = CapacityFadeTool::default();
-        let (n80, n70) = CapacityFadeTool::projected_life_cycles(tool.dod);
-        assert!(n80 > 0.0 && n80 < n70);
-        tool.cycles_to_simulate = (n70 * 1.2).max(2000.0);
-
-        let datasets = tool.export_datasets();
-        let mut crossings = [0.0_f64; 4];
-        let count =
-            math_explorer::poi::threshold_crossings_into(&datasets[0].1, 0.8, &mut crossings);
-        assert_eq!(count, 1);
-        assert!(
-            (crossings[0] - n80).abs() < 0.5,
-            "80% threshold cycle error = {} cycles",
-            (crossings[0] - n80).abs()
-        );
-
-        let n70_curve: Vec<[f64; 2]> = (10..=100)
-            .step_by(5)
-            .map(|dod| {
-                let (_, life70) = CapacityFadeTool::projected_life_cycles(dod as f64);
-                [dod as f64, life70]
-            })
-            .collect();
-        let fit = math_explorer::fit::fit_model(
-            &n70_curve,
-            math_explorer::fit::FitModel::PowerLaw,
-            false,
-        )
-        .expect("power law fit");
-        assert!(fit.r_squared >= 0.99);
-    }
-
-    #[test]
-    fn test_capacity_fade_animated_dod_sweep() {
-        use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
-
-        let mut tool = CapacityFadeTool::default();
-        let initial_dod = tool.dod;
-        let ctx = egui::Context::default();
-        save_slider_state(
-            &ctx,
-            egui::Id::new("capacity_fade_dod"),
-            AnimatedSliderState {
-                playing: true,
-                direction: 1.0,
-                sweep_mode: SweepMode::Oscillate,
-            },
-        );
-        let _ = ctx.run(
-            egui::RawInput {
-                predicted_dt: 0.1,
-                ..Default::default()
-            },
-            |ctx| tool.show(ctx),
-        );
-        assert!(tool.dod > initial_dod);
-        let saved = tool.save_state().expect("save_state");
-        assert!(tool.try_load_state(&saved).is_ok());
     }
 }

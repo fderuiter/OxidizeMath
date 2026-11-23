@@ -18,12 +18,15 @@ pub mod code_export_modal;
     feature = "epidemiology"
 ))]
 mod code_export_tests;
+pub mod counterfactual;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_3d;
 mod export_dataset;
 mod export_figure;
+mod export_modal_host;
+mod export_persistence;
 mod export_queue;
 #[cfg(test)]
 pub(crate) use export_queue::deferred_export_tests;
@@ -77,6 +80,7 @@ pub mod story_hud;
 pub(crate) mod theory_links;
 #[cfg(test)]
 mod theory_links_tests;
+mod theory_portal;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
@@ -87,6 +91,7 @@ pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
 pub use code_export::*;
 pub use code_export_modal::CodeExportTab;
+pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
@@ -94,6 +99,8 @@ pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use history_ui::render_workspace_history_buttons;
 pub use math_input::*;
+#[cfg(any(feature = "pure_math", feature = "applied"))]
+pub(crate) use overlay_sync::record_theory_portal_toggle;
 pub use pane_scope::{
     is_button_activation_focused, is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed,
     is_text_edit_focused, record_focused_widget_type_from_output, scoped_panel_id, InputMode,
@@ -313,28 +320,12 @@ pub trait InteractiveTool {
 
     /// Serializes active parameter preset state to a formatted JSON string with metadata envelope.
     fn export_preset_json(&self) -> Result<String, String> {
-        if let Some(state_str) = self.save_state() {
-            let config: serde_json::Value = serde_json::from_str(&state_str)
-                .map_err(|e| format!("Serialization error: {e}"))?;
-            crate::presets::serialize_preset_envelope(self.name(), self.domain(), config)
-        } else {
-            Err(format!("Preset export not supported for {}", self.name()))
-        }
+        export_persistence::export_tool_preset_json(self)
     }
 
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let bounds = self.state_bounds();
-        let config: Box<serde_json::value::RawValue> =
-            crate::presets::deserialize_preset_envelope_bounded(
-                json_str,
-                self.domain(),
-                self.name(),
-                bounds,
-            )?;
-        let config_str = config.get();
-        bounds.validate_json(config_str)?;
-        self.try_load_state(config_str)
+        export_persistence::import_tool_preset_json(self, json_str)
     }
 
     /// Declares which dataset, figure, and code export formats this tool supports.
@@ -398,6 +389,16 @@ pub trait InteractiveTool {
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 
+    /// Optional hook returning the active counterfactual divergence snapshot for `SimulationFramework`.
+    fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
+        None
+    }
+
+    /// Optional hook applying a `CounterfactualBranchEngine` action (`Fork`, `Swap`, `Clear`, `SetPerturbation`).
+    fn apply_counterfactual_action(&mut self, _action: BranchControlAction) -> bool {
+        false
+    }
+
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(
         &mut self,
@@ -431,8 +432,8 @@ pub struct SimulationFramework {
     pub saved_plot_states: plot_persistence::SavedPlotStatesMap,
     pub(super) plot_sync_generation: u64,
     pub search_query: String,
-    last_announced_count: Option<usize>,
-    last_announced_query: String,
+    pub(super) last_announced_count: Option<usize>,
+    pub(super) last_announced_query: String,
     pub show_export_modal: bool,
     pub show_code_export_modal: bool,
     pub code_export_tab: CodeExportTab,
@@ -445,7 +446,6 @@ pub struct SimulationFramework {
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub(crate) export_queue: ExportQueue,
-
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
     /// Baseline parameters snapshot on tool load.
@@ -460,6 +460,8 @@ pub struct SimulationFramework {
     pub diagnostic_report: Option<DiagnosticReport>,
     /// Simulation frame / step counter.
     pub step_counter: usize,
+    /// Counterfactual shadow twin engine state synchronized with the active tool.
+    pub branch_engine: CounterfactualBranchEngine,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
     /// Declarative guided story and AST challenge HUD state.
