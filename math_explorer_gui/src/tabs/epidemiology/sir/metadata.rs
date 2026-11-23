@@ -111,3 +111,5 @@ inventory::submit! {
         preset_generator: || crate::starter_gallery::PRESET_SIR_LOCKDOWN_TIMING,
     }
 }
+
+// [cite:graph_parameters_rust]

@@ -250,6 +250,7 @@ impl MriTool {
             self.pulse_config = RfPulseConfig::default();
         }
         self.pulse_workspace.playhead_playing = false;
+        self.pulse_workspace.playhead_idx = super::pulse::MRI_PULSE_SAMPLES - 1;
         self.fault_notified = false;
         let params = Arc::clone(&self.params);
         let m0 = self.simulator.m0;
@@ -386,6 +387,7 @@ impl InteractiveTool for MriTool {
         if let Some(ref mut twin) = self.twin {
             twin.observe_lockstep(self.current_time, self.simulator.magnetization);
         }
+        self.latest_sonification = self.current_sonification_frame();
         self.update_plot_buffers();
         self.sync_mri_branch_engine();
     }
