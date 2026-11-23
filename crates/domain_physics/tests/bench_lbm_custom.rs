@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for bench lbm custom.
 #[cfg(not(target_arch = "wasm32"))]
 use domain_physics::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD2Q9;
 #[cfg(not(target_arch = "wasm32"))]

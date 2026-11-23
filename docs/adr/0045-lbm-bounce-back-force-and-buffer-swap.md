@@ -1,4 +1,4 @@
-# ADR 0044: LBM Double-Buffer Swap Consolidation and Zero-Allocation Bounce-Back Force Telemetry
+# ADR 0045: LBM Double-Buffer Swap Consolidation and Zero-Allocation Bounce-Back Force Telemetry
 
 ## Status
 Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0037](0037-retire-physics-compatibility-shims.md), [ADR 0038](0038-federated-inverse-challenges-and-hud.md), [ADR 0039](0039-metric-agnostic-3d-tda-exact-z2-homology-and-chaos-mashup.md), and [ADR 0040](0040-promote-zero-alloc-curve-solvers-to-math-commons.md))

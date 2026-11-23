@@ -95,12 +95,16 @@ pub mod statistics;
 // Re-export constants to match original API
 pub use math_commons::constants::{C, G, SIGMA_T, SOLAR_MASS};
 
-// Re-export SchwarzschildBlackHole to match original API
-pub use general_relativity::SchwarzschildBlackHole;
+// Re-export SchwarzschildBlackHole and relativistic geodesic types/helpers
+pub use general_relativity::{
+    GeodesicKind, KerrEquatorialMetric, MorrisThorneWormhole, SchwarzschildBlackHole,
+    combined_clock_rate, effective_potential, flamm_paraboloid_z, photon_sphere_radius,
+};
 
 // Re-export Error type
 
 // [cite:dwarf_galaxy_empirical_dependencies]
+// [cite:general_relativity_geodesics]
 
 use pure_math::theory_verification;
 

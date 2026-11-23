@@ -311,17 +311,14 @@ fn test_lbm_fairing_challenge_lifecycle_and_tampered_url_clamping() {
     // Tamper locked viscosity/inflow_speed in shared challenge URL and verify clamping.
     let share_url = fw.encode_share_url().expect("challenge share URL");
     let frag = &share_url[share_url.find('#').unwrap()..];
-    let params = parse_share_location(frag, "").unwrap().unwrap();
+    let mut params = parse_share_location(frag, "").unwrap().unwrap();
     let mut env: serde_json::Value = serde_json::from_str(params.state_json.as_ref().unwrap()).unwrap();
     env["config"]["viscosity"] = serde_json::json!(0.25);
     env["config"]["inflow_speed"] = serde_json::json!(0.17);
+    params.state_json = Some(env.to_string());
     let mut dest_fw = crate::framework::SimulationFramework::new("fluid_dynamics");
     dest_fw
-        .import_url_share_params(
-            Some("LatticeBoltzmannTool"),
-            Some("lbm_low_drag_fairing"),
-            Some(&env.to_string()),
-        )
+        .import_url_share_params(&params, None)
         .expect("clamped challenge URL import must succeed");
     let hydrated = dest_fw
         .active_tool
