@@ -5,6 +5,99 @@
 use super::export_ui::export_action_button;
 use super::*;
 use eframe::egui;
+#[cfg(any(feature = "pure_math", feature = "physics"))]
+use math_commons::ast::format_glsl_float;
+#[cfg(any(feature = "pure_math", feature = "physics"))]
+use std::fmt::Write as _;
+
+#[cfg(any(feature = "pure_math", feature = "physics"))]
+const COMMON_COMPLEX_SHADER_RESERVED: &[&str] = &[
+    "HIGH_CONTRAST",
+    "cabs",
+    "cacos",
+    "carg",
+    "casin",
+    "catan",
+    "catan2",
+    "cclamp",
+    "ccosh",
+    "ccos",
+    "cdiv",
+    "cexp",
+    "cln",
+    "clog10",
+    "cmax",
+    "cmin",
+    "cmul",
+    "cpow",
+    "crect",
+    "csinh",
+    "csin",
+    "csqrt",
+    "cstep",
+    "ctanh",
+    "ctan",
+    "cyclic_cosine_palette",
+    "ensure_dark_canvas_contrast",
+    "fragColor",
+    "iResolution",
+    "linear_channel_to_srgb",
+    "relative_luminance_srgb",
+    "srgb_channel_to_linear",
+    "u_mouse",
+    "u_resolution",
+    "u_time",
+];
+
+/// Compiles a complex [`MathExpressionInputBar`] into `(const_param_decls, glsl_vec2_expr)`.
+#[cfg(any(feature = "pure_math", feature = "physics"))]
+pub(crate) fn compile_complex_bar_glsl(
+    bar: &MathExpressionInputBar,
+    axis_vars: &[&str],
+    extra_reserved: &[&str],
+    fallback_err: &str,
+) -> Result<(String, String), String> {
+    let invalid_err = || {
+        bar.error_message()
+            .unwrap_or_else(|| fallback_err.to_string())
+    };
+    let expr = bar.expr().ok_or_else(invalid_err)?;
+    let compiled = bar.compiled().ok_or_else(invalid_err)?;
+    let param_names = compiled.param_names();
+    let param_vals = bar.param_slice();
+
+    let mut allowed_vars = Vec::with_capacity(axis_vars.len() + param_names.len());
+    allowed_vars.extend_from_slice(axis_vars);
+    let mut param_decls = String::new();
+    for (idx, name) in param_names.iter().enumerate() {
+        let key = name.as_str();
+        if axis_vars.contains(&key)
+            || COMMON_COMPLEX_SHADER_RESERVED.contains(&key)
+            || extra_reserved.contains(&key)
+        {
+            return Err(format!(
+                "Parameter '{name}' collides with a reserved GLSL shader symbol"
+            ));
+        }
+        let val = param_vals.get(idx).copied().unwrap_or(1.0);
+        let lit = format_glsl_float(val).map_err(|e| e.to_string())?;
+        writeln!(param_decls, "    const vec2 {name} = vec2({lit}, 0.0);").unwrap();
+        allowed_vars.push(key);
+    }
+    let expr_glsl = expr
+        .to_glsl_complex_with_vars(&allowed_vars)
+        .map_err(|e| e.to_string())?;
+    Ok((param_decls, expr_glsl))
+}
+
+impl ExportFormat {
+    const fn clipboard_item_noun(self) -> &'static str {
+        match self {
+            Self::Wgsl | Self::Glsl | Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
+            _ => "dataset",
+        }
+    }
+}
 
 const SHADER_EXPORT_ACTIONS: [(&str, &str, ExportFormat, ExportTarget); 8] = [
     (

@@ -18,7 +18,7 @@ pub mod fd2d;
 pub mod fd3d;
 
 pub use fd1d::FiniteDifference1D;
-pub use fd2d::FiniteDifference2D;
+pub use fd2d::{CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole};
 pub use fd3d::FiniteDifference3D;
 use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 
