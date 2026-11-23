@@ -109,7 +109,7 @@ impl IsingModelTool {
             lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
             params: Arc::clone(&self.params),
         };
-        self.worker = BackgroundWorker::new(runner);
+        self.worker.replace_runner(runner);
         self.stepped_pixels = None;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
@@ -205,6 +205,10 @@ impl InteractiveTool for IsingModelTool {
     }
     fn domain(&self) -> &'static str {
         "solid_state"
+    }
+
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {

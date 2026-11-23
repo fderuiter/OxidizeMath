@@ -137,7 +137,7 @@ impl MorphogenesisTool {
             self.width,
             self.height,
         );
-        self.worker = BackgroundWorker::new(runner);
+        self.worker.replace_runner(runner);
         self.branch_engine.clear();
         self.stepped_pixels = None;
         self.step_runner = None;
@@ -181,6 +181,9 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn domain(&self) -> &'static str {
         "biology"
+    }
+    fn set_suspended(&mut self, suspended: bool) {
+        self.sync_suspended(suspended);
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {

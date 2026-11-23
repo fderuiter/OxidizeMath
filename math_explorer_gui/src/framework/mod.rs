@@ -388,6 +388,9 @@ pub trait InteractiveTool {
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 
+    /// Suspends or resumes background simulation workers when this tool enters or leaves an active viewport.
+    fn set_suspended(&mut self, _suspended: bool) {}
+
     /// Optional hook returning the active counterfactual divergence snapshot for `SimulationFramework`.
     fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
         None
@@ -485,6 +488,7 @@ pub struct SimulationFramework {
     pub(super) sync_state: FrameworkSyncState,
     pub(super) rev_cache: FrameworkRevisionCache,
     pub atlas_host: atlas_host::FrameworkAtlasHost,
+    pub(super) suspended: bool,
 }
 
 pub use crate::camera::{

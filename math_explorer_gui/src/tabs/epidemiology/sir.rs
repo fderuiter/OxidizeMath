@@ -345,6 +345,10 @@ impl InteractiveTool for SirTool {
         "epidemiology"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
+    }
+
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut h);

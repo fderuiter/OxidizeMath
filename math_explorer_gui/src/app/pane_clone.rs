@@ -30,6 +30,7 @@ impl MathExplorerApp {
         self.apply_cloned_state_to_pane(dst_pane, src_tab_idx, &tab_name, saved_json.as_ref());
         self.tab_state_cache.invalidate_tab(&tab_name);
         self.clear_active_pane_caches();
+        self.sync_viewport_visibility();
         true
     }
 
@@ -84,7 +85,7 @@ impl MathExplorerApp {
             return;
         }
 
-        let is_active_pane = dst_pane < self.viewport_layout.pane_count();
+        let is_active_pane = dst_pane < self.effective_viewport_layout().pane_count();
         let Some(slot) = self.pane_slots.slot_mut(dst_pane) else {
             return;
         };
@@ -97,7 +98,7 @@ impl MathExplorerApp {
         slot.clear_active_cache();
 
         if is_active_pane {
-            if let Some(dst_tab) = slot.ensure_tab(src_tab_idx) {
+            if let Some(dst_tab) = slot.ensure_tab(src_tab_idx, false) {
                 if let Some(json) = saved_json {
                     dst_tab.load_state(json);
                 }

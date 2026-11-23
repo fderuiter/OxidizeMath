@@ -292,6 +292,10 @@ impl InteractiveTool for MriTool {
         "mri"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+    }
+
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }

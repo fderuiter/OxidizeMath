@@ -1,101 +1,25 @@
-//! Cooperative WebAssembly simulation scheduler and handle-keyed wake registry.
+//! Cooperative WebAssembly simulation worker loop driven by [`super::wasm_scheduler`].
 
 // theory_verification!
 
+use super::wasm_scheduler::{
+    acknowledge_wake, allocate_worker_slice_budget, clear_worker_entries, current_frame_epoch,
+    is_worker_suspended, record_worker_slice_elapsed, set_worker_running, suspend_idle_worker,
+    wait_for_next_animation_frame,
+};
 use super::worker::{
     advance_running_frame, drain_worker_commands, make_worker_ring, sync_worker_timeline,
     FrameTickOutcome,
 };
-use super::{
-    take_worker_context, SimCommand, SimWorkerState, WorkerStatusEvent, WASM_FRAME_SLICE_BUDGET,
-};
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use super::{take_worker_context, SimCommand, SimWorkerState, WorkerStatusEvent};
 use std::sync::mpsc::{Receiver, TryRecvError};
-use wasm_bindgen::JsCast;
-
-#[derive(Default)]
-struct WakeRegistry {
-    callbacks: HashMap<u32, js_sys::Function>,
-    pending_wakes: HashSet<u32>,
-}
-
-thread_local! {
-    static WAKE_REGISTRY: RefCell<WakeRegistry> = RefCell::new(WakeRegistry::default());
-}
-
-/// Wakes the suspended simulation task associated with `handle`.
-pub(super) fn wake_worker(handle: u32) {
-    let callback = WAKE_REGISTRY.with(|registry| {
-        let mut reg = registry.borrow_mut();
-        if let Some(cb) = reg.callbacks.remove(&handle) {
-            Some(cb)
-        } else {
-            reg.pending_wakes.insert(handle);
-            None
-        }
-    });
-    if let Some(func) = callback {
-        let _ = func.call0(&wasm_bindgen::JsValue::UNDEFINED);
-    }
-}
-
-fn clear_wake_entry(handle: u32) {
-    WAKE_REGISTRY.with(|registry| {
-        let mut reg = registry.borrow_mut();
-        reg.callbacks.remove(&handle);
-        reg.pending_wakes.remove(&handle);
-    });
-}
-
-async fn yield_to_event_loop() {
-    let promise = js_sys::Promise::new(&mut |resolve, _| {
-        let timeout_scheduled = if let Ok(window) = js_sys::global().dyn_into::<web_sys::Window>() {
-            window
-                .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0)
-                .is_ok()
-        } else {
-            false
-        };
-        if !timeout_scheduled {
-            let _ = resolve.call0(&wasm_bindgen::JsValue::UNDEFINED);
-        }
-    });
-    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-}
-
-async fn suspend_worker(handle: u32) {
-    let already_woken =
-        WAKE_REGISTRY.with(|registry| registry.borrow_mut().pending_wakes.remove(&handle));
-    if already_woken {
-        return;
-    }
-    let promise = js_sys::Promise::new(&mut |resolve, _| {
-        let immediate = WAKE_REGISTRY.with(|registry| {
-            let mut reg = registry.borrow_mut();
-            if reg.pending_wakes.remove(&handle) {
-                true
-            } else {
-                reg.callbacks.insert(handle, resolve.clone());
-                false
-            }
-        });
-        if immediate {
-            let _ = resolve.call0(&wasm_bindgen::JsValue::UNDEFINED);
-        }
-    });
-    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-    WAKE_REGISTRY.with(|registry| {
-        registry.borrow_mut().callbacks.remove(&handle);
-    });
-}
 
 async fn poll_next_wasm_command(
     handle: u32,
-    state: SimWorkerState,
+    actively_running: bool,
     cmd_rx: &Receiver<SimCommand>,
 ) -> Result<Option<SimCommand>, ()> {
-    if state.is_running() {
+    if actively_running {
         return match cmd_rx.try_recv() {
             Ok(cmd) => Ok(Some(cmd)),
             Err(TryRecvError::Empty) => Ok(None),
@@ -106,7 +30,7 @@ async fn poll_next_wasm_command(
         Ok(cmd) => Ok(Some(cmd)),
         Err(TryRecvError::Disconnected) => Err(()),
         Err(TryRecvError::Empty) => {
-            suspend_worker(handle).await;
+            suspend_idle_worker(handle).await;
             match cmd_rx.try_recv() {
                 Ok(cmd) => Ok(Some(cmd)),
                 Err(TryRecvError::Empty) => Ok(None),
@@ -116,68 +40,102 @@ async fn poll_next_wasm_command(
     }
 }
 
+struct WasmWorkerLoop {
+    handle: u32,
+    runner: Box<dyn super::SimulationRunner>,
+    cmd_rx: Receiver<SimCommand>,
+    state_tx: super::SimStateSender,
+    state: SimWorkerState,
+    steps_per_frame: usize,
+    ring: Option<super::CheckpointRing>,
+    last_ticked_epoch: u64,
+}
+
+impl WasmWorkerLoop {
+    fn tick_epoch_slice(&mut self) -> bool {
+        let epoch = current_frame_epoch();
+        if self.last_ticked_epoch == epoch {
+            return true;
+        }
+        let budget = allocate_worker_slice_budget(self.handle);
+        let slice_start = crate::web_io::PlatformInstant::now();
+        let outcome = advance_running_frame(
+            &mut *self.runner,
+            &mut self.ring,
+            self.steps_per_frame,
+            Some(budget),
+            &mut self.state,
+            &self.state_tx,
+        );
+        record_worker_slice_elapsed(slice_start.elapsed());
+        self.last_ticked_epoch = epoch;
+        set_worker_running(self.handle, self.state.is_running());
+        !matches!(outcome, FrameTickOutcome::Disconnected)
+    }
+}
+
 /// Cooperative simulation worker entry point for WebAssembly.
 pub(super) async fn run_simulation_worker(handle: u32) {
     let Some(ctx) = take_worker_context(handle) else {
-        clear_wake_entry(handle);
+        clear_worker_entries(handle);
         return;
     };
-    let mut runner = ctx.runner;
-    let cmd_rx = ctx.cmd_rx;
-    let state_tx = ctx.state_tx;
-
-    let mut state = SimWorkerState::Ready;
-    let mut steps_per_frame = runner.get_steps_per_frame();
-    let mut ring = make_worker_ring(&*runner);
-    sync_worker_timeline(&ring, &state_tx);
-    if !state_tx.mark_seeded()
-        && state_tx
-            .send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready)
+    let steps_per_frame = ctx.runner.get_steps_per_frame();
+    let ring = make_worker_ring(&*ctx.runner);
+    sync_worker_timeline(&ring, &ctx.state_tx);
+    if !ctx.state_tx.mark_seeded()
+        && ctx
+            .state_tx
+            .send_snapshot_and_status(ctx.runner.get_snapshot(), WorkerStatusEvent::Ready)
             .is_err()
     {
-        clear_wake_entry(handle);
+        clear_worker_entries(handle);
         return;
     }
 
+    let mut worker = WasmWorkerLoop {
+        handle,
+        runner: ctx.runner,
+        cmd_rx: ctx.cmd_rx,
+        state_tx: ctx.state_tx,
+        state: SimWorkerState::Ready,
+        steps_per_frame,
+        ring,
+        last_ticked_epoch: 0,
+    };
     loop {
-        let Ok(cmd_opt) = poll_next_wasm_command(handle, state, &cmd_rx).await else {
+        acknowledge_wake(handle);
+        let actively_running = worker.state.is_running() && !is_worker_suspended(handle);
+        set_worker_running(handle, worker.state.is_running());
+
+        let Ok(cmd_opt) = poll_next_wasm_command(handle, actively_running, &worker.cmd_rx).await
+        else {
             break;
         };
-
         if let Some(first_cmd) = cmd_opt {
             if !drain_worker_commands(
                 first_cmd,
-                &cmd_rx,
-                &mut *runner,
-                &mut ring,
-                &mut state,
-                &mut steps_per_frame,
-                &state_tx,
+                &worker.cmd_rx,
+                &mut *worker.runner,
+                &mut worker.ring,
+                &mut worker.state,
+                &mut worker.steps_per_frame,
+                &worker.state_tx,
             ) {
                 break;
             }
-            if !state.is_running() {
-                yield_to_event_loop().await;
-            }
+            set_worker_running(handle, worker.state.is_running());
         }
 
-        if state.is_running() {
-            if matches!(
-                advance_running_frame(
-                    &mut *runner,
-                    &mut ring,
-                    steps_per_frame,
-                    Some(WASM_FRAME_SLICE_BUDGET),
-                    &mut state,
-                    &state_tx,
-                ),
-                FrameTickOutcome::Disconnected
-            ) {
+        if worker.state.is_running() && !is_worker_suspended(handle) {
+            if !worker.tick_epoch_slice() {
                 break;
             }
-            yield_to_event_loop().await;
+            if worker.state.is_running() && !is_worker_suspended(handle) {
+                wait_for_next_animation_frame(handle).await;
+            }
         }
     }
 
-    clear_wake_entry(handle);
+    clear_worker_entries(handle);
 }

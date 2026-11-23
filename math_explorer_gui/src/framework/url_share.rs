@@ -248,7 +248,7 @@ impl SimulationFramework {
     pub(super) fn commit_validated_url_candidate(
         &mut self,
         target_idx: usize,
-        candidate: Box<dyn super::InteractiveTool>,
+        mut candidate: Box<dyn super::InteractiveTool>,
     ) {
         if self.selected_tool_index != Some(target_idx) {
             if let Some((old_name, old_json)) = self.serialized_active_tool() {
@@ -256,10 +256,14 @@ impl SimulationFramework {
                     .insert(old_name.to_string(), old_json.to_string());
             }
         }
+        if let Some(mut old_tool) = self.active_tool.take() {
+            old_tool.set_suspended(true);
+        }
         scientific_metadata::citation_registry::CitationRegistry::register(
             candidate.name().to_string(),
             candidate.theory().theory_citation(),
         );
+        candidate.set_suspended(self.suspended);
         self.active_challenge = None;
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(target_idx);

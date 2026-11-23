@@ -28,7 +28,9 @@ impl SecondarySlot {
 
     pub(super) fn reset_active_without_snapshot(&mut self) {
         *self.active_cache.borrow_mut() = None;
-        self.active = None;
+        if let Some((_, mut old)) = self.active.take() {
+            old.set_suspended(true);
+        }
     }
 
     pub(super) fn snapshot_active(&mut self) {
@@ -48,10 +50,16 @@ impl SecondarySlot {
     fn drop_active(&mut self) {
         self.snapshot_active();
         *self.active_cache.borrow_mut() = None;
-        self.active = None;
+        if let Some((_, mut old)) = self.active.take() {
+            old.set_suspended(true);
+        }
     }
 
-    pub(super) fn ensure_tab(&mut self, tab_idx: usize) -> Option<&mut Box<dyn ExplorerTab>> {
+    pub(super) fn ensure_tab(
+        &mut self,
+        tab_idx: usize,
+        suspended: bool,
+    ) -> Option<&mut Box<dyn ExplorerTab>> {
         self.initialized = true;
         let needs_rebuild = match &self.active {
             Some((current_idx, _)) => *current_idx != tab_idx,
@@ -60,13 +68,17 @@ impl SecondarySlot {
         if needs_rebuild {
             self.drop_active();
             let mut new_tab = crate::tabs::instantiate_tab(tab_idx)?;
+            new_tab.set_suspended(suspended);
             if let Some(saved) = self.saved_states.get(new_tab.name()) {
                 new_tab.load_state(saved);
+                new_tab.set_suspended(suspended);
             }
             *self.active_cache.borrow_mut() = None;
             self.active = Some((tab_idx, new_tab));
         }
-        self.active.as_mut().map(|(_, tab)| tab)
+        let tab = self.active.as_mut().map(|(_, tab)| tab)?;
+        tab.set_suspended(suspended);
+        Some(tab)
     }
 
     fn extract_states(&self, had_input: bool) -> HashMap<String, SharedTabJson> {
@@ -173,6 +185,7 @@ impl MathExplorerApp {
         } else if self.focused_pane >= active_pane_count {
             self.focused_pane = active_pane_count - 1;
         }
+        self.sync_viewport_visibility();
     }
 
     /// Surrenders focus on the root `egui::Context` when the focused widget belonged to a pruned viewport pane.
@@ -215,13 +228,18 @@ impl MathExplorerApp {
     pub fn pane_tab_mut(&mut self, pane_idx: usize) -> Option<&mut Box<dyn ExplorerTab>> {
         if pane_idx == 0 {
             let tab_idx = self.active_primary_tab_index();
-            return self.tabs.get_mut(tab_idx);
+            let tab = self.tabs.get_mut(tab_idx)?;
+            tab.set_suspended(false);
+            return Some(tab);
         }
+        let is_visible_pane = pane_idx < self.effective_viewport_layout().pane_count();
         let tab_idx = self.pane_tabs.get(pane_idx).copied()?;
         if tab_idx >= self.tabs.len() {
             return None;
         }
-        self.pane_slots.slot_mut(pane_idx)?.ensure_tab(tab_idx)
+        self.pane_slots
+            .slot_mut(pane_idx)?
+            .ensure_tab(tab_idx, !is_visible_pane)
     }
 
     /// Clears cached serialized JSON for active primary and secondary viewport panes.
@@ -245,7 +263,7 @@ impl MathExplorerApp {
 
     /// Returns the primary `app.tabs` index rendered in Pane 0.
     pub(super) fn active_primary_tab_index(&self) -> usize {
-        if self.viewport_layout == ViewportLayout::Single {
+        if self.effective_viewport_layout() == ViewportLayout::Single {
             self.selected_tab
         } else {
             self.pane_tabs.first().copied().unwrap_or(self.selected_tab)
@@ -361,15 +379,17 @@ impl MathExplorerApp {
             if pane_idx < pane_count {
                 if let Some((active_idx, ref mut active_tab)) = slot.active {
                     if active_idx == assigned {
+                        active_tab.set_suspended(false);
                         if let Some(saved) = slot.saved_states.get(active_tab.name()) {
                             active_tab.load_state(saved);
                         }
-                    } else {
-                        slot.active = None;
+                    } else if let Some((_, mut old)) = slot.active.take() {
+                        old.set_suspended(true);
                     }
                 }
             }
         }
+        self.sync_viewport_visibility();
     }
 
     /// Updates `focused_pane` strictly when raw input contains a pointer press or touch start inside an active pane.

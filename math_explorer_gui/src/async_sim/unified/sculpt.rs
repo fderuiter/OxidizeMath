@@ -228,12 +228,32 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
         runner
     }
 
-    fn apply_sculpt_if_present(&mut self, current_params: &HashMap<String, f64>) {
+    fn apply_sculpt_fields(
+        model: &mut M,
+        sculpt_state: &RwLock<SculptStatePayload>,
+        current_params: &HashMap<String, f64>,
+    ) {
         if M::supports_spatial_brush() {
-            let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+            let sculpt = sculpt_state.read().unwrap_or_else(|e| e.into_inner());
             if !sculpt.is_empty() {
-                self.model.apply_sculpt_payload(&sculpt, current_params);
+                model.apply_sculpt_payload(&sculpt, current_params);
             }
+        }
+    }
+
+    fn apply_sculpt_if_present(&mut self, current_params: &HashMap<String, f64>) {
+        Self::apply_sculpt_fields(&mut self.model, &self.sculpt_state, current_params);
+    }
+
+    fn sync_sculpt_fields(
+        model: &M,
+        sculpt_state: &RwLock<SculptStatePayload>,
+        current_params: &HashMap<String, f64>,
+    ) {
+        if M::supports_spatial_brush() {
+            let exported = model.export_sculpt_payload(current_params);
+            let mut guard = sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+            *guard = exported;
         }
     }
 
@@ -272,62 +292,79 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
         );
     }
 
-    fn sync_sculpt_from_model(&self, current_params: &HashMap<String, f64>) {
-        if M::supports_spatial_brush() {
-            let exported = self.model.export_sculpt_payload(current_params);
-            let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
-            *guard = exported;
+    fn reset_runner(&mut self) {
+        let current_params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let had_sculpt = !self
+            .sculpt_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_empty();
+        if had_sculpt {
+            Self::apply_sculpt_fields(&mut self.model, &self.sculpt_state, &current_params);
+        }
+        self.model.reset_model(&current_params);
+        self.applied_formula_rev = None;
+        Self::sync_formula_fields(
+            &mut self.model,
+            &self.sculpt_state,
+            &self.formula,
+            &mut self.applied_formula_rev,
+            &current_params,
+        );
+        if had_sculpt {
+            Self::sync_sculpt_fields(&self.model, &self.sculpt_state, &current_params);
         }
     }
 }
 
 impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
     fn process_command(&mut self, cmd: SimCommand) {
-        let current_params = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
         match cmd {
             SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
-            SimCommand::Reset => {
-                let had_sculpt = !self
-                    .sculpt_state
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .is_empty();
-                if had_sculpt {
-                    self.apply_sculpt_if_present(&current_params);
-                }
-                self.model.reset_model(&current_params);
-                self.applied_formula_rev = None;
-                self.sync_formula(&current_params);
-                if had_sculpt {
-                    self.sync_sculpt_from_model(&current_params);
-                }
-            }
+            SimCommand::Reset => self.reset_runner(),
             SimCommand::SyncSculptState(payload) => {
-                self.sync_formula(&current_params);
+                let current_params = self.params.read().unwrap_or_else(|e| e.into_inner());
+                Self::sync_formula_fields(
+                    &mut self.model,
+                    &self.sculpt_state,
+                    &self.formula,
+                    &mut self.applied_formula_rev,
+                    &current_params,
+                );
                 self.model.apply_sculpt_payload(&payload, &current_params);
                 let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
                 *guard = payload;
             }
             SimCommand::Custom(ref action) if action == super::SYNC_PARAMETERS_COMMAND => {
+                let current_params = self.params.read().unwrap_or_else(|e| e.into_inner());
                 let had_sculpt = !self
                     .sculpt_state
                     .read()
                     .unwrap_or_else(|e| e.into_inner())
                     .is_empty();
-                self.sync_formula(&current_params);
+                Self::sync_formula_fields(
+                    &mut self.model,
+                    &self.sculpt_state,
+                    &self.formula,
+                    &mut self.applied_formula_rev,
+                    &current_params,
+                );
                 self.model.sync_parameters(&current_params);
                 if had_sculpt {
-                    self.sync_sculpt_from_model(&current_params);
+                    Self::sync_sculpt_fields(&self.model, &self.sculpt_state, &current_params);
                 }
             }
             other => {
-                self.sync_formula(&current_params);
+                let current_params = self.params.read().unwrap_or_else(|e| e.into_inner());
+                Self::sync_formula_fields(
+                    &mut self.model,
+                    &self.sculpt_state,
+                    &self.formula,
+                    &mut self.applied_formula_rev,
+                    &current_params,
+                );
                 self.model.process_command(other, &current_params);
-                self.sync_sculpt_from_model(&current_params);
+                Self::sync_sculpt_fields(&self.model, &self.sculpt_state, &current_params);
             }
         }
     }
@@ -376,6 +413,11 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
     fn capture_active_params(&self) -> Option<CheckpointParams> {
         let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
         self.model.capture_active_params(&guard)
+    }
+
+    fn active_params_match(&self, last: &CheckpointParams) -> bool {
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        self.model.active_params_match(&guard, last)
     }
 
     fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {

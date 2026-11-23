@@ -85,8 +85,13 @@ pub struct IsingRunner {
     pub params: Arc<std::sync::RwLock<IsingSharedParams>>,
 }
 
+const ISING_SLICE_TRIAL_CHUNK: usize = 512;
+
 impl IsingRunner {
-    fn evolve_trials(&mut self, num_trials: usize) {
+    fn evolve_trials_sliced(&mut self, num_trials: usize, max_slice: Option<std::time::Duration>) {
+        if num_trials == 0 {
+            return;
+        }
         let (mode, temp, j, h, payoffs) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (
@@ -100,28 +105,82 @@ impl IsingRunner {
         if !temp.is_finite() {
             return;
         }
-        match mode {
+        let completed = match mode {
             IsingInteractionMode::Ferromagnetic => {
                 if !j.is_finite() || !h.is_finite() {
                     return;
                 }
                 let j_scale = if j.abs() < 1e-6 { 1.0 } else { j.abs() };
                 let t_phys = temp.max(1e-3) * j_scale / KB;
-                self.lattice.evolve(num_trials, t_phys, j, h);
+                self.evolve_ferromagnetic_chunks(num_trials, t_phys, j, h, max_slice)
             }
             IsingInteractionMode::FermiGame => {
                 if !payoffs.iter().all(|v| v.is_finite()) {
                     return;
                 }
                 let mat = DMatrix::from_row_slice(2, 2, &payoffs);
-                if let Ok(payoff) = MatrixPayoff::new(mat) {
-                    self.lattice.evolve_fermi_game(num_trials, temp, &payoff);
-                }
+                let Ok(payoff) = MatrixPayoff::new(mat) else {
+                    return;
+                };
+                self.evolve_fermi_chunks(num_trials, temp, &payoff, max_slice)
             }
-        }
+        };
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         p.total_trials
-            .fetch_add(num_trials as u64, Ordering::Relaxed);
+            .fetch_add(completed as u64, Ordering::Relaxed);
+    }
+
+    fn evolve_ferromagnetic_chunks(
+        &mut self,
+        num_trials: usize,
+        t_phys: f64,
+        j: f64,
+        h: f64,
+        max_slice: Option<std::time::Duration>,
+    ) -> usize {
+        let Some(raw_budget) = max_slice else {
+            self.lattice.evolve(num_trials, t_phys, j, h);
+            return num_trials;
+        };
+        let reserve = std::time::Duration::from_micros(150).min(raw_budget / 4);
+        let budget = raw_budget.saturating_sub(reserve);
+        let start = crate::web_io::PlatformInstant::now();
+        let mut done = 0_usize;
+        while done < num_trials {
+            if done > 0 && start.elapsed() >= budget {
+                break;
+            }
+            let batch = (num_trials - done).min(ISING_SLICE_TRIAL_CHUNK);
+            self.lattice.evolve(batch, t_phys, j, h);
+            done += batch;
+        }
+        done
+    }
+
+    fn evolve_fermi_chunks(
+        &mut self,
+        num_trials: usize,
+        temp: f64,
+        payoff: &MatrixPayoff,
+        max_slice: Option<std::time::Duration>,
+    ) -> usize {
+        let Some(raw_budget) = max_slice else {
+            self.lattice.evolve_fermi_game(num_trials, temp, payoff);
+            return num_trials;
+        };
+        let reserve = std::time::Duration::from_micros(150).min(raw_budget / 4);
+        let budget = raw_budget.saturating_sub(reserve);
+        let start = crate::web_io::PlatformInstant::now();
+        let mut done = 0_usize;
+        while done < num_trials {
+            if done > 0 && start.elapsed() >= budget {
+                break;
+            }
+            let batch = (num_trials - done).min(ISING_SLICE_TRIAL_CHUNK);
+            self.lattice.evolve_fermi_game(batch, temp, payoff);
+            done += batch;
+        }
+        done
     }
 }
 
@@ -170,17 +229,21 @@ impl SimulationRunner for IsingRunner {
     }
 
     fn step(&mut self) {
+        self.step_sliced(None);
+    }
+
+    fn step_sliced(&mut self, max_slice: Option<std::time::Duration>) {
         let steps = self
             .params
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .steps_per_frame;
-        self.evolve_trials(steps);
+        self.evolve_trials_sliced(steps, max_slice);
     }
 
     fn step_once(&mut self) {
         let one_sweep = self.lattice.width() * self.lattice.height();
-        self.evolve_trials(one_sweep);
+        self.evolve_trials_sliced(one_sweep, None);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {

@@ -5,7 +5,7 @@
 use super::presets::MorphogenesisToolState;
 use super::runner::MorphogenesisKineticsAdapter;
 use super::{MorphogenesisTool, SimpleRng};
-use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
+use crate::async_sim::{SculptStatePayload, SimCommand, SimWorkerState};
 use crate::framework::InteractiveTool;
 use crate::presets::MorphogenesisKineticsMode;
 #[cfg(test)]
@@ -25,6 +25,11 @@ use math_explorer::rand::Rng;
 use math_explorer::rng::OxidizeRng;
 
 impl MorphogenesisTool {
+    pub(super) fn sync_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+        self.atlas.set_suspended(suspended);
+    }
+
     pub(crate) fn apply_named_preset(&mut self, a: f64, b: f64, d_u: f64, d_v: f64, dt: f64) {
         let (f, k) = {
             let ks = self
@@ -143,7 +148,7 @@ impl MorphogenesisTool {
                 self.width,
                 self.height,
             );
-            self.worker = BackgroundWorker::new(runner);
+            self.worker.replace_runner(runner);
             self.branch_engine.clear();
             self.stepped_pixels = None;
             self.step_runner = None;

@@ -20,6 +20,7 @@ pub(crate) mod state_history;
 pub mod theme;
 pub(crate) mod ui_panels;
 pub(crate) mod viewport;
+mod visibility;
 
 #[cfg(test)]
 mod tests;
@@ -119,7 +120,7 @@ impl Default for MathExplorerApp {
         crate::framework::ensure_custom_fit_bridge();
         let tabs: Vec<Box<dyn ExplorerTab>> = crate::tabs::instantiate_tabs();
 
-        Self {
+        let mut app = Self {
             tabs,
             selected_tab: 0,
             split_layout_mode: SplitLayoutMode::Single,
@@ -148,7 +149,9 @@ impl Default for MathExplorerApp {
             pending_focus_prune: false,
             compare_sync: ComparisonSyncConfig::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
-        }
+        };
+        app.sync_viewport_visibility();
+        app
     }
 }
 
@@ -277,6 +280,7 @@ impl MathExplorerApp {
         let active_layout = self.resolve_active_viewport_layout();
         self.prune_inactive_pane_slots(active_layout.pane_count());
         domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
+        self.sync_viewport_visibility();
         self.sync_workspace_history_bridge(ctx);
 
         if active_layout != ViewportLayout::Single {
@@ -298,6 +302,7 @@ impl eframe::App for MathExplorerApp {
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
         self.render_global_starter_gallery(ctx);
         self.apply_command_palette_selection(ctx);
+        self.sync_viewport_visibility();
         crate::accessibility::sync_context_live_messages(ctx, false);
 
         self.last_frame_had_input =

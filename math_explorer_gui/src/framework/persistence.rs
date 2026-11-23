@@ -300,8 +300,10 @@ impl SimulationFramework {
 
         let Some(idx) = tool_idx.filter(|&i| i < self.available_tools.len()) else {
             if tool_idx.is_none() {
+                if let Some(mut old) = self.active_tool.take() {
+                    old.set_suspended(true);
+                }
                 self.selected_tool_index = None;
-                self.active_tool = None;
             }
             return;
         };
@@ -318,6 +320,7 @@ impl SimulationFramework {
         self.is_diverged = false;
         self.diagnostic_report = None;
         if let Some(tool) = &mut self.active_tool {
+            tool.set_suspended(self.suspended);
             if let Some(saved) = self
                 .saved_tool_states
                 .get(tool.name())
@@ -330,11 +333,14 @@ impl SimulationFramework {
                     let _ = tool.try_load_recovery_state(base);
                 }
                 if !tool.has_finite_parameters() {
-                    let fresh = (meta.build)();
+                    tool.set_suspended(true);
+                    let mut fresh = (meta.build)();
+                    fresh.set_suspended(self.suspended);
                     self.baseline_tool_state = fresh.save_state();
                     *tool = fresh;
                 }
             }
+            tool.set_suspended(self.suspended);
             let refreshed = capture_isolated_tool_datasets(tool.as_ref());
             let refreshed_3d = capture_isolated_tool_datasets_3d(tool.as_ref());
             let recovery = tool.save_recovery_state();
@@ -366,6 +372,9 @@ impl SimulationFramework {
             self.saved_tool_states
                 .insert(old_name.to_string(), old_json.to_string());
         }
+        if let Some(mut old_tool) = self.active_tool.take() {
+            old_tool.set_suspended(true);
+        }
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
         self.clear_challenge_hud();
@@ -375,6 +384,7 @@ impl SimulationFramework {
         self.selected_tool_index = Some(index);
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();
+        new_tool.set_suspended(self.suspended);
         let factory_baseline_state = new_tool.save_state();
         if let Some(state) = self
             .saved_tool_states
@@ -382,6 +392,7 @@ impl SimulationFramework {
             .or_else(|| self.saved_tool_states.get(meta.id))
         {
             new_tool.load_state(state);
+            new_tool.set_suspended(self.suspended);
         }
         self.is_diverged = false;
         self.diagnostic_report = None;

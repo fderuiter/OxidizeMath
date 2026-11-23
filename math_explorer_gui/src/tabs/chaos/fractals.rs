@@ -224,6 +224,11 @@ impl InteractiveTool for FractalViewer {
         "chaos"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+        self.atlas.set_suspended(suspended);
+    }
+
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::raster_only().with_shader()
     }
@@ -433,8 +438,8 @@ impl FractalViewer {
                     let shared = Arc::clone(&self.shared_request);
                     let latest = Arc::clone(&self.latest_generation);
                     let formula = Arc::clone(&self.shared_formula);
-                    self.worker =
-                        BackgroundWorker::new(FractalRunner::with_formula(shared, latest, formula));
+                    self.worker
+                        .replace_runner(FractalRunner::with_formula(shared, latest, formula));
                     let _ = self.worker.send_command(SimCommand::Start);
                 }
                 SimWorkerState::Uninitialized | SimWorkerState::Stepping => {}

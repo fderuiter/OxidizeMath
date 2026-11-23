@@ -302,6 +302,13 @@ pub trait ExplorerTab {
         self.framework().and_then(|fw| fw.active_tool_id())
     }
 
+    /// Suspends or resumes background simulation workers when this tab leaves or enters visible panes.
+    fn set_suspended(&mut self, suspended: bool) {
+        if let Some(fw) = self.framework_mut() {
+            fw.set_suspended(suspended);
+        }
+    }
+
     /// Deterministic parameter-only revision token for 300 ms debounced URL sync.
     fn url_state_revision(&self) -> u64 {
         self.framework()

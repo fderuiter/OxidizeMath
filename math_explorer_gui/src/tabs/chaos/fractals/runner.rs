@@ -230,8 +230,9 @@ pub struct FractalRunner {
     active_formula: Option<Arc<CompiledFractalJob>>,
     stride_idx: usize,
     pub(super) next_sample_y: usize,
+    next_sample_x: usize,
     completed_stride: usize,
-    buffer: Vec<egui::Color32>,
+    buffer: Arc<RwLock<Vec<egui::Color32>>>,
 }
 
 impl FractalRunner {
@@ -274,8 +275,9 @@ impl FractalRunner {
             active_formula: formula,
             stride_idx: FRACTAL_STRIDES.len(),
             next_sample_y: 0,
+            next_sample_x: 0,
             completed_stride: 1,
-            buffer: seed_img.pixels,
+            buffer: Arc::new(RwLock::new(seed_img.pixels)),
         }
     }
 
@@ -297,50 +299,77 @@ impl FractalRunner {
         req.width = w;
         req.height = h;
         let needed = w.saturating_mul(h);
-        if self.buffer.len() != needed {
-            self.buffer.resize(needed, egui::Color32::BLACK);
+        {
+            let mut buf = self.buffer.write().unwrap_or_else(|e| e.into_inner());
+            if buf.len() != needed {
+                buf.resize(needed, egui::Color32::BLACK);
+            }
         }
         self.active = req;
         self.active_formula = formula;
         self.stride_idx = 0;
         self.next_sample_y = 0;
+        self.next_sample_x = 0;
         self.completed_stride = FRACTAL_STRIDES[0];
         true
     }
 
-    fn render_sample_row(&mut self, sy: usize, stride: usize, scale_x: f64, scale_y: f64) {
+    fn render_sample_row_sliced(
+        &mut self,
+        buf: &mut [egui::Color32],
+        sy: usize,
+        stride: usize,
+        scale: (f64, f64),
+        slice_start: crate::web_io::PlatformInstant,
+        budget: Duration,
+    ) -> bool {
         let width = self.active.width;
         let height = self.active.height;
-        let x_start = self.active.center.re - scale_x * 0.5;
-        let y_start = self.active.center.im + scale_y * 0.5;
-        let im = y_start - (sy as f64 / height as f64) * scale_y;
+        let x_start = self.active.center.re - scale.0 * 0.5;
+        let y_start = self.active.center.im + scale.1 * 0.5;
+        let im = y_start - (sy as f64 / height as f64) * scale.1;
         let prev_stride = stride.saturating_mul(2);
         let y_end = sy.saturating_add(stride).min(height);
 
-        let mut sx = 0;
+        let mut sx = self.next_sample_x;
+        let mut samples = 0_usize;
         while sx < width {
+            if samples > 0 && samples.is_multiple_of(8) && slice_start.elapsed() >= budget {
+                self.next_sample_x = sx;
+                return false;
+            }
             let reuse_coarse = stride < FRACTAL_STRIDES[0]
                 && sx.is_multiple_of(prev_stride)
                 && sy.is_multiple_of(prev_stride);
             let color = if reuse_coarse {
-                self.buffer[flatten_2d_index(sx, sy, width)]
+                buf[flatten_2d_index(sx, sy, width)]
             } else {
-                let re = x_start + (sx as f64 / width as f64) * scale_x;
+                let re = x_start + (sx as f64 / width as f64) * scale.0;
                 eval_pixel_color(re, im, &self.active, self.active_formula.as_deref())
             };
 
-            if stride == 1 {
-                self.buffer[flatten_2d_index(sx, sy, width)] = color;
-            } else {
-                let x_end = sx.saturating_add(stride).min(width);
-                for by in sy..y_end {
-                    for bx in sx..x_end {
-                        self.buffer[flatten_2d_index(bx, by, width)] = color;
-                    }
-                }
+            let x_end = sx.saturating_add(stride).min(width);
+            for by in sy..y_end {
+                let row_start = flatten_2d_index(sx, by, width);
+                buf[row_start..row_start + (x_end - sx)].fill(color);
             }
             sx = sx.saturating_add(stride);
+            samples += 1;
         }
+        self.next_sample_x = 0;
+        true
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    // theory_verification!
+    fn snapshot_pixels_arc(&self) -> Arc<RwLock<Vec<egui::Color32>>> {
+        Arc::clone(&self.buffer)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn snapshot_pixels_arc(&self) -> Arc<RwLock<Vec<egui::Color32>>> {
+        let guard = self.buffer.read().unwrap_or_else(|e| e.into_inner());
+        Arc::new(RwLock::new(guard.clone()))
     }
 }
 
@@ -352,6 +381,11 @@ impl SimulationRunner for FractalRunner {
     }
 
     fn step(&mut self) {
+        self.step_sliced(None);
+    }
+
+    fn step_sliced(&mut self, max_slice: Option<Duration>) {
+        let slice_start = crate::web_io::PlatformInstant::now();
         let _ = self.sync_request();
         if self.stride_idx >= FRACTAL_STRIDES.len()
             || self.active.width == 0
@@ -361,30 +395,48 @@ impl SimulationRunner for FractalRunner {
             return;
         }
 
+        let budget = max_slice.map_or(WORKER_STEP_BUDGET, |b| {
+            b.min(WORKER_STEP_BUDGET)
+                .saturating_sub(Duration::from_micros(80))
+        });
         let stride = FRACTAL_STRIDES[self.stride_idx];
         let height = self.active.height;
         let scale_y = 3.0 / self.active.zoom;
         let scale_x = scale_y * (self.active.width as f64 / height as f64);
-        let slice_start = crate::web_io::PlatformInstant::now();
-
+        let buf = Arc::clone(&self.buffer);
         let mut sy = self.next_sample_y;
         while sy < height {
             if self.latest_generation.load(Ordering::Relaxed) != self.active.generation {
+                drop(buf);
                 let _ = self.sync_request();
                 return;
             }
-            self.render_sample_row(sy, stride, scale_x, scale_y);
+            let row_done = {
+                let mut guard = buf.write().unwrap_or_else(|e| e.into_inner());
+                self.render_sample_row_sliced(
+                    &mut guard,
+                    sy,
+                    stride,
+                    (scale_x, scale_y),
+                    slice_start,
+                    budget,
+                )
+            };
+            if !row_done {
+                self.completed_stride = stride;
+                return;
+            }
             sy = sy.saturating_add(stride);
             self.next_sample_y = sy;
-            if sy < height && slice_start.elapsed() >= WORKER_STEP_BUDGET {
+            if sy < height && slice_start.elapsed() >= budget {
                 self.completed_stride = stride;
                 return;
             }
         }
-
         self.completed_stride = stride;
         self.stride_idx += 1;
         self.next_sample_y = 0;
+        self.next_sample_x = 0;
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -398,7 +450,7 @@ impl SimulationRunner for FractalRunner {
         StateSnapshot {
             width: self.active.width,
             height: self.active.height,
-            pixels: Arc::new(RwLock::new(self.buffer.clone())),
+            pixels: self.snapshot_pixels_arc(),
             custom_data: vec![self.active.zoom, f64::from(self.active.max_iter)],
             structured_data: Some(Box::new(meta)),
             sonification: crate::audio::SonificationFrame::silent(),

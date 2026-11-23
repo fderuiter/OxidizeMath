@@ -311,6 +311,11 @@ impl InteractiveTool for AttractorPlotter {
         "chaos"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+        self.atlas.set_suspended(suspended);
+    }
+
     fn state_revision(&self) -> u64 {
         self.compute_state_revision()
     }

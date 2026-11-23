@@ -145,6 +145,27 @@ fn handle_worker_custom_mutation<R: SimulationRunner + ?Sized>(
     true
 }
 
+fn handle_worker_pause<R: SimulationRunner + ?Sized>(
+    runner: &mut R,
+    ring: &Option<CheckpointRing>,
+    state: &mut SimWorkerState,
+    emit_paused_snapshot: &mut bool,
+    state_tx: &SimStateSender,
+) -> bool {
+    let was_running = *state == SimWorkerState::Running;
+    runner.process_command(SimCommand::Pause);
+    *state = SimWorkerState::Ready;
+    sync_worker_timeline(ring, state_tx);
+    if was_running {
+        *emit_paused_snapshot = false;
+        state_tx
+            .send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready)
+            .is_ok()
+    } else {
+        state_tx.send_status(WorkerStatusEvent::Ready).is_ok()
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
     cmd: SimCommand,
@@ -162,18 +183,7 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
             state_tx.send_status(WorkerStatusEvent::Running).is_ok()
         }
         SimCommand::Pause => {
-            let was_running = *state == SimWorkerState::Running;
-            runner.process_command(SimCommand::Pause);
-            *state = SimWorkerState::Ready;
-            sync_worker_timeline(ring, state_tx);
-            if was_running {
-                *emit_paused_snapshot = false;
-                state_tx
-                    .send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready)
-                    .is_ok()
-            } else {
-                state_tx.send_status(WorkerStatusEvent::Ready).is_ok()
-            }
+            handle_worker_pause(runner, ring, state, emit_paused_snapshot, state_tx)
         }
         SimCommand::Step(count) => {
             *emit_paused_snapshot = false;
@@ -292,6 +302,20 @@ fn step_twin_sliced_frame_loop<R: SimulationRunner + ?Sized>(
     true
 }
 
+fn effective_step_budget(
+    max_slice: Option<Duration>,
+    state_tx: &SimStateSender,
+) -> Option<Duration> {
+    max_slice.map(|b| {
+        let reserve = if state_tx.has_unread_snapshot() {
+            Duration::ZERO
+        } else {
+            Duration::from_micros(500).min(b / 3)
+        };
+        b.saturating_sub(reserve)
+    })
+}
+
 fn step_running_frame_loop<R: SimulationRunner + ?Sized>(
     runner: &mut R,
     ring: &mut Option<CheckpointRing>,
@@ -304,28 +328,36 @@ fn step_running_frame_loop<R: SimulationRunner + ?Sized>(
         return step_twin_sliced_frame_loop(runner, ring, steps_per_frame, budget, state, state_tx);
     }
     let slice_start = max_slice.map(|_| crate::web_io::PlatformInstant::now());
+    let step_budget = effective_step_budget(max_slice, state_tx);
     if let Some(r) = ring.as_mut() {
         r.prepare_forward_advance();
     }
-    let substeps = if ring.is_some() {
-        runner.running_substeps_per_tick().max(1)
-    } else {
-        1
-    };
+    let substeps = ring
+        .as_ref()
+        .map_or(1, |_| runner.running_substeps_per_tick().max(1));
     let total_ticks = steps_per_frame.saturating_mul(substeps);
+    let mut prev_elapsed = Duration::ZERO;
     for tick in 0..total_ticks {
-        if tick > 0 {
-            if let (Some(budget), Some(start)) = (max_slice, slice_start) {
-                if start.elapsed() >= budget {
+        let remaining_slice = match (step_budget, slice_start) {
+            (Some(budget), Some(start)) => {
+                let elapsed = start.elapsed();
+                let last_dur = elapsed.saturating_sub(prev_elapsed);
+                prev_elapsed = elapsed;
+                let projected = elapsed
+                    .saturating_add(last_dur)
+                    .saturating_add(Duration::from_micros(150));
+                if tick > 0 && projected >= budget {
                     break;
                 }
+                Some(budget.saturating_sub(elapsed))
             }
-        }
+            _ => None,
+        };
         if let Some(r) = ring.as_mut() {
             r.record_active_params(runner);
             runner.step_running_substep();
         } else {
-            runner.step();
+            runner.step_sliced(remaining_slice);
         }
         if !runner.is_finite_state() {
             *state = SimWorkerState::Faulted;
@@ -355,9 +387,8 @@ pub(super) fn advance_running_frame<R: SimulationRunner + ?Sized>(
         return FrameTickOutcome::CompletedOrFaulted;
     }
     sync_worker_timeline(ring, state_tx);
-    let is_done = runner.is_complete();
-    let snapshot = runner.get_snapshot();
-    if is_done {
+    if runner.is_complete() {
+        let snapshot = runner.get_snapshot();
         *state = SimWorkerState::Ready;
         if state_tx
             .send_snapshot_and_status(snapshot, WorkerStatusEvent::Ready)
@@ -366,68 +397,13 @@ pub(super) fn advance_running_frame<R: SimulationRunner + ?Sized>(
             return FrameTickOutcome::Disconnected;
         }
         FrameTickOutcome::CompletedOrFaulted
-    } else if state_tx.send_snapshot(snapshot).is_err() {
+    } else if state_tx.is_closed() {
+        FrameTickOutcome::Disconnected
+    } else if state_tx.has_unread_snapshot() {
+        FrameTickOutcome::ContinueRunning
+    } else if state_tx.send_snapshot(runner.get_snapshot()).is_err() {
         FrameTickOutcome::Disconnected
     } else {
         FrameTickOutcome::ContinueRunning
     }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub(super) fn spawn_native_worker<T: SimulationRunner>(
-    mut runner: T,
-    cmd_rx: Receiver<SimCommand>,
-    state_tx: SimStateSender,
-) {
-    std::thread::spawn(move || {
-        let mut state = SimWorkerState::Ready;
-        let mut steps_per_frame = runner.get_steps_per_frame();
-        let mut ring = make_worker_ring(&runner);
-        sync_worker_timeline(&ring, &state_tx);
-
-        loop {
-            let cmd_opt = if state.is_running() {
-                cmd_rx.try_recv().ok()
-            } else {
-                cmd_rx.recv().ok()
-            };
-            let Some(maybe_cmd) = cmd_opt
-                .map(Some)
-                .or_else(|| state.is_running().then_some(None))
-            else {
-                break;
-            };
-
-            if let Some(first_cmd) = maybe_cmd {
-                if !drain_worker_commands(
-                    first_cmd,
-                    &cmd_rx,
-                    &mut runner,
-                    &mut ring,
-                    &mut state,
-                    &mut steps_per_frame,
-                    &state_tx,
-                ) {
-                    break;
-                }
-            }
-
-            if state.is_running() {
-                match advance_running_frame(
-                    &mut runner,
-                    &mut ring,
-                    steps_per_frame,
-                    None,
-                    &mut state,
-                    &state_tx,
-                ) {
-                    FrameTickOutcome::ContinueRunning => {
-                        std::thread::sleep(Duration::from_millis(16));
-                    }
-                    FrameTickOutcome::CompletedOrFaulted => {}
-                    FrameTickOutcome::Disconnected => break,
-                }
-            }
-        }
-    });
 }

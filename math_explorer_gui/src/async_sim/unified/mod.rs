@@ -409,6 +409,12 @@ pub trait UnifiedModel:
             .map(|_| CheckpointParams::NamedMap(params.clone()))
     }
 
+    /// Fast allocation-free check returning `true` when `params` match `last`.
+    fn active_params_match(&self, params: &HashMap<String, f64>, last: &CheckpointParams) -> bool {
+        self.checkpoint_stride()
+            .is_some_and(|_| last.as_named_map().is_some_and(|m| m == params))
+    }
+
     /// Restores dynamical fields, active parameters, step index, and cloned `OxidizeRng`.
     fn restore_checkpoint(&mut self, _checkpoint: &TimeTravelCheckpoint) {}
 

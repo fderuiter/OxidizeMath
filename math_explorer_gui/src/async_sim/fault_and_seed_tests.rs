@@ -142,7 +142,7 @@ fn test_disconnected_faulted_worker_preserves_diagnostic_until_respawn() {
     let diverge_flag = Arc::new(AtomicBool::new(true));
     let panic_flag = Arc::new(AtomicBool::new(false));
     let runner = DivergeOnStepRunner::new(Arc::clone(&diverge_flag), Arc::clone(&panic_flag));
-    let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
+    let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<SimCommand>();
     let (state_tx, state_rx) = sim_state_channel();
     let seed = runner.get_snapshot();
     drop(cmd_rx);
@@ -155,8 +155,13 @@ fn test_disconnected_faulted_worker_preserves_diagnostic_until_respawn() {
         timeline_metadata: None,
         pending_snapshot: false,
         awaiting_pause_ack: false,
+        suspended: false,
         state: SimWorkerState::Faulted,
         diagnostic_report: Some(DiagnosticReport::new(0.2, 2, "x", "Diverged before drop")),
+        #[cfg(not(target_arch = "wasm32"))]
+        native_suspension: controller_suspend::NativeSuspensionDropGuard(
+            controller_suspend::NativeSuspension::new(false),
+        ),
         #[cfg(target_arch = "wasm32")]
         handle: 0,
     };

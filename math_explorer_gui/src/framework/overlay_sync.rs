@@ -331,6 +331,7 @@ impl SimulationFramework {
             challenge_hud: super::ChallengeHudState::default(),
             active_challenge: None,
             challenge_was_passed: false,
+            suspended: false,
             instance_id: next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: super::FrameworkRevisionCache::default(),
@@ -343,12 +344,28 @@ impl SimulationFramework {
 
         framework
     }
+
+    /// Suspends or resumes background workers on the active tool and hosted atlas while preserving logical `Running` state.
+    pub fn set_suspended(&mut self, suspended: bool) {
+        self.suspended = suspended;
+        if let Some(tool) = &mut self.active_tool {
+            tool.set_suspended(suspended);
+        }
+        self.atlas_host.set_suspended(suspended);
+    }
+
+    /// Returns `true` when visibility suspension is active on this framework instance.
+    #[must_use]
+    pub const fn is_suspended(&self) -> bool {
+        self.suspended
+    }
 }
 
 fn default_tool_priority(domain: &str, id: &str) -> u8 {
     match (domain, id) {
         ("quantum", "WaveSimulator")
         | ("solid_state", "IsingModelTool")
+        | ("biology", "MorphogenesisTool")
         | ("medical", "DoseCalculationTool")
         | ("relativity", "GeodesicPlaygroundTool")
         | ("elliptic_curves", "WeierstrassPlaygroundTool")

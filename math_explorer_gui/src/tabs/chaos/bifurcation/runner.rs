@@ -4,9 +4,7 @@ use super::{
     BifurcationDiagram, BifurcationMapMode, CUSTOM_BURN_IN, CUSTOM_ESCAPE_GUARD,
     CUSTOM_ORBIT_SAMPLES, CUSTOM_R_BOUND,
 };
-use crate::async_sim::{
-    BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
-};
+use crate::async_sim::{SimCommand, SimWorkerState, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
 use eframe::egui;
@@ -288,11 +286,16 @@ impl SimulationRunner for BifurcationRunner {
     }
 
     fn step(&mut self) {
+        self.step_sliced(None);
+    }
+
+    fn step_sliced(&mut self, max_slice: Option<Duration>) {
         let _ = self.sync_request();
         let total = self.target_sample_count();
         if self.next_step_idx >= total || !self.is_finite_state() {
             return;
         }
+        let budget = max_slice.map_or(WORKER_STEP_BUDGET, |b| b.min(WORKER_STEP_BUDGET));
         let slice_start = crate::web_io::PlatformInstant::now();
         while self.next_step_idx < total {
             if self.latest_generation.load(Ordering::Relaxed) != self.active.generation {
@@ -306,7 +309,7 @@ impl SimulationRunner for BifurcationRunner {
                     self.step_custom_single(self.next_step_idx, steps);
                 }
             }
-            if self.next_step_idx < total && slice_start.elapsed() >= WORKER_STEP_BUDGET {
+            if self.next_step_idx < total && slice_start.elapsed() >= budget {
                 return;
             }
         }
@@ -405,7 +408,7 @@ impl BifurcationDiagram {
                     .send_command(SimCommand::Custom("cancel_sweep".to_string()));
             }
             SimWorkerState::Faulted | SimWorkerState::Terminated => {
-                self.worker = BackgroundWorker::new(BifurcationRunner::new(
+                self.worker.replace_runner(BifurcationRunner::new(
                     Arc::clone(&self.shared_request),
                     Arc::clone(&self.latest_generation),
                     Arc::clone(&self.shared_formula),
