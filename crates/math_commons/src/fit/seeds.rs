@@ -1,7 +1,7 @@
 //! Zero-allocation closed-form parameter seed estimators for nonlinear curve models.
 // [cite:math_commons]
 
-use super::poly::{mirror_upper_to_lower, solve_dense_small_raw};
+use super::poly::{solve_dense_small_raw, symmetrize_upper};
 use crate::error::FitError;
 use crate::series::PointSeries;
 
@@ -80,20 +80,27 @@ fn weighted_ols_line_inner(samples: &[[f64; 3]]) -> Result<(f64, f64), FitError>
 /// Estimates closed-form initial parameters `[a, b]` for $y = a e^{b x}$ via $y^2$-weighted log-OLS.
 #[verified_engine::verified]
 pub fn seed_exponential<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
-    seed_exponential_inner(points)
+    let [a_u, b, x0] = seed_exponential_shifted(points)?;
+    let a = a_u * (-b * x0).clamp(-700.0, 700.0).exp();
+    if a.is_finite() && b.is_finite() {
+        Ok([a, b])
+    } else {
+        Err(FitError::InvalidDomain {
+            reason: "non-finite exponential seed parameters",
+        })
+    }
 }
 
-fn seed_exponential_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
+pub(super) fn seed_exponential_shifted<P: PointSeries + ?Sized>(
+    points: &P,
+) -> Result<[f64; 3], FitError> {
     let mut finite_n = 0usize;
-    let mut acc = WeightedOlsAccum::default();
+    let mut x_min = f64::INFINITY;
     for i in 0..points.len() {
         let p = points.point_at(i);
-        if !p[0].is_finite() || !p[1].is_finite() {
-            continue;
-        }
-        finite_n += 1;
-        if p[1] > 0.0 {
-            acc.push(p[0], p[1].ln(), p[1] * p[1]);
+        if p[0].is_finite() && p[1].is_finite() {
+            finite_n += 1;
+            x_min = x_min.min(p[0]);
         }
     }
     if finite_n < 2 {
@@ -102,15 +109,23 @@ fn seed_exponential_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2
             actual: finite_n,
         });
     }
+    let x0 = if x_min.is_finite() { x_min } else { 0.0 };
+    let mut acc = WeightedOlsAccum::default();
+    for i in 0..points.len() {
+        let p = points.point_at(i);
+        if p[0].is_finite() && p[1].is_finite() && p[1] > 0.0 {
+            acc.push(p[0] - x0, p[1].ln(), p[1] * p[1]);
+        }
+    }
     if acc.count < 2 {
         return Err(FitError::InvalidDomain {
             reason: "exponential fit requires at least 2 points with y > 0",
         });
     }
     let (ln_a, b) = acc.solve()?;
-    let a = ln_a.exp();
-    if a.is_finite() && b.is_finite() {
-        Ok([a, b])
+    let a_u = ln_a.exp();
+    if a_u.is_finite() && b.is_finite() {
+        Ok([a_u, b, x0])
     } else {
         Err(FitError::InvalidDomain {
             reason: "non-finite exponential seed parameters",
@@ -220,14 +235,18 @@ fn seed_logistic_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 3], 
             let ratio = (l_est / p[1]) - 1.0;
             if ratio > 0.0 {
                 let w = (p[1] * (l_est - p[1])).powi(2);
-                acc.push(p[0], ratio.ln(), w);
+                acc.push(p[0] - x_min, ratio.ln(), w);
             }
         }
     }
     let x_mid = 0.5 * (x_min + x_max);
     if let Ok((intercept, slope)) = acc.solve() {
         let k = (-slope).clamp(1e-4, 1e4);
-        let x0 = if k.abs() > 1e-9 { intercept / k } else { x_mid };
+        let x0 = if k.abs() > 1e-9 {
+            x_min + intercept / k
+        } else {
+            x_mid
+        };
         Ok([l_est, k, x0])
     } else {
         let span = (x_max - x_min).abs().max(1.0);
@@ -286,11 +305,15 @@ fn seed_sinusoidal_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 4]
     let mean_y = y_sum / (sample_len as f64);
     let amp_fallback = (0.5 * (y_max - y_min)).max(1e-6);
 
+    let x0 = sub[0][0];
     let freqs = candidate_frequencies(sub, mean_y, span_x);
-    let (best_b, best_lin) = search_best_harmonic(sub, &freqs);
+    let (best_b, best_lin) = search_best_harmonic(sub, &freqs, x0);
     if let Some((alpha, beta, d)) = best_lin {
         let amp = (alpha * alpha + beta * beta).sqrt().max(1e-6);
-        let phase = alpha.atan2(beta);
+        let mut phase = (alpha.atan2(beta) - best_b * x0).rem_euclid(std::f64::consts::TAU);
+        if phase > std::f64::consts::PI {
+            phase -= std::f64::consts::TAU;
+        }
         Ok([amp, best_b, phase, d])
     } else {
         Ok([
@@ -369,7 +392,11 @@ fn zero_crossing_frequency(sorted: &[[f64; 2]], mean_y: f64, span_x: f64) -> Opt
     (crossings >= 1).then_some(std::f64::consts::PI * (crossings as f64) / span_x)
 }
 
-fn search_best_harmonic(sub: &[[f64; 2]], freqs: &[f64; 67]) -> (f64, Option<(f64, f64, f64)>) {
+fn search_best_harmonic(
+    sub: &[[f64; 2]],
+    freqs: &[f64; 67],
+    x0: f64,
+) -> (f64, Option<(f64, f64, f64)>) {
     let mut best_sse = f64::INFINITY;
     let mut best_b = freqs[2].max(1e-4);
     let mut best_lin = None;
@@ -377,7 +404,7 @@ fn search_best_harmonic(sub: &[[f64; 2]], freqs: &[f64; 67]) -> (f64, Option<(f6
         if !b.is_finite() || b <= 1e-9 {
             continue;
         }
-        let Ok((alpha, beta, d, sse)) = solve_harmonic_linear(sub, b) else {
+        let Ok((alpha, beta, d, sse)) = solve_harmonic_linear(sub, b, x0) else {
             continue;
         };
         if sse.is_finite() && sse < best_sse {
@@ -417,18 +444,22 @@ fn jacquelin_frequency(sorted: &[[f64; 2]], mean_y: f64) -> Option<f64> {
             }
         }
     }
-    mirror_upper_to_lower(&mut m, 4);
+    symmetrize_upper(&mut m, 4);
     let sol = solve_dense_small_raw(&mut m, &rhs, 4).ok()?;
     let b_sq = -sol[0];
     (b_sq.is_finite() && b_sq > 1e-12).then(|| b_sq.sqrt())
 }
 
-fn solve_harmonic_linear(points: &[[f64; 2]], b: f64) -> Result<(f64, f64, f64, f64), FitError> {
+fn solve_harmonic_linear(
+    points: &[[f64; 2]],
+    b: f64,
+    x0: f64,
+) -> Result<(f64, f64, f64, f64), FitError> {
     let mut mat = [[0.0_f64; 5]; 5];
     let mut rhs = [0.0_f64; 5];
     let mut sum_y2 = 0.0_f64;
     for &[x, y] in points {
-        let (s, c) = (b * x).sin_cos();
+        let (s, c) = (b * (x - x0)).sin_cos();
         let basis = [c, s, 1.0];
         sum_y2 += y * y;
         for r in 0..3 {
@@ -438,7 +469,7 @@ fn solve_harmonic_linear(points: &[[f64; 2]], b: f64) -> Result<(f64, f64, f64, 
             }
         }
     }
-    mirror_upper_to_lower(&mut mat, 3);
+    symmetrize_upper(&mut mat, 3);
     let rhs_orig = rhs;
     let sol = solve_dense_small_raw(&mut mat, &rhs, 3)?;
     let explained = sol[0] * rhs_orig[0] + sol[1] * rhs_orig[1] + sol[2] * rhs_orig[2];

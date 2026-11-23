@@ -1,7 +1,7 @@
 //! Stack-allocated damped Levenberg-Marquardt nonlinear least-squares solvers (`k <= 6`).
 // [cite:math_commons]
 
-use super::poly::{mirror_upper_to_lower, solve_dense_n_raw};
+use super::poly::{solve_dense_n_raw, symmetrize_upper};
 use crate::error::FitError;
 use crate::series::PointSeries;
 
@@ -387,7 +387,7 @@ where
             }
         }
     }
-    mirror_upper_to_lower(&mut jtj, k);
+    symmetrize_upper(&mut jtj, k);
 
     let r_norm = current_sse.sqrt().max(1e-15);
     let mut scaled_grad = 0.0_f64;

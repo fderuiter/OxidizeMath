@@ -248,7 +248,9 @@ impl SavedCallout {
     pub fn new(point: [f64; 2], label: impl Into<String>, offset: [f32; 2]) -> Self {
         let mut label = label.into();
         if label.trim().is_empty() {
-            label = format!("({:.2}, {:.2})", point[0], point[1]);
+            let x_str = crate::format::format_readout_value(point[0], 2, 4);
+            let y_str = crate::format::format_readout_value(point[1], 2, 4);
+            label = format!("({x_str}, {y_str})");
         }
         if label.chars().count() > 128 {
             label = label.chars().take(128).collect();
@@ -266,7 +268,9 @@ impl SavedCallout {
     /// resolves them dynamically from `ui.visuals().window_fill()` across Dark, Light, and HighContrast themes.
     pub fn to_callout(&self) -> Callout {
         let label = if self.label.trim().is_empty() {
-            format!("({:.2}, {:.2})", self.point[0], self.point[1])
+            let x_str = crate::format::format_readout_value(self.point[0], 2, 4);
+            let y_str = crate::format::format_readout_value(self.point[1], 2, 4);
+            format!("({x_str}, {y_str})")
         } else if self.label.chars().count() > 128 {
             self.label.chars().take(128).collect()
         } else {
