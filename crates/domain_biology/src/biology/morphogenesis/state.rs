@@ -66,6 +66,13 @@ impl TuringState<2> {
     pub fn v_mut(&mut self) -> &mut [f64] {
         &mut self.concentrations[1]
     }
+
+    /// Pins persistent [`crate::biology::diffusion::CellMask2D`] emitter, sink, and zero-flux wall
+    /// roles onto activator and inhibitor concentrations in place with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn pin_cell_mask(&mut self, mask: &crate::biology::diffusion::CellMask2D) {
+        mask.pin_turing_state(self);
+    }
 }
 
 impl<const N: usize> Add for TuringState<N> {

@@ -1,9 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use self::render::{inspect_solver_solid_and_core, render_lbm_snapshot_pixels};
 use super::lattice_boltzmann_sculpt::{
     apply_lbm_custom_action, apply_lbm_sculpt_payload, apply_stroke_to_lbm, draw_lbm_brush_panel,
-    export_solver_rle, inspect_solver_solid_and_core, record_stroke_in_rle,
-    reset_solver_preserving_obstacles, seed_initial_lbm_geometry, sync_lbm_parameters,
+    export_solver_rle, record_stroke_in_rle, reset_solver_preserving_obstacles,
+    seed_initial_lbm_geometry, sync_lbm_parameters,
 };
 use super::lbm_atlas::{resolve_inlet_velocity, LbmCartographer, LBM_ATLAS_AXIS_PAIRS};
 use super::lbm_fairing::{
@@ -15,8 +16,6 @@ use crate::async_sim::unified::{UnifiedModel, UnifiedUiExtension};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{BrushMode, BrushStroke, SpatialBrushKit};
-use eframe::egui::Color32;
-use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_drag_coefficient,
@@ -50,6 +49,7 @@ pub struct LbmUnified {
     pub(crate) active_profile_param: f64,
     pub(crate) challenge_core_locked: bool,
     pub(crate) display_vorticity: bool,
+    pub(crate) high_contrast: bool,
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
@@ -168,6 +168,7 @@ impl UnifiedModel for LbmUnified {
             active_profile_param,
             challenge_core_locked: false,
             display_vorticity,
+            high_contrast: false,
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
@@ -254,32 +255,12 @@ impl UnifiedModel for LbmUnified {
     fn get_snapshot(&self) -> StateSnapshot {
         let width = self.solver.width();
         let height = self.solver.height();
-        let mut pixels = vec![Color32::BLACK; width * height];
-        let mut max_vort = 0.0_f64;
-
-        for y in 0..height {
-            let solver_y = height - 1 - y;
-            for x in 0..width {
-                let pixel_idx = flatten_2d_index(x, y, width);
-                let solver_idx = flatten_2d_index(x, solver_y, width);
-                if self.solver.is_obstacle(x, solver_y) {
-                    pixels[pixel_idx] = Color32::from_gray(50);
-                } else {
-                    let omega = self.vorticity_buf[solver_idx];
-                    let safe_w = if omega.is_finite() { omega } else { 0.0 };
-                    max_vort = max_vort.max(safe_w.abs());
-                    let norm = if self.display_vorticity {
-                        (0.5 + safe_w * 12.0).clamp(0.0, 1.0)
-                    } else {
-                        let v = self.solver.get_velocity_magnitude(x, solver_y);
-                        let safe_v = if v.is_finite() { v } else { 0.0 };
-                        (safe_v * 1000.0 / 255.0).clamp(0.0, 1.0)
-                    };
-                    let rgb = heatmap_color(norm);
-                    pixels[pixel_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
-                }
-            }
-        }
+        let (pixels, max_vort) = render_lbm_snapshot_pixels(
+            &self.solver,
+            &self.vorticity_buf,
+            self.display_vorticity,
+            self.high_contrast,
+        );
 
         let (f_drag, f_lift) = self.solver.hydrodynamic_forces();
         let c_d = compute_drag_coefficient(
@@ -333,6 +314,9 @@ impl UnifiedModel for LbmUnified {
             }
             SimCommand::Custom(ref action) if action.starts_with("ChallengeLockCore:") => {
                 self.challenge_core_locked = action.ends_with('1');
+            }
+            SimCommand::Custom(ref action) if action.starts_with("HighContrast:") => {
+                self.high_contrast = action.ends_with('1');
             }
             SimCommand::Custom(ref action)
                 if apply_lbm_custom_action(
@@ -475,3 +459,5 @@ impl UnifiedModel for LbmUnified {
 
 #[path = "lattice_boltzmann/preset.rs"]
 mod preset;
+#[path = "lattice_boltzmann/render.rs"]
+pub(crate) mod render;
