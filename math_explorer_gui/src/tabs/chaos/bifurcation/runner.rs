@@ -429,6 +429,7 @@ impl BifurcationDiagram {
                     self.lyapunov_points.clone_from(&data.lyapunov_points);
                     if data.is_final {
                         self.completed_generation = data.generation;
+                        self.recompute_coupled_views();
                     }
                 }
             }

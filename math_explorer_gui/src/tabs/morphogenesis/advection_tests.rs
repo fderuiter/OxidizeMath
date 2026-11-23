@@ -70,6 +70,8 @@ fn make_advection_test_runner(
         d_v: 0.08,
         dt: 0.9,
         high_contrast: false,
+        theme_mode: crate::app::ThemeMode::Dark,
+        heatmap_mode: super::counterfactual::MorphogenesisHeatmapMode::ActiveUb,
     }));
     let ks = Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState {
         mode: MorphogenesisKineticsMode::GrayScott,
@@ -237,15 +239,16 @@ fn assert_worker_wall_sync(tool: &mut MorphogenesisTool, x: usize, y: usize) {
 fn test_keyboard_reticle_syncs_cell_mask_and_lbm_obstacles() {
     let ctx = egui::Context::default();
     let mut tool = MorphogenesisTool::default();
+    tool.params.write().unwrap().dt = 0.002;
     wait_for_snapshot(&mut tool);
     run_tool_keys(&ctx, &mut tool, Vec::new());
     for _ in 0..80 {
-        if tool.focused_canvas_id().is_some() {
+        if tool.brush_kit.focused_plot_id().is_some() {
             break;
         }
         run_tool_keys(&ctx, &mut tool, vec![key_press(Key::Tab)]);
     }
-    let plot_id = tool.focused_canvas_id().expect("focused plot");
+    let plot_id = tool.brush_kit.focused_plot_id().expect("focused plot");
     let cursor = [
         tool.brush_kit.cursor_pos[0] + 2.0,
         tool.brush_kit.cursor_pos[1],
@@ -484,5 +487,8 @@ fn test_high_contrast_keyboard_cfl_stabilize_live_region_and_png_exports() {
         .and_then(|t| t.as_any()?.downcast_ref::<MorphogenesisTool>())
         .unwrap();
     assert!(tool.advection_diagnostics().3 < 1.0);
-    assert_eq!(tool.last_high_contrast, Some(true));
+    assert_eq!(
+        tool.last_theme_mode,
+        Some(crate::app::ThemeMode::HighContrast)
+    );
 }

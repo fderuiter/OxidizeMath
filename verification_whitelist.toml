@@ -4,6 +4,11 @@ allowlist = [
     "egui_plot",
 ]
 
+[doc_verification.approved_ignore_fences]
+# Binary-only math_explorer_gui crate::, out-of-line tab mod, and egui widget snippets that cannot link into library doctests
+"docs/architecture/interactive_tool_walkthrough.md" = 6
+"math_explorer_gui/README.md" = 3
+
 [entropy_guard]
 scan_paths = [
     "crates",
@@ -220,7 +225,6 @@ vendored_crates = [
 "crates/domain_applied/src/applied/lorahub/strategies.rs" = 4
 "crates/domain_applied/src/applied/pharmacokinetics/bateman.rs" = 1
 "crates/domain_applied/src/applied/pharmacokinetics/mod.rs" = 6
-"crates/domain_applied/src/applied/pharmacokinetics/two_pulse.rs" = 1
 "crates/domain_applied/src/applied/win_ratio/mod.rs" = 1
 "crates/domain_applied/src/applied/win_ratio/pair_comparison.rs" = 8
 "crates/domain_applied/src/error.rs" = 14
@@ -285,24 +289,23 @@ vendored_crates = [
 "crates/oxidize_core/src/mesh/types.rs" = 13
 "crates/oxidize_core/src/traceability.rs" = 25
 "crates/oxidize_core/src/vfs.rs" = 6
-"crates/pure_math/src/error.rs" = 50
+"crates/pure_math/src/error.rs" = 49
 "crates/pure_math/src/lib.rs" = 4
 "crates/pure_math/src/math_types.rs" = 32
 "crates/pure_math/src/pure_math/algebra/fields.rs" = 2
-"crates/pure_math/src/pure_math/algebra/group.rs" = 7
+"crates/pure_math/src/pure_math/algebra/group.rs" = 6
 "crates/pure_math/src/pure_math/algebra/linear_algebra/canonical.rs" = 3
 "crates/pure_math/src/pure_math/algebra/mod.rs" = 2
 "crates/pure_math/src/pure_math/algebra/polynomial.rs" = 3
 "crates/pure_math/src/pure_math/algebra/traits.rs" = 1
 "crates/pure_math/src/pure_math/algorithmic_information/combinatorics.rs" = 1
-"crates/pure_math/src/pure_math/analysis/complex/mapping.rs" = 1
 "crates/pure_math/src/pure_math/analysis/complex/mod.rs" = 4
-"crates/pure_math/src/pure_math/analysis/complex/surfaces.rs" = 2
+"crates/pure_math/src/pure_math/analysis/complex/surfaces.rs" = 1
 "crates/pure_math/src/pure_math/analysis/evolution.rs" = 11
 "crates/pure_math/src/pure_math/analysis/mod.rs" = 3
 "crates/pure_math/src/pure_math/analysis/ode/mod.rs" = 6
 "crates/pure_math/src/pure_math/analysis/optimization.rs" = 23
-"crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs" = 13
+"crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs" = 11
 "crates/pure_math/src/pure_math/analysis/pde/greens.rs" = 2
 "crates/pure_math/src/pure_math/analysis/pde/heat.rs" = 6
 "crates/pure_math/src/pure_math/analysis/pde/laplace.rs" = 4
@@ -355,12 +358,10 @@ vendored_crates = [
 "math_explorer_gui/src/framework/ui.rs" = 2
 "math_explorer_gui/src/main.rs" = 5
 "math_explorer_gui/src/tabs/ai/q_table_inspector/runner.rs" = 2
-"math_explorer_gui/src/tabs/ai/reward_plots.rs" = 4
 "math_explorer_gui/src/tabs/chaos/attractors/runner.rs" = 3
 "math_explorer_gui/src/tabs/epidemiology/sir.rs" = 2
 "math_explorer_gui/src/tabs/morphogenesis/tool.rs" = 2
 "math_explorer_gui/src/tabs/mri/runner.rs" = 3
-"math_explorer_gui/src/tabs/mri/tool.rs" = 2
 "math_explorer_gui/src/tabs/neuroscience/hodgkin_huxley.rs" = 1
 "math_explorer_gui/src/tabs/solid_state/ising.rs" = 2
 "math_explorer_gui/src/tabs/solid_state/ising/runner.rs" = 2

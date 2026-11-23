@@ -2,16 +2,21 @@
 
 use super::advection::MorphogenesisAdvectionState;
 use super::atlas::MORPHO_ATLAS_AXIS_PAIRS;
+use super::counterfactual::MorphogenesisHeatmapMode;
 use super::presets::MorphogenesisTheory;
 pub use super::presets::MorphogenesisToolState;
 use super::runner::{
     MorphogenesisKineticsRunner, MorphogenesisKineticsState, MorphogenesisSharedParams,
 };
 use super::sculpt::default_morpho_brush_kit;
+use crate::app::ThemeMode;
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::FiniteStateGuard;
-use crate::framework::{ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit};
+use crate::framework::{
+    BranchControlAction, CounterfactualBranchEngine, DivergenceSnapshot, ExportCapabilities,
+    InteractionContext, InteractiveTool, SpatialBrushKit,
+};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use scientific_metadata::theory::TheoryDescribable;
@@ -37,8 +42,11 @@ pub struct MorphogenesisTool {
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     pub(crate) step_runner: Option<MorphogenesisKineticsRunner>,
+    pub(crate) local_runner: MorphogenesisKineticsRunner,
     pub(crate) pending_initial_start: bool,
-    pub(crate) last_high_contrast: Option<bool>,
+    pub(crate) last_theme_mode: Option<ThemeMode>,
+    /// Counterfactual shadow twin branch state & perturbation settings.
+    pub branch_engine: CounterfactualBranchEngine,
     pub(crate) theory: MorphogenesisTheory,
 }
 
@@ -53,6 +61,8 @@ impl Default for MorphogenesisTool {
             d_v: 100.0,
             dt: 0.05,
             high_contrast: false,
+            theme_mode: ThemeMode::Dark,
+            heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
         }));
         let kinetics_state =
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
@@ -62,6 +72,14 @@ impl Default for MorphogenesisTool {
 
         let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
         let runner = Self::create_kinetics_runner_with_advection(
+            &params,
+            &kinetics_state,
+            &advection_state,
+            &mask_rle,
+            width,
+            height,
+        );
+        let local_runner = Self::create_kinetics_runner_with_advection(
             &params,
             &kinetics_state,
             &advection_state,
@@ -87,8 +105,10 @@ impl Default for MorphogenesisTool {
             dirty: true,
             stepped_pixels: None,
             step_runner: None,
+            local_runner,
             pending_initial_start: true,
-            last_high_contrast: None,
+            last_theme_mode: None,
+            branch_engine: CounterfactualBranchEngine::default(),
             theory: MorphogenesisTheory::default(),
         }
     }
@@ -98,6 +118,14 @@ impl MorphogenesisTool {
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
+        self.local_runner = Self::create_kinetics_runner_with_advection(
+            &self.params,
+            &self.kinetics_state,
+            &self.advection_state,
+            &self.mask_rle,
+            self.width,
+            self.height,
+        );
         let runner = Self::create_kinetics_runner_with_advection(
             &self.params,
             &self.kinetics_state,
@@ -107,6 +135,7 @@ impl MorphogenesisTool {
             self.height,
         );
         self.worker = BackgroundWorker::new(runner);
+        self.branch_engine.clear();
         self.stepped_pixels = None;
         self.step_runner = None;
         self.live_velocity_peaks = [0.0, 0.0];
@@ -118,29 +147,6 @@ impl MorphogenesisTool {
     #[allow(missing_docs)]
     pub fn retry(&mut self) {
         self.restart_worker();
-    }
-
-    /// Resets the worker in place or respawns a disconnected worker in `Ready` state.
-    pub fn reset(&mut self) {
-        let params = Arc::clone(&self.params);
-        let ks = Arc::clone(&self.kinetics_state);
-        let adv = Arc::clone(&self.advection_state);
-        let mask = Arc::clone(&self.mask_rle);
-        let width = self.width;
-        let height = self.height;
-        self.worker.reset_or_respawn(|| {
-            Self::create_kinetics_runner_with_advection(&params, &ks, &adv, &mask, width, height)
-        });
-        self.stepped_pixels = None;
-        self.step_runner = None;
-        self.live_velocity_peaks = [0.0, 0.0];
-        self.pending_initial_start = false;
-        self.dirty = true;
-    }
-
-    pub(crate) fn reset_system(&mut self) {
-        self.reset();
-        let _ = self.worker.send_command(SimCommand::Start);
     }
 }
 
@@ -154,10 +160,21 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        if self.is_forked() {
+            ExportCapabilities::plot()
+        } else {
+            ExportCapabilities::raster_only()
+        }
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.export_morpho_twin_datasets()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
+        if self.is_forked() {
+            return Some(self.render_current_heatmap_image());
+        }
         if let Some((w, h, ref px)) = self.stepped_pixels {
             if w > 0 && h > 0 && px.len() == w * h {
                 return Some(ColorImage {
@@ -190,6 +207,10 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn step_simulation(&mut self) {
+        if self.is_forked() {
+            self.step_lockstep(5);
+            return;
+        }
         let runner = self.step_runner.get_or_insert_with(|| {
             Self::create_kinetics_runner_with_advection(
                 &self.params,
@@ -203,6 +224,7 @@ impl InteractiveTool for MorphogenesisTool {
         for _ in 0..5 {
             runner.step();
         }
+        self.live_velocity_peaks = [runner.wind_tunnel.max_abs_ux, runner.wind_tunnel.max_abs_uy];
         let snap = runner.get_snapshot();
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
@@ -214,26 +236,22 @@ impl InteractiveTool for MorphogenesisTool {
         }
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_kit.focused_plot_id()
-    }
-
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        let high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
-            == crate::app::ThemeMode::HighContrast;
-        if self.last_high_contrast != Some(high_contrast) {
-            self.last_high_contrast = Some(high_contrast);
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .high_contrast = high_contrast;
+        let theme_mode = ThemeMode::from_visuals(ui.visuals());
+        if self.last_theme_mode != Some(theme_mode) {
+            self.last_theme_mode = Some(theme_mode);
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.theme_mode = theme_mode;
+            p.high_contrast = theme_mode == ThemeMode::HighContrast;
+            drop(p);
             self.dirty = true;
         }
         if std::mem::take(&mut self.pending_initial_start) && self.worker.state().is_ready() {
             let _ = self.worker.send_command(SimCommand::Start);
         }
         if self.worker.update().is_some() {
+            self.pull_latest_worker_snapshot();
             self.dirty = true;
         }
         self.draw_controls(ui);
@@ -244,6 +262,18 @@ impl InteractiveTool for MorphogenesisTool {
         ) {
             ctx.request_repaint();
         }
+    }
+
+    fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
+        let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+        self.local_runner
+            .twin
+            .as_ref()
+            .map(|t| t.snapshot(self.local_runner.step_count, dt))
+    }
+
+    fn apply_counterfactual_action(&mut self, action: BranchControlAction) -> bool {
+        self.apply_morpho_branch_action(action)
     }
 
     fn theory(&self) -> &dyn TheoryDescribable {
@@ -268,6 +298,7 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u.to_bits().hash(&mut h);
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
+            p.heatmap_mode.hash(&mut h);
         }
         {
             let adv = self
@@ -280,6 +311,8 @@ impl InteractiveTool for MorphogenesisTool {
         }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
+        self.is_forked().hash(&mut h);
+        self.local_runner.step_count.hash(&mut h);
         self.mask_rle
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -299,20 +332,30 @@ impl InteractiveTool for MorphogenesisTool {
                 .unwrap_or_else(|e| e.into_inner());
             (ks.mode, ks.f, ks.k)
         };
-        let (a, b, d_u, d_v, dt) = {
+        let (a, b, d_u, d_v, dt, heatmap_mode) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
+            (p.a, p.b, p.d_u, p.d_v, p.dt, p.heatmap_mode)
         };
         let adv = *self
             .advection_state
             .read()
             .unwrap_or_else(|e| e.into_inner());
+        let fork = self
+            .local_runner
+            .twin
+            .as_ref()
+            .map(|t| t.to_descriptor(heatmap_mode));
         let mask_rle = self
             .mask_rle
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let (xk, yk) = self.atlas.axis_keys();
+        let atlas_axes = if self.atlas.has_default_persisted_state() {
+            super::atlas::default_morpho_atlas_axes()
+        } else {
+            let (xk, yk) = self.atlas.axis_keys();
+            [xk.to_string(), yk.to_string()]
+        };
         serde_json::to_string(&MorphogenesisToolState {
             a,
             b,
@@ -327,9 +370,10 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            fork,
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
+            atlas_axes,
             advection_enabled: adv.enabled,
             inlet_u: adv.inlet_u,
             viscosity: adv.viscosity,
@@ -342,44 +386,34 @@ impl InteractiveTool for MorphogenesisTool {
         let parsed: MorphogenesisToolState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
-        self.atlas
-            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.sync_atlas_options_for_mode(parsed.kinetics_mode);
+        let use_mode_default = parsed.kinetics_mode
+            == crate::presets::MorphogenesisKineticsMode::GrayScott
+            && super::atlas::is_default_morpho_atlas_axes(&parsed.atlas_axes);
+        if !use_mode_default {
+            self.atlas
+                .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        }
         self.atlas.set_visible(parsed.atlas_visible);
         let target_state = parsed.resolve_target_state();
-        self.theory.mode = parsed.kinetics_mode;
-        {
-            let mut ks = self
-                .kinetics_state
-                .write()
-                .unwrap_or_else(|e| e.into_inner());
-            ks.mode = parsed.kinetics_mode;
-            ks.f = parsed.f;
-            ks.k = parsed.k;
-        }
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.a = parsed.a;
-            p.b = parsed.b;
-            p.d_u = parsed.d_u;
-            p.d_v = parsed.d_v;
-            p.dt = parsed.dt;
-        }
-        {
-            let mut adv = self
-                .advection_state
-                .write()
-                .unwrap_or_else(|e| e.into_inner());
-            adv.enabled = parsed.advection_enabled;
-            adv.inlet_u = parsed.inlet_u;
-            adv.viscosity = parsed.viscosity;
-        }
+        self.stage_loaded_params(&parsed);
         *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
-        self.apply_dimensions_and_target_state(
-            parsed.width,
-            parsed.height,
-            target_state,
-            parsed.pending_initial_start,
-        );
+        if let Some(fork_desc) = parsed.fork {
+            self.apply_loaded_fork_state(
+                parsed.width,
+                parsed.height,
+                fork_desc,
+                target_state,
+                parsed.pending_initial_start,
+            )?;
+        } else {
+            self.apply_dimensions_and_target_state(
+                parsed.width,
+                parsed.height,
+                target_state,
+                parsed.pending_initial_start,
+            );
+        }
         Ok(())
     }
 

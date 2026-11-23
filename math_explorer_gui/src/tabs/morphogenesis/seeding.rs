@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::advection::{MorphoWindTunnel, MorphogenesisAdvectionState};
+use super::advection::MorphogenesisAdvectionState;
 use super::presets::MorphogenesisToolState;
 use super::runner::{
     MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
@@ -10,13 +10,18 @@ use super::runner::{
 };
 use super::{MorphogenesisTool, SimpleRng};
 use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
-use crate::framework::{decode_rle_mask, InteractiveTool};
+use crate::framework::InteractiveTool;
 use crate::presets::MorphogenesisKineticsMode;
+#[cfg(test)]
 use eframe::egui;
+#[cfg(test)]
 use eframe::egui::ColorImage;
+#[cfg(test)]
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::biology::diffusion::{FiniteDifference2D, SpatialDiffusion};
+#[cfg(test)]
+use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::SpatialDiffusion;
 #[cfg(test)]
 use math_explorer::biology::morphogenesis::SchnakenbergKinetics;
 use math_explorer::biology::morphogenesis::TuringSystem;
@@ -31,9 +36,7 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) -> MorphogenesisKineticsRunner {
-        let ks = Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
-        let mask = Arc::new(std::sync::RwLock::new(Vec::new()));
-        Self::create_kinetics_runner(params, &ks, &mask, width, height)
+        MorphogenesisKineticsRunner::new_seeded(params, width, height)
     }
 
     #[cfg(test)]
@@ -44,13 +47,9 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) -> MorphogenesisKineticsRunner {
-        let adv = Arc::new(std::sync::RwLock::new(
-            MorphogenesisAdvectionState::default(),
-        ));
-        Self::create_kinetics_runner_with_advection(
+        MorphogenesisKineticsRunner::new_with_kinetics(
             params,
             kinetics_state,
-            &adv,
             mask_rle,
             width,
             height,
@@ -65,57 +64,74 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) -> MorphogenesisKineticsRunner {
-        use math_explorer::biology::morphogenesis::DiffusionCoeff;
-        use math_explorer::math_kernel::types::{Dimension, StepSize};
-        let (a, b, d_u, d_v) = {
-            let p = params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v)
-        };
-        let (mode, f, k) = {
-            let ks = kinetics_state.read().unwrap_or_else(|e| e.into_inner());
-            (ks.mode, ks.f, ks.k)
-        };
-        let visc = advection_state
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .viscosity;
-        let diffusion = FiniteDifference2D::new(
-            Dimension(width),
-            Dimension(height),
-            StepSize(1.0),
-            StepSize(1.0),
-        )
-        .with_mask();
-        let mut system = TuringSystem::new_with_kinetics(
-            Dimension(width * height),
-            DiffusionCoeff(d_u),
-            DiffusionCoeff(d_v),
-            MorphogenesisKineticsAdapter { mode, a, b, f, k },
-            diffusion,
-        );
-        Self::initialize_adapter_system(&mut system, width, height);
-        let rle = mask_rle.read().unwrap_or_else(|e| e.into_inner()).clone();
-        if !rle.is_empty() {
-            if let Ok(bytes) = decode_rle_mask(&rle, width * height) {
-                let _ = system.diffusion.mask.set_roles_slice(&bytes);
-            }
-        }
-        let mut wind_tunnel = MorphoWindTunnel::new(width, height, visc);
-        wind_tunnel.sync_from_cell_mask(&system.diffusion.mask);
-        let mut runner = MorphogenesisKineticsRunner {
-            system,
-            wind_tunnel,
-            params: Arc::clone(params),
-            kinetics_state: Arc::clone(kinetics_state),
-            advection_state: Arc::clone(advection_state),
+        MorphogenesisKineticsRunner::new_with_advection(
+            params,
+            kinetics_state,
+            advection_state,
+            mask_rle,
             width,
             height,
-            step_count: 0,
-            rng: OxidizeRng::new(super::runner::DEFAULT_MORPHOGENESIS_SEED),
-            noise_amplitude: 0.0,
-        };
-        runner.enforce_mask_concentrations();
-        runner
+        )
+    }
+
+    pub(super) fn stage_loaded_params(&mut self, parsed: &MorphogenesisToolState) {
+        self.theory.mode = parsed.kinetics_mode;
+        {
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            ks.mode = parsed.kinetics_mode;
+            ks.f = parsed.f;
+            ks.k = parsed.k;
+        }
+        {
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.a = parsed.a;
+            p.b = parsed.b;
+            p.d_u = parsed.d_u;
+            p.d_v = parsed.d_v;
+            p.dt = parsed.dt;
+            p.heatmap_mode = parsed.fork.map_or(
+                super::counterfactual::MorphogenesisHeatmapMode::ActiveUb,
+                |fk| fk.heatmap_mode,
+            );
+        }
+        {
+            let mut adv = self
+                .advection_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            adv.enabled = parsed.advection_enabled;
+            adv.inlet_u = parsed.inlet_u;
+            adv.viscosity = parsed.viscosity;
+        }
+    }
+
+    /// Resets the worker in place (or respawns if disconnected) and clears any active fork.
+    pub fn reset(&mut self) {
+        let params = Arc::clone(&self.params);
+        let ks = Arc::clone(&self.kinetics_state);
+        let adv = Arc::clone(&self.advection_state);
+        let mask = Arc::clone(&self.mask_rle);
+        let width = self.width;
+        let height = self.height;
+        self.local_runner =
+            Self::create_kinetics_runner_with_advection(&params, &ks, &adv, &mask, width, height);
+        self.branch_engine.clear();
+        self.worker.reset_or_respawn(|| {
+            Self::create_kinetics_runner_with_advection(&params, &ks, &adv, &mask, width, height)
+        });
+        self.stepped_pixels = None;
+        self.step_runner = None;
+        self.live_velocity_peaks = [0.0, 0.0];
+        self.pending_initial_start = false;
+        self.dirty = true;
+    }
+
+    pub(crate) fn reset_system(&mut self) {
+        self.reset();
+        let _ = self.worker.send_command(SimCommand::Start);
     }
     pub(crate) fn apply_named_preset(&mut self, a: f64, b: f64, d_u: f64, d_v: f64, dt: f64) {
         let (f, k) = {
@@ -175,7 +191,18 @@ impl MorphogenesisTool {
             .advection_state
             .read()
             .unwrap_or_else(|e| e.into_inner());
-        let (xk, yk) = self.atlas.axis_keys();
+        let current_mode = self
+            .kinetics_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .mode;
+        let atlas_axes =
+            if current_mode != kinetics_mode || self.atlas.has_default_persisted_state() {
+                super::atlas::default_morpho_atlas_axes()
+            } else {
+                let (xk, yk) = self.atlas.axis_keys();
+                [xk.to_string(), yk.to_string()]
+            };
         let preset_state = MorphogenesisToolState {
             a,
             b,
@@ -190,13 +217,14 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            fork: None,
             mask_rle: self
                 .mask_rle
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .clone(),
             atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
+            atlas_axes,
             advection_enabled: adv.enabled,
             inlet_u: adv.inlet_u,
             viscosity: adv.viscosity,
@@ -216,6 +244,14 @@ impl MorphogenesisTool {
         if width != self.width || height != self.height {
             self.width = width;
             self.height = height;
+            self.local_runner = Self::create_kinetics_runner_with_advection(
+                &self.params,
+                &self.kinetics_state,
+                &self.advection_state,
+                &self.mask_rle,
+                self.width,
+                self.height,
+            );
             let runner = Self::create_kinetics_runner_with_advection(
                 &self.params,
                 &self.kinetics_state,
@@ -225,6 +261,7 @@ impl MorphogenesisTool {
                 self.height,
             );
             self.worker = BackgroundWorker::new(runner);
+            self.branch_engine.clear();
             self.stepped_pixels = None;
             self.step_runner = None;
             self.live_velocity_peaks = [0.0, 0.0];
@@ -292,10 +329,19 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) {
+        let mut rng = SimpleRng::new(12345);
+        Self::initialize_adapter_system_with_rng(system, width, height, &mut rng);
+    }
+
+    pub(crate) fn initialize_adapter_system_with_rng<D: SpatialDiffusion<2>>(
+        system: &mut TuringSystem<2, MorphogenesisKineticsAdapter, D>,
+        width: usize,
+        height: usize,
+        rng: &mut SimpleRng,
+    ) {
         match system.kinetics.mode {
             MorphogenesisKineticsMode::Schnakenberg => {
                 let n = width * height;
-                let mut rng = SimpleRng::new(12345);
                 let u_eq = system.kinetics.a + system.kinetics.b;
                 let v_eq = if u_eq.abs() > 1e-9 {
                     system.kinetics.b / (u_eq * u_eq)
@@ -361,6 +407,7 @@ impl MorphogenesisTool {
         Self::plot_concentration_with_contrast(data, width, height, false)
     }
 
+    #[cfg(test)]
     pub(crate) fn plot_concentration_with_contrast(
         data: &[f64],
         width: usize,

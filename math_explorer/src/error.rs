@@ -18,6 +18,9 @@ pub use domain_biology::error::{
     BiologyError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
 };
 
+#[cfg(feature = "climate")]
+pub use domain_climate::error::ClimateError;
+
 #[cfg(feature = "epidemiology")]
 pub use domain_epidemiology::error::{
     EpidemiologyDomainError, EpidemiologyError, NetworkModelError,
@@ -26,15 +29,15 @@ pub use domain_epidemiology::error::{
 #[cfg(feature = "physics")]
 pub use domain_physics::error::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-    PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
+    PhysicsError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
 
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
-    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
-    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
+    FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarketPricingError, MarkovError,
+    MatchModelError, NumberTheoryError, OptimizationError, OuError, PureMathError, StochasticError,
+    TdaError, TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -109,6 +112,10 @@ pub enum Error {
     #[cfg(feature = "biology")]
     ReactionDiffusion(ReactionDiffusionError),
 
+    /// Climate modeling and representation alignment error.
+    #[cfg(feature = "climate")]
+    Climate(ClimateError),
+
     /// Epidemiology crate umbrella error.
     #[cfg(feature = "epidemiology")]
     EpidemiologyDomain(EpidemiologyDomainError),
@@ -143,6 +150,9 @@ pub enum Error {
     /// Radar array estimation error.
     #[cfg(feature = "physics")]
     Radar(RadarError),
+    /// Abelian sandpile lattice and group error.
+    #[cfg(feature = "physics")]
+    Sandpile(SandpileError),
     /// Solid-state physics solver error.
     #[cfg(feature = "physics")]
     SolidState(SolidStateError),
@@ -168,6 +178,9 @@ pub enum Error {
     /// Elliptic curve error.
     #[cfg(feature = "pure_math")]
     EllipticCurve(EllipticCurveError),
+    /// Sports Elo rating error.
+    #[cfg(feature = "pure_math")]
+    Elo(EloError),
     /// Unified numerical evolution engine error.
     #[cfg(feature = "pure_math")]
     Evolution(EvolutionError),
@@ -183,9 +196,15 @@ pub enum Error {
     /// Numerical linear algebra error.
     #[cfg(feature = "pure_math")]
     LinearAlgebra(LinearAlgebraError),
+    /// Market pricing, devigging, and cross-book execution error.
+    #[cfg(feature = "pure_math")]
+    MarketPricing(MarketPricingError),
     /// Markov process error.
     #[cfg(feature = "pure_math")]
     Markov(MarkovError),
+    /// Calibrated 2D score-grid match model error.
+    #[cfg(feature = "pure_math")]
+    MatchModel(MatchModelError),
     /// Number theory error.
     #[cfg(feature = "pure_math")]
     NumberTheory(NumberTheoryError),

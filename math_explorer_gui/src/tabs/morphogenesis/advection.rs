@@ -80,6 +80,7 @@ pub struct MorphoWindTunnel {
     pub(crate) obstacle_buf: Vec<bool>,
     pub(crate) max_abs_ux: f64,
     pub(crate) max_abs_uy: f64,
+    pub(crate) twin_step_ready: bool,
 }
 
 fn detect_serpentine_baffles(mask: &CellMask2D) -> Option<(usize, usize)> {
@@ -125,6 +126,7 @@ impl MorphoWindTunnel {
             obstacle_buf: vec![false; total],
             max_abs_ux: 0.0,
             max_abs_uy: 0.0,
+            twin_step_ready: false,
         }
     }
 
@@ -194,6 +196,7 @@ impl MorphoWindTunnel {
         self.uy_buf.fill(0.0);
         self.max_abs_ux = 0.0;
         self.max_abs_uy = 0.0;
+        self.twin_step_ready = false;
         self.sync_from_cell_mask(mask);
     }
 
@@ -249,11 +252,14 @@ impl MorphogenesisKineticsRunner {
     pub(crate) fn step_coupled_or_isotropic(&mut self, dt: f64) {
         let adv = self.read_advection();
         if !adv.enabled {
+            self.wind_tunnel.twin_step_ready = false;
             self.system.step(dt);
             return;
         }
-        self.wind_tunnel
-            .step_and_project(adv.inlet_u, adv.viscosity);
+        if !std::mem::take(&mut self.wind_tunnel.twin_step_ready) {
+            self.wind_tunnel
+                .step_and_project(adv.inlet_u, adv.viscosity);
+        }
         let d_max = self.system.diffusion_coeffs[0]
             .max(self.system.diffusion_coeffs[1])
             .max(0.0);

@@ -62,6 +62,72 @@ pub(crate) fn apply_stroke_to_morpho_system<K: ReactionKinetics<2>>(
     });
 }
 
+pub(crate) fn enforce_system_mask<K: ReactionKinetics<2>>(
+    system: &mut TuringSystem<2, K, MaskedFiniteDifference2D>,
+    width: usize,
+    height: usize,
+) {
+    if !system.diffusion.mask.has_active_cells() {
+        return;
+    }
+    let emit_u = system.diffusion.mask.emitter_u_level;
+    let emit_v = system.diffusion.mask.emitter_v_level;
+    for idx in 0..(width * height) {
+        match ReactionCellRole::from_u8(system.diffusion.mask.roles()[idx]) {
+            ReactionCellRole::ZeroFluxWall | ReactionCellRole::Sink => {
+                system.u_mut()[idx] = 0.0;
+                system.v_mut()[idx] = 0.0;
+            }
+            ReactionCellRole::EmitterU => system.u_mut()[idx] = emit_u,
+            ReactionCellRole::EmitterV => system.v_mut()[idx] = emit_v,
+            ReactionCellRole::Free => {}
+        }
+    }
+}
+
+pub(crate) fn apply_sculpt_sim_command<K: ReactionKinetics<2>>(
+    system: &mut TuringSystem<2, K, MaskedFiniteDifference2D>,
+    width: usize,
+    height: usize,
+    cmd: &crate::async_sim::SimCommand,
+) -> bool {
+    match cmd {
+        crate::async_sim::SimCommand::ApplyBrush {
+            cx,
+            cy,
+            r,
+            is_obstacle,
+        } => {
+            let role = if *is_obstacle {
+                ReactionCellRole::ZeroFluxWall
+            } else {
+                ReactionCellRole::Free
+            };
+            system.diffusion.mask.paint_disk(*cx, *cy, *r, role);
+            enforce_system_mask(system, width, height);
+            true
+        }
+        crate::async_sim::SimCommand::ApplyBrushStroke(ref stroke) => {
+            apply_stroke_to_morpho_system(system, width, height, stroke);
+            true
+        }
+        crate::async_sim::SimCommand::SyncSculptState(ref payload) => {
+            if payload.rle_mask.is_empty() {
+                system.diffusion.mask.clear();
+            } else if let Ok(bytes) = decode_rle_mask(&payload.rle_mask, width * height) {
+                let _ = system.diffusion.mask.set_roles_slice(&bytes);
+            }
+            enforce_system_mask(system, width, height);
+            true
+        }
+        crate::async_sim::SimCommand::ClearObstacles => {
+            system.diffusion.mask.clear();
+            true
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn record_morpho_stroke_rle(
     rle: &mut Vec<[u32; 2]>,
     width: usize,
@@ -164,12 +230,27 @@ pub(crate) fn draw_morpho_sculpt_controls(
 }
 
 impl super::MorphogenesisTool {
-    /// Dispatches a [`BrushStroke`] to both UI-side RLE state and the background reaction-diffusion worker.
+    /// Dispatches a [`BrushStroke`] to UI-side RLE state, local twin runner, and background worker.
     pub fn dispatch_brush_stroke(&mut self, stroke: BrushStroke, ctx: Option<&egui::Context>) {
         {
             let mut rle = self.mask_rle.write().unwrap_or_else(|e| e.into_inner());
             record_morpho_stroke_rle(&mut rle, self.width, self.height, &stroke);
         }
+        apply_stroke_to_morpho_system(
+            &mut self.local_runner.system,
+            self.width,
+            self.height,
+            &stroke,
+        );
+        self.local_runner
+            .wind_tunnel
+            .sync_from_cell_mask(&self.local_runner.system.diffusion.mask);
+        if let Some(ref mut twin) = self.local_runner.twin {
+            let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+            let ub = super::counterfactual::active_morphogen_slice(&self.local_runner.system);
+            twin.observe_lockstep(self.local_runner.step_count, dt, ub);
+        }
+        self.sync_branch_engine_from_local();
         let _ = self
             .worker
             .send_command(crate::async_sim::SimCommand::ApplyBrushStroke(stroke));
@@ -180,66 +261,71 @@ impl super::MorphogenesisTool {
             c.request_repaint();
         }
     }
+
+    pub(crate) fn apply_sculpt_quick_action(&mut self, cmd: &str, ctx: &egui::Context) {
+        match cmd {
+            "stamp_maze" => {
+                *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
+                    build_maze_rle(self.width, self.height);
+                self.local_runner
+                    .system
+                    .diffusion
+                    .mask
+                    .stamp_microfluidic_maze();
+                self.local_runner.enforce_mask_concentrations();
+                self.local_runner
+                    .wind_tunnel
+                    .sync_from_cell_mask(&self.local_runner.system.diffusion.mask);
+                self.sync_branch_engine_from_local();
+                let _ = self
+                    .worker
+                    .send_command(crate::async_sim::SimCommand::Custom("stamp_maze".into()));
+                self.stepped_pixels = None;
+                self.step_runner = None;
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+            "clear_mask" => {
+                self.mask_rle
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clear();
+                self.local_runner.system.diffusion.mask.clear();
+                self.local_runner
+                    .wind_tunnel
+                    .sync_from_cell_mask(&self.local_runner.system.diffusion.mask);
+                let _ = self
+                    .worker
+                    .send_command(crate::async_sim::SimCommand::ClearObstacles);
+                self.stepped_pixels = None;
+                self.step_runner = None;
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+            _ => {}
+        }
+    }
 }
 
 impl super::runner::MorphogenesisKineticsRunner {
     pub(crate) fn enforce_mask_concentrations(&mut self) {
-        if !self.system.diffusion.mask.has_active_cells() {
-            return;
-        }
-        let emit_u = self.system.diffusion.mask.emitter_u_level;
-        let emit_v = self.system.diffusion.mask.emitter_v_level;
-        for idx in 0..(self.width * self.height) {
-            match ReactionCellRole::from_u8(self.system.diffusion.mask.roles()[idx]) {
-                ReactionCellRole::ZeroFluxWall | ReactionCellRole::Sink => {
-                    self.system.u_mut()[idx] = 0.0;
-                    self.system.v_mut()[idx] = 0.0;
-                }
-                ReactionCellRole::EmitterU => self.system.u_mut()[idx] = emit_u,
-                ReactionCellRole::EmitterV => self.system.v_mut()[idx] = emit_v,
-                ReactionCellRole::Free => {}
-            }
-        }
+        enforce_system_mask(&mut self.system, self.width, self.height);
     }
 
     pub(crate) fn apply_sculpt_command(&mut self, cmd: &crate::async_sim::SimCommand) {
         use crate::async_sim::SimCommand;
-        let mut mask_changed = true;
-        match cmd {
-            SimCommand::ApplyBrush {
-                cx,
-                cy,
-                r,
-                is_obstacle,
-            } => {
-                let role = if *is_obstacle {
-                    ReactionCellRole::ZeroFluxWall
-                } else {
-                    ReactionCellRole::Free
-                };
-                self.system.diffusion.mask.paint_disk(*cx, *cy, *r, role);
-                self.enforce_mask_concentrations();
-            }
-            SimCommand::ApplyBrushStroke(stroke) => {
-                apply_stroke_to_morpho_system(&mut self.system, self.width, self.height, stroke);
-            }
-            SimCommand::SyncSculptState(payload) => {
-                if payload.rle_mask.is_empty() {
-                    self.system.diffusion.mask.clear();
-                } else if let Ok(bytes) =
-                    decode_rle_mask(&payload.rle_mask, self.width * self.height)
-                {
-                    let _ = self.system.diffusion.mask.set_roles_slice(&bytes);
+        let mut mask_changed =
+            apply_sculpt_sim_command(&mut self.system, self.width, self.height, cmd);
+        if !mask_changed {
+            mask_changed = true;
+            match cmd {
+                SimCommand::Custom(s) if s == "clear_mask" => self.system.diffusion.mask.clear(),
+                SimCommand::Custom(s) if s == "stamp_maze" => {
+                    self.system.diffusion.mask.stamp_microfluidic_maze();
+                    self.enforce_mask_concentrations();
                 }
-                self.enforce_mask_concentrations();
+                _ => mask_changed = false,
             }
-            SimCommand::ClearObstacles => self.system.diffusion.mask.clear(),
-            SimCommand::Custom(s) if s == "clear_mask" => self.system.diffusion.mask.clear(),
-            SimCommand::Custom(s) if s == "stamp_maze" => {
-                self.system.diffusion.mask.stamp_microfluidic_maze();
-                self.enforce_mask_concentrations();
-            }
-            _ => mask_changed = false,
         }
         if mask_changed {
             self.wind_tunnel
