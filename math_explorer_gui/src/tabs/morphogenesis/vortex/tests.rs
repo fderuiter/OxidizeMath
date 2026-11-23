@@ -108,9 +108,13 @@ fn test_vortex_tool_renders_accessible_canvas_and_badges() {
     let has_canvas = ak.nodes.iter().any(|(_, n)| {
         n.role() == egui::accesskit::Role::Canvas
             && n.label() == Some("Coupled Vortex Morphogenesis Field")
-            && n.value().is_some_and(|v| v.contains("Pe =") && v.contains("Da ="))
+            && n.value()
+                .is_some_and(|v| v.contains("Pe =") && v.contains("Da ="))
     });
-    assert!(has_canvas, "Expected accessible Canvas node with Pe/Da value");
+    assert!(
+        has_canvas,
+        "Expected accessible Canvas node with Pe/Da value"
+    );
 
     let img = tool.export_raster_image().expect("raster export expected");
     assert_eq!(img.size, [100, 50]);
@@ -140,11 +144,7 @@ fn test_cross_tab_navigation_bridges_fluid_dynamics_and_morphogenesis() {
         Some("Vortex Morphogenesis")
     );
 
-    crate::app::request_cross_tab_navigation(
-        &ctx,
-        "Fluid Dynamics",
-        Some("LatticeBoltzmannTool"),
-    );
+    crate::app::request_cross_tab_navigation(&ctx, "Fluid Dynamics", Some("LatticeBoltzmannTool"));
     let _ = ctx.run(test_screen_input(), |ctx| {
         eframe::App::update(&mut app, ctx, &mut frame);
     });
@@ -168,10 +168,22 @@ fn test_export_all_four_vortex_regime_previews_to_png() {
     let pid = std::process::id();
     let temp_dir = std::env::temp_dir();
     let cases = [
-        (VortexRegimePreset::KarmanVortexSpots, "regime_1_karman_spots.png"),
-        (VortexRegimePreset::ShearAlignedStripes, "regime_2_shear_stripes.png"),
-        (VortexRegimePreset::StagnationPlumes, "regime_3_stagnation_plumes.png"),
-        (VortexRegimePreset::DamkohlerWashout, "regime_4_damkohler_washout.png"),
+        (
+            VortexRegimePreset::KarmanVortexSpots,
+            "regime_1_karman_spots.png",
+        ),
+        (
+            VortexRegimePreset::ShearAlignedStripes,
+            "regime_2_shear_stripes.png",
+        ),
+        (
+            VortexRegimePreset::StagnationPlumes,
+            "regime_3_stagnation_plumes.png",
+        ),
+        (
+            VortexRegimePreset::DamkohlerWashout,
+            "regime_4_damkohler_washout.png",
+        ),
     ];
     let mut tool = VortexMorphogenesisTool::default();
     for (preset, filename) in cases {

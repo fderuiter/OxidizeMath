@@ -54,12 +54,7 @@ fn sample_colormap(norm: f64, high_contrast: bool) -> [u8; 3] {
     }
 }
 
-fn coupled_cell_color(
-    v_norm: f64,
-    omega: f64,
-    omega_scale: f64,
-    high_contrast: bool,
-) -> Color32 {
+fn coupled_cell_color(v_norm: f64, omega: f64, omega_scale: f64, high_contrast: bool) -> Color32 {
     let curl = if omega.is_finite() {
         (omega * omega_scale).clamp(-1.0, 1.0)
     } else {
@@ -124,6 +119,34 @@ fn mode_cell_color(
     }
 }
 
+fn compute_field_scales(
+    u_slice: &[f64],
+    v_slice: &[f64],
+    omega_slice: &[f64],
+    obs_slice: &[bool],
+) -> FieldScales {
+    let (u_min, u_max) = min_max_finite(u_slice, obs_slice);
+    let (v_min, v_max) = min_max_finite(v_slice, obs_slice);
+    let omega_peak = omega_slice.iter().fold(0.02_f64, |acc, &w_z| {
+        if w_z.is_finite() {
+            acc.max(w_z.abs())
+        } else {
+            acc
+        }
+    });
+    FieldScales {
+        u_min,
+        u_inv: if u_max - u_min > 1e-6 {
+            1.0 / (u_max - u_min)
+        } else {
+            1.0
+        },
+        v_min,
+        v_inv: 1.0 / (v_max - v_min).max(0.18),
+        omega_scale: 1.0 / omega_peak,
+    }
+}
+
 /// Renders the coupled fluid-morphogen state into `pixels` (`width * height`) with `y = 0` at bottom.
 pub fn render_vortex_field_into(
     engine: &CoupledVortexMorphogenesis,
@@ -143,20 +166,12 @@ pub fn render_vortex_field_into(
     let omega_slice = engine.vorticity_row();
     let obs_slice = engine.obstacles_row();
     let emit_slice = engine.emitters_row();
-
-    let (u_min, u_max) = min_max_finite(u_slice, obs_slice);
-    let (v_min, v_max) = min_max_finite(v_slice, obs_slice);
-    let omega_peak = omega_slice
-        .iter()
-        .fold(0.02_f64, |acc, &w_z| if w_z.is_finite() { acc.max(w_z.abs()) } else { acc });
-    let scales = FieldScales {
-        u_min,
-        u_inv: if u_max - u_min > 1e-6 { 1.0 / (u_max - u_min) } else { 1.0 },
-        v_min,
-        v_inv: 1.0 / (v_max - v_min).max(0.18),
-        omega_scale: 1.0 / omega_peak,
+    let scales = compute_field_scales(u_slice, v_slice, omega_slice, obs_slice);
+    let palette = if high_contrast {
+        HIGH_CONTRAST_PALETTE
+    } else {
+        DARK_PALETTE
     };
-    let palette = if high_contrast { HIGH_CONTRAST_PALETTE } else { DARK_PALETTE };
 
     for py in 0..h {
         let gy = h - 1 - py;

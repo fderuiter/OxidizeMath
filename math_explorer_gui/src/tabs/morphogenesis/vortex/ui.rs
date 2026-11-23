@@ -3,9 +3,7 @@
 //! Side-panel controls, Peclet/Damkohler badges, brush painting, and accessible canvas rendering.
 
 use super::render::render_vortex_field_into;
-use super::state::{
-    VortexBrushMode, VortexDisplayMode, VortexKineticsKind, VortexPresetTag,
-};
+use super::state::{VortexBrushMode, VortexDisplayMode, VortexKineticsKind, VortexPresetTag};
 use super::VortexMorphogenesisTool;
 use crate::accessibility::{
     announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
@@ -17,7 +15,7 @@ use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui::{self, ColorImage};
 use math_explorer::biology::morphogenesis::{GrayScottKinetics, SchnakenbergKinetics};
 use math_explorer::vortex_morphogenesis::{
-    MorphogenKinetics, VELOCITY_SAFETY_CAP, VortexRegimePreset,
+    MorphogenKinetics, VortexRegimePreset, VELOCITY_SAFETY_CAP,
 };
 
 impl VortexMorphogenesisTool {
@@ -128,7 +126,11 @@ impl VortexMorphogenesisTool {
                 );
                 ui.colored_label(
                     da_color,
-                    format!("Da = {:.2} · {}", metrics.damkohler, metrics.damkohler_label()),
+                    format!(
+                        "Da = {:.2} · {}",
+                        metrics.damkohler,
+                        metrics.damkohler_label()
+                    ),
                 )
                 .accessible_hover_text(
                     "Damkohler number Da = k_react L / U measuring reaction persistence vs washout",
@@ -150,10 +152,7 @@ impl VortexMorphogenesisTool {
                 .clicked()
             {
                 self.select_regime_preset(preset);
-                announce_live_status(
-                    ui.ctx(),
-                    format!("Loaded {} regime preset", preset.title()),
-                );
+                announce_live_status(ui.ctx(), format!("Loaded {} regime preset", preset.title()));
             }
         }
     }
@@ -311,9 +310,7 @@ impl VortexMorphogenesisTool {
     fn draw_cross_tab_link(&self, ui: &mut egui::Ui) {
         if ui
             .button("🌊 Inspect Pure Fluid Wake in Fluid Dynamics →")
-            .accessible_hover_text(
-                "Switch to Lattice Boltzmann (Demo) in the Fluid Dynamics tab",
-            )
+            .accessible_hover_text("Switch to Lattice Boltzmann (Demo) in the Fluid Dynamics tab")
             .clicked()
         {
             crate::app::request_cross_tab_navigation(
@@ -326,8 +323,7 @@ impl VortexMorphogenesisTool {
 
     pub(super) fn draw_canvas(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        let high_contrast =
-            ThemeMode::from_visuals(ui.visuals()) == ThemeMode::HighContrast;
+        let high_contrast = ThemeMode::from_visuals(ui.visuals()) == ThemeMode::HighContrast;
         if self.last_high_contrast != Some(high_contrast) {
             self.last_high_contrast = Some(high_contrast);
             self.dirty = true;
@@ -339,8 +335,10 @@ impl VortexMorphogenesisTool {
             let aspect = (self.engine.config.width as f32) / (self.engine.config.height as f32);
             let target_w = avail.x.min(avail.y * aspect);
             let target_h = (target_w / aspect).min(avail.y);
-            let (response, painter) =
-                ui.allocate_painter(egui::vec2(target_w, target_h), egui::Sense::click_and_drag());
+            let (response, painter) = ui.allocate_painter(
+                egui::vec2(target_w, target_h),
+                egui::Sense::click_and_drag(),
+            );
             self.last_canvas_id = Some(response.id);
 
             self.handle_canvas_input(ui, &response);
@@ -460,7 +458,12 @@ impl VortexMorphogenesisTool {
             .and_then(|pos| self.screen_to_grid(response.rect, pos))
             .or_else(|| response.has_focus().then_some(self.cursor_cell));
         if let Some((gx, gy)) = target_cell {
-            let py = self.engine.config.height.saturating_sub(1).saturating_sub(gy);
+            let py = self
+                .engine
+                .config
+                .height
+                .saturating_sub(1)
+                .saturating_sub(gy);
             let center = egui::pos2(
                 response.rect.min.x + (gx as f32 + 0.5) * cell_w,
                 response.rect.min.y + (py as f32 + 0.5) * cell_h,

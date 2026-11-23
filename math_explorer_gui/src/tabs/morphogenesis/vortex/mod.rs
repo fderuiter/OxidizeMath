@@ -17,7 +17,7 @@ use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui::{self, Color32, ColorImage};
 use math_explorer::biology::morphogenesis::{GrayScottKinetics, SchnakenbergKinetics};
 use math_explorer::vortex_morphogenesis::{
-    CoupledVortexMorphogenesis, MorphogenKinetics, VELOCITY_SAFETY_CAP, VortexRegimePreset,
+    CoupledVortexMorphogenesis, MorphogenKinetics, VortexRegimePreset, VELOCITY_SAFETY_CAP,
 };
 use scientific_metadata::theory::TheoryDescribable;
 use std::time::Duration;
@@ -109,9 +109,10 @@ impl VortexMorphogenesisTool {
     /// Switches active reaction kinetics between [`GrayScottKinetics`] and [`SchnakenbergKinetics`].
     pub fn set_kinetics_kind(&mut self, kind: VortexKineticsKind) {
         self.engine.config.kinetics = match kind {
-            VortexKineticsKind::GrayScott => {
-                MorphogenKinetics::GrayScott(GrayScottKinetics::new(self.gs_params.0, self.gs_params.1))
-            }
+            VortexKineticsKind::GrayScott => MorphogenKinetics::GrayScott(GrayScottKinetics::new(
+                self.gs_params.0,
+                self.gs_params.1,
+            )),
             VortexKineticsKind::Schnakenberg => MorphogenKinetics::Schnakenberg(
                 SchnakenbergKinetics::new(self.sn_params.0, self.sn_params.1),
             ),
@@ -170,7 +171,11 @@ impl VortexMorphogenesisTool {
         self.bump_revision();
     }
 
-    pub(crate) fn screen_to_grid(&self, rect: egui::Rect, pos: egui::Pos2) -> Option<(usize, usize)> {
+    pub(crate) fn screen_to_grid(
+        &self,
+        rect: egui::Rect,
+        pos: egui::Pos2,
+    ) -> Option<(usize, usize)> {
         if !rect.contains(pos) || rect.width() <= 1.0 || rect.height() <= 1.0 {
             return None;
         }
@@ -178,7 +183,12 @@ impl VortexMorphogenesisTool {
         let rel_y = ((pos.y - rect.min.y) / rect.height()).clamp(0.0, 0.999_999);
         let gx = (rel_x * (self.engine.config.width as f32)) as usize;
         let py = (rel_y * (self.engine.config.height as f32)) as usize;
-        let gy = self.engine.config.height.saturating_sub(1).saturating_sub(py);
+        let gy = self
+            .engine
+            .config
+            .height
+            .saturating_sub(1)
+            .saturating_sub(py);
         Some((gx, gy))
     }
 
@@ -366,7 +376,11 @@ impl InteractiveTool for VortexMorphogenesisTool {
 
     fn export_raster_image(&self) -> Option<ColorImage> {
         let hc = self.last_high_contrast.unwrap_or(false);
-        Some(render::build_export_image(&self.engine, self.display_mode, hc))
+        Some(render::build_export_image(
+            &self.engine,
+            self.display_mode,
+            hc,
+        ))
     }
 
     fn step_simulation(&mut self) {
@@ -410,7 +424,8 @@ impl InteractiveTool for VortexMorphogenesisTool {
 
         let cfg = parsed.to_engine_config();
         if let Some(regime) = parsed.preset.as_regime() {
-            if parsed.width != self.engine.config.width || parsed.height != self.engine.config.height
+            if parsed.width != self.engine.config.width
+                || parsed.height != self.engine.config.height
             {
                 self.engine = CoupledVortexMorphogenesis::new(cfg);
             }

@@ -1,8 +1,32 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MathExplorerApp, ViewportLayout};
+use super::{MathExplorerApp, SplitLayoutMode, ViewportLayout};
 
 impl MathExplorerApp {
+    /// Resolves and synchronizes the active `ViewportLayout` (including legacy `split_layout_mode`).
+    pub(super) fn resolve_active_viewport_layout(&mut self) -> ViewportLayout {
+        if self.viewport_layout != ViewportLayout::Single {
+            self.sync_layout();
+            self.viewport_layout
+        } else if self.split_layout_mode != SplitLayoutMode::Single {
+            let layout = match self.split_layout_mode {
+                SplitLayoutMode::Horizontal => ViewportLayout::SplitHorizontal,
+                SplitLayoutMode::Vertical => ViewportLayout::SplitVertical,
+                SplitLayoutMode::Single => ViewportLayout::Single,
+            };
+            self.viewport_layout = layout;
+            if !self.pane_tabs.is_empty() {
+                self.pane_tabs[0] = self.selected_tab;
+            }
+            if self.pane_tabs.len() > 1 {
+                self.pane_tabs[1] = self.secondary_tab;
+            }
+            layout
+        } else {
+            ViewportLayout::Single
+        }
+    }
+
     /// Swaps the assigned simulation modules and per-pane runtime states between `pane_a` and `pane_b`.
     pub fn swap_pane_pair(&mut self, pane_a: usize, pane_b: usize) {
         if pane_a >= 4 || pane_b >= 4 || pane_a == pane_b || self.tabs.is_empty() {

@@ -77,6 +77,14 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
                 tab.import_url_preset_json(Some("FavoritismTool"), Some(&val.to_string()))
                     .unwrap();
             }
+            "cannibalism" => {
+                let orig = tab.export_url_preset_json().unwrap().unwrap();
+                let mut val: serde_json::Value = serde_json::from_str(&orig).unwrap();
+                val["config"]["age_bins"] = serde_json::json!(96);
+                val["config"]["attack_rate"] = serde_json::json!(0.31);
+                tab.import_url_preset_json(Some("PopulationStructureTool"), Some(&val.to_string()))
+                    .unwrap();
+            }
             _ => {}
         }
     }
@@ -86,7 +94,7 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
 fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut source_app = MathExplorerApp::default();
-    assert_eq!(source_app.tabs.len(), 26, "Expected all 26 ExplorerTabs");
+    assert_eq!(source_app.tabs.len(), 27, "Expected all 27 ExplorerTabs");
 
     let mut slugs = HashSet::new();
     for tab in &source_app.tabs {
@@ -134,7 +142,7 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
 fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    let expected_tools = 76 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
+    let expected_tools = 79 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(
         tools.len(),
         expected_tools,
@@ -198,7 +206,7 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 109
+    let expected_presets = 116
         + if cfg!(all(feature = "physics", feature = "biology")) {
             4
         } else {

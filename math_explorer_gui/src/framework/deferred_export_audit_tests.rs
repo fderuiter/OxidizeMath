@@ -151,14 +151,14 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     }
 
     let expected_raster = 7 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
-    let expected_non_shader = 73 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
-    assert_eq!(plot_tool_count, 54, "Expected 54 Plot dataset+figure tools");
+    let expected_non_shader = 76 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
+    assert_eq!(plot_tool_count, 58, "Expected 58 Plot dataset+figure tools");
     assert_eq!(
         raster_tool_count, expected_raster,
         "Unexpected raster figure tool count"
     );
-    assert_eq!(unsupported_tool_count, 15, "Expected 15 non-figure tools");
-    assert_eq!(solid_3d_count, 5, "Expected 5 solid 3D geometric tools");
+    assert_eq!(unsupported_tool_count, 14, "Expected 14 non-figure tools");
+    assert_eq!(solid_3d_count, 6, "Expected 6 solid 3D geometric tools");
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
         shader_tool_count, 3,
@@ -239,6 +239,7 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         "AttractorPlotter",
         "CrystalViewer",
         "SpinVisualizer",
+        "CorticalMorphometryTool",
     ];
     for id in solid_ids {
         let meta = inventory::iter::<crate::framework::ToolMetadata>

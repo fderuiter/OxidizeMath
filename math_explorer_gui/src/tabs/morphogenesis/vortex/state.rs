@@ -4,7 +4,7 @@
 
 use math_explorer::biology::morphogenesis::{GrayScottKinetics, SchnakenbergKinetics};
 use math_explorer::vortex_morphogenesis::{
-    MorphogenKinetics, VELOCITY_SAFETY_CAP, VortexMorphogenesisConfig, VortexRegimePreset,
+    MorphogenKinetics, VortexMorphogenesisConfig, VortexRegimePreset, VELOCITY_SAFETY_CAP,
 };
 use serde::{Deserialize, Serialize};
 
@@ -182,7 +182,9 @@ impl VortexToolState {
     pub fn for_preset(preset: VortexRegimePreset) -> Self {
         let cfg = VortexMorphogenesisConfig::for_preset(preset);
         let (kinetics, gs_f, gs_k, sn_a, sn_b) = match cfg.kinetics {
-            MorphogenKinetics::GrayScott(gs) => (VortexKineticsKind::GrayScott, gs.f, gs.k, 0.10, 0.90),
+            MorphogenKinetics::GrayScott(gs) => {
+                (VortexKineticsKind::GrayScott, gs.f, gs.k, 0.10, 0.90)
+            }
             MorphogenKinetics::Schnakenberg(sn) => {
                 (VortexKineticsKind::Schnakenberg, 0.038, 0.060, sn.a, sn.b)
             }
@@ -224,7 +226,12 @@ impl VortexToolState {
             ("emitter_strength", self.emitter_strength, 0.0, 1.0),
             ("gs_f", self.gs_f, 0.0, 0.2),
             ("gs_k", self.gs_k, 0.0, 0.2),
-            ("inlet_ux", self.inlet_ux, -VELOCITY_SAFETY_CAP, VELOCITY_SAFETY_CAP),
+            (
+                "inlet_ux",
+                self.inlet_ux,
+                -VELOCITY_SAFETY_CAP,
+                VELOCITY_SAFETY_CAP,
+            ),
             ("sn_a", self.sn_a, 0.0, 1.0),
             ("sn_b", self.sn_b, 0.0, 2.0),
             ("tau", self.tau, 0.51, 2.0),
