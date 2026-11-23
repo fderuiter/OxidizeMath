@@ -19,6 +19,7 @@ use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
+use math_explorer::physics::mri::reconstruction::Fft2dWorkspace;
 use scientific_metadata::theory::TheoryDescribable;
 use std::hash::{Hash, Hasher};
 
@@ -28,6 +29,7 @@ pub struct MriKSpaceScannerTool {
     pub state: MriKSpaceScannerState,
     pub(crate) ground_truth: Vec<f64>,
     pub(crate) forward_cache: ForwardKSpaceCache,
+    pub(crate) fft_workspace: Fft2dWorkspace,
     pub(crate) parametric_mask: Vec<bool>,
     pub(crate) active_mask: Vec<bool>,
     pub(crate) recon: ReconOutput,
@@ -51,9 +53,15 @@ impl Default for MriKSpaceScannerTool {
         let start = PlatformInstant::now();
         let ground_truth = synthesize_phantom(&state);
         let forward_cache = compute_forward_kspace(&ground_truth);
+        let mut fft_workspace = Fft2dWorkspace::new(KSPACE_DIM, KSPACE_DIM);
         let parametric_mask = build_parametric_mask(&state);
         let active_mask = parametric_mask.clone();
-        let recon = reconstruct_from_forward_cache(&ground_truth, &forward_cache, &active_mask);
+        let recon = reconstruct_from_forward_cache(
+            &ground_truth,
+            &forward_cache,
+            &active_mask,
+            &mut fft_workspace,
+        );
         let last_recon_ms = start.elapsed().as_secs_f64() * 1000.0;
         let cached_images = [
             render_grayscale_panel(&ground_truth, false),
@@ -65,6 +73,7 @@ impl Default for MriKSpaceScannerTool {
             state,
             ground_truth,
             forward_cache,
+            fft_workspace,
             parametric_mask,
             active_mask,
             recon,
@@ -126,6 +135,7 @@ impl MriKSpaceScannerTool {
                 &self.ground_truth,
                 &self.forward_cache,
                 &self.active_mask,
+                &mut self.fft_workspace,
             );
             self.recon_dirty = false;
             self.last_recon_ms = start.elapsed().as_secs_f64() * 1000.0;

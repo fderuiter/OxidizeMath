@@ -7,7 +7,7 @@ use super::{KSPACE_CENTER, KSPACE_DIM, KSPACE_LEN};
 use eframe::egui::{Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::physics::mri::reconstruction::{inverse_dft_2d, simulate_signal_2d};
+use math_explorer::physics::mri::reconstruction::{Fft2dWorkspace, simulate_signal_2d};
 use nalgebra::DMatrix;
 use num_complex::Complex;
 
@@ -179,12 +179,14 @@ fn compute_radial_sampling_and_power(
     (power_curve, sampling_curve)
 }
 
-/// Applies `mask` to a cached [`ForwardKSpaceCache`] and executes the `64x64` inverse 2D FFT (`inverse_dft_2d`).
+/// Applies `mask` to a cached [`ForwardKSpaceCache`] and executes the `64x64` inverse 2D FFT
+/// via a reusable pre-planned [`Fft2dWorkspace`].
 #[must_use]
 pub fn reconstruct_from_forward_cache(
     ground_truth: &[f64],
     forward: &ForwardKSpaceCache,
     mask: &[bool],
+    fft_workspace: &mut Fft2dWorkspace,
 ) -> ReconOutput {
     assert_eq!(ground_truth.len(), KSPACE_LEN);
     assert_eq!(mask.len(), KSPACE_LEN);
@@ -202,12 +204,14 @@ pub fn reconstruct_from_forward_cache(
         }
     }
 
-    let inv = inverse_dft_2d(&masked_raw);
+    fft_workspace.resize(KSPACE_DIM, KSPACE_DIM);
+    let mut inv = DMatrix::zeros(KSPACE_DIM, KSPACE_DIM);
+    fft_workspace.reconstruct_normalized_2d_into(&masked_raw, &mut inv);
     let scale = KSPACE_LEN as f64;
     let mut reconstructed = vec![0.0_f64; KSPACE_LEN];
     for r in 0..KSPACE_DIM {
         for c in 0..KSPACE_DIM {
-            reconstructed[flatten_2d_index(c, r, KSPACE_DIM)] = (inv[(r, c)] / scale).norm();
+            reconstructed[flatten_2d_index(c, r, KSPACE_DIM)] = inv[(r, c)].norm();
         }
     }
 

@@ -9,7 +9,7 @@
     clippy::too_many_arguments
 )]
 
-mod a11y;
+pub mod a11y;
 mod axis;
 pub mod commands;
 pub mod csv_import;
@@ -46,6 +46,7 @@ use egui::{
 use emath::Float as _;
 
 pub use crate::{
+    a11y::{contrast_ratio, focus_ring_stroke},
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     export::{
         AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
