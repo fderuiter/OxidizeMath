@@ -1,53 +1,66 @@
-//! Zero-allocation Lorenz strange-attractor stereo pan and two-operator FM sonification
+//! Zero-allocation 3D chaotic attractor stereo pan and FM sonification helpers
 //! for [`crate::tabs::chaos::attractors::AttractorPlotter`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::AttractorPlotter;
+use super::{AttractorMode, AttractorPlotter, CompiledFlowJob};
+use crate::audio::mappings::attractor_frame;
 use crate::audio::SonificationFrame;
-use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
-
-#[inline]
-pub(super) fn lorenz_sonification_frame(sys: &LorenzSystem, diverged: bool) -> SonificationFrame {
-    if diverged {
-        return SonificationFrame::silent();
-    }
-    let v = sys.state.vec;
-    if !v.x.is_finite()
-        || !v.y.is_finite()
-        || !v.z.is_finite()
-        || !sys.sigma.is_finite()
-        || !sys.rho.is_finite()
-        || !sys.beta.is_finite()
-    {
-        return SonificationFrame::silent();
-    }
-
-    let pan = (v.x / 22.0).clamp(-1.0, 1.0) as f32;
-    let z_norm = (v.z / 50.0).clamp(0.0, 1.5) as f32;
-    let carrier_hz = 130.0 + z_norm * 360.0;
-    let y_abs = (v.y.abs() / 28.0).clamp(0.0, 1.5) as f32;
-    let shear = ((v.x - v.y).abs() / 30.0).clamp(0.0, 1.5) as f32;
-    let fm_modulator_hz = carrier_hz * (0.5 + 1.5 * y_abs);
-    let fm_index_hz = 18.0 + 260.0 * shear;
-    let radius = ((v.x * v.x + v.y * v.y + v.z * v.z).sqrt() / 55.0).clamp(0.0, 1.2) as f32;
-    let filter_cutoff_hz = 550.0 + 4_200.0 * radius;
-    let amplitude = (0.32 + 0.45 * radius).clamp(0.0, 0.88);
-
-    SonificationFrame {
-        active: true,
-        carrier_hz,
-        amplitude,
-        pan,
-        fm_modulator_hz,
-        fm_index_hz,
-        filter_cutoff_hz,
-        filter_q: 1.8,
-        ..SonificationFrame::silent()
-    }
-}
+use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
+use std::hash::{Hash, Hasher};
 
 impl AttractorPlotter {
+    #[inline]
+    pub(super) fn current_sonification_frame(&self) -> SonificationFrame {
+        if self.diverged() || !self.is_finite_state() {
+            return SonificationFrame::silent();
+        }
+        let v = self.system.state.vec;
+        let deriv = match self.mode {
+            AttractorMode::Lorenz => [
+                self.system.sigma * (v.y - v.x),
+                v.x * (self.system.rho - v.z) - v.y,
+                v.x * v.y - self.system.beta * v.z,
+            ],
+            AttractorMode::Custom => {
+                let compiled = self.flow_bank.active_compiled();
+                let (params, len) = self.flow_bank.inline_params();
+                let p = &params[..len];
+                [
+                    compiled[0].eval_3d(v.x, v.y, v.z, p),
+                    compiled[1].eval_3d(v.x, v.y, v.z, p),
+                    compiled[2].eval_3d(v.x, v.y, v.z, p),
+                ]
+            }
+        };
+        attractor_frame([v.x, v.y, v.z], deriv, false)
+    }
+
+    pub(super) fn compute_state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.mode as u8).hash(&mut h);
+        for bar in self.flow_bank.bars() {
+            bar.raw_text.hash(&mut h);
+        }
+        for &pv in self.flow_bank.param_slice() {
+            pv.to_bits().hash(&mut h);
+        }
+        self.system.sigma.to_bits().hash(&mut h);
+        self.system.rho.to_bits().hash(&mut h);
+        self.system.beta.to_bits().hash(&mut h);
+        self.dt.to_bits().hash(&mut h);
+        self.tube_radius.to_bits().hash(&mut h);
+        self.simulation_speed.hash(&mut h);
+        self.max_points.hash(&mut h);
+        self.is_paused().hash(&mut h);
+        self.diverged().hash(&mut h);
+        self.show_annotations.hash(&mut h);
+        self.camera.hash_state(&mut h);
+        self.audio_settings.gain.to_bits().hash(&mut h);
+        self.audio_settings.pitch_scale.to_bits().hash(&mut h);
+        h.finish().max(1)
+    }
+
     pub(super) fn render_wav_frames(&self, frame_count: usize) -> Vec<SonificationFrame> {
         let count = frame_count.max(1);
         if self.diverged() || !self.is_finite_state() {
@@ -61,8 +74,8 @@ impl AttractorPlotter {
             .build(LorenzState::new(v.x, v.y, v.z));
         let dt = self.dt.clamp(0.001, 0.05);
         let substeps = self.simulation_speed.clamp(1, super::MAX_SIMULATION_SPEED);
-        let custom_job = (self.mode == super::AttractorMode::Custom)
-            .then(|| super::CompiledFlowJob::from_bank(&self.flow_bank));
+        let custom_job =
+            (self.mode == AttractorMode::Custom).then(|| CompiledFlowJob::from_bank(&self.flow_bank));
         let mut out = Vec::with_capacity(count);
         for _ in 0..count {
             let mut bad = false;
@@ -78,7 +91,20 @@ impl AttractorPlotter {
                     break;
                 }
             }
-            out.push(lorenz_sonification_frame(&sys, bad));
+            let sv = sys.state.vec;
+            let deriv = if bad {
+                [0.0, 0.0, 0.0]
+            } else if let Some(ref job) = custom_job {
+                let rhs = job.eval_rhs(sv);
+                [rhs.x, rhs.y, rhs.z]
+            } else {
+                [
+                    sys.sigma * (sv.y - sv.x),
+                    sv.x * (sys.rho - sv.z) - sv.y,
+                    sv.x * sv.y - sys.beta * sv.z,
+                ]
+            };
+            out.push(attractor_frame([sv.x, sv.y, sv.z], deriv, bad));
         }
         out
     }

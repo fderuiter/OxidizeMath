@@ -1,134 +1,216 @@
-//! Fixed-size, zero-allocation `SonificationFrame` acoustic descriptors and persisted
-//! non-mute `AcousticSettings` bounded for safe synthesis and preset/URL sharing.
+//! Stack-allocated acoustic frame types carried across simulation snapshots.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+// theory_verification!
 
 use serde::{Deserialize, Serialize};
 
-/// Number of `PeriodicWave` Fourier slots (`0` = DC offset `0.0`, `1..8` = harmonics 1..=7).
-pub const MAX_HARMONIC_SLOTS: usize = 8;
+pub use super::settings::{AcousticSettings, DEFAULT_AUDIO_GAIN, DEFAULT_PITCH_SCALE};
 
-/// Number of simultaneous polyrhythmic step-sequencer voices.
-pub const MAX_POLYRHYTHM_VOICES: usize = 4;
+/// Maximum simultaneous polyphonic voices per [`SonificationFrame`].
+pub const MAX_VOICES: usize = 8;
 
-/// Minimum audible carrier frequency in Hz.
-pub const MIN_CARRIER_HZ: f32 = 20.0;
-/// Maximum audible carrier frequency in Hz.
-pub const MAX_CARRIER_HZ: f32 = 12_000.0;
-/// Default safe user master gain (`0.5` = 50%).
-pub const DEFAULT_AUDIO_GAIN: f32 = 0.5;
-/// Default user pitch multiplier (`1.0` = nominal pitch).
-pub const DEFAULT_PITCH_SCALE: f32 = 1.0;
+/// Number of Fourier partial harmonics (`n = 1..=8`) per custom `PeriodicWave`.
+pub const NUM_HARMONICS: usize = 8;
 
-const fn default_gain() -> f32 {
-    DEFAULT_AUDIO_GAIN
+/// Minimum audible carrier or filter cutoff frequency in `Hz`.
+pub const MIN_FREQ_HZ: f32 = 20.0;
+
+/// Maximum carrier or filter cutoff frequency in `Hz`.
+pub const MAX_FREQ_HZ: f32 = 8000.0;
+
+/// Hard master limiter ceiling in decibels relative to full scale (`dBFS`).
+pub const LIMITER_CEILING_DBFS: f32 = -3.0;
+
+/// Linear amplitude ceiling corresponding to `-3.0 dBFS` (`10^(-3/20)`).
+pub const LIMITER_CEILING_LINEAR: f32 = 0.707_945_76;
+
+/// Silence floor displayed by the visual level meter in `dBFS`.
+pub const FLOOR_DBFS: f32 = -60.0;
+
+/// Exponential `AudioParam::set_target_at_time` smoothing time constant (`15 ms`).
+pub const PARAM_SMOOTH_TAU_SEC: f64 = 0.015;
+
+/// Fast ramp-to-silence time constant (`3 ms`, reaching `< -80 dBFS` within `<= 30 ms`).
+pub const MUTE_RAMP_TAU_SEC: f64 = 0.003;
+
+/// Built-in custom waveform timbres synthesized via continuous Fourier coefficients.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WaveformPreset {
+    /// Pure fundamental sine tone (`b_1 = 1`).
+    #[default]
+    Sine,
+    /// Warm string-like series with smooth even and odd overtone roll-off.
+    FourierWarm,
+    /// Asymmetric patch-clamp action-potential impulse rich in upper harmonics.
+    PatchClamp,
+    /// Standing-wave modal blend emphasizing low-order quantum eigenharmonics.
+    QuantumModal,
+    /// Odd-harmonic saturated square wave suited to period-doubling cascades.
+    SubharmonicSquare,
+    /// Clear harmonic brass timbre for just-intonation prime chords.
+    JustHarmonic,
 }
 
-const fn default_pitch_scale() -> f32 {
-    DEFAULT_PITCH_SCALE
+impl WaveformPreset {
+    /// All selectable presets for UI combo boxes and precomputed harmonic caches.
+    pub const ALL: [Self; 6] = [
+        Self::Sine,
+        Self::FourierWarm,
+        Self::PatchClamp,
+        Self::QuantumModal,
+        Self::SubharmonicSquare,
+        Self::JustHarmonic,
+    ];
+
+    /// Human-readable label displayed in the sonification timbre selector.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Sine => "Pure Sine",
+            Self::FourierWarm => "Fourier Strings",
+            Self::PatchClamp => "Patch-Clamp Pulse",
+            Self::QuantumModal => "Quantum Eigenmodes",
+            Self::SubharmonicSquare => "Subharmonic Reed",
+            Self::JustHarmonic => "Just Harmonic Organ",
+        }
+    }
+
+    /// Zero-based index into [`Self::ALL`].
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Sine => 0,
+            Self::FourierWarm => 1,
+            Self::PatchClamp => 2,
+            Self::QuantumModal => 3,
+            Self::SubharmonicSquare => 4,
+            Self::JustHarmonic => 5,
+        }
+    }
 }
 
-/// Persisted non-mute acoustic parameters for JSON presets and `#tab=...&tool=...&state=...` URLs.
-///
-/// Deliberately omits mute state so application startup, preset import, and URL hydration
-/// always boot muted until an explicit user gesture unmutes playback.
+/// Stack-resident real (`cos_a`) and imaginary (`sin_b`) harmonic partial weights (`n = 1..=8`).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AcousticSettings {
-    /// Master output gain scalar (`0.0..=1.0`).
-    #[serde(default = "default_gain")]
-    pub gain: f32,
-    /// Pitch transposition multiplier (`0.25..=4.0`).
-    #[serde(default = "default_pitch_scale")]
-    pub pitch_scale: f32,
+pub struct HarmonicWeights {
+    /// Cosine coefficients `a_1 .. a_8` (`PeriodicWaveOptions::real[1..=8]`).
+    pub cos_a: [f32; NUM_HARMONICS],
+    /// Sine coefficients `b_1 .. b_8` (`PeriodicWaveOptions::imag[1..=8]`).
+    pub sin_b: [f32; NUM_HARMONICS],
 }
 
-impl Default for AcousticSettings {
+impl Default for HarmonicWeights {
     fn default() -> Self {
+        Self::pure_sine()
+    }
+}
+
+impl HarmonicWeights {
+    /// Fundamental-only sine table (`b_1 = 1.0`).
+    #[must_use]
+    pub const fn pure_sine() -> Self {
+        let mut sin_b = [0.0; NUM_HARMONICS];
+        sin_b[0] = 1.0;
         Self {
-            gain: DEFAULT_AUDIO_GAIN,
-            pitch_scale: DEFAULT_PITCH_SCALE,
+            cos_a: [0.0; NUM_HARMONICS],
+            sin_b,
         }
+    }
+
+    /// Sanitizes non-finite entries and normalizes L2 partial energy to unit RMS scale.
+    #[must_use]
+    pub fn normalized(mut self) -> Self {
+        let mut sum_sq = 0.0_f32;
+        for i in 0..NUM_HARMONICS {
+            let a = sanitize_f32(self.cos_a[i], 0.0, -4.0, 4.0);
+            let b = sanitize_f32(self.sin_b[i], 0.0, -4.0, 4.0);
+            self.cos_a[i] = a;
+            self.sin_b[i] = b;
+            sum_sq += a * a + b * b;
+        }
+        if sum_sq <= 1e-8 {
+            return Self::pure_sine();
+        }
+        let inv = 1.0 / sum_sq.sqrt();
+        for i in 0..NUM_HARMONICS {
+            self.cos_a[i] *= inv;
+            self.sin_b[i] *= inv;
+        }
+        self
     }
 }
 
-impl AcousticSettings {
-    /// Returns `true` when settings match factory defaults (used for `skip_serializing_if`).
-    #[must_use]
-    pub fn is_default(&self) -> bool {
-        (self.gain - DEFAULT_AUDIO_GAIN).abs() < 1e-6
-            && (self.pitch_scale - DEFAULT_PITCH_SCALE).abs() < 1e-6
-    }
-
-    /// Validates finiteness and safe acoustic bounds for preset and URL deserialization.
-    pub fn validate(&self) -> Result<(), String> {
-        if !self.gain.is_finite() || !(0.0..=1.0).contains(&self.gain) {
-            return Err(format!(
-                "Acoustic gain {} must be finite within [0.0, 1.0]",
-                self.gain
-            ));
-        }
-        if !self.pitch_scale.is_finite() || !(0.25..=4.0).contains(&self.pitch_scale) {
-            return Err(format!(
-                "Acoustic pitch_scale {} must be finite within [0.25, 4.0]",
-                self.pitch_scale
-            ));
-        }
-        Ok(())
-    }
-
-    /// Clamps potentially untrusted values into safe finite ranges.
-    #[must_use]
-    pub fn sanitized(self) -> Self {
-        let gain = if self.gain.is_finite() {
-            self.gain.clamp(0.0, 1.0)
-        } else {
-            DEFAULT_AUDIO_GAIN
-        };
-        let pitch_scale = if self.pitch_scale.is_finite() {
-            self.pitch_scale.clamp(0.25, 4.0)
-        } else {
-            DEFAULT_PITCH_SCALE
-        };
-        Self { gain, pitch_scale }
-    }
-}
-
-/// Fixed-size, stack-allocated acoustic frame emitted per simulation step or UI tick.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct SonificationFrame {
-    /// Whether this frame actively drives audible output when unmuted.
-    pub active: bool,
-    /// Primary oscillator carrier frequency in Hz (`20.0..=12_000.0`).
-    pub carrier_hz: f32,
-    /// Normalized voice amplitude envelope (`0.0..=1.0`).
-    pub amplitude: f32,
-    /// Equal-power stereo pan (`-1.0` = hard left, `0.0` = center, `+1.0` = hard right).
+/// Parameters for a single polyphonic synthesis voice (`Copy`, stack-only).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VoiceSpec {
+    /// Carrier fundamental frequency in `Hz` (clamped to `20.0..=8000.0`).
+    pub freq_hz: f32,
+    /// Linear voice gain (`0.0..=1.0`).
+    pub gain: f32,
+    /// Stereo pan position (`-1.0` full left to `+1.0` full right).
     pub pan: f32,
-    /// Two-operator FM modulator frequency in Hz (`0.0..=8_000.0`).
-    pub fm_modulator_hz: f32,
-    /// Two-operator FM peak frequency deviation in Hz (`0.0..=4_000.0`).
-    pub fm_index_hz: f32,
-    /// Biquad filter cutoff / center frequency in Hz (`40.0..=16_000.0`).
+    /// Frequency-modulation oscillator rate in `Hz` (`0.0..=4000.0`).
+    pub fm_mod_hz: f32,
+    /// Frequency-modulation depth index (`0.0..=8.0`).
+    pub fm_index: f32,
+    /// Low-pass biquad filter cutoff frequency in `Hz` (`20.0..=8000.0`).
     pub filter_cutoff_hz: f32,
-    /// Biquad filter resonance `Q` (`0.25..=18.0`).
-    pub filter_q: f32,
-    /// Selects band-pass (`true`) vs. low-pass (`false`) biquad response.
-    pub filter_bandpass: bool,
-    /// Cosine (`real`) Fourier coefficients for `PeriodicWave` synthesis (`[0]` = DC `0.0`).
-    pub harmonics_real: [f32; MAX_HARMONIC_SLOTS],
-    /// Sine (`imag`) Fourier coefficients for `PeriodicWave` synthesis (`[0]` = `0.0`).
-    pub harmonics_imag: [f32; MAX_HARMONIC_SLOTS],
-    /// Whether `harmonics_real` / `harmonics_imag` drive a custom `PeriodicWave` spectrum.
-    pub use_periodic_wave: bool,
-    /// Stochastic patch-clamp spike click burst intensity (`0.0..=1.0`).
-    pub click_impulse: f32,
-    /// Exponential ring-down decay rate `1/T2` in `s^-1` (`0.0..=200.0`) for NMR FID bells.
-    pub bell_decay_rate: f32,
-    /// Frequencies in Hz for up to 4 polyrhythmic step-sequencer voices (`0.0` = silent).
-    pub poly_voices_hz: [f32; MAX_POLYRHYTHM_VOICES],
-    /// Amplitudes (`0.0..=1.0`) for up to 4 polyrhythmic step-sequencer voices.
-    pub poly_voices_amp: [f32; MAX_POLYRHYTHM_VOICES],
+    /// Patch-clamp spike click impulse intensity (`0.0..=1.0`).
+    pub transient_impulse: f32,
+}
+
+impl Default for VoiceSpec {
+    fn default() -> Self {
+        Self::silent()
+    }
+}
+
+impl VoiceSpec {
+    /// Returns an inactive voice initialized to safe audible defaults.
+    #[must_use]
+    pub const fn silent() -> Self {
+        Self {
+            freq_hz: 220.0,
+            gain: 0.0,
+            pan: 0.0,
+            fm_mod_hz: 0.0,
+            fm_index: 0.0,
+            filter_cutoff_hz: 4000.0,
+            transient_impulse: 0.0,
+        }
+    }
+
+    /// Clamps every parameter to finite, speaker-safe bounds.
+    #[must_use]
+    pub fn sanitize(self) -> Self {
+        Self {
+            freq_hz: clamp_freq_hz(self.freq_hz),
+            gain: sanitize_f32(self.gain, 0.0, 0.0, 1.0),
+            pan: sanitize_f32(self.pan, 0.0, -1.0, 1.0),
+            fm_mod_hz: sanitize_f32(self.fm_mod_hz, 0.0, 0.0, 4000.0),
+            fm_index: sanitize_f32(self.fm_index, 0.0, 0.0, 8.0),
+            filter_cutoff_hz: clamp_freq_hz(self.filter_cutoff_hz),
+            transient_impulse: sanitize_f32(self.transient_impulse, 0.0, 0.0, 1.0),
+        }
+    }
+}
+
+/// Stack-allocated polyphonic control frame emitted by mathematical simulations.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SonificationFrame {
+    /// Fixed bank of up to [`MAX_VOICES`] simultaneous voices.
+    pub voices: [VoiceSpec; MAX_VOICES],
+    /// Count of active voices in `0..=MAX_VOICES`.
+    pub active_voices: u8,
+    /// Base Fourier waveform timbre applied when `custom_harmonics` is `None`.
+    pub waveform: WaveformPreset,
+    /// Optional dynamic harmonic table (used e.g. by quantum eigenmode projections).
+    pub custom_harmonics: Option<HarmonicWeights>,
+    /// Filtered noise amplitude (`0.0..=1.0`, used in chaotic logistic regimes).
+    pub noise_gain: f32,
+    /// Low-pass cutoff frequency for the chaotic noise generator (`20.0..=8000.0 Hz`).
+    pub noise_cutoff_hz: f32,
+    /// Frame-level master gain (`0.0..=1.0`).
+    pub master_gain: f32,
 }
 
 impl Default for SonificationFrame {
@@ -137,78 +219,174 @@ impl Default for SonificationFrame {
     }
 }
 
-fn sanitize_bounded(val: f32, min: f32, max: f32, fallback: f32) -> f32 {
-    if val.is_finite() {
-        val.clamp(min, max)
-    } else {
-        fallback
-    }
-}
-
 impl SonificationFrame {
-    /// Returns a completely silent, zero-energy `SonificationFrame`.
+    /// Returns a zero-energy silent frame (`Copy`, zero heap allocations).
     #[must_use]
     pub const fn silent() -> Self {
         Self {
-            active: false,
-            carrier_hz: 220.0,
-            amplitude: 0.0,
-            pan: 0.0,
-            fm_modulator_hz: 0.0,
-            fm_index_hz: 0.0,
-            filter_cutoff_hz: 2_400.0,
-            filter_q: 0.707,
-            filter_bandpass: false,
-            harmonics_real: [0.0; MAX_HARMONIC_SLOTS],
-            harmonics_imag: [0.0; MAX_HARMONIC_SLOTS],
-            use_periodic_wave: false,
-            click_impulse: 0.0,
-            bell_decay_rate: 0.0,
-            poly_voices_hz: [0.0; MAX_POLYRHYTHM_VOICES],
-            poly_voices_amp: [0.0; MAX_POLYRHYTHM_VOICES],
+            voices: [VoiceSpec::silent(); MAX_VOICES],
+            active_voices: 0,
+            waveform: WaveformPreset::Sine,
+            custom_harmonics: None,
+            noise_gain: 0.0,
+            noise_cutoff_hz: 1200.0,
+            master_gain: 0.0,
         }
     }
 
-    /// Sanitizes every field to finite physical bounds without heap allocation.
-    /// Non-finite primary carrier or amplitude forces the frame silent.
+    /// Clamps all voice frequencies (`20..=8000 Hz`), gains, pans, and harmonics.
     #[must_use]
-    pub fn sanitized(mut self) -> Self {
-        if !self.carrier_hz.is_finite() || !self.amplitude.is_finite() || !self.pan.is_finite() {
-            return Self::silent();
-        }
-        self.carrier_hz = sanitize_bounded(self.carrier_hz, MIN_CARRIER_HZ, MAX_CARRIER_HZ, 220.0);
-        self.amplitude = if self.active {
-            sanitize_bounded(self.amplitude, 0.0, 1.0, 0.0)
-        } else {
-            0.0
-        };
-        self.pan = sanitize_bounded(self.pan, -1.0, 1.0, 0.0);
-        self.fm_modulator_hz = sanitize_bounded(self.fm_modulator_hz, 0.0, 8_000.0, 0.0);
-        self.fm_index_hz = sanitize_bounded(self.fm_index_hz, 0.0, 4_000.0, 0.0);
-        self.filter_cutoff_hz = sanitize_bounded(self.filter_cutoff_hz, 40.0, 16_000.0, 2_400.0);
-        self.filter_q = sanitize_bounded(self.filter_q, 0.25, 18.0, 0.707);
-        self.click_impulse = if self.active {
-            sanitize_bounded(self.click_impulse, 0.0, 1.0, 0.0)
-        } else {
-            0.0
-        };
-        self.bell_decay_rate = sanitize_bounded(self.bell_decay_rate, 0.0, 200.0, 0.0);
-
-        self.harmonics_real[0] = 0.0;
-        self.harmonics_imag[0] = 0.0;
-        for slot in 1..MAX_HARMONIC_SLOTS {
-            self.harmonics_real[slot] = sanitize_bounded(self.harmonics_real[slot], -1.0, 1.0, 0.0);
-            self.harmonics_imag[slot] = sanitize_bounded(self.harmonics_imag[slot], -1.0, 1.0, 0.0);
-        }
-        for v in 0..MAX_POLYRHYTHM_VOICES {
-            self.poly_voices_hz[v] =
-                sanitize_bounded(self.poly_voices_hz[v], 0.0, MAX_CARRIER_HZ, 0.0);
-            self.poly_voices_amp[v] = if self.active && self.poly_voices_hz[v] >= MIN_CARRIER_HZ {
-                sanitize_bounded(self.poly_voices_amp[v], 0.0, 1.0, 0.0)
+    pub fn sanitize(mut self) -> Self {
+        let count = (self.active_voices as usize).min(MAX_VOICES);
+        self.active_voices = count as u8;
+        for (i, voice) in self.voices.iter_mut().enumerate() {
+            if i < count {
+                *voice = voice.sanitize();
             } else {
-                0.0
-            };
+                *voice = VoiceSpec::silent();
+            }
         }
+        self.custom_harmonics = self.custom_harmonics.map(HarmonicWeights::normalized);
+        self.noise_gain = sanitize_f32(self.noise_gain, 0.0, 0.0, 1.0);
+        self.noise_cutoff_hz = clamp_freq_hz(self.noise_cutoff_hz);
+        self.master_gain = sanitize_f32(self.master_gain, 0.0, 0.0, 1.0);
         self
+    }
+
+    /// Applies a bounded pitch transposition multiplier (`0.25..=4.0`) across active voices.
+    #[must_use]
+    pub fn with_pitch_scale(self, pitch_scale: f32) -> Self {
+        let scale = sanitize_f32(pitch_scale, 1.0, 0.25, 4.0);
+        let mut clean = self.sanitize();
+        if (scale - 1.0).abs() <= 1e-6 {
+            return clean;
+        }
+        let count = clean.active_voices as usize;
+        for voice in &mut clean.voices[..count] {
+            voice.freq_hz = clamp_freq_hz(voice.freq_hz * scale);
+            voice.fm_mod_hz = sanitize_f32(voice.fm_mod_hz * scale, 0.0, 0.0, 4000.0);
+        }
+        clean
+    }
+
+    /// Returns `true` when at least one voice or noise source carries audible gain.
+    #[must_use]
+    pub fn is_audible(&self) -> bool {
+        if self.master_gain <= 1e-4 {
+            return false;
+        }
+        let count = (self.active_voices as usize).min(MAX_VOICES);
+        let voice_energy = self.voices[..count]
+            .iter()
+            .any(|v| v.gain > 1e-4 || v.transient_impulse > 1e-3);
+        voice_energy || self.noise_gain > 1e-4
+    }
+
+    /// Estimates real-time meter telemetry directly from sanitized voice parameters.
+    #[must_use]
+    pub fn estimate_meter(&self, user_volume: f32, muted: bool) -> MeterReading {
+        let clean = self.sanitize();
+        let vol = sanitize_f32(user_volume, 0.75, 0.0, 1.0);
+        if muted || vol <= 1e-4 || !clean.is_audible() {
+            return MeterReading::silent();
+        }
+        let count = clean.active_voices as usize;
+        let mut dominant_hz = 0.0_f32;
+        let mut top_gain = 0.0_f32;
+        let mut sum_amp = clean.noise_gain * 0.5;
+        for voice in &clean.voices[..count] {
+            let effective = voice.gain + 0.35 * voice.transient_impulse;
+            sum_amp += effective;
+            if effective > top_gain {
+                top_gain = effective;
+                dominant_hz = voice.freq_hz;
+            }
+        }
+        if dominant_hz <= 0.0 && clean.noise_gain > 1e-4 {
+            dominant_hz = clean.noise_cutoff_hz;
+        }
+        let raw_peak = sum_amp * clean.master_gain * vol;
+        let is_limiter_engaged = raw_peak > LIMITER_CEILING_LINEAR;
+        let limited_peak = soft_limit_sample(raw_peak);
+        MeterReading {
+            peak_dbfs: linear_to_dbfs(limited_peak),
+            dominant_hz,
+            active_voices: clean.active_voices,
+            is_limiter_engaged,
+        }
+    }
+}
+
+/// Real-time acoustic telemetry rendered by the accessible visual dBFS and `Hz` meter.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeterReading {
+    /// Peak output level in `dBFS`, bounded within `[FLOOR_DBFS, LIMITER_CEILING_DBFS]`.
+    pub peak_dbfs: f32,
+    /// Dominant audible frequency in `Hz` (`0.0` when silent).
+    pub dominant_hz: f32,
+    /// Number of currently sounding voices (`0..=8`).
+    pub active_voices: u8,
+    /// Whether the `-3.0 dBFS` master limiter is actively compressing peaks.
+    pub is_limiter_engaged: bool,
+}
+
+impl Default for MeterReading {
+    fn default() -> Self {
+        Self::silent()
+    }
+}
+
+impl MeterReading {
+    /// Silent meter reading at `-60.0 dBFS` and `0.0 Hz`.
+    #[must_use]
+    pub const fn silent() -> Self {
+        Self {
+            peak_dbfs: FLOOR_DBFS,
+            dominant_hz: 0.0,
+            active_voices: 0,
+            is_limiter_engaged: false,
+        }
+    }
+}
+
+/// Clamps any frequency value to `[20.0, 8000.0] Hz`, replacing non-finite values with `220.0 Hz`.
+#[inline]
+#[must_use]
+pub fn clamp_freq_hz(hz: f32) -> f32 {
+    sanitize_f32(hz, 220.0, MIN_FREQ_HZ, MAX_FREQ_HZ)
+}
+
+/// Sanitizes a floating-point parameter, replacing `NaN`/`Inf` with `fallback` and clamping.
+#[inline]
+#[must_use]
+pub fn sanitize_f32(val: f32, fallback: f32, min: f32, max: f32) -> f32 {
+    if val.is_finite() {
+        val.clamp(min, max)
+    } else {
+        fallback.clamp(min, max)
+    }
+}
+
+/// Applies a smooth knee limiter strictly capped at `-3.0 dBFS` (`LIMITER_CEILING_LINEAR`).
+#[inline]
+#[must_use]
+pub fn soft_limit_sample(sample: f32) -> f32 {
+    if !sample.is_finite() {
+        return 0.0;
+    }
+    let normalized = sample / LIMITER_CEILING_LINEAR;
+    (normalized.tanh() * LIMITER_CEILING_LINEAR)
+        .clamp(-LIMITER_CEILING_LINEAR, LIMITER_CEILING_LINEAR)
+}
+
+/// Converts linear amplitude to decibels full-scale (`[FLOOR_DBFS, LIMITER_CEILING_DBFS]`).
+#[inline]
+#[must_use]
+pub fn linear_to_dbfs(amp: f32) -> f32 {
+    let mag = if amp.is_finite() { amp.abs() } else { 0.0 };
+    if mag <= 1e-3 {
+        FLOOR_DBFS
+    } else {
+        (20.0 * mag.log10()).clamp(FLOOR_DBFS, LIMITER_CEILING_DBFS)
     }
 }

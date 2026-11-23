@@ -97,13 +97,14 @@ fn test_all_six_tools_zero_allocation_hot_path_synthesis() {
         gain: 0.75,
         pitch_scale: 1.1,
     };
-    let mut synth = PcmSynthState::new(0xA0D1_0006);
-    let mut pcm_chunk = [0_u8; 4 * 128];
+    let mut synth = OfflinePcmSynthesizer::new(DEFAULT_WAV_SAMPLE_RATE, 128);
+    let _ = synth.set_muted_from_user_gesture(false);
+    synth.set_master_volume(settings.gain);
 
     let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    verified_engine::engine::VerifiedEngine::run_verified(|| {
+    let (peak, _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
         let frames = [
             spike
                 .sonification_frame()
@@ -121,16 +122,18 @@ fn test_all_six_tools_zero_allocation_hot_path_synthesis() {
                 .sonification_frame()
                 .unwrap_or_else(SonificationFrame::silent),
         ];
+        let mut max_abs = 0.0_f32;
         for frame in frames {
-            assert!(frame.active);
-            synth.render_chunk_into(
-                frame.sanitized(),
-                settings,
-                DEFAULT_WAV_SAMPLE_RATE,
-                &mut pcm_chunk,
-            );
+            assert!(frame.is_audible());
+            let scaled = frame.with_pitch_scale(settings.pitch_scale);
+            synth.apply_frame(&scaled);
+            for &sample in synth.render_frames(64) {
+                max_abs = max_abs.max(sample.abs());
+            }
         }
+        max_abs
     });
+    assert!(peak > 0.01);
 }
 
 #[test]

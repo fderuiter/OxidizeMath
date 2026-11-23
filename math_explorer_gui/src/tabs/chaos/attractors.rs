@@ -15,11 +15,13 @@ use std::sync::Arc;
 pub mod flow;
 pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
 
-#[path = "attractors/serde_vec3.rs"]
-mod serde_vec3;
+#[path = "attractors/invariants.rs"]
+mod invariants;
 
 #[path = "attractors/runner.rs"]
 mod runner;
+#[path = "attractors/serde_vec3.rs"]
+mod serde_vec3;
 pub use runner::*;
 
 #[path = "attractors/ui.rs"]
@@ -51,6 +53,8 @@ pub struct AttractorPlotter {
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
     pub(crate) audio_settings: crate::audio::AcousticSettings,
+    pub(crate) latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
 }
 
 impl Default for AttractorPlotter {
@@ -93,6 +97,12 @@ impl Default for AttractorPlotter {
             fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
             dragged_callout: None,
             audio_settings: crate::audio::AcousticSettings::default(),
+            latest_sonification: crate::audio::mappings::attractor_frame(
+                [1.0, 1.0, 1.0],
+                [0.0, 26.0, -1.67],
+                false,
+            ),
+            invariants_cache: invariants::CachedAttractorInvariants::default(),
         }
     }
 }
@@ -202,6 +212,7 @@ impl AttractorPlotter {
         let params = Arc::clone(&self.params);
         self.worker
             .reset_or_respawn(|| AttractorRunner::from_params(params));
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     pub fn reset_parameters(&mut self) {
@@ -285,10 +296,7 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
-        Some(sonification::lorenz_sonification_frame(
-            &self.system,
-            self.diverged() || !self.is_finite_state(),
-        ))
+        Some(self.current_sonification_frame())
     }
 
     fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
@@ -307,29 +315,7 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.mode as u8).hash(&mut h);
-        for bar in self.flow_bank.bars() {
-            bar.raw_text.hash(&mut h);
-        }
-        for &pv in self.flow_bank.param_slice() {
-            pv.to_bits().hash(&mut h);
-        }
-        self.system.sigma.to_bits().hash(&mut h);
-        self.system.rho.to_bits().hash(&mut h);
-        self.system.beta.to_bits().hash(&mut h);
-        self.dt.to_bits().hash(&mut h);
-        self.tube_radius.to_bits().hash(&mut h);
-        self.simulation_speed.hash(&mut h);
-        self.max_points.hash(&mut h);
-        self.is_paused().hash(&mut h);
-        self.diverged().hash(&mut h);
-        self.show_annotations.hash(&mut h);
-        self.camera.hash_state(&mut h);
-        self.audio_settings.gain.to_bits().hash(&mut h);
-        self.audio_settings.pitch_scale.to_bits().hash(&mut h);
-        h.finish().max(1)
+        self.compute_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -387,6 +373,7 @@ impl InteractiveTool for AttractorPlotter {
             }
             self.history.push_back(vec);
         }
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
@@ -429,6 +416,7 @@ impl InteractiveTool for AttractorPlotter {
         let ui_diverged = self.diverged();
         let was_paused = self.is_paused();
         if let Some(snapshot) = self.worker.update() {
+            self.latest_sonification = snapshot.sonification;
             if !ui_diverged {
                 if let Some(data) = snapshot
                     .structured_data
@@ -448,6 +436,10 @@ impl InteractiveTool for AttractorPlotter {
         }
 
         let worker_faulted = self.worker.state().is_faulted();
+        if self.diverged() || worker_faulted {
+            self.latest_sonification = crate::audio::SonificationFrame::silent();
+            crate::audio::notify_solver_diverged();
+        }
         if !self.is_paused() && !worker_faulted {
             if !self.worker.is_running() {
                 let _ = self.worker.send_command(SimCommand::Start);

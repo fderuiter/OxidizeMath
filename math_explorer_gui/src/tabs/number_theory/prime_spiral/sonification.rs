@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::PrimeSpiralWidget;
-use crate::audio::SonificationFrame;
+use crate::audio::{SonificationFrame, VoiceSpec, WaveformPreset};
 use math_explorer::pure_math::number_theory::primes::primes_up_to;
 use std::hash::{Hash, Hasher};
 
@@ -135,38 +135,45 @@ fn compute_sonification_frame_at(
 
     let ring = (((cursor as f32).sqrt() + 1.0) * 0.5).floor();
     let root_hz = 165.0 + (ring % 12.0) * 18.0;
-    let poly_voices_hz = [
+    let voice_freqs = [
         root_hz,
         (root_hz * (1.0 + g1 / 12.0)).clamp(110.0, 2_400.0),
         (root_hz * (1.0 + g2 / 8.0)).clamp(110.0, 2_800.0),
         (root_hz * (1.0 + (g1 + g3) / 10.0)).clamp(110.0, 3_200.0),
     ];
     let prime_boost = if cursor_is_prime { 1.0 } else { 0.65 };
-    let poly_voices_amp = [
+    let voice_gains = [
+        0.30 * prime_boost,
         0.26 * prime_boost,
-        0.24 * prime_boost,
-        0.20 * prime_boost,
-        0.16 * prime_boost,
+        0.22 * prime_boost,
+        0.18 * prime_boost,
     ];
-    let pan = ((cursor as f32) * 0.37).sin().clamp(-0.9, 0.9);
-    let click_impulse = if cursor_is_prime && (g1 - 2.0).abs() < 0.01 {
-        0.60
+    let base_pan = ((cursor as f32) * 0.37).sin().clamp(-0.75, 0.75);
+    let cutoff_hz = (1_200.0 + 180.0 * (g1 + g2)).clamp(400.0, 7_200.0);
+    let impulse = if cursor_is_prime && (g1 - 2.0).abs() < 0.01 {
+        0.70
     } else if cursor_is_prime {
-        0.25
+        0.32
     } else {
         0.0
     };
 
-    SonificationFrame {
-        active: true,
-        carrier_hz: root_hz,
-        amplitude: if cursor_is_prime { 0.62 } else { 0.34 },
-        pan,
-        filter_cutoff_hz: 1_200.0 + 180.0 * (g1 + g2),
-        filter_q: 1.6,
-        click_impulse,
-        poly_voices_hz,
-        poly_voices_amp,
-        ..SonificationFrame::silent()
+    let mut frame = SonificationFrame::silent();
+    frame.waveform = WaveformPreset::JustHarmonic;
+    frame.active_voices = 4;
+    frame.master_gain = if cursor_is_prime { 0.74 } else { 0.46 };
+
+    for idx in 0..4 {
+        let spread = (idx as f32 - 1.5) * 0.22;
+        frame.voices[idx] = VoiceSpec {
+            freq_hz: voice_freqs[idx],
+            gain: voice_gains[idx],
+            pan: (base_pan + spread).clamp(-1.0, 1.0),
+            fm_mod_hz: 0.0,
+            fm_index: 0.0,
+            filter_cutoff_hz: cutoff_hz,
+            transient_impulse: if idx == 0 { impulse } else { 0.0 },
+        };
     }
+    frame.sanitize()
 }

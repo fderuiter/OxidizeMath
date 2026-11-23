@@ -33,6 +33,17 @@ impl WaveSimulatorTool {
                     ui.separator();
                     self.draw_wavepacket_and_barrier_sliders(ui, &ctx);
                     ui.separator();
+                    let is_paused = !matches!(
+                        self.worker.state(),
+                        SimWorkerState::Running | SimWorkerState::Stepping
+                    );
+                    crate::audio::render_sonification_panel(
+                        ui,
+                        "wave_sim",
+                        &self.latest_sonification,
+                        is_paused,
+                    );
+                    ui.separator();
                     self.draw_tunneling_readouts(ui);
                 });
         });
@@ -69,7 +80,6 @@ impl WaveSimulatorTool {
         if let Some(action) =
             PlaybackTransport::from_worker_state("wave_sim_transport", "Wave Simulator", state)
                 .can_reset(true)
-                .with_sonification(&mut self.audio_settings)
                 .show(ui)
         {
             match action {

@@ -34,6 +34,7 @@ impl SimulationFramework {
             tool.set_acoustic_settings(clean);
         }
         self.audio_controller.set_settings(clean);
+        crate::audio::set_user_master_volume(clean.gain);
         self.bump_framework_revision();
     }
 

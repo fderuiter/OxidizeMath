@@ -153,6 +153,18 @@ pub fn spawn_save_direct_file(
     spawn_save_direct_file_impl(tx, config, path, content);
 }
 
+/// Sanitizes `default_filename` and writes raw binary `bytes` via a native `rfd` save dialog
+/// or a WebAssembly browser `Blob` download, delivering the saved [`PathBuf`] over `tx`.
+pub fn spawn_save_binary_file_dialog(
+    tx: Sender<Result<PathBuf, String>>,
+    config: SaveAsDialogConfig,
+    default_filename: &str,
+    bytes: Vec<u8>,
+) {
+    let default_name = sanitize_download_filename(default_filename, config.fallback_filename);
+    spawn_save_binary_file_dialog_impl(tx, config, default_name, bytes);
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn spawn_open_file_dialog_impl<T, F>(
     tx: Sender<Result<(T, String), String>>,
@@ -280,6 +292,43 @@ fn spawn_save_direct_file_impl(
 ) {
     let filename = sanitize_download_filename(&path.to_string_lossy(), config.fallback_filename);
     send_browser_download(tx, filename, &content, PathBuf::from);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn spawn_save_binary_file_dialog_impl(
+    tx: Sender<Result<PathBuf, String>>,
+    config: SaveAsDialogConfig,
+    default_name: String,
+    bytes: Vec<u8>,
+) {
+    std::thread::spawn(move || {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter(config.filter_name, config.extensions)
+            .save_file()
+        {
+            match std::fs::write(&path, bytes) {
+                Ok(()) => {
+                    let _ = tx.send(Ok(path));
+                }
+                Err(e) => {
+                    let _ = tx.send(Err(format!("{}: {e}", config.write_error_prefix)));
+                }
+            }
+        }
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+fn spawn_save_binary_file_dialog_impl(
+    tx: Sender<Result<PathBuf, String>>,
+    _config: SaveAsDialogConfig,
+    default_name: String,
+    bytes: Vec<u8>,
+) {
+    let res = download_browser_file(&default_name, &bytes).map(|()| PathBuf::from(default_name));
+    let _ = tx.send(res);
+    request_browser_repaint();
 }
 
 #[cfg(test)]

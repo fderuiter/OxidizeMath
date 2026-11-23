@@ -240,7 +240,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let mut transport =
             PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
                 .can_reset(true);
-        if M::supports_sonification() {
+        if M::supports_sonification() && M::sonification_tool_id().is_none() {
             transport = transport.with_sonification(&mut self.audio_settings);
         }
         if let Some(action) = transport.show(ui) {
@@ -268,6 +268,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.heading(M::name());
             ui.separator();
             self.draw_status_and_transport(ui, &ctx);
+            if let Some(tool_id) = M::sonification_tool_id() {
+                let worker_state = self.controller.state();
+                if matches!(worker_state, SimWorkerState::Faulted) {
+                    crate::audio::notify_solver_diverged();
+                }
+                let frame = self
+                    .stepped_snapshot
+                    .as_ref()
+                    .or_else(|| self.controller.latest_snapshot())
+                    .map_or_else(crate::audio::SonificationFrame::silent, |s| s.sonification);
+                let is_idle = !matches!(
+                    worker_state,
+                    SimWorkerState::Running | SimWorkerState::Stepping
+                ) && self.stepped_snapshot.is_none();
+                ui.separator();
+                crate::audio::render_sonification_panel(ui, tool_id, &frame, is_idle);
+            }
             ui.separator();
             ui.label("Simulation Constants");
             if ui
@@ -326,52 +343,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn step_simulation(&mut self) {
-        if let Ok(params) = self.params.read() {
-            let mut model = M::new(&params);
-            if self.custom_formula_enabled {
-                let payload = self
-                    .shared_formula
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
-                model.apply_compiled_formula(payload.as_ref(), &params);
-            }
-            for _ in 0..self.steps_per_frame.max(1) {
-                model.step(&params);
-            }
-            self.stepped_snapshot = Some(model.get_snapshot());
-        }
+        self.step_unified_model();
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        for (key, _) in &self.param_metadata {
-            key.hash(&mut h);
-            if let Some(val) = params.get(key) {
-                val.to_bits().hash(&mut h);
-            }
-        }
-        if M::supports_sonification() {
-            self.audio_settings.gain.to_bits().hash(&mut h);
-            self.audio_settings.pitch_scale.to_bits().hash(&mut h);
-        }
-        if let Some(ext) = &self.ui_extension {
-            ext.state_revision_salt().hash(&mut h);
-        }
-        if let Some(atlas) = &self.atlas {
-            atlas.is_visible().hash(&mut h);
-            atlas.axis_keys().hash(&mut h);
-        }
-        self.custom_formula_enabled.hash(&mut h);
-        if let Some(ref bar) = self.formula_bar {
-            bar.raw_text.hash(&mut h);
-            for &pv in bar.param_slice() {
-                pv.to_bits().hash(&mut h);
-            }
-        }
-        h.finish().max(1)
+        self.compute_unified_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {

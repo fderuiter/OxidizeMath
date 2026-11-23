@@ -267,26 +267,25 @@ pub trait UnifiedModel:
         None
     }
 
+    /// Returns a stable tool identifier when this unified model emits live
+    /// [`crate::audio::SonificationFrame`]s.
+    fn sonification_tool_id() -> Option<&'static str>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
     /// Whether this model emits live [`crate::audio::SonificationFrame`] descriptors and `.wav` exports.
     fn supports_sonification() -> bool
     where
         Self: Sized,
     {
-        false
+        Self::sonification_tool_id().is_some()
     }
 
     /// Emits a zero-allocation [`crate::audio::SonificationFrame`] directly from live model state.
     fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
-        None
-    }
-
-    /// Extracts a cached [`crate::audio::SonificationFrame`] from a worker [`StateSnapshot`].
-    fn sonification_from_snapshot(
-        _snapshot: &StateSnapshot,
-    ) -> Option<crate::audio::SonificationFrame>
-    where
-        Self: Sized,
-    {
         None
     }
 

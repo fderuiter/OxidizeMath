@@ -380,9 +380,8 @@ pub trait InteractiveTool {
         let mut frames = Vec::with_capacity(count);
         for _ in 0..count {
             self.step_simulation();
-            if let Some(mut frame) = self.sonification_frame() {
-                frame.active = true;
-                frames.push(frame.sanitized());
+            if let Some(frame) = self.sonification_frame() {
+                frames.push(frame.sanitize());
             }
         }
         frames

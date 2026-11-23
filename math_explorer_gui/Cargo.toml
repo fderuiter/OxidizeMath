@@ -85,19 +85,16 @@ console_error_panic_hook = { workspace = true }
 wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 web-sys = { workspace = true, features = [
-    "AudioBuffer",
-    "AudioBufferSourceNode",
+    "AnalyserNode",
     "AudioContext",
     "AudioContextState",
     "AudioDestinationNode",
     "AudioNode",
     "AudioParam",
-    "AudioScheduledSourceNode",
     "BaseAudioContext",
     "BiquadFilterNode",
     "BiquadFilterType",
     "CssStyleDeclaration",
-    "DedicatedWorkerGlobalScope",
     "Document",
     "DynamicsCompressorNode",
     "Element",
@@ -110,7 +107,6 @@ web-sys = { workspace = true, features = [
     "HtmlElement",
     "Location",
     "MediaQueryList",
-    "MessageEvent",
     "Node",
     "NodeList",
     "OscillatorNode",
@@ -121,9 +117,6 @@ web-sys = { workspace = true, features = [
     "StereoPannerNode",
     "Storage",
     "Window",
-    "Worker",
-    "WorkerOptions",
-    "WorkerType",
 ] }
 
 [target.wasm32-unknown-unknown.dependencies]
@@ -131,6 +124,7 @@ wasm-bindgen-futures = { workspace = true }
 
 [dev-dependencies]
 png = "0.18"
+rustfft = { workspace = true }
 verified_engine = { path = "../crates/verified_engine" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]

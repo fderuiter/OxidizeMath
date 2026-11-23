@@ -6,22 +6,22 @@ use std::collections::VecDeque;
 
 #[path = "spike_analysis/sonification.rs"]
 mod sonification;
-pub use sonification::hodgkin_huxley_sonification_frame;
 
 pub struct SpikeAnalysisTool {
-    neuron: HodgkinHuxleyNeuron,
+    pub(super) neuron: HodgkinHuxleyNeuron,
     time: f64,
-    is_running: bool,
+    pub(super) is_running: bool,
     history_points: Vec<PlotPoint>,
     spike_times: Vec<f64>,
     spike_plot_points: Vec<PlotPoint>,
-    isis: VecDeque<f64>,
-    last_voltage: f64,
-    input_current: f64,
-    spike_threshold: f64,
-    simulation_speed: usize,
-    steps_since_last_spike: u32,
-    audio_settings: crate::audio::AcousticSettings,
+    pub(super) isis: VecDeque<f64>,
+    pub(super) last_voltage: f64,
+    pub(super) input_current: f64,
+    pub(super) spike_threshold: f64,
+    pub(super) simulation_speed: usize,
+    spiked_in_frame: bool,
+    pub(super) sonification: crate::audio::SonificationFrame,
+    pub(super) audio_settings: crate::audio::AcousticSettings,
 }
 
 impl Default for SpikeAnalysisTool {
@@ -38,25 +38,11 @@ impl Default for SpikeAnalysisTool {
             input_current: 10.0,
             spike_threshold: 0.0,
             simulation_speed: 10,
-            steps_since_last_spike: u32::MAX,
+            spiked_in_frame: false,
+            sonification: crate::audio::SonificationFrame::silent(),
             audio_settings: crate::audio::AcousticSettings::default(),
         }
     }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SpikeAnalysisState {
-    input_current: f64,
-    spike_threshold: f64,
-    simulation_speed: usize,
-    #[serde(default)]
-    is_running: bool,
-    #[serde(
-        default,
-        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
-    )]
-    audio: crate::audio::AcousticSettings,
 }
 
 impl InteractiveTool for SpikeAnalysisTool {
@@ -101,35 +87,11 @@ impl InteractiveTool for SpikeAnalysisTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&SpikeAnalysisState {
-            input_current: self.input_current,
-            spike_threshold: self.spike_threshold,
-            simulation_speed: self.simulation_speed,
-            is_running: self.is_running,
-            audio: self.audio_settings,
-        })
-        .ok()
+        self.serialize_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: SpikeAnalysisState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid spike analysis state: {e}"))?;
-        parsed.audio.validate()?;
-        if !parsed.input_current.is_finite()
-            || !(0.0..=50.0).contains(&parsed.input_current)
-            || !parsed.spike_threshold.is_finite()
-            || !(-50.0..=20.0).contains(&parsed.spike_threshold)
-            || !(1..=100).contains(&parsed.simulation_speed)
-        {
-            return Err("Spike analysis parameters out of bounds".into());
-        }
-        self.reset();
-        self.input_current = parsed.input_current;
-        self.spike_threshold = parsed.spike_threshold;
-        self.simulation_speed = parsed.simulation_speed;
-        self.is_running = parsed.is_running;
-        self.audio_settings = parsed.audio;
-        Ok(())
+        self.deserialize_state(state)
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -174,7 +136,6 @@ impl SpikeAnalysisTool {
                 "Spike Train Analysis",
                 self.is_running,
             )
-            .with_sonification(&mut self.audio_settings)
             .show(ui)
             {
                 match action {
@@ -186,17 +147,37 @@ impl SpikeAnalysisTool {
             }
 
             ui.separator();
-            ui.label(format!("Time: {:.2} ms", self.time));
-            ui.label(format!("Spikes Detected: {}", self.spike_times.len()));
-            if let Some(last_isi) = self.isis.back() {
-                ui.label(format!("Last ISI: {last_isi:.2} ms"));
-            }
-            if !self.isis.is_empty() {
-                let mean_isi: f64 = self.isis.iter().sum::<f64>() / self.isis.len() as f64;
-                ui.label(format!("Mean ISI: {mean_isi:.2} ms"));
-                ui.label(format!("Firing Rate: {:.2} Hz", 1000.0 / mean_isi));
-            }
+            crate::audio::render_sonification_panel(
+                ui,
+                "spike_analysis",
+                &self.sonification,
+                !self.is_running && self.time <= 0.0,
+            );
+            ui.separator();
+            self.draw_telemetry_labels(ui);
         });
+    }
+
+    fn draw_telemetry_labels(&self, ui: &mut egui::Ui) {
+        ui.label(format!("Time: {:.2} ms", self.time));
+        ui.label(format!("Spikes Detected: {}", self.spike_times.len()));
+        if let Some(last_isi) = self.isis.back() {
+            ui.label(format!("Last ISI: {last_isi:.2} ms"));
+        }
+        let rate_hz = self.mean_firing_rate_hz();
+        if rate_hz > 0.0 {
+            let mean_isi = 1000.0 / rate_hz;
+            ui.label(format!("Mean ISI: {mean_isi:.2} ms"));
+            ui.label(format!("Firing Rate: {rate_hz:.2} Hz"));
+        }
+    }
+
+    pub(super) fn mean_firing_rate_hz(&self) -> f64 {
+        if self.isis.is_empty() {
+            return 0.0;
+        }
+        let mean_isi = self.isis.iter().sum::<f64>() / (self.isis.len() as f64);
+        if mean_isi > 1e-6 { 1000.0 / mean_isi } else { 0.0 }
     }
 
     fn draw_plots(&mut self, parent_ui: &mut egui::Ui) {
@@ -262,12 +243,12 @@ impl SpikeAnalysisTool {
 
     fn advance_dt_tick(&mut self) {
         let dt = 0.01;
-        self.steps_since_last_spike = self.steps_since_last_spike.saturating_add(1);
         self.neuron.update(dt, self.input_current);
         let v = self.neuron.v();
         self.time += dt;
 
         if v >= self.spike_threshold && self.last_voltage < self.spike_threshold {
+            self.spiked_in_frame = true;
             self.record_spike(self.time);
         }
 
@@ -284,17 +265,42 @@ impl SpikeAnalysisTool {
 
     pub(crate) fn step_once(&mut self) {
         self.is_running = false;
+        self.spiked_in_frame = false;
+        let prev_v = self.last_voltage;
         self.advance_dt_tick();
+        self.refresh_sonification(prev_v);
     }
 
     fn step_simulation(&mut self) {
+        self.spiked_in_frame = false;
+        let prev_v = self.last_voltage;
         for _ in 0..self.simulation_speed {
             self.advance_dt_tick();
         }
+        self.refresh_sonification(prev_v);
+    }
+
+    fn refresh_sonification(&mut self, frame_start_v: f64) {
+        let cur_v = self.neuron.v();
+        let ref_prev = if self.spiked_in_frame {
+            self.spike_threshold - 5.0
+        } else {
+            frame_start_v
+        };
+        let ref_cur = if self.spiked_in_frame {
+            cur_v.max(self.spike_threshold + 5.0)
+        } else {
+            cur_v
+        };
+        self.sonification = crate::audio::mappings::spike_analysis_frame(
+            ref_cur,
+            ref_prev,
+            self.spike_threshold,
+            self.mean_firing_rate_hz(),
+        );
     }
 
     fn record_spike(&mut self, time: f64) {
-        self.steps_since_last_spike = 0;
         if let Some(&last_spike_time) = self.spike_times.last() {
             let isi = time - last_spike_time;
             self.isis.push_back(isi);
@@ -308,7 +314,7 @@ impl SpikeAnalysisTool {
         }
     }
 
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.neuron = HodgkinHuxleyNeuron::new(-65.0);
         self.time = 0.0;
         self.history_points.clear();
@@ -316,8 +322,9 @@ impl SpikeAnalysisTool {
         self.spike_plot_points.clear();
         self.isis.clear();
         self.last_voltage = -65.0;
-        self.steps_since_last_spike = u32::MAX;
         self.is_running = false;
+        self.spiked_in_frame = false;
+        self.sonification = crate::audio::SonificationFrame::silent();
     }
 
     fn compute_histogram(&self, num_bins: usize) -> Vec<Bar> {

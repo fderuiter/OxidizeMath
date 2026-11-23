@@ -81,8 +81,8 @@ fn test_wave_simulator_sonification_and_audio_roundtrip() {
     tool.step_simulation();
 
     let live_frame = tool.sonification_frame().expect("sonification frame");
-    assert!(live_frame.active);
-    assert!(live_frame.use_periodic_wave);
+    assert!(live_frame.is_audible());
+    assert!(live_frame.custom_harmonics.is_some());
 
     let saved = tool.save_state().expect("save wave simulator state");
     assert!(saved.len() < crate::url_state::MAX_DECODED_URL_STATE_BYTES);

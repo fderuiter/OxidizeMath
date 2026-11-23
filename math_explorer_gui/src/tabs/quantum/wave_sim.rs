@@ -32,9 +32,6 @@ use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-#[path = "wave_sim/sonification.rs"]
-mod sonification;
-
 /// Dedicated 1D Schrödinger wavepacket tunneling sandbox backed by [`BackgroundWorker<WaveRunner>`].
 pub struct WaveSimulatorTool {
     pub(crate) preset: WavePotentialPreset,
@@ -52,6 +49,7 @@ pub struct WaveSimulatorTool {
     pub(crate) export_runner: Option<WaveRunner>,
     pub(crate) export_data: Option<WaveData>,
     pub(crate) audio_settings: crate::audio::AcousticSettings,
+    pub(crate) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) revision: u64,
 }
 
@@ -84,6 +82,9 @@ impl WaveSimulatorTool {
         };
         let shared_config = Arc::new(RwLock::new(initial_cfg));
         let worker = BackgroundWorker::new(WaveRunner::new(Arc::clone(&shared_config)));
+        let latest_sonification = worker
+            .latest_snapshot()
+            .map_or_else(crate::audio::SonificationFrame::silent, |s| s.sonification);
         Self {
             preset: WavePotentialPreset::InfiniteWell,
             x0: DEFAULT_X0,
@@ -100,6 +101,7 @@ impl WaveSimulatorTool {
             export_runner: None,
             export_data: None,
             audio_settings: crate::audio::AcousticSettings::default(),
+            latest_sonification,
             revision: 1,
         }
     }
@@ -219,6 +221,7 @@ impl InteractiveTool for WaveSimulatorTool {
         for _ in 0..self.steps_per_frame.max(1) {
             runner.step_with_dt(self.dt);
         }
+        self.latest_sonification = runner.sonification_frame();
         self.export_data = Some(runner.build_wave_data());
     }
 
@@ -268,10 +271,18 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        let has_update = self.worker.update().is_some();
+        let mut has_update = false;
+        if let Some(snapshot) = self.worker.update() {
+            self.latest_sonification = snapshot.sonification;
+            has_update = true;
+        }
         if has_update {
             self.export_runner = None;
             self.export_data = None;
+        }
+        if self.worker.state().is_faulted() {
+            self.latest_sonification = crate::audio::SonificationFrame::silent();
+            crate::audio::notify_solver_diverged();
         }
         self.draw_left_panel(ui);
         self.draw_central_panel(ui);
@@ -296,14 +307,10 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
-        let wave_data = self
-            .export_data
-            .as_ref()
-            .or_else(|| self.latest_wave_data())?;
-        let mut frame = sonification::sonification_from_wave_data(wave_data);
-        let active_source = self.export_data.is_some() || self.worker.state().is_running();
-        frame.active &= active_source && self.has_finite_parameters();
-        Some(frame.sanitized())
+        if !self.has_finite_parameters() {
+            return Some(crate::audio::SonificationFrame::silent());
+        }
+        Some(self.latest_sonification.sanitize())
     }
 
     fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
@@ -327,9 +334,7 @@ impl InteractiveTool for WaveSimulatorTool {
             for _ in 0..sub_steps {
                 runner.step_with_dt(dt);
             }
-            let mut frame = runner.compute_sonification_frame();
-            frame.active = true;
-            out.push(frame.sanitized());
+            out.push(runner.sonification_frame().sanitize());
         }
         out
     }

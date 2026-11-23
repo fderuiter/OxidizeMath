@@ -1,63 +1,62 @@
-//! Zero-allocation Hodgkin-Huxley patch-clamp sonification helpers for [`crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool`].
+//! Zero-allocation Hodgkin-Huxley spike-train sonification and preset state helpers for
+//! [`crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::SpikeAnalysisTool;
+use crate::audio::mappings::spike_analysis_frame;
 use crate::audio::{AcousticSettings, SonificationFrame};
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 use std::hash::{Hash, Hasher};
 
-/// Maps Hodgkin-Huxley membrane voltage `v` and `(m, h, n)` ion-channel gating variables
-/// into a zero-allocation patch-clamp [`SonificationFrame`].
-#[inline]
-#[must_use]
-pub fn hodgkin_huxley_sonification_frame(
-    v: f64,
-    m: f64,
-    h: f64,
-    n: f64,
-    spike_triggered: bool,
-) -> SonificationFrame {
-    if !v.is_finite() || !m.is_finite() || !h.is_finite() || !n.is_finite() {
-        return SonificationFrame::silent();
-    }
-    let v_norm = ((v + 80.0) / 130.0).clamp(0.0, 1.0) as f32;
-    let m_c = m.clamp(0.0, 1.0) as f32;
-    let h_c = h.clamp(0.0, 1.0) as f32;
-    let n_c = n.clamp(0.0, 1.0) as f32;
-    let na_open = (m_c * m_c * m_c * h_c).clamp(0.0, 1.0);
-    let k_open = (n_c * n_c * n_c * n_c).clamp(0.0, 1.0);
-
-    let carrier_hz = 110.0 + v_norm * 520.0;
-    let amplitude = (0.20 + 0.62 * na_open + 0.22 * v_norm).clamp(0.0, 0.95);
-    let pan = ((na_open - k_open) * 0.85).clamp(-1.0, 1.0);
-    let filter_cutoff_hz =
-        (280.0 + 4_200.0 * m_c * (0.35 + 0.65 * h_c) + 900.0 * k_open).clamp(120.0, 7_500.0);
-    let filter_q = (1.2 + 7.5 * (1.0 - h_c) + 3.0 * n_c).clamp(0.8, 14.0);
-    let click_impulse = if spike_triggered {
-        0.92
-    } else if v > 10.0 {
-        0.45
-    } else {
-        0.0
-    };
-
-    SonificationFrame {
-        active: true,
-        carrier_hz,
-        amplitude,
-        pan,
-        fm_modulator_hz: carrier_hz * (1.0 + 0.5 * k_open),
-        fm_index_hz: 12.0 + 95.0 * na_open,
-        filter_cutoff_hz,
-        filter_q,
-        filter_bandpass: true,
-        click_impulse,
-        ..SonificationFrame::silent()
-    }
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpikeAnalysisState {
+    input_current: f64,
+    spike_threshold: f64,
+    simulation_speed: usize,
+    #[serde(default)]
+    is_running: bool,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
+    audio: AcousticSettings,
 }
 
 impl SpikeAnalysisTool {
+    pub(super) fn serialize_state(&self) -> Option<String> {
+        serde_json::to_string(&SpikeAnalysisState {
+            input_current: self.input_current,
+            spike_threshold: self.spike_threshold,
+            simulation_speed: self.simulation_speed,
+            is_running: self.is_running,
+            audio: self.audio_settings,
+        })
+        .ok()
+    }
+
+    pub(super) fn deserialize_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: SpikeAnalysisState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid spike analysis state: {e}"))?;
+        parsed.audio.validate()?;
+        if !parsed.input_current.is_finite()
+            || !(0.0..=50.0).contains(&parsed.input_current)
+            || !parsed.spike_threshold.is_finite()
+            || !(-50.0..=20.0).contains(&parsed.spike_threshold)
+            || !(1..=100).contains(&parsed.simulation_speed)
+        {
+            return Err("Spike analysis parameters out of bounds".into());
+        }
+        self.reset();
+        self.input_current = parsed.input_current;
+        self.spike_threshold = parsed.spike_threshold;
+        self.simulation_speed = parsed.simulation_speed;
+        self.is_running = parsed.is_running;
+        self.audio_settings = parsed.audio;
+        Ok(())
+    }
+
     pub(super) fn compute_state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.input_current.to_bits().hash(&mut h);
@@ -70,15 +69,16 @@ impl SpikeAnalysisTool {
     }
 
     pub(super) fn current_sonification_frame(&self) -> SonificationFrame {
-        let recent_window = (self.simulation_speed.max(1) as u32).max(15);
-        let spike_triggered = self.steps_since_last_spike <= recent_window;
-        hodgkin_huxley_sonification_frame(
-            self.neuron.v(),
-            self.neuron.m(),
-            self.neuron.h(),
-            self.neuron.n(),
-            spike_triggered,
-        )
+        if self.sonification.is_audible() {
+            self.sonification
+        } else {
+            spike_analysis_frame(
+                self.neuron.v(),
+                self.last_voltage,
+                self.spike_threshold,
+                self.mean_firing_rate_hz(),
+            )
+        }
     }
 
     pub(super) fn render_wav_frames(&self, frame_count: usize) -> Vec<SonificationFrame> {
@@ -86,6 +86,9 @@ impl SpikeAnalysisTool {
         let mut out = Vec::with_capacity(count);
         let mut neuron = HodgkinHuxleyNeuron::new(self.neuron.v());
         let mut prev_v = neuron.v();
+        let mut sim_time = 0.0_f64;
+        let mut last_spike: Option<f64> = None;
+        let mut rate_hz = self.mean_firing_rate_hz();
         let substeps = self.simulation_speed.clamp(1, 100).max(25);
         let current = if self.input_current.is_finite() {
             self.input_current
@@ -93,21 +96,38 @@ impl SpikeAnalysisTool {
             10.0
         };
         for _ in 0..count {
+            let frame_start_v = prev_v;
             let mut spiked = false;
             for _ in 0..substeps {
                 neuron.update(0.01, current);
+                sim_time += 0.01;
                 let v = neuron.v();
                 if v >= self.spike_threshold && prev_v < self.spike_threshold {
                     spiked = true;
+                    if let Some(prev_t) = last_spike {
+                        let isi = (sim_time - prev_t).max(0.1);
+                        rate_hz = 1000.0 / isi;
+                    }
+                    last_spike = Some(sim_time);
                 }
                 prev_v = v;
             }
-            out.push(hodgkin_huxley_sonification_frame(
-                neuron.v(),
-                neuron.m(),
-                neuron.h(),
-                neuron.n(),
-                spiked,
+            let cur_v = neuron.v();
+            let ref_prev = if spiked {
+                self.spike_threshold - 5.0
+            } else {
+                frame_start_v
+            };
+            let ref_cur = if spiked {
+                cur_v.max(self.spike_threshold + 5.0)
+            } else {
+                cur_v
+            };
+            out.push(spike_analysis_frame(
+                ref_cur,
+                ref_prev,
+                self.spike_threshold,
+                rate_hz,
             ));
         }
         out

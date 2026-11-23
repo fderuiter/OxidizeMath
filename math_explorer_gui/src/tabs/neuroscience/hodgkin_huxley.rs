@@ -1,14 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 #[path = "hodgkin_huxley/atlas.rs"]
-mod atlas;
-#[cfg(test)]
-pub use atlas::HodgkinHuxleyRegime;
-pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
+pub mod atlas;
 
 use crate::async_sim::atlas::RegimeCartographer;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::StateSnapshot;
+#[cfg(test)]
+pub use atlas::HodgkinHuxleyRegime;
+pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
 use math_explorer::biology::neuroscience::{
     HodgkinHuxleyModel, HodgkinHuxleyNeuron, HodgkinHuxleyParameters,
 };
@@ -17,7 +17,6 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 #[allow(missing_docs)]
-#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct HodgkinHuxleyUnified {
     neuron: HodgkinHuxleyNeuron,
     params: HodgkinHuxleyParameters,
@@ -25,7 +24,8 @@ pub struct HodgkinHuxleyUnified {
     time: f64,
     i_ext: f64,
     dt: f64,
-    spike_latch: u8,
+    prev_v: f64,
+    spiked_since_snapshot: std::sync::atomic::AtomicBool,
 }
 
 impl crate::framework::recovery::FiniteStateGuard for HodgkinHuxleyUnified {}
@@ -58,7 +58,8 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             time: 0.0,
             i_ext,
             dt: 0.01,
-            spike_latch: 0,
+            prev_v: -65.0,
+            spiked_since_snapshot: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -92,41 +93,37 @@ impl UnifiedModel for HodgkinHuxleyUnified {
 
         let prev_v = self.neuron.v();
         self.neuron.update(self.dt, self.i_ext);
-        let next_v = self.neuron.v();
-        if prev_v < 0.0 && next_v >= 0.0 {
-            self.spike_latch = 30;
-        } else {
-            self.spike_latch = self.spike_latch.saturating_sub(1);
+        let cur_v = self.neuron.v();
+        if prev_v <= 0.0 && cur_v > 0.0 {
+            self.spiked_since_snapshot
+                .store(true, std::sync::atomic::Ordering::Relaxed);
         }
+        self.prev_v = prev_v;
         self.time += self.dt;
-        self.history.push_back([self.time, next_v]);
+        self.history.push_back([self.time, cur_v]);
         while self.history.len() > 10_000 {
             self.history.pop_front();
         }
     }
 
-    fn supports_sonification() -> bool {
-        true
-    }
-
     fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
-        Some(super::spike_analysis::hodgkin_huxley_sonification_frame(
-            self.neuron.v(),
+        let spiked = self
+            .spiked_since_snapshot
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let ref_prev_v = if spiked { -5.0 } else { self.prev_v };
+        let ref_cur_v = if spiked {
+            self.neuron.v().max(10.0)
+        } else {
+            self.neuron.v()
+        };
+        Some(crate::audio::mappings::hodgkin_huxley_frame(
+            ref_cur_v,
+            ref_prev_v,
             self.neuron.m(),
             self.neuron.h(),
             self.neuron.n(),
-            self.spike_latch > 0,
+            self.i_ext,
         ))
-    }
-
-    fn sonification_from_snapshot(
-        snapshot: &StateSnapshot,
-    ) -> Option<crate::audio::SonificationFrame> {
-        snapshot
-            .structured_data
-            .as_ref()
-            .and_then(|d| d.downcast_ref::<crate::audio::SonificationFrame>())
-            .copied()
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -137,17 +134,37 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         }
         custom_data.push(self.time);
         custom_data.push(self.neuron.v());
-        let structured_data = self
-            .sonification_frame()
-            .map(|f| Box::new(f) as Box<dyn std::any::Any + Send>);
+
+        let spiked = self
+            .spiked_since_snapshot
+            .swap(false, std::sync::atomic::Ordering::Relaxed);
+        let ref_prev_v = if spiked { -5.0 } else { self.prev_v };
+        let ref_cur_v = if spiked {
+            self.neuron.v().max(10.0)
+        } else {
+            self.neuron.v()
+        };
+        let sonification = crate::audio::mappings::hodgkin_huxley_frame(
+            ref_cur_v,
+            ref_prev_v,
+            self.neuron.m(),
+            self.neuron.h(),
+            self.neuron.n(),
+            self.i_ext,
+        );
 
         StateSnapshot {
             width: 0,
             height: 0,
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data,
-            structured_data,
+            structured_data: None,
+            sonification,
         }
+    }
+
+    fn sonification_tool_id() -> Option<&'static str> {
+        Some("hodgkin_huxley")
     }
 
     fn parameters() -> HashMap<String, ParameterConstraint> {
