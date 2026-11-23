@@ -1,4 +1,4 @@
-use super::adr_validation::check_markdown_headings;
+use super::adr_validation::{check_markdown_headings, is_valid_yyyymmdd};
 use super::comment_scanner::{RustScanState, count_added_core_code_lines, scan_rust_line};
 use super::git_range::sanitize_sha;
 use super::{verify_records_in_dir, verify_records_in_dir_opts};
@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 static REPO_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-const VALID_ADR_1: &str = "# ADR 0001: Initial Decision\n\n## Status\n\nAccepted\n";
-const VALID_ADR_2: &str = "# ADR 0002: Staged Decision\n\n## Status\n\nAccepted\n";
+const VALID_ADR_1: &str = "# ADR 20261123: Initial Decision\n\n## Status\n\nAccepted\n";
+const VALID_ADR_2: &str = "# ADR 20261123: Staged Decision\n\n## Status\n\nAccepted\n";
 
 pub(crate) fn git_in_test(dir: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
@@ -102,13 +102,13 @@ fn test_multi_commit_range_and_fallbacks() {
     git_in_test(&dir, &["reset", "--hard", "HEAD"]);
 
     // Missing ## Status fails, then valid ADR with ## Status passes
-    let head_no_status = commit_file(&dir, "docs/adr/0001-test.md", "# ADR 0001\n", "c3a");
+    let head_no_status = commit_file(&dir, "docs/adr/20261123-test.md", "# ADR 20261123\n", "c3a");
     assert!(!verify_records_in_dir(
         &dir,
         Some(&base),
         Some(&head_no_status)
     ));
-    let head_with_adr = commit_file(&dir, "docs/adr/0001-test.md", VALID_ADR_1, "c3b");
+    let head_with_adr = commit_file(&dir, "docs/adr/20261123-test.md", VALID_ADR_1, "c3b");
     assert!(verify_records_in_dir(
         &dir,
         Some(&base),
@@ -145,19 +145,33 @@ fn test_git_rm_adr_and_duplicate_id_enforcement() {
     assert!(!verify_records_in_dir(&dir, Some(&base), Some(&head_sha)));
     assert!(!verify_records_in_dir(&dir, None, None));
 
-    // Restoring 0001-existing.md and adding a colliding 0001-other.md fails without allowlist
-    stage_file(&dir, "docs/adr/0001-existing.md", VALID_ADR_1);
-    stage_file(&dir, "docs/adr/0001-collision.md", VALID_ADR_2);
+    // Pre-existing legacy colliding 0001 files fail without allowlist, pass when allowlisted, and fail with a third unallowlisted file
+    git_in_test(&dir, &["checkout", "main"]);
+    commit_file(
+        &dir,
+        "docs/adr/0001-collision.md",
+        VALID_ADR_2,
+        "seed collision",
+    );
+    git_in_test(&dir, &["checkout", "-b", "feature/legacy-allowlist"]);
+    stage_file(&dir, "NOTES.md", "doc note\n");
     assert!(!verify_records_in_dir_opts(&dir, None, None, true));
 
-    // Allowlisting both legacy files permits existing pair, while a third 0001-third.md still fails
     stage_file(
         &dir,
         "verification_whitelist.toml",
         "[adr_verification]\nallowlist = [\"docs/adr/0001-existing.md\", \"docs/adr/0001-collision.md\"]\n",
     );
     assert!(verify_records_in_dir_opts(&dir, None, None, true));
-    stage_file(&dir, "docs/adr/0001-third.md", VALID_ADR_2);
+
+    git_in_test(&dir, &["reset", "--hard", "main"]);
+    commit_file(&dir, "docs/adr/0001-third.md", VALID_ADR_2, "seed third");
+    git_in_test(&dir, &["checkout", "-b", "feature/legacy-third"]);
+    stage_file(
+        &dir,
+        "verification_whitelist.toml",
+        "[adr_verification]\nallowlist = [\"docs/adr/0001-existing.md\", \"docs/adr/0001-collision.md\"]\n",
+    );
     assert!(!verify_records_in_dir_opts(&dir, None, None, true));
 
     let _ = fs::remove_dir_all(&dir);
@@ -175,17 +189,17 @@ fn test_staged_index_reads_staged_blobs_and_fences() {
     // Stage ADR missing ## Status, then add ## Status ONLY in working tree (unstaged)
     stage_file(
         &dir,
-        "docs/adr/0002-staged.md",
+        "docs/adr/20261123-staged.md",
         "# Staged ADR\n\n```markdown\n## Status\n```\n",
     );
-    fs::write(dir.join("docs/adr/0002-staged.md"), VALID_ADR_2).unwrap();
+    fs::write(dir.join("docs/adr/20261123-staged.md"), VALID_ADR_2).unwrap();
     assert!(
         !verify_records_in_dir_opts(&dir, None, None, true),
         "Unstaged working-tree edits must not mask missing ## Status in staged blob"
     );
 
     // Staging the fixed ADR passes
-    git_in_test(&dir, &["add", "docs/adr/0002-staged.md"]);
+    git_in_test(&dir, &["add", "docs/adr/20261123-staged.md"]);
     assert!(verify_records_in_dir_opts(&dir, None, None, true));
 
     let (title, status) =
@@ -290,7 +304,7 @@ fn test_origin_main_preferred_and_workspace_adrs_valid() {
     commit_file(&dir, "README.md", "touch readme\n", "c2 on local main");
     assert!(!verify_records_in_dir(&dir, None, None));
 
-    commit_file(&dir, "docs/adr/0001-fix.md", VALID_ADR_1, "c3 add adr");
+    commit_file(&dir, "docs/adr/20261123-fix.md", VALID_ADR_1, "c3 add adr");
     assert!(verify_records_in_dir(&dir, None, None));
     let _ = fs::remove_dir_all(&dir);
 
@@ -299,4 +313,131 @@ fn test_origin_main_preferred_and_workspace_adrs_valid() {
         super::adr_validation::validate_repository_adrs(&ws_root, &super::DiffSource::Head),
         "All workspace docs/adr/*.md files must pass structural and prefix checks"
     );
+}
+
+#[test]
+fn test_dated_adr_calendar_bounds_and_headings() {
+    for valid in ["19700101", "20000229", "20240229", "20261123", "99991231"] {
+        assert!(is_valid_yyyymmdd(valid), "expected {valid} to be valid");
+    }
+    for invalid in [
+        "19691231",
+        "00420101",
+        "20260010",
+        "20261301",
+        "20261100",
+        "20260431",
+        "20260229",
+        "21000229",
+        "2026112",
+        "202611230",
+        "202611ab",
+    ] {
+        assert!(
+            !is_valid_yyyymmdd(invalid),
+            "expected {invalid} to be invalid"
+        );
+    }
+
+    let dir = init_temp_repo();
+    stage_file(&dir, "crates/pure_math/src/lib.rs", "pub fn f() {}\n");
+    stage_file(&dir, "docs/adr/20260229-bad-leap.md", VALID_ADR_1);
+    assert!(!verify_records_in_dir_opts(&dir, None, None, true));
+    git_in_test(&dir, &["rm", "-f", "docs/adr/20260229-bad-leap.md"]);
+
+    stage_file(
+        &dir,
+        "docs/adr/20240229-no-title.md",
+        "## Status\n\nAccepted\n",
+    );
+    assert!(!verify_records_in_dir_opts(&dir, None, None, true));
+    git_in_test(&dir, &["rm", "-f", "docs/adr/20240229-no-title.md"]);
+
+    stage_file(&dir, "docs/adr/20240229-leap-day.md", VALID_ADR_1);
+    assert!(verify_records_in_dir_opts(&dir, None, None, true));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_duplicate_dated_slug_rejected() {
+    let dir = init_temp_repo();
+    commit_file(
+        &dir,
+        "docs/adr/20261122-shared-slug.md",
+        VALID_ADR_1,
+        "seed dated adr",
+    );
+    let base = git_in_test(&dir, &["rev-parse", "HEAD"]);
+    git_in_test(&dir, &["checkout", "-b", "feature/dup-slug"]);
+
+    stage_file(&dir, "crates/pure_math/src/lib.rs", "pub fn dup() {}\n");
+    stage_file(&dir, "docs/adr/20261123-shared-slug.md", VALID_ADR_2);
+    assert!(!verify_records_in_dir_opts(&dir, None, None, true));
+    let bad_head = commit_file(
+        &dir,
+        "docs/adr/20261123-shared-slug.md",
+        VALID_ADR_2,
+        "dup slug",
+    );
+    assert!(!verify_records_in_dir(&dir, Some(&base), Some(&bad_head)));
+
+    git_in_test(
+        &dir,
+        &[
+            "mv",
+            "docs/adr/20261123-shared-slug.md",
+            "docs/adr/20261123-unique-slug.md",
+        ],
+    );
+    assert!(verify_records_in_dir_opts(&dir, None, None, true));
+    git_in_test(&dir, &["commit", "-m", "rename to unique slug"]);
+    let ok_head = git_in_test(&dir, &["rev-parse", "HEAD"]);
+    assert!(verify_records_in_dir(&dir, Some(&base), Some(&ok_head)));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_newly_added_four_digit_adr_rejected_while_legacy_edits_pass() {
+    let dir = init_temp_repo();
+    commit_file(
+        &dir,
+        "docs/adr/0042-legacy-kept.md",
+        "# ADR 0042: Legacy Kept\n\n## Status\n\nAccepted\n",
+        "seed 0042",
+    );
+    let base = git_in_test(&dir, &["rev-parse", "HEAD"]);
+    git_in_test(&dir, &["checkout", "-b", "feature/freeze-legacy"]);
+
+    // Adding a new 4-digit ADR (even unused 0041 or unfrozen 0047) fails staged, range, and HEAD
+    stage_file(&dir, "docs/adr/0041-new-legacy.md", VALID_ADR_1);
+    assert!(!verify_records_in_dir_opts(&dir, None, None, true));
+    let bad_41 = commit_file(&dir, "docs/adr/0041-new-legacy.md", VALID_ADR_1, "add 0041");
+    assert!(!verify_records_in_dir(&dir, Some(&base), Some(&bad_41)));
+    assert!(!verify_records_in_dir(&dir, None, None));
+
+    git_in_test(&dir, &["reset", "--hard", &base]);
+    stage_file(&dir, "docs/adr/0047-unfrozen.md", VALID_ADR_1);
+    assert!(!verify_records_in_dir_opts(&dir, None, None, true));
+
+    git_in_test(&dir, &["reset", "--hard", &base]);
+    stage_file(&dir, "docs/adr/0048-unfrozen.md", VALID_ADR_1);
+    assert!(!verify_records_in_dir_opts(&dir, None, None, true));
+
+    // Modifying an existing frozen legacy ADR remains valid
+    git_in_test(&dir, &["reset", "--hard", &base]);
+    let edited_legacy = commit_file(
+        &dir,
+        "docs/adr/0042-legacy-kept.md",
+        "# ADR 0042: Legacy Kept\n\n## Status\n\nAccepted (updated link)\n",
+        "update legacy adr",
+    );
+    assert!(verify_records_in_dir(
+        &dir,
+        Some(&base),
+        Some(&edited_legacy)
+    ));
+
+    let _ = fs::remove_dir_all(&dir);
 }
