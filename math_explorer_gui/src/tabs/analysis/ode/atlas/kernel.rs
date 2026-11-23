@@ -5,7 +5,7 @@
 use super::OdeAtlasRegime;
 use crate::async_sim::atlas::AtlasCell;
 use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
-use math_commons::ast::CompiledExpr;
+use math_commons::ast::{CompiledExpr, Expr};
 use math_explorer::pure_math::analysis::ode::{
     ArrayState, Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, Solver,
     TimeStepper,
@@ -26,6 +26,9 @@ pub(super) enum StackOdeDynamics<'a> {
         r: f64,
         cap_k: f64,
     },
+    Linear2D {
+        matrix_a: [[f64; 2]; 2],
+    },
     ScalarExpr {
         expr: &'a CompiledExpr,
         params: [f64; MAX_SYNTHESIZED_PARAMS],
@@ -42,8 +45,22 @@ pub(super) enum StackOdeDynamics<'a> {
 impl StackOdeDynamics<'_> {
     #[inline]
     pub(super) const fn is_2d(&self) -> bool {
-        matches!(self, Self::DampedHarmonic { .. } | Self::CoupledExpr { .. })
+        matches!(
+            self,
+            Self::DampedHarmonic { .. } | Self::Linear2D { .. } | Self::CoupledExpr { .. }
+        )
     }
+}
+
+pub(super) fn compile_planar_expr_pair(
+    px: Option<&Expr>,
+    py: Option<&Expr>,
+) -> (Option<CompiledExpr>, Option<CompiledExpr>) {
+    let axes = &["t", "x", "y"];
+    let shared = &["k", "r", "cap_k", "K"];
+    let dx = px.and_then(|e| CompiledExpr::compile_with_vars_and_params(e, axes, shared).ok());
+    let dy = py.and_then(|e| CompiledExpr::compile_with_vars_and_params(e, axes, shared).ok());
+    (dx, dy)
 }
 
 impl OdeSystem<ArrayState<2>> for StackOdeDynamics<'_> {
@@ -73,6 +90,10 @@ impl OdeSystem<ArrayState<2>> for StackOdeDynamics<'_> {
                     f64::NAN
                 };
                 out.0[1] = 0.0;
+            }
+            Self::Linear2D { matrix_a } => {
+                out.0[0] = matrix_a[0][0] * y + matrix_a[0][1] * v;
+                out.0[1] = matrix_a[1][0] * y + matrix_a[1][1] * v;
             }
             Self::ScalarExpr {
                 expr,

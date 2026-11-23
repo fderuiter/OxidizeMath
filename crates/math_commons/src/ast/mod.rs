@@ -19,6 +19,8 @@ mod glsl_sim_test_eval;
 #[cfg(test)]
 mod glsl_tests;
 #[cfg(test)]
+mod planar_tests;
+#[cfg(test)]
 mod tests;
 
 pub use compiled::{CompiledExpr, Instruction};

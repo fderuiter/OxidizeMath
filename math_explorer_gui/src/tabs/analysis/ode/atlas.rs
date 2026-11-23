@@ -4,22 +4,21 @@
 
 #[path = "atlas/kernel.rs"]
 mod kernel;
+#[path = "atlas/panel.rs"]
+mod panel;
 
 use super::OdeSolverTool;
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
-    RegimeCartographer,
+    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
 };
 use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
 use crate::presets::OdePreset;
 use eframe::egui;
-use kernel::{classify_stack_dynamics, StackOdeDynamics};
+use kernel::{classify_stack_dynamics, compile_planar_expr_pair, StackOdeDynamics};
 use math_commons::ast::CompiledExpr;
 use math_explorer::pure_math::analysis::ode::{ArrayState, IntegrationMethod};
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 
 const REGIME_COUNT: u8 = 4;
 
@@ -122,6 +121,9 @@ pub struct OdeRegimeCartographer {
     base_cap_k: f64,
     base_y0: f64,
     base_v0: f64,
+    matrix_a: [[f64; 2]; 2],
+    planar_dx: Option<CompiledExpr>,
+    planar_dy: Option<CompiledExpr>,
     scalar_expr: Option<CompiledExpr>,
     scalar_params: [f64; MAX_SYNTHESIZED_PARAMS],
     scalar_len: usize,
@@ -139,6 +141,33 @@ fn find_param_slot(names: &[String], len: usize, target: &str) -> Option<usize> 
     names.iter().take(len).position(|n| n == target)
 }
 
+fn snapshot_scalar_expr(
+    tool: &OdeSolverTool,
+    axis_keys: (&str, &str),
+) -> (
+    Option<CompiledExpr>,
+    [f64; MAX_SYNTHESIZED_PARAMS],
+    usize,
+    Option<usize>,
+    Option<usize>,
+) {
+    let mut params = [0.0; MAX_SYNTHESIZED_PARAMS];
+    let expr = tool.math_input.active_compiled().cloned();
+    let Some(compiled) = &expr else {
+        return (None, params, 0, None, None);
+    };
+    let slice = tool.math_input.param_slice();
+    let len = compiled
+        .param_names()
+        .len()
+        .min(MAX_SYNTHESIZED_PARAMS)
+        .min(slice.len());
+    params[..len].copy_from_slice(&slice[..len]);
+    let sx = find_param_slot(compiled.param_names(), len, axis_keys.0);
+    let sy = find_param_slot(compiled.param_names(), len, axis_keys.1);
+    (expr, params, len, sx, sy)
+}
+
 impl OdeRegimeCartographer {
     /// Snapshots [`OdeSolverTool`] state into a thread-safe zero-allocation [`OdeRegimeCartographer`].
     #[must_use]
@@ -148,22 +177,12 @@ impl OdeRegimeCartographer {
             x: ode_axis_spec(&theory_params, axis_keys.0),
             y: ode_axis_spec(&theory_params, axis_keys.1),
         };
-        let mut scalar_params = [0.0; MAX_SYNTHESIZED_PARAMS];
-        let mut scalar_len = 0;
-        let (mut scalar_slot_x, mut scalar_slot_y) = (None, None);
-        let scalar_expr = tool.math_input.active_compiled().cloned();
-        if let Some(expr) = &scalar_expr {
-            let slice = tool.math_input.param_slice();
-            scalar_len = expr
-                .param_names()
-                .len()
-                .min(MAX_SYNTHESIZED_PARAMS)
-                .min(slice.len());
-            scalar_params[..scalar_len].copy_from_slice(&slice[..scalar_len]);
-            scalar_slot_x = find_param_slot(expr.param_names(), scalar_len, axis_keys.0);
-            scalar_slot_y = find_param_slot(expr.param_names(), scalar_len, axis_keys.1);
-        }
-
+        let (scalar_expr, scalar_params, scalar_len, scalar_slot_x, scalar_slot_y) =
+            snapshot_scalar_expr(tool, axis_keys);
+        let (planar_dx, planar_dy) = compile_planar_expr_pair(
+            tool.planar_x_input.cached_expr(),
+            tool.planar_y_input.cached_expr(),
+        );
         let compiled = tool.coupled_bank.active_compiled();
         let c_slice = tool.coupled_bank.param_slice();
         let coupled_len = c_slice.len().min(MAX_SYNTHESIZED_PARAMS);
@@ -185,6 +204,9 @@ impl OdeRegimeCartographer {
             base_cap_k: tool.param_cap_k,
             base_y0: tool.ic_y0,
             base_v0: tool.ic_v0,
+            matrix_a: tool.matrix_a,
+            planar_dx,
+            planar_dy,
             scalar_expr,
             scalar_params,
             scalar_len,
@@ -196,6 +218,42 @@ impl OdeRegimeCartographer {
             coupled_len,
             coupled_slot_x: find_param_slot(names, coupled_len, axis_keys.0),
             coupled_slot_y: find_param_slot(names, coupled_len, axis_keys.1),
+        }
+    }
+
+    fn resolve_custom_dynamics(&self, p1: f64, p2: f64, k: f64, c: f64) -> StackOdeDynamics<'_> {
+        if self.custom_coupled {
+            if let (Some(dy), Some(dv)) = (&self.coupled_dy, &self.coupled_dv) {
+                let mut params = self.coupled_params;
+                if let Some(sx) = self.coupled_slot_x {
+                    params[sx] = p1;
+                }
+                if let Some(sy) = self.coupled_slot_y {
+                    params[sy] = p2;
+                }
+                return StackOdeDynamics::CoupledExpr {
+                    dy,
+                    dv,
+                    params,
+                    param_len: self.coupled_len,
+                };
+            }
+            StackOdeDynamics::DampedHarmonic { k, c }
+        } else if let Some(expr) = &self.scalar_expr {
+            let mut params = self.scalar_params;
+            if let Some(sx) = self.scalar_slot_x {
+                params[sx] = p1;
+            }
+            if let Some(sy) = self.scalar_slot_y {
+                params[sy] = p2;
+            }
+            StackOdeDynamics::ScalarExpr {
+                expr,
+                params,
+                param_len: self.scalar_len,
+            }
+        } else {
+            StackOdeDynamics::Exponential { k }
         }
     }
 
@@ -219,43 +277,27 @@ impl OdeRegimeCartographer {
             OdePreset::Exponential => StackOdeDynamics::Exponential { k },
             OdePreset::HarmonicOscillator => StackOdeDynamics::DampedHarmonic { k, c },
             OdePreset::LogisticGrowth => StackOdeDynamics::Logistic { r, cap_k },
-            OdePreset::Custom if self.custom_coupled => {
-                if let (Some(dy), Some(dv)) = (&self.coupled_dy, &self.coupled_dv) {
-                    let mut params = self.coupled_params;
-                    if let Some(sx) = self.coupled_slot_x {
-                        params[sx] = p1;
-                    }
-                    if let Some(sy) = self.coupled_slot_y {
-                        params[sy] = p2;
-                    }
+            OdePreset::LinearSystem2D => StackOdeDynamics::Linear2D {
+                matrix_a: self.matrix_a,
+            },
+            OdePreset::PlanarCustom => {
+                if let (Some(dy), Some(dv)) = (&self.planar_dx, &self.planar_dy) {
+                    let mut params = [0.0; MAX_SYNTHESIZED_PARAMS];
+                    params[0] = k;
+                    params[1] = r;
+                    params[2] = cap_k;
+                    params[3] = cap_k;
                     StackOdeDynamics::CoupledExpr {
                         dy,
                         dv,
                         params,
-                        param_len: self.coupled_len,
+                        param_len: 4,
                     }
                 } else {
                     StackOdeDynamics::DampedHarmonic { k, c }
                 }
             }
-            OdePreset::Custom => {
-                if let Some(expr) = &self.scalar_expr {
-                    let mut params = self.scalar_params;
-                    if let Some(sx) = self.scalar_slot_x {
-                        params[sx] = p1;
-                    }
-                    if let Some(sy) = self.scalar_slot_y {
-                        params[sy] = p2;
-                    }
-                    StackOdeDynamics::ScalarExpr {
-                        expr,
-                        params,
-                        param_len: self.scalar_len,
-                    }
-                } else {
-                    StackOdeDynamics::Exponential { k }
-                }
-            }
+            OdePreset::Custom => self.resolve_custom_dynamics(p1, p2, k, c),
         };
         let init_v = if dyn_sys.is_2d() { v0 } else { 0.0 };
         (dyn_sys, ArrayState([y0, init_v]), dt)
@@ -344,139 +386,5 @@ impl RegimeCartographer for OdeRegimeCartographer {
                 atlas_regime_color(3, REGIME_COUNT, 0.5, high_contrast),
             ),
         ]
-    }
-}
-
-impl OdeSolverTool {
-    pub(crate) fn atlas_param_value(&self, key: &str) -> f64 {
-        match key {
-            "k" => self.param_k,
-            "r" => self.param_r,
-            "cap_k" => self.param_cap_k,
-            "y0" => self.ic_y0,
-            "v0" => self.ic_v0,
-            "dt" => self.dt,
-            _ => {
-                if self.custom_coupled {
-                    if let Some(pos) = self
-                        .coupled_bank
-                        .param_names()
-                        .iter()
-                        .position(|n| n == key)
-                    {
-                        return self
-                            .coupled_bank
-                            .param_slice()
-                            .get(pos)
-                            .copied()
-                            .unwrap_or(1.0);
-                    }
-                }
-                self.math_input.active_param_value(key).unwrap_or(0.2)
-            }
-        }
-    }
-
-    fn apply_single_atlas_key(&mut self, key: &str, val: f64) {
-        match key {
-            "k" => {
-                self.param_k = val;
-                self.math_input.set_param("k", val);
-                self.coupled_bank.set_param("k", val);
-            }
-            "c" => {
-                if self.preset == OdePreset::HarmonicOscillator && val.abs() > 1e-6 {
-                    self.preset = OdePreset::Custom;
-                    self.custom_coupled = true;
-                    self.coupled_bank
-                        .set_expressions(&["v".to_string(), "-k * y - c * v".to_string()]);
-                    self.coupled_bank.set_param("k", self.param_k);
-                }
-                self.coupled_bank.set_param("c", val);
-            }
-            "r" => {
-                self.param_r = val;
-                self.math_input.set_param("r", val);
-                self.coupled_bank.set_param("r", val);
-            }
-            "cap_k" => {
-                self.param_cap_k = val;
-                self.math_input.set_param("cap_k", val);
-                self.math_input.set_param("K", val);
-            }
-            "y0" => self.ic_y0 = val,
-            "v0" => self.ic_v0 = val,
-            "dt" => {
-                let min_dt =
-                    (self.total_time.max(0.1) / crate::presets::MAX_ODE_STEPS as f64).max(1e-4);
-                self.dt = val.clamp(min_dt, 1.0);
-            }
-            _ => {
-                self.coupled_bank.set_param(key, val);
-                self.math_input.set_param(key, val);
-            }
-        }
-    }
-
-    /// Teleports active ODE parameters to `ev`, pushing the prior run to `snapshot_manager`.
-    pub fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
-        self.pending_sweep_run = None;
-        let prev_summary = self.last_param_summary.clone();
-        let prev_series = self.build_current_trace_series();
-        self.snapshot_manager
-            .push_history_run(prev_summary, prev_series);
-        self.apply_single_atlas_key(ev.x_key, ev.x_val);
-        self.apply_single_atlas_key(ev.y_key, ev.y_val);
-        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
-        self.recalculate();
-    }
-
-    fn atlas_context_signature(&self, xk: &str, yk: &str) -> u64 {
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.preset as u8).hash(&mut h);
-        (self.method as u8).hash(&mut h);
-        self.custom_coupled.hash(&mut h);
-        for (k, v) in [
-            ("dt", self.dt),
-            ("k", self.param_k),
-            ("r", self.param_r),
-            ("cap_k", self.param_cap_k),
-            ("y0", self.ic_y0),
-            ("v0", self.ic_v0),
-        ] {
-            if k != xk && k != yk {
-                v.to_bits().hash(&mut h);
-            }
-        }
-        if self.preset == OdePreset::Custom {
-            self.math_input.raw_text.hash(&mut h);
-            self.coupled_bank.raw_text(0).hash(&mut h);
-            self.coupled_bank.raw_text(1).hash(&mut h);
-        }
-        h.finish()
-    }
-
-    pub(super) fn render_ode_atlas_panel(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
-        if !self.atlas.is_visible() {
-            return;
-        }
-        ui.add_space(6.0);
-        let (xk, yk) = self.atlas.axis_keys();
-        let active_x = self.atlas_param_value(xk);
-        let active_y = self.atlas_param_value(yk);
-        let sig = self.atlas_context_signature(xk, yk);
-        let cartographer_seed = OdeRegimeCartographer::from_tool(self, (xk, yk));
-        let mut atlas = std::mem::replace(
-            &mut self.atlas,
-            crate::async_sim::atlas::ParameterAtlasController::new(Vec::new()),
-        );
-        let teleport = atlas.show_panel(ui, "ode", active_x, active_y, sig, |_keys| {
-            Arc::new(cartographer_seed)
-        });
-        self.atlas = atlas;
-        if let Some(ev) = teleport {
-            self.apply_atlas_teleport(ev);
-            *changed = true;
-        }
     }
 }

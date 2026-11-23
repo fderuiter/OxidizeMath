@@ -13,6 +13,8 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
             OdePreset::Exponential => "First-order linear ordinary differential equation describing exponential growth or decay proportional to current quantity.".into(),
             OdePreset::HarmonicOscillator => "Second-order ordinary differential equation modeling simple harmonic motion under a Hooke's law restoring force.".into(),
             OdePreset::LogisticGrowth => "Nonlinear ordinary differential equation modeling density-dependent population growth with an environmental carrying capacity.".into(),
+            OdePreset::LinearSystem2D => "Planar 2x2 linear dynamical system classified on the Poincaré trace-determinant bifurcation diagram.".into(),
+            OdePreset::PlanarCustom => "Coupled 2D planar ordinary differential equations: x' = f(t, x, y), y' = g(t, x, y).".into(),
             OdePreset::Custom if self.custom_coupled => "Coupled two-state ordinary differential equation system: y' = f(t, y, v), v' = g(t, y, v)".into(),
             OdePreset::Custom => "Custom user-defined ordinary differential equation: y' = f(t, y)".into(),
         }
@@ -22,7 +24,10 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     }
     fn theory_citation(&self) -> String {
         match self.preset {
-            OdePreset::Exponential => {
+            OdePreset::Exponential
+            | OdePreset::LinearSystem2D
+            | OdePreset::PlanarCustom
+            | OdePreset::Custom => {
                 "Differential Equations and Dynamical Systems (Perko, 2001)".into()
             }
             OdePreset::HarmonicOscillator => {
@@ -31,9 +36,6 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
             OdePreset::LogisticGrowth => {
                 "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into()
             }
-            OdePreset::Custom => {
-                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
-            }
         }
     }
     fn theory_latex_equation(&self) -> Option<String> {
@@ -41,7 +43,8 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
             OdePreset::Exponential => r"\frac{dy}{dt} = k y",
             OdePreset::HarmonicOscillator => r"\frac{d^2 y}{dt^2} = -k y",
             OdePreset::LogisticGrowth => r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
-            OdePreset::Custom => return None,
+            OdePreset::LinearSystem2D => r"\dot{\mathbf{x}} = A \mathbf{x}",
+            OdePreset::PlanarCustom | OdePreset::Custom => return None,
         };
         Some(eq.into())
     }
@@ -59,6 +62,14 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
                 "Logistic Growth".into(),
                 "Nonlinear first-order ODE modeling population growth with carrying capacity"
                     .into(),
+            ),
+            (
+                "Linear 2D".into(),
+                "Planar 2x2 linear system with Poincaré stability regimes".into(),
+            ),
+            (
+                "Planar Custom".into(),
+                "Coupled 2D user-defined ODE phase-plane system".into(),
             ),
             (
                 "Custom".into(),

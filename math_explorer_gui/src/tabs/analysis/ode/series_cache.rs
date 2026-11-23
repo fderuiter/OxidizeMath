@@ -193,6 +193,7 @@ impl super::OdeSolverTool {
     }
 
     pub(crate) fn build_current_trace_series(&self) -> Vec<crate::framework::TraceSeries> {
+        let (t1_lbl, t2_lbl, _, _) = self.active_state_labels();
         let (py, pv) =
             if self
                 .series_cache
@@ -203,25 +204,48 @@ impl super::OdeSolverTool {
                 let (y, v) = self.collect_full_xy_pairs();
                 (y.into(), v.into())
             };
-        let mut series = vec![crate::framework::TraceSeries::new("y(t)", py)];
+        let mut series = vec![crate::framework::TraceSeries::new(t1_lbl, py)];
         if self.has_second_state() && !pv.is_empty() {
-            series.push(crate::framework::TraceSeries::new(
-                self.second_state_label(),
-                pv,
-            ));
+            series.push(crate::framework::TraceSeries::new(t2_lbl, pv));
         }
         series
     }
 
     pub(crate) fn build_full_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let (t1_lbl, t2_lbl, px_lbl, py_lbl) = self.active_state_labels();
         let mut datasets = Vec::new();
         if self.comparison_mode && !self.comparison_manager.is_empty() {
             datasets.extend(self.comparison_manager.export_datasets());
+        } else if self.is_phase_plane_active() {
+            let phase_pts: Vec<[f64; 2]> = self
+                .y_series
+                .iter()
+                .copied()
+                .zip(self.v_series.iter().copied())
+                .map(|(x, y)| [x, y])
+                .collect();
+            datasets.push((format!("Primary ({px_lbl}, {py_lbl})"), phase_pts));
+            for (idx, traj) in self.seeded_trajectories.iter().enumerate() {
+                let pts: Vec<[f64; 2]> = traj
+                    .y_series
+                    .iter()
+                    .copied()
+                    .zip(traj.v_series.iter().copied())
+                    .filter(|(x, y)| x.is_finite() && y.is_finite())
+                    .map(|(x, y)| [x, y])
+                    .collect();
+                if let Some(&ic) = pts.first() {
+                    datasets.push((
+                        format!("Orbit {} ({:.2}, {:.2})", idx + 1, ic[0], ic[1]),
+                        pts,
+                    ));
+                }
+            }
         } else {
             let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
-            datasets.push(("y(t)".to_string(), plot_points_y));
+            datasets.push((t1_lbl.to_string(), plot_points_y));
             if self.has_second_state() && !plot_points_v.is_empty() {
-                datasets.push((self.second_state_label().to_string(), plot_points_v));
+                datasets.push((t2_lbl.to_string(), plot_points_v));
             }
             if self.is_2d_phase_portrait() && !self.v_series.is_empty() {
                 let phase_pts: Vec<[f64; 2]> = self

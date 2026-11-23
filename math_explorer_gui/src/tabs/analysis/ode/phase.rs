@@ -180,7 +180,7 @@ impl OdeSolverTool {
     /// Returns `true` when rendering a 2-state `(y, v)` phase portrait.
     #[inline]
     #[must_use]
-    pub const fn is_2d_phase_portrait(&self) -> bool {
+    pub fn is_2d_phase_portrait(&self) -> bool {
         matches!(self.view_mode, PlotViewMode::PhasePortrait) && self.has_second_state()
     }
 
@@ -212,6 +212,18 @@ impl OdeSolverTool {
             let t = self.t_slice;
             match self.preset {
                 OdePreset::HarmonicOscillator => [y, -self.param_k * x],
+                OdePreset::LinearSystem2D => [
+                    self.matrix_a[0][0] * x + self.matrix_a[0][1] * y,
+                    self.matrix_a[1][0] * x + self.matrix_a[1][1] * y,
+                ],
+                OdePreset::PlanarCustom => {
+                    let params = super::systems::build_ode_param_map(
+                        self.param_k,
+                        self.param_r,
+                        self.param_cap_k,
+                    );
+                    self.eval_planar_rhs_at(t, x, y, &params)
+                }
                 OdePreset::Custom => {
                     if let Some(CustomOdeSpec::Coupled {
                         dy,
@@ -244,7 +256,7 @@ impl OdeSolverTool {
                         0.0
                     }
                 }
-                OdePreset::HarmonicOscillator => 0.0,
+                _ => 0.0,
             };
             [1.0, slope]
         }
@@ -265,6 +277,13 @@ impl OdeSolverTool {
             y_bounds.1,
         ] {
             v.to_bits().hash(&mut h);
+        }
+        for val in self.matrix_a.iter().flatten() {
+            val.to_bits().hash(&mut h);
+        }
+        if self.preset == OdePreset::PlanarCustom {
+            self.planar_x_input.raw_text.hash(&mut h);
+            self.planar_y_input.raw_text.hash(&mut h);
         }
         if self.preset == OdePreset::Custom {
             if self.custom_coupled {
