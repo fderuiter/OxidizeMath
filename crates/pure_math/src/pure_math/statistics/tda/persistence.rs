@@ -1,14 +1,15 @@
-//! Persistence computation and barcode generation.
+//! Exact simplicial persistent homology computation and barcode generation over $\mathbb{Z}_2$.
 
-use super::complex::vietoris_rips_from_distances;
-use super::core::PointCloud;
-use super::homology::{betti_number_0, betti_number_1};
+use super::boundary::{
+    FilteredEdge, FilteredTriangle, Z2BoundaryWorkspace, build_cleared_partial_1_workspace,
+    build_partial_2_workspace, collect_sorted_edges, collect_sorted_triangles,
+};
+use super::complex::{MAX_FILTRATION_TRIANGLES, validate_distance_matrix};
+use super::core::{NdPointCloud, PointCloud};
 use crate::error::TdaError;
+use std::cmp::Ordering;
 
 /// A persistence interval representing the lifetime of a topological feature.
-///
-/// A feature "births" at radius `birth` and "dies" at radius `death`.
-/// The persistence (lifetime) is `death - birth`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PersistenceInterval {
     /// The radius at which the feature appears.
@@ -24,13 +25,9 @@ impl PersistenceInterval {
     ///
     /// # Errors
     ///
-    /// Returns [`TdaError::InvalidRadius`] if:
-    /// - `birth` is negative.
-    /// - `death` is strictly less than `birth`.
-    /// - Either `birth` or `death` is not finite (e.g., `NaN` or `Infinity`).
+    /// Returns [`TdaError::InvalidRadius`] if `birth < 0.0`, `death < birth`, or either endpoint is non-finite.
     ///
     /// # Example
-    ///
     /// ```
     /// # use pure_math::__doctest_facade as math_explorer;
     /// use math_explorer::pure_math::statistics::tda::PersistenceInterval;
@@ -38,12 +35,7 @@ impl PersistenceInterval {
     ///
     /// let interval = PersistenceInterval::new(0.5, 2.0, 1).unwrap();
     /// assert_eq!(interval.persistence(), 1.5);
-    ///
-    /// // Invalid radii result in an error
-    /// assert!(matches!(
-    ///     PersistenceInterval::new(2.0, 1.0, 1),
-    ///     Err(TdaError::InvalidRadius { .. })
-    /// ));
+    /// assert!(matches!(PersistenceInterval::new(2.0, 1.0, 1), Err(TdaError::InvalidRadius { .. })));
     /// ```
     #[verified_engine::verified]
     pub fn new(birth: f64, death: f64, dimension: usize) -> Result<Self, TdaError> {
@@ -57,25 +49,107 @@ impl PersistenceInterval {
         })
     }
 
-    /// Returns the persistence (lifetime) of the feature.
-    ///
-    /// Formula: persistence = death - birth
+    /// Returns the persistence (`death - birth`) of the feature.
     #[verified_engine::verified]
     pub fn persistence(&self) -> f64 {
         self.death - self.birth
     }
 
-    /// Returns true if this is a significant feature (persistence > threshold).
+    /// Returns `true` if `self.persistence() > threshold`.
     #[verified_engine::verified]
     pub fn is_significant(&self, threshold: f64) -> bool {
         self.persistence() > threshold
     }
 }
 
+/// Exact Vietoris-Rips persistence interval paired via $\mathbb{Z}_2$ boundary reduction.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RipsInterval {
+    /// Homology dimension (`0` for $H_0$ components, `1` for $H_1$ loops).
+    pub dimension: usize,
+    /// Exact filtration diameter at which the feature is created.
+    pub birth: f64,
+    /// Exact filtration diameter at which the feature dies, or finite `max_radius` when `is_essential` is `true`.
+    pub death: f64,
+    /// `true` when the feature survives past the maximum filtration scale without a killing simplex.
+    pub is_essential: bool,
+}
+
+impl RipsInterval {
+    /// Returns the finite persistence span `death - birth`.
+    #[verified_engine::verified]
+    pub fn persistence(&self) -> f64 {
+        self.death - self.birth
+    }
+
+    /// Returns `true` if this homology class is active at filtration threshold `epsilon`.
+    #[verified_engine::verified]
+    pub fn is_alive_at(&self, epsilon: f64) -> bool {
+        if self.is_essential {
+            self.birth <= epsilon
+        } else {
+            self.birth <= epsilon && epsilon < self.death
+        }
+    }
+
+    /// Converts this interval into a [`PersistenceInterval`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`TdaError::InvalidRadius`] if endpoints are invalid.
+    #[verified_engine::verified]
+    pub fn to_persistence_interval(&self) -> Result<PersistenceInterval, TdaError> {
+        PersistenceInterval::new(self.birth, self.death, self.dimension)
+    }
+}
+
+/// Result of exact simplicial Vietoris-Rips persistent homology up to $H_1$.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RipsPersistenceResult {
+    /// Exact $H_0$ and $H_1$ intervals ordered by `(dimension, birth, death, is_essential)`.
+    pub intervals: Vec<RipsInterval>,
+    /// Maximum pairwise distance across the point cloud used to cap essential intervals.
+    pub max_radius: f64,
+    /// `true` if candidate 2-simplices exceeded [`MAX_FILTRATION_TRIANGLES`] and were truncated.
+    pub truncated_triangles: bool,
+}
+
+impl RipsPersistenceResult {
+    /// Converts positive-lifetime intervals into a [`PersistenceBarcode`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`TdaError::InvalidRadius`] if any interval has invalid bounds.
+    #[verified_engine::verified]
+    pub fn to_barcode(&self) -> Result<PersistenceBarcode, TdaError> {
+        let mut barcode = PersistenceBarcode::new();
+        for item in &self.intervals {
+            if item.death > item.birth || item.is_essential {
+                barcode.add_interval(item.to_persistence_interval()?);
+            }
+        }
+        Ok(barcode)
+    }
+
+    /// Evaluates $(\beta_0(\epsilon), \beta_1(\epsilon))$ directly from active intervals at `epsilon`.
+    #[verified_engine::verified]
+    pub fn betti_numbers_at(&self, epsilon: f64) -> (usize, usize) {
+        let mut b0 = 0_usize;
+        let mut b1 = 0_usize;
+        for item in &self.intervals {
+            if item.is_alive_at(epsilon) {
+                if item.dimension == 0 {
+                    b0 += 1;
+                } else if item.dimension == 1 {
+                    b1 += 1;
+                }
+            }
+        }
+        (b0, b1)
+    }
+}
+
 /// A persistence barcode is a collection of persistence intervals.
-///
-/// The barcode visualizes the lifetime of topological features across
-/// different scales (filtration parameter values).
 #[derive(Debug, Clone)]
 pub struct PersistenceBarcode {
     /// All persistence intervals in the barcode.
@@ -103,27 +177,23 @@ impl PersistenceBarcode {
         self.intervals.len()
     }
 
-    /// Returns true if the barcode is empty.
+    /// Returns `true` if the barcode is empty.
     #[verified_engine::verified]
     pub fn is_empty(&self) -> bool {
         self.intervals.is_empty()
     }
 
-    /// Filters intervals by dimension.
+    /// Filters intervals by homology dimension.
     ///
     /// # Example
     /// ```
     /// # use pure_math::__doctest_facade as math_explorer;
-    /// use math_explorer::pure_math::statistics::tda::{
-    ///     PersistenceBarcode, PersistenceInterval
-    /// };
+    /// use math_explorer::pure_math::statistics::tda::{PersistenceBarcode, PersistenceInterval};
     ///
     /// let mut barcode = PersistenceBarcode::new();
     /// barcode.add_interval(PersistenceInterval::new(0.0, 1.0, 0).unwrap());
     /// barcode.add_interval(PersistenceInterval::new(0.5, 2.0, 1).unwrap());
-    ///
-    /// let holes = barcode.filter_by_dimension(1);
-    /// assert_eq!(holes.len(), 1);
+    /// assert_eq!(barcode.filter_by_dimension(1).len(), 1);
     /// ```
     #[verified_engine::verified]
     pub fn filter_by_dimension(&self, dimension: usize) -> Vec<&PersistenceInterval> {
@@ -133,9 +203,7 @@ impl PersistenceBarcode {
             .collect()
     }
 
-    /// Filters intervals by minimum persistence.
-    ///
-    /// Only returns features with persistence > threshold.
+    /// Filters intervals by minimum persistence (`persistence > threshold`).
     #[verified_engine::verified]
     pub fn filter_by_persistence(&self, threshold: f64) -> Vec<&PersistenceInterval> {
         self.intervals
@@ -152,7 +220,7 @@ impl PersistenceBarcode {
             .max_by(|a, b| {
                 a.persistence()
                     .partial_cmp(&b.persistence())
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .unwrap_or(Ordering::Equal)
             })
     }
 }
@@ -164,60 +232,166 @@ impl Default for PersistenceBarcode {
     }
 }
 
-/// Computes persistence barcode using a simple filtration.
-///
-/// This performs a filtration of the Vietoris-Rips complex at multiple
-/// radius values and tracks when topological features appear and disappear.
-///
-/// # Arguments
-///
-/// * `cloud` - The point cloud
-/// * `radii` - Sorted sequence of radii to use for filtration
-///
-/// # Returns
-///
-/// * `Result<PersistenceBarcode, TdaError>` - The persistence barcode or error
+/// Computes exact simplicial $H_0$ and $H_1$ persistence intervals on a 2D [`PointCloud`].
 ///
 /// # Errors
 ///
-/// Returns [`TdaError::InvalidRadius`] if `radii` is empty.
-/// Propagates errors from `vietoris_rips_complex` or Betti number computations if the point cloud or radii are invalid.
-///
-/// # Errors
-///
-/// Returns [`TdaError::InvalidRadius`] if `radii` is empty or if invalid radii are encountered.
-/// Propagates errors from `vietoris_rips_complex`, Betti number computations, and `PersistenceInterval::new`.
+/// Propagates [`TdaError`] if distance matrix validation or boundary workspace setup fails.
 ///
 /// # Example
 /// ```
 /// # use pure_math::__doctest_facade as math_explorer;
-/// use math_explorer::pure_math::statistics::tda::{
-///     PointCloud, Point2D, compute_persistence
-/// };
+/// use math_explorer::pure_math::statistics::tda::{Point2D, PointCloud, compute_rips_persistence};
+///
+/// let square = PointCloud::new(vec![
+///     Point2D::new(0.0, 0.0),
+///     Point2D::new(1.0, 0.0),
+///     Point2D::new(1.0, 1.0),
+///     Point2D::new(0.0, 1.0),
+/// ]).unwrap();
+/// assert_eq!(compute_rips_persistence(&square).unwrap().betti_numbers_at(1.1), (1, 1));
+/// ```
+#[verified_engine::verified]
+pub fn compute_rips_persistence(cloud: &PointCloud) -> Result<RipsPersistenceResult, TdaError> {
+    compute_rips_persistence_from_distances(&cloud.distance_matrix())
+}
+
+/// Computes exact simplicial $H_0$ and $H_1$ persistence intervals on an $N$-dimensional [`NdPointCloud`].
+///
+/// # Errors
+///
+/// Propagates [`TdaError`] if distance matrix validation or boundary workspace setup fails.
+#[verified_engine::verified]
+pub fn compute_rips_persistence_nd(
+    cloud: &NdPointCloud,
+) -> Result<RipsPersistenceResult, TdaError> {
+    compute_rips_persistence_from_distances(&cloud.distance_matrix())
+}
+
+/// Computes exact simplicial $H_0$ and $H_1$ persistence intervals from a precomputed distance matrix.
+///
+/// Sorts 0-, 1-, and 2-simplices by `(diameter, dimension, vertices)`, reduces $\partial_2$ first
+/// over $\mathbb{Z}_2$, clears $\partial_2$ pivot columns in $\partial_1$, and reduces $\partial_1$.
+///
+/// # Errors
+///
+/// Returns [`TdaError`] if `dist` is empty, non-square, exceeds `MAX_TDA_POINTS`, or contains invalid distances.
+#[verified_engine::verified]
+pub fn compute_rips_persistence_from_distances(
+    dist: &[Vec<f64>],
+) -> Result<RipsPersistenceResult, TdaError> {
+    compute_rips_persistence_bounded(dist, MAX_FILTRATION_TRIANGLES)
+}
+
+#[verified_engine::verified]
+pub(crate) fn compute_rips_persistence_bounded(
+    dist: &[Vec<f64>],
+    max_triangles: usize,
+) -> Result<RipsPersistenceResult, TdaError> {
+    validate_distance_matrix(dist)?;
+    let n = dist.len();
+    let (edges, edge_lookup, max_radius) = collect_sorted_edges(dist);
+    let (triangles, truncated_triangles) = collect_sorted_triangles(dist, max_triangles);
+
+    let mut partial_2 = build_partial_2_workspace(n, edges.len(), &edge_lookup, &triangles)?;
+    partial_2.reduce();
+
+    let mut partial_1 = build_cleared_partial_1_workspace(n, &edges, &partial_2)?;
+    partial_1.reduce();
+
+    let intervals =
+        assemble_rips_intervals(n, &edges, &triangles, &partial_1, &partial_2, max_radius);
+    Ok(RipsPersistenceResult {
+        intervals,
+        max_radius,
+        truncated_triangles,
+    })
+}
+
+#[verified_engine::verified]
+fn assemble_rips_intervals(
+    n: usize,
+    edges: &[FilteredEdge],
+    triangles: &[FilteredTriangle],
+    partial_1: &Z2BoundaryWorkspace,
+    partial_2: &Z2BoundaryWorkspace,
+    max_radius: f64,
+) -> Vec<RipsInterval> {
+    let mut intervals = Vec::with_capacity(n + edges.len().min(n * 4));
+
+    for v in 0..n {
+        if let Some(e_idx) = partial_1.pivot_col_for_row(v) {
+            let death = edges[e_idx].diameter;
+            if death > 0.0 {
+                intervals.push(RipsInterval {
+                    dimension: 0,
+                    birth: 0.0,
+                    death,
+                    is_essential: false,
+                });
+            }
+        } else {
+            intervals.push(RipsInterval {
+                dimension: 0,
+                birth: 0.0,
+                death: max_radius,
+                is_essential: true,
+            });
+        }
+    }
+
+    for (e_idx, edge) in edges.iter().enumerate() {
+        let birth = edge.diameter;
+        if let Some(t_idx) = partial_2.pivot_col_for_row(e_idx) {
+            let death = triangles[t_idx].diameter;
+            if death > birth {
+                intervals.push(RipsInterval {
+                    dimension: 1,
+                    birth,
+                    death,
+                    is_essential: false,
+                });
+            }
+        } else if !partial_1.is_cleared(e_idx) && partial_1.col_pivot(e_idx).is_none() {
+            intervals.push(RipsInterval {
+                dimension: 1,
+                birth,
+                death: max_radius.max(birth),
+                is_essential: true,
+            });
+        }
+    }
+
+    intervals.sort_by(|a, b| {
+        a.dimension
+            .cmp(&b.dimension)
+            .then_with(|| a.birth.total_cmp(&b.birth))
+            .then_with(|| a.death.total_cmp(&b.death))
+            .then_with(|| a.is_essential.cmp(&b.is_essential))
+    });
+    intervals
+}
+
+/// Computes persistence barcode mapped onto caller filtration `radii` via exact $\mathbb{Z}_2$ pairing.
+///
+/// # Errors
+///
+/// Returns [`TdaError::InvalidRadius`] if `radii` is empty or contains negative or non-finite values.
+///
+/// # Example
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::tda::{PointCloud, Point2D, compute_persistence};
 /// use math_explorer::error::TdaError;
 ///
-/// let points = vec![
+/// let cloud = PointCloud::new(vec![
 ///     Point2D::new(0.0, 0.0),
 ///     Point2D::new(1.0, 0.0),
 ///     Point2D::new(0.5, 0.866),
-/// ];
-/// let cloud = PointCloud::new(points).unwrap();
-///
+/// ]).unwrap();
 /// let radii: Vec<f64> = (0..20).map(|i| i as f64 * 0.1).collect();
-/// let barcode = compute_persistence(&cloud, &radii).unwrap();
-///
-/// println!("Found {} features", barcode.len());
-/// for interval in &barcode.intervals {
-///     println!("Dim {}: [{:.2}, {:.2}] (persistence: {:.2})",
-///         interval.dimension, interval.birth, interval.death,
-///         interval.persistence());
-/// }
-///
-/// // Empty radii results in an error
-/// assert!(matches!(
-///     compute_persistence(&cloud, &[]),
-///     Err(TdaError::InvalidRadius { .. })
-/// ));
+/// assert!(!compute_persistence(&cloud, &radii).unwrap().is_empty());
+/// assert!(matches!(compute_persistence(&cloud, &[]), Err(TdaError::InvalidRadius { .. })));
 /// ```
 #[verified_engine::verified]
 pub fn compute_persistence(
@@ -227,270 +401,55 @@ pub fn compute_persistence(
     if radii.is_empty() {
         return Err(TdaError::InvalidRadius { value: 0.0 });
     }
+    let mut sorted_radii = Vec::with_capacity(radii.len());
+    for &r in radii {
+        if r < 0.0 || !r.is_finite() {
+            return Err(TdaError::InvalidRadius { value: r });
+        }
+        sorted_radii.push(r);
+    }
+    sorted_radii.sort_by(f64::total_cmp);
 
-    let dist = cloud.distance_matrix();
+    let exact = compute_rips_persistence(cloud)?;
+    map_rips_intervals_to_radii(&exact, &sorted_radii)
+}
+
+#[verified_engine::verified]
+fn map_rips_intervals_to_radii(
+    exact: &RipsPersistenceResult,
+    sorted_radii: &[f64],
+) -> Result<PersistenceBarcode, TdaError> {
+    let final_radius = *sorted_radii
+        .last()
+        .ok_or(TdaError::InvalidRadius { value: 0.0 })?;
     let mut barcode = PersistenceBarcode::new();
 
-    // Track previous Betti numbers
-    let mut prev_beta0 = 0;
-    let mut prev_beta1 = 0;
-
-    // Track births of features
-    let mut component_births: Vec<(usize, f64)> = Vec::new(); // (id, birth_radius)
-    let mut hole_births: Vec<f64> = Vec::new();
-
-    for &radius in radii {
-        let complex = vietoris_rips_from_distances(&dist, radius)?;
-        let beta0 = betti_number_0(&complex)?;
-        let beta1 = betti_number_1(&complex)?;
-
-        // Track connected components (β₀)
-        if beta0 > prev_beta0 {
-            // New components appeared
-            for _ in 0..(beta0 - prev_beta0) {
-                component_births.push((component_births.len(), radius));
-            }
-        } else if beta0 < prev_beta0 {
-            // Components merged (died)
-            let deaths = prev_beta0 - beta0;
-            for _ in 0..deaths {
-                match component_births.pop() {
-                    Some((_, birth)) if birth < radius => {
-                        // Only record if it has non-zero persistence
-                        barcode.add_interval(PersistenceInterval::new(birth, radius, 0)?);
-                    }
-                    _ => {}
-                }
-            }
+    for item in &exact.intervals {
+        let birth_idx = sorted_radii.partition_point(|&r| r < item.birth);
+        if birth_idx >= sorted_radii.len() {
+            continue;
         }
+        let mapped_birth = sorted_radii[birth_idx];
+        let mapped_death = if item.is_essential {
+            final_radius
+        } else {
+            let death_idx = sorted_radii.partition_point(|&r| r < item.death);
+            sorted_radii.get(death_idx).copied().unwrap_or(final_radius)
+        };
 
-        // Track holes (β₁)
-        if beta1 > prev_beta1 {
-            // New holes appeared
-            for _ in 0..(beta1 - prev_beta1) {
-                hole_births.push(radius);
-            }
-        } else if beta1 < prev_beta1 {
-            // Holes filled (died)
-            let deaths = prev_beta1 - beta1;
-            for _ in 0..deaths {
-                match hole_births.pop() {
-                    Some(birth) if birth < radius => {
-                        barcode.add_interval(PersistenceInterval::new(birth, radius, 1)?);
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        prev_beta0 = beta0;
-        prev_beta1 = beta1;
-    }
-
-    // Handle features that persist to the end
-    let final_radius = radii
-        .last()
-        .copied()
-        .ok_or(TdaError::InvalidRadius { value: 0.0 })?;
-
-    // Remaining components
-    for (_, birth) in component_births {
-        if birth < final_radius {
-            barcode.add_interval(PersistenceInterval::new(birth, final_radius, 0)?);
+        if mapped_birth < mapped_death {
+            barcode.add_interval(PersistenceInterval::new(
+                mapped_birth,
+                mapped_death,
+                item.dimension,
+            )?);
         }
     }
-
-    // Remaining holes
-    for birth in hole_births {
-        if birth < final_radius {
-            barcode.add_interval(PersistenceInterval::new(birth, final_radius, 1)?);
-        }
-    }
-
     Ok(barcode)
 }
 
+// [cite:clinical_trials_statistics]
+
 #[cfg(test)]
-mod tests {
-    use super::super::complex::vietoris_rips_complex;
-    use super::*;
-    use crate::pure_math::statistics::tda::core::Point2D;
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_persistence_interval() {
-        let interval = PersistenceInterval::new(0.5, 2.0, 1).unwrap();
-        assert_eq!(interval.birth, 0.5);
-        assert_eq!(interval.death, 2.0);
-        assert_eq!(interval.dimension, 1);
-        assert!((interval.persistence() - 1.5).abs() < math_commons::registry::TOLERANCE_FAST);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_persistence_interval_invalid() {
-        assert!(PersistenceInterval::new(2.0, 1.0, 0).is_err()); // birth > death
-        assert!(PersistenceInterval::new(-1.0, 1.0, 0).is_err()); // negative birth
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_persistence_interval_is_significant() {
-        let interval = PersistenceInterval::new(0.5, 2.0, 1).unwrap();
-        assert!(interval.is_significant(1.0));
-        assert!(!interval.is_significant(2.0));
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_barcode_filter_by_dimension() {
-        let mut barcode = PersistenceBarcode::new();
-        barcode.add_interval(PersistenceInterval::new(0.0, 1.0, 0).unwrap());
-        barcode.add_interval(PersistenceInterval::new(0.5, 2.0, 1).unwrap());
-        barcode.add_interval(PersistenceInterval::new(1.0, 3.0, 1).unwrap());
-
-        let dim0 = barcode.filter_by_dimension(0);
-        assert_eq!(dim0.len(), 1);
-
-        let dim1 = barcode.filter_by_dimension(1);
-        assert_eq!(dim1.len(), 2);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_barcode_filter_by_persistence() {
-        let mut barcode = PersistenceBarcode::new();
-        barcode.add_interval(PersistenceInterval::new(0.0, 0.5, 0).unwrap()); // persistence 0.5
-        barcode.add_interval(PersistenceInterval::new(0.5, 2.0, 1).unwrap()); // persistence 1.5
-
-        let significant = barcode.filter_by_persistence(1.0);
-        assert_eq!(significant.len(), 1);
-        assert_eq!(significant[0].dimension, 1);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_barcode_most_persistent() {
-        let mut barcode = PersistenceBarcode::new();
-        barcode.add_interval(PersistenceInterval::new(0.0, 1.0, 1).unwrap()); // persistence 1.0
-        barcode.add_interval(PersistenceInterval::new(0.5, 3.0, 1).unwrap()); // persistence 2.5
-        barcode.add_interval(PersistenceInterval::new(1.0, 2.0, 1).unwrap()); // persistence 1.0
-
-        let most_persistent = barcode.most_persistent(1).unwrap();
-        assert!(
-            (most_persistent.persistence() - 2.5).abs() < math_commons::registry::TOLERANCE_FAST
-        );
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_compute_persistence_line() {
-        // Points on a line
-        let points = vec![
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 0.0),
-            Point2D::new(2.0, 0.0),
-        ];
-        let cloud = PointCloud::new(points).unwrap();
-
-        let radii: Vec<f64> = (0..30).map(|i| i as f64 * 0.1).collect();
-        let barcode = compute_persistence(&cloud, &radii).unwrap();
-
-        // Should have components merging but no persistent holes
-        assert!(!barcode.is_empty());
-
-        let holes = barcode.filter_by_dimension(1);
-        // A line should not have significant holes
-        let significant_holes: Vec<_> = holes.iter().filter(|h| h.is_significant(0.5)).collect();
-        assert_eq!(significant_holes.len(), 0);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_compute_persistence_triangle() {
-        // Equilateral triangle - this will form a hollow triangle at some radius
-        // but might fill in at larger radii
-        let points = vec![
-            Point2D::new(0.0, 0.0),
-            Point2D::new(2.0, 0.0),
-            Point2D::new(1.0, 1.732),
-        ];
-        let cloud = PointCloud::new(points).unwrap();
-
-        let radii: Vec<f64> = (0..30).map(|i| i as f64 * 0.15).collect();
-        let barcode = compute_persistence(&cloud, &radii).unwrap();
-
-        // The barcode should contain some features
-        // Note: With only 3 points, we may not detect persistent holes
-        // depending on the filtration
-        assert!(!barcode.is_empty());
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_compute_persistence_two_clusters() {
-        // Two well-separated clusters
-        let points = vec![
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 0.0),
-            Point2D::new(10.0, 0.0),
-            Point2D::new(11.0, 0.0),
-        ];
-        let cloud = PointCloud::new(points).unwrap();
-
-        let radii: Vec<f64> = (0..50).map(|i| i as f64 * 0.3).collect();
-        let barcode = compute_persistence(&cloud, &radii).unwrap();
-
-        // Should have components that persist for a while
-        let components = barcode.filter_by_dimension(0);
-        let significant_components: Vec<_> = components
-            .iter()
-            .filter(|c| c.is_significant(1.0))
-            .collect();
-
-        // At least one component should have significant persistence
-        assert!(!significant_components.is_empty());
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_compute_persistence_invalid_radius() {
-        let points = vec![Point2D::new(0.0, 0.0), Point2D::new(1.0, 0.0)];
-        let cloud = PointCloud::new(points).unwrap();
-
-        assert!(matches!(
-            compute_persistence(&cloud, &[]),
-            Err(TdaError::InvalidRadius { .. })
-        ));
-        assert!(matches!(
-            compute_persistence(&cloud, &[-1.0]),
-            Err(TdaError::InvalidRadius { .. })
-        ));
-        assert!(matches!(
-            compute_persistence(&cloud, &[f64::NAN]),
-            Err(TdaError::InvalidRadius { .. })
-        ));
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_compute_persistence_barcode_parity() {
-        let points = vec![
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 0.0),
-            Point2D::new(0.0, 1.0),
-            Point2D::new(1.0, 1.0),
-        ];
-        let cloud = PointCloud::new(points).unwrap();
-        let radii = [0.0, 0.5, 1.0, 1.5, 2.0];
-        let barcode = compute_persistence(&cloud, &radii).unwrap();
-
-        let mut b0_sequence = Vec::new();
-        for &r in &radii {
-            let c = vietoris_rips_complex(&cloud, r).unwrap();
-            b0_sequence.push(betti_number_0(&c).unwrap());
-        }
-        assert_eq!(b0_sequence, vec![4, 4, 1, 1, 1]);
-        assert_eq!(barcode.intervals.len(), 5);
-    }
-}
+#[path = "persistence_tests.rs"]
+mod tests;

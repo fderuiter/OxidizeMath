@@ -11,23 +11,35 @@ use eframe::egui::ColorImage;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// Progressive 2D dispersion & CFL parameter regime cartography.
+pub mod atlas;
+/// Snapshot texture sync, sculpted canvas plot, and side-by-side parameter atlas view.
+pub mod canvas;
 /// Theme-aware concentration, vorticity, and dual composite pixel overlays.
 pub mod overlay;
 /// Starter gallery registrations, PRNG helper, and dynamic theory adapter.
 pub mod presets;
 /// Background simulation runner coupling LBM / PotentialFlow to AdvectionDiffusion2D.
 pub mod runner;
+/// Obstacle/reagent brush sculpting and fluid velocity field coupling helpers.
+pub mod sculpt;
 /// Validated serializable state schema for MorphogenesisTool.
 pub mod state;
 /// Interactive tool lifecycle and framework integration.
 pub mod tool;
 /// Coupled reaction, flow, brush, and overlay mode enums and dimensionless metrics.
 pub mod types;
-/// Control panel widgets, dimensionless badges, and interactive canvas brush handling.
+/// Control panel widgets, dimensionless badges, and CFL stabilization actions.
 pub mod ui;
 
 #[cfg(test)]
+pub use atlas::{
+    classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+};
+#[cfg(test)]
 pub use overlay::render_morphogenesis_overlay;
+#[cfg(test)]
+pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
 pub use runner::MorphogenesisRunner;
@@ -161,11 +173,17 @@ impl MorphogenesisTab {
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
-        let current_state = tool
+        let existing = tool
             .save_state()
-            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok())
+            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok());
+        let current_state = existing
+            .as_ref()
             .and_then(|s| s.state)
             .unwrap_or(SimWorkerState::Ready);
+        let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
+        let atlas_axes = existing
+            .map(|s| s.atlas_axes)
+            .unwrap_or_else(atlas::default_morpho_atlas_axes);
         let target_state = if current_state == SimWorkerState::Running {
             SimWorkerState::Running
         } else {
@@ -190,6 +208,8 @@ impl MorphogenesisTab {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            atlas_visible,
+            atlas_axes,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;

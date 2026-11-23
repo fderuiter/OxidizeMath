@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 use domain_applied::applied::isosurface::{Point3D, VoxelGrid, extract_isosurface};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 fn make_sphere_grid(size: usize) -> VoxelGrid {
@@ -27,6 +28,8 @@ fn make_sphere_grid(size: usize) -> VoxelGrid {
         .unwrap()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(clippy::disallowed_methods)]
 #[test]
 #[verified_engine::verified]
 fn bench_isosurface_performance() {

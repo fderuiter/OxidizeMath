@@ -1,5 +1,9 @@
 # Architecture Decision Record 0008: Finite State Guard and Interactive Solver Divergence Banner
 
+## Status
+
+Accepted
+
 ## Context
 Numerical solver loops in `attractors.rs` (`AttractorPlotter`) and `ode.rs` (`OdeSolverTool`) previously appended non-finite floats (`NaN` or `Inf`) directly to plot trajectories when equations diverged. This caused invalid rendering states and unhandled divergence behavior during interactive simulation steps.
 

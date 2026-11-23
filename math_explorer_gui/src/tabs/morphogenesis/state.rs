@@ -1,5 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::atlas::{
+    default_morpho_atlas_axes, is_default_morpho_atlas_axes, MORPHO_ATLAS_AXIS_PAIRS,
+};
 use super::types::{
     default_brush_radius, default_viscosity, MorphogenesisBrushMode, MorphogenesisFlowMode,
     MorphogenesisKineticsMode, MorphogenesisOverlayMode,
@@ -64,10 +67,19 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Persisted visibility of the progressive 2D parameter atlas (never raster pixels).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub atlas_visible: bool,
+    /// Persisted `(x, y)` axis parameter keys for the 2D parameter atlas.
+    #[serde(
+        default = "default_morpho_atlas_axes",
+        skip_serializing_if = "is_default_morpho_atlas_axes"
+    )]
+    pub atlas_axes: [String; 2],
 }
 
 impl MorphogenesisToolState {
-    /// Validates finiteness and domain bounds for all reaction, diffusion, and flow parameters.
+    /// Validates finiteness, domain bounds, and atlas axis keys for all morphogenesis parameters.
     pub fn validate(&self) -> Result<(), String> {
         let checks = [
             ("a", self.a, 0.0, 1.0),
@@ -96,6 +108,15 @@ impl MorphogenesisToolState {
             return Err(format!(
                 "Morphogenesis dimensions {}x{} must be within 1..=512",
                 self.width, self.height
+            ));
+        }
+        let valid_axes = MORPHO_ATLAS_AXIS_PAIRS
+            .iter()
+            .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1]);
+        if !valid_axes {
+            return Err(format!(
+                "Invalid Morphogenesis atlas axes ('{}', '{}')",
+                self.atlas_axes[0], self.atlas_axes[1]
             ));
         }
         Ok(())

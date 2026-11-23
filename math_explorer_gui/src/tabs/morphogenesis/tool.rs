@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::atlas::MORPHO_ATLAS_AXIS_PAIRS;
 use super::presets::MorphogenesisTheory;
 use super::runner::MorphogenesisRunner;
 use super::state::MorphogenesisToolState;
@@ -7,6 +8,7 @@ use super::types::{
     MorphogenesisKineticsMode, MorphogenesisOverlayMode, MorphogenesisSharedParams,
 };
 use crate::app::ThemeMode;
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{ExportCapabilities, InteractiveTool};
@@ -21,6 +23,8 @@ use std::sync::Arc;
 pub struct MorphogenesisTool {
     /// Asynchronous simulation worker controller.
     pub worker: BackgroundWorker<MorphogenesisRunner>,
+    /// Progressive 2D parameter regime atlas controller.
+    pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
@@ -50,6 +54,7 @@ impl Default for MorphogenesisTool {
 
         Self {
             worker,
+            atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
             width,
             height,
@@ -126,6 +131,7 @@ impl MorphogenesisTool {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        let (xk, yk) = self.atlas.axis_keys();
         let preset_state = MorphogenesisToolState {
             a,
             b,
@@ -145,6 +151,8 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
@@ -222,7 +230,6 @@ impl FiniteStateGuard for MorphogenesisTool {
         self.reset_system();
     }
 }
-
 impl InteractiveTool for MorphogenesisTool {
     fn name(&self) -> &'static str {
         "Turing Morphogenesis"
@@ -327,6 +334,8 @@ impl InteractiveTool for MorphogenesisTool {
         self.height.hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.pending_initial_start.hash(&mut h);
+        self.atlas.is_visible().hash(&mut h);
+        self.atlas.axis_keys().hash(&mut h);
         h.finish().max(1)
     }
 
@@ -336,6 +345,7 @@ impl InteractiveTool for MorphogenesisTool {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&MorphogenesisToolState {
             a: p.a,
             b: p.b,
@@ -355,14 +365,20 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let parsed: MorphogenesisToolState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
+        self.atlas
+            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.atlas.set_visible(parsed.atlas_visible);
         let target_state = parsed.resolve_target_state();
         self.theory.set_mode(parsed.kinetics);
         {
@@ -398,6 +414,16 @@ impl InteractiveTool for MorphogenesisTool {
             self.pending_initial_start = parsed.pending_initial_start;
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn has_finite_parameters(&self) -> bool {

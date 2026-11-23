@@ -95,7 +95,60 @@ impl TheoryDescribable for MorphogenesisTheory {
             "Dimensionless Damköhler number Da comparing hydrodynamic residence time to chemical reaction timescale."
                 .to_string(),
         );
+        descs.insert(
+            "dt".to_string(),
+            "Explicit Forward Euler integration time step bounded by the 2D diffusion CFL limit."
+                .to_string(),
+        );
         descs
+    }
+
+    fn theory_parameters(
+        &self,
+    ) -> HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        let mut map = HashMap::with_capacity(5);
+        map.insert(
+            "a".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 1.0,
+                step: 0.01,
+            },
+        );
+        map.insert(
+            "b".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 2.0,
+                step: 0.01,
+            },
+        );
+        map.insert(
+            "d_u".to_string(),
+            ParameterConstraint {
+                min: 0.1,
+                max: 5.0,
+                step: 0.05,
+            },
+        );
+        map.insert(
+            "d_v".to_string(),
+            ParameterConstraint {
+                min: 10.0,
+                max: 200.0,
+                step: 1.0,
+            },
+        );
+        map.insert(
+            "dt".to_string(),
+            ParameterConstraint {
+                min: 1e-4,
+                max: 0.1,
+                step: 5e-4,
+            },
+        );
+        map
     }
 
     fn theory_latex_equation(&self) -> Option<String> {
