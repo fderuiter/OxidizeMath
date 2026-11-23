@@ -5,6 +5,7 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+pub mod advective;
 pub mod atlas;
 mod atlas_bridge;
 pub mod counterfactual;

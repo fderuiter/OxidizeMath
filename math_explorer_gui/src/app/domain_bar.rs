@@ -100,7 +100,7 @@ pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize
     }
 }
 
-/// Polls cross-domain handoff triggers (e.g., `AttractorPlotter -> VietorisRipsTool` and elliptic torus handoffs).
+/// Polls cross-domain handoff triggers (e.g., `AttractorPlotter -> VietorisRipsTool`, elliptic torus handoffs, and `FluidDynamicsTab -> AdvectiveMorphogenesisTool`).
 pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Context) {
     #[cfg(feature = "pure_math")]
     {
@@ -122,7 +122,14 @@ pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Conte
             apply_elliptic_torus_handoff(app, ctx, payload);
         }
     }
-    #[cfg(not(feature = "pure_math"))]
+    #[cfg(feature = "biology")]
+    if crate::framework::advective_handoff::take_open_advective_morphogenesis_request(ctx) {
+        if let Some(tab_idx) = app.tabs.iter().position(|t| t.name() == "Morphogenesis") {
+            select_primary_tab(app, ctx, tab_idx);
+            let _ = app.tabs[tab_idx].select_tool_by_name("AdvectiveMorphogenesisTool");
+        }
+    }
+    #[cfg(not(any(feature = "pure_math", feature = "biology")))]
     let _ = (app, ctx);
 }
 

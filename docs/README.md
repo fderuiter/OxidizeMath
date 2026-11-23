@@ -52,6 +52,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Checked Companion APIs, Typed Domain Errors, and Human-Readable Diagnostics](adr/20261123-checked-apis-and-typed-domain-errors.md)
 - [ADR 20261123: Local Win Ratio and Clinical Cohort Workbench](adr/20261123-clinical-cohort-and-win-ratio-workbench.md)
 - [ADR 20261123: Zero-Allocation Discretized Q-Learning Helpers and Unified Closed-Loop Control Workbench](adr/20261123-closed-loop-ekf-grpo-control-workbench.md)
+- [ADR 20261123: Co-Stepped Advective Morphogenesis Studio and Zero-Allocation LBM Velocity Coupling](adr/20261123-co-stepped-advective-morphogenesis-studio.md)
 - [ADR 20261123: Counterfactual Shadow Twin Branching](adr/20261123-counterfactual-shadow-twin-branching.md)
 - [ADR 20261123: Coupled Electrochemical Battery Aging, Zero-Allocation CSV Calibration, and Multi-Segment Lifetime Exports](adr/20261123-coupled-battery-aging-and-lifetime-exports.md)
 - [ADR 20261123: Zero-Allocation CSR Spatial Grid and Cortical Thickness Workspace](adr/20261123-csr-spatial-grid-thickness-workspace.md)

@@ -131,6 +131,10 @@ mod tests {
             ctx,
         );
         exercise_interactive_tool::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
+        #[cfg(feature = "biology")]
+        exercise_interactive_tool::<
+            crate::tabs::morphogenesis::advective::AdvectiveMorphogenesisTool,
+        >(ctx);
         exercise_interactive_tool::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(
             ctx,
         );
@@ -474,6 +478,15 @@ mod tests {
         assert_tab_roundtrip(
             &mut crate::tabs::traceability::TraceabilityTab::default(),
             &serde_json::json!({ "repo_path": valid_repo_dir }).to_string(),
+        );
+    }
+
+    #[cfg(feature = "biology")]
+    #[test]
+    fn test_advective_morphogenesis_tool_state_roundtrip() {
+        assert_tool_roundtrip(
+            &mut crate::tabs::morphogenesis::advective::AdvectiveMorphogenesisTool::default(),
+            r#"{"preset":"GrayScottCoral","viscosity":0.024,"peclet":6.5,"dt":0.25,"a":0.1,"b":0.9,"f":0.0545,"k":0.062,"d_u":0.16,"d_v":0.08,"stamp":"TeardropFairing","view_mode":"MorphogenOnly","brush_radius":3.0,"brush_mode":"Erase","rng_seed":99,"playing":false}"#,
         );
     }
 }

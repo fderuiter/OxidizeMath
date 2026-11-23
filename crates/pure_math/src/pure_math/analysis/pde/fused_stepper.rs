@@ -1,22 +1,9 @@
-use math_commons::error::MathError;
-use math_commons::math_kernel::types::{StepSize, flatten_2d_index, flatten_3d_index};
+#[path = "fused_stepper_masked.rs"]
+mod fused_stepper_masked;
 
-/// Six-neighbor 3D axial state values around a central grid cell.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct StencilNeighbors3D<const N: usize> {
-    /// Neighbor at `(x - 1, y, z)` (clamped at `x == 0`).
-    pub xm: [f64; N],
-    /// Neighbor at `(x + 1, y, z)` (clamped at `x == width - 1`).
-    pub xp: [f64; N],
-    /// Neighbor at `(x, y - 1, z)` (clamped at `y == 0`).
-    pub ym: [f64; N],
-    /// Neighbor at `(x, y + 1, z)` (clamped at `y == height - 1`).
-    pub yp: [f64; N],
-    /// Neighbor at `(x, y, z - 1)` (clamped at `z == 0`).
-    pub zm: [f64; N],
-    /// Neighbor at `(x, y, z + 1)` (clamped at `z == depth - 1`).
-    pub zp: [f64; N],
-}
+pub use fused_stepper_masked::{StencilNeighbors2D, StencilNeighbors3D};
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
 
 /// Standard spatial numerical operators for fused stencil evaluations.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -29,8 +16,12 @@ pub struct StencilOperators {
     pub dz: StepSize,
     #[allow(missing_docs)]
     pub inv_dx: f64,
+    /// Reciprocal vertical grid spacing `1 / dy`.
+    pub inv_dy: f64,
     #[allow(missing_docs)]
     pub inv_two_dx: f64,
+    /// Half-reciprocal vertical grid spacing `1 / (2 * dy)`.
+    pub inv_two_dy: f64,
     #[allow(missing_docs)]
     pub inv_dx_sq: f64,
     #[allow(missing_docs)]
@@ -77,7 +68,9 @@ impl StencilOperators {
             }
         }
         let inv_dx = 1.0 / *dx;
+        let inv_dy = 1.0 / *dy;
         let inv_two_dx = 1.0 / (2.0 * *dx);
+        let inv_two_dy = 1.0 / (2.0 * *dy);
         let inv_dx_sq = 1.0 / (*dx * *dx);
         let inv_dy_sq = 1.0 / (*dy * *dy);
         let inv_dz_sq = 1.0 / (*dz * *dz);
@@ -86,7 +79,9 @@ impl StencilOperators {
             dy,
             dz,
             inv_dx,
+            inv_dy,
             inv_two_dx,
+            inv_two_dy,
             inv_dx_sq,
             inv_dy_sq,
             inv_dz_sq,
@@ -178,6 +173,50 @@ impl StencilOperators {
         } else {
             (next * v - curr * v) * self.inv_dx
         }
+    }
+
+    /// First-order upwind scheme along the vertical axis (`up = y - 1`, `down = y + 1`).
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn upwind_flux_y(&self, vy: f64, up: f64, curr: f64, down: f64) -> f64 {
+        if vy > 0.0 {
+            (curr * vy - up * vy) * self.inv_dy
+        } else {
+            (down * vy - curr * vy) * self.inv_dy
+        }
+    }
+
+    /// Evaluates 2D first-order directional upwind advection `vx * d_x u + vy * d_y u`.
+    #[allow(clippy::too_many_arguments)]
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn upwind_flux_2d(
+        &self,
+        vx: f64,
+        vy: f64,
+        curr: f64,
+        left: f64,
+        right: f64,
+        up: f64,
+        down: f64,
+    ) -> f64 {
+        self.upwind_flux(vx, left, curr, right) + self.upwind_flux_y(vy, up, curr, down)
+    }
+
+    /// Evaluates conservative 2D finite-volume upwind flux divergence across `[west, east, north, south]` faces.
+    ///
+    /// Setting `face_vel[f] = 0.0` on solid or outer boundary faces enforces zero normal
+    /// advective flux and exact telescoping conservation across fluid cells.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn upwind_divergence_2d(&self, curr: f64, neighbors: [f64; 4], face_vel: [f64; 4]) -> f64 {
+        let [left, right, up, down] = neighbors;
+        let [vw, ve, vn, vs] = face_vel;
+        let flux_w = if vw >= 0.0 { vw * left } else { vw * curr };
+        let flux_e = if ve >= 0.0 { ve * curr } else { ve * right };
+        let flux_n = if vn >= 0.0 { vn * up } else { vn * curr };
+        let flux_s = if vs >= 0.0 { vs * curr } else { vs * down };
+        (flux_e - flux_w) * self.inv_dx + (flux_s - flux_n) * self.inv_dy
     }
 }
 
@@ -398,61 +437,6 @@ impl FusedStencilStepper {
                 for s in 0..N {
                     if idx < dst[s].len() {
                         dst[s][idx] = curr[s] + dir * dt * rhs[s];
-                    }
-                }
-            }
-        }
-    }
-
-    /// Applies a 3D 7-point fused stencil pass over coupled species with zero-flux Neumann boundaries.
-    #[verified_engine::verified]
-    pub fn step_3d_coupled_neumann<const N: usize, F>(
-        &self,
-        dim: (usize, usize, usize),
-        src: [&[f64]; N],
-        dst: [&mut [f64]; N],
-        dt: f64,
-        dir: f64,
-        mut op: F,
-    ) where
-        F: FnMut(usize, [f64; N], StencilNeighbors3D<N>, &StencilOperators) -> [f64; N],
-    {
-        let (width, height, depth) = dim;
-        let slice_stride = width * height;
-        if slice_stride * depth == 0 {
-            return;
-        }
-        let get_state = |idx: usize| {
-            let mut val = [0.0; N];
-            for s in 0..N {
-                if idx < src[s].len() {
-                    val[s] = src[s][idx];
-                }
-            }
-            val
-        };
-        for z in 0..depth {
-            for y in 0..height {
-                for x in 0..width {
-                    let idx = flatten_3d_index(x, y, z, width, height);
-                    let neighbors = StencilNeighbors3D {
-                        xm: get_state(if x > 0 { idx - 1 } else { idx }),
-                        xp: get_state(if x + 1 < width { idx + 1 } else { idx }),
-                        ym: get_state(if y > 0 { idx - width } else { idx }),
-                        yp: get_state(if y + 1 < height { idx + width } else { idx }),
-                        zm: get_state(if z > 0 { idx - slice_stride } else { idx }),
-                        zp: get_state(if z + 1 < depth {
-                            idx + slice_stride
-                        } else {
-                            idx
-                        }),
-                    };
-                    let curr = get_state(idx);
-                    let rhs = op(idx, curr, neighbors, &self.ops);
-                    for s in 0..N {
-                        if idx < dst[s].len() {
-                            dst[s][idx] = curr[s] + dir * dt * rhs[s];
-                        }
                     }
                 }
             }

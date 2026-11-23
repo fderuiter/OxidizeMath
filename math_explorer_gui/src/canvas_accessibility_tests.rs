@@ -137,6 +137,13 @@ fn test_neuroscience_canvas_receives_tab_focus_and_accesskit_label() {
         &mut lenia,
         "Lenia Studio Continuous Automaton Canvas",
     );
+
+    let mut advective =
+        crate::tabs::morphogenesis::advective::AdvectiveMorphogenesisTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut advective,
+        "Advective Morphogenesis Wind-Tunnel Canvas",
+    );
 }
 
 #[cfg(feature = "epidemiology")]

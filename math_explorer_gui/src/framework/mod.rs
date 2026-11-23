@@ -1,3 +1,4 @@
+pub mod advective_handoff;
 pub mod atlas_host;
 pub mod brush_codec;
 pub mod brush_dispatch;
@@ -43,6 +44,7 @@ pub mod export_types;
 mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
+pub mod fairing_mask;
 pub mod fit_bridge;
 mod history_ui;
 pub mod math_input;
@@ -89,6 +91,7 @@ pub mod trace_overlay;
 mod ui;
 mod url_share;
 
+pub use advective_handoff::*;
 pub use brush_codec::*;
 pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
 pub use callout_overlay::*;
@@ -101,6 +104,7 @@ pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
+pub use fairing_mask::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use history_ui::render_workspace_history_buttons;
 pub use math_input::*;

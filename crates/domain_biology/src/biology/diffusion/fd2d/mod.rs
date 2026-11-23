@@ -1,5 +1,6 @@
 use super::SpatialDiffusion;
 
+pub mod advective;
 #[allow(missing_docs)]
 pub mod boundary;
 mod fused_pair;
@@ -9,6 +10,7 @@ pub mod geometry;
 pub mod iteration;
 pub mod mask;
 
+pub use advective::AdvectiveFiniteDifference2D;
 pub use mask::{CellMask2D, MaskedFiniteDifference2D, ReactionCellRole};
 
 use boundary::NeumannBoundary;
@@ -47,6 +49,12 @@ impl FiniteDifference2D {
     #[verified_engine::verified]
     pub fn with_mask(self) -> MaskedFiniteDifference2D {
         MaskedFiniteDifference2D::new(self)
+    }
+
+    /// Wraps this 2D stencil operator in an [`AdvectiveFiniteDifference2D`] with Péclet gain `peclet`.
+    #[verified_engine::verified]
+    pub fn with_advection(self, peclet: f64) -> AdvectiveFiniteDifference2D {
+        AdvectiveFiniteDifference2D::new(self, peclet)
     }
 }
 
