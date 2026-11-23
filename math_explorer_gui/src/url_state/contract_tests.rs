@@ -142,7 +142,7 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
 fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    let expected_tools = 79 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
+    let expected_tools = 86 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(
         tools.len(),
         expected_tools,
@@ -206,7 +206,7 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 116
+    let expected_presets = 138
         + if cfg!(all(feature = "physics", feature = "biology")) {
             4
         } else {

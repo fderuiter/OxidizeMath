@@ -5,11 +5,13 @@ use eframe::egui;
 
 pub mod lattice_boltzmann;
 pub mod lattice_boltzmann_sculpt;
+pub mod lbm_atlas;
 pub mod lbm_fairing;
 pub mod lbm_fairing_ui;
 pub mod potential_flow;
 mod potential_flow_brush;
 pub mod turbulence;
+pub mod turbulence_atlas;
 
 pub struct FluidDynamicsTab {
     framework: crate::framework::SimulationFramework,
