@@ -74,6 +74,7 @@ fn print_help() {
     println!("  check-profiles           - Verify Cargo release profile invariants");
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
+    println!("  compile-papers           - Compile academic papers with pdflatex and BibTeX");
     println!(
         "  lint-all                 - Run format, profile, AST duplicate, API drift, ADR, file-length, clippy, doc, doctest, markdown-link, workflow, traceability, entropy, vulnerability, and policy audit checks"
     );
@@ -92,7 +93,6 @@ fn print_help() {
     );
     println!("  verify-suite             - Run high-integrity verified suite\n");
     println!("Legacy Utility Tasks:");
-    println!("  compile-papers           - Compile academic papers with Tectonic");
     println!("  regenerate-baseline      - Regenerate public API baseline");
     println!("  setup                    - Run setup script and configure git hooks");
 }
@@ -341,6 +341,7 @@ mod tests {
             "lint-staged",
             "check-entropy",
             "check-vulnerabilities",
+            "compile-papers",
             "test-policy-audit",
             "test-wasm",
             "verify-records",
@@ -349,6 +350,7 @@ mod tests {
         ] {
             assert!(help.contains(cmd), "Missing help entry for {cmd}");
         }
+        assert!(!help.contains("Tectonic"));
     }
 
     #[test]
