@@ -1,14 +1,20 @@
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::{InteractionContext, InteractiveTool};
+use crate::framework::{ChallengeEvaluation, InteractionContext, InteractiveTool};
 use eframe::egui;
 use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
 use nalgebra::DMatrix;
 use std::collections::VecDeque;
+use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+#[path = "ising/atlas.rs"]
+pub mod atlas;
+#[path = "ising/challenge.rs"]
+pub mod challenge;
 #[path = "ising/overlay.rs"]
 mod overlay;
 #[path = "ising/preset.rs"]
@@ -18,68 +24,31 @@ mod runner;
 #[path = "ising/ui.rs"]
 mod ui;
 
+use atlas::ISING_ATLAS_AXIS_PAIRS;
+use challenge::IsingChallengeWorkspace;
+pub(crate) use preset::IsingState;
 pub use preset::{FermiGamePreset, IsingInteractionMode};
 pub use runner::*;
 
 const DEFAULT_ISING_SIZE: usize = 100;
 const MAX_SPATIAL_HISTORY: usize = 512;
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct IsingState {
-    temperature: f64,
-    j_coupling: f64,
-    h_field: f64,
-    #[serde(default)]
-    mode: IsingInteractionMode,
-    #[serde(default)]
-    game_preset: FermiGamePreset,
-    #[serde(default = "preset::default_game_payoffs")]
-    game_payoffs: [f64; 4],
-    #[serde(default = "preset::default_brush_radius")]
-    brush_radius: i32,
-    #[serde(default = "preset::default_brush_cooperator")]
-    brush_cooperator: bool,
-    #[serde(default)]
-    state: Option<SimWorkerState>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    running: Option<bool>,
-    steps_per_frame: usize,
-}
-
-impl IsingState {
-    fn validate(&self) -> Result<(), String> {
-        let valid = self.temperature.is_finite()
-            && (1e-3..=10.0).contains(&self.temperature)
-            && self.j_coupling.is_finite()
-            && (-2.0..=2.0).contains(&self.j_coupling)
-            && self.h_field.is_finite()
-            && (-2.0..=2.0).contains(&self.h_field)
-            && self
-                .game_payoffs
-                .iter()
-                .all(|v| v.is_finite() && (-20.0..=20.0).contains(v))
-            && (0..=99).contains(&self.brush_radius)
-            && (100..=50_000).contains(&self.steps_per_frame);
-        if valid {
-            Ok(())
-        } else {
-            Err("Ising parameters out of valid bounds".to_string())
-        }
-    }
-}
-
 pub struct IsingModelTool {
     temperature: f64,
     j_coupling: f64,
     h_field: f64,
+    mutation_rate: f64,
     mode: IsingInteractionMode,
     game_preset: FermiGamePreset,
     game_payoffs: [f64; 4],
     brush_radius: i32,
     brush_cooperator: bool,
+    defector_sea: bool,
+    droplet_seeds: Vec<DropletSeed>,
     steps_per_frame: usize,
     magnetization: f64,
+    uniform_magnetization: f64,
+    staggered_magnetization: f64,
     energy: f64,
     spatial_history: VecDeque<[f64; 2]>,
     replicator_curve: Vec<[f64; 2]>,
@@ -92,6 +61,9 @@ pub struct IsingModelTool {
     stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     last_theme: Option<crate::app::ThemeMode>,
     dirty: bool,
+    pub(crate) atlas: ParameterAtlasController,
+    pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) challenge_workspace: IsingChallengeWorkspace,
     params: Arc<std::sync::RwLock<IsingSharedParams>>,
     pub worker: BackgroundWorker<IsingRunner>,
 }
@@ -124,6 +96,11 @@ impl IsingModelTool {
 
     /// Resets the worker lattice in place or respawns a disconnected worker.
     pub fn reset(&mut self) {
+        if self.active_challenge.is_none() {
+            self.defector_sea = false;
+            self.droplet_seeds.clear();
+            self.sync_shared_params();
+        }
         self.params
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -134,11 +111,29 @@ impl IsingModelTool {
             lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
             params,
         });
+        if self.active_challenge.is_some() {
+            self.push_seed_layout_to_worker();
+        }
         self.stepped_pixels = None;
         self.pending_ode_resync = true;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
         self.dirty = true;
+    }
+
+    fn record_droplet_seed(&mut self, seed: DropletSeed) {
+        if self.droplet_seeds.last() == Some(&seed) {
+            return;
+        }
+        let cap = if self.active_challenge.is_some() {
+            4
+        } else {
+            MAX_DROPLET_SEEDS
+        };
+        if self.droplet_seeds.len() >= cap {
+            self.droplet_seeds.remove(0);
+        }
+        self.droplet_seeds.push(seed);
     }
 }
 
@@ -154,8 +149,11 @@ impl Default for IsingModelTool {
             temperature,
             j_coupling,
             h_field,
+            mutation_rate: 0.0,
             mode,
             game_payoffs,
+            defector_sea: false,
+            droplet_seeds: Vec::new(),
             steps_per_frame,
             theme: crate::app::ThemeMode::Dark,
             total_trials: AtomicU64::new(0),
@@ -168,13 +166,18 @@ impl Default for IsingModelTool {
             temperature,
             j_coupling,
             h_field,
+            mutation_rate: 0.0,
             mode,
             game_preset,
             game_payoffs,
             brush_radius: preset::default_brush_radius(),
             brush_cooperator: preset::default_brush_cooperator(),
+            defector_sea: false,
+            droplet_seeds: Vec::new(),
             steps_per_frame,
             magnetization: 0.0,
+            uniform_magnetization: 0.0,
+            staggered_magnetization: 0.0,
             energy: 0.0,
             spatial_history: VecDeque::with_capacity(MAX_SPATIAL_HISTORY),
             replicator_curve: Vec::new(),
@@ -187,6 +190,9 @@ impl Default for IsingModelTool {
             stepped_pixels: None,
             last_theme: None,
             dirty: true,
+            atlas: ParameterAtlasController::new(ISING_ATLAS_AXIS_PAIRS.to_vec()),
+            active_challenge: None,
+            challenge_workspace: IsingChallengeWorkspace::default(),
             params,
             worker,
         };
@@ -205,6 +211,60 @@ impl InteractiveTool for IsingModelTool {
     }
     fn domain(&self) -> &'static str {
         "solid_state"
+    }
+
+    fn state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.temperature.to_bits().hash(&mut h);
+        self.j_coupling.to_bits().hash(&mut h);
+        self.h_field.to_bits().hash(&mut h);
+        self.mutation_rate.to_bits().hash(&mut h);
+        self.brush_radius.hash(&mut h);
+        self.brush_cooperator.hash(&mut h);
+        self.defector_sea.hash(&mut h);
+        self.droplet_seeds.len().hash(&mut h);
+        self.steps_per_frame.hash(&mut h);
+        self.atlas.is_visible().hash(&mut h);
+        self.atlas.axis_keys().hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        [
+            self.temperature,
+            self.j_coupling,
+            self.h_field,
+            self.mutation_rate,
+        ]
+        .into_iter()
+        .all(f64::is_finite)
+            && self.game_payoffs.iter().all(|v| v.is_finite())
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        let fin = |v: f64, lo: f64, hi: f64, d: f64| if v.is_finite() { v.clamp(lo, hi) } else { d };
+        self.temperature = fin(self.temperature, 1e-3, 10.0, 2.269);
+        self.j_coupling = fin(self.j_coupling, -2.0, 2.0, 1.0);
+        self.h_field = fin(self.h_field, -2.0, 2.0, 0.0);
+        self.mutation_rate = fin(self.mutation_rate, 0.0, 0.05, 0.0);
+        let defaults = preset::default_game_payoffs();
+        for (slot, d) in self.game_payoffs.iter_mut().zip(defaults) {
+            *slot = fin(*slot, -20.0, 20.0, d);
+        }
+        self.enforce_ising_challenge_locks();
+        self.sync_shared_params();
+        self.recompute_replicator_curve();
+        true
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("magnetization", self.magnetization),
+            ("uniform_magnetization", self.uniform_magnetization),
+            ("staggered_magnetization", self.staggered_magnetization),
+            ("energy", self.energy),
+            ("cooperator_fraction", self.cooperator_fraction()),
+        ]
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
@@ -244,7 +304,12 @@ impl InteractiveTool for IsingModelTool {
         let rel_y = ((pos.y - rect.min.y) / rect.height()).clamp(0.0, 1.0);
         let cx = ((rel_x * (max_x as f32)).round() as i32).clamp(0, max_x);
         let cy = ((rel_y * (max_y as f32)).round() as i32).clamp(0, max_y);
-        let r = self.brush_radius.clamp(0, max_x.max(max_y));
+        let max_r = if self.active_challenge.is_some() {
+            10
+        } else {
+            max_x.max(max_y)
+        };
+        let r = self.brush_radius.clamp(0, max_r);
         let invert = ctx.modifiers.shift
             || ctx.response.secondary_clicked()
             || ctx.response.dragged_by(egui::PointerButton::Secondary);
@@ -253,7 +318,20 @@ impl InteractiveTool for IsingModelTool {
         } else {
             self.brush_cooperator
         };
+        self.record_droplet_seed(DropletSeed {
+            cx,
+            cy,
+            r,
+            spin: if is_obstacle { 1 } else { -1 },
+        });
+        self.sync_shared_params();
 
+        if self.active_challenge.is_some() {
+            self.push_seed_layout_to_worker();
+            self.refresh_challenge_workspace();
+            ctx.response.ctx.request_repaint();
+            return;
+        }
         if self
             .worker
             .send_command(SimCommand::ApplyBrush {
@@ -276,18 +354,18 @@ impl InteractiveTool for IsingModelTool {
         let steps = self.steps_per_frame.clamp(100, 5000);
         match self.mode {
             IsingInteractionMode::Ferromagnetic => {
-                let j_scale = if self.j_coupling.abs() < 1e-6 {
-                    1.0
-                } else {
-                    self.j_coupling.abs()
-                };
-                let t_phys = self.temperature.max(1e-3) * j_scale / KB;
+                let t_phys = self.temperature.max(1e-3) / KB;
                 lattice.evolve(steps, t_phys, self.j_coupling, self.h_field);
             }
             IsingInteractionMode::FermiGame => {
                 let mat = DMatrix::from_row_slice(2, 2, &self.game_payoffs);
                 if let Ok(payoff) = MatrixPayoff::new(mat) {
-                    lattice.evolve_fermi_game(steps, self.temperature, &payoff);
+                    lattice.evolve_fermi_game_with_mutation(
+                        steps,
+                        self.temperature,
+                        &payoff,
+                        self.mutation_rate,
+                    );
                 }
             }
         }
@@ -307,55 +385,33 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&IsingState {
-            temperature: self.temperature,
-            j_coupling: self.j_coupling,
-            h_field: self.h_field,
-            mode: self.mode,
-            game_preset: self.game_preset,
-            game_payoffs: self.game_payoffs,
-            brush_radius: self.brush_radius,
-            brush_cooperator: self.brush_cooperator,
-            state: Some(self.worker.state()),
-            running: None,
-            steps_per_frame: self.steps_per_frame,
-        })
-        .ok()
+        self.serialize_ising_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: IsingState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid Ising state: {e}"))?;
-        s.validate()?;
-        self.temperature = s.temperature;
-        self.j_coupling = s.j_coupling;
-        self.h_field = s.h_field;
-        self.mode = s.mode;
-        self.game_preset = s.game_preset;
-        self.game_payoffs = s.game_payoffs;
-        self.brush_radius = s.brush_radius;
-        self.brush_cooperator = s.brush_cooperator;
-        self.steps_per_frame = s.steps_per_frame;
-        self.sync_shared_params();
-        self.recompute_replicator_curve();
+        self.deserialize_ising_state(state)
+    }
 
-        let target_state = s.state.unwrap_or_else(|| {
-            if s.running.unwrap_or(false) {
-                SimWorkerState::Running
-            } else {
-                SimWorkerState::Ready
-            }
-        });
-        if target_state == SimWorkerState::Running {
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        } else if self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-        }
-        self.stepped_pixels = None;
-        self.dirty = true;
-        Ok(())
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_ising_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.eval_ising_challenge()
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -366,11 +422,17 @@ impl InteractiveTool for IsingModelTool {
             self.params.write().unwrap_or_else(|e| e.into_inner()).theme = theme;
             self.dirty = true;
         }
-        if let Some(snapshot) = self.worker.update() {
-            if snapshot.custom_data.len() >= 2 {
-                self.magnetization = snapshot.custom_data[0];
-                self.energy = snapshot.custom_data[1];
-            }
+        let fallback_m = self.magnetization;
+        let fallback_e = self.energy;
+        if let Some((m, e, mu, ms)) = self
+            .worker
+            .update()
+            .map(|s| Self::extract_snapshot_metrics(s, fallback_m, fallback_e))
+        {
+            self.magnetization = m;
+            self.energy = e;
+            self.uniform_magnetization = mu;
+            self.staggered_magnetization = ms;
             self.record_snapshot_progress();
             self.stepped_pixels = None;
             self.dirty = true;
@@ -390,6 +452,9 @@ impl InteractiveTool for IsingModelTool {
 
 #[cfg(test)]
 use crate::async_sim::SimulationRunner;
+#[cfg(test)]
+#[path = "ising/atlas_challenge_tests.rs"]
+mod atlas_challenge_tests;
 #[cfg(test)]
 #[path = "ising/tests.rs"]
 mod tests;

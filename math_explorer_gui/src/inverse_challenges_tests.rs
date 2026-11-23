@@ -42,8 +42,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .map(ChallengeMetadata::to_card)
         .collect();
     assert!(
-        cards.len() >= 5,
-        "Expected at least 5 registered ChallengeMetadata entries, got {}",
+        cards.len() >= 9,
+        "Expected at least 9 registered ChallengeMetadata entries, got {}",
         cards.len()
     );
     for required_id in [
@@ -52,6 +52,10 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         "pk_therapeutic_window",
         "lbm_low_drag_fairing",
         "imrt_oar_sparing",
+        "myerson_welfare_constrained_reserve",
+        "first_price_shading_equilibrium",
+        "ising_critical_droplet_nucleation",
+        "fermi_prisoners_dilemma_nucleation",
     ] {
         let meta = find_challenge_metadata(required_id)
             .unwrap_or_else(|| panic!("Missing ChallengeMetadata '{required_id}'"));
@@ -66,6 +70,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
     assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 1);
     assert_eq!(get_challenge_cards_for_domain("fluid_dynamics").len(), 1);
     assert_eq!(get_challenge_cards_for_domain("medical").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("game_theory").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("solid_state").len(), 2);
 
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -172,6 +178,10 @@ fn test_stateless_challenge_urls_within_size_budget() {
         ("clinical_trials", "pk_therapeutic_window"),
         ("fluid_dynamics", "lbm_low_drag_fairing"),
         ("medical", "imrt_oar_sparing"),
+        ("game_theory", "myerson_welfare_constrained_reserve"),
+        ("game_theory", "first_price_shading_equilibrium"),
+        ("solid_state", "ising_critical_droplet_nucleation"),
+        ("solid_state", "fermi_prisoners_dilemma_nucleation"),
     ] {
         let bare_hash = format!("#tab={slug}&challenge={challenge_id}");
         let parsed = parse_share_location(&bare_hash, "").unwrap().unwrap();
@@ -238,6 +248,48 @@ fn test_tampered_challenge_url_clamps_locked_parameters() {
         .evaluate_challenge()
         .unwrap();
     assert!(eval.passed && (eval.score - 100.0).abs() < 1e-9);
+}
+
+#[test]
+fn test_tampered_auction_and_ising_challenge_urls_clamp_locked_parameters() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let mut app = MathExplorerApp::default();
+    app.apply_share_location_strings(
+        "#tab=game_theory&challenge=myerson_welfare_constrained_reserve",
+        "",
+        None,
+    )
+    .unwrap();
+    let url = app.encode_current_share_url().unwrap();
+    let frag = &url[url.find('#').unwrap()..];
+    let params = parse_share_location(frag, "").unwrap().unwrap();
+    let mut env: serde_json::Value =
+        serde_json::from_str(params.state_json.as_ref().unwrap()).unwrap();
+    env["config"]["reserve_price"] = serde_json::json!(38.0);
+    env["config"]["n_bidders"] = serde_json::json!(9);
+    env["config"]["uniform_max"] = serde_json::json!(500.0);
+    let b64 = encode_base64url(env.to_string().as_bytes());
+    let tampered = format!(
+        "#tab=game_theory&tool=MyersonAuctionTool&challenge=myerson_welfare_constrained_reserve&state={b64}"
+    );
+    let mut dest = MathExplorerApp::default();
+    assert!(dest
+        .apply_share_location_strings(&tampered, "", None)
+        .unwrap());
+    let fw = dest.tabs[dest.selected_tab].framework().unwrap();
+    let cfg: serde_json::Value =
+        serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap();
+    assert_eq!(cfg["reserve_price"], serde_json::json!(38.0));
+    assert_eq!(cfg["n_bidders"], serde_json::json!(2));
+    assert_eq!(cfg["uniform_max"], serde_json::json!(100.0));
+    assert!(
+        fw.active_tool
+            .as_ref()
+            .unwrap()
+            .evaluate_challenge()
+            .unwrap()
+            .passed
+    );
 }
 
 #[test]

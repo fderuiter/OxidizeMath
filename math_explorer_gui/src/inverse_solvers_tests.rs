@@ -300,3 +300,86 @@ fn test_ground_truth_imrt_beams_cost_gradient_hint_and_zero_alloc() {
         });
     }
 }
+
+#[test]
+fn test_ground_truth_auction_cartographer_and_workspace_zero_alloc() {
+    use crate::async_sim::atlas::RegimeCartographer;
+    use crate::tabs::game_theory::auction::atlas::AuctionCartographer;
+    use crate::tabs::game_theory::auction::math::{
+        AuctionDistEval, AuctionDistributionKind, AuctionEvalInputs, AuctionEvalWorkspace,
+        AuctionRuleMode,
+    };
+    use crate::tabs::game_theory::auction::MyersonAuctionTool;
+    use scientific_metadata::theory::TheoryDescribable;
+
+    let auction_tool = MyersonAuctionTool::default();
+    let dist =
+        AuctionDistEval::from_params(AuctionDistributionKind::Uniform, 0.0, 100.0, 0.1, 2.0, 2.0);
+    let auction_cart = AuctionCartographer::new(
+        &auction_tool.theory_parameters(),
+        ("reserve_price", "n_bidders"),
+        dist.clone(),
+        2,
+        AuctionRuleMode::FirstPrice,
+    );
+    let mut auction_ws = AuctionEvalWorkspace::default();
+
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (ok, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let ac = auction_cart.evaluate_cell(50.0, 2.0);
+        let am = auction_ws.evaluate_analytical(
+            &dist,
+            AuctionEvalInputs {
+                rule: AuctionRuleMode::FirstPrice,
+                reserve: 50.0,
+                n_bidders: 2,
+                focal_v: 100.0,
+                candidate_bid: 62.5,
+                fixed_point_tol: 0.5,
+            },
+        );
+        ac.primary.is_finite() && am.is_equilibrium_fixed_point
+    });
+    assert!(ok);
+}
+
+#[test]
+fn test_ground_truth_ising_cartographer_and_workspace_zero_alloc() {
+    use crate::async_sim::atlas::RegimeCartographer;
+    use crate::tabs::solid_state::ising::atlas::IsingCartographer;
+    use crate::tabs::solid_state::ising::challenge::IsingChallengeWorkspace;
+    use crate::tabs::solid_state::ising::{DropletSeed, IsingModelTool};
+    use scientific_metadata::theory::TheoryDescribable;
+
+    let ising_tool = IsingModelTool::default();
+    let ising_theory = ising_tool.theory_parameters();
+    let ising_cart = IsingCartographer::new(
+        &ising_theory,
+        ("T", "S"),
+        0.08,
+        1.0,
+        0.0,
+        [1.0, -0.1, 1.25, 0.0],
+    );
+    let mut ising_ws = IsingChallengeWorkspace::default();
+    let seed = [DropletSeed {
+        cx: 50,
+        cy: 50,
+        r: 8,
+        spin: 1,
+    }];
+
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (passed_pair, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let ic = ising_cart.evaluate_cell(1.25, -0.1);
+        let inuc = ising_ws.evaluate_ising_nucleation(&seed);
+        let fnuc = ising_ws.evaluate_fermi_nucleation(&seed);
+        assert!(ic.primary.is_finite());
+        (inuc.passed, fnuc.passed)
+    });
+    assert_eq!(passed_pair, (true, true));
+}

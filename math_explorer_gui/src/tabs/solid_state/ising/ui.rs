@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::atlas::onsager_critical_temp;
 use super::preset::{FermiGamePreset, IsingInteractionMode};
 use super::{ising_spin_color, IsingModelTool};
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
@@ -15,86 +16,107 @@ use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
 
 impl IsingModelTool {
     fn draw_mode_and_preset_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let locked = self.active_challenge.is_some();
         ui.label("Dynamics Kernel:");
-        ui.horizontal(|ui| {
+        ui.add_enabled_ui(!locked, |ui| {
+            ui.horizontal(|ui| {
+                if ui
+                    .selectable_value(
+                        &mut self.mode,
+                        IsingInteractionMode::Ferromagnetic,
+                        "🧲 Ferromagnetic",
+                    )
+                    .accessible_hover_text(
+                        "Switch to scalar ferromagnetic/antiferromagnetic Metropolis-Hastings model",
+                    )
+                    .clicked()
+                {
+                    if self.atlas.axis_keys() == ("T", "S") {
+                        let _ = self.atlas.set_axis_keys("temperature", "h_field");
+                    }
+                    self.sync_shared_params();
+                    self.request_metric_refresh(ctx);
+                }
+                if ui
+                    .selectable_value(
+                        &mut self.mode,
+                        IsingInteractionMode::FermiGame,
+                        "🎲 Fermi Game",
+                    )
+                    .accessible_hover_text(
+                        "Switch to spatial 2x2 evolutionary Fermi imitation game",
+                    )
+                    .clicked()
+                {
+                    if self.atlas.axis_keys() != ("T", "S") {
+                        let _ = self.atlas.set_axis_keys("T", "S");
+                    }
+                    self.apply_game_preset(self.game_preset, ctx);
+                }
+            });
+
+            if self.mode == IsingInteractionMode::FermiGame {
+                ui.add_space(4.0);
+                ui.label("Evolutionary Game Presets:");
+                ui.horizontal_wrapped(|ui| {
+                    for preset in [
+                        FermiGamePreset::PrisonersDilemma,
+                        FermiGamePreset::StagHunt,
+                        FermiGamePreset::HawkDove,
+                    ] {
+                        let selected = self.game_preset == preset;
+                        if ui
+                            .selectable_label(selected, preset.label())
+                            .accessible_hover_text(format!("Load {} payoff preset", preset.label()))
+                            .clicked()
+                        {
+                            self.apply_game_preset(preset, ctx);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    fn draw_ferromagnetic_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let locked = self.active_challenge.is_some();
+        ui.add_enabled_ui(!locked, |ui| {
             if ui
-                .selectable_value(
-                    &mut self.mode,
-                    IsingInteractionMode::Ferromagnetic,
-                    "🧲 Ferromagnetic",
+                .add(
+                    egui::Slider::new(&mut self.temperature, 0.1..=10.0)
+                        .text("Temperature (T) - K (relative)"),
                 )
-                .accessible_hover_text("Switch to scalar ferromagnetic Metropolis-Hastings model")
-                .clicked()
+                .changed()
+            {
+                self.sync_shared_params();
+            }
+            ui.small(format!(
+                "Onsager Tc(J) = 2|J|/ln(1+√2) ≈ {:.3}",
+                onsager_critical_temp(self.j_coupling)
+            ));
+
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.j_coupling, -2.0..=2.0)
+                        .text("Coupling Constant (J)"),
+                )
+                .changed()
             {
                 self.sync_shared_params();
                 self.request_metric_refresh(ctx);
             }
+            ui.small("Positive: Ferromagnetic • Negative: Antiferromagnetic Checkerboard");
+
             if ui
-                .selectable_value(
-                    &mut self.mode,
-                    IsingInteractionMode::FermiGame,
-                    "🎲 Fermi Game",
+                .add(
+                    egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (h)"),
                 )
-                .accessible_hover_text("Switch to spatial 2x2 evolutionary Fermi imitation game")
-                .clicked()
+                .changed()
             {
-                self.apply_game_preset(self.game_preset, ctx);
+                self.sync_shared_params();
+                self.request_metric_refresh(ctx);
             }
         });
-
-        if self.mode == IsingInteractionMode::FermiGame {
-            ui.add_space(4.0);
-            ui.label("Evolutionary Game Presets:");
-            ui.horizontal_wrapped(|ui| {
-                for preset in [
-                    FermiGamePreset::PrisonersDilemma,
-                    FermiGamePreset::StagHunt,
-                    FermiGamePreset::HawkDove,
-                ] {
-                    let selected = self.game_preset == preset;
-                    if ui
-                        .selectable_label(selected, preset.label())
-                        .accessible_hover_text(format!("Load {} payoff preset", preset.label()))
-                        .clicked()
-                    {
-                        self.apply_game_preset(preset, ctx);
-                    }
-                }
-            });
-        }
-    }
-
-    fn draw_ferromagnetic_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if ui
-            .add(
-                egui::Slider::new(&mut self.temperature, 0.1..=10.0)
-                    .text("Temperature (T) - K (relative)"),
-            )
-            .changed()
-        {
-            self.sync_shared_params();
-        }
-        ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
-
-        if ui
-            .add(
-                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0)
-                    .text("Coupling Constant (J) - J"),
-            )
-            .changed()
-        {
-            self.sync_shared_params();
-            self.request_metric_refresh(ctx);
-        }
-        ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
-
-        if ui
-            .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
-            .changed()
-        {
-            self.sync_shared_params();
-            self.request_metric_refresh(ctx);
-        }
     }
 
     fn draw_payoff_matrix_grid(&mut self, ui: &mut egui::Ui) -> bool {
@@ -149,31 +171,48 @@ impl IsingModelTool {
     }
 
     fn draw_fermi_game_controls(&mut self, ui: &mut egui::Ui) {
-        if ui
-            .add(
-                egui::Slider::new(&mut self.temperature, 1e-3..=2.5)
-                    .logarithmic(true)
-                    .text("Rationality Noise (T)"),
-            )
-            .changed()
-        {
-            self.temperature = self.temperature.max(1e-3);
-            self.sync_shared_params();
-        }
-        ui.small("Low T: deterministic imitation • High T: thermal drift");
+        let locked = self.active_challenge.is_some();
+        ui.add_enabled_ui(!locked, |ui| {
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.temperature, 1e-3..=2.5)
+                        .logarithmic(true)
+                        .text("Rationality Noise (T)"),
+                )
+                .changed()
+            {
+                self.temperature = self.temperature.max(1e-3);
+                self.sync_shared_params();
+            }
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.mutation_rate, 0.0..=0.05)
+                        .text("Strategy Mutation (μ)"),
+                )
+                .accessible_hover_text(
+                    "Spontaneous strategy exploration probability μ ∈ [0, 0.05] escaping uniform absorbing states",
+                )
+                .changed()
+            {
+                self.mutation_rate = self.mutation_rate.clamp(0.0, 0.05);
+                self.sync_shared_params();
+            }
+            ui.small("Low T: deterministic imitation • μ > 0: unfreezes absorbed lattices");
 
-        ui.add_space(4.0);
-        ui.label("2×2 Payoff Matrix (C = +1, D = -1):");
-        if self.draw_payoff_matrix_grid(ui) {
-            self.game_preset = FermiGamePreset::Custom;
-            self.sync_shared_params();
-            self.recompute_replicator_curve();
-        }
+            ui.add_space(4.0);
+            ui.label("2×2 Payoff Matrix (C = +1, D = -1):");
+            if self.draw_payoff_matrix_grid(ui) {
+                self.game_preset = FermiGamePreset::Custom;
+                self.sync_shared_params();
+                self.recompute_replicator_curve();
+            }
+        });
     }
 
     fn draw_brush_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let max_r = if self.active_challenge.is_some() { 10 } else { 25 };
         ui.label("Droplet Brush:");
-        ui.add(egui::Slider::new(&mut self.brush_radius, 0..=25).text("Radius (r)"));
+        ui.add(egui::Slider::new(&mut self.brush_radius, 0..=max_r).text("Radius (r)"));
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.brush_cooperator, true, "+1 (C / ↑)");
             ui.selectable_value(&mut self.brush_cooperator, false, "-1 (D / ↓)");
@@ -184,10 +223,15 @@ impl IsingModelTool {
                 "Set all 100x100 lattice sites to -1 so brushed +1 droplets test critical nucleation",
             )
             .clicked()
-            && self.worker.send_command(SimCommand::ClearObstacles).is_ok()
         {
-            self.pending_ode_resync = true;
-            ctx.request_repaint();
+            self.defector_sea = true;
+            self.droplet_seeds.clear();
+            self.sync_shared_params();
+            if self.worker.send_command(SimCommand::ClearObstacles).is_ok() {
+                self.refresh_challenge_workspace();
+                self.pending_ode_resync = true;
+                ctx.request_repaint();
+            }
         }
     }
 
@@ -218,7 +262,18 @@ impl IsingModelTool {
         }
 
         ui.separator();
-        ui.label(format!("Magnetization: {:.3}", self.magnetization));
+        if self.mode == IsingInteractionMode::Ferromagnetic && self.j_coupling < 0.0 {
+            ui.label(format!(
+                "Staggered Magnetization (M_stag): {:.3}",
+                self.staggered_magnetization
+            ));
+            ui.label(format!(
+                "Uniform Magnetization: {:.3}",
+                self.uniform_magnetization
+            ));
+        } else {
+            ui.label(format!("Magnetization: {:.3}", self.magnetization));
+        }
         ui.label(format!("Energy: {:.3}", self.energy));
         ui.label(format!(
             "Cooperator (+1) Density: {:.1}%",
@@ -229,8 +284,8 @@ impl IsingModelTool {
     pub(super) fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "ising_controls");
         crate::framework::PaneSidePanel::left(panel_id)
-            .resizable(false)
-            .default_width(245.0)
+            .resizable(true)
+            .default_width(260.0)
             .show_inside(parent_ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.heading("Ising Model Controls");
@@ -263,6 +318,9 @@ impl IsingModelTool {
 
                     ui.separator();
                     self.draw_brush_controls(ui, ctx);
+                    ui.separator();
+                    let _ = self.atlas.show_toggle_button(ui);
+                    self.render_ising_atlas_panel(ui, ctx);
 
                     ui.separator();
                     if ui

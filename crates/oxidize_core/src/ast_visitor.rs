@@ -300,6 +300,20 @@ impl AstVisitor {
                 continue;
             }
             let attr_line = span_line(attr.span());
+            if attr.path().is_ident("doc") {
+                let doc_text = quote::quote!(#attr).to_string();
+                let extracted =
+                    crate::traceability::TraceabilityEngine::<crate::vfs::DefaultVfs>::extract_citations(
+                        &doc_text,
+                    );
+                if !extracted.is_empty() {
+                    has_semantic = true;
+                    for cite in extracted {
+                        self.record_module(cite, attr_line);
+                    }
+                }
+                continue;
+            }
             let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
 
             if attr_str.contains("verified_engine::verified")
@@ -314,18 +328,6 @@ impl AstVisitor {
                 is_verified = true;
                 has_semantic = true;
                 self.extract_embed_theory(&attr_str, attr_line);
-            }
-
-            let doc_text = quote::quote!(#attr).to_string();
-            let extracted =
-                crate::traceability::TraceabilityEngine::<crate::vfs::DefaultVfs>::extract_citations(
-                    &doc_text,
-                );
-            if !extracted.is_empty() {
-                has_semantic = true;
-                for cite in extracted {
-                    self.record_module(cite, attr_line);
-                }
             }
         }
 

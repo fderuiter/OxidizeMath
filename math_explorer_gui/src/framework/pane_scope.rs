@@ -10,17 +10,26 @@ pub enum InputMode {
 }
 
 /// Event context provided to interaction hooks.
-#[allow(missing_docs)]
 pub struct InteractionContext<'a> {
+    /// Latest pointer coordinate inside the viewport, if hovered or dragged.
     pub pointer_pos: Option<egui::Pos2>,
+    /// Pointer drag delta since the previous frame.
     pub delta: egui::Vec2,
+    /// Whether an active drag gesture is in progress.
     pub is_dragging: bool,
+    /// Whether a primary click completed on this frame.
     pub is_clicked: bool,
+    /// Underlying `egui::Response` of the interactive canvas.
     pub response: &'a egui::Response,
+    /// Active input modality (`Mouse`, `Touch`, or `Keyboard`).
     pub input_mode: InputMode,
+    /// Optional multi-touch pinch/pan gesture metadata.
     pub multi_touch: Option<egui::MultiTouchInfo>,
+    /// Set of keys currently held down on this frame.
     pub keys_down: std::collections::HashSet<egui::Key>,
+    /// Active keyboard modifiers (`Shift`, `Ctrl`, `Alt`, `Command`).
     pub modifiers: egui::Modifiers,
+    /// Optional interpolated [`BrushStroke`] when dispatched via `SpatialBrushKit`.
     pub brush_stroke: Option<BrushStroke>,
 }
 
