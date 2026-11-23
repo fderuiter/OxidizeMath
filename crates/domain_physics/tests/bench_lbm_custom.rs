@@ -1,7 +1,11 @@
 #![allow(missing_docs)]
+#[cfg(not(target_arch = "wasm32"))]
 use domain_physics::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD2Q9;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(clippy::disallowed_methods)]
 #[test]
 #[verified_engine::verified]
 fn bench_lbm_step() {
