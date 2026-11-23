@@ -100,8 +100,10 @@ BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unifi
 cargo run -p unified_verification --release -- verify-suite
 cargo run -p xtask -- verify-suite
 
-# Native unit/integration tests and WebAssembly target checks
+# Native unit/integration tests, benchmark targets, example smoke suite, and WebAssembly target checks
 cargo test --workspace --lib --tests --all-features
+cargo run -p xtask -- check-benches
+cargo run -p xtask -- smoke-examples
 cargo check --workspace --target wasm32-unknown-unknown --all-features
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
