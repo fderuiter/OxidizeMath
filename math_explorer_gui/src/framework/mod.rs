@@ -1,5 +1,8 @@
 pub mod atlas_host;
 pub mod brush_codec;
+pub mod brush_dispatch;
+#[cfg(all(test, feature = "physics", feature = "biology"))]
+mod brush_dispatch_tests;
 pub mod callout_overlay;
 pub mod challenge;
 mod challenge_hud;
@@ -8,6 +11,16 @@ mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod code_export;
+pub mod code_export_modal;
+#[cfg(all(
+    test,
+    feature = "pure_math",
+    feature = "physics",
+    feature = "applied",
+    feature = "epidemiology"
+))]
+mod code_export_tests;
 pub mod counterfactual;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
@@ -16,6 +29,7 @@ mod export_3d;
 mod export_audio;
 mod export_dataset;
 mod export_figure;
+mod export_gif_job;
 mod export_modal_host;
 mod export_persistence;
 mod export_queue;
@@ -78,9 +92,12 @@ mod ui;
 mod url_share;
 
 pub use brush_codec::*;
+pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
+pub use code_export::*;
+pub use code_export_modal::CodeExportTab;
 pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
@@ -143,6 +160,8 @@ pub struct SimulationFramework {
     pub(super) last_announced_count: Option<usize>,
     pub(super) last_announced_query: String,
     pub show_export_modal: bool,
+    pub show_code_export_modal: bool,
+    pub code_export_tab: CodeExportTab,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
     pub export_gif_fps: u32,
@@ -152,6 +171,7 @@ pub struct SimulationFramework {
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub(crate) export_queue: ExportQueue,
+    gif_job: Option<export_gif_job::FrameworkGifJob>,
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
     /// Baseline parameters snapshot on tool load.

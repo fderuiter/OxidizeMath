@@ -2,8 +2,9 @@ use eframe::egui;
 use scientific_metadata::theory::TheoryDescribable;
 
 use super::{
-    pane_scope, BranchControlAction, CalloutSpec, ChallengeEvaluation, DivergenceSnapshot,
-    ExportCapabilities, InteractionContext, ShaderDialect, ToolStateBounds,
+    export_figure, export_persistence, pane_scope, BranchControlAction, CalloutSpec,
+    ChallengeEvaluation, CodeArtifact, DivergenceSnapshot, ExportCapabilities, InteractionContext,
+    ShaderDialect, ToolStateBounds,
 };
 
 /// Core interactive visualization and simulation contract implemented by every tool in `math_explorer_gui`.
@@ -75,6 +76,11 @@ pub trait InteractiveTool {
     /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
     fn url_state_revision(&self) -> u64 {
         self.state_revision()
+    }
+
+    /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        None
     }
 
     /// Direct numeric parameter finiteness hook without JSON serialization.
@@ -190,33 +196,22 @@ pub trait InteractiveTool {
 
     /// Serializes active parameter preset state to a formatted JSON string with metadata envelope.
     fn export_preset_json(&self) -> Result<String, String> {
-        if let Some(state_str) = self.save_state() {
-            let config: serde_json::Value = serde_json::from_str(&state_str)
-                .map_err(|e| format!("Serialization error: {e}"))?;
-            crate::presets::serialize_preset_envelope(self.name(), self.domain(), config)
-        } else {
-            Err(format!("Preset export not supported for {}", self.name()))
-        }
+        export_persistence::export_tool_preset_json(self)
     }
 
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let bounds = self.state_bounds();
-        let config: Box<serde_json::value::RawValue> =
-            crate::presets::deserialize_preset_envelope_bounded(
-                json_str,
-                self.domain(),
-                self.name(),
-                bounds,
-            )?;
-        let config_str = config.get();
-        bounds.validate_json(config_str)?;
-        self.try_load_state(config_str)
+        export_persistence::import_tool_preset_json(self, json_str)
     }
 
-    /// Declares which dataset and figure export formats this tool supports.
+    /// Declares which dataset, figure, code, 3D, shader, and audio export formats this tool supports.
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
+    }
+
+    /// Optional cold-path hook returning calibrated LaTeX, Rust, and Python code artifacts.
+    fn export_code_artifact(&self) -> Option<CodeArtifact> {
+        None
     }
 
     /// Optional hook to export tool datasets.
@@ -309,32 +304,15 @@ pub trait InteractiveTool {
         &mut self,
         num_frames: usize,
     ) -> Vec<egui_plot::export::DatasetFrame> {
-        let count = num_frames.max(1);
-        let mut frames = Vec::with_capacity(count);
-        for _ in 0..count {
-            self.step_simulation();
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames.push(ds);
-            }
-        }
-        if frames.is_empty() {
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames = egui_plot::export::sample_progressive_frames(&ds, count);
-            }
-        }
-        frames
+        export_figure::sample_tool_animation_frames(self, num_frames)
     }
 
-    /// Returns a type-erased reference for test inspection of concrete tool state.
-    #[cfg(test)]
+    /// Returns a type-erased reference for concrete tool state inspection.
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
     }
 
-    /// Returns a mutable type-erased reference for test manipulation of concrete tool state.
-    #[cfg(test)]
+    /// Returns a mutable type-erased reference for concrete tool state updates (e.g. cross-tab handoffs).
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
