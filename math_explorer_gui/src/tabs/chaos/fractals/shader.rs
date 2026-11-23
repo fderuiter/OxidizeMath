@@ -26,10 +26,20 @@ impl FractalViewer {
         let max_iter = self
             .max_iter
             .clamp(10, math_commons::registry::MAX_ITERATIONS as u32);
+        let family = match self.mode {
+            FractalMode::Mandelbrot => "Mandelbrot",
+            FractalMode::Julia => "Julia",
+            FractalMode::CustomMandelbrot | FractalMode::CustomJulia => {
+                return Err(
+                    "Analytical GLSL shader export is only supported for Mandelbrot and Julia modes"
+                        .to_string(),
+                );
+            }
+        };
         let is_julia = self.mode == FractalMode::Julia;
 
         let mut out = String::with_capacity(2560);
-        write_dialect_header(&mut out, dialect, self.mode);
+        write_dialect_header(&mut out, dialect, family);
         writeln!(out, "const vec2 CENTER = vec2({cx}, {cy});").unwrap();
         writeln!(out, "const float ZOOM = {zoom};").unwrap();
         writeln!(out, "const int MAX_ITER = {max_iter};").unwrap();
@@ -46,15 +56,11 @@ impl FractalViewer {
     }
 }
 
-fn write_dialect_header(out: &mut String, dialect: ShaderDialect, mode: FractalMode) {
+fn write_dialect_header(out: &mut String, dialect: ShaderDialect, family: &str) {
     if dialect == ShaderDialect::WebGl2Es300 {
         out.push_str("#version 300 es\nprecision highp float;\n\n");
         out.push_str("uniform vec2 u_resolution;\nuniform float u_time;\nuniform vec4 u_mouse;\nout vec4 fragColor;\n\n");
     }
-    let family = match mode {
-        FractalMode::Mandelbrot => "Mandelbrot",
-        FractalMode::Julia => "Julia",
-    };
     writeln!(
         out,
         "// OxidizeMath Analytical {family} Escape-Time Shader ({})",
