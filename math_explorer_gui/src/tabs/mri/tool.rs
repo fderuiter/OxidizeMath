@@ -264,59 +264,61 @@ impl InteractiveTool for MriTool {
         self.branch_engine.active_snapshot.clone()
     }
 
-    fn apply_counterfactual_action(&mut self, action: crate::framework::BranchControlAction) -> bool {
+    fn apply_counterfactual_action(
+        &mut self,
+        action: crate::framework::BranchControlAction,
+    ) -> bool {
         self.apply_mri_branch_action(action)
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let map_xyz = |hist: &VecDeque<(f64, Vector3<f64>)>, labels: [&str; 3]| {
+            vec![
+                (
+                    labels[0].to_string(),
+                    hist.iter().map(|(t, m)| [*t, m.x]).collect(),
+                ),
+                (
+                    labels[1].to_string(),
+                    hist.iter().map(|(t, m)| [*t, m.y]).collect(),
+                ),
+                (
+                    labels[2].to_string(),
+                    hist.iter().map(|(t, m)| [*t, m.z]).collect(),
+                ),
+            ]
+        };
+        let std_labels = ["Mx (Transverse)", "My (Transverse)", "Mz (Longitudinal)"];
         if let Some(ref twin) = self.twin {
             if !self.history.is_empty() {
-                return vec![
-                    ("Mx (Branch B)".to_string(), self.history.iter().map(|(t, m)| [*t, m.x]).collect()),
-                    ("My (Branch B)".to_string(), self.history.iter().map(|(t, m)| [*t, m.y]).collect()),
-                    ("Mz (Branch B)".to_string(), self.history.iter().map(|(t, m)| [*t, m.z]).collect()),
-                    ("Mx (Branch A)".to_string(), twin.history_a.iter().map(|(t, m)| [*t, m.x]).collect()),
-                    ("My (Branch A)".to_string(), twin.history_a.iter().map(|(t, m)| [*t, m.y]).collect()),
-                    ("Mz (Branch A)".to_string(), twin.history_a.iter().map(|(t, m)| [*t, m.z]).collect()),
-                ];
+                let mut out = map_xyz(
+                    &self.history,
+                    ["Mx (Branch B)", "My (Branch B)", "Mz (Branch B)"],
+                );
+                out.extend(map_xyz(
+                    &twin.history_a,
+                    ["Mx (Branch A)", "My (Branch A)", "Mz (Branch A)"],
+                ));
+                return out;
             }
         }
         if !self.history.is_empty() {
-            let mx: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.x]).collect();
-            let my: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.y]).collect();
-            let mz: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.z]).collect();
-            return vec![
-                ("Mx (Transverse)".to_string(), mx),
-                ("My (Transverse)".to_string(), my),
-                ("Mz (Longitudinal)".to_string(), mz),
-            ];
+            return map_xyz(&self.history, std_labels);
         }
-        if let Some(snap) = self.worker.latest_snapshot() {
-            if let Some(data) = snap
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<MriSnapshot>())
-            {
-                if !data.history.is_empty() {
-                    let mx = data.history.iter().map(|(t, m)| [*t, m.x]).collect();
-                    let my = data.history.iter().map(|(t, m)| [*t, m.y]).collect();
-                    let mz = data.history.iter().map(|(t, m)| [*t, m.z]).collect();
-                    return vec![
-                        ("Mx (Transverse)".to_string(), mx),
-                        ("My (Transverse)".to_string(), my),
-                        ("Mz (Longitudinal)".to_string(), mz),
-                    ];
-                }
-            }
+        if let Some(data) = self
+            .worker
+            .latest_snapshot()
+            .and_then(|s| s.structured_data.as_ref())
+            .and_then(|d| d.downcast_ref::<MriSnapshot>())
+            .filter(|d| !d.history.is_empty())
+        {
+            return map_xyz(&data.history, std_labels);
         }
         let m = self.simulator.magnetization;
         vec![
-            ("Mx (Transverse)".to_string(), vec![[self.current_time, m.x]]),
-            ("My (Transverse)".to_string(), vec![[self.current_time, m.y]]),
-            (
-                "Mz (Longitudinal)".to_string(),
-                vec![[self.current_time, m.z]],
-            ),
+            (std_labels[0].to_string(), vec![[self.current_time, m.x]]),
+            (std_labels[1].to_string(), vec![[self.current_time, m.y]]),
+            (std_labels[2].to_string(), vec![[self.current_time, m.z]]),
         ]
     }
 

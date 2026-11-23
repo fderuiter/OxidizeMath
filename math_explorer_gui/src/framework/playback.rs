@@ -160,19 +160,73 @@ impl<'a> PlaybackTransport<'a> {
             }
         });
 
+        let mut should_announce = true;
         if ui_enabled {
             self.register_shortcut_metadata(ui.ctx());
-            if action.is_none() {
-                action = self.check_keyboard_shortcuts(ui);
-            }
+            let (resolved, announce) = self.resolve_transport_action(ui, base_id, action);
+            action = resolved;
+            should_announce = announce;
+        } else if let Some(triggered) = action {
+            should_announce = crate::app::viewport::compare_sync::emit_playback_broadcast(
+                ui.ctx(),
+                base_id,
+                triggered,
+                None,
+            );
         }
 
         if let Some(triggered) = action {
-            self.announce_action(ui.ctx(), base_id, ui_enabled, triggered);
+            self.announce_action(ui.ctx(), base_id, ui_enabled, triggered, should_announce);
             ui.ctx().request_repaint();
         }
 
         action
+    }
+
+    fn is_action_applicable(&self, action: PlaybackAction) -> bool {
+        match action {
+            PlaybackAction::Play => self.can_toggle && !self.is_playing,
+            PlaybackAction::Pause => self.can_toggle && self.is_playing,
+            PlaybackAction::Step => self.can_step,
+            PlaybackAction::Reset => self.can_reset,
+        }
+    }
+
+    fn resolve_transport_action(
+        &self,
+        ui: &egui::Ui,
+        base_id: egui::Id,
+        clicked_action: Option<PlaybackAction>,
+    ) -> (Option<PlaybackAction>, bool) {
+        use crate::app::viewport::compare_sync::{
+            claim_pending_sync_key, emit_playback_broadcast, poll_playback_broadcast,
+        };
+        let ctx = ui.ctx();
+        if let Some((bcast_action, announce)) = poll_playback_broadcast(ctx, base_id) {
+            if self.is_action_applicable(bcast_action) {
+                return (Some(bcast_action), announce);
+            }
+        }
+        if let Some(clicked) = clicked_action {
+            let announce = emit_playback_broadcast(ctx, base_id, clicked, None);
+            return (Some(clicked), announce);
+        }
+        if let Some((sync_key_action, key)) =
+            claim_pending_sync_key(ctx, self.can_toggle, self.is_playing, self.can_step)
+        {
+            let announce = emit_playback_broadcast(ctx, base_id, sync_key_action, Some(key));
+            return (Some(sync_key_action), announce);
+        }
+        if let Some(local_key_action) = self.check_keyboard_shortcuts(ui) {
+            let key = match local_key_action {
+                PlaybackAction::Play | PlaybackAction::Pause => Some(egui::Key::Space),
+                PlaybackAction::Step => Some(egui::Key::Period),
+                PlaybackAction::Reset => None,
+            };
+            let announce = emit_playback_broadcast(ctx, base_id, local_key_action, key);
+            return (Some(local_key_action), announce);
+        }
+        (None, false)
     }
 
     fn register_shortcut_metadata(&self, ctx: &egui::Context) {
@@ -261,21 +315,26 @@ impl<'a> PlaybackTransport<'a> {
         base_id: egui::Id,
         ui_enabled: bool,
         action: PlaybackAction,
+        should_announce: bool,
     ) {
-        let announcement = match action {
-            PlaybackAction::Play => format!("Playing {} simulation", self.tool_name),
-            PlaybackAction::Pause => format!("Paused {} simulation", self.tool_name),
-            PlaybackAction::Step if self.is_in_thread => {
-                format!("Stepped {} simulation — step completed", self.tool_name)
-            }
-            PlaybackAction::Step => format!("Stepping {} simulation", self.tool_name),
-            PlaybackAction::Reset => format!("Reset {} simulation", self.tool_name),
-        };
-        announce_status(&announcement);
-        ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("aria_live_message"), announcement);
-            d.insert_temp(egui::Id::new("aria_live_dispatched"), true);
-            if matches!(action, PlaybackAction::Play | PlaybackAction::Pause) {
+        if should_announce {
+            let announcement = match action {
+                PlaybackAction::Play => format!("Playing {} simulation", self.tool_name),
+                PlaybackAction::Pause => format!("Paused {} simulation", self.tool_name),
+                PlaybackAction::Step if self.is_in_thread => {
+                    format!("Stepped {} simulation — step completed", self.tool_name)
+                }
+                PlaybackAction::Step => format!("Stepping {} simulation", self.tool_name),
+                PlaybackAction::Reset => format!("Reset {} simulation", self.tool_name),
+            };
+            announce_status(&announcement);
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("aria_live_message"), announcement);
+                d.insert_temp(egui::Id::new("aria_live_dispatched"), true);
+            });
+        }
+        if matches!(action, PlaybackAction::Play | PlaybackAction::Pause) {
+            ctx.data_mut(|d| {
                 let next_playing = matches!(action, PlaybackAction::Play);
                 let next_label = if next_playing {
                     format!("Pause {} simulation (Space)", self.tool_name)
@@ -291,8 +350,8 @@ impl<'a> PlaybackTransport<'a> {
                         next_label,
                     ),
                 );
-            }
-        });
+            });
+        }
     }
 }
 

@@ -8,11 +8,13 @@ use super::{
 use crate::app::SemanticPalette;
 use crate::async_sim::SimCommand;
 use crate::framework::{
-    branch_a_ghost_line, branch_b_solid_line, fork_marker_callout, l2_distance_3d,
-    sanitize_perturbation_delta, DivergenceSnapshot, SeparationTracker,
+    l2_distance_3d, sanitize_perturbation_delta, DivergenceSnapshot, Scene3DBuilder,
+    SeparationTracker,
 };
+use eframe::egui;
+use egui_plot::{LineStyle, MarkerShape};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
-use nalgebra::Vector3;
+use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -375,39 +377,112 @@ impl AttractorPlotter {
         self.worker = crate::async_sim::BackgroundWorker::new(runner);
     }
 
-    pub(super) fn draw_twin_curves_and_callout(
-        &self,
-        plot_ui: &mut egui_plot::PlotUi<'_>,
-        points_b: Vec<[f64; 2]>,
-        palette: &SemanticPalette,
+    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
+    #[cfg(test)]
+    pub fn populate_scene(&mut self, series_color: egui::Color32) {
+        self.populate_scene_colors(series_color, egui::Color32::GRAY, series_color);
+    }
+
+    /// Populates `self.scene_builder` using theme-aware semantic colors for active and shadow branches.
+    pub(super) fn populate_scene_with_palette(&mut self, palette: &SemanticPalette) {
+        self.populate_scene_colors(palette.series_color(0), palette.muted_text, palette.accent);
+    }
+
+    fn push_trajectory_series(
+        builder: &mut Scene3DBuilder,
+        name: &str,
+        pts: &[Point3<f64>],
+        stroke: egui::Stroke,
+        style: LineStyle,
     ) {
-        if let Some(ref twin) = self.twin {
-            let points_a: Vec<[f64; 2]> = twin.history_a.iter().map(|p| self.project(*p)).collect();
-            plot_ui.line(branch_a_ghost_line(
-                "Branch A (Baseline)",
-                points_a,
-                palette.muted_text,
-            ));
-            plot_ui.line(branch_b_solid_line(
-                "Branch B (Active)",
-                points_b,
-                palette.series_color(0),
-            ));
-            let fork_pt = self.project(twin.fork_point);
-            plot_ui.points(
-                egui_plot::Points::new("Fork @ t_k", vec![fork_pt])
-                    .radius(5.0_f32)
-                    .color(palette.accent),
+        if pts.len() == 1 {
+            builder.add_points(name, pts, 4.0_f32, stroke.color, MarkerShape::Circle, true);
+        } else if pts.len() > 1 {
+            builder.add_polyline(name, pts, stroke, style, true);
+        }
+    }
+
+    fn populate_twin_scene(
+        &mut self,
+        series_color: egui::Color32,
+        muted_color: egui::Color32,
+        accent_color: egui::Color32,
+    ) {
+        let Some(ref twin) = self.twin else {
+            return;
+        };
+        let mut pts_a: Vec<Point3<f64>> = twin
+            .history_a
+            .iter()
+            .map(|v| Point3::new(v.x, v.y, v.z))
+            .collect();
+        if pts_a.is_empty() {
+            let va = twin.system_a.state.vec;
+            pts_a.push(Point3::new(va.x, va.y, va.z));
+        }
+        Self::push_trajectory_series(
+            &mut self.scene_builder,
+            "Branch A (Baseline)",
+            &pts_a,
+            egui::Stroke::new(1.5_f32, muted_color),
+            LineStyle::dashed_loose(),
+        );
+        if self.trajectory_scratch.is_empty() && self.is_finite_state() {
+            let vb = self.system.state.vec;
+            self.trajectory_scratch.push(Point3::new(vb.x, vb.y, vb.z));
+        }
+        Self::push_trajectory_series(
+            &mut self.scene_builder,
+            "Branch B (Active)",
+            &self.trajectory_scratch,
+            egui::Stroke::new(2.25_f32, series_color),
+            LineStyle::Solid,
+        );
+        let fp = twin.fork_point;
+        self.scene_builder.add_points(
+            "Fork @ t_k",
+            &[Point3::new(fp.x, fp.y, fp.z)],
+            5.0_f32,
+            accent_color,
+            MarkerShape::Circle,
+            false,
+        );
+    }
+
+    fn populate_scene_colors(
+        &mut self,
+        series_color: egui::Color32,
+        muted_color: egui::Color32,
+        accent_color: egui::Color32,
+    ) {
+        let origin_offset = match self.mode {
+            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
+            AttractorMode::Custom => Point3::origin(),
+        };
+        self.scene_builder.begin(self.camera);
+        self.scene_builder.set_origin_offset(origin_offset);
+        self.trajectory_scratch.clear();
+        self.trajectory_scratch
+            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
+        if self.twin.is_some() {
+            self.populate_twin_scene(series_color, muted_color, accent_color);
+        } else if !self.trajectory_scratch.is_empty() {
+            Self::push_trajectory_series(
+                &mut self.scene_builder,
+                "Trajectory",
+                &self.trajectory_scratch,
+                egui::Stroke::new(1.5_f32, series_color),
+                LineStyle::Solid,
             );
-            plot_ui.callout(fork_marker_callout(
-                fork_pt,
-                twin.tracker.fork_time(),
-                palette,
-            ));
-        } else {
-            plot_ui.line(
-                egui_plot::Line::new("Trajectory", egui_plot::PlotPoints::new(points_b))
-                    .color(palette.series_color(0)),
+        } else if self.is_finite_state() {
+            let v = self.system.state.vec;
+            self.scene_builder.add_points(
+                "Initial State",
+                &[Point3::new(v.x, v.y, v.z)],
+                4.0_f32,
+                series_color,
+                MarkerShape::Circle,
+                true,
             );
         }
     }

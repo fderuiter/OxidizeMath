@@ -128,7 +128,8 @@ pub struct MriTwinState {
 
 impl Clone for MriTwinState {
     fn clone(&self) -> Self {
-        let mut simulator_a = BlochSimulator::new(self.simulator_a.magnetization, self.simulator_a.m0);
+        let mut simulator_a =
+            BlochSimulator::new(self.simulator_a.magnetization, self.simulator_a.m0);
         simulator_a.set_relaxation(self.simulator_a.t1, self.simulator_a.t2);
         simulator_a.set_b_field(self.simulator_a.b_field);
         Self {
@@ -201,8 +202,10 @@ impl MriTwinState {
         self.spin_echo = Some(ens);
         let ma = self.simulator_a.magnetization;
         let mb = simulator_b.magnetization;
-        self.tracker
-            .observe(current_time, l2_distance_3d([ma.x, ma.y, ma.z], [mb.x, mb.y, mb.z]));
+        self.tracker.observe(
+            current_time,
+            l2_distance_3d([ma.x, ma.y, ma.z], [mb.x, mb.y, mb.z]),
+        );
     }
 
     /// Advances `Branch A` by one `dt` increment with zero heap allocations.
@@ -243,8 +246,7 @@ impl MriTwinState {
         let base_b = simulator_b.b_field;
         for idx in 0..ISOCHROMAT_COUNT {
             simulator_b.magnetization = ens.spins_b[idx];
-            simulator_b.b_field =
-                Vector3::new(base_b.x, base_b.y, base_b.z + ens.bz_offsets[idx]);
+            simulator_b.b_field = Vector3::new(base_b.x, base_b.y, base_b.z + ens.bz_offsets[idx]);
             TimeStepper::step_with(simulator_b, solver_b, dt);
             ens.spins_b[idx] = simulator_b.magnetization;
         }
@@ -346,7 +348,10 @@ impl MriRunner {
 
     pub(super) fn swap_twin_branches(&mut self) {
         if let Some(ref mut twin) = self.twin {
-            std::mem::swap(&mut self.simulator.magnetization, &mut twin.simulator_a.magnetization);
+            std::mem::swap(
+                &mut self.simulator.magnetization,
+                &mut twin.simulator_a.magnetization,
+            );
             std::mem::swap(&mut self.simulator.t1, &mut twin.simulator_a.t1);
             std::mem::swap(&mut self.simulator.t2, &mut twin.simulator_a.t2);
             std::mem::swap(&mut self.simulator.b_field, &mut twin.simulator_a.b_field);
@@ -361,4 +366,3 @@ impl MriRunner {
         }
     }
 }
-

@@ -1,10 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::async_sim::{BackgroundWorker, SimCommand};
-use crate::framework::{CoupledExpressionBank, InteractiveTool};
+use crate::framework::{Camera3D, CoupledExpressionBank, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
-use nalgebra::Vector3;
+use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -36,7 +36,9 @@ pub struct AttractorPlotter {
     pub(crate) dt: f64,
     pub(crate) history: VecDeque<Vector3<f64>>,
     pub(crate) max_points: usize,
-    pub(crate) camera: crate::framework::Camera3D,
+    pub(crate) camera: Camera3D,
+    pub(crate) scene_builder: Scene3DBuilder,
+    trajectory_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     pub show_annotations: bool,
@@ -65,6 +67,7 @@ impl Default for AttractorPlotter {
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
 
+        let camera = Camera3D::new(0.0, 0.0, 1.0).with_perspective_distance(75.0);
         Self {
             mode: AttractorMode::Lorenz,
             flow_bank,
@@ -75,7 +78,9 @@ impl Default for AttractorPlotter {
             dt: 0.01,
             history: VecDeque::with_capacity(ATTRACTOR_RING_CAPACITY),
             max_points: 2000,
-            camera: crate::framework::Camera3D::new(0.0, 0.0, 1.0),
+            camera,
+            scene_builder: Scene3DBuilder::new(camera),
+            trajectory_scratch: Vec::with_capacity(2000),
             params,
             worker,
             show_annotations: true,
@@ -204,7 +209,7 @@ impl AttractorPlotter {
         self.reset();
     }
 
-    /// Projects 3D point to 2D screen space based on rotation.
+    /// Projects 3D point to 2D screen space based on rotation, pan, zoom, and projection mode.
     pub(crate) fn project(&self, p: Vector3<f64>) -> [f64; 2] {
         let center_offset = match self.mode {
             AttractorMode::Lorenz => Vector3::new(0.0, 0.0, 25.0),
@@ -289,9 +294,7 @@ impl InteractiveTool for AttractorPlotter {
         self.is_paused().hash(&mut h);
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
-        self.camera.pitch.to_bits().hash(&mut h);
-        self.camera.yaw.to_bits().hash(&mut h);
-        self.camera.zoom.to_bits().hash(&mut h);
+        self.camera.hash_state(&mut h);
         if let Some(ref twin) = self.twin {
             true.hash(&mut h);
             twin.fork_step.hash(&mut h);
@@ -366,6 +369,28 @@ impl InteractiveTool for AttractorPlotter {
                 twin.history_a.iter().map(|p| self.project(*p)).collect();
             if points_a.is_empty() {
                 points_a.push(self.project(twin.system_a.state.vec));
+            }
+            vec![
+                ("Branch B (Active)".to_string(), points_b),
+                ("Branch A (Baseline)".to_string(), points_a),
+            ]
+        } else {
+            vec![("Trajectory".to_string(), points_b)]
+        }
+    }
+
+    fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let mut points_b: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
+        if points_b.is_empty() && self.is_finite_state() {
+            let v = self.system.state.vec;
+            points_b.push([v.x, v.y, v.z]);
+        }
+        if let Some(ref twin) = self.twin {
+            let mut points_a: Vec<[f64; 3]> =
+                twin.history_a.iter().map(|p| [p.x, p.y, p.z]).collect();
+            if points_a.is_empty() {
+                let va = twin.system_a.state.vec;
+                points_a.push([va.x, va.y, va.z]);
             }
             vec![
                 ("Branch B (Active)".to_string(), points_b),

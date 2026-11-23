@@ -8,11 +8,11 @@ use crate::async_sim::ui::{
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{
-    render_divergence_strip, CounterfactualTransport, InteractiveTool, PlaybackAction,
-    PlaybackTransport, Plot3DViewport,
+    fork_marker_callout, render_divergence_strip, CounterfactualTransport, InteractiveTool,
+    PlaybackAction, PlaybackTransport, Plot3DViewport,
 };
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
-use egui_plot::{Callout, PlotPoint, Points};
+use egui_plot::{Callout, PlotPoint};
 use nalgebra::Vector3;
 
 impl AttractorPlotter {
@@ -139,23 +139,7 @@ impl AttractorPlotter {
         .can_reset(true)
         .show(ui)
         {
-            match action {
-                PlaybackAction::Play => {
-                    let _ = self.try_resume();
-                }
-                PlaybackAction::Pause => {
-                    self.execution_state = SolverExecutionState::Paused;
-                    let _ = self.worker.send_command(SimCommand::Pause);
-                }
-                PlaybackAction::Step => {
-                    self.execution_state = SolverExecutionState::Paused;
-                    let _ = self.worker.send_command(SimCommand::Step(1));
-                }
-                PlaybackAction::Reset => {
-                    self.reset();
-                    ctx.request_repaint();
-                }
-            }
+            self.handle_playback_action(action, ctx);
         }
 
         let can_fork = self.step_count > 0 && !self.diverged() && !worker_faulted;
@@ -203,6 +187,26 @@ impl AttractorPlotter {
                     self.on_slider_changed();
                 }
             });
+    }
+
+    fn handle_playback_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.try_resume();
+            }
+            PlaybackAction::Pause => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::Reset => {
+                self.reset();
+                ctx.request_repaint();
+            }
+        }
     }
 
     fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {
@@ -419,22 +423,21 @@ impl AttractorPlotter {
                 );
             }
 
-            let points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-            let initial_pt = (points.is_empty() && self.is_finite_state())
-                .then(|| self.project(self.system.state.vec));
-
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let series0 = palette.series_color(0);
+            self.populate_scene_with_palette(&palette);
+            let fork_callout = self.twin.as_ref().map(|twin| {
+                fork_marker_callout(
+                    self.project(twin.fork_point),
+                    twin.tracker.fork_time(),
+                    &palette,
+                )
+            });
             let mut camera = self.camera;
             let response = Plot3DViewport::new("attractor_plot", 32.0)
                 .show(ui, &mut camera, |plot_ui| {
-                    self.draw_twin_curves_and_callout(plot_ui, points, &palette);
-                    if let Some(pt) = initial_pt {
-                        plot_ui.points(
-                            Points::new("Initial State", vec![pt])
-                                .radius(4.0_f32)
-                                .color(series0),
-                        );
+                    self.scene_builder.finish(plot_ui);
+                    if let Some(callout) = fork_callout {
+                        plot_ui.callout(callout);
                     }
                     self.draw_fixed_point_callouts(plot_ui);
                 })

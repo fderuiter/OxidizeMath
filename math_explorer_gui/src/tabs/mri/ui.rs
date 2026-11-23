@@ -131,7 +131,8 @@ impl MriTool {
                 .time_scale = self.time_scale;
         }
 
-        let can_fork = self.current_step_index() > 0 && self.worker.state() != SimWorkerState::Faulted;
+        let can_fork =
+            self.current_step_index() > 0 && self.worker.state() != SimWorkerState::Faulted;
         let is_forked = self.twin.is_some();
         if let Some(cf_action) =
             CounterfactualTransport::new(&mut self.branch_engine, can_fork, is_forked).show(ui)
@@ -244,12 +245,28 @@ impl MriTool {
             plot_ui.line(branch_a_ghost_line("Mx (Branch A)", mxa, palette.axis_x));
             plot_ui.line(branch_a_ghost_line("My (Branch A)", mya, palette.axis_y));
             plot_ui.line(branch_a_ghost_line("Mz (Branch A)", mza, palette.axis_z));
-            plot_ui.line(branch_b_solid_line("Mx (Branch B)", to_vec(&self.mx_points), palette.axis_x));
-            plot_ui.line(branch_b_solid_line("My (Branch B)", to_vec(&self.my_points), palette.axis_y));
-            plot_ui.line(branch_b_solid_line("Mz (Branch B)", to_vec(&self.mz_points), palette.axis_z));
+            plot_ui.line(branch_b_solid_line(
+                "Mx (Branch B)",
+                to_vec(&self.mx_points),
+                palette.axis_x,
+            ));
+            plot_ui.line(branch_b_solid_line(
+                "My (Branch B)",
+                to_vec(&self.my_points),
+                palette.axis_y,
+            ));
+            plot_ui.line(branch_b_solid_line(
+                "Mz (Branch B)",
+                to_vec(&self.mz_points),
+                palette.axis_z,
+            ));
             let fork_t = twin.tracker.fork_time();
             plot_ui.vline(fork_marker_vline(palette, fork_t));
-            plot_ui.callout(fork_marker_callout([fork_t, twin.fork_m.x], fork_t, palette));
+            plot_ui.callout(fork_marker_callout(
+                [fork_t, twin.fork_m.x],
+                fork_t,
+                palette,
+            ));
         } else {
             plot_ui.line(Line::new("Mx (Transverse)", &self.mx_points[..]).color(palette.axis_x));
             plot_ui.line(Line::new("My (Transverse)", &self.my_points[..]).color(palette.axis_y));
