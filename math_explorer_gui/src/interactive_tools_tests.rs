@@ -1,67 +1,87 @@
 #[cfg(test)]
 mod tests {
+    fn smoke_check_tool<T: crate::framework::InteractiveTool + Default>(
+        ctx: &eframe::egui::Context,
+    ) {
+        let mut tool = T::default();
+        let _ = tool.name();
+        let _ = tool.theory();
+        let _ = tool.export_datasets();
+        let _ = tool.export_figure_options();
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+    }
+
     #[test]
-    fn test_additional_interactive_tools() {
-        use crate::framework::InteractiveTool;
+    fn test_additional_interactive_tools_part_1() {
         let ctx = eframe::egui::Context::default();
+        smoke_check_tool::<crate::tabs::ai::q_table_inspector::QTableInspectorTool>(&ctx);
+        smoke_check_tool::<crate::tabs::ai::attention_maps::AttentionMapsTool>(&ctx);
+        smoke_check_tool::<crate::tabs::ai::tokenization::TokenizationTool>(&ctx);
+        smoke_check_tool::<crate::tabs::financial_math::bet_size::BetSizeCalculatorTool>(&ctx);
+        smoke_check_tool::<crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool>(&ctx);
+        smoke_check_tool::<crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool>(
+            &ctx,
+        );
+        smoke_check_tool::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(&ctx);
+        smoke_check_tool::<
+            crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool,
+        >(&ctx);
+        smoke_check_tool::<crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool>(&ctx);
+        smoke_check_tool::<crate::tabs::solid_state::band_structure::BandStructureTool>(&ctx);
+        smoke_check_tool::<crate::tabs::solid_state::ising::IsingModelTool>(&ctx);
+        smoke_check_tool::<crate::tabs::quantum::clebsch::ClebschGordanTool>(&ctx);
+        smoke_check_tool::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(&ctx);
+        smoke_check_tool::<crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool>(
+            &ctx,
+        );
+        smoke_check_tool::<crate::tabs::clinical_trials::survival::SurvivalAnalysisTool>(&ctx);
+        smoke_check_tool::<crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool>(
+            &ctx,
+        );
+        smoke_check_tool::<crate::tabs::clinical_trials::randomization::RandomizationTool>(&ctx);
+        smoke_check_tool::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(&ctx);
+        smoke_check_tool::<crate::tabs::climate::cera::CeraTool>(&ctx);
+        smoke_check_tool::<crate::tabs::climate::co2_projections::Co2ProjectionsTool>(&ctx);
+        smoke_check_tool::<crate::tabs::climate::temperature::TemperatureAnomaliesTool>(&ctx);
+        smoke_check_tool::<crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(&ctx);
+        smoke_check_tool::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(&ctx);
+    }
 
-        macro_rules! check_tool {
-            ($tool_ty:path) => {
-                let mut tool = <$tool_ty>::default();
-                let _ = tool.name();
-                let _ = tool.theory();
-                let _ = tool.export_datasets();
-                let _ = tool.export_figure_options();
-                let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
-                    tool.show(ctx);
-                });
-            };
-        }
-
-        check_tool!(crate::tabs::ai::q_table_inspector::QTableInspectorTool);
-        check_tool!(crate::tabs::ai::attention_maps::AttentionMapsTool);
-        check_tool!(crate::tabs::ai::tokenization::TokenizationTool);
-        check_tool!(crate::tabs::financial_math::bet_size::BetSizeCalculatorTool);
-        check_tool!(crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool);
-        check_tool!(crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool);
-        check_tool!(crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool);
-        check_tool!(crate::tabs::solid_state::band_structure::BandStructureTool);
-        check_tool!(crate::tabs::solid_state::ising::IsingModelTool);
-        check_tool!(crate::tabs::quantum::clebsch::ClebschGordanTool);
-        check_tool!(crate::tabs::graph_theory::network_metrics::NetworkMetricsTool);
-        check_tool!(crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool);
-        check_tool!(crate::tabs::clinical_trials::survival::SurvivalAnalysisTool);
-        check_tool!(crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool);
-        check_tool!(crate::tabs::clinical_trials::randomization::RandomizationTool);
-        check_tool!(crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool);
-        check_tool!(crate::tabs::climate::cera::CeraTool);
-        check_tool!(crate::tabs::climate::co2_projections::Co2ProjectionsTool);
-        check_tool!(crate::tabs::climate::temperature::TemperatureAnomaliesTool);
-        check_tool!(crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool);
-        check_tool!(crate::tabs::fluid_dynamics::turbulence::TurbulenceTool);
-        check_tool!(crate::tabs::ai::activation_functions::ActivationFunctionsTool);
-        check_tool!(crate::tabs::ai::gaussian_splatting::GaussianSplattingTool);
-        check_tool!(crate::tabs::ai::training_monitor::TrainingMonitorTool);
-        check_tool!(crate::tabs::ai::loss_landscape::LossLandscapeTool);
-        check_tool!(crate::tabs::ai::grid_world::GridWorldTool);
-        check_tool!(crate::tabs::medical::beam_profiling::BeamProfilingTool);
-        check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
-        check_tool!(crate::tabs::medical::radar_gating::RadarGatingTool);
-        check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
-        check_tool!(crate::tabs::chaos::hamiltonian::HamiltonianChaosLab);
-        check_tool!(crate::tabs::algorithmic_information::state::FractranMachineTool);
-        check_tool!(crate::tabs::algorithmic_information::shannon::ShannonChannelTool);
-        check_tool!(crate::tabs::game_theory::nash_shapley::NashShapleyTool);
-        check_tool!(crate::tabs::game_theory::decision_bandit::DecisionBanditTool);
-        check_tool!(crate::tabs::game_theory::auction::OptimalAuctionTool);
-        check_tool!(crate::tabs::game_theory::mean_field::MeanFieldGameTool);
-        check_tool!(crate::tabs::number_theory::fractran_machine::FractranMachineTool);
-        check_tool!(crate::tabs::number_theory::ualbf_widget::UalbfWidget);
-        check_tool!(crate::tabs::number_theory::partitions_widget::PartitionsWidget);
-        check_tool!(crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget);
-        check_tool!(crate::tabs::morphogenesis::lenia::LeniaTool);
-        check_tool!(crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool);
-        check_tool!(crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool);
+    #[test]
+    fn test_additional_interactive_tools_part_2() {
+        let ctx = eframe::egui::Context::default();
+        smoke_check_tool::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(&ctx);
+        smoke_check_tool::<crate::tabs::ai::gaussian_splatting::GaussianSplattingTool>(&ctx);
+        smoke_check_tool::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(&ctx);
+        smoke_check_tool::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(&ctx);
+        smoke_check_tool::<crate::tabs::ai::grid_world::GridWorldTool>(&ctx);
+        smoke_check_tool::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(&ctx);
+        smoke_check_tool::<crate::tabs::medical::dose::DoseCalculationTool>(&ctx);
+        smoke_check_tool::<crate::tabs::medical::radar_gating::RadarGatingTool>(&ctx);
+        smoke_check_tool::<crate::tabs::epidemiology::network_propagation::NetworkPropagationTool>(
+            &ctx,
+        );
+        smoke_check_tool::<crate::tabs::chaos::hamiltonian::HamiltonianChaosLab>(&ctx);
+        smoke_check_tool::<crate::tabs::algorithmic_information::state::FractranMachineTool>(&ctx);
+        smoke_check_tool::<crate::tabs::algorithmic_information::shannon::ShannonChannelTool>(&ctx);
+        smoke_check_tool::<crate::tabs::game_theory::nash_shapley::NashShapleyTool>(&ctx);
+        smoke_check_tool::<crate::tabs::game_theory::decision_bandit::DecisionBanditTool>(&ctx);
+        smoke_check_tool::<crate::tabs::game_theory::auction::OptimalAuctionTool>(&ctx);
+        smoke_check_tool::<crate::tabs::game_theory::mean_field::MeanFieldGameTool>(&ctx);
+        smoke_check_tool::<crate::tabs::number_theory::fractran_machine::FractranMachineTool>(&ctx);
+        smoke_check_tool::<crate::tabs::number_theory::ualbf_widget::UalbfWidget>(&ctx);
+        smoke_check_tool::<crate::tabs::number_theory::partitions_widget::PartitionsWidget>(&ctx);
+        smoke_check_tool::<crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget>(&ctx);
+        smoke_check_tool::<crate::tabs::morphogenesis::lenia::LeniaTool>(&ctx);
+        smoke_check_tool::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(&ctx);
+        smoke_check_tool::<crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool>(
+            &ctx,
+        );
+        smoke_check_tool::<crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool>(
+            &ctx,
+        );
     }
 
     #[test]
@@ -318,6 +338,10 @@ mod tests {
         assert_tool_roundtrip(
             &mut crate::tabs::clinical_trials::survival::SurvivalAnalysisTool::default(),
             r#"{"input_text":"5.0, 1\n12.0, 0"}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool::default(),
+            r#"{"lambda1":0.16,"lambda2":0.36,"alpha":0.7,"theta":0.6,"censor_horizon":4.5,"dropout_rate":0.06,"sig_alpha":0.05,"n_min":30,"n_max":150,"n_steps":5,"replicates":80,"seed":9001,"chart_mode":"TierWaterfall"}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::epidemiology::network_propagation::NetworkPropagationTool::default(),

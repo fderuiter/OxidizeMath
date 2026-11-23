@@ -157,23 +157,23 @@ pub fn evaluate_bimatrix_profile(
 
     let mut row_payoff = 0.0;
     let mut best_row_dev = f64::NEG_INFINITY;
-    for r in 0..game.rows {
+    for (r, &p_r) in row_strategy.iter().enumerate() {
         let mut expected_r = 0.0;
-        for c in 0..game.cols {
-            expected_r += game.row_payoffs[flatten_2d_index(c, r, game.cols)] * col_strategy[c];
+        for (c, &q_c) in col_strategy.iter().enumerate() {
+            expected_r += game.row_payoffs[flatten_2d_index(c, r, game.cols)] * q_c;
         }
-        row_payoff += row_strategy[r] * expected_r;
+        row_payoff += p_r * expected_r;
         best_row_dev = best_row_dev.max(expected_r);
     }
 
     let mut col_payoff = 0.0;
     let mut best_col_dev = f64::NEG_INFINITY;
-    for c in 0..game.cols {
+    for (c, &q_c) in col_strategy.iter().enumerate() {
         let mut expected_c = 0.0;
-        for r in 0..game.rows {
-            expected_c += game.col_payoffs[flatten_2d_index(c, r, game.cols)] * row_strategy[r];
+        for (r, &p_r) in row_strategy.iter().enumerate() {
+            expected_c += game.col_payoffs[flatten_2d_index(c, r, game.cols)] * p_r;
         }
-        col_payoff += col_strategy[c] * expected_c;
+        col_payoff += q_c * expected_c;
         best_col_dev = best_col_dev.max(expected_c);
     }
 

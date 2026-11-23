@@ -29,18 +29,44 @@ pub enum BatteryError {
     NegativeCycles(f64),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 #[allow(missing_docs)]
 pub enum GameTheoryError {
     /// Payoff matrix is not square.
+    #[error("Payoff matrix must be square, got {rows}x{cols}")]
     #[allow(missing_docs)]
     NonSquarePayoffMatrix { rows: usize, cols: usize },
     /// Invalid parameter value (e.g. frequency outside [0, 1]).
+    #[error("Invalid game theory parameter {name}: {value}")]
     #[allow(missing_docs)]
     InvalidParameter { name: String, value: f64 },
+    /// Lower and upper bound vectors had different lengths.
+    #[error(
+        "Box constraint bound lengths must match: min has {min_len} elements, max has {max_len}"
+    )]
+    BoundsDimensionMismatch {
+        /// Length of the lower-bound vector.
+        min_len: usize,
+        /// Length of the upper-bound vector.
+        max_len: usize,
+    },
+    /// Lower bound exceeded upper bound or was non-finite along a dimension.
+    #[error(
+        "Invalid box bounds at dimension {dimension}: min ({min}) must be finite and <= max ({max})"
+    )]
+    InvalidBoxBounds {
+        /// Zero-based coordinate index with invalid bounds.
+        dimension: usize,
+        /// Lower bound at `dimension`.
+        min: f64,
+        /// Upper bound at `dimension`.
+        max: f64,
+    },
     /// Strategy space or player set cannot be empty.
+    #[error("strategy set or player count cannot be empty")]
     EmptyStrategies,
     /// Slice or matrix dimensions do not match expected sizes.
+    #[error("dimension mismatch (expected {expected}, got {actual})")]
     DimensionMismatch {
         /// Expected number of elements.
         expected: usize,
@@ -48,6 +74,7 @@ pub enum GameTheoryError {
         actual: usize,
     },
     /// Non-finite or out-of-domain payoff or probability entry.
+    #[error("invalid payoff or probability at ({row}, {col}): {value}")]
     InvalidPayoff {
         /// Offending row or player index.
         row: usize,
@@ -57,6 +84,7 @@ pub enum GameTheoryError {
         value: f64,
     },
     /// Bimatrix game exceeds the `8x8` dimension cap for support enumeration.
+    #[error("bimatrix size {rows}x{cols} exceeds support enumeration cap {max_dim}x{max_dim}")]
     SupportEnumerationCapExceeded {
         /// Provided row count.
         rows: usize,
@@ -66,6 +94,7 @@ pub enum GameTheoryError {
         max_dim: usize,
     },
     /// Cooperative game exceeds the `16`-player bitmask cap.
+    #[error("coalition player count {players} exceeds bitmask cap of {max_players}")]
     CoalitionCapExceeded {
         /// Provided player count.
         players: usize,
@@ -73,6 +102,7 @@ pub enum GameTheoryError {
         max_players: usize,
     },
     /// Preallocated workspace or output slice is too small.
+    #[error("game theory workspace too small (required {required}, got {actual})")]
     WorkspaceTooSmall {
         /// Minimum required capacity.
         required: usize,
@@ -80,20 +110,45 @@ pub enum GameTheoryError {
         actual: usize,
     },
     /// Complementary or Simplex pivoting exceeded the maximum iteration guard.
+    #[error("pivot limit exceeded after {max_pivots} pivots")]
     PivotLimitExceeded {
         /// Maximum pivots attempted before aborting.
         max_pivots: usize,
     },
     /// Solver found no feasible equilibrium.
+    #[error("no equilibrium found")]
     NoEquilibriumFound,
+    /// Wrapped centralized mathematical error.
+    #[error("{0}")]
+    Math(#[from] math_commons::error::MathError),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 #[allow(missing_docs)]
 pub enum EngineeringError {
     /// Invalid parameter value (e.g. TotalBits = 0).
+    #[error("Invalid engineering parameter {name}: {value}")]
     #[allow(missing_docs)]
     InvalidParameter { name: String, value: f64 },
+    /// Design matrix normal equations `X^T * X` are singular and cannot be inverted.
+    #[error("Design matrix normal equations X^T * X are singular and not invertible")]
+    SingularDesignMatrix,
+    /// Contrast variance denominator is zero or negative, leaving the t-statistic undefined.
+    #[error("Contrast standard error denominator is zero; t-statistic is undefined")]
+    ZeroContrastVariance,
+    /// Matrix or vector dimensions are non-conformable.
+    #[error("{context}: expected {expected}, got {actual}")]
+    DimensionMismatch {
+        /// Invariant context describing the mismatched operand.
+        context: &'static str,
+        /// Expected dimension length.
+        expected: usize,
+        /// Actual dimension length.
+        actual: usize,
+    },
+    /// Wrapped centralized mathematical error.
+    #[error("{0}")]
+    Math(#[from] math_commons::error::MathError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -116,13 +171,15 @@ pub enum LoraError {
     KeyMismatch,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 #[allow(missing_docs)]
 pub enum IsosurfaceError {
     /// The grid dimensions are too small (must be at least 2x2x2).
+    #[error("Invalid isosurface grid: {0}")]
     InvalidGrid(String),
     /// Wrapped centralized mathematical error.
-    Math(math_commons::error::MathError),
+    #[error("{0}")]
+    Math(#[from] math_commons::error::MathError),
 }
 
 impl Diagnostic for PharmacokineticsError {
@@ -159,12 +216,18 @@ impl Diagnostic for BatteryError {
 impl Diagnostic for GameTheoryError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        Severity::Error
+        match self {
+            Self::Math(err) => err.severity(),
+            _ => Severity::Error,
+        }
     }
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "GameTheoryError".to_string());
+        if let Self::Math(math_err) = self {
+            map.extend(math_err.metadata());
+        }
         map.insert("description".to_string(), self.to_string());
         map
     }
@@ -173,12 +236,18 @@ impl Diagnostic for GameTheoryError {
 impl Diagnostic for EngineeringError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        Severity::Error
+        match self {
+            Self::Math(err) => err.severity(),
+            _ => Severity::Error,
+        }
     }
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "EngineeringError".to_string());
+        if let Self::Math(math_err) = self {
+            map.extend(math_err.metadata());
+        }
         map.insert("description".to_string(), self.to_string());
         map
     }
@@ -201,7 +270,10 @@ impl Diagnostic for LoraError {
 impl Diagnostic for IsosurfaceError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        Severity::Error
+        match self {
+            Self::Math(err) => err.severity(),
+            _ => Severity::Error,
+        }
     }
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
@@ -214,90 +286,6 @@ impl Diagnostic for IsosurfaceError {
         map
     }
 }
-
-impl From<math_commons::error::MathError> for IsosurfaceError {
-    fn from(err: math_commons::error::MathError) -> Self {
-        IsosurfaceError::Math(err)
-    }
-}
-
-impl std::fmt::Display for GameTheoryError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NonSquarePayoffMatrix { rows, cols } => {
-                write!(f, "payoff matrix must be square (got {rows}x{cols})")
-            }
-            Self::InvalidParameter { name, value } => {
-                write!(f, "invalid game theory parameter {name}: {value}")
-            }
-            Self::EmptyStrategies => write!(f, "strategy set or player count cannot be empty"),
-            Self::DimensionMismatch { expected, actual } => {
-                write!(f, "dimension mismatch (expected {expected}, got {actual})")
-            }
-            Self::InvalidPayoff { row, col, value } => {
-                write!(
-                    f,
-                    "invalid payoff or probability at ({row}, {col}): {value}"
-                )
-            }
-            Self::SupportEnumerationCapExceeded {
-                rows,
-                cols,
-                max_dim,
-            } => write!(
-                f,
-                "bimatrix size {rows}x{cols} exceeds support enumeration cap {max_dim}x{max_dim}"
-            ),
-            Self::CoalitionCapExceeded {
-                players,
-                max_players,
-            } => write!(
-                f,
-                "coalition player count {players} exceeds bitmask cap of {max_players}"
-            ),
-            Self::WorkspaceTooSmall { required, actual } => {
-                write!(
-                    f,
-                    "game theory workspace too small (required {required}, got {actual})"
-                )
-            }
-            Self::PivotLimitExceeded { max_pivots } => {
-                write!(f, "pivot limit exceeded after {max_pivots} pivots")
-            }
-            Self::NoEquilibriumFound => write!(f, "no equilibrium found"),
-        }
-    }
-}
-
-impl std::error::Error for GameTheoryError {}
-
-impl std::fmt::Display for EngineeringError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for EngineeringError {}
-
-impl std::fmt::Display for IsosurfaceError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for IsosurfaceError {
-    #[verified_engine::verified]
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Math(err) => Some(err),
-            Self::InvalidGrid(_) => None,
-        }
-    }
-}
-
 mod submodule_diagnostics;
 mod umbrella;
 

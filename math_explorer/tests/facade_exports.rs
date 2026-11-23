@@ -149,6 +149,7 @@ fn assert_pure_math_eighteen_errors() {
         e::EllipticCurveError::InvalidDegree.severity(),
         e::EvolutionError::InvalidState.severity(),
         e::FractranError::InvalidFractionSyntax.severity(),
+        e::ShannonError::EmptyDistribution.severity(),
         e::OptimizationError::ConversionError.severity(),
         e::StochasticError::InvalidReactionIndex(1).severity(),
         e::TensorError::IndexOutOfBounds.severity(),
@@ -244,8 +245,9 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
     use math_explorer::applied::game_theory::mechanism_design::{ContinuousCDF, Distribution};
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
-        AppliedError, BatteryError, ClinicalTrialError, EngineeringError, Error, GameTheoryError,
-        IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+        AppliedError, BatteryError, ClinicalTrialError, DecisionTheoryError, EngineeringError,
+        Error, GameTheoryError, IsosurfaceError, KalmanError, LoraError, PharmacokineticsError,
+        VoxelGridError,
     };
 
     let model = PowerLawModel::standard();
@@ -269,6 +271,7 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
     let severities = [
         BatteryError::InvalidCapacity(1.5).severity(),
         ClinicalTrialError::ZeroTotalCount.severity(),
+        DecisionTheoryError::EmptyTree.severity(),
         EngineeringError::InvalidParameter {
             name: "bits".to_string(),
             value: 0.0,
@@ -308,8 +311,10 @@ fn biology_facade_exports_all_three_errors_and_umbrella() {
 #[cfg(feature = "climate")]
 #[test]
 fn climate_facade_exports_error_module_and_cera_types() {
-    use math_explorer::climate::cera::CeraConfig;
-    use math_explorer::climate::error as climate_error;
+    use math_explorer::climate::cera::{Cera, CeraConfig};
+    use math_explorer::climate::error::ClimateError as InnerClimateError;
+    use math_explorer::diagnostics::{Diagnostic, Severity};
+    use math_explorer::error::{ClimateError, Error, MathError};
 
     let cfg = CeraConfig {
         learning_rate: 1e-3,
@@ -318,14 +323,24 @@ fn climate_facade_exports_error_module_and_cera_types() {
         epochs: 2,
         batch_size: 4,
         in_channels: 3,
-        latent_channels: 4,
-        aligned_channels: 2,
+        latent_channels: 2,
+        aligned_channels: 4,
         num_levels: 5,
         output_size: 2,
     };
-    assert_eq!(cfg.latent_channels, 4);
-    #[allow(unused_imports)]
-    use climate_error::*;
+    let Err(err) = Cera::new(cfg) else {
+        panic!("expected aligned_channels > latent_channels error");
+    };
+    let inner: InnerClimateError = err.clone();
+    assert_eq!(inner.severity(), Severity::Error);
+    assert!(!err.to_string().contains('{'));
+    let converted = ClimateError::from(MathError::OutOfBounds {
+        value: 1.5,
+        min: 0.0,
+        max: 1.0,
+    });
+    assert_eq!(converted.severity(), Severity::Error);
+    let _facade: Error = err.into();
 }
 
 #[cfg(feature = "epidemiology")]
@@ -385,7 +400,7 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     feature = "physics"
 ))]
 #[test]
-fn all_forty_nine_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
+fn all_fifty_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
     umbrella_checks::verify_prelude_error_reexports();
     umbrella_checks::verify_bus_capture_and_zero_alloc_facade_result();
 }
