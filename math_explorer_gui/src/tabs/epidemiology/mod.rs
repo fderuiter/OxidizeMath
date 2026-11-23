@@ -5,7 +5,6 @@ use eframe::egui;
 pub mod network_propagation;
 pub mod sir;
 
-
 pub struct EpidemiologyTab {
     framework: crate::framework::SimulationFramework,
 }

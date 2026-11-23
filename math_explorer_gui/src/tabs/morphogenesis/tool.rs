@@ -60,7 +60,8 @@ impl Default for MorphogenesisTool {
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
 
         let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
-        let runner = Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
+        let runner =
+            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -176,9 +177,8 @@ impl MorphogenesisTool {
         let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
-        self.worker.reset_or_respawn(|| {
-            Self::create_kinetics_runner(&params, &ks, &mask, width, height)
-        });
+        self.worker
+            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
