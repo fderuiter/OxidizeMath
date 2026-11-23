@@ -1,9 +1,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{HeatmapView, QTableInspectorTool, QTableRunner};
+use super::{HeatmapView, QTableInspectorTool, SculptedQTableRunner};
 use crate::async_sim::{BackgroundWorker, SimulationRunner};
-use math_explorer::ai::reinforcement_learning::algorithms::TabularQAgent;
-use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv, Move};
+use crate::tabs::ai::rl_sculpt::{
+    apply_rle_to_mdp, encode_custom_cells_rle, is_zero_f64, RlSolverMode,
+};
+use math_explorer::ai::reinforcement_learning::SculptedGridMdp;
+
+fn default_dim() -> i32 {
+    5
+}
+
+fn is_default_dim(val: &i32) -> bool {
+    *val == 5
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -11,25 +21,29 @@ struct QTableInspectorState {
     view: HeatmapView,
     gamma: f64,
     pretrain_episodes: u32,
-}
-
-fn build_env(gamma: f64) -> GridWorldEnv {
-    GridWorldEnv {
-        width: 5,
-        height: 5,
-        start: GridState { x: 0, y: 0 },
-        goal: GridState { x: 4, y: 4 },
-        traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
-        gamma,
-    }
+    #[serde(default = "default_dim", skip_serializing_if = "is_default_dim")]
+    width: i32,
+    #[serde(default = "default_dim", skip_serializing_if = "is_default_dim")]
+    height: i32,
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    wind_slip_prob: f64,
+    #[serde(default, skip_serializing_if = "RlSolverMode::is_default")]
+    solver_mode: RlSolverMode,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    rle_mask: Vec<[u32; 2]>,
 }
 
 impl QTableInspectorTool {
     pub(super) fn save_preset_state(&self) -> Option<String> {
         serde_json::to_string(&QTableInspectorState {
             view: self.view,
-            gamma: self.env.gamma,
+            gamma: self.mdp.gamma,
             pretrain_episodes: self.episodes_trained,
+            width: self.mdp.width,
+            height: self.mdp.height,
+            wind_slip_prob: self.mdp.wind_slip_prob,
+            solver_mode: self.solver_mode,
+            rle_mask: encode_custom_cells_rle(&self.mdp),
         })
         .ok()
     }
@@ -37,41 +51,42 @@ impl QTableInspectorTool {
     pub(super) fn try_load_preset_state(&mut self, state: &str) -> Result<(), String> {
         let parsed: QTableInspectorState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Q-table state: {e}"))?;
-        if !parsed.gamma.is_finite()
+        if !(2..=20).contains(&parsed.width)
+            || !(2..=20).contains(&parsed.height)
+            || !parsed.gamma.is_finite()
             || !(0.0..=1.0).contains(&parsed.gamma)
+            || !parsed.wind_slip_prob.is_finite()
+            || !(0.0..=1.0).contains(&parsed.wind_slip_prob)
             || parsed.pretrain_episodes > 5_000
         {
-            return Err("Q-table gamma or pretrain_episodes out of bounds".into());
+            return Err(
+                "Q-table dimensions, gamma, wind_slip_prob, or pretrain_episodes out of bounds"
+                    .into(),
+            );
         }
-        let gamma_unit = math_commons::primitives::UnitInterval::new(parsed.gamma)
+        let _ = math_commons::primitives::UnitInterval::new(parsed.gamma)
             .map_err(|e| format!("Invalid discount factor: {e}"))?;
-        let alpha = math_commons::primitives::UnitInterval::new(0.1).unwrap();
-        let eps = math_commons::primitives::UnitInterval::new(0.1).unwrap();
 
-        let mut runner = QTableRunner {
-            env: build_env(parsed.gamma),
-            agent: TabularQAgent::new(alpha, gamma_unit, eps, None),
-            episodes_trained: 0,
-            target_episodes: parsed.pretrain_episodes,
-            is_training: parsed.pretrain_episodes > 0,
-        };
+        let mut mdp =
+            SculptedGridMdp::default_with_traps(parsed.width, parsed.height, parsed.gamma);
+        mdp.wind_slip_prob = parsed.wind_slip_prob;
+        apply_rle_to_mdp(&mut mdp, &parsed.rle_mask)?;
+
+        let mut runner = SculptedQTableRunner::from_mdp(mdp.clone(), parsed.solver_mode);
+        runner.target_episodes = parsed.pretrain_episodes;
+        runner.is_training = parsed.pretrain_episodes > 0;
         while !runner.is_complete() {
             runner.step();
         }
-        self.env = build_env(parsed.gamma);
-        self.cached_q_values.clear();
-        for x in 0..self.env.width {
-            for y in 0..self.env.height {
-                let st = GridState { x, y };
-                for action in [Move::Up, Move::Down, Move::Left, Move::Right] {
-                    self.cached_q_values
-                        .insert((st, action), runner.agent.get_q_value(&st, &action));
-                }
-            }
-        }
+
+        self.mdp = mdp;
+        self.solver_mode = parsed.solver_mode;
+        self.latest_snap = runner.build_q_snapshot();
         self.episodes_trained = runner.episodes_trained;
+        self.latest_audio = runner.latest_audio;
         self.view = parsed.view;
         self.worker = BackgroundWorker::new(runner);
+        self.revision = self.revision.wrapping_add(1);
         Ok(())
     }
 }

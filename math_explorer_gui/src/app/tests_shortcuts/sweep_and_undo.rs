@@ -308,12 +308,13 @@ fn test_single_layout_ctrl_z_and_ctrl_y_across_all_explorer_tabs_and_strip_short
     let mods = shortcut_mods();
 
     #[cfg(all(
+        feature = "pure_math",
         feature = "biology",
         feature = "climate",
         feature = "epidemiology",
         feature = "physics"
     ))]
-    assert_eq!(app.tabs.len(), 27);
+    assert_eq!(app.tabs.len(), 28);
 
     app.set_layout(ViewportLayout::Single);
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());

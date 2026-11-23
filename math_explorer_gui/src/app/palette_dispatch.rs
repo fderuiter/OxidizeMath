@@ -124,6 +124,22 @@ impl MathExplorerApp {
             tab.apply_starter_gallery_selection(ctx, slug, false, Some(selection));
         }
         self.clear_active_pane_caches();
+        self.request_pane_focus_handoff(ctx, pane_idx);
+    }
+
+    fn request_pane_focus_handoff(&mut self, ctx: &egui::Context, target_pane: usize) {
+        self.focus_pane(target_pane);
+        ctx.data_mut(|d| {
+            d.insert_temp(
+                egui::Id::new(super::viewport::focus::PENDING_PANE_FOCUS_KEY),
+                target_pane,
+            );
+            d.insert_temp(
+                egui::Id::new(super::viewport::focus::ACTIVE_FOCUSED_PANE_KEY),
+                target_pane,
+            );
+        });
+        ctx.request_repaint();
     }
 
     /// Switches `pane_idx` to the domain tab owning `card` and applies its tool and preset configuration.
@@ -155,6 +171,7 @@ impl MathExplorerApp {
         self.clear_active_pane_caches();
         let msg = format!("Launched starter preset {card_title} in {tab_label}");
         crate::accessibility::announce_live_status(ctx, msg);
+        self.request_pane_focus_handoff(ctx, pane_idx);
     }
 
     /// Renders the global `CommandPalette` and executes any returned selection on `focused_pane`.
@@ -204,6 +221,8 @@ impl MathExplorerApp {
             }
         }
         self.clear_active_pane_caches();
+        let target_pane = self.active_focused_pane();
+        self.request_pane_focus_handoff(ctx, target_pane);
     }
 
     fn execute_palette_action(&mut self, ctx: &egui::Context, action: PaletteAction) {

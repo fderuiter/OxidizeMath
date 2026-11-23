@@ -100,6 +100,7 @@ mod tests {
             crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool,
             crate::tabs::medical::radar_gating::RadarGatingTool,
             crate::tabs::chaos::hamiltonian::HamiltonianChaosLab,
+            crate::tabs::optics_waves::tool::OpticsWaveTool,
             crate::tabs::relativity::inspector::ChristoffelInspectorTool,
             crate::tabs::relativity::playground::GeodesicPlaygroundTool,
         );

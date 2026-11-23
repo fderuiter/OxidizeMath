@@ -399,6 +399,10 @@ pub const PRESET_FAVORITISM_SIBLING_RIVALRY: &str = r#"{
   }
 }"#;
 
+#[path = "starter_gallery/counterfactual_presets.rs"]
+mod counterfactual_presets;
+pub use counterfactual_presets::*;
+
 #[path = "starter_gallery/challenges.rs"]
 pub mod challenges;
 #[path = "starter_gallery/filter_ui.rs"]

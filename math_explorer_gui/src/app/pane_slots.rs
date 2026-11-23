@@ -184,17 +184,18 @@ impl MathExplorerApp {
             return;
         };
         let keep = self.viewport_layout.pane_count();
-        let in_kept_pane = ctx.read_response(fid).is_some_and(|resp| {
-            ctx.data(|d| {
-                d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"))
-                    .is_none_or(|rects| {
-                        rects
-                            .iter()
-                            .take(keep)
-                            .any(|r| r.contains(resp.rect.center()))
-                    })
-            })
-        });
+        let in_kept_pane =
+            super::viewport::focus::inspect_widget_response(ctx, fid).is_some_and(|resp| {
+                ctx.data(|d| {
+                    d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"))
+                        .is_none_or(|rects| {
+                            rects
+                                .iter()
+                                .take(keep)
+                                .any(|r| r.contains(resp.rect.center()))
+                        })
+                })
+            });
         if !in_kept_pane {
             ctx.memory_mut(|m| m.surrender_focus(fid));
         }
@@ -417,9 +418,10 @@ impl MathExplorerApp {
         if super::viewport::sash::is_any_sash_id(fid) {
             return;
         }
-        let inside_target = ctx.read_response(fid).is_some_and(|resp| {
-            super::viewport::focus::response_belongs_to_pane(&resp, target_pane_rect)
-        });
+        let inside_target =
+            super::viewport::focus::inspect_widget_response(ctx, fid).is_some_and(|resp| {
+                super::viewport::focus::response_belongs_to_pane(&resp, target_pane_rect)
+            });
         if !inside_target {
             ctx.memory_mut(|m| m.surrender_focus(fid));
         }

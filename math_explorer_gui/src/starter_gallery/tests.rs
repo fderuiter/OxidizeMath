@@ -76,7 +76,7 @@ fn test_all_registered_tools_have_starter_presets() {
         feature = "epidemiology",
         feature = "physics"
     ))]
-    assert_eq!(tools.len(), 86, "Expected 86 registered tools");
+    assert_eq!(tools.len(), 87, "Expected 87 registered tools");
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
@@ -89,8 +89,8 @@ fn test_all_registered_tools_have_starter_presets() {
     ))]
     assert_eq!(
         presets.len(),
-        138,
-        "Expected 138 registered starter presets"
+        148,
+        "Expected 148 registered starter presets"
     );
 
     for tool in &tools {
@@ -274,8 +274,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        138,
-        "Expected 138 StarterPresetMetadata entries"
+        148,
+        "Expected 148 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -303,7 +303,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(tools.len(), 86, "Expected 86 InteractiveTool registrations");
+    assert_eq!(tools.len(), 87, "Expected 87 InteractiveTool registrations");
 
     for tool_meta in tools {
         let default_tool = (tool_meta.build)();

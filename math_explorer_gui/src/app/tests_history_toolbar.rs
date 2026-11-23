@@ -124,12 +124,13 @@ fn test_all_tabs_render_undo_and_redo_buttons_matching_can_undo_and_can_redo() {
     ctx.enable_accesskit();
     let mut app = MathExplorerApp::default();
     #[cfg(all(
+        feature = "pure_math",
         feature = "biology",
         feature = "climate",
         feature = "epidemiology",
         feature = "physics"
     ))]
-    assert_eq!(app.tabs.len(), 27);
+    assert_eq!(app.tabs.len(), 28);
     let out0 = run_frame(&ctx, &mut app, Vec::new());
     for tab_idx in 0..app.tabs.len() {
         app.selected_tab = tab_idx;
