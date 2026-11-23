@@ -36,6 +36,7 @@ fn test_pure_math_leaf_wrappers_preserve_source_chain() {
 fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
     let cases: Vec<PureMathError> = vec![
         CopulaError::NotSymmetric.into(),
+        EloError::InvalidScale { value: 0.0 }.into(),
         Glicko2Error::EmptyMatchResults.into(),
         KellyError::InvalidOdds { value: 0.5 }.into(),
         MarketPricingError::NoArbitrage {
@@ -43,6 +44,7 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         }
         .into(),
         MarkovError::from(sample_math_err()).into(),
+        MatchModelError::InvalidGoalRate { value: -1.0 }.into(),
         NumberTheoryError::ModuloError.into(),
         OuError::InvalidTimeStep { value: 0.0 }.into(),
         TdaError::EmptyPointCloud.into(),
