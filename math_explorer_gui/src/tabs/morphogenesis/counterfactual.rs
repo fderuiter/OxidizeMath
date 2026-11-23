@@ -12,9 +12,9 @@ use crate::framework::{
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui::{Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
-use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::{MaskedFiniteDifference2D, SpatialDiffusion};
 use math_explorer::biology::morphogenesis::{DiffusionCoeff, TuringSystem};
-use math_explorer::math_kernel::types::{Dimension, StepSize};
+use math_explorer::math_kernel::types::Dimension;
 use serde::{Deserialize, Serialize};
 
 /// Spatial heatmap visualization mode when a counterfactual Turing fork is active.
@@ -94,7 +94,10 @@ impl MorphogenesisForkDescriptor {
                 ));
             }
         }
-        for (name, opt) in [("baseline_f", self.baseline_f), ("baseline_k", self.baseline_k)] {
+        for (name, opt) in [
+            ("baseline_f", self.baseline_f),
+            ("baseline_k", self.baseline_k),
+        ] {
             if let Some(val) = opt {
                 if !val.is_finite() || !(0.0..=0.12).contains(&val) {
                     return Err(format!(
@@ -107,13 +110,15 @@ impl MorphogenesisForkDescriptor {
     }
 }
 
-/// Structured worker payload carrying `u_B`, optional baseline `u_A`, and twin metrics.
+/// Structured worker payload carrying `u_B`, optional baseline `u_A`, mask roles, and twin metrics.
 #[derive(Clone, Debug)]
 pub struct MorphogenesisSnapshotData {
     /// Active `Branch B` activator field `u_B`.
     pub u_b: Vec<f64>,
     /// Unperturbed `Branch A` activator field `u_A` when forked.
     pub u_a: Option<Vec<f64>>,
+    /// Optional row-major `ReactionCellRole` byte grid when any cell is non-`Free`.
+    pub mask_roles: Vec<u8>,
     /// Current step index `k`.
     pub step_count: usize,
     /// Live spatial divergence snapshot when forked.
@@ -123,8 +128,8 @@ pub struct MorphogenesisSnapshotData {
 /// Returns the primary pattern-forming species slice (`u` for Schnakenberg, `v` for Gray-Scott).
 #[inline]
 #[must_use]
-pub fn active_morphogen_slice(
-    sys: &TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
+pub fn active_morphogen_slice<D: SpatialDiffusion<2>>(
+    sys: &TuringSystem<2, MorphogenesisKineticsAdapter, D>,
 ) -> &[f64] {
     match sys.kinetics.mode {
         MorphogenesisKineticsMode::Schnakenberg => sys.u(),
@@ -134,8 +139,8 @@ pub fn active_morphogen_slice(
 
 /// Returns a mutable slice of the primary pattern-forming species (`u` or `v`).
 #[inline]
-pub fn active_morphogen_slice_mut(
-    sys: &mut TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
+pub fn active_morphogen_slice_mut<D: SpatialDiffusion<2>>(
+    sys: &mut TuringSystem<2, MorphogenesisKineticsAdapter, D>,
 ) -> &mut [f64] {
     match sys.kinetics.mode {
         MorphogenesisKineticsMode::Schnakenberg => sys.u_mut(),
@@ -145,8 +150,8 @@ pub fn active_morphogen_slice_mut(
 
 /// Pre-allocated counterfactual shadow twin state for `MorphogenesisKineticsRunner` (zero-alloc `step()`).
 pub struct MorphogenesisTwinState {
-    /// Frozen baseline `TuringSystem` (`Branch A`) with pre-allocated double buffers.
-    pub system_a: TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
+    /// Frozen baseline `TuringSystem` (`Branch A`) with pre-allocated double buffers and cell mask.
+    pub system_a: TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D>,
     /// Cloned baseline PRNG state at `t_k`.
     pub rng_a: SimpleRng,
     /// Step index `k > 0` where the fork was anchored.
@@ -163,23 +168,18 @@ pub struct MorphogenesisTwinState {
     pub tracker: SeparationTracker,
 }
 
-/// Clones a 2D `TuringSystem` (pre-allocating both `state` and `next_state` buffers).
+/// Clones a 2D masked `TuringSystem` (pre-allocating `state`, `next_state`, and `CellMask2D`).
 pub fn clone_turing_system(
-    src: &TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
+    src: &TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D>,
     width: usize,
     height: usize,
-) -> TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D> {
+) -> TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D> {
     let mut dst = TuringSystem::new_with_kinetics(
         Dimension(width * height),
         DiffusionCoeff(src.diffusion_coeffs[0]),
         DiffusionCoeff(src.diffusion_coeffs[1]),
         src.kinetics,
-        FiniteDifference2D::new(
-            Dimension(width),
-            Dimension(height),
-            StepSize(1.0),
-            StepSize(1.0),
-        ),
+        src.diffusion.clone(),
     );
     dst.u_mut().copy_from_slice(src.u());
     dst.v_mut().copy_from_slice(src.v());
@@ -193,7 +193,7 @@ impl MorphogenesisTwinState {
         dt: f64,
         width: usize,
         height: usize,
-        system_b: &mut TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
+        system_b: &mut TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D>,
         rng_b: &mut SimpleRng,
         delta_u: f64,
     ) -> Self {

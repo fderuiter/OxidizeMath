@@ -218,3 +218,78 @@ fn test_morphogenesis_twin_exports_and_finite_state_guard_rollback() {
         Some(pre_fault_state.as_str())
     );
 }
+
+#[test]
+fn test_morphogenesis_sculpted_maze_twin_parity_and_zero_alloc() {
+    let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
+        a: 0.1,
+        b: 0.9,
+        d_u: 1.0,
+        d_v: 30.0,
+        dt: 0.005,
+        high_contrast: false,
+        theme_mode: ThemeMode::Dark,
+        heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
+    }));
+    let mut runner = MorphogenesisRunner::new_seeded(&params, 32, 32);
+    runner.process_command(crate::async_sim::SimCommand::Custom("stamp_maze".into()));
+    assert!(runner.system.diffusion.mask.has_active_cells());
+    for _ in 0..8 {
+        runner.step();
+    }
+    assert!(runner.fork_here(0.0));
+    assert!(runner
+        .twin
+        .as_ref()
+        .unwrap()
+        .system_a
+        .diffusion
+        .mask
+        .has_active_cells());
+    for _ in 0..100 {
+        runner.step();
+    }
+    let twin = runner.twin.as_ref().expect("masked twin active");
+    assert_eq!(twin.l2_norm, 0.0);
+    assert_eq!(twin.linf_norm, 0.0);
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    verified_engine::engine::VerifiedEngine::run_verified(|| {
+        runner.step_branch_a();
+        runner.step_branch_b();
+    });
+}
+
+#[test]
+fn test_morphogenesis_fork_and_brush_mask_state_roundtrip() {
+    let mut tool = MorphogenesisTool::default();
+    tool.dispatch_brush_stroke(
+        crate::framework::BrushStroke {
+            start: [50.0, 50.0],
+            end: [55.0, 55.0],
+            radius: 3.0,
+            mode: crate::framework::BrushMode::ZeroFluxWall,
+            drag_vector: [5.0, 5.0],
+        },
+        None,
+    );
+    tool.step_simulation();
+    assert!(tool.apply_counterfactual_action(BranchControlAction::ForkHere));
+    tool.params.write().unwrap().d_v = 45.0;
+    tool.step_simulation();
+    let saved = tool.save_state().expect("fork + mask state serializes");
+    let mut restored = MorphogenesisTool::default();
+    restored
+        .try_load_state(&saved)
+        .expect("fork + mask state restores");
+    assert!(restored.is_forked());
+    assert!(!restored.mask_rle.read().unwrap().is_empty());
+    assert!(restored
+        .local_runner
+        .system
+        .diffusion
+        .mask
+        .has_active_cells());
+    assert!(restored.counterfactual_snapshot().unwrap().l2_separation > 0.0);
+}

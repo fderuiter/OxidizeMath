@@ -21,6 +21,7 @@ mod counterfactual_tool;
 pub mod lenia;
 pub mod presets;
 pub mod runner;
+pub mod sculpt;
 mod seeding;
 pub mod tool;
 pub mod ui;
@@ -177,9 +178,17 @@ impl MorphogenesisTab {
         let f = existing.as_ref().map_or(0.0367, |c| c.f);
         let k = existing.as_ref().map_or(0.0649, |c| c.k);
         let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
-        let atlas_axes = existing
-            .map(|s| s.atlas_axes)
-            .unwrap_or_else(atlas::default_morpho_atlas_axes);
+        let (existing_mask, atlas_axes) = match existing {
+            Some(s) => {
+                let keep_mask = if s.width == config.width && s.height == config.height {
+                    s.mask_rle
+                } else {
+                    Vec::new()
+                };
+                (keep_mask, s.atlas_axes)
+            }
+            None => (Vec::new(), atlas::default_morpho_atlas_axes()),
+        };
         let target_state = if current_state == SimWorkerState::Running {
             SimWorkerState::Running
         } else {
@@ -200,6 +209,7 @@ impl MorphogenesisTab {
             paused: None,
             pending_initial_start: false,
             fork: None,
+            mask_rle: existing_mask,
             atlas_visible,
             atlas_axes,
         };

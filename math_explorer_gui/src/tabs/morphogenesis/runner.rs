@@ -5,12 +5,14 @@ use super::counterfactual::{
     active_morphogen_slice, clone_turing_system, render_morphogenesis_heatmap,
     MorphogenesisHeatmapMode, MorphogenesisSnapshotData, MorphogenesisTwinState,
 };
+use super::sculpt::{apply_sculpt_sim_command, enforce_system_mask, overlay_cell_mask_colors};
 use super::{MorphogenesisTool, SimpleRng};
 use crate::app::ThemeMode;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::framework::decode_rle_mask;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
-use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::{FiniteDifference2D, MaskedFiniteDifference2D};
 use math_explorer::biology::morphogenesis::{
     DiffusionCoeff, GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, TuringSystem,
 };
@@ -84,9 +86,10 @@ pub struct MorphogenesisSharedParams {
 #[cfg(test)]
 pub type MorphogenesisRunner = MorphogenesisKineticsRunner;
 
-/// Multi-kinetics worker runner supporting [`SchnakenbergKinetics`], [`GrayScottKinetics`], and counterfactual shadow twins.
+/// Multi-kinetics worker runner supporting [`SchnakenbergKinetics`], [`GrayScottKinetics`],
+/// zero-allocation [`MaskedFiniteDifference2D`] field sculpting, and counterfactual shadow twins.
 pub struct MorphogenesisKineticsRunner {
-    pub(crate) system: TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
+    pub(crate) system: TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D>,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
     pub(crate) width: usize,
@@ -121,6 +124,7 @@ impl MorphogenesisKineticsRunner {
     pub fn new_with_kinetics(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
         width: usize,
         height: usize,
     ) -> Self {
@@ -132,21 +136,29 @@ impl MorphogenesisKineticsRunner {
             let ks = kinetics_state.read().unwrap_or_else(|e| e.into_inner());
             (ks.mode, ks.f, ks.k)
         };
+        let diffusion = FiniteDifference2D::new(
+            Dimension(width),
+            Dimension(height),
+            StepSize(1.0),
+            StepSize(1.0),
+        )
+        .with_mask();
         let mut system = TuringSystem::new_with_kinetics(
             Dimension(width * height),
             DiffusionCoeff(d_u),
             DiffusionCoeff(d_v),
             MorphogenesisKineticsAdapter { mode, a, b, f, k },
-            FiniteDifference2D::new(
-                Dimension(width),
-                Dimension(height),
-                StepSize(1.0),
-                StepSize(1.0),
-            ),
+            diffusion,
         );
         let mut rng = SimpleRng::new(12345);
         MorphogenesisTool::initialize_adapter_system_with_rng(&mut system, width, height, &mut rng);
-        Self {
+        let rle = mask_rle.read().unwrap_or_else(|e| e.into_inner()).clone();
+        if !rle.is_empty() {
+            if let Ok(bytes) = decode_rle_mask(&rle, width * height) {
+                let _ = system.diffusion.mask.set_roles_slice(&bytes);
+            }
+        }
+        let mut runner = Self {
             system,
             params: Arc::clone(params),
             kinetics_state: Arc::clone(kinetics_state),
@@ -155,7 +167,9 @@ impl MorphogenesisKineticsRunner {
             rng,
             step_count: 0,
             twin: None,
-        }
+        };
+        runner.enforce_mask_concentrations();
+        runner
     }
 
     /// Creates a deterministically seeded Schnakenberg runner (`seed = 12345`) at `step_count = 0`.
@@ -166,7 +180,8 @@ impl MorphogenesisKineticsRunner {
         height: usize,
     ) -> Self {
         let ks = Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
-        Self::new_with_kinetics(params, &ks, width, height)
+        let mask = Arc::new(std::sync::RwLock::new(Vec::new()));
+        Self::new_with_kinetics(params, &ks, &mask, width, height)
     }
 
     /// Clones this runner outside `VerifiedEngine::run_verified`.
@@ -238,6 +253,10 @@ impl MorphogenesisKineticsRunner {
         self.twin.take().is_some()
     }
 
+    pub(crate) fn enforce_mask_concentrations(&mut self) {
+        enforce_system_mask(&mut self.system, self.width, self.height);
+    }
+
     fn reset_in_place(&mut self) {
         let _ = self.sync_system_params();
         self.rng = SimpleRng::new(12345);
@@ -249,8 +268,26 @@ impl MorphogenesisKineticsRunner {
             self.height,
             &mut self.rng,
         );
+        self.enforce_mask_concentrations();
     }
 
+    fn process_custom_command(&mut self, s: &str) {
+        if s == "reinit" {
+            self.reset_in_place();
+        } else if s == "clear_mask" {
+            self.system.diffusion.mask.clear();
+        } else if s == "stamp_maze" {
+            self.system.diffusion.mask.stamp_microfluidic_maze();
+            self.enforce_mask_concentrations();
+        } else if let Some(rest) = s.strip_prefix("fork:") {
+            let delta = rest.parse::<f64>().unwrap_or(0.0);
+            let _ = self.fork_here(delta);
+        } else if s == "swap" {
+            let _ = self.swap_branches();
+        } else if s == "clear_fork" {
+            let _ = self.clear_fork();
+        }
+    }
     fn sync_system_params(&mut self) -> Option<f64> {
         let (a, b, d_u, d_v, dt) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -292,6 +329,7 @@ impl MorphogenesisKineticsRunner {
                     self.width,
                     self.height,
                 );
+                self.enforce_mask_concentrations();
             }
         }
         (dt.is_finite() && dt > 0.0).then_some(dt)
@@ -300,19 +338,12 @@ impl MorphogenesisKineticsRunner {
 
 impl SimulationRunner for MorphogenesisKineticsRunner {
     fn process_command(&mut self, cmd: SimCommand) {
+        if apply_sculpt_sim_command(&mut self.system, self.width, self.height, &cmd) {
+            return;
+        }
         match cmd {
             SimCommand::Reset => self.reset_in_place(),
-            SimCommand::Custom(ref s) if s == "reinit" => self.reset_in_place(),
-            SimCommand::Custom(ref s) => {
-                if let Some(rest) = s.strip_prefix("fork:") {
-                    let delta = rest.parse::<f64>().unwrap_or(0.0);
-                    let _ = self.fork_here(delta);
-                } else if s == "swap" {
-                    let _ = self.swap_branches();
-                } else if s == "clear_fork" {
-                    let _ = self.clear_fork();
-                }
-            }
+            SimCommand::Custom(ref s) => self.process_custom_command(s),
             _ => {}
         }
     }
@@ -342,6 +373,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
         }
         if let Some(dt) = self.sync_system_params() {
             if let Some(ref mut twin) = self.twin {
+                enforce_system_mask(&mut twin.system_a, self.width, self.height);
                 twin.step_branch_a(dt);
             }
         }
@@ -352,6 +384,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             return;
         }
         if let Some(dt) = self.sync_system_params() {
+            self.enforce_mask_concentrations();
             self.system.step(dt);
             self.step_count += 1;
             if let Some(ref mut twin) = self.twin {
@@ -366,8 +399,10 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
         }
         if let Some(dt) = self.sync_system_params() {
             if let Some(ref mut twin) = self.twin {
+                enforce_system_mask(&mut twin.system_a, self.width, self.height);
                 twin.step_branch_a(dt);
             }
+            self.enforce_mask_concentrations();
             self.system.step(dt);
             self.step_count += 1;
             if let Some(ref mut twin) = self.twin {
@@ -389,7 +424,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             .twin
             .as_ref()
             .map(|t| active_morphogen_slice(&t.system_a).to_vec());
-        let image = render_morphogenesis_heatmap(
+        let mut image = render_morphogenesis_heatmap(
             &u_b,
             u_a.as_deref(),
             self.width,
@@ -397,6 +432,15 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             heatmap_mode,
             theme_mode,
         );
+        let mask_roles = if self.system.diffusion.mask.has_active_cells() {
+            let roles = self.system.diffusion.mask.roles().to_vec();
+            if heatmap_mode == MorphogenesisHeatmapMode::ActiveUb {
+                overlay_cell_mask_colors(&mut image, &roles, theme_mode == ThemeMode::HighContrast);
+            }
+            roles
+        } else {
+            Vec::new()
+        };
         let divergence = self.twin.as_ref().map(|t| t.snapshot(self.step_count, dt));
         StateSnapshot {
             width: self.width,
@@ -406,6 +450,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             structured_data: Some(Box::new(MorphogenesisSnapshotData {
                 u_b,
                 u_a,
+                mask_roles,
                 step_count: self.step_count,
                 divergence,
             })),

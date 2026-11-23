@@ -319,26 +319,16 @@ impl RegimeCartographer for MorphogenesisCartographer {
 
     fn format_hover_tooltip(&self, p1: f64, p2: f64, cell: AtlasCell) -> String {
         let reg = MorphogenesisRegime::from_u8(cell.regime);
+        let (xk, yk, lbl) = (self.axes.x.key, self.axes.y.key, reg.label());
         if reg == MorphogenesisRegime::EulerCflUnstable {
             format!(
-                "{} = {:.4}, {} = {:.4}\nRegime: {}\nEuler Amplification |G|: {:.3} (> 1.0 unstable)",
-                self.axes.x.key,
-                p1,
-                self.axes.y.key,
-                p2,
-                reg.label(),
+                "{xk} = {p1:.4}, {yk} = {p2:.4}\nRegime: {lbl}\nEuler Amplification |G|: {:.3} (> 1.0 unstable)",
                 cell.primary
             )
         } else {
             format!(
-                "{} = {:.4}, {} = {:.4}\nRegime: {}\nDominant Growth Re(λ): {:+.4} (k² = {:.3})",
-                self.axes.x.key,
-                p1,
-                self.axes.y.key,
-                p2,
-                reg.label(),
-                cell.primary,
-                cell.secondary
+                "{xk} = {p1:.4}, {yk} = {p2:.4}\nRegime: {lbl}\nDominant Growth Re(λ): {:+.4} (k² = {:.3})",
+                cell.primary, cell.secondary
             )
         }
     }
@@ -405,11 +395,13 @@ impl MorphogenesisTool {
         self.worker
             .latest_snapshot()
             .and_then(|snap| {
-                snap.structured_data
-                    .as_ref()
-                    .and_then(|d| d.downcast_ref::<super::counterfactual::MorphogenesisSnapshotData>())
-                    .map(|data| grid_u_variance(&data.u_b))
+                snap.structured_data.as_ref().and_then(|d| {
+                    d.downcast_ref::<super::counterfactual::MorphogenesisSnapshotData>()
+                        .map(|data| data.u_b.as_slice())
+                        .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+                })
             })
+            .map(grid_u_variance)
             .is_some_and(|v| v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD)
     }
 
@@ -436,6 +428,7 @@ impl MorphogenesisTool {
             sr.system.kinetics.b = b;
             sr.system.diffusion_coeffs = [d_u, d_v];
             Self::initialize_adapter_system(&mut sr.system, self.width, self.height);
+            sr.enforce_mask_concentrations();
         }
         let _ = self
             .worker

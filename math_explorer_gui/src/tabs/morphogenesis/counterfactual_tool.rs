@@ -6,7 +6,9 @@ use super::counterfactual::{
     active_morphogen_slice, active_morphogen_slice_mut, render_morphogenesis_heatmap,
     MorphogenesisForkDescriptor, MorphogenesisHeatmapMode, MorphogenesisSnapshotData,
 };
+use super::sculpt::overlay_cell_mask_colors;
 use super::MorphogenesisTool;
+use crate::app::ThemeMode;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner};
 use crate::framework::BranchControlAction;
 use eframe::egui::ColorImage;
@@ -51,6 +53,11 @@ impl MorphogenesisTool {
     /// Forks a counterfactual shadow twin at `step_count > 0`.
     pub fn fork_here(&mut self) -> bool {
         self.pull_latest_worker_snapshot();
+        if let Some(ref sr) = self.step_runner {
+            if sr.step_count > self.local_runner.step_count {
+                self.local_runner = sr.clone_outside_step();
+            }
+        }
         let delta = self.branch_engine.effective_delta();
         if !self.local_runner.fork_here(delta) {
             return false;
@@ -128,6 +135,16 @@ impl MorphogenesisTool {
         {
             self.local_runner.step_count = data.step_count;
             active_morphogen_slice_mut(&mut self.local_runner.system).copy_from_slice(&data.u_b);
+            if data.mask_roles.is_empty() {
+                self.local_runner.system.diffusion.mask.clear();
+            } else {
+                let _ = self
+                    .local_runner
+                    .system
+                    .diffusion
+                    .mask
+                    .set_roles_slice(&data.mask_roles);
+            }
             if let (Some(ref mut twin), Some(ref ua)) = (&mut self.local_runner.twin, &data.u_a) {
                 if ua.len() == self.width * self.height {
                     active_morphogen_slice_mut(&mut twin.system_a).copy_from_slice(ua);
@@ -169,7 +186,9 @@ impl MorphogenesisTool {
         if let Some(bk) = desc.baseline_k {
             ks.k = bk;
         }
-        (active_a, active_b, active_du, active_dv, dt, active_f, active_k)
+        (
+            active_a, active_b, active_du, active_dv, dt, active_f, active_k,
+        )
     }
 
     /// Reconstructs a forked reaction-diffusion simulation from a compact descriptor.
@@ -183,6 +202,7 @@ impl MorphogenesisTool {
         let mut runner = Self::create_kinetics_runner(
             &self.params,
             &self.kinetics_state,
+            &self.mask_rle,
             self.width,
             self.height,
         );
@@ -231,7 +251,7 @@ impl MorphogenesisTool {
                 .and_then(|d| d.downcast_ref::<MorphogenesisSnapshotData>())
                 .filter(|d| d.step_count >= self.local_runner.step_count)
             {
-                return render_morphogenesis_heatmap(
+                let mut img = render_morphogenesis_heatmap(
                     &data.u_b,
                     data.u_a.as_deref(),
                     self.width,
@@ -239,6 +259,14 @@ impl MorphogenesisTool {
                     mode,
                     theme,
                 );
+                if mode == MorphogenesisHeatmapMode::ActiveUb && !data.mask_roles.is_empty() {
+                    overlay_cell_mask_colors(
+                        &mut img,
+                        &data.mask_roles,
+                        theme == ThemeMode::HighContrast,
+                    );
+                }
+                return img;
             }
         }
         let ua = self
@@ -246,14 +274,24 @@ impl MorphogenesisTool {
             .twin
             .as_ref()
             .map(|t| active_morphogen_slice(&t.system_a));
-        render_morphogenesis_heatmap(
+        let mut img = render_morphogenesis_heatmap(
             active_morphogen_slice(&self.local_runner.system),
             ua,
             self.width,
             self.height,
             mode,
             theme,
-        )
+        );
+        if mode == MorphogenesisHeatmapMode::ActiveUb
+            && self.local_runner.system.diffusion.mask.has_active_cells()
+        {
+            overlay_cell_mask_colors(
+                &mut img,
+                self.local_runner.system.diffusion.mask.roles(),
+                theme == ThemeMode::HighContrast,
+            );
+        }
+        img
     }
 
     /// Exports midline (`y = height / 2`) spatial profiles of `u_B`, `u_A`, and `|u_B - u_A|` when forked.
@@ -282,5 +320,30 @@ impl MorphogenesisTool {
             ("Activator u_A (Baseline)".to_string(), series_a),
             ("Difference |u_B - u_A|".to_string(), series_diff),
         ]
+    }
+
+    pub(crate) fn apply_loaded_fork_state(
+        &mut self,
+        width: usize,
+        height: usize,
+        fork_desc: MorphogenesisForkDescriptor,
+        target_state: crate::async_sim::SimWorkerState,
+        pending_initial_start: bool,
+    ) -> Result<(), String> {
+        self.width = width;
+        self.height = height;
+        self.apply_morpho_fork_descriptor(fork_desc)?;
+        if target_state == crate::async_sim::SimWorkerState::Running {
+            self.pending_initial_start = false;
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+        } else {
+            self.pending_initial_start = pending_initial_start;
+            if self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+        }
+        Ok(())
     }
 }

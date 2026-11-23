@@ -2,6 +2,7 @@
 
 use super::tool::MorphogenesisTool;
 use crate::async_sim::SimWorkerState;
+use crate::framework::decode_rle_mask;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
 use math_explorer::biology::morphogenesis::{GrayScottKinetics, SchnakenbergKinetics};
@@ -170,6 +171,9 @@ pub struct MorphogenesisToolState {
     /// Optional counterfactual shadow twin fork descriptor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork: Option<super::counterfactual::MorphogenesisForkDescriptor>,
+    /// Optional RLE-encoded `ReactionCellRole` mask (`[role, run_len]` pairs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mask_rle: Vec<[u32; 2]>,
     /// Persisted visibility of the progressive 2D parameter atlas (never raster pixels).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub atlas_visible: bool,
@@ -224,6 +228,9 @@ impl MorphogenesisToolState {
         }
         if let Some(ref fork) = self.fork {
             fork.validate()?;
+        }
+        if !self.mask_rle.is_empty() {
+            decode_rle_mask(&self.mask_rle, self.width * self.height)?;
         }
         let valid_axes = super::atlas::MORPHO_ATLAS_AXIS_PAIRS
             .iter()

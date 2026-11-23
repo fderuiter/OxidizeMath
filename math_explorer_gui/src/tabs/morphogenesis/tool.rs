@@ -7,13 +7,14 @@ pub use super::presets::MorphogenesisToolState;
 use super::runner::{
     MorphogenesisKineticsRunner, MorphogenesisKineticsState, MorphogenesisSharedParams,
 };
+use super::sculpt::default_morpho_brush_kit;
 use crate::app::ThemeMode;
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{
     BranchControlAction, CounterfactualBranchEngine, DivergenceSnapshot, ExportCapabilities,
-    InteractiveTool,
+    InteractionContext, InteractiveTool, SpatialBrushKit,
 };
 use eframe::egui;
 use eframe::egui::ColorImage;
@@ -29,6 +30,8 @@ pub struct MorphogenesisTool {
     pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+    pub(crate) mask_rle: Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+    pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) width: usize,
     pub(crate) height: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
@@ -61,8 +64,11 @@ impl Default for MorphogenesisTool {
         let kinetics_state =
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
 
-        let runner = Self::create_kinetics_runner(&params, &kinetics_state, width, height);
-        let local_runner = Self::create_kinetics_runner(&params, &kinetics_state, width, height);
+        let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
+        let runner =
+            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
+        let local_runner =
+            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -70,6 +76,8 @@ impl Default for MorphogenesisTool {
             atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
             kinetics_state,
+            mask_rle,
+            brush_kit: default_morpho_brush_kit(),
             width,
             height,
             texture: None,
@@ -99,10 +107,17 @@ impl MorphogenesisTool {
     pub(crate) fn create_kinetics_runner(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
         width: usize,
         height: usize,
     ) -> MorphogenesisKineticsRunner {
-        MorphogenesisKineticsRunner::new_with_kinetics(params, kinetics_state, width, height)
+        MorphogenesisKineticsRunner::new_with_kinetics(
+            params,
+            kinetics_state,
+            mask_rle,
+            width,
+            height,
+        )
     }
 
     #[cfg(test)]
@@ -111,12 +126,14 @@ impl MorphogenesisTool {
         self.local_runner = Self::create_kinetics_runner(
             &self.params,
             &self.kinetics_state,
+            &self.mask_rle,
             self.width,
             self.height,
         );
         let runner = Self::create_kinetics_runner(
             &self.params,
             &self.kinetics_state,
+            &self.mask_rle,
             self.width,
             self.height,
         );
@@ -138,12 +155,13 @@ impl MorphogenesisTool {
     pub fn reset(&mut self) {
         let params = Arc::clone(&self.params);
         let ks = Arc::clone(&self.kinetics_state);
+        let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
-        self.local_runner = Self::create_kinetics_runner(&params, &ks, width, height);
+        self.local_runner = Self::create_kinetics_runner(&params, &ks, &mask, width, height);
         self.branch_engine.clear();
         self.worker
-            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, width, height));
+            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
@@ -221,6 +239,7 @@ impl InteractiveTool for MorphogenesisTool {
             Self::create_kinetics_runner(
                 &self.params,
                 &self.kinetics_state,
+                &self.mask_rle,
                 self.width,
                 self.height,
             )
@@ -231,6 +250,16 @@ impl InteractiveTool for MorphogenesisTool {
         let snap = runner.get_snapshot();
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+    }
+
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(stroke) = ctx.brush_stroke {
+            self.dispatch_brush_stroke(stroke, Some(&ctx.response.ctx));
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -301,6 +330,10 @@ impl InteractiveTool for MorphogenesisTool {
         self.height.hash(&mut h);
         self.is_forked().hash(&mut h);
         self.local_runner.step_count.hash(&mut h);
+        self.mask_rle
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.pending_initial_start.hash(&mut h);
         self.atlas.is_visible().hash(&mut h);
@@ -325,6 +358,11 @@ impl InteractiveTool for MorphogenesisTool {
             .twin
             .as_ref()
             .map(|t| t.to_descriptor(heatmap_mode));
+        let mask_rle = self
+            .mask_rle
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&MorphogenesisToolState {
             a,
@@ -341,6 +379,7 @@ impl InteractiveTool for MorphogenesisTool {
             paused: None,
             pending_initial_start: self.pending_initial_start,
             fork,
+            mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
         })
@@ -377,21 +416,15 @@ impl InteractiveTool for MorphogenesisTool {
                 .fork
                 .map_or(MorphogenesisHeatmapMode::ActiveUb, |fk| fk.heatmap_mode);
         }
+        *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
         if let Some(fork_desc) = parsed.fork {
-            self.width = parsed.width;
-            self.height = parsed.height;
-            self.apply_morpho_fork_descriptor(fork_desc)?;
-            if target_state == SimWorkerState::Running {
-                self.pending_initial_start = false;
-                if !self.worker.is_running() {
-                    let _ = self.worker.send_command(SimCommand::Start);
-                }
-            } else {
-                self.pending_initial_start = parsed.pending_initial_start;
-                if self.worker.is_running() {
-                    let _ = self.worker.send_command(SimCommand::Pause);
-                }
-            }
+            self.apply_loaded_fork_state(
+                parsed.width,
+                parsed.height,
+                fork_desc,
+                target_state,
+                parsed.pending_initial_start,
+            )?;
         } else {
             self.apply_dimensions_and_target_state(
                 parsed.width,
