@@ -127,14 +127,23 @@ impl NetworkPropagationTool {
 
     pub(super) fn clamp_focus_indices(&mut self) {
         let n = self.model.num_nodes();
-        self.focused_node = if n == 0 { 0 } else { self.focused_node.min(n - 1) };
+        self.focused_node = if n == 0 {
+            0
+        } else {
+            self.focused_node.min(n - 1)
+        };
         let e = self.model.edges().len();
-        self.focused_edge = if e == 0 { 0 } else { self.focused_edge.min(e - 1) };
+        self.focused_edge = if e == 0 {
+            0
+        } else {
+            self.focused_edge.min(e - 1)
+        };
     }
 
     pub(super) fn rebuild_seeded_graph(&mut self) {
         self.rng = oxidize_core::rng::OxidizeRng::new(self.seed);
-        self.model.initialize_geometric_graph_with_rng(&mut self.rng);
+        self.model
+            .initialize_geometric_graph_with_rng(&mut self.rng);
         self.vaccinated_nodes
             .retain(|&node| self.model.set_node_vaccinated(node, true).is_ok());
         let edges = self.model.edges().to_vec();
@@ -312,7 +321,9 @@ fn build_validated_candidate(
         if node >= candidate.num_nodes() {
             return Err(format!("Vaccinated node index {node} out of bounds"));
         }
-        if candidate.patient_zero() == Some(node) || candidate.states()[node] != NodeState::Susceptible {
+        if candidate.patient_zero() == Some(node)
+            || candidate.states()[node] != NodeState::Susceptible
+        {
             return Err(format!("Cannot vaccinate patient zero (Node {node})"));
         }
         candidate
@@ -405,29 +416,25 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
-        });
-    }
-
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        if self.is_running {
-            self.model.step_with_rng(&mut self.rng);
-            #[cfg(test)]
-            {
-                self.sim_steps = self.sim_steps.saturating_add(1);
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            if self.is_running {
+                self.model.step_with_rng(&mut self.rng);
+                #[cfg(test)]
+                {
+                    self.sim_steps = self.sim_steps.saturating_add(1);
+                }
+                ui.ctx().request_repaint();
             }
-            ui.ctx().request_repaint();
-        }
 
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.set_max_width(290.0);
-                self.draw_controls_column(ui);
-            });
-            ui.separator();
-            ui.vertical(|ui| {
-                self.draw_graph_column(ui);
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_max_width(290.0);
+                    self.draw_controls_column(ui);
+                });
+                ui.separator();
+                ui.vertical(|ui| {
+                    self.draw_graph_column(ui);
+                });
             });
         });
     }

@@ -25,7 +25,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(super) dirty: bool,
-    stepped_snapshot: Option<StateSnapshot>,
+    pub(super) stepped_snapshot: Option<StateSnapshot>,
     cached_theory_desc: String,
     cached_phonetic: String,
     cached_citation: String,
@@ -142,19 +142,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
-        }
-    }
-
-    pub(super) fn refresh_paused_simulation(&mut self, ctx: Option<&egui::Context>) {
-        if self.controller.state().is_ready() {
-            self.stepped_snapshot = None;
-            let _ = self.controller.send_command(SimCommand::Custom(
-                super::SYNC_PARAMETERS_COMMAND.to_string(),
-            ));
-            self.dirty = true;
-            if let Some(c) = ctx {
-                c.request_repaint();
-            }
         }
     }
 

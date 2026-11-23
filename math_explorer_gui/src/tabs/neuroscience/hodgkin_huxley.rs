@@ -17,7 +17,6 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 #[allow(missing_docs)]
-#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct HodgkinHuxleyUnified {
     neuron: HodgkinHuxleyNeuron,
     params: HodgkinHuxleyParameters,

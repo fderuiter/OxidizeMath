@@ -195,7 +195,11 @@ fn collect_single_line_pois(
         roots,
         y_intercepts,
         extrema,
-    } = scan_line_pois(line.points, want_roots, want_y_ints);
+    } = if let Some(compacted) = compact_long_plateaus(line.points, want_y_ints) {
+        scan_line_pois(compacted.as_slice(), want_roots, want_y_ints)
+    } else {
+        scan_line_pois(line.points, want_roots, want_y_ints)
+    };
     for x_root in roots {
         push_if_visible(
             out,
@@ -302,4 +306,81 @@ fn finalize_critical_points(
         }
     }
     deduped
+}
+
+#[inline(always)]
+fn chunk8_same_plateau(c: &[PlotPoint; 8], y_plat: f64, x_dir: f64) -> bool {
+    let same_y = (c[0].y == y_plat)
+        & (c[1].y == y_plat)
+        & (c[2].y == y_plat)
+        & (c[3].y == y_plat)
+        & (c[4].y == y_plat)
+        & (c[5].y == y_plat)
+        & (c[6].y == y_plat)
+        & (c[7].y == y_plat);
+    let fin_x = ((c[0].x * 0.0)
+        + (c[1].x * 0.0)
+        + (c[2].x * 0.0)
+        + (c[3].x * 0.0)
+        + (c[4].x * 0.0)
+        + (c[5].x * 0.0)
+        + (c[6].x * 0.0)
+        + (c[7].x * 0.0))
+        == 0.0;
+    let safe_x = (x_dir == 0.0)
+        | ((c[0].x * x_dir > 1e-12)
+            & (c[1].x * x_dir > 1e-12)
+            & (c[2].x * x_dir > 1e-12)
+            & (c[3].x * x_dir > 1e-12)
+            & (c[4].x * x_dir > 1e-12)
+            & (c[5].x * x_dir > 1e-12)
+            & (c[6].x * x_dir > 1e-12)
+            & (c[7].x * x_dir > 1e-12));
+    same_y & fin_x & safe_x
+}
+
+fn compact_long_plateaus(pts: &[PlotPoint], want_y_ints: bool) -> Option<Vec<[f64; 2]>> {
+    if pts.len() < 32 {
+        return None;
+    }
+    let mut out: Option<Vec<[f64; 2]>> = None;
+    let mut copied_up_to = 0usize;
+    let mut i = 2usize;
+    while let Some(&[p_start, p_sec, q0, q1, q2, q3, q4, q5, q6, q7, ..]) = pts.get(i - 2..) {
+        let y_plat = p_start.y;
+        let pre_ok = (p_start.x * 0.0 + y_plat * 0.0 + p_sec.x * 0.0) == 0.0 && p_sec.y == y_plat;
+        let x_dir = if !want_y_ints {
+            0.0
+        } else if p_start.x > 1e-12 && p_sec.x > 1e-12 {
+            1.0
+        } else if p_start.x < -1e-12 && p_sec.x < -1e-12 {
+            -1.0
+        } else {
+            i += 8;
+            continue;
+        };
+        let chunk = [q0, q1, q2, q3, q4, q5, q6, q7];
+        if pre_ok && chunk8_same_plateau(&chunk, y_plat, x_dir) {
+            let mut end = i + 8;
+            while let Some(&[r0, r1, r2, r3, r4, r5, r6, r7, ..]) = pts.get(end..) {
+                let next = [r0, r1, r2, r3, r4, r5, r6, r7];
+                if !chunk8_same_plateau(&next, y_plat, x_dir) {
+                    break;
+                }
+                end += 8;
+            }
+            let buf = out.get_or_insert_with(|| Vec::with_capacity(64));
+            buf.extend(pts[copied_up_to..i].iter().map(|p| [p.x, p.y]));
+            buf.push([pts[end - 2].x, pts[end - 2].y]);
+            buf.push([pts[end - 1].x, pts[end - 1].y]);
+            copied_up_to = end;
+            i = end + 2;
+        } else {
+            i += 8;
+        }
+    }
+    if let Some(ref mut buf) = out {
+        buf.extend(pts[copied_up_to..].iter().map(|p| [p.x, p.y]));
+    }
+    out
 }
