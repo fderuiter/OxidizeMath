@@ -313,6 +313,53 @@ impl OdeSolverTool {
         self.show_annotations = s.show_annotations;
         self.pending_sweep_run = None;
     }
+
+    pub(crate) fn collect_full_xy_pairs(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
+        let mut plot_points_y = Vec::with_capacity(self.time_series.len());
+        let mut plot_points_v = if self.v_series.is_empty() {
+            Vec::new()
+        } else {
+            Vec::with_capacity(self.v_series.len())
+        };
+        for (i, &t) in self.time_series.iter().enumerate() {
+            if let Some(&y) = self.y_series.get(i) {
+                plot_points_y.push([t, y]);
+            }
+            if let Some(&v) = self.v_series.get(i) {
+                plot_points_v.push([t, v]);
+            }
+        }
+        (plot_points_y, plot_points_v)
+    }
+
+    pub(crate) fn build_current_trace_series(&self) -> Vec<crate::framework::TraceSeries> {
+        let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
+        let mut series = vec![crate::framework::TraceSeries::new("y(t)", plot_points_y)];
+        if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
+            series.push(crate::framework::TraceSeries::new("y'(t)", plot_points_v));
+        }
+        series
+    }
+
+    pub(crate) fn build_full_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut datasets = Vec::new();
+        if self.comparison_mode && !self.comparison_manager.is_empty() {
+            datasets.extend(self.comparison_manager.export_datasets());
+        } else {
+            let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
+            datasets.push(("y(t)".to_string(), plot_points_y));
+            if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
+                datasets.push(("y'(t)".to_string(), plot_points_v));
+            }
+        }
+        datasets.extend(self.snapshot_manager.export_datasets());
+        for (name, pts) in egui_plot::get_last_plot_datasets() {
+            if !datasets.iter().any(|(existing, _)| existing == &name) {
+                datasets.push((name, pts));
+            }
+        }
+        datasets
+    }
 }
 
 fn are_serialized_ode_params_valid(s: &OdeState) -> bool {

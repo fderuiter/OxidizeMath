@@ -106,6 +106,19 @@ impl ParameterSliderBank {
         self.repack();
     }
 
+    /// Computes a deterministic hash of active parameter names and values for geometry caching.
+    #[must_use]
+    pub fn state_fingerprint(&self) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.active_names.hash(&mut h);
+        for &val in self.param_slice() {
+            let bits = if val == 0.0 { 0u64 } else { val.to_bits() };
+            bits.hash(&mut h);
+        }
+        h.finish()
+    }
+
     /// Exports only the currently active parameter values for compact JSON / `#state=` URLs.
     #[must_use]
     pub fn export_active_map(&self) -> BTreeMap<String, f64> {

@@ -10,20 +10,16 @@ use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
+use std::sync::Arc;
 
 impl OdeSolverTool {
-    pub(super) fn render_sidebar_controls(
-        &mut self,
-        ui: &mut egui::Ui,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
-    ) -> bool {
+    pub(super) fn render_sidebar_controls(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         changed |= self.render_preset_selector(ui);
         changed |= self.render_parameter_inputs(ui);
         changed |= self.render_initial_condition_inputs(ui);
         changed |= self.render_solver_settings_controls(ui);
-        self.render_snapshots_and_sensitivity(ui, plot_points_y, plot_points_v);
+        self.render_snapshots_and_sensitivity(ui);
         if self.callout_manager.render_ui(ui) {
             changed = true;
         }
@@ -202,13 +198,14 @@ impl OdeSolverTool {
             changed = true;
         }
 
+        let min_dt = (self.total_time.max(0.1) / crate::presets::MAX_ODE_STEPS as f64).max(1e-6);
         ui.horizontal(|ui| {
             ui.label("dt (Step Size):");
             if ui
                 .add(
                     egui::DragValue::new(&mut self.dt)
                         .speed(0.01)
-                        .range(0.001..=1.0),
+                        .range(min_dt..=1.0),
                 )
                 .changed()
             {
@@ -243,23 +240,29 @@ impl OdeSolverTool {
         changed
     }
 
-    fn render_snapshots_and_sensitivity(
-        &mut self,
-        ui: &mut egui::Ui,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
-    ) {
+    fn render_snapshots_and_sensitivity(&mut self, ui: &mut egui::Ui) {
         ui.add_space(10.0);
         let param_summary = self.param_summary();
         let is_harmonic = self.preset == OdePreset::HarmonicOscillator;
-        let py = plot_points_y.to_vec();
-        let pv = plot_points_v.to_vec();
         let current_len = self.snapshot_manager.len();
+        let time_series = &self.time_series;
+        let y_series = &self.y_series;
+        let v_series = &self.v_series;
 
         if self.snapshot_manager.render_ui(ui, || {
             let label = format!("Baseline {}", current_len + 1);
+            let py: Vec<[f64; 2]> = time_series
+                .iter()
+                .zip(y_series)
+                .map(|(&t, &y)| [t, y])
+                .collect();
             let mut series = vec![TraceSeries::new("y(t)", py)];
-            if is_harmonic && !pv.is_empty() {
+            if is_harmonic && !v_series.is_empty() {
+                let pv: Vec<[f64; 2]> = time_series
+                    .iter()
+                    .zip(v_series)
+                    .map(|(&t, &v)| [t, v])
+                    .collect();
                 series.push(TraceSeries::new("y'(t)", pv));
             }
             Some((label, param_summary, series))
@@ -270,6 +273,26 @@ impl OdeSolverTool {
         self.run_sensitivity_analysis();
 
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
+    }
+
+    fn collect_custom_sensitivity_params<'a>(
+        preset: OdePreset,
+        custom_compiled: Option<&'a math_commons::ast::CompiledExpr>,
+        param_slice: &[f64],
+        ic_y0: f64,
+    ) -> Vec<(&'a str, f64)> {
+        let mut custom_params = Vec::new();
+        if preset == OdePreset::Custom {
+            if let Some(compiled) = custom_compiled {
+                for (name, &val) in compiled.param_names().iter().zip(param_slice) {
+                    custom_params.push((name.as_str(), val));
+                }
+            }
+            if !custom_params.iter().any(|(name, _)| *name == "y0") {
+                custom_params.push(("y0", ic_y0));
+            }
+        }
+        custom_params
     }
 
     fn run_sensitivity_analysis(&mut self) {
@@ -288,21 +311,12 @@ impl OdeSolverTool {
             ("cap_k", self.param_cap_k),
             ("y0", self.ic_y0),
         ];
-        let mut custom_params: Vec<(&str, f64)> = Vec::new();
-        if current_preset == OdePreset::Custom {
-            if let Some(compiled) = custom_compiled {
-                for (name, &val) in compiled
-                    .param_names()
-                    .iter()
-                    .zip(self.math_input.param_slice())
-                {
-                    custom_params.push((name.as_str(), val));
-                }
-            }
-            if !custom_params.iter().any(|(name, _)| *name == "y0") {
-                custom_params.push(("y0", self.ic_y0));
-            }
-        }
+        let custom_params = Self::collect_custom_sensitivity_params(
+            current_preset,
+            custom_compiled,
+            self.math_input.param_slice(),
+            self.ic_y0,
+        );
 
         let params: &[(&str, f64)] = match current_preset {
             OdePreset::Exponential => &exp_params,
@@ -371,22 +385,18 @@ impl OdeSolverTool {
         });
     }
 
-    pub(super) fn render_plot_canvas(
-        &mut self,
-        ui: &mut egui::Ui,
-        mut plot_points_y: Vec<[f64; 2]>,
-        mut plot_points_v: Vec<[f64; 2]>,
-        changed: &mut bool,
-    ) {
+    pub(super) fn render_plot_canvas(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
         ui.heading("Solution Trajectory");
 
         if FiniteStateGuard::diverged(self) {
-            recovery::render_recovery_ui(ui, self, changed, &mut plot_points_y, &mut plot_points_v);
+            let mut scratch_y = Vec::new();
+            let mut scratch_v = Vec::new();
+            recovery::render_recovery_ui(ui, self, changed, &mut scratch_y, &mut scratch_v);
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let line_y =
-            Line::new("y(t)", PlotPoints::new(plot_points_y)).color(palette.series_color(0));
+        let line_y = Line::new("y(t)", PlotPoints::from_shared(Arc::clone(&self.display_y)))
+            .color(palette.series_color(0));
 
         Plot::new("ode_plot")
             .view_aspect(2.0)
@@ -396,9 +406,12 @@ impl OdeSolverTool {
             .show(ui, |plot_ui| {
                 if !self.comparison_mode {
                     plot_ui.line(line_y);
-                    if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-                        let line_v = Line::new("y'(t)", PlotPoints::new(plot_points_v))
-                            .color(palette.series_color(1));
+                    if self.preset == OdePreset::HarmonicOscillator && !self.display_v.is_empty() {
+                        let line_v = Line::new(
+                            "y'(t)",
+                            PlotPoints::from_shared(Arc::clone(&self.display_v)),
+                        )
+                        .color(palette.series_color(1));
                         plot_ui.line(line_v);
                     }
                 } else {
