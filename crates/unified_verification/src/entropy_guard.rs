@@ -11,7 +11,9 @@ use walkdir::WalkDir;
 mod file_filter;
 mod macro_scanner;
 
-use file_filter::{ScanFileKind, classify_scan_file, should_visit_file};
+use file_filter::{
+    ScanFileKind, classify_scan_file, is_ignored_dir, is_scannable_entry, should_visit_file,
+};
 
 pub const DEFAULT_SCAN_PATHS: &[&str] = &[
     "crates",
@@ -131,8 +133,11 @@ fn is_pure_hex(s: &str) -> bool {
 }
 
 fn is_integrity_digest(s: &str) -> bool {
-    let lower = s.to_ascii_lowercase();
-    lower.starts_with("sha256-") || lower.starts_with("sha384-") || lower.starts_with("sha512-")
+    s.get(..7).is_some_and(|prefix| {
+        prefix.eq_ignore_ascii_case("sha256-")
+            || prefix.eq_ignore_ascii_case("sha384-")
+            || prefix.eq_ignore_ascii_case("sha512-")
+    })
 }
 
 fn is_url_or_path_token(raw: &str) -> bool {
@@ -218,15 +223,39 @@ pub(super) fn classify_entropy_call(resolved: &str) -> Option<&'static str> {
     }
 }
 
-fn calculate_entropy(s: &str) -> f64 {
-    let mut counts = HashMap::new();
-    for c in s.chars() {
-        *counts.entry(c).or_insert(0) += 1;
+fn calculate_ascii_entropy(bytes: &[u8]) -> f64 {
+    let mut counts = [0u32; 128];
+    for &b in bytes {
+        counts[usize::from(b)] += 1;
     }
-    let len = s.len() as f64;
+    let len = bytes.len() as f64;
+    let mut entropy = 0.0;
+    for count in counts {
+        if count > 0 {
+            let p = f64::from(count) / len;
+            entropy -= p * p.log2();
+        }
+    }
+    entropy
+}
+
+fn calculate_entropy(s: &str) -> f64 {
+    if s.is_empty() {
+        return 0.0;
+    }
+    if s.is_ascii() {
+        return calculate_ascii_entropy(s.as_bytes());
+    }
+    let mut counts = HashMap::new();
+    let mut char_len = 0u32;
+    for c in s.chars() {
+        char_len += 1;
+        *counts.entry(c).or_insert(0u32) += 1;
+    }
+    let len = f64::from(char_len);
     let mut entropy = 0.0;
     for &count in counts.values() {
-        let p = count as f64 / len;
+        let p = f64::from(count) / len;
         entropy -= p * p.log2();
     }
     entropy
@@ -286,16 +315,6 @@ pub fn is_file_allowlisted(path: &Path, allowlist: &[String]) -> bool {
     allowlist
         .iter()
         .any(|allowed| crate::whitelist::path_matches_lossy(path, allowed, opts))
-}
-
-fn is_ignored_dir(entry: &walkdir::DirEntry) -> bool {
-    if entry.file_type().is_dir() {
-        let name = entry.file_name().to_string_lossy();
-        if name == "target" || name == ".git" {
-            return true;
-        }
-    }
-    false
 }
 
 fn scan_rust_file(
@@ -384,17 +403,21 @@ pub fn scan_paths_internal_with_cache(
     let mut visited = HashSet::new();
 
     for target in scan_targets {
-        if !Path::new(target).exists() {
+        let target_path = Path::new(target);
+        if !target_path.exists() {
             continue;
         }
-        for entry in WalkDir::new(target)
+        let can_root = target_path.canonicalize().ok();
+        let root_pair = can_root.as_deref().map(|can| (target_path, can));
+        for entry in WalkDir::new(target_path)
             .into_iter()
             .filter_entry(|e| !is_ignored_dir(e))
             .filter_map(|e| e.ok())
         {
-            if !entry.file_type().is_file()
-                || !should_visit_file(entry.path(), allowlist, &mut visited)
-            {
+            let Some(is_symlink) = is_scannable_entry(&entry) else {
+                continue;
+            };
+            if !should_visit_file(entry.path(), is_symlink, root_pair, allowlist, &mut visited) {
                 continue;
             }
             match classify_scan_file(entry.path(), target_extensions) {
