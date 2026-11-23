@@ -1,7 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::runner::MorphogenesisRunner;
-use super::types::{MorphogenesisBrushMode, MorphogenesisFlowMode, MorphogenesisKineticsMode};
+#[cfg(feature = "physics")]
+use super::types::MorphogenesisFlowMode;
+use super::types::{MorphogenesisBrushMode, MorphogenesisKineticsMode};
 use math_commons::math_kernel::types::flatten_2d_index;
 #[cfg(feature = "physics")]
 use math_explorer::physics::fluid_dynamics::potential_flow::{
