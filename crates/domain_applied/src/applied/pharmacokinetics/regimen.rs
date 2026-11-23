@@ -132,7 +132,20 @@ impl DoseEvent {
     }
 }
 
-/// Trait implemented by linear pharmacokinetic models whose dose mass can be scaled per event.
+/// Dose-scalable pharmacokinetic model interface supporting variable-dose multi-event superposition.
+///
+/// $$
+/// C(t) = \sum_{k:\, t_k \le t} C_{D_k}(t - t_k)
+/// $$
+///
+/// Reference: Bateman (1910), DOI: 10.1017/S0305004100019988;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Pre-scales per-event parameters at regimen construction so hot-path time-grid evaluation allocates zero heap memory.
+///
+/// # Domain of Validity
+/// Valid for linear pharmacokinetic base models and non-negative finite event doses $D_k \ge 0$.
 pub trait RegimenModel: PharmacokineticModel + Copy {
     /// Returns a copy of `self` scaled to `dose_mg` via `PKParameters::with_dose`.
     fn with_event_dose(&self, dose_mg: f64) -> Result<Self, PharmacokineticsError>;

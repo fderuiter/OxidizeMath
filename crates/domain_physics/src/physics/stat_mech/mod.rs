@@ -7,12 +7,12 @@
 /// Boltzmann Constant in J/K.
 pub const KB: f64 = 1.380649e-23;
 
-#[allow(missing_docs)]
+/// Langevin brownian dynamics, fluctuation-dissipation, and Fokker-Planck drift-diffusion.
 pub mod dynamics;
-#[allow(missing_docs)]
+/// Canonical, grand-canonical, and microcanonical partition functions and entropy relations.
 pub mod ensembles;
 pub mod ising;
-#[allow(missing_docs)]
+/// Fermi-Dirac, Bose-Einstein, and Maxwell-Boltzmann equilibrium occupation distributions.
 pub mod quantum_stats;
 pub mod sandpile;
 

@@ -5,7 +5,7 @@ pub mod calibration;
 /// Coupled multi-segment duty-cycle state-of-health evaluation and warranty solvers.
 pub mod duty;
 pub mod model;
-#[allow(missing_docs)]
+/// Validated domain types (`DepthOfDischarge`, `Capacity`, `Cycles`) and `BatteryError`.
 pub mod types;
 
 pub use calibration::{CalibratedAgingFit, calibrate_electrochemical_model};

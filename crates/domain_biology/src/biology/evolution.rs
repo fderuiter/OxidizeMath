@@ -64,7 +64,7 @@ pub struct HawkDovePopulation {
 }
 
 impl HawkDovePopulation {
-    #[allow(missing_docs)]
+    /// Creates a Hawk-Dove evolutionary game population with resource value `v` and injury cost `c`.
     #[verified_engine::verified]
     pub fn new(v: f64, c: f64) -> Self {
         Self { v, c }

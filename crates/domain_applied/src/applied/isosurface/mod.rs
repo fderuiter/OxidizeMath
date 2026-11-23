@@ -44,13 +44,13 @@
 
 pub mod capped;
 mod edge_cache;
-#[allow(missing_docs)]
+/// Finite-difference scalar field gradient estimators for vertex normal computation.
 pub mod gradients;
-#[allow(missing_docs)]
+/// Lorensen-Cline Marching Cubes surface extraction implementation.
 pub mod marching_cubes;
-#[allow(missing_docs)]
+/// Precomputed Marching Cubes edge intersection and triangle topology lookup tables.
 pub mod tables;
-#[allow(missing_docs)]
+/// Volumetric scalar grid and builder data structures for isosurface extraction.
 pub mod types;
 pub mod workspace;
 

@@ -143,7 +143,11 @@ pub(crate) fn audit_markdown_text(markdown: &str, dep_visitor: &mut DependencyVi
     }
 }
 
-fn resolve_include_str_expr(mac: &syn::Macro, rs_dir: &Path, member_dir: &Path) -> Option<PathBuf> {
+pub(crate) fn resolve_include_str_expr(
+    mac: &syn::Macro,
+    rs_dir: &Path,
+    member_dir: &Path,
+) -> Option<PathBuf> {
     if let Ok(lit) = syn::parse2::<syn::LitStr>(mac.tokens.clone()) {
         return Some(rs_dir.join(lit.value()));
     }

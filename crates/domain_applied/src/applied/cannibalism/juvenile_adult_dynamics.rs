@@ -56,6 +56,16 @@ impl Default for JuvenileAdultParams {
 
 /// Zero-allocation coupled PDE-ODE solver for juvenile age advection on $[0, \alpha]$
 /// and adult cohort dynamics $\frac{dA}{dt} = n(t, \alpha) - f(I(t)) A(t)$.
+///
+/// Reference: van den Bosch, de Roos & Gabriel (1988), DOI: 10.1098/rspb.1988.0022;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Couples positivity-preserving characteristic juvenile advection ($\Delta t \le \Delta a$) with semi-implicit
+/// adult mortality attenuation so $n(t, a) \ge 0$ and $A(t) \ge 0$ hold without heap allocations.
+///
+/// # Domain of Validity
+/// Valid for maturation age $\alpha > 0$, vulnerability horizon $0 \le a_{\text{vuln}} \le \alpha$, and non-negative demographic rates.
 #[derive(Debug, Clone)]
 pub struct JuvenileAdultSolver {
     ages: Vec<f64>,

@@ -1,8 +1,8 @@
 //! Zero-allocation polynomial and nonlinear least-squares curve-fitting solvers (`fit`).
 //!
-//! Exposes canonical [`FitModel`] presets (degrees 1–4 polynomial OLS plus Exponential,
+//! Exposes canonical [`crate::fit::FitModel`] presets (degrees 1–4 polynomial OLS plus Exponential,
 //! Power-Law, Logarithmic, Logistic, and Sinusoidal damped Levenberg-Marquardt regression)
-//! backed by fixed stack buffers and typed [`FitError`] diagnostics.
+//! backed by fixed stack buffers and typed [`crate::error::FitError`] diagnostics.
 // [cite:math_commons]
 
 mod format;
@@ -34,7 +34,16 @@ pub use seeds::{
 /// Maximum polynomial regression degree supported on stack buffers without heap allocation.
 pub const MAX_POLYNOMIAL_DEGREE: usize = 4;
 
-/// Canonical parametric regression model presets without degree clamping or hash collisions.
+/// Canonical parametric regression model presets $\hat{y} = f(x; \theta)$ without degree clamping or hash collisions.
+///
+/// Reference: Golub & Van Loan (2013), *Matrix Computations*, DOI: 10.56021/9781421407944;
+/// [math_commons specification](../../../../docs/math_specs/math_commons.md).
+///
+/// # Stability
+/// Polynomial presets scale $x \in [-1, 1]$ before solving normal equations; nonlinear presets use damped Levenberg-Marquardt.
+///
+/// # Domain of Validity
+/// Finite `(x, y)` observations; `PowerLaw` and `Logarithmic` require $x > 0$ (and $y > 0$ for log-linear seeding).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FitModel {
     /// Degree-1 polynomial regression ($y = c_0 + c_1 x$).
@@ -334,7 +343,15 @@ impl CurveFit {
     }
 }
 
-/// Fits a canonical [`FitModel`] to `points` with zero heap allocations.
+/// Fits a canonical [`FitModel`] minimizing $\sum_i (y_i - \hat{f}(x_i; \theta))^2$ on stack buffers with zero heap allocations.
+///
+/// Reference: Moré (1978), DOI: 10.1007/BFb0067700; [math_commons specification](../../../../docs/math_specs/math_commons.md).
+///
+/// # Stability
+/// Uses affine $[-1, 1]$ coordinate scaling for polynomials and adaptive Marquardt damping $\lambda > 0$ for nonlinear models.
+///
+/// # Domain of Validity
+/// Requires at least $k$ finite observations for a $k$-parameter model and model-specific domain positivity where applicable.
 #[verified_engine::verified]
 pub fn fit_model<P: PointSeries + ?Sized>(
     points: &P,
@@ -344,7 +361,15 @@ pub fn fit_model<P: PointSeries + ?Sized>(
     fit_model_with_axes(points, model, log_mode, false, false)
 }
 
-/// Fits a canonical [`FitModel`] respecting optional logarithmic plot axes for polynomials.
+/// Fits a canonical [`FitModel`] minimizing $\sum_i (\tilde{y}_i - \hat{f}(\tilde{x}_i; \theta))^2$ under optional log-axis transforms.
+///
+/// Reference: Golub & Van Loan (2013), DOI: 10.56021/9781421407944; [math_commons specification](../../../../docs/math_specs/math_commons.md).
+///
+/// # Stability
+/// Rejects singular normal equations (`|pivot| < 1e-12`) and non-convergent nonlinear iterations via [`FitError`].
+///
+/// # Domain of Validity
+/// Finite observations with $x_i > 0$ when `plot_log_x` is enabled and $y_i > 0$ when `plot_log_y` is enabled.
 #[verified_engine::verified]
 pub fn fit_model_with_axes<P: PointSeries + ?Sized>(
     points: &P,

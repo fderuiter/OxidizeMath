@@ -78,11 +78,11 @@
 //! assert!(system.state.species(0)[5] < 100.0); // Concentration decayed
 //! ```
 
-#[allow(missing_docs)]
+/// Generic $N$-species reaction-diffusion ODE model, system wrapper, and builder.
 pub mod model;
-#[allow(missing_docs)]
+/// Column-major multi-species spatial concentration matrix (`ChemicalState`).
 pub mod state;
-#[allow(missing_docs)]
+/// Pluggable `ReactionModel` and `DiffusionModel` strategy traits.
 pub mod traits;
 
 pub use model::{ReactionDiffusionModel, ReactionDiffusionSystem, ReactionDiffusionSystemBuilder};
@@ -92,17 +92,17 @@ pub use traits::{DiffusionModel, ReactionModel};
 /// Errors related to Reaction-Diffusion systems.
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ReactionDiffusionError {
-    #[allow(missing_docs)]
+    /// Underlying dimension-mismatch or numerical error from `math_commons`.
     #[error("Mathematical error: {0}")]
     Math(#[from] math_commons::error::MathError),
+    /// Builder configured zero chemical species (`num_species == 0`).
     #[error("System requires at least one species")]
-    #[allow(missing_docs)]
     ZeroSpecies,
+    /// Builder configured zero spatial grid cells (`grid_size == 0`).
     #[error("Grid size cannot be zero")]
-    #[allow(missing_docs)]
     ZeroGridSize,
+    /// Required builder field was omitted prior to `build()`.
     #[error("Missing parameter: {0}")]
-    #[allow(missing_docs)]
     MissingParameter(&'static str),
 }
 

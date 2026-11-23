@@ -39,15 +39,15 @@
 //! *   **[Score](score)**: Calculation of the SDS gradient update.
 //! *   **[Gradient](gradient)**: Utilities for backpropagating the score through the renderer.
 
-#[allow(missing_docs)]
+/// Forward diffusion variance schedules and latent noise injection.
 pub mod diffusion;
-#[allow(missing_docs)]
+/// Score Distillation Sampling residual gradient computation.
 pub mod gradient;
-#[allow(missing_docs)]
+/// Volumetric NeRF ray-bundle generation, stratified sampling, and quadrature.
 pub mod rendering;
-#[allow(missing_docs)]
+/// Text-conditioned diffusion score estimation and classifier-free guidance.
 pub mod score;
-#[allow(missing_docs)]
+/// Differentiable NeRF backpropagation and parameter optimizers (`AdamOptimizer`, `SgdOptimizer`).
 pub mod training;
 
 // [cite:graph_parameters_rust]

@@ -228,7 +228,15 @@ pub(super) fn eval_polynomial_horner_raw(coeffs: &[f64], x: f64) -> f64 {
     acc
 }
 
-/// Solves an $n \times n$ ($n \le 5$) dense linear system on the stack via partial pivoting.
+/// Solves an $n \times n$ ($1 \le n \le 5$) dense linear system $A x = b$ on the stack via Gaussian elimination with partial pivoting.
+///
+/// Reference: Golub & Van Loan (2013), DOI: 10.56021/9781421407944; [math_commons specification](../../../../docs/math_specs/math_commons.md).
+///
+/// # Stability
+/// Partial column pivoting bounds element growth for $n \le 5$; pivots with $|p| < 10^{-12}$ fail closed with [`FitError::SingularMatrix`].
+///
+/// # Domain of Validity
+/// Requires $1 \le n \le 5$, finite entries in the leading $n \times n$ block of `mat` and `rhs`, and $\det(A) \neq 0$.
 #[verified_engine::verified]
 pub fn solve_dense_small(
     mat: &mut [[f64; 5]; 5],

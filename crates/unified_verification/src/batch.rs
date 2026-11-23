@@ -66,9 +66,18 @@ pub(crate) fn run_batch_ast_with_caches(
 
 pub fn run_batch_ast() -> bool {
     let _root_guard = crate::manifest_cache::WorkspaceRootGuard::enter();
-    let (_, members) = crate::manifest_cache::discover_workspace();
+    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
     let mut cache = AstCache::new();
-    run_batch_ast_with_cache(&members, &mut cache)
+    let math_violations = crate::doc_audit::math_contracts::audit_math_contracts_with_cache(
+        &workspace_root,
+        &members,
+        &mut cache,
+    );
+    for v in &math_violations {
+        eprintln!("[!] {v}");
+    }
+    let batch_ok = run_batch_ast_with_cache(&members, &mut cache);
+    math_violations.is_empty() && batch_ok
 }
 
 pub fn run_batch_static(args: &[String]) -> bool {
@@ -109,7 +118,7 @@ pub(crate) fn run_batch_static_with_caches(
     }
 
     println!("\n--- Static Gate 5: Crate Documentation Audit ---");
-    if !crate::doc_audit::run_doc_audit_for_members(&members, &[]) {
+    if !crate::doc_audit::run_doc_audit_for_members_with_cache(&members, &[], cache) {
         passed = false;
     }
 
@@ -268,7 +277,7 @@ pub(crate) fn run_batch_staged_for_paths_in_dir(
     }
 
     if !workspace_members.is_empty()
-        && !crate::doc_audit::run_doc_audit_for_members(workspace_members, &[])
+        && !crate::doc_audit::run_doc_audit_for_members_with_cache(workspace_members, &[], cache)
     {
         passed = false;
     }

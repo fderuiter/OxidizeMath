@@ -1,6 +1,6 @@
 #![doc = include_str!("README.md")]
 
-#[allow(missing_docs)]
+/// Galactic rotation curves, dark-matter halo profiles, and scaling relations.
 pub mod astrophysics;
 pub mod chaos;
 pub mod fluid_dynamics;
@@ -8,7 +8,7 @@ pub mod high_energy;
 pub mod medical;
 pub mod mri;
 pub mod nuclear;
-#[allow(missing_docs)]
+/// Geometric, wave, and Fourier optics models.
 pub mod optics;
 pub mod quantum;
 pub mod solid_state;

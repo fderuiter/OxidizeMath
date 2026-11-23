@@ -1,15 +1,15 @@
-#[allow(missing_docs)]
+/// Submodule providing `complex` types, traits, and algorithms.
 pub mod complex;
 pub mod evolution;
 pub mod integration;
 pub mod momentum_dynamics;
 pub mod ode;
 pub mod optimization;
-#[allow(missing_docs)]
+/// Submodule providing `pde` types, traits, and algorithms.
 pub mod pde;
 pub mod roots;
 pub mod stochastic;
-#[allow(missing_docs)]
+/// Submodule providing `transforms` types, traits, and algorithms.
 pub mod transforms;
 
 pub use evolution::EvolutionError;

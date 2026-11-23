@@ -1,16 +1,15 @@
 #![doc = include_str!("../README.md")]
-#[allow(missing_docs)]
+/// Typed physical domain errors across chaos, relativity, fluids, nuclear, medical, and quantum modules.
 pub mod error;
 pub mod physics;
 
-#[allow(missing_docs)]
+/// Convenience re-exports of core `domain_physics` modules and error types.
 pub mod prelude {
     pub use crate::error::*;
     pub use crate::physics::*;
 }
 
 #[doc(hidden)]
-#[allow(missing_docs)]
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{

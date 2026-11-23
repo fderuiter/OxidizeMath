@@ -1,32 +1,32 @@
 use std::future::Future;
 use std::pin::Pin;
 
-#[allow(missing_docs)]
+/// Asynchronous virtual file system interface abstracting native `std::fs` and browser `fetch` I/O.
 pub trait VirtualFileSystem {
-    #[allow(missing_docs)]
+    /// Reads the UTF-8 contents of `path` asynchronously.
     fn read_to_string(
         &self,
         path: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, std::io::Error>> + '_>>;
-    #[allow(missing_docs)]
+    /// Writes `content` bytes to `path` (or triggers a browser download on WebAssembly).
     fn write_to_file(
         &self,
         path: &str,
         content: &[u8],
     ) -> Pin<Box<dyn Future<Output = Result<(), std::io::Error>> + '_>>;
-    #[allow(missing_docs)]
+    /// Lists child entry names directly inside directory `path`.
     fn list_dir(
         &self,
         path: &str,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<String>, std::io::Error>> + '_>>;
 }
 
+/// Default host filesystem implementation of [`VirtualFileSystem`] backed by `std::fs`.
 #[cfg(not(target_arch = "wasm32"))]
-#[allow(missing_docs)]
 pub struct DefaultVfs;
 
+/// Default WebAssembly alias of [`VirtualFileSystem`] backed by [`WasmVfs`].
 #[cfg(target_arch = "wasm32")]
-#[allow(missing_docs)]
 pub type DefaultVfs = WasmVfs;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -80,6 +80,7 @@ pub(crate) fn resolve_wasm_fetch_url(path: &str) -> String {
     }
 }
 
+/// Browser `fetch` and Blob-download implementation of [`VirtualFileSystem`] on `wasm32`.
 #[cfg(target_arch = "wasm32")]
 // theory_verification!
 pub struct WasmVfs;
@@ -146,6 +147,7 @@ impl VirtualFileSystem for WasmVfs {
     }
 }
 
+/// Triggers an anchor-element browser file download of `content` named `filename` on `wasm32`.
 #[cfg(target_arch = "wasm32")]
 // theory_verification!
 pub fn trigger_download(filename: &str, content: &[u8]) {

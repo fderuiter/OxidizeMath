@@ -20,16 +20,15 @@ pub enum LinearAlgebraError {
     SolutionNotFound,
 }
 
-/// Solves a linear system $Ax = b$ using LU decomposition (or best available method).
+/// Solves the square dense linear system $A\mathbf{x} = \mathbf{b}$ via column-pivoted LU factorization $PA = LU$.
 ///
-/// # Arguments
+/// Reference: Golub & Van Loan (2013), *Matrix Computations*, DOI: 10.56021/9781421407944; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
 ///
-/// * `a` - The matrix $A$.
-/// * `b` - The vector $b$.
+/// # Stability
+/// Partial pivoting bounds element growth in practice with backward error $O(\varepsilon_{\text{mach}})$ and forward error $O(\kappa_2(A)\varepsilon_{\text{mach}})$.
 ///
-/// # Returns
-///
-/// * `Result<DVector<f64>, LinearAlgebraError>` - The solution vector $x$.
+/// # Domain of Validity
+/// Requires square non-singular matrix $A \in \mathbb{R}^{n \times n}$ and right-hand side $\mathbf{b} \in \mathbb{R}^n$ of matching dimension.
 #[verified_engine::verified]
 pub fn solve_linear_system(
     a: &DMatrix<f64>,
@@ -41,20 +40,15 @@ pub fn solve_linear_system(
         .ok_or(LinearAlgebraError::SolutionNotFound)
 }
 
-/// Solves the Normal Equation for Least Squares.
+/// Solves the linear least-squares problem $\min_{\mathbf{x}} \|A\mathbf{x} - \mathbf{b}\|_2^2$ via the normal equations $A^\top A \mathbf{x} = A^\top \mathbf{b}$.
 ///
-/// $$ \mathbf{c} = (A^T A)^{-1} A^T \mathbf{b} $$
+/// Reference: Golub & Van Loan (2013), *Matrix Computations*, DOI: 10.56021/9781421407944; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
 ///
-/// Used for finding the optimal coefficients that minimize the error squared.
+/// # Stability
+/// Forming $A^\top A$ squares the spectral condition number $\kappa_2(A^\top A) = \kappa_2(A)^2$; ill-conditioned designs ($\kappa_2(A) > 10^7$) lose half-precision accuracy.
 ///
-/// # Arguments
-///
-/// * `a` - Design matrix $A$.
-/// * `b` - Observation vector $b$.
-///
-/// # Returns
-///
-/// * `Result<DVector<f64>, LinearAlgebraError>` - The coefficient vector $\mathbf{c}$.
+/// # Domain of Validity
+/// Requires full-column-rank design matrix $A \in \mathbb{R}^{m \times n}$ ($m \ge n$) and compatible target vector $\mathbf{b} \in \mathbb{R}^m$.
 #[verified_engine::verified]
 pub fn solve_normal_equation(
     a: &DMatrix<f64>,

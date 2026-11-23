@@ -102,7 +102,7 @@ pub(super) fn sanitized_vertex_normals(mesh: &Mesh) -> Vec<Point3D> {
         .collect()
 }
 
-#[allow(missing_docs)]
+/// Serializes an indexed [`Mesh`] (vertices, sanitized vertex normals, and 1-indexed faces) to Wavefront OBJ text.
 pub fn export_mesh_to_obj_string(mesh: &Mesh) -> Result<String, Error> {
     validate_mesh_geometry(mesh, false)?;
     let normals = sanitized_vertex_normals(mesh);

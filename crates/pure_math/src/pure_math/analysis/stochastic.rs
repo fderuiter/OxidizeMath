@@ -9,8 +9,8 @@ use thiserror::Error;
 /// Errors that can occur during stochastic simulation.
 #[derive(Debug, Error)]
 pub enum StochasticError {
+    /// Variant `InvalidReactionIndex` (InvalidReactionIndex).
     #[error("Invalid reaction index: {0}")]
-    #[allow(missing_docs)]
     InvalidReactionIndex(usize),
 }
 
@@ -49,9 +49,15 @@ impl Drop for AllocationLockGuard {
     }
 }
 
-/// A solver for stochastic simulation using the Gillespie Algorithm (SSA).
+/// Exact Gillespie Stochastic Simulation Algorithm (SSA) sampling waiting times $\tau = -\ln(u_1)/a_0(\mathbf{x})$ and reaction channels proportional to propensities $a_j(\mathbf{x})$.
 ///
-/// It uses the Direct Method to simulate exact stochastic trajectories.
+/// Reference: Gillespie (1977), DOI: 10.1021/j100540a008; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Samples exact continuous-time chemical master equation trajectories free of time-discretization error, terminating cleanly at absorbing states $a_0(\mathbf{x}) = 0$.
+///
+/// # Domain of Validity
+/// Valid for well-mixed discrete-molecule reaction networks with non-negative finite propensities $a_j(\mathbf{x}) \ge 0$.
 pub struct GillespieSolver<R> {
     rng: R,
     /// Reusable buffer for propensities to avoid allocation per step.

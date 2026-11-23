@@ -23,6 +23,17 @@ use verified_engine::Theory;
 /// 2.  **Gating Variables ($x \in \{n, m, h\}$):**
 ///     $$ \frac{dx}{dt} = \alpha_x(V)(1 - x) - \beta_x(V)x $$
 ///     The rate constants $\alpha_x$ and $\beta_x$ are determined by the [`GatingKinetics`](crate::biology::neuroscience::kinetics::GatingKinetics) strategy.
+///
+/// Reference: Hodgkin & Huxley (1952), DOI: `10.1113/jphysiol.1952.sp004764`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Fast sodium activation ($m$) introduces moderate stiffness ($\tau_m \sim 0.1\,\text{ms}$);
+/// explicit RK4 integration requires $\Delta t \lesssim 0.05\,\text{ms}$ to preserve $n, m, h \in [0, 1]$.
+///
+/// # Domain of Validity
+/// Space-clamped squid giant axon patch with unit capacitance $C_m = 1\,\mu\text{F/cm}^2$,
+/// non-negative conductances $g_i \ge 0$, and gating probabilities $n, m, h \in [0, 1]$.
 #[derive(Debug, Clone, Theory)]
 #[theory(
     description = "The Hodgkin-Huxley model describes the initiation and propagation of action potentials in neurons using a set of non-linear differential equations.",

@@ -73,16 +73,16 @@
 //! ```
 
 pub mod coupling;
-#[allow(missing_docs)]
+/// Unitary discrete Fourier transform (`dft_operator`, `idft_operator`) matrices.
 pub mod fourier;
-#[allow(missing_docs)]
+/// 1D finite-difference Hamiltonian builders and Gaussian wavepacket initializers.
 pub mod hamiltonian;
 pub mod hydrogenic;
 pub mod schrodinger;
-#[allow(missing_docs)]
+/// Spin-$1/2$ Pauli matrices ($\sigma_x, \sigma_y, \sigma_z$) and Bloch-sphere state constructors.
 pub mod spin;
 pub mod tridiagonal;
-#[allow(missing_docs)]
+/// Complex Hilbert-space ket (`QuantumState`) and linear operator (`QuantumOperator`) wrappers.
 pub mod types;
 
 // Re-export key types for convenience

@@ -27,9 +27,8 @@ pub fn heatmap_color(mut t: f64) -> [u8; 3] {
     [r_u8, g_u8, b_u8]
 }
 
-/// Maps a cyclic value to a color (e.g. for escape-time fractals).
+/// Maps a cyclic scalar parameter `n` to an RGB color via phase-shifted cosine channels.
 #[inline(always)]
-#[allow(missing_docs)]
 pub fn cyclic_cosine_palette(n: f64) -> [u8; 3] {
     let r = (0.5 + 0.5 * (3.0 + n * 0.15).cos()) * 255.0;
     let g = (0.5 + 0.5 * (3.0 + n * 0.15 + 2.0).cos()) * 255.0;

@@ -12,14 +12,14 @@ pub trait DoseKernel {
 /// Formula: $K(r) = \frac{A}{r^2} e^{-\beta r}$
 #[derive(Debug, Clone, Copy)]
 pub struct ExponentialKernel {
-    #[allow(missing_docs)]
+    /// Point-spread kernel scaling constant $A$.
     pub amplitude: f64,
-    #[allow(missing_docs)]
+    /// Linear radial attenuation coefficient $\beta$.
     pub beta: f64,
 }
 
 impl ExponentialKernel {
-    #[allow(missing_docs)]
+    /// Creates an exponential dose point-spread kernel $K(r) = (A / r^2) e^{-\beta r}$.
     #[verified_engine::verified]
     pub fn new(amplitude: f64, beta: f64) -> Self {
         Self { amplitude, beta }

@@ -67,15 +67,15 @@
 //! $R_0$ is defined as the expected number of secondary infections produced by a single infected
 //! individual in a completely susceptible population.
 
-#[allow(missing_docs)]
+/// Implicit epidemic final-size solvers via Newton-Raphson iteration.
 pub mod analytics;
-#[allow(missing_docs)]
+/// Deterministic SIR and SEIR compartmental ODE systems and builders.
 pub mod compartmental;
-#[allow(missing_docs)]
+/// Next-generation matrix $K = F V^{-1}$ spectral-radius $R_0$ computation.
 pub mod matrix_dynamics;
-#[allow(missing_docs)]
+/// Discrete-time stochastic contagion and quarantine dynamics on contact graphs.
 pub mod networks;
-#[allow(missing_docs)]
+/// Continuous-time stochastic SIR Gillespie propensities and branching extinction probabilities.
 pub mod stochastic;
 
 // Re-exports for easier access

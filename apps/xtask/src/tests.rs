@@ -2,8 +2,9 @@ use super::*;
 use crate::gates::{
     CARGO_DOC_ARGS, HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin, workspace_wasm,
 };
-use crate::markdown_links::{collect_md_files, extract_md_links};
+use crate::markdown_links::{collect_md_files, extract_md_links, find_broken_links_in_dir};
 use crate::smoke::CHECK_BENCHES_ARGS;
+use std::path::PathBuf;
 use std::process::Command;
 
 fn local_hooks_path(dir: &Path) -> Option<String> {
@@ -98,10 +99,52 @@ fn test_pre_commit_hook_executable() {
 fn test_xtask_helpers() {
     print_help();
     assert_eq!(extract_md_links("[d](README.md)"), vec!["README.md"]);
+    assert!(extract_md_links("`$f[i](x)$` and $$g[j](y)$$").is_empty());
     let mut md = Vec::new();
     collect_md_files(Path::new("."), &mut md);
     assert!(!md.is_empty());
     check_markdown_links();
+}
+
+#[test]
+fn test_markdown_and_docstring_link_validation() {
+    let dir = env::temp_dir().join(format!("xtask_md_links_test_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("docs/math_specs")).unwrap();
+    fs::create_dir_all(dir.join("papers")).unwrap();
+    fs::create_dir_all(dir.join("crates/demo/src")).unwrap();
+
+    fs::write(
+        dir.join("papers/references.bib"),
+        "@article{robbins1951stochastic,\n  title = {A Stochastic Approximation Method}\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("docs/math_specs/pure_math.md"),
+        "# Spec\nSee [Robbins](../../papers/references.bib#robbins1951stochastic).\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("crates/demo/src/lib.rs"),
+        "/// Valid [spec](../../../docs/math_specs/pure_math.md) and [`local`](local_mod).\npub fn ok() {}\n",
+    )
+    .unwrap();
+
+    let ok_files = vec![
+        PathBuf::from("docs/math_specs/pure_math.md"),
+        PathBuf::from("crates/demo/src/lib.rs"),
+    ];
+    assert!(find_broken_links_in_dir(&dir, &ok_files).is_empty());
+
+    fs::write(
+        dir.join("crates/demo/src/bad.rs"),
+        "#[doc = include_str!(\"missing_snippet.md\")]\n/// Broken [bib](../../../papers/references.bib#nonexistent_key) and [spec](../../../docs/math_specs/missing.md).\npub fn bad() {}\n",
+    )
+    .unwrap();
+    let broken = find_broken_links_in_dir(&dir, &[PathBuf::from("crates/demo/src/bad.rs")]);
+    assert_eq!(broken.len(), 3);
+
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

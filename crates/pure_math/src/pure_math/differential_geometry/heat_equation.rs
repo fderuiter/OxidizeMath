@@ -1,22 +1,29 @@
 use super::buckled_flow::{SurfaceTopology, detect_twisted_seam_map};
 use super::surface::{ParametricSurface, SurfaceAnalysis};
 
-/// Solves the Heat Equation $\frac{\partial u}{\partial t} = \alpha \Delta_S u$ on a parametric surface.
-/// Uses explicit Euler time-stepping with a discrete divergence-form stencil for the Laplace-Beltrami operator.
+/// Surface heat diffusion solver integrating $\partial_t u = \Delta_{\mathcal{M}} u$ via the discrete cotangent Laplace-Beltrami operator on triangle meshes.
+///
+/// Reference: Crane, Weischedel & Wardetzky (2013), DOI: 10.1145/2516971.2516977; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Explicit forward-Euler stepping requires $\Delta t \le A_{\min} / \sum |\cot \alpha_{ij}|$, while backward-Euler mass-stiffness solves $(M - \Delta t\,L)u^{n+1} = M u^n$ are unconditionally $L^2$-stable.
+///
+/// # Domain of Validity
+/// Valid on manifold, non-degenerate 2D triangle meshes with strictly positive face areas.
 pub struct HeatEquationSolver<'a, S: ParametricSurface> {
-    #[allow(missing_docs)]
+    /// Value for `surface` (surface).
     pub surface: &'a S,
-    #[allow(missing_docs)]
+    /// Value for `alpha` (alpha).
     pub alpha: f64, // Thermal diffusivity
-    #[allow(missing_docs)]
+    /// Value for `u_grid` (u grid).
     pub u_grid: Vec<Vec<f64>>, // Current temperature state
-    #[allow(missing_docs)]
+    /// Value for `next_grid` (next grid).
     pub next_grid: Vec<Vec<f64>>, // Bolt Optimization: Buffer to avoid allocations in step
-    #[allow(missing_docs)]
+    /// Value for `grid_res` (grid res).
     pub grid_res: (usize, usize), // (n_u, n_v)
-    #[allow(missing_docs)]
+    /// Value for `range_u` (range u).
     pub range_u: (f64, f64),
-    #[allow(missing_docs)]
+    /// Value for `range_v` (range v).
     pub range_v: (f64, f64),
     /// Boundary topology applied across parameter seams and polar caps.
     pub topology: SurfaceTopology,

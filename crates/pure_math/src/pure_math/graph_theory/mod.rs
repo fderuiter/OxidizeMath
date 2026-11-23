@@ -1,10 +1,10 @@
-#[allow(missing_docs)]
+/// Submodule providing `dijkstra` types, traits, and algorithms.
 pub mod dijkstra;
-#[allow(missing_docs)]
+/// Submodule providing `graph` types, traits, and algorithms.
 pub mod graph;
-#[allow(missing_docs)]
+/// Submodule providing `layout` types, traits, and algorithms.
 pub mod layout;
-#[allow(missing_docs)]
+/// Submodule providing `parameters` types, traits, and algorithms.
 pub mod parameters;
 
 // [cite:graph_parameters_rust]

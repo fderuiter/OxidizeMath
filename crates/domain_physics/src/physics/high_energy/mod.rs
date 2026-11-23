@@ -81,15 +81,15 @@
 //! - **`fluid_dynamics`**: Relativistic Euler equations and shock waves.
 //! - **`statistics`**: Significance calculations (Li & Ma) for signal detection.
 
-#[allow(missing_docs)]
+/// Relativistic hydrodynamics, sound speeds, and Rankine-Hugoniot shock jump conditions.
 pub mod fluid_dynamics;
-#[allow(missing_docs)]
+/// Schwarzschild, Kerr equatorial, and Morris-Thorne spacetime metrics and geodesics.
 pub mod general_relativity;
-#[allow(missing_docs)]
+/// Special-relativistic Lorentz boosts, four-vectors, and Doppler beaming factors.
 pub mod observer;
-#[allow(missing_docs)]
+/// Synchrotron, inverse-Compton, and thermal bremsstrahlung radiative transfer models.
 pub mod radiation;
-#[allow(missing_docs)]
+/// Li & Ma Poisson likelihood-ratio significance for gamma-ray source detection.
 pub mod statistics;
 
 // Re-export constants to match original API

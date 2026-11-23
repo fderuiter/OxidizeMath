@@ -5,16 +5,16 @@ use nalgebra::{Point3, Vector3};
 /// Used for evolutions where the surface geometry itself changes.
 #[derive(Clone)]
 pub struct DiscreteSurface {
-    #[allow(missing_docs)]
+    /// Value for `points` (points).
     pub points: Vec<Vec<Point3<f64>>>,
-    #[allow(missing_docs)]
+    /// Value for `closed_u` (closed u).
     pub closed_u: bool,
-    #[allow(missing_docs)]
+    /// Value for `closed_v` (closed v).
     pub closed_v: bool,
 }
 
 impl DiscreteSurface {
-    #[allow(missing_docs)]
+    /// Constructs a structured parametric surface grid with optional periodic `u`/`v` wrapping.
     #[verified_engine::verified]
     pub fn new(points: Vec<Vec<Point3<f64>>>, closed_u: bool, closed_v: bool) -> Self {
         Self {
@@ -104,16 +104,16 @@ impl DiscreteSurface {
     }
 }
 
-#[allow(missing_docs)]
+/// Data structure `MeanCurvatureFlow` representing MeanCurvatureFlow state.
 pub struct MeanCurvatureFlow {
-    #[allow(missing_docs)]
+    /// Value for `surface` (surface).
     pub surface: DiscreteSurface,
     /// Bolt Optimization: Buffer to avoid allocations in step
     pub next_points: Vec<Vec<Point3<f64>>>,
 }
 
 impl MeanCurvatureFlow {
-    #[allow(missing_docs)]
+    /// Initializes a double-buffered mean-curvature flow stepper over `surface`.
     #[verified_engine::verified]
     pub fn new(surface: DiscreteSurface) -> Self {
         let next_points = surface.points.clone();
@@ -123,7 +123,7 @@ impl MeanCurvatureFlow {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Advances every grid vertex by one explicit Euler step `dt` along its mean-curvature vector.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
         let nu = self.surface.points.len();

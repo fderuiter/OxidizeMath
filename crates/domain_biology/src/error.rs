@@ -2,14 +2,14 @@ use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
 use thiserror::Error;
 
+/// Biophysical parameter validation errors for Hodgkin-Huxley membrane conductance models.
 #[derive(Error, Debug, PartialEq)]
-#[allow(missing_docs)]
 pub enum HodgkinHuxleyError {
+    /// Ion-channel gating variable $x \in \{n, m, h\}$ fell outside the unit interval $[0, 1]$.
     #[error("Invalid gating variable value: {0} (must be between 0 and 1)")]
-    #[allow(missing_docs)]
     InvalidGatingVariable(f64),
+    /// Maximal ionic or leak conductance $g$ was negative.
     #[error("Invalid conductance value: {0} (must be non-negative)")]
-    #[allow(missing_docs)]
     InvalidConductance(f64),
 }
 

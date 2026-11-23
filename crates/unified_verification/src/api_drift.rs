@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use traversal::traverse_crate_root_with_cache;
 
 mod facade;
-mod traversal;
+pub(crate) mod traversal;
 mod visitor;
 
 #[cfg(test)]

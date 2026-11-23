@@ -1,11 +1,12 @@
 #![doc = include_str!("../README.md")]
 pub mod applied;
-#[allow(missing_docs)]
+/// Domain-specific error types and diagnostic implementations for applied models.
 pub mod error;
 
+/// Hidden facade re-exporting workspace modules under `math_explorer` for doctests.
 #[doc(hidden)]
-#[allow(missing_docs)]
 pub mod __doctest_facade {
+    /// Doctest error re-exports.
     pub mod error {
         pub use crate::error::{
             AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,
@@ -13,6 +14,7 @@ pub mod __doctest_facade {
         };
         pub use ::pure_math::__doctest_facade::error::*;
     }
+    /// Doctest prelude re-exports.
     pub mod prelude {
         pub use crate::error::{
             AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,

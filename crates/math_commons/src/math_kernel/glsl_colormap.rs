@@ -1,4 +1,4 @@
-//! GLSL ES 3.00 colormap and WCAG 2.2 dark-canvas contrast emitters mirroring [`super::colormap`].
+//! GLSL ES 3.00 colormap and WCAG 2.2 dark-canvas contrast emitters mirroring [`crate::math_kernel::colormap`].
 // [cite:math_commons]
 
 /// Emits the GLSL ES 3.00 `heatmap_color(float t)` function mapping `[0.0, 1.0]` to RGB (`vec3`).

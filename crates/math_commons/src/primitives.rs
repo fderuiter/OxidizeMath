@@ -1,8 +1,8 @@
 // [cite:math_commons]
 use std::ops::Deref;
 
+/// Implements checked scalar multiplication/division or delegating binary operators for wrapper types.
 #[macro_export]
-#[allow(missing_docs)]
 macro_rules! impl_binop {
     ($name:ident) => {
         impl std::ops::Mul<f64> for $name {
@@ -84,27 +84,27 @@ macro_rules! define_bounded_float {
                 self.0
             }
 
-            #[allow(missing_docs)]
+            /// Raises the bounded value to the floating-point power `n`, validating bounds.
             pub fn powf(&self, n: f64) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.powf(n))
             }
 
-            #[allow(missing_docs)]
+            /// Computes the principal square root, validating bounds on the result.
             pub fn sqrt(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.sqrt())
             }
 
-            #[allow(missing_docs)]
+            /// Computes the natural logarithm, validating bounds on the result.
             pub fn ln(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.ln())
             }
 
-            #[allow(missing_docs)]
+            /// Computes the base-$e$ exponential, validating bounds on the result.
             pub fn exp(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.exp())
             }
 
-            #[allow(missing_docs)]
+            /// Computes the absolute value, validating bounds on the result.
             pub fn abs(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.abs())
             }
@@ -159,27 +159,27 @@ macro_rules! define_strictly_bounded_float {
                 self.0
             }
 
-            #[allow(missing_docs)]
+            /// Raises the strictly bounded value to the floating-point power `n`, validating bounds.
             pub fn powf(&self, n: f64) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.powf(n))
             }
 
-            #[allow(missing_docs)]
+            /// Computes the principal square root, validating strict bounds on the result.
             pub fn sqrt(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.sqrt())
             }
 
-            #[allow(missing_docs)]
+            /// Computes the natural logarithm, validating strict bounds on the result.
             pub fn ln(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.ln())
             }
 
-            #[allow(missing_docs)]
+            /// Computes the base-$e$ exponential, validating strict bounds on the result.
             pub fn exp(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.exp())
             }
 
-            #[allow(missing_docs)]
+            /// Computes the absolute value, validating strict bounds on the result.
             pub fn abs(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.abs())
             }

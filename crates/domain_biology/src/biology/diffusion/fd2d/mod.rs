@@ -1,11 +1,11 @@
 use super::SpatialDiffusion;
 
-#[allow(missing_docs)]
+/// Cardinal 2D boundary-index resolution strategies.
 pub mod boundary;
 mod fused_pair;
-#[allow(missing_docs)]
+/// 2D Cartesian grid dimension and spacing descriptors.
 pub mod geometry;
-#[allow(missing_docs)]
+/// Loop-splitting 2D stencil traversal strategies.
 pub mod iteration;
 pub mod mask;
 
@@ -19,16 +19,16 @@ use math_commons::math_kernel::types::{Dimension, StepSize};
 /// A 2D Finite Difference implementation using a 5-point stencil.
 #[derive(Debug, Clone, Copy)]
 pub struct FiniteDifference2D {
-    #[allow(missing_docs)]
+    /// Cartesian grid dimensions and cell spacings.
     pub geometry: Cartesian2D,
-    #[allow(missing_docs)]
+    /// Homogeneous Neumann zero-flux boundary strategy.
     pub boundary: NeumannBoundary,
-    #[allow(missing_docs)]
+    /// Boundary/interior loop-splitting traversal strategy.
     pub iteration: LoopSplittingIteration,
 }
 
 impl FiniteDifference2D {
-    #[allow(missing_docs)]
+    /// Constructs a 5-point 2D finite-difference Laplacian operator on a `width` $\times$ `height` grid.
     #[verified_engine::verified]
     pub fn new(width: Dimension, height: Dimension, dx: StepSize, dy: StepSize) -> Self {
         Self {

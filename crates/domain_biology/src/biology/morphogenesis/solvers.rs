@@ -3,9 +3,18 @@ use super::state::TuringState;
 use crate::biology::diffusion::SpatialDiffusion;
 use pure_math::pure_math::analysis::ode::{OdeSystem, Solver, VectorOperations};
 
-/// Strategy for time-stepping the Turing System.
+/// Strategy for time-stepping $N$-species reaction-diffusion systems:
+/// $$\frac{\partial \mathbf{u}}{\partial t} = \mathbf{D} \nabla^2 \mathbf{u} + \mathbf{R}(\mathbf{u})$$
 ///
-/// This trait allows decoupling the numerical integration method from the system definition.
+/// Reference: Turing (1952), DOI: `10.1098/rstb.1952.0012`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Explicit time-steppers must satisfy the parabolic CFL bound
+/// $\Delta t \le h^2 / (2 d \max_i D_i)$ in $d$ spatial dimensions to remain $L^\infty$-stable.
+///
+/// # Domain of Validity
+/// Uniform finite-difference grids with matching buffer lengths, $D_i \ge 0$, and $\Delta t > 0$.
 pub trait TuringSolverStrategy<const N: usize = 2> {
     /// Performs a single time step of the simulation.
     ///
@@ -28,11 +37,11 @@ pub trait TuringSolverStrategy<const N: usize = 2> {
 /// This struct implements `OdeSystem` to allow standard solvers to integrate
 /// the reaction-diffusion equations.
 pub struct TuringDynamics<'a, const N: usize, K, D> {
-    #[allow(missing_docs)]
+    /// Local reaction kinetics operator $\mathbf{R}(\mathbf{u})$.
     pub kinetics: &'a K,
-    #[allow(missing_docs)]
+    /// Spatial Laplacian operator $\nabla^2 \mathbf{u}$.
     pub diffusion: &'a D,
-    #[allow(missing_docs)]
+    /// Per-species scalar diffusivities $[D_0, \dots, D_{N-1}]$.
     pub diffusion_coeffs: [f64; N],
 }
 
@@ -127,6 +136,16 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
 /// The stability condition for 1D diffusion is approximately:
 /// $$ \Delta t \le \frac{\Delta x^2}{2 D} $$
 ///
+/// Reference: Turing (1952), DOI: `10.1098/rstb.1952.0012`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Conditionally stable explicit forward-Euler update requiring
+/// $\Delta t \le h^2 / (2 d \max_i D_i)$ in $d$ spatial dimensions; executes with zero heap allocations.
+///
+/// # Domain of Validity
+/// Non-stiff or CFL-bounded parabolic reaction-diffusion grids with $D_i \ge 0$, $h > 0$, and $\Delta t > 0$.
+///
 /// # Examples
 ///
 /// Manually stepping a system:
@@ -206,16 +225,25 @@ impl<const N: usize> TuringSolverStrategy<N> for FusedEulerSolver {
     }
 }
 
-/// Adapts a standard ODE Solver to the TuringSolverStrategy trait.
+/// Adapts a generic ODE [`Solver`] (e.g. `RungeKutta4`) to [`TuringSolverStrategy`] for
+/// $$\frac{\partial \mathbf{u}}{\partial t} = \mathbf{D} \nabla^2 \mathbf{u} + \mathbf{R}(\mathbf{u})$$
 ///
-/// This adapter allows using any generic `Solver` (like RungeKutta4) within the TuringSystem.
+/// Reference: Turing (1952), DOI: `10.1098/rstb.1952.0012`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Inherits the stability region of the wrapped explicit `Solver` (e.g., RK4 extends the real-axis
+/// parabolic stability limit to $\approx 2.78\, h^2 / (4 d \max_i D_i)$).
+///
+/// # Domain of Validity
+/// Method-of-lines discretizations over finite grids with $D_i \ge 0$ and matching `TuringState` dimensions.
 pub struct StandardSolverAdapter<S> {
-    #[allow(missing_docs)]
+    /// Wrapped ODE time-integrator strategy.
     pub solver: S,
 }
 
 impl<S> StandardSolverAdapter<S> {
-    #[allow(missing_docs)]
+    /// Wraps an [`OdeSystem`] `solver` as a [`TuringSolverStrategy`].
     #[verified_engine::verified]
     pub fn new(solver: S) -> Self {
         Self { solver }
@@ -242,9 +270,9 @@ use rand::RngCore;
 
 /// A wrapper to use FusedEulerSolver within the unified EvolutionEngine interface.
 pub struct FusedEulerEvolution<'a, const N: usize, K, D> {
-    #[allow(missing_docs)]
+    /// Underlying cache-fused forward-Euler solver.
     pub solver: FusedEulerSolver,
-    #[allow(missing_docs)]
+    /// Borrowed reaction-diffusion physics descriptor.
     pub dynamics: &'a TuringDynamics<'a, N, K, D>,
 }
 

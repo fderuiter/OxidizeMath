@@ -1,16 +1,16 @@
 use super::types::{ClinicalTrialError, ContingencyTable};
 use statrs::distribution::{ContinuousCDF, Normal};
 
+/// Point estimates and Wald $(1 - \alpha)$ confidence intervals for $2 \times 2$ binary outcomes.
 #[derive(Debug, Clone)]
-#[allow(missing_docs)]
 pub struct RiskMetrics {
-    #[allow(missing_docs)]
+    /// Treatment-to-control incidence ratio $\mathrm{RR} = [a/(a+b)] / [c/(c+d)]$.
     pub relative_risk: f64,
-    #[allow(missing_docs)]
+    /// Cross-product odds ratio $\mathrm{OR} = (ad) / (bc)$.
     pub odds_ratio: f64,
-    #[allow(missing_docs)]
+    /// Two-sided log-scale $(1 - \alpha)$ confidence interval `(lower, upper)` for `relative_risk`.
     pub rr_ci: (f64, f64),
-    #[allow(missing_docs)]
+    /// Two-sided Woolf log-scale $(1 - \alpha)$ confidence interval `(lower, upper)` for `odds_ratio`.
     pub or_ci: (f64, f64),
 }
 

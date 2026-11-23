@@ -15,9 +15,9 @@ pub const MAX_TDA_DIMENSION: usize = 32;
 /// A point in 2D space.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point2D {
-    #[allow(missing_docs)]
+    /// Value for `x` (x).
     pub x: f64,
-    #[allow(missing_docs)]
+    /// Value for `y` (y).
     pub y: f64,
 }
 
@@ -53,7 +53,7 @@ impl Point2D {
 /// A collection of points in 2D space bounded to [`MAX_TDA_POINTS`].
 #[derive(Debug, Clone)]
 pub struct PointCloud {
-    #[allow(missing_docs)]
+    /// Value for `points` (points).
     pub points: Vec<Point2D>,
 }
 

@@ -1,13 +1,13 @@
 pub mod baum_welch;
 pub mod baum_welch_types;
-#[allow(missing_docs)]
+/// Submodule providing `forward_backward` types, traits, and algorithms.
 pub mod forward_backward;
-#[allow(missing_docs)]
+/// Submodule providing `generation` types, traits, and algorithms.
 pub mod generation;
-#[allow(missing_docs)]
+/// Submodule providing `model` types, traits, and algorithms.
 pub mod model;
 mod serde_impl;
-#[allow(missing_docs)]
+/// Submodule providing `viterbi` types, traits, and algorithms.
 pub mod viterbi;
 
 #[cfg(test)]

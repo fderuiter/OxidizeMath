@@ -204,7 +204,8 @@ pub(crate) fn build_staged_plan(
         full_workspace: false,
         rustfmt_by_edition,
         run_workflows: all_staged.iter().any(|p| p.starts_with(".github/")),
-        scan_all_markdown: has_deleted_or_renamed,
+        scan_all_markdown: has_deleted_or_renamed
+            || all_staged.iter().any(|p| p == "papers/references.bib"),
         markdown_files,
         host_clippy_packages,
         host_clippy_args,
@@ -242,11 +243,17 @@ fn run_staged_markdown_and_clippy_gates(
     cargo_envs: &[(&str, &str)],
 ) {
     if plan.scan_all_markdown {
-        println!("\n--- Staged Full-Repository Markdown Link Check ---");
+        println!("\n--- Staged Full-Repository Documentation Link Check ---");
         check_markdown_links_in_dir(snapshot_dir);
-    } else if !plan.markdown_files.is_empty() {
-        println!("\n--- Staged Markdown Link Check ---");
-        check_markdown_links_for_files_in_dir(snapshot_dir, &plan.markdown_files);
+    } else {
+        let mut doc_targets = plan.markdown_files.clone();
+        for rs_files in plan.rustfmt_by_edition.values() {
+            doc_targets.extend(rs_files.iter().map(PathBuf::from));
+        }
+        if !doc_targets.is_empty() {
+            println!("\n--- Staged Documentation Link Check ---");
+            check_markdown_links_for_files_in_dir(snapshot_dir, &doc_targets);
+        }
     }
 
     if let Some(host_args) = &plan.host_clippy_args {

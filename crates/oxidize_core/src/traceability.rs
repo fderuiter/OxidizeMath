@@ -22,67 +22,67 @@ use crate::vfs::VirtualFileSystem;
 use std::collections::HashSet;
 use std::collections::{BTreeMap, HashMap};
 
+/// Summary report produced by scanning workspace Rust modules against `traceability.toml` and `papers/*.tex`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
-#[allow(missing_docs)]
 pub struct TraceabilityReport {
-    #[allow(missing_docs)]
+    /// Total active Rust source files scanned.
     pub scanned_files: usize,
-    #[allow(missing_docs)]
+    /// `(source, target)` pairs referencing non-existent registry modules or LaTeX papers.
     pub invalid_links: Vec<(String, String)>,
-    #[allow(missing_docs)]
+    /// Manuscript `.tex` files unreferenced by any active entry in `traceability.toml`.
     pub orphaned_papers: Vec<String>,
-    #[allow(missing_docs)]
+    /// Formatted module paths lacking `[cite:...]` traceability annotations.
     pub unlinked_code: Vec<String>,
+    /// Detailed `(module_path, file_path, line)` tuples for unlinked modules.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[allow(missing_docs)]
     pub unlinked_module_details: Vec<(String, String, usize)>,
-    #[allow(missing_docs)]
+    /// Module files containing unverified functions without an explicit opt-out.
     pub unverified_modules: Vec<String>,
-    #[allow(missing_docs)]
+    /// Mapping from manuscript `.tex` filename to citing source files.
     pub paper_coverage: HashMap<String, Vec<String>>,
-    #[allow(missing_docs)]
+    /// Total functions discovered across scanned files.
     pub total_funcs: usize,
-    #[allow(missing_docs)]
+    /// Total assertions discovered across scanned files.
     pub total_asserts: usize,
-    #[allow(missing_docs)]
+    /// Total verified functions across scanned files.
     pub verified_funcs: usize,
-    #[allow(missing_docs)]
+    /// Total verified assertions across scanned files.
     pub verified_asserts: usize,
-    #[allow(missing_docs)]
+    /// Registry entries declaring an invalid verification tier mismatch.
     pub invalid_tiers: Vec<String>,
-    #[allow(missing_docs)]
+    /// Files where stochastic verification blocks used vacuous zero-initialized inputs.
     pub vacuous_bypasses: Vec<String>,
-    #[allow(missing_docs)]
+    /// Semantic integrity status per manuscript `.tex` file.
     pub semantic_integrity_status: HashMap<String, String>,
+    /// Source line numbers for invalid `[cite:...]` links.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    #[allow(missing_docs)]
     pub invalid_link_lines: BTreeMap<String, usize>,
+    /// First unverified `(fn_name, line)` span per unverified module file.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    #[allow(missing_docs)]
     pub unverified_module_spans: BTreeMap<String, (String, usize)>,
+    /// Source line numbers for vacuous stochastic bypasses.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    #[allow(missing_docs)]
     pub vacuous_bypass_spans: BTreeMap<String, usize>,
+    /// Per-file `[verified_funcs, total_funcs]` counts.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    #[allow(missing_docs)]
     pub file_verified_counts: BTreeMap<String, [usize; 2]>,
 }
 
-#[allow(missing_docs)]
+/// Traceability scanner parameterized over a [`VirtualFileSystem`] backend.
 pub struct TraceabilityEngine<V: VirtualFileSystem> {
-    #[allow(missing_docs)]
+    /// Underlying virtual file system used to read manifests, papers, and Rust sources.
     pub vfs: V,
 }
 
 impl<V: VirtualFileSystem> TraceabilityEngine<V> {
-    #[allow(missing_docs)]
+    /// Creates a new [`TraceabilityEngine`] backed by `vfs`.
     pub fn new(vfs: V) -> Self {
         Self { vfs }
     }
 
+    /// Returns `true` when `module_name` is registered in the workspace `traceability.toml`.
     #[cfg(not(target_arch = "wasm32"))]
-    #[allow(missing_docs)]
     pub fn verify_module_registered(module_name: &str) -> bool {
         let mut registry_content = std::fs::read_to_string("traceability.toml").unwrap_or_default();
         if registry_content.is_empty()
@@ -94,9 +94,9 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         analysis::is_module_in_registry_toml(&registry_content, module_name)
     }
 
+    /// Returns `true` when `module_name` is registered in the embedded `traceability.toml`.
     #[cfg(target_arch = "wasm32")]
     // theory_verification!
-    #[allow(missing_docs)]
     pub fn verify_module_registered(module_name: &str) -> bool {
         const EMBEDDED_REGISTRY: &str = include_str!("../../../traceability.toml");
         analysis::is_module_in_registry_toml(EMBEDDED_REGISTRY, module_name)
@@ -231,7 +231,7 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         self.scan_repository(&all_dirs, &papers_dir, auto_fix).await
     }
 
-    #[allow(missing_docs)]
+    /// Scans `code_dirs` and `papers_dir` using a fresh single-pass [`AstCache`].
     pub async fn scan_repository(
         &self,
         code_dirs: &[&str],

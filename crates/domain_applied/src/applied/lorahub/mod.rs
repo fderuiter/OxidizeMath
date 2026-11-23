@@ -1,10 +1,10 @@
 #![doc = include_str!("README.md")]
 
-#[allow(missing_docs)]
+/// Gradient-free LoRA adapter ensemble optimization and inference orchestration.
 pub mod ensemble;
-#[allow(missing_docs)]
+/// Adapter weight combination and regularized objective evaluation strategies.
 pub mod strategies;
-#[allow(missing_docs)]
+/// Tensor state-dictionary types representing low-rank LoRA modules.
 pub mod types;
 
 pub use ensemble::LoraEnsemble;

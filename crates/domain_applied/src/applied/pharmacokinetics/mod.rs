@@ -93,18 +93,18 @@
 //! ```
 
 pub mod analytics;
-#[allow(missing_docs)]
+/// Single-dose one-compartment Bateman absorption-elimination model and $k_a$ calibration.
 pub mod bateman;
-#[allow(missing_docs)]
+/// Chiral two-enantiomer pharmacokinetic mixture model.
 pub mod enantiomer;
-#[allow(missing_docs)]
+/// Validated ADME parameter types and builders.
 pub mod parameters;
 pub mod regimen;
-#[allow(missing_docs)]
+/// Multi-dose linear superposition wrapper over any [`PharmacokineticModel`].
 pub mod superposition;
-#[allow(missing_docs)]
+/// Core [`PharmacokineticModel`] trait abstraction.
 pub mod traits;
-#[allow(missing_docs)]
+/// Biphasic extended-release two-pulse pharmacokinetic wrapper.
 pub mod two_pulse;
 
 pub use analytics::{

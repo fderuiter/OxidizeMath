@@ -21,21 +21,21 @@ pub struct StencilNeighbors3D<const N: usize> {
 /// Standard spatial numerical operators for fused stencil evaluations.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StencilOperators {
-    #[allow(missing_docs)]
+    /// Value for `dx` (dx).
     pub dx: StepSize,
-    #[allow(missing_docs)]
+    /// Value for `dy` (dy).
     pub dy: StepSize,
-    #[allow(missing_docs)]
+    /// Value for `dz` (dz).
     pub dz: StepSize,
-    #[allow(missing_docs)]
+    /// Value for `inv_dx` (inv dx).
     pub inv_dx: f64,
-    #[allow(missing_docs)]
+    /// Value for `inv_two_dx` (inv two dx).
     pub inv_two_dx: f64,
-    #[allow(missing_docs)]
+    /// Value for `inv_dx_sq` (inv dx sq).
     pub inv_dx_sq: f64,
-    #[allow(missing_docs)]
+    /// Value for `inv_dy_sq` (inv dy sq).
     pub inv_dy_sq: f64,
-    #[allow(missing_docs)]
+    /// Value for `inv_dz_sq` (inv dz sq).
     pub inv_dz_sq: f64,
 }
 
@@ -181,11 +181,9 @@ impl StencilOperators {
     }
 }
 
-/// A generic Fused Stencil Stepper for performance-optimized grid updates.
-/// By evaluating operators inside the grid loop, this avoids memory bandwidth bottlenecks
-/// caused by temporary derivative buffers.
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/pde_stepper.md")]
 pub struct FusedStencilStepper {
-    #[allow(missing_docs)]
+    /// Value for `ops` (ops).
     pub ops: StencilOperators,
 }
 
@@ -226,7 +224,7 @@ impl FusedStencilStepper {
         })
     }
 
-    #[allow(missing_docs)]
+    /// Constructs a 1D fused stencil stepper for `dx` (panics if `*dx <= 0.0`; prefer [`Self::try_new`]).
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {
         Self {
@@ -234,7 +232,7 @@ impl FusedStencilStepper {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Constructs a 2D fused stencil stepper for `(dx, dy)` (panics if non-positive; prefer [`Self::try_new_2d`]).
     #[verified_engine::verified]
     pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
         Self {

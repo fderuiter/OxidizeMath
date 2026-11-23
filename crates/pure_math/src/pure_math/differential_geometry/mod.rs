@@ -1,11 +1,11 @@
 pub mod buckled_flow;
-#[allow(missing_docs)]
+/// Submodule providing `heat_equation` types, traits, and algorithms.
 pub mod heat_equation;
-#[allow(missing_docs)]
+/// Submodule providing `mean_curvature_flow` types, traits, and algorithms.
 pub mod mean_curvature_flow;
-#[allow(missing_docs)]
+/// Submodule providing `operators` types, traits, and algorithms.
 pub mod operators;
-#[allow(missing_docs)]
+/// Submodule providing `surface` types, traits, and algorithms.
 pub mod surface;
 
 // [cite:modular_polynomials_review]

@@ -25,9 +25,9 @@ pub trait ConvexSet {
 /// a valid domain for standard fixed-point theorems.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoxSet {
-    #[allow(missing_docs)]
+    /// Coordinate-wise inclusive lower bounds $\mathbf{l} \in \mathbb{R}^n$.
     pub min_bounds: DVector<f64>,
-    #[allow(missing_docs)]
+    /// Coordinate-wise inclusive upper bounds $\mathbf{u} \in \mathbb{R}^n$ ($\mathbf{l} \le \mathbf{u}$).
     pub max_bounds: DVector<f64>,
 }
 

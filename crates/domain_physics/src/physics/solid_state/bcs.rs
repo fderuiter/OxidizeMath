@@ -31,6 +31,17 @@ pub trait GapEquation {
 /// Iterates $\Delta_{n+1} = (1 - \alpha)\Delta_n + \alpha F(\Delta_n)$ until
 /// $|\Delta_{n+1} - \Delta_n| < \text{tolerance}$ (in eV) or `max_iterations` is exhausted.
 ///
+/// Reference: Bardeen, Cooper & Schrieffer (1957), DOI: `10.1103/PhysRev.108.1175`; see
+/// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Contractive around the non-trivial positive root $\Delta^* > 0$ for mixing weights
+/// $\alpha \in (0, 1]$; returns [`SolidStateError::ConvergenceFailure`] if `max_iterations` is reached.
+///
+/// # Domain of Validity
+/// Non-zero initial seed $\Delta_0 > 0$ (`eV`) — since $\Delta = 0$ is a trivial fixed point — with
+/// `tolerance > 0` and $\alpha \in (0, 1]$.
+///
 /// # Examples
 ///
 /// ```rust
@@ -147,10 +158,19 @@ impl BcsGapSolver {
 
 // --- Models ---
 
-/// Zero-temperature isotropic s-wave BCS pairing model over discrete single-particle levels.
+/// Zero-temperature isotropic s-wave BCS pairing model over discrete single-particle levels:
+/// $$\Delta = V \sum_{|\xi_k| \le \hbar\omega_D} \frac{\Delta}{2\sqrt{\xi_k^2 + \Delta^2}}$$
 ///
-/// Sums pairing contributions across states within $|\xi_k| \le \hbar\omega_D$ (`debye_cutoff`)
-/// weighted by uniform attractive pairing interaction `potential` $V$.
+/// Reference: Bardeen, Cooper & Schrieffer (1957), DOI: `10.1103/PhysRev.108.1175`; see
+/// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Guards quasiparticle denominators $E_k = \sqrt{\xi_k^2 + \Delta^2} \le 10^{-12}\,\text{eV}$
+/// against division-by-zero when $\xi_k = \Delta = 0$.
+///
+/// # Domain of Validity
+/// Weak-to-intermediate attractive s-wave pairing $V > 0$, positive Debye cutoff $\hbar\omega_D > 0$,
+/// and zero-temperature ($T = 0\,\text{K}$) discrete level spectra.
 pub struct IsotropicBCSModel {
     /// Single-particle kinetic energies $\xi_k = \epsilon_k - \mu$ relative to the Fermi level.
     pub energies: Vec<ElectronVolts>,

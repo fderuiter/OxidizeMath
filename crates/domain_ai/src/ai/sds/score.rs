@@ -5,15 +5,27 @@ use nalgebra::DMatrix;
 /// Operation: Pass text through CLIP Text Encoder.
 /// Output: Text Embedding Vectors e_text.
 pub trait TextEncoder {
+    /// Encodes a conditioning prompt `text` into a sequence-by-embedding matrix $\mathbf{e}_{\mathrm{text}}$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn encode(&self, text: &str) -> DMatrix<f64>;
 }
 
-/// Module 3.2: U-Net Forward Pass
-/// Input: Noisy Latent z_t, Timestep embedding t, Text Embedding e_text.
-/// Operation: The U-Net predicts the noise component.
-/// Output: Predicted Noise Tensor epsilon_hat.
+/// Denoising diffusion noise-prediction interface $\hat{\boldsymbol{\epsilon}}_\phi(\mathbf{z}_t; y, t)$ for Score Distillation Sampling.
+///
+/// Approximates the scaled score of the perturbed latent $\mathbf{z}_t = \sqrt{\bar{\alpha}_t}\mathbf{x} + \sqrt{1 - \bar{\alpha}_t}\boldsymbol{\epsilon}$:
+///
+/// $$\nabla_\theta \mathcal{L}_{\mathrm{SDS}}(\phi, \mathbf{x} = g(\theta)) = \mathbb{E}_{t, \boldsymbol{\epsilon}}\!\left[w(t)\left(\hat{\boldsymbol{\epsilon}}_\phi(\mathbf{z}_t; y, t) - \boldsymbol{\epsilon}\right)\frac{\partial \mathbf{x}}{\partial \theta}\right]$$
+///
+/// Reference: Ho, Jain & Abbeel (2020), arXiv:2006.11239; Poole et al. (2022), arXiv:2209.14988;
+/// see [`docs/math_specs/domain_ai.md`](../../../../../docs/math_specs/domain_ai.md).
+///
+/// # Stability
+/// Omitting the U-Net Jacobian $\partial \hat{\boldsymbol{\epsilon}}_\phi / \partial \mathbf{z}_t$ yields a
+/// low-variance mode-seeking score residual well-conditioned for `timestep` $t$ away from $\bar{\alpha}_t \in \{0, 1\}$.
+///
+/// # Domain of Validity
+/// Finite noisy latent matrices `latent` matching the diffusion spatial resolution, positive
+/// integer `timestep` $t \in \{1, \dots, T\}$, and finite conditioning matrix `text_embeddings`.
 pub trait DiffusionModel {
     /// Predicts noise given noisy latent, timestep, and text embeddings.
     /// Returns predicted noise epsilon.

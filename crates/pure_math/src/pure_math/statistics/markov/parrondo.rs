@@ -435,7 +435,15 @@ fn evaluate_schedule_cycle(
     (total_gain * inv_len, accum_pi * inv_len)
 }
 
-/// Solves exact stationary distributions, asymptotic drifts, and broken detailed-balance metrics.
+/// Computes the exact stationary capital drift $g = \sum_{i=0}^{M-1} \pi_i (p_i - q_i)$ of a modular Parrondo Markov chain.
+///
+/// Reference: Harmer & Abbott (1999), DOI: 10.1214/ss/1009212519; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Solves the finite periodic stationary distribution $\boldsymbol{\pi} P = \boldsymbol{\pi}$, $\sum_i \pi_i = 1$ directly rather than via noisy Monte Carlo averaging.
+///
+/// # Domain of Validity
+/// Valid for irreducible modular capital games with transition probabilities $p_i \in (0, 1)$.
 #[verified_engine::verified]
 pub fn solve_parrondo_ratchet(
     params: &ParrondoParams,

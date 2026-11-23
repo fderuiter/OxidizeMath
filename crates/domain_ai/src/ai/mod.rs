@@ -91,19 +91,18 @@
 //! *   **Policy Gradients**: Optimizing the policy directly.
 //! *   **Bellman Equations**: The fundamental recursive relationship for value functions.
 
-#[allow(missing_docs)]
 pub(crate) mod activation_kernels;
-#[allow(missing_docs)]
+/// Nonlinear activation functions and their analytical derivatives.
 pub mod activations;
 pub mod deep_learning_theory;
 pub mod gaussian_splatting;
-#[allow(missing_docs)]
+/// Loss functions, analytical gradients, and first-order optimizer re-exports.
 pub mod optimization;
 pub mod reinforcement_learning;
 pub mod sds;
 pub mod self_calibration;
 pub mod transformer;
-#[allow(missing_docs)]
+/// Matrix broadcasting, softmax, and layer normalization helpers.
 pub mod utils;
 
 // Re-export transformer components for backward compatibility.

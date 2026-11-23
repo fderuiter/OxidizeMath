@@ -1,17 +1,17 @@
 use super::{NetworkEpidemicModel, NodeState, canonical_edges_from_adjacency};
 
+/// Validation errors raised when constructing or mutating a [`NetworkEpidemicModel`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(missing_docs)]
 pub enum NetworkModelError {
-    #[allow(missing_docs)]
+    /// Configured vertex count was zero or omitted.
     InvalidNodeCount,
-    #[allow(missing_docs)]
+    /// Transmission rate $\beta$ or recovery rate $\gamma$ was negative.
     InvalidParameters,
-    #[allow(missing_docs)]
+    /// Provided initial `states` slice length differed from `num_nodes`.
     StateMismatch,
-    #[allow(missing_docs)]
+    /// Provided 2D `positions` slice length differed from `num_nodes`.
     PositionMismatch,
-    #[allow(missing_docs)]
+    /// Adjacency list length differed from `num_nodes` or referenced an out-of-bounds vertex.
     AdjacencyMismatch,
     /// Node index exceeds the model's `num_nodes`.
     InvalidNodeIndex,
@@ -41,7 +41,7 @@ impl std::fmt::Display for NetworkModelError {
 
 impl std::error::Error for NetworkModelError {}
 
-#[allow(missing_docs)]
+/// Fluent builder for validated [`NetworkEpidemicModel`] instances.
 pub struct NetworkEpidemicModelBuilder {
     num_nodes: Option<usize>,
     beta: Option<f64>,
@@ -59,7 +59,7 @@ impl Default for NetworkEpidemicModelBuilder {
 }
 
 impl NetworkEpidemicModelBuilder {
-    #[allow(missing_docs)]
+    /// Creates an empty builder with unset node count, rates, and graph buffers.
     #[verified_engine::verified]
     pub fn new() -> Self {
         Self {
@@ -72,14 +72,14 @@ impl NetworkEpidemicModelBuilder {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Sets the number of vertices $N \ge 1$ in the contact graph.
     #[verified_engine::verified]
     pub fn num_nodes(mut self, num: usize) -> Self {
         self.num_nodes = Some(num);
         self
     }
 
-    #[allow(missing_docs)]
+    /// Sets the per-edge transmission probability $\beta$ and recovery probability $\gamma$.
     #[verified_engine::verified]
     pub fn parameters(mut self, beta: f64, gamma: f64) -> Self {
         self.beta = Some(beta);
@@ -87,28 +87,28 @@ impl NetworkEpidemicModelBuilder {
         self
     }
 
-    #[allow(missing_docs)]
+    /// Overrides the initial per-vertex compartmental states.
     #[verified_engine::verified]
     pub fn states(mut self, states: Vec<NodeState>) -> Self {
         self.states = Some(states);
         self
     }
 
-    #[allow(missing_docs)]
+    /// Overrides the 2D layout coordinates `[x, y]` for each vertex.
     #[verified_engine::verified]
     pub fn positions(mut self, positions: Vec<[f32; 2]>) -> Self {
         self.positions = Some(positions);
         self
     }
 
-    #[allow(missing_docs)]
+    /// Overrides the neighbor adjacency lists for each vertex.
     #[verified_engine::verified]
     pub fn adjacency(mut self, adjacency: Vec<Vec<usize>>) -> Self {
         self.adjacency = Some(adjacency);
         self
     }
 
-    #[allow(missing_docs)]
+    /// Validates dimensions and parameters and constructs a [`NetworkEpidemicModel`].
     #[verified_engine::verified]
     pub fn build(self) -> Result<NetworkEpidemicModel, NetworkModelError> {
         let num_nodes = self.num_nodes.ok_or(NetworkModelError::InvalidNodeCount)?;

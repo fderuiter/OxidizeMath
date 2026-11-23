@@ -53,14 +53,15 @@ fn rk4_kernel<State, S>(
     y_acc.scale_add(k, dt / 6.0);
 }
 
-/// Euler's Method Solver.
+/// Explicit first-order forward Euler integrator $\mathbf{y}_{n+1} = \mathbf{y}_n + \Delta t\,\mathbf{f}(t_n, \mathbf{y}_n)$.
 ///
-/// A simple first-order numerical integrator.
-/// Maintains an internal buffer to avoid allocations during steps.
+/// Reference: Hairer, Norsett & Wanner (1993), DOI: 10.1007/978-3-540-78862-1; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
 ///
-/// # Parse, Don't Validate
-/// This solver requires an example state at construction to pre-allocate buffers,
-/// ensuring that invalid (uninitialized) states are unrepresentable during simulation.
+/// # Stability
+/// Conditionally A-stable inside the unit disk $|1 + \lambda \Delta t| \le 1$; unconditionally unstable for purely imaginary eigenvalues $\lambda = i\omega \neq 0$.
+///
+/// # Domain of Validity
+/// Valid for non-stiff dissipative systems with small time steps $\Delta t < 2 / |\lambda|_{\max}$.
 #[derive(Debug, Clone)]
 pub struct Euler<State> {
     buffer: State,
@@ -93,14 +94,15 @@ impl<State: VectorOperations> Solver<State> for Euler<State> {
     }
 }
 
-/// Heun's Method Solver (Explicit Trapezoidal Rule / Runge-Kutta 2nd Order).
+/// Explicit second-order Heun predictor-corrector (RK2) solver $\mathbf{y}_{n+1} = \mathbf{y}_n + \frac{\Delta t}{2}\bigl(\mathbf{k}_1 + \mathbf{f}(t_n + \Delta t, \mathbf{y}_n + \Delta t\,\mathbf{k}_1)\bigr)$.
 ///
-/// A second-order predictor-corrector numerical integrator.
-/// Maintains internal scratch buffers to prevent heap allocations during step execution.
+/// Reference: Hairer, Norsett & Wanner (1993), DOI: 10.1007/978-3-540-78862-1; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
 ///
-/// # Parse, Don't Validate
-/// This solver requires an example state during initialization to pre-allocate buffers.
-/// This requirement guarantees that uninitialized states cannot occur during simulation.
+/// # Stability
+/// Strong-stability-preserving (SSP) 2-stage Runge-Kutta method with stability polynomial $R(z) = 1 + z + z^2/2$ ($|R(z)| \le 1$).
+///
+/// # Domain of Validity
+/// Valid for non-stiff ODEs with $C^2$ solutions and step sizes within $|1 + z + z^2/2| \le 1$.
 #[derive(Debug, Clone)]
 pub struct Heun<State> {
     k: State,
@@ -149,14 +151,15 @@ impl<State: VectorOperations> Solver<State> for Heun<State> {
     }
 }
 
-/// Runge-Kutta 4th Order Solver.
+/// Classical explicit 4-stage 4th-order Runge-Kutta integrator $\mathbf{y}_{n+1} = \mathbf{y}_n + \frac{\Delta t}{6}(\mathbf{k}_1 + 2\mathbf{k}_2 + 2\mathbf{k}_3 + \mathbf{k}_4)$.
 ///
-/// A classic fixed-step integrator for ODEs.
-/// Maintains internal buffers to avoid allocations.
+/// Reference: Hairer, Norsett & Wanner (1993), DOI: 10.1007/978-3-540-78862-1; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
 ///
-/// # Parse, Don't Validate
-/// This solver requires an example state at construction to pre-allocate buffers,
-/// ensuring that invalid (uninitialized) states are unrepresentable during simulation.
+/// # Stability
+/// Global truncation error $O(\Delta t^4)$ with stability polynomial $R(z) = 1 + z + z^2/2 + z^3/6 + z^4/24$ covering imaginary-axis modes up to $|\omega \Delta t| \le 2\sqrt{2}$.
+///
+/// # Domain of Validity
+/// Valid for non-stiff $C^4$ dynamical systems where $|\lambda \Delta t| \lesssim 2.78$.
 #[derive(Debug, Clone)]
 pub struct RungeKutta4<State> {
     k: State,

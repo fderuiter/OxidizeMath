@@ -12,9 +12,9 @@ use std::ops::{Deref, DerefMut};
 /// # Generics
 /// * `M`: The model type, implementing `Trainable`. Defaults to `TwoLayerMLP` for backward compatibility.
 pub struct TrainingLoop<M: Trainable<f64> = TwoLayerMLP> {
-    #[allow(missing_docs)]
+    /// Underlying trainable model whose parameters are updated each step.
     pub model: M,
-    #[allow(missing_docs)]
+    /// First-order parameter optimizer strategy.
     pub optimizer: Box<dyn Optimizer<f64>>,
 }
 

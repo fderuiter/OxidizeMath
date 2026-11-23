@@ -4,8 +4,16 @@ use crate::climate::autoencoder::{ConvLayer, leaky_relu};
 use nalgebra::{DMatrix, Dyn, Matrix, Storage};
 use pure_math::pure_math::analysis::optimization::{ModelOptimizer as Optimizer, ParamType};
 
-/// A trait representing the predictor model interface.
-/// This allows for different predictor architectures and decouples the training loop.
+/// A trait representing the downstream CERA predictor model $\hat{y} = g_\psi(z_{\mathrm{align}})$.
+///
+/// Reference: Rasp, Pritchard, & Gentine (2018), DOI: 10.1073/pnas.1810286115;
+/// [domain_climate specification](../../../../docs/math_specs/domain_climate.md).
+///
+/// # Stability
+/// Piecewise-linear `leaky_relu` activations bound hidden-layer Jacobian norms under finite weights.
+///
+/// # Domain of Validity
+/// Finite `f32` aligned latent feature matrices of shape `(batch_size, num_levels * aligned_channels)`.
 pub trait PredictorModel {
     /// Performs a forward pass through the predictor.
     #[verified_engine::verified]

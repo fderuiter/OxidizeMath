@@ -14,7 +14,15 @@ pub struct IntegrationResult {
     pub error: f64,
 }
 
-/// A trait for numerical integration strategies.
+/// Numerical quadrature interface approximating definite integrals $I(f) = \int_a^b f(x)\,dx \approx \sum_{i=1}^n w_i f(x_i)$.
+///
+/// Reference: Davis & Rabinowitz (1984), *Methods of Numerical Integration*, DOI: 10.1016/C2013-0-10566-1; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Positive quadrature weights $w_i > 0$ summing to $b - a$ guarantee bounded rounding amplification $\sum_i |w_i| = |b - a|$.
+///
+/// # Domain of Validity
+/// Valid for Riemann-integrable functions $f$ on finite intervals $(a, b)$ without interior non-integrable singularities.
 pub trait Integrator: Send + Sync {
     /// Integrates the function `f` over the interval `[min, max]` with a target error `eps`.
     #[verified_engine::verified]
