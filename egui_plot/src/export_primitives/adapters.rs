@@ -167,7 +167,7 @@ pub fn build_graph_primitives(
         } else {
             out.push(ExportPrimitive::Polyline {
                 name: edge.label.clone(),
-                points: vec![p0, p1],
+                points: crate::SharedPoints::from_slice(&[p0, p1]),
                 color: edge.color,
                 stroke_width: edge.width.max(1.2),
                 closed: false,
@@ -185,7 +185,7 @@ pub fn build_graph_primitives(
         let poly = build_circle_polygon([node.pos[0], y], world_r * scale, 18);
         out.push(ExportPrimitive::Polyline {
             name: node.label.clone(),
-            points: poly,
+            points: crate::SharedPoints::from(poly),
             color: node.stroke_color,
             stroke_width: 1.8,
             closed: true,
@@ -193,7 +193,7 @@ pub fn build_graph_primitives(
         });
         out.push(ExportPrimitive::Points {
             name: node.label.clone(),
-            points: vec![[node.pos[0], y]],
+            points: crate::SharedPoints::from_slice(&[[node.pos[0], y]]),
             color: node.fill,
             radius: node.radius.clamp(3.0, 12.0),
         });

@@ -9,7 +9,10 @@ pub mod tool;
 pub use sculpt::UnifiedSimRunner;
 pub use tool::*;
 
-use crate::async_sim::{RegimeCartographer, SculptStatePayload, SimCommand, StateSnapshot};
+use crate::async_sim::{
+    CheckpointParams, RegimeCartographer, SculptStatePayload, SimCommand, StateSnapshot,
+    TimeTravelCheckpoint,
+};
 use crate::framework::{
     BrushStroke, CalloutManager, ChallengeEvaluation, SpatialBrushKit, MAX_SYNTHESIZED_PARAMS,
 };
@@ -352,6 +355,41 @@ pub trait UnifiedModel:
         None
     }
 
+    /// Opt-in keyframe capture stride `K` (`Some(1)` for compact ODEs, `Some(16)` for 2D grids).
+    fn checkpoint_stride(&self) -> Option<usize> {
+        None
+    }
+
+    /// Current deterministic step index for opted-in time-travel models.
+    fn current_step(&self) -> usize {
+        0
+    }
+
+    /// Captures a self-contained [`TimeTravelCheckpoint`] at `current_step()`.
+    fn capture_checkpoint(&self, _params: &HashMap<String, f64>) -> Option<TimeTravelCheckpoint> {
+        None
+    }
+
+    /// Captures active model parameters for mid-run parameter epoch tracking.
+    fn capture_active_params(&self, params: &HashMap<String, f64>) -> Option<CheckpointParams> {
+        self.checkpoint_stride()
+            .map(|_| CheckpointParams::NamedMap(params.clone()))
+    }
+
+    /// Restores dynamical fields, active parameters, step index, and cloned `OxidizeRng`.
+    fn restore_checkpoint(&mut self, _checkpoint: &TimeTravelCheckpoint) {}
+
+    /// Reconstructs bounded trajectory histories from retained keyframes `..=kf_idx`.
+    fn rebuild_history(&mut self, _front: &[TimeTravelCheckpoint], _back: &[TimeTravelCheckpoint]) {
+    }
+
+    /// Advances one zero-allocation sub-step during deterministic checkpoint replay.
+    fn replay_step(&mut self, params: &CheckpointParams) {
+        if let Some(map) = params.as_named_map() {
+            self.step(map);
+        }
+    }
+
     /// Returns a stable tool identifier when this unified model emits live
     /// [`crate::audio::SonificationFrame`]s.
     fn sonification_tool_id() -> Option<&'static str>
@@ -360,7 +398,6 @@ pub trait UnifiedModel:
     {
         None
     }
-
     /// Optional `(x_key, y_key)` parameter pairs exposed in a 2D [`crate::async_sim::ParameterAtlasController`].
     fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)]
     where

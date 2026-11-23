@@ -24,7 +24,7 @@ impl CeraTool {
         let palette = SemanticPalette::from_visuals(&egui::Visuals::dark());
         let mut prims = Vec::new();
 
-        let loss_coords: Vec<[f64; 2]> = self
+        let loss_coords: egui_plot::SharedPoints = self
             .loss_history
             .iter()
             .enumerate()

@@ -509,7 +509,7 @@ pub fn color32_images_to_gif(images: &[egui::ColorImage], fps: u32) -> Result<Ve
 
     let mut gif_bytes = Vec::new();
     {
-        let mut encoder = image::codecs::gif::GifEncoder::new(&mut gif_bytes);
+        let mut encoder = image::codecs::gif::GifEncoder::new_with_speed(&mut gif_bytes, 10);
         encoder
             .set_repeat(image::codecs::gif::Repeat::Infinite)
             .map_err(|e| format!("Failed to set GIF repeat mode: {e}"))?;

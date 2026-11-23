@@ -99,7 +99,7 @@ impl GaussianSplattingTool {
         }
 
         for (idx, (ring, color)) in rings.iter().enumerate() {
-            let points: Vec<[f64; 2]> = ring
+            let points: egui_plot::SharedPoints = ring
                 .iter()
                 .map(|&pt| map_viewport_to_grid(pt, x_half, y_half))
                 .collect();
@@ -113,7 +113,7 @@ impl GaussianSplattingTool {
             });
         }
 
-        let mapped_centers: Vec<[f64; 2]> = centers
+        let mapped_centers: egui_plot::SharedPoints = centers
             .iter()
             .map(|&pt| map_viewport_to_grid(pt, x_half, y_half))
             .collect();

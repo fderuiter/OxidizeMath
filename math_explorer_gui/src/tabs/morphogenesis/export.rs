@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::runner::MorphoSnapshotData;
 use super::MorphogenesisTool;
 use crate::async_sim::SimulationRunner;
 use crate::framework::{compute_matrix_stride, ExportCell, ExportTable};
@@ -9,10 +10,11 @@ fn sample_morphogenesis_grid(tool: &MorphogenesisTool, width: usize, height: usi
         let snap = runner.get_snapshot();
         if let Some(grid) = snap
             .structured_data
-            .and_then(|d| d.downcast::<Vec<f64>>().ok())
+            .and_then(|d| d.downcast::<MorphoSnapshotData>().ok())
+            .map(|b| b.u_data)
             .filter(|v| v.len() == width * height)
         {
-            return *grid;
+            return grid;
         }
     }
     tool.worker
@@ -20,9 +22,9 @@ fn sample_morphogenesis_grid(tool: &MorphogenesisTool, width: usize, height: usi
         .and_then(|snap| {
             snap.structured_data
                 .as_ref()
-                .and_then(|d| d.downcast_ref::<Vec<f64>>())
-                .filter(|v| v.len() == width * height)
-                .cloned()
+                .and_then(|d| d.downcast_ref::<MorphoSnapshotData>())
+                .filter(|b| b.u_data.len() == width * height)
+                .map(|b| b.u_data.clone())
         })
         .unwrap_or_else(|| {
             let runner = MorphogenesisTool::create_kinetics_runner(
@@ -34,8 +36,8 @@ fn sample_morphogenesis_grid(tool: &MorphogenesisTool, width: usize, height: usi
             );
             let snap = runner.get_snapshot();
             snap.structured_data
-                .and_then(|d| d.downcast::<Vec<f64>>().ok())
-                .map_or_else(Vec::new, |b| *b)
+                .and_then(|d| d.downcast::<MorphoSnapshotData>().ok())
+                .map_or_else(Vec::new, |b| b.u_data)
         })
 }
 

@@ -84,7 +84,7 @@ impl GridWorldTool {
         let agent_cy = f64::from(self.env.height - 1 - self.current_state.y) + 0.47;
         overlays.push(ExportPrimitive::Points {
             name: "Agent".into(),
-            points: vec![[agent_cx, agent_cy]],
+            points: egui_plot::SharedPoints::from_slice(&[[agent_cx, agent_cy]]),
             color: palette.warning,
             radius: 7.5,
         });
