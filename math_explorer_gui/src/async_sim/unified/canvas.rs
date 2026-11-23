@@ -3,38 +3,49 @@
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::SimCommand;
-use crate::framework::{BrushMode, InteractionContext, InteractiveTool};
+use crate::framework::{
+    BrushMode, InteractionContext, InteractiveTool, PlotBrushController, PlotBrushFrame,
+};
 use eframe::egui::{self, ColorImage, TextureOptions};
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
-    fn sample_legacy_image_brush(&mut self, ctx: &egui::Context, plot_ui: &egui_plot::PlotUi) {
-        if !plot_ui.response().hovered()
-            || !ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
-        {
-            return;
+    fn dispatch_legacy_bresenham_frame(
+        &mut self,
+        ctx: &egui::Context,
+        frame: &PlotBrushFrame,
+        width: usize,
+        height: usize,
+    ) {
+        let mut repainted = false;
+        for stroke in &frame.strokes {
+            PlotBrushController::for_each_bresenham_step(
+                stroke,
+                width,
+                height,
+                true,
+                |cx, cy, r, is_obs| {
+                    let allowed = self
+                        .ui_extension
+                        .as_mut()
+                        .is_none_or(|ext| ext.on_brush(cx, cy, r, is_obs));
+                    if allowed
+                        && self
+                            .controller
+                            .send_command(SimCommand::ApplyBrush {
+                                cx,
+                                cy,
+                                r,
+                                is_obstacle: is_obs,
+                            })
+                            .is_ok()
+                    {
+                        repainted = true;
+                    }
+                },
+            );
         }
-        let Some(pos) = plot_ui.pointer_coordinate() else {
-            return;
-        };
-        let grid_x = pos.x.round() as i32;
-        let grid_y = pos.y.round() as i32;
-        let is_obs = ctx.input(|i| i.pointer.primary_down());
-        let allowed = self
-            .ui_extension
-            .as_mut()
-            .is_none_or(|ext| ext.on_brush(grid_x, grid_y, 2, is_obs));
-        if allowed
-            && self
-                .controller
-                .send_command(SimCommand::ApplyBrush {
-                    cx: grid_x,
-                    cy: grid_y,
-                    r: 2,
-                    is_obstacle: is_obs,
-                })
-                .is_ok()
-        {
+        if repainted {
             self.clear_stepped_state();
             ctx.request_repaint();
         }
@@ -49,7 +60,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let width = texture.size()[0] as f32;
         let height = texture.size()[1] as f32;
         let allow_pan = !M::supports_spatial_brush() || !self.brush_kit.is_sculpting();
-        let mut strokes = Vec::new();
+        let mut brush_frame: Option<PlotBrushFrame> = None;
         let visuals = ui.visuals().clone();
         let mut ext_cmds = Vec::new();
 
@@ -71,22 +82,22 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 if let Some(ext) = &mut self.ui_extension {
                     ext_cmds = ext.handle_canvas_overlay(ctx, &visuals, plot_ui);
                 }
-                if M::supports_spatial_brush() {
-                    strokes = self.brush_kit.sample_plot(
-                        plot_ui,
-                        [0.5, 0.5],
-                        [f64::from(width) - 0.5, f64::from(height) - 0.5],
-                        Some(BrushMode::Erase),
-                    );
-                } else {
-                    self.sample_legacy_image_brush(ctx, plot_ui);
-                }
+                brush_frame = Some(PlotBrushController::capture_plot(
+                    &mut self.brush_kit,
+                    plot_ui,
+                    [0.5, 0.5],
+                    [f64::from(width) - 0.5, f64::from(height) - 0.5],
+                    Some(BrushMode::Erase),
+                ));
                 self.callout_manager.render_on_plot(plot_ui);
             });
 
-        for stroke in strokes {
-            let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
-            self.on_brush(&ic);
+        if let Some(frame) = brush_frame {
+            if M::supports_spatial_brush() {
+                frame.dispatch(ui, &plot_resp.response, self);
+            } else {
+                self.dispatch_legacy_bresenham_frame(ctx, &frame, width as usize, height as usize);
+            }
         }
         self.dispatch_extension_commands(ext_cmds, Some(ctx));
     }

@@ -8,8 +8,8 @@ use crate::accessibility::{announce_live_status, AccessibleHoverText};
 use crate::app::{SemanticPalette, ThemeMode};
 use crate::audio::mappings::{imrt_delivery_frame, radar_linac_frame, LinacGatePhase};
 use crate::framework::{
-    bounded_drag_value, scoped_panel_id, BrushInteractionMode, BrushMode, PaneSidePanel,
-    PlaybackAction, PlaybackTransport,
+    bounded_drag_value, scoped_panel_id, BrushInteractionMode, BrushMode, InteractiveTool,
+    PaneSidePanel, PlaybackAction, PlaybackTransport,
 };
 use crate::tabs::medical::imrt::IMRT_BEAM_COUNT;
 use eframe::egui::{self, Color32, RichText};

@@ -43,8 +43,10 @@ pub enum BrushMode {
     PotentialWell,
     /// Step potential plateau from cursor $x$ to the right boundary (Quantum).
     PotentialStep,
-    /// Places or steers a potential-flow source/sink singularity.
+    /// Places or steers a potential-flow source singularity.
     FlowSource,
+    /// Places or steers a potential-flow sink singularity.
+    FlowSink,
     /// Places or steers a potential-flow point vortex singularity.
     FlowVortex,
     /// Places or steers a potential-flow doublet singularity.
@@ -82,7 +84,8 @@ impl BrushMode {
             Self::PotentialBarrier => "Finite Barrier",
             Self::PotentialWell => "Potential Well",
             Self::PotentialStep => "Potential Step",
-            Self::FlowSource => "Source / Sink",
+            Self::FlowSource => "Source",
+            Self::FlowSink => "Sink",
             Self::FlowVortex => "Vortex",
             Self::FlowDoublet => "Doublet",
             Self::RlTrap => "Trap Hazard",

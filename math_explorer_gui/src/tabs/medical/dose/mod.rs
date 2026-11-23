@@ -260,16 +260,16 @@ impl DoseCalculationTool {
     pub(crate) fn compute_dose_image_for_contrast(&self, high_contrast: bool) -> ColorImage {
         canvas::compute_dose_image_for_contrast(self, high_contrast)
     }
-
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-            .or_else(|| self.brush_kit.focused_plot_id())
-    }
 }
 
 impl InteractiveTool for DoseCalculationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+            .or_else(|| self.brush_kit.focused_plot_id())
     }
 
     fn name(&self) -> &'static str {
