@@ -1,7 +1,9 @@
 //! Integration tests for test isosurface.
 #[cfg(test)]
 mod tests {
-    use domain_applied::applied::isosurface::{Mesh, Point3D, VoxelGrid, extract_isosurface};
+    use domain_applied::applied::isosurface::{
+        CutPlaneCap, Mesh, Point3D, VoxelGrid, extract_capped_isosurface, extract_isosurface,
+    };
     use std::collections::HashMap;
     use verified_engine::allocator::VerifiedAllocator;
     use verified_engine::engine::VerifiedEngine;
@@ -281,5 +283,65 @@ mod tests {
         assert!(mesh.vertices.is_empty());
         assert!(mesh.normals.is_empty());
         assert!(mesh.indices.is_empty());
+    }
+
+    fn mesh_signed_volume(mesh: &Mesh) -> f64 {
+        let mut vol6 = 0.0_f64;
+        for &[i0, i1, i2] in mesh.indices.as_chunks::<3>().0 {
+            let (a, b, c) = (mesh.vertices[i0], mesh.vertices[i1], mesh.vertices[i2]);
+            let (ax, ay, az) = (f64::from(a.x), f64::from(a.y), f64::from(a.z));
+            let (bx, by, bz) = (f64::from(b.x), f64::from(b.y), f64::from(b.z));
+            let (cx, cy, cz) = (f64::from(c.x), f64::from(c.y), f64::from(c.z));
+            vol6 += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
+        }
+        vol6 / 6.0
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_capped_gyroid_and_cut_plane_are_outward_watertight_manifolds() {
+        let n = 18usize;
+        let step = std::f32::consts::TAU / ((n - 1) as f32);
+        let orig = -std::f32::consts::PI;
+        let mut data = Vec::with_capacity(n * n * n);
+        for z in 0..n {
+            let wz = orig + (z as f32) * step;
+            for y in 0..n {
+                let wy = orig + (y as f32) * step;
+                for x in 0..n {
+                    let wx = orig + (x as f32) * step;
+                    let gyroid = wx.sin() * wy.cos() + wy.sin() * wz.cos() + wz.sin() * wx.cos();
+                    data.push(gyroid);
+                }
+            }
+        }
+        let grid = VoxelGrid::builder()
+            .dimensions(n, n, n)
+            .data(data)
+            .voxel_size(Point3D::new(step, step, step))
+            .origin(Point3D::new(orig, orig, orig))
+            .build()
+            .unwrap();
+
+        let uncut = extract_capped_isosurface(&grid, 0.0, true, None).unwrap();
+        assert_closed_manifold(&uncut);
+        assert!(uncut.normals.iter().all(|n| n.is_finite()));
+        assert!(mesh_signed_volume(&uncut) > 0.0);
+
+        let cut = extract_capped_isosurface(
+            &grid,
+            0.0,
+            true,
+            Some(CutPlaneCap {
+                axis: 2,
+                max_coord: 0.35,
+            }),
+        )
+        .unwrap();
+        assert_closed_manifold(&cut);
+        assert!(cut.normals.iter().all(|n| n.is_finite()));
+        assert!(cut.vertices.iter().all(|v| v.z <= 0.35 + 1.0e-5));
+        assert!(mesh_signed_volume(&cut) > 0.0);
+        assert!(mesh_signed_volume(&cut) < mesh_signed_volume(&uncut));
     }
 }
