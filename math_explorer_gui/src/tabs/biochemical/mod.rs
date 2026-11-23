@@ -1,13 +1,14 @@
-// @explorer_feature = "biology"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 // [cite:biology]
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod dynamics;
 pub mod evolution;
 
-/// Auto-discovered Biology tab hosting [`dynamics::BiochemicalDynamicsTool`] and
+/// Static-inventory Biology tab hosting [`dynamics::BiochemicalDynamicsTool`] and
 /// [`evolution::EvolutionaryBiologyTool`].
 pub struct BiochemicalTab {
     framework: crate::framework::SimulationFramework,
@@ -67,5 +68,13 @@ impl ExplorerTab for BiochemicalTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "biochemical",
+        order: 43,
+        build: || Box::new(BiochemicalTab::default()),
     }
 }

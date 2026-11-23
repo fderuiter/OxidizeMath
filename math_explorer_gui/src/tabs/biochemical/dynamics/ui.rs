@@ -96,6 +96,7 @@ impl BiochemicalDynamicsTool {
                     self.step_once();
                 }
                 PlaybackAction::Reset => self.rebuild_reaction_diffusion(),
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
             }
         }
         ui.add_space(4.0);

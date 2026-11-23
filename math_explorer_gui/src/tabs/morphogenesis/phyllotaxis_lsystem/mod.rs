@@ -176,7 +176,7 @@ impl PhyllotaxisLSystemTool {
         if !primordia.is_empty() {
             prims.push(ExportPrimitive::Points {
                 name: "Vogel Primordia".to_string(),
-                points: primordia,
+                points: primordia.into(),
                 color: palette.success,
                 radius: 2.2_f32,
             });
@@ -197,7 +197,7 @@ impl PhyllotaxisLSystemTool {
                     } else {
                         String::new()
                     },
-                    points: pts,
+                    points: pts.into(),
                     color: palette.info,
                     stroke_width: 1.2_f32,
                     closed: false,
@@ -217,7 +217,7 @@ impl PhyllotaxisLSystemTool {
                 } else {
                     String::new()
                 },
-                points: vec![[seg.x0 + x_offset, seg.y0], [seg.x1 + x_offset, seg.y1]],
+                points: vec![[seg.x0 + x_offset, seg.y0], [seg.x1 + x_offset, seg.y1]].into(),
                 color: palette.warning,
                 stroke_width: 1.3_f32,
                 closed: false,
