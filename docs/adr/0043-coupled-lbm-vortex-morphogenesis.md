@@ -1,7 +1,7 @@
-# ADR 0041: Coupled D2Q9 Lattice Boltzmann Vortex Engine for 2D Advection-Reaction-Diffusion Morphogenesis
+# ADR 0043: Coupled D2Q9 Lattice Boltzmann Vortex Engine for 2D Advection-Reaction-Diffusion Morphogenesis
 
 ## Status
-Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0008](0008-finite-state-guard-solver-divergence.md), [ADR 0021](0021-precompute-stencil-reciprocals.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
+Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0008](0008-finite-state-guard-solver-divergence.md), [ADR 0021](0021-precompute-stencil-reciprocals.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md))
 
 ## Context
 Simulating biological pattern formation in moving fluids (such as vascular morphogenesis, marine plankton blooms, and microfluidic embryonic gradients) requires coupling mesoscopic Navier-Stokes wakes with nonlinear reaction-diffusion PDEs:

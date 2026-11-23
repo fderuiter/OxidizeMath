@@ -32,6 +32,11 @@ mod persistence;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
+pub mod plot_persistence;
+#[cfg(test)]
+mod plot_persistence_session_tests;
+#[cfg(test)]
+mod plot_persistence_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
@@ -42,6 +47,9 @@ mod state_bounds_tests;
 pub mod state_guard;
 #[cfg(test)]
 mod state_guard_tests;
+pub(crate) mod theory_links;
+#[cfg(test)]
+mod theory_links_tests;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
@@ -387,6 +395,8 @@ pub struct SimulationFramework {
     pub show_theory_portal: bool,
     pub show_starter_gallery: bool,
     pub saved_tool_states: std::collections::HashMap<String, String>,
+    pub saved_plot_states: plot_persistence::SavedPlotStatesMap,
+    pub(super) plot_sync_generation: u64,
     pub search_query: String,
     last_announced_count: Option<usize>,
     last_announced_query: String,
@@ -443,6 +453,8 @@ impl SimulationFramework {
             show_theory_portal: false,
             show_starter_gallery: false,
             saved_tool_states: std::collections::HashMap::new(),
+            saved_plot_states: std::collections::BTreeMap::new(),
+            plot_sync_generation: 1,
             search_query: String::new(),
             last_announced_count: None,
             last_announced_query: String::new(),
