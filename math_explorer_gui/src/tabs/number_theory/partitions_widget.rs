@@ -226,7 +226,7 @@ inventory::submit! {
         id: "PartitionsWidget",
         display_name: "Partition Function",
         domain: "number_theory",
-        tags: &[],
+        tags: &["partition", "eisenstein", "q-series", "euler", "ramanujan"],
         build: || Box::new(PartitionsWidget::default()),
     }
 }

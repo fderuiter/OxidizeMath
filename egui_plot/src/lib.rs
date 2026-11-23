@@ -65,7 +65,8 @@ pub use crate::{
         MAX_FIT_PARAMS, fit_custom_evaluator, fit_model_with_axes,
     },
     fit_overlay::{
-        fit_custom_with_registered_callback, has_custom_fit_callback, register_custom_fit_callback,
+        DispatchedPlotUiAction, dispatch_plot_ui_action, fit_custom_with_registered_callback,
+        has_custom_fit_callback, register_custom_fit_callback,
     },
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
@@ -1794,6 +1795,30 @@ impl<'a> Plot<'a> {
         }
 
         let mut access_state = Self::load_frame_access_state(ui, plot_id, &mem);
+        if let Some(ui_action) = fit_overlay::take_dispatched_plot_ui_action(ui.ctx()) {
+            match ui_action {
+                DispatchedPlotUiAction::SetFit(Some(ft)) if allow_2d_analysis => {
+                    access_state.fit_model = Some(ft);
+                    access_state.show_fit_overlay = true;
+                }
+                DispatchedPlotUiAction::SetFit(None) => {
+                    access_state.fit_model = None;
+                    access_state.show_fit_overlay = false;
+                }
+                DispatchedPlotUiAction::ToggleFitResiduals if allow_2d_analysis => {
+                    access_state.show_fit_residuals = !access_state.show_fit_residuals;
+                }
+                DispatchedPlotUiAction::ToggleDataTable => {
+                    access_state.show_table = !access_state.show_table;
+                }
+                DispatchedPlotUiAction::OpenPlotSettings => {
+                    access_state.show_settings_modal = true;
+                    mem.show_settings_modal = true;
+                }
+                _ => {}
+            }
+            ui.ctx().request_repaint();
+        }
         if !allow_2d_analysis {
             access_state.show_add_callout_modal = false;
             access_state.show_edit_callout_modal = false;
@@ -1904,8 +1929,14 @@ impl<'a> Plot<'a> {
         if !critical_points.is_empty() {
             commands::CommandRegistryData::register_poi_navigation(ui.ctx());
         }
+        let has_a11y_dispatch =
+            commands::CommandRegistryData::has_pending_dispatch(ui.ctx(), "Plot Accessibility");
+        if has_a11y_dispatch {
+            response.request_focus();
+        }
+        let plot_focused_or_dispatched = response.has_focus() || has_a11y_dispatch;
         let lazy_accessible_datasets: Option<BaseDatasetList> =
-            (response.has_focus() || access_state.show_table).then(|| {
+            (plot_focused_or_dispatched || access_state.show_table).then(|| {
                 if let Some(ref sidecar) = sidecar_3d {
                     let ds = sidecar.accessible_datasets_2d();
                     if !ds.is_empty() {
@@ -1914,7 +1945,7 @@ impl<'a> Plot<'a> {
                 }
                 collect_accessible_datasets(&items)
             });
-        if response.has_focus() {
+        if plot_focused_or_dispatched {
             if allow_2d_analysis {
                 poi_interaction::handle_focused_plot_poi_keys(
                     ui,
@@ -2829,8 +2860,14 @@ impl<'a> Plot<'a> {
         let reset_enabled = ui.is_enabled();
         register_plot_viewport_commands(ui.ctx(), zoom_axes.any(), pan_axes, reset_enabled);
 
-        if !response.has_focus()
-            || ui.input(|i| i.modifiers.ctrl || i.modifiers.command || i.modifiers.alt)
+        let has_viewport_dispatch =
+            commands::CommandRegistryData::has_pending_dispatch(ui.ctx(), "Plot Viewport");
+        if has_viewport_dispatch {
+            response.request_focus();
+        }
+        if !has_viewport_dispatch
+            && (!response.has_focus()
+                || ui.input(|i| i.modifiers.ctrl || i.modifiers.command || i.modifiers.alt))
         {
             return;
         }
@@ -3376,10 +3413,12 @@ fn handle_focused_plot_dataset_keys(
 ) {
     use crate::commands::{CommandRegistryData, CommandTrigger};
     let num_items = accessible_datasets.len();
+    let has_dispatch = CommandRegistryData::has_pending_dispatch(ui.ctx(), "Plot Accessibility");
     if num_items == 0
-        || ui.input(|i| {
-            i.modifiers.shift || i.modifiers.alt || i.modifiers.ctrl || i.modifiers.command
-        })
+        || (!has_dispatch
+            && ui.input(|i| {
+                i.modifiers.shift || i.modifiers.alt || i.modifiers.ctrl || i.modifiers.command
+            }))
     {
         return;
     }

@@ -149,6 +149,7 @@ fn handle_palette_theme_event(app: &mut MathExplorerApp, ctx: &egui::Context, id
             };
             crate::accessibility::announce_live_status(ctx, status_msg);
         }
+        "starter_gallery" => app.open_starter_gallery(ctx),
         "help_commands" => app.show_help_menu = !app.show_help_menu,
         "theme_dark" => {
             app.theme = ThemeMode::Dark;

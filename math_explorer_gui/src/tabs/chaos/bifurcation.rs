@@ -49,7 +49,10 @@ impl Default for BifurcationDiagram {
                 ("Quadratic Map", "x^2 - r"),
                 ("Ricker Population", "x * exp(r * (1 - x))"),
                 ("Cubic Map", "r * x - x^3"),
-                ("Perturbed Logistic", "r * x * (1 - x) + a * sin(2 * pi * x)"),
+                (
+                    "Perturbed Logistic",
+                    "r * x * (1 - x) + a * sin(2 * pi * x)",
+                ),
             ],
         )
         .with_axes(&["r", "x"])
@@ -351,7 +354,7 @@ inventory::submit! {
         id: "BifurcationDiagram",
         display_name: "Bifurcation Diagram",
         domain: "chaos",
-        tags: &[],
+        tags: &["logistic map", "period doubling", "feigenbaum", "orbit diagram", "chaos"],
         build: || Box::new(BifurcationDiagram::default()),
     }
 }

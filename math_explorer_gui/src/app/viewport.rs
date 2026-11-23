@@ -291,6 +291,14 @@ fn render_multi_pane_regions(
         render_pane_content(app, ctx, frame, &mut pane_ui, pane_idx, content_rect);
         focus::finish_pending_pane_focus(ctx, should_focus);
     }
+    if let Some(target_pane) = pending_focus {
+        let overwritten = crate::accessibility::with_live_region(|r| {
+            !r.slots[r.active_slot].starts_with("Focused ")
+        });
+        if overwritten {
+            focus::announce_pane_focus(app, ctx, target_pane);
+        }
+    }
 }
 
 struct FrameSashOutcome {

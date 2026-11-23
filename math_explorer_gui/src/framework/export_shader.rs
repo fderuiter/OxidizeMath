@@ -13,6 +13,30 @@ impl SimulationFramework {
             .push_target(format, ExportTarget::Clipboard);
     }
 
+    /// Opens the high-resolution figure export modal from a global command action.
+    pub(crate) fn trigger_palette_figure_export(&mut self) {
+        self.open_export_modal_for_active_tool();
+    }
+
+    /// Exports the active tool's parameter preset JSON from a global command action.
+    pub(crate) fn trigger_palette_preset_export(&mut self) {
+        if let Some(tool) = &self.active_tool {
+            let slug = tool.name().to_lowercase().replace(' ', "_");
+            self.preset_dialog
+                .export_preset_result(tool.export_preset_json(), &slug);
+        }
+    }
+
+    /// Toggles the Theory Context Portal on this framework instance and syncs egui temp state.
+    pub(crate) fn toggle_theory_portal_with_ctx(&mut self, ctx: &egui::Context) {
+        self.show_theory_portal = !self.show_theory_portal;
+        let next = self.show_theory_portal;
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
+        });
+        ctx.request_repaint();
+    }
+
     /// Renders one-click WebGL2 (`#version 300 es`) and Shadertoy (`mainImage`) `.frag` and clipboard
     /// actions when the active tool advertises `caps.shader`.
     pub(super) fn render_shader_export_items(
@@ -118,5 +142,40 @@ impl SimulationFramework {
                 self.dispatch_clipboard_text_request(format, shader_src, ctx);
             }
         }
+    }
+
+    pub(super) fn complete_file_export(
+        &mut self,
+        format: ExportFormat,
+        filename: &str,
+        bytes: &[u8],
+        text_content: Option<String>,
+        ok_label: &str,
+        err_prefix: &str,
+    ) {
+        match self.persist_export_bytes(format, filename, bytes, text_content) {
+            Ok(()) => self.set_export_status(
+                ExportStatusSeverity::Success,
+                format!("{ok_label} saved successfully."),
+            ),
+            Err(err) => {
+                self.set_export_status(ExportStatusSeverity::Error, format!("{err_prefix}: {err}"))
+            }
+        }
+    }
+
+    pub(super) fn build_export_filename(tool_name: &str, format: ExportFormat) -> String {
+        let slug: String = tool_name
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect();
+        let trimmed = slug.trim_matches('_');
+        let base = if trimmed.is_empty() {
+            "simulation"
+        } else {
+            trimmed
+        };
+        format!("{base}_{}.{}", format.stem_suffix(), format.extension())
     }
 }

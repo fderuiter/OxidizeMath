@@ -339,7 +339,7 @@ inventory::submit! {
         id: "SurfaceViewer",
         display_name: "Surface Viewer",
         domain: "geometry_topology",
-        tags: &[],
+        tags: &["manifold", "torus", "klein bottle", "sphere", "parametric", "3d"],
         build: || Box::new(SurfaceViewer::default()),
     }
 }

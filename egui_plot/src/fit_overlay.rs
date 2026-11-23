@@ -20,6 +20,52 @@ use crate::{
 
 pub(crate) type BaseDatasetTuple = (String, Vec<[f64; 2]>, Color32);
 
+const DISPATCHED_PLOT_UI_ACTION_KEY: &str = "DISPATCHED_PLOT_UI_ACTION";
+
+/// One-shot plot analysis or settings action dispatched from an external command palette.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DispatchedPlotUiAction {
+    /// Applies a curve-fitting model (`Some(FitType)`) or clears any active fit (`None`).
+    SetFit(Option<FitType>),
+    /// Toggles vertical residual stems on the active curve fit overlay.
+    ToggleFitResiduals,
+    /// Toggles the accessible tabular dataset view for the active plot.
+    ToggleDataTable,
+    /// Opens the plot axis and grid configuration modal.
+    OpenPlotSettings,
+}
+
+/// Queues a [`DispatchedPlotUiAction`] for execution on the active focused plot on the next frame.
+pub fn dispatch_plot_ui_action(ctx: &egui::Context, action: DispatchedPlotUiAction) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new(DISPATCHED_PLOT_UI_ACTION_KEY), Some(action)));
+    ctx.request_repaint();
+}
+
+pub(crate) fn take_dispatched_plot_ui_action(
+    ctx: &egui::Context,
+) -> Option<DispatchedPlotUiAction> {
+    let allowed =
+        ctx.data(
+            |d| match d.get_temp::<usize>(egui::Id::new("CURRENT_RENDERING_PANE")) {
+                Some(rp) => {
+                    rp == d
+                        .get_temp::<usize>(egui::Id::new("ACTIVE_FOCUSED_PANE"))
+                        .unwrap_or(0)
+                }
+                None => true,
+            },
+        );
+    if !allowed {
+        return None;
+    }
+    ctx.data_mut(|d| {
+        d.remove_temp::<Option<DispatchedPlotUiAction>>(egui::Id::new(
+            DISPATCHED_PLOT_UI_ACTION_KEY,
+        ))
+        .flatten()
+    })
+}
+
 static CUSTOM_FIT_CALLBACK: RwLock<Option<CustomFitCallback>> = RwLock::new(None);
 
 /// Registers an application-level custom formula compiler callback for `FitType::Custom` overlays.

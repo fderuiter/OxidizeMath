@@ -387,6 +387,18 @@ pub struct SimulationFramework {
     pub(super) rev_cache: FrameworkRevisionCache,
 }
 
+fn default_tool_priority(domain: &str, id: &str) -> u8 {
+    match (domain, id) {
+        ("quantum", "WaveSimulator")
+        | ("solid_state", "IsingModelTool")
+        | ("medical", "DoseCalculationTool")
+        | ("clinical_trials", "PharmacokineticsTool")
+        | ("epidemiology", "SirTool")
+        | ("ai", "LossLandscapeTool") => 0,
+        _ => 1,
+    }
+}
+
 impl SimulationFramework {
     #[allow(missing_docs)]
     pub fn new(domain: &str) -> Self {
@@ -395,7 +407,8 @@ impl SimulationFramework {
             .filter(|t| t.domain == domain)
             .collect();
 
-        available_tools.sort_by_key(|t| (t.display_name, t.id));
+        available_tools
+            .sort_by_key(|t| (default_tool_priority(domain, t.id), t.display_name, t.id));
 
         let mut framework = Self {
             available_tools,

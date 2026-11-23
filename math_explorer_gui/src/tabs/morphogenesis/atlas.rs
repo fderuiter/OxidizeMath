@@ -97,12 +97,7 @@ pub fn grid_u_variance(u: &[f64]) -> f64 {
 }
 
 #[inline]
-fn mode_growth_and_euler_amp(
-    jac: [f64; 4],
-    diff: [f64; 2],
-    dt: f64,
-    mu: f64,
-) -> (f64, f64, bool) {
+fn mode_growth_and_euler_amp(jac: [f64; 4], diff: [f64; 2], dt: f64, mu: f64) -> (f64, f64, bool) {
     let [fu, fv, gu, gv] = jac;
     let [d_u, d_v] = diff;
     let tr = (fu - mu * d_u) + (gv - mu * d_v);
@@ -304,7 +299,9 @@ impl RegimeCartographer for MorphogenesisCartographer {
 
     fn color_for_cell(&self, cell: AtlasCell, high_contrast: bool) -> egui::Color32 {
         let intensity = match MorphogenesisRegime::from_u8(cell.regime) {
-            MorphogenesisRegime::StableWashout => (1.0 / (1.0 - cell.primary).max(1.0)).clamp(0.0, 1.0),
+            MorphogenesisRegime::StableWashout => {
+                (1.0 / (1.0 - cell.primary).max(1.0)).clamp(0.0, 1.0)
+            }
             MorphogenesisRegime::TuringPattern => (cell.primary * 4.0).clamp(0.15, 1.0),
             MorphogenesisRegime::BulkHopfOscillation => (cell.primary * 2.0).clamp(0.2, 1.0),
             MorphogenesisRegime::EulerCflUnstable => ((cell.primary - 1.0) * 0.25).clamp(0.2, 1.0),
@@ -354,7 +351,12 @@ impl RegimeCartographer for MorphogenesisCartographer {
             MorphogenesisRegime::EulerCflUnstable,
         ]
         .into_iter()
-        .map(|r| (r.label(), atlas_regime_color(r as u8, 4, 0.7, high_contrast)))
+        .map(|r| {
+            (
+                r.label(),
+                atlas_regime_color(r as u8, 4, 0.7, high_contrast),
+            )
+        })
         .collect()
     }
 }

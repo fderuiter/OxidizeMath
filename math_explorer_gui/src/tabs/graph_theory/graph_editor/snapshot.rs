@@ -298,7 +298,7 @@ inventory::submit! {
         id: "GraphEditorTool",
         display_name: "Graph Editor",
         domain: "graph_theory",
-        tags: &[],
+        tags: &["wardrop", "braess", "congestion", "force-directed", "routing"],
         build: || Box::new(GraphEditorTool::default()),
     }
 }

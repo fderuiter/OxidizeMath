@@ -102,8 +102,20 @@ fn render_transport_and_status(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
 fn render_rf_and_music_controls(state: &mut RadarGatingState, ui: &mut egui::Ui) -> bool {
     let mut changed = false;
     ui.label(RichText::new("RF & MIMO Super-Resolution").strong());
-    changed |= drag_f64_row(ui, "Bandwidth (GHz):", &mut state.bandwidth_ghz, 0.5..=8.0, 0.1);
-    changed |= drag_f64_row(ui, "Steer Angle (deg):", &mut state.steering_deg, -60.0..=60.0, 1.0);
+    changed |= drag_f64_row(
+        ui,
+        "Bandwidth (GHz):",
+        &mut state.bandwidth_ghz,
+        0.5..=8.0,
+        0.1,
+    );
+    changed |= drag_f64_row(
+        ui,
+        "Steer Angle (deg):",
+        &mut state.steering_deg,
+        -60.0..=60.0,
+        1.0,
+    );
     changed |= drag_usize_row(ui, "ULA Antennas:", &mut state.num_antennas, 2, 16, 1.0);
     changed |= drag_usize_row(
         ui,
@@ -129,7 +141,13 @@ fn render_rf_and_music_controls(state: &mut RadarGatingState, ui: &mut egui::Ui)
         MAX_SWEEP_BINS,
         8.0,
     );
-    changed |= drag_f64_row(ui, "Thermal IQ Noise:", &mut state.noise_sigma, 0.0..=0.50, 0.005);
+    changed |= drag_f64_row(
+        ui,
+        "Thermal IQ Noise:",
+        &mut state.noise_sigma,
+        0.0..=0.50,
+        0.005,
+    );
     changed
 }
 
@@ -159,8 +177,12 @@ fn drag_usize_row(
     let edited = ui
         .horizontal(|ui| {
             ui.label(label);
-            ui.add(bounded_drag_value(&mut val_f, min as f64..=max as f64, speed))
-                .changed()
+            ui.add(bounded_drag_value(
+                &mut val_f,
+                min as f64..=max as f64,
+                speed,
+            ))
+            .changed()
         })
         .inner;
     if edited {
@@ -169,45 +191,65 @@ fn drag_usize_row(
     edited
 }
 
+fn labeled_drag(
+    ui: &mut egui::Ui,
+    label: &str,
+    val: &mut f64,
+    range: std::ops::RangeInclusive<f64>,
+    speed: f64,
+) -> bool {
+    ui.horizontal(|ui| {
+        ui.label(label);
+        ui.add(bounded_drag_value(val, range, speed)).changed()
+    })
+    .inner
+}
+
 fn render_respiratory_and_gating_controls(state: &mut RadarGatingState, ui: &mut egui::Ui) -> bool {
     let mut changed = false;
     ui.label(RichText::new("Respiratory & Kalman Gating").strong());
-    ui.horizontal(|ui| {
-        ui.label("Breath Amp (mm):");
-        changed |= ui
-            .add(bounded_drag_value(&mut state.breath_amplitude_mm, 1.0..=15.0, 0.25))
-            .changed();
-    });
-    ui.horizontal(|ui| {
-        ui.label("Breath Period (s):");
-        changed |= ui
-            .add(bounded_drag_value(&mut state.breath_period_s, 1.5..=12.0, 0.2))
-            .changed();
-    });
-    ui.horizontal(|ui| {
-        ui.label("Gate Threshold (mm):");
-        changed |= ui
-            .add(bounded_drag_value(&mut state.gating_threshold_mm, -12.0..=12.0, 0.2))
-            .changed();
-    });
-    ui.horizontal(|ui| {
-        ui.label("Hysteresis (mm):");
-        changed |= ui
-            .add(bounded_drag_value(&mut state.gating_hysteresis_mm, 0.1..=5.0, 0.1))
-            .changed();
-    });
-    ui.horizontal(|ui| {
-        ui.label("LINAC Latency (ms):");
-        changed |= ui
-            .add(bounded_drag_value(&mut state.system_latency_ms, 0.0..=250.0, 5.0))
-            .changed();
-    });
-    ui.horizontal(|ui| {
-        ui.label("Static Clutter:");
-        changed |= ui
-            .add(bounded_drag_value(&mut state.static_clutter_gain, 0.0..=3.0, 0.05))
-            .changed();
-    });
+    changed |= labeled_drag(
+        ui,
+        "Breath Amp (mm):",
+        &mut state.breath_amplitude_mm,
+        1.0..=15.0,
+        0.25,
+    );
+    changed |= labeled_drag(
+        ui,
+        "Breath Period (s):",
+        &mut state.breath_period_s,
+        1.5..=12.0,
+        0.2,
+    );
+    changed |= labeled_drag(
+        ui,
+        "Gate Threshold (mm):",
+        &mut state.gating_threshold_mm,
+        -12.0..=12.0,
+        0.2,
+    );
+    changed |= labeled_drag(
+        ui,
+        "Hysteresis (mm):",
+        &mut state.gating_hysteresis_mm,
+        0.1..=5.0,
+        0.1,
+    );
+    changed |= labeled_drag(
+        ui,
+        "LINAC Latency (ms):",
+        &mut state.system_latency_ms,
+        0.0..=250.0,
+        5.0,
+    );
+    changed |= labeled_drag(
+        ui,
+        "Static Clutter:",
+        &mut state.static_clutter_gain,
+        0.0..=3.0,
+        0.05,
+    );
     changed
 }
 
@@ -263,7 +305,12 @@ fn render_central_workspace(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
     let plot_h = (remaining_h * 0.48).max(125.0);
     render_spectra_plot(ui, &tool.state, &tool.pipeline, plot_h);
     ui.add_space(4.0);
-    render_gating_timeline_plot(ui, &tool.state, &tool.pipeline, ui.available_height().max(125.0));
+    render_gating_timeline_plot(
+        ui,
+        &tool.state,
+        &tool.pipeline,
+        ui.available_height().max(125.0),
+    );
 }
 
 fn render_spectra_plot(
@@ -308,12 +355,10 @@ fn render_spectra_plot(
                 .color(palette.success)
                 .width(2.4_f32),
             );
-            plot_ui.vline(
-                VLine::new("c / 2B Lower", center - half_rayleigh).color(palette.warning),
-            );
-            plot_ui.vline(
-                VLine::new("c / 2B Upper", center + half_rayleigh).color(palette.warning),
-            );
+            plot_ui
+                .vline(VLine::new("c / 2B Lower", center - half_rayleigh).color(palette.warning));
+            plot_ui
+                .vline(VLine::new("c / 2B Upper", center + half_rayleigh).color(palette.warning));
         });
 }
 
@@ -373,7 +418,10 @@ fn render_gating_timeline_plot(
 }
 
 fn scale_gate_strip(trace: &[[f64; 2]], scale: f64, offset: f64) -> Vec<[f64; 2]> {
-    trace.iter().map(|&[t, v]| [t, v * scale + offset]).collect()
+    trace
+        .iter()
+        .map(|&[t, v]| [t, v * scale + offset])
+        .collect()
 }
 
 fn beam_state_badge(state: BeamState, palette: &SemanticPalette) -> (&'static str, Color32) {

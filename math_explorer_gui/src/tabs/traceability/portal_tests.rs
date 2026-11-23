@@ -163,10 +163,9 @@ fn test_invalid_external_folders_show_inline_error_feedback() {
         tab.select_directory(candidate);
         assert!(tab.state.is_failed());
         assert_eq!(tab.repo_path, None);
-        assert!(
-            tab.error_message()
-                .is_some_and(|msg| msg.contains(expected_fragment))
-        );
+        assert!(tab
+            .error_message()
+            .is_some_and(|msg| msg.contains(expected_fragment)));
         assert!(render_tab_text_hit(&mut tab, expected_fragment));
     }
 
@@ -185,16 +184,12 @@ fn test_invalid_external_folders_show_inline_error_feedback() {
 fn test_ci_pages_workflow_verifies_all_28_paper_pdfs_and_sw_shell_scope() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
-    let ci_yaml = std::fs::read_to_string(
-        ws_root.join(".github").join("workflows").join("ci.yml"),
-    )
-    .expect("read ci.yml");
+    let ci_yaml = std::fs::read_to_string(ws_root.join(".github").join("workflows").join("ci.yml"))
+        .expect("read ci.yml");
 
     assert!(ci_yaml.contains("name: wasm_web_dist"));
     assert!(ci_yaml.contains("name: compiled_papers"));
-    assert!(
-        ci_yaml.contains("needs: [pre-flight, build-and-test, compile-papers, feature-matrix]")
-    );
+    assert!(ci_yaml.contains("needs: [pre-flight, build-and-test, compile-papers, feature-matrix]"));
     assert!(ci_yaml.contains("pages_dist/${stem}.pdf"));
     assert!(ci_yaml.contains("pages_dist/papers/${stem}.pdf"));
 

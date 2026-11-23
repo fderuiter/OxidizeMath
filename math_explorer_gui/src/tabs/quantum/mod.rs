@@ -1,11 +1,11 @@
 // @explorer_feature = "physics"
+// @explorer_order = 10
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod clebsch;
 pub mod spin_viz;
 pub mod wave_sim;
-
 
 pub struct QuantumTab {
     framework: crate::framework::SimulationFramework,

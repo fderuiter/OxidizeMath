@@ -68,10 +68,13 @@ impl InteractiveTool for DoseCalculationTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded: DoseState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid DoseCalculation state: {e}"))?;
+        let loaded: DoseState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid DoseCalculation state: {e}"))?;
         if !loaded.amplitude.is_finite() || !(0.1..=10.0).contains(&loaded.amplitude) {
-            return Err(format!("amplitude out of [0.1, 10.0]: {}", loaded.amplitude));
+            return Err(format!(
+                "amplitude out of [0.1, 10.0]: {}",
+                loaded.amplitude
+            ));
         }
         if !loaded.beta.is_finite() || !(0.1..=5.0).contains(&loaded.beta) {
             return Err(format!("beta out of [0.1, 5.0]: {}", loaded.beta));
@@ -199,7 +202,7 @@ inventory::submit! {
         id: "DoseCalculationTool",
         display_name: "Dose Calculation",
         domain: "medical",
-        tags: &[],
+        tags: &["psf", "convolution", "radiation therapy", "isodose", "kernel"],
         build: || Box::new(DoseCalculationTool::default()),
     }
 }

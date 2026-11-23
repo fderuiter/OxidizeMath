@@ -183,7 +183,7 @@ inventory::submit! {
         id: "CapacityFadeTool",
         display_name: "Capacity Fade",
         domain: "battery_degradation",
-        tags: &[],
+        tags: &["lithium-ion", "battery", "sei", "arrhenius", "power-law", "degradation", "soh"],
         build: || Box::new(CapacityFadeTool::default()),
     }
 }

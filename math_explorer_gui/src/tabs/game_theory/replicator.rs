@@ -345,7 +345,7 @@ inventory::submit! {
         id: "ReplicatorDynamicsTool",
         display_name: "Replicator Dynamics",
         domain: "game_theory",
-        tags: &[],
+        tags: &["evolutionary", "nash equilibrium", "payoff", "hawk-dove", "simplex"],
         build: || Box::new(ReplicatorDynamicsTool::default()),
     }
 }

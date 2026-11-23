@@ -153,7 +153,9 @@ impl SirTool {
             .add(egui::Slider::new(&mut self.i0, 1.0..=i0_max).text("Initial Infected (I0)"))
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.beta, cb.min..=cb.max).text("Transmission Rate (beta)"))
+            .add(
+                egui::Slider::new(&mut self.beta, cb.min..=cb.max).text("Transmission Rate (beta)"),
+            )
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.gamma, cg.min..=cg.max).text("Recovery Rate (gamma)"))
@@ -428,7 +430,7 @@ inventory::submit! {
         id: "SirTool",
         display_name: "SIR Model",
         domain: "epidemiology",
-        tags: &[],
+        tags: &["sir", "seir", "kermack-mckendrick", "compartmental", "r0", "epidemic"],
         build: || Box::new(SirTool::default()),
     }
 }
@@ -454,13 +456,16 @@ impl TheoryDescribable for SirTool {
     }
 
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        let mut map = HashMap::with_capacity(5);
-        map.insert("N".to_string(), ParameterConstraint { min: 100.0, max: 100_000.0, step: 100.0 });
-        map.insert("I0".to_string(), ParameterConstraint { min: 1.0, max: 50_000.0, step: 1.0 });
-        map.insert("beta".to_string(), ParameterConstraint { min: 0.0, max: 5.0, step: 0.02 });
-        map.insert("gamma".to_string(), ParameterConstraint { min: 0.0, max: 1.0, step: 0.01 });
-        map.insert("duration".to_string(), ParameterConstraint { min: MIN_SIR_DURATION, max: MAX_SIR_DURATION, step: 1.0 });
-        map
+        [
+            ("N", 100.0, 100_000.0, 100.0),
+            ("I0", 1.0, 50_000.0, 1.0),
+            ("beta", 0.0, 5.0, 0.02),
+            ("gamma", 0.0, 1.0, 0.01),
+            ("duration", MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0),
+        ]
+        .into_iter()
+        .map(|(k, min, max, step)| (k.to_string(), ParameterConstraint { min, max, step }))
+        .collect()
     }
 }
 

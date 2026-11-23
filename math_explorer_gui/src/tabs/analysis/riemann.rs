@@ -169,7 +169,10 @@ impl RiemannIntegrationTool {
         }
 
         let (eval_min, eval_max) = if matches!(self.preset, FunctionPreset::EToX) {
-            (self.min_x.clamp(-700.0, 80.0), self.max_x.clamp(-700.0, 80.0))
+            (
+                self.min_x.clamp(-700.0, 80.0),
+                self.max_x.clamp(-700.0, 80.0),
+            )
         } else {
             (self.min_x, self.max_x)
         };
@@ -245,7 +248,10 @@ struct RiemannState {
     preset: FunctionPreset,
     #[serde(default, skip_serializing_if = "is_default_quadrature")]
     quadrature_method: QuadratureMethod,
-    #[serde(default = "default_cc_tolerance", skip_serializing_if = "is_default_cc_tolerance")]
+    #[serde(
+        default = "default_cc_tolerance",
+        skip_serializing_if = "is_default_cc_tolerance"
+    )]
     cc_tolerance: f64,
     min_x: f64,
     max_x: f64,
@@ -316,7 +322,9 @@ impl InteractiveTool for RiemannIntegrationTool {
             || !s.cc_tolerance.is_finite()
             || !(MIN_CC_TOLERANCE..=MAX_CC_TOLERANCE).contains(&s.cc_tolerance)
         {
-            return Err("Riemann integration interval, partition count, or tolerance invalid".into());
+            return Err(
+                "Riemann integration interval, partition count, or tolerance invalid".into(),
+            );
         }
         self.preset = s.preset;
         self.quadrature_method = s.quadrature_method;
@@ -356,7 +364,7 @@ inventory::submit! {
         id: "RiemannIntegrationTool",
         display_name: "Riemann Integration",
         domain: "analysis",
-        tags: &[],
+        tags: &["quadrature", "simpson", "trapezoidal", "midpoint", "definite integral", "calculus"],
         build: || Box::new(RiemannIntegrationTool::default()),
     }
 }

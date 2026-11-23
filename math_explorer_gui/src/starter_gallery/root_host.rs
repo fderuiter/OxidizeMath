@@ -36,9 +36,9 @@ fn compute_gallery_metrics(ctx: &egui::Context) -> GalleryOverlayMetrics {
         768.0
     };
     let max_w = (avail_w - 32.0).clamp(180.0, 740.0);
-    let max_h = (avail_h - 32.0).clamp(160.0, 520.0);
+    let max_h = (avail_h - 32.0).clamp(220.0, 600.0);
     let inner_w = (max_w - 36.0).max(144.0);
-    let scroll_h = (max_h - 124.0).max(64.0);
+    let scroll_h = (max_h - 176.0).max(88.0);
     let grid_avail_w = (inner_w - 14.0).max(130.0);
     let (cols, card_w) = if grid_avail_w >= 660.0 {
         (3, ((grid_avail_w - 28.0) / 3.0 - 30.0).floor())
@@ -106,17 +106,29 @@ fn render_starter_card(ui: &mut egui::Ui, card: &StarterCard, card_width: f32) -
     launched
 }
 
-fn render_starter_gallery_body(
+fn render_empty_filtered_cards(
+    ui: &mut egui::Ui,
+    filter_state: &mut super::filter_ui::GalleryFilterState,
+) {
+    ui.vertical_centered(|ui| {
+        ui.add_space(16.0);
+        ui.label("No starter templates match the active filter.");
+        ui.add_space(6.0);
+        if ui.button("Reset Gallery Filters").clicked() {
+            filter_state.query.clear();
+            filter_state.selected_domain = None;
+        }
+        ui.add_space(12.0);
+    });
+}
+
+fn render_starter_gallery_header(
     ui: &mut egui::Ui,
     frame_ctx: &mut crate::ModalFrameContext,
-    cards: &[StarterCard],
-    m: &GalleryOverlayMetrics,
-) -> Option<StarterCard> {
-    let mut selected_card = None;
-    ui.set_max_width(m.inner_w);
-    ui.set_width(m.inner_w);
+    inner_w: f32,
+) {
     ui.horizontal(|ui| {
-        ui.set_width(m.inner_w);
+        ui.set_width(inner_w);
         ui.add(
             egui::Label::new(egui::RichText::new("🚀 Starter Template Gallery").heading())
                 .truncate(),
@@ -127,27 +139,58 @@ fn render_starter_gallery_body(
             }
         });
     });
-
     ui.add(
         egui::Label::new(
             egui::RichText::new(
-                "Choose a guided starter model to launch pre-configured simulation parameters:",
+                "Search or filter across domains to launch pre-configured simulation templates:",
             )
             .color(ui.visuals().weak_text_color()),
         )
         .wrap(),
     );
-    ui.add_space(6.0);
+    ui.add_space(4.0);
+}
+
+fn render_starter_gallery_body(
+    ui: &mut egui::Ui,
+    frame_ctx: &mut crate::ModalFrameContext,
+    modal_id: egui::Id,
+    cards: &[StarterCard],
+    m: &GalleryOverlayMetrics,
+) -> Option<StarterCard> {
+    let mut selected_card = None;
+    let top_y = ui.cursor().top();
+    ui.set_max_width(m.inner_w);
+    ui.set_width(m.inner_w);
+    render_starter_gallery_header(ui, frame_ctx, m.inner_w);
+
+    let mut filter_state = super::filter_ui::load_gallery_filter_state(ui.ctx(), modal_id);
+    super::filter_ui::render_gallery_filter_bar(ui, frame_ctx, &mut filter_state, m.inner_w);
+    let filtered = super::filter_ui::filter_starter_cards(
+        cards,
+        &filter_state.query,
+        filter_state.selected_domain,
+    );
+    ui.add_space(4.0);
     ui.separator();
-    ui.add_space(8.0);
+    ui.add_space(6.0);
+
+    let header_used = (ui.cursor().top() - top_y).max(0.0);
+    let scroll_h = (m.max_h - 32.0 - header_used)
+        .max(88.0)
+        .min(m.scroll_h.max(220.0));
 
     egui::ScrollArea::vertical()
-        .max_height(m.scroll_h)
+        .max_height(scroll_h)
         .auto_shrink([false, true])
         .show(ui, |ui| {
             ui.set_max_width(m.inner_w);
+            if filtered.is_empty() {
+                render_empty_filtered_cards(ui, &mut filter_state);
+                return;
+            }
             ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-            for row in cards.chunks(m.cols.max(1)) {
+            for row in filtered.chunks(m.cols.max(1)) {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
                     for card in row {
@@ -159,6 +202,7 @@ fn render_starter_gallery_body(
                 });
             }
         });
+    super::filter_ui::store_gallery_filter_state(ui.ctx(), modal_id, filter_state);
     selected_card
 }
 
@@ -169,12 +213,15 @@ pub fn show_starter_gallery_overlay(
     cards: &[StarterCard],
     is_open: &mut bool,
 ) -> Option<StarterCard> {
+    let modal_id = egui::Id::new(format!("{id_source}_starter_gallery_overlay"));
+    if !*is_open {
+        super::filter_ui::clear_gallery_filter_state(ctx, modal_id);
+    }
     if cards.is_empty() {
         return None;
     }
     let m = compute_gallery_metrics(ctx);
     let mut selected_card = None;
-    let modal_id = egui::Id::new(format!("{id_source}_starter_gallery_overlay"));
     let frame = egui::Frame::window(&ctx.style())
         .inner_margin(16)
         .corner_radius(12.0)
@@ -186,10 +233,21 @@ pub fn show_starter_gallery_overlay(
         .max_width(m.max_w)
         .max_height(m.max_h)
         .show(ctx, is_open, |ui, frame_ctx| {
-            selected_card = render_starter_gallery_body(ui, frame_ctx, cards, &m);
+            selected_card = render_starter_gallery_body(ui, frame_ctx, modal_id, cards, &m);
         });
 
+    if !*is_open || selected_card.is_some() {
+        super::filter_ui::clear_gallery_filter_state(ctx, modal_id);
+    }
     selected_card
+}
+
+/// Returns whether a root-level `StarterGallery` hoisting scope is currently active on `ctx`.
+pub(crate) fn is_root_starter_gallery_scope_active(ctx: &egui::Context) -> bool {
+    ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::new(DEFER_STARTER_GALLERY_TO_ROOT_KEY))
+            .unwrap_or(false)
+    })
 }
 
 /// Enables root-level hoisting of `StarterGallery` modals rendered during pane updates.
@@ -255,8 +313,12 @@ pub(crate) fn flush_deferred_starter_galleries(
         if selected.is_some() {
             is_open = false;
         }
-        if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
-            tab.apply_starter_gallery_outcome(ctx, &req.id_source, is_open, selected);
-        }
+        app.apply_deferred_starter_gallery_outcome(
+            ctx,
+            req.pane_idx,
+            &req.id_source,
+            is_open,
+            selected,
+        );
     }
 }

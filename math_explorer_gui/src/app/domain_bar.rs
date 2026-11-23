@@ -7,8 +7,8 @@ use eframe::egui;
 /// Academic domains used for categorizing simulation modules in the persistent top navigation bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AcademicDomain {
-    PureMath,
     Physics,
+    PureMath,
     AppliedMath,
     Biology,
     Climate,
@@ -18,8 +18,8 @@ pub enum AcademicDomain {
 impl AcademicDomain {
     /// Ordered list of all academic domains.
     pub const ALL: &'static [AcademicDomain] = &[
-        AcademicDomain::PureMath,
         AcademicDomain::Physics,
+        AcademicDomain::PureMath,
         AcademicDomain::AppliedMath,
         AcademicDomain::Biology,
         AcademicDomain::Climate,

@@ -60,12 +60,76 @@ pub struct CommandMetadata {
     pub context: String,
 }
 
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct DispatchedCommand {
+    pub name: String,
+    pub context: String,
+}
+
+const DISPATCHED_CMD_KEY: &str = "DISPATCHED_PALETTE_CMD";
+
+fn is_active_pane_allowed(ctx: &Context) -> bool {
+    ctx.data(
+        |d| match d.get_temp::<usize>(Id::new("CURRENT_RENDERING_PANE")) {
+            Some(rp) => {
+                rp == d
+                    .get_temp::<usize>(Id::new("ACTIVE_FOCUSED_PANE"))
+                    .unwrap_or(0)
+            }
+            None => true,
+        },
+    )
+}
+
 #[derive(Default, Clone)]
 pub struct CommandRegistryData {
     pub commands: Vec<CommandMetadata>,
 }
 
 impl CommandRegistryData {
+    /// Queues a command by `(name, context_name)` for one-shot execution on the focused pane.
+    pub fn dispatch(ctx: &Context, name: impl Into<String>, context_name: impl Into<String>) {
+        let cmd = DispatchedCommand {
+            name: name.into(),
+            context: context_name.into(),
+        };
+        ctx.data_mut(|d| d.insert_temp(Id::new(DISPATCHED_CMD_KEY), cmd));
+        ctx.request_repaint();
+    }
+
+    /// Returns `true` if a dispatched command is pending for `context_name` on the active pane.
+    #[must_use]
+    pub fn has_pending_dispatch(ctx: &Context, context_name: &str) -> bool {
+        if !is_active_pane_allowed(ctx) {
+            return false;
+        }
+        ctx.data(|d| {
+            d.get_temp::<DispatchedCommand>(Id::new(DISPATCHED_CMD_KEY))
+                .is_some_and(|c| c.context == context_name)
+        })
+    }
+
+    /// Consumes and returns `true` if `(name, context_name)` was dispatched for the active pane.
+    pub fn take_dispatched(ctx: &Context, name: &str, context_name: &str) -> bool {
+        if !is_active_pane_allowed(ctx) {
+            return false;
+        }
+        let matched = ctx.data_mut(|d| {
+            let key = Id::new(DISPATCHED_CMD_KEY);
+            let is_match = d
+                .get_temp::<DispatchedCommand>(key)
+                .is_some_and(|c| c.name == name && c.context == context_name);
+            if is_match {
+                d.remove_temp::<DispatchedCommand>(key);
+            }
+            is_match
+        });
+        if matched {
+            crate::emit_plot_live_message(ctx, format!("Action executed: {name}"), false);
+        }
+        matched
+    }
+
     /// Records command metadata in `CMD_REGISTRY` without checking or consuming input events.
     pub fn register(
         ctx: &Context,
@@ -115,6 +179,9 @@ impl CommandRegistryData {
             desktop_only,
             context_name,
         );
+        if Self::take_dispatched(ctx, name, context_name) {
+            return true;
+        }
 
         let input_mode = ctx.data(|d| {
             d.get_temp::<bool>(Id::new("INPUT_MODE_TOUCH"))

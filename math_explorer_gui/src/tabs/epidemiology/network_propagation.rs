@@ -26,7 +26,8 @@ impl Default for NetworkPropagationTool {
 impl NetworkPropagationTool {
     fn reset_network(&mut self) {
         self.rng = oxidize_core::rng::OxidizeRng::default();
-        self.model.initialize_geometric_graph_with_rng(&mut self.rng);
+        self.model
+            .initialize_geometric_graph_with_rng(&mut self.rng);
         self.is_running = false;
         #[cfg(test)]
         {
@@ -87,17 +88,15 @@ impl NetworkPropagationTool {
         let _ = self.model.set_gamma(gamma);
 
         ui.separator();
-        let count_state = |target: NodeState| {
-            self.model
-                .states()
-                .iter()
-                .filter(|&&s| s == target)
-                .count()
-        };
+        let count_state =
+            |target: NodeState| self.model.states().iter().filter(|&&s| s == target).count();
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.label(
-            egui::RichText::new(format!("Susceptible: {}", count_state(NodeState::Susceptible)))
-                .color(palette.axis_z),
+            egui::RichText::new(format!(
+                "Susceptible: {}",
+                count_state(NodeState::Susceptible)
+            ))
+            .color(palette.axis_z),
         );
         ui.label(
             egui::RichText::new(format!("Infected: {}", count_state(NodeState::Infected)))
@@ -112,10 +111,8 @@ impl NetworkPropagationTool {
     fn draw_graph_column(&self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.heading("Network Visualization");
-        let (response, painter) = ui.allocate_painter(
-            ui.available_size(),
-            egui::Sense::focusable_noninteractive(),
-        );
+        let (response, painter) =
+            ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
         let label = "Network Propagation Visualization";
         let _ = response.clone().accessible_hover_text(label);
         let summary = format!("{} network nodes", self.model.num_nodes());
@@ -132,10 +129,10 @@ impl NetworkPropagationTool {
         for i in 0..self.model.num_nodes() {
             for &j in &self.model.adjacency()[i] {
                 if i < j {
-                    let p1 =
-                        center + egui::vec2(self.model.positions()[i][0], self.model.positions()[i][1]);
-                    let p2 =
-                        center + egui::vec2(self.model.positions()[j][0], self.model.positions()[j][1]);
+                    let p1 = center
+                        + egui::vec2(self.model.positions()[i][0], self.model.positions()[i][1]);
+                    let p2 = center
+                        + egui::vec2(self.model.positions()[j][0], self.model.positions()[j][1]);
                     painter.line_segment([p1, p2], (1.0, palette.graph_edge));
                 }
             }
@@ -255,7 +252,7 @@ inventory::submit! {
         id: "NetworkPropagationTool",
         display_name: "Network Propagation",
         domain: "epidemiology",
-        tags: &[],
+        tags: &["contact network", "stochastic", "sir", "graph", "transmission"],
         build: || Box::new(NetworkPropagationTool::default()),
     }
 }

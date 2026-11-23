@@ -1,4 +1,5 @@
 // @explorer_feature = "biology"
+// @explorer_order = 40
 use crate::async_sim::SimWorkerState;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisPresetConfig;
@@ -243,7 +244,11 @@ impl MorphogenesisTab {
 impl FiniteStateGuard for MorphogenesisTab {
     fn is_finite_state(&self) -> bool {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        p.a.is_finite() && p.b.is_finite() && p.d_u.is_finite() && p.d_v.is_finite() && p.dt.is_finite()
+        p.a.is_finite()
+            && p.b.is_finite()
+            && p.d_u.is_finite()
+            && p.d_v.is_finite()
+            && p.dt.is_finite()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -327,12 +332,34 @@ impl ExplorerTab for MorphogenesisTab {
         Some(&mut self.framework)
     }
 
+    fn apply_starter_gallery_outcome(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+        is_open: bool,
+        selected: Option<crate::starter_gallery::StarterCard>,
+    ) {
+        let had_selection = selected.is_some();
+        self.framework
+            .apply_starter_gallery_outcome(ctx, id_source, is_open, selected);
+        if had_selection {
+            let cfg = self.export_config();
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.a = cfg.a;
+            p.b = cfg.b;
+            p.d_u = cfg.d_u;
+            p.d_v = cfg.d_v;
+            p.dt = cfg.dt;
+        }
+    }
+
     fn import_url_preset_json(
         &mut self,
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.framework.import_url_preset_json(tool_id, preset_json)?;
+        self.framework
+            .import_url_preset_json(tool_id, preset_json)?;
         let cfg = self.export_config();
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = cfg.a;

@@ -103,17 +103,19 @@ pub struct DensityActionCounts {
 pub(super) fn build_default_scene() -> Scene {
     let gaussians = CANONICAL_SCENE
         .into_iter()
-        .map(|(pos, base_scale, axis_angle, opacity, color, _)| Gaussian3D {
-            mean: Point3::new(pos[0], pos[1], pos[2]),
-            scale: Vector3::new(base_scale[0], base_scale[1], base_scale[2]),
-            rotation: UnitQuaternion::new(Vector3::new(
-                axis_angle[0],
-                axis_angle[1],
-                axis_angle[2],
-            )),
-            opacity,
-            color: Vector3::new(color[0], color[1], color[2]),
-        })
+        .map(
+            |(pos, base_scale, axis_angle, opacity, color, _)| Gaussian3D {
+                mean: Point3::new(pos[0], pos[1], pos[2]),
+                scale: Vector3::new(base_scale[0], base_scale[1], base_scale[2]),
+                rotation: UnitQuaternion::new(Vector3::new(
+                    axis_angle[0],
+                    axis_angle[1],
+                    axis_angle[2],
+                )),
+                opacity,
+                color: Vector3::new(color[0], color[1], color[2]),
+            },
+        )
         .collect();
     Scene { gaussians }
 }

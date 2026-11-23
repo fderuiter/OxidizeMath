@@ -261,7 +261,7 @@ inventory::submit! {
         id: "TokenizationTool",
         display_name: "Tokenization & Embeddings",
         domain: "ai",
-        tags: &[],
+        tags: &["subword", "bpe", "vocabulary", "embedding", "vector space", "nlp"],
         build: || Box::new(TokenizationTool::default()),
     }
 }

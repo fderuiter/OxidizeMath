@@ -419,6 +419,20 @@ fn render_legend_frame_contents(
     {
         ui.heading(title);
     }
+    if focus_on_item.is_none()
+        && !entries.is_empty()
+        && crate::commands::CommandRegistryData::take_dispatched(
+            ui.ctx(),
+            "Isolate Plot",
+            "Plot Legend",
+        )
+    {
+        focus_on_item = entries
+            .iter()
+            .find(|e| e.hovered)
+            .or_else(|| entries.first())
+            .map(|e| e.id);
+    }
     if let Some(focus_on_item) = focus_on_item {
         handle_focus_on_legend_item(ui.ctx(), &focus_on_item, entries);
     }

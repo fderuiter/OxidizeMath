@@ -130,20 +130,24 @@ impl SimulationFramework {
     #[allow(clippy::too_many_lines)]
     pub(super) fn render_filtered_tools(&mut self, ui: &mut egui::Ui) {
         let query = self.search_query.trim().to_lowercase();
-        let filtered_tools: Vec<(usize, &&'static ToolMetadata)> = self
-            .available_tools
-            .iter()
-            .enumerate()
-            .filter(|(_, meta)| {
-                if query.is_empty() {
-                    true
-                } else {
-                    meta.display_name.to_lowercase().contains(&query)
-                        || meta.id.to_lowercase().contains(&query)
-                        || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
-                }
-            })
-            .collect();
+        let filtered_tools: Vec<(usize, &&'static ToolMetadata)> = if query.is_empty() {
+            self.available_tools.iter().enumerate().collect()
+        } else {
+            let mut scored: Vec<(usize, usize, &&'static ToolMetadata)> = self
+                .available_tools
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, meta)| {
+                    crate::command_palette::score_tool_metadata(meta, &query)
+                        .map(|score| (score, idx, meta))
+                })
+                .collect();
+            scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+            scored
+                .into_iter()
+                .map(|(_, idx, meta)| (idx, meta))
+                .collect()
+        };
 
         let count = filtered_tools.len();
 
@@ -239,64 +243,6 @@ impl SimulationFramework {
             });
     }
 
-    pub(super) fn show_quick_start_cards(&mut self, ui: &mut egui::Ui) {
-        if self.available_tools.is_empty() {
-            ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
-                ui.heading("No Tools Available");
-                ui.label("There are currently no interactive tools available for this domain.");
-            });
-            return;
-        }
-
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.vertical(|ui| {
-                ui.add_space(20.0);
-                ui.heading("Quick-Start Launchpad");
-                ui.label("Select a tool below to begin interactive simulation and analysis:");
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(15.0);
-
-                let mut tool_to_select = None;
-
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
-                    for (i, meta) in self.available_tools.iter().enumerate() {
-                        egui::Frame::group(ui.style())
-                            .inner_margin(12.0)
-                            .corner_radius(8.0)
-                            .show(ui, |ui| {
-                                ui.set_width(220.0);
-                                ui.vertical(|ui| {
-                                    ui.heading(meta.display_name);
-                                    ui.add_space(6.0);
-                                    if !meta.tags.is_empty() {
-                                        ui.horizontal_wrapped(|ui| {
-                                            for tag in meta.tags {
-                                                let text = egui::RichText::new(format!("#{}", tag))
-                                                    .small()
-                                                    .color(ui.visuals().weak_text_color());
-                                                ui.label(text);
-                                            }
-                                        });
-                                        ui.add_space(8.0);
-                                    }
-                                    if ui.button("Launch Tool").clicked() {
-                                        tool_to_select = Some(i);
-                                    }
-                                });
-                            });
-                    }
-                });
-
-                if let Some(idx) = tool_to_select {
-                    self.select_tool(idx);
-                }
-            });
-        });
-    }
-
     pub(crate) fn apply_starter_gallery_outcome(
         &mut self,
         ctx: &egui::Context,
@@ -317,8 +263,11 @@ impl SimulationFramework {
         if !self.show_starter_gallery {
             return;
         }
-        let cards =
-            crate::starter_gallery::get_starter_cards_for_domain(id_source, &self.available_tools);
+        let cards = if crate::starter_gallery::is_root_starter_gallery_scope_active(ctx) {
+            crate::starter_gallery::get_all_starter_cards_with_tools(&self.available_tools)
+        } else {
+            crate::starter_gallery::get_starter_cards_for_domain(id_source, &self.available_tools)
+        };
         let modal_source = format!("{id_source}_{}", self.instance_id);
         if crate::starter_gallery::try_defer_starter_gallery(
             ctx,
@@ -419,10 +368,6 @@ impl SimulationFramework {
                 egui_plot::append_last_plot_datasets(&snapshot.plot_datasets);
             }
             tool.show_inside(ui);
-        } else {
-            egui::CentralPanel::default().show_inside(ui, |ui| {
-                self.show_quick_start_cards(ui);
-            });
         }
 
         if !interactive_input

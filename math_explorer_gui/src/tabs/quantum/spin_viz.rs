@@ -247,8 +247,8 @@ impl InteractiveTool for SpinVisualizer {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
-        let loaded: SpinVisualizerState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid SpinVisualizer state: {e}"))?;
+        let loaded: SpinVisualizerState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SpinVisualizer state: {e}"))?;
         if !loaded
             .b_field
             .iter()
@@ -293,7 +293,7 @@ inventory::submit! {
         id: "SpinVisualizer",
         display_name: "Spin Dynamics (Bloch Sphere)",
         domain: "quantum",
-        tags: &[],
+        tags: &["bloch sphere", "qubit", "zeeman", "larmor", "precession", "pauli"],
         build: || Box::new(SpinVisualizer::default()),
     }
 }

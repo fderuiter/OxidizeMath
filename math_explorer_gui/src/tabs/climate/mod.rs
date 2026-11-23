@@ -1,4 +1,5 @@
 // @explorer_feature = "climate"
+// @explorer_order = 50
 pub mod cera;
 pub mod co2_projections;
 pub mod temperature;

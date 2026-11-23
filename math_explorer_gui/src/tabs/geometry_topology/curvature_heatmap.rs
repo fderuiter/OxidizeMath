@@ -266,7 +266,7 @@ inventory::submit! {
         id: "CurvatureHeatmap",
         display_name: "Curvature Heatmap",
         domain: "geometry_topology",
-        tags: &[],
+        tags: &["gaussian curvature", "mean curvature", "theorema egregium", "manifold"],
         build: || Box::new(CurvatureHeatmap::default()),
     }
 }

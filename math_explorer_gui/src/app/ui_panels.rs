@@ -300,6 +300,10 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 crate::accessibility::announce_live_status(ctx, status_msg);
                 ui.close();
             }
+            if ui.button("🎨 Starter Gallery...").clicked() {
+                app.open_starter_gallery(ctx);
+                ui.close();
+            }
             ui.separator();
             viewport_menus::render_viewport_layout_submenu(app, ctx, ui);
             viewport_menus::render_focus_pane_submenu(app, ctx, ui);

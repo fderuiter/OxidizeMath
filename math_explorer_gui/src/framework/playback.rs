@@ -204,6 +204,10 @@ impl<'a> PlaybackTransport<'a> {
             let announce = emit_playback_broadcast(ctx, base_id, clicked, None);
             return (Some(clicked), announce);
         }
+        if let Some(dispatched) = self.check_dispatched_playback_commands(ctx) {
+            let announce = emit_playback_broadcast(ctx, base_id, dispatched, None);
+            return (Some(dispatched), announce);
+        }
         if let Some((sync_key_action, key)) =
             claim_pending_sync_key(ctx, self.can_toggle, self.is_playing, self.can_step)
         {
@@ -278,6 +282,33 @@ impl<'a> PlaybackTransport<'a> {
             d.insert_temp(base_id.with("play_button_info"), info);
         });
         resp.accessible_hover_text(&a11y_label).clicked()
+    }
+
+    fn check_dispatched_playback_commands(&self, ctx: &egui::Context) -> Option<PlaybackAction> {
+        use egui_plot::commands::CommandRegistryData;
+        if !CommandRegistryData::has_pending_dispatch(ctx, "Simulation Playback") {
+            return None;
+        }
+        if self.can_toggle
+            && CommandRegistryData::take_dispatched(ctx, "Play / Pause", "Simulation Playback")
+        {
+            return Some(if self.is_playing {
+                PlaybackAction::Pause
+            } else {
+                PlaybackAction::Play
+            });
+        }
+        if self.can_step
+            && CommandRegistryData::take_dispatched(ctx, "Step Forward", "Simulation Playback")
+        {
+            return Some(PlaybackAction::Step);
+        }
+        if self.can_reset
+            && CommandRegistryData::take_dispatched(ctx, "Reset Simulation", "Simulation Playback")
+        {
+            return Some(PlaybackAction::Reset);
+        }
+        None
     }
 
     fn check_keyboard_shortcuts(&self, ui: &egui::Ui) -> Option<PlaybackAction> {

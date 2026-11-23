@@ -53,6 +53,8 @@ impl PartialEq for StarterPresetMetadata {
     }
 }
 
+impl Eq for StarterPresetMetadata {}
+
 impl StarterPresetMetadata {
     /// Generates the JSON preset payload.
     #[inline]
@@ -332,58 +334,116 @@ pub const PRESET_FAVORITISM_SIBLING_RIVALRY: &str = r#"{
   }
 }"#;
 
-/// Returns curated or dynamically generated starter cards for a simulation domain.
+fn domains_match(a: &str, b: &str) -> bool {
+    a == b || (a == "biology" && b == "morphogenesis") || (a == "morphogenesis" && b == "biology")
+}
+
+fn preset_to_card(p: &StarterPresetMetadata) -> StarterCard {
+    StarterCard {
+        id: p.id,
+        title: p.title,
+        description: p.description,
+        category: p.category,
+        icon: p.icon,
+        domain: p.domain,
+        tool_name: p.tool_name,
+        preset_json: Some((p.preset_generator)()),
+    }
+}
+
+fn fallback_card_for_tool(meta: &'static ToolMetadata) -> StarterCard {
+    StarterCard {
+        id: meta.id,
+        title: meta.display_name,
+        description: "Interactive simulation tool for mathematical exploration and analysis.",
+        category: meta.domain,
+        icon: "🔬",
+        domain: meta.domain,
+        tool_name: Some(meta.id),
+        preset_json: None,
+    }
+}
+
+fn append_missing_tool_fallbacks(
+    cards: &mut Vec<StarterCard>,
+    domain_filter: Option<&str>,
+    tools: &[&'static ToolMetadata],
+) {
+    let matching_tool_count = tools
+        .iter()
+        .filter(|m| domain_filter.is_none_or(|d| domains_match(m.domain, d)))
+        .count();
+    for &meta in tools {
+        if domain_filter.is_some_and(|d| !domains_match(meta.domain, d)) {
+            continue;
+        }
+        let has_card = cards.iter().any(|c| {
+            c.tool_name == Some(meta.id)
+                || c.tool_name == Some(meta.display_name)
+                || (c.tool_name.is_none()
+                    && domains_match(c.domain, meta.domain)
+                    && matching_tool_count == 1)
+        });
+        if !has_card {
+            cards.push(fallback_card_for_tool(meta));
+        }
+    }
+}
+
+/// Returns curated starter cards for `domain`, plus per-tool fallback cards for any tool in `available_tools` lacking a preset.
 pub fn get_starter_cards_for_domain(
     domain: &str,
     available_tools: &[&'static ToolMetadata],
 ) -> Vec<StarterCard> {
     let mut cards: Vec<StarterCard> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
-        .filter(|p| {
-            p.domain == domain
-                || (domain == "biology" && p.domain == "morphogenesis")
-                || (domain == "morphogenesis" && p.domain == "biology")
-        })
-        .map(|p| StarterCard {
-            id: p.id,
-            title: p.title,
-            description: p.description,
-            category: p.category,
-            icon: p.icon,
-            domain: p.domain,
-            tool_name: p.tool_name,
-            preset_json: Some((p.preset_generator)()),
-        })
+        .filter(|p| domains_match(p.domain, domain))
+        .map(preset_to_card)
         .collect();
 
-    // Dynamic fallback cards based on available tools in domain if no presets submitted
-    if cards.is_empty() {
-        for meta in available_tools {
-            if meta.domain == domain {
-                cards.push(StarterCard {
-                    id: meta.id,
-                    title: meta.display_name,
-                    description:
-                        "Interactive simulation tool for mathematical exploration and analysis.",
-                    category: meta.domain,
-                    icon: "🔬",
-                    domain: meta.domain,
-                    tool_name: Some(meta.id),
-                    preset_json: None,
-                });
-            }
-        }
-    }
-
+    append_missing_tool_fallbacks(&mut cards, Some(domain), available_tools);
     cards.sort_by_key(|c| (c.title, c.id));
     cards
 }
+
+/// Returns all registered starter cards across every domain, generating per-tool fallback cards for any registered tool lacking a preset.
+pub fn get_all_starter_cards() -> Vec<StarterCard> {
+    let all_tools: Vec<&'static ToolMetadata> =
+        inventory::iter::<ToolMetadata>.into_iter().collect();
+    get_all_starter_cards_with_tools(&all_tools)
+}
+
+/// Returns all registered starter cards across domains plus per-tool fallback cards for `extra_tools`.
+pub fn get_all_starter_cards_with_tools(extra_tools: &[&'static ToolMetadata]) -> Vec<StarterCard> {
+    let mut cards: Vec<StarterCard> = inventory::iter::<StarterPresetMetadata>
+        .into_iter()
+        .map(preset_to_card)
+        .collect();
+    let mut tools: Vec<&'static ToolMetadata> =
+        inventory::iter::<ToolMetadata>.into_iter().collect();
+    for &extra in extra_tools {
+        if !tools
+            .iter()
+            .any(|t| t.id == extra.id && t.domain == extra.domain)
+        {
+            tools.push(extra);
+        }
+    }
+    append_missing_tool_fallbacks(&mut cards, None, &tools);
+    cards.sort_by_key(|c| (c.title, c.id));
+    cards
+}
+
+#[path = "starter_gallery/filter_ui.rs"]
+pub mod filter_ui;
+pub use filter_ui::{card_academic_domain, filter_starter_cards};
 
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
 pub use root_host::show_starter_gallery_overlay;
 pub(crate) use root_host::{
-    begin_root_starter_gallery_scope, flush_deferred_starter_galleries, try_defer_starter_gallery,
+    begin_root_starter_gallery_scope, flush_deferred_starter_galleries,
+    is_root_starter_gallery_scope_active, try_defer_starter_gallery,
 };
 
 #[cfg(test)]
@@ -393,3 +453,7 @@ mod tests;
 #[cfg(test)]
 #[path = "starter_gallery/contract_tests.rs"]
 mod contract_tests;
+
+#[cfg(test)]
+#[path = "starter_gallery/search_tests.rs"]
+mod search_tests;

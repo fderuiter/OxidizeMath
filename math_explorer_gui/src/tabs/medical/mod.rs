@@ -1,11 +1,11 @@
 // @explorer_feature = "physics"
+// @explorer_order = 15
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod beam_profiling;
 pub mod dose;
 pub mod radar_gating;
-
 
 pub struct MedicalTab {
     framework: crate::framework::SimulationFramework,

@@ -1,11 +1,11 @@
 // @explorer_feature = "physics"
+// @explorer_order = 12
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod lattice_boltzmann;
 pub mod potential_flow;
 pub mod turbulence;
-
 
 pub struct FluidDynamicsTab {
     framework: crate::framework::SimulationFramework,

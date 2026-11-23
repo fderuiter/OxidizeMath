@@ -65,21 +65,35 @@ fn render_formulation_section(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui
         ui.label(egui::RichText::new("Formulation & Release").strong());
         ui.horizontal_wrapped(|ui| {
             changed |= ui
-                .selectable_value(&mut tool.entity_mode, EntityMode::SingleEntity, "Single Entity")
+                .selectable_value(
+                    &mut tool.entity_mode,
+                    EntityMode::SingleEntity,
+                    "Single Entity",
+                )
                 .accessible_hover_text("Achiral single-entity Bateman 1-compartment model")
                 .changed();
             changed |= ui
                 .selectable_value(&mut tool.entity_mode, EntityMode::Enantiomer, "Enantiomer")
-                .accessible_hover_text("Chiral d/l-enantiomer mixture with distinct isomer kinetics")
+                .accessible_hover_text(
+                    "Chiral d/l-enantiomer mixture with distinct isomer kinetics",
+                )
                 .changed();
         });
         ui.horizontal_wrapped(|ui| {
             changed |= ui
-                .selectable_value(&mut tool.release_mode, ReleaseMode::ImmediateRelease, "Immediate (IR)")
+                .selectable_value(
+                    &mut tool.release_mode,
+                    ReleaseMode::ImmediateRelease,
+                    "Immediate (IR)",
+                )
                 .accessible_hover_text("Immediate-release single absorption pulse")
                 .changed();
             changed |= ui
-                .selectable_value(&mut tool.release_mode, ReleaseMode::TwoPulse, "TwoPulse (XR)")
+                .selectable_value(
+                    &mut tool.release_mode,
+                    ReleaseMode::TwoPulse,
+                    "TwoPulse (XR)",
+                )
                 .accessible_hover_text("Biphasic extended-release immediate + delayed pulse")
                 .changed();
         });
@@ -136,15 +150,23 @@ fn render_adme_parameters_section(tool: &mut PharmacokineticsTool, ui: &mut egui
     ui.group(|ui| {
         ui.label(egui::RichText::new("PK / ADME Parameters").strong());
         changed |= ui
-            .add(egui::Slider::new(&mut tool.bioavailability, 0.0..=1.0).text("Bioavailability (F)"))
+            .add(
+                egui::Slider::new(&mut tool.bioavailability, 0.0..=1.0).text("Bioavailability (F)"),
+            )
             .accessible_hover_text("Systemic oral bioavailability fraction F (0.0 to 1.0)")
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut tool.dose_mg, 0.0..=MAX_DOSE_MG).text("Maintenance Dose D (mg)"))
+            .add(
+                egui::Slider::new(&mut tool.dose_mg, 0.0..=MAX_DOSE_MG)
+                    .text("Maintenance Dose D (mg)"),
+            )
             .accessible_hover_text("Maintenance oral dose amount in milligrams")
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut tool.volume_l, MIN_VOLUME_L..=MAX_VOLUME_L).text("Volume V_d (L)"))
+            .add(
+                egui::Slider::new(&mut tool.volume_l, MIN_VOLUME_L..=MAX_VOLUME_L)
+                    .text("Volume V_d (L)"),
+            )
             .accessible_hover_text("Apparent volume of distribution in liters")
             .changed();
         changed |= render_elimination_controls(tool, ui);
@@ -158,7 +180,10 @@ fn render_elimination_controls(tool: &mut PharmacokineticsTool, ui: &mut egui::U
         .add(egui::Slider::new(&mut tool.ke, MIN_RATE..=MAX_KE).text("Elimination k_e (1/h)"))
         .accessible_hover_text("First-order elimination rate constant k_e (1/h)")
         .changed();
-    let mut t_half = half_life(tool.ke).clamp(std::f64::consts::LN_2 / MAX_KE, std::f64::consts::LN_2 / MIN_RATE);
+    let mut t_half = half_life(tool.ke).clamp(
+        std::f64::consts::LN_2 / MAX_KE,
+        std::f64::consts::LN_2 / MIN_RATE,
+    );
     if ui
         .add(
             egui::Slider::new(
@@ -180,7 +205,11 @@ fn render_absorption_controls(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui
     let mut changed = false;
     ui.horizontal_wrapped(|ui| {
         changed |= ui
-            .radio_value(&mut tool.absorption_mode, AbsorptionMode::DirectKa, "Direct k_a")
+            .radio_value(
+                &mut tool.absorption_mode,
+                AbsorptionMode::DirectKa,
+                "Direct k_a",
+            )
             .accessible_hover_text("Adjust absorption rate constant k_a directly")
             .changed();
         changed |= ui
@@ -195,7 +224,9 @@ fn render_absorption_controls(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui
     match tool.absorption_mode {
         AbsorptionMode::DirectKa => {
             changed |= ui
-                .add(egui::Slider::new(&mut tool.ka, MIN_RATE..=MAX_KA).text("Absorption k_a (1/h)"))
+                .add(
+                    egui::Slider::new(&mut tool.ka, MIN_RATE..=MAX_KA).text("Absorption k_a (1/h)"),
+                )
                 .accessible_hover_text("First-order absorption rate constant k_a (1/h)")
                 .changed();
         }
@@ -241,7 +272,10 @@ fn render_schedule_section(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) -
             .accessible_hover_text("Total plasma simulation duration in hours")
             .changed();
         changed |= ui
-            .checkbox(&mut tool.use_loading_dose, "Enable Initial Loading Dose (t = 0h)")
+            .checkbox(
+                &mut tool.use_loading_dose,
+                "Enable Initial Loading Dose (t = 0h)",
+            )
             .accessible_hover_text("Administer a custom loading dose D_load at slot 1 (t = 0h)")
             .changed();
         if tool.use_loading_dose {
@@ -337,8 +371,16 @@ fn render_metrics_section(tool: &PharmacokineticsTool, ui: &mut egui::Ui) {
     render_copyable_metric(ui, "Half-Life T_1/2", &format!("{:.2} h", m.half_life_h));
     render_copyable_metric(ui, "Peak Time T_max", &format!("{:.2} h", m.t_max_h));
     render_copyable_metric(ui, "Clearance CL", &format!("{:.2} L/h", m.clearance_l_h));
-    render_copyable_metric(ui, "Trapezoidal AUC", &format!("{:.2} mg·h/L", m.auc_trapezoidal));
-    render_copyable_metric(ui, "Accumulation R_ac", &format!("{:.2}x", m.accumulation_ratio));
+    render_copyable_metric(
+        ui,
+        "Trapezoidal AUC",
+        &format!("{:.2} mg·h/L", m.auc_trapezoidal),
+    );
+    render_copyable_metric(
+        ui,
+        "Accumulation R_ac",
+        &format!("{:.2}x", m.accumulation_ratio),
+    );
     render_copyable_metric(
         ui,
         "Therapeutic Window Time",

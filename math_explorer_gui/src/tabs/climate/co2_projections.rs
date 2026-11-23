@@ -110,7 +110,7 @@ inventory::submit! {
         id: "Co2ProjectionsTool",
         display_name: "CO2 Projections",
         domain: "climate",
-        tags: &[],
+        tags: &["carbon cycle", "emissions", "greenhouse", "atmosphere", "mass balance", "climate"],
         build: || Box::new(Co2ProjectionsTool::default()),
     }
 }
