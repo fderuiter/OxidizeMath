@@ -160,6 +160,7 @@ impl Error {
             Self::Math(err) => Some(InnerErrorRef::Domain(err)),
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
+            Self::ShaderEmit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Io(err) => Some(InnerErrorRef::Io(err)),
             #[cfg(any(
                 feature = "pure_math",

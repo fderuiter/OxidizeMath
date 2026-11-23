@@ -6543,6 +6543,9 @@
   ],
   "crates/domain_physics/src/physics/chaos/fractals.rs": [
     {
+      "signature": "pub const SMOOTH_ESCAPE_RADIUS_SQR : f64"
+    },
+    {
       "signature": "pub fn correlation_dimension (_ : & [Vector3 < f64 >] , _ : f64) -> f64"
     },
     {
@@ -6550,6 +6553,15 @@
     },
     {
       "signature": "pub fn escape_time_mandelbrot (_ : Complex < f64 > , _ : u32) -> u32"
+    },
+    {
+      "signature": "pub fn renormalize_escape_step (_ : u32 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn smooth_escape_julia (_ : Complex < f64 > , _ : Complex < f64 > , _ : u32) -> f64"
+    },
+    {
+      "signature": "pub fn smooth_escape_mandelbrot (_ : Complex < f64 > , _ : u32) -> f64"
     }
   ],
   "crates/domain_physics/src/physics/chaos/henon_heiles.rs": [
@@ -9081,6 +9093,9 @@
       "signature": "impl Expr { pub fn eval_complex_z (& self , _ : Complex64) -> Complex64 }"
     },
     {
+      "signature": "impl Expr { pub fn eval_complex_zc (& self , _ : Complex64 , _ : Complex64) -> Complex64 }"
+    },
+    {
       "signature": "impl Expr { pub fn eval_planar (& self , _ : f64 , _ : f64 , _ : f64 , _ : & HashMap < String , f64 >) -> f64 }"
     },
     {
@@ -9266,6 +9281,33 @@
     },
     {
       "signature": "pub use parser :: parse_equation"
+    },
+    {
+      "signature": "pub use shader :: ShaderEmitError"
+    },
+    {
+      "signature": "pub use shader :: format_shader_f32"
+    },
+    {
+      "signature": "pub use shader_preludes :: ShaderTarget"
+    },
+    {
+      "signature": "pub use shader_preludes :: complex_prelude_for"
+    },
+    {
+      "signature": "pub use shader_preludes :: glsl_complex_prelude"
+    },
+    {
+      "signature": "pub use shader_preludes :: glsl_real_prelude"
+    },
+    {
+      "signature": "pub use shader_preludes :: real_prelude_for"
+    },
+    {
+      "signature": "pub use shader_preludes :: wgsl_complex_prelude"
+    },
+    {
+      "signature": "pub use shader_preludes :: wgsl_real_prelude"
     }
   ],
   "crates/math_commons/src/ast/parser.rs": [
@@ -9286,6 +9328,52 @@
     },
     {
       "signature": "pub fn parse_equation (_ : & str) -> Result < (Option < String > , Expr) , ParseError >"
+    }
+  ],
+  "crates/math_commons/src/ast/shader.rs": [
+    {
+      "signature": "impl Expr { pub fn to_glsl (& self) -> Result < String , ShaderEmitError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_shader (& self , _ : ShaderTarget) -> Result < String , ShaderEmitError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_shader_complex (& self , _ : ShaderTarget) -> Result < String , ShaderEmitError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_wgsl (& self) -> Result < String , ShaderEmitError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_wgsl_complex (& self) -> Result < String , ShaderEmitError > }"
+    },
+    {
+      "signature": "pub enum ShaderEmitError"
+    },
+    {
+      "signature": "pub fn format_shader_f32 (_ : f64) -> Result < String , ShaderEmitError >"
+    }
+  ],
+  "crates/math_commons/src/ast/shader_preludes.rs": [
+    {
+      "signature": "pub const fn complex_prelude_for (_ : ShaderTarget) -> & 'static str"
+    },
+    {
+      "signature": "pub const fn glsl_complex_prelude () -> & 'static str"
+    },
+    {
+      "signature": "pub const fn glsl_real_prelude () -> & 'static str"
+    },
+    {
+      "signature": "pub const fn real_prelude_for (_ : ShaderTarget) -> & 'static str"
+    },
+    {
+      "signature": "pub const fn wgsl_complex_prelude () -> & 'static str"
+    },
+    {
+      "signature": "pub const fn wgsl_real_prelude () -> & 'static str"
+    },
+    {
+      "signature": "pub enum ShaderTarget"
     }
   ],
   "crates/math_commons/src/constants.rs": [
@@ -9368,6 +9456,9 @@
     },
     {
       "signature": "pub use crate :: ast :: ParseError"
+    },
+    {
+      "signature": "pub use crate :: ast :: ShaderEmitError"
     },
     {
       "signature": "pub use umbrella :: MathCommonsError"
@@ -9595,6 +9686,9 @@
     },
     {
       "signature": "pub fn mapped_gradient (_ : f64 , _ : f64 , _ : f64) -> [u8 ; 3]"
+    },
+    {
+      "signature": "pub use colormap_shader :: *"
     }
   ],
   "crates/math_commons/src/math_kernel/glsl_colormap.rs": [
@@ -17197,6 +17291,9 @@
     },
     {
       "signature": "pub use math_commons :: error :: ParseError"
+    },
+    {
+      "signature": "pub use math_commons :: error :: ShaderEmitError"
     },
     {
       "signature": "pub use pure_math :: error :: AmbsError"

@@ -31,6 +31,7 @@ mod export_figure;
 mod export_gif_job;
 mod export_modal_host;
 mod export_persistence;
+mod export_preset_ui;
 mod export_queue;
 #[cfg(test)]
 pub(crate) use export_queue::deferred_export_tests;
@@ -66,6 +67,8 @@ mod plot_persistence_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
+pub mod shader_foundry;
+mod shader_params;
 #[cfg(test)]
 mod shared_points_perf_tests;
 pub mod side_panel;
@@ -161,14 +164,12 @@ pub trait InteractiveTool {
     ///
     /// # Accessibility Requirements for Custom `show_inside` Overrides
     ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`],
-    ///   or [`egui::Sense::click_and_drag`] instead of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` so `AccessKit`
-    ///   exposes `Role::Image` and non-empty alternative text.
-    /// - Populate `AccessKit` metadata via `crate::accessibility::register_canvas_accessibility` and draw a
-    ///   high-contrast focus ring when `response.has_focus()`.
-    /// - When consuming arrow keys, set `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
-    ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
+    /// Default canvases use [`egui::Sense::click_and_drag`] and dispatch [`Self::on_keyboard`] when focused.
+    /// Custom overrides must:
+    /// - Allocate regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`], or [`egui::Sense::click_and_drag`].
+    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` for `AccessKit` `Role::Image`.
+    /// - Populate `AccessKit` metadata (`Role`, `label`, `value`) via `crate::accessibility::register_canvas_accessibility` and draw a focus ring.
+    /// - Guard arrow-key `Memory::set_focus_lock_filter` (`tab: false`, `escape: false`) strictly while `response.has_focus()`.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
@@ -337,6 +338,14 @@ pub trait InteractiveTool {
     /// Optional cold-path hook returning calibrated LaTeX, Rust, and Python code artifacts.
     fn export_code_artifact(&self) -> Option<CodeArtifact> {
         None
+    }
+
+    /// Optional hook to generate standalone `.wgsl` or `.glsl` fragment shader source code.
+    fn export_shader_source(&self, _format: ShaderExportFormat) -> Result<String, String> {
+        Err(format!(
+            "Standalone shader export is not supported for {}",
+            self.name()
+        ))
     }
 
     /// Optional hook to export tool datasets.

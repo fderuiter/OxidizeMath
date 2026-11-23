@@ -6,7 +6,9 @@ use crate::accessibility::{
     register_canvas_accessibility, AccessibleHoverText, AccessibleTheoryHover,
 };
 use crate::framework::bounded_drag_value;
+use crate::framework::shader_foundry::render_shader_preview_section;
 use eframe::egui;
+use math_commons::math_kernel::colormap::ShaderPalette;
 use num_complex::Complex;
 use scientific_metadata::theory::TheoryDescribable;
 
@@ -14,40 +16,48 @@ impl FractalViewer {
     pub(super) fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "fractal_settings");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Settings");
-            ui.separator();
-            self.draw_mode_selector(ui);
-            let _ = self.atlas.show_toggle_button(ui);
-
-            if self.mode.is_custom() {
-                ui.separator();
-                if self.math_input.ui(ui) {
-                    self.dirty = true;
-                }
-            }
-
-            ui.separator();
-            if self.mode.uses_julia_c() {
-                ui.label("Julia Constant (c):");
-                let re_drag = bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.01)
-                    .prefix("Re: ");
-                let im_drag = bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.01)
-                    .prefix("Im: ");
-                if ui.add(re_drag).changed() | ui.add(im_drag).changed() {
-                    self.dirty = true;
-                }
-            } else {
-                ui.label(format!(
-                    "Probe c: {:+.4} {:+.4}i",
-                    self.julia_c.re, self.julia_c.im
-                ));
-                ui.checkbox(&mut self.c_pinned, "Pin c crosshair")
-                    .accessible_hover_text(
-                        "Freeze c against hover; click Mandelbrot canvas or press Enter to toggle",
-                    );
-            }
-            self.draw_view_controls(ui);
+            egui::ScrollArea::vertical()
+                .id_salt("fractal_side_scroll")
+                .show(ui, |ui| {
+                    ui.heading("Settings");
+                    ui.separator();
+                    self.draw_mode_controls(ui);
+                    self.draw_coloring_controls(ui);
+                    self.draw_view_controls(ui);
+                    self.draw_shader_preview(ui);
+                });
         });
+    }
+
+    fn draw_mode_controls(&mut self, ui: &mut egui::Ui) {
+        self.draw_mode_selector(ui);
+        let _ = self.atlas.show_toggle_button(ui);
+        if self.mode.is_custom() {
+            ui.separator();
+            if self.math_input.ui(ui) {
+                self.mark_dirty();
+            }
+        }
+        ui.separator();
+        if self.mode.uses_julia_c() {
+            ui.label("Julia Constant (c):");
+            let re_drag = bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.01)
+                .prefix("Re: ");
+            let im_drag = bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.01)
+                .prefix("Im: ");
+            if ui.add(re_drag).changed() | ui.add(im_drag).changed() {
+                self.mark_dirty();
+            }
+        } else {
+            ui.label(format!(
+                "Probe c: {:+.4} {:+.4}i",
+                self.julia_c.re, self.julia_c.im
+            ));
+            ui.checkbox(&mut self.c_pinned, "Pin c crosshair")
+                .accessible_hover_text(
+                    "Freeze c against hover; click Mandelbrot canvas or press Enter to toggle",
+                );
+        }
     }
 
     fn draw_mode_selector(&mut self, ui: &mut egui::Ui) {
@@ -67,6 +77,29 @@ impl FractalViewer {
         });
     }
 
+    fn draw_coloring_controls(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.label("Coloring & Palette:");
+        if ui
+            .checkbox(&mut self.smooth_coloring, "Smooth escape renormalization")
+            .changed()
+        {
+            self.mark_dirty();
+        }
+        egui::ComboBox::from_id_salt("fractal_shader_palette")
+            .selected_text(self.palette.label())
+            .show_ui(ui, |ui| {
+                for candidate in ShaderPalette::ALL {
+                    if ui
+                        .selectable_value(&mut self.palette, candidate, candidate.label())
+                        .changed()
+                    {
+                        self.mark_dirty();
+                    }
+                }
+            });
+    }
+
     fn draw_view_controls(&mut self, ui: &mut egui::Ui) {
         ui.separator();
         ui.label("View Controls:");
@@ -75,7 +108,7 @@ impl FractalViewer {
             .text("Zoom");
         if ui.add(zoom_slider).changed() {
             self.sync_active_plane_view();
-            self.dirty = true;
+            self.mark_dirty();
         }
 
         ui.label("Center:");
@@ -91,7 +124,7 @@ impl FractalViewer {
             bounded_drag_value(&mut self.center.im, COORD_MIN..=COORD_MAX, speed).prefix("Im: ");
         if ui.add(re_drag).changed() | ui.add(im_drag).changed() {
             self.sync_active_plane_view();
-            self.dirty = true;
+            self.mark_dirty();
         }
 
         let iter_max = math_commons::registry::MAX_ITERATIONS as u32;
@@ -99,7 +132,7 @@ impl FractalViewer {
             .logarithmic(true)
             .text("Max Iter");
         if ui.add(iter_slider).changed() {
-            self.dirty = true;
+            self.mark_dirty();
         }
 
         ui.separator();
@@ -112,12 +145,21 @@ impl FractalViewer {
             };
             self.zoom = 1.0;
             self.sync_active_plane_view();
-            self.dirty = true;
+            self.mark_dirty();
         }
         ui.label("Navigation:");
         ui.label("- Hover/Click: Probe/Pin c (Mandelbrot)");
         ui.label("- Drag to Pan | Scroll/Pinch to Zoom");
         ui.label("- Arrows + Enter: Step/Pin c");
+    }
+
+    fn draw_shader_preview(&mut self, ui: &mut egui::Ui) {
+        let rev = self.shader_revision();
+        let mut preview = std::mem::take(&mut self.shader_preview);
+        render_shader_preview_section(ui, "fractal_shader_preview", &mut preview, rev, |fmt| {
+            self.export_shader_source(fmt)
+        });
+        self.shader_preview = preview;
     }
 
     fn pan_by_pixels(&mut self, delta: egui::Vec2, view_w: f64, view_h: f64) {
@@ -131,7 +173,7 @@ impl FractalViewer {
         self.center.re = (self.center.re + dx).clamp(COORD_MIN, COORD_MAX);
         self.center.im = (self.center.im + dy).clamp(COORD_MIN, COORD_MAX);
         self.sync_active_plane_view();
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn handle_canvas_navigation(
@@ -147,7 +189,7 @@ impl FractalViewer {
                 let dampened = (1.0 + (touch.zoom_delta - 1.0) * 0.5).max(0.01);
                 self.zoom = (self.zoom * f64::from(dampened)).clamp(ZOOM_MIN, ZOOM_MAX);
                 self.sync_active_plane_view();
-                self.dirty = true;
+                self.mark_dirty();
             }
             self.pan_by_pixels(touch.translation_delta, view_w, view_h);
         } else if response.dragged() {
@@ -160,7 +202,7 @@ impl FractalViewer {
                 let zoom_factor = if scroll_delta > 0.0 { 1.1 } else { 0.9 };
                 self.zoom = (self.zoom * zoom_factor).clamp(ZOOM_MIN, ZOOM_MAX);
                 self.sync_active_plane_view();
-                self.dirty = true;
+                self.mark_dirty();
             }
         }
     }
@@ -183,12 +225,14 @@ impl FractalViewer {
                     self.julia_c = screen_to_complex(pos, rect, self.center, self.zoom);
                     self.c_pinned = true;
                 }
+                self.shader_preview.invalidate();
                 return true;
             }
         } else if response.hovered() && !response.dragged() && !self.c_pinned {
             let ptr = ui.input(|i| i.pointer.hover_pos().or_else(|| i.pointer.latest_pos()));
             if let Some(pos) = ptr.filter(|p| rect.contains(*p)) {
                 self.julia_c = screen_to_complex(pos, rect, self.center, self.zoom);
+                self.shader_preview.invalidate();
             }
         }
         false
@@ -244,8 +288,12 @@ impl FractalViewer {
         if enter {
             self.c_pinned = !self.c_pinned;
         }
-        if c_changed && self.mode.uses_julia_c() {
-            self.dirty = true;
+        if c_changed {
+            if self.mode.uses_julia_c() {
+                self.mark_dirty();
+            } else {
+                self.shader_preview.invalidate();
+            }
         }
         c_changed || enter
     }
@@ -262,7 +310,14 @@ impl FractalViewer {
         if raw_w == 0 || raw_h == 0 {
             return;
         }
-        let (render_w, render_h) = clamp_fractal_dimensions(raw_w, raw_h, max_texture_side);
+        let has_real_screen = ctx.input(|i| i.raw.screen_rect.is_some());
+        let (eff_w, eff_h) = if has_real_screen {
+            self.viewport_size = (raw_w, raw_h);
+            (raw_w, raw_h)
+        } else {
+            DEFAULT_EXPORT_VIEWPORT_SIZE
+        };
+        let (render_w, render_h) = clamp_fractal_dimensions(eff_w, eff_h, max_texture_side);
         if self.texture.is_none() {
             let fallback = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
             self.texture =

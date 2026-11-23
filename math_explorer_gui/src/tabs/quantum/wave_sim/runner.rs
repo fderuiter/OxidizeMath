@@ -7,6 +7,7 @@ use super::presets::{
     GRID_X_MIN, SIGMA_MAX, SIGMA_MIN,
 };
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::audio::SonificationFrame;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_commons::ast::Expr;
 use math_explorer::physics::quantum::{
@@ -183,7 +184,7 @@ impl WaveRunner {
             diagnostic_report: None,
             step_count: 0,
             prev_mode_phases: [0.0; 8],
-            sonification: crate::audio::SonificationFrame::silent(),
+            sonification: SonificationFrame::silent(),
         };
         runner.init_from_config(&cfg);
         runner
@@ -191,12 +192,13 @@ impl WaveRunner {
 
     pub(crate) fn record_divergence(&mut self, param: &'static str, message: impl Into<String>) {
         self.diverged = true;
-        self.sonification = crate::audio::SonificationFrame::silent();
+        self.sonification = SonificationFrame::silent();
+        let msg = message.into();
         self.diagnostic_report = Some(DiagnosticReport::new(
             self.time,
             self.step_count,
             param,
-            message.into(),
+            msg,
         ));
     }
 
@@ -217,14 +219,9 @@ impl WaveRunner {
             *slot = self.x_min + i as f64 * dx;
         }
         (self.x_left, self.x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
-        self.potential = evaluate_potential_grid(
-            cfg.preset,
-            &self.x_axis,
-            cfg.v0,
-            cfg.width,
-            dx,
-            &cfg.custom_expr,
-        );
+        let pot = (cfg.preset, &self.x_axis, cfg.v0, cfg.width, dx);
+        self.potential =
+            evaluate_potential_grid(pot.0, pot.1, pot.2, pot.3, pot.4, &cfg.custom_expr);
         self.sync_base_and_sparse_potential(&cfg.sparse_potential);
         if !self
             .solver
@@ -412,11 +409,9 @@ impl WaveRunner {
             self.x_left,
             self.x_right,
         );
-        for p in &mut safe_prob {
-            if !p.is_finite() {
-                *p = 0.0;
-            }
-        }
+        safe_prob
+            .iter_mut()
+            .for_each(|p| *p = if p.is_finite() { *p } else { 0.0 });
         let safe_potential: Vec<f64> = self
             .potential
             .iter()
@@ -463,9 +458,7 @@ impl SimulationRunner for WaveRunner {
                     .clone();
                 self.init_from_config(&cfg);
             }
-            SimCommand::SetSpeed(speed) => {
-                self.steps_per_frame = speed.max(1);
-            }
+            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed.max(1),
             other => self.handle_sculpt_command(other),
         }
     }
@@ -476,18 +469,16 @@ impl SimulationRunner for WaveRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let sonification = if self.diverged {
-            crate::audio::SonificationFrame::silent()
-        } else {
-            self.sonification
+        let sonification = match self.diverged {
+            true => SonificationFrame::silent(),
+            false => self.sonification,
         };
-        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
         StateSnapshot {
             width: 0,
             height: 0,
             pixels: Arc::new(RwLock::new(Vec::new())),
             custom_data: Vec::new(),
-            structured_data: Some(structured_data),
+            structured_data: Some(Box::new(self.build_wave_data()) as Box<dyn Any + Send>),
             sonification,
         }
     }

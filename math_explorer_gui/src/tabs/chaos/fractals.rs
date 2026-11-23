@@ -2,11 +2,12 @@
 
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
-use crate::framework::{InteractiveTool, MathExpressionInputBar};
+use crate::framework::shader_foundry::{emit_fractal_shader, ShaderPreviewState};
+use crate::framework::{InteractiveTool, MathExpressionInputBar, ShaderExportFormat};
 use eframe::egui;
+use math_commons::math_kernel::colormap::ShaderPalette;
 use num_complex::Complex;
-use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::HashMap;
+use scientific_metadata::theory::TheoryDescribable;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
@@ -24,6 +25,9 @@ pub use formula::{default_fractal_input_bar, CompiledFractalJob, DEFAULT_FRACTAL
 mod runner;
 pub use runner::*;
 
+#[path = "fractals/state.rs"]
+mod state;
+
 #[path = "fractals/overlay.rs"]
 mod overlay;
 pub use overlay::*;
@@ -36,7 +40,6 @@ mod ui;
 
 #[path = "fractals/presets.rs"]
 mod presets;
-use presets::FractalState;
 #[cfg(test)]
 use presets::{STARTER_CUSP_CONNECTED_JSON, STARTER_CUSP_DUST_JSON, STARTER_PRESET_JSON};
 
@@ -60,10 +63,14 @@ pub struct FractalViewer {
     pub(crate) quadratic_job: CompiledFractalJob,
     pub(crate) atlas: ParameterAtlasController,
     pub(crate) high_contrast: bool,
+    pub(crate) smooth_coloring: bool,
+    pub(crate) palette: ShaderPalette,
+    pub(crate) shader_preview: ShaderPreviewState,
+    pub(crate) viewport_size: (usize, usize),
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) julia_inset_texture: Option<egui::TextureHandle>,
     pub(crate) julia_inset_image: Option<egui::ColorImage>,
-    pub(crate) julia_inset_key: Option<(u64, u64, u32, bool)>,
+    pub(crate) julia_inset_key: Option<(u64, u64, u32, bool, FractalColorStyle)>,
     pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) dirty: bool,
     pub(crate) requested_size: (usize, usize),
@@ -72,42 +79,52 @@ pub struct FractalViewer {
     pub(crate) current_stride: usize,
     pub(crate) shared_request: Arc<RwLock<FractalRenderRequest>>,
     pub(crate) shared_formula: Arc<RwLock<Option<Arc<CompiledFractalJob>>>>,
+    pub(crate) shared_style: Arc<RwLock<FractalColorStyle>>,
     pub(crate) latest_generation: Arc<AtomicU64>,
     pub(crate) worker: BackgroundWorker<FractalRunner>,
 }
 
 type SharedFormulaSlot = Arc<RwLock<Option<Arc<CompiledFractalJob>>>>;
 
+struct InitialWorkerBundle {
+    shared_request: Arc<RwLock<FractalRenderRequest>>,
+    shared_formula: SharedFormulaSlot,
+    shared_style: Arc<RwLock<FractalColorStyle>>,
+    latest_generation: Arc<AtomicU64>,
+    worker: BackgroundWorker<FractalRunner>,
+}
+
 fn build_initial_worker(
     initial_req: FractalRenderRequest,
     math_input: &MathExpressionInputBar,
-) -> (
-    Arc<RwLock<FractalRenderRequest>>,
-    SharedFormulaSlot,
-    Arc<AtomicU64>,
-    BackgroundWorker<FractalRunner>,
-) {
+    initial_style: FractalColorStyle,
+) -> InitialWorkerBundle {
     let initial_formula = Some(Arc::new(CompiledFractalJob::from_bar(math_input)));
     let shared_request = Arc::new(RwLock::new(initial_req));
     let shared_formula = Arc::new(RwLock::new(initial_formula));
+    let shared_style = Arc::new(RwLock::new(initial_style));
     let latest_generation = Arc::new(AtomicU64::new(0));
-    let worker = BackgroundWorker::new(FractalRunner::with_formula(
+    let worker = BackgroundWorker::new(FractalRunner::with_formula_and_style(
         Arc::clone(&shared_request),
         Arc::clone(&latest_generation),
         Arc::clone(&shared_formula),
+        Arc::clone(&shared_style),
     ));
-    (shared_request, shared_formula, latest_generation, worker)
+    InitialWorkerBundle {
+        shared_request,
+        shared_formula,
+        shared_style,
+        latest_generation,
+        worker,
+    }
 }
 
 impl Default for FractalViewer {
     fn default() -> Self {
-        let center = DEFAULT_MANDELBROT_CENTER;
-        let zoom = 1.0;
-        let max_iter = 100;
-        let mode = FractalMode::Mandelbrot;
-        let julia_c = Complex::new(-0.4, 0.6);
+        let (center, zoom, max_iter) = (DEFAULT_MANDELBROT_CENTER, 1.0, 100);
+        let (mode, julia_c) = (FractalMode::Mandelbrot, Complex::new(-0.4, 0.6));
         let math_input = default_fractal_input_bar();
-        let quadratic_job = CompiledFractalJob::quadratic();
+        let initial_style = FractalColorStyle::default();
         let initial_req = FractalRenderRequest {
             generation: 0,
             width: INITIAL_PREVIEW_SIZE.0,
@@ -119,8 +136,7 @@ impl Default for FractalViewer {
             julia_c,
             high_contrast: false,
         };
-        let (shared_request, shared_formula, latest_generation, worker) =
-            build_initial_worker(initial_req, &math_input);
+        let bundle = build_initial_worker(initial_req, &math_input, initial_style);
         let inset_iter = max_iter.clamp(10, JULIA_INSET_MAX_ITER);
         let inset_img = render_julia_inset_image(julia_c, inset_iter, false);
         let inset_key = (
@@ -128,6 +144,7 @@ impl Default for FractalViewer {
             julia_c.im.to_bits(),
             inset_iter,
             false,
+            initial_style,
         );
         Self {
             center,
@@ -139,9 +156,13 @@ impl Default for FractalViewer {
             julia_c,
             c_pinned: false,
             math_input,
-            quadratic_job,
+            quadratic_job: CompiledFractalJob::quadratic(),
             atlas: ParameterAtlasController::new(FRACTAL_ATLAS_AXIS_PAIRS.to_vec()),
             high_contrast: false,
+            smooth_coloring: initial_style.smooth_coloring,
+            palette: initial_style.palette,
+            shader_preview: ShaderPreviewState::default(),
+            viewport_size: DEFAULT_EXPORT_VIEWPORT_SIZE,
             texture: None,
             julia_inset_texture: None,
             julia_inset_image: Some(inset_img),
@@ -152,62 +173,12 @@ impl Default for FractalViewer {
             request_generation: 0,
             completed_generation: 0,
             current_stride: 1,
-            shared_request,
-            shared_formula,
-            latest_generation,
-            worker,
+            shared_request: bundle.shared_request,
+            shared_formula: bundle.shared_formula,
+            shared_style: bundle.shared_style,
+            latest_generation: bundle.latest_generation,
+            worker: bundle.worker,
         }
-    }
-}
-
-impl FractalViewer {
-    #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-}
-
-impl TheoryDescribable for FractalViewer {
-    fn theory_description(&self) -> String {
-        let name = match self.mode {
-            FractalMode::Mandelbrot => "Mandelbrot set".to_string(),
-            FractalMode::Julia => format!(
-                "Julia set with c=({:.2}, {:.2})",
-                self.julia_c.re, self.julia_c.im
-            ),
-            FractalMode::CustomMandelbrot => {
-                format!(
-                    "Custom escape fractal z_{{n+1}} = {}",
-                    self.math_input.raw_text
-                )
-            }
-            FractalMode::CustomJulia => format!(
-                "Custom Julia fractal z_{{n+1}} = {} with c=({:.2}, {:.2})",
-                self.math_input.raw_text, self.julia_c.re, self.julia_c.im
-            ),
-        };
-        format!(
-            "Fractal viewer: {}, center: ({:.2}, {:.2}), zoom: {:.2}",
-            name, self.center.re, self.center.im, self.zoom
-        )
-    }
-
-    fn phonetic_description(&self) -> String {
-        self.theory_description()
-    }
-
-    fn theory_citation(&self) -> String {
-        "Mandelbrot, B. B. (1982). The Fractal Geometry of Nature. W. H. Freeman; Julia, G. (1918). Mémoire sur l'itération des fonctions rationnelles. Journal de Mathématiques Pures et Appliquées, 8, 47-245.".to_string()
-    }
-
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("default".to_string(), "Fractal viewer".to_string());
-        map
-    }
-
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        self.build_theory_parameters()
     }
 }
 
@@ -225,7 +196,7 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only().with_shader()
+        crate::framework::ExportCapabilities::raster_with_shader()
     }
 
     fn export_glsl_shader(
@@ -236,45 +207,58 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
-        let zoom = if self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom) {
-            self.zoom
+        let raw = if self.viewport_size.0 > 0 && self.viewport_size.1 > 0 {
+            self.viewport_size
         } else {
-            1.0
+            DEFAULT_EXPORT_VIEWPORT_SIZE
         };
-        let req = FractalRenderRequest {
-            generation: self.request_generation,
-            width: 480,
-            height: 320,
-            center: Complex::new(
-                self.center.re.clamp(COORD_MIN, COORD_MAX),
-                self.center.im.clamp(COORD_MIN, COORD_MAX),
-            ),
-            zoom,
-            max_iter: self
-                .max_iter
-                .clamp(10, math_commons::registry::MAX_ITERATIONS as u32),
-            mode: self.mode,
-            julia_c: Complex::new(
-                self.julia_c.re.clamp(COORD_MIN, COORD_MAX),
-                self.julia_c.im.clamp(COORD_MIN, COORD_MAX),
-            ),
-            high_contrast: self.high_contrast,
-        };
+        let (width, height) = clamp_fractal_dimensions(raw.0, raw.1, MAX_FRACTAL_TEXTURE_SIDE);
+        if !self.dirty && self.completed_generation == self.request_generation {
+            if let Some(snap) = self.worker.latest_snapshot() {
+                if (snap.width, snap.height) == (width, height) {
+                    if let Some(img) =
+                        snapshot_to_clamped_color_image(snap, MAX_FRACTAL_TEXTURE_SIDE)
+                    {
+                        return Some(img);
+                    }
+                }
+            }
+        }
+        let req = self.build_clamped_render_request(width, height);
         let job = self
             .mode
             .is_custom()
             .then(|| CompiledFractalJob::from_bar(&self.math_input));
-        Some(render_fractal_color_image_with_formula(&req, job.as_ref()))
+        Some(render_fractal_color_image_styled(
+            &req,
+            job.as_ref(),
+            self.color_style(),
+        ))
+    }
+
+    fn export_shader_source(&self, format: ShaderExportFormat) -> Result<String, String> {
+        let (expr, use_julia_seed) = self.resolve_active_shader_expr()?;
+        emit_fractal_shader(
+            format,
+            &expr,
+            use_julia_seed,
+            &self.shader_uniform_defaults(),
+        )
     }
 
     fn step_simulation(&mut self) {
         self.zoom = (self.zoom * 1.06).clamp(ZOOM_MIN, ZOOM_MAX);
         self.sync_active_plane_view();
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn has_finite_parameters(&self) -> bool {
-        self.build_state(false).validate().is_ok()
+        self.build_state(false).validate_bounds().is_ok()
+            && self
+                .math_input
+                .param_slice()
+                .iter()
+                .all(|v| v.is_finite() && (-1.0e4..=1.0e4).contains(v))
     }
 
     fn save_state(&self) -> Option<String> {
@@ -282,39 +266,7 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: FractalState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid fractal state: {e}"))?;
-        s.validate()?;
-        self.center = Complex::new(s.center_re, s.center_im);
-        self.zoom = s.zoom;
-        self.max_iter = s.max_iter;
-        self.mode = s.mode;
-        self.julia_c = Complex::new(s.julia_re, s.julia_im);
-        self.c_pinned = s.c_pinned;
-        self.c_plane_view = (
-            Complex::new(
-                s.mandelbrot_center_re
-                    .unwrap_or(DEFAULT_MANDELBROT_CENTER.re),
-                s.mandelbrot_center_im
-                    .unwrap_or(DEFAULT_MANDELBROT_CENTER.im),
-            ),
-            s.mandelbrot_zoom.unwrap_or(1.0),
-        );
-        self.z_plane_view = (
-            Complex::new(
-                s.julia_center_re.unwrap_or(DEFAULT_JULIA_CENTER.re),
-                s.julia_center_im.unwrap_or(DEFAULT_JULIA_CENTER.im),
-            ),
-            s.julia_zoom.unwrap_or(1.0),
-        );
-        self.sync_active_plane_view();
-        self.math_input
-            .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_FRACTAL_EXPR));
-        self.math_input.set_params_map(&s.custom_params);
-        self.atlas.set_visible(s.atlas_visible);
-        let _ = self.atlas.set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1]);
-        self.dirty = true;
-        Ok(())
+        self.apply_loaded_state(state)
     }
 
     #[cfg(test)]
@@ -333,7 +285,7 @@ impl InteractiveTool for FractalViewer {
             == crate::app::ThemeMode::HighContrast;
         if self.high_contrast != is_high_contrast {
             self.high_contrast = is_high_contrast;
-            self.dirty = true;
+            self.mark_dirty();
         }
         let max_side = ctx.input(|i| i.max_texture_side);
         self.sync_texture_from_worker(&ctx, max_side);
@@ -343,6 +295,50 @@ impl InteractiveTool for FractalViewer {
 }
 
 impl FractalViewer {
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
+    pub(super) const fn color_style(&self) -> FractalColorStyle {
+        FractalColorStyle {
+            smooth_coloring: self.smooth_coloring,
+            palette: self.palette,
+        }
+    }
+
+    pub(super) fn mark_dirty(&mut self) {
+        self.dirty = true;
+        self.shader_preview.invalidate();
+    }
+
+    fn build_clamped_render_request(&self, width: usize, height: usize) -> FractalRenderRequest {
+        let zoom = if self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom) {
+            self.zoom
+        } else {
+            1.0
+        };
+        FractalRenderRequest {
+            generation: self.request_generation,
+            width,
+            height,
+            center: Complex::new(
+                self.center.re.clamp(COORD_MIN, COORD_MAX),
+                self.center.im.clamp(COORD_MIN, COORD_MAX),
+            ),
+            zoom,
+            max_iter: self
+                .max_iter
+                .clamp(10, math_commons::registry::MAX_ITERATIONS as u32),
+            mode: self.mode,
+            julia_c: Complex::new(
+                self.julia_c.re.clamp(COORD_MIN, COORD_MAX),
+                self.julia_c.im.clamp(COORD_MIN, COORD_MAX),
+            ),
+            high_contrast: self.high_contrast,
+        }
+    }
+
     fn upload_clamped_snapshot(
         texture_slot: &mut Option<egui::TextureHandle>,
         ctx: &egui::Context,
@@ -402,49 +398,44 @@ impl FractalViewer {
                 .shared_formula
                 .write()
                 .unwrap_or_else(|e| e.into_inner()) = formula_job;
-            let req = FractalRenderRequest {
-                generation: self.request_generation,
-                width: render_w,
-                height: render_h,
-                center: self.center,
-                zoom: self.zoom,
-                max_iter: self.max_iter,
-                mode: self.mode,
-                julia_c: self.julia_c,
-                high_contrast: self.high_contrast,
-            };
+            *self.shared_style.write().unwrap_or_else(|e| e.into_inner()) = self.color_style();
+            let req = self.build_clamped_render_request(render_w, render_h);
             *self
                 .shared_request
                 .write()
                 .unwrap_or_else(|e| e.into_inner()) = req;
             self.latest_generation
                 .store(self.request_generation, Ordering::Release);
-
-            match self.worker.state() {
-                SimWorkerState::Ready => {
-                    let _ = self.worker.send_command(SimCommand::Start);
-                }
-                SimWorkerState::Running => {
-                    let _ = self
-                        .worker
-                        .send_command(SimCommand::Custom("cancel_pass".to_string()));
-                }
-                SimWorkerState::Faulted | SimWorkerState::Terminated => {
-                    let shared = Arc::clone(&self.shared_request);
-                    let latest = Arc::clone(&self.latest_generation);
-                    let formula = Arc::clone(&self.shared_formula);
-                    self.worker =
-                        BackgroundWorker::new(FractalRunner::with_formula(shared, latest, formula));
-                    let _ = self.worker.send_command(SimCommand::Start);
-                }
-                SimWorkerState::Uninitialized | SimWorkerState::Stepping => {}
-            }
+            self.notify_worker_after_request_update();
         }
         if self.completed_generation != self.request_generation && self.worker.state().is_ready() {
             let _ = self.worker.send_command(SimCommand::Start);
         }
         if self.completed_generation != self.request_generation || self.worker.is_running() {
             ctx.request_repaint();
+        }
+    }
+
+    fn notify_worker_after_request_update(&mut self) {
+        match self.worker.state() {
+            SimWorkerState::Ready => {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            SimWorkerState::Running => {
+                let _ = self
+                    .worker
+                    .send_command(SimCommand::Custom("cancel_pass".to_string()));
+            }
+            SimWorkerState::Faulted | SimWorkerState::Terminated => {
+                self.worker = BackgroundWorker::new(FractalRunner::with_formula_and_style(
+                    Arc::clone(&self.shared_request),
+                    Arc::clone(&self.latest_generation),
+                    Arc::clone(&self.shared_formula),
+                    Arc::clone(&self.shared_style),
+                ));
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            SimWorkerState::Uninitialized | SimWorkerState::Stepping => {}
         }
     }
 }
@@ -481,3 +472,7 @@ mod coupling_tests;
 #[cfg(test)]
 #[path = "fractals/custom_tests.rs"]
 mod custom_tests;
+
+#[cfg(test)]
+#[path = "fractals/shader_tests.rs"]
+mod shader_tests;

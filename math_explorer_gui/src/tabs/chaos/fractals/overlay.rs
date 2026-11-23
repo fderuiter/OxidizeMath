@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    render_fractal_color_image, CompiledFractalJob, FractalMode, FractalRenderRequest,
-    FractalViewer, COORD_MAX, COORD_MIN, ZOOM_MAX, ZOOM_MIN,
+    render_fractal_color_image, render_fractal_color_image_styled, CompiledFractalJob, FractalMode,
+    FractalRenderRequest, FractalViewer, COORD_MAX, COORD_MIN, ZOOM_MAX, ZOOM_MIN,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -104,11 +104,13 @@ impl FractalViewer {
             self.julia_c.re.clamp(COORD_MIN, COORD_MAX),
             self.julia_c.im.clamp(COORD_MIN, COORD_MAX),
         );
+        let style = self.color_style();
         let key = (
             safe_c.re.to_bits(),
             safe_c.im.to_bits(),
             inset_iter,
             self.high_contrast,
+            style,
         );
         if self.julia_inset_key == Some(key) {
             if self.julia_inset_texture.is_none() {
@@ -122,7 +124,18 @@ impl FractalViewer {
             }
             return;
         }
-        let img = render_julia_inset_image(safe_c, inset_iter, self.high_contrast);
+        let req = FractalRenderRequest {
+            generation: 0,
+            width: JULIA_INSET_SIZE.0,
+            height: JULIA_INSET_SIZE.1,
+            center: Complex::new(0.0, 0.0),
+            zoom: 1.0,
+            max_iter: inset_iter,
+            mode: FractalMode::Julia,
+            julia_c: safe_c,
+            high_contrast: self.high_contrast,
+        };
+        let img = render_fractal_color_image_styled(&req, None, style);
         let opts = egui::TextureOptions::LINEAR;
         self.julia_inset_image = Some(img.clone());
         if let Some(tex) = &mut self.julia_inset_texture {

@@ -385,6 +385,8 @@ impl ComplexMappingTool {
         self.inspection_point[1].to_bits().hash(&mut h);
         self.math_input.raw_text.hash(&mut h);
         self.math_input.state_fingerprint().hash(&mut h);
+        self.domain_coloring.hash(&mut h);
+        self.palette.hash(&mut h);
         h.finish().max(1)
     }
 
