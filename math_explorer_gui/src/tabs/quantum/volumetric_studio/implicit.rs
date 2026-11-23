@@ -42,6 +42,11 @@ const IMPLICIT_FORMULA_PRESETS: &[(&str, &str)] = &[
         "Clamped Gaussian Shell",
         "exp(-0.35 * (x^2 + y^2 + z^2)) - clamp(0.5 + a * z, 0.15, 0.85)",
     ),
+    ("Torus SDF", "sqrt((sqrt(x^2 + y^2) - R)^2 + z^2) - r"),
+    (
+        "Twisted Helical Torus",
+        "sqrt((sqrt(x^2 + y^2) - R - a * cos(3 * atan2(y, x) + k * clamp(z, -2, 2)))^2 + z^2) - r",
+    ),
 ];
 
 /// Default scalar value assigned to newly discovered implicit parameters.
@@ -50,7 +55,9 @@ pub fn default_implicit_param_value(name: &str) -> f64 {
         "k" => 1.0,
         "a" => 1.8,
         "b" => 1.0,
+        "c" => 0.0,
         "r" => 2.2,
+        "R" => 1.4,
         _ => 1.0,
     }
 }
@@ -180,7 +187,7 @@ impl ImplicitRuntimeEvaluator {
 
 /// Side-panel UI controller wrapping [`MathExpressionInputBar`] and X/Y/Z domain bound editors.
 pub struct ImplicitFormulaUi {
-    bar: MathExpressionInputBar,
+    pub(crate) bar: MathExpressionInputBar,
 }
 
 impl ImplicitFormulaUi {
@@ -195,9 +202,11 @@ impl ImplicitFormulaUi {
             .with_axes(&["x", "y", "z"])
             .with_param_range(-5.0..=5.0, 1.0)
             .with_param_spec("k", "k (spatial freq)", 0.2..=4.0, 1.0)
-            .with_param_spec("a", "a (box half-width)", 0.2..=4.0, 1.8)
+            .with_param_spec("a", "a (box / mod)", -3.0..=4.0, 1.8)
             .with_param_spec("b", "b (modulation)", -3.0..=3.0, 1.0)
-            .with_param_spec("r", "r (radius)", 0.2..=4.0, 2.2),
+            .with_param_spec("c", "c (phase offset)", -3.0..=3.0, 0.0)
+            .with_param_spec("r", "r (radius)", 0.2..=4.0, 2.2)
+            .with_param_spec("R", "R (major radius)", 0.4..=4.0, 1.4),
         };
         ui_state.sync_from_config(cfg);
         ui_state
