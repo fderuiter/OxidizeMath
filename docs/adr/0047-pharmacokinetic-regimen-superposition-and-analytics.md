@@ -1,4 +1,4 @@
-# ADR 0046: Zero-Allocation Variable-Dose Pharmacokinetic Regimen Superposition and Interactive Planner
+# ADR 0047: Zero-Allocation Variable-Dose Pharmacokinetic Regimen Superposition and Interactive Planner
 
 ## Status
 Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0023](0023-separate-metadata-ids-from-display-labels.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -22,7 +22,7 @@ Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 002
    - Enforce `URL_JSON_BOUNDS` (`4,096` decoded bytes) with compact `CompactDoseEvent` serialization so schedules up to `64` events round-trip losslessly via `#tab=medical&tool=PharmacokineticRegimenTool&state=...`.
    - Declare `ExportCapabilities::plot()` with offscreen `ExportPrimitive` therapeutic-window polygons for SVG/PNG/CSV/JSON exports, and integrate [`math_explorer_gui/src/web_io.rs`](../../math_explorer_gui/src/web_io.rs) `spawn_save_as_file_dialog` downloads for CSV dosing schedules and JSON exposure reports.
 4. **Traceability Alignment**:
-   - Point `pharmacokinetics` in [`traceability.toml`](../../traceability.toml) and module `[cite:pharmacokinetics]` annotations to `clinical_trials_statistics.tex`, and guard `#[verified]` / `#[embed_theory]` attribute scanning in [`crates/oxidize_core/src/ast_visitor.rs`](../../crates/oxidize_core/src/ast_visitor.rs) against `#[doc = "..."]` doctest comments so build-time `TraceabilityEngine` scans stay free of false `unlinked_code` entries.
+   - Point `pharmacokinetics` in [`traceability.toml`](../../traceability.toml) and module `[cite:pharmacokinetics]` annotations to `clinical_trials_statistics.tex`.
 
 ## Consequences
 - **Positive**: Variable-dose schedules accurately model loading doses (`66.49%` to `86.89%` Time-in-Therapeutic-Range) and fractional catch-up regimens (eliminating the `29.76%` peak underestimation of uniform `SuperpositionModel` while distinguishing safe `1.5D` recovery from `8.32%` toxic `2D` overshoot) with zero heap allocations in verified regions.
