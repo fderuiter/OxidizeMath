@@ -1,4 +1,4 @@
-# ADR 0037: Ratchet `missing_docs` Exemptions and Document Core API Entrypoints
+# ADR 0040: Ratchet `missing_docs` Exemptions and Document Core API Entrypoints
 
 ## Status
 Accepted (extends [ADR 0005](0005-active-documentation-standard.md), [ADR 0013](0013-workspace-doc-lints-and-path-scoping.md), and [ADR 0036](0036-harden-ast-and-doctest-policy-audits.md))
@@ -6,7 +6,7 @@ Accepted (extends [ADR 0005](0005-active-documentation-standard.md), [ADR 0013](
 ## Context
 1. **Unratcheted Item-Level `#[allow(missing_docs)]` Exemptions**: Workspace lints set `missing_docs = "warn"` in root [`Cargo.toml`](../../Cargo.toml), while hundreds of item-level `#[allow(missing_docs)]` attributes and crate-level `#![allow(missing_docs)]` directives accumulated across workspace crates and test/example targets without a downward ratchet in `unified_verification`. Core foundation and domain crates (`diagnostics`, `verified_engine`, `verified_engine_macros`, `federated_registry`, `domain_climate`) carried blanket item-level suppressions and zero or minimal `src/` `rustdoc` examples, leaving proc-macro and allocator invariants opaque in IDE hover tooltips.
 2. **Legacy Architectural Heading Allowlist**: [`crates/unified_verification/src/doc_audit.rs`](../../crates/unified_verification/src/doc_audit.rs) and [`verification_whitelist.toml`](../../verification_whitelist.toml) exempted four first-party crates (`crates/diagnostics`, `apps/xtask`, `math_explorer`, and `math_explorer_gui`) from the mandatory `## 1. Overview & Architecture` and `## 2. Developer Instructions` README structure alongside vendored `egui_plot`.
-3. **Mis-scoped Module Comment in `bcs.rs` and Sparse Domain `src/` Doctests**: [`crates/domain_physics/src/physics/solid_state/bcs.rs`](../../crates/domain_physics/src/physics/solid_state/bcs.rs) opened with outer `///` comments attached to a private `use` import instead of inner `//!` module documentation while carrying 18 `#[allow(missing_docs)]` attributes, and `domain_climate` and `domain_epidemiology` concentrated runnable examples in `README.md` rather than item-level `src/` docstrings.
+3. **Mis-scoped Module Comment in `bcs.rs` and Sparse Domain `src/` Doctests**: [`crates/domain_physics/src/physics/solid_state/bcs.rs`](../../crates/domain_physics/src/physics/solid_state/bcs.rs) opened with outer `///` comments attached to a private `use` import instead of inner `//!` module documentation while carrying 17 `#[allow(missing_docs)]` attributes, and `domain_climate` and `domain_epidemiology` concentrated runnable examples in `README.md` rather than item-level `src/` docstrings.
 
 ## Decision
 1. **AST `missing_docs` Policy Audit & Downward Ratchet**:

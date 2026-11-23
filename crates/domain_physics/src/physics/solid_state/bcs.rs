@@ -204,36 +204,6 @@ impl GapEquation for IsotropicBCSModel {
     }
 }
 
-// --- Legacy API ---
-
-/// Computes Bogoliubov quasiparticle coherence factors `(u_k, v_k)` from raw `eV` scalars.
-///
-/// Convenience wrapper around [`coherence_factors_strong`] verifying probability conservation
-/// $u_k^2 + v_k^2 = 1$ via `UnitInterval`.
-///
-/// # Errors
-///
-/// Returns `Err` if non-finite or zero inputs produce an occupation probability $v_k^2 \notin [0, 1]$.
-///
-/// # Examples
-///
-/// ```rust
-/// # use domain_physics::__doctest_facade as math_explorer;
-/// use math_explorer::physics::solid_state::bcs::coherence_factors;
-///
-/// let (u_k, v_k) = coherence_factors(0.8, 0.3).unwrap();
-/// assert!((u_k * u_k + v_k * v_k - 1.0).abs() < 1e-12);
-///
-/// // Degenerate E_k = 0 yields NaN occupation, rejected by UnitInterval
-/// assert!(coherence_factors(0.0, 0.0).is_err());
-/// ```
-#[verified_engine::verified]
-pub fn coherence_factors(xi_k: f64, delta: f64) -> Result<(f64, f64), String> {
-    let xi = ElectronVolts::new(xi_k);
-    let d = ElectronVolts::new(delta);
-    coherence_factors_strong(xi, d)
-}
-
 /// Computes strongly typed Bogoliubov coherence factors `(u_k, v_k)` for quasiparticle dispersion
 /// $E_k = \sqrt{\xi_k^2 + \Delta^2}$.
 ///
@@ -243,6 +213,20 @@ pub fn coherence_factors(xi_k: f64, delta: f64) -> Result<(f64, f64), String> {
 /// # Errors
 ///
 /// Returns `Err` if $v_k^2$ falls outside `[0.0, 1.0]` (for example when $\xi_k = \Delta = 0$).
+///
+/// # Examples
+///
+/// ```rust
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::solid_state::bcs::coherence_factors_strong;
+/// use math_explorer::physics::solid_state::types::ElectronVolts;
+///
+/// let (u_k, v_k) = coherence_factors_strong(ElectronVolts::new(0.8), ElectronVolts::new(0.3)).unwrap();
+/// assert!((u_k * u_k + v_k * v_k - 1.0).abs() < 1e-12);
+///
+/// // Degenerate E_k = 0 yields NaN occupation, rejected by UnitInterval
+/// assert!(coherence_factors_strong(ElectronVolts::new(0.0), ElectronVolts::new(0.0)).is_err());
+/// ```
 #[verified_engine::verified]
 pub fn coherence_factors_strong(
     xi_k: ElectronVolts,
@@ -264,9 +248,9 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_bcs_probability_conservation() {
-        let xi = 1.5;
-        let delta = 0.2;
-        let (u, v) = coherence_factors(xi, delta).unwrap();
+        let xi = ElectronVolts::new(1.5);
+        let delta = ElectronVolts::new(0.2);
+        let (u, v) = coherence_factors_strong(xi, delta).unwrap();
         let prob = u * u + v * v;
         assert!((prob - 1.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
     }
