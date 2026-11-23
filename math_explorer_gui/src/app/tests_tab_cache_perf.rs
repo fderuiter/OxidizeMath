@@ -21,8 +21,8 @@ impl ExplorerTab for CountingTab {
     fn name(&self) -> &'static str {
         self.inner.name()
     }
-    fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        self.inner.show(ctx, frame);
+    fn show_inside(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.inner.show_inside(ui, frame);
     }
     fn state_revision(&self) -> u64 {
         let base = self.inner.state_revision();

@@ -272,7 +272,11 @@ fn test_single_starter_gallery_button_per_simulation_view() {
             screen_rect: Some(screen_rect),
             ..Default::default()
         },
-        |ctx| morph.show(ctx, &mut frame),
+        |ctx| {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| morph.show_inside(ui, &mut frame));
+        },
     );
     assert_eq!(
         count_gallery_buttons(&morph_out),
