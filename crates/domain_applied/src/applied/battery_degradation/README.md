@@ -3,7 +3,7 @@
 ![Status](https://img.shields.io/badge/status-stable-brightgreen)
 ![Domain](https://img.shields.io/badge/domain-applied-blue)
 
-A framework to estimate battery cycle life and capacity fade for Li-ion batteries based on Depth-of-Discharge (DoD).
+A zero-allocation framework for Li-ion battery cycle-life projection, coupled electrochemical aging, stack-allocated Levenberg-Marquardt CSV calibration, and multi-segment duty warranty analysis.
 
 > **"Code explains HOW; Docs explain WHY."**
 
@@ -22,7 +22,7 @@ math_explorer = { path = "path/to/math_explorer", features = ["applied"] }
 
 ## Usage
 
-You can see this model in action by running the standalone, fully executable example:
+You can see these models in action by running the standalone, fully executable example:
 
 ```bash
 cargo run --release --package math_explorer --features applied --example battery_degradation_demo
@@ -30,37 +30,38 @@ cargo run --release --package math_explorer --features applied --example battery
 
 *(See `math_explorer/examples/battery_degradation_demo.rs` for implementation details)*
 
-### Quick Start
+### Quick Start: Coupled Electrochemical Aging & Duty Profiles
 
-The degradation is modeled using a Power Law fit to experimental data:
-$$ N_{70}(d) = \alpha \cdot d^\beta $$
-
-Where:
-- $d$ is the Depth of Discharge (0-100%).
-- $N_{70}$ is the number of equivalent full cycles until the battery reaches 70% capacity.
-- $\alpha, \beta$ are empirical constants (Standard Li-ion: $\alpha \approx 1.019 \times 10^5, \beta \approx -1.26$).
-
-This implies that **shallower discharges drastically increase cycle life**.
+`ElectrochemicalAgingModel` couples Depth-of-Discharge stress $d^\beta$, stretched exponent $z \in [0.1, 2.0]$, Arrhenius thermal acceleration $\exp\left(\frac{E_a}{R}\left(\frac{1}{T_{\text{ref}}} - \frac{1}{T}\right)\right)$ normalized at $25\,^\circ\text{C}$, C-rate mechanical stress $I_c^{\gamma_c}$, and parabolic $\sqrt{t}$ SEI calendar fade across [`ChemistryPreset`](crate::applied::battery_degradation::ChemistryPreset) profiles (`Nmc811`, `Lfp`, `Nca`, `Lto`), while preserving [`PowerLawModel`](crate::applied::battery_degradation::PowerLawModel) for isothermal DoD baselines:
 
 ```rust
 # use domain_applied::__doctest_facade as math_explorer;
-use math_explorer::applied::battery_degradation::{PowerLawModel, DepthOfDischarge, Cycles, Capacity};
+use math_explorer::applied::battery_degradation::{
+    Capacity, ChemistryPreset, Cycles, DepthOfDischarge, DutySegment, ElectrochemicalAgingModel,
+    PowerLawModel, estimate_duty_lifetime,
+};
 
 fn main() {
-    // 1. Initialize the standard model
-    let model = PowerLawModel::standard();
-
-    // 2. Define a scenario: 80% to 20% charge window = 60% DoD
     let dod = DepthOfDischarge::new_clamped(60.0);
 
-    // 3. Estimate Life Expectancy (Cycles to 70% SOH)
-    let life_cycles = model.n70(dod);
-    println!("Expected Life: {:.0} cycles", life_cycles/ Cycles::new_clamped(1.0));
+    // 1. Isothermal Power-Law baseline
+    let baseline = PowerLawModel::standard();
+    assert!(baseline.n70(dod).as_f64() > 500.0);
 
-    // 4. Predict Capacity after 1000 cycles
-    let current_cycles = Cycles::new_clamped(1000.0);
-    let remaining_capacity = model.capacity(current_cycles, dod);
-    println!("Capacity after 1000 cycles: {:.1}%", remaining_capacity/ Capacity::new_clamped(1.0) * 100.0);
+    // 2. Coupled NMC811 aging at 25 °C vs 45 °C
+    let nmc_25c = ElectrochemicalAgingModel::from_preset(ChemistryPreset::Nmc811);
+    let nmc_45c = nmc_25c.with_temperature_c(45.0).with_c_rate(1.5);
+    assert!(nmc_45c.n70(dod).as_f64() < nmc_25c.n70(dod).as_f64());
+
+    // 3. Multi-segment duty lifetime (weekday commute + fast-charge + idle storage)
+    let duty = [
+        DutySegment::commute(),
+        DutySegment::fast_charge(),
+        DutySegment::storage(1.0, 22.0),
+    ];
+    let summary = estimate_duty_lifetime(&nmc_25c, &duty, Capacity::new_clamped(0.80));
+    assert!(summary.years_to_80 > 0.0 && summary.years_to_70 > summary.years_to_80);
+    let _ = Cycles::new_clamped(summary.cycles_to_80);
 }
 ```
 
@@ -68,7 +69,9 @@ fn main() {
 
 ## Config
 
-- [`model`](crate::applied::battery_degradation::model): Core logic including the `PowerLawModel` struct.
+- [`model`](crate::applied::battery_degradation::model): `PowerLawModel`, `ChemistryPreset`, and `ElectrochemicalAgingModel`.
+- [`calibration`](crate::applied::battery_degradation::calibration): Stack-allocated Levenberg-Marquardt `(cycles, capacity)` fitter.
+- [`duty`](crate::applied::battery_degradation::duty): Multi-segment duty profile evaluation and `80%` / `70%` SOH warranty solvers.
 - [`types`](crate::applied::battery_degradation::types): Type-safe wrappers for `Capacity`, `Cycles`, and `DepthOfDischarge`.
 
 ---
