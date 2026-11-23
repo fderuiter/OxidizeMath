@@ -29,7 +29,13 @@ fn main() {
     // Warmup
     let _ = system.derivative(&initial_state);
 
-    let iterations = 1_000_000;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (iterations, steps) = if smoke {
+        (5_000, 100)
+    } else {
+        (1_000_000, 10_000)
+    };
     println!("Running {} derivative calculations...", iterations);
 
     let start = Instant::now();
@@ -50,8 +56,6 @@ fn main() {
     // Benchmarking simulation
     println!("Running long simulation with RK4...");
     let mut solver = RungeKutta4::new(&initial_state);
-    // Simulate 10000 steps
-    let steps = 10_000;
     let dt = 0.01;
     let time_horizon = steps as f64 * dt;
 

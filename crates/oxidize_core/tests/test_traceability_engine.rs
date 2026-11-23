@@ -257,4 +257,51 @@ mod ast_analysis_tests {
         assert!(joined.contains("traceability.toml"));
         assert!(joined.contains("opt_out"));
     }
+
+    #[test]
+    fn test_ast_cache_preload_sources_prefetches_without_duplicate_parses() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        let tmp = std::env::temp_dir().join(format!(
+            "oxidize_ast_preload_{}_{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&tmp).expect("create temp dir");
+        let file_a = tmp.join("alpha.rs");
+        let file_b = tmp.join("beta.rs");
+        std::fs::write(&file_a, "pub fn alpha() -> usize { 42 }\n").expect("write alpha.rs");
+        std::fs::write(&file_b, "pub struct Beta(pub f64);\n").expect("write beta.rs");
+
+        let mut cache = AstCache::new();
+        cache.preload_sources(&[&file_a, &file_b, &tmp.join("missing.rs")]);
+        assert!(
+            cache.is_empty(),
+            "preload_sources must defer syn::parse_file until owner-thread access"
+        );
+        assert_eq!(cache.parse_calls(), 0);
+
+        // Remove alpha.rs on disk to prove get_or_load_fs consumes the prefetched buffer.
+        std::fs::remove_file(&file_a).expect("remove alpha.rs after prefetch");
+        let entry_a = cache
+            .get_or_load_fs(&file_a)
+            .expect("prefetched alpha.rs should load without touching disk again");
+        assert!(entry_a.ast.is_some());
+        assert!(entry_a.content.contains("pub fn alpha()"));
+        assert_eq!(cache.parse_calls(), 1);
+
+        let entry_b = cache.get_or_load_fs(&file_b).expect("load beta.rs");
+        assert!(entry_b.ast.is_some());
+        assert_eq!(cache.parse_calls(), 2);
+        assert_eq!(cache.len(), 2);
+
+        // Re-preloading and re-querying warm entries must not re-read or re-parse.
+        cache.preload_sources(&[&file_a, &file_b]);
+        let _ = cache.get_or_load_fs(&file_a);
+        let _ = cache.get_or_load_fs(&file_b);
+        assert_eq!(cache.parse_calls(), 2);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
