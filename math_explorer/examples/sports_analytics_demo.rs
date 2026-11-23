@@ -3,7 +3,10 @@
 use math_explorer::error::Result;
 use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::pure_math::statistics::{
-    copula::{Correlation, CorrelationMatrix, Probability, sgp_joint_probability},
+    copula::{
+        Correlation, CorrelationMatrix, Probability, price_correlated_parlay,
+        sgp_joint_probability, simulate_correlated_parlay,
+    },
     glicko2::{
         GlickoPlayer, MatchResult, Rating, RatingDeviation, SystemConstant, Volatility,
         update_rating,
@@ -45,15 +48,41 @@ fn demo_ou_process() -> Result<()> {
 }
 
 fn demo_copula() -> Result<()> {
-    println!("\n3. GAUSSIAN COPULA - Same Game Parlay");
-    let p_star_50 = Probability::new(0.99)?;
+    println!("\n3. GAUSSIAN COPULA - Same Game Parlay Pricing");
+    let p_star_50 = Probability::new(0.01)?;
     let p_win = Probability::new(0.60)?;
     let rho = Correlation::new(-0.15)?;
-    let corr_matrix = CorrelationMatrix::bivariate(rho)?;
-    let joint = sgp_joint_probability(&[p_star_50, p_win], &corr_matrix)?;
-    println!("   Event A: Star scores 50+ (99th percentile)");
-    println!("   Event B: Team wins (60% base)");
-    println!("   Naive: {:.4}, Copula: {:.4}", 0.99 * 0.60, joint.value());
+    let corr_2 = CorrelationMatrix::bivariate(rho)?;
+    let joint_2 = sgp_joint_probability(&[p_star_50, p_win], &corr_2)?;
+    println!("   2-Leg Hero Ball: Star 50+ pts (1% tail) + Team win (60%)");
+    println!(
+        "   Naive: {:.4}, Copula: {:.4}",
+        0.01 * 0.60,
+        joint_2.value()
+    );
+
+    let legs_3 = [
+        Probability::new(0.55)?,
+        Probability::new(0.50)?,
+        Probability::new(0.60)?,
+    ];
+    let corr_3 = CorrelationMatrix::new(DMatrix::from_row_slice(
+        3,
+        3,
+        &[1.0, 0.50, 0.25, 0.50, 1.0, 0.35, 0.25, 0.35, 1.0],
+    ))?;
+    let priced = price_correlated_parlay(&legs_3, &corr_3)?;
+    let mut rng = OxidizeRng::default();
+    let sim = simulate_correlated_parlay(&legs_3, &corr_3, 25_000, &mut rng)?;
+    println!(
+        "   3-Leg SGP: Naive={:.4}, Genz={:.4} (x{:.2}, Fair Odds={:.2}), MC={:.4} ± {:.4}",
+        priced.naive_probability.value(),
+        priced.joint_probability.value(),
+        priced.correlation_multiplier,
+        priced.fair_decimal_odds,
+        sim.joint_probability.value(),
+        sim.standard_error
+    );
     Ok(())
 }
 

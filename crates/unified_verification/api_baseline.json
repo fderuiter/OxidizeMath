@@ -9709,6 +9709,17 @@
       "signature": "pub fn laguerre (_ : u64 , _ : f64) -> f64"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/copula/bivariate.rs": [
+    {
+      "signature": "pub const RHO_SPLIT : f64"
+    },
+    {
+      "signature": "pub fn bivariate_copula_cdf (_ : Probability , _ : Probability , _ : Correlation ,) -> Result < Probability , CopulaError >"
+    },
+    {
+      "signature": "pub fn bivariate_normal_cdf (_ : f64 , _ : f64 , _ : f64) -> Result < f64 , CopulaError >"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/copula/core.rs": [
     {
       "signature": "impl Correlation { pub fn new (_ : f64) -> Result < Self , CopulaError > }"
@@ -9718,6 +9729,9 @@
     },
     {
       "signature": "impl CorrelationMatrix { pub fn bivariate (_ : Correlation) -> Result < Self , CopulaError > }"
+    },
+    {
+      "signature": "impl CorrelationMatrix { pub fn cholesky_factor (& self) -> & DMatrix < f64 > }"
     },
     {
       "signature": "impl CorrelationMatrix { pub fn dimension (& self) -> usize }"
@@ -9749,10 +9763,16 @@
   ],
   "crates/pure_math/src/pure_math/statistics/copula/gaussian.rs": [
     {
+      "signature": "impl GaussianCopula { pub const fn scratch_len (_ : usize) -> usize }"
+    },
+    {
       "signature": "impl GaussianCopula { pub fn bivariate (_ : Correlation) -> Result < Self , CopulaError > }"
     },
     {
       "signature": "impl GaussianCopula { pub fn cdf (& self , _ : & [Probability]) -> Result < Probability , CopulaError > }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn cdf_with_scratch (& self , _ : & [Probability] , _ : & mut [f64] ,) -> Result < Probability , CopulaError > }"
     },
     {
       "signature": "impl GaussianCopula { pub fn correlation (& self) -> & CorrelationMatrix }"
@@ -9761,13 +9781,28 @@
       "signature": "impl GaussianCopula { pub fn new (_ : CorrelationMatrix) -> Self }"
     },
     {
+      "signature": "pub const MAX_STACK_LEGS : usize"
+    },
+    {
       "signature": "pub fn sgp_joint_probability (_ : & [Probability] , _ : & CorrelationMatrix ,) -> Result < Probability , CopulaError >"
+    },
+    {
+      "signature": "pub fn sgp_joint_probability_with_scratch (_ : & [Probability] , _ : & CorrelationMatrix , _ : & mut [f64] ,) -> Result < Probability , CopulaError >"
     },
     {
       "signature": "pub struct GaussianCopula"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/copula/mod.rs": [
+    {
+      "signature": "pub use bivariate :: RHO_SPLIT"
+    },
+    {
+      "signature": "pub use bivariate :: bivariate_copula_cdf"
+    },
+    {
+      "signature": "pub use bivariate :: bivariate_normal_cdf"
+    },
     {
       "signature": "pub use core :: Correlation"
     },
@@ -9781,7 +9816,31 @@
       "signature": "pub use gaussian :: GaussianCopula"
     },
     {
+      "signature": "pub use gaussian :: MAX_STACK_LEGS"
+    },
+    {
       "signature": "pub use gaussian :: sgp_joint_probability"
+    },
+    {
+      "signature": "pub use gaussian :: sgp_joint_probability_with_scratch"
+    },
+    {
+      "signature": "pub use parlay :: ParlayPricingReport"
+    },
+    {
+      "signature": "pub use parlay :: parlay_simulation_scratch_len"
+    },
+    {
+      "signature": "pub use parlay :: price_correlated_parlay"
+    },
+    {
+      "signature": "pub use parlay :: price_correlated_parlay_with_scratch"
+    },
+    {
+      "signature": "pub use parlay :: simulate_correlated_parlay"
+    },
+    {
+      "signature": "pub use parlay :: simulate_correlated_parlay_into"
     },
     {
       "signature": "pub use transforms :: NormalTransform"
@@ -9794,6 +9853,26 @@
     },
     {
       "signature": "pub use transforms :: standard_normal_cdf"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/copula/parlay.rs": [
+    {
+      "signature": "pub const fn parlay_simulation_scratch_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn price_correlated_parlay (_ : & [Probability] , _ : & CorrelationMatrix ,) -> Result < ParlayPricingReport , CopulaError >"
+    },
+    {
+      "signature": "pub fn price_correlated_parlay_with_scratch (_ : & [Probability] , _ : & CorrelationMatrix , _ : & mut [f64] ,) -> Result < ParlayPricingReport , CopulaError >"
+    },
+    {
+      "signature": "pub fn simulate_correlated_parlay (_ : & [Probability] , _ : & CorrelationMatrix , _ : usize , _ : & mut OxidizeRng ,) -> Result < ParlayPricingReport , CopulaError >"
+    },
+    {
+      "signature": "pub fn simulate_correlated_parlay_into (_ : & [Probability] , _ : & CorrelationMatrix , _ : usize , _ : & mut OxidizeRng , _ : & mut [f64] ,) -> Result < ParlayPricingReport , CopulaError >"
+    },
+    {
+      "signature": "pub struct ParlayPricingReport"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/copula/transforms.rs": [

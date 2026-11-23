@@ -1,107 +1,96 @@
-//! # Gaussian Copula for Same Game Parlays
+//! # Gaussian Copula & Same Game Parlay Engine
 //!
-//! This module implements copula-based methods for modeling correlated events
-//! in sports betting, particularly for pricing Same Game Parlays (SGPs).
+//! This module implements deterministic Gaussian copula pricing and zero-allocation Cholesky
+//! Monte Carlo simulation for correlated events in sports analytics, particularly multi-leg
+//! Same Game Parlays (SGPs).
 //!
 //! ## The Problem: Correlated Events
 //!
-//! In standard probability, if events are independent:
+//! Under naive independence, leg win probabilities multiply:
 //! ```text
-//! P(A ∩ B) = P(A) × P(B)
+//! P(A ∩ B ∩ C) = P(A) × P(B) × P(C)
 //! ```
 //!
-//! However, in sports, many events are correlated:
-//! - If a QB throws 4 TDs, the WR likely has high yardage
-//! - If a player scores 50 points ("hero ball"), the team may be less likely to win
+//! In real games, parlay legs share latent game-state factors:
+//! - Quarterback passing touchdowns and wide receiver receiving yards exhibit positive correlation
+//! - High-usage "hero ball" scoring bursts (`1%` tail probability) can negatively correlate with team wins
 //!
-//! Simply multiplying probabilities leads to massive pricing errors.
+//! ## Architecture
 //!
-//! ## The Solution: Copulas
+//! 1. **Validated Correlation Structure ([`CorrelationMatrix`])**: Enforces symmetry, unit
+//!    diagonal, finite bounds, and positive-semidefiniteness via eigenvalue verification while
+//!    caching the lower-triangular Cholesky factor for reuse across pricing and simulation calls.
+//! 2. **Exact Boundary Reduction**: Short-circuits `0.0` marginals to `0.0`, reduces `1.0`
+//!    marginals to lower-dimensional sub-copulas, and returns `C(u_1) = u_1` for single-leg inputs.
+//! 3. **20-Point Genz Bivariate Quadrature ([`bivariate`])**: Splits Plackett angular integration
+//!    and Genz asymptotic tail integration at `|rho| = 0.925` while enforcing Fréchet-Hoeffding bounds.
+//! 4. **Multi-Leg Richtmyer QMC ([`GaussianCopula`])**: Evaluates 3+ leg copulas via Genz
+//!    separation-of-variables with greedy variable prioritization over an antithetic Baker-tent
+//!    Richtmyer quasi-Monte Carlo sequence (`<= 16` legs stack-buffered, arbitrary legs via scratch).
+//! 5. **Zero-Allocation Antithetic Parlay Simulator ([`parlay`])**: Estimates multi-leg win rates,
+//!    standard errors, SGP correlation multipliers, and fair decimal odds using [`OxidizeRng`](oxidize_core::rng::OxidizeRng).
 //!
-//! Copulas are functions that "glue" separate marginal distributions together
-//! while preserving their correlation structure.
-//!
-//! ### Step 1: Probability Integral Transform
-//!
-//! Transform each variable to a uniform \[0,1\] distribution:
-//! ```text
-//! U = F(X)
-//! ```
-//! where F is the CDF of X.
-//!
-//! ### Step 2: Gaussian Copula
-//!
-//! Map the uniform variables through a multivariate normal distribution:
-//! ```text
-//! C(u₁, u₂; ρ) = Φ_ρ(Φ⁻¹(u₁), Φ⁻¹(u₂))
-//! ```
-//!
-//! where:
-//! - Φ⁻¹ is the inverse standard normal CDF
-//! - Φ_ρ is the bivariate normal CDF with correlation ρ
-//!
-//! ### Step 3: Joint Probability
-//!
-//! The copula gives us the joint cumulative probability, adjusted for correlation:
-//! - **ρ > 0** (positive correlation): Increases joint probability
-//! - **ρ < 0** (negative correlation): Decreases joint probability
-//!
-//! ## Example: "Hero Ball" Analysis
+//! ## Example: Hero Ball & Multi-Leg SGP Pricing
 //!
 //! ```rust
 //! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::nalgebra::DMatrix;
 //! use math_explorer::pure_math::statistics::copula::{
-//!     sgp_joint_probability, Probability, CorrelationMatrix, Correlation
+//!     Correlation, CorrelationMatrix, Probability, price_correlated_parlay,
+//!     sgp_joint_probability,
 //! };
 //!
-//! // Event A: Luka scores 50+ points (99th percentile)
-//! let p_luka_50 = Probability::new(0.99).unwrap();
+//! // Event A: Star scores 50+ points (99th-percentile performance => 1% tail probability)
+//! let p_star_50 = Probability::new(0.01).unwrap();
+//! // Event B: Team wins (60% base probability)
+//! let p_team_win = Probability::new(0.60).unwrap();
 //!
-//! // Event B: Mavs win (60% base probability)
-//! let p_mavs_win = Probability::new(0.60).unwrap();
+//! // Negative correlation (-0.15): hero-ball usage slightly hurts team efficiency
+//! let corr_2 = CorrelationMatrix::bivariate(Correlation::new(-0.15).unwrap()).unwrap();
+//! let joint_2 = sgp_joint_probability(&[p_star_50, p_team_win], &corr_2).unwrap();
+//! assert!(joint_2.value() < 0.01 * 0.60);
 //!
-//! // Historical data shows negative correlation: -0.15
-//! // (High individual usage slightly hurts team efficiency)
-//! let rho = Correlation::new(-0.15).unwrap();
-//! let corr_matrix = CorrelationMatrix::bivariate(rho).unwrap();
-//!
-//! // Calculate true joint probability with copula
-//! let joint_prob = sgp_joint_probability(
-//!     &[p_luka_50, p_mavs_win],
-//!     &corr_matrix
-//! ).unwrap();
-//!
-//! // Compare to naive independence assumption
-//! let naive_prob = 0.99 * 0.60;  // = 0.594 (59.4%)
-//! println!("Naive probability: {:.4}", naive_prob);
-//! println!("Copula-adjusted probability: {:.4}", joint_prob.value());
-//!
-//! // The copula adjusts for negative correlation, reducing the true probability
+//! // Three-leg positively correlated SGP priced into fair decimal odds
+//! let legs_3 = [
+//!     Probability::new(0.55).unwrap(),
+//!     Probability::new(0.50).unwrap(),
+//!     Probability::new(0.60).unwrap(),
+//! ];
+//! let corr_3 = CorrelationMatrix::new(DMatrix::from_row_slice(
+//!     3,
+//!     3,
+//!     &[1.0, 0.50, 0.25, 0.50, 1.0, 0.35, 0.25, 0.35, 1.0],
+//! ))
+//! .unwrap();
+//! let report = price_correlated_parlay(&legs_3, &corr_3).unwrap();
+//! assert!(report.correlation_multiplier > 1.0);
+//! assert!(report.fair_decimal_odds < 1.0 / report.naive_probability.value());
 //! ```
-//!
-//! ## Correlation Interpretation
-//!
-//! - **Positive Correlation (ρ > 0)**:
-//!   - Example: QB yards + WR yards
-//!   - Copula increases joint probability
-//!   - Sportsbook should offer lower odds (smaller payout)
-//!
-//! - **Negative Correlation (ρ < 0)**:
-//!   - Example: RB1 rushing yards + RB2 rushing yards (cannibalization)
-//!   - Copula decreases joint probability
-//!   - Sportsbook should offer higher odds (larger payout)
 //!
 //! ## References
 //!
+//! - Genz, A. (1992). *Numerical Computation of Multivariate Normal Probabilities*. JCGS, 1(2), 141–149.
+//! - Genz, A. (2004). *Numerical Computation of Rectangular Bivariate and Trivariate Normal and t Probabilities*. Statistics and Computing, 14, 251–260.
 //! - Joe, H. (2014). *Dependence Modeling with Copulas*. Chapman and Hall/CRC.
 //! - Nelsen, R. B. (2006). *An Introduction to Copulas* (2nd ed.). Springer.
 
+pub mod bivariate;
 pub mod core;
 pub mod gaussian;
+mod multivariate;
+pub mod parlay;
 pub mod transforms;
 
+pub use bivariate::{RHO_SPLIT, bivariate_copula_cdf, bivariate_normal_cdf};
 pub use core::{Correlation, CorrelationMatrix, Probability};
-pub use gaussian::{GaussianCopula, sgp_joint_probability};
+pub use gaussian::{
+    GaussianCopula, MAX_STACK_LEGS, sgp_joint_probability, sgp_joint_probability_with_scratch,
+};
+pub use parlay::{
+    ParlayPricingReport, parlay_simulation_scratch_len, price_correlated_parlay,
+    price_correlated_parlay_with_scratch, simulate_correlated_parlay,
+    simulate_correlated_parlay_into,
+};
 pub use transforms::{
     NormalTransform, ProbabilityTransform, inverse_standard_normal, standard_normal_cdf,
 };

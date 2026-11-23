@@ -3,53 +3,71 @@
 use super::core::Probability;
 use crate::error::CopulaError;
 use statrs::distribution::{ContinuousCDF, Normal};
+use statrs::function::erf::{erfc, erfc_inv};
+use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2, TAU};
 
-/// Transforms a value from its original distribution to a uniform \[0,1\] distribution.
+/// Fast zero-allocation standard normal CDF `Phi(z)` accurate to full IEEE-754 precision.
+#[inline]
+pub(crate) fn fast_norm_cdf(z: f64) -> f64 {
+    if z.is_nan() {
+        return f64::NAN;
+    }
+    if z == f64::NEG_INFINITY {
+        return 0.0;
+    }
+    if z == f64::INFINITY {
+        return 1.0;
+    }
+    (0.5 * erfc(-z * FRAC_1_SQRT_2)).clamp(0.0, 1.0)
+}
+
+/// Fast zero-allocation inverse standard normal CDF `Phi^-1(p)` refined to 1-ULP `f64` accuracy
+/// via a single cubic Halley step on `erfc`.
+#[inline]
+pub(crate) fn fast_norm_inv(p: f64) -> f64 {
+    if p <= 0.0 {
+        return f64::NEG_INFINITY;
+    }
+    if p >= 1.0 {
+        return f64::INFINITY;
+    }
+    let (z0, delta) = if p <= 0.5 {
+        let z = -SQRT_2 * erfc_inv(2.0 * p);
+        (z, 0.5 * erfc(-z * FRAC_1_SQRT_2) - p)
+    } else {
+        let q = 1.0 - p;
+        let z = SQRT_2 * erfc_inv(2.0 * q);
+        (z, q - 0.5 * erfc(z * FRAC_1_SQRT_2))
+    };
+    let pdf = (-0.5 * z0 * z0).exp() / TAU.sqrt();
+    if pdf > f64::MIN_POSITIVE {
+        let ratio = delta / pdf;
+        z0 - ratio / (1.0 + 0.5 * z0 * ratio)
+    } else {
+        z0
+    }
+}
+
+/// Transforms a value from its original distribution to a uniform `[0, 1]` distribution.
 ///
-/// This implements the **Probability Integral Transform**:
-/// U = F(X)
-///
-/// where F is the cumulative distribution function (CDF) of X.
+/// Implements the **Probability Integral Transform** `U = F(X)`.
 pub trait ProbabilityTransform {
-    /// Transforms a value to its cumulative probability.
-    ///
-    /// # Arguments
-    ///
-    /// * `value` - The value in the original distribution
-    ///
-    /// # Returns
-    ///
-    /// The cumulative probability U ∈ [0, 1]
+    /// Transforms a value to its cumulative probability `U in [0, 1]`.
     #[verified_engine::verified]
     fn to_uniform(&self, value: f64) -> Result<Probability, CopulaError>;
 
-    /// Inverse transform from uniform to original distribution.
-    ///
-    /// # Arguments
-    ///
-    /// * `u` - The uniform probability
-    ///
-    /// # Returns
-    ///
-    /// The value in the original distribution
+    /// Inverse transform from uniform `U in [0, 1]` to the original distribution.
     #[verified_engine::verified]
     fn inverse_transform(&self, u: Probability) -> f64;
 }
 
-/// Standard normal (Gaussian) transformation.
-///
-/// Uses Φ(x) where Φ is the CDF of N(0,1).
+/// Normal (Gaussian) probability integral transformation.
 pub struct NormalTransform {
     normal: Normal,
 }
 
 impl NormalTransform {
-    /// Creates a new normal transform with mean and standard deviation.
-    ///
-    /// # Arguments
-    ///
-    /// * `mean` - The mean of the normal distribution
-    /// * `std_dev` - The standard deviation (must be positive)
+    /// Creates a new normal transform with `mean` and positive `std_dev`.
     ///
     /// # Example
     ///
@@ -58,18 +76,22 @@ impl NormalTransform {
     /// use math_explorer::pure_math::statistics::copula::NormalTransform;
     ///
     /// let transform = NormalTransform::new(0.0, 1.0).unwrap();
+    /// # let _ = transform;
     /// ```
     #[verified_engine::verified]
     pub fn new(mean: f64, std_dev: f64) -> Result<Self, CopulaError> {
-        let normal = Normal::new(mean, std_dev).map_err(|e| {
-            crate::error::CopulaError::Math(math_commons::error::MathError::NumericalError {
-                reason: format!("Failed to create normal distribution: {}", e),
-            })
-        })?;
+        if !mean.is_finite() {
+            return Err(CopulaError::InvalidCorrelation { value: mean });
+        }
+        if !std_dev.is_finite() || std_dev <= 0.0 {
+            return Err(CopulaError::InvalidCorrelation { value: std_dev });
+        }
+        let normal = Normal::new(mean, std_dev)
+            .map_err(|_| CopulaError::InvalidCorrelation { value: std_dev })?;
         Ok(Self { normal })
     }
 
-    /// Creates a standard normal transform N(0,1).
+    /// Creates a standard normal transform `N(0, 1)`.
     #[verified_engine::verified]
     pub fn standard() -> Result<Self, CopulaError> {
         Self::new(0.0, 1.0)
@@ -79,60 +101,37 @@ impl NormalTransform {
 impl ProbabilityTransform for NormalTransform {
     #[verified_engine::verified]
     fn to_uniform(&self, value: f64) -> Result<Probability, CopulaError> {
-        let u = self.normal.cdf(value);
-        Probability::new(u)
+        Probability::new(self.normal.cdf(value))
     }
 
     #[verified_engine::verified]
     fn inverse_transform(&self, u: Probability) -> f64 {
-        // Inverse CDF (quantile function)
         self.normal.inverse_cdf(u.value())
     }
 }
 
-/// Inverse standard normal CDF (Φ⁻¹).
+/// Inverse standard normal CDF (`Phi^-1`).
 ///
-/// Maps a uniform probability u ∈ \[0,1\] to a z-score in N(0,1).
-///
-/// # Arguments
-///
-/// * `u` - The uniform probability
-///
-/// # Returns
-///
-/// The z-score such that Φ(z) = u
+/// Maps a uniform probability `u in [0, 1]` to a standard normal quantile `z`.
 ///
 /// # Example
 ///
 /// ```
 /// # use pure_math::__doctest_facade as math_explorer;
-/// use math_explorer::pure_math::statistics::copula::{inverse_standard_normal, Probability};
+/// use math_explorer::pure_math::statistics::copula::{Probability, inverse_standard_normal};
 ///
 /// let u = Probability::new(0.975).unwrap();
 /// let z = inverse_standard_normal(u).unwrap();
-/// // z ≈ 1.96 (97.5th percentile)
+/// assert!((z - 1.95996).abs() < 1e-4);
 /// ```
 #[verified_engine::verified]
 pub fn inverse_standard_normal(u: Probability) -> Result<f64, CopulaError> {
-    let normal = Normal::new(0.0, 1.0).map_err(|e| {
-        crate::error::CopulaError::Math(math_commons::error::MathError::NumericalError {
-            reason: format!("Failed to create standard normal: {}", e),
-        })
-    })?;
-    Ok(normal.inverse_cdf(u.value()))
+    Ok(fast_norm_inv(u.value()))
 }
 
-/// Standard normal CDF (Φ).
+/// Standard normal CDF (`Phi`).
 ///
-/// Maps a z-score to a cumulative probability.
-///
-/// # Arguments
-///
-/// * `z` - The z-score
-///
-/// # Returns
-///
-/// The cumulative probability Φ(z)
+/// Maps a standard normal quantile `z` to a cumulative probability in `[0, 1]`.
 ///
 /// # Example
 ///
@@ -140,18 +139,15 @@ pub fn inverse_standard_normal(u: Probability) -> Result<f64, CopulaError> {
 /// # use pure_math::__doctest_facade as math_explorer;
 /// use math_explorer::pure_math::statistics::copula::standard_normal_cdf;
 ///
-/// let z = 1.96;
-/// let p = standard_normal_cdf(z).unwrap();
-/// // p ≈ 0.975
+/// let p = standard_normal_cdf(1.959964).unwrap();
+/// assert!((p.value() - 0.975).abs() < 1e-6);
 /// ```
 #[verified_engine::verified]
 pub fn standard_normal_cdf(z: f64) -> Result<Probability, CopulaError> {
-    let normal = Normal::new(0.0, 1.0).map_err(|e| {
-        crate::error::CopulaError::Math(math_commons::error::MathError::NumericalError {
-            reason: format!("Failed to create standard normal: {}", e),
-        })
-    })?;
-    Probability::new(normal.cdf(z))
+    if z.is_nan() {
+        return Err(CopulaError::InvalidProbability { value: z });
+    }
+    Probability::new(fast_norm_cdf(z))
 }
 
 #[cfg(test)]
@@ -161,84 +157,49 @@ mod tests {
 
     #[test]
     #[verified_engine::verified]
-    fn test_normal_transform_standard() {
-        let transform = NormalTransform::standard().unwrap();
-
-        // Test median (z=0 -> u=0.5)
-        let u = transform.to_uniform(0.0).unwrap();
+    fn test_normal_transform_standard_and_parametric() {
+        let std_tf = NormalTransform::standard().unwrap();
+        let u = std_tf.to_uniform(0.0).unwrap();
         assert_relative_eq!(
             u.value(),
             0.5,
-            epsilon = math_commons::registry::TOLERANCE_FAST
+            epsilon = math_commons::registry::TOLERANCE_HIGH
         );
-
-        // Test inverse
-        let u = Probability::new(0.5).unwrap();
-        let z = transform.inverse_transform(u);
-        assert_relative_eq!(z, 0.0, epsilon = math_commons::registry::TOLERANCE_FAST);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_normal_transform_with_parameters() {
-        let transform = NormalTransform::new(10.0, 2.0).unwrap();
-
-        // At mean, CDF should be 0.5
-        let u = transform.to_uniform(10.0).unwrap();
         assert_relative_eq!(
-            u.value(),
-            0.5,
-            epsilon = math_commons::registry::TOLERANCE_FAST
-        );
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_inverse_standard_normal() {
-        // Test known values
-        let u_median = Probability::new(0.5).unwrap();
-        let z_median = inverse_standard_normal(u_median).unwrap();
-        assert_relative_eq!(
-            z_median,
+            std_tf.inverse_transform(Probability::new(0.5).unwrap()),
             0.0,
-            epsilon = math_commons::registry::TOLERANCE_FAST
+            epsilon = math_commons::registry::TOLERANCE_HIGH
         );
 
-        // 97.5th percentile ≈ 1.96
-        let u_975 = Probability::new(0.975).unwrap();
-        let z_975 = inverse_standard_normal(u_975).unwrap();
-        assert_relative_eq!(z_975, 1.96, epsilon = 0.01);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_standard_normal_cdf() {
-        // Test z=0 -> p=0.5
-        let p = standard_normal_cdf(0.0).unwrap();
+        let param_tf = NormalTransform::new(10.0, 2.0).unwrap();
         assert_relative_eq!(
-            p.value(),
+            param_tf.to_uniform(10.0).unwrap().value(),
             0.5,
-            epsilon = math_commons::registry::TOLERANCE_FAST
+            epsilon = math_commons::registry::TOLERANCE_HIGH
         );
-
-        // Test z=1.96 -> p≈0.975
-        let p = standard_normal_cdf(1.96).unwrap();
-        assert_relative_eq!(p.value(), 0.975, epsilon = 0.001);
+        assert!(NormalTransform::new(0.0, 0.0).is_err());
+        assert!(NormalTransform::new(0.0, -1.0).is_err());
     }
 
     #[test]
     #[verified_engine::verified]
-    fn test_round_trip() {
-        let transform = NormalTransform::standard().unwrap();
-
-        for &value in &[-2.0, -1.0, 0.0, 1.0, 2.0] {
-            let u = transform.to_uniform(value).unwrap();
-            let recovered = transform.inverse_transform(u);
+    fn test_standard_normal_round_trip_and_boundaries() {
+        for &value in &[-4.0, -2.0, -1.0, 0.0, 1.0, 2.0, 4.0] {
+            let u = standard_normal_cdf(value).unwrap();
+            let recovered = inverse_standard_normal(u).unwrap();
             assert_relative_eq!(
                 recovered,
                 value,
-                epsilon = math_commons::registry::TOLERANCE_STANDARD
+                epsilon = math_commons::registry::TOLERANCE_HIGH
             );
         }
+        assert_eq!(
+            inverse_standard_normal(Probability::new(0.0).unwrap()).unwrap(),
+            f64::NEG_INFINITY
+        );
+        assert_eq!(
+            inverse_standard_normal(Probability::new(1.0).unwrap()).unwrap(),
+            f64::INFINITY
+        );
     }
 }
