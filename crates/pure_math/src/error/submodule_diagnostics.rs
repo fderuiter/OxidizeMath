@@ -3,7 +3,7 @@ use super::{
     MatchModelError, NumberTheoryError, OuError, TdaError, ZipError,
 };
 use crate::pure_math::{
-    algebra::linear_algebra::numerical::LinearAlgebraError,
+    algebra::{BraidError, linear_algebra::numerical::LinearAlgebraError},
     analysis::{
         evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
         stochastic::StochasticError, transforms::TransformError,
@@ -11,6 +11,7 @@ use crate::pure_math::{
     elliptic_curves::EllipticCurveError,
     graph_theory::GraphTheoryError,
     hyperbolic::HyperbolicError,
+    knot_theory::KnotError,
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };
@@ -289,6 +290,18 @@ impl Diagnostic for TransformError {
     }
 }
 
+impl Diagnostic for BraidError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("BraidError", self.to_string())
+    }
+}
+
 impl Diagnostic for HyperbolicError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
@@ -298,5 +311,17 @@ impl Diagnostic for HyperbolicError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("HyperbolicError", self.to_string())
+    }
+}
+
+impl Diagnostic for KnotError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("KnotError", self.to_string())
     }
 }

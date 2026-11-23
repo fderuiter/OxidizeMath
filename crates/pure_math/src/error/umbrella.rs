@@ -1,8 +1,9 @@
 use super::{
-    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-    FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
-    MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
-    OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
+    EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
+    KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
+    NumberTheoryError, OptimizationError, OuError, StochasticError, TdaError, TensorError,
+    TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -54,9 +55,15 @@ pub enum PureMathError {
     /// Numerical root-finding and analysis error.
     #[error("{0}")]
     Analysis(#[from] AnalysisError),
+    /// Artin braid group error.
+    #[error("{0}")]
+    Braid(#[from] BraidError),
     /// Elliptic curve error.
     #[error("{0}")]
     EllipticCurve(#[from] EllipticCurveError),
+    /// Knot theory and skein invariant error.
+    #[error("{0}")]
+    Knot(#[from] KnotError),
     /// Unified numerical evolution engine error.
     #[error("{0}")]
     Evolution(#[from] EvolutionError),
@@ -144,7 +151,9 @@ impl PureMathError {
             Self::Zip(err) => err,
             Self::Ambs(err) => err,
             Self::Analysis(err) => err,
+            Self::Braid(err) => err,
             Self::EllipticCurve(err) => err,
+            Self::Knot(err) => err,
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
             Self::GraphTheory(err) => err,

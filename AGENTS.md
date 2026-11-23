@@ -278,9 +278,9 @@ sudo apt-get update
 sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science texlive-binaries
 ```
 
-### Compile All 29 Academic Papers via `xtask`
+### Compile All 30 Academic Papers via `xtask`
 
-Run the paper compiler defined in [apps/xtask/src/papers.rs](apps/xtask/src/papers.rs) to execute multi-pass `pdflatex` (`-no-shell-escape -interaction=nonstopmode -halt-on-error`) and `bibtex`, verify `.blg` and `.log` outputs for unresolved citations or undefined references across all 29 `.tex` manuscripts, generate `papers/output/index.html` (archive catalog) and `papers/output/pages-index.html` (GitHub Pages catalog), and package `papers/output/papers-bundle.tar.gz` alongside `papers/output/SHA256SUMS`:
+Run the paper compiler defined in [apps/xtask/src/papers.rs](apps/xtask/src/papers.rs) to execute multi-pass `pdflatex` (`-no-shell-escape -interaction=nonstopmode -halt-on-error`) and `bibtex`, verify `.blg` and `.log` outputs for unresolved citations or undefined references across all 30 `.tex` manuscripts, generate `papers/output/index.html` (archive catalog) and `papers/output/pages-index.html` (GitHub Pages catalog), and package `papers/output/papers-bundle.tar.gz` alongside `papers/output/SHA256SUMS`:
 
 ```bash
 cargo run -p xtask -- compile-papers

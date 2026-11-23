@@ -84,11 +84,11 @@ pub mod traits;
 
 pub use fields::Fp;
 pub use group::{
-    CyclicElement, Permutation, Zn, generate_left_coset, generate_right_coset, is_normal_subgroup,
-    is_subgroup,
+    BraidError, BraidWord, CyclicElement, MAX_BRAID_STRANDS, MAX_BRAID_WORD_LEN, Permutation, Zn,
+    generate_left_coset, generate_right_coset, is_normal_subgroup, is_subgroup,
 };
 pub use linear_algebra::LinearAlgebraError;
-pub use polynomial::Polynomial;
+pub use polynomial::{LaurentPolynomial, Polynomial};
 pub use traits::{AbelianGroup, EuclideanDomain, Field, Group, Monoid, Ring, Semigroup};
 
 // [cite:advanced_linear_algebra]

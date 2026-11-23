@@ -10337,6 +10337,9 @@
       "signature": "pub type Result < T > = math_commons :: error :: MathResult < T >"
     },
     {
+      "signature": "pub use crate :: pure_math :: algebra :: BraidError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: algebra :: linear_algebra :: numerical :: LinearAlgebraError"
     },
     {
@@ -10365,6 +10368,9 @@
     },
     {
       "signature": "pub use crate :: pure_math :: hyperbolic :: HyperbolicError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: knot_theory :: KnotError"
     },
     {
       "signature": "pub use crate :: pure_math :: number_theory :: ambs :: AmbsError"
@@ -10409,6 +10415,9 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: AnalysisError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: BraidError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: CopulaError } }"
     },
     {
@@ -10434,6 +10443,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: KellyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: KnotError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: LinearAlgebraError } }"
@@ -10788,6 +10800,92 @@
     },
     {
       "signature": "pub struct Zn < const N : usize >"
+    },
+    {
+      "signature": "pub use braid :: BraidError"
+    },
+    {
+      "signature": "pub use braid :: BraidWord"
+    },
+    {
+      "signature": "pub use braid :: MAX_BRAID_STRANDS"
+    },
+    {
+      "signature": "pub use braid :: MAX_BRAID_WORD_LEN"
+    }
+  ],
+  "crates/pure_math/src/pure_math/algebra/group/braid.rs": [
+    {
+      "signature": "impl BraidWord { pub const fn strands (& self) -> usize }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn apply_artin_relation (& mut self , _ : usize) -> Result < () , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn apply_far_commutativity (& mut self , _ : usize) -> Result < () , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn can_apply_artin_relation (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn can_apply_far_commutativity (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn component_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn compose (& self , _ : & Self) -> Result < Self , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn free_reduce (& self) -> Self }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn free_reduce_in_place (& mut self) -> usize }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn generators (& self) -> & [i32] }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn identity (_ : usize) -> Result < Self , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn inverse (& self) -> Self }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn markov_stabilize (& self , _ : bool) -> Result < Self , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn mirror (& self) -> Self }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn new (_ : usize , _ : Vec < i32 >) -> Result < Self , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn push_generator (& mut self , _ : i32) -> Result < () , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn strand_permutation (& self) -> Permutation }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn writhe (& self) -> i64 }"
+    },
+    {
+      "signature": "pub const MAX_BRAID_STRANDS : usize"
+    },
+    {
+      "signature": "pub const MAX_BRAID_WORD_LEN : usize"
+    },
+    {
+      "signature": "pub enum BraidError"
+    },
+    {
+      "signature": "pub struct BraidWord"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/canonical.rs": [
@@ -10850,7 +10948,19 @@
       "signature": "pub use fields :: Fp"
     },
     {
+      "signature": "pub use group :: BraidError"
+    },
+    {
+      "signature": "pub use group :: BraidWord"
+    },
+    {
       "signature": "pub use group :: CyclicElement"
+    },
+    {
+      "signature": "pub use group :: MAX_BRAID_STRANDS"
+    },
+    {
+      "signature": "pub use group :: MAX_BRAID_WORD_LEN"
     },
     {
       "signature": "pub use group :: Permutation"
@@ -10872,6 +10982,9 @@
     },
     {
       "signature": "pub use linear_algebra :: LinearAlgebraError"
+    },
+    {
+      "signature": "pub use polynomial :: LaurentPolynomial"
     },
     {
       "signature": "pub use polynomial :: Polynomial"
@@ -10913,6 +11026,74 @@
     },
     {
       "signature": "pub struct Polynomial < T : Ring >"
+    },
+    {
+      "signature": "pub use laurent :: LaurentPolynomial"
+    }
+  ],
+  "crates/pure_math/src/pure_math/algebra/polynomial/laurent.rs": [
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn coeff (& self , _ : i32) -> T }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn constant (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn eval_with_inverse (& self , _ : T , _ : T) -> T }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn from_polynomial (_ : Polynomial < T >) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn from_terms (_ : & [(i32 , T)]) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn invert_variable (& self) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn is_reciprocal (& self) -> bool }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn is_reciprocal_up_to_shift (& self) -> bool }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn max_degree (& self) -> Option < i32 > }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn min_degree (& self) -> Option < i32 > }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn monomial (_ : T , _ : i32) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn new (_ : i32 , _ : Vec < T >) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn scale (& self , _ : & T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn shift (& self , _ : i32) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn span (& self) -> usize }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn eval_at_one (& self) -> i64 }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn format_half_power_in_var (& self , _ : & str) -> String }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn format_in_var (& self , _ : & str) -> String }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn is_reciprocal_up_to_unit (& self) -> bool }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn normalize_alexander (& self) -> Self }"
+    },
+    {
+      "signature": "pub struct LaurentPolynomial < T : Ring >"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/traits.rs": [
@@ -13715,6 +13896,370 @@
     },
     {
       "signature": "pub struct TiledPolygon"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/burau_workspace.rs": [
+    {
+      "signature": "impl BurauWorkspace { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl BurauWorkspace { pub fn eval_alexander_in_place (& mut self , _ : & BraidWord , _ : f64) -> Result < f64 , KnotError > }"
+    },
+    {
+      "signature": "impl BurauWorkspace { pub fn matrix_slice (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BurauWorkspace { pub fn new (_ : usize) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl BurauWorkspace { pub fn reset_identity (& mut self) }"
+    },
+    {
+      "signature": "impl BurauWorkspace { pub fn step_generator_in_place (& mut self , _ : i32 , _ : f64) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "pub struct BurauWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/curves.rs": [
+    {
+      "signature": "impl ClosedLink3D { pub fn bounding_radius (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ClosedLink3D { pub fn component_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl ClosedLink3D { pub fn from_braid_closure (_ : & BraidWord , _ : f64 , _ : f64 , _ : usize ,) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl ClosedLink3D { pub fn new (_ : Vec < Vec < Point3 < f64 > > >) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl ClosedLink3D { pub fn total_samples (& self) -> usize }"
+    },
+    {
+      "signature": "impl LissajousKnot { pub fn new (_ : (usize , usize , usize) , _ : (f64 , f64 , f64) , _ : f64 ,) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl LissajousKnot { pub fn sample_in_place (& self , _ : & mut [Point3 < f64 >]) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "impl LissajousKnot { pub fn three_twist () -> Self }"
+    },
+    {
+      "signature": "impl LissajousKnot { pub fn to_link (& self , _ : usize) -> Result < ClosedLink3D , KnotError > }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn component_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn eval_component_point (& self , _ : usize , _ : f64) -> Point3 < f64 > }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn left_trefoil () -> Self }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn new (_ : usize , _ : i32 , _ : f64 , _ : f64) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn right_trefoil () -> Self }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn sample_component_in_place (& self , _ : usize , _ : & mut [Point3 < f64 >] ,) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn to_link (& self , _ : usize) -> Result < ClosedLink3D , KnotError > }"
+    },
+    {
+      "signature": "pub fn borromean_rings (_ : f64 , _ : f64 , _ : usize ,) -> Result < ClosedLink3D , KnotError >"
+    },
+    {
+      "signature": "pub fn figure_eight_knot (_ : f64 , _ : usize) -> Result < ClosedLink3D , KnotError >"
+    },
+    {
+      "signature": "pub fn hopf_link (_ : f64 , _ : bool , _ : usize ,) -> Result < ClosedLink3D , KnotError >"
+    },
+    {
+      "signature": "pub struct ClosedLink3D"
+    },
+    {
+      "signature": "pub struct LissajousKnot"
+    },
+    {
+      "signature": "pub struct TorusKnot"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/diagram.rs": [
+    {
+      "signature": "impl Crossing { pub const fn over_in (& self) -> usize }"
+    },
+    {
+      "signature": "impl Crossing { pub const fn over_out (& self) -> usize }"
+    },
+    {
+      "signature": "impl Crossing { pub const fn under_in (& self) -> usize }"
+    },
+    {
+      "signature": "impl Crossing { pub const fn under_out (& self) -> usize }"
+    },
+    {
+      "signature": "impl CrossingSign { pub const fn flipped (self) -> Self }"
+    },
+    {
+      "signature": "impl CrossingSign { pub const fn is_outgoing_slot (self , _ : u8) -> bool }"
+    },
+    {
+      "signature": "impl CrossingSign { pub const fn over_in_slot (self) -> u8 }"
+    },
+    {
+      "signature": "impl CrossingSign { pub const fn over_out_slot (self) -> u8 }"
+    },
+    {
+      "signature": "impl CrossingSign { pub const fn value (self) -> i64 }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn combinatorial_linking_matrix (& self) -> Vec < Vec < i64 > > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn component_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn crossing_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn from_braid (_ : & BraidWord) -> Self }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn mirror (& self) -> Self }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn segment_components (& self) -> (usize , Vec < usize >) }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn unknot () -> Self }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn unlink (_ : usize) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn validate (& self) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn writhe (& self) -> i64 }"
+    },
+    {
+      "signature": "pub const MAX_DIAGRAM_CROSSINGS : usize"
+    },
+    {
+      "signature": "pub enum CrossingSign"
+    },
+    {
+      "signature": "pub struct Crossing"
+    },
+    {
+      "signature": "pub struct DiagramSegment"
+    },
+    {
+      "signature": "pub struct Endpoint"
+    },
+    {
+      "signature": "pub struct PlanarDiagram"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/frames.rs": [
+    {
+      "signature": "pub fn compute_bishop_frames (_ : & [Point3 < f64 >]) -> Result < Vec < BishopFrame > , KnotError >"
+    },
+    {
+      "signature": "pub fn compute_bishop_frames_in_place (_ : & [Point3 < f64 >] , _ : & mut [BishopFrame] ,) -> Result < () , KnotError >"
+    },
+    {
+      "signature": "pub struct BishopFrame"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/gauss.rs": [
+    {
+      "signature": "pub fn gauss_linking_number (_ : & [Point3 < f64 >] , _ : & [Point3 < f64 >] ,) -> Result < i64 , KnotError >"
+    },
+    {
+      "signature": "pub fn gauss_linking_quadrature (_ : & [Point3 < f64 >] , _ : & [Point3 < f64 >] ,) -> Result < f64 , KnotError >"
+    },
+    {
+      "signature": "pub fn gauss_writhe_quadrature (_ : & [Point3 < f64 >]) -> Result < f64 , KnotError >"
+    },
+    {
+      "signature": "pub fn pairwise_linking_matrix (_ : & ClosedLink3D) -> Result < Vec < Vec < i64 > > , KnotError >"
+    },
+    {
+      "signature": "pub fn pairwise_linking_numbers_in_place (_ : & ClosedLink3D , _ : & mut [i64] ,) -> Result < () , KnotError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/invariants.rs": [
+    {
+      "signature": "pub fn alexander_polynomial_burau (_ : & BraidWord) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    },
+    {
+      "signature": "pub fn alexander_polynomial_fox (_ : & PlanarDiagram ,) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    },
+    {
+      "signature": "pub fn reduced_burau_matrix (_ : & BraidWord) -> Vec < Vec < LaurentPolynomial < i64 > > >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/kauffman_jones.rs": [
+    {
+      "signature": "pub fn format_jones_polynomial (_ : & PlanarDiagram) -> Result < String , KnotError >"
+    },
+    {
+      "signature": "pub fn is_chiral_by_jones (_ : & PlanarDiagram) -> Result < bool , KnotError >"
+    },
+    {
+      "signature": "pub fn jones_polynomial (_ : & PlanarDiagram) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    },
+    {
+      "signature": "pub fn jones_polynomial_half_power (_ : & PlanarDiagram ,) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    },
+    {
+      "signature": "pub fn kauffman_bracket (_ : & PlanarDiagram) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    },
+    {
+      "signature": "pub fn normalized_kauffman_polynomial (_ : & PlanarDiagram ,) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/mesh_tube.rs": [
+    {
+      "signature": "pub fn build_link_tubular_mesh (_ : & ClosedLink3D , _ : f64 , _ : usize ,) -> Result < Mesh , KnotError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/mod.rs": [
+    {
+      "signature": "pub const MAX_KAUFFMAN_CROSSINGS : usize"
+    },
+    {
+      "signature": "pub enum KnotError"
+    },
+    {
+      "signature": "pub use burau_workspace :: BurauWorkspace"
+    },
+    {
+      "signature": "pub use curves :: ClosedLink3D"
+    },
+    {
+      "signature": "pub use curves :: LissajousKnot"
+    },
+    {
+      "signature": "pub use curves :: TorusKnot"
+    },
+    {
+      "signature": "pub use curves :: borromean_rings"
+    },
+    {
+      "signature": "pub use curves :: figure_eight_knot"
+    },
+    {
+      "signature": "pub use curves :: hopf_link"
+    },
+    {
+      "signature": "pub use diagram :: Crossing"
+    },
+    {
+      "signature": "pub use diagram :: CrossingSign"
+    },
+    {
+      "signature": "pub use diagram :: DiagramSegment"
+    },
+    {
+      "signature": "pub use diagram :: Endpoint"
+    },
+    {
+      "signature": "pub use diagram :: MAX_DIAGRAM_CROSSINGS"
+    },
+    {
+      "signature": "pub use diagram :: PlanarDiagram"
+    },
+    {
+      "signature": "pub use frames :: BishopFrame"
+    },
+    {
+      "signature": "pub use frames :: compute_bishop_frames"
+    },
+    {
+      "signature": "pub use frames :: compute_bishop_frames_in_place"
+    },
+    {
+      "signature": "pub use gauss :: gauss_linking_number"
+    },
+    {
+      "signature": "pub use gauss :: gauss_linking_quadrature"
+    },
+    {
+      "signature": "pub use gauss :: gauss_writhe_quadrature"
+    },
+    {
+      "signature": "pub use gauss :: pairwise_linking_matrix"
+    },
+    {
+      "signature": "pub use gauss :: pairwise_linking_numbers_in_place"
+    },
+    {
+      "signature": "pub use invariants :: alexander_polynomial_burau"
+    },
+    {
+      "signature": "pub use invariants :: alexander_polynomial_fox"
+    },
+    {
+      "signature": "pub use invariants :: reduced_burau_matrix"
+    },
+    {
+      "signature": "pub use kauffman_jones :: format_jones_polynomial"
+    },
+    {
+      "signature": "pub use kauffman_jones :: is_chiral_by_jones"
+    },
+    {
+      "signature": "pub use kauffman_jones :: jones_polynomial"
+    },
+    {
+      "signature": "pub use kauffman_jones :: jones_polynomial_half_power"
+    },
+    {
+      "signature": "pub use kauffman_jones :: kauffman_bracket"
+    },
+    {
+      "signature": "pub use kauffman_jones :: normalized_kauffman_polynomial"
+    },
+    {
+      "signature": "pub use mesh_tube :: build_link_tubular_mesh"
+    },
+    {
+      "signature": "pub use reidemeister :: ReidemeisterTriangle"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/reidemeister.rs": [
+    {
+      "signature": "impl PlanarDiagram { pub fn apply_reidemeister_i_add (& mut self , _ : usize , _ : CrossingSign ,) -> Result < usize , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn apply_reidemeister_i_remove (& mut self , _ : usize) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn apply_reidemeister_ii_add (& mut self , _ : usize , _ : usize ,) -> Result < (usize , usize) , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn apply_reidemeister_ii_remove (& mut self , _ : usize , _ : usize) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn can_apply_reidemeister_i_remove (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn can_apply_reidemeister_ii_remove (& self , _ : usize , _ : usize) -> bool }"
+    },
+    {
+      "signature": "pub use reidemeister_iii :: ReidemeisterTriangle"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/reidemeister/reidemeister_iii.rs": [
+    {
+      "signature": "pub struct ReidemeisterTriangle"
     }
   ],
   "crates/pure_math/src/pure_math/logic.rs": [
@@ -17205,6 +17750,9 @@
       "signature": "pub use pure_math :: error :: AnalysisError"
     },
     {
+      "signature": "pub use pure_math :: error :: BraidError"
+    },
+    {
       "signature": "pub use pure_math :: error :: CopulaError"
     },
     {
@@ -17230,6 +17778,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: KellyError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: KnotError"
     },
     {
       "signature": "pub use pure_math :: error :: LinearAlgebraError"

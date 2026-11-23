@@ -51,6 +51,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::ParseError::UnexpectedEof, bus),
         check_leaf(error::AmbsError::ConversionError, bus),
         check_leaf(error::AnalysisError::ConvergenceError(1.0), bus),
+        check_leaf(error::BraidError::InvalidStrandCount { strands: 0 }, bus),
         check_leaf(error::CopulaError::NotSymmetric, bus),
         check_leaf(error::EllipticCurveError::InvalidDegree, bus),
         check_leaf(error::EloError::InvalidScale { value: 0.0 }, bus),
@@ -63,6 +64,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
             bus,
         ),
         check_leaf(error::KellyError::InvalidBankroll { value: -1.0 }, bus),
+        check_leaf(error::KnotError::EmptyCurve, bus),
         check_leaf(error::LinearAlgebraError::SingularMatrix, bus),
         check_leaf(
             error::MarketPricingError::NoArbitrage {
@@ -174,6 +176,9 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
         error::MarketPricingError::from(error::AnalysisError::ConvergenceError(0.0))
             .source()
             .is_some(),
+        error::KnotError::from(error::BraidError::InvalidStrandCount { strands: 0 })
+            .source()
+            .is_some(),
         error::AIError::from(sample_math()).source().is_some(),
         error::PharmacokineticsError::from(error::AnalysisError::ConvergenceError(0.0))
             .source()
@@ -196,7 +201,7 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
             .is_some(),
         error::StatMechError::from(sample_math()).source().is_some(),
     ];
-    assert_eq!(wrapper_sources_present.len(), 17);
+    assert_eq!(wrapper_sources_present.len(), 18);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
 }
 
@@ -210,11 +215,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 55);
-    assert_eq!(*events.lock().unwrap(), 55);
+    assert_eq!(converted.len(), 57);
+    assert_eq!(*events.lock().unwrap(), 57);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 61);
+    assert_eq!(*events.lock().unwrap(), 63);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -288,6 +293,7 @@ pub fn verify_prelude_error_reexports() {
     let _pure = core::mem::size_of::<(
         p::AmbsError,
         p::AnalysisError,
+        p::BraidError,
         p::CopulaError,
         p::EllipticCurveError,
         p::EloError,
@@ -297,6 +303,7 @@ pub fn verify_prelude_error_reexports() {
         p::GraphTheoryError,
         p::HyperbolicError,
         p::KellyError,
+        p::KnotError,
         p::LinearAlgebraError,
         p::MarketPricingError,
         p::MarkovError,

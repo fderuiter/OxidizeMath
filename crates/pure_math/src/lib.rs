@@ -18,11 +18,12 @@ pub mod __macro_deps {
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
-            AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-            FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
-            LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
-            NumberTheoryError, OptimizationError, OuError, PureMathError, PureMathError as Error,
-            StochasticError, TdaError, TensorError, TransformError, ZipError,
+            AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
+            EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError,
+            KellyError, KnotError, LinearAlgebraError, MarketPricingError, MarkovError,
+            MatchModelError, NumberTheoryError, OptimizationError, OuError, PureMathError,
+            PureMathError as Error, StochasticError, TdaError, TensorError, TransformError,
+            ZipError,
         };
         pub use math_commons::error::{
             EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult,

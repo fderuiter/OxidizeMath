@@ -82,6 +82,9 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool,
         >(ctx);
+        exercise_interactive_tool::<
+            crate::tabs::geometry_topology::knot_braid_studio::KnotBraidStudioTool,
+        >(ctx);
         exercise_interactive_tool::<crate::tabs::climate::cera::CeraTool>(ctx);
         exercise_interactive_tool::<crate::tabs::climate::co2_projections::Co2ProjectionsTool>(ctx);
         exercise_interactive_tool::<crate::tabs::climate::temperature::TemperatureAnomaliesTool>(
