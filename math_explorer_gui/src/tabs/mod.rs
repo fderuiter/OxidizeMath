@@ -84,14 +84,17 @@ pub trait ExplorerTab {
     /// Academic domain category of the tab for top navigation bar grouping.
     fn academic_domain(&self) -> &'static str {
         match self.name() {
-            "Analysis & Calculus"
+            "Algorithmic Information"
+            | "Analysis & Calculus"
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
             | "Number Theory" => "Pure Math",
 
-            "Chaos Theory"
+            "Astrophysics"
+            | "Chaos Theory"
             | "Fluid Dynamics"
+            | "General Relativity"
             | "Medical Physics"
             | "MRI Physics"
             | "Quantum Mechanics"
@@ -101,6 +104,7 @@ pub trait ExplorerTab {
             | "Clinical Trials"
             | "Favoritism"
             | "Game Theory"
+            | "Paradox Lab"
             | "Traceability Portal" => "Applied Math",
 
             "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
@@ -166,7 +170,9 @@ pub trait ExplorerTab {
     fn url_slug(&self) -> &'static str {
         match self.name() {
             "Artificial Intelligence" => "ai",
+            "Algorithmic Information" => "algorithmic_information",
             "Analysis & Calculus" => "analysis",
+            "Astrophysics" => "astrophysics",
             "Battery Degradation" => "battery_degradation",
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
@@ -176,6 +182,7 @@ pub trait ExplorerTab {
             "Financial Math" => "financial_math",
             "Fluid Dynamics" => "fluid_dynamics",
             "Game Theory" => "game_theory",
+            "General Relativity" => "relativity",
             "Geometry & Topology" => "geometry_topology",
             "Graph Theory" => "graph_theory",
             "Medical Physics" => "medical",
@@ -183,6 +190,7 @@ pub trait ExplorerTab {
             "MRI Physics" => "mri",
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
+            "Paradox Lab" => "paradox_lab",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",

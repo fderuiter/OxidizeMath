@@ -12,6 +12,8 @@ mod export_dataset;
 mod export_figure;
 mod export_queue;
 #[cfg(test)]
+pub(crate) use export_queue::deferred_export_tests;
+#[cfg(test)]
 mod export_queue_tests;
 mod export_shader;
 #[cfg(test)]
