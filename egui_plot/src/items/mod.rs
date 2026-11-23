@@ -31,6 +31,8 @@ pub struct PlotItemBase {
     id: Id,
     highlight: bool,
     allow_hover: bool,
+    companion_visual_only: bool,
+    pub(crate) imported_overlay: bool,
 }
 
 impl PlotItemBase {
@@ -41,6 +43,8 @@ impl PlotItemBase {
             id,
             highlight: false,
             allow_hover: true,
+            companion_visual_only: false,
+            imported_overlay: false,
         }
     }
 }
@@ -126,17 +130,27 @@ pub trait PlotItem {
         vec![]
     }
 
+    fn is_companion_visual_only(&self) -> bool {
+        self.base().companion_visual_only
+    }
+
+    fn is_imported_overlay(&self) -> bool {
+        self.base().imported_overlay
+    }
+
     fn append_deferred_export(
         &mut self,
         datasets: &mut Vec<crate::DeferredDatasetEntry>,
         primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
     ) {
-        let pts = self.extract_points();
-        if !pts.is_empty() {
-            datasets.push(crate::DeferredDatasetEntry::Owned {
-                name: self.name().to_owned(),
-                points: pts,
-            });
+        if !self.is_companion_visual_only() {
+            let pts = self.extract_points();
+            if !pts.is_empty() {
+                datasets.push(crate::DeferredDatasetEntry::Owned {
+                    name: self.name().to_owned(),
+                    points: pts,
+                });
+            }
         }
         let prims = self.extract_export_primitives();
         if !prims.is_empty() {
@@ -663,6 +677,18 @@ pub struct Line<'a> {
 }
 
 impl<'a> Line<'a> {
+    #[inline]
+    pub(crate) fn companion_visual_only(mut self, companion: bool) -> Self {
+        self.base.companion_visual_only = companion;
+        self
+    }
+
+    #[inline]
+    pub(crate) fn imported_overlay(mut self, imported: bool) -> Self {
+        self.base.imported_overlay = imported;
+        self
+    }
+
     pub fn new(name: impl Into<String>, series: impl Into<PlotPoints<'a>>) -> Self {
         Self {
             base: PlotItemBase::new(name.into()),
@@ -876,13 +902,16 @@ impl PlotItem for Line<'_> {
         datasets: &mut Vec<crate::DeferredDatasetEntry>,
         primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
     ) {
+        let emit_ds = !self.is_companion_visual_only();
         if let Some(batch) = &self.colored_segment_batch {
             if batch.iter().any(|seg| !seg.points.is_empty()) {
                 let name = self.base.name.clone();
-                datasets.push(crate::DeferredDatasetEntry::SharedColoredSegments {
-                    name: name.clone(),
-                    segments: Arc::clone(batch),
-                });
+                if emit_ds {
+                    datasets.push(crate::DeferredDatasetEntry::SharedColoredSegments {
+                        name: name.clone(),
+                        segments: Arc::clone(batch),
+                    });
+                }
                 primitives.push(
                     crate::export_primitives::DeferredPlotPrimitive::ColoredPolylineBatch {
                         name,
@@ -895,10 +924,12 @@ impl PlotItem for Line<'_> {
         if let Some(batch) = &self.segment_batch {
             if batch.iter().any(|seg| !seg.is_empty()) {
                 let name = self.base.name.clone();
-                datasets.push(crate::DeferredDatasetEntry::SharedSegments {
-                    name: name.clone(),
-                    segments: Arc::clone(batch),
-                });
+                if emit_ds {
+                    datasets.push(crate::DeferredDatasetEntry::SharedSegments {
+                        name: name.clone(),
+                        segments: Arc::clone(batch),
+                    });
+                }
                 primitives.push(
                     crate::export_primitives::DeferredPlotPrimitive::PolylineBatch {
                         name,
@@ -913,10 +944,12 @@ impl PlotItem for Line<'_> {
         let points = self.series.take_shared_points();
         if !points.is_empty() {
             let name = self.base.name.clone();
-            datasets.push(crate::DeferredDatasetEntry::SharedPoints {
-                name: name.clone(),
-                points: Arc::clone(&points),
-            });
+            if emit_ds {
+                datasets.push(crate::DeferredDatasetEntry::SharedPoints {
+                    name: name.clone(),
+                    points: Arc::clone(&points),
+                });
+            }
             primitives.push(crate::export_primitives::DeferredPlotPrimitive::Polyline {
                 name,
                 points,
@@ -1731,6 +1764,12 @@ pub struct Points<'a> {
 }
 
 impl<'a> Points<'a> {
+    #[inline]
+    pub(crate) fn imported_overlay(mut self, imported: bool) -> Self {
+        self.base.imported_overlay = imported;
+        self
+    }
+
     pub fn new(name: impl Into<String>, series: impl Into<PlotPoints<'a>>) -> Self {
         Self {
             base: PlotItemBase::new(name.into()),

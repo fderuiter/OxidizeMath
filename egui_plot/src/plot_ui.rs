@@ -41,7 +41,7 @@ pub struct PlotUi<'a> {
 }
 
 impl<'a> PlotUi<'a> {
-    fn auto_color(&mut self) -> Color32 {
+    pub(crate) fn auto_color(&mut self) -> Color32 {
         let i = self.next_auto_color_idx;
         self.next_auto_color_idx += 1;
         let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
