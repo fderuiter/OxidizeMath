@@ -66,11 +66,17 @@ impl ExcitableSheetTool {
 
     /// Handles continuous `InteractiveTool::on_brush` strokes across tissue or virtual leads.
     pub fn handle_brush(&mut self, ctx: &InteractionContext) {
-        let Some(pos) = ctx.pointer_pos else {
+        let (prev_pos, pos) = if let Some(pos) = ctx.pointer_pos {
+            (pos - ctx.delta, pos)
+        } else if let Some(stroke) = ctx.brush_stroke {
+            (
+                egui::pos2(stroke.start[0] as f32, stroke.start[1] as f32),
+                egui::pos2(stroke.end[0] as f32, stroke.end[1] as f32),
+            )
+        } else {
             return;
         };
         let layout = compute_split_layout(ctx.response.rect);
-        let prev_pos = pos - ctx.delta;
 
         if self.dragging_lead.is_none() {
             if let Some(hit) = self.find_lead_near(prev_pos, layout.sheet_rect, 15.0) {

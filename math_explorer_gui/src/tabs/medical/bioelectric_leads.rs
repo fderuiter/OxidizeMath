@@ -342,7 +342,11 @@ impl InteractiveTool for BioelectricLeadTool {
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
-        if let Some(pos) = ctx.pointer_pos {
+        let pos = ctx.pointer_pos.or_else(|| {
+            ctx.brush_stroke
+                .map(|s| egui::pos2(s.end[0] as f32, s.end[1] as f32))
+        });
+        if let Some(pos) = pos {
             self.place_active_lead_from_screen(pos, Self::map_subrect(ctx.response.rect));
         }
     }
