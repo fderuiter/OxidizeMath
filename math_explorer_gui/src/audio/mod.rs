@@ -292,6 +292,8 @@ mod spin_resonance_tests;
 #[cfg(test)]
 mod tests;
 
+#[cfg(all(test, feature = "pure_math"))]
+mod acoustics_tests;
 #[cfg(all(test, feature = "physics"))]
 mod mri_radar_tests;
 

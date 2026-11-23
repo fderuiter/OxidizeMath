@@ -44,6 +44,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0045: Short-Weierstrass Elliptic Curves and Modular GUI Tab](adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md)
 - [ADR 0046: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0046-symplectic-hamiltonian-solvers-and-poincare-lab.md)
 - [ADR 20261123: Zero-Allocation 2D Abelian Sandpile Engine, Recurrent Group Algebra, and Solid-State Studio](adr/20261123-abelian-sandpile-engine-and-studio.md)
+- [ADR 20261123: Acoustic Luthiery Sonification, RLE Soundboard Sculpting, and Phononic Metamaterials](adr/20261123-acoustic-luthiery-sonification-and-phononic-metamaterials.md)
 - [ADR 20261123: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/20261123-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 - [ADR 20261123: Bidirectional Zero-Allocation Odds Conversions, Format-Aware Kelly Errors, and Bet Size Calculator Synchronization](adr/20261123-bidirectional-odds-conversions-and-bet-calculator-sync.md)
 - [ADR 20261123: Right-Censored Win-Ratio U-Statistics, Bivariate Weibull Power Sweeps, and Interactive Stress Tester](adr/20261123-censored-win-ratio-u-statistics-and-weibull-power-sweeps.md)

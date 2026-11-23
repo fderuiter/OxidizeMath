@@ -2,6 +2,8 @@
 
 // theory_verification!
 
+#[cfg(feature = "pure_math")]
+pub mod acoustics;
 #[cfg(feature = "physics")]
 pub mod medical_radar;
 #[cfg(feature = "physics")]
@@ -14,6 +16,8 @@ pub mod spin_resonance;
 #[cfg(feature = "pure_math")]
 pub mod wave_plate;
 
+#[cfg(feature = "pure_math")]
+pub use acoustics::chladni_plate_frame;
 #[cfg(feature = "physics")]
 pub use medical_radar::{
     doppler_shift_60ghz_hz, medical_radar_frame, RadarDopplerAudioInput, RADAR_CARRIER_60GHZ_HZ,
