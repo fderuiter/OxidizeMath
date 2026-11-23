@@ -2,6 +2,11 @@
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+pub mod elliptic_curve_canvas;
+pub mod elliptic_curve_hasse;
+pub mod elliptic_curve_playground;
+#[cfg(test)]
+mod elliptic_curve_tests;
 pub mod factorization;
 pub mod partitions_widget;
 pub mod prime_spiral;

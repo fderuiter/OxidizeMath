@@ -1,9 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::atlas::{
+    default_morpho_atlas_axes, is_default_morpho_atlas_axes, MORPHO_ATLAS_AXIS_PAIRS,
+};
 use super::presets::MorphogenesisTheory;
 use super::runner::{MorphogenesisRunner, MorphogenesisSharedParams};
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use eframe::egui::ColorImage;
@@ -48,10 +52,19 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Persisted visibility of the progressive 2D parameter atlas (never raster pixels).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub atlas_visible: bool,
+    /// Persisted `(x, y)` axis parameter keys for the 2D parameter atlas.
+    #[serde(
+        default = "default_morpho_atlas_axes",
+        skip_serializing_if = "is_default_morpho_atlas_axes"
+    )]
+    pub atlas_axes: [String; 2],
 }
 
 impl MorphogenesisToolState {
-    /// Validates finiteness and domain bounds for all reaction-diffusion parameters.
+    /// Validates finiteness, parameter domain bounds, and atlas axis keys.
     pub fn validate(&self) -> Result<(), String> {
         let checks = [
             ("a", self.a, 0.0, 1.0),
@@ -73,6 +86,15 @@ impl MorphogenesisToolState {
                 self.width, self.height
             ));
         }
+        let valid_axes = MORPHO_ATLAS_AXIS_PAIRS
+            .iter()
+            .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1]);
+        if !valid_axes {
+            return Err(format!(
+                "Invalid Morphogenesis atlas axes ('{}', '{}')",
+                self.atlas_axes[0], self.atlas_axes[1]
+            ));
+        }
         Ok(())
     }
 
@@ -92,6 +114,8 @@ impl MorphogenesisToolState {
 pub struct MorphogenesisTool {
     /// Asynchronous simulation worker controller.
     pub worker: BackgroundWorker<MorphogenesisRunner>,
+    /// Progressive 2D parameter regime atlas controller.
+    pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
@@ -102,7 +126,7 @@ pub struct MorphogenesisTool {
     pub(crate) step_runner: Option<MorphogenesisRunner>,
     pub(crate) pending_initial_start: bool,
     pub(crate) last_high_contrast: Option<bool>,
-    theory: MorphogenesisTheory,
+    pub(crate) theory: MorphogenesisTheory,
 }
 
 impl Default for MorphogenesisTool {
@@ -123,6 +147,7 @@ impl Default for MorphogenesisTool {
 
         Self {
             worker,
+            atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
             width,
             height,
@@ -214,6 +239,7 @@ impl MorphogenesisTool {
         } else {
             SimWorkerState::Ready
         };
+        let (xk, yk) = self.atlas.axis_keys();
         let preset_state = MorphogenesisToolState {
             a,
             b,
@@ -225,53 +251,12 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
         }
-    }
-}
-
-impl FiniteStateGuard for MorphogenesisTool {
-    fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.worker.diagnostic_report()
-    }
-
-    fn diverged(&self) -> bool {
-        !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.dt = (p.dt * 0.5).max(1e-4);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn clamp_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = p.a.clamp(0.0, 1.0);
-        p.b = p.b.clamp(0.0, 2.0);
-        p.d_u = p.d_u.clamp(0.1, 5.0);
-        p.d_v = p.d_v.clamp(10.0, 200.0);
-        p.dt = p.dt.clamp(0.001, 0.1);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn reset_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = 0.1;
-        p.b = 0.9;
-        p.d_u = 1.0;
-        p.d_v = 100.0;
-        p.dt = 0.05;
-        drop(p);
-        self.reset_system();
     }
 }
 
@@ -307,7 +292,9 @@ impl InteractiveTool for MorphogenesisTool {
         }
         let snapshot = self.worker.latest_snapshot()?;
         let px = snapshot.pixels.read().unwrap_or_else(|e| e.into_inner());
-        if snapshot.width == 0 || snapshot.height == 0 || px.len() != snapshot.width * snapshot.height
+        if snapshot.width == 0
+            || snapshot.height == 0
+            || px.len() != snapshot.width * snapshot.height
         {
             return None;
         }
@@ -376,6 +363,8 @@ impl InteractiveTool for MorphogenesisTool {
         self.height.hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.pending_initial_start.hash(&mut h);
+        self.atlas.is_visible().hash(&mut h);
+        self.atlas.axis_keys().hash(&mut h);
         h.finish().max(1)
     }
 
@@ -384,6 +373,7 @@ impl InteractiveTool for MorphogenesisTool {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt)
         };
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&MorphogenesisToolState {
             a,
             b,
@@ -395,14 +385,20 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: MorphogenesisToolState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
+        self.state_bounds().validate_json(state)?;
+        let parsed: MorphogenesisToolState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
+        self.atlas
+            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.atlas.set_visible(parsed.atlas_visible);
         let target_state = parsed.resolve_target_state();
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
@@ -435,6 +431,16 @@ impl InteractiveTool for MorphogenesisTool {
             }
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn has_finite_parameters(&self) -> bool {

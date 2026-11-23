@@ -1,88 +1,5 @@
 use super::*;
 use std::path::PathBuf;
-use std::sync::Arc;
-
-/// Supported formats for deferred end-of-frame dataset and figure exports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ExportFormat {
-    /// Comma-separated values dataset format (`.csv`).
-    Csv,
-    /// JavaScript Object Notation dataset format (`.json`).
-    Json,
-    /// High-resolution Portable Network Graphics figure format (`.png`).
-    Png,
-    /// Scalable Vector Graphics figure format (`.svg`).
-    Svg,
-    /// Animated Graphics Interchange Format (`.gif`).
-    Gif,
-}
-
-impl ExportFormat {
-    const fn meta(self) -> (&'static str, &'static str, &'static str, &'static str) {
-        match self {
-            Self::Csv => ("csv", "CSV", "CSV File", "dataset"),
-            Self::Json => ("json", "JSON", "JSON File", "dataset"),
-            Self::Png => ("png", "PNG", "PNG Image", "figure"),
-            Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
-            Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
-        }
-    }
-
-    /// Returns the standard file extension for this format.
-    pub(crate) const fn extension(&self) -> &'static str {
-        self.meta().0
-    }
-
-    /// Returns the uppercase label for display messages.
-    pub(crate) const fn label(&self) -> &'static str {
-        self.meta().1
-    }
-
-    /// Returns the file dialog filter description.
-    pub(crate) const fn filter_name(&self) -> &'static str {
-        self.meta().2
-    }
-
-    /// Returns the filename stem suffix (`dataset`, `figure`, or `animation`).
-    pub(crate) const fn stem_suffix(&self) -> &'static str {
-        self.meta().3
-    }
-}
-
-/// Output destination target for deferred simulation dataset and figure export.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ExportTarget {
-    /// Save serialized dataset or figure to disk via file save dialog or browser download.
-    File,
-    /// Copy serialized dataset text or rendered figure image directly to the system clipboard.
-    Clipboard,
-}
-
-/// A deferred export request combining format and output destination target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct ExportRequest {
-    /// Dataset or figure serialization format.
-    pub(crate) format: ExportFormat,
-    /// Output destination target.
-    pub(crate) target: ExportTarget,
-}
-
-/// Inline status feedback for action-bar export operations.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct ActionBarExportStatus {
-    /// Human-readable confirmation or error message.
-    pub(crate) message: String,
-    /// Whether this status indicates an error or warning condition.
-    pub(crate) is_error: bool,
-    /// Optional `egui` timestamp (`ctx.input(|i| i.time)`) when temporary confirmation expires.
-    pub(crate) expires_at_time: Option<f64>,
-}
-
-/// Type alias for custom export file writer function.
-pub(crate) type CustomExportWriter = Arc<dyn Fn(&str, &[u8]) + Send + Sync>;
-
-/// Type alias for custom clipboard text writer function (useful for deterministic testing).
-pub(crate) type CustomClipboardWriter = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
 /// Formats a clipboard failure error with guidance toward disk export.
 fn format_clipboard_error(err: &str) -> String {
@@ -265,6 +182,9 @@ impl SimulationFramework {
             (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
             (ExportFormat::Svg, _) => self.dispatch_svg_export(),
             (ExportFormat::Gif, _) => self.dispatch_gif_export(),
+            (ExportFormat::GlslWebGl2 | ExportFormat::GlslShadertoy, target) => {
+                self.dispatch_shader_export(req.format, target, ctx);
+            }
         }
     }
 
@@ -344,17 +264,18 @@ impl SimulationFramework {
         }
     }
 
-    fn dispatch_clipboard_text_request(
+    pub(super) fn dispatch_clipboard_text_request(
         &mut self,
         format: ExportFormat,
         content: String,
         ctx: Option<&egui::Context>,
     ) {
         let label = format.label();
+        let noun = format.clipboard_item_noun();
         let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
             writer(&content)
         } else {
-            self.write_system_text_clipboard(label, &content, ctx)
+            self.write_system_text_clipboard(label, noun, &content, ctx)
         };
         match res {
             Ok(()) => {
@@ -363,9 +284,9 @@ impl SimulationFramework {
                 let msg = if cfg!(target_arch = "wasm32")
                     && self.export_queue.custom_clipboard_writer.is_none()
                 {
-                    format!("Copying {label} dataset to clipboard...")
+                    format!("Copying {label} {noun} to clipboard...")
                 } else {
-                    format!("Copied {label} dataset to clipboard!")
+                    format!("Copied {label} {noun} to clipboard!")
                 };
                 self.set_export_status(ExportStatusSeverity::Success, msg);
             }
@@ -378,12 +299,13 @@ impl SimulationFramework {
     fn write_system_text_clipboard(
         &self,
         label: &'static str,
+        noun: &'static str,
         content: &str,
         ctx: Option<&egui::Context>,
     ) -> Result<(), String> {
         #[cfg(test)]
         {
-            let _ = (label, content, ctx);
+            let _ = (label, noun, content, ctx);
             Ok(())
         }
         #[cfg(not(test))]
@@ -395,7 +317,7 @@ impl SimulationFramework {
                     egui_ctx.data_mut(|d| {
                         let status = match cb {
                             Ok(()) => ActionBarExportStatus {
-                                message: format!("Copied {label} dataset to clipboard!"),
+                                message: format!("Copied {label} {noun} to clipboard!"),
                                 is_error: false,
                                 expires_at_time: None,
                             },

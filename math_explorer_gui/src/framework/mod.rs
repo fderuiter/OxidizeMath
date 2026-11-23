@@ -9,6 +9,9 @@ mod export_figure;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
+mod export_shader;
+#[cfg(test)]
+mod export_shader_tests;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
@@ -21,7 +24,6 @@ mod metadata_label_tests;
 mod overlay_sync;
 mod pane_scope;
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod perf_guard_tests;
 mod persistence;
 pub mod playback;
@@ -29,7 +31,6 @@ pub mod playback;
 mod playback_tests;
 pub mod recovery;
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod recovery_tests;
 pub mod side_panel;
 pub mod state_bounds;
@@ -37,7 +38,6 @@ pub mod state_bounds;
 mod state_bounds_tests;
 pub mod state_guard;
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod state_guard_tests;
 pub mod trace_overlay;
 mod ui;
@@ -279,6 +279,14 @@ pub trait InteractiveTool {
     /// Optional hook to provide custom figure export options.
     fn export_figure_options(&self) -> Option<egui_plot::export::ExportOptions> {
         None
+    }
+
+    /// Optional hook to emit a standalone GLSL fragment shader for the requested [`ShaderDialect`].
+    fn export_glsl_shader(&self, _dialect: ShaderDialect) -> Result<String, String> {
+        Err(format!(
+            "GLSL shader export is not supported for {}",
+            self.name()
+        ))
     }
 
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.

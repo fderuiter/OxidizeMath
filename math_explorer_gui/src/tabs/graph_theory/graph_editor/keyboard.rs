@@ -383,16 +383,7 @@ impl GraphEditorTool {
             return;
         }
         self.push_undo_snapshot();
-        let weight = 1.0;
-        self.edges.push((selected_id, target_id, weight));
-        if let (Some(&u_idx), Some(&v_idx)) = (
-            self.node_indices.get(&selected_id),
-            self.node_indices.get(&target_id),
-        ) {
-            self.graph.add_edge(u_idx, v_idx, weight);
-        } else {
-            self.rebuild_graph();
-        }
+        self.insert_new_edge(selected_id, target_id);
         announce_status(&format!("Connected node {selected_id} to node {target_id}"));
     }
 }

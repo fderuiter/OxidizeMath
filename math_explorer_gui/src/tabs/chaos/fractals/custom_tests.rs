@@ -83,7 +83,10 @@ fn test_custom_fractal_progressive_worker() {
     }
     assert_eq!(strides, vec![8, 4, 2, 1]);
     let expected = render_fractal_color_image_with_formula(&req, Some(&job));
-    assert_eq!(*runner.get_snapshot().pixels.read().unwrap(), expected.pixels);
+    assert_eq!(
+        *runner.get_snapshot().pixels.read().unwrap(),
+        expected.pixels
+    );
 }
 
 #[test]
