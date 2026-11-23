@@ -31,6 +31,7 @@ pub use browser::{
 };
 #[cfg(test)]
 pub use browser::{take_last_copied_share_url, with_mock_web_base_url};
+pub(crate) use codec::clamp_decoded_url_grid_state;
 pub use codec::{
     encode_share_fragment, encode_share_fragment_with_workspace, matches_tab_slug,
     parse_share_location, validate_url_preset_json, ShareUrlParams, CANONICAL_WEB_BASE_URL,

@@ -215,3 +215,105 @@ fn test_tick_url_sync_defers_during_active_animated_slider_sweeps() {
         .url_sync_last_fragment_for_test()
         .is_some_and(|frag| frag.starts_with("#tab=")));
 }
+
+#[test]
+fn test_shared_url_clamps_high_res_surface_and_flow_grids_to_interactive_caps() {
+    let curv_json = crate::presets::serialize_compact_preset_envelope(
+        "Curvature",
+        "geometry_topology",
+        serde_json::json!({
+            "surface_type": "Torus",
+            "curvature_type": "Gaussian",
+            "sphere_radius": 1.0,
+            "torus_major_radius": 2.0,
+            "torus_minor_radius": 0.5,
+            "klein_radius": 2.0,
+            "u_resolution": 1000,
+            "v_resolution": 1000,
+            "pitch": 0.5,
+            "yaw": 0.5,
+            "zoom": 1.0
+        }),
+    )
+    .unwrap();
+    let curv_frag = encode_share_fragment(
+        "geometry_topology",
+        Some("CurvatureHeatmap"),
+        Some(&curv_json),
+    )
+    .unwrap();
+    let parsed_curv = parse_share_location(&curv_frag, "").unwrap().unwrap();
+    let curv_cfg: serde_json::Value =
+        serde_json::from_str(parsed_curv.state_json.as_deref().unwrap()).unwrap();
+    assert_eq!(curv_cfg["config"]["u_resolution"], 120);
+    assert_eq!(curv_cfg["config"]["v_resolution"], 120);
+
+    let flow_json = crate::presets::serialize_compact_preset_envelope(
+        "Flow",
+        "fluid_dynamics",
+        serde_json::json!({
+            "elements": [{"element_type": "Uniform", "strength": 10.0, "x": 0.0, "y": 0.0, "angle": 0.0}],
+            "grid_size": 1000,
+            "view_range": 10.0
+        }),
+    )
+    .unwrap();
+    let flow_frag = encode_share_fragment(
+        "fluid_dynamics",
+        Some("PotentialFlowTool"),
+        Some(&flow_json),
+    )
+    .unwrap();
+    let mut app = crate::app::MathExplorerApp::default();
+    assert_eq!(
+        app.apply_share_location_strings(&flow_frag, "", None),
+        Ok(true)
+    );
+    let parsed_flow = parse_share_location(&flow_frag, "").unwrap().unwrap();
+    let flow_cfg: serde_json::Value =
+        serde_json::from_str(parsed_flow.state_json.as_deref().unwrap()).unwrap();
+    assert_eq!(flow_cfg["config"]["grid_size"], 100);
+}
+
+#[cfg(all(feature = "physics", feature = "pure_math"))]
+#[test]
+fn test_workspace_share_url_clamps_high_res_pane_presets_and_preserves_links() {
+    let flow_preset: serde_json::Value = serde_json::from_str(
+        &crate::presets::serialize_compact_preset_envelope(
+            "Flow",
+            "fluid_dynamics",
+            serde_json::json!({
+                "elements": [{"element_type": "Uniform", "strength": 10.0, "x": 0.0, "y": 0.0, "angle": 0.0}],
+                "grid_size": 1000,
+                "view_range": 10.0
+            }),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let ws_json = serde_json::json!({
+        "layout": "h",
+        "links": [true, false],
+        "focus": 1,
+        "ratio": 0.5,
+        "quad": [0.5, 0.5],
+        "panes": [
+            { "tab": "graph_theory", "tool": "GraphEditorTool" },
+            { "tab": "fluid_dynamics", "tool": "PotentialFlowTool", "preset": flow_preset }
+        ]
+    })
+    .to_string();
+    let frag =
+        encode_share_fragment_with_workspace("fluid_dynamics", None, None, Some(&ws_json)).unwrap();
+    let mut app = crate::app::MathExplorerApp::default();
+    assert_eq!(app.apply_share_location_strings(&frag, "", None), Ok(true));
+    assert_eq!(app.pane_bus_links, [true, false, false, false]);
+    let exported = app
+        .pane_tab(1)
+        .unwrap()
+        .export_url_preset_json()
+        .unwrap()
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&exported).unwrap();
+    assert_eq!(parsed["config"]["grid_size"], 100);
+}

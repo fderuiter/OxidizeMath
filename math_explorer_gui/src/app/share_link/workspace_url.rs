@@ -203,7 +203,15 @@ impl MathExplorerApp {
                 .as_ref()
                 .map(serde_json::to_string)
                 .transpose()
-                .map_err(|e| format!("Invalid pane preset JSON: {e}"))?;
+                .map_err(|e| format!("Invalid pane preset JSON: {e}"))?
+                .map(|raw| {
+                    crate::url_state::clamp_decoded_url_grid_state(
+                        &entry.tab,
+                        entry.tool.as_deref(),
+                        &raw,
+                    )
+                })
+                .transpose()?;
             let tab = self
                 .pane_tab_mut(pane_idx)
                 .ok_or_else(|| format!("Failed to allocate pane {pane_idx}"))?;
