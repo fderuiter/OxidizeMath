@@ -32,6 +32,8 @@ pub struct WaveSimConfig {
     pub custom_expr: Expr,
     /// Optional 200-point freehand sculpted potential overriding the baseline profile.
     pub custom_potential: Option<Vec<f64>>,
+    /// Optional sparse `(index, value)` sculpted potential overrides from `SpatialBrushKit`.
+    pub sparse_potential: Vec<(u16, f64)>,
 }
 
 impl Default for WaveSimConfig {
@@ -47,6 +49,7 @@ impl Default for WaveSimConfig {
             steps_per_frame: DEFAULT_STEPS_PER_FRAME,
             custom_expr: default_compiled_expr(),
             custom_potential: None,
+            sparse_potential: Vec::new(),
         }
     }
 }
@@ -223,6 +226,8 @@ pub struct WaveData {
     pub p_reflected: f64,
     /// Detected barrier partition index $i_b$.
     pub barrier_idx: usize,
+    /// Unitary state norm squared $\|\psi\|^2$.
+    pub norm_sq: f64,
 }
 
 /// Builds exportable 2D plot series (`|ψ(x, t)|²`, scaled `V(x)`, and horizontal `E0 = k0²/2`).

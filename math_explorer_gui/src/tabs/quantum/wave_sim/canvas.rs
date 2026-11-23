@@ -3,12 +3,14 @@
 
 use super::presets::{GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE};
 use super::runner::WaveData;
+use super::super::wave_sim_sculpt::consume_reticle_key_deltas;
 use super::WaveSimulatorTool;
 use crate::accessibility::{
     announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
     register_canvas_accessibility,
 };
 use crate::async_sim::ui::render_empty_plot_guidance;
+use crate::framework::{BrushMode, BrushStroke};
 use eframe::egui;
 use egui_plot::{
     Arrows, Legend, Line, LineStyle, MarkerShape, Plot, PlotPoint, PlotPoints, Points, VLine,
@@ -257,6 +259,38 @@ pub(super) fn apply_emitter_drag(
     true
 }
 
+fn dispatch_sculpt_drag(
+    egui_ctx: &egui::Context,
+    tool: &mut WaveSimulatorTool,
+    frame: &WaveData,
+    plot_pt: PlotPoint,
+    prev: (usize, f64, bool),
+) -> (usize, f64) {
+    let (last_idx, last_v, erase) = prev;
+    let idx = x_to_grid_index(plot_pt.x, frame.x_axis.len());
+    let next_v = if erase {
+        0.0
+    } else {
+        (plot_pt.y / POTENTIAL_DISPLAY_SCALE).clamp(MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL)
+    };
+    let mode = tool.brush_kit.mode;
+    if !erase && matches!(mode, BrushMode::PotentialWell | BrushMode::PotentialStep | BrushMode::Erase) {
+        let x0 = frame.x_axis.get(last_idx).copied().unwrap_or(plot_pt.x);
+        let stroke = BrushStroke {
+            start: [x0, plot_pt.y],
+            end: [plot_pt.x, plot_pt.y],
+            radius: tool.brush_kit.radius,
+            mode,
+            drag_vector: [plot_pt.x - x0, 0.0],
+        };
+        tool.apply_ui_brush_stroke(stroke, Some(egui_ctx));
+    } else {
+        tool.apply_sculpt_stroke(&frame.potential, last_idx, last_v, idx, next_v);
+        egui_ctx.request_repaint();
+    }
+    (idx, next_v)
+}
+
 fn handle_pointer_interactions(
     plot_ui: &egui_plot::PlotUi<'_>,
     egui_ctx: &egui::Context,
@@ -278,82 +312,31 @@ fn handle_pointer_interactions(
     }
     let Some(screen_pos) = pos_opt else { return };
     let plot_pt = plot_ui.plot_from_screen(screen_pos);
-    let emitter = (tool.x0, tool.k0, tool.sigma);
     if matches!(state.drag, ActiveCanvasDrag::None) && plot_ui.response().rect.contains(screen_pos)
     {
         if s_down {
             plot_ui.response().request_focus();
             let idx = x_to_grid_index(plot_pt.x, frame.x_axis.len());
             state.reticle_idx = idx;
-            state.drag = ActiveCanvasDrag::Sculpt {
-                last_idx: idx,
-                last_v: 0.0,
-                erase: true,
-            };
+            state.drag = ActiveCanvasDrag::Sculpt { last_idx: idx, last_v: 0.0, erase: true };
         } else if pressed {
             plot_ui.response().request_focus();
+            let emitter = (tool.x0, tool.k0, tool.sigma);
             state.drag = pick_pointer_drag_target(plot_ui, screen_pos, emitter, frame.x_axis.len());
         }
     }
     match state.drag {
-        ActiveCanvasDrag::Sculpt {
-            last_idx,
-            last_v,
-            erase,
-        } => {
-            let idx = x_to_grid_index(plot_pt.x, frame.x_axis.len());
-            let next_v = if erase {
-                0.0
-            } else {
-                (plot_pt.y / POTENTIAL_DISPLAY_SCALE)
-                    .clamp(MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL)
-            };
+        ActiveCanvasDrag::Sculpt { last_idx, last_v, erase } => {
+            let (idx, next_v) =
+                dispatch_sculpt_drag(egui_ctx, tool, frame, plot_pt, (last_idx, last_v, erase));
             state.reticle_idx = idx;
-            tool.apply_sculpt_stroke(&frame.potential, last_idx, last_v, idx, next_v);
-            state.drag = ActiveCanvasDrag::Sculpt {
-                last_idx: idx,
-                last_v: next_v,
-                erase,
-            };
-            egui_ctx.request_repaint();
+            state.drag = ActiveCanvasDrag::Sculpt { last_idx: idx, last_v: next_v, erase };
         }
-        ActiveCanvasDrag::EmitterX0
-        | ActiveCanvasDrag::EmitterK0
-        | ActiveCanvasDrag::EmitterSigma => {
+        ActiveCanvasDrag::EmitterX0 | ActiveCanvasDrag::EmitterK0 | ActiveCanvasDrag::EmitterSigma => {
             let _ = apply_emitter_drag(tool, state.drag, plot_pt.x, Some(egui_ctx));
         }
         ActiveCanvasDrag::None => {}
     }
-}
-
-fn consume_reticle_key_deltas(egui_ctx: &egui::Context) -> (isize, f64, bool) {
-    egui_ctx.input_mut(|i| {
-        let mut dx: isize = 0;
-        let mut dv: f64 = 0.0;
-        for (mods, key, step) in [
-            (egui::Modifiers::SHIFT, egui::Key::ArrowLeft, -5),
-            (egui::Modifiers::NONE, egui::Key::ArrowLeft, -1),
-            (egui::Modifiers::SHIFT, egui::Key::ArrowRight, 5),
-            (egui::Modifiers::NONE, egui::Key::ArrowRight, 1),
-        ] {
-            if dx == 0 && i.consume_key(mods, key) {
-                dx = step;
-            }
-        }
-        for (mods, key, step) in [
-            (egui::Modifiers::SHIFT, egui::Key::ArrowUp, 5.0),
-            (egui::Modifiers::NONE, egui::Key::ArrowUp, 2.0),
-            (egui::Modifiers::SHIFT, egui::Key::ArrowDown, -5.0),
-            (egui::Modifiers::NONE, egui::Key::ArrowDown, -2.0),
-        ] {
-            if dv == 0.0 && i.consume_key(mods, key) {
-                dv = step;
-            }
-        }
-        let clear = i.consume_key(egui::Modifiers::NONE, egui::Key::Delete)
-            || i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace);
-        (dx, dv, clear)
-    })
 }
 
 fn handle_reticle_keyboard(
@@ -449,6 +432,7 @@ pub(super) fn render_wave_central_panel(tool: &mut WaveSimulatorTool, parent_ui:
             .data_mut(|d| d.get_temp::<QuantumCanvasState>(state_id))
             .unwrap_or_default();
         let egui_ctx = ui.ctx().clone();
+        let allow_pan = !tool.brush_kit.is_sculpting();
         let mut pending_announcement = None;
 
         let plot_resp = Plot::new("quantum_plot")
@@ -456,7 +440,8 @@ pub(super) fn render_wave_central_panel(tool: &mut WaveSimulatorTool, parent_ui:
             .x_axis_label("Position (x)")
             .y_axis_label("Probability Density |ψ|² / Scaled Energy")
             .view_aspect(2.0)
-            .allow_drag(false)
+            .allow_drag(allow_pan)
+            .allow_zoom(allow_pan)
             .allow_boxed_zoom(false)
             .show(ui, |plot_ui| {
                 let focused = plot_ui.response().has_focus();
@@ -464,7 +449,11 @@ pub(super) fn render_wave_central_panel(tool: &mut WaveSimulatorTool, parent_ui:
                     pending_announcement =
                         handle_reticle_keyboard(&egui_ctx, tool, &frame, &mut state);
                 }
-                handle_pointer_interactions(plot_ui, &egui_ctx, tool, &frame, &mut state);
+                if !allow_pan {
+                    handle_pointer_interactions(plot_ui, &egui_ctx, tool, &frame, &mut state);
+                } else {
+                    state.drag = ActiveCanvasDrag::None;
+                }
                 draw_wave_curves(plot_ui, &frame, &palette);
                 draw_emitter_and_reticle_overlays(
                     plot_ui,

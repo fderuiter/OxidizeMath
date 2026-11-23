@@ -1,13 +1,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::persistence::{build_formula_bar, UnifiedExtendedState};
+use super::sculpt::{validate_rle_mask_entries, validate_sparse_potential_entries};
 use super::{UnifiedModel, UnifiedSimTool};
+use crate::async_sim::SculptStatePayload;
 use crate::framework::InteractiveTool;
 use crate::url_state::quantize_bounded_url_series;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 
-type ParsedToolState = (HashMap<String, f64>, HashMap<String, Vec<f64>>);
+struct ParsedFlatState {
+    scalars: HashMap<String, f64>,
+    series: HashMap<String, Vec<f64>>,
+    sculpt: SculptStatePayload,
+}
 
 fn validate_custom_series_entry<M: UnifiedModel>(
     key: &str,
@@ -56,18 +62,31 @@ fn collect_quantized_series<M: UnifiedModel>(
     Some(out)
 }
 
-fn serialize_flat_or_series_map(
+fn serialize_flat_state_map(
     params: &HashMap<String, f64>,
+    sculpt: &SculptStatePayload,
     quantized_series: BTreeMap<String, Vec<f64>>,
 ) -> Option<String> {
-    if quantized_series.is_empty() {
+    if quantized_series.is_empty() && sculpt.is_empty() {
         let sorted: BTreeMap<&String, &f64> = params.iter().collect();
         return serde_json::to_string(&sorted).ok();
     }
     let mut map = serde_json::Map::new();
     let sorted_params: BTreeMap<&String, &f64> = params.iter().collect();
     for (k, &v) in sorted_params {
-        map.insert(k.clone(), serde_json::Value::from(v));
+        if let Some(num) = serde_json::Number::from_f64(v) {
+            map.insert(k.clone(), serde_json::Value::Number(num));
+        }
+    }
+    if !sculpt.rle_mask.is_empty() {
+        if let Ok(val) = serde_json::to_value(&sculpt.rle_mask) {
+            map.insert("rle_mask".to_string(), val);
+        }
+    }
+    if !sculpt.sparse_potential.is_empty() {
+        if let Ok(val) = serde_json::to_value(&sculpt.sparse_potential) {
+            map.insert("sparse_potential".to_string(), val);
+        }
     }
     for (key, quantized) in quantized_series {
         let json_arr = quantized.into_iter().map(serde_json::Value::from).collect();
@@ -98,6 +117,7 @@ fn validate_extended_series_map<M: UnifiedModel>(
 impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(super) fn compute_state_revision(&self) -> u64 {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
         let series = self.custom_series.read().unwrap_or_else(|e| e.into_inner());
         let mut h = std::collections::hash_map::DefaultHasher::new();
         for (key, _) in &self.param_metadata {
@@ -106,6 +126,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 val.to_bits().hash(&mut h);
             }
         }
+        sculpt.hash_into(&mut h);
         if let Some(ext) = &self.ui_extension {
             ext.state_revision_salt().hash(&mut h);
         }
@@ -134,6 +155,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     pub(super) fn check_finite_parameters(&self) -> bool {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
         let series = self.custom_series.read().unwrap_or_else(|e| e.into_inner());
         let formula_ok = self
             .formula_bar
@@ -141,6 +163,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .is_none_or(|b| b.param_slice().iter().all(|v| v.is_finite()));
         params.values().all(|v| v.is_finite())
             && formula_ok
+            && sculpt.sparse_potential.iter().all(|&(_, v)| v.is_finite())
             && series.values().all(|vec| vec.iter().all(|v| v.is_finite()))
             && !matches!(
                 self.controller.state(),
@@ -155,6 +178,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 return Some(custom);
             }
         }
+        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
         let series = self.custom_series.read().unwrap_or_else(|e| e.into_inner());
         let quantized_series = collect_quantized_series::<M>(&series)?;
         let formula_ext =
@@ -195,13 +219,15 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 custom_expr,
                 custom_params,
                 custom_series: quantized_series,
+                rle_mask: sculpt.rle_mask.clone(),
+                sparse_potential: sculpt.sparse_potential.clone(),
                 atlas_visible,
                 atlas_axes,
             })
             .ok();
         }
 
-        serialize_flat_or_series_map(&params, quantized_series)
+        serialize_flat_state_map(&params, &sculpt, quantized_series)
     }
 
     fn validate_scalar_param_map(&self, params: &BTreeMap<String, f64>) -> Result<(), String> {
@@ -227,20 +253,46 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Ok(())
     }
 
-    fn apply_loaded_scalars_and_series(
+    fn validate_sculpt_for_extended_state(
+        &self,
+        rle_mask: &[[u32; 2]],
+        sparse_potential: &[(u16, f64)],
+    ) -> Result<(), String> {
+        if !rle_mask.is_empty() {
+            if !(M::supports_spatial_brush() && M::is_raster_model()) {
+                return Err(format!("{} does not support rle_mask state", M::name()));
+            }
+            validate_rle_mask_entries(rle_mask)?;
+        }
+        if !sparse_potential.is_empty() {
+            if !(M::supports_spatial_brush() && !M::is_raster_model()) {
+                return Err(format!(
+                    "{} does not support sparse_potential state",
+                    M::name()
+                ));
+            }
+            validate_sparse_potential_entries(sparse_potential, M::name())?;
+        }
+        Ok(())
+    }
+
+    fn apply_loaded_state_buffers(
         &mut self,
         parsed_scalars: &HashMap<String, f64>,
         parsed_series: HashMap<String, Vec<f64>>,
+        parsed_sculpt: SculptStatePayload,
     ) {
-        let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-        for (key, value) in parsed_scalars {
-            guard.insert(key.clone(), *value);
+        {
+            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
+            for (key, value) in parsed_scalars {
+                guard.insert(key.clone(), *value);
+            }
         }
-        drop(guard);
         *self
             .custom_series
             .write()
             .unwrap_or_else(|e| e.into_inner()) = parsed_series;
+        *self.sculpt_state.write().unwrap_or_else(|e| e.into_inner()) = parsed_sculpt;
     }
 
     fn apply_extended_state(&mut self, ext: UnifiedExtendedState) -> Result<(), String> {
@@ -266,10 +318,18 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 M::name()
             ));
         }
+        self.validate_sculpt_for_extended_state(&ext.rle_mask, &ext.sparse_potential)?;
         let parsed_series = validate_extended_series_map::<M>(&ext.custom_series)?;
         self.apply_parsed_atlas_state(Some((ext.atlas_visible, ext.atlas_axes)))?;
         let scalar_map: HashMap<String, f64> = ext.params.into_iter().collect();
-        self.apply_loaded_scalars_and_series(&scalar_map, parsed_series);
+        self.apply_loaded_state_buffers(
+            &scalar_map,
+            parsed_series,
+            SculptStatePayload {
+                rle_mask: ext.rle_mask,
+                sparse_potential: ext.sparse_potential,
+            },
+        );
         if let Some(spec) = M::formula_spec() {
             if let Some(expr) = ext.custom_expr {
                 let bar = self
@@ -284,40 +344,50 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
         self.texture = None;
-        self.reset_simulation(None);
+        self.respawn_preserving_sculpt(None);
         Ok(())
     }
 
     fn parse_state_map_entries(
         &self,
         raw_map: &serde_json::Map<String, serde_json::Value>,
-    ) -> Result<ParsedToolState, String> {
-        let mut parsed_scalars = HashMap::new();
-        let mut parsed_series = HashMap::new();
+    ) -> Result<ParsedFlatState, String> {
+        let mut scalars = HashMap::new();
+        let mut series = HashMap::new();
+        let mut sculpt = SculptStatePayload::default();
         for (key, value) in raw_map {
-            if self.param_metadata.iter().any(|meta| &meta.0 == key) {
-                let num = value.as_f64().ok_or_else(|| {
+            if key == "rle_mask" && M::supports_spatial_brush() && M::is_raster_model() {
+                sculpt.rle_mask = serde_json::from_value(value.clone())
+                    .map_err(|e| format!("Invalid rle_mask in {}: {e}", M::name()))?;
+                validate_rle_mask_entries(&sculpt.rle_mask)?;
+            } else if key == "sparse_potential"
+                && M::supports_spatial_brush()
+                && !M::is_raster_model()
+            {
+                sculpt.sparse_potential = serde_json::from_value(value.clone())
+                    .map_err(|e| format!("Invalid sparse_potential in {}: {e}", M::name()))?;
+                validate_sparse_potential_entries(&sculpt.sparse_potential, M::name())?;
+            } else if self.param_metadata.iter().any(|meta| &meta.0 == key) {
+                let num = value.as_f64().filter(|n| n.is_finite()).ok_or_else(|| {
                     format!(
-                        "Invalid numeric value for parameter '{key}' in {}",
+                        "Non-finite or non-numeric value for parameter '{key}' in {}",
                         M::name()
                     )
                 })?;
-                if !num.is_finite() {
-                    return Err(format!(
-                        "Non-finite value for parameter '{key}' in {}",
-                        M::name()
-                    ));
-                }
-                parsed_scalars.insert(key.clone(), num);
+                scalars.insert(key.clone(), num);
             } else if let Some(series_vec) = validate_custom_series_entry::<M>(key, value)? {
                 if !series_vec.is_empty() {
-                    parsed_series.insert(key.clone(), series_vec);
+                    series.insert(key.clone(), series_vec);
                 }
             } else {
                 return Err(format!("Unknown parameter '{key}' for {}", M::name()));
             }
         }
-        Ok((parsed_scalars, parsed_series))
+        Ok(ParsedFlatState {
+            scalars,
+            series,
+            sculpt,
+        })
     }
 
     fn try_load_extension_state(&mut self, state: &str) -> Option<Result<(), String>> {
@@ -347,6 +417,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             || raw_map.contains_key("custom_expr")
             || raw_map.contains_key("custom_formula_enabled")
             || raw_map.contains_key("custom_params")
+            || raw_map.contains_key("custom_series")
             || raw_map.contains_key("atlas_visible")
             || raw_map.contains_key("atlas_axes");
         if is_extended_envelope {
@@ -354,7 +425,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 .map_err(|e| format!("Invalid extended simulation state for {}: {e}", M::name()))?;
             return self.apply_extended_state(ext);
         }
-        if !self.param_metadata.is_empty() && raw_map.is_empty() {
+        let parsed = self.parse_state_map_entries(&raw_map)?;
+        if !self.param_metadata.is_empty()
+            && parsed.scalars.is_empty()
+            && parsed.series.is_empty()
+            && parsed.sculpt.is_empty()
+        {
             let expected: Vec<&str> = self.param_metadata.iter().map(|m| m.0.as_str()).collect();
             return Err(format!(
                 "Empty parameter configuration for {}; expected parameters: {}",
@@ -363,12 +439,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ));
         }
 
-        let (parsed_scalars, parsed_series) = self.parse_state_map_entries(&raw_map)?;
         self.apply_parsed_atlas_state(None)?;
-        self.apply_loaded_scalars_and_series(&parsed_scalars, parsed_series);
+        self.apply_loaded_state_buffers(&parsed.scalars, parsed.series, parsed.sculpt);
         self.reset_formula_bar_to_default();
         self.texture = None;
-        self.reset_simulation(None);
+        self.respawn_preserving_sculpt(None);
         Ok(())
     }
 }

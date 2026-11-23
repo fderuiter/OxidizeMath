@@ -2,11 +2,12 @@
 
 use super::persistence::build_formula_bar;
 use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimRunner, UnifiedUiExtension};
-use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
+use crate::async_sim::{
+    BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState, StateSnapshot,
+};
 use crate::framework::{
-    CalloutManager, ChallengeEvaluation, InteractiveTool, MathExpressionInputBar, PlaybackAction,
-    PlaybackTransport,
+    BrushStroke, CalloutManager, ChallengeEvaluation, InteractionContext, InteractiveTool,
+    MathExpressionInputBar, SpatialBrushKit,
 };
 use eframe::egui::{self, ColorImage};
 use scientific_metadata::theory::ParameterConstraint;
@@ -17,13 +18,15 @@ use std::sync::{Arc, RwLock};
 pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) controller: BackgroundWorker<UnifiedSimRunner<M>>,
     pub(crate) params: Arc<RwLock<HashMap<String, f64>>>,
+    pub(crate) sculpt_state: Arc<RwLock<SculptStatePayload>>,
+    pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) custom_series: Arc<RwLock<HashMap<String, Vec<f64>>>>,
     pub(crate) shared_formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
     pub(crate) formula_bar: Option<MathExpressionInputBar>,
     pub(crate) custom_formula_enabled: bool,
     pub(super) formula_revision: u64,
     pub(super) param_metadata: Vec<(String, ParameterConstraint)>,
-    steps_per_frame: usize,
+    pub(super) steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(super) dirty: bool,
     pub(super) stepped_snapshot: Option<StateSnapshot>,
@@ -62,16 +65,18 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         let formula_bar = M::formula_spec().as_ref().map(build_formula_bar);
         let params = Arc::new(RwLock::new(initial_params.clone()));
+        let sculpt_state = Arc::new(RwLock::new(SculptStatePayload::default()));
         let custom_series = Arc::new(RwLock::new(HashMap::new()));
         let shared_formula = Arc::new(RwLock::new(None));
-        let runner = UnifiedSimRunner::<M>::with_series_and_formula(
+        let runner = UnifiedSimRunner::<M>::with_all_shared(
             Arc::clone(&params),
+            Arc::clone(&sculpt_state),
             Arc::clone(&custom_series),
             Arc::clone(&shared_formula),
         );
         let controller = BackgroundWorker::new(runner);
         let temp_model = M::new(&initial_params);
-
+        let brush_kit = M::default_brush_kit();
         let cached_param_labels = param_metadata
             .iter()
             .map(|(name, _)| M::parameter_label(name))
@@ -84,6 +89,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Self {
             controller,
             params,
+            sculpt_state,
+            brush_kit,
             custom_series,
             shared_formula,
             formula_bar,
@@ -127,6 +134,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
         self.dirty = true;
         if let Some(ext) = &self.ui_extension {
+            if M::supports_spatial_brush() {
+                let mut sculpt = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+                ext.sync_sculpt_payload(&mut sculpt);
+            }
             ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
         }
         if let Some(c) = ctx {
@@ -135,6 +146,20 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     pub(super) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
+        if self
+            .ui_extension
+            .as_ref()
+            .is_none_or(|ext| ext.active_challenge_id().is_none())
+        {
+            self.sculpt_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
+        }
+        self.respawn_preserving_sculpt(ctx);
+    }
+
+    pub(super) fn respawn_preserving_sculpt(&mut self, ctx: Option<&egui::Context>) {
         self.stepped_snapshot = None;
         if let Some(ext) = &mut self.ui_extension {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -142,10 +167,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
         }
         let params = Arc::clone(&self.params);
+        let sculpt = Arc::clone(&self.sculpt_state);
         let custom_series = Arc::clone(&self.custom_series);
         let formula = Arc::clone(&self.shared_formula);
         self.controller.reset_or_respawn(|| {
-            UnifiedSimRunner::<M>::with_series_and_formula(params, custom_series, formula)
+            UnifiedSimRunner::<M>::with_all_shared(params, sculpt, custom_series, formula)
         });
         self.dirty = true;
         if let Some(c) = ctx {
@@ -179,7 +205,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         });
     }
 
-    fn handle_recovery_action(
+    pub(super) fn handle_recovery_action(
         &mut self,
         action: crate::framework::recovery::RecoveryAction,
         ctx: Option<&egui::Context>,
@@ -238,99 +264,37 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
-    fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let state = self.controller.state();
-        if let Some(fault_action) =
-            render_worker_fault_banner(ui, state, self.controller.diagnostic_report(), true)
-        {
-            match fault_action {
-                WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters => {
-                    self.reset_simulation(Some(ctx));
-                }
-                WorkerFaultAction::Recovery(action) => {
-                    self.handle_recovery_action(action, Some(ctx));
-                }
-            }
-            ui.separator();
-        }
-
-        let state = self.controller.state();
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal(|ui| {
-            ui.label("Status:");
-            let (status_text, color) = match state {
-                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
-                SimWorkerState::Ready => ("Ready", palette.success),
-                SimWorkerState::Running => ("Running", palette.info),
-                SimWorkerState::Stepping => ("Stepping", palette.warning),
-                SimWorkerState::Faulted => ("Faulted", palette.error),
-                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
-            };
-            ui.colored_label(color, status_text);
-        });
-        ui.separator();
-
-        if let Some(action) =
-            PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
-                .can_reset(true)
-                .show(ui)
-        {
-            match action {
-                PlaybackAction::Play => {
-                    let _ = self.controller.send_command(SimCommand::Start);
-                }
-                PlaybackAction::Pause => {
-                    let _ = self.controller.send_command(SimCommand::Pause);
-                }
-                PlaybackAction::Step => {
-                    let _ = self.controller.send_command(SimCommand::Step(1));
-                }
-                PlaybackAction::Reset => {
-                    self.reset_simulation(Some(ctx));
-                }
+    /// Dispatches an interpolated [`BrushStroke`] to both UI sculpt state and the background worker.
+    pub fn dispatch_brush_stroke(&mut self, stroke: BrushStroke, ctx: Option<&egui::Context>) {
+        if let Some(ext) = &mut self.ui_extension {
+            if !ext.on_brush_stroke(&stroke) {
+                return;
             }
         }
-    }
-
-    fn draw_left_panel(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        let panel_id = crate::framework::scoped_panel_id(ui, format!("{}_controls", M::name()));
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
-            ui.heading(M::name());
-            ui.separator();
-            self.draw_status_and_transport(ui, &ctx);
-            if let Some(tool_id) = M::sonification_tool_id() {
-                let worker_state = self.controller.state();
-                if matches!(worker_state, SimWorkerState::Faulted) {
-                    crate::audio::notify_solver_diverged();
-                }
-                let frame = self
-                    .stepped_snapshot
-                    .as_ref()
-                    .or_else(|| self.controller.latest_snapshot())
-                    .map_or_else(crate::audio::SonificationFrame::silent, |s| s.sonification);
-                let is_idle = !matches!(
-                    worker_state,
-                    SimWorkerState::Running | SimWorkerState::Stepping
-                ) && self.stepped_snapshot.is_none();
-                ui.separator();
-                crate::audio::render_sonification_panel(ui, tool_id, &frame, is_idle);
+        if M::supports_spatial_brush() {
+            let params_snap = self
+                .params
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            let formula_snap = self
+                .shared_formula
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            let mut sculpt = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+            M::record_ui_brush_stroke(&stroke, &params_snap, formula_snap.as_ref(), &mut sculpt);
+        }
+        if self
+            .controller
+            .send_command(SimCommand::ApplyBrushStroke(stroke))
+            .is_ok()
+        {
+            self.dirty = true;
+            if let Some(c) = ctx {
+                c.request_repaint();
             }
-            ui.separator();
-            ui.label("Simulation Constants");
-            if ui
-                .add(
-                    egui::Slider::new(&mut self.steps_per_frame, 1..=100)
-                        .text("Speed (Steps/Frame)"),
-                )
-                .changed()
-            {
-                let _ = self
-                    .controller
-                    .send_command(SimCommand::SetSpeed(self.steps_per_frame));
-            }
-            self.draw_model_parameters(ui, &ctx);
-        });
+        }
     }
 }
 
@@ -379,6 +343,12 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                     .clone();
                 model.apply_compiled_formula(payload.as_ref(), &params);
             }
+            if M::supports_spatial_brush() {
+                let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+                if !sculpt.is_empty() {
+                    model.apply_sculpt_payload(&sculpt, &params);
+                }
+            }
             if let Ok(series) = self.custom_series.read() {
                 if !series.is_empty() {
                     model.apply_custom_series(&series, &params);
@@ -389,6 +359,16 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             }
             self.stepped_snapshot = Some(model.get_snapshot());
         }
+    }
+
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(stroke) = ctx.brush_stroke {
+            self.dispatch_brush_stroke(stroke, Some(&ctx.response.ctx));
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
     }
 
     fn state_revision(&self) -> u64 {

@@ -31,6 +31,8 @@ impl WaveSimulatorTool {
                     ui.separator();
                     self.draw_wavepacket_and_barrier_sliders(ui, &ctx);
                     ui.separator();
+                    self.draw_sculpt_controls(ui, &ctx);
+                    ui.separator();
                     let is_paused = !matches!(
                         self.worker.state(),
                         SimWorkerState::Running | SimWorkerState::Stepping
@@ -123,6 +125,7 @@ impl WaveSimulatorTool {
                         .changed()
                     {
                         self.custom_potential = None;
+                        self.sparse_potential.clear();
                         reset_needed = true;
                     }
                 }
@@ -146,7 +149,7 @@ impl WaveSimulatorTool {
             }
             if ui
                 .add_enabled(
-                    self.custom_potential.is_some(),
+                    self.custom_potential.is_some() || !self.sparse_potential.is_empty(),
                     egui::Button::new("Clear Sculpted V(x)"),
                 )
                 .accessible_hover_text(
@@ -188,6 +191,7 @@ impl WaveSimulatorTool {
             if let Some(expr) = self.math_input.expr() {
                 self.last_valid_expr = expr.clone();
                 self.custom_potential = None;
+                self.sparse_potential.clear();
                 return true;
             }
         }
@@ -246,6 +250,7 @@ impl WaveSimulatorTool {
         self.draw_dt_and_energy_summary(ui);
         if barrier_changed {
             self.custom_potential = None;
+            self.sparse_potential.clear();
             self.sync_config_and_reset(Some(ctx));
         } else if packet_changed {
             self.update_wavepacket_live(self.x0, self.k0, self.sigma, Some(ctx));
@@ -270,7 +275,7 @@ impl WaveSimulatorTool {
         }
 
         let e0 = 0.5 * self.k0 * self.k0;
-        let regime = if self.custom_potential.is_some() {
+        let regime = if self.custom_potential.is_some() || !self.sparse_potential.is_empty() {
             "Freehand sculpted V(x)"
         } else if !self.preset.uses_barrier_controls() {
             "Confining potential"
@@ -330,6 +335,7 @@ impl WaveSimulatorTool {
             wave_data.p_transmitted * 100.0,
             wave_data.p_reflected * 100.0
         ));
+        ui.small(format!("Unitary Norm ||ψ||²: {:.6}", wave_data.norm_sq));
     }
 
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui) {

@@ -1,4 +1,14 @@
+use crate::framework::BrushStroke;
 use std::sync::Arc;
+
+/// Persisted spatial sculpt payload synchronized between `UnifiedSimTool` and worker models.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SculptStatePayload {
+    /// RLE `[value, run_len]` pairs for 2D raster obstacle/cell masks.
+    pub rle_mask: Vec<[u32; 2]>,
+    /// Sparse `(index, value)` deltas for 1D potentials.
+    pub sparse_potential: Vec<(u16, f64)>,
+}
 
 #[allow(missing_docs)]
 pub enum SimCommand {
@@ -45,6 +55,10 @@ pub enum SimCommand {
         /// Spatial packet width $\sigma$.
         sigma: f64,
     },
+    /// Applies a continuous spatial brush stroke emitted by `SpatialBrushKit`.
+    ApplyBrushStroke(BrushStroke),
+    /// Synchronizes persisted spatial sculpt state (`rle_mask` and `sparse_potential`) to the worker.
+    SyncSculptState(SculptStatePayload),
     #[allow(missing_docs)]
     ClearObstacles,
     #[allow(missing_docs)]
@@ -64,6 +78,8 @@ impl SimCommand {
             Self::ApplyBrush { .. } => "ApplyBrush",
             Self::SculptStroke1D { .. } => "SculptStroke1D",
             Self::SetWavepacket { .. } => "SetWavepacket",
+            Self::ApplyBrushStroke(_) => "ApplyBrushStroke",
+            Self::SyncSculptState(_) => "SyncSculptState",
             Self::ClearObstacles => "ClearObstacles",
             Self::Custom(_) => "Custom",
         }

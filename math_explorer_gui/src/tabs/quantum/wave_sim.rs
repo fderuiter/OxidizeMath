@@ -25,9 +25,13 @@ pub use presets::wave_parameter_label;
 pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
+use super::wave_sim_sculpt::default_wave_brush_kit;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::RecoveryAction;
-use crate::framework::{ExportCapabilities, InteractiveTool, MathExpressionInputBar};
+use crate::framework::{
+    ExportCapabilities, InteractionContext, InteractiveTool, MathExpressionInputBar,
+    SpatialBrushKit,
+};
 use crate::url_state::quantize_url_centi;
 use eframe::egui;
 use math_commons::ast::Expr;
@@ -58,6 +62,8 @@ pub struct WaveSimulatorTool {
     pub(crate) steps_per_frame: usize,
     pub(crate) math_input: MathExpressionInputBar,
     pub(crate) last_valid_expr: Expr,
+    pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) sparse_potential: Vec<(u16, f64)>,
     pub(crate) custom_potential: Option<Vec<f64>>,
     pub(crate) shared_config: Arc<RwLock<WaveSimConfig>>,
     pub(crate) worker: BackgroundWorker<WaveRunner>,
@@ -95,6 +101,7 @@ impl WaveSimulatorTool {
             steps_per_frame: DEFAULT_STEPS_PER_FRAME,
             custom_expr: last_valid_expr.clone(),
             custom_potential: None,
+            sparse_potential: Vec::new(),
         };
         let shared_config = Arc::new(RwLock::new(initial_cfg));
         let worker = BackgroundWorker::new(WaveRunner::new(Arc::clone(&shared_config)));
@@ -112,6 +119,8 @@ impl WaveSimulatorTool {
             steps_per_frame: DEFAULT_STEPS_PER_FRAME,
             math_input,
             last_valid_expr,
+            brush_kit: default_wave_brush_kit(),
+            sparse_potential: Vec::new(),
             custom_potential: None,
             shared_config,
             worker,
@@ -160,8 +169,10 @@ impl WaveSimulatorTool {
         for (dst, &src) in entry.iter_mut().zip(dvec.iter()) {
             *dst = quantize_url_centi(src, MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL);
         }
+        self.sparse_potential.clear();
         if let Ok(mut cfg) = self.shared_config.write() {
             cfg.custom_potential = self.custom_potential.clone();
+            cfg.sparse_potential.clear();
         }
         self.bump_revision();
         self.export_runner = None;
@@ -209,8 +220,10 @@ impl WaveSimulatorTool {
     /// Clears freehand sculpted strokes and restores the active preset or custom AST potential.
     pub fn clear_custom_potential(&mut self, ctx: Option<&egui::Context>) {
         self.custom_potential = None;
+        self.sparse_potential.clear();
         if let Ok(mut cfg) = self.shared_config.write() {
             cfg.custom_potential = None;
+            cfg.sparse_potential.clear();
         }
         self.bump_revision();
         self.export_runner = None;
@@ -231,6 +244,7 @@ impl WaveSimulatorTool {
         self.width = DEFAULT_WIDTH;
         self.dt = DEFAULT_DT;
         self.custom_potential = None;
+        self.sparse_potential.clear();
         self.sync_config_and_reset(ctx);
     }
 
@@ -250,6 +264,7 @@ impl WaveSimulatorTool {
             steps_per_frame: self.steps_per_frame,
             custom_expr: self.last_valid_expr.clone(),
             custom_potential: self.custom_potential.clone(),
+            sparse_potential: self.sparse_potential.clone(),
         };
         if let Ok(mut guard) = self.shared_config.write() {
             *guard = next_cfg;
@@ -274,6 +289,7 @@ impl WaveSimulatorTool {
         self.dt = DEFAULT_DT;
         self.steps_per_frame = DEFAULT_STEPS_PER_FRAME;
         self.custom_potential = None;
+        self.sparse_potential.clear();
         self.math_input.set_expression(DEFAULT_CUSTOM_EXPR);
         if let Some(expr) = self.math_input.expr() {
             self.last_valid_expr = expr.clone();
@@ -318,6 +334,10 @@ impl InteractiveTool for WaveSimulatorTool {
 
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
+    }
+
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        self.apply_ui_brush_context(ctx);
     }
 
     fn step_simulation(&mut self) {
@@ -453,7 +473,7 @@ inventory::submit! {
         id: "WaveSimulator",
         display_name: "Wave Simulator",
         domain: "quantum",
-        tags: &["tunneling", "sculpting", "schrodinger", "wavepacket"],
+        tags: &["tunneling", "sculpting", "schrodinger", "wavepacket", "sculpt"],
         build: || Box::new(WaveSimulatorTool::new()),
     }
 }

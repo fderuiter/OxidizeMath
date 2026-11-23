@@ -1,7 +1,7 @@
-# ADR 0045: 1D Quantum Potential Sculpting, Resonant Presets, and Zero-Allocation Region Probabilities
+# ADR 0046: 1D Quantum Potential Sculpting, Resonant Presets, and Zero-Allocation Region Probabilities
 
 ## Status
-Accepted (extends [ADR 0027](0027-precompute-quantum-propagators-inplace-evolution.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
+Accepted (extends [ADR 0027](0027-precompute-quantum-propagators-inplace-evolution.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))
 
 ## Context
 1. [`crates/domain_physics/src/physics/quantum/hamiltonian.rs`](../../crates/domain_physics/src/physics/quantum/hamiltonian.rs) exposed `construct_1d_hamiltonian` and `gaussian_wavepacket`, while the GUI wavepacket sandbox lacked interactive freehand potential-brush sculpting, draggable wavepacket emitter handles, and centi-quantized 200-point URL state persistence.

@@ -5,12 +5,15 @@ use super::presets::{
     barrier_interval_for_preset, clamp_wavepacket_params, detect_barrier_index,
     evaluate_potential_grid, DEFAULT_DT, GRID_POINTS, GRID_X_MAX, GRID_X_MIN,
 };
+use super::super::wave_sim_sculpt::detect_sculpted_interval;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::framework::apply_sparse_potential;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_explorer::physics::quantum::{
-    apply_bresenham_potential_stroke, construct_1d_hamiltonian, evolve_state_in_place,
-    gaussian_wavepacket, partition_region_probabilities, time_evolution_operator, QuantumOperator,
-    QuantumState, MAX_SCULPT_POTENTIAL, MIN_SCULPT_POTENTIAL,
+    construct_1d_hamiltonian, construct_1d_hamiltonian_into, evolve_state_in_place,
+    gaussian_wavepacket, partition_region_probabilities, state_norm_squared,
+    time_evolution_operator, QuantumOperator, QuantumState, MAX_SCULPT_POTENTIAL,
+    MIN_SCULPT_POTENTIAL,
 };
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
@@ -23,7 +26,7 @@ pub use super::observables::{
 
 /// Background worker runner evolving the 1D time-dependent Schrödinger equation with zero per-step allocations.
 pub struct WaveRunner {
-    config: Arc<RwLock<WaveSimConfig>>,
+    pub(crate) config: Arc<RwLock<WaveSimConfig>>,
     pub(crate) psi: QuantumState,
     pub(crate) hamiltonian: QuantumOperator,
     pub(crate) propagator: QuantumOperator,
@@ -32,6 +35,7 @@ pub struct WaveRunner {
     pub(crate) propagator_rebuilds: usize,
     pub(crate) scratch: DVector<Complex<f64>>,
     pub(crate) potential: DVector<f64>,
+    pub(crate) base_potential: Vec<f64>,
     pub(crate) x_axis: Vec<f64>,
     pub(crate) x_left: f64,
     pub(crate) x_right: f64,
@@ -52,7 +56,7 @@ pub struct WaveRunner {
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
-    prev_mode_phases: [f64; 8],
+    pub(crate) prev_mode_phases: [f64; 8],
     sonification: crate::audio::SonificationFrame,
 }
 
@@ -71,6 +75,7 @@ impl WaveRunner {
             propagator_rebuilds: 0,
             scratch: DVector::from_element(GRID_POINTS, Complex::new(0.0, 0.0)),
             potential: DVector::zeros(GRID_POINTS),
+            base_potential: vec![0.0; GRID_POINTS],
             x_axis: Vec::new(),
             x_left: -0.25,
             x_right: 0.25,
@@ -106,15 +111,25 @@ impl WaveRunner {
         }
     }
 
+    pub(crate) fn reset_scatter_latch(&mut self) {
+        self.latch = ScatterLatchState::default();
+    }
+
     /// Rebuilds the spatial grid, clamped potential, Hamiltonian, and initial Gaussian wavepacket.
     pub fn init_from_config(&mut self, cfg: &WaveSimConfig) {
         let n = self.n_points.max(2);
         let dx = (self.x_max - self.x_min) / (n as f64 - 1.0);
         self.x_axis = (0..n).map(|i| self.x_min + i as f64 * dx).collect();
         (self.x_left, self.x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
-        let expr = &cfg.custom_expr;
-        self.potential =
-            evaluate_potential_grid(cfg.preset, &self.x_axis, cfg.v0, cfg.width, dx, expr);
+        self.potential = evaluate_potential_grid(
+            cfg.preset,
+            &self.x_axis,
+            cfg.v0,
+            cfg.width,
+            dx,
+            &cfg.custom_expr,
+        );
+        self.base_potential = self.potential.as_slice().to_vec();
         if let Some(ref sculpted) = cfg.custom_potential {
             if sculpted.len() == n {
                 for (i, &v) in sculpted.iter().enumerate() {
@@ -123,6 +138,15 @@ impl WaveRunner {
                     }
                 }
             }
+        }
+        if !cfg.sparse_potential.is_empty() {
+            let _ = apply_sparse_potential(self.potential.as_mut_slice(), &cfg.sparse_potential);
+        }
+        if let Some((xl, xr)) =
+            detect_sculpted_interval(self.potential.as_slice(), &self.base_potential, &self.x_axis)
+        {
+            self.x_left = xl;
+            self.x_right = xr;
         }
         self.barrier_idx = detect_barrier_index(&self.potential);
         self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
@@ -145,7 +169,7 @@ impl WaveRunner {
         self.refresh_sonification(cfg.dt);
     }
 
-    fn refresh_sonification(&mut self, dt: f64) {
+    pub(crate) fn refresh_sonification(&mut self, dt: f64) {
         let modes = self.psi.project_spatial_modes::<8>();
         self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
             &modes,
@@ -156,7 +180,13 @@ impl WaveRunner {
 
     pub(crate) fn refresh_propagator(&mut self, dt: f64) {
         if self.hamiltonian_dirty {
-            self.hamiltonian = construct_1d_hamiltonian(&self.potential, self.grid_dx(), 1.0, 1.0);
+            construct_1d_hamiltonian_into(
+                &self.potential,
+                self.grid_dx(),
+                1.0,
+                1.0,
+                &mut self.hamiltonian,
+            );
             self.hamiltonian_dirty = false;
             self.cached_dt = None;
         }
@@ -168,7 +198,7 @@ impl WaveRunner {
     }
 
     /// Updates Born R/B/T integrals, two-region partition, and `T_scatter` latch with zero heap allocations.
-    fn update_observables_in_place(&mut self) {
+    pub(crate) fn update_observables_in_place(&mut self) {
         let obs = compute_tunneling_from_psi(&self.x_axis, &self.psi, self.x_left, self.x_right);
         let prev = self.observables;
         self.observables = obs;
@@ -178,49 +208,6 @@ impl WaveRunner {
         let classical_past_barrier = (self.x0 + self.k0 * self.time) > (self.x_right + self.sigma);
         self.latch
             .update(self.time, classical_past_barrier, prev, obs);
-    }
-
-    fn apply_brush_stroke(&mut self, cx: i32, cy: i32, r: i32, is_obstacle: bool) {
-        if self.n_points == 0 {
-            return;
-        }
-        let radius = r.max(0);
-        let last = (self.n_points - 1) as i32;
-        let i0 = (cx - radius).clamp(0, last) as usize;
-        let i1 = (cx + radius).clamp(0, last) as usize;
-        let v = if !is_obstacle {
-            0.0
-        } else if cy == 0 {
-            14.0
-        } else {
-            f64::from(cy).clamp(MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL)
-        };
-        apply_bresenham_potential_stroke(&mut self.potential, i0, v, i1, v);
-        self.barrier_idx = detect_barrier_index(&self.potential);
-        self.hamiltonian_dirty = true;
-        self.cached_dt = None;
-        self.update_observables_in_place();
-    }
-
-    fn restore_base_potential(&mut self) {
-        let cfg = self
-            .config
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let dx = self.grid_dx();
-        self.potential = evaluate_potential_grid(
-            cfg.preset,
-            &self.x_axis,
-            cfg.v0,
-            cfg.width,
-            dx,
-            &cfg.custom_expr,
-        );
-        self.barrier_idx = detect_barrier_index(&self.potential);
-        self.hamiltonian_dirty = true;
-        self.cached_dt = None;
-        self.update_observables_in_place();
     }
 
     /// Advances the quantum state by an explicit `dt` step.
@@ -314,6 +301,7 @@ impl WaveRunner {
             p_transmitted,
             p_reflected,
             barrier_idx: self.barrier_idx,
+            norm_sq: state_norm_squared(&self.psi),
         }
     }
 
@@ -322,31 +310,6 @@ impl WaveRunner {
     #[must_use]
     pub fn latched_transmission(&self) -> Option<f64> {
         self.latch.latched_transmission
-    }
-}
-
-impl FiniteStateGuard for WaveRunner {
-    fn is_finite_state(&self) -> bool {
-        !self.diverged
-            && self
-                .psi
-                .vector
-                .iter()
-                .all(|c| c.re.is_finite() && c.im.is_finite())
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.diagnostic_report.as_ref()
-    }
-
-    fn diverged(&self) -> bool {
-        self.diverged || !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn reset_parameters(&mut self) {
-        self.diverged = false;
-        self.diagnostic_report = None;
-        self.step_count = 0;
     }
 }
 
@@ -367,19 +330,6 @@ impl SimulationRunner for WaveRunner {
             SimCommand::SetSpeed(speed) => {
                 self.steps_per_frame = speed.max(1);
             }
-            SimCommand::SculptStroke1D { i0, v0, i1, v1 } if v0.is_finite() && v1.is_finite() => {
-                apply_bresenham_potential_stroke(&mut self.potential, i0, v0, i1, v1);
-                self.barrier_idx = detect_barrier_index(&self.potential);
-                self.hamiltonian_dirty = true;
-                self.cached_dt = None;
-                self.update_observables_in_place();
-            }
-            SimCommand::ApplyBrush {
-                cx,
-                cy,
-                r,
-                is_obstacle,
-            } => self.apply_brush_stroke(cx, cy, r, is_obstacle),
             SimCommand::SetWavepacket { x0, k0, sigma } => {
                 let (sx0, sk0, ssigma) = clamp_wavepacket_params(x0, k0, sigma);
                 self.x0 = sx0;
@@ -397,11 +347,7 @@ impl SimulationRunner for WaveRunner {
                 let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
                 self.refresh_sonification(dt);
             }
-            SimCommand::ClearObstacles => self.restore_base_potential(),
-            SimCommand::Custom(ref action) if action == "Reset Potential" => {
-                self.restore_base_potential();
-            }
-            _ => {}
+            other => self.handle_sculpt_command(other),
         }
     }
 

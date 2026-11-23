@@ -4,7 +4,8 @@ use super::presets::{
     WavePotentialPreset, DEFAULT_CUSTOM_EXPR, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA,
     DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, DT_MAX, DT_MIN,
     DT_RECOVERY_MIN, GRID_POINTS, K0_MAX, K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME,
-    SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN, X0_MAX, X0_MIN,
+    POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN, SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX,
+    WIDTH_MIN, X0_MAX, X0_MIN,
 };
 use super::WaveSimulatorTool;
 use crate::async_sim::SimWorkerState;
@@ -63,6 +64,8 @@ struct WaveSimStateRef<'a> {
     custom_expr: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     custom_potential: Option<&'a [f64]>,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    sparse_potential: &'a [(u16, f64)],
 }
 
 #[derive(serde::Deserialize)]
@@ -90,6 +93,8 @@ struct WaveSimState {
     custom_expr: String,
     #[serde(default)]
     custom_potential: Option<Vec<f64>>,
+    #[serde(default)]
+    sparse_potential: Vec<(u16, f64)>,
 }
 
 impl WaveSimState {
@@ -142,6 +147,15 @@ impl WaveSimState {
             )?),
             _ => None,
         };
+        if self.sparse_potential.len() > GRID_POINTS
+            || self.sparse_potential.iter().any(|&(idx, val)| {
+                usize::from(idx) >= GRID_POINTS
+                    || !val.is_finite()
+                    || !(POTENTIAL_CLAMP_MIN..=POTENTIAL_CLAMP_MAX).contains(&val)
+            })
+        {
+            return Err("WaveSimulator sparse_potential contains invalid entries".to_string());
+        }
         Ok((preset, quantized_potential))
     }
 }
@@ -165,6 +179,10 @@ impl WaveSimulatorTool {
                 v.to_bits().hash(&mut hasher);
             }
         }
+        for &(idx, val) in &self.sparse_potential {
+            idx.hash(&mut hasher);
+            val.to_bits().hash(&mut hasher);
+        }
         hasher.finish().max(1)
     }
 
@@ -187,6 +205,12 @@ impl WaveSimulatorTool {
             && (1..=MAX_STEPS_PER_FRAME).contains(&self.steps_per_frame)
             && self.math_input.raw_text.len() <= MAX_CUSTOM_EXPR_BYTES
             && custom_ok
+            && self.sparse_potential.len() <= GRID_POINTS
+            && self.sparse_potential.iter().all(|&(idx, val)| {
+                usize::from(idx) < GRID_POINTS
+                    && val.is_finite()
+                    && (POTENTIAL_CLAMP_MIN..=POTENTIAL_CLAMP_MAX).contains(&val)
+            })
             && self.worker.state() != SimWorkerState::Faulted
     }
 
@@ -215,6 +239,7 @@ impl WaveSimulatorTool {
             steps_per_frame: self.steps_per_frame,
             custom_expr: bounded_expr,
             custom_potential: quantized.as_deref(),
+            sparse_potential: &self.sparse_potential,
         })
         .ok()
     }
@@ -233,6 +258,7 @@ impl WaveSimulatorTool {
         self.dt = parsed.dt;
         self.steps_per_frame = parsed.steps_per_frame;
         self.custom_potential = quantized_potential;
+        self.sparse_potential = parsed.sparse_potential;
         self.math_input.set_expression(&parsed.custom_expr);
         if let Some(expr) = self.math_input.expr() {
             self.last_valid_expr = expr.clone();
@@ -290,6 +316,11 @@ impl WaveSimulatorTool {
         };
         self.steps_per_frame = self.steps_per_frame.clamp(1, MAX_STEPS_PER_FRAME);
         self.sanitize_custom_potential();
+        self.sparse_potential
+            .retain(|&(idx, val)| usize::from(idx) < GRID_POINTS && val.is_finite());
+        for (_, val) in &mut self.sparse_potential {
+            *val = val.clamp(POTENTIAL_CLAMP_MIN, POTENTIAL_CLAMP_MAX);
+        }
         if self.math_input.raw_text.len() > MAX_CUSTOM_EXPR_BYTES {
             let truncated =
                 truncate_utf8_bytes(&self.math_input.raw_text, MAX_CUSTOM_EXPR_BYTES).to_string();

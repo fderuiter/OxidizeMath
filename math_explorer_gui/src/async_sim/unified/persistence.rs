@@ -17,6 +17,10 @@ pub(super) struct UnifiedExtendedState {
     pub(super) custom_params: BTreeMap<String, f64>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(super) custom_series: BTreeMap<String, Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) rle_mask: Vec<[u32; 2]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) sparse_potential: Vec<(u16, f64)>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(super) atlas_visible: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]

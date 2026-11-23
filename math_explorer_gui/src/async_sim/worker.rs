@@ -102,6 +102,8 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
         SimCommand::ApplyBrush { .. }
         | SimCommand::SculptStroke1D { .. }
         | SimCommand::SetWavepacket { .. }
+        | SimCommand::ApplyBrushStroke(_)
+        | SimCommand::SyncSculptState(_)
         | SimCommand::ClearObstacles
         | SimCommand::Custom(_) => {
             runner.process_command(cmd);
