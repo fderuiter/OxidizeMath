@@ -35,6 +35,7 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::financial_math::market_execution::MarketExecutionTool,
         >(&ctx);
+        exercise_interactive_tool::<crate::tabs::game_theory::auction::MyersonAuctionTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(
             &ctx,

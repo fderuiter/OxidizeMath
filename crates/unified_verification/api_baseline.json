@@ -2478,6 +2478,12 @@
   ],
   "crates/domain_applied/src/applied/game_theory/equilibrium.rs": [
     {
+      "signature": "impl < F : Fn (f64) -> f64 > ScalarBestResponse < F > { pub fn is_scalar_in_image (& self , _ : f64 , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl < F : Fn (f64) -> f64 > ScalarBestResponse < F > { pub fn new (_ : F , _ : f64) -> Self }"
+    },
+    {
       "signature": "impl BoxSet { pub fn new (_ : Vec < f64 > , _ : Vec < f64 >) -> Self }"
     },
     {
@@ -2491,6 +2497,9 @@
     },
     {
       "signature": "pub struct BoxSet"
+    },
+    {
+      "signature": "pub struct ScalarBestResponse < F >"
     },
     {
       "signature": "pub trait ConvexSet"
@@ -8520,6 +8529,9 @@
       "signature": "impl SpinLattice { pub fn evolve_fermi_game (& mut self , _ : usize , _ : f64 , _ : & MatrixPayoff) }"
     },
     {
+      "signature": "impl SpinLattice { pub fn evolve_fermi_game_with_mutation (& mut self , _ : usize , _ : f64 , _ : & MatrixPayoff , _ : f64 ,) }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn get (& self , _ : usize , _ : usize) -> i8 }"
     },
     {
@@ -8544,10 +8556,16 @@
       "signature": "impl SpinLattice { pub fn reseed (& mut self , _ : u64) }"
     },
     {
+      "signature": "impl SpinLattice { pub fn reset_uniform_with_seed (& mut self , _ : i8 , _ : u64) }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn set (& mut self , _ : usize , _ : usize , _ : i8) }"
     },
     {
       "signature": "impl SpinLattice { pub fn spins (& self) -> & [i8] }"
+    },
+    {
+      "signature": "impl SpinLattice { pub fn staggered_magnetization (& self) -> i64 }"
     },
     {
       "signature": "impl SpinLattice { pub fn width (& self) -> usize }"
