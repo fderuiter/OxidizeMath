@@ -25,18 +25,22 @@ Markdown verification gates:
 
 Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) set `CARGO_INCREMENTAL: "0"` (leaving [.cargo/config.toml](.cargo/config.toml) untouched so local developer builds remain incremental), restore Cargo registry sources and filtered profile-scoped `target/` caches (excluding `incremental/`, `doc/`, `llvm-cov-target/`, `package/`, and `tmp/`) via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (`./.github/actions/cargo-cache`), and cache pinned CLI binaries (`cargo-audit`, `cargo-llvm-cov`, `trunk`, `wasm-bindgen-cli`, and `cargo-packager`) under `~/.cache/ci-tools/` outside `~/.cargo/bin` via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml) (`./.github/actions/ci-tool-cache`).
 
-Run workspace builds, fast diff-scoped pre-commit checks (`lint-staged`), and the full PR verification suite (`lint-all`) aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask` (`xtask` builds `unified_verification` with Cargo's default `dev` profile locally to skip release fat LTO):
+Run workspace builds, fast staged-scoped pre-commit checks (`lint-staged`), offline pre-push reverse-dependent checks (`lint-push`), and the full PR verification suite (`lint-all`) aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask` (`xtask` builds `unified_verification` with Cargo's default `dev` profile locally to skip release fat LTO):
 
 ```bash
 # Type-check and build all workspace members
 cargo check --workspace
 cargo build --workspace --all-features
 
-# Run fast offline snapshot-backed pre-commit checks on the staged Git index (executed automatically by
-# .githooks/pre-commit; syncs <target_dir>/lint-staged-snapshot, runs rustfmt, batch-staged profiles/ADR records/
-# lengths/docs/duplicates/domain-or-registry-scoped traceability/entropy/policy, single .github/ workflow lint,
-# .md or deletion/rename link scans, and reverse-dependent + 17-web-crate host/wasm32 Clippy without OSV network calls or API drift)
+# Run fast offline snapshot-backed pre-commit checks scoped to staged files and directly touched crates
+# (executed automatically by .githooks/pre-commit; syncs <target_dir>/lint-staged-snapshot, runs rustfmt,
+# scoped batch-staged checks on touched crates/staged guides/staged .rs citations, single .github/ workflow
+# lint, .md or deletion/rename link scans, and direct-crate host Clippy + conditional GUI/wasm32 Clippy)
 cargo run -p xtask -- lint-staged
+
+# Run offline pre-push checks across commits being pushed (executed automatically by .githooks/pre-push;
+# runs reverse-dependent host & web-reachable wasm32 Clippy plus full 804-file workspace traceability)
+cargo run -p xtask -- lint-push
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
 # & single-parse AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift,

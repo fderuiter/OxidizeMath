@@ -95,10 +95,8 @@ pub(super) fn embedded_traceability(
                 include_str!(concat!(env!("OUT_DIR"), "/traceability_manifest.json"));
             let (report, embedded_cert) = parse_manifest_json(MANIFEST_JSON)?;
             let cert = embedded_cert.or_else(|| {
-                const CERT_JSON: &str = include_str!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../Verification_Certificate.json"
-                ));
+                const CERT_JSON: &str =
+                    include_str!(concat!(env!("OUT_DIR"), "/Verification_Certificate.json"));
                 parse_certificate_json(CERT_JSON).ok()
             });
             Ok((report, cert))

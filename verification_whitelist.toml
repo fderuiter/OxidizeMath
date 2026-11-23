@@ -152,6 +152,10 @@ path = "math_explorer_gui/build_snapshot.rs"
 reason = "gui_tool"
 
 [[verify_suite.opt_outs]]
+path = "math_explorer_gui/build_stage.rs"
+reason = "gui_tool"
+
+[[verify_suite.opt_outs]]
 path = "math_explorer_gui/src/"
 reason = "gui_tool"
 

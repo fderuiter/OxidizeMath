@@ -34,6 +34,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
     match cmd {
         "setup" => setup(rest),
         "lint-all" | "lint" => gates::lint_all(),
+        "lint-push" => staged::lint_push(rest),
         "lint-staged" => staged::lint_staged(),
         "check-benches" => smoke::check_benches(),
         "check-cargo-docs" | "check-workspace-docs" => gates::check_cargo_docs(),
@@ -94,6 +95,9 @@ fn print_help() {
     );
     println!(
         "  lint-all                 - Run format, profile, AST duplicate, API drift, ADR, file-length, clippy, doc, doctest, markdown-link, workflow, traceability, entropy, vulnerability, and policy audit checks"
+    );
+    println!(
+        "  lint-push                - Run offline pre-push reverse-dependent Clippy and full workspace traceability"
     );
     println!("  lint-staged              - Run fast scoped pre-commit checks on staged files only");
     println!("  lint-workflows           - Lint CI workflow definitions");

@@ -333,6 +333,29 @@ impl ExplorerTab for TraceabilityTab {
         Ok(())
     }
 
+    fn import_workspace_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        if let Some(req_tool) = tool_id {
+            if !crate::url_state::matches_tab_slug(req_tool, self.url_slug(), self.name()) {
+                return Err(format!(
+                    "Tab '{}' does not support sub-tool '{req_tool}'",
+                    self.name()
+                ));
+            }
+        }
+        if let Some(json_str) = preset_json {
+            crate::url_state::validate_workspace_url_preset_json(json_str)?;
+            self.from_json_str_with_max_bytes(
+                json_str,
+                crate::url_state::MAX_DECODED_WORKSPACE_URL_BYTES,
+            )?;
+        }
+        Ok(())
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&TraceabilityState {
             repo_path: self.repo_path.clone(),

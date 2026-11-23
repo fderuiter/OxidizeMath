@@ -1,6 +1,8 @@
 //! Zero-copy 2D coordinate series views for curve fitting and critical-point solvers.
 // [cite:math_commons]
 
+use alloc::vec::Vec;
+
 /// Unrolled 16-wide branchless plateau scan over contiguous `(x, y)` sample slices.
 #[doc(hidden)]
 #[macro_export]

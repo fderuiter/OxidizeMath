@@ -126,44 +126,6 @@ pub(crate) fn run_batch_static_with_caches(
     passed
 }
 
-const NON_TRACEABILITY_MEMBERS: &[&str] = &[
-    "crates/unified_verification",
-    "crates/diagnostics",
-    "crates/federated_registry",
-    "crates/oxidize_core",
-    "crates/verified_engine",
-    "crates/verified_engine_macros",
-    "apps/xtask",
-    "crates/math_commons",
-    "egui_plot",
-];
-
-pub(crate) fn should_run_staged_traceability(
-    all_staged: &[String],
-    workspace_members: &[String],
-) -> bool {
-    all_staged.iter().any(|raw| {
-        let norm = raw.replace('\\', "/");
-        let p = norm.trim_start_matches("./");
-        if p == "traceability.toml"
-            || p == "Cargo.toml"
-            || p.starts_with("papers/")
-            || p.starts_with("math_explorer_gui/src/tabs/")
-        {
-            return true;
-        }
-        workspace_members.iter().any(|member| {
-            if NON_TRACEABILITY_MEMBERS.contains(&member.as_str()) || member == "math_explorer_gui"
-            {
-                return false;
-            }
-            let manifest = format!("{member}/Cargo.toml");
-            let src_prefix = format!("{member}/src/");
-            p == manifest || p.starts_with(&src_prefix)
-        })
-    })
-}
-
 fn git_cached_paths(extra_args: &[&str]) -> Vec<String> {
     let mut args = vec![
         "-c",
@@ -202,6 +164,27 @@ pub(crate) fn is_root_escalation_path(path: &str) -> bool {
     ) || path.starts_with(".cargo/")
 }
 
+pub(crate) fn select_touched_members(
+    all_staged: &[String],
+    workspace_members: &[String],
+) -> Vec<String> {
+    if all_staged.iter().any(|p| is_root_escalation_path(p)) {
+        return workspace_members.to_vec();
+    }
+    let mut touched = Vec::new();
+    for member in workspace_members {
+        let prefix = format!("{member}/");
+        let manifest = format!("{member}/Cargo.toml");
+        if all_staged
+            .iter()
+            .any(|p| p == &manifest || p.starts_with(&prefix))
+        {
+            touched.push(member.clone());
+        }
+    }
+    touched
+}
+
 pub(crate) fn select_touched_policy_members(
     all_staged: &[String],
     workspace_members: &[String],
@@ -210,22 +193,60 @@ pub(crate) fn select_touched_policy_members(
         return workspace_members.to_vec();
     }
 
-    let any_md_staged = all_staged.iter().any(|p| p.ends_with(".md"));
     let mut touched = Vec::new();
     for member in workspace_members {
         let prefix = format!("{member}/");
         let manifest = format!("{member}/Cargo.toml");
-        let is_touched = (any_md_staged && member == "crates/markdown_tests")
-            || all_staged.iter().any(|p| {
-                p == &manifest
-                    || (p.starts_with(&prefix)
-                        && (p.ends_with(".rs") || p.ends_with(".md") || p.ends_with("/Cargo.toml")))
-            });
+        let is_touched = all_staged.iter().any(|p| {
+            p == &manifest
+                || (p.starts_with(&prefix)
+                    && (p.ends_with(".rs") || p.ends_with(".md") || p.ends_with("/Cargo.toml")))
+        });
         if is_touched {
             touched.push(member.clone());
         }
     }
     touched
+}
+
+fn run_staged_policy_and_md_fences(
+    all_staged: &[String],
+    existing_staged: &[String],
+    workspace_members: &[String],
+    escalate: bool,
+    cache: &mut AstCache,
+    manifest_cache: &mut crate::manifest_cache::ManifestCache,
+) -> bool {
+    let mut passed = true;
+    let touched_members = select_touched_policy_members(all_staged, workspace_members);
+    if !touched_members.is_empty() {
+        let member_refs: Vec<&str> = touched_members.iter().map(String::as_str).collect();
+        let policy_ok = if escalate {
+            crate::policy_audit::run_policy_audit_with_caches(&member_refs, cache, manifest_cache)
+        } else {
+            crate::policy_audit::staged_member::run_staged_policy_audit_with_caches(
+                &member_refs,
+                existing_staged,
+                cache,
+                manifest_cache,
+            )
+        };
+        if !policy_ok {
+            passed = false;
+        }
+    }
+
+    if !escalate {
+        let staged_md: Vec<String> = existing_staged
+            .iter()
+            .filter(|p| p.ends_with(".md"))
+            .cloned()
+            .collect();
+        if !staged_md.is_empty() && !crate::policy_audit::audit_staged_markdown_fences(&staged_md) {
+            passed = false;
+        }
+    }
+    passed
 }
 
 fn run_staged_ast_and_policy_gates(
@@ -239,12 +260,25 @@ fn run_staged_ast_and_policy_gates(
     let mut passed = true;
 
     if !workspace_members.is_empty() {
-        if !crate::ast_visitor::run_clone_detector_with_cache(cache) {
+        let clones_ok = if escalate {
+            crate::ast_visitor::run_clone_detector_with_cache(cache)
+        } else {
+            crate::ast_visitor::run_clone_detector_for_files_with_cache(existing_staged, cache)
+        };
+        if !clones_ok {
             passed = false;
         }
-        if (escalate || should_run_staged_traceability(all_staged, workspace_members))
-            && !run_traceability_with_cache(false, cache)
-        {
+        let trace_ok =
+            if crate::staged_traceability::requires_full_traceability(all_staged, escalate) {
+                run_traceability_with_cache(false, cache)
+            } else {
+                crate::staged_traceability::run_staged_traceability_with_cache(
+                    existing_staged,
+                    workspace_members,
+                    cache,
+                )
+            };
+        if !trace_ok {
             passed = false;
         }
     }
@@ -259,12 +293,15 @@ fn run_staged_ast_and_policy_gates(
         passed = false;
     }
 
-    let touched_members = select_touched_policy_members(all_staged, workspace_members);
-    if !touched_members.is_empty() {
-        let member_refs: Vec<&str> = touched_members.iter().map(String::as_str).collect();
-        if !crate::policy_audit::run_policy_audit_with_caches(&member_refs, cache, manifest_cache) {
-            passed = false;
-        }
+    if !run_staged_policy_and_md_fences(
+        all_staged,
+        existing_staged,
+        workspace_members,
+        escalate,
+        cache,
+        manifest_cache,
+    ) {
+        passed = false;
     }
 
     passed
@@ -287,12 +324,18 @@ pub(crate) fn run_batch_staged_for_paths_in_dir(
     }
 
     let escalate = all_staged.iter().any(|p| is_root_escalation_path(p));
+    let touched_members = select_touched_members(all_staged, workspace_members);
+    let readme_staged = all_staged.iter().any(|p| p == "README.md");
     let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
 
-    if !workspace_members.is_empty() {
-        let all_member_refs: Vec<&str> = workspace_members.iter().map(String::as_str).collect();
-        if !crate::profile::check_profiles_with_cache(&all_member_refs, false, &mut manifest_cache)
-        {
+    if !workspace_members.is_empty() && (escalate || !touched_members.is_empty() || readme_staged) {
+        let profile_targets = if escalate {
+            workspace_members
+        } else {
+            &touched_members
+        };
+        let member_refs: Vec<&str> = profile_targets.iter().map(String::as_str).collect();
+        if !crate::profile::check_profiles_with_cache(&member_refs, false, &mut manifest_cache) {
             passed = false;
         }
     }
@@ -312,10 +355,15 @@ pub(crate) fn run_batch_staged_for_paths_in_dir(
         passed = false;
     }
 
-    if !workspace_members.is_empty()
-        && !crate::doc_audit::run_doc_audit_for_members(workspace_members, &[])
-    {
-        passed = false;
+    if !workspace_members.is_empty() {
+        let doc_ok = if escalate {
+            crate::doc_audit::run_doc_audit_for_members(workspace_members, &[])
+        } else {
+            crate::doc_audit::run_staged_doc_audit(&touched_members, all_staged, existing_staged)
+        };
+        if !doc_ok {
+            passed = false;
+        }
     }
 
     if !run_staged_ast_and_policy_gates(
