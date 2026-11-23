@@ -74,3 +74,29 @@ pub(crate) fn impl_base_ident(ty: &syn::Type) -> Option<String> {
     }
     None
 }
+
+/// Formats `path:line` when `line > 0`, falling back to `path` when macro-generated
+/// or synthetic spans report line `0`.
+pub(crate) fn format_file_line(path: &str, line: usize) -> String {
+    if line > 0 {
+        format!("{path}:{line}")
+    } else {
+        path.to_string()
+    }
+}
+
+/// Extracts the bound variable identifier from a local pattern up to
+/// [`MAX_TYPE_UNWRAP_STEPS`] wrapper steps.
+pub(crate) fn pat_ident_name(pat: &syn::Pat) -> Option<String> {
+    let mut curr = pat;
+    for _ in 0..MAX_TYPE_UNWRAP_STEPS {
+        match curr {
+            syn::Pat::Ident(pi) => return Some(pi.ident.to_string()),
+            syn::Pat::Type(pt) => curr = &pt.pat,
+            syn::Pat::Paren(pp) => curr = &pp.pat,
+            syn::Pat::Reference(pr) => curr = &pr.pat,
+            _ => return None,
+        }
+    }
+    None
+}
