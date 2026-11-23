@@ -1,3 +1,4 @@
+pub mod brush_codec;
 pub mod callout_overlay;
 pub mod challenge;
 mod challenge_hud;
@@ -17,7 +18,7 @@ mod export_queue;
 pub(crate) use export_queue::deferred_export_tests;
 #[cfg(test)]
 mod export_queue_tests;
-mod export_shader;
+pub(crate) mod export_shader;
 #[cfg(test)]
 mod export_shader_tests;
 pub mod export_types;
@@ -36,6 +37,8 @@ mod persistence;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
+#[cfg(test)]
+mod playback_time_travel_tests;
 pub mod plot_persistence;
 #[cfg(test)]
 mod plot_persistence_session_tests;
@@ -44,7 +47,14 @@ mod plot_persistence_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
+#[cfg(test)]
+mod shared_points_perf_tests;
 pub mod side_panel;
+pub mod spatial_brush;
+#[cfg(all(test, feature = "physics", feature = "biology"))]
+mod spatial_brush_integration_tests;
+#[cfg(test)]
+mod spatial_brush_tests;
 pub mod state_bounds;
 #[cfg(test)]
 mod state_bounds_tests;
@@ -59,6 +69,7 @@ pub mod trace_overlay;
 mod ui;
 mod url_share;
 
+pub use brush_codec::*;
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
@@ -69,7 +80,8 @@ pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;
 pub use pane_scope::{
-    is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id,
+    is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id, InputMode,
+    InteractionContext,
 };
 pub use playback::*;
 pub use recovery::*;
@@ -77,6 +89,7 @@ pub use side_panel::{
     clear_pane_side_panel_records, pane_side_panel_records, PaneSidePanel, PaneSidePanelRecord,
     MAX_PANE_SIDE_PANEL_WIDTH_RATIO,
 };
+pub use spatial_brush::*;
 pub use state_bounds::*;
 pub use state_guard::*;
 pub use story_hud::*;
@@ -97,26 +110,6 @@ pub struct ToolMetadata {
 
 inventory::collect!(ToolMetadata);
 pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InputMode {
-    Mouse,
-    Touch,
-}
-
-/// Event context provided to interaction hooks.
-#[allow(missing_docs)]
-pub struct InteractionContext<'a> {
-    pub pointer_pos: Option<egui::Pos2>,
-    pub delta: egui::Vec2,
-    pub is_dragging: bool,
-    pub is_clicked: bool,
-    pub response: &'a egui::Response,
-    pub input_mode: InputMode,
-    pub multi_touch: Option<egui::MultiTouchInfo>,
-    pub keys_down: std::collections::HashSet<egui::Key>,
-    pub modifiers: egui::Modifiers,
-}
 
 pub trait InteractiveTool {
     fn name(&self) -> &'static str;
@@ -183,6 +176,11 @@ pub trait InteractiveTool {
         0
     }
 
+    /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
+    fn url_state_revision(&self) -> u64 {
+        self.state_revision()
+    }
+
     /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         None
@@ -209,6 +207,11 @@ pub trait InteractiveTool {
     /// Lightweight parameter-only snapshot hook used by `cache_valid_snapshot`.
     fn save_recovery_state(&self) -> Option<String> {
         self.save_state()
+    }
+
+    /// Parameter-only state serialization hook for URL sharing (omits trace histories).
+    fn save_url_state(&self) -> Option<String> {
+        self.save_recovery_state()
     }
 
     /// Fallibly restores parameter-only recovery state without clobbering pinned comparison overlays.
@@ -389,15 +392,23 @@ pub trait InteractiveTool {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct UntrackedUrlDigestCache {
+    pub(super) tool_name: &'static str,
+    pub(super) checked_untracked_rev: u64,
+    pub(super) url_digest: u64,
+}
+
 #[derive(Default)]
 pub(super) struct FrameworkRevisionCache {
     pub(super) framework_revision: u64,
     pub(super) untracked_tool_revision: u64,
+    pub(super) untracked_url_digest: std::cell::Cell<Option<UntrackedUrlDigestCache>>,
     pub(super) active_tool_json:
         std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
     pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
+    pub(super) last_snapshot_source_datasets: Vec<(String, egui_plot::SharedPoints)>,
     pub(super) last_plot_capture_hash: Option<(&'static str, u64)>,
-    pub(super) last_snapshot_plot_sig: Option<u64>,
 }
 
 #[allow(missing_docs)]
@@ -430,7 +441,7 @@ pub struct SimulationFramework {
     /// Baseline parameters snapshot on tool load.
     pub baseline_tool_state: Option<String>,
     /// Last validated finite plot datasets.
-    pub current_valid_plot_datasets: Vec<(String, Vec<[f64; 2]>)>,
+    pub current_valid_plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
     /// Last validated finite 3D world-coordinate plot datasets.
     pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
     /// Whether divergence has been detected in the active tool.

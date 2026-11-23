@@ -5,6 +5,7 @@ mod canvas;
 pub mod comparison;
 mod persistence;
 pub mod recovery;
+mod series_cache;
 pub mod systems;
 pub mod ui;
 
@@ -64,6 +65,7 @@ pub struct OdeSolverTool {
     pub(crate) pending_sweep_run: Option<(String, Vec<TraceSeries>)>,
     pub show_annotations: bool,
     pub(crate) revision: u64,
+    pub(crate) series_cache: series_cache::OdeSeriesCache,
     pub(crate) synced_legacy_params: [f64; 3],
 }
 
@@ -135,6 +137,7 @@ impl Default for OdeSolverTool {
             pending_sweep_run: None,
             show_annotations: true,
             revision: 1,
+            series_cache: series_cache::OdeSeriesCache::default(),
             synced_legacy_params: [1.0, 1.0, 10.0],
         };
         tool.seed_default_custom_params();
@@ -376,6 +379,14 @@ impl OdeSolverTool {
         self.diagnostic_report = None;
 
         self.recalculate_active();
+        self.series_cache.rebuild(
+            &self.time_series,
+            &self.y_series,
+            &self.v_series,
+            self.total_time,
+            self.ic_y0,
+            self.ic_v0,
+        );
         let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
         self.display_y =
             crate::framework::decimate_xy_series_minmax(&self.time_series, &self.y_series, cap);
@@ -450,7 +461,7 @@ inventory::submit! {
         id: "OdeSolverTool",
         display_name: "ODE Solvers",
         domain: "analysis",
-        tags: &[],
+        tags: &["ode", "rk4", "runge-kutta", "euler", "dormand-prince", "differential equation", "van der pol", "lotka-volterra"],
         build: || Box::new(OdeSolverTool::default()),
     }
 }

@@ -246,24 +246,12 @@ impl OdeSolverTool {
         let has_v = self.has_second_state();
         let v_label = self.second_state_label();
         let current_len = self.snapshot_manager.len();
-        let time_series = &self.time_series;
-        let y_series = &self.y_series;
-        let v_series = &self.v_series;
+        let (py, pv) = self.series_cache.shared_points();
 
-        if self.snapshot_manager.render_ui(ui, || {
+        if self.snapshot_manager.render_ui(ui, move || {
             let label = format!("Baseline {}", current_len + 1);
-            let py: Vec<[f64; 2]> = time_series
-                .iter()
-                .zip(y_series)
-                .map(|(&t, &y)| [t, y])
-                .collect();
             let mut series = vec![TraceSeries::new("y(t)", py)];
-            if has_v && !v_series.is_empty() {
-                let pv: Vec<[f64; 2]> = time_series
-                    .iter()
-                    .zip(v_series)
-                    .map(|(&t, &v)| [t, v])
-                    .collect();
+            if has_v && !pv.is_empty() {
                 series.push(TraceSeries::new(v_label, pv));
             }
             Some((label, param_summary, series))

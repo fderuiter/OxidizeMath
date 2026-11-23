@@ -17,10 +17,10 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 - **`analysis`**:
   - **Root-Finding (`roots`)**: Hardened sign-change `Bisection` (`NaN`/`Inf` rejection and canonical `0.0`), Brent-Dekker hybrid `Brent`, open `NewtonRaphson` and derivative-free `Secant`, and zero-allocation `MultivariateNewton` (`SVector<f64, N>` and `DVector<f64>`).
   - **Numerical Integration (`integration`)**: Two-grid Richardson `Trapezoidal`, composite `Simpson`, adaptive Chebyshev `ClenshawCurtis`, and stack-bounded 64-panel adaptive `GaussKronrod15` (`G7-K15`).
-  - **Ordinary Differential Equations (`ode`)**: Time-aware `TimeStepper` and `OdeModel`, `IndexedState`, explicit fixed-step (`Euler`, `Midpoint`, `RungeKutta4`), embedded adaptive (`DormandPrince45`), L-stable / stiff implicit Newton (`BackwardEuler`, `ImplicitTrapezoidal`), and linearly implicit adaptive (`Rosenbrock23`) solvers.
+  - **Ordinary Differential Equations (`ode`)**: Time-aware `TimeStepper` and `OdeModel`, `IndexedState`, explicit fixed-step (`Euler`, `Heun`, `RungeKutta4`), embedded adaptive (`DormandPrince45`), L-stable / stiff implicit Newton (`BackwardEuler`, `ImplicitTrapezoidal`), linearly implicit adaptive (`Rosenbrock23`), and zero-allocation symplectic Hamiltonian (`StormerVerlet`, `Yoshida4`, `GaussLegendre4` over `HamiltonianSystem` / `SeparableHamiltonian`) solvers.
   - **Partial Differential Equations (`pde`)**: 1D and zero-allocation 2D solvers (`pde::wave_2d::Wave2DSolver` for hyperbolic wave tanks, Kirchhoff-Love biharmonic Chladni plates, Chladni sand drift, Marching-Squares nodal contours, and pre-planned 2D FFT spectra).
 - **`differential_geometry`**: Manifolds, metric tensors, and Riemannian curvature.
-- **`elliptic_curves`**: Curve group arithmetic and cryptographic operations over finite fields.
+- **`elliptic_curves`**: Zero-allocation short-Weierstrass curve group arithmetic ($P + Q$, $\[k\]P$, cyclic orbits) over $\mathbb{R}$ and prime fields $\mathbb{F}_p$, Frobenius traces $a_p$, Hasse-Weil verification, Breuer modular polynomial valuation bounds, and bridges to binary quadratic forms (`BQF`), Hurwitz-Kronecker class numbers, and modular $q$-series (`QSeries<i64>`).
 - **`graph_theory`**: Network graph structures, centrality metrics, and traversal algorithms.
 - **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck), ranking systems (Glicko-2), and Kelly criterion decision models.
 - **`special_functions`**: Classical mathematical functions (Bessel functions, Legendre polynomials).

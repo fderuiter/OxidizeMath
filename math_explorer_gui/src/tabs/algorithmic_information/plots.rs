@@ -196,7 +196,7 @@ impl FractranMachineTool {
             .filter(|(_, pts)| pts.len() >= 2)
             .map(|(name, points)| ExportPrimitive::Polyline {
                 name,
-                points,
+                points: points.into(),
                 color: egui::Color32::TRANSPARENT,
                 stroke_width: 2.0,
                 closed: false,

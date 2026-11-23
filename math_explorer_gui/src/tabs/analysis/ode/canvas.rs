@@ -24,6 +24,10 @@ impl InteractiveTool for OdeSolverTool {
         self.compute_state_revision()
     }
 
+    fn url_state_revision(&self) -> u64 {
+        self.compute_url_state_revision()
+    }
+
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }
@@ -56,6 +60,7 @@ impl InteractiveTool for OdeSolverTool {
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let mut changed = false;
+        self.sync_series_cache();
 
         let sweeps_before = crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "ode_controls");
@@ -66,6 +71,7 @@ impl InteractiveTool for OdeSolverTool {
             crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx()) > sweeps_before;
 
         self.apply_sidebar_changes(changed, sweep_active);
+        self.sync_series_cache();
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.render_plot_canvas(ui, &mut changed);
@@ -74,6 +80,11 @@ impl InteractiveTool for OdeSolverTool {
 
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
 }
@@ -130,9 +141,7 @@ impl OdeSolverTool {
         ui.heading("Solution Trajectory");
 
         if FiniteStateGuard::diverged(self) {
-            let mut scratch_y = Vec::new();
-            let mut scratch_v = Vec::new();
-            recovery::render_recovery_ui(ui, self, changed, &mut scratch_y, &mut scratch_v);
+            recovery::render_recovery_ui_in_place(ui, self, changed);
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());

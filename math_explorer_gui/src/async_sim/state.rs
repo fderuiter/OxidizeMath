@@ -1,4 +1,14 @@
+use crate::framework::BrushStroke;
 use std::sync::Arc;
+
+/// Persisted spatial sculpt payload synchronized between `UnifiedSimTool` and worker models.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SculptStatePayload {
+    /// RLE `[value, run_len]` pairs for 2D raster obstacle/cell masks.
+    pub rle_mask: Vec<[u32; 2]>,
+    /// Sparse `(index, value)` deltas for 1D potentials.
+    pub sparse_potential: Vec<(u16, f64)>,
+}
 
 #[allow(missing_docs)]
 pub enum SimCommand {
@@ -8,6 +18,10 @@ pub enum SimCommand {
     Pause,
     #[allow(missing_docs)]
     Step(usize),
+    /// Rewinds the simulation by the requested step count via bounded checkpoint replay.
+    StepBack(usize),
+    /// Seeks deterministically to an exact step index within the retained checkpoint window.
+    SeekStep(usize),
     #[allow(missing_docs)]
     Reset,
     #[allow(missing_docs)]
@@ -25,6 +39,10 @@ pub enum SimCommand {
         #[allow(missing_docs)]
         is_obstacle: bool,
     },
+    /// Applies an interpolated spatial [`BrushStroke`] to the simulation field or obstacle mask.
+    ApplyBrushStroke(BrushStroke),
+    /// Synchronizes persisted [`SculptStatePayload`] state with the simulation worker model.
+    SyncSculptState(SculptStatePayload),
     #[allow(missing_docs)]
     ClearObstacles,
     #[allow(missing_docs)]
@@ -38,10 +56,14 @@ impl SimCommand {
             Self::Start => "Start",
             Self::Pause => "Pause",
             Self::Step(_) => "Step",
+            Self::StepBack(_) => "StepBack",
+            Self::SeekStep(_) => "SeekStep",
             Self::Reset => "Reset",
             Self::SetSpeed(_) => "SetSpeed",
             Self::TrainEpisodes(_) => "TrainEpisodes",
             Self::ApplyBrush { .. } => "ApplyBrush",
+            Self::ApplyBrushStroke(_) => "ApplyBrushStroke",
+            Self::SyncSculptState(_) => "SyncSculptState",
             Self::ClearObstacles => "ClearObstacles",
             Self::Custom(_) => "Custom",
         }
@@ -110,13 +132,17 @@ impl SimWorkerState {
             Self::Ready => !matches!(cmd, SimCommand::Pause),
             Self::Running => !matches!(
                 cmd,
-                SimCommand::Start | SimCommand::Step(_) | SimCommand::TrainEpisodes(_)
+                SimCommand::Start
+                    | SimCommand::Step(_)
+                    | SimCommand::StepBack(_)
+                    | SimCommand::TrainEpisodes(_)
             ),
             Self::Stepping => !matches!(
                 cmd,
                 SimCommand::Start
                     | SimCommand::Pause
                     | SimCommand::Step(_)
+                    | SimCommand::StepBack(_)
                     | SimCommand::TrainEpisodes(_)
             ),
             Self::Faulted => matches!(cmd, SimCommand::Reset),
