@@ -9,10 +9,9 @@ macro_rules! theory_verification {
         test = $test_body:block
     ) => {
         #[cfg(test)]
-        #[allow(unused_imports, clippy::all)]
+        #[allow(unused_imports)]
         mod theory_verification {
             use super::*;
-            use approx::assert_relative_eq;
 
             $(
                 const $const_name: f64 = $const_val;
@@ -47,7 +46,7 @@ macro_rules! stochastic_signature_verification {
         stochastic_test = { $( $stmt:stmt )* }
     ) => {
         #[cfg(test)]
-        #[allow(unused_imports, clippy::all)]
+        #[allow(unused_imports)]
         mod stochastic_verification {
             use super::*;
 
@@ -76,7 +75,7 @@ macro_rules! stochastic_signature_verification {
 
                 // 5. Evaluate statistical bounds
                 $(
-                    assert!($stat_name >= $min && $stat_name <= $max,
+                    assert!(($min..=$max).contains(&$stat_name),
                         "Statistical bound failure for {}: value {} not in [{}, {}]",
                         stringify!($stat_name), $stat_name, $min, $max
                     );
