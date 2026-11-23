@@ -30,7 +30,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `smoke-examples` | Discovers every `[[example]]` target in `math_explorer/Cargo.toml` via `unified_verification list-examples`, builds all examples once, and runs each binary in an isolated temporary directory with `MATH_EXPLORER_SMOKE=1` and bounded timeout enforcement. | Active |
 | `test-features` | Exercises isolated Cargo domain feature flags (`pure_math`, `physics`, `core-only`, etc.), running unit/integration tests, doctests, and `--benches` per feature leg. | Active |
 | `test-policy-audit` | Audits workspace crates for unauthorized lint/dead-code/`missing_docs` bypasses and unused dependencies. | Active |
-| `test-wasm` | Discovers and executes `wasm32-unknown-unknown` unit and browser tests across all compatible workspace crates (anchored to the workspace root), builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 3 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
+| `test-wasm` | Discovers and executes `wasm32-unknown-unknown` unit and browser tests across all compatible workspace crates (anchored to the workspace root), builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 4 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
 | `traceability` | Verifies academic paper citation bindings and `#[verified]` coverage. | Active |
 | `verify-records` | Verifies architectural decision records (`--staged` supported), enforcing `YYYYMMDD-slug.md` naming with valid dates and unique slugs for new ADRs, freezing legacy `NNNN-slug.md` prefixes, requiring `# ` and `## Status` headings, and checking ACMR updates on core changes. | Active |
 | `verify-suite` | Runs the full coverage-instrumented high-integrity verification suite. | Active |
@@ -40,7 +40,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | Command | Operational Role | Status |
 |---|---|---|
 | `regenerate-baseline` | Regenerates `crates/unified_verification/api_baseline.json`. | Maintenance |
-| `setup` | Installs `wasm32-unknown-unknown`, validates `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites, builds and tests the workspace, and configures `.githooks/pre-commit`. | Maintenance |
+| `setup` | Configures `.githooks/pre-commit` first, then (unless `--hooks-only`) adds `wasm32-unknown-unknown`, checks `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites (warning by default or enforcing with `--web`), and runs `cargo check --workspace` (unless `--check-only`). | Maintenance |
 
 ---
 
@@ -51,8 +51,17 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 Run `xtask` commands from the workspace root using `cargo run -p xtask -- <command>`:
 
 ```bash
-# Bootstrap local git hooks and wasm32 target
+# Configure local .githooks first, probe optional browser tools, and run cargo check --workspace
 cargo run -p xtask -- setup
+
+# Configure .githooks/pre-commit only (instant, skips rustup/browser probes and cargo check)
+cargo run -p xtask -- setup --hooks-only
+
+# Configure .githooks and probe toolchains without running cargo check --workspace
+cargo run -p xtask -- setup --check-only
+
+# Enforce WebAssembly & Playwright browser prerequisites (exits 1 with install fixes if missing)
+cargo run -p xtask -- setup --web
 
 # Run fast scoped checks on staged changes
 cargo run -p xtask -- lint-staged

@@ -204,6 +204,14 @@ pub use glicko2_preset_validation::{
     Glicko2TournamentPresetConfig, MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS,
 };
 
+#[path = "presets/markov.rs"]
+mod markov_preset_validation;
+pub use markov_preset_validation::{
+    AbsorbingDtmcWorkbenchConfig, CtmcWorkbenchConfig, DtmcStateKind, HmmWorkbenchConfig,
+    MarkovWorkbenchMode, MarkovWorkbenchPresetConfig, MAX_BAUM_WELCH_ITERATIONS, MAX_HMM_SYMBOLS,
+    MAX_MARKOV_STATES, MAX_OBSERVATION_SEQUENCE_LEN,
+};
+
 /// Packs `config` into a `"1.0"` [`PresetWrapper`] metadata envelope and serializes it as pretty JSON.
 pub fn serialize_preset_envelope<T: Serialize>(
     title: &str,

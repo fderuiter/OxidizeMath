@@ -8,8 +8,11 @@ use super::{MorphogenesisTool, SimpleRng};
 use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
 use crate::framework::InteractiveTool;
 use crate::presets::MorphogenesisKineticsMode;
+#[cfg(test)]
 use eframe::egui;
+#[cfg(test)]
 use eframe::egui::ColorImage;
+#[cfg(test)]
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
 #[cfg(test)]
@@ -76,7 +79,18 @@ impl MorphogenesisTool {
         } else {
             SimWorkerState::Ready
         };
-        let (xk, yk) = self.atlas.axis_keys();
+        let current_mode = self
+            .kinetics_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .mode;
+        let atlas_axes =
+            if current_mode != kinetics_mode || self.atlas.has_default_persisted_state() {
+                super::atlas::default_morpho_atlas_axes()
+            } else {
+                let (xk, yk) = self.atlas.axis_keys();
+                [xk.to_string(), yk.to_string()]
+            };
         let preset_state = MorphogenesisToolState {
             a,
             b,
@@ -91,13 +105,14 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            fork: None,
             mask_rle: self
                 .mask_rle
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .clone(),
             atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
+            atlas_axes,
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
@@ -114,6 +129,13 @@ impl MorphogenesisTool {
         if width != self.width || height != self.height {
             self.width = width;
             self.height = height;
+            self.local_runner = Self::create_kinetics_runner(
+                &self.params,
+                &self.kinetics_state,
+                &self.mask_rle,
+                self.width,
+                self.height,
+            );
             let runner = Self::create_kinetics_runner(
                 &self.params,
                 &self.kinetics_state,
@@ -122,6 +144,7 @@ impl MorphogenesisTool {
                 self.height,
             );
             self.worker = BackgroundWorker::new(runner);
+            self.branch_engine.clear();
             self.stepped_pixels = None;
             self.step_runner = None;
             self.dirty = true;
@@ -188,10 +211,19 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) {
+        let mut rng = SimpleRng::new(12345);
+        Self::initialize_adapter_system_with_rng(system, width, height, &mut rng);
+    }
+
+    pub(crate) fn initialize_adapter_system_with_rng<D: SpatialDiffusion<2>>(
+        system: &mut TuringSystem<2, MorphogenesisKineticsAdapter, D>,
+        width: usize,
+        height: usize,
+        rng: &mut SimpleRng,
+    ) {
         match system.kinetics.mode {
             MorphogenesisKineticsMode::Schnakenberg => {
                 let n = width * height;
-                let mut rng = SimpleRng::new(12345);
                 let u_eq = system.kinetics.a + system.kinetics.b;
                 let v_eq = if u_eq.abs() > 1e-9 {
                     system.kinetics.b / (u_eq * u_eq)
@@ -257,6 +289,7 @@ impl MorphogenesisTool {
         Self::plot_concentration_with_contrast(data, width, height, false)
     }
 
+    #[cfg(test)]
     pub(crate) fn plot_concentration_with_contrast(
         data: &[f64],
         width: usize,

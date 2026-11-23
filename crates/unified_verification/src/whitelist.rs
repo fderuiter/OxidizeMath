@@ -67,9 +67,12 @@ pub(crate) struct AdrVerificationConfig {
 
 /// Configuration for `doc_audit` loaded from `[doc_verification]`.
 #[derive(Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct DocVerificationConfig {
     #[serde(default)]
     pub allowlist: Option<Vec<String>>,
+    #[serde(default, alias = "approved_rust_ignore_fences")]
+    pub approved_ignore_fences: Option<BTreeMap<String, usize>>,
 }
 
 /// Configuration for `entropy_guard` loaded from `[entropy_guard]`.
@@ -179,6 +182,20 @@ fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String
     }
     if let Some(cfg) = &parsed.missing_docs {
         validate_missing_docs_config(cfg, path)?;
+    }
+    if let Some(fences) = parsed
+        .doc_verification
+        .as_ref()
+        .and_then(|d| d.approved_ignore_fences.as_ref())
+    {
+        for (file, &cap) in fences {
+            if file.trim().is_empty() || cap == 0 {
+                return Err(format!(
+                    "Invalid [doc_verification.approved_ignore_fences] entry `{file}` in {}: path must be non-empty and cap must be >= 1",
+                    path.display()
+                ));
+            }
+        }
     }
     Ok(parsed)
 }

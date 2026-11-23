@@ -147,7 +147,7 @@ impl AstVisitor {
         if effective_opt_out {
             self.opted_out_funcs += 1;
         }
-        if has_semantic && !effective_opt_out {
+        if has_semantic {
             self.semantic_integrity_funcs += 1;
         }
         if is_verified {

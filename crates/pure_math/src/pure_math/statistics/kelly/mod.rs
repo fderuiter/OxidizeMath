@@ -54,7 +54,14 @@
 //!
 //! 1. **Maximizes long-term growth**: Geometric mean return is maximized
 //! 2. **Minimizes time to goal**: Reaches any wealth goal in minimum expected time
-//! 3. **Never risks ruin**: For f ≤ f*, probability of ruin is zero
+//! 3. **Avoids continuous zero-wealth bankruptcy, but NOT finite drawdowns**: Under infinitely
+//!    divisible stakes, $\lim_{t \to \infty} P(W_t = 0) = 0$ for $0 < f \le f^*$. However,
+//!    hitting a finite wealth floor $B_{\text{floor}} < W_0$ (e.g., a 50% drawdown or minimum-bet
+//!    table limit) has strictly positive probability bounded by the log-return Lundberg exponent
+//!    $(B_{\text{floor}} / W_0)^{\theta^*}$ and Brownian diffusion $(B_{\text{floor}} / W_0)^{2\mu/\sigma^2}$
+//!    (see [`crate::pure_math::statistics::ruin::kelly_barrier_risk`]). At Full Kelly ($f = f^*$),
+//!    $\theta^* = 1$ so the asymptotic probability of halving one's bankroll is **50%** (~38%
+//!    over 200 even-money bets at $p = 0.55$).
 //! 4. **Information-theoretic**: Related to Shannon entropy and channel capacity
 //!
 //! ## Applications
@@ -121,19 +128,18 @@
 //! # use pure_math::__doctest_facade as math_explorer;
 //! use math_explorer::pure_math::statistics::kelly::Odds;
 //!
-//! // American odds
+//! // American odds (including -100 and +100 even-money boundaries)
 //! let underdog = Odds::from_american(200.0).unwrap(); // +200
-//! println!("Decimal odds: {:.2}", underdog.value());
+//! assert!((underdog.value() - 3.0).abs() < 1e-9);
+//! assert!((underdog.to_american() - 200.0).abs() < 1e-9);
 //!
 //! let favorite = Odds::from_american(-150.0).unwrap(); // -150
-//! println!("Decimal odds: {:.2}", favorite.value());
+//! assert_eq!(favorite.to_fractional(1000), (2, 3));
 //!
-//! // Fractional odds
+//! // Fractional odds and implied probability
 //! let odds_5_to_2 = Odds::from_fractional(5.0, 2.0).unwrap();
-//! println!("Decimal odds: {:.2}", odds_5_to_2.value());
-//!
-//! // Implied probability (bookmaker's edge)
-//! println!("Implied prob: {:.1}%", odds_5_to_2.implied_probability() * 100.0);
+//! let from_prob = Odds::from_implied_probability(odds_5_to_2.implied_probability()).unwrap();
+//! assert!((from_prob.value() - odds_5_to_2.value()).abs() < 1e-9);
 //! ```
 //!
 //! ## Example: Realistic Sports Betting
@@ -200,6 +206,7 @@ pub mod core;
 pub mod criterion;
 
 // Re-export main types and functions
+pub use super::{ruin, validation};
 pub use core::{BankrollFraction, Odds, UnitInterval};
 pub use criterion::{
     expected_growth_rate, expected_value, fractional_kelly, kelly_fraction, variants,

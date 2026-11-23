@@ -272,6 +272,12 @@
       "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn select_action (& mut self , _ : & S , _ : & [A]) -> Option < A > }"
     },
     {
+      "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn select_action_into (& mut self , _ : & S , _ : & [A] , _ : & mut [f64] ,) -> Option < A > }"
+    },
+    {
+      "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn set_learning_params (& mut self , _ : UnitInterval , _ : UnitInterval ,) }"
+    },
+    {
       "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn update (& mut self , _ : & S , _ : & A , _ : f64 , _ : & S , _ : & [A] ,) }"
     },
     {
@@ -291,6 +297,21 @@
     },
     {
       "signature": "pub type TabularQAgent < S , A > = QLearningAgent < S , A , TabularQFunction < S , A > >"
+    },
+    {
+      "signature": "pub use super :: rollouts :: RlStepOutcome"
+    },
+    {
+      "signature": "pub use super :: rollouts :: compute_softmax_pg_delta"
+    },
+    {
+      "signature": "pub use super :: rollouts :: softmax_action_probs"
+    },
+    {
+      "signature": "pub use super :: rollouts :: step_softmax_pg_into"
+    },
+    {
+      "signature": "pub use super :: rollouts :: step_tabular_q_into"
     }
   ],
   "crates/domain_ai/src/ai/reinforcement_learning/bellman.rs": [
@@ -302,6 +323,50 @@
     },
     {
       "signature": "pub fn state_value_bellman_equation < M > (_ : & M , _ : & impl Policy < M :: S , M :: A > , _ : & M :: S , _ : & [M :: S] , _ : impl Fn (& M :: S) -> f64 ,) -> f64 where M : MarkovDecisionProcess ,"
+    }
+  ],
+  "crates/domain_ai/src/ai/reinforcement_learning/bellman_solver.rs": [
+    {
+      "signature": "impl BellmanSolution { pub fn evaluate_policy (& mut self , _ : & SculptedGridMdp , _ : & TabularGridPolicy , _ : f64 , _ : usize ,) }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn optimal_action_at (& self , _ : GridState) -> Option < Move > }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn q_residual_summary (& self , _ : & SculptedGridMdp , _ : & DenseRlWorkspace) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn q_star_at (& self , _ : GridState , _ : Move) -> f64 }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn residual_at (& self , _ : GridState , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn solve (_ : & SculptedGridMdp , _ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn v_pi_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn v_star_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn action_probabilities (& self , _ : GridState) -> [f64 ; 4] }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn from_q_table (_ : usize , _ : usize , _ : & [[f64 ; 4]]) -> Self }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn from_softmax_logits (_ : usize , _ : usize , _ : & [[f64 ; 4]]) -> Self }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn uniform (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct BellmanSolution"
+    },
+    {
+      "signature": "pub struct TabularGridPolicy"
     }
   ],
   "crates/domain_ai/src/ai/reinforcement_learning/grid_world.rs": [
@@ -318,12 +383,146 @@
       "signature": "pub struct GridWorldEnv"
     }
   ],
+  "crates/domain_ai/src/ai/reinforcement_learning/maze.rs": [
+    {
+      "signature": "impl GridCellRole { pub const fn from_u8 (_ : u8) -> Option < Self > }"
+    },
+    {
+      "signature": "impl GridCellRole { pub const fn to_u8 (self) -> u8 }"
+    },
+    {
+      "signature": "impl GridCellRole { pub const fn wind_delta (self) -> Option < (i32 , i32) > }"
+    },
+    {
+      "signature": "impl GridCellRole { pub const fn wind_pan (self) -> f32 }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub const fn in_bounds (& self , _ : GridState) -> bool }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn apply_cells_u8 (& mut self , _ : & [u8]) -> Result < () , String > }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn cell_index (& self , _ : GridState) -> usize }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn cell_role (& self , _ : GridState) -> GridCellRole }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn cells_to_u8 (& self) -> Vec < u8 > }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn default_with_traps (_ : i32 , _ : i32 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn is_default_layout (& self) -> bool }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn new (_ : i32 , _ : i32 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn reachable_next_states (& self , _ : GridState) -> ([GridState ; 9] , usize) }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn sample_step (& self , _ : GridState , _ : Move , _ : & mut OxidizeRng ,) -> (GridState , f64 , bool , f32) }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn set_cell_role (& mut self , _ : GridState , _ : GridCellRole) }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn step_deterministic (& self , _ : GridState , _ : Move) -> GridState }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn transition_outcomes (& self , _ : GridState , _ : Move ,) -> [(GridState , f64) ; 2] }"
+    },
+    {
+      "signature": "pub const MAX_RL_GRID_DIM : i32"
+    },
+    {
+      "signature": "pub const MIN_RL_GRID_DIM : i32"
+    },
+    {
+      "signature": "pub enum GridCellRole"
+    },
+    {
+      "signature": "pub struct SculptedGridMdp"
+    },
+    {
+      "signature": "pub use super :: workspace :: ALL_MOVES"
+    },
+    {
+      "signature": "pub use super :: workspace :: DenseRlWorkspace"
+    },
+    {
+      "signature": "pub use super :: workspace :: index_to_move"
+    },
+    {
+      "signature": "pub use super :: workspace :: move_to_index"
+    }
+  ],
   "crates/domain_ai/src/ai/reinforcement_learning/mod.rs": [
     {
       "signature": "pub use algorithms :: QLearningAgent"
     },
     {
+      "signature": "pub use algorithms :: RlStepOutcome"
+    },
+    {
+      "signature": "pub use algorithms :: TabularQAgent"
+    },
+    {
+      "signature": "pub use algorithms :: compute_softmax_pg_delta"
+    },
+    {
+      "signature": "pub use algorithms :: softmax_action_probs"
+    },
+    {
+      "signature": "pub use algorithms :: step_softmax_pg_into"
+    },
+    {
+      "signature": "pub use algorithms :: step_tabular_q_into"
+    },
+    {
+      "signature": "pub use bellman_solver :: BellmanSolution"
+    },
+    {
+      "signature": "pub use bellman_solver :: TabularGridPolicy"
+    },
+    {
       "signature": "pub use grid_world :: *"
+    },
+    {
+      "signature": "pub use maze :: ALL_MOVES"
+    },
+    {
+      "signature": "pub use maze :: DenseRlWorkspace"
+    },
+    {
+      "signature": "pub use maze :: GridCellRole"
+    },
+    {
+      "signature": "pub use maze :: MAX_RL_GRID_DIM"
+    },
+    {
+      "signature": "pub use maze :: MIN_RL_GRID_DIM"
+    },
+    {
+      "signature": "pub use maze :: SculptedGridMdp"
+    },
+    {
+      "signature": "pub use maze :: index_to_move"
+    },
+    {
+      "signature": "pub use maze :: move_to_index"
+    },
+    {
+      "signature": "pub use q_function :: DiscreteAction"
+    },
+    {
+      "signature": "pub use q_function :: DiscreteState"
+    },
+    {
+      "signature": "pub use q_function :: FixedArrayQFunction"
     },
     {
       "signature": "pub use q_function :: TabularQFunction"
@@ -355,7 +554,45 @@
       "signature": "impl < S , A > TabularQFunction < S , A > where S : State + Hash + Eq , A : Action + Hash + Eq , { pub fn new () -> Self }"
     },
     {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub const fn as_table (& self) -> & [[f64 ; ACTIONS] ; STATES] }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub fn copy_from_table (& mut self , _ : & [[f64 ; ACTIONS] ; STATES]) }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "pub struct DiscreteAction"
+    },
+    {
+      "signature": "pub struct DiscreteState"
+    },
+    {
+      "signature": "pub struct FixedArrayQFunction < const STATES : usize , const ACTIONS : usize >"
+    },
+    {
       "signature": "pub struct TabularQFunction < S , A > where S : State + Hash + Eq , A : Action + Hash + Eq ,"
+    }
+  ],
+  "crates/domain_ai/src/ai/reinforcement_learning/rollouts.rs": [
+    {
+      "signature": "pub fn compute_softmax_pg_delta (_ : [f64 ; 4] , _ : Move , _ : f64 , _ : UnitInterval ,) -> [f64 ; 4]"
+    },
+    {
+      "signature": "pub fn softmax_action_probs (_ : [f64 ; 4]) -> [f64 ; 4]"
+    },
+    {
+      "signature": "pub fn step_softmax_pg_into (_ : & SculptedGridMdp , _ : & mut DenseRlWorkspace , _ : UnitInterval ,) -> RlStepOutcome"
+    },
+    {
+      "signature": "pub fn step_tabular_q_into (_ : & SculptedGridMdp , _ : & mut DenseRlWorkspace , _ : UnitInterval , _ : UnitInterval ,) -> RlStepOutcome"
+    },
+    {
+      "signature": "pub struct RlStepOutcome"
     }
   ],
   "crates/domain_ai/src/ai/reinforcement_learning/strategies.rs": [
@@ -420,6 +657,56 @@
     },
     {
       "signature": "pub trait State : Clone + Debug + PartialEq"
+    }
+  ],
+  "crates/domain_ai/src/ai/reinforcement_learning/workspace.rs": [
+    {
+      "signature": "impl DenseRlWorkspace { pub fn greedy_policy_action (& self , _ : GridState) -> Option < Move > }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn greedy_q_action (& self , _ : GridState) -> Option < Move > }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn is_finite_state (& self) -> bool }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn max_q (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn max_q_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn new (_ : usize , _ : usize , _ : usize , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn q_value (& self , _ : GridState , _ : Move) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn reset_episode (& mut self , _ : & SculptedGridMdp) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn reset_learning (& mut self , _ : GridState) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn resize_and_clear (& mut self , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn state_value_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn sync_topology (& mut self , _ : & SculptedGridMdp) }"
+    },
+    {
+      "signature": "pub const ALL_MOVES : [Move ; 4]"
+    },
+    {
+      "signature": "pub const fn index_to_move (_ : usize) -> Move"
+    },
+    {
+      "signature": "pub const fn move_to_index (_ : Move) -> usize"
+    },
+    {
+      "signature": "pub struct DenseRlWorkspace"
     }
   ],
   "crates/domain_ai/src/ai/sds/diffusion.rs": [
@@ -592,7 +879,7 @@
       "signature": "impl MultiHeadAttention { pub fn forward_with_weights (& self , _ : & DMatrix < f64 > , _ : & DMatrix < f64 > , _ : & DMatrix < f64 > , _ : Option < & DMatrix < f64 > > ,) -> (DMatrix < f64 > , Vec < DMatrix < f64 > >) }"
     },
     {
-      "signature": "impl MultiHeadAttention { pub fn from_head_weights (_ : usize , _ : usize , _ : & [DMatrix < f64 >] , _ : & [DMatrix < f64 >] , _ : & [DMatrix < f64 >] , _ : DMatrix < f64 > ,) -> Result < Self , String > }"
+      "signature": "impl MultiHeadAttention { pub fn from_head_weights (_ : usize , _ : usize , _ : & [DMatrix < f64 >] , _ : & [DMatrix < f64 >] , _ : & [DMatrix < f64 >] , _ : DMatrix < f64 > ,) -> Result < Self , AIError > }"
     },
     {
       "signature": "impl MultiHeadAttention { pub fn h (& self) -> usize }"
@@ -602,6 +889,9 @@
     },
     {
       "signature": "impl MultiHeadAttention { pub fn to_head_weights (& self) -> (Vec < DMatrix < f64 > > , Vec < DMatrix < f64 > > , Vec < DMatrix < f64 > >) }"
+    },
+    {
+      "signature": "impl MultiHeadAttention { pub fn try_new (_ : usize , _ : usize) -> Result < Self , AIError > }"
     },
     {
       "signature": "pub fn scaled_dot_product_attention (_ : & DMatrix < f64 > , _ : & DMatrix < f64 > , _ : & DMatrix < f64 > , _ : Option < & DMatrix < f64 > > ,) -> (DMatrix < f64 > , DMatrix < f64 >)"
@@ -1068,7 +1358,107 @@
       "signature": "pub fn stirling_approximation_ln_factorial (_ : u64) -> f64"
     }
   ],
+  "crates/domain_applied/src/applied/battery_degradation/calibration.rs": [
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn calibrate_from_cycles < P : PointSeries + ? Sized > (& self , _ : & P , _ : DepthOfDischarge ,) -> Result < CalibratedAgingFit , FitError > }"
+    },
+    {
+      "signature": "pub fn calibrate_electrochemical_model < P : PointSeries + ? Sized > (_ : & ElectrochemicalAgingModel , _ : & P , _ : DepthOfDischarge ,) -> Result < CalibratedAgingFit , FitError >"
+    },
+    {
+      "signature": "pub struct CalibratedAgingFit"
+    }
+  ],
+  "crates/domain_applied/src/applied/battery_degradation/duty.rs": [
+    {
+      "signature": "impl DutySegment { pub fn commute () -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn fast_charge () -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn storage (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub const DAYS_PER_YEAR : f64"
+    },
+    {
+      "signature": "pub const MAX_DUTY_SEGMENTS : usize"
+    },
+    {
+      "signature": "pub fn estimate_duty_lifetime (_ : & ElectrochemicalAgingModel , _ : & [DutySegment] , _ : Capacity ,) -> DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub fn evaluate_duty_point (_ : & ElectrochemicalAgingModel , _ : & [DutySegment] , _ : f64 ,) -> DutyPointBreakdown"
+    },
+    {
+      "signature": "pub struct DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub struct DutyPointBreakdown"
+    },
+    {
+      "signature": "pub struct DutySegment"
+    }
+  ],
   "crates/domain_applied/src/applied/battery_degradation/mod.rs": [
+    {
+      "signature": "pub use calibration :: CalibratedAgingFit"
+    },
+    {
+      "signature": "pub use calibration :: calibrate_electrochemical_model"
+    },
+    {
+      "signature": "pub use duty :: DAYS_PER_YEAR"
+    },
+    {
+      "signature": "pub use duty :: DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub use duty :: DutyPointBreakdown"
+    },
+    {
+      "signature": "pub use duty :: DutySegment"
+    },
+    {
+      "signature": "pub use duty :: MAX_DUTY_SEGMENTS"
+    },
+    {
+      "signature": "pub use duty :: estimate_duty_lifetime"
+    },
+    {
+      "signature": "pub use duty :: evaluate_duty_point"
+    },
+    {
+      "signature": "pub use model :: ChemistryPreset"
+    },
+    {
+      "signature": "pub use model :: DegradationModel"
+    },
+    {
+      "signature": "pub use model :: ElectrochemicalAgingModel"
+    },
+    {
+      "signature": "pub use model :: MAX_C_RATE"
+    },
+    {
+      "signature": "pub use model :: MAX_EXPONENT_Z"
+    },
+    {
+      "signature": "pub use model :: MAX_TEMPERATURE_C"
+    },
+    {
+      "signature": "pub use model :: MIN_C_RATE"
+    },
+    {
+      "signature": "pub use model :: MIN_EXPONENT_Z"
+    },
+    {
+      "signature": "pub use model :: MIN_TEMPERATURE_C"
+    },
     {
       "signature": "pub use model :: PowerLawModel"
     },
@@ -1087,6 +1477,84 @@
   ],
   "crates/domain_applied/src/applied/battery_degradation/model.rs": [
     {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn activation_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn c_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn c_rate_exponent (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn exponent_z (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn preset (& self) -> ChemistryPreset }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn sei_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn temperature_c (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn arrhenius_factor (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn c_rate_stress_factor (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn coupled_capacity (& self , _ : Cycles , _ : DepthOfDischarge , _ : f64) -> Capacity }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn cycles_to_capacity (& self , _ : Capacity , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn cycling_loss (& self , _ : Cycles , _ : DepthOfDischarge) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn from_preset (_ : ChemistryPreset) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn new (_ : ChemistryPreset , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn sei_calendar_loss (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn temperature_k (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_c_rate (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_dod_law (self , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_exponent_z (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_kinetics (self , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_sei_rate (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_temperature_c (self , _ : f64) -> Self }"
+    },
+    {
       "signature": "impl PowerLawModel { pub fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
     },
     {
@@ -1102,6 +1570,36 @@
       "signature": "impl PowerLawModel { pub fn standard () -> Self }"
     },
     {
+      "signature": "pub const CELSIUS_TO_KELVIN : f64"
+    },
+    {
+      "signature": "pub const GAS_CONSTANT_R : f64"
+    },
+    {
+      "signature": "pub const MAX_C_RATE : f64"
+    },
+    {
+      "signature": "pub const MAX_EXPONENT_Z : f64"
+    },
+    {
+      "signature": "pub const MAX_TEMPERATURE_C : f64"
+    },
+    {
+      "signature": "pub const MIN_C_RATE : f64"
+    },
+    {
+      "signature": "pub const MIN_EXPONENT_Z : f64"
+    },
+    {
+      "signature": "pub const MIN_TEMPERATURE_C : f64"
+    },
+    {
+      "signature": "pub const REFERENCE_TEMPERATURE_K : f64"
+    },
+    {
+      "signature": "pub struct ElectrochemicalAgingModel"
+    },
+    {
       "signature": "pub struct PowerLawModel"
     },
     {
@@ -1115,6 +1613,41 @@
     },
     {
       "signature": "pub trait DegradationModel { fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "pub use preset :: ChemistryPreset"
+    }
+  ],
+  "crates/domain_applied/src/applied/battery_degradation/model/preset.rs": [
+    {
+      "signature": "impl ChemistryPreset { pub const ALL : [Self ; 4] }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_activation_energy (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_alpha (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_beta (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_c_rate_exponent (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_exponent_z (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_sei_rate (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn description (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum ChemistryPreset"
     }
   ],
   "crates/domain_applied/src/applied/battery_degradation/types.rs": [
@@ -1710,10 +2243,10 @@
   ],
   "crates/domain_applied/src/applied/freesurfer/glm.rs": [
     {
-      "signature": "pub fn estimate_beta < T : RealField > (_ : & DMatrix < T > , _ : & DVector < T > ,) -> Result < DVector < T > , & 'static str >"
+      "signature": "pub fn estimate_beta < T : RealField > (_ : & DMatrix < T > , _ : & DVector < T > ,) -> Result < DVector < T > , EngineeringError >"
     },
     {
-      "signature": "pub fn t_statistic < T : RealField + Copy > (_ : & DVector < T > , _ : & DVector < T > , _ : & DMatrix < T > , _ : T ,) -> Result < T , & 'static str >"
+      "signature": "pub fn t_statistic < T : RealField + Copy > (_ : & DVector < T > , _ : & DVector < T > , _ : & DMatrix < T > , _ : T ,) -> Result < T , EngineeringError >"
     }
   ],
   "crates/domain_applied/src/applied/freesurfer/mod.rs": [
@@ -1724,7 +2257,28 @@
       "signature": "pub use glm :: t_statistic"
     },
     {
+      "signature": "pub use segmentation :: MAX_TISSUE_CLASSES"
+    },
+    {
+      "signature": "pub use segmentation :: TissueClass"
+    },
+    {
       "signature": "pub use segmentation :: bayesian_classification"
+    },
+    {
+      "signature": "pub use segmentation :: mrf_segment_volume"
+    },
+    {
+      "signature": "pub use segmentation :: mrf_voxel_posteriors"
+    },
+    {
+      "signature": "pub use segmentation :: normalized_posteriors"
+    },
+    {
+      "signature": "pub use segmentation :: normalized_posteriors_into"
+    },
+    {
+      "signature": "pub use surface :: MriVolume"
     },
     {
       "signature": "pub use surface :: Surface"
@@ -1733,29 +2287,92 @@
       "signature": "pub use surface :: evolve_surface"
     },
     {
+      "signature": "pub use surface :: evolve_surface_deformable"
+    },
+    {
       "signature": "pub use surface :: external_energy"
+    },
+    {
+      "signature": "pub use surface :: external_energy_volume"
     },
     {
       "signature": "pub use surface :: internal_energy"
     },
     {
       "signature": "pub use thickness :: cortical_thickness"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_map"
     }
   ],
   "crates/domain_applied/src/applied/freesurfer/segmentation.rs": [
     {
+      "signature": "impl TissueClass { pub const fn new (_ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TissueClass { pub fn gaussian_likelihood (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub const MAX_TISSUE_CLASSES : usize"
+    },
+    {
       "signature": "pub fn bayesian_classification (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn mrf_segment_volume (_ : & MriVolume , _ : & [TissueClass] , _ : f64 , _ : usize , _ : & mut [u8] ,) -> usize"
+    },
+    {
+      "signature": "pub fn mrf_voxel_posteriors (_ : f64 , _ : & [TissueClass] , _ : & [u8] , _ : f64 , _ : & mut [f64] ,) -> usize"
+    },
+    {
+      "signature": "pub fn normalized_posteriors (_ : & [f64] , _ : & [f64]) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn normalized_posteriors_into (_ : & [f64] , _ : & [f64] , _ : & mut [f64] ,) -> usize"
+    },
+    {
+      "signature": "pub struct TissueClass"
     }
   ],
   "crates/domain_applied/src/applied/freesurfer/surface.rs": [
     {
+      "signature": "impl MriVolume { pub fn new (_ : [usize ; 3] , _ : [f64 ; 3] , _ : f64 , _ : Vec < f64 > ,) -> Result < Self , & 'static str > }"
+    },
+    {
+      "signature": "impl MriVolume { pub fn sample_trilinear (& self , _ : & [f64 ; 3]) -> f64 }"
+    },
+    {
+      "signature": "impl MriVolume { pub fn smoothed_gradient (& self , _ : & [f64 ; 3] , _ : f64) -> [f64 ; 3] }"
+    },
+    {
+      "signature": "impl MriVolume { pub fn smoothed_intensity (& self , _ : & [f64 ; 3] , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl MriVolume { pub fn voxel (& self , _ : usize , _ : usize , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl Surface { pub fn from_vertices (_ : Vec < [f64 ; 3] >) -> Self }"
+    },
+    {
+      "signature": "impl Surface { pub fn new (_ : Vec < [f64 ; 3] > , _ : Vec < [usize ; 3] >) -> Self }"
+    },
+    {
       "signature": "pub fn evolve_surface (_ : & mut Surface , _ : f64 , _ : f64)"
+    },
+    {
+      "signature": "pub fn evolve_surface_deformable (_ : & mut Surface , _ : & MriVolume , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,)"
     },
     {
       "signature": "pub fn external_energy (_ : & Surface , _ : f64) -> f64"
     },
     {
+      "signature": "pub fn external_energy_volume (_ : & Surface , _ : & MriVolume , _ : f64) -> f64"
+    },
+    {
       "signature": "pub fn internal_energy (_ : & Surface , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct MriVolume"
     },
     {
       "signature": "pub struct Surface"
@@ -1764,11 +2381,17 @@
   "crates/domain_applied/src/applied/freesurfer/thickness.rs": [
     {
       "signature": "pub fn cortical_thickness (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & Surface , _ : & Surface ,) -> f64"
+    },
+    {
+      "signature": "pub fn cortical_thickness_map (_ : & Surface , _ : & Surface) -> Vec < f64 >"
     }
   ],
   "crates/domain_applied/src/applied/game_theory/equilibrium.rs": [
     {
       "signature": "impl BoxSet { pub fn new (_ : Vec < f64 > , _ : Vec < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl BoxSet { pub fn try_new (_ : Vec < f64 > , _ : Vec < f64 >) -> Result < Self , GameTheoryError > }"
     },
     {
       "signature": "pub fn is_fixed_point < C : Correspondence > (_ : & C , _ : & DVector < f64 >) -> bool"
@@ -2065,6 +2688,20 @@
       "signature": "pub fn uncertainty_reward (_ : f64) -> f64"
     }
   ],
+  "crates/domain_applied/src/applied/isosurface/capped.rs": [
+    {
+      "signature": "pub fn extract_capped_isosurface (_ : & VoxelGrid , _ : f32 , _ : bool , _ : Option < CutPlaneCap > ,) -> Result < Mesh , IsosurfaceError >"
+    },
+    {
+      "signature": "pub fn extract_capped_isosurface_into (_ : & VoxelGrid , _ : f32 , _ : bool , _ : Option < CutPlaneCap > , _ : & mut VoxelGrid , _ : & mut IsosurfaceWorkspace , _ : & mut Mesh ,) -> Result < () , IsosurfaceError >"
+    },
+    {
+      "signature": "pub struct CappedBoxBounds"
+    },
+    {
+      "signature": "pub struct CutPlaneCap"
+    }
+  ],
   "crates/domain_applied/src/applied/isosurface/gradients.rs": [
     {
       "signature": "impl CentralDifferenceEstimator { pub fn world_normal_and_magnitude (& self , _ : & VoxelGrid , _ : usize , _ : usize , _ : usize ,) -> (Point3D , f32) }"
@@ -2097,6 +2734,18 @@
     }
   ],
   "crates/domain_applied/src/applied/isosurface/mod.rs": [
+    {
+      "signature": "pub use capped :: CappedBoxBounds"
+    },
+    {
+      "signature": "pub use capped :: CutPlaneCap"
+    },
+    {
+      "signature": "pub use capped :: extract_capped_isosurface"
+    },
+    {
+      "signature": "pub use capped :: extract_capped_isosurface_into"
+    },
     {
       "signature": "pub use gradients :: CentralDifferenceEstimator"
     },
@@ -2312,9 +2961,44 @@
       "signature": "pub use crate :: error"
     }
   ],
+  "crates/domain_applied/src/applied/pharmacokinetics/analytics.rs": [
+    {
+      "signature": "impl TherapeuticWindow { pub fn new (_ : f64 , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub fn accumulation_ratio (_ : f64 , _ : f64) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn auc_interval (_ : & [f64] , _ : & [f64] , _ : f64 , _ : f64 ,) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn peak_concentration (_ : & [f64] , _ : & [f64] ,) -> Result < (f64 , f64) , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn summarize_exposure (_ : & [f64] , _ : & [f64] , _ : TherapeuticWindow , _ : f64 , _ : f64 ,) -> Result < ExposureSummary , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn trapezoidal_auc (_ : & [f64] , _ : & [f64] ,) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn trough_concentration (_ : & [f64] , _ : & [f64] , _ : f64 , _ : f64 ,) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub struct ExposureSummary"
+    },
+    {
+      "signature": "pub struct TherapeuticWindow"
+    }
+  ],
   "crates/domain_applied/src/applied/pharmacokinetics/bateman.rs": [
     {
       "signature": "impl BatemanModel { pub fn new (_ : PKParameters) -> Self }"
+    },
+    {
+      "signature": "impl BatemanModel { pub fn with_dose (& self , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub fn calibrate_ka_from_half_life (_ : f64 , _ : f64 , _ : usize , _ : f64 ,) -> Result < (f64 , f64) , PharmacokineticsError >"
     },
     {
       "signature": "pub fn half_life (_ : f64) -> f64"
@@ -2343,7 +3027,22 @@
       "signature": "impl EnantiomerModel { pub fn concentration_xr_single_dose (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
     },
     {
+      "signature": "impl EnantiomerModel { pub fn d_concentration (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn f_d (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn f_l (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn l_concentration (& self , _ : f64) -> f64 }"
+    },
+    {
       "signature": "impl EnantiomerModel { pub fn new (_ : PKParameters , _ : PKParameters , _ : f64 , _ : f64 ,) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn with_dose (& self , _ : f64) -> Result < Self , PharmacokineticsError > }"
     },
     {
       "signature": "pub struct EnantiomerModel"
@@ -2357,7 +3056,34 @@
       "signature": "pub fn concentration_superposition (_ : & PKParameters , _ : & [f64] , _ : f64) -> f64"
     },
     {
+      "signature": "pub use analytics :: ExposureSummary"
+    },
+    {
+      "signature": "pub use analytics :: TherapeuticWindow"
+    },
+    {
+      "signature": "pub use analytics :: accumulation_ratio"
+    },
+    {
+      "signature": "pub use analytics :: auc_interval"
+    },
+    {
+      "signature": "pub use analytics :: peak_concentration"
+    },
+    {
+      "signature": "pub use analytics :: summarize_exposure"
+    },
+    {
+      "signature": "pub use analytics :: trapezoidal_auc"
+    },
+    {
+      "signature": "pub use analytics :: trough_concentration"
+    },
+    {
       "signature": "pub use bateman :: BatemanModel"
+    },
+    {
+      "signature": "pub use bateman :: calibrate_ka_from_half_life"
     },
     {
       "signature": "pub use bateman :: half_life"
@@ -2376,6 +3102,21 @@
     },
     {
       "signature": "pub use parameters :: PKParametersBuilder"
+    },
+    {
+      "signature": "pub use regimen :: DoseEvent"
+    },
+    {
+      "signature": "pub use regimen :: MAX_REGIMEN_EVENTS"
+    },
+    {
+      "signature": "pub use regimen :: RegimenModel"
+    },
+    {
+      "signature": "pub use regimen :: RegimenSuperposition"
+    },
+    {
+      "signature": "pub use regimen :: ReleaseFormulation"
     },
     {
       "signature": "pub use superposition :: SuperpositionModel"
@@ -2437,6 +3178,68 @@
       "signature": "pub struct PKParametersBuilder"
     }
   ],
+  "crates/domain_applied/src/applied/pharmacokinetics/regimen.rs": [
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn base_model (& self) -> & M }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn events (& self) -> & [DoseEvent] }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn new (_ : M , _ : & [DoseEvent]) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn sample_into (& self , _ : & [f64] , _ : & mut [f64]) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn ir (_ : f64 , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn new (_ : f64 , _ : f64 , _ : ReleaseFormulation ,) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn validate (& self) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn xr (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl RegimenSuperposition < EnantiomerModel > { pub fn d_concentration (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl RegimenSuperposition < EnantiomerModel > { pub fn l_concentration (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl RegimenSuperposition < EnantiomerModel > { pub fn sample_isomers_into (& self , _ : & [f64] , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl ReleaseFormulation { pub fn validate (& self) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub const MAX_REGIMEN_EVENTS : usize"
+    },
+    {
+      "signature": "pub enum ReleaseFormulation"
+    },
+    {
+      "signature": "pub struct DoseEvent"
+    },
+    {
+      "signature": "pub struct RegimenSuperposition < M : Copy >"
+    },
+    {
+      "signature": "pub trait RegimenModel : PharmacokineticModel + Copy"
+    },
+    {
+      "signature": "pub trait RegimenModel { fn with_event_dose (& self , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    }
+  ],
   "crates/domain_applied/src/applied/pharmacokinetics/superposition.rs": [
     {
       "signature": "impl < M > SuperpositionModel < M > { pub fn new (_ : M , _ : Vec < f64 >) -> Self }"
@@ -2455,7 +3258,16 @@
   ],
   "crates/domain_applied/src/applied/pharmacokinetics/two_pulse.rs": [
     {
+      "signature": "impl < M : RegimenModel > TwoPulseModel < M > { pub fn with_dose (& self , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
       "signature": "impl < M > TwoPulseModel < M > { pub fn new (_ : M , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TwoPulseModel < EnantiomerModel > { pub fn d_concentration (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl TwoPulseModel < EnantiomerModel > { pub fn l_concentration (& self , _ : f64) -> f64 }"
     },
     {
       "signature": "pub struct TwoPulseModel < M >"
@@ -3949,7 +4761,7 @@
   ],
   "crates/domain_climate/src/climate/cera.rs": [
     {
-      "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn new_with_models (_ : CeraConfig , _ : A , _ : P ,) -> Result < Self , String > }"
+      "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn new_with_models (_ : CeraConfig , _ : A , _ : P ,) -> Result < Self , ClimateError > }"
     },
     {
       "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn predict < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > ,) -> DMatrix < f32 > }"
@@ -3958,10 +4770,10 @@
       "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn reshape_for_predictor < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > , _ : usize ,) -> DMatrix < f32 > }"
     },
     {
-      "signature": "impl < P : PredictorModel > Cera < Autoencoder , P > { pub fn new_with_predictor (_ : CeraConfig , _ : P) -> Result < Self , String > }"
+      "signature": "impl < P : PredictorModel > Cera < Autoencoder , P > { pub fn new_with_predictor (_ : CeraConfig , _ : P) -> Result < Self , ClimateError > }"
     },
     {
-      "signature": "impl Cera < Autoencoder , Predictor > { pub fn new (_ : CeraConfig) -> Result < Self , String > }"
+      "signature": "impl Cera < Autoencoder , Predictor > { pub fn new (_ : CeraConfig) -> Result < Self , ClimateError > }"
     },
     {
       "signature": "pub struct Cera < A : AutoencoderModel , P : PredictorModel >"
@@ -3998,6 +4810,12 @@
     },
     {
       "signature": "pub fn mse_loss < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> f32"
+    },
+    {
+      "signature": "pub fn try_earth_movers_distance < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> Result < f32 , ClimateError >"
+    },
+    {
+      "signature": "pub fn try_mse_loss < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> Result < f32 , ClimateError >"
     }
   ],
   "crates/domain_climate/src/climate/mod.rs": [
@@ -4028,6 +4846,12 @@
     },
     {
       "signature": "pub fn conv_transpose1d < S : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S > , _ : & DMatrix < f32 > , _ : & DVector < f32 > ,) -> DMatrix < f32 >"
+    },
+    {
+      "signature": "pub fn try_conv1d < S : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S > , _ : & DMatrix < f32 > , _ : & DVector < f32 > ,) -> Result < DMatrix < f32 > , ClimateError >"
+    },
+    {
+      "signature": "pub fn try_conv_transpose1d < S : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S > , _ : & DMatrix < f32 > , _ : & DVector < f32 > ,) -> Result < DMatrix < f32 > , ClimateError >"
     }
   ],
   "crates/domain_climate/src/climate/training.rs": [
@@ -4044,9 +4868,32 @@
       "signature": "pub struct CeraTrainer < 'a , A : AutoencoderModel + Trainable < f32 > , P : PredictorModel + Trainable < f32 > , O : Optimizer < f32 > , >"
     }
   ],
+  "crates/domain_climate/src/error.rs": [
+    {
+      "signature": "pub enum ClimateError"
+    }
+  ],
   "crates/domain_climate/src/lib.rs": [
     {
       "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ClimateError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: ClimateError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use pure_math :: __doctest_facade :: prelude :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use crate :: climate }"
@@ -4059,9 +4906,6 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
-    },
-    {
-      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: error }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: fit }"
@@ -4088,9 +4932,6 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: poi }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: prelude }"
-    },
-    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: primitives }"
     },
     {
@@ -4110,11 +4951,20 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: wigner }"
+    },
+    {
+      "signature": "pub mod prelude"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: climate :: * }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: error :: ClimateError }"
     }
   ],
   "crates/domain_epidemiology/src/epidemiology/analytics.rs": [
     {
-      "signature": "pub fn calculate_final_size (_ : f64 , _ : f64 , _ : f64) -> Result < f64 , String >"
+      "signature": "pub fn calculate_final_size (_ : f64 , _ : f64 , _ : f64) -> Result < f64 , EpidemiologyError >"
     }
   ],
   "crates/domain_epidemiology/src/epidemiology/compartmental/common.rs": [
@@ -4564,6 +5414,9 @@
     },
     {
       "signature": "pub use crate :: physics :: nuclear :: types :: NuclearError"
+    },
+    {
+      "signature": "pub use crate :: physics :: stat_mech :: sandpile :: SandpileError"
     },
     {
       "signature": "pub use umbrella :: PhysicsError"
@@ -5366,6 +6219,9 @@
       "signature": "impl < const Q : usize > LatticeState < Q > { pub fn obstacles (& self) -> & [bool] }"
     },
     {
+      "signature": "impl < const Q : usize > LatticeState < Q > { pub fn try_new (_ : usize , _ : usize) -> Result < Self , FluidError > }"
+    },
+    {
       "signature": "impl < const Q : usize > LatticeState < Q > { pub fn velocity_x (& self) -> & [f64] }"
     },
     {
@@ -5719,7 +6575,7 @@
   ],
   "crates/domain_physics/src/physics/medical/calibration.rs": [
     {
-      "signature": "pub fn hu_to_density (_ : f64) -> Result < NonNegativeFloat , String >"
+      "signature": "pub fn hu_to_density (_ : f64) -> Result < NonNegativeFloat , DoseFluenceError >"
     }
   ],
   "crates/domain_physics/src/physics/medical/dose/algorithm.rs": [
@@ -5778,7 +6634,7 @@
       "signature": "impl LinearCalibrator { pub fn calibrate (& self , _ : f64) -> f64 }"
     },
     {
-      "signature": "impl LinearCalibrator { pub fn fit (_ : & [f64] , _ : & [f64]) -> Result < Self , String > }"
+      "signature": "impl LinearCalibrator { pub fn fit (_ : & [f64] , _ : & [f64]) -> Result < Self , DoseFluenceError > }"
     },
     {
       "signature": "impl LinearCalibrator { pub fn new (_ : f64 , _ : f64) -> Self }"
@@ -5963,7 +6819,7 @@
       "signature": "impl Beamformer { pub fn new_ula (_ : usize , _ : f64 , _ : f64) -> Self }"
     },
     {
-      "signature": "impl Beamformer { pub fn set_weights (& mut self , _ : & [f64]) -> Result < () , & 'static str > }"
+      "signature": "impl Beamformer { pub fn set_weights (& mut self , _ : & [f64]) -> Result < () , RadarError > }"
     },
     {
       "signature": "impl Beamformer { pub fn steer (& self , _ : & [Complex < f64 >] , _ : f64) -> Complex < f64 > }"
@@ -6128,6 +6984,9 @@
       "signature": "impl TrackingFilter { pub fn predict (& mut self) }"
     },
     {
+      "signature": "impl TrackingFilter { pub fn try_new (_ : f64 , _ : f64 , _ : ConstantVelocityModel ,) -> Result < Self , RadarError > }"
+    },
+    {
       "signature": "impl TrackingFilter { pub fn update (& mut self , _ : f64) }"
     },
     {
@@ -6217,7 +7076,7 @@
       "signature": "pub const K_B : f64"
     },
     {
-      "signature": "pub fn boltzmann_ratio (_ : f64 , _ : f64) -> Result < f64 , String >"
+      "signature": "pub fn boltzmann_ratio (_ : f64 , _ : f64) -> Result < f64 , StatMechError >"
     },
     {
       "signature": "pub fn larmor_frequency (_ : f64) -> f64"
@@ -6368,12 +7227,97 @@
       "signature": "pub struct MassNumber"
     }
   ],
+  "crates/domain_physics/src/physics/optics/caustics.rs": [
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn caustic_points (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn ray_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn ray_points (& self , _ : usize) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn trace_in_place (& mut self , _ : & OpticalMediumConfig , _ : usize , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn trace_single_ray_in_place (& mut self , _ : & OpticalMediumConfig , _ : usize , _ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64 ,) }"
+    },
+    {
+      "signature": "pub struct HamiltonianRayTracer"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/refraction.rs": [
+    {
+      "signature": "impl OpticalMediumConfig { pub fn apply_to_wave_field (& self , _ : & mut WaveField2D) }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn default_wave_source (& self , _ : & WaveFieldConfig2D) -> WaveSource2D }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn discrete_region_id (& self , _ : f64 , _ : f64) -> u8 }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn grad_n_squared (& self , _ : f64 , _ : f64) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn interface_normal (& self , _ : f64 , _ : f64 , _ : [f64 ; 2]) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn is_obstacle_at (& self , _ : f64 , _ : f64 , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn lens_center (& self) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn refractive_index_at (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn slit_wall_x (& self) -> f64 }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn source_position (& self) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn veselago_slab_bounds (& self) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticsPreset { pub const ALL : [Self ; 5] }"
+    },
+    {
+      "signature": "impl OpticsPreset { pub const fn label (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum OpticsPreset"
+    },
+    {
+      "signature": "pub fn snell_refract_vector (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64 , _ : f64 ,) -> [f64 ; 2]"
+    },
+    {
+      "signature": "pub fn snell_refracted_angle (_ : f64 , _ : f64 , _ : f64) -> Option < f64 >"
+    },
+    {
+      "signature": "pub struct OpticalMediumConfig"
+    }
+  ],
   "crates/domain_physics/src/physics/optics/sensing.rs": [
     {
       "signature": "pub fn lambertian_intensity (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
     },
     {
       "signature": "pub fn lws_range_resolution (_ : f64 , _ : f64 , _ : u32) -> f64"
+    },
+    {
+      "signature": "pub fn sample_detector_line_in_place (_ : & WaveField2D , _ : & DetectorConfig , _ : & mut [f64] ,) -> DetectorReadout"
+    },
+    {
+      "signature": "pub struct DetectorConfig"
+    },
+    {
+      "signature": "pub struct DetectorReadout"
     }
   ],
   "crates/domain_physics/src/physics/quantum/coupling.rs": [
@@ -6506,6 +7450,9 @@
       "signature": "pub use schrodinger :: transmission_probability"
     },
     {
+      "signature": "pub use spin :: set_spin_bloch_angles_in_place"
+    },
+    {
       "signature": "pub use spin :: sigma_x"
     },
     {
@@ -6513,6 +7460,15 @@
     },
     {
       "signature": "pub use spin :: sigma_z"
+    },
+    {
+      "signature": "pub use spin :: spin_from_bloch_angles"
+    },
+    {
+      "signature": "pub use tridiagonal :: CrankNicolsonPropagator1D"
+    },
+    {
+      "signature": "pub use tridiagonal :: TridiagonalHamiltonian1D"
     },
     {
       "signature": "pub use types :: QuantumOperator"
@@ -6540,6 +7496,9 @@
   ],
   "crates/domain_physics/src/physics/quantum/spin.rs": [
     {
+      "signature": "pub fn set_spin_bloch_angles_in_place (_ : & mut QuantumState , _ : f64 , _ : f64)"
+    },
+    {
       "signature": "pub fn sigma_x () -> QuantumOperator"
     },
     {
@@ -6547,6 +7506,77 @@
     },
     {
       "signature": "pub fn sigma_z () -> QuantumOperator"
+    },
+    {
+      "signature": "pub fn spin_from_bloch_angles (_ : f64 , _ : f64) -> QuantumState"
+    }
+  ],
+  "crates/domain_physics/src/physics/quantum/tridiagonal.rs": [
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn configure_dt (& mut self , _ : & TridiagonalHamiltonian1D , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn dt (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn evolve_in_place (& mut self , _ : & mut QuantumState) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn evolve_substeps_in_place (& mut self , _ : & mut QuantumState , _ : usize) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn invalidate (& mut self) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn new (_ : & TridiagonalHamiltonian1D , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn diagonal (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn expectation_value (& self , _ : & QuantumState) -> f64 }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn from_potential (_ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn from_potential_slice (_ : & [f64] , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn new (_ : Vec < f64 > , _ : Vec < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn off_diagonal (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn update_from_potential (& mut self , _ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn update_potential_in_place (& mut self , _ : & [f64] , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct CrankNicolsonPropagator1D"
+    },
+    {
+      "signature": "pub struct TridiagonalHamiltonian1D"
     }
   ],
   "crates/domain_physics/src/physics/quantum/types.rs": [
@@ -6579,6 +7609,9 @@
     },
     {
       "signature": "impl QuantumState { pub fn probability_density (& self) -> DVector < f64 > }"
+    },
+    {
+      "signature": "impl QuantumState { pub fn probability_density_in_place (& self , _ : & mut [f64]) }"
     },
     {
       "signature": "impl QuantumState { pub fn project_spatial_modes < const M : usize > (& self) -> [Complex < f64 > ; M] }"
@@ -6621,7 +7654,7 @@
       "signature": "impl IsotropicBCSModel { pub fn new (_ : Vec < f64 > , _ : f64 , _ : f64 ,) -> Result < Self , SolidStateError > }"
     },
     {
-      "signature": "pub fn coherence_factors_strong (_ : ElectronVolts , _ : ElectronVolts ,) -> Result < (f64 , f64) , String >"
+      "signature": "pub fn coherence_factors_strong (_ : ElectronVolts , _ : ElectronVolts ,) -> Result < (f64 , f64) , SolidStateError >"
     },
     {
       "signature": "pub struct BcsGapSolver"
@@ -6696,13 +7729,13 @@
   ],
   "crates/domain_physics/src/physics/solid_state/second_quantization.rs": [
     {
-      "signature": "impl FockState { pub fn create_particle < P : ParticleStatistics > (& mut self , _ : usize) -> Result < () , String > }"
+      "signature": "impl FockState { pub fn create_particle < P : ParticleStatistics > (& mut self , _ : usize ,) -> Result < () , SolidStateError > }"
     },
     {
       "signature": "impl FockState { pub fn new (_ : usize) -> Self }"
     },
     {
-      "signature": "impl FockState { pub fn set_occupation < P : ParticleStatistics > (& mut self , _ : usize , _ : u8 ,) -> Result < () , String > }"
+      "signature": "impl FockState { pub fn set_occupation < P : ParticleStatistics > (& mut self , _ : usize , _ : u8 ,) -> Result < () , SolidStateError > }"
     },
     {
       "signature": "impl Operator { pub fn new (_ : QuantumOperatorType , _ : usize) -> Self }"
@@ -6732,10 +7765,10 @@
       "signature": "pub trait ParticleStatistics { fn check_commutation (_ : & Operator , _ : & Operator) -> f64 }"
     },
     {
-      "signature": "pub trait ParticleStatistics { fn validate_create_particle (_ : u8) -> Result < u8 , String > }"
+      "signature": "pub trait ParticleStatistics { fn validate_create_particle (_ : u8) -> Result < u8 , SolidStateError > }"
     },
     {
-      "signature": "pub trait ParticleStatistics { fn validate_set_occupation (_ : u8 , _ : u8) -> Result < () , String > }"
+      "signature": "pub trait ParticleStatistics { fn validate_set_occupation (_ : u8 , _ : u8) -> Result < () , SolidStateError > }"
     }
   ],
   "crates/domain_physics/src/physics/solid_state/types.rs": [
@@ -6806,7 +7839,7 @@
   ],
   "crates/domain_physics/src/physics/standard_model/higgs.rs": [
     {
-      "signature": "impl HiggsPotential { pub fn vev (& self) -> Result < f64 , String > }"
+      "signature": "impl HiggsPotential { pub fn vev (& self) -> Result < f64 , StandardModelError > }"
     },
     {
       "signature": "pub fn boson_masses (_ : f64 , _ : & GaugeCouplings) -> (f64 , f64)"
@@ -6923,6 +7956,197 @@
     },
     {
       "signature": "pub trait StatisticalDistribution { fn occupancy (& self , _ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , StatMechError > }"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/algebra.rs": [
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub const fn heights (& self) -> & [[u32 ; W] ; H] }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn burning_waves (& self) -> (bool , [[u16 ; W] ; H] , u16) }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn cyclic_subgroup (& self , _ : usize) -> Vec < Self > }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn from_stabilized_raw (_ : [[u32 ; W] ; H]) -> Self }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn group_order () -> Result < i128 , SandpileError > }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn identity_element () -> Self }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn is_recurrent (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn new (_ : [[u32 ; W] ; H]) -> Self }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn zn_homomorphism < const N : usize > (& self , _ : Zn < N >) -> Self }"
+    },
+    {
+      "signature": "pub struct SandpileElement < const W : usize , const H : usize >"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/kirchhoff.rs": [
+    {
+      "signature": "pub const MAX_BAREISS_CELLS : usize"
+    },
+    {
+      "signature": "pub enum SandpileError"
+    },
+    {
+      "signature": "pub fn kirchhoff_determinant_bareiss (_ : usize , _ : usize) -> Result < i128 , SandpileError >"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/mod.rs": [
+    {
+      "signature": "impl SandpileGrid { pub const fn has_active_wavefront (& self) -> bool }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub const fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub const fn telemetry (& self) -> & AvalancheTelemetry }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub const fn width (& self) -> usize }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn add_grains (& mut self , _ : usize , _ : usize , _ : u32) -> Result < () , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn burn_depths (& self) -> & [u16] }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn drop_random_grain (& mut self) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn fill (& mut self , _ : u32) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn fit_avalanche_power_law (& self , _ : AvalancheObservable ,) -> Result < CurveFit , FitError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn height_at (& self , _ : usize , _ : usize) -> Result < u32 , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn heights (& self) -> & [u32] }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn new (_ : usize , _ : usize , _ : Option < u64 >) -> Result < Self , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn reseed (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn scaling_cutoff (& self , _ : AvalancheObservable) -> usize }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn set_heights (& mut self , _ : & [u32]) -> Result < () , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn stabilize_wavefront (& mut self) -> AvalancheStats }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn step_wavefront (& mut self) -> (usize , u64) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn telemetry_mut (& mut self) -> & mut AvalancheTelemetry }"
+    },
+    {
+      "signature": "pub const CRITICAL_HEIGHT : u32"
+    },
+    {
+      "signature": "pub const MAX_SANDPILE_DIM : usize"
+    },
+    {
+      "signature": "pub const MAX_STABLE_HEIGHT : u32"
+    },
+    {
+      "signature": "pub struct BurningTestResult"
+    },
+    {
+      "signature": "pub struct SandpileGrid"
+    },
+    {
+      "signature": "pub use algebra :: SandpileElement"
+    },
+    {
+      "signature": "pub use kirchhoff :: MAX_BAREISS_CELLS"
+    },
+    {
+      "signature": "pub use kirchhoff :: SandpileError"
+    },
+    {
+      "signature": "pub use kirchhoff :: kirchhoff_determinant_bareiss"
+    },
+    {
+      "signature": "pub use telemetry :: AvalancheObservable"
+    },
+    {
+      "signature": "pub use telemetry :: AvalancheStats"
+    },
+    {
+      "signature": "pub use telemetry :: AvalancheTelemetry"
+    },
+    {
+      "signature": "pub use telemetry :: EXACT_AVALANCHE_BUCKET_CAP"
+    },
+    {
+      "signature": "pub use telemetry :: MAX_POWER_LAW_FIT_POINTS"
+    },
+    {
+      "signature": "pub use telemetry :: WAVEFRONT_TRACE_CAP"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/telemetry.rs": [
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn last_stats (& self) -> AvalancheStats }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn total_avalanches (& self) -> u64 }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn zero_topple_drops (& self) -> u64 }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn fit_power_law (& self , _ : AvalancheObservable , _ : usize ,) -> Result < CurveFit , FitError > }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn record (& mut self , _ : AvalancheStats) }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn survival_curve_into (& self , _ : AvalancheObservable , _ : usize , _ : & mut [[f64 ; 2]] ,) -> usize }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn wavefront_trace (& self) -> & [u32] }"
+    },
+    {
+      "signature": "pub const EXACT_AVALANCHE_BUCKET_CAP : usize"
+    },
+    {
+      "signature": "pub const MAX_POWER_LAW_FIT_POINTS : usize"
+    },
+    {
+      "signature": "pub const WAVEFRONT_TRACE_CAP : usize"
+    },
+    {
+      "signature": "pub enum AvalancheObservable"
+    },
+    {
+      "signature": "pub struct AvalancheStats"
+    },
+    {
+      "signature": "pub struct AvalancheTelemetry"
     }
   ],
   "crates/federated_registry/src/lib.rs": [
@@ -7814,13 +9038,28 @@
   ],
   "crates/oxidize_core/src/mesh/export_stl.rs": [
     {
+      "signature": "pub const MAX_EXPORT_SPAN_MM : f32"
+    },
+    {
+      "signature": "pub const MIN_EXPORT_SPAN_MM : f32"
+    },
+    {
+      "signature": "pub const STL_HEADER_TEXT : & [u8]"
+    },
+    {
       "signature": "pub fn export_mesh_to_stl_ascii (_ : & Mesh) -> Result < String , Error >"
     },
     {
       "signature": "pub fn export_mesh_to_stl_binary (_ : & Mesh) -> Result < Vec < u8 > , Error >"
     },
     {
+      "signature": "pub fn export_mesh_to_stl_binary_scaled (_ : & Mesh , _ : f32 ,) -> Result < Vec < u8 > , Error >"
+    },
+    {
       "signature": "pub fn parse_stl_ascii (_ : & str) -> Result < Mesh , Error >"
+    },
+    {
+      "signature": "pub fn scale_mesh_to_millimeters (_ : & mut Mesh , _ : f32) -> Result < () , Error >"
     }
   ],
   "crates/oxidize_core/src/mesh/mod.rs": [
@@ -8112,7 +9351,7 @@
       "signature": "pub fn get_workspace_members_from_paths (_ : & Path , _ : & Path) -> (bool , Vec < String >)"
     },
     {
-      "signature": "pub fn parse_workspace_members (_ : & str) -> Result < Vec < String > , String >"
+      "signature": "pub fn parse_workspace_members (_ : & str) -> Result < Vec < String > , WorkspaceError >"
     },
     {
       "signature": "pub use workspace_wasm :: HOST_ONLY_WORKSPACE_PACKAGES"
@@ -8122,6 +9361,9 @@
     },
     {
       "signature": "pub use workspace_wasm :: WasmTestTargetKind"
+    },
+    {
+      "signature": "pub use workspace_wasm :: WorkspaceError"
     },
     {
       "signature": "pub use workspace_wasm :: build_wasm_cargo_test_invocations"
@@ -8142,6 +9384,9 @@
     },
     {
       "signature": "pub enum KellyError"
+    },
+    {
+      "signature": "pub enum MarketPricingError"
     },
     {
       "signature": "pub enum MarkovError"
@@ -8192,7 +9437,21 @@
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
+      "signature": "pub use sports :: EloError"
+    },
+    {
+      "signature": "pub use sports :: MatchModelError"
+    },
+    {
       "signature": "pub use umbrella :: PureMathError"
+    }
+  ],
+  "crates/pure_math/src/error/sports.rs": [
+    {
+      "signature": "pub enum EloError"
+    },
+    {
+      "signature": "pub enum MatchModelError"
     }
   ],
   "crates/pure_math/src/error/umbrella.rs": [
@@ -8220,6 +9479,9 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EllipticCurveError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EloError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EvolutionError } }"
     },
     {
@@ -8235,7 +9497,13 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: LinearAlgebraError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MarketPricingError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MarkovError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MatchModelError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: NumberTheoryError } }"
@@ -8435,10 +9703,10 @@
       "signature": "impl Integer { pub fn from < T > (_ : T) -> Self where IBig : From < T > , }"
     },
     {
-      "signature": "impl Integer { pub fn from_str_radix (_ : & str , _ : u32) -> Result < Self , () > }"
+      "signature": "impl Integer { pub fn from_str_radix (_ : & str , _ : u32) -> Result < Self , NumberTheoryError > }"
     },
     {
-      "signature": "impl Integer { pub fn invert (& self , _ : & Integer) -> Result < Self , () > }"
+      "signature": "impl Integer { pub fn invert (& self , _ : & Integer) -> Result < Self , NumberTheoryError > }"
     },
     {
       "signature": "impl Integer { pub fn is_divisible (& self , _ : & Integer) -> bool }"
@@ -8450,10 +9718,10 @@
       "signature": "impl Integer { pub fn new () -> Self }"
     },
     {
-      "signature": "impl Integer { pub fn parse (_ : & str) -> Result < Self , () > }"
+      "signature": "impl Integer { pub fn parse (_ : & str) -> Result < Self , NumberTheoryError > }"
     },
     {
-      "signature": "impl Integer { pub fn pow_mod (& self , _ : & Integer , _ : & Integer) -> Result < Self , () > }"
+      "signature": "impl Integer { pub fn pow_mod (& self , _ : & Integer , _ : & Integer) -> Result < Self , NumberTheoryError > }"
     },
     {
       "signature": "impl Integer { pub fn sqrt (& self) -> Self }"
@@ -8518,6 +9786,9 @@
   ],
   "crates/pure_math/src/pure_math/algebra/fields.rs": [
     {
+      "signature": "impl < const P : i64 > Fp < P > { pub fn checked_inverse (& self) -> Result < Self , NumberTheoryError > }"
+    },
+    {
       "signature": "impl < const P : i64 > Fp < P > { pub fn new (_ : i64) -> Self }"
     },
     {
@@ -8529,13 +9800,28 @@
       "signature": "impl < const N : usize > Zn < N > { pub fn new (_ : usize) -> Self }"
     },
     {
+      "signature": "impl < const N : usize > Zn < N > { pub fn try_new (_ : usize) -> Result < Self , NumberTheoryError > }"
+    },
+    {
       "signature": "impl CyclicElement { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl CyclicElement { pub fn try_new (_ : usize , _ : usize) -> Result < Self , NumberTheoryError > }"
+    },
+    {
+      "signature": "impl CyclicElement { pub fn try_operate (_ : & Self , _ : & Self) -> Result < Self , MathError > }"
     },
     {
       "signature": "impl Permutation { pub fn identity (_ : usize) -> Self }"
     },
     {
       "signature": "impl Permutation { pub fn new (_ : Vec < usize >) -> Self }"
+    },
+    {
+      "signature": "impl Permutation { pub fn try_new (_ : Vec < usize >) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Permutation { pub fn try_operate (_ : & Self , _ : & Self) -> Result < Self , MathError > }"
     },
     {
       "signature": "pub fn generate_left_coset < G : Group > (_ : & [G] , _ : & G) -> Vec < G >"
@@ -8628,10 +9914,25 @@
       "signature": "pub use group :: Zn"
     },
     {
+      "signature": "pub use group :: generate_left_coset"
+    },
+    {
+      "signature": "pub use group :: generate_right_coset"
+    },
+    {
+      "signature": "pub use group :: is_normal_subgroup"
+    },
+    {
+      "signature": "pub use group :: is_subgroup"
+    },
+    {
       "signature": "pub use linear_algebra :: LinearAlgebraError"
     },
     {
       "signature": "pub use polynomial :: Polynomial"
+    },
+    {
+      "signature": "pub use traits :: AbelianGroup"
     },
     {
       "signature": "pub use traits :: EuclideanDomain"
@@ -8983,6 +10284,9 @@
       "signature": "impl SchwarzChristoffel { pub fn transform (& self , _ : Complex64 , _ : Complex64 , _ : usize) -> Complex64 }"
     },
     {
+      "signature": "impl SchwarzChristoffel { pub fn try_new (_ : Vec < f64 > , _ : Vec < f64 > , _ : Complex64 , _ : Complex64 ,) -> Result < Self , MathError > }"
+    },
+    {
       "signature": "pub fn area_magnification < F > (_ : F , _ : Complex64) -> f64 where F : Fn (Complex64) -> Complex64 ,"
     },
     {
@@ -8995,6 +10299,9 @@
   "crates/pure_math/src/pure_math/analysis/complex/surfaces.rs": [
     {
       "signature": "impl NthRootSurface { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl NthRootSurface { pub fn try_new (_ : usize) -> Result < Self , MathError > }"
     },
     {
       "signature": "pub struct LogSurface"
@@ -9494,6 +10801,15 @@
       "signature": "impl FusedStencilStepper { pub fn step_3d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , StencilNeighbors3D < N > , & StencilOperators) -> [f64 ; N] , }"
     },
     {
+      "signature": "impl FusedStencilStepper { pub fn try_new (_ : StepSize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn try_new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
+    },
+    {
       "signature": "impl StencilOperators { pub fn central_diff_1st (& self , _ : f64 , _ : f64) -> f64 }"
     },
     {
@@ -9513,6 +10829,15 @@
     },
     {
       "signature": "impl StencilOperators { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new (_ : StepSize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
     },
     {
       "signature": "impl StencilOperators { pub fn upwind_flux (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
@@ -9622,6 +10947,18 @@
     },
     {
       "signature": "pub struct WaveEquation1D"
+    },
+    {
+      "signature": "pub use super :: wave_fdtd :: WaveField2D"
+    },
+    {
+      "signature": "pub use super :: wave_fdtd :: WaveFieldConfig2D"
+    },
+    {
+      "signature": "pub use super :: wave_fdtd :: WaveSource2D"
+    },
+    {
+      "signature": "pub use super :: wave_fdtd :: WaveSourceKind"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/wave_2d.rs": [
@@ -9647,9 +10984,6 @@
       "signature": "impl Wave2DSolver { pub fn height (& self) -> usize }"
     },
     {
-      "signature": "impl Wave2DSolver { pub fn inject_gaussian_pulse (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) }"
-    },
-    {
       "signature": "impl Wave2DSolver { pub fn modal_field (& self) -> & [f64] }"
     },
     {
@@ -9657,9 +10991,6 @@
     },
     {
       "signature": "impl Wave2DSolver { pub fn new_unit_square (_ : usize) -> Self }"
-    },
-    {
-      "signature": "impl Wave2DSolver { pub fn read_detector_profile (& self , _ : usize , _ : & mut [f64]) }"
     },
     {
       "signature": "impl Wave2DSolver { pub fn reset_all (& mut self) }"
@@ -9735,6 +11066,9 @@
     },
     {
       "signature": "pub use particles_and_contours :: MarchingSquares2D"
+    },
+    {
+      "signature": "pub use probes :: WaveProbeSample"
     },
     {
       "signature": "pub use spectral :: SpectralAnalyzer2D"
@@ -9839,6 +11173,26 @@
       "signature": "pub struct MarchingSquares2D"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/probes.rs": [
+    {
+      "signature": "impl Wave2DSolver { pub fn inject_gaussian_pulse (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn read_detector_profile (& self , _ : usize , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn sample_displacement_bilinear (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn sample_probe (& self , _ : f64 , _ : f64) -> WaveProbeSample }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn sample_velocity_bilinear (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub struct WaveProbeSample"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/pde/wave_2d/spectral.rs": [
     {
       "signature": "impl SpectralAnalyzer2D { pub fn compute_radial_profile (& self , _ : & mut [f64] , _ : & mut [usize]) }"
@@ -9865,6 +11219,9 @@
       "signature": "impl SpectralAnalyzer2D { pub fn spectrum (& self) -> & [f64] }"
     },
     {
+      "signature": "impl SpectralAnalyzer2D { pub fn top_peaks (& self , _ : & mut [SpectralPeak2D]) -> usize }"
+    },
+    {
       "signature": "impl SpectralAnalyzer2D { pub fn width (& self) -> usize }"
     },
     {
@@ -9877,9 +11234,77 @@
       "signature": "pub struct SpectralPeak2D"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_fdtd.rs": [
+    {
+      "signature": "impl WaveField2D { pub fn cfl_dt (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn clamp_dt (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn clear_state (& mut self) }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn config (& self) -> & WaveFieldConfig2D }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn configure_medium_in_place < F > (& mut self , _ : F) where F : FnMut (usize , usize , & WaveFieldConfig2D , & mut f64 , & mut u8) , }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn has_negative_index (& self) -> bool }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn irradiance (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn new (_ : WaveFieldConfig2D) -> Self }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn obstacle_mask (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn refractive_index (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn set_reference_frequency (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn step (& mut self , _ : f64 , _ : Option < & WaveSource2D >) -> f64 }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn step_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WaveSource2D { pub fn evaluate_at_time (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub enum WaveSourceKind"
+    },
+    {
+      "signature": "pub struct WaveField2D"
+    },
+    {
+      "signature": "pub struct WaveFieldConfig2D"
+    },
+    {
+      "signature": "pub struct WaveSource2D"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/roots.rs": [
     {
       "signature": "impl Bisection { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl Brent { pub fn new (_ : usize , _ : f64) -> Self }"
     },
     {
       "signature": "impl NewtonRaphson { pub fn find_root_with_derivative < F , D > (& self , _ : F , _ : D , _ : f64 ,) -> Result < f64 , AnalysisError > where F : Fn (f64) -> f64 , D : Fn (f64) -> f64 , }"
@@ -9892,6 +11317,9 @@
     },
     {
       "signature": "pub struct Bisection"
+    },
+    {
+      "signature": "pub struct Brent"
     },
     {
       "signature": "pub struct NewtonRaphson"
@@ -10611,6 +12039,9 @@
   ],
   "crates/pure_math/src/pure_math/number_theory/q_series.rs": [
     {
+      "signature": "impl < T : EuclideanDomain > QSeries < T > { pub fn checked_div (& self , _ : & Self) -> Result < QSeries < T > , NumberTheoryError > }"
+    },
+    {
       "signature": "impl < T : EuclideanDomain > QSeries < T > { pub fn from_vec (_ : Vec < T >) -> Self }"
     },
     {
@@ -10885,6 +12316,229 @@
       "signature": "pub trait ProbabilityTransform { fn to_uniform (& self , _ : f64) -> Result < Probability , CopulaError > }"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/elo/batch.rs": [
+    {
+      "signature": "impl EloBatchMatch { pub fn from_goals (_ : usize , _ : usize , _ : u32 , _ : u32 , _ : Venue ,) -> Result < Self , EloError > }"
+    },
+    {
+      "signature": "impl EloBatchMatch { pub fn new (_ : usize , _ : usize , _ : f64 , _ : u32 , _ : Venue ,) -> Result < Self , EloError > }"
+    },
+    {
+      "signature": "impl EloBatchMatch { pub fn score_away (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn evaluate_elo_batch (_ : & [EloRating] , _ : & [EloBatchMatch] , _ : & EloConfig ,) -> Result < Vec < EloRating > , EloError >"
+    },
+    {
+      "signature": "pub fn evaluate_elo_batch_into (_ : & [EloRating] , _ : & [EloBatchMatch] , _ : & EloConfig , _ : & mut [f64] , _ : & mut [EloRating] ,) -> Result < () , EloError >"
+    },
+    {
+      "signature": "pub fn evaluate_elo_sequential (_ : & [EloRating] , _ : & [EloBatchMatch] , _ : & EloConfig ,) -> Result < Vec < EloRating > , EloError >"
+    },
+    {
+      "signature": "pub fn evaluate_elo_sequential_into (_ : & [EloRating] , _ : & [EloBatchMatch] , _ : & EloConfig , _ : & mut [EloRating] ,) -> Result < () , EloError >"
+    },
+    {
+      "signature": "pub struct EloBatchMatch"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/elo/core.rs": [
+    {
+      "signature": "impl EloConfig { pub fn home_advantage (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EloConfig { pub fn k_factor (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EloConfig { pub fn margin_scaling (& self) -> MarginScaling }"
+    },
+    {
+      "signature": "impl EloConfig { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : MarginScaling ,) -> Result < Self , EloError > }"
+    },
+    {
+      "signature": "impl EloConfig { pub fn scale (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EloConfig { pub fn with_margin_scaling (self , _ : MarginScaling) -> Self }"
+    },
+    {
+      "signature": "impl EloRating { pub fn new (_ : f64) -> Result < Self , EloError > }"
+    },
+    {
+      "signature": "impl EloRating { pub fn value (& self) -> f64 }"
+    },
+    {
+      "signature": "pub const DEFAULT_ELO_K_FACTOR : f64"
+    },
+    {
+      "signature": "pub const DEFAULT_ELO_RATING : f64"
+    },
+    {
+      "signature": "pub const DEFAULT_ELO_SCALE : f64"
+    },
+    {
+      "signature": "pub const DEFAULT_HOME_ADVANTAGE : f64"
+    },
+    {
+      "signature": "pub enum MarginScaling"
+    },
+    {
+      "signature": "pub enum Venue"
+    },
+    {
+      "signature": "pub struct EloConfig"
+    },
+    {
+      "signature": "pub struct EloRating"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/elo/markets.rs": [
+    {
+      "signature": "pub fn elo_expected_margin (_ : EloRating , _ : EloRating , _ : Venue , _ : & EloConfig , _ : f64 ,) -> Result < f64 , EloError >"
+    },
+    {
+      "signature": "pub fn elo_moneyline_odds (_ : EloRating , _ : EloRating , _ : Venue , _ : & EloConfig ,) -> Result < (Odds , Odds) , EloError >"
+    },
+    {
+      "signature": "pub fn elo_point_spread (_ : EloRating , _ : EloRating , _ : Venue , _ : & EloConfig , _ : f64 ,) -> Result < f64 , EloError >"
+    },
+    {
+      "signature": "pub fn elo_win_probability (_ : EloRating , _ : EloRating , _ : Venue , _ : & EloConfig ,) -> Result < UnitInterval , EloError >"
+    },
+    {
+      "signature": "pub fn probability_to_fair_odds (_ : UnitInterval) -> Result < Odds , EloError >"
+    },
+    {
+      "signature": "pub fn spread_to_elo_diff (_ : f64 , _ : f64) -> Result < f64 , EloError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/elo/mod.rs": [
+    {
+      "signature": "pub use batch :: EloBatchMatch"
+    },
+    {
+      "signature": "pub use batch :: evaluate_elo_batch"
+    },
+    {
+      "signature": "pub use batch :: evaluate_elo_batch_into"
+    },
+    {
+      "signature": "pub use batch :: evaluate_elo_sequential"
+    },
+    {
+      "signature": "pub use batch :: evaluate_elo_sequential_into"
+    },
+    {
+      "signature": "pub use core :: DEFAULT_ELO_K_FACTOR"
+    },
+    {
+      "signature": "pub use core :: DEFAULT_ELO_RATING"
+    },
+    {
+      "signature": "pub use core :: DEFAULT_ELO_SCALE"
+    },
+    {
+      "signature": "pub use core :: DEFAULT_HOME_ADVANTAGE"
+    },
+    {
+      "signature": "pub use core :: EloConfig"
+    },
+    {
+      "signature": "pub use core :: EloRating"
+    },
+    {
+      "signature": "pub use core :: MarginScaling"
+    },
+    {
+      "signature": "pub use core :: Venue"
+    },
+    {
+      "signature": "pub use markets :: elo_expected_margin"
+    },
+    {
+      "signature": "pub use markets :: elo_moneyline_odds"
+    },
+    {
+      "signature": "pub use markets :: elo_point_spread"
+    },
+    {
+      "signature": "pub use markets :: elo_win_probability"
+    },
+    {
+      "signature": "pub use markets :: probability_to_fair_odds"
+    },
+    {
+      "signature": "pub use markets :: spread_to_elo_diff"
+    },
+    {
+      "signature": "pub use update :: adjusted_rating_diff"
+    },
+    {
+      "signature": "pub use update :: autocorrelated_margin_multiplier"
+    },
+    {
+      "signature": "pub use update :: elo_rating_delta"
+    },
+    {
+      "signature": "pub use update :: expected_score"
+    },
+    {
+      "signature": "pub use update :: expected_score_with_config"
+    },
+    {
+      "signature": "pub use update :: log_margin_multiplier"
+    },
+    {
+      "signature": "pub use update :: margin_multiplier"
+    },
+    {
+      "signature": "pub use update :: regress_roster_into"
+    },
+    {
+      "signature": "pub use update :: regress_to_mean"
+    },
+    {
+      "signature": "pub use update :: update_elo_from_goals"
+    },
+    {
+      "signature": "pub use update :: update_elo_ratings"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/elo/update.rs": [
+    {
+      "signature": "pub fn adjusted_rating_diff (_ : EloRating , _ : EloRating , _ : Venue , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn autocorrelated_margin_multiplier (_ : u32 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn elo_rating_delta (_ : EloRating , _ : EloRating , _ : f64 , _ : u32 , _ : Venue , _ : & EloConfig ,) -> Result < f64 , EloError >"
+    },
+    {
+      "signature": "pub fn expected_score (_ : EloRating , _ : EloRating , _ : f64 , _ : f64 ,) -> Result < f64 , EloError >"
+    },
+    {
+      "signature": "pub fn expected_score_with_config (_ : EloRating , _ : EloRating , _ : Venue , _ : & EloConfig ,) -> Result < f64 , EloError >"
+    },
+    {
+      "signature": "pub fn log_margin_multiplier (_ : u32) -> f64"
+    },
+    {
+      "signature": "pub fn margin_multiplier (_ : MarginScaling , _ : u32 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn regress_roster_into (_ : & [EloRating] , _ : EloRating , _ : f64 , _ : & mut [EloRating] ,) -> Result < () , EloError >"
+    },
+    {
+      "signature": "pub fn regress_to_mean (_ : EloRating , _ : EloRating , _ : f64 ,) -> Result < EloRating , EloError >"
+    },
+    {
+      "signature": "pub fn update_elo_from_goals (_ : EloRating , _ : EloRating , _ : u32 , _ : u32 , _ : Venue , _ : & EloConfig ,) -> Result < (EloRating , EloRating) , EloError >"
+    },
+    {
+      "signature": "pub fn update_elo_ratings (_ : EloRating , _ : EloRating , _ : f64 , _ : u32 , _ : Venue , _ : & EloConfig ,) -> Result < (EloRating , EloRating) , EloError >"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/glicko2/core.rs": [
     {
       "signature": "impl GlickoPlayer { pub fn new (_ : Rating , _ : RatingDeviation , _ : Volatility) -> Self }"
@@ -11090,6 +12744,9 @@
       "signature": "impl Odds { pub fn from_fractional (_ : f64 , _ : f64) -> Result < Self , KellyError > }"
     },
     {
+      "signature": "impl Odds { pub fn from_implied_probability (_ : f64) -> Result < Self , KellyError > }"
+    },
+    {
       "signature": "impl Odds { pub fn from_net_odds (_ : f64) -> Result < Self , KellyError > }"
     },
     {
@@ -11100,6 +12757,12 @@
     },
     {
       "signature": "impl Odds { pub fn new (_ : f64) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl Odds { pub fn to_american (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Odds { pub fn to_fractional (& self , _ : u64) -> (u64 , u64) }"
     },
     {
       "signature": "impl Odds { pub fn value (& self) -> f64 }"
@@ -11161,6 +12824,252 @@
     },
     {
       "signature": "pub use criterion :: variants"
+    },
+    {
+      "signature": "pub use super :: ruin"
+    },
+    {
+      "signature": "pub use super :: validation"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/devig.rs": [
+    {
+      "signature": "pub enum DevigMethod"
+    },
+    {
+      "signature": "pub fn devig_additive_detailed_into (_ : & [Odds] , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_additive_into (_ : & [Odds] , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_into (_ : & [Odds] , _ : DevigMethod , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_multiplicative_into (_ : & [Odds] , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_power_into (_ : & [Odds] , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_shin_into (_ : & [Odds] , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn fair_decimal_odds_into (_ : & [f64] , _ : & mut [f64] ,) -> Result < () , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn fair_odds_from_probabilities_into (_ : & [f64] , _ : & mut [Odds] ,) -> Result < () , MarketPricingError >"
+    },
+    {
+      "signature": "pub struct DevigMetadata"
+    },
+    {
+      "signature": "pub struct SimplexViolationDiagnostic"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/dutching.rs": [
+    {
+      "signature": "pub enum DutchingMode"
+    },
+    {
+      "signature": "pub fn dutch_outcomes_into (_ : & [Odds] , _ : DutchingMode , _ : & mut [f64] ,) -> Result < DutchingReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn dutch_subset_into (_ : & [Odds] , _ : & [usize] , _ : DutchingMode , _ : & mut [f64] ,) -> Result < DutchingReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_arbitrage_into (_ : & [Odds] , _ : f64 , _ : & mut [f64] ,) -> Result < ArbitrageReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_two_way_arbitrage (_ : Odds , _ : Odds , _ : f64 ,) -> Result < (ArbitrageReport , [f64 ; 2]) , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn is_arbitrage (_ : & [Odds]) -> Result < bool , MarketPricingError >"
+    },
+    {
+      "signature": "pub struct ArbitrageReport"
+    },
+    {
+      "signature": "pub struct DutchingReport"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/ev.rs": [
+    {
+      "signature": "impl AllMethodsEvReport { pub fn for_method (& self , _ : DevigMethod) -> & EvEvaluation }"
+    },
+    {
+      "signature": "impl EvEvaluation { pub fn recommended_stakes (& self , _ : f64) -> Result < (f64 , f64 , f64) , KellyError > }"
+    },
+    {
+      "signature": "pub fn compare_outcome_ev_all_methods (_ : & [Odds] , _ : usize , _ : Odds ,) -> Result < AllMethodsEvReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_ev_from_probability (_ : UnitInterval , _ : Odds ,) -> Result < EvEvaluation , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_outcome_ev (_ : & [Odds] , _ : usize , _ : Odds , _ : DevigMethod ,) -> Result < EvEvaluation , MarketPricingError >"
+    },
+    {
+      "signature": "pub struct AllMethodsEvReport"
+    },
+    {
+      "signature": "pub struct EvEvaluation"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/execution.rs": [
+    {
+      "signature": "pub enum HedgeMode"
+    },
+    {
+      "signature": "pub fn evaluate_hedge (_ : f64 , _ : Odds , _ : Odds , _ : HedgeMode ,) -> Result < HedgeReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_middle (_ : Odds , _ : Odds , _ : f64 , _ : Option < UnitInterval > ,) -> Result < MiddleReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_middle_custom_stakes (_ : Odds , _ : f64 , _ : Odds , _ : f64 , _ : Option < UnitInterval > ,) -> Result < MiddleReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub struct HedgeReport"
+    },
+    {
+      "signature": "pub struct MiddleReport"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/mod.rs": [
+    {
+      "signature": "pub const MAX_MARKET_OUTCOMES : usize"
+    },
+    {
+      "signature": "pub use crate :: error :: MarketPricingError"
+    },
+    {
+      "signature": "pub use devig :: DevigMetadata"
+    },
+    {
+      "signature": "pub use devig :: DevigMethod"
+    },
+    {
+      "signature": "pub use devig :: SimplexViolationDiagnostic"
+    },
+    {
+      "signature": "pub use devig :: devig_additive_detailed_into"
+    },
+    {
+      "signature": "pub use devig :: devig_additive_into"
+    },
+    {
+      "signature": "pub use devig :: devig_into"
+    },
+    {
+      "signature": "pub use devig :: devig_multiplicative_into"
+    },
+    {
+      "signature": "pub use devig :: devig_power_into"
+    },
+    {
+      "signature": "pub use devig :: devig_shin_into"
+    },
+    {
+      "signature": "pub use devig :: fair_decimal_odds_into"
+    },
+    {
+      "signature": "pub use devig :: fair_odds_from_probabilities_into"
+    },
+    {
+      "signature": "pub use dutching :: ArbitrageReport"
+    },
+    {
+      "signature": "pub use dutching :: DutchingMode"
+    },
+    {
+      "signature": "pub use dutching :: DutchingReport"
+    },
+    {
+      "signature": "pub use dutching :: dutch_outcomes_into"
+    },
+    {
+      "signature": "pub use dutching :: dutch_subset_into"
+    },
+    {
+      "signature": "pub use dutching :: evaluate_arbitrage_into"
+    },
+    {
+      "signature": "pub use dutching :: evaluate_two_way_arbitrage"
+    },
+    {
+      "signature": "pub use dutching :: is_arbitrage"
+    },
+    {
+      "signature": "pub use ev :: AllMethodsEvReport"
+    },
+    {
+      "signature": "pub use ev :: EvEvaluation"
+    },
+    {
+      "signature": "pub use ev :: compare_outcome_ev_all_methods"
+    },
+    {
+      "signature": "pub use ev :: evaluate_ev_from_probability"
+    },
+    {
+      "signature": "pub use ev :: evaluate_outcome_ev"
+    },
+    {
+      "signature": "pub use execution :: HedgeMode"
+    },
+    {
+      "signature": "pub use execution :: HedgeReport"
+    },
+    {
+      "signature": "pub use execution :: MiddleReport"
+    },
+    {
+      "signature": "pub use execution :: evaluate_hedge"
+    },
+    {
+      "signature": "pub use execution :: evaluate_middle"
+    },
+    {
+      "signature": "pub use execution :: evaluate_middle_custom_stakes"
+    },
+    {
+      "signature": "pub use overround :: MarketOverround"
+    },
+    {
+      "signature": "pub use overround :: booksum"
+    },
+    {
+      "signature": "pub use overround :: implied_probabilities_into"
+    },
+    {
+      "signature": "pub use overround :: market_overround"
+    },
+    {
+      "signature": "pub use overround :: overround"
+    },
+    {
+      "signature": "pub use overround :: turnover_margin"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/overround.rs": [
+    {
+      "signature": "pub fn booksum (_ : & [Odds]) -> Result < f64 , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn implied_probabilities_into (_ : & [Odds] , _ : & mut [f64] ,) -> Result < MarketOverround , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn market_overround (_ : & [Odds]) -> Result < MarketOverround , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn overround (_ : & [Odds]) -> Result < f64 , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn turnover_margin (_ : & [Odds]) -> Result < f64 , MarketPricingError >"
+    },
+    {
+      "signature": "pub struct MarketOverround"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/ctmc/mod.rs": [
@@ -11250,12 +13159,43 @@
       "signature": "pub enum StateType"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > ,) -> Result < (BaumWelchReport < T > , Vec < T >) , MarkovError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch_into (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > , _ : & mut BaumWelchWorkspace < T > , _ : & mut [T] ,) -> Result < BaumWelchReport < T > , MarkovError > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch_types.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > BaumWelchConfig < T > { pub fn new (_ : usize , _ : T , _ : T ,) -> Result < Self , MarkovError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > BaumWelchWorkspace < T > { pub fn ensure_capacity (& mut self , _ : usize , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > BaumWelchWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct BaumWelchConfig < T >"
+    },
+    {
+      "signature": "pub struct BaumWelchReport < T >"
+    },
+    {
+      "signature": "pub struct BaumWelchWorkspace < T >"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/forward_backward.rs": [
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn filter (& self , _ : & [usize]) -> Result < DVector < T > > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn forward (& self , _ : & [usize]) -> Result < T > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn log_likelihood (& self , _ : & [usize]) -> Result < T > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn posterior_probabilities (& self , _ : & [usize]) -> Result < DMatrix < T > > }"
@@ -11274,7 +13214,19 @@
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/mod.rs": [
     {
+      "signature": "pub use baum_welch_types :: BaumWelchConfig"
+    },
+    {
+      "signature": "pub use baum_welch_types :: BaumWelchReport"
+    },
+    {
+      "signature": "pub use baum_welch_types :: BaumWelchWorkspace"
+    },
+    {
       "signature": "pub use model :: HiddenMarkovModel"
+    },
+    {
+      "signature": "pub use viterbi :: ViterbiWorkspace"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/model.rs": [
@@ -11308,6 +13260,27 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn viterbi (& self , _ : & [usize]) -> Result < Vec < usize > > }"
     },
     {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn viterbi_into (& self , _ : & [usize] , _ : & mut ViterbiWorkspace < T > , _ : & mut [usize] ,) -> Result < () > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn ensure_capacity (& mut self , _ : usize , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn max_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn num_observations (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn num_states (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct ViterbiWorkspace < T >"
+    },
+    {
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
     }
   ],
@@ -11328,7 +13301,19 @@
       "signature": "pub use dtmc :: StateType"
     },
     {
+      "signature": "pub use hmm :: BaumWelchConfig"
+    },
+    {
+      "signature": "pub use hmm :: BaumWelchReport"
+    },
+    {
+      "signature": "pub use hmm :: BaumWelchWorkspace"
+    },
+    {
       "signature": "pub use hmm :: HiddenMarkovModel"
+    },
+    {
+      "signature": "pub use hmm :: ViterbiWorkspace"
     },
     {
       "signature": "pub use num_traits :: ToPrimitive"
@@ -11578,6 +13563,344 @@
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/match_models/bivariate_poisson.rs": [
+    {
+      "signature": "impl BivariatePoissonParams { pub fn default_grid (& self) -> Result < ScoreGrid , MatchModelError > }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn from_components (_ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn from_marginals (_ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn lambda_1 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn lambda_2 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn lambda_3 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn marginal_away (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn marginal_home (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BivariatePoissonParams { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "pub fn bivariate_poisson_grid (_ : & BivariatePoissonParams , _ : usize , _ : bool ,) -> Result < ScoreGrid , MatchModelError >"
+    },
+    {
+      "signature": "pub fn bivariate_poisson_pmf (_ : & BivariatePoissonParams , _ : usize , _ : usize) -> f64"
+    },
+    {
+      "signature": "pub struct BivariatePoissonParams"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/calibration.rs": [
+    {
+      "signature": "impl DixonColesMleConfig { pub fn decay_xi (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DixonColesMleConfig { pub fn grad_clip (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DixonColesMleConfig { pub fn learning_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DixonColesMleConfig { pub fn max_iterations (& self) -> usize }"
+    },
+    {
+      "signature": "impl DixonColesMleConfig { pub fn new (_ : f64 , _ : f64 , _ : usize , _ : f64 , _ : f64 ,) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl DixonColesMleConfig { pub fn tolerance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl FittedDixonColes { pub fn match_params (& self , _ : usize , _ : usize ,) -> Result < DixonColesParams , MatchModelError > }"
+    },
+    {
+      "signature": "impl FittedDixonColes { pub fn predict_grid (& self , _ : usize , _ : usize , _ : usize , _ : bool ,) -> Result < ScoreGrid , MatchModelError > }"
+    },
+    {
+      "signature": "impl HistoricalMatch { pub fn new (_ : usize , _ : usize , _ : u32 , _ : u32 , _ : f64 ,) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "pub fn fit_dixon_coles_mle (_ : & [HistoricalMatch] , _ : usize , _ : & DixonColesMleConfig ,) -> Result < FittedDixonColes , MatchModelError >"
+    },
+    {
+      "signature": "pub fn fit_dixon_coles_with_optimizer (_ : & [HistoricalMatch] , _ : usize , _ : & DixonColesMleConfig , _ : & mut dyn Optimizer < f64 , usize > ,) -> Result < FittedDixonColes , MatchModelError >"
+    },
+    {
+      "signature": "pub struct DixonColesMleConfig"
+    },
+    {
+      "signature": "pub struct FittedDixonColes"
+    },
+    {
+      "signature": "pub struct HistoricalMatch"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/dixon_coles.rs": [
+    {
+      "signature": "impl DixonColesParams { pub fn default_grid (& self) -> Result < ScoreGrid , MatchModelError > }"
+    },
+    {
+      "signature": "impl DixonColesParams { pub fn lambda (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DixonColesParams { pub fn mu (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DixonColesParams { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl DixonColesParams { pub fn rho (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn dixon_coles_grid (_ : & DixonColesParams , _ : usize , _ : bool ,) -> Result < ScoreGrid , MatchModelError >"
+    },
+    {
+      "signature": "pub fn dixon_coles_rho_bounds (_ : f64 , _ : f64) -> Result < (f64 , f64) , MatchModelError >"
+    },
+    {
+      "signature": "pub fn dixon_coles_tau (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct DixonColesParams"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/grid.rs": [
+    {
+      "signature": "impl ScoreGrid { pub fn active_mass (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn expected_away_goals (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn expected_home_goals (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn from_fn < F > (_ : usize , _ : bool , _ : F) -> Result < Self , MatchModelError > where F : FnMut (usize , usize) -> f64 , }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn from_row_major_slice (_ : usize , _ : & [f64] , _ : bool ,) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn is_normalized (& self) -> bool }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn max_goals (& self) -> usize }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn normalized (& self) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn prob (& self , _ : usize , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn tail_mass (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn try_prob (& self , _ : usize , _ : usize) -> Result < f64 , MatchModelError > }"
+    },
+    {
+      "signature": "impl ScoreGrid { pub fn unnormalized_mass (& self) -> f64 }"
+    },
+    {
+      "signature": "pub const DEFAULT_MAX_GOALS : usize"
+    },
+    {
+      "signature": "pub const GRID_CAPACITY : usize"
+    },
+    {
+      "signature": "pub const GRID_STRIDE : usize"
+    },
+    {
+      "signature": "pub const MAX_GOALS_LIMIT : usize"
+    },
+    {
+      "signature": "pub struct ScoreGrid"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/markets.rs": [
+    {
+      "signature": "impl AsianHandicapQuote { pub fn fair_odds (& self) -> Result < (Odds , Odds) , MatchModelError > }"
+    },
+    {
+      "signature": "impl BttsQuote { pub fn fair_odds (& self) -> Result < (Odds , Odds) , MatchModelError > }"
+    },
+    {
+      "signature": "impl DrawNoBetQuote { pub fn fair_odds (& self) -> Result < (Odds , Odds) , MatchModelError > }"
+    },
+    {
+      "signature": "impl OneXTwoQuote { pub fn fair_odds (& self) -> Result < (Odds , Odds , Odds) , MatchModelError > }"
+    },
+    {
+      "signature": "impl OverUnderQuote { pub fn fair_odds (& self) -> Result < (Odds , Odds) , MatchModelError > }"
+    },
+    {
+      "signature": "pub fn asian_handicap (_ : & ScoreGrid , _ : f64) -> Result < AsianHandicapQuote , MatchModelError >"
+    },
+    {
+      "signature": "pub fn btts (_ : & ScoreGrid) -> BttsQuote"
+    },
+    {
+      "signature": "pub fn draw_no_bet (_ : & ScoreGrid) -> Result < DrawNoBetQuote , MatchModelError >"
+    },
+    {
+      "signature": "pub fn one_x_two (_ : & ScoreGrid) -> OneXTwoQuote"
+    },
+    {
+      "signature": "pub fn over_under (_ : & ScoreGrid , _ : f64) -> Result < OverUnderQuote , MatchModelError >"
+    },
+    {
+      "signature": "pub struct AsianHandicapQuote"
+    },
+    {
+      "signature": "pub struct BttsQuote"
+    },
+    {
+      "signature": "pub struct DrawNoBetQuote"
+    },
+    {
+      "signature": "pub struct OneXTwoQuote"
+    },
+    {
+      "signature": "pub struct OverUnderQuote"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/mod.rs": [
+    {
+      "signature": "pub use bivariate_poisson :: BivariatePoissonParams"
+    },
+    {
+      "signature": "pub use bivariate_poisson :: bivariate_poisson_grid"
+    },
+    {
+      "signature": "pub use bivariate_poisson :: bivariate_poisson_pmf"
+    },
+    {
+      "signature": "pub use calibration :: DixonColesMleConfig"
+    },
+    {
+      "signature": "pub use calibration :: FittedDixonColes"
+    },
+    {
+      "signature": "pub use calibration :: HistoricalMatch"
+    },
+    {
+      "signature": "pub use calibration :: fit_dixon_coles_mle"
+    },
+    {
+      "signature": "pub use calibration :: fit_dixon_coles_with_optimizer"
+    },
+    {
+      "signature": "pub use dixon_coles :: DixonColesParams"
+    },
+    {
+      "signature": "pub use dixon_coles :: dixon_coles_grid"
+    },
+    {
+      "signature": "pub use dixon_coles :: dixon_coles_rho_bounds"
+    },
+    {
+      "signature": "pub use dixon_coles :: dixon_coles_tau"
+    },
+    {
+      "signature": "pub use grid :: DEFAULT_MAX_GOALS"
+    },
+    {
+      "signature": "pub use grid :: GRID_CAPACITY"
+    },
+    {
+      "signature": "pub use grid :: GRID_STRIDE"
+    },
+    {
+      "signature": "pub use grid :: MAX_GOALS_LIMIT"
+    },
+    {
+      "signature": "pub use grid :: ScoreGrid"
+    },
+    {
+      "signature": "pub use markets :: AsianHandicapQuote"
+    },
+    {
+      "signature": "pub use markets :: BttsQuote"
+    },
+    {
+      "signature": "pub use markets :: DrawNoBetQuote"
+    },
+    {
+      "signature": "pub use markets :: OneXTwoQuote"
+    },
+    {
+      "signature": "pub use markets :: OverUnderQuote"
+    },
+    {
+      "signature": "pub use markets :: asian_handicap"
+    },
+    {
+      "signature": "pub use markets :: btts"
+    },
+    {
+      "signature": "pub use markets :: draw_no_bet"
+    },
+    {
+      "signature": "pub use markets :: one_x_two"
+    },
+    {
+      "signature": "pub use markets :: over_under"
+    },
+    {
+      "signature": "pub use poisson :: IndependentPoissonParams"
+    },
+    {
+      "signature": "pub use poisson :: independent_poisson_grid"
+    },
+    {
+      "signature": "pub use poisson :: log_factorial"
+    },
+    {
+      "signature": "pub use poisson :: poisson_log_pmf"
+    },
+    {
+      "signature": "pub use poisson :: poisson_pmf"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/poisson.rs": [
+    {
+      "signature": "impl IndependentPoissonParams { pub fn default_grid (& self) -> Result < ScoreGrid , MatchModelError > }"
+    },
+    {
+      "signature": "impl IndependentPoissonParams { pub fn lambda (& self) -> f64 }"
+    },
+    {
+      "signature": "impl IndependentPoissonParams { pub fn mu (& self) -> f64 }"
+    },
+    {
+      "signature": "impl IndependentPoissonParams { pub fn new (_ : f64 , _ : f64) -> Result < Self , MatchModelError > }"
+    },
+    {
+      "signature": "pub fn independent_poisson_grid (_ : & IndependentPoissonParams , _ : usize , _ : bool ,) -> Result < ScoreGrid , MatchModelError >"
+    },
+    {
+      "signature": "pub fn log_factorial (_ : usize) -> f64"
+    },
+    {
+      "signature": "pub fn poisson_log_pmf (_ : f64 , _ : usize) -> f64"
+    },
+    {
+      "signature": "pub fn poisson_pmf (_ : f64 , _ : usize) -> f64"
+    },
+    {
+      "signature": "pub struct IndependentPoissonParams"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/ou_process/analysis.rs": [
     {
       "signature": "impl MomentumType { pub fn classify (_ : f64) -> Self }"
@@ -11694,6 +14017,158 @@
   "crates/pure_math/src/pure_math/statistics/regression.rs": [
     {
       "signature": "pub fn multivariate_linear_regression (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Option < DVector < f64 > >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/ruin/analytical.rs": [
+    {
+      "signature": "impl PortfolioBet { pub fn new (_ : UnitInterval , _ : Odds , _ : f64 , _ : f64 ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl PortfolioBet { pub fn unit_weight (_ : UnitInterval , _ : Odds , _ : f64) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn gamblers_ruin_infinite (_ : f64 , _ : & UnitInterval ,) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn gamblers_ruin_with_target (_ : f64 , _ : f64 , _ : f64 , _ : & UnitInterval ,) -> Result < GamblersRuinResult , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_lundberg_ruin (_ : & [PortfolioBet] , _ : f64 ,) -> Result < LundbergSolution , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_single_bet_lundberg (_ : & UnitInterval , _ : & Odds , _ : f64 , _ : f64 ,) -> Result < LundbergSolution , KellyError >"
+    },
+    {
+      "signature": "pub struct GamblersRuinResult"
+    },
+    {
+      "signature": "pub struct LundbergSolution"
+    },
+    {
+      "signature": "pub struct PortfolioBet"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/ruin/barrier.rs": [
+    {
+      "signature": "impl ProportionalPortfolioBet { pub fn new (_ : UnitInterval , _ : Odds , _ : BankrollFraction , _ : f64 ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl ProportionalPortfolioBet { pub fn unit_weight (_ : UnitInterval , _ : Odds , _ : BankrollFraction ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn kelly_barrier_risk (_ : & UnitInterval , _ : & Odds , _ : & BankrollFraction , _ : f64 ,) -> Result < KellyBarrierRisk , KellyError >"
+    },
+    {
+      "signature": "pub fn portfolio_kelly_barrier_risk (_ : & [ProportionalPortfolioBet] , _ : f64 ,) -> Result < KellyBarrierRisk , KellyError >"
+    },
+    {
+      "signature": "pub struct KellyBarrierRisk"
+    },
+    {
+      "signature": "pub struct ProportionalPortfolioBet"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/ruin/ensemble.rs": [
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn drawdown_quantile (& mut self , _ : f64) -> Result < f64 , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn max_drawdowns (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn median_trajectory (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn reset (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn simulate_fixed_stake_portfolio (& mut self , _ : f64 , _ : f64 , _ : Option < f64 > , _ : & [PortfolioBet] , _ : usize , _ : & mut OxidizeRng ,) -> Result < EnsembleSolvencyReport , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn simulate_proportional (& mut self , _ : f64 , _ : f64 , _ : & ProportionalPortfolioBet , _ : usize , _ : & mut OxidizeRng ,) -> Result < EnsembleSolvencyReport , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn simulate_proportional_portfolio (& mut self , _ : f64 , _ : f64 , _ : & [ProportionalPortfolioBet] , _ : usize , _ : & mut OxidizeRng ,) -> Result < EnsembleSolvencyReport , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn terminal_wealths (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn with_capacity (_ : usize , _ : usize) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl WilsonInterval { pub fn width (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn wilson_interval_95 (_ : usize , _ : usize) -> Result < WilsonInterval , KellyError >"
+    },
+    {
+      "signature": "pub fn wilson_score_interval (_ : usize , _ : usize , _ : f64 ,) -> Result < WilsonInterval , KellyError >"
+    },
+    {
+      "signature": "pub struct BankrollEnsembleWorkspace"
+    },
+    {
+      "signature": "pub struct DrawdownQuantiles"
+    },
+    {
+      "signature": "pub struct EnsembleSolvencyReport"
+    },
+    {
+      "signature": "pub struct WilsonInterval"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/ruin/mod.rs": [
+    {
+      "signature": "pub use analytical :: GamblersRuinResult"
+    },
+    {
+      "signature": "pub use analytical :: LundbergSolution"
+    },
+    {
+      "signature": "pub use analytical :: PortfolioBet"
+    },
+    {
+      "signature": "pub use analytical :: gamblers_ruin_infinite"
+    },
+    {
+      "signature": "pub use analytical :: gamblers_ruin_with_target"
+    },
+    {
+      "signature": "pub use analytical :: solve_lundberg_ruin"
+    },
+    {
+      "signature": "pub use analytical :: solve_single_bet_lundberg"
+    },
+    {
+      "signature": "pub use barrier :: KellyBarrierRisk"
+    },
+    {
+      "signature": "pub use barrier :: ProportionalPortfolioBet"
+    },
+    {
+      "signature": "pub use barrier :: kelly_barrier_risk"
+    },
+    {
+      "signature": "pub use barrier :: portfolio_kelly_barrier_risk"
+    },
+    {
+      "signature": "pub use ensemble :: BankrollEnsembleWorkspace"
+    },
+    {
+      "signature": "pub use ensemble :: DrawdownQuantiles"
+    },
+    {
+      "signature": "pub use ensemble :: EnsembleSolvencyReport"
+    },
+    {
+      "signature": "pub use ensemble :: WilsonInterval"
+    },
+    {
+      "signature": "pub use ensemble :: wilson_interval_95"
+    },
+    {
+      "signature": "pub use ensemble :: wilson_score_interval"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/tda/boundary.rs": [
@@ -12118,6 +14593,143 @@
     },
     {
       "signature": "pub struct TdaFiltrationWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/calibration.rs": [
+    {
+      "signature": "pub fn binary_log_loss (_ : & [f64] , _ : & [bool]) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn brier_score (_ : & [f64] , _ : & [bool]) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn compare_calibration (_ : & [f64] , _ : & [f64] , _ : & [bool] ,) -> Result < CalibrationComparison , KellyError >"
+    },
+    {
+      "signature": "pub fn settled_closing_calibration (_ : & [SettledBet]) -> Result < (f64 , f64) , KellyError >"
+    },
+    {
+      "signature": "pub struct CalibrationComparison"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/clv.rs": [
+    {
+      "signature": "impl SettledBet { pub fn new (_ : Odds , _ : UnitInterval , _ : f64 , _ : bool ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn devig_multi_way (_ : & [Odds]) -> Result < Vec < UnitInterval > , KellyError >"
+    },
+    {
+      "signature": "pub fn devig_multi_way_into (_ : & [Odds] , _ : & mut [UnitInterval] ,) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn devig_two_way (_ : & Odds , _ : & Odds ,) -> Result < (UnitInterval , UnitInterval) , KellyError >"
+    },
+    {
+      "signature": "pub fn single_bet_clv (_ : & Odds , _ : & UnitInterval ,) -> Result < ClvMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn single_bet_clv_two_way (_ : & Odds , _ : & Odds , _ : & Odds ,) -> Result < ClvMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn summarize_clv (_ : & [SettledBet]) -> Result < ClvSummary , KellyError >"
+    },
+    {
+      "signature": "pub struct ClvMetrics"
+    },
+    {
+      "signature": "pub struct ClvSummary"
+    },
+    {
+      "signature": "pub struct SettledBet"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/mod.rs": [
+    {
+      "signature": "pub use calibration :: CalibrationComparison"
+    },
+    {
+      "signature": "pub use calibration :: binary_log_loss"
+    },
+    {
+      "signature": "pub use calibration :: brier_score"
+    },
+    {
+      "signature": "pub use calibration :: compare_calibration"
+    },
+    {
+      "signature": "pub use calibration :: settled_closing_calibration"
+    },
+    {
+      "signature": "pub use clv :: ClvMetrics"
+    },
+    {
+      "signature": "pub use clv :: ClvSummary"
+    },
+    {
+      "signature": "pub use clv :: SettledBet"
+    },
+    {
+      "signature": "pub use clv :: devig_multi_way"
+    },
+    {
+      "signature": "pub use clv :: devig_multi_way_into"
+    },
+    {
+      "signature": "pub use clv :: devig_two_way"
+    },
+    {
+      "signature": "pub use clv :: single_bet_clv"
+    },
+    {
+      "signature": "pub use clv :: single_bet_clv_two_way"
+    },
+    {
+      "signature": "pub use clv :: summarize_clv"
+    },
+    {
+      "signature": "pub use significance :: SampleSize95"
+    },
+    {
+      "signature": "pub use significance :: YieldSignificance"
+    },
+    {
+      "signature": "pub use significance :: Z_95_ONE_SIDED"
+    },
+    {
+      "signature": "pub use significance :: Z_95_TWO_SIDED"
+    },
+    {
+      "signature": "pub use significance :: evaluate_yield_against_closing"
+    },
+    {
+      "signature": "pub use significance :: evaluate_yield_significance"
+    },
+    {
+      "signature": "pub use significance :: required_bets_for_95_significance"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/significance.rs": [
+    {
+      "signature": "pub const Z_95_ONE_SIDED : f64"
+    },
+    {
+      "signature": "pub const Z_95_TWO_SIDED : f64"
+    },
+    {
+      "signature": "pub fn evaluate_yield_against_closing (_ : & [SettledBet] ,) -> Result < YieldSignificance , KellyError >"
+    },
+    {
+      "signature": "pub fn evaluate_yield_significance (_ : & [SettledBet]) -> Result < YieldSignificance , KellyError >"
+    },
+    {
+      "signature": "pub fn required_bets_for_95_significance (_ : f64 , _ : & [Odds] , _ : Option < & [UnitInterval] > ,) -> Result < SampleSize95 , KellyError >"
+    },
+    {
+      "signature": "pub struct SampleSize95"
+    },
+    {
+      "signature": "pub struct YieldSignificance"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/zip_regression/core.rs": [
@@ -12679,6 +15291,9 @@
       "signature": "pub use domain_biology :: error :: ReactionDiffusionError"
     },
     {
+      "signature": "pub use domain_climate :: error :: ClimateError"
+    },
+    {
       "signature": "pub use domain_epidemiology :: error :: EpidemiologyDomainError"
     },
     {
@@ -12710,6 +15325,9 @@
     },
     {
       "signature": "pub use domain_physics :: error :: RadarError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: SandpileError"
     },
     {
       "signature": "pub use domain_physics :: error :: SolidStateError"
@@ -12757,6 +15375,9 @@
       "signature": "pub use pure_math :: error :: EllipticCurveError"
     },
     {
+      "signature": "pub use pure_math :: error :: EloError"
+    },
+    {
       "signature": "pub use pure_math :: error :: EvolutionError"
     },
     {
@@ -12772,7 +15393,13 @@
       "signature": "pub use pure_math :: error :: LinearAlgebraError"
     },
     {
+      "signature": "pub use pure_math :: error :: MarketPricingError"
+    },
+    {
       "signature": "pub use pure_math :: error :: MarkovError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: MatchModelError"
     },
     {
       "signature": "pub use pure_math :: error :: NumberTheoryError"

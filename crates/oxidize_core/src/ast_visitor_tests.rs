@@ -148,7 +148,12 @@ fn traceability_flags_remaining_unverified_functions_after_item_opt_out() {
     );
     vfs.add_file(
         "crates/pure_math/src/good.rs",
-        "// [cite:calculus]\n#[verified(opt_out = \"Legacy\")] pub fn skipped_first() {}\n#[verified] pub fn checked_second(x: f64) -> f64 { assert!(x.is_finite()); x }\n",
+        concat!(
+            "// [cite:",
+            "calculus]\n",
+            "#[verified(opt_out = \"Legacy\")] pub fn skipped_first() {}\n",
+            "#[verified] pub fn checked_second(x: f64) -> f64 { assert!(x.is_finite()); x }\n",
+        ),
     );
 
     let engine = TraceabilityEngine::new(vfs);

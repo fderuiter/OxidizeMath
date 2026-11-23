@@ -1104,11 +1104,13 @@ dependencies = [
 name = "domain_climate"
 version = "0.4.0"
 dependencies = [
+ "diagnostics",
  "math_commons",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
  "rand",
+ "thiserror 2.0.21",
  "verified_engine",
 ]
 
@@ -1122,6 +1124,7 @@ dependencies = [
  "oxidize_core",
  "pure_math",
  "rand",
+ "thiserror 2.0.21",
  "verified_engine",
 ]
 
@@ -2411,6 +2414,8 @@ dependencies = [
  "pure_math",
  "rand",
  "scientific_metadata",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "verified_engine",
  "verified_engine_macros",

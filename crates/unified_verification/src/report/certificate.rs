@@ -1,5 +1,5 @@
 use super::{
-    DebtSources, IntegrityReport, analyze_files_with_cache, collect_rs_files,
+    DebtSources, IntegrityReport, ReportMode, analyze_files_with_cache, collect_rs_files,
     evaluate_integrity_gates, find_unverified_crates_with_cache, load_verify_suite_config_strict,
 };
 use oxidize_core::traceability::AstCache;
@@ -210,6 +210,14 @@ fn verify_on_disk_ast_parity(
 }
 
 pub fn check_ast_certificate_parity_with_cache(members: &[String], cache: &mut AstCache) -> bool {
+    sync_ast_certificate_with_cache(members, ReportMode::Check, cache)
+}
+
+pub fn sync_ast_certificate_with_cache(
+    members: &[String],
+    mode: ReportMode,
+    cache: &mut AstCache,
+) -> bool {
     let config = match load_verify_suite_config_strict(None) {
         Ok(cfg) => cfg,
         Err(err) => {
@@ -247,10 +255,21 @@ pub fn check_ast_certificate_parity_with_cache(members: &[String], cache: &mut A
         super::print_gate_failures(&eval);
         return false;
     }
-    verify_on_disk_ast_parity(
-        &eval.report,
-        config.coverage_tolerance_pct,
-        cert_path,
-        readme_path,
-    )
+    match mode {
+        ReportMode::Check => verify_on_disk_ast_parity(
+            &eval.report,
+            config.coverage_tolerance_pct,
+            cert_path,
+            readme_path,
+        ),
+        ReportMode::Write => {
+            match write_certificate_and_readme(&eval.report, cert_path, readme_path) {
+                Ok(()) => true,
+                Err(err) => {
+                    eprintln!("[!] {err}");
+                    false
+                }
+            }
+        }
+    }
 }

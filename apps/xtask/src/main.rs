@@ -6,9 +6,10 @@ mod setup;
 mod smoke;
 mod staged;
 
-use gates::{resolve_workspace_root, run_cmd, run_cmd_in_path};
+use gates::{resolve_workspace_root, run_cmd};
 use markdown_links::check_markdown_links;
-use setup::configure_git_hooks_in_dir;
+#[cfg(test)]
+pub(crate) use setup::configure_git_hooks_in_dir;
 use std::env;
 #[cfg(test)]
 use std::fs;
@@ -113,26 +114,14 @@ fn print_help() {
     println!("  verify-suite             - Run high-integrity verified suite\n");
     println!("Legacy Utility Tasks:");
     println!("  regenerate-baseline      - Regenerate public API baseline");
-    println!("  setup                    - Run setup script and configure git hooks");
+    println!(
+        "  setup                    - Configure .githooks and check workspace (--hooks-only, --check-only, --web)"
+    );
 }
 
 fn setup(args: &[String]) {
-    println!("=== Math Explorer Setup Script ===");
-    let check_only = args.iter().any(|a| a == "--check-only");
     let ws_root = resolve_workspace_root();
-    run_cmd_in_path(
-        "rustup",
-        &["target", "add", "wasm32-unknown-unknown"],
-        &ws_root,
-    );
-    setup::verify_browser_tools_or_exit(&ws_root);
-    if !check_only {
-        run_cmd_in_path("cargo", &["build"], &ws_root);
-        run_cmd_in_path("cargo", &["test"], &ws_root);
-    }
-
-    configure_git_hooks_in_dir(&ws_root);
-    println!("=== Setup Complete ===");
+    setup::run_setup(args, &ws_root);
 }
 
 fn run_math_explorer_feature_leg(feature_flags: &[&str]) {

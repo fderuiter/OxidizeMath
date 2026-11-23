@@ -1,7 +1,7 @@
 [package]
 name = "markdown_tests"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]
@@ -25,6 +25,8 @@ math_explorer = { path = "../../math_explorer", features = ["pure_math", "applie
 
 nalgebra = { workspace = true }
 rand = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [lints]
