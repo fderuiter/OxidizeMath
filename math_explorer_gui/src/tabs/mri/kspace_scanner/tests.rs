@@ -61,7 +61,9 @@ fn test_sibling_registration_and_quad_panel_rendering() {
     ctx.enable_accesskit();
     let mut frame = eframe::Frame::_new_kittest();
     let output = ctx.run(test_raw_input(), |ctx| {
-        tab.show(ctx, &mut frame);
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
     for expected in [
         "Ground-Truth Spin-Echo MRI Phantom",
@@ -329,7 +331,9 @@ fn test_three_starter_presets_and_plot_raster_exports() {
     ] {
         let _ = ctx.run(test_raw_input(), |ctx| {
             tab.framework.queue_export(fmt);
-            tab.show(ctx, &mut frame);
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
         });
         assert_eq!(tab.framework.export_status_severity, ExportStatusSeverity::Success);
     }
