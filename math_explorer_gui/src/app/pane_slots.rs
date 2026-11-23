@@ -475,6 +475,7 @@ impl MathExplorerApp {
 }
 
 /// Queues a cross-tab (and optional tool) navigation request processed on the current `MathExplorerApp` frame.
+#[cfg(all(feature = "physics", feature = "biology"))]
 pub fn request_cross_tab_navigation(
     ctx: &egui::Context,
     tab_name: &'static str,

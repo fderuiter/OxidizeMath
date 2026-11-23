@@ -52,6 +52,7 @@ mod wasm_tests;
 
 #[allow(unused_imports)]
 pub use domain_bar::AcademicDomain;
+#[cfg(all(feature = "physics", feature = "biology"))]
 pub use pane_slots::request_cross_tab_navigation;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
@@ -271,6 +272,13 @@ impl eframe::App for MathExplorerApp {
 
         crate::accessibility::ensure_plot_live_bridge();
         crate::accessibility::sync_context_live_messages(ctx, true);
+        if ctx.input(|i| {
+            i.events
+                .iter()
+                .any(|e| matches!(e, egui::Event::WindowFocused(false)))
+        }) {
+            crate::audio::notify_window_blurred();
+        }
 
         self.flush_stale_pane_focus(ctx);
         let mut session_mgr = std::mem::take(&mut self.session_manager);
