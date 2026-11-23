@@ -32,12 +32,22 @@ fn default_perturbation_expr() -> String {
     DEFAULT_PERTURBATION_EXPR.to_string()
 }
 
+const fn default_tube_radius() -> f64 {
+    super::export::DEFAULT_TUBE_RADIUS
+}
+
+fn is_default_tube_radius(r: &f64) -> bool {
+    (*r - super::export::DEFAULT_TUBE_RADIUS).abs() < 1e-12
+}
+
 #[derive(serde::Serialize)]
 struct AttractorSaveState<'a> {
     sigma: f64,
     rho: f64,
     beta: f64,
     dt: f64,
+    #[serde(skip_serializing_if = "is_default_tube_radius")]
+    tube_radius: f64,
     simulation_speed: usize,
     execution_state: SolverExecutionState,
     show_annotations: bool,
@@ -66,6 +76,8 @@ struct AttractorState {
     rho: f64,
     beta: f64,
     dt: f64,
+    #[serde(default = "default_tube_radius")]
+    tube_radius: f64,
     simulation_speed: usize,
     #[serde(default)]
     execution_state: Option<SolverExecutionState>,
@@ -140,6 +152,7 @@ impl AttractorPlotter {
             rho: self.system.rho,
             beta: self.system.beta,
             dt: self.dt,
+            tube_radius: self.tube_radius,
             simulation_speed: self.simulation_speed,
             execution_state: self.execution_state,
             show_annotations: self.show_annotations,
@@ -164,6 +177,9 @@ impl AttractorPlotter {
             || !s.beta.is_finite()
             || !s.dt.is_finite()
             || s.dt <= 0.0
+            || !s.tube_radius.is_finite()
+            || !(super::export::MIN_TUBE_RADIUS..=super::export::MAX_TUBE_RADIUS)
+                .contains(&s.tube_radius)
             || !(1..=MAX_SIMULATION_SPEED).contains(&s.simulation_speed)
             || s.custom_params.values().any(|v| !v.is_finite())
         {
@@ -218,6 +234,7 @@ impl AttractorPlotter {
         self.system.rho = s.rho;
         self.system.beta = s.beta;
         self.dt = s.dt;
+        self.tube_radius = s.tube_radius;
         self.simulation_speed = s.simulation_speed;
         self.show_annotations = s.show_annotations;
         self.system_kind = s.system_kind;

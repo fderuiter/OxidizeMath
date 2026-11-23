@@ -35,6 +35,13 @@ impl AttractorPlotter {
                     if self.flow_bank.ui(ui) {
                         self.on_slider_changed();
                     }
+                    ui.add(
+                        egui::Slider::new(
+                            &mut self.tube_radius,
+                            super::export::MIN_TUBE_RADIUS..=super::export::MAX_TUBE_RADIUS,
+                        )
+                        .text("3D Tube Radius"),
+                    );
                 });
             return;
         }
@@ -56,10 +63,19 @@ impl AttractorPlotter {
 
         egui::CollapsingHeader::new("Parameters")
             .default_open(true)
-            .show(ui, |ui| match self.system_kind {
-                AttractorSystemKind::Lorenz => self.draw_lorenz_sliders(ui),
-                AttractorSystemKind::Rossler => self.draw_rossler_sliders(ui),
-                AttractorSystemKind::DoublePendulum => self.draw_pendulum_sliders(ui),
+            .show(ui, |ui| {
+                match self.system_kind {
+                    AttractorSystemKind::Lorenz => self.draw_lorenz_sliders(ui),
+                    AttractorSystemKind::Rossler => self.draw_rossler_sliders(ui),
+                    AttractorSystemKind::DoublePendulum => self.draw_pendulum_sliders(ui),
+                }
+                ui.add(
+                    egui::Slider::new(
+                        &mut self.tube_radius,
+                        super::export::MIN_TUBE_RADIUS..=super::export::MAX_TUBE_RADIUS,
+                    )
+                    .text("3D Tube Radius"),
+                );
             });
     }
 

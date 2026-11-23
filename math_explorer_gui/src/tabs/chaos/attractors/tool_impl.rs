@@ -6,7 +6,7 @@ use super::{
     SolverExecutionState, TwinFrame, DEFAULT_EPSILON, MAX_SIMULATION_SPEED,
 };
 use crate::async_sim::SimCommand;
-use crate::framework::{InteractiveTool, DEFAULT_TIMELINE_RING_CAPACITY};
+use crate::framework::{ExportCapabilities, InteractiveTool, DEFAULT_TIMELINE_RING_CAPACITY};
 use eframe::egui;
 use math_explorer::physics::chaos::double_pendulum::{DoublePendulumBuilder, DoublePendulumState};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
@@ -187,6 +187,12 @@ impl AttractorPlotter {
         } else {
             def_dt
         };
+        self.tube_radius = sanitize_scalar(
+            self.tube_radius,
+            super::export::MIN_TUBE_RADIUS,
+            super::export::MAX_TUBE_RADIUS,
+            super::export::DEFAULT_TUBE_RADIUS,
+        );
         self.epsilon = sanitize_scalar(self.epsilon, 1e-12, 1e-1, DEFAULT_EPSILON);
         for c in &mut self.initial_state {
             *c = sanitize_scalar(*c, -80.0, 80.0, 1.0);
@@ -222,6 +228,7 @@ impl InteractiveTool for AttractorPlotter {
         self.system.rho.to_bits().hash(&mut h);
         self.system.beta.to_bits().hash(&mut h);
         self.dt.to_bits().hash(&mut h);
+        self.tube_radius.to_bits().hash(&mut h);
         self.simulation_speed.hash(&mut h);
         self.max_points.hash(&mut h);
         self.shadow_enabled.hash(&mut h);
@@ -285,6 +292,18 @@ impl InteractiveTool for AttractorPlotter {
             }
         }
         self.metrics_cache.update_windowed_ftle(&self.timeline);
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        Some(self.build_trajectory_mesh_3d())
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        Some(self.build_trajectory_colored_mesh_3d())
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {

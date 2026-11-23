@@ -50,11 +50,11 @@ impl AttractorPlotter {
             }
 
             ui.separator();
-            self.draw_live_coordinates_readout(ui);
+            self.draw_live_coordinates_readout(ui, ctx);
         });
     }
 
-    fn draw_live_coordinates_readout(&self, ui: &mut egui::Ui) {
+    fn draw_live_coordinates_readout(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let labels = if self.mode == AttractorMode::Custom {
             ["x₀", "y₀", "z₀"]
         } else {
@@ -70,6 +70,24 @@ impl AttractorPlotter {
                 let sh = curr.shadow_vec3();
                 ui.label(format!("Shadow: ({:.2}, {:.2}, {:.2})", sh.x, sh.y, sh.z));
             }
+        }
+        if self.system_kind == AttractorSystemKind::Lorenz {
+            if let Some(lyap) = self.current_lyapunov_exponent() {
+                ui.label(format!("Lorenz Lyapunov λ₁: {lyap:+.3}"));
+            }
+        }
+        if let Some((c_eps, d2)) = self.current_correlation_invariants() {
+            ui.label(format!("Correlation C(ε): {c_eps:.3} (D₂ ≈ {d2:.2})"));
+        }
+        ui.separator();
+        if ui
+            .add_enabled(
+                !self.diverged() && self.is_finite_state(),
+                egui::Button::new("🕸 Send 3D Landmarks to Vietoris-Rips"),
+            )
+            .clicked()
+        {
+            let _ = self.send_landmarks_to_vietoris_rips(Some(ctx));
         }
     }
 

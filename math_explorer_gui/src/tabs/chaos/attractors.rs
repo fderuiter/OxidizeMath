@@ -15,8 +15,8 @@ use std::sync::Arc;
 pub mod flow;
 pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
 
-#[path = "attractors/serde_vec3.rs"]
-mod serde_vec3;
+#[path = "attractors/invariants.rs"]
+mod invariants;
 
 #[path = "attractors/runner_types.rs"]
 mod runner_types;
@@ -24,6 +24,8 @@ pub use runner_types::*;
 
 #[path = "attractors/runner.rs"]
 mod runner;
+#[path = "attractors/serde_vec3.rs"]
+mod serde_vec3;
 pub use runner::*;
 
 #[path = "attractors/twin_state.rs"]
@@ -45,6 +47,9 @@ mod tool_impl;
 #[path = "attractors/preset.rs"]
 mod preset;
 
+#[path = "attractors/export.rs"]
+pub mod export;
+
 /// Interactive 3D strange attractor and twin-trajectory divergence explorer.
 pub struct AttractorPlotter {
     pub(crate) mode: AttractorMode,
@@ -54,6 +59,7 @@ pub struct AttractorPlotter {
     pub(crate) step_count: usize,
     pub(crate) simulation_speed: usize,
     pub(crate) dt: f64,
+    pub(crate) tube_radius: f64,
     pub(crate) history: VecDeque<Vector3<f64>>,
     pub(crate) shadow_history: VecDeque<Vector3<f64>>,
     pub(crate) timeline: TimelineRingBuffer<TwinFrame>,
@@ -78,6 +84,7 @@ pub struct AttractorPlotter {
     pub(crate) last_eval_error_announced: Option<String>,
     pub(crate) extra_params: ExtraChaosParams,
     pub(crate) metrics_cache: ChaosMetricsCache,
+    pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
 }
 
 impl Default for AttractorPlotter {
@@ -106,6 +113,7 @@ impl Default for AttractorPlotter {
             step_count: 0,
             simulation_speed: 5,
             dt: 0.01,
+            tube_radius: export::DEFAULT_TUBE_RADIUS,
             history: VecDeque::with_capacity(2000),
             shadow_history: VecDeque::with_capacity(2000),
             timeline,
@@ -129,6 +137,7 @@ impl Default for AttractorPlotter {
             last_eval_error_announced: None,
             extra_params: ExtraChaosParams::default(),
             metrics_cache: ChaosMetricsCache::default(),
+            invariants_cache: invariants::CachedAttractorInvariants::default(),
         }
     }
 }
@@ -183,6 +192,7 @@ impl AttractorPlotter {
             && lorenz_ok
             && self.dt.is_finite()
             && self.dt > 0.0
+            && self.tube_radius.is_finite()
             && self.epsilon.is_finite()
             && self.initial_state.iter().all(|c| c.is_finite())
             && self.extra_params.is_valid()
@@ -285,6 +295,9 @@ impl AttractorPlotter {
         if !self.dt.is_finite() || self.dt <= 0.0 {
             self.dt = self.system_kind.default_dt();
         }
+        if !self.tube_radius.is_finite() {
+            self.tube_radius = export::DEFAULT_TUBE_RADIUS;
+        }
         if !self.epsilon.is_finite() {
             self.epsilon = DEFAULT_EPSILON;
         }
@@ -344,6 +357,7 @@ impl AttractorPlotter {
         } else {
             self.system_kind.default_dt()
         };
+        self.tube_radius = export::DEFAULT_TUBE_RADIUS;
         self.epsilon = DEFAULT_EPSILON;
         self.perturbation_expr = DEFAULT_PERTURBATION_EXPR.to_string();
         self.perturbation_bar
@@ -401,6 +415,9 @@ impl AttractorPlotter {
 }
 
 #[cfg(test)]
+use crate::framework::InteractiveTool;
+
+#[cfg(test)]
 #[path = "attractors/attractor_tests.rs"]
 mod attractor_tests;
 
@@ -411,3 +428,7 @@ mod twin_tests;
 #[cfg(test)]
 #[path = "attractors/custom_flow_tests.rs"]
 mod custom_flow_tests;
+
+#[cfg(test)]
+#[path = "attractors/export_tests.rs"]
+mod export_tests;

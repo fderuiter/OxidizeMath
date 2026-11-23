@@ -433,10 +433,16 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let (mode, kind) = {
+        let (mode, kind, dt, speed) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.mode, p.system_kind)
+            (
+                p.mode,
+                p.system_kind,
+                p.dt,
+                p.simulation_speed.clamp(1, MAX_SIMULATION_SPEED),
+            )
         };
+        super::invariants::publish_runner_landmarks(self, dt, speed);
         AttractorSnapshot {
             history: self.history.clone(),
             shadow_history: self.shadow_history.clone(),
