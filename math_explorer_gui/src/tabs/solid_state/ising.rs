@@ -230,10 +230,6 @@ impl InteractiveTool for IsingModelTool {
         "solid_state"
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_state.focused_id
-    }
-
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.temperature.to_bits().hash(&mut h);

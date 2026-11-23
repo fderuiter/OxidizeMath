@@ -112,6 +112,11 @@ impl Default for LeniaTool {
 }
 
 impl LeniaTool {
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     /// Loads a canonical [`LeniaSpeciesPreset`] genome and reseeds the periodic grid via `OxidizeRng`.
     pub fn apply_species_preset(&mut self, species: LeniaSpeciesPreset) {
         self.species = species;
@@ -381,10 +386,6 @@ impl InteractiveTool for LeniaTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.render_studio(ui);
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {

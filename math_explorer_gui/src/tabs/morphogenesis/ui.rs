@@ -277,6 +277,11 @@ impl MorphogenesisTool {
     }
 
     fn draw_playback_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let canvas_focused = self
+            .brush_state
+            .focused_id
+            .or_else(|| self.brush_kit.focused_plot_id())
+            .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         let Some(action) = PlaybackTransport::from_worker_state(
             "morphogenesis_transport",
             "Morphogenesis",
@@ -284,6 +289,7 @@ impl MorphogenesisTool {
         )
         .timeline(self.worker.timeline_metadata())
         .can_reset(true)
+        .allow_space_shortcut(!canvas_focused)
         .show(ui) else {
             return;
         };

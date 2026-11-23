@@ -211,12 +211,17 @@ impl IsingModelTool {
     }
 
     fn draw_transport_and_metrics(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let canvas_focused = self
+            .brush_state
+            .focused_id
+            .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         if let Some(action) = PlaybackTransport::from_worker_state(
             "ising_transport",
             "Ising Model",
             self.worker.state(),
         )
         .can_reset(true)
+        .allow_space_shortcut(!canvas_focused)
         .show(ui)
         {
             match action {

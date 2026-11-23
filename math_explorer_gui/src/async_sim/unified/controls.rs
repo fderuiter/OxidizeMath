@@ -104,10 +104,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         });
         ui.separator();
 
+        let canvas_focused = self
+            .brush_state
+            .focused_id
+            .or_else(|| self.brush_kit.focused_plot_id())
+            .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         if let Some(action) =
             PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
                 .timeline(self.controller.timeline_metadata())
                 .can_reset(true)
+                .allow_space_shortcut(!canvas_focused)
                 .show(ui)
         {
             let cmd = match action {
@@ -234,6 +240,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ui.separator();
         ui.label("Model Parameters");
 
+        let sweeps_before = crate::reflective_ui::slider::current_pass_active_sweep_count(ctx);
         let mut reset_needed = self.draw_presets_and_actions(ui, ctx);
         let ext_cmds = if let Some(ext) = &mut self.ui_extension {
             ext.draw_side_panel_controls(ui, self.controller.latest_snapshot())
@@ -249,9 +256,13 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let (formula_reset, formula_changed) = self.draw_custom_formula_controls(ui, ctx);
         reset_needed |= formula_reset;
         slider_changed |= formula_changed;
+        let sweep_active =
+            crate::reflective_ui::slider::current_pass_active_sweep_count(ctx) > sweeps_before;
         self.draw_spatial_brush_section(ui, ctx);
         self.draw_atlas_toggle_if_supported(ui);
-        self.draw_observable_sensitivity(ui);
+        let defer_sensitivity =
+            crate::sensitivity::is_transient_parameter_gesture(ctx, sweep_active);
+        self.draw_observable_sensitivity(ui, defer_sensitivity);
         if reset_needed {
             self.reset_simulation(Some(ctx));
         } else if slider_changed {
@@ -392,7 +403,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
-    fn draw_observable_sensitivity(&mut self, ui: &mut egui::Ui) {
+    fn draw_observable_sensitivity(&mut self, ui: &mut egui::Ui, defer_gesture: bool) {
         const STACK_CAP: usize = 16;
         let mut stack_pairs: [(&str, f64); STACK_CAP] = [("", 0.0); STACK_CAP];
         let mut heap_pairs: Vec<(&str, f64)> = Vec::new();
@@ -421,6 +432,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             &mut self.cached_observable_label,
             &self.cached_param_labels,
             param_slice,
+            defer_gesture,
         ) {
             crate::sensitivity::render_labeled_sensitivity_panel_ui(
                 ui,
@@ -436,7 +448,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         cached_observable_label: &mut Option<&'static str>,
         cached_param_labels: &[String],
         param_slice: &[(&str, f64)],
+        defer_gesture: bool,
     ) -> Option<&'static str> {
+        if defer_gesture && cached_observable_label.is_some() {
+            engine.defer_for_gesture();
+            return *cached_observable_label;
+        }
         let is_hit = engine.matches_cache(param_slice, &());
         let was_converged = is_hit && engine.is_converged();
         let mut observed_label = if is_hit {

@@ -290,10 +290,6 @@ impl InteractiveTool for GridWorldTool {
         "ai"
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_state.focused_id
-    }
-
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.env.width.hash(&mut h);
