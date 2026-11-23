@@ -1,7 +1,7 @@
 //! Nonlinear model evaluation, analytical Jacobians, formula formatting, and fit assembly.
 
 use crate::fit::{
-    FitResult, FitType,
+    FitResult, FitType, MAX_FIT_PARAMS,
     lm::levenberg_marquardt,
     seeds::{seed_exponential, seed_logarithmic, seed_logistic, seed_power_law, seed_sinusoidal},
 };
@@ -13,7 +13,7 @@ pub(crate) fn eval_nonlinear_model(fit_type: FitType, coeffs: &[f64], x: f64) ->
         FitType::Logarithmic => eval_log(x, coeffs),
         FitType::Logistic => eval_logistic(x, coeffs),
         FitType::Sinusoidal => eval_sin(x, coeffs),
-        FitType::Linear | FitType::Polynomial(_) => None,
+        FitType::Linear | FitType::Polynomial(_) | FitType::Custom => None,
     };
     out.unwrap_or(f64::NAN)
 }
@@ -30,7 +30,7 @@ pub(crate) fn eval_exp(x: f64, c: &[f64]) -> Option<f64> {
     y.is_finite().then_some(y)
 }
 
-fn jac_exp(x: f64, c: &[f64], jac: &mut [f64; 4]) -> Option<f64> {
+fn jac_exp(x: f64, c: &[f64], jac: &mut [f64; MAX_FIT_PARAMS]) -> Option<f64> {
     let arg = c[1] * x;
     if !arg.is_finite() || arg > 700.0 {
         return None;
@@ -50,7 +50,7 @@ pub(crate) fn eval_power(x: f64, c: &[f64]) -> Option<f64> {
     y.is_finite().then_some(y)
 }
 
-fn jac_power(x: f64, c: &[f64], jac: &mut [f64; 4]) -> Option<f64> {
+fn jac_power(x: f64, c: &[f64], jac: &mut [f64; MAX_FIT_PARAMS]) -> Option<f64> {
     if x <= 0.0 {
         return None;
     }
@@ -83,7 +83,7 @@ pub(crate) fn eval_logistic(x: f64, c: &[f64]) -> Option<f64> {
     y.is_finite().then_some(y)
 }
 
-fn jac_logistic(x: f64, c: &[f64], jac: &mut [f64; 4]) -> Option<f64> {
+fn jac_logistic(x: f64, c: &[f64], jac: &mut [f64; MAX_FIT_PARAMS]) -> Option<f64> {
     let arg = -c[2] * x;
     if !arg.is_finite() || arg > 700.0 {
         return None;
@@ -114,7 +114,7 @@ pub(crate) fn eval_sin(x: f64, c: &[f64]) -> Option<f64> {
     y.is_finite().then_some(y)
 }
 
-fn jac_sin(x: f64, c: &[f64], jac: &mut [f64; 4]) -> Option<f64> {
+fn jac_sin(x: f64, c: &[f64], jac: &mut [f64; MAX_FIT_PARAMS]) -> Option<f64> {
     let phase = c[1] * x + c[2];
     if !phase.is_finite() {
         return None;
@@ -158,6 +158,7 @@ pub(crate) fn fit_nonlinear(
         log_x: false,
         log_y: false,
         log_mode: use_log_mode,
+        custom_evaluator: None,
         poly_centered: None,
     })
 }
@@ -206,7 +207,7 @@ fn solve_model_parameters(
             normalize_sinusoidal_params(&mut params);
             Some(params)
         }
-        FitType::Linear | FitType::Polynomial(_) => None,
+        FitType::Linear | FitType::Polynomial(_) | FitType::Custom => None,
     }
 }
 
@@ -276,6 +277,6 @@ fn format_nonlinear_formula(fit_type: FitType, c: &[f64]) -> String {
                 c[3].abs()
             )
         }
-        FitType::Linear | FitType::Polynomial(_) => String::new(),
+        FitType::Linear | FitType::Polynomial(_) | FitType::Custom => String::new(),
     }
 }

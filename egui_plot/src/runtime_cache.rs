@@ -4,15 +4,20 @@
 //! `PlotMemory::load` and `PlotMemory::store` perform $O(1)$ reference-count clones
 //! and zero heap allocations on idle frames.
 
+#[path = "runtime_cache/poi_cache.rs"]
+mod poi_cache;
+
 use std::sync::Arc;
 
-use egui::{Color32, Id, Vec2b};
+use egui::{Color32, Id};
 
+use self::poi_cache::{CachedPoiEntry, bounds_to_bits};
 use crate::{
     SharedPoints,
     fit::{FitResult, FitType, fit_model_with_axes},
+    fit_overlay,
     items::PlotItem,
-    poi::{self, CriticalPoint, RefLineEntry},
+    poi::CriticalPoint,
     transform::{PlotBounds, PlotTransform},
 };
 
@@ -41,21 +46,26 @@ pub(crate) struct CachedFitEntry {
     pub(crate) log_x: bool,
     pub(crate) log_y: bool,
     pub(crate) fit_log_mode: bool,
+    pub(crate) custom_formula: String,
+    pub(crate) custom_seeds_text: String,
+    pub(crate) custom_callback_ptr: usize,
+    pub(crate) custom_error: Option<String>,
     pub(crate) result: Option<Arc<FitResult>>,
     pub(crate) curve: Option<CachedFitCurve>,
 }
 
-type PoiLineEntry = (Id, String, SharedPoints);
-type CollectedPoiInputs = (Vec<PoiLineEntry>, Vec<RefLineEntry>, Vec<RefLineEntry>);
-
-#[derive(Clone, Debug)]
-struct CachedPoiEntry {
-    bounds_bits: [u64; 4],
-    log_axis: Vec2b,
-    lines: Vec<PoiLineEntry>,
-    hlines: Vec<RefLineEntry>,
-    vlines: Vec<RefLineEntry>,
-    critical_points: Arc<[CriticalPoint]>,
+pub(crate) struct FitRequest<'a> {
+    pub(crate) ds_pts: &'a SharedPoints,
+    pub(crate) ds_name: &'a str,
+    pub(crate) fit_type: FitType,
+    pub(crate) log_x: bool,
+    pub(crate) log_y: bool,
+    pub(crate) fit_log_mode: bool,
+    pub(crate) custom_formula: &'a str,
+    pub(crate) custom_seeds_text: &'a str,
+    pub(crate) custom_callback_ptr: usize,
+    pub(crate) need_curve: bool,
+    pub(crate) transform: &'a PlotTransform,
 }
 
 #[cfg(test)]
@@ -210,69 +220,24 @@ impl PlotRuntimeCache {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn resolve_fit_and_curve(
         &mut self,
-        ds_pts: &SharedPoints,
-        ds_name: &str,
-        fit_type: FitType,
-        log_x: bool,
-        log_y: bool,
-        fit_log_mode: bool,
-        need_curve: bool,
-        transform: &PlotTransform,
-    ) -> (Option<Arc<FitResult>>, SharedPoints) {
-        let bounds = transform.bounds();
+        req: &FitRequest<'_>,
+    ) -> (Option<Arc<FitResult>>, SharedPoints, Option<String>) {
+        let bounds = req.transform.bounds();
         let (x_min, x_max) = (bounds.min[0], bounds.max[0]);
         let valid_x = x_min.is_finite() && x_max.is_finite() && x_max > x_min;
-        let use_log_x = transform.log_axis().x && x_min > 0.0;
+        let use_log_x = req.transform.log_axis().x && x_min > 0.0;
         let bounds_x_bits = [x_min.to_bits(), x_max.to_bits()];
 
-        if let Some(cached) = &self.0.fit {
-            let model_hit = cached.dataset_points.ptr_eq(ds_pts)
-                && cached.dataset_name == ds_name
-                && cached.fit_type == fit_type
-                && cached.log_x == log_x
-                && cached.log_y == log_y
-                && cached.fit_log_mode == fit_log_mode;
-            if model_hit {
-                let Some(ref res_arc) = cached.result else {
-                    #[cfg(test)]
-                    self.0.fit_hits.inc();
-                    return (None, SharedPoints::default());
-                };
-                if !need_curve || !valid_x {
-                    #[cfg(test)]
-                    self.0.fit_hits.inc();
-                    return (Some(Arc::clone(res_arc)), SharedPoints::default());
-                }
-                if let Some(ref curve) = cached.curve
-                    && curve.bounds_x_bits == bounds_x_bits
-                    && curve.use_log_x == use_log_x
-                {
-                    #[cfg(test)]
-                    self.0.fit_hits.inc();
-                    return (Some(Arc::clone(res_arc)), curve.points.clone());
-                }
-                let res = Arc::clone(res_arc);
-                let sampled = sample_fit_curve_shared(&res, x_min, x_max, use_log_x);
-                let inner = Arc::make_mut(&mut self.0);
-                if let Some(ref mut entry) = inner.fit {
-                    entry.curve = Some(CachedFitCurve {
-                        bounds_x_bits,
-                        use_log_x,
-                        points: sampled.clone(),
-                    });
-                }
-                #[cfg(test)]
-                inner.fit_hits.inc();
-                return (Some(res), sampled);
-            }
+        if let Some(hit) =
+            self.try_reuse_cached_fit(req, x_min, x_max, valid_x, use_log_x, bounds_x_bits)
+        {
+            return hit;
         }
 
-        let computed = fit_model_with_axes(ds_pts, fit_type, ds_name, log_x, log_y, fit_log_mode)
-            .map(Arc::new);
-        let (curve_entry, curve_pts) = match (&computed, need_curve && valid_x) {
+        let (computed, custom_error) = compute_requested_fit(req);
+        let (curve_entry, curve_pts) = match (&computed, req.need_curve && valid_x) {
             (Some(res), true) => {
                 let pts = sample_fit_curve_shared(res, x_min, x_max, use_log_x);
                 (
@@ -288,18 +253,77 @@ impl PlotRuntimeCache {
         };
         let inner = Arc::make_mut(&mut self.0);
         inner.fit = Some(CachedFitEntry {
-            dataset_points: ds_pts.clone(),
-            dataset_name: ds_name.to_owned(),
-            fit_type,
-            log_x,
-            log_y,
-            fit_log_mode,
+            dataset_points: req.ds_pts.clone(),
+            dataset_name: req.ds_name.to_owned(),
+            fit_type: req.fit_type,
+            log_x: req.log_x,
+            log_y: req.log_y,
+            fit_log_mode: req.fit_log_mode,
+            custom_formula: if req.fit_type == FitType::Custom {
+                req.custom_formula.to_owned()
+            } else {
+                String::new()
+            },
+            custom_seeds_text: if req.fit_type == FitType::Custom {
+                req.custom_seeds_text.to_owned()
+            } else {
+                String::new()
+            },
+            custom_callback_ptr: req.custom_callback_ptr,
+            custom_error: custom_error.clone(),
             result: computed.clone(),
             curve: curve_entry,
         });
         #[cfg(test)]
         inner.fit_misses.inc();
-        (computed, curve_pts)
+        (computed, curve_pts, custom_error)
+    }
+
+    fn try_reuse_cached_fit(
+        &mut self,
+        req: &FitRequest<'_>,
+        x_min: f64,
+        x_max: f64,
+        valid_x: bool,
+        use_log_x: bool,
+        bounds_x_bits: [u64; 2],
+    ) -> Option<(Option<Arc<FitResult>>, SharedPoints, Option<String>)> {
+        let cached = self.0.fit.as_ref()?;
+        if !fit_entry_matches(cached, req) {
+            return None;
+        }
+        let err = cached.custom_error.clone();
+        let Some(ref res_arc) = cached.result else {
+            #[cfg(test)]
+            self.0.fit_hits.inc();
+            return Some((None, SharedPoints::default(), err));
+        };
+        if !req.need_curve || !valid_x {
+            #[cfg(test)]
+            self.0.fit_hits.inc();
+            return Some((Some(Arc::clone(res_arc)), SharedPoints::default(), err));
+        }
+        if let Some(ref curve) = cached.curve
+            && curve.bounds_x_bits == bounds_x_bits
+            && curve.use_log_x == use_log_x
+        {
+            #[cfg(test)]
+            self.0.fit_hits.inc();
+            return Some((Some(Arc::clone(res_arc)), curve.points.clone(), err));
+        }
+        let res = Arc::clone(res_arc);
+        let sampled = sample_fit_curve_shared(&res, x_min, x_max, use_log_x);
+        let inner = Arc::make_mut(&mut self.0);
+        if let Some(ref mut entry) = inner.fit {
+            entry.curve = Some(CachedFitCurve {
+                bounds_x_bits,
+                use_log_x,
+                points: sampled.clone(),
+            });
+        }
+        #[cfg(test)]
+        inner.fit_hits.inc();
+        Some((Some(res), sampled, err))
     }
 
     /// Resolve memoized [`CriticalPoint`] slice for `items` and their extracted `item_points`.
@@ -317,27 +341,17 @@ impl PlotRuntimeCache {
         let log_axis = transform.log_axis();
 
         if let Some(cached) = &self.0.poi
-            && cached.bounds_bits == bounds_bits
-            && cached.log_axis == log_axis
-            && poi_inputs_match_cached(items, item_points, cached)
+            && cached.matches(bounds_bits, log_axis, items, item_points)
         {
             #[cfg(test)]
             self.0.poi_hits.inc();
             return Arc::clone(&cached.critical_points);
         }
 
-        let (lines, hlines, vlines) = collect_poi_inputs(items, item_points);
-        let detected = poi::detect_critical_points_from_shared(&lines, &hlines, &vlines, transform);
-        let arc: Arc<[CriticalPoint]> = Arc::from(detected);
+        let built = CachedPoiEntry::build(bounds_bits, log_axis, items, item_points, transform);
+        let arc = Arc::clone(&built.critical_points);
         let inner = Arc::make_mut(&mut self.0);
-        inner.poi = Some(CachedPoiEntry {
-            bounds_bits,
-            log_axis,
-            lines,
-            hlines,
-            vlines,
-            critical_points: Arc::clone(&arc),
-        });
+        inner.poi = Some(built);
         #[cfg(test)]
         inner.poi_misses.inc();
         arc
@@ -345,98 +359,48 @@ impl PlotRuntimeCache {
 }
 
 #[inline]
-fn bounds_to_bits(bounds: &PlotBounds) -> [u64; 4] {
-    [
-        bounds.min[0].to_bits(),
-        bounds.min[1].to_bits(),
-        bounds.max[0].to_bits(),
-        bounds.max[1].to_bits(),
-    ]
+fn fit_entry_matches(cached: &CachedFitEntry, req: &FitRequest<'_>) -> bool {
+    let base_ok = cached.dataset_points.ptr_eq(req.ds_pts)
+        && cached.dataset_name == req.ds_name
+        && cached.fit_type == req.fit_type
+        && cached.log_x == req.log_x
+        && cached.log_y == req.log_y
+        && cached.fit_log_mode == req.fit_log_mode;
+    if !base_ok {
+        return false;
+    }
+    if req.fit_type == FitType::Custom {
+        cached.custom_formula == req.custom_formula
+            && cached.custom_seeds_text == req.custom_seeds_text
+            && cached.custom_callback_ptr == req.custom_callback_ptr
+    } else {
+        true
+    }
 }
 
-fn poi_inputs_match_cached<'a>(
-    items: &[Box<dyn PlotItem + 'a>],
-    item_points: &[SharedPoints],
-    cached: &CachedPoiEntry,
-) -> bool {
-    let mut line_idx = 0_usize;
-    let mut hline_idx = 0_usize;
-    let mut vline_idx = 0_usize;
-    for (item, pts) in items.iter().zip(item_points.iter()) {
-        if !item.allow_hover() {
-            continue;
+fn compute_requested_fit(req: &FitRequest<'_>) -> (Option<Arc<FitResult>>, Option<String>) {
+    if req.fit_type == FitType::Custom {
+        match fit_overlay::solve_custom_fit(
+            req.ds_pts,
+            req.ds_name,
+            req.custom_formula,
+            req.custom_seeds_text,
+        ) {
+            Ok(res) => (Some(Arc::new(res)), None),
+            Err(err) => (None, Some(err)),
         }
-        if item.is_line_item() {
-            if pts.len() >= 2 {
-                let Some((cid, cname, cpts)) = cached.lines.get(line_idx) else {
-                    return false;
-                };
-                if *cid != item.id() || cname != item.name() || !cpts.ptr_eq(pts) {
-                    return false;
-                }
-                line_idx += 1;
-            }
-        } else if let Some(y) = item.hline_y() {
-            if y.is_finite() {
-                let Some(entry) = cached.hlines.get(hline_idx) else {
-                    return false;
-                };
-                if !entry.matches(item.id(), item.name(), y) {
-                    return false;
-                }
-                hline_idx += 1;
-            }
-        } else if let Some(x) = item.vline_x()
-            && x.is_finite()
-        {
-            let Some(entry) = cached.vlines.get(vline_idx) else {
-                return false;
-            };
-            if !entry.matches(item.id(), item.name(), x) {
-                return false;
-            }
-            vline_idx += 1;
-        }
+    } else {
+        let solved = fit_model_with_axes(
+            req.ds_pts,
+            req.fit_type,
+            req.ds_name,
+            req.log_x,
+            req.log_y,
+            req.fit_log_mode,
+        )
+        .map(Arc::new);
+        (solved, None)
     }
-    line_idx == cached.lines.len()
-        && hline_idx == cached.hlines.len()
-        && vline_idx == cached.vlines.len()
-}
-
-fn collect_poi_inputs<'a>(
-    items: &[Box<dyn PlotItem + 'a>],
-    item_points: &[SharedPoints],
-) -> CollectedPoiInputs {
-    let mut lines = Vec::new();
-    let mut hlines = Vec::new();
-    let mut vlines = Vec::new();
-    for (item, pts) in items.iter().zip(item_points.iter()) {
-        if !item.allow_hover() {
-            continue;
-        }
-        if item.is_line_item() {
-            if pts.len() >= 2 {
-                lines.push((item.id(), item.name().to_owned(), pts.clone()));
-            }
-        } else if let Some(y) = item.hline_y() {
-            if y.is_finite() {
-                hlines.push(RefLineEntry {
-                    id: item.id(),
-                    name: item.name().to_owned(),
-                    value: y,
-                });
-            }
-        } else if let Some(x) = item.vline_x()
-            && x.is_finite()
-        {
-            vlines.push(RefLineEntry {
-                id: item.id(),
-                name: item.name().to_owned(),
-                value: x,
-            });
-        }
-    }
-    (lines, hlines, vlines)
 }
 
 fn sample_fit_curve_shared(

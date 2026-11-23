@@ -32,6 +32,56 @@ impl RiemannIntegrationTool {
         changed
     }
 
+    fn draw_quadrature_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        ui.add_space(8.0);
+        ui.label("Quadrature Rule:");
+        egui::ComboBox::from_id_salt("riemann_quadrature_method")
+            .selected_text(self.quadrature_method.name())
+            .show_ui(ui, |ui| {
+                for method in [
+                    QuadratureMethod::Trapezoidal,
+                    QuadratureMethod::ClenshawCurtis,
+                ] {
+                    if ui
+                        .selectable_value(&mut self.quadrature_method, method, method.name())
+                        .changed()
+                    {
+                        changed = true;
+                    }
+                }
+            });
+
+        ui.add_space(6.0);
+        let partition_label = match self.quadrature_method {
+            QuadratureMethod::Trapezoidal => "Partitions (N)",
+            QuadratureMethod::ClenshawCurtis => "Chebyshev Display Panels (N)",
+        };
+        if ui
+            .add(
+                egui::Slider::new(&mut self.steps, 1..=200)
+                    .logarithmic(true)
+                    .text(partition_label),
+            )
+            .changed()
+        {
+            changed = true;
+        }
+
+        if self.quadrature_method == QuadratureMethod::ClenshawCurtis
+            && ui
+                .add(
+                    egui::Slider::new(&mut self.cc_tolerance, MIN_CC_TOLERANCE..=MAX_CC_TOLERANCE)
+                        .logarithmic(true)
+                        .text("Target Tolerance (eps)"),
+                )
+                .changed()
+        {
+            changed = true;
+        }
+        changed
+    }
+
     pub(super) fn draw_controls(&mut self, parent_ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "riemann_controls");
@@ -77,21 +127,16 @@ impl RiemannIntegrationTool {
             );
             changed |= min_changed || max_changed;
 
-            ui.add_space(10.0);
-            if ui
-                .add(
-                    egui::Slider::new(&mut self.steps, 1..=200)
-                        .logarithmic(true)
-                        .text("Partitions (N)"),
-                )
-                .changed()
-            {
-                changed = true;
-            }
+            changed |= self.draw_quadrature_controls(ui);
 
             ui.separator();
             ui.heading("Result");
-            render_copyable_metric(ui, "Area", &format!("{:.6}", self.result));
+            render_copyable_metric(ui, "Area", &format!("{:.8}", self.result));
+            let err_label = match self.quadrature_method {
+                QuadratureMethod::Trapezoidal => "Est. Error (Richardson)",
+                QuadratureMethod::ClenshawCurtis => "Est. Error (Clenshaw-Curtis)",
+            };
+            render_copyable_metric(ui, err_label, &format!("{:.3e}", self.error_estimate));
         });
         changed
     }
