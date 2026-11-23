@@ -68,7 +68,7 @@ struct PotentialFlowState {
 
 impl PotentialFlowTool {
     pub(super) fn parameters_are_valid(&self) -> bool {
-        (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_size)
+        (2..=crate::presets::MAX_INTERACTIVE_GRID_SIZE).contains(&self.grid_size)
             && self.view_range.is_finite()
             && (FLOW_VIEW_MIN..=FLOW_VIEW_MAX).contains(&self.view_range)
             && self.new_element_strength.is_finite()
@@ -80,7 +80,7 @@ impl PotentialFlowTool {
             && self.new_element_angle.is_finite()
             && (FLOW_ANGLE_MIN..=FLOW_ANGLE_MAX).contains(&self.new_element_angle)
             && (2..=MAX_CONTOUR_LEVELS).contains(&self.contour_levels)
-            && (4..=math_commons::registry::MAX_GRID_SIZE).contains(&self.contour_resolution)
+            && (4..=crate::presets::MAX_INTERACTIVE_GRID_SIZE).contains(&self.contour_resolution)
             && self.dye_rake_x.is_finite()
             && (FLOW_POS_MIN..=FLOW_POS_MAX).contains(&self.dye_rake_x)
             && self.dye_rake_y.is_finite()
@@ -119,9 +119,18 @@ impl PotentialFlowTool {
     pub(super) fn try_load_preset_state(&mut self, state: &str) -> Result<(), String> {
         let loaded: PotentialFlowState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid PotentialFlowTool state: {e}"))?;
+        if !(2..=math_commons::registry::MAX_GRID_SIZE).contains(&loaded.grid_size)
+            || !(4..=math_commons::registry::MAX_GRID_SIZE).contains(&loaded.contour_resolution)
+        {
+            return Err(
+                "PotentialFlowTool parameters must be finite and within valid grid/view bounds"
+                    .to_string(),
+            );
+        }
+        let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
         let mut candidate = Self {
             elements: loaded.elements,
-            grid_size: loaded.grid_size,
+            grid_size: loaded.grid_size.min(max_grid),
             view_range: loaded.view_range,
             selected_element_type: loaded.selected_element_type,
             new_element_strength: loaded.new_element_strength,
@@ -132,7 +141,7 @@ impl PotentialFlowTool {
             show_streamlines: loaded.show_streamlines,
             show_dye: loaded.show_dye,
             contour_levels: loaded.contour_levels,
-            contour_resolution: loaded.contour_resolution,
+            contour_resolution: loaded.contour_resolution.min(max_grid),
             dye_rake_x: loaded.dye_rake_x,
             dye_rake_y: loaded.dye_rake_y,
             dye_rake_span: loaded.dye_rake_span,

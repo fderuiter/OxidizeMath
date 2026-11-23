@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod cache;
 mod canvas;
 mod controls;
 mod presets;
@@ -134,6 +135,7 @@ pub struct PotentialFlowTool {
     pub(crate) dye_probes: Vec<DyeProbe>,
     pub(crate) cached_handles: Vec<(DragTarget, egui::Pos2)>,
     pub(crate) last_canvas_id: Option<egui::Id>,
+    pub(crate) cache: cache::ArrowFieldCache,
 }
 
 impl Default for PotentialFlowTool {
@@ -184,6 +186,7 @@ impl Default for PotentialFlowTool {
             dye_probes: Vec::new(),
             cached_handles: Vec::new(),
             last_canvas_id: None,
+            cache: cache::ArrowFieldCache::default(),
         };
         tool.rebuild_field();
         tool
@@ -201,6 +204,10 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn domain(&self) -> &'static str {
         "fluid_dynamics"
+    }
+
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
     }
 
     fn focused_canvas_id(&self) -> Option<egui::Id> {

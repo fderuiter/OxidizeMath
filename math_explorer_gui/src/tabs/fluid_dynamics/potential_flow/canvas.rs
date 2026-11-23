@@ -376,46 +376,42 @@ impl PotentialFlowTool {
         format!("Stamp strength {:.1}", self.new_element_strength)
     }
 
-    fn draw_plot_layers(&self, plot_ui: &mut PlotUi<'_>, canvas_focused: bool) {
+    fn draw_plot_layers(&mut self, plot_ui: &mut PlotUi<'_>, canvas_focused: bool) {
         let palette = SemanticPalette::from_visuals(&plot_ui.ctx().style().visuals);
-        let r = self.view_range.max(0.5);
-        let bounds = (-r, r, -r, r);
+        let (streamlines, stag) = self.ensure_cached_contours();
 
         if self.show_streamlines {
-            let levels = self.compute_iso_levels();
-            let segs =
-                self.field
-                    .extract_streamline_segments(bounds, self.contour_resolution, &levels);
             let contour_color = palette.series_color(2).gamma_multiply(0.75);
-            for (i, chain) in super::presets::chain_segments(&segs)
-                .into_iter()
-                .enumerate()
-            {
+            for (i, chain) in streamlines.into_iter().enumerate() {
                 let name = if i == 0 {
                     "Iso-ψ Streamlines".to_string()
                 } else {
                     String::new()
                 };
-                plot_ui.line(Line::new(name, chain).color(contour_color).width(1.4_f32));
+                plot_ui.line(
+                    Line::new(name, egui_plot::PlotPoints::from_shared(chain))
+                        .color(contour_color)
+                        .width(1.4_f32),
+                );
             }
         }
         if self.show_vectors {
-            let (origins, tips) = self.compute_arrow_field();
-            plot_ui
-                .arrows(Arrows::new("Vector Field", origins, tips).color(palette.series_color(0)));
+            let (origins, tips) = self.ensure_cached_arrows();
+            plot_ui.arrows(
+                Arrows::new(
+                    "Vector Field",
+                    egui_plot::PlotPoints::from_shared(origins),
+                    egui_plot::PlotPoints::from_shared(tips),
+                )
+                .color(palette.series_color(0)),
+            );
         }
         if self.show_dye {
             self.draw_dye_streaks(plot_ui, &palette);
         }
-        let stag: Vec<[f64; 2]> = self
-            .field
-            .detect_stagnation_points(bounds, 40)
-            .into_iter()
-            .map(|p| [p.x, p.y])
-            .collect();
         if !stag.is_empty() {
             plot_ui.points(
-                Points::new("Stagnation Points", stag)
+                Points::new("Stagnation Points", egui_plot::PlotPoints::from_shared(stag))
                     .shape(MarkerShape::Diamond)
                     .radius(5.5_f32)
                     .color(palette.warning),

@@ -226,12 +226,11 @@ impl PotentialFlowTool {
             egui::Slider::new(&mut self.contour_levels, 3..=MAX_CONTOUR_LEVELS)
                 .text("Iso-ψ Levels"),
         );
+        let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
+        self.grid_size = self.grid_size.clamp(2, max_grid);
         ui.add(
-            egui::Slider::new(
-                &mut self.grid_size,
-                10..=math_commons::registry::MAX_GRID_SIZE,
-            )
-            .text("Visualization - Grid Density"),
+            egui::Slider::new(&mut self.grid_size, 10..=max_grid)
+                .text("Visualization - Grid Density"),
         );
         let range_changed = ui
             .add(egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"))
