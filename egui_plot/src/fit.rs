@@ -37,6 +37,7 @@ pub const MAX_FIT_PARAMS: usize = 6;
 
 /// Supported curve fitting models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum FitType {
     /// Linear regression ($y = a x + b$)
     Linear,

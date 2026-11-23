@@ -124,14 +124,7 @@ impl SimulationFramework {
         }
 
         let ctx = ui.ctx().clone();
-        let imported = self.active_tool.as_mut().is_some_and(|tool| {
-            self.preset_dialog
-                .poll_pending_import(|json_str| tool.import_preset_json(json_str))
-        });
-        if imported {
-            self.sync_active_baseline();
-            ctx.request_repaint();
-        }
+        self.poll_preset_import_and_sync(&ctx);
 
         let bar_id = scoped_panel_id(ui, format!("{id_source}_export_bar"));
         egui::TopBottomPanel::top(bar_id)

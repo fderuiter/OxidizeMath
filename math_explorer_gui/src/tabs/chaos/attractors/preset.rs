@@ -1,11 +1,21 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AttractorMode, AttractorPlotter, SolverExecutionState, DEFAULT_FLOW_EXPRS};
+use super::{
+    AttractorMode, AttractorPlotter, SolverExecutionState, DEFAULT_FIXED_CALLOUT_OFFSETS,
+    DEFAULT_FLOW_EXPRS,
+};
 use crate::framework::Camera3D;
+use eframe::egui;
 use std::collections::BTreeMap;
 
 const fn default_annotations_enabled() -> bool {
     true
+}
+
+fn is_default_fixed_callout_offsets(v: &[[f32; 2]; 2]) -> bool {
+    (0..2).all(|i| {
+        (0..2).all(|j| (v[i][j] - DEFAULT_FIXED_CALLOUT_OFFSETS[i][j]).abs() <= f32::EPSILON)
+    })
 }
 
 #[derive(serde::Serialize)]
@@ -17,6 +27,8 @@ struct AttractorSaveState {
     simulation_speed: usize,
     execution_state: SolverExecutionState,
     show_annotations: bool,
+    #[serde(skip_serializing_if = "is_default_fixed_callout_offsets")]
+    fixed_callout_offsets: [[f32; 2]; 2],
     camera: Camera3D,
     #[serde(skip_serializing_if = "AttractorMode::is_lorenz")]
     mode: AttractorMode,
@@ -38,6 +50,8 @@ struct AttractorState {
     execution_state: Option<SolverExecutionState>,
     #[serde(default = "default_annotations_enabled")]
     show_annotations: bool,
+    #[serde(default)]
+    fixed_callout_offsets: Option<[[f32; 2]; 2]>,
     #[serde(default)]
     paused: Option<bool>,
     #[serde(default)]
@@ -78,6 +92,7 @@ impl AttractorPlotter {
             simulation_speed: self.simulation_speed,
             execution_state: self.execution_state,
             show_annotations: self.show_annotations,
+            fixed_callout_offsets: self.fixed_callout_offsets.map(|v| [v.x, v.y]),
             camera: self.camera,
             mode: self.mode,
             custom_exprs,
@@ -103,6 +118,12 @@ impl AttractorPlotter {
                 super::MAX_SIMULATION_SPEED
             ));
         }
+        let offsets = s
+            .fixed_callout_offsets
+            .unwrap_or(DEFAULT_FIXED_CALLOUT_OFFSETS);
+        if offsets.iter().flatten().any(|c| !c.is_finite()) {
+            return Err("AttractorPlotter fixed_callout_offsets must be finite".to_string());
+        }
         let camera = Camera3D::from_preset_fields(
             s.camera,
             s.pitch,
@@ -119,6 +140,7 @@ impl AttractorPlotter {
         self.dt = s.dt;
         self.simulation_speed = s.simulation_speed;
         self.show_annotations = s.show_annotations;
+        self.fixed_callout_offsets = offsets.map(egui::Vec2::from);
         self.camera.apply_pose(camera);
         self.dragged_callout = None;
         self.reset();

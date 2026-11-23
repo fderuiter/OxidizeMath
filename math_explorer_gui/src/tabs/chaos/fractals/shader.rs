@@ -2,17 +2,99 @@
 
 use super::{COORD_MAX, COORD_MIN, FractalMode, FractalViewer, ZOOM_MAX, ZOOM_MIN};
 use crate::framework::{InteractiveTool, ShaderDialect};
-use math_commons::ast::format_glsl_float;
+use math_commons::ast::{GLSL_COMPLEX_HELPERS, format_glsl_float};
 use math_commons::math_kernel::glsl_colormap::{
     glsl_cyclic_cosine_palette_fn, glsl_ensure_dark_canvas_contrast_fn,
 };
 use std::fmt::Write;
 
+const FRACTAL_RESERVED_IDENTS: &[&str] = &[
+    "CENTER",
+    "HIGH_CONTRAST",
+    "IS_JULIA",
+    "JULIA_C",
+    "MAX_ITER",
+    "ZOOM",
+    "cabs",
+    "cacos",
+    "carg",
+    "casin",
+    "catan",
+    "catan2",
+    "cclamp",
+    "ccosh",
+    "ccos",
+    "cdiv",
+    "cexp",
+    "cln",
+    "clog10",
+    "cmax",
+    "cmin",
+    "cmul",
+    "cpow",
+    "crect",
+    "csinh",
+    "csin",
+    "csqrt",
+    "cstep",
+    "ctanh",
+    "ctan",
+    "cyclic_cosine_palette",
+    "ensure_dark_canvas_contrast",
+    "fragColor",
+    "iResolution",
+    "render_fractal",
+    "step_fractal",
+    "u_mouse",
+    "u_resolution",
+    "u_time",
+];
+
 impl FractalViewer {
+    fn compile_step_glsl(&self) -> Result<(bool, String), String> {
+        if !self.mode.is_custom() {
+            return Ok((
+                false,
+                "vec2 step_fractal(vec2 z, vec2 c) {\n    return vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;\n}\n".to_string(),
+            ));
+        }
+        let invalid_err = || {
+            self.math_input
+                .error_message()
+                .unwrap_or_else(|| "Custom fractal expression is invalid".to_string())
+        };
+        let expr = self.math_input.expr().ok_or_else(invalid_err)?;
+        let compiled = self.math_input.compiled().ok_or_else(invalid_err)?;
+        let param_names = compiled.param_names();
+        let param_vals = self.math_input.param_slice();
+
+        let mut allowed_vars = Vec::with_capacity(2 + param_names.len());
+        allowed_vars.push("z");
+        allowed_vars.push("c");
+        let mut fn_src = String::from("vec2 step_fractal(vec2 z, vec2 c) {\n");
+        for (idx, name) in param_names.iter().enumerate() {
+            if FRACTAL_RESERVED_IDENTS.contains(&name.as_str()) {
+                return Err(format!(
+                    "Parameter '{name}' collides with a reserved GLSL shader symbol"
+                ));
+            }
+            let val = param_vals.get(idx).copied().unwrap_or(1.0);
+            let lit = format_glsl_float(val).map_err(|e| e.to_string())?;
+            writeln!(fn_src, "    const vec2 {name} = vec2({lit}, 0.0);").unwrap();
+            allowed_vars.push(name.as_str());
+        }
+        let expr_glsl = expr
+            .to_glsl_complex_with_vars(&allowed_vars)
+            .map_err(|e| e.to_string())?;
+        writeln!(fn_src, "    return {expr_glsl};\n}}").unwrap();
+        Ok((true, fn_src))
+    }
+
     pub(super) fn build_glsl_shader(&self, dialect: ShaderDialect) -> Result<String, String> {
         if !self.has_finite_parameters() {
             return Err("Fractal parameters are non-finite or out of bounds".to_string());
         }
+        let (needs_complex_helpers, step_fn) = self.compile_step_glsl()?;
         let cx = format_glsl_float(self.center.re.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
         let cy = format_glsl_float(self.center.im.clamp(COORD_MIN, COORD_MAX))
@@ -26,9 +108,9 @@ impl FractalViewer {
         let max_iter = self
             .max_iter
             .clamp(10, math_commons::registry::MAX_ITERATIONS as u32);
-        let is_julia = self.mode == FractalMode::Julia;
+        let is_julia = matches!(self.mode, FractalMode::Julia | FractalMode::CustomJulia);
 
-        let mut out = String::with_capacity(2560);
+        let mut out = String::with_capacity(3072);
         write_dialect_header(&mut out, dialect, self.mode);
         writeln!(out, "const vec2 CENTER = vec2({cx}, {cy});").unwrap();
         writeln!(out, "const float ZOOM = {zoom};").unwrap();
@@ -36,6 +118,12 @@ impl FractalViewer {
         writeln!(out, "const bool IS_JULIA = {is_julia};").unwrap();
         writeln!(out, "const vec2 JULIA_C = vec2({jx}, {jy});").unwrap();
         writeln!(out, "const bool HIGH_CONTRAST = {};\n", self.high_contrast).unwrap();
+        if needs_complex_helpers {
+            out.push_str(GLSL_COMPLEX_HELPERS);
+            out.push('\n');
+        }
+        out.push_str(&step_fn);
+        out.push('\n');
         out.push_str(glsl_cyclic_cosine_palette_fn());
         out.push('\n');
         out.push_str(glsl_ensure_dark_canvas_contrast_fn());
@@ -54,6 +142,8 @@ fn write_dialect_header(out: &mut String, dialect: ShaderDialect, mode: FractalM
     let family = match mode {
         FractalMode::Mandelbrot => "Mandelbrot",
         FractalMode::Julia => "Julia",
+        FractalMode::CustomMandelbrot => "Custom Escape",
+        FractalMode::CustomJulia => "Custom Julia",
     };
     writeln!(
         out,
@@ -96,7 +186,7 @@ const FRACTAL_KERNEL_GLSL: &str = r#"vec4 render_fractal(vec2 frag_coord, vec2 r
             iter = i;
             break;
         }
-        z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+        z = step_fractal(z, c);
     }
 
     if (!escaped) {

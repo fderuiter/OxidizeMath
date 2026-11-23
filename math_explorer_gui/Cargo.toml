@@ -59,7 +59,7 @@ physics = ["math_explorer/physics", "applied", "pure_math"]
 futures = { workspace = true }
 federated_registry = { path = "../crates/federated_registry" }
 eframe = { workspace = true }
-egui_plot = "0.34.1"
+egui_plot = { version = "0.34.1", features = ["serde"] }
 nalgebra = { workspace = true }
 oxidize_core = { path = "../crates/oxidize_core" }
 math_explorer = { path = "../math_explorer", optional = true }

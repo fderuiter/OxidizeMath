@@ -23,6 +23,8 @@ pub use runner::*;
 #[path = "attractors/ui.rs"]
 mod ui;
 
+pub(crate) const DEFAULT_FIXED_CALLOUT_OFFSETS: [[f32; 2]; 2] = [[35.0, -25.0], [-35.0, 25.0]];
+
 pub struct AttractorPlotter {
     pub(crate) mode: AttractorMode,
     pub(crate) flow_bank: CoupledExpressionBank,
@@ -79,7 +81,7 @@ impl Default for AttractorPlotter {
             params,
             worker,
             show_annotations: true,
-            fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
+            fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
         }
     }
@@ -197,6 +199,7 @@ impl AttractorPlotter {
         self.system.beta = 8.0 / 3.0;
         self.flow_bank = default_flow_bank();
         self.dt = 0.01;
+        self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
         self.reset();
     }
 
@@ -285,6 +288,12 @@ impl InteractiveTool for AttractorPlotter {
         self.is_paused().hash(&mut h);
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
+        for offset in &self.fixed_callout_offsets {
+            let x_bits = if offset.x == 0.0 { 0 } else { offset.x.to_bits() };
+            let y_bits = if offset.y == 0.0 { 0 } else { offset.y.to_bits() };
+            x_bits.hash(&mut h);
+            y_bits.hash(&mut h);
+        }
         self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
