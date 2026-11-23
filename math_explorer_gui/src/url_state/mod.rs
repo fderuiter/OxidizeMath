@@ -26,7 +26,7 @@ mod browser_wasm_tests;
     feature = "pure_math"
 ))]
 mod contract_tests;
-#[cfg(test)]
+#[cfg(all(test, any(feature = "epidemiology", feature = "pure_math")))]
 mod param_only_tests;
 #[cfg(test)]
 mod tests;

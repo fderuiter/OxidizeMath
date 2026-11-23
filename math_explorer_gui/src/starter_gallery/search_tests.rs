@@ -1,7 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::app::AcademicDomain;
 use crate::framework::{InteractiveTool, ToolMetadata};
 use scientific_metadata::theory::TheoryDescribable;
 
@@ -61,6 +60,7 @@ fn test_per_tool_fallback_generated_even_when_sibling_tools_have_presets() {
     tools.push(&SYNTHETIC_TOOL_WITHOUT_PRESET);
 
     let cards = get_starter_cards_for_domain("analysis", &tools);
+    #[cfg(feature = "pure_math")]
     assert!(cards
         .iter()
         .any(|c| c.title == "Harmonic Oscillator" && c.preset_json.is_some()));
@@ -72,8 +72,18 @@ fn test_per_tool_fallback_generated_even_when_sibling_tools_have_presets() {
     assert_eq!(fallback.tool_name, Some("SyntheticFallbackSolver"));
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[test]
 fn test_global_starter_cards_search_and_domain_pill_filtering() {
+    use crate::app::AcademicDomain;
     let all_cards = get_all_starter_cards();
     assert!(all_cards.len() >= 67);
 

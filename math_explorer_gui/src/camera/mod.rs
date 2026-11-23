@@ -282,5 +282,5 @@ mod scene_tests;
 #[cfg(test)]
 #[path = "../camera_tests.rs"]
 mod tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod world_readout_tests;

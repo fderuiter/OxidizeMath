@@ -1,7 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::SimulationFramework;
+use super::{InteractiveTool, SimulationFramework};
 use eframe::egui;
+
+pub struct ToolMetadata {
+    pub id: &'static str,
+    pub display_name: &'static str,
+    pub domain: &'static str,
+    pub tags: &'static [&'static str],
+    pub build: fn() -> Box<dyn InteractiveTool>,
+}
+
+inventory::collect!(ToolMetadata);
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct FrameworkSyncState {

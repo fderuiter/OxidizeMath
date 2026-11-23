@@ -269,6 +269,7 @@ fn test_generate_split_view_screenshots() {
     }
 }
 
+#[cfg(any(feature = "epidemiology", feature = "pure_math"))]
 fn run_split_frames(ctx: &egui::Context, app: &mut MathExplorerApp, frames: usize) {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut frame = eframe::Frame::_new_kittest();
@@ -284,6 +285,7 @@ fn run_split_frames(ctx: &egui::Context, app: &mut MathExplorerApp, frames: usiz
     }
 }
 
+#[cfg(feature = "epidemiology")]
 #[test]
 fn test_same_domain_network_propagation_steps_once_per_pane_per_frame() {
     let ctx = egui::Context::default();
@@ -325,6 +327,7 @@ fn test_same_domain_network_propagation_steps_once_per_pane_per_frame() {
     }
 }
 
+#[cfg(feature = "epidemiology")]
 #[test]
 fn test_same_domain_scoped_overlays_and_export_modal_isolation() {
     let ctx = egui::Context::default();
@@ -349,6 +352,7 @@ fn test_same_domain_scoped_overlays_and_export_modal_isolation() {
     assert!(!fw1.show_theory_portal && !fw1.show_starter_gallery && !fw1.show_export_modal);
 }
 
+#[cfg(feature = "epidemiology")]
 #[test]
 fn test_same_domain_per_pane_sir_dataset_exports() {
     let ctx = egui::Context::default();
@@ -403,6 +407,7 @@ fn test_same_domain_per_pane_sir_dataset_exports() {
     }
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_same_domain_per_pane_fallback_plot_exports() {
     let ctx = egui::Context::default();

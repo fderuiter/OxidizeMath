@@ -32,7 +32,16 @@ pub use atlas::WAVE_ATLAS_AXIS_PAIRS;
 pub use atlas::{QuantumTunnelingCartographer, QuantumTunnelingRegime};
 #[cfg(test)]
 pub use challenge::CHALLENGE_FABRY_PEROT_RESONANCE;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 pub use presets::wave_parameter_label;
 pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};

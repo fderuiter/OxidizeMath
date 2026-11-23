@@ -383,18 +383,14 @@ impl WaveRunner {
                 .all(|c| c.re.is_finite() && c.im.is_finite())
         };
         if !stepped || !psi_finite(&self.psi) {
-            self.record_divergence(
-                "psi",
-                "Non-finite wave packet amplitude detected during time evolution.",
-            );
+            let msg = "Non-finite wave packet amplitude detected during time evolution.";
+            self.record_divergence("psi", msg);
             return;
         }
         self.psi.normalize_in_place();
         if !psi_finite(&self.psi) {
-            self.record_divergence(
-                "psi_norm",
-                "Wave function normalization diverged: non-finite norm encountered.",
-            );
+            let msg = "Wave function normalization diverged: non-finite norm encountered.";
+            self.record_divergence("psi_norm", msg);
             return;
         }
         self.update_observables_in_place();
@@ -413,9 +409,7 @@ impl WaveRunner {
             self.x_right,
         );
         for p in &mut safe_prob {
-            if !p.is_finite() {
-                *p = 0.0;
-            }
+            *p = if p.is_finite() { *p } else { 0.0 };
         }
         let safe_potential: Vec<f64> = self
             .potential
@@ -459,13 +453,10 @@ impl SimulationRunner for WaveRunner {
                 let cfg = self
                     .config
                     .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
+                    .map_or_else(|e| e.into_inner().clone(), |g| g.clone());
                 self.init_from_config(&cfg);
             }
-            SimCommand::SetSpeed(speed) => {
-                self.steps_per_frame = speed.max(1);
-            }
+            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed.max(1),
             other => self.handle_sculpt_command(other),
         }
     }

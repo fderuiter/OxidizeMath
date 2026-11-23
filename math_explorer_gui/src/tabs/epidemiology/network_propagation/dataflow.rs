@@ -169,12 +169,12 @@ impl NetworkPropagationTool {
         self.canvas_id
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "physics", feature = "biology"))]
     pub(crate) fn current_effective_r0(&self) -> f64 {
         super::compute_network_analytics(&self.model).effective_r0
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "biology"))]
     pub(crate) fn active_node_count(&self) -> usize {
         self.model.num_nodes()
     }

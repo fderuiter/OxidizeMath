@@ -1,5 +1,5 @@
 use super::*;
-use crate::framework::{InteractiveTool, ToolStateBounds};
+use crate::framework::ToolStateBounds;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -162,6 +162,7 @@ fn test_checked_ode_step_count_bounds_and_step_caps() {
     assert_eq!(checked_ode_step_count(0.05, f64::INFINITY), None);
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_morphogenesis_tool_state_envelope_roundtrip() {
     use crate::tabs::morphogenesis::{atlas::default_morpho_atlas_axes, MorphogenesisToolState};
@@ -267,6 +268,7 @@ fn test_preset_dialog_poll_pending_import_export_and_cancel_cleanup() {
     assert!(dialog.toast_error.is_none());
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_preset_dialog_poll_pending_import_with_interactive_tool_and_read_error() {
     let mut framework = crate::framework::SimulationFramework::new("chaos");
@@ -398,8 +400,10 @@ fn test_preset_filename_sanitization_matches_web_io_contract() {
     );
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_morphogenesis_tool_shares_poll_pending_import_lifecycle() {
+    use crate::framework::InteractiveTool;
     let mut tool = crate::tabs::morphogenesis::MorphogenesisTool::default();
     let exported = tool.export_preset_json().unwrap();
 

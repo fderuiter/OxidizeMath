@@ -7,14 +7,29 @@ use eframe::egui;
 #[test]
 fn test_curated_cold_start_tab_and_flagship_tool_ordering() {
     let app = MathExplorerApp::default();
+    #[cfg(all(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     assert!(app.tabs.len() >= 21);
-    assert_eq!(app.tabs[0].name(), "Quantum Mechanics");
-    assert_eq!(app.tabs[0].active_tool_id(), Some("WaveSimulator"));
-    assert_eq!(app.tabs[1].name(), "MRI Physics");
-    assert_eq!(app.tabs[2].name(), "Fluid Dynamics");
-    assert_eq!(app.tabs[3].name(), "Chaos Theory");
-    assert_eq!(app.tabs[4].name(), "Solid State Physics");
-    assert_eq!(app.tabs[5].name(), "Medical Physics");
+
+    #[cfg(feature = "physics")]
+    {
+        assert_eq!(app.tabs[0].name(), "Quantum Mechanics");
+        assert_eq!(app.tabs[0].active_tool_id(), Some("WaveSimulator"));
+        assert_eq!(app.tabs[1].name(), "MRI Physics");
+        assert_eq!(app.tabs[2].name(), "Fluid Dynamics");
+        assert_eq!(app.tabs[3].name(), "Chaos Theory");
+        assert_eq!(app.tabs[4].name(), "Solid State Physics");
+        assert_eq!(app.tabs[5].name(), "Medical Physics");
+    }
+
+    #[cfg(feature = "ai")]
     assert_eq!(
         app.tabs.last().map(|t| t.name()),
         Some("Artificial Intelligence")
@@ -36,6 +51,7 @@ fn test_curated_cold_start_tab_and_flagship_tool_ordering() {
     );
 }
 
+#[cfg(all(feature = "ai", feature = "physics", feature = "pure_math"))]
 #[test]
 fn test_legacy_and_named_session_restoration_across_single_split_and_quad() {
     let mut legacy_single = MathExplorerApp::default();
@@ -86,6 +102,12 @@ fn test_legacy_and_named_session_restoration_across_single_split_and_quad() {
     );
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "climate",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[test]
 fn test_quad_grid_session_restoration_by_tab_name() {
     let mut quad_src = MathExplorerApp::default();
@@ -146,18 +168,21 @@ fn test_palette_executes_actions_and_presets_directly() {
     );
     assert!(app.compare_sync.link_axes);
 
-    let preset = inventory::iter::<crate::starter_gallery::StarterPresetMetadata>
-        .into_iter()
-        .find(|p| p.title == "Logistic Growth")
-        .expect("Logistic Growth preset registered");
-    let analysis_idx = app
-        .tabs
-        .iter()
-        .position(|t| t.name() == "Analysis & Calculus")
-        .unwrap();
-    app.focus_pane(1);
-    app.execute_palette_selection(&ctx, PaletteSelection::preset(analysis_idx, preset));
-    assert_eq!(app.tabs[app.pane_tabs[1]].name(), "Analysis & Calculus");
-    let pane1_state = app.pane_tab(1).and_then(|t| t.save_state()).unwrap();
-    assert!(pane1_state.contains("LogisticGrowth"));
+    #[cfg(feature = "pure_math")]
+    {
+        let preset = inventory::iter::<crate::starter_gallery::StarterPresetMetadata>
+            .into_iter()
+            .find(|p| p.title == "Logistic Growth")
+            .expect("Logistic Growth preset registered");
+        let analysis_idx = app
+            .tabs
+            .iter()
+            .position(|t| t.name() == "Analysis & Calculus")
+            .unwrap();
+        app.focus_pane(1);
+        app.execute_palette_selection(&ctx, PaletteSelection::preset(analysis_idx, preset));
+        assert_eq!(app.tabs[app.pane_tabs[1]].name(), "Analysis & Calculus");
+        let pane1_state = app.pane_tab(1).and_then(|t| t.save_state()).unwrap();
+        assert!(pane1_state.contains("LogisticGrowth"));
+    }
 }

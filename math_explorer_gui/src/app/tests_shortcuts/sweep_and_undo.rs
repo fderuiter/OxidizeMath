@@ -49,6 +49,7 @@ fn step_events(
     ctx.run(raw_input, |c| app.update(c, frame))
 }
 
+#[cfg(any(feature = "physics", feature = "pure_math"))]
 fn click_point(
     ctx: &egui::Context,
     app: &mut MathExplorerApp,
@@ -82,6 +83,7 @@ fn click_point(
     )
 }
 
+#[cfg(feature = "pure_math")]
 fn click_accesskit_button_by_label(
     ctx: &egui::Context,
     app: &mut MathExplorerApp,
@@ -156,12 +158,10 @@ fn test_ode_60_frame_sweep_coalesces_workspace_undo_and_trace_runs() {
     let mut app = MathExplorerApp::default();
     let mut frame = eframe::Frame::_new_kittest();
     let mods = shortcut_mods();
-
     let analysis_idx = find_tab_index(&app, "Analysis & Calculus");
     app.select_tab(&ctx, analysis_idx);
     assert!(app.tabs[analysis_idx].select_tool_by_name("OdeSolverTool"));
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
-
     let out = seed_ode_history(&ctx, &mut app, &mut frame, analysis_idx);
     let (pre_sweep_k, pre_sweep_runs) = ode_param_k_and_runs(&app, analysis_idx);
     assert!((pre_sweep_k - 1.5).abs() < 1e-9);
@@ -200,7 +200,6 @@ fn test_ode_60_frame_sweep_coalesces_workspace_undo_and_trace_runs() {
 
     let _ = step_events(&ctx, &mut app, &mut frame, key_event(egui::Key::Z, mods));
     assert!((ode_param_k_and_runs(&app, analysis_idx).0 - 1.5).abs() < 1e-9);
-
     for expected_k in [1.25_f64, 1.0, 0.75, 0.5] {
         let _ = step_events(&ctx, &mut app, &mut frame, key_event(egui::Key::Z, mods));
         assert!((ode_param_k_and_runs(&app, analysis_idx).0 - expected_k).abs() < 1e-9);
@@ -318,17 +317,22 @@ fn test_single_layout_ctrl_z_and_ctrl_y_across_all_explorer_tabs_and_strip_short
     let mut frame = eframe::Frame::_new_kittest();
     let mods = shortcut_mods();
 
-    #[cfg(all(feature = "pure_math", feature = "physics"))]
+    #[cfg(all(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     assert_eq!(app.tabs.len(), 28);
-
     app.set_layout(ViewportLayout::Single);
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
-
     for tab_idx in 0..app.tabs.len() {
         app.select_tab(&ctx, tab_idx);
         app.split_ratio = 0.50;
         let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
-
         app.split_ratio = 0.65;
         let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
         assert_eq!(app.selected_tab, tab_idx);
@@ -396,12 +400,10 @@ fn test_graph_editor_mixing_edit_menu_sidebar_buttons_and_ctrl_z_preserves_stack
     let mut app = MathExplorerApp::default();
     let mut frame = eframe::Frame::_new_kittest();
     let mods = shortcut_mods();
-
     let graph_idx = find_tab_index(&app, "Graph Theory");
     app.select_tab(&ctx, graph_idx);
     assert!(app.tabs[graph_idx].select_tool_by_name("GraphEditorTool"));
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
-
     for expected in 1..=3 {
         insert_node_in_pane(&mut app, 0);
         let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
@@ -412,25 +414,20 @@ fn test_graph_editor_mixing_edit_menu_sidebar_buttons_and_ctrl_z_preserves_stack
     let out = step_events(&ctx, &mut app, &mut frame, Vec::new());
     assert_eq!(graph_next_node_id(&app, 0), 2);
     assert!(app.can_undo() && app.can_redo());
-
     let _ = click_accesskit_button_by_label(&ctx, &mut app, &mut frame, &out, "↩ Undo");
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
     assert_eq!(graph_next_node_id(&app, 0), 1);
     assert!(app.can_undo() && app.can_redo());
-
     let out = step_events(&ctx, &mut app, &mut frame, key_event(egui::Key::Z, mods));
     assert_eq!(graph_next_node_id(&app, 0), 0);
     assert!(app.can_redo());
-
     let _ = click_accesskit_button_by_label(&ctx, &mut app, &mut frame, &out, "↪ Redo");
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
     assert_eq!(graph_next_node_id(&app, 0), 1);
     assert!(app.can_undo() && app.can_redo());
-
     app.redo();
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
     assert_eq!(graph_next_node_id(&app, 0), 2);
-
     let _ = step_events(&ctx, &mut app, &mut frame, redo_shortcut_events());
     assert_eq!(graph_next_node_id(&app, 0), 3);
     assert!(!app.can_redo() && app.can_undo());

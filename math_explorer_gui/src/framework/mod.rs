@@ -9,7 +9,7 @@ mod challenge_hud;
 #[cfg(test)]
 mod challenge_hud_tests;
 pub mod clamp;
-#[cfg(test)]
+#[cfg(all(test, feature = "climate", feature = "physics", feature = "pure_math"))]
 mod clamp_tests;
 pub mod code_export;
 pub mod code_export_modal;
@@ -32,12 +32,17 @@ mod export_gif_job;
 mod export_modal_host;
 mod export_persistence;
 mod export_queue;
-#[cfg(test)]
+#[cfg(all(test, feature = "physics"))]
 pub(crate) use export_queue::deferred_export_tests;
 #[cfg(test)]
 mod export_queue_tests;
 pub(crate) mod export_shader;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod export_shader_tests;
 pub mod export_types;
 mod export_ui;
@@ -46,11 +51,29 @@ mod export_ui_tests;
 pub mod fit_bridge;
 mod history_ui;
 pub mod math_input;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod metadata_label_tests;
 mod overlay_sync;
 mod pane_scope;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod perf_guard_tests;
 mod persistence;
 pub mod playback;
@@ -66,7 +89,7 @@ mod plot_persistence_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
-#[cfg(test)]
+#[cfg(all(test, any(feature = "epidemiology", feature = "pure_math")))]
 mod shared_points_perf_tests;
 pub mod side_panel;
 pub mod spatial_brush;
@@ -131,16 +154,8 @@ pub(super) use overlay_sync::{
 };
 use scientific_metadata::theory::TheoryDescribable;
 
-pub struct ToolMetadata {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub domain: &'static str,
-    pub tags: &'static [&'static str],
-    pub build: fn() -> Box<dyn InteractiveTool>,
-}
-
-inventory::collect!(ToolMetadata);
 pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
+pub use overlay_sync::ToolMetadata;
 
 pub trait InteractiveTool {
     fn name(&self) -> &'static str;

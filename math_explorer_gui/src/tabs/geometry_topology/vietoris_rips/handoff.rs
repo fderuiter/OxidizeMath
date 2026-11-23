@@ -28,6 +28,7 @@ pub struct ChaosLandmarkHandoff {
 
 impl ChaosLandmarkHandoff {
     /// Converts this handoff into a sanitized [`LandmarkCloud3DPayload`] for [`crate::app::dataflow_bus::PaneDataflowBus`].
+    #[cfg(feature = "physics")]
     pub fn to_bus_payload(&self, revision: u64) -> LandmarkCloud3DPayload {
         let raw: Vec<[f64; 3]> = self.points.iter().map(|p| [p.x, p.y, p.z]).collect();
         LandmarkCloud3DPayload::sanitized(revision, raw, self.sigma, self.rho, self.beta, self.dt)
@@ -64,7 +65,7 @@ pub fn take_chaos_landmark_handoff(ctx: &egui::Context) -> Option<ChaosLandmarkH
 }
 
 /// Signals `MathExplorerApp` to focus the `Geometry & Topology` tab and select `VietorisRipsTool`.
-#[cfg(any(feature = "physics", test))]
+#[cfg(feature = "physics")]
 pub fn request_open_vietoris_rips(ctx: &egui::Context) {
     ctx.data_mut(|d| {
         d.insert_temp(egui::Id::new(OPEN_VR_REQUEST_ID), true);
