@@ -1,4 +1,4 @@
-use crate::framework::BrushStroke;
+use crate::framework::{BrushStroke, RasterBranchViewMode};
 use std::sync::Arc;
 
 /// Persisted spatial sculpt payload synchronized between `UnifiedSimTool` and worker models.
@@ -35,12 +35,22 @@ pub enum SimCommand {
         #[allow(missing_docs)]
         is_obstacle: bool,
     },
-    #[allow(missing_docs)]
+    /// Applies an interpolated continuous spatial brush stroke.
     ApplyBrushStroke(BrushStroke),
-    #[allow(missing_docs)]
+    /// Synchronizes full RLE/sparse spatial sculpt state into the worker model.
     SyncSculptState(SculptStatePayload),
     #[allow(missing_docs)]
     ClearObstacles,
+    /// Steps backward to the immediately preceding checkpoint in the `TimelineRingBuffer`.
+    StepBack,
+    /// Scrubs the model to checkpointed step $k > 0$ and truncates future history.
+    ScrubToStep(usize),
+    /// Clones an unperturbed shadow twin at the current step $t_k$ for lockstep comparison.
+    ForkBranch,
+    /// Clears any active shadow-twin branch and divergence accumulator.
+    ClearBranch,
+    /// Switches the raster branch visualization mode (Primary, Shadow, or Signed Difference).
+    SetRasterViewMode(RasterBranchViewMode),
     #[allow(missing_docs)]
     Custom(String),
 }
@@ -59,6 +69,11 @@ impl SimCommand {
             Self::ApplyBrushStroke(_) => "ApplyBrushStroke",
             Self::SyncSculptState(_) => "SyncSculptState",
             Self::ClearObstacles => "ClearObstacles",
+            Self::StepBack => "StepBack",
+            Self::ScrubToStep(_) => "ScrubToStep",
+            Self::ForkBranch => "ForkBranch",
+            Self::ClearBranch => "ClearBranch",
+            Self::SetRasterViewMode(_) => "SetRasterViewMode",
             Self::Custom(_) => "Custom",
         }
     }
@@ -126,13 +141,17 @@ impl SimWorkerState {
             Self::Ready => !matches!(cmd, SimCommand::Pause),
             Self::Running => !matches!(
                 cmd,
-                SimCommand::Start | SimCommand::Step(_) | SimCommand::TrainEpisodes(_)
+                SimCommand::Start
+                    | SimCommand::Step(_)
+                    | SimCommand::StepBack
+                    | SimCommand::TrainEpisodes(_)
             ),
             Self::Stepping => !matches!(
                 cmd,
                 SimCommand::Start
                     | SimCommand::Pause
                     | SimCommand::Step(_)
+                    | SimCommand::StepBack
                     | SimCommand::TrainEpisodes(_)
             ),
             Self::Faulted => matches!(cmd, SimCommand::Reset),

@@ -19,15 +19,15 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
         let Some(tool) = self.active_tool.as_ref() else {
             return Vec::new();
         };
-        let datasets = tool.export_datasets();
+        let mut datasets = tool.export_datasets();
         if datasets.is_empty()
             && self.cached_tool_name == Some(tool.name())
             && !self.cached_plot_datasets.is_empty()
         {
-            self.cached_plot_datasets.to_vec()
-        } else {
-            datasets
+            datasets = self.cached_plot_datasets.to_vec();
         }
+        append_missing_branch_metadata_2d(tool.as_ref(), &mut datasets);
+        datasets
     }
 
     fn sample_gif_frames(&mut self, num_frames: usize) -> Vec<egui_plot::export::DatasetFrame> {
@@ -82,30 +82,30 @@ impl SimulationFramework {
         let Some(tool) = &self.active_tool else {
             return Vec::new();
         };
-        let datasets = tool.export_datasets();
+        let mut datasets = tool.export_datasets();
         if datasets.is_empty()
             && self.sync_state.datasets_owner_tool == Some(tool.name())
             && !self.current_valid_plot_datasets.is_empty()
         {
-            self.current_valid_plot_datasets.clone()
-        } else {
-            datasets
+            datasets = self.current_valid_plot_datasets.clone();
         }
+        append_missing_branch_metadata_2d(tool.as_ref(), &mut datasets);
+        datasets
     }
 
     pub(crate) fn export_datasets_3d_with_fallback(&self) -> Vec<(String, Vec<[f64; 3]>)> {
         let Some(tool) = &self.active_tool else {
             return Vec::new();
         };
-        let datasets = tool.export_datasets_3d();
+        let mut datasets = tool.export_datasets_3d();
         if datasets.is_empty()
             && self.sync_state.datasets_owner_tool == Some(tool.name())
             && !self.current_valid_plot_datasets_3d.is_empty()
         {
-            self.current_valid_plot_datasets_3d.clone()
-        } else {
-            datasets
+            datasets = self.current_valid_plot_datasets_3d.clone();
         }
+        append_missing_branch_metadata_3d(tool.as_ref(), &mut datasets);
+        datasets
     }
 
     pub(super) fn serialize_active_dataset_export(
@@ -181,6 +181,44 @@ impl SimulationFramework {
                 );
             }
             ExportTarget::Clipboard => self.dispatch_clipboard_text_request(format, content, ctx),
+        }
+    }
+}
+
+fn append_missing_branch_metadata_2d(
+    tool: &dyn InteractiveTool,
+    datasets: &mut Vec<(String, Vec<[f64; 2]>)>,
+) {
+    if datasets.is_empty() {
+        return;
+    }
+    if let Some(meta) = tool.branch_export_metadata() {
+        let has_meta = datasets
+            .iter()
+            .any(|(name, _)| name.starts_with("Branch Metadata ["));
+        if !has_meta {
+            datasets.push(super::build_branch_metadata_dataset_2d(&meta));
+        }
+    }
+}
+
+fn append_missing_branch_metadata_3d(
+    tool: &dyn InteractiveTool,
+    datasets: &mut Vec<(String, Vec<[f64; 3]>)>,
+) {
+    if datasets.is_empty() {
+        return;
+    }
+    if let Some(meta) = tool.branch_export_metadata() {
+        let has_meta = datasets
+            .iter()
+            .any(|(name, _)| name.starts_with("Branch Metadata ["));
+        if !has_meta {
+            let anchor = datasets
+                .first()
+                .and_then(|(_, pts)| pts.first().copied())
+                .unwrap_or([meta.fork_time, 0.0, 0.0]);
+            datasets.push(super::build_branch_metadata_dataset_3d(&meta, anchor));
         }
     }
 }

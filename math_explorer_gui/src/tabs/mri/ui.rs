@@ -7,7 +7,7 @@ use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::PlaybackAction;
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, Points};
 
@@ -197,15 +197,7 @@ impl MriTool {
 
     fn draw_playback_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.heading("Simulation");
-        if let Some(action) = PlaybackTransport::from_worker_state(
-            "mri_transport",
-            "MRI Physics",
-            self.worker.state(),
-        )
-        .reset_label("↻ Reset (90° Pulse)")
-        .can_reset(true)
-        .show(ui)
-        {
+        if let Some(action) = self.draw_mri_transport_and_hud(ui, ctx) {
             match action {
                 PlaybackAction::Play => {
                     let _ = self.worker.send_command(SimCommand::Start);
@@ -266,6 +258,9 @@ impl MriTool {
             if self.pulse_config.mode.is_continuous() {
                 self.draw_playback_controls(ui, &ctx);
                 ui.separator();
+            } else {
+                let _ = self.draw_mri_transport_and_hud(ui, &ctx);
+                ui.separator();
             }
             ui.label(format!("Time: {:.3} s", self.current_time));
             ui.label(format!("|M|: {:.3}", self.simulator.magnetization.norm()));
@@ -293,6 +288,7 @@ impl MriTool {
                 .y_axis_label("Magnetization (M/M0)")
                 .view_aspect(2.0)
                 .show(ui, |plot_ui| {
+                    self.render_shadow_on_plot(plot_ui, palette);
                     plot_ui.line(
                         Line::new("Mx (Transverse)", &self.mx_points[..]).color(palette.axis_x),
                     );
@@ -350,6 +346,7 @@ impl MriTool {
                     self.current_time = data.current_time;
                     self.simulator.magnetization = data.magnetization;
                     self.history = data.history.clone();
+                    self.sync_branch.worker_view = Some(data.branch.clone());
                     self.update_plot_buffers();
                 }
             }

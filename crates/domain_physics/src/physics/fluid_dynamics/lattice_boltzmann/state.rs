@@ -105,4 +105,90 @@ impl<const Q: usize> LatticeState<Q> {
     pub fn obstacles(&self) -> &[bool] {
         self.obstacles.as_slice()
     }
+
+    /// Required `f64` buffer length (`(Q + 3) * width * height`) for [`Self::export_checkpoint`].
+    #[verified_engine::verified]
+    pub fn checkpoint_field_len(&self) -> usize {
+        (Q + 3) * self.width * self.height
+    }
+
+    /// Exports populations `f`, macroscopic fields `(rho, ux, uy)`, force scalars, and obstacles
+    /// into preallocated slices without heap allocation.
+    #[verified_engine::verified]
+    pub fn export_checkpoint(
+        &self,
+        scalars_out: &mut [f64; 4],
+        field_out: &mut [f64],
+        obstacles_out: &mut [u8],
+    ) {
+        let cells = self.width * self.height;
+        let f_len = Q * cells;
+        assert!(
+            field_out.len() >= f_len + 3 * cells,
+            "Checkpoint field buffer too small"
+        );
+        assert!(
+            obstacles_out.len() >= cells,
+            "Checkpoint obstacle buffer too small"
+        );
+        scalars_out[0] = self.last_drag_force;
+        scalars_out[1] = self.last_lift_force;
+        scalars_out[2] = if self.has_stepped_forces { 1.0 } else { 0.0 };
+        scalars_out[3] = 0.0;
+        let mut cursor = 0;
+        for pop in self.f.as_slice() {
+            field_out[cursor..cursor + Q].copy_from_slice(pop);
+            cursor += Q;
+        }
+        field_out[f_len..f_len + cells].copy_from_slice(self.rho.as_slice());
+        field_out[f_len + cells..f_len + 2 * cells].copy_from_slice(self.ux.as_slice());
+        field_out[f_len + 2 * cells..f_len + 3 * cells].copy_from_slice(self.uy.as_slice());
+        for (dst, &obs) in obstacles_out
+            .iter_mut()
+            .zip(self.obstacles.as_slice().iter())
+        {
+            *dst = u8::from(obs);
+        }
+    }
+
+    /// Restores populations `f`, macroscopic fields `(rho, ux, uy)`, force scalars, and obstacles
+    /// from preallocated checkpoint slices without heap allocation.
+    #[verified_engine::verified]
+    pub fn restore_checkpoint(&mut self, scalars: &[f64; 4], field: &[f64], obstacles: &[u8]) {
+        let cells = self.width * self.height;
+        let f_len = Q * cells;
+        assert!(
+            field.len() >= f_len + 3 * cells,
+            "Checkpoint field buffer too small"
+        );
+        assert!(
+            obstacles.len() >= cells,
+            "Checkpoint obstacle buffer too small"
+        );
+        self.last_drag_force = scalars[0];
+        self.last_lift_force = scalars[1];
+        self.has_stepped_forces = scalars[2] >= 0.5;
+        let mut cursor = 0;
+        for pop in self.f.as_mut_slice() {
+            pop.copy_from_slice(&field[cursor..cursor + Q]);
+            cursor += Q;
+        }
+        self.rho
+            .as_mut_slice()
+            .copy_from_slice(&field[f_len..f_len + cells]);
+        self.ux
+            .as_mut_slice()
+            .copy_from_slice(&field[f_len + cells..f_len + 2 * cells]);
+        self.uy
+            .as_mut_slice()
+            .copy_from_slice(&field[f_len + 2 * cells..f_len + 3 * cells]);
+        for (dst, &b) in self
+            .obstacles
+            .as_mut_slice()
+            .iter_mut()
+            .zip(obstacles.iter())
+        {
+            *dst = b != 0;
+        }
+    }
 }

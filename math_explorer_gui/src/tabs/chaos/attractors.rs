@@ -2,15 +2,19 @@
 
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::{
-    Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
+    BranchDivergenceMetrics, BranchMetadata, Camera3D, CoupledExpressionBank, ExportCapabilities,
+    InteractiveTool, Scene3DBuilder, TimelineBranchAction, TimelineTransportState,
 };
 use eframe::egui;
-use egui_plot::{LineStyle, MarkerShape};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+#[path = "attractors/branch.rs"]
+pub mod branch;
+#[path = "attractors/branch_ui.rs"]
+mod branch_ui;
 #[path = "attractors/flow.rs"]
 pub mod flow;
 pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
@@ -48,6 +52,7 @@ pub struct AttractorPlotter {
     trajectory_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
+    pub(crate) sync_branch: branch::AttractorBranchRuntime,
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
@@ -91,6 +96,7 @@ impl Default for AttractorPlotter {
             trajectory_scratch: Vec::with_capacity(2000),
             params,
             worker,
+            sync_branch: branch::AttractorBranchRuntime::default(),
             show_annotations: true,
             fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
@@ -194,6 +200,7 @@ impl AttractorPlotter {
         self.history.clear();
         self.step_count = 0;
         self.execution_state = SolverExecutionState::Ready;
+        self.sync_branch.reset();
         let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
@@ -234,46 +241,11 @@ impl AttractorPlotter {
     }
 
     /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
+    #[cfg(test)]
     pub fn populate_scene(&mut self, series_color: egui::Color32) {
-        let origin_offset = match self.mode {
-            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
-            AttractorMode::Custom => Point3::origin(),
-        };
-        self.scene_builder.begin(self.camera);
-        self.scene_builder.set_origin_offset(origin_offset);
-        self.trajectory_scratch.clear();
-        self.trajectory_scratch
-            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
-        if !self.trajectory_scratch.is_empty() {
-            if self.trajectory_scratch.len() == 1 {
-                self.scene_builder.add_points(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    4.0_f32,
-                    series_color,
-                    MarkerShape::Circle,
-                    true,
-                );
-            } else {
-                self.scene_builder.add_polyline(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    egui::Stroke::new(1.5_f32, series_color),
-                    LineStyle::Solid,
-                    true,
-                );
-            }
-        } else if self.is_finite_state() {
-            let v = self.system.state.vec;
-            self.scene_builder.add_points(
-                "Initial State",
-                &[Point3::new(v.x, v.y, v.z)],
-                4.0_f32,
-                series_color,
-                MarkerShape::Circle,
-                true,
-            );
-        }
+        let mut palette = crate::app::SemanticPalette::for_theme(crate::app::ThemeMode::Dark);
+        palette.series[0] = series_color;
+        self.populate_scene_with_shadow(palette);
     }
 }
 
@@ -339,48 +311,32 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn step_simulation(&mut self) {
-        if self.diverged() {
-            return;
-        }
-        if self.execution_state == SolverExecutionState::Ready {
-            self.execution_state = SolverExecutionState::Running;
-        }
-        let custom_job = (self.mode == AttractorMode::Custom)
-            .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
-        for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
-            let current_vec = self.system.state.vec;
-            if !current_vec.x.is_finite()
-                || !current_vec.y.is_finite()
-                || !current_vec.z.is_finite()
-            {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: current_vec,
-                    diverged_at_step: self.step_count,
-                };
-                break;
-            }
+        self.step_simulation_lockstep();
+    }
 
-            if let Some(ref job) = custom_job {
-                self.system.state.vec = job.rk4_step(current_vec, self.dt);
-            } else {
-                self.system.step(self.dt);
-            }
-            self.step_count += 1;
+    fn timeline_transport_state(&self) -> Option<TimelineTransportState> {
+        Some(self.attractor_timeline_state())
+    }
 
-            let vec = self.system.state.vec;
-            if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: vec,
-                    diverged_at_step: self.step_count,
-                };
-                break;
-            }
+    fn apply_timeline_action(
+        &mut self,
+        action: TimelineBranchAction,
+        ctx: Option<&egui::Context>,
+    ) {
+        self.apply_attractor_timeline_action(action, ctx, true);
+    }
 
-            if self.history.len() >= self.max_points {
-                self.history.pop_front();
-            }
-            self.history.push_back(vec);
-        }
+    fn branch_divergence_metrics(&self) -> Option<BranchDivergenceMetrics> {
+        let view = self.sync_branch.effective_view(self.step_count);
+        view.fork_active.then_some(view.divergence)
+    }
+
+    fn branch_export_metadata(&self) -> Option<BranchMetadata> {
+        self.attractor_branch_metadata()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_attractor_export_primitives()
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
@@ -396,20 +352,11 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-        if points.is_empty() && self.is_finite_state() {
-            points.push(self.project(self.system.state.vec));
-        }
-        vec![("Trajectory".to_string(), points)]
+        self.build_attractor_datasets_2d()
     }
 
     fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
-        let mut points: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
-        if points.is_empty() && self.is_finite_state() {
-            let v = self.system.state.vec;
-            points.push([v.x, v.y, v.z]);
-        }
-        vec![("Trajectory".to_string(), points)]
+        self.build_attractor_datasets_3d()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -437,6 +384,7 @@ impl InteractiveTool for AttractorPlotter {
                     self.history = data.history.clone();
                     self.system.state.vec = data.current_vec;
                     self.step_count = data.step_count;
+                    self.sync_branch.worker_view = Some(data.branch.clone());
                     if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
                         || !was_paused
                     {
@@ -493,3 +441,7 @@ mod custom_flow_tests;
 #[cfg(test)]
 #[path = "attractors/export_tests.rs"]
 mod export_tests;
+
+#[cfg(test)]
+#[path = "attractors/branch_tests.rs"]
+mod branch_tests;

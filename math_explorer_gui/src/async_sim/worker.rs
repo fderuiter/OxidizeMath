@@ -103,6 +103,11 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
         | SimCommand::ApplyBrushStroke(_)
         | SimCommand::SyncSculptState(_)
         | SimCommand::ClearObstacles
+        | SimCommand::StepBack
+        | SimCommand::ScrubToStep(_)
+        | SimCommand::ForkBranch
+        | SimCommand::ClearBranch
+        | SimCommand::SetRasterViewMode(_)
         | SimCommand::Custom(_) => {
             runner.process_command(cmd);
             *emit_paused_snapshot = true;

@@ -37,6 +37,7 @@ mod persistence;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
+mod playback_timeline;
 pub mod plot_persistence;
 #[cfg(test)]
 mod plot_persistence_session_tests;
@@ -61,6 +62,8 @@ pub mod story_hud;
 pub(crate) mod theory_links;
 #[cfg(test)]
 mod theory_links_tests;
+pub mod timeline_branch;
+mod timeline_hooks;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
@@ -89,6 +92,7 @@ pub use spatial_brush::*;
 pub use state_bounds::*;
 pub use state_guard::*;
 pub use story_hud::*;
+pub use timeline_branch::*;
 pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
@@ -338,6 +342,29 @@ pub trait InteractiveTool {
 
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
+
+    /// Optional hook returning timeline scrubber and shadow-twin branch status.
+    fn timeline_transport_state(&self) -> Option<TimelineTransportState> {
+        None
+    }
+
+    /// Optional hook handling timeline scrubbing, step-back, and shadow-branch actions.
+    fn apply_timeline_action(
+        &mut self,
+        _action: TimelineBranchAction,
+        _ctx: Option<&egui::Context>,
+    ) {
+    }
+
+    /// Optional hook returning live divergence metrics when a shadow-twin branch is active.
+    fn branch_divergence_metrics(&self) -> Option<BranchDivergenceMetrics> {
+        None
+    }
+
+    /// Optional hook returning branch provenance from $t_k$ for dataset and figure exports.
+    fn branch_export_metadata(&self) -> Option<BranchMetadata> {
+        None
+    }
 
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(

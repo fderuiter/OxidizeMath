@@ -1,5 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::branch::{
+    register_mri_runner_branch, with_existing_mri_runner_branch, MriBranchRuntime,
+    MriBranchSnapshot,
+};
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use math_explorer::physics::mri::bloch::BlochSimulator;
@@ -39,6 +43,7 @@ pub struct MriSnapshot {
     pub current_time: f64,
     pub magnetization: Vector3<f64>,
     pub history: VecDeque<(f64, Vector3<f64>)>,
+    pub branch: MriBranchSnapshot,
 }
 
 #[allow(missing_docs)]
@@ -58,6 +63,7 @@ impl MriRunner {
         initial_m: Vector3<f64>,
         m0: f64,
     ) -> Self {
+        register_mri_runner_branch(&params, initial_m);
         let (t1, t2, b_field) = {
             let p = params.read().unwrap_or_else(|e| e.into_inner());
             (p.t1, p.t2, p.b_field)
@@ -76,6 +82,14 @@ impl MriRunner {
             history,
             max_history,
         }
+    }
+
+    pub(crate) fn sync_params_pub(&mut self) -> f64 {
+        self.sync_params_and_get_scale()
+    }
+
+    pub(crate) fn advance_bloch_ticks_pub(&mut self, ticks: usize) {
+        self.advance_bloch_ticks(ticks);
     }
 
     fn sync_params_and_get_scale(&mut self) -> f64 {
@@ -121,6 +135,11 @@ impl MriRunner {
                 self.history.pop_front();
             }
             self.history.push_back((self.current_time, m));
+            let t_now = self.current_time;
+            let max_h = self.max_history;
+            let _ = with_existing_mri_runner_branch(&self.params, |b| {
+                b.on_step_in_place(dt, max_h, t_now, m);
+            });
         }
         self.simulator.b_field = b_lab;
     }
@@ -135,6 +154,11 @@ impl SimulationRunner for MriRunner {
             self.current_time = 0.0;
             self.history.clear();
             self.history.push_back((0.0, initial_m));
+            let _ = with_existing_mri_runner_branch(&self.params, |b| {
+                MriBranchRuntime::reset(b, initial_m);
+            });
+        } else {
+            let _ = self.handle_branch_command(&cmd);
         }
     }
 
@@ -159,6 +183,7 @@ impl SimulationRunner for MriRunner {
             current_time: self.current_time,
             magnetization: m,
             history: self.history.clone(),
+            branch: self.snapshot_branch(),
         };
         StateSnapshot {
             width: 0,

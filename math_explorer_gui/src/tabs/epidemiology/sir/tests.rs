@@ -211,3 +211,71 @@ fn test_sir_plot_uses_shared_import_csv_toolbar_without_duplicate_header_button(
     assert!(labels.contains(&"Import CSV"));
     assert!(!labels.contains(&"Import Dataset (CSV)"));
 }
+
+#[test]
+fn test_sir_timeline_scrub_zero_perturbation_fork_and_counterfactual_intervention() {
+    use crate::accessibility::{all_announcements, clear_test_announcements};
+    use crate::framework::timeline_branch::exports::assert_framework_exports_all_branch_formats;
+    use crate::framework::MAX_TIMELINE_RING_BYTES;
+    use crate::url_state::URL_JSON_BOUNDS;
+
+    let mut tool = SirTool {
+        beta: 0.30,
+        ..SirTool::default()
+    };
+    tool.recalculate();
+    assert!(tool.branch.timeline.memory_budget_bytes() <= MAX_TIMELINE_RING_BYTES);
+
+    let expected_s_at_180 = tool.s_points[180].y;
+    let expected_i_at_180 = tool.i_points[180].y;
+    tool.scrub_to_step(180);
+    assert_eq!(tool.branch.current_step, 180);
+    assert_eq!(tool.s_points.len(), 181);
+    assert!((tool.s_points[180].x - 18.0).abs() < 1.0e-9);
+    assert!((tool.s_points[180].y - expected_s_at_180).abs() < 1.0e-9);
+    assert!((tool.i_points[180].y - expected_i_at_180).abs() < 1.0e-9);
+
+    clear_test_announcements();
+    let ctx = egui::Context::default();
+    tool.apply_timeline_action(TimelineBranchAction::ToggleForkBranch, Some(&ctx));
+    assert!(all_announcements()
+        .iter()
+        .any(|(msg, pri)| pri == "polite" && msg.contains("Forked")));
+    tool.step_lockstep(100);
+    let zero_div = tool.branch_divergence_metrics().expect("Fork active");
+    assert_eq!(zero_div.steps_since_fork, 100);
+    assert_eq!(zero_div.instantaneous_l2, 0.0);
+    assert_eq!(zero_div.peak_abs_delta, 0.0);
+    assert_eq!(zero_div.cumulative_area_delta, 0.0);
+
+    tool.beta = 0.14;
+    tool.recompute_counterfactual_from_fork();
+    let div = tool.branch_divergence_metrics().expect("Fork active");
+    assert!(div.instantaneous_l2 > 0.0 && div.peak_abs_delta > 0.0);
+    let (_, intervention_peak) = metrics::compute_epidemic_peak(&tool.i_points).unwrap();
+    let (_, baseline_peak) =
+        metrics::compute_epidemic_peak(&tool.branch.shadow.as_ref().unwrap().i_points).unwrap();
+    assert!(intervention_peak < baseline_peak);
+
+    let saved = tool.save_state().expect("save_state");
+    assert!(saved.len() <= URL_JSON_BOUNDS.max_bytes && !saved.contains("Shadow Baseline"));
+    assert_framework_exports_all_branch_formats(Box::new(tool), "Infected (Shadow Baseline");
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn test_sir_lockstep_shadow_twin_step_zero_heap_allocations() {
+    let mut tool = SirTool::default();
+    tool.scrub_to_step(180);
+    tool.fork_branch();
+    tool.beta = 0.25;
+    let dyn_now = tool.current_dynamics();
+
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let ((l2, peak), _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        tool.branch.step_lockstep_in_place(dyn_now, branch::SIR_DT)
+    });
+    assert!(l2 > 0.0 && peak > 0.0);
+}

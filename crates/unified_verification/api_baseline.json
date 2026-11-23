@@ -4948,7 +4948,13 @@
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/state.rs": [
     {
+      "signature": "impl < const Q : usize > LatticeState < Q > { pub fn checkpoint_field_len (& self) -> usize }"
+    },
+    {
       "signature": "impl < const Q : usize > LatticeState < Q > { pub fn density (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl < const Q : usize > LatticeState < Q > { pub fn export_checkpoint (& self , _ : & mut [f64 ; 4] , _ : & mut [f64] , _ : & mut [u8] ,) }"
     },
     {
       "signature": "impl < const Q : usize > LatticeState < Q > { pub fn height (& self) -> usize }"
@@ -4961,6 +4967,9 @@
     },
     {
       "signature": "impl < const Q : usize > LatticeState < Q > { pub fn obstacles (& self) -> & [bool] }"
+    },
+    {
+      "signature": "impl < const Q : usize > LatticeState < Q > { pub fn restore_checkpoint (& mut self , _ : & [f64 ; 4] , _ : & [f64] , _ : & [u8]) }"
     },
     {
       "signature": "impl < const Q : usize > LatticeState < Q > { pub fn velocity_x (& self) -> & [f64] }"
@@ -9236,6 +9245,15 @@
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/wave_2d/masks.rs": [
+    {
+      "signature": "impl super :: Wave2DSolver { pub fn export_verlet_checkpoint (& self , _ : & mut [f64 ; 4] , _ : & mut [f64] , _ : & mut [u8] ,) }"
+    },
+    {
+      "signature": "impl super :: Wave2DSolver { pub fn restore_verlet_checkpoint (& mut self , _ : & [f64 ; 4] , _ : & [f64] , _ : & [u8]) }"
+    },
+    {
+      "signature": "impl super :: Wave2DSolver { pub fn verlet_checkpoint_field_len (& self) -> usize }"
+    },
     {
       "signature": "pub fn apply_biconvex_lens (_ : & mut [f64] , _ : usize , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,)"
     },

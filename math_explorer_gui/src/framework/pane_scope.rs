@@ -3,24 +3,36 @@
 use super::{AccessibleHoverText, BrushMode, BrushStroke, InteractiveTool, PaneSidePanel};
 use eframe::egui;
 
+/// Pointer device modality driving an interactive canvas event.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
+    /// Standard cursor / mouse input.
     Mouse,
+    /// Single- or multi-touch input.
     Touch,
 }
 
 /// Event context provided to interaction hooks.
-#[allow(missing_docs)]
 pub struct InteractionContext<'a> {
+    /// Active pointer coordinates in screen space, if hovered or interacting.
     pub pointer_pos: Option<egui::Pos2>,
+    /// Frame-to-frame drag delta in logical pixels.
     pub delta: egui::Vec2,
+    /// Whether the pointer is actively dragging the canvas.
     pub is_dragging: bool,
+    /// Whether the canvas received a primary click on this frame.
     pub is_clicked: bool,
+    /// Underlying `egui::Response` for the interactive canvas widget.
     pub response: &'a egui::Response,
+    /// Detected pointer input modality.
     pub input_mode: InputMode,
+    /// Multi-touch gesture payload when two or more fingers are active.
     pub multi_touch: Option<egui::MultiTouchInfo>,
+    /// Currently pressed keyboard keys.
     pub keys_down: std::collections::HashSet<egui::Key>,
+    /// Active keyboard modifiers (`Shift`, `Ctrl`, `Alt`, `Command`).
     pub modifiers: egui::Modifiers,
+    /// Optional interpolated spatial brush stroke emitted by [`super::SpatialBrushKit`].
     pub brush_stroke: Option<BrushStroke>,
 }
 

@@ -2,10 +2,17 @@
 
 #[path = "sir/atlas.rs"]
 pub mod atlas;
+#[path = "sir/branch.rs"]
+pub mod branch;
+#[path = "sir/metrics.rs"]
 mod metrics;
 
 use crate::async_sim::atlas::ParameterAtlasController;
-use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
+use crate::framework::{
+    BranchDivergenceMetrics, BranchMetadata, InteractiveTool, TimelineBranchAction,
+    TimelineTransportState, TraceSeries, TraceSnapshotManager,
+};
+use branch::SirBranchRuntime;
 use atlas::{default_sir_atlas_axes, is_default_sir_atlas_axes, SIR_ATLAS_AXIS_PAIRS};
 #[cfg(test)]
 pub use atlas::{SirCartographer, SirRegime};
@@ -13,7 +20,6 @@ use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::epidemiology::compartmental::SIRModel;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 const MIN_SIR_DURATION: f64 = 10.0;
@@ -79,9 +85,10 @@ pub struct SirTool {
     pub(crate) display_r: std::sync::Arc<Vec<PlotPoint>>,
 
     pub(crate) snapshot_manager: TraceSnapshotManager,
+    pub(crate) branch: SirBranchRuntime,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(super) last_param_summary: String,
-    revision: u64,
+    pub(super) revision: u64,
 }
 
 impl Default for SirTool {
@@ -100,6 +107,7 @@ impl Default for SirTool {
             display_i: std::sync::Arc::new(Vec::new()),
             display_r: std::sync::Arc::new(Vec::new()),
             snapshot_manager: TraceSnapshotManager::new(),
+            branch: SirBranchRuntime::default(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
             revision: 1,
@@ -244,6 +252,7 @@ impl SirTool {
             self.display_s = crate::framework::decimate_plot_points_minmax(&self.s_points, cap);
             self.display_i = crate::framework::decimate_plot_points_minmax(&self.i_points, cap);
             self.display_r = crate::framework::decimate_plot_points_minmax(&self.r_points, cap);
+            self.rebuild_timeline_from_recalculate(model, steps);
         }
     }
 
@@ -332,6 +341,7 @@ impl InteractiveTool for SirTool {
             datasets.push(("Infected".to_string(), to_pairs(&self.i_points)));
             datasets.push(("Recovered".to_string(), to_pairs(&self.r_points)));
         }
+        self.append_branch_export_datasets(&mut datasets);
         datasets.extend(self.snapshot_manager.export_datasets());
         for (name, pts) in egui_plot::get_last_plot_datasets() {
             if !datasets.iter().any(|(existing, _)| existing == &name) {
@@ -339,6 +349,34 @@ impl InteractiveTool for SirTool {
             }
         }
         datasets
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_sir_export_primitives()
+    }
+
+    fn step_simulation(&mut self) {
+        self.step_lockstep(1);
+    }
+
+    fn timeline_transport_state(&self) -> Option<TimelineTransportState> {
+        Some(self.sir_timeline_state())
+    }
+
+    fn apply_timeline_action(
+        &mut self,
+        action: TimelineBranchAction,
+        ctx: Option<&egui::Context>,
+    ) {
+        self.apply_sir_timeline_action(action, ctx, true);
+    }
+
+    fn branch_divergence_metrics(&self) -> Option<BranchDivergenceMetrics> {
+        self.branch.shadow.as_ref().map(|tw| tw.divergence.metrics())
+    }
+
+    fn branch_export_metadata(&self) -> Option<BranchMetadata> {
+        self.sir_branch_metadata()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -388,9 +426,14 @@ impl InteractiveTool for SirTool {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.vertical(|ui| {
+                self.render_sir_transport_and_hud(ui);
                 ui.heading("Parameters");
                 if self.render_parameter_controls(ui) {
-                    self.record_history_and_recalculate();
+                    if self.branch.shadow.is_some() {
+                        self.recompute_counterfactual_from_fork();
+                    } else {
+                        self.record_history_and_recalculate();
+                    }
                 }
                 metrics::render_epidemic_metrics(ui, self);
                 self.render_sir_readouts_and_atlas(ui);
@@ -431,57 +474,5 @@ inventory::submit! {
     }
 }
 
-impl TheoryDescribable for SirTool {
-    fn theory_description(&self) -> String {
-        let r0 = self.beta / self.gamma;
-        format!(
-            "Kermack-McKendrick SIR compartmental epidemic model: $\\frac{{dS}}{{dt}} = -\\frac{{\\beta S I}}{{N}}$, $\\frac{{dI}}{{dt}} = \\frac{{\\beta S I}}{{N}} - \\gamma I$, $\\frac{{dR}}{{dt}} = \\gamma I$. Transmission rate $\\beta = {:.3}$, recovery rate $\\gamma = {:.3}$, basic reproduction number $R_0 = {:.2}$.",
-            self.beta, self.gamma, r0
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Kermack-McKendrick SIR compartmental epidemic model theory".into()
-    }
-
-    fn theory_citation(&self) -> String {
-        "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into()
-    }
-
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        HashMap::new()
-    }
-
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        [
-            ("N", 100.0, 100_000.0, 100.0),
-            ("I0", 1.0, 50_000.0, 1.0),
-            ("beta", 0.0, 5.0, 0.02),
-            ("gamma", 0.0, 1.0, 0.01),
-            ("duration", MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0),
-        ]
-        .into_iter()
-        .map(|(k, min, max, step)| (k.to_string(), ParameterConstraint { min, max, step }))
-        .collect()
-    }
-}
-
 #[cfg(test)]
 mod tests;
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": { "schema_version": "1.0", "title": "Kermack-McKendrick SIR Model", "domain": "epidemiology", "timestamp": "2026-11-16T00:00:00Z" },
-  "config": { "n": 10000.0, "i0": 25.0, "beta": 0.3, "gamma": 0.1, "duration": 120.0 }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "sir_starter",
-        title: "Kermack-McKendrick SIR Model",
-        description: "dS/dt = -βSI/N, dI/dt = βSI/N - γI: Compartmental epidemic outbreak dynamics and herd immunity.",
-        category: "Compartmental Models",
-        icon: "🦠",
-        domain: "epidemiology",
-        tool_name: Some("SirTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}

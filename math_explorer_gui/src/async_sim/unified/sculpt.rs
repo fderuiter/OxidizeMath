@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::branching::{UnifiedBranchRuntime, UnifiedBranchSharedState};
 use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimTool};
 use crate::async_sim::{SculptStatePayload, SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::MAX_RLE_MASK_CELLS;
@@ -172,7 +173,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 }
 
-#[allow(missing_docs)]
+/// Background worker runner executing a [`UnifiedModel`] alongside its optional lockstep shadow twin.
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,
@@ -180,10 +181,11 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
     formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
     applied_formula_rev: Option<u64>,
     steps_per_frame: usize,
+    pub(crate) branch_rt: UnifiedBranchRuntime<M>,
 }
 
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    #[allow(missing_docs)]
+    /// Creates a [`UnifiedSimRunner`] initialized from `params` with fresh sculpt, formula, and branch state.
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
         Self::with_shared(
             params,
@@ -198,18 +200,70 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
         sculpt_state: Arc<RwLock<SculptStatePayload>>,
         formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
     ) -> Self {
+        Self::with_shared_and_branch(
+            params,
+            sculpt_state,
+            formula,
+            Arc::new(RwLock::new(UnifiedBranchSharedState::default())),
+        )
+    }
+
+    /// Creates a runner sharing `params`, `sculpt_state`, `formula`, and `branch_state`.
+    pub fn with_shared_and_branch(
+        params: Arc<RwLock<HashMap<String, f64>>>,
+        sculpt_state: Arc<RwLock<SculptStatePayload>>,
+        formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+        branch_state: Arc<RwLock<UnifiedBranchSharedState>>,
+    ) -> Self {
         let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let model = M::new(&initial_params);
+        let branch_rt = UnifiedBranchRuntime::new(&model, branch_state);
         let mut runner = Self {
-            model: M::new(&initial_params),
+            model,
             params,
             sculpt_state,
             formula,
             applied_formula_rev: None,
             steps_per_frame: 5,
+            branch_rt,
         };
         runner.sync_formula(&initial_params);
         runner.apply_sculpt_if_present(&initial_params);
+        runner.branch_rt.reset(&runner.model, &initial_params);
         runner
+    }
+
+    /// Zero-allocation hot-loop step advancing both primary model and shadow twin in lockstep.
+    pub fn step_in_place_with_params(&mut self, current_params: &HashMap<String, f64>) {
+        self.model.step(current_params);
+        self.branch_rt.on_step_in_place(&self.model, current_params);
+    }
+
+    /// Current simulation step index $k$.
+    #[must_use]
+    pub const fn current_step(&self) -> usize {
+        self.branch_rt.current_step
+    }
+
+    /// Memory budget (in bytes) allocated by the internal `TimelineRingBuffer`.
+    #[must_use]
+    pub fn timeline_memory_bytes(&self) -> usize {
+        self.branch_rt.timeline.memory_budget_bytes()
+    }
+
+    /// Latest shadow-twin divergence metrics when a branch is forked.
+    #[must_use]
+    pub fn branch_divergence(&self) -> Option<crate::framework::BranchDivergenceMetrics> {
+        self.branch_rt
+            .shadow
+            .as_ref()
+            .map(|twin| twin.divergence.metrics())
+    }
+
+    ///Immutable reference to the primary model instance.
+    #[must_use]
+    pub const fn model(&self) -> &M {
+        &self.model
     }
 
     fn apply_sculpt_if_present(&mut self, current_params: &HashMap<String, f64>) {
@@ -269,6 +323,25 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
                 if had_sculpt {
                     self.sync_sculpt_from_model(&current_params);
                 }
+                self.branch_rt.reset(&self.model, &current_params);
+            }
+            SimCommand::StepBack => {
+                self.branch_rt.step_back(&mut self.model, &current_params);
+            }
+            SimCommand::ScrubToStep(step) => {
+                self.branch_rt
+                    .scrub_to_step(step, &mut self.model, &current_params);
+            }
+            SimCommand::ForkBranch => {
+                self.branch_rt.fork_at_current(&self.model, &current_params);
+            }
+            SimCommand::ClearBranch => {
+                self.branch_rt.clear_branch(&self.model, &current_params);
+            }
+            SimCommand::SetRasterViewMode(mode) => {
+                self.branch_rt.view_mode = mode;
+                self.branch_rt
+                    .publish_shared_metadata(&self.model, &current_params);
             }
             SimCommand::SyncSculptState(payload) => {
                 self.sync_formula(&current_params);
@@ -291,11 +364,18 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         self.sync_formula(&current_params);
-        self.model.step(&current_params);
+        self.step_in_place_with_params(&current_params);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        self.model.get_snapshot()
+        let current_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let base_snap = self.model.get_snapshot();
+        self.branch_rt
+            .decorate_snapshot(&self.model, &current_params, base_snap)
     }
 
     fn get_steps_per_frame(&self) -> usize {

@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::branching::UnifiedBranchSharedState;
 use super::persistence::build_formula_bar;
 use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimRunner, UnifiedUiExtension};
 use crate::async_sim::{
@@ -19,6 +20,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) controller: BackgroundWorker<UnifiedSimRunner<M>>,
     pub(crate) params: Arc<RwLock<HashMap<String, f64>>>,
     pub(crate) sculpt_state: Arc<RwLock<SculptStatePayload>>,
+    pub(crate) branch_state: Arc<RwLock<UnifiedBranchSharedState>>,
     pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) shared_formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
     pub(crate) formula_bar: Option<MathExpressionInputBar>,
@@ -50,12 +52,9 @@ impl<M: UnifiedModel> Default for UnifiedSimTool<M> {
 }
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
-    #[allow(missing_docs)]
-    pub fn new() -> Self {
-        let param_map = M::parameters();
-        let mut param_metadata: Vec<_> = param_map.into_iter().collect();
+    fn sorted_initial_params() -> (Vec<(String, ParameterConstraint)>, HashMap<String, f64>) {
+        let mut param_metadata: Vec<_> = M::parameters().into_iter().collect();
         param_metadata.sort_by(|a, b| a.0.cmp(&b.0));
-
         let mut initial_params = HashMap::new();
         for (name, constraint) in &param_metadata {
             let default_val = M::parameter_choices(name)
@@ -63,15 +62,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 .map_or((constraint.min + constraint.max) / 2.0, |&(_, v)| v);
             initial_params.insert(name.clone(), default_val);
         }
+        (param_metadata, initial_params)
+    }
+
+    #[allow(missing_docs)]
+    pub fn new() -> Self {
+        let (param_metadata, initial_params) = Self::sorted_initial_params();
 
         let formula_bar = M::formula_spec().as_ref().map(build_formula_bar);
         let params = Arc::new(RwLock::new(initial_params.clone()));
         let sculpt_state = Arc::new(RwLock::new(SculptStatePayload::default()));
+        let branch_state = Arc::new(RwLock::new(UnifiedBranchSharedState::default()));
         let shared_formula = Arc::new(RwLock::new(None));
-        let runner = UnifiedSimRunner::<M>::with_shared(
+        let runner = UnifiedSimRunner::<M>::with_shared_and_branch(
             Arc::clone(&params),
             Arc::clone(&sculpt_state),
             Arc::clone(&shared_formula),
+            Arc::clone(&branch_state),
         );
         let controller = BackgroundWorker::new(runner);
         let temp_model = M::new(&initial_params);
@@ -89,6 +96,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             controller,
             params,
             sculpt_state,
+            branch_state,
             brush_kit,
             shared_formula,
             formula_bar,
@@ -167,8 +175,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let params = Arc::clone(&self.params);
         let sculpt = Arc::clone(&self.sculpt_state);
         let formula = Arc::clone(&self.shared_formula);
-        self.controller
-            .reset_or_respawn(|| UnifiedSimRunner::<M>::with_shared(params, sculpt, formula));
+        let branch = Arc::clone(&self.branch_state);
+        self.controller.reset_or_respawn(|| {
+            UnifiedSimRunner::<M>::with_shared_and_branch(params, sculpt, formula, branch)
+        });
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
@@ -221,11 +231,49 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        if M::is_raster_model() {
+        let fork_active = self
+            .branch_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .fork_active;
+        if M::is_raster_model() && !fork_active {
             crate::framework::ExportCapabilities::raster_only()
         } else {
             crate::framework::ExportCapabilities::plot()
         }
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let ds = self.build_unified_export_datasets();
+        if ds.is_empty() && !M::is_raster_model() {
+            egui_plot::get_last_plot_datasets()
+        } else {
+            ds
+        }
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_unified_export_primitives()
+    }
+
+    fn timeline_transport_state(&self) -> Option<crate::framework::TimelineTransportState> {
+        self.build_timeline_transport_state()
+    }
+
+    fn apply_timeline_action(
+        &mut self,
+        action: crate::framework::TimelineBranchAction,
+        ctx: Option<&egui::Context>,
+    ) {
+        self.apply_unified_timeline_action(action, ctx);
+    }
+
+    fn branch_divergence_metrics(&self) -> Option<crate::framework::BranchDivergenceMetrics> {
+        self.unified_branch_divergence()
+    }
+
+    fn branch_export_metadata(&self) -> Option<crate::framework::BranchMetadata> {
+        self.unified_branch_metadata()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {

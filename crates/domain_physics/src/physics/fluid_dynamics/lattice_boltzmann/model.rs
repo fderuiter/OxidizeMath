@@ -156,5 +156,17 @@ pub struct LatticeBoltzmann<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q
     pub _marker: PhantomData<L>,
 }
 
+impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L> + Clone> Clone
+    for LatticeBoltzmann<Q, L, C>
+{
+    fn clone(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+            collision_model: self.collision_model.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
 /// Type Alias for Backward Compatibility.
 pub type LatticeBoltzmannD2Q9<C> = LatticeBoltzmann<9, D2Q9, C>;

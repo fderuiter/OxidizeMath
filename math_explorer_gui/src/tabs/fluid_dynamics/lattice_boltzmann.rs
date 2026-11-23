@@ -10,7 +10,9 @@ use super::lbm_fairing::{
     LBM_U_IN,
 };
 use super::lbm_fairing_ui::LbmUiExtension;
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool, UnifiedUiExtension};
+use crate::async_sim::unified::{
+    UnifiedCheckpointSlot, UnifiedModel, UnifiedUiExtension,
+};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{decode_rle_mask, BrushMode, BrushStroke, SpatialBrushKit};
@@ -21,7 +23,7 @@ use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_drag_coefficient,
     compute_vorticity_into, AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9,
 };
-use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -54,6 +56,10 @@ pub struct LbmUnified {
 }
 
 impl LbmUnified {
+    pub(super) fn refresh_diagnostics_pub(&mut self) {
+        self.refresh_diagnostics();
+    }
+
     fn refresh_diagnostics(&mut self) {
         compute_vorticity_into(&self.solver, &mut self.vorticity_buf);
         self.latest_aero = compute_aerodynamic_coefficients(&self.solver, LBM_INLET_U, 24.0, 3);
@@ -104,31 +110,6 @@ impl LbmUnified {
             }
         }
         self.refresh_diagnostics();
-    }
-}
-
-impl FiniteStateGuard for LbmUnified {
-    fn is_finite_state(&self) -> bool {
-        if self.diverged {
-            return false;
-        }
-        self.solver.state.velocity_x().iter().all(|&v| v.is_finite())
-            && self.solver.state.velocity_y().iter().all(|&v| v.is_finite())
-            && self.solver.state.density().iter().all(|&v| v.is_finite())
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.diagnostic_report.as_ref()
-    }
-
-    fn diverged(&self) -> bool {
-        self.diverged || !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn reset_parameters(&mut self) {
-        self.diverged = false;
-        self.diagnostic_report = None;
-        self.step_count = 0;
     }
 }
 
@@ -432,57 +413,40 @@ impl UnifiedModel for LbmUnified {
     fn name() -> &'static str {
         "Lattice Boltzmann (Demo)"
     }
-}
 
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "LatticeBoltzmannTool",
-        display_name: "Lattice Boltzmann (Demo)",
-        domain: "fluid_dynamics",
-        tags: &[],
-        build: || Box::new(UnifiedSimTool::<LbmUnified>::new()),
-    }
-}
-
-impl TheoryDescribable for LbmUnified {
-    fn theory_description(&self) -> String {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_description()
+    fn supports_timeline_branch() -> bool {
+        true
     }
 
-    fn phonetic_description(&self) -> String {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).phonetic_description()
+    fn checkpoint_stride() -> usize {
+        5
     }
 
-    fn theory_citation(&self) -> String {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_citation()
+    fn time_unit() -> &'static str {
+        "steps"
     }
 
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).available_descriptions()
+    fn checkpoint_template(&self) -> UnifiedCheckpointSlot {
+        self.build_checkpoint_template()
     }
-}
 
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "LBM Flow Simulation",
-    "domain": "fluid_dynamics",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "viscosity": 0.02
-  }
-}"#;
+    fn write_checkpoint(&self, slot: &mut UnifiedCheckpointSlot) {
+        self.write_checkpoint_slot(slot);
+    }
 
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "lattice_boltzmann_starter",
-        title: "LBM Flow Simulation",
-        description: "f_i(x + e_i·dt, t + dt) = f_i(x, t) - (f_i - f_i^eq)/τ: Mesoscopic BGK collision streaming solver.",
-        category: "Computational Fluids",
-        icon: "🌊",
-        domain: "fluid_dynamics",
-        tool_name: Some("LatticeBoltzmannTool"),
-        preset_generator: || STARTER_PRESET_JSON,
+    fn restore_checkpoint(&mut self, slot: &UnifiedCheckpointSlot, params: &HashMap<String, f64>) {
+        self.restore_checkpoint_slot(slot, params);
+    }
+
+    fn fork_shadow_twin(&self) -> Option<Self> {
+        Some(self.clone())
+    }
+
+    fn scalar_field_len(&self) -> usize {
+        LBM_WIDTH * LBM_HEIGHT
+    }
+
+    fn read_scalar_field(&self, out: &mut [f64]) -> usize {
+        self.copy_scalar_field(out)
     }
 }

@@ -93,16 +93,21 @@ fn render_tool_color_image_with_fallback(
     render_primitives_image(&primitives, options)
 }
 
-fn render_tool_png_with_fallback(
+pub(crate) fn render_tool_png_with_fallback(
     tool: &dyn InteractiveTool,
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<Vec<u8>, String> {
     let image = render_tool_color_image_with_fallback(tool, fallback_datasets, options)?;
-    color32_image_to_png(&image)
+    let png = color32_image_to_png(&image)?;
+    if let Some(meta) = tool.branch_export_metadata() {
+        Ok(super::inject_png_branch_metadata(png, &meta))
+    } else {
+        Ok(png)
+    }
 }
 
-fn render_tool_svg_with_fallback(
+pub(crate) fn render_tool_svg_with_fallback(
     tool: &dyn InteractiveTool,
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
@@ -111,7 +116,11 @@ fn render_tool_svg_with_fallback(
     if let Some(raster) = valid_raster_image(tool) {
         let plot_prims = tool.export_plot_primitives();
         if !has_drawable_primitives(&plot_prims) {
-            return export_raster_svg(&raster, options);
+            let svg = export_raster_svg(&raster, options)?;
+            return Ok(match tool.branch_export_metadata() {
+                Some(meta) => super::inject_svg_branch_metadata(svg, &meta),
+                None => svg,
+            });
         }
         preloaded_prims = Some(plot_prims);
     }
@@ -123,7 +132,11 @@ fn render_tool_svg_with_fallback(
             tool.name()
         ));
     }
-    export_primitives_svg(&primitives, options)
+    let svg = export_primitives_svg(&primitives, options)?;
+    Ok(match tool.branch_export_metadata() {
+        Some(meta) => super::inject_svg_branch_metadata(svg, &meta),
+        None => svg,
+    })
 }
 
 fn render_tool_gif_with_fallback(

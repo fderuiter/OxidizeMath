@@ -1,17 +1,18 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::pulse::{sync_mri_callouts, MriPulseMode, MriPulseWorkspace, RfPulseConfig};
-use super::runner::{
-    MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE,
-};
+use super::branch::MriBranchRuntime;
+use super::pulse::{sync_mri_callouts, MriPulseMode, RfPulseConfig, MriPulseWorkspace};
+use super::runner::{MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE, MriRunner, MriSharedParams};
 use super::theory::MriBlochTheory;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::{CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool};
+use crate::framework::{
+    BranchDivergenceMetrics, BranchMetadata, CalloutManager, ChallengeEvaluation,
+    ExportCapabilities, InteractiveTool, TimelineBranchAction, TimelineTransportState,
+};
 use eframe::egui;
 use egui_plot::PlotPoint;
-use math_explorer::physics::mri::bloch::{rotating_frame_effective_field, BlochSimulator};
-use math_explorer::physics::mri::proton;
-use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
+use math_explorer::physics::mri::bloch::BlochSimulator;
+use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use nalgebra::Vector3;
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
@@ -115,6 +116,7 @@ pub struct MriTool {
     pub params: Arc<std::sync::RwLock<MriSharedParams>>,
     /// Background Bloch worker controller.
     pub worker: BackgroundWorker<MriRunner>,
+    pub(crate) sync_branch: MriBranchRuntime,
     /// Automated target & extremum plot callouts.
     pub callout_manager: CalloutManager,
     /// Rotating-frame RF pulse sequence settings.
@@ -168,6 +170,7 @@ impl Default for MriTool {
             mz_points: Vec::new(),
             params,
             worker,
+            sync_branch: MriBranchRuntime::with_initial_state(initial_m),
             callout_manager,
             pulse_config,
             pulse_workspace: MriPulseWorkspace::default(),
@@ -258,6 +261,7 @@ impl MriTool {
         self.mx_points.clear();
         self.my_points.clear();
         self.mz_points.clear();
+        self.sync_branch.reset(initial_m);
         if self.active_challenge.is_none() {
             self.pulse_config = RfPulseConfig::default();
         }
@@ -305,49 +309,31 @@ impl InteractiveTool for MriTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        if !self.history.is_empty() {
-            let mx: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.x]).collect();
-            let my: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.y]).collect();
-            let mz: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.z]).collect();
-            return vec![
-                ("Mx (Transverse)".to_string(), mx),
-                ("My (Transverse)".to_string(), my),
-                ("Mz (Longitudinal)".to_string(), mz),
-            ];
-        }
-        if let Some(snap) = self.worker.latest_snapshot() {
-            if let Some(data) = snap
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<MriSnapshot>())
-            {
-                if !data.history.is_empty() {
-                    let mx = data.history.iter().map(|(t, m)| [*t, m.x]).collect();
-                    let my = data.history.iter().map(|(t, m)| [*t, m.y]).collect();
-                    let mz = data.history.iter().map(|(t, m)| [*t, m.z]).collect();
-                    return vec![
-                        ("Mx (Transverse)".to_string(), mx),
-                        ("My (Transverse)".to_string(), my),
-                        ("Mz (Longitudinal)".to_string(), mz),
-                    ];
-                }
-            }
-        }
-        let m = self.simulator.magnetization;
-        vec![
-            (
-                "Mx (Transverse)".to_string(),
-                vec![[self.current_time, m.x]],
-            ),
-            (
-                "My (Transverse)".to_string(),
-                vec![[self.current_time, m.y]],
-            ),
-            (
-                "Mz (Longitudinal)".to_string(),
-                vec![[self.current_time, m.z]],
-            ),
-        ]
+        self.build_mri_export_datasets()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_mri_export_primitives()
+    }
+
+    fn timeline_transport_state(&self) -> Option<TimelineTransportState> {
+        Some(self.mri_timeline_state())
+    }
+
+    fn apply_timeline_action(
+        &mut self,
+        action: TimelineBranchAction,
+        ctx: Option<&egui::Context>,
+    ) {
+        self.apply_mri_timeline_action(action, ctx, true);
+    }
+
+    fn branch_divergence_metrics(&self) -> Option<BranchDivergenceMetrics> {
+        self.mri_branch_divergence()
+    }
+
+    fn branch_export_metadata(&self) -> Option<BranchMetadata> {
+        self.mri_branch_metadata()
     }
 
     fn step_simulation(&mut self) {
@@ -355,25 +341,7 @@ impl InteractiveTool for MriTool {
             self.recompute_pulse_sequence();
             return;
         }
-        if self.history.is_empty() {
-            self.history
-                .push_back((self.current_time, self.simulator.magnetization));
-        }
-        let dt = 0.01;
-        let b_lab = self.simulator.b_field;
-        let omega_rf = proton::larmor_frequency(b_lab.z);
-        let b1_amp = b_lab.x.hypot(b_lab.y);
-        let phase_rad = b_lab.y.atan2(b_lab.x);
-        self.simulator.b_field =
-            rotating_frame_effective_field(b_lab.z, omega_rf, b1_amp, phase_rad);
-        TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
-        self.simulator.b_field = b_lab;
-        self.current_time += dt;
-        if self.history.len() >= self.max_history {
-            self.history.pop_front();
-        }
-        self.history
-            .push_back((self.current_time, self.simulator.magnetization));
+        self.step_continuous_sync(0.01);
         self.update_plot_buffers();
     }
 

@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::branch::{register_runner_branch, with_existing_runner_branch, AttractorBranchSnapshot};
 use super::flow::{AttractorMode, CompiledFlowJob};
 use super::serde_vec3;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
@@ -48,6 +49,7 @@ pub struct AttractorSnapshot {
     pub current_vec: Vector3<f64>,
     pub step_count: usize,
     pub execution_state: SolverExecutionState,
+    pub branch: AttractorBranchSnapshot,
 }
 
 #[allow(missing_docs)]
@@ -62,6 +64,7 @@ pub struct AttractorRunner {
 impl AttractorRunner {
     /// Builds a fresh runner initialized from shared parameters.
     pub fn from_params(params: Arc<std::sync::RwLock<AttractorSharedParams>>) -> Self {
+        register_runner_branch(&params);
         let (sigma, rho, beta, max_points) = {
             let p = params.read().unwrap_or_else(|e| e.into_inner());
             (p.sigma, p.rho, p.beta, p.max_points)
@@ -77,6 +80,28 @@ impl AttractorRunner {
             step_count: 0,
             execution_state: SolverExecutionState::Ready,
         }
+    }
+
+    pub(crate) fn sync_params_pub(
+        &mut self,
+    ) -> (
+        f64,
+        usize,
+        usize,
+        AttractorMode,
+        Option<Arc<CompiledFlowJob>>,
+    ) {
+        self.sync_params()
+    }
+
+    pub(crate) fn advance_tick_pub(
+        &mut self,
+        dt: f64,
+        max_points: usize,
+        mode: AttractorMode,
+        custom_flow: Option<&CompiledFlowJob>,
+    ) -> bool {
+        self.advance_tick(dt, max_points, mode, custom_flow)
     }
 
     fn sync_params(
@@ -149,6 +174,10 @@ impl AttractorRunner {
             self.history.pop_front();
         }
         self.history.push_back(vec);
+        let step = self.step_count;
+        let _ = with_existing_runner_branch(&self.params, |b| {
+            b.on_step_in_place(step, dt, max_points, vec);
+        });
         true
     }
 }
@@ -179,6 +208,7 @@ impl SimulationRunner for AttractorRunner {
                 self.history.clear();
                 self.step_count = 0;
                 self.execution_state = SolverExecutionState::Ready;
+                self.reset_runner_branch();
             }
             SimCommand::SetSpeed(speed) => {
                 self.params
@@ -186,7 +216,9 @@ impl SimulationRunner for AttractorRunner {
                     .unwrap_or_else(|e| e.into_inner())
                     .simulation_speed = speed.clamp(1, MAX_SIMULATION_SPEED);
             }
-            _ => {}
+            ref other => {
+                let _ = self.handle_branch_command(other);
+            }
         }
     }
 
@@ -255,6 +287,7 @@ impl SimulationRunner for AttractorRunner {
             current_vec: v,
             step_count: self.step_count,
             execution_state: self.execution_state,
+            branch: self.snapshot_branch(),
         };
         StateSnapshot {
             width: 0,

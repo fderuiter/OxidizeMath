@@ -285,6 +285,18 @@ impl AstVisitor {
         }
     }
 
+    fn inspect_code_attr(&mut self, attr: &syn::Attribute, attr_line: usize) -> bool {
+        let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
+        let has_verified = attr_str.contains("verified_engine::verified")
+            || attr_str.contains("#[verified]")
+            || attr_str.starts_with("#[verified(");
+        let has_embed = attr_str.contains("embed_theory");
+        if has_embed {
+            self.extract_embed_theory(&attr_str, attr_line);
+        }
+        has_verified || has_embed
+    }
+
     fn process_fn_attrs(
         &mut self,
         attrs: &[syn::Attribute],
@@ -292,7 +304,6 @@ impl AstVisitor {
         assert_count: usize,
     ) {
         self.total_funcs += 1;
-
         let mut is_verified = false;
         let mut has_semantic = false;
         for attr in attrs {
@@ -300,20 +311,9 @@ impl AstVisitor {
                 continue;
             }
             let attr_line = span_line(attr.span());
-            let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
-
-            if attr_str.contains("verified_engine::verified")
-                || attr_str.contains("#[verified]")
-                || attr_str.starts_with("#[verified(")
-            {
+            if !attr.path().is_ident("doc") && self.inspect_code_attr(attr, attr_line) {
                 is_verified = true;
                 has_semantic = true;
-            }
-
-            if attr_str.contains("embed_theory") {
-                is_verified = true;
-                has_semantic = true;
-                self.extract_embed_theory(&attr_str, attr_line);
             }
 
             let doc_text = quote::quote!(#attr).to_string();

@@ -22,9 +22,9 @@ pub enum PlaybackAction {
 /// with `WidgetInfo` roles, `AccessibleHoverText` tooltips, polite ARIA announcements,
 /// keyboard shortcuts (`Space` and `Period`), and 44x44 touch targets.
 pub struct PlaybackTransport<'a> {
-    id_salt: &'a str,
-    tool_name: &'a str,
-    is_playing: bool,
+    pub(super) id_salt: &'a str,
+    pub(super) tool_name: &'a str,
+    pub(super) is_playing: bool,
     is_in_thread: bool,
     can_toggle: bool,
     can_step: bool,
@@ -353,7 +353,7 @@ impl<'a> PlaybackTransport<'a> {
     }
 }
 
-fn render_action_button(
+pub(super) fn render_action_button(
     ui: &mut egui::Ui,
     info_id: egui::Id,
     label: &str,
@@ -373,7 +373,7 @@ fn render_action_button(
     resp.accessible_hover_text(a11y_label).clicked()
 }
 
-fn button_min_size(ctx: &egui::Context) -> egui::Vec2 {
+pub(super) fn button_min_size(ctx: &egui::Context) -> egui::Vec2 {
     let is_touch = ctx.data(|d| {
         let mode = d
             .get_temp::<InputMode>(egui::Id::new("INPUT_MODE"))

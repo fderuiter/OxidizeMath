@@ -121,4 +121,92 @@ impl AttractorPlotter {
         }
         Ok(ColoredMesh::new(mesh, colors))
     }
+
+    pub(super) fn build_attractor_datasets_2d(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        if points.is_empty() && self.is_finite_state() {
+            points.push(self.project(self.system.state.vec));
+        }
+        let mut out = vec![("Trajectory".to_string(), points)];
+        let view = self.sync_branch.effective_view(self.step_count);
+        if view.fork_active {
+            let shadow_pts: Vec<[f64; 2]> = view
+                .shadow_history
+                .iter()
+                .map(|p| self.project(*p))
+                .collect();
+            let t_k = view.fork_time.unwrap_or(0.0);
+            out.push((format!("Shadow Baseline @ t_k={t_k:.3}"), shadow_pts));
+            if let Some(meta) = self.attractor_branch_metadata() {
+                out.push(crate::framework::build_branch_metadata_dataset_2d(&meta));
+            }
+        }
+        out
+    }
+
+    pub(super) fn build_attractor_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let mut points: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
+        if points.is_empty() && self.is_finite_state() {
+            let v = self.system.state.vec;
+            points.push([v.x, v.y, v.z]);
+        }
+        let mut out = vec![("Trajectory".to_string(), points)];
+        let view = self.sync_branch.effective_view(self.step_count);
+        if view.fork_active {
+            let shadow_pts: Vec<[f64; 3]> = view
+                .shadow_history
+                .iter()
+                .map(|p| [p.x, p.y, p.z])
+                .collect();
+            let t_k = view.fork_time.unwrap_or(0.0);
+            out.push((format!("Shadow Baseline @ t_k={t_k:.3}"), shadow_pts));
+            if let Some(meta) = self.attractor_branch_metadata() {
+                let anchor = view.fork_vec.map_or([0.0; 3], |v| [v.x, v.y, v.z]);
+                out.push(crate::framework::build_branch_metadata_dataset_3d(
+                    &meta, anchor,
+                ));
+            }
+        }
+        out
+    }
+
+    pub(super) fn build_attractor_export_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        let view = self.sync_branch.effective_view(self.step_count);
+        if !view.fork_active {
+            return egui_plot::get_last_plot_primitives();
+        }
+        let palette = crate::app::SemanticPalette::for_theme(crate::app::ThemeMode::Dark);
+        let mut prims = Vec::new();
+        let shadow_2d: Vec<[f64; 2]> = view
+            .shadow_history
+            .iter()
+            .map(|p| self.project(*p))
+            .collect();
+        prims.extend(crate::framework::build_dashed_export_primitives(
+            "Shadow Baseline",
+            &shadow_2d,
+            palette.series_color(1),
+            1.6,
+        ));
+        let primary_2d: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        if primary_2d.len() >= 2 {
+            prims.push(egui_plot::ExportPrimitive::Polyline {
+                name: "Trajectory".to_string(),
+                points: primary_2d,
+                color: palette.series_color(0),
+                stroke_width: 1.8,
+                closed: false,
+                fill: None,
+            });
+        }
+        if let Some(fv) = view.fork_vec {
+            prims.push(egui_plot::ExportPrimitive::Points {
+                name: "Fork @ t_k".to_string(),
+                points: vec![self.project(fv)],
+                radius: 5.0,
+                color: palette.accent,
+            });
+        }
+        prims
+    }
 }

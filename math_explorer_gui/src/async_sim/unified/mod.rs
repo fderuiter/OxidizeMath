@@ -1,11 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 mod atlas;
+pub mod branching;
+#[cfg(test)]
+mod branching_tests;
+mod branching_ui;
 mod canvas;
 mod controls;
 mod persistence;
 pub mod sculpt;
 pub mod tool;
+pub use branching::{UnifiedBranchRuntime, UnifiedBranchSharedState, UnifiedCheckpointSlot};
 pub use sculpt::UnifiedSimRunner;
 pub use tool::*;
 
@@ -368,5 +373,71 @@ pub trait UnifiedModel:
         Self: Sized,
     {
         None
+    }
+
+    /// Whether this model supports `TimelineRingBuffer` scrubbing and shadow-twin branching.
+    fn supports_timeline_branch() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    /// Preallocated checkpoint slot template used to size the `2 MiB` ring buffer.
+    fn checkpoint_template(&self) -> UnifiedCheckpointSlot {
+        UnifiedCheckpointSlot::default()
+    }
+
+    /// Step stride between stored timeline checkpoints (`>= 1`).
+    fn checkpoint_stride() -> usize
+    where
+        Self: Sized,
+    {
+        1
+    }
+
+    /// Physical time increment $\Delta t$ per `step()` call.
+    fn time_step_dt(&self, _params: &HashMap<String, f64>) -> f64 {
+        1.0
+    }
+
+    /// Display unit for timeline timestamps (e.g. `"s"`, `"ms"`, `"steps"`).
+    fn time_unit() -> &'static str
+    where
+        Self: Sized,
+    {
+        "s"
+    }
+
+    /// Writes model state into `slot` without reallocating preallocated buffers.
+    fn write_checkpoint(&self, _slot: &mut UnifiedCheckpointSlot) {}
+
+    /// Restores exact model state from `slot` without resetting to $t = 0$.
+    fn restore_checkpoint(
+        &mut self,
+        _slot: &UnifiedCheckpointSlot,
+        _params: &HashMap<String, f64>,
+    ) {
+    }
+
+    /// Truncates any internal trajectory history strictly after `(step, time)`.
+    fn truncate_history_to_step(&mut self, _step: usize, _time: f64) {}
+
+    /// Clones this model at fork initialization to create an unperturbed shadow twin.
+    fn fork_shadow_twin(&self) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
+    /// Number of scalar elements exposed by [`Self::read_scalar_field`] for divergence tracking.
+    fn scalar_field_len(&self) -> usize {
+        0
+    }
+
+    /// Copies current scalar observables/grid into `out` with zero heap allocations, returning elements written.
+    fn read_scalar_field(&self, _out: &mut [f64]) -> usize {
+        0
     }
 }

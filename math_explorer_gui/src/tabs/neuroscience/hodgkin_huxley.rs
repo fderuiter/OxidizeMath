@@ -4,7 +4,7 @@
 pub mod atlas;
 
 use crate::async_sim::atlas::RegimeCartographer;
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
+use crate::async_sim::unified::{UnifiedCheckpointSlot, UnifiedModel, UnifiedSimTool};
 use crate::async_sim::StateSnapshot;
 #[cfg(test)]
 pub use atlas::HodgkinHuxleyRegime;
@@ -237,6 +237,98 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         Some(Arc::new(HodgkinHuxleyCartographer::from_params(
             params, axis_keys,
         )))
+    }
+
+    fn supports_timeline_branch() -> bool {
+        true
+    }
+
+    fn checkpoint_stride() -> usize {
+        5
+    }
+
+    fn time_step_dt(&self, _params: &HashMap<String, f64>) -> f64 {
+        self.dt
+    }
+
+    fn time_unit() -> &'static str {
+        "ms"
+    }
+
+    fn write_checkpoint(&self, slot: &mut UnifiedCheckpointSlot) {
+        slot.scalars[0] = self.time;
+        slot.scalars[1] = self.neuron.v();
+        slot.scalars[2] = self.neuron.n();
+        slot.scalars[3] = self.neuron.m();
+        slot.scalars[4] = self.neuron.h();
+        slot.scalars[5] = self.prev_v;
+        slot.scalars[6] = self.i_ext;
+    }
+
+    fn restore_checkpoint(&mut self, slot: &UnifiedCheckpointSlot, params: &HashMap<String, f64>) {
+        self.time = slot.scalars[0];
+        self.prev_v = slot.scalars[5];
+        self.i_ext = params.get("i_ext").copied().unwrap_or(slot.scalars[6]);
+        self.params.g_na = params.get("g_na").copied().unwrap_or(self.params.g_na);
+        self.params.g_k = params.get("g_k").copied().unwrap_or(self.params.g_k);
+        self.params.g_l = params.get("g_l").copied().unwrap_or(self.params.g_l);
+        if let Ok(restored) = HodgkinHuxleyNeuron::builder()
+            .with_initial_v(slot.scalars[1])
+            .with_n(slot.scalars[2].clamp(0.0, 1.0))
+            .with_m(slot.scalars[3].clamp(0.0, 1.0))
+            .with_h(slot.scalars[4].clamp(0.0, 1.0))
+            .with_params(self.params.clone())
+            .build()
+        {
+            self.neuron = restored;
+        }
+    }
+
+    fn truncate_history_to_step(&mut self, _step: usize, time: f64) {
+        let eps = self.dt * 0.25;
+        while let Some(&[t, _]) = self.history.back() {
+            if t > time + eps {
+                self.history.pop_back();
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn fork_shadow_twin(&self) -> Option<Self> {
+        let cloned_neuron = HodgkinHuxleyNeuron::builder()
+            .with_initial_v(self.neuron.v())
+            .with_n(self.neuron.n().clamp(0.0, 1.0))
+            .with_m(self.neuron.m().clamp(0.0, 1.0))
+            .with_h(self.neuron.h().clamp(0.0, 1.0))
+            .with_params(self.params.clone())
+            .build()
+            .ok()?;
+        Some(Self {
+            neuron: cloned_neuron,
+            params: self.params.clone(),
+            history: self.history.clone(),
+            time: self.time,
+            i_ext: self.i_ext,
+            dt: self.dt,
+            prev_v: self.prev_v,
+            spiked_since_snapshot: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+
+    fn scalar_field_len(&self) -> usize {
+        4
+    }
+
+    fn read_scalar_field(&self, out: &mut [f64]) -> usize {
+        if out.len() < 4 {
+            return 0;
+        }
+        out[0] = self.neuron.v();
+        out[1] = self.neuron.n();
+        out[2] = self.neuron.m();
+        out[3] = self.neuron.h();
+        4
     }
 }
 

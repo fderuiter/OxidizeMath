@@ -6,6 +6,7 @@ pub mod chladni_wave_tank;
 pub mod complex_mapping;
 pub mod ode;
 pub mod riemann;
+pub mod wave_unified;
 
 pub struct AnalysisTab {
     framework: crate::framework::SimulationFramework,
@@ -25,6 +26,23 @@ impl ExplorerTab for AnalysisTab {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let wave_active = self
+            .framework
+            .active_tool
+            .as_ref()
+            .map(|t| t.name() == "2D Acoustic Wave Tank (Unified)")
+            .unwrap_or(false);
+        ui.horizontal(|ui| {
+            if ui
+                .selectable_label(wave_active, "🌊 2D Wave Twin Lab")
+                .on_hover_text(
+                    "Launch the Unified 2D Acoustic Wave Tank with timeline scrubbing and raster shadow-twin difference maps",
+                )
+                .clicked()
+            {
+                self.framework.active_tool = Some(wave_unified::WaveUnified::build_tool());
+            }
+        });
         self.framework.show_inside(ui, "analysis");
     }
 

@@ -5,7 +5,6 @@ use super::{UnifiedModel, UnifiedSimTool};
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{SimCommand, SimWorkerState};
-use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 
@@ -100,26 +99,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         });
         ui.separator();
 
-        if let Some(action) =
-            PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
-                .can_reset(true)
-                .show(ui)
-        {
-            match action {
-                PlaybackAction::Play => {
-                    let _ = self.controller.send_command(SimCommand::Start);
-                }
-                PlaybackAction::Pause => {
-                    let _ = self.controller.send_command(SimCommand::Pause);
-                }
-                PlaybackAction::Step => {
-                    let _ = self.controller.send_command(SimCommand::Step(1));
-                }
-                PlaybackAction::Reset => {
-                    self.reset_simulation(Some(ctx));
-                }
-            }
-        }
+        self.draw_unified_transport(ui, ctx);
     }
 
     pub(super) fn draw_left_panel(&mut self, ui: &mut egui::Ui) {

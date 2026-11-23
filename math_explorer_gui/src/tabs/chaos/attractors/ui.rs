@@ -7,7 +7,7 @@ use crate::async_sim::ui::{
     WorkerFaultAction,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
-use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
+use crate::framework::{PlaybackAction, Plot3DViewport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
 use egui_plot::{Callout, PlotPoint};
 use nalgebra::Vector3;
@@ -172,13 +172,8 @@ impl AttractorPlotter {
                     self.worker.state()
                 };
 
-                if let Some(action) = PlaybackTransport::from_worker_state(
-                    "attractor_transport",
-                    "Attractor Plotter",
-                    transport_state,
-                )
-                .can_reset(true)
-                .show(ui)
+                if let Some(action) =
+                    self.draw_attractor_transport_and_hud(ui, ctx, transport_state)
                 {
                     self.handle_playback_action(action, ctx);
                 }
@@ -441,8 +436,8 @@ impl AttractorPlotter {
                 );
             }
 
-            let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
-            self.populate_scene(series0);
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            self.populate_scene_with_shadow(palette);
             let mut camera = self.camera;
             let response = Plot3DViewport::new("attractor_plot", 32.0)
                 .show(ui, &mut camera, |plot_ui| {

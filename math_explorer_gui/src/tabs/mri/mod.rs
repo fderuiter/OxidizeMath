@@ -4,6 +4,8 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+pub mod branch;
+mod branch_ui;
 pub mod kspace_bloch_view;
 pub mod kspace_phantom;
 pub mod kspace_runner;
@@ -129,6 +131,8 @@ impl ExplorerTab for MriTab {
     }
 }
 
+#[cfg(test)]
+mod branch_tests;
 #[cfg(test)]
 mod kspace_tests;
 #[cfg(test)]

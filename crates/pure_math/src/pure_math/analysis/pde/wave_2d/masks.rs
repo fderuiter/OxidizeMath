@@ -246,3 +246,57 @@ pub fn clamped_beam_eigenfunction(mode: usize, xi: f64) -> f64 {
     let bx = beta * x;
     (bx.cosh() - bx.cos()) - sigma * (bx.sinh() - bx.sin())
 }
+
+impl super::Wave2DSolver {
+    /// Required `f64` buffer length (`3 * width * height`) for [`Self::export_verlet_checkpoint`].
+    #[verified_engine::verified]
+    pub fn verlet_checkpoint_field_len(&self) -> usize {
+        3 * self.u_curr.len()
+    }
+
+    /// Exports `(time, stationary_start)` scalars, `(u_prev, u_curr, energy_ema)`, and `wall_mask`
+    /// into preallocated slices without dynamic heap allocation.
+    #[verified_engine::verified]
+    pub fn export_verlet_checkpoint(
+        &self,
+        scalars_out: &mut [f64; 4],
+        field_out: &mut [f64],
+        wall_out: &mut [u8],
+    ) {
+        let n = self.u_curr.len();
+        assert!(
+            field_out.len() >= 3 * n,
+            "Checkpoint field buffer too small"
+        );
+        assert!(wall_out.len() >= n, "Checkpoint wall mask buffer too small");
+        scalars_out[0] = self.time;
+        scalars_out[1] = if self.stationary_start { 1.0 } else { 0.0 };
+        scalars_out[2] = self.detector_samples as f64;
+        scalars_out[3] = 0.0;
+        field_out[0..n].copy_from_slice(&self.u_prev);
+        field_out[n..2 * n].copy_from_slice(&self.u_curr);
+        field_out[2 * n..3 * n].copy_from_slice(&self.energy_ema);
+        for (dst, &w) in wall_out.iter_mut().zip(self.wall_mask.iter()) {
+            *dst = u8::from(w > 0.5);
+        }
+    }
+
+    /// Restores exact Störmer-Verlet state from preallocated checkpoint slices without heap allocation.
+    #[verified_engine::verified]
+    pub fn restore_verlet_checkpoint(&mut self, scalars: &[f64; 4], field: &[f64], wall: &[u8]) {
+        let n = self.u_curr.len();
+        assert!(field.len() >= 3 * n, "Checkpoint field buffer too small");
+        assert!(wall.len() >= n, "Checkpoint wall mask buffer too small");
+        self.time = scalars[0];
+        self.stationary_start = scalars[1] >= 0.5;
+        self.detector_samples = scalars[2].max(0.0) as usize;
+        self.u_prev.copy_from_slice(&field[0..n]);
+        self.u_curr.copy_from_slice(&field[n..2 * n]);
+        self.energy_ema.copy_from_slice(&field[2 * n..3 * n]);
+        self.modal_field.copy_from_slice(&self.u_curr);
+        self.u_next.fill(0.0);
+        for (dst, &b) in self.wall_mask.iter_mut().zip(wall.iter()) {
+            *dst = if b != 0 { 1.0 } else { 0.0 };
+        }
+    }
+}

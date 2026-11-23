@@ -43,6 +43,7 @@ impl MriTool {
         }
         self.current_time = self.pulse_workspace.times[MRI_PULSE_SAMPLES - 1];
         self.simulator.magnetization = final_m;
+        self.sync_pulse_sequence_timeline();
         self.update_plot_buffers();
     }
 

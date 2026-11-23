@@ -119,13 +119,15 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             );
         }
 
-        let color = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let color = palette.series_color(0);
         let initial_pt = (points.len() == 1).then(|| points[0]);
         let line = Line::new(M::name(), PlotPoints::from_iter(points)).color(color);
 
         Plot::new(format!("{}_plot_line", M::name()))
             .view_aspect(2.0)
             .show(ui, |plot_ui| {
+                self.render_shadow_line_overlay(plot_ui, palette);
                 plot_ui.line(line);
                 if let Some(pt) = initial_pt {
                     plot_ui.points(
