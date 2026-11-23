@@ -4,6 +4,7 @@ use std::borrow::Cow;
 pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
     match domain.trim() {
         "ai" => Cow::Borrowed("Artificial Intelligence"),
+        "algorithmic_information" => Cow::Borrowed("Algorithmic Information"),
         "analysis" => Cow::Borrowed("Analysis & Calculus"),
         "astrophysics" => Cow::Borrowed("Astrophysics"),
         "battery_degradation" => Cow::Borrowed("Battery Degradation"),

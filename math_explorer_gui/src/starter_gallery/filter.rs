@@ -13,9 +13,12 @@ use eframe::egui;
 #[must_use]
 pub fn academic_domain_for_slug(domain_slug: &str) -> AcademicDomain {
     match domain_slug.trim() {
-        "analysis" | "financial_math" | "geometry_topology" | "graph_theory" | "number_theory" => {
-            AcademicDomain::PureMath
-        }
+        "algorithmic_information"
+        | "analysis"
+        | "financial_math"
+        | "geometry_topology"
+        | "graph_theory"
+        | "number_theory" => AcademicDomain::PureMath,
         "astrophysics" | "chaos" | "fluid_dynamics" | "medical" | "mri" | "quantum"
         | "solid_state" => AcademicDomain::Physics,
         "battery_degradation"
@@ -35,6 +38,7 @@ pub fn academic_domain_for_slug(domain_slug: &str) -> AcademicDomain {
 pub fn module_title_for_slug(domain_slug: &str) -> &'static str {
     match domain_slug.trim() {
         "ai" => "Artificial Intelligence",
+        "algorithmic_information" => "Algorithmic Information",
         "analysis" => "Analysis & Calculus",
         "astrophysics" => "Astrophysics",
         "battery_degradation" => "Battery Degradation",
