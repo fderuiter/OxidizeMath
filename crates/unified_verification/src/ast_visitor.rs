@@ -2,6 +2,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use syn::spanned::Spanned;
 use syn::visit::Visit;
 
 #[derive(Default)]
@@ -35,15 +36,37 @@ impl<'ast> Visit<'ast> for MaliciousCodeVisitor {
     }
 }
 
+#[derive(Default)]
 struct CloneDetectorVisitor {
-    has_2d_index_clone: bool,
-    has_color_clone: bool,
-    in_function: bool,
+    index_clones: Vec<(Option<String>, usize)>,
+    color_clones: Vec<(String, usize)>,
+    current_fn: Option<String>,
     cast_u8_count: usize,
     mul_255_count: usize,
 }
 
 impl CloneDetectorVisitor {
+    fn visit_fn_scope<F>(&mut self, sig: &syn::Signature, visit_inner: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        let fn_name = sig.ident.to_string();
+        let fn_line = sig.span().start().line;
+        let prev_fn = self.current_fn.replace(fn_name.clone());
+        let prev_casts = std::mem::take(&mut self.cast_u8_count);
+        let prev_muls = std::mem::take(&mut self.mul_255_count);
+
+        visit_inner(self);
+
+        if self.cast_u8_count >= 3 && self.mul_255_count >= 3 {
+            self.color_clones.push((fn_name, fn_line));
+        }
+
+        self.current_fn = prev_fn;
+        self.cast_u8_count = prev_casts;
+        self.mul_255_count = prev_muls;
+    }
+
     fn is_a_b_plus_c(expr: &syn::Expr) -> bool {
         if let syn::Expr::Binary(i) = expr
             && let syn::BinOp::Add(_) = i.op
@@ -97,23 +120,21 @@ impl CloneDetectorVisitor {
 
 impl<'ast> Visit<'ast> for CloneDetectorVisitor {
     fn visit_item_fn(&mut self, i: &'ast syn::ItemFn) {
-        let prev_in_func = self.in_function;
-        self.in_function = true;
-        self.cast_u8_count = 0;
-        self.mul_255_count = 0;
+        self.visit_fn_scope(&i.sig, |v| syn::visit::visit_item_fn(v, i));
+    }
 
-        syn::visit::visit_item_fn(self, i);
+    fn visit_impl_item_fn(&mut self, i: &'ast syn::ImplItemFn) {
+        self.visit_fn_scope(&i.sig, |v| syn::visit::visit_impl_item_fn(v, i));
+    }
 
-        if self.cast_u8_count >= 3 && self.mul_255_count >= 3 {
-            self.has_color_clone = true;
-        }
-
-        self.in_function = prev_in_func;
+    fn visit_trait_item_fn(&mut self, i: &'ast syn::TraitItemFn) {
+        self.visit_fn_scope(&i.sig, |v| syn::visit::visit_trait_item_fn(v, i));
     }
 
     fn visit_expr_index(&mut self, i: &'ast syn::ExprIndex) {
         if Self::contains_a_b_plus_c(&i.index) {
-            self.has_2d_index_clone = true;
+            self.index_clones
+                .push((self.current_fn.clone(), i.span().start().line));
         }
         syn::visit::visit_expr_index(self, i);
     }
@@ -154,6 +175,41 @@ impl<'ast> Visit<'ast> for CloneDetectorVisitor {
     }
 }
 
+pub(crate) fn format_clone_findings(
+    path_str: &str,
+    index_clones: &[(Option<String>, usize)],
+    color_clones: &[(String, usize)],
+) -> Vec<String> {
+    let mut findings = Vec::new();
+    for (fn_name, line) in index_clones {
+        let loc = crate::ast_helpers::format_file_line(path_str, *line);
+        let scope = fn_name
+            .as_deref()
+            .map_or_else(|| "<module-scope>".to_string(), |f| format!("fn `{f}`"));
+        findings.push(format!(
+            "[!] Code Clone Detected: 2D Grid Indexing pattern at {loc} ({scope})\n  Hint: Replace manual `row * width + col` indexing with `math_commons::math_kernel::types::flatten_2d_index`."
+        ));
+    }
+    for (fn_name, line) in color_clones {
+        let loc = crate::ast_helpers::format_file_line(path_str, *line);
+        findings.push(format!(
+            "[!] Code Clone Detected: Scalar-to-Color RGB conversion pattern at {loc} (fn `{fn_name}`)\n  Hint: Delegate RGB channel conversion to `math_commons::math_kernel::colormap` helpers instead of duplicating `* 255` and `as u8` casts."
+        ));
+    }
+    findings
+}
+
+pub(crate) fn detect_clones_in_ast(path: &Path, ast: &syn::File) -> Vec<String> {
+    let mut clone_visitor = CloneDetectorVisitor::default();
+    clone_visitor.visit_file(ast);
+    let path_str = crate::whitelist::lossy_slash_path(path);
+    format_clone_findings(
+        &path_str,
+        &clone_visitor.index_clones,
+        &clone_visitor.color_clones,
+    )
+}
+
 pub fn run_clone_detector() -> bool {
     let mut cache = oxidize_core::traceability::AstCache::new();
     run_clone_detector_with_cache(&mut cache)
@@ -174,28 +230,11 @@ pub fn run_clone_detector_with_cache(cache: &mut oxidize_core::traceability::Ast
         }
 
         if let Some(ast) = cache.get_or_load_fs(&path).and_then(|e| e.ast.as_ref()) {
-            let mut clone_visitor = CloneDetectorVisitor {
-                has_2d_index_clone: false,
-                has_color_clone: false,
-                in_function: false,
-                cast_u8_count: 0,
-                mul_255_count: 0,
-            };
-            clone_visitor.visit_file(ast);
-            if clone_visitor.has_2d_index_clone {
-                println!(
-                    "[!] Code Clone Detected: 2D Grid Indexing pattern in {}",
-                    path.display()
-                );
-                flags_found += 1;
+            let findings = detect_clones_in_ast(&path, ast);
+            for msg in &findings {
+                println!("{msg}");
             }
-            if clone_visitor.has_color_clone {
-                println!(
-                    "[!] Code Clone Detected: Scalar-to-Color RGB conversion pattern in {}",
-                    path.display()
-                );
-                flags_found += 1;
-            }
+            flags_found += findings.len();
         }
     }
 

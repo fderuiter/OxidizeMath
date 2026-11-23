@@ -32,7 +32,8 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0037: Frozen-Period Glicko-2 Tournament Engine and Interactive Simulator](adr/0037-glicko2-frozen-period-tournament-simulator.md)
 - [ADR 0038: Prime-Exponent FRACTRAN Virtual Machine and Minsky Counter Automaton Explorer](adr/0038-prime-exponent-fractran-vm-and-minsky-gui.md)
 - [ADR 0039: Network Epidemic Containment Primitives, Active Degree Moments, and Zero-Allocation Stepping](adr/0039-network-epidemic-containment-primitives.md)
-- [ADR 0040: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0040-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
+- [ADR 0040: Galactic Dynamics Kernels and Auto-Discovered Astrophysics Tab](adr/0040-galactic-dynamics-and-astrophysics-tab.md)
+- [ADR 0041: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0041-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 
 ## Contributing
 
