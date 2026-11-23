@@ -45,7 +45,9 @@ impl AttractorPlotter {
         }
         self.sync_branch.worker_view = None;
         self.execution_state = SolverExecutionState::Paused;
-        let _ = self.worker.send_command(SimCommand::ScrubToStep(target_step));
+        let _ = self
+            .worker
+            .send_command(SimCommand::ScrubToStep(target_step));
     }
 
     /// Forks an unperturbed 3D shadow twin at the current step $t_k$.

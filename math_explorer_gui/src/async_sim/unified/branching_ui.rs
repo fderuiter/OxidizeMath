@@ -21,7 +21,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .can_reset(true);
 
         if !M::supports_timeline_branch() {
-            if let Some(play_act) = transport.show(ui) {
+            if let Some(play_act) = transport
+                .timeline(self.controller.timeline_metadata())
+                .show(ui)
+            {
                 self.handle_unified_play_action(play_act, ctx);
             }
             return;
@@ -51,6 +54,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
             PlaybackAction::Step => {
                 let _ = self.controller.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::StepBack => {
+                let _ = self.controller.send_command(SimCommand::StepBack(1));
+            }
+            PlaybackAction::ScrubTo(step) => {
+                let _ = self.controller.send_command(SimCommand::SeekStep(step));
             }
             PlaybackAction::Reset => {
                 self.reset_simulation(Some(ctx));
@@ -208,7 +217,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 if self.controller.state() == SimWorkerState::Running {
                     let _ = self.controller.send_command(SimCommand::Pause);
                 }
-                SimCommand::StepBack
+                SimCommand::StepBack(1)
             }
             TimelineBranchAction::ScrubTo(step) => SimCommand::ScrubToStep(step),
             TimelineBranchAction::ToggleForkBranch => {
@@ -335,7 +344,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             if pts.len() >= 2 {
                 prims.push(ExportPrimitive::Polyline {
                     name: format!("{} (Counterfactual)", M::name()),
-                    points: pts,
+                    points: pts.into(),
                     color: palette.series_color(0),
                     stroke_width: 2.0,
                     closed: false,

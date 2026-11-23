@@ -62,7 +62,16 @@ impl WaveUnified {
         let h = self.solver.height();
         self.solver.wall_mask.fill(1.0);
         apply_sponge_layer(&mut self.solver.sponge_mask, w, h, 4, 1.5);
-        apply_multi_slit_barrier(&mut self.solver.wall_mask, w, h, w / 2, 2, 2, self.slit_width, 14.0);
+        apply_multi_slit_barrier(
+            &mut self.solver.wall_mask,
+            w,
+            h,
+            w / 2,
+            2,
+            2,
+            self.slit_width,
+            14.0,
+        );
     }
 
     fn seed_initial_pulse(&mut self, params: &HashMap<String, f64>) {
@@ -228,7 +237,7 @@ impl UnifiedModel for WaveUnified {
         }
     }
 
-    fn write_checkpoint(&self, slot: &mut UnifiedCheckpointSlot) {
+    fn write_branch_checkpoint(&self, slot: &mut UnifiedCheckpointSlot) {
         let mut s4 = [0.0; 4];
         self.solver
             .export_verlet_checkpoint(&mut s4, &mut slot.field, &mut slot.mask);
@@ -237,7 +246,11 @@ impl UnifiedModel for WaveUnified {
         slot.scalars[5] = self.slit_width as f64;
     }
 
-    fn restore_checkpoint(&mut self, slot: &UnifiedCheckpointSlot, params: &HashMap<String, f64>) {
+    fn restore_branch_checkpoint(
+        &mut self,
+        slot: &UnifiedCheckpointSlot,
+        params: &HashMap<String, f64>,
+    ) {
         let mut s4 = [0.0; 4];
         s4.copy_from_slice(&slot.scalars[0..4]);
         self.solver

@@ -154,6 +154,37 @@ fn test_sir_epidemic_peak_and_logistic_fit_r2() {
 }
 
 #[test]
+fn test_sir_animated_slider_sweep_recalculates_without_history_flood() {
+    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+
+    let mut tool = SirTool::default();
+    let initial_beta = tool.beta;
+    let initial_i_peak = tool.i_points.iter().map(|p| p.y).fold(0.0_f64, f64::max);
+
+    let ctx = egui::Context::default();
+    save_slider_state(
+        &ctx,
+        egui::Id::new("sir_beta"),
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Oscillate,
+        },
+    );
+    let _ = ctx.run(
+        egui::RawInput {
+            predicted_dt: 0.1,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+    let updated_i_peak = tool.i_points.iter().map(|p| p.y).fold(0.0_f64, f64::max);
+    assert!(tool.beta > initial_beta);
+    assert_ne!(updated_i_peak, initial_i_peak);
+    assert_eq!(tool.snapshot_manager.history_len(), 0);
+}
+
+#[test]
 fn test_sir_100k_steps_decimates_display_polylines_and_preserves_peak_and_exports() {
     let mut tool = SirTool {
         duration: 10_000.0,
@@ -249,7 +280,7 @@ fn test_sir_timeline_scrub_zero_perturbation_fork_and_counterfactual_interventio
     assert_eq!(zero_div.cumulative_area_delta, 0.0);
 
     tool.beta = 0.14;
-    tool.recompute_counterfactual_from_fork();
+    tool.recompute_counterfactual_from_fork(false);
     let div = tool.branch_divergence_metrics().expect("Fork active");
     assert!(div.instantaneous_l2 > 0.0 && div.peak_abs_delta > 0.0);
     let (_, intervention_peak) = metrics::compute_epidemic_peak(&tool.i_points).unwrap();

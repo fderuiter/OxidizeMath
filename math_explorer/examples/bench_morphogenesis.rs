@@ -4,8 +4,13 @@ use math_explorer::biology::morphogenesis::TuringSystem;
 use std::time::Instant;
 
 fn main() {
-    let size = 100_000;
-    let iterations = 1000;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (size, warmup, iterations) = if smoke {
+        (1_000, 5, 20)
+    } else {
+        (100_000, 100, 1000)
+    };
     let mut system = TuringSystem::new(
         math_explorer::math_kernel::types::Dimension(size),
         math_explorer::biology::morphogenesis::DiffusionCoeff(0.1),
@@ -14,7 +19,7 @@ fn main() {
     );
 
     // Warmup
-    for _ in 0..100 {
+    for _ in 0..warmup {
         system.step(0.01);
     }
 

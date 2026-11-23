@@ -136,7 +136,14 @@ pub(super) fn build_view_menu(app: &MathExplorerApp) -> Submenu {
     let view_menu = Submenu::new("View", true);
     let palette_item =
         MenuItem::with_id(MenuId::new("cmd_palette"), "Command Palette...", true, None);
+    let gallery_item = MenuItem::with_id(
+        MenuId::new("starter_gallery"),
+        "Starter Gallery...",
+        true,
+        None,
+    );
     view_menu.append(&palette_item).unwrap();
+    view_menu.append(&gallery_item).unwrap();
     view_menu.append(&PredefinedMenuItem::separator()).unwrap();
 
     view_menu.append(&build_layout_submenu(app)).unwrap();

@@ -130,7 +130,7 @@ pub fn build_dashed_export_primitives(
         if end > idx + 1 {
             out.push(ExportPrimitive::Polyline {
                 name: name.to_string(),
-                points: points[idx..end].to_vec(),
+                points: points[idx..end].to_vec().into(),
                 color,
                 stroke_width,
                 closed: false,
@@ -158,7 +158,7 @@ pub fn build_fork_vline_primitive(
     };
     ExportPrimitive::Polyline {
         name: format!("Branch Fork Marker [{}]", meta.summary_tag()),
-        points: vec![[meta.fork_time, lo], [meta.fork_time, hi]],
+        points: vec![[meta.fork_time, lo], [meta.fork_time, hi]].into(),
         color,
         stroke_width: 1.5,
         closed: false,

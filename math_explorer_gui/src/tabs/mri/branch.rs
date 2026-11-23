@@ -327,11 +327,15 @@ impl MriRunner {
                 with_or_insert_mri_runner_branch(&self.params, init_m, |b| b.clear_branch());
                 true
             }
-            SimCommand::StepBack => {
+            SimCommand::StepBack(count) => {
                 let prev = with_or_insert_mri_runner_branch(&self.params, init_m, |b| {
-                    b.timeline
-                        .previous_step_before(b.step_count)
-                        .unwrap_or_else(|| b.step_count.saturating_sub(1))
+                    if *count <= 1 {
+                        b.timeline
+                            .previous_step_before(b.step_count)
+                            .unwrap_or_else(|| b.step_count.saturating_sub(1))
+                    } else {
+                        b.step_count.saturating_sub(*count)
+                    }
                 });
                 self.scrub_runner_to_step(prev);
                 true

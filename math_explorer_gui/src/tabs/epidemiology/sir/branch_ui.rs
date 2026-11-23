@@ -109,6 +109,18 @@ impl SirTool {
                     self.branch.is_playing = false;
                     self.step_lockstep(1);
                 }
+                PlaybackAction::StepBack => {
+                    self.branch.is_playing = false;
+                    self.apply_sir_timeline_action(
+                        TimelineBranchAction::StepBack,
+                        Some(ui.ctx()),
+                        false,
+                    );
+                }
+                PlaybackAction::ScrubTo(step) => {
+                    self.branch.is_playing = false;
+                    self.scrub_to_step(step);
+                }
                 PlaybackAction::Reset => {
                     self.branch.is_playing = false;
                     self.recalculate();
@@ -198,7 +210,7 @@ impl SirTool {
             if pairs.len() >= 2 {
                 prims.push(ExportPrimitive::Polyline {
                     name: name.to_string(),
-                    points: pairs,
+                    points: pairs.into(),
                     color: col,
                     stroke_width: 2.0,
                     closed: false,
@@ -211,7 +223,12 @@ impl SirTool {
             ("Infected (Shadow)", &twin.i_points, palette.axis_x),
             ("Recovered (Shadow)", &twin.r_points, palette.axis_y),
         ] {
-            prims.extend(build_dashed_export_primitives(name, &to_pairs(pts), col, 1.7));
+            prims.extend(build_dashed_export_primitives(
+                name,
+                &to_pairs(pts),
+                col,
+                1.7,
+            ));
         }
         if let Some(meta) = self.sir_branch_metadata() {
             prims.push(build_fork_vline_primitive(

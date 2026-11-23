@@ -86,12 +86,16 @@ impl UnifiedModel for SyntheticLinearModel {
         0.1
     }
 
-    fn write_checkpoint(&self, slot: &mut UnifiedCheckpointSlot) {
+    fn write_branch_checkpoint(&self, slot: &mut UnifiedCheckpointSlot) {
         slot.scalars[0] = self.val;
         slot.scalars[1] = self.step_idx as f64;
     }
 
-    fn restore_checkpoint(&mut self, slot: &UnifiedCheckpointSlot, _params: &HashMap<String, f64>) {
+    fn restore_branch_checkpoint(
+        &mut self,
+        slot: &UnifiedCheckpointSlot,
+        _params: &HashMap<String, f64>,
+    ) {
         self.val = slot.scalars[0];
         self.step_idx = slot.scalars[1].max(0.0) as usize;
     }
@@ -355,7 +359,7 @@ fn test_wave_unified_hot_checkpoint_and_diff_loop_zero_heap_allocations() {
     let ((l2, peak), _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
         primary.step(&params);
         shadow.step(&shadow_params);
-        primary.write_checkpoint(&mut slot);
+        primary.write_branch_checkpoint(&mut slot);
         primary.read_scalar_field(&mut p_buf);
         shadow.read_scalar_field(&mut s_buf);
         let (_, max_abs) = render_perceptual_difference_rgb(&p_buf, &s_buf, &mut rgb_buf);

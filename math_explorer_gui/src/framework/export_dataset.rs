@@ -8,7 +8,7 @@ use eframe::egui;
 pub(super) struct FrameworkExportSource<'a> {
     pub(super) active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
     pub(super) cached_tool_name: Option<&'static str>,
-    pub(super) cached_plot_datasets: &'a [(String, Vec<[f64; 2]>)],
+    pub(super) cached_plot_datasets: &'a [(String, egui_plot::SharedPoints)],
     pub(super) export_queue: &'a mut ExportQueue,
     pub(super) status_color: egui::Color32,
     pub(super) ctx: egui::Context,
@@ -24,7 +24,7 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
             && self.cached_tool_name == Some(tool.name())
             && !self.cached_plot_datasets.is_empty()
         {
-            datasets = self.cached_plot_datasets.to_vec();
+            datasets = super::export_queue::materialize_shared_datasets(self.cached_plot_datasets);
         }
         append_missing_branch_metadata_2d(tool.as_ref(), &mut datasets);
         datasets
@@ -40,7 +40,8 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
             && self.cached_tool_name == Some(tool.name())
             && !self.cached_plot_datasets.is_empty()
         {
-            egui_plot::export::sample_progressive_frames(self.cached_plot_datasets, step_count)
+            let owned = super::export_queue::materialize_shared_datasets(self.cached_plot_datasets);
+            egui_plot::export::sample_progressive_frames(&owned, step_count)
         } else {
             frames
         }
@@ -87,7 +88,8 @@ impl SimulationFramework {
             && self.sync_state.datasets_owner_tool == Some(tool.name())
             && !self.current_valid_plot_datasets.is_empty()
         {
-            datasets = self.current_valid_plot_datasets.clone();
+            datasets =
+                super::export_queue::materialize_shared_datasets(&self.current_valid_plot_datasets);
         }
         append_missing_branch_metadata_2d(tool.as_ref(), &mut datasets);
         datasets

@@ -18,6 +18,10 @@ pub enum SimCommand {
     Pause,
     #[allow(missing_docs)]
     Step(usize),
+    /// Rewinds the simulation by the requested step count via bounded checkpoint replay.
+    StepBack(usize),
+    /// Seeks deterministically to an exact step index within the retained checkpoint window.
+    SeekStep(usize),
     #[allow(missing_docs)]
     Reset,
     #[allow(missing_docs)]
@@ -35,14 +39,12 @@ pub enum SimCommand {
         #[allow(missing_docs)]
         is_obstacle: bool,
     },
-    /// Applies an interpolated continuous spatial brush stroke.
+    /// Applies an interpolated spatial [`BrushStroke`] to the simulation field or obstacle mask.
     ApplyBrushStroke(BrushStroke),
-    /// Synchronizes full RLE/sparse spatial sculpt state into the worker model.
+    /// Synchronizes persisted [`SculptStatePayload`] state with the simulation worker model.
     SyncSculptState(SculptStatePayload),
     #[allow(missing_docs)]
     ClearObstacles,
-    /// Steps backward to the immediately preceding checkpoint in the `TimelineRingBuffer`.
-    StepBack,
     /// Scrubs the model to checkpointed step $k > 0$ and truncates future history.
     ScrubToStep(usize),
     /// Clones an unperturbed shadow twin at the current step $t_k$ for lockstep comparison.
@@ -62,6 +64,8 @@ impl SimCommand {
             Self::Start => "Start",
             Self::Pause => "Pause",
             Self::Step(_) => "Step",
+            Self::StepBack(_) => "StepBack",
+            Self::SeekStep(_) => "SeekStep",
             Self::Reset => "Reset",
             Self::SetSpeed(_) => "SetSpeed",
             Self::TrainEpisodes(_) => "TrainEpisodes",
@@ -69,7 +73,6 @@ impl SimCommand {
             Self::ApplyBrushStroke(_) => "ApplyBrushStroke",
             Self::SyncSculptState(_) => "SyncSculptState",
             Self::ClearObstacles => "ClearObstacles",
-            Self::StepBack => "StepBack",
             Self::ScrubToStep(_) => "ScrubToStep",
             Self::ForkBranch => "ForkBranch",
             Self::ClearBranch => "ClearBranch",
@@ -143,7 +146,7 @@ impl SimWorkerState {
                 cmd,
                 SimCommand::Start
                     | SimCommand::Step(_)
-                    | SimCommand::StepBack
+                    | SimCommand::StepBack(_)
                     | SimCommand::TrainEpisodes(_)
             ),
             Self::Stepping => !matches!(
@@ -151,7 +154,7 @@ impl SimWorkerState {
                 SimCommand::Start
                     | SimCommand::Pause
                     | SimCommand::Step(_)
-                    | SimCommand::StepBack
+                    | SimCommand::StepBack(_)
                     | SimCommand::TrainEpisodes(_)
             ),
             Self::Faulted => matches!(cmd, SimCommand::Reset),

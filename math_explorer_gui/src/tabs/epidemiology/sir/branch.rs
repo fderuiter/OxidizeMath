@@ -124,7 +124,11 @@ impl SirTool {
         self.branch.live_model.dynamics.gamma = gamma;
     }
 
-    pub(super) fn rebuild_timeline_from_recalculate(&mut self, final_model: SIRModel, steps: usize) {
+    pub(super) fn rebuild_timeline_from_recalculate(
+        &mut self,
+        final_model: SIRModel,
+        steps: usize,
+    ) {
         let stride = (steps / (SIR_RING_MAX_SLOTS - 1)).max(1);
         self.branch.timeline = TimelineRingBuffer::new_default(
             std::mem::size_of::<SirCheckpoint>(),
@@ -157,10 +161,9 @@ impl SirTool {
     }
 
     fn refresh_all_display_buffers(&mut self) {
+        self.series_key = (0, 0, 0, 0, 0, 0);
+        self.sync_series_cache();
         let cap = MAX_DISPLAY_POLYLINE_POINTS;
-        self.display_s = decimate_plot_points_minmax(&self.s_points, cap);
-        self.display_i = decimate_plot_points_minmax(&self.i_points, cap);
-        self.display_r = decimate_plot_points_minmax(&self.r_points, cap);
         if let Some(ref mut twin) = self.branch.shadow {
             twin.display_s = decimate_plot_points_minmax(&twin.s_points, cap);
             twin.display_i = decimate_plot_points_minmax(&twin.i_points, cap);
@@ -201,10 +204,16 @@ impl SirTool {
             self.s_points.push(PlotPoint::new(t, st.s));
             self.i_points.push(PlotPoint::new(t, st.i));
             self.r_points.push(PlotPoint::new(t, st.r));
-            if self.branch.timeline.should_record_step(self.branch.current_step) {
-                self.branch
-                    .timeline
-                    .push_checkpoint(self.branch.current_step, t, SirCheckpoint::from(st));
+            if self
+                .branch
+                .timeline
+                .should_record_step(self.branch.current_step)
+            {
+                self.branch.timeline.push_checkpoint(
+                    self.branch.current_step,
+                    t,
+                    SirCheckpoint::from(st),
+                );
             }
         }
         let exact_len = target_step + 1;
@@ -311,14 +320,14 @@ impl SirTool {
     }
 
     /// Re-integrates counterfactual and baseline curves from $t_k$ to `duration` when parameters change while forked.
-    pub(super) fn recompute_counterfactual_from_fork(&mut self) {
+    pub(super) fn recompute_counterfactual_from_fork(&mut self, sweep_active: bool) {
         let Some((fork_step, fork_state)) = self
             .branch
             .shadow
             .as_ref()
             .map(|tw| (tw.fork_step, tw.fork_state))
         else {
-            self.record_history_and_recalculate();
+            self.record_history_and_recalculate(sweep_active);
             return;
         };
         let horizon_steps = ((self.duration.max(0.0) / SIR_DT) as usize)

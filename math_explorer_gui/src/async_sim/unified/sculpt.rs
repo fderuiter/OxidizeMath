@@ -4,7 +4,10 @@
 
 use super::branching::{UnifiedBranchRuntime, UnifiedBranchSharedState};
 use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimTool};
-use crate::async_sim::{SculptStatePayload, SimCommand, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    CheckpointParams, SculptStatePayload, SimCommand, SimulationRunner, StateSnapshot,
+    TimeTravelCheckpoint,
+};
 use crate::framework::MAX_RLE_MASK_CELLS;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
@@ -173,7 +176,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 }
 
-/// Background worker runner executing a [`UnifiedModel`] alongside its optional lockstep shadow twin.
+/// Background worker runner driving a [`UnifiedModel`] with shared parameters, formulas, sculpt state,
+/// time-travel checkpoint hooks, and lockstep shadow-twin branching.
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,
@@ -185,12 +189,24 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
 }
 
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    /// Creates a [`UnifiedSimRunner`] initialized from `params` with fresh sculpt, formula, and branch state.
+    /// Creates a new [`UnifiedSimRunner`] initialized from `params` with fresh sculpt, formula, and branch state.
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
         Self::with_shared(
             params,
             Arc::new(RwLock::new(SculptStatePayload::default())),
             Arc::new(RwLock::new(None)),
+        )
+    }
+
+    /// Creates a runner sharing both `params` and an optional [`CompiledFormulaPayload`] slot.
+    pub fn with_formula(
+        params: Arc<RwLock<HashMap<String, f64>>>,
+        formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+    ) -> Self {
+        Self::with_shared(
+            params,
+            Arc::new(RwLock::new(SculptStatePayload::default())),
+            formula,
         )
     }
 
@@ -275,19 +291,39 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
         }
     }
 
-    fn sync_formula(&mut self, current_params: &HashMap<String, f64>) {
-        let payload_opt = self
-            .formula
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let next_rev = payload_opt.as_ref().map(|p| p.revision);
-        if next_rev != self.applied_formula_rev {
-            self.model
-                .apply_compiled_formula(payload_opt.as_ref(), current_params);
-            self.applied_formula_rev = next_rev;
-            self.apply_sculpt_if_present(current_params);
+    fn sync_formula_fields(
+        model: &mut M,
+        sculpt_state: &RwLock<SculptStatePayload>,
+        formula: &RwLock<Option<CompiledFormulaPayload>>,
+        applied_formula_rev: &mut Option<u64>,
+        current_params: &HashMap<String, f64>,
+    ) {
+        let next_rev = {
+            let guard = formula.read().unwrap_or_else(|e| e.into_inner());
+            let rev = guard.as_ref().map(|p| p.revision);
+            if rev == *applied_formula_rev {
+                return;
+            }
+            model.apply_compiled_formula(guard.as_ref(), current_params);
+            rev
+        };
+        *applied_formula_rev = next_rev;
+        if M::supports_spatial_brush() {
+            let sculpt = sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+            if !sculpt.is_empty() {
+                model.apply_sculpt_payload(&sculpt, current_params);
+            }
         }
+    }
+
+    fn sync_formula(&mut self, current_params: &HashMap<String, f64>) {
+        Self::sync_formula_fields(
+            &mut self.model,
+            &self.sculpt_state,
+            &self.formula,
+            &mut self.applied_formula_rev,
+            current_params,
+        );
     }
 
     fn sync_sculpt_from_model(&self, current_params: &HashMap<String, f64>) {
@@ -296,6 +332,24 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
             let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
             *guard = exported;
         }
+    }
+
+    fn reset_runner(&mut self, current_params: &HashMap<String, f64>) {
+        let had_sculpt = !self
+            .sculpt_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_empty();
+        if had_sculpt {
+            self.apply_sculpt_if_present(current_params);
+        }
+        self.model.reset_model(current_params);
+        self.applied_formula_rev = None;
+        self.sync_formula(current_params);
+        if had_sculpt {
+            self.sync_sculpt_from_model(current_params);
+        }
+        self.branch_rt.reset(&self.model, current_params);
     }
 }
 
@@ -308,25 +362,11 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
             .clone();
         match cmd {
             SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
-            SimCommand::Reset => {
-                let had_sculpt = !self
-                    .sculpt_state
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .is_empty();
-                if had_sculpt {
-                    self.apply_sculpt_if_present(&current_params);
+            SimCommand::Reset => self.reset_runner(&current_params),
+            SimCommand::StepBack(count) => {
+                for _ in 0..count.max(1) {
+                    self.branch_rt.step_back(&mut self.model, &current_params);
                 }
-                self.model.reset_model(&current_params);
-                self.applied_formula_rev = None;
-                self.sync_formula(&current_params);
-                if had_sculpt {
-                    self.sync_sculpt_from_model(&current_params);
-                }
-                self.branch_rt.reset(&self.model, &current_params);
-            }
-            SimCommand::StepBack => {
-                self.branch_rt.step_back(&mut self.model, &current_params);
             }
             SimCommand::ScrubToStep(step) => {
                 self.branch_rt
@@ -349,6 +389,18 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
                 let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
                 *guard = payload;
             }
+            SimCommand::Custom(ref action) if action == super::SYNC_PARAMETERS_COMMAND => {
+                let had_sculpt = !self
+                    .sculpt_state
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .is_empty();
+                self.sync_formula(&current_params);
+                self.model.sync_parameters(&current_params);
+                if had_sculpt {
+                    self.sync_sculpt_from_model(&current_params);
+                }
+            }
             other => {
                 self.sync_formula(&current_params);
                 self.model.process_command(other, &current_params);
@@ -358,13 +410,16 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
     }
 
     fn step(&mut self) {
-        let current_params = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        self.sync_formula(&current_params);
-        self.step_in_place_with_params(&current_params);
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        Self::sync_formula_fields(
+            &mut self.model,
+            &self.sculpt_state,
+            &self.formula,
+            &mut self.applied_formula_rev,
+            &guard,
+        );
+        self.model.step(&guard);
+        self.branch_rt.on_step_in_place(&self.model, &guard);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -388,5 +443,45 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
 
     fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
         self.model.diagnostic_report().cloned()
+    }
+
+    fn checkpoint_stride(&self) -> Option<usize> {
+        self.model.checkpoint_stride()
+    }
+
+    fn current_step(&self) -> usize {
+        if self.model.checkpoint_stride().is_some() {
+            self.model.current_step()
+        } else {
+            self.branch_rt.current_step
+        }
+    }
+
+    fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        self.model.capture_checkpoint(&guard)
+    }
+
+    fn capture_active_params(&self) -> Option<CheckpointParams> {
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        self.model.capture_active_params(&guard)
+    }
+
+    fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
+        self.model.restore_checkpoint(checkpoint);
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        self.branch_rt
+            .sync_from_time_travel_restore(&self.model, &guard, checkpoint.step);
+    }
+
+    fn rebuild_history(&mut self, front: &[TimeTravelCheckpoint], back: &[TimeTravelCheckpoint]) {
+        self.model.rebuild_history(front, back);
+    }
+
+    fn replay_step(&mut self, params: &CheckpointParams) {
+        self.model.replay_step(params);
+        if let Some(map) = params.as_named_map() {
+            self.branch_rt.on_step_in_place(&self.model, map);
+        }
     }
 }

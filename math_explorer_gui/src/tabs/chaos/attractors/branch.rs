@@ -305,12 +305,16 @@ impl AttractorRunner {
                 with_or_insert_runner_branch(&self.params, AttractorBranchRuntime::clear_branch);
                 true
             }
-            SimCommand::StepBack => {
+            SimCommand::StepBack(count) => {
                 let cur = self.step_count;
-                let prev = with_or_insert_runner_branch(&self.params, |b| {
-                    b.timeline.previous_step_before(cur)
-                })
-                .unwrap_or_else(|| cur.saturating_sub(1));
+                let prev = if *count <= 1 {
+                    with_or_insert_runner_branch(&self.params, |b| {
+                        b.timeline.previous_step_before(cur)
+                    })
+                    .unwrap_or_else(|| cur.saturating_sub(1))
+                } else {
+                    cur.saturating_sub(*count)
+                };
                 self.scrub_runner_to_step(prev);
                 true
             }

@@ -192,7 +192,7 @@ impl AttractorPlotter {
         if primary_2d.len() >= 2 {
             prims.push(egui_plot::ExportPrimitive::Polyline {
                 name: "Trajectory".to_string(),
-                points: primary_2d,
+                points: primary_2d.into(),
                 color: palette.series_color(0),
                 stroke_width: 1.8,
                 closed: false,
@@ -202,7 +202,7 @@ impl AttractorPlotter {
         if let Some(fv) = view.fork_vec {
             prims.push(egui_plot::ExportPrimitive::Points {
                 name: "Fork @ t_k".to_string(),
-                points: vec![self.project(fv)],
+                points: vec![self.project(fv)].into(),
                 radius: 5.0,
                 color: palette.accent,
             });

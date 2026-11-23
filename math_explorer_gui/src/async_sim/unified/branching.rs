@@ -99,10 +99,10 @@ impl<M: UnifiedModel> UnifiedBranchRuntime<M> {
             let mut ring = TimelineRingBuffer::new_preallocated(
                 elem_bytes,
                 4096,
-                M::checkpoint_stride(),
+                M::branch_checkpoint_stride(),
                 template,
             );
-            ring.write_checkpoint_in_place(0, 0.0, |slot| model.write_checkpoint(slot));
+            ring.write_checkpoint_in_place(0, 0.0, |slot| model.write_branch_checkpoint(slot));
             ring
         } else {
             TimelineRingBuffer::new_default(64, 1, 1)
@@ -127,7 +127,7 @@ impl<M: UnifiedModel> UnifiedBranchRuntime<M> {
         self.timeline.clear();
         if M::supports_timeline_branch() {
             self.timeline
-                .write_checkpoint_in_place(0, 0.0, |slot| model.write_checkpoint(slot));
+                .write_checkpoint_in_place(0, 0.0, |slot| model.write_branch_checkpoint(slot));
         }
         self.publish_shared_metadata(model, params);
     }
@@ -164,10 +164,14 @@ impl<M: UnifiedModel> UnifiedBranchRuntime<M> {
         if self.timeline.should_record_step(self.current_step) {
             self.timeline
                 .write_checkpoint_in_place(self.current_step, self.current_time, |slot| {
-                    primary.write_checkpoint(slot);
+                    primary.write_branch_checkpoint(slot);
                 });
         }
 
+        self.sync_shared_scalars_in_place();
+    }
+
+    fn sync_shared_scalars_in_place(&self) {
         if let Ok(mut guard) = self.shared.write() {
             let (min_s, max_s) = self
                 .timeline
@@ -182,6 +186,11 @@ impl<M: UnifiedModel> UnifiedBranchRuntime<M> {
                 guard.fork_step = Some(twin.fork_step);
                 guard.fork_time = Some(twin.fork_time);
                 guard.divergence = twin.divergence.metrics();
+            } else {
+                guard.fork_active = false;
+                guard.fork_step = None;
+                guard.fork_time = None;
+                guard.divergence = BranchDivergenceMetrics::default();
             }
         }
     }
@@ -195,7 +204,7 @@ impl<M: UnifiedModel> UnifiedBranchRuntime<M> {
         };
         let field_len = primary.scalar_field_len();
         let mut fork_slot = primary.checkpoint_template();
-        primary.write_checkpoint(&mut fork_slot);
+        primary.write_branch_checkpoint(&mut fork_slot);
         let mut primary_field_buf = vec![0.0_f64; field_len];
         let mut shadow_field_buf = vec![0.0_f64; field_len];
         let mut diff_rgb_buf = vec![18_u8; field_len * 3];
@@ -249,7 +258,7 @@ impl<M: UnifiedModel> UnifiedBranchRuntime<M> {
         else {
             return;
         };
-        primary.restore_checkpoint(&cp_slot, params);
+        primary.restore_branch_checkpoint(&cp_slot, params);
         primary.truncate_history_to_step(cp_step, cp_time);
         self.timeline.truncate_after(target_step);
         self.current_step = cp_step;
@@ -265,7 +274,7 @@ impl<M: UnifiedModel> UnifiedBranchRuntime<M> {
                     self.current_step,
                     self.current_time,
                     |slot| {
-                        primary.write_checkpoint(slot);
+                        primary.write_branch_checkpoint(slot);
                     },
                 );
             }
@@ -273,6 +282,22 @@ impl<M: UnifiedModel> UnifiedBranchRuntime<M> {
         primary.truncate_history_to_step(self.current_step, self.current_time);
         self.resync_shadow_after_scrub(primary, params);
         self.publish_shared_metadata(primary, params);
+    }
+
+    pub(crate) fn sync_from_time_travel_restore(
+        &mut self,
+        primary: &M,
+        params: &HashMap<String, f64>,
+        step: usize,
+    ) {
+        if !M::supports_timeline_branch() {
+            return;
+        }
+        self.current_step = step;
+        self.current_time = step as f64 * primary.time_step_dt(params);
+        self.timeline.truncate_after(step);
+        self.resync_shadow_after_scrub(primary, params);
+        self.sync_shared_scalars_in_place();
     }
 
     fn resync_shadow_after_scrub(&mut self, primary: &M, params: &HashMap<String, f64>) {
@@ -285,7 +310,7 @@ impl<M: UnifiedModel> UnifiedBranchRuntime<M> {
             return;
         }
         twin.model
-            .restore_checkpoint(&twin.fork_slot, &twin.baseline_params);
+            .restore_branch_checkpoint(&twin.fork_slot, &twin.baseline_params);
         twin.model
             .truncate_history_to_step(twin.fork_step, twin.fork_time);
         twin.divergence.reset();

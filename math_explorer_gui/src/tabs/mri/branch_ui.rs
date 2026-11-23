@@ -55,7 +55,9 @@ impl MriTool {
         }
         self.sync_branch.worker_view = None;
         let _ = self.worker.send_command(SimCommand::Pause);
-        let _ = self.worker.send_command(SimCommand::ScrubToStep(target_step));
+        let _ = self
+            .worker
+            .send_command(SimCommand::ScrubToStep(target_step));
     }
 
     /// Forks an unperturbed Bloch shadow twin at the current time $t_k$.
@@ -121,8 +123,7 @@ impl MriTool {
                 let (t_prev, _) = self.history[idx - 1];
                 let (t_cur, pm) = self.history[idx];
                 let (_, sm) = twin.history[idx];
-                let (l2, peak) =
-                    compute_slice_divergence(&[pm.x, pm.y, pm.z], &[sm.x, sm.y, sm.z]);
+                let (l2, peak) = compute_slice_divergence(&[pm.x, pm.y, pm.z], &[sm.x, sm.y, sm.z]);
                 acc.record_step((t_cur - t_prev).max(1.0e-6), l2, peak);
             }
             twin.divergence = acc;
@@ -237,26 +238,42 @@ impl MriTool {
         play_act
     }
 
+    pub(super) fn draw_mri_pulse_branch_hud(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let view = self.sync_branch.effective_view();
+        let btn_label = if view.fork_active {
+            "⑂ Clear Twin Branch"
+        } else {
+            "⑂ Fork Branch"
+        };
+        if ui.button(btn_label).clicked() {
+            self.apply_mri_timeline_action(TimelineBranchAction::ToggleForkBranch, Some(ctx), true);
+        }
+        if view.fork_active {
+            let clear = BranchDivergenceHud::new(
+                "mri_pulse_branch_hud",
+                "MRI Bloch Relaxation",
+                view.fork_step.unwrap_or(view.step_count),
+                view.fork_time.unwrap_or(self.current_time),
+                "s",
+                view.divergence,
+            )
+            .show(ui);
+            if clear {
+                announce_branch_cleared(ctx, "MRI Bloch Relaxation");
+                self.clear_branch();
+                ctx.request_repaint();
+            }
+        }
+    }
+
     pub(super) fn render_shadow_on_plot(&self, plot_ui: &mut PlotUi<'_>, palette: SemanticPalette) {
         let view = self.sync_branch.effective_view();
         if !view.fork_active || view.shadow_history.is_empty() {
             return;
         }
-        let sx: Vec<[f64; 2]> = view
-            .shadow_history
-            .iter()
-            .map(|(t, m)| [*t, m.x])
-            .collect();
-        let sy: Vec<[f64; 2]> = view
-            .shadow_history
-            .iter()
-            .map(|(t, m)| [*t, m.y])
-            .collect();
-        let sz: Vec<[f64; 2]> = view
-            .shadow_history
-            .iter()
-            .map(|(t, m)| [*t, m.z])
-            .collect();
+        let sx: Vec<[f64; 2]> = view.shadow_history.iter().map(|(t, m)| [*t, m.x]).collect();
+        let sy: Vec<[f64; 2]> = view.shadow_history.iter().map(|(t, m)| [*t, m.y]).collect();
+        let sz: Vec<[f64; 2]> = view.shadow_history.iter().map(|(t, m)| [*t, m.z]).collect();
         let dash = LineStyle::Dashed { length: 6.0 };
         plot_ui.line(
             Line::new("Shadow Mx (Baseline)", PlotPoints::from(sx))
@@ -339,24 +356,15 @@ impl MriTool {
             let t_k = view.fork_time.unwrap_or(0.0);
             out.push((
                 format!("Shadow Mx @ t_k={t_k:.3}s"),
-                view.shadow_history
-                    .iter()
-                    .map(|(t, m)| [*t, m.x])
-                    .collect(),
+                view.shadow_history.iter().map(|(t, m)| [*t, m.x]).collect(),
             ));
             out.push((
                 format!("Shadow My @ t_k={t_k:.3}s"),
-                view.shadow_history
-                    .iter()
-                    .map(|(t, m)| [*t, m.y])
-                    .collect(),
+                view.shadow_history.iter().map(|(t, m)| [*t, m.y]).collect(),
             ));
             out.push((
                 format!("Shadow Mz @ t_k={t_k:.3}s"),
-                view.shadow_history
-                    .iter()
-                    .map(|(t, m)| [*t, m.z])
-                    .collect(),
+                view.shadow_history.iter().map(|(t, m)| [*t, m.z]).collect(),
             ));
             if let Some(meta) = self.mri_branch_metadata() {
                 out.push(build_branch_metadata_dataset_2d(&meta));
@@ -394,7 +402,7 @@ impl MriTool {
             if pts.len() >= 2 {
                 prims.push(egui_plot::ExportPrimitive::Polyline {
                     name: name.to_string(),
-                    points: pts,
+                    points: pts.into(),
                     color,
                     stroke_width: 1.8,
                     closed: false,

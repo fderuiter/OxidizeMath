@@ -2,7 +2,10 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::playback::{button_min_size, render_action_button, PlaybackAction, PlaybackTransport};
+use super::playback::{
+    helpers::{button_min_size, render_action_button},
+    PlaybackAction, PlaybackTransport,
+};
 use super::timeline_branch::{
     announce_branch_cleared, announce_branch_forked, TimelineBranchAction, TimelineTransportState,
 };
@@ -13,10 +16,11 @@ use eframe::egui;
 impl<'a> PlaybackTransport<'a> {
     /// Renders the transport bar augmented with step-back, `Fork Branch` toggle, and timeline scrubber.
     pub fn show_with_timeline(
-        self,
+        mut self,
         ui: &mut egui::Ui,
         timeline: TimelineTransportState,
     ) -> (Option<PlaybackAction>, Option<TimelineBranchAction>) {
+        let _ = self.timeline.take();
         let base_id = ui.make_persistent_id(self.id_salt);
         let min_size = button_min_size(ui.ctx());
         let ui_enabled = ui.is_enabled();

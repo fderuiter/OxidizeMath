@@ -178,6 +178,7 @@ fn build_verified_engine_stub(rustc: &Path) -> PathBuf {
     let stub_out = stub_dir.join("libverified_engine.rlib");
     let src = r#"
 pub mod metrics {
+    pub fn is_verification_enabled() -> bool { false }
     pub fn increment_calls() {}
     pub fn increment_arithmetic(_count: u64) {}
     pub fn increment_memory_loads(_count: u64) {}
