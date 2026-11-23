@@ -1,5 +1,3 @@
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
 use thiserror::Error;
 
 #[allow(missing_docs)]
@@ -238,118 +236,6 @@ pub enum Glicko2Error {
     DimensionMismatch { expected: usize, actual: usize },
 }
 
-impl Diagnostic for NumberTheoryError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "NumberTheoryError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for KellyError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "KellyError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for MarkovError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "MarkovError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for OuError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "OuError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for ZipError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "ZipError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for TdaError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "TdaError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for CopulaError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "CopulaError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for Glicko2Error {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "Glicko2Error".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
 impl std::fmt::Display for MarkovError {
     #[verified_engine::verified]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -357,7 +243,15 @@ impl std::fmt::Display for MarkovError {
     }
 }
 
-impl std::error::Error for MarkovError {}
+impl std::error::Error for MarkovError {
+    #[verified_engine::verified]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Math(err) => Some(err),
+            _ => None,
+        }
+    }
+}
 
 impl std::fmt::Display for ZipError {
     #[verified_engine::verified]
@@ -403,15 +297,21 @@ impl std::fmt::Display for CopulaError {
     }
 }
 
-impl std::error::Error for CopulaError {}
+impl std::error::Error for CopulaError {
+    #[verified_engine::verified]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Math(err) => Some(err),
+            _ => None,
+        }
+    }
+}
 
 impl std::fmt::Display for Glicko2Error {
     #[verified_engine::verified]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidRating { value } => {
-                write!(f, "rating must be finite (got {value})")
-            }
+            Self::InvalidRating { value } => write!(f, "rating must be finite (got {value})"),
             Self::InvalidRatingDeviation { value } => {
                 write!(
                     f,
@@ -427,9 +327,7 @@ impl std::fmt::Display for Glicko2Error {
                     "system constant tau must be in [0.3, 1.2] and finite (got {value})"
                 )
             }
-            Self::InvalidOpponentCount { count } => {
-                write!(f, "invalid opponent count ({count})")
-            }
+            Self::InvalidOpponentCount { count } => write!(f, "invalid opponent count ({count})"),
             Self::VolatilityConvergenceFailed { iterations } => {
                 write!(
                     f,
@@ -484,3 +382,23 @@ impl From<math_commons::error::MathError> for CopulaError {
         CopulaError::Math(err)
     }
 }
+
+mod submodule_diagnostics;
+mod umbrella;
+
+pub use crate::pure_math::{
+    algebra::linear_algebra::numerical::LinearAlgebraError,
+    algorithmic_information::FractranError,
+    analysis::{
+        evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
+        stochastic::StochasticError, transforms::TransformError,
+    },
+    differential_geometry::hyperbolic::HyperbolicError,
+    elliptic_curves::EllipticCurveError,
+    number_theory::ambs::AmbsError,
+    tensor::types::TensorError,
+};
+pub use umbrella::PureMathError;
+
+#[cfg(test)]
+mod tests;
