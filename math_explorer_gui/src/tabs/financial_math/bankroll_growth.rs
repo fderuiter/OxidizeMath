@@ -352,7 +352,7 @@ impl InteractiveTool for BankrollGrowthTool {
     }
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]
 
 inventory::submit! {
     crate::framework::ToolMetadata {

@@ -1,0 +1,123 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{accessibility}
+
+\title{Quantitative Sports Modeling, Market Microstructure, and Optimal Bankroll Allocation in OxidizeMath}
+\author{OxidizeMath Project}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Quantitative sports analytics couples market microstructure (vigorish removal and closing line efficiency), generative stochastic match and player models (low-score correlated Poisson grids, zero-inflated counts, Gaussian copula parlays, and mean-reverting in-play processes), dynamic paired-comparison rating systems (Elo and Glicko-2), and logarithmic utility capital allocation (Kelly criterion and risk-of-ruin bounds). This manuscript documents the mathematical formulations, domain invariants, and zero-allocation numerical kernels implemented in \texttt{math\_explorer::sports\_quant} and surfaced interactively in \texttt{SportsAnalyticsTab}. Every probability-valued quantity exchanges losslessly through the validated \texttt{UnitInterval} primitive on $[0, 1]$, enabling direct composition from market or generative pricing into fractional Kelly sizing.
+\end{abstract}
+
+\section{Introduction}
+Sports wagering markets price state-contingent claims whose payoffs depend on discrete scorelines, individual player event counts, and in-play score trajectories. Evaluating an actionable wager requires solving two coupled problems: estimating a calibrated state probability $p \in [0, 1]$ free of bookmaker margin, and mapping $(p, o)$ at offered decimal odds $o > 1$ into a risk-controlled stake fraction $f \in [0, 1]$. Within \texttt{OxidizeMath}, these components are unified under \texttt{crates/pure\_math/src/pure\_math/statistics} and curated via \texttt{math\_explorer::sports\_quant}.
+
+\section{Market Microstructure and Vigorish Removal}
+Consider an $n$-outcome mutually exclusive, exhaustive market quoted at decimal odds $o_1, \dots, o_n$ with $o_i > 1$. Let $\pi_i = 1 / o_i \in (0, 1)$ denote raw implied probabilities and let
+\begin{equation}
+S = \sum_{i=1}^{n} \pi_i
+\end{equation}
+denote the bookmaker overround, with hold (vigorish) $\nu = \max(0, 1 - 1 / S)$. When $S > 1$, raw implied probabilities violate Kolmogorov additivity and exhibit favorite--longshot asymmetry.
+
+\subsection{Multiplicative, Additive, and Power Normalization}
+Proportional (multiplicative) normalization sets $p_i^{\text{mult}} = \pi_i / S$, assuming uniform margin across outcomes. Equal-margin (additive) normalization sets $p_i^{\text{add}} = \pi_i - (S - 1)/n$, provided $\pi_i > (S - 1)/n$. Power normalization raises each implied price to a common exponent $k > 0$ solving the strictly decreasing scalar equation
+\begin{equation}
+\sum_{i=1}^{n} \pi_i^{k} = 1, \qquad p_i^{\text{pow}} = \pi_i^{k},
+\end{equation}
+via zero-allocation monotone bisection, penalizing longshots more heavily than favorites when $k > 1$.
+
+\subsection{Shin's Insider-Trading Equilibrium}
+Shin~\cite{shin1993measuring} models a risk-neutral competitive bookmaker facing a fraction $z \in [0, 1)$ of informed insiders who know the true outcome and a fraction $1 - z$ of uninformed noise bettors. Zero expected profit on each state claim yields the quadratic equilibrium condition $(1 - z) p_i^2 + z p_i = \pi_i^2 / S$, with unique positive branch
+\begin{equation}
+p_i(z) = \frac{\sqrt{z^2 + 4(1 - z)\pi_i^2 / S} - z}{2(1 - z)}, \qquad \sum_{i=1}^{n} p_i(z) = 1.
+\label{eq:shin}
+\end{equation}
+Because $\pi_i \in (0, 1)$ implies $\sum_{i=1}^n \pi_i^2 / S < 1 < \sqrt{S}$ whenever $S > 1$, the simplex sum in~\eqref{eq:shin} decreases strictly on $z \in [0, 1)$ and admits a unique root $z^*$, solved in \texttt{devig\_shin\_into} via 64-step bisection. In binary markets ($n = 2$), subtracting the two state equations recovers $p_1(z^*) = \pi_1 - (S - 1)/2$.
+
+\subsection{Closing Line Value (CLV)}
+Given a wager placed at decimal odds $o_{\text{bet}}$ whose market closes with devigged true probability $p_{\text{close}}$, the expected return per unit staked is the Closing Line Value
+\begin{equation}
+\mathrm{CLV}(o_{\text{bet}}, p_{\text{close}}) = o_{\text{bet}}\,p_{\text{close}} - 1.
+\end{equation}
+
+\section{Match Score-Matrix Models}
+Let $(X, Y) \in \mathbb{N}_0^2$ denote final home and away goals truncated and renormalized on $\{0, \dots, G\}^2$ in flat row-major storage indexed via \texttt{flatten\_2d\_index}.
+
+\subsection{Independent Poisson and Dixon--Coles Low-Score Dependence}
+Under independent Poisson scoring with intensities $(\lambda_H, \lambda_A)$, $P_{\text{ind}}(X=x, Y=y) = e^{-\lambda_H}\frac{\lambda_H^x}{x!}\,e^{-\lambda_A}\frac{\lambda_A^y}{y!}$. Dixon and Coles~\cite{dixon1997modelling} correct empirical correlation on low-scoring cells $(x, y) \in \{0, 1\}^2$ via
+\begin{equation}
+P_{\text{DC}}(X = x, Y = y) \propto P_{\text{ind}}(X = x, Y = y)\,\tau_{\lambda_H, \lambda_A}(x, y; \rho),
+\end{equation}
+where the adjustment factor is
+\begin{equation}
+\tau_{\lambda_H, \lambda_A}(x, y; \rho) =
+\begin{cases}
+1 - \lambda_H \lambda_A \rho, & (x, y) = (0, 0), \\
+1 + \lambda_H \rho, & (x, y) = (0, 1), \\
+1 + \lambda_A \rho, & (x, y) = (1, 0), \\
+1 - \rho, & (x, y) = (1, 1), \\
+1, & \text{otherwise.}
+\end{cases}
+\end{equation}
+Negative $\rho < 0$ inflates $(0, 0)$ and $(1, 1)$ draw probabilities observed in association football.
+
+\subsection{Karlis--Ntzoufras Bivariate Poisson Model}
+Karlis and Ntzoufras~\cite{karlis2003analysis} introduce a shared latent tempo component $Y_3 \sim \mathrm{Poisson}(\lambda_3)$ alongside independent team components $Y_1 \sim \mathrm{Poisson}(\lambda_1)$ and $Y_2 \sim \mathrm{Poisson}(\lambda_2)$, setting $X = Y_1 + Y_3$ and $Y = Y_2 + Y_3$. The joint probability mass function is
+\begin{equation}
+P_{\text{BP}}(X = x, Y = y) = e^{-(\lambda_1 + \lambda_2 + \lambda_3)} \sum_{k=0}^{\min(x, y)} \frac{\lambda_1^{x-k}}{(x-k)!}\frac{\lambda_2^{y-k}}{(y-k)!}\frac{\lambda_3^k}{k!},
+\end{equation}
+with covariance $\mathrm{Cov}(X, Y) = \lambda_3 \ge 0$. Summing over upper, diagonal, and lower triangles of the normalized grid yields 1X2 probabilities, Over/Under total probabilities $P(X + Y > L)$, Both-Teams-To-Score $P(X \ge 1 \wedge Y \ge 1)$, and push-adjusted Asian Handicap cover probabilities.
+
+\section{Gaussian Copula Same-Game Parlays and Count Props}
+\subsection{Gaussian Copula Joint Pricing}
+For $d$ correlated parlay legs with marginal probabilities $u_1, \dots, u_d \in (0, 1)$ and symmetric positive-definite latent correlation matrix $\Sigma \in \mathbb{R}^{d \times d}$, the Gaussian copula prices the joint parlay success event as
+\begin{equation}
+p_{\text{SGP}}(u_1, \dots, u_d; \Sigma) = P\bigl(Z_1 \le \Phi^{-1}(u_1), \dots, Z_d \le \Phi^{-1}(u_d)\bigr), \quad Z \sim \mathcal{N}(0, \Sigma),
+\end{equation}
+capturing positive stacking edges ($\rho > 0$) and negative usage cannibalization ($\rho < 0$) missed by naive product pricing $\prod_{j=1}^d u_j$.
+
+\subsection{Zero-Inflated Poisson (ZIP) Player Count Props}
+Discrete player prop counts with structural bench/role zeros follow Lambert's~\cite{lambert1992zero} Zero-Inflated Poisson law with zero-inflation $\rho_0 \in [0, 1]$ and active rate $\lambda > 0$:
+\begin{equation}
+P(Y = 0) = \rho_0 + (1 - \rho_0)e^{-\lambda}, \qquad P(Y = k) = (1 - \rho_0)\frac{\lambda^k e^{-\lambda}}{k!} \quad (k \ge 1).
+\end{equation}
+Its mean $\mathbb{E}[Y] = (1 - \rho_0)\lambda$ and variance $\mathrm{Var}(Y) = (1 - \rho_0)\lambda(1 + \rho_0 \lambda)$ exhibit strict overdispersion whenever $\rho_0 > 0$, creating systematic gaps between mean-implied prop lines and exact tail exceedance $P(Y > k) = 1 - \sum_{j=0}^k P(Y = j)$.
+
+\section{In-Play Momentum and Paired-Comparison Ratings}
+\subsection{Ornstein--Uhlenbeck Live Score Dynamics}
+Continuous in-play performance or score margin $X_t$ mean-reverts toward skill baseline $\mu$ at rate $\theta > 0$ with volatility $\sigma \ge 0$:
+\begin{equation}
+dX_t = \theta(\mu - X_t)\,dt + \sigma\,dW_t.
+\end{equation}
+Euler--Maruyama path ensembles estimate conditional comeback probabilities $P(X_{t + \Delta T} \ge c \mid X_t = x_0) \in [0, 1]$ across remaining game clock $\Delta T$.
+
+\subsection{Elo and Bayesian Glicko-2 Ratings}
+Under Elo's~\cite{elo1978rating} logistic model with ratings $(R_A, R_B)$ and home advantage $H$, expected score is
+\begin{equation}
+E_A = \frac{1}{1 + 10^{-(R_A + H - R_B)/400}}, \qquad R_A' = R_A + K \cdot M(\Delta S, \Delta R)\,(S_A - E_A),
+\end{equation}
+where $M(\Delta S, \Delta R) = \ln(|\Delta S| + 1)\,\frac{2.2}{0.001\,\Delta R_{\text{win}} + 2.2}$ dampens autocorrelation in margin-of-victory updates. Glickman's~\cite{glickman1999parameter} Glicko-2 system tracks skill $\mu = (r - 1500)/173.7178$, deviation $\phi = \mathrm{RD}/173.7178$, and log-volatility $\ln \sigma^2$, evaluating head-to-head win probabilities under combined uncertainty $\phi_{ij} = \sqrt{\phi_i^2 + \phi_j^2}$ via $g(\phi_{ij}) = (1 + 3\phi_{ij}^2 / \pi^2)^{-1/2}$.
+
+\section{Kelly Criterion, Fractional Sizing, and Risk of Ruin}
+Given calibrated win probability $p \in [0, 1]$, loss probability $q = 1 - p$, and net odds $b = o - 1 > 0$, Kelly~\cite{kelly1956new} and Thorp~\cite{thorp1969optimal} maximize expected logarithmic wealth growth
+\begin{equation}
+g(f) = p \ln(1 + b f) + q \ln(1 - f), \qquad f^* = \max\!\left(0, \frac{b p - q}{b}\right).
+\end{equation}
+Fractional Kelly $f_c = c f^*$ ($c \in (0, 1)$) trades a second-order reduction in growth $g(c f^*) \approx c(2 - c)\,g(f^*)$ for a quadratic reduction in variance $c^2$. Under continuous diffusion with log-moments $\mu_g = g(f)$ and $\sigma_g^2 = p q [\ln((1 + bf)/(1 - f))]^2$, the probability of ever breaching relative wealth ratio $\alpha \in (0, 1)$ is approximated by $\alpha^{2\mu_g / \sigma_g^2}$, while fixed-unit wagering over a bankroll of $B > 0$ units satisfies Thorp's risk-of-ruin bound
+\begin{equation}
+R(B) = \exp\!\left(-\frac{2(p b - q) B}{p q (b + 1)^2}\right) \qquad (p b > q).
+\end{equation}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

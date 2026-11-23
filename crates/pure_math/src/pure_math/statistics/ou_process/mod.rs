@@ -133,4 +133,4 @@ pub use analysis::{MomentumType, OuAnalyzer, PerformanceStats, estimate_ou_param
 pub use core::{LongTermMean, OuParams};
 pub use solver::{EulerMaruyama, TimeStep};
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

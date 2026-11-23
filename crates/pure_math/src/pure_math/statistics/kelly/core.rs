@@ -161,6 +161,22 @@ impl Odds {
     pub fn implied_probability(&self) -> f64 {
         1.0 / self.0
     }
+
+    /// Converts decimal odds to an implied probability bounded in [`UnitInterval`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::kelly::Odds;
+    ///
+    /// let odds = Odds::new(2.5).unwrap();
+    /// assert!((odds.implied_probability_unit().value() - 0.4).abs() < 1e-12);
+    /// ```
+    #[verified_engine::verified]
+    pub fn implied_probability_unit(&self) -> UnitInterval {
+        UnitInterval::new_clamped(1.0 / self.0)
+    }
 }
 
 /// Bankroll fraction to bet (must be between 0 and 1).
@@ -221,6 +237,22 @@ impl BankrollFraction {
             return Err(KellyError::InvalidBankroll { value: bankroll });
         }
         Ok(self.0 * bankroll)
+    }
+}
+
+impl From<UnitInterval> for BankrollFraction {
+    #[inline]
+    #[verified_engine::verified]
+    fn from(interval: UnitInterval) -> Self {
+        Self(interval.value())
+    }
+}
+
+impl From<BankrollFraction> for UnitInterval {
+    #[inline]
+    #[verified_engine::verified]
+    fn from(fraction: BankrollFraction) -> Self {
+        Self::new_clamped(fraction.0)
     }
 }
 
@@ -325,5 +357,19 @@ mod tests {
         assert!(Odds::from_net_odds(-0.5).is_err());
         assert!(Odds::from_net_odds(f64::NAN).is_err());
         assert!(Odds::from_net_odds(f64::INFINITY).is_err());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_implied_probability_unit_and_bankroll_unit_roundtrip() {
+        let odds = Odds::new(2.5).unwrap();
+        let implied = odds.implied_probability_unit();
+        assert!((implied.value() - 0.4).abs() < math_commons::registry::TOLERANCE_HIGH);
+
+        let fraction = BankrollFraction::from(implied);
+        assert!((fraction.value() - 0.4).abs() < math_commons::registry::TOLERANCE_HIGH);
+
+        let back: UnitInterval = fraction.into();
+        assert!((back.value() - 0.4).abs() < math_commons::registry::TOLERANCE_HIGH);
     }
 }

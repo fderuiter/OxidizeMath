@@ -231,6 +231,38 @@ impl OuAnalyzer {
         stats.prob_above_threshold.unwrap_or(0.0)
     }
 
+    /// Estimates the comeback probability bounded in [`math_commons::primitives::UnitInterval`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::{OuAnalyzer, OuParams, TimeStep};
+    ///
+    /// let params = OuParams::from_values(0.5, 1.0, 0.25).unwrap();
+    /// let analyzer = OuAnalyzer::new(params, TimeStep::new(0.05).unwrap());
+    /// let mut rng = oxidize_core::rng::OxidizeRng::new(42);
+    /// let prob = analyzer.comeback_probability_unit(0.35, 0.5, 1.0, 250, &mut rng);
+    /// assert!(prob.value() >= 0.0 && prob.value() <= 1.0);
+    /// ```
+    #[verified_engine::verified]
+    pub fn comeback_probability_unit<R: Rng>(
+        &self,
+        current_score: f64,
+        target_score: f64,
+        time_remaining: f64,
+        n_paths: usize,
+        rng: &mut R,
+    ) -> math_commons::primitives::UnitInterval {
+        math_commons::primitives::UnitInterval::new_clamped(self.comeback_probability(
+            current_score,
+            target_score,
+            time_remaining,
+            n_paths,
+            rng,
+        ))
+    }
+
     /// Returns the OU parameters.
     #[verified_engine::verified]
     pub fn params(&self) -> OuParams {
@@ -382,5 +414,15 @@ mod tests {
         let observations = vec![0.5, 0.6];
         let result = estimate_ou_params(&observations, 1.0);
         assert!(result.is_err());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_comeback_probability_unit_interval() {
+        let params = OuParams::from_values(0.5, 1.2, 0.25).unwrap();
+        let analyzer = OuAnalyzer::new(params, TimeStep::new(0.02).unwrap());
+        let mut rng = oxidize_core::rng::OxidizeRng::new(99);
+        let p_unit = analyzer.comeback_probability_unit(0.3, 0.5, 1.0, 500, &mut rng);
+        assert!(p_unit.value() > 0.0 && p_unit.value() < 1.0);
     }
 }

@@ -198,11 +198,13 @@
 
 pub mod core;
 pub mod criterion;
+pub mod ruin;
 
 // Re-export main types and functions
 pub use core::{BankrollFraction, Odds, UnitInterval};
 pub use criterion::{
     expected_growth_rate, expected_value, fractional_kelly, kelly_fraction, variants,
 };
+pub use ruin::{kelly_drawdown_risk, unit_risk_of_ruin};
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

@@ -1,4 +1,5 @@
 //! Build script for dynamic tab discovery in math_explorer_gui.
+mod build_bib;
 mod build_snapshot;
 #[path = "../crates/oxidize_core/src/path_utils.rs"]
 /// Path utilities.
@@ -37,8 +38,9 @@ fn main() {
     let generated_code = render_generated_tabs_code(&discovered_tabs, &generated_mods);
     fs::write(&dest_path, generated_code).unwrap();
 
-    // 3. Generate deterministic precomputed traceability snapshot for static web builds
+    // 3. Generate deterministic precomputed traceability snapshot and compact BibTeX index
     build_snapshot::generate_traceability_snapshot(out_path);
+    build_bib::generate_bib_links_tsv(out_path);
 }
 
 fn render_generated_tabs_code(

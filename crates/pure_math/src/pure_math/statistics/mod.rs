@@ -97,12 +97,16 @@
 //! ```
 
 pub mod copula;
+pub mod elo;
 pub mod glicko2;
 pub mod kelly;
+pub mod market_pricing;
 pub mod markov;
+pub mod match_models;
 pub mod ou_process;
 pub mod regression;
 pub mod tda;
 pub mod zip_regression;
 
 // [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

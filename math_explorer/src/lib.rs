@@ -29,6 +29,8 @@ pub use domain_epidemiology::epidemiology;
 pub use domain_physics::physics;
 
 #[cfg(feature = "pure_math")]
+pub mod sports_quant;
+#[cfg(feature = "pure_math")]
 pub use ::pure_math::{math_types, pure_math};
 #[cfg(feature = "pure_math")]
 pub use nalgebra;

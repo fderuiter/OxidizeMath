@@ -14,3 +14,13 @@ pub use oxidize_core::mesh::{Mesh, Point3D};
 pub use oxidize_core::rng::OxidizeRng;
 #[cfg(feature = "pure_math")]
 pub use pure_math::math_types::{Float, Integer, Rational};
+#[cfg(feature = "pure_math")]
+pub use pure_math::pure_math::statistics::{
+    copula::{Correlation, CorrelationMatrix, Probability},
+    elo::{EloKFactor, EloRating, HomeAdvantage},
+    glicko2::{GlickoPlayer, Rating, RatingDeviation, Volatility},
+    kelly::{BankrollFraction, Odds, fractional_kelly, kelly_fraction},
+    market_pricing::DevigMethod,
+    match_models::{DixonColesRho, MatchOutcomeProbs, ScoreModelKind, SharedGoalRate},
+    zip_regression::{Count, PoissonRate, ZeroInflation, ZipDistribution},
+};

@@ -108,4 +108,4 @@ fn test_f_030_overbetting_divergence_callout_and_zero_allocation() {
     );
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]
