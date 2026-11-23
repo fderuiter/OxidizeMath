@@ -137,6 +137,7 @@ allowlist = [
     "docs/adr/0038-watertight-3d-stl-and-ply-exports.md",
     "docs/adr/0039-metric-agnostic-3d-tda-exact-z2-homology-and-chaos-mashup.md",
     "docs/adr/0039-network-epidemic-containment-primitives.md",
+    "docs/adr/0040-ast-verification-spans-optout-scoping-and-api-normalization.md",
     "docs/adr/0040-dual-backend-web-audio-sonification.md",
     "docs/adr/0040-galactic-dynamics-and-astrophysics-tab.md",
     "docs/adr/0040-promote-zero-alloc-curve-solvers-to-math-commons.md",

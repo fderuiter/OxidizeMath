@@ -184,7 +184,7 @@ impl Engine {
         initial.replace("fn step(&mut self, dt: f64)", "fn step(&mut self, dt: f32)"),
         initial.replace(
             "pub const MAX_STEPS: usize = 16;",
-            "pub const MAX_STEPS: usize = 32;",
+            "pub const MAX_STEPS: u64 = 16;",
         ),
         initial.replace("OrderedMap", "SortedMap"),
     ] {
@@ -253,4 +253,109 @@ fn test_check_api_drift_runs_and_verifies_workspace_invariants() {
         )
     );
     assert!(apis.contains_key("crates/pure_math/src/pure_math/statistics/markov/dtmc/types.rs"));
+}
+
+#[test]
+fn test_api_drift_header_precedes_diff_lines_and_prints_adr_hint() {
+    let mut baseline = BTreeMap::new();
+    baseline.insert(
+        "crates/demo/src/lib.rs".to_string(),
+        vec![ApiItem {
+            signature: "pub fn old_api (_ : usize)".to_string(),
+            deprecation_expires: None,
+        }],
+    );
+    let mut current = BTreeMap::new();
+    current.insert(
+        "crates/demo/src/lib.rs".to_string(),
+        vec![ApiItem {
+            signature: "pub fn new_api (_ : f64)".to_string(),
+            deprecation_expires: None,
+        }],
+    );
+
+    let (passed, lines) = collect_api_drift_messages(&current, &baseline, "2026-11-19");
+    assert!(!passed);
+    let header_idx = lines
+        .iter()
+        .position(|l| l == "API Drift detected in crates/demo/src/lib.rs:")
+        .expect("drift header must be emitted");
+    let plus_idx = lines
+        .iter()
+        .position(|l| l.starts_with("  + "))
+        .expect("added signature line must be emitted");
+    let minus_idx = lines
+        .iter()
+        .position(|l| l.starts_with("  - "))
+        .expect("removed signature line must be emitted");
+    assert!(
+        header_idx < plus_idx && header_idx < minus_idx,
+        "Header must precede `+` and `-` diff lines: {lines:?}"
+    );
+    let joined = lines.join("\n");
+    assert!(joined.contains("cargo run -p xtask -- regenerate-baseline"));
+    assert!(joined.contains("docs/adr/"));
+}
+
+#[test]
+fn test_private_param_renames_and_const_expr_changes_pass_drift() {
+    let ws = make_temp_workspace("norm_params_consts");
+    let v1 = r#"
+pub const MAX_STEPS: usize = 16;
+pub static GLOBAL_FLAG: bool = false;
+
+pub trait Integrator<T: Clone> {
+    const ORDER: usize = 4;
+    fn advance(&mut self, dt: f64, (x, y): (f64, usize)) -> (f64, T)
+    where
+        T: Send;
+}
+
+pub struct State(pub f64);
+impl State {
+    pub const DEFAULT_TOL: f64 = 1e-6;
+    pub fn into_raw(self) -> f64 { self.0 }
+    pub fn scale(&self, factor: f64, cb: fn(old_v: f64) -> f64) -> f64 { cb(self.0 * factor) }
+    pub fn reset(&mut self, next_val: f64) { self.0 = next_val; }
+}
+"#;
+    let v2 = r#"
+pub const MAX_STEPS: usize = 32 * 2;
+pub static GLOBAL_FLAG: bool = true;
+
+pub trait Integrator<T: Clone> {
+    const ORDER: usize = 8;
+    fn advance(&mut self, step_size: f64, coords: (f64, usize)) -> (f64, T)
+    where
+        T: Send;
+}
+
+pub struct State(pub f64);
+impl State {
+    pub const DEFAULT_TOL: f64 = 1e-9;
+    pub fn into_raw(mut self) -> f64 { self.0 += 0.0; self.0 }
+    pub fn scale(&self, alpha: f64, transform: fn(new_v: f64) -> f64) -> f64 { transform(self.0 * alpha) }
+    pub fn reset(&mut self, target: f64) { self.0 = target; }
+}
+"#;
+    write_file(&ws, "math_explorer/src/lib.rs", v1);
+    let baseline = extract_apis_in_dir(&ws);
+
+    write_file(&ws, "math_explorer/src/lib.rs", v2);
+    let renamed = extract_apis_in_dir(&ws);
+    assert_eq!(renamed, baseline);
+    assert!(check_api_drift_against(&renamed, &baseline, "2026-11-19"));
+
+    // Receiver mutability, tuple element types, and generic bounds must still fail drift
+    for breaking in [
+        v2.replace("pub fn scale(&self", "pub fn scale(&mut self"),
+        v2.replace("coords: (f64, usize)", "coords: (f64, u64)"),
+        v2.replace("Integrator<T: Clone>", "Integrator<T: Copy>"),
+    ] {
+        write_file(&ws, "math_explorer/src/lib.rs", &breaking);
+        let broken = extract_apis_in_dir(&ws);
+        assert!(!check_api_drift_against(&broken, &baseline, "2026-11-19"));
+    }
+
+    let _ = fs::remove_dir_all(&ws);
 }
