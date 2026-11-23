@@ -288,16 +288,20 @@ impl SimulationFramework {
             }
         });
         let inst_portal = egui::Id::new(("SHOW_THEORY_PORTAL_INST", id_source, self.instance_id));
+        let challenge_active = self.active_challenge.is_some()
+            || matches!(self.challenge_hud.mode, ChallengeHudMode::Challenge { .. });
+        let is_touch = self.input_mode == InputMode::Touch;
         ctx.data_mut(|d| {
             d.insert_temp(egui::Id::new("INPUT_MODE"), self.input_mode);
-            d.insert_temp(
-                egui::Id::new("INPUT_MODE_TOUCH"),
-                self.input_mode == InputMode::Touch,
-            );
+            d.insert_temp(egui::Id::new("INPUT_MODE_TOUCH"), is_touch);
             d.insert_temp(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"), inst_portal);
             d.insert_temp(
                 egui::Id::new("SCOPED_ANIMATED_SLIDER_OWNER"),
                 self.instance_id,
+            );
+            d.insert_temp(
+                egui::Id::new("FRAMEWORK_CHALLENGE_ACTIVE"),
+                challenge_active,
             );
         });
 
@@ -341,6 +345,7 @@ impl SimulationFramework {
         ctx.data_mut(|d| {
             d.remove::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"));
             d.remove::<u64>(egui::Id::new("SCOPED_ANIMATED_SLIDER_OWNER"));
+            d.remove::<bool>(egui::Id::new("FRAMEWORK_CHALLENGE_ACTIVE"));
         });
         self.show_export_modal_dialog(&ctx, id_source);
         self.show_code_export_modal_dialog(&ctx, id_source);
