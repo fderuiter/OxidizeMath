@@ -33,8 +33,7 @@ pub(super) fn evaluate_scene_density_counts(
         1.0
     };
     let mut counts = DensityActionCounts::default();
-    let len = scene.gaussians.len().min(grads.len());
-    for (g, &grad) in scene.gaussians[..len].iter().zip(&grads[..len]) {
+    for (g, &grad) in scene.gaussians.iter().zip(grads.iter()) {
         let max_base = g.scale.x.max(g.scale.y).max(g.scale.z);
         let action = determine_density_action(
             grad,

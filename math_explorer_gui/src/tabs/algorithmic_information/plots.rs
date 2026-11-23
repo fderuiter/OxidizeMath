@@ -208,9 +208,9 @@ impl FractranMachineTool {
         let count = self.visible_register_count();
         for (idx, (&prime, &exp)) in FIRST_64_PRIMES
             .iter()
-            .zip(&self.live.exponents)
-            .enumerate()
+            .zip(self.live.exponents.iter())
             .take(count)
+            .enumerate()
         {
             let x = idx as f64;
             let y = f64::from(exp).max(0.15);

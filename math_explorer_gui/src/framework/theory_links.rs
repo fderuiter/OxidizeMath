@@ -101,6 +101,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "financial_math" => &["clinical_trials_statistics"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
         "ai" => &["graph_parameters_rust"],
+        "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         _ => &[],
     };
     tokens.extend(aliases.iter().map(|s| (*s).to_string()));
