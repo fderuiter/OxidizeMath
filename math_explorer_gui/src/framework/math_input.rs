@@ -30,6 +30,8 @@ pub struct MathExpressionInputBar {
     pub lhs_name: Option<String>,
     /// Compiled AST expression or syntax error.
     pub parsed_expr: Result<Expr, ParseError>,
+    /// Last successfully compiled AST expression retained across mid-keystroke syntax errors.
+    pub last_valid_expr: Option<Expr>,
     /// Formatted LaTeX string for preview rendering.
     pub latex_cache: String,
     /// Available presets as (Name, Equation String) pairs.
@@ -71,6 +73,7 @@ impl MathExpressionInputBar {
             default_lhs: default_lhs.to_string(),
             lhs_name: None,
             parsed_expr: Err(ParseError::EmptyExpression),
+            last_valid_expr: None,
             latex_cache: String::new(),
             presets,
             had_error: false,
@@ -174,6 +177,13 @@ impl MathExpressionInputBar {
         } else {
             self.parsed_expr.as_ref().ok()
         }
+    }
+
+    /// Returns the active parsed AST if valid, or falls back to the last valid cached AST
+    /// during mid-keystroke syntax or validation errors.
+    #[must_use]
+    pub fn cached_expr(&self) -> Option<&Expr> {
+        self.expr().or(self.last_valid_expr.as_ref())
     }
 
     /// Returns the currently valid compiled bytecode (`None` if current input has an error).
@@ -335,6 +345,7 @@ impl MathExpressionInputBar {
                 );
                 self.lhs_name = lhs;
                 self.validation_error = None;
+                self.last_valid_expr = Some(expr.clone());
                 self.last_valid_compiled = Some(compiled.clone());
                 self.compiled_expr = Some(compiled);
                 self.parsed_expr = Ok(expr);

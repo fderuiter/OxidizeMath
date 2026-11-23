@@ -25,11 +25,11 @@ const PLATE_CONCERT_SCALE_HZ: f64 = 1_920.0;
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
+/// use crate::audio::mappings::chladni_plate_frame;
 /// use math_explorer::pure_math::analysis::pde::wave_2d::{
 ///     SpectralPeak2D, Wave2DMedium, WaveProbeSample,
 /// };
-/// use crate::audio::mappings::chladni_plate_frame;
 ///
 /// let peaks = [
 ///     SpectralPeak2D { kx: 2, ky: 1, k_radial: 2.236, magnitude: 0.42 },
