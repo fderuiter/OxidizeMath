@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for 3D Turing reaction-diffusion morphogenesis kernels.
 use domain_biology::biology::diffusion::FiniteDifference3D;
 use domain_biology::biology::morphogenesis::{
     DiffusionCoeff, ReactionKinetics, SchnakenbergKinetics, TuringSystem,

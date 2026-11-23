@@ -76,3 +76,87 @@ fn test_ode_custom_edit_fallback_and_no_duplicate_k_slider() {
         }
     }
 }
+
+fn collect_all_texts(shapes: &[egui::epaint::Shape], out: &mut Vec<String>) {
+    for shape in shapes {
+        match shape {
+            egui::epaint::Shape::Text(t) => out.push(t.galley.job.text.clone()),
+            egui::epaint::Shape::Vec(inner) => collect_all_texts(inner, out),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn test_ode_sin_x_and_incomplete_sin_hide_solver_divergence_warning() {
+    let ctx = egui::Context::default();
+    for bad_expr in ["sin(x)", "sin("] {
+        // Test both after a genuine numerical blow-up and from a clean state
+        let mut tool = OdeSolverTool {
+            preset: OdePreset::Custom,
+            ic_y0: 1.0,
+            ..Default::default()
+        };
+        tool.math_input.set_expression("1 / (y - 1)");
+        tool.recalculate();
+        assert!(tool.diverged(), "1 / (y - 1) at y0=1 must numerically blow up");
+
+        tool.math_input.set_expression(bad_expr);
+        tool.recalculate();
+        assert!(
+            !tool.math_input.is_valid(),
+            "'{bad_expr}' must report an inline expression error"
+        );
+        assert!(
+            !tool.diverged() && tool.diagnostic_report().is_none(),
+            "'{bad_expr}' must leave diverged false without diagnostic report"
+        );
+
+        let out = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+        let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+        let mut texts = Vec::new();
+        collect_all_texts(&shapes, &mut texts);
+        assert!(
+            texts.iter().any(|t| t.contains("Syntax Error:")),
+            "expected inline error badge for '{bad_expr}'"
+        );
+        assert!(
+            !texts.iter().any(|t| t.contains("Solver Divergence Warning")),
+            "must hide Solver Divergence Warning for '{bad_expr}', got {texts:?}"
+        );
+    }
+}
+
+#[test]
+fn test_ode_custom_logistic_exposes_r_and_k_sliders_and_recovers_nonfinite_params() {
+    let ctx = egui::Context::default();
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 1.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("r * y * (1 - y / cap_k)");
+    tool.recalculate();
+
+    let out = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+    let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+    let mut texts = Vec::new();
+    collect_all_texts(&shapes, &mut texts);
+    assert!(
+        texts.iter().any(|t| t.contains("r (Growth Rate)")),
+        "expected 'r (Growth Rate)' slider in {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains("K (Carrying Capacity)")),
+        "expected 'K (Carrying Capacity)' slider in {texts:?}"
+    );
+
+    // Non-finite param_r and param_cap_k in Custom mode are caught and clamped cleanly
+    tool.param_r = f64::NAN;
+    tool.param_cap_k = f64::INFINITY;
+    assert!(tool.diverged());
+    tool.clamp_instability_parameters();
+    assert!(!tool.diverged());
+    assert!((tool.param_r - 1.0).abs() < 1e-12);
+    assert!((tool.param_cap_k - 10.0).abs() < 1e-12);
+}

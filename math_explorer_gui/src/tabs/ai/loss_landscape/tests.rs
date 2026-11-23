@@ -87,6 +87,7 @@ fn test_on_brush_sculpts_gaussian_barriers_wells_and_caps_at_32() {
                 multi_touch: None,
                 keys_down: std::collections::HashSet::new(),
                 modifiers: egui::Modifiers::NONE,
+                brush_stroke: None,
             };
             tool.on_brush(&brush_ctx);
             assert_eq!(tool.sculpt_bumps.len(), 1);
@@ -112,6 +113,7 @@ fn test_on_brush_sculpts_gaussian_barriers_wells_and_caps_at_32() {
                     multi_touch: None,
                     keys_down: std::collections::HashSet::new(),
                     modifiers: alt_mods,
+                    brush_stroke: None,
                 };
                 tool.on_brush(&stroke_ctx);
             }

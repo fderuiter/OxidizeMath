@@ -109,3 +109,24 @@ fn test_custom_fractal_url_roundtrip() {
     assert_eq!(restored.math_input.raw_text, "a * z^3 + c");
     assert_eq!(restored.math_input.params_map(), pmap);
 }
+
+#[test]
+fn test_custom_fractal_glsl_shader_export() {
+    let mut pmap = BTreeMap::new();
+    pmap.insert("a".to_string(), 1.25);
+    let mut viewer = FractalViewer {
+        mode: FractalMode::CustomJulia,
+        julia_c: Complex::new(-0.4, 0.6),
+        ..Default::default()
+    };
+    viewer.math_input.set_expression("a * z^3 + c");
+    viewer.math_input.set_params_map(&pmap);
+
+    let glsl = viewer
+        .export_glsl_shader(crate::framework::ShaderDialect::WebGl2Es300)
+        .expect("custom Julia GLSL shader compiles");
+    assert!(glsl.contains("const bool IS_JULIA = true;"));
+    assert!(glsl.contains("const bool IS_CUSTOM = true;"));
+    assert!(glsl.contains("const vec2 a = vec2(1.25, 0.0);"));
+    assert!(glsl.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
+}

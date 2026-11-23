@@ -3,9 +3,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::framework::{InteractiveTool, SimulationFramework};
+use crate::framework::SimulationFramework;
 use crate::presets::Glicko2PlayerPreset;
-use eframe::egui;
 
 #[test]
 fn test_glicko2_starter_presets_fit_4096b_url_cap_and_roundtrip() {

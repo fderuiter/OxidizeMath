@@ -21,8 +21,6 @@ pub struct TorusCanvasOutcome {
     pub arrow_delta: i32,
     /// Whether the user pressed `Q` while focused to toggle between selecting $P$ and $Q$.
     pub toggle_selector: bool,
-    /// Active canvas `Id` when this canvas currently holds keyboard focus.
-    pub focused_canvas_id: Option<egui::Id>,
 }
 
 /// View state borrowed by [`render_torus_canvas`].
@@ -249,15 +247,15 @@ fn paint_torus_backdrop(
         egui::FontId::proportional(13.0_f32),
         ui.visuals().text_color(),
     );
-    paint_infinity_badge(ui, painter, vp, model, palette);
+    paint_infinity_badge(painter, vp, model, palette, ui.visuals().text_color());
 }
 
 fn paint_infinity_badge(
-    ui: &egui::Ui,
     painter: &egui::Painter,
     vp: &TorusViewport,
     model: &TorusCanvasModel<'_>,
     palette: &SemanticPalette,
+    text_color: Color32,
 ) {
     let inf_stroke = if model.point_p.is_infinity() || model.point_q.is_infinity() {
         palette.accent
@@ -276,7 +274,7 @@ fn paint_infinity_badge(
         egui::Align2::CENTER_CENTER,
         "Identity O",
         egui::FontId::proportional(11.5_f32),
-        ui.visuals().text_color(),
+        text_color,
     );
 }
 
@@ -449,7 +447,6 @@ fn collect_torus_interactions(
         }
     }
     if response.has_focus() {
-        outcome.focused_canvas_id = Some(response.id);
         ui.input(|i| {
             if i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::ArrowUp) {
                 outcome.arrow_delta = 1;

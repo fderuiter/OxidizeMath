@@ -1,9 +1,7 @@
 //! Build script for dynamic tab discovery in math_explorer_gui.
 mod build_snapshot;
-#[path = "../crates/oxidize_core/src/path_utils.rs"]
-/// Path utilities.
-pub mod path_utils;
 
+use oxidize_core::path_utils;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -15,7 +13,6 @@ fn main() {
 
     // Tell cargo to rerun if the build script, manifest, or tabs directory changes
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=../crates/oxidize_core/src/path_utils.rs");
     println!("cargo:rerun-if-changed=src/tabs");
     println!("cargo:rerun-if-changed=Cargo.toml");
 
@@ -164,8 +161,14 @@ fn register_local_tab(
 
 fn scan_cargo_toml_deps(discovered_tabs: &mut Vec<(String, Option<String>, i32)>) {
     let cargo_toml = fs::read_to_string("Cargo.toml").unwrap_or_default();
-    for line in cargo_toml.lines() {
-        if !line.contains("path = ") {
+    let mut in_dependencies = false;
+    for raw_line in cargo_toml.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            in_dependencies = line[1..line.len() - 1].trim() == "dependencies";
+            continue;
+        }
+        if !in_dependencies || !line.contains("path = ") {
             continue;
         }
         let parts: Vec<&str> = line.split('=').collect();

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test clinical trials security.
 use domain_applied::applied::clinical_trials::types::{ClinicalTrialError, GroupData};
 
 #[test]

@@ -5,6 +5,7 @@ use eframe::egui;
 pub mod attractors;
 pub mod bifurcation;
 pub mod fractals;
+pub mod hamiltonian;
 
 pub struct ChaosTab {
     framework: crate::framework::SimulationFramework,

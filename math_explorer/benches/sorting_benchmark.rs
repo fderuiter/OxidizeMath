@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Benchmark suite for sorting benchmark.
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use math_explorer::applied::algorithms::sorting::divide_conquer::{merge_sort, quick_sort};
 use math_explorer::applied::algorithms::sorting::linear::radix_sort;
@@ -29,5 +29,9 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark);
-criterion_main!(benches);
+mod bench_group {
+    use super::{criterion_benchmark, criterion_group};
+    criterion_group!(benches, criterion_benchmark);
+}
+
+criterion_main!(bench_group::benches);

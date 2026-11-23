@@ -3,6 +3,8 @@
 
 mod custom;
 #[cfg(test)]
+mod domain_shift_tests;
+#[cfg(test)]
 mod tests;
 
 pub use custom::{
@@ -155,7 +157,7 @@ pub struct FitResult {
     /// Root-mean-square error in fit space.
     pub rmse: f64,
     /// Vertical residuals `[x_i, y_i - y_hat(x_i)]` for valid fitted points.
-    pub residuals: Vec<[f64; 2]>,
+    pub residuals: crate::SharedPoints,
     /// Polynomial degree (`0` for nonlinear and custom models).
     pub degree: usize,
     /// Mathematical equation string representation.
@@ -186,7 +188,7 @@ impl FitResult {
             coefficients: curve.coefficients().to_vec(),
             r_squared: curve.r_squared,
             rmse: curve.rmse,
-            residuals: curve.residuals(points),
+            residuals: crate::SharedPoints::from(curve.residuals(points)),
             degree: curve.degree,
             formula: curve.format_formula(),
             dataset_name: dataset_name.to_owned(),

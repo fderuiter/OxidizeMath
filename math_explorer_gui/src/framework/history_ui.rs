@@ -6,6 +6,7 @@ use crate::app::session::shortcuts::{
     request_workspace_undo,
 };
 use eframe::egui;
+use std::hash::{Hash, Hasher};
 
 /// Renders accessible workspace `Undo` and `Redo` toolbar buttons synchronized with
 /// [`crate::app::session::shortcuts::WorkspaceHistoryBridge`].
@@ -77,5 +78,47 @@ impl SimulationFramework {
             });
             ctx.request_repaint();
         }
+    }
+
+    /// Computes a deterministic O(1) revision token for this framework's persisted state.
+    pub fn state_revision(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.hash_history_fields(&mut hasher);
+        self.show_theory_portal.hash(&mut hasher);
+        self.show_starter_gallery.hash(&mut hasher);
+        hasher.finish().max(1)
+    }
+
+    /// Computes a deterministic O(1) revision token excluding transient overlay chrome.
+    pub fn history_revision(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.hash_history_fields(&mut hasher);
+        hasher.finish().max(1)
+    }
+
+    fn hash_history_fields(&self, hasher: &mut impl Hasher) {
+        self.rev_cache.framework_revision.hash(hasher);
+        self.selected_tool_index.hash(hasher);
+        self.saved_tool_states.len().hash(hasher);
+        self.hash_saved_plot_states(hasher);
+        if let Some(tool) = &self.active_tool {
+            tool.name().hash(hasher);
+            let tool_rev = tool.state_revision();
+            if tool_rev > 0 {
+                1_u8.hash(hasher);
+                tool_rev.hash(hasher);
+            } else {
+                0_u8.hash(hasher);
+                self.rev_cache.untracked_tool_revision.hash(hasher);
+            }
+        }
+    }
+
+    /// Restores live `show_theory_portal` and `show_starter_gallery` flags without disturbing tool state.
+    pub(crate) fn restore_overlay_chrome(&mut self, portal: bool, gallery: bool) {
+        self.show_theory_portal = portal;
+        self.show_starter_gallery = gallery;
+        self.sync_state.theory_portal = Some(portal);
+        self.sync_state.starter_gallery = Some(gallery);
     }
 }

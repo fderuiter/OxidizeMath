@@ -53,13 +53,6 @@ impl ExportFormat {
         }
     }
 
-    pub(super) const fn clipboard_item_noun(self) -> &'static str {
-        match self {
-            Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
-            _ => "dataset",
-        }
-    }
-
     /// Returns the standard file extension for this format.
     pub(crate) const fn extension(&self) -> &'static str {
         self.meta().0
@@ -216,7 +209,18 @@ impl SimulationFramework {
             expires_at_time: None,
         });
     }
+}
 
+pub(super) fn materialize_shared_datasets(
+    datasets: &[(String, egui_plot::SharedPoints)],
+) -> Vec<(String, Vec<[f64; 2]>)> {
+    datasets
+        .iter()
+        .map(|(name, pts)| (name.clone(), pts.to_vec()))
+        .collect()
+}
+
+impl SimulationFramework {
     /// Queues a dataset or figure file export request for deferred end-of-frame dispatch.
     pub(crate) fn queue_export(&mut self, format: ExportFormat) {
         self.export_queue.push(format);
@@ -337,7 +341,7 @@ impl SimulationFramework {
 
 #[cfg(test)]
 #[path = "deferred_export_tests.rs"]
-mod deferred_export_tests;
+pub(crate) mod deferred_export_tests;
 
 #[cfg(test)]
 #[path = "deferred_export_audit_tests.rs"]

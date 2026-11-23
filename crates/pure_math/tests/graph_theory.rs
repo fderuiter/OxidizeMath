@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for graph theory.
 use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 use pure_math::pure_math::graph_theory::{

@@ -150,14 +150,7 @@ impl<'a> AxisHints<'a> {
     }
 
     fn default_formatter(mark: GridMark, _range: &RangeInclusive<f64>) -> String {
-        let abs_v = mark.value.abs();
-        if abs_v > 0.0 && !(1e-6..1e12).contains(&abs_v) {
-            return format!("{:e}", mark.value);
-        }
-        // Example: If the step to the next tick is `0.01`, we should use 2 decimals of precision:
-        let num_decimals = -mark.step_size.log10().round() as usize;
-
-        emath::format_with_decimals_in_range(mark.value, num_decimals..=num_decimals)
+        crate::format::format_axis_tick(mark.value, mark.step_size)
     }
 
     /// Specify axis label.
@@ -208,6 +201,7 @@ pub(super) struct AxisWidget<'a> {
     pub rect: Rect,
     pub transform: Option<PlotTransform>,
     pub steps: Arc<Vec<GridMark>>,
+    pub show_tick_labels: bool,
 }
 
 impl<'a> AxisWidget<'a> {
@@ -219,6 +213,7 @@ impl<'a> AxisWidget<'a> {
             rect,
             transform: None,
             steps: Default::default(),
+            show_tick_labels: true,
         }
     }
 
@@ -233,7 +228,11 @@ impl<'a> AxisWidget<'a> {
         let Some(transform) = self.transform else {
             return (response, 0.0);
         };
-        let tick_labels_thickness = self.add_tick_labels(ui, transform, axis);
+        let tick_labels_thickness = if self.show_tick_labels {
+            self.add_tick_labels(ui, transform, axis)
+        } else {
+            0.0
+        };
 
         if self.hints.label.is_empty() {
             return (response, tick_labels_thickness);
@@ -253,40 +252,8 @@ impl<'a> AxisWidget<'a> {
             TextStyle::Body,
         );
 
-        let text_pos = match self.hints.placement {
-            Placement::LeftBottom => match axis {
-                Axis::X => {
-                    let pos = response.rect.center_bottom();
-                    Pos2 {
-                        x: pos.x - galley.size().x * 0.5,
-                        y: pos.y - galley.size().y * (1.0 + AXIS_LABEL_GAP),
-                    }
-                }
-                Axis::Y => {
-                    let pos = response.rect.left_center();
-                    Pos2 {
-                        x: pos.x - galley.size().y * AXIS_LABEL_GAP,
-                        y: pos.y + galley.size().x * 0.5,
-                    }
-                }
-            },
-            Placement::RightTop => match axis {
-                Axis::X => {
-                    let pos = response.rect.center_top();
-                    Pos2 {
-                        x: pos.x - galley.size().x * 0.5,
-                        y: pos.y + galley.size().y * AXIS_LABEL_GAP,
-                    }
-                }
-                Axis::Y => {
-                    let pos = response.rect.right_center();
-                    Pos2 {
-                        x: pos.x - galley.size().y * (1.0 - AXIS_LABEL_GAP),
-                        y: pos.y + galley.size().x * 0.5,
-                    }
-                }
-            },
-        };
+        let text_pos =
+            axis_title_position(response.rect, self.hints.placement, axis, galley.size());
         let axis_label_thickness = galley.size().y * (1.0 + AXIS_LABEL_GAP);
         let angle = match axis {
             Axis::X => 0.0,
@@ -390,5 +357,42 @@ impl<'a> AxisWidget<'a> {
             }
         }
         thickness
+    }
+}
+
+fn axis_title_position(rect: Rect, placement: Placement, axis: Axis, galley_size: Vec2) -> Pos2 {
+    match placement {
+        Placement::LeftBottom => match axis {
+            Axis::X => {
+                let pos = rect.center_bottom();
+                Pos2 {
+                    x: pos.x - galley_size.x * 0.5,
+                    y: pos.y - galley_size.y * (1.0 + AXIS_LABEL_GAP),
+                }
+            }
+            Axis::Y => {
+                let pos = rect.left_center();
+                Pos2 {
+                    x: pos.x - galley_size.y * AXIS_LABEL_GAP,
+                    y: pos.y + galley_size.x * 0.5,
+                }
+            }
+        },
+        Placement::RightTop => match axis {
+            Axis::X => {
+                let pos = rect.center_top();
+                Pos2 {
+                    x: pos.x - galley_size.x * 0.5,
+                    y: pos.y + galley_size.y * AXIS_LABEL_GAP,
+                }
+            }
+            Axis::Y => {
+                let pos = rect.right_center();
+                Pos2 {
+                    x: pos.x - galley_size.y * (1.0 - AXIS_LABEL_GAP),
+                    y: pos.y + galley_size.x * 0.5,
+                }
+            }
+        },
     }
 }

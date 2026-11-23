@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test pure math algebra.
 use pure_math::pure_math::algebra::group::{
     Permutation, Zn, generate_right_coset, is_normal_subgroup, is_subgroup,
 };

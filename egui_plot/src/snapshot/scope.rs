@@ -146,6 +146,7 @@ fn apply_snapshot_to_memory_and_access(
     mem.clamp_grid = snap.clamp_grid;
     mem.show_grid = Vec2b::new(snap.show_grid[0], snap.show_grid[1]);
     mem.transform.set_log_axis(Vec2b::new(mem.log_x, mem.log_y));
+    mem.runtime_cache = crate::runtime_cache::PlotRuntimeCache::default();
 
     if params.allow_bounds_persist {
         if let Some(saved_bounds) = snap.bounds.filter(|b| b.is_valid() && b.is_finite()) {
@@ -175,8 +176,6 @@ fn apply_snapshot_to_memory_and_access(
         access.custom_fit_formula = snap.custom_fit_formula.clone();
         access.custom_fit_seeds_text = snap.custom_fit_seeds_text.clone();
         access.custom_fit_error = None;
-        access.cached_fit = None;
-        access.cached_pois = None;
         access.log_x = snap.log_x;
         access.log_y = snap.log_y;
         access.grid_density = mem.grid_density;
@@ -194,6 +193,7 @@ pub(crate) struct AfterShowSyncParams<'a> {
     pub has_data_aspect: bool,
     pub allow_bounds_persist: bool,
     pub allow_2d_analysis: bool,
+    pub scene_3d_mode: bool,
 }
 
 pub(crate) fn sync_plot_after_show(
@@ -211,7 +211,7 @@ pub(crate) fn sync_plot_after_show(
         return;
     };
 
-    let snap = PlotOverlaySnapshot::capture(
+    let mut snap = PlotOverlaySnapshot::capture(
         mem,
         access,
         params.default_auto_bounds,
@@ -220,6 +220,11 @@ pub(crate) fn sync_plot_after_show(
         params.allow_bounds_persist,
         params.allow_2d_analysis,
     );
+    if params.scene_3d_mode {
+        snap.log_x = false;
+        snap.log_y = false;
+        snap.show_grid = [true, true];
+    }
     ctx.data_mut(|d| {
         let store: &mut ScopePlotStore = d.get_temp_mut_or_default(scope_store_id(active.scope_id));
         if snap.is_default() {

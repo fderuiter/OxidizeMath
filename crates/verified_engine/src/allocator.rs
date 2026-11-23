@@ -3,18 +3,36 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use verified_engine_macros::runtime_violation;
 
-#[allow(missing_docs)]
+/// Global allocator wrapper enforcing NASA Power of 10 Rule 3 (no post-initialization heap
+/// allocation inside verified execution regions).
+///
+/// When installed via `#[global_allocator]` and both [`MEMORY_LOCK`] and
+/// [`crate::metrics::is_verification_enabled()`] are active, any `alloc`, `alloc_zeroed`, or
+/// `realloc` call emits a structured `FATAL` JSON payload and aborts the process.
 pub struct VerifiedAllocator;
 
-#[allow(missing_docs)]
+/// Process-wide atomic flag indicating whether dynamic heap allocations are locked.
 pub static MEMORY_LOCK: AtomicBool = AtomicBool::new(false);
 
-#[allow(missing_docs)]
+/// Engages the global allocation lock (`MEMORY_LOCK = true`) using sequentially consistent ordering.
+///
+/// # Example
+/// ```
+/// use std::sync::atomic::Ordering;
+/// use verified_engine::allocator::{MEMORY_LOCK, lock_allocations, unlock_allocations};
+/// use verified_engine::metrics::is_verification_enabled;
+///
+/// assert!(!is_verification_enabled());
+/// lock_allocations();
+/// assert!(MEMORY_LOCK.load(Ordering::SeqCst));
+/// unlock_allocations();
+/// assert!(!MEMORY_LOCK.load(Ordering::SeqCst));
+/// ```
 pub fn lock_allocations() {
     MEMORY_LOCK.store(true, Ordering::SeqCst);
 }
 
-#[allow(missing_docs)]
+/// Releases the global allocation lock (`MEMORY_LOCK = false`) using sequentially consistent ordering.
 pub fn unlock_allocations() {
     MEMORY_LOCK.store(false, Ordering::SeqCst);
 }

@@ -99,11 +99,13 @@ impl VolumetricSplatWorkspace {
         };
         let mut counts = DensityActionCounts::default();
         let len = self.scene.gaussians.len().min(self.grad_magnitudes.len());
-        for i in 0..len {
-            let g = &self.scene.gaussians[i];
+        for (g, &grad) in self.scene.gaussians[..len]
+            .iter()
+            .zip(&self.grad_magnitudes[..len])
+        {
             let max_s = g.scale.x.max(g.scale.y).max(g.scale.z) * safe_scale;
             match determine_density_action(
-                self.grad_magnitudes[i],
+                grad,
                 max_s,
                 g.opacity,
                 GRAD_THRESHOLD,

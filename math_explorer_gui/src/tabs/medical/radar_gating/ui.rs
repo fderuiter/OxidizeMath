@@ -52,6 +52,19 @@ fn render_side_controls(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
     } else if rf_changed {
         tool.pipeline.refresh_spectra_only(&tool.state);
     }
+
+    let is_interlocked = tool.pipeline.gating.state() == BeamState::SafetyInterlock;
+    if is_interlocked {
+        if !tool.interlock_notified {
+            tool.interlock_notified = true;
+            crate::audio::notify_solver_diverged();
+        }
+    } else {
+        tool.interlock_notified = false;
+    }
+    ui.separator();
+    let frame = tool.sonification_frame();
+    crate::audio::render_sonification_panel(ui, "radar_gating", &frame, is_interlocked);
 }
 
 fn render_transport_and_status(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
@@ -70,7 +83,7 @@ fn render_transport_and_status(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
         Some(PlaybackAction::Reset) => {
             tool.reset_simulation();
         }
-        None => {}
+        Some(PlaybackAction::StepBack | PlaybackAction::ScrubTo(_)) | None => {}
     }
 
     let palette = SemanticPalette::from_visuals(ui.visuals());
