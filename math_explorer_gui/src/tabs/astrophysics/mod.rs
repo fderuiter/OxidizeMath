@@ -1,6 +1,6 @@
-// @explorer_feature = "physics"
-// @explorer_order = 16
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use math_explorer::physics::astrophysics::HaloProfile;
 
@@ -130,6 +130,14 @@ impl ExplorerTab for AstrophysicsTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "astrophysics",
+        order: 16,
+        build: || Box::new(AstrophysicsTab::default()),
     }
 }
 
