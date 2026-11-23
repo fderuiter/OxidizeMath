@@ -1,4 +1,4 @@
-# ADR 0038: Potential Flow Iso-$\psi$ Contours, Stagnation Detection, and `RungeKutta4` Dye Tracer Coupling
+# ADR 0039: Potential Flow Iso-$\psi$ Contours, Stagnation Detection, and `RungeKutta4` Dye Tracer Coupling
 
 ## Status
 Accepted (extends [ADR 0016](0016-ode-multi-solver-comparative-overlays.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), and [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md))

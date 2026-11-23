@@ -390,11 +390,19 @@ pub fn get_starter_cards_for_domain(
     cards
 }
 
+#[path = "starter_gallery/challenges.rs"]
+pub mod challenges;
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
-pub use root_host::show_starter_gallery_overlay;
+pub use challenges::{
+    challenge_matches_domain, find_challenge_metadata, get_challenge_cards_for_domain,
+    ChallengeCard, ChallengeMetadata, GallerySelection,
+};
 pub(crate) use root_host::{
     begin_root_starter_gallery_scope, flush_deferred_starter_galleries, try_defer_starter_gallery,
+};
+pub use root_host::{
+    show_starter_gallery_overlay, show_starter_gallery_with_challenges, StarterGalleryTab,
 };
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ mod tests {
         analysis::{bernoulli_constant, reynolds_number, shear_stress},
         conservation::{
             Euler as FluidEuler, MomentumEquation, NavierStokes, continuity_divergence,
-            material_derivative_scalar, navier_stokes_time_derivative,
+            material_derivative_scalar,
         },
         regimes::{FlatPlateClassifier, FlowClassifier, FlowRegime, PipeFlowClassifier},
         solver::FluidParticleSystem,
@@ -119,12 +119,13 @@ mod tests {
         let lap_vel = Vector3::zeros();
         let g = Vector3::zeros();
 
-        let accel = navier_stokes_time_derivative(&props, &state, &vel_grad, p_grad, lap_vel, g);
+        let gradients = SpatialGradients::new(vel_grad, p_grad, lap_vel);
+        let accel = NavierStokes.acceleration(&props, &state, &gradients, g);
         assert_eq!(accel, Vector3::zeros());
 
         let p_grad_x = Vector3::new(2.0, 0.0, 0.0);
-        let accel_p =
-            navier_stokes_time_derivative(&props, &state, &vel_grad, p_grad_x, lap_vel, g);
+        let gradients_p = SpatialGradients::new(vel_grad, p_grad_x, lap_vel);
+        let accel_p = NavierStokes.acceleration(&props, &state, &gradients_p, g);
         assert!((accel_p.x - (-2.0)).abs() < math_commons::registry::TOLERANCE_STANDARD);
     }
 

@@ -34,10 +34,6 @@ pub const SIGMA_MAX: f64 = 1.0;
 /// Default Gaussian packet width $\sigma$.
 pub const DEFAULT_SIGMA: f64 = 0.5;
 
-pub(super) fn finite_or(val: f64, fallback: f64) -> f64 {
-    if val.is_finite() { val } else { fallback }
-}
-
 /// Minimum barrier height $V_0$.
 pub const V0_MIN: f64 = 0.0;
 /// Maximum barrier height $V_0$.

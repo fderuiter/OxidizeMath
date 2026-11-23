@@ -124,6 +124,14 @@ allowlist = [
     "docs/adr/0036-delete-simulation-model-traits-and-physics-adapters.md",
     "docs/adr/0036-harden-ast-and-doctest-policy-audits.md",
     "docs/adr/0036-scoped-ode-sandboxes-and-extended-ast-grammar.md",
+    "docs/adr/0037-consolidate-medical-physics-kernels.md",
+    "docs/adr/0037-consolidate-optimizer-softmax-and-attention-kernels.md",
+    "docs/adr/0037-glicko2-frozen-period-tournament-simulator.md",
+    "docs/adr/0037-remove-vfs-codegen-and-reject-wasm-list-dir.md",
+    "docs/adr/0037-retire-physics-compatibility-shims.md",
+    "docs/adr/0038-federated-inverse-challenges-and-hud.md",
+    "docs/adr/0038-prime-exponent-fractran-vm-and-minsky-gui.md",
+    "docs/adr/0038-watertight-3d-stl-and-ply-exports.md",
 ]
 
 [[unused_dependencies]]
