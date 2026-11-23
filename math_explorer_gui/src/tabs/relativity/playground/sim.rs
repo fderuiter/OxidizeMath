@@ -1,20 +1,22 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-//! Zero-allocation RK4 trajectory integration, Flamm/wormhole embeddings, and twin clock math.
+//! Zero-allocation RK4 trajectory integration, normalized photon launch ($e = 1$),
+//! and twin worldline sampling for [`GeodesicPlaygroundTool`].
 
-use std::f64::consts::{FRAC_PI_2, TAU};
+use std::f64::consts::FRAC_PI_2;
 
 use math_explorer::nalgebra::SVector;
 use math_explorer::physics::high_energy::{
-    combined_clock_rate, effective_potential, flamm_paraboloid_z, GeodesicKind,
-    KerrEquatorialMetric, MorrisThorneWormhole, SchwarzschildBlackHole, C,
+    KerrEquatorialMetric, MorrisThorneWormhole, SchwarzschildBlackHole,
 };
-use math_explorer::pure_math::analysis::ode::{ArrayState, RungeKutta4};
-use math_explorer::pure_math::tensor::{GeodesicState, GeodesicStepStatus, GeodesicSystem};
+use math_explorer::pure_math::analysis::ode::{ArrayState, OdeSystem, RungeKutta4};
+use math_explorer::pure_math::tensor::{
+    GeodesicState, GeodesicStepStatus, GeodesicSystem, StaticMetric,
+};
 
 use super::{GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset};
 
-/// Fixed upper bound on stored trajectory samples (pre-allocated once at tool startup).
+/// Fixed upper bound on RK4 steps per trajectory (`samples` reserves `MAX_TRAJECTORY_SAMPLES + 8`).
 pub const MAX_TRAJECTORY_SAMPLES: usize = 720;
 
 /// Single integrated worldline sample with 3D embedding coordinates and clock readouts.
@@ -36,71 +38,145 @@ pub struct TrajectorySample {
     pub metric_norm: f64,
     /// Instantaneous proper-to-coordinate clock rate $d\tau / dt$.
     pub clock_rate: f64,
-    /// Instantaneous gravitational dilation $\sqrt{1 - R_s/r}$ (1.0 for zero-tidal wormhole).
+    /// Instantaneous gravitational/lapse dilation factor.
     pub grav_dilation: f64,
     /// Instantaneous local Lorentz factor $\gamma(v)$.
     pub lorentz_gamma: f64,
 }
 
-impl GeodesicPlaygroundTool {
-    pub(super) fn clamp_state_in_place(&mut self) {
-        let s = &mut self.state;
-        s.scale_radius = if s.scale_radius.is_finite() {
-            s.scale_radius.clamp(0.5, 5.0)
-        } else {
-            2.0
-        };
-        s.spin_chi = if s.spin_chi.is_finite() {
-            s.spin_chi.clamp(-0.92, 0.92)
-        } else {
-            0.65
-        };
-        let min_r = match s.spacetime {
-            SpacetimePreset::Schwarzschild | SpacetimePreset::KerrEquatorial => {
-                1.15 * s.scale_radius
+#[derive(Clone, Copy)]
+pub(super) struct Sample4dMeta<'a> {
+    pub(super) mode: GeodesicMode,
+    pub(super) bh: Option<&'a SchwarzschildBlackHole>,
+    pub(super) throat_r: f64,
+    pub(super) spin_a: f64,
+}
+
+/// Refines a pre-horizon RK4 halt using stack-allocated micro-steps so capture lands near $1.02 r_+$.
+pub(crate) fn refine_halt_4d<M>(
+    sys: &GeodesicSystem<M, 4>,
+    solver: &mut RungeKutta4<ArrayState<8>>,
+    lambda: f64,
+    state: &mut ArrayState<8>,
+    dt: f64,
+) -> (bool, f64)
+where
+    M: StaticMetric<4>,
+    GeodesicSystem<M, 4>: OdeSystem<ArrayState<8>>,
+{
+    let sub_dt = dt * 0.1;
+    let mut cur_lambda = lambda;
+    let mut advanced_any = false;
+    for _ in 0..10 {
+        let prev = *state;
+        if let GeodesicStepStatus::Advanced { .. } = sys.step_rk4(solver, cur_lambda, state, sub_dt)
+        {
+            let pos = SVector::<f64, 4>::new(state.0[0], state.0[1], FRAC_PI_2, state.0[3]);
+            if sys.metric().christoffel_at(&pos).is_err() {
+                *state = prev;
+                break;
             }
-            SpacetimePreset::MorrisThorneWormhole => -12.0,
-        };
-        s.initial_radius = if s.initial_radius.is_finite() {
-            s.initial_radius.clamp(min_r, 18.0)
+            cur_lambda += sub_dt;
+            advanced_any = true;
         } else {
-            10.0
-        };
-        s.impact_or_momentum = if s.impact_or_momentum.is_finite() {
-            s.impact_or_momentum.clamp(-14.0, 14.0)
+            break;
+        }
+    }
+    (advanced_any, cur_lambda)
+}
+
+impl GeodesicPlaygroundTool {
+    pub(super) fn min_launch_radius(&self) -> f64 {
+        let s = &self.state;
+        match s.spacetime {
+            SpacetimePreset::Schwarzschild => 1.15 * s.scale_radius,
+            SpacetimePreset::KerrEquatorial => {
+                let a = 0.5 * s.scale_radius * s.spin_chi.clamp(-0.95, 0.95);
+                let r_plus = KerrEquatorialMetric::new(s.scale_radius, a)
+                    .map_or(s.scale_radius, |k| k.outer_horizon_radius());
+                1.15 * r_plus
+            }
+            SpacetimePreset::CustomRadialLapse => {
+                (1.15 * self.sandbox.estimate_lapse_horizon(s.scale_radius)).max(0.5)
+            }
+            SpacetimePreset::MorrisThorneWormhole | SpacetimePreset::CustomWormholeProfile => -12.0,
+        }
+    }
+
+    pub(super) fn clamp_state_in_place(&mut self) {
+        self.state.scale_radius = finite_clamp(self.state.scale_radius, 0.5, 5.0, 2.0);
+        self.state.spin_chi = finite_clamp(self.state.spin_chi, -0.95, 0.95, 0.65);
+        let min_r = self.min_launch_radius();
+        let max_r = if self.state.spacetime.is_wormhole() {
+            12.0
         } else {
-            5.35
+            18.0
         };
-        s.radial_bias = if s.radial_bias.is_finite() {
-            s.radial_bias.clamp(-0.98, 0.98)
-        } else {
-            -0.82
-        };
-        s.step_size = if s.step_size.is_finite() {
-            s.step_size.clamp(0.005, 0.12)
-        } else {
-            0.04
-        };
+        let s = &mut self.state;
+        s.initial_radius =
+            finite_clamp(s.initial_radius, min_r, max_r, 10.0_f64.clamp(min_r, max_r));
+        s.impact_or_momentum = finite_clamp(s.impact_or_momentum, -14.0, 14.0, 5.35);
+        s.twin_delta_b = finite_clamp(s.twin_delta_b, -2.0, 2.0, 0.0);
+        s.radial_bias = finite_clamp(s.radial_bias, -0.98, 0.98, -0.82);
+        s.step_size = finite_clamp(s.step_size, 0.005, 0.12, 0.04);
         s.steps_per_frame = s.steps_per_frame.clamp(1, 32);
         if !s.camera.is_valid() {
             s.camera = crate::camera::Camera3D::new(0.48, -0.62, 1.0);
         }
     }
 
-    /// Recomputes the geodesic buffer up to `step_budget` RK4 steps without reallocating `samples`.
+    /// Recomputes primary and twin geodesic buffers up to `step_budget` RK4 steps with zero heap allocations.
     pub fn rebuild_trajectory(&mut self, step_budget: usize) {
         self.samples.clear();
+        self.twin_samples.clear();
         self.halted_near_singularity = false;
-        let count = step_budget.clamp(2, MAX_TRAJECTORY_SAMPLES - 1);
-        match self.state.spacetime {
-            SpacetimePreset::Schwarzschild => self.integrate_schwarzschild(count),
-            SpacetimePreset::KerrEquatorial => self.integrate_kerr(count),
-            SpacetimePreset::MorrisThorneWormhole => self.integrate_wormhole(count),
-        }
-        if !self.samples.is_empty() {
-            self.state.scrub_index = self.state.scrub_index.min(self.samples.len() - 1);
+        self.twin_halted_near_singularity = false;
+        let count = step_budget.clamp(2, MAX_TRAJECTORY_SAMPLES);
+        let b0 = self.state.impact_or_momentum;
+        let mut primary = core::mem::take(&mut self.samples);
+        let (halted, e_val) = self.integrate_single_worldline(count, b0, &mut primary);
+        self.samples = primary;
+        self.halted_near_singularity = halted;
+        self.launch_energy = e_val;
+
+        if self.state.twin_delta_b.abs() > 1e-9 {
+            let b_twin = (b0 + self.state.twin_delta_b).clamp(-16.0, 16.0);
+            let mut twin = core::mem::take(&mut self.twin_samples);
+            let (t_halted, t_e) = self.integrate_single_worldline(count, b_twin, &mut twin);
+            self.twin_samples = twin;
+            self.twin_halted_near_singularity = t_halted;
+            self.twin_launch_energy = t_e;
         } else {
-            self.state.scrub_index = 0;
+            self.twin_launch_energy = e_val;
+        }
+
+        self.state.scrub_index = if self.samples.is_empty() {
+            0
+        } else {
+            self.state.scrub_index.min(self.samples.len() - 1)
+        };
+    }
+
+    fn integrate_single_worldline(
+        &self,
+        steps: usize,
+        impact_val: f64,
+        out: &mut Vec<TrajectorySample>,
+    ) -> (bool, f64) {
+        match self.state.spacetime {
+            SpacetimePreset::Schwarzschild => {
+                self.integrate_schwarzschild_into(steps, impact_val, out)
+            }
+            SpacetimePreset::KerrEquatorial => self.integrate_kerr_into(steps, impact_val, out),
+            SpacetimePreset::MorrisThorneWormhole => {
+                self.integrate_wormhole_into(steps, impact_val, out)
+            }
+            SpacetimePreset::CustomRadialLapse => {
+                self.integrate_custom_lapse_into(steps, impact_val, out)
+            }
+            SpacetimePreset::CustomWormholeProfile => {
+                self.integrate_custom_wormhole_into(steps, impact_val, out)
+            }
         }
     }
 
@@ -110,104 +186,145 @@ impl GeodesicPlaygroundTool {
             self.rebuild_trajectory(260);
         }
         let current_len = self.samples.len();
-        if self.halted_near_singularity || current_len >= MAX_TRAJECTORY_SAMPLES {
+        if self.halted_near_singularity || current_len > MAX_TRAJECTORY_SAMPLES {
             self.state.is_playing = false;
             return;
         }
-        let target = (current_len + extra_steps).min(MAX_TRAJECTORY_SAMPLES - 1);
-        self.rebuild_trajectory(target);
+        self.rebuild_trajectory((current_len + extra_steps).min(MAX_TRAJECTORY_SAMPLES));
         self.state.scrub_index = self.samples.len().saturating_sub(1);
     }
 
-    fn integrate_schwarzschild(&mut self, steps: usize) {
-        let Ok(bh) = SchwarzschildBlackHole::from_schwarzschild_radius(self.state.scale_radius)
-        else {
-            return;
-        };
+    fn integrate_schwarzschild_into(
+        &self,
+        steps: usize,
+        impact_val: f64,
+        out: &mut Vec<TrajectorySample>,
+    ) -> (bool, f64) {
         let rs = self.state.scale_radius;
-        let r0 = self.state.initial_radius.max(1.15 * rs);
-        let (pos0, vel0) = self.initial_4d_state(rs, 0.0, r0);
-        let sys = GeodesicSystem::new(bh);
-        let mut state = ArrayState::<8>::from_pos_vel(&pos0, &vel0);
-        let mut solver = RungeKutta4::new(&state);
-        let dt = self.state.step_size;
-
-        let norm0 = sys.metric_norm(&state).unwrap_or(0.0);
-        self.push_4d_sample(&bh, rs, 0.0, &state, norm0);
-        for step in 0..steps {
-            let lambda = (step as f64) * dt;
-            match sys.step_rk4(&mut solver, lambda, &mut state, dt) {
-                GeodesicStepStatus::Advanced { metric_norm } => {
-                    if state.0[1] > 28.0 {
-                        self.push_4d_sample(&bh, rs, lambda + dt, &state, metric_norm);
-                        break;
-                    }
-                    self.push_4d_sample(&bh, rs, lambda + dt, &state, metric_norm);
-                }
-                GeodesicStepStatus::HaltedSingularity => {
-                    self.halted_near_singularity = true;
-                    break;
-                }
-            }
-        }
+        let Ok(bh) = SchwarzschildBlackHole::from_schwarzschild_radius(rs) else {
+            return (false, 1.0);
+        };
+        let r0 = self.state.initial_radius.max(1.05 * rs);
+        let (pos0, vel0, e_val) = self.initial_4d_state(rs, 0.0, r0, impact_val);
+        let meta = Sample4dMeta {
+            mode: self.state.mode,
+            bh: Some(&bh),
+            throat_r: rs,
+            spin_a: 0.0,
+        };
+        let halted = Self::run_4d_rk4(bh, pos0, vel0, self.state.step_size, steps, meta, out);
+        (halted, e_val)
     }
 
-    fn integrate_kerr(&mut self, steps: usize) {
+    fn integrate_kerr_into(
+        &self,
+        steps: usize,
+        impact_val: f64,
+        out: &mut Vec<TrajectorySample>,
+    ) -> (bool, f64) {
         let rs = self.state.scale_radius;
-        let a = 0.5 * rs * self.state.spin_chi;
+        let a = 0.5 * rs * self.state.spin_chi.clamp(-0.95, 0.95);
         let Ok(kerr) = KerrEquatorialMetric::new(rs, a) else {
-            return;
+            return (false, 1.0);
         };
-        let Ok(bh_ref) = SchwarzschildBlackHole::from_schwarzschild_radius(rs) else {
-            return;
+        let r_plus = kerr.outer_horizon_radius();
+        let r0 = self.state.initial_radius.max(1.05 * r_plus);
+        let (pos0, vel0, e_val) = self.initial_4d_state(rs, a, r0, impact_val);
+        let meta = Sample4dMeta {
+            mode: self.state.mode,
+            bh: None,
+            throat_r: r_plus,
+            spin_a: a,
         };
-        let r0 = self
-            .state
-            .initial_radius
-            .max(1.15 * kerr.outer_horizon_radius());
-        let (pos0, vel0) = self.initial_4d_state(rs, a, r0);
-        let sys = GeodesicSystem::new(kerr);
+        let halted = Self::run_4d_rk4(kerr, pos0, vel0, self.state.step_size, steps, meta, out);
+        (halted, e_val)
+    }
+
+    fn run_4d_rk4<M>(
+        metric: M,
+        pos0: SVector<f64, 4>,
+        vel0: SVector<f64, 4>,
+        dt: f64,
+        steps: usize,
+        meta: Sample4dMeta<'_>,
+        out: &mut Vec<TrajectorySample>,
+    ) -> bool
+    where
+        M: StaticMetric<4>,
+        GeodesicSystem<M, 4>: OdeSystem<ArrayState<8>>,
+    {
+        let sys = GeodesicSystem::new(metric);
         let mut state = ArrayState::<8>::from_pos_vel(&pos0, &vel0);
         let mut solver = RungeKutta4::new(&state);
-        let dt = self.state.step_size;
-
         let norm0 = sys.metric_norm(&state).unwrap_or(0.0);
-        self.push_4d_sample(&bh_ref, rs, 0.0, &state, norm0);
+        Self::push_4d_sample(out, meta, 0.0, &state, norm0);
+
         for step in 0..steps {
             let lambda = (step as f64) * dt;
             match sys.step_rk4(&mut solver, lambda, &mut state, dt) {
                 GeodesicStepStatus::Advanced { metric_norm } => {
-                    self.push_4d_sample(&bh_ref, rs, lambda + dt, &state, metric_norm);
+                    Self::push_4d_sample(out, meta, lambda + dt, &state, metric_norm);
                     if state.0[1] > 28.0 {
-                        break;
+                        return false;
                     }
                 }
                 GeodesicStepStatus::HaltedSingularity => {
-                    self.halted_near_singularity = true;
-                    break;
+                    let (did_adv, sub_lam) =
+                        refine_halt_4d(&sys, &mut solver, lambda, &mut state, dt);
+                    if did_adv {
+                        if let Ok(n_end) = sys.metric_norm(&state) {
+                            Self::push_4d_sample(out, meta, sub_lam, &state, n_end);
+                        }
+                    }
+                    return true;
                 }
+            }
+        }
+        false
+    }
+
+    pub(super) fn wormhole_initial_vel(
+        mode: GeodesicMode,
+        r2: f64,
+        impact_val: f64,
+        radial_bias: f64,
+    ) -> (f64, f64, f64, f64) {
+        let safe_r2 = r2.max(0.01);
+        let sign = if radial_bias > 0.0 { 1.0 } else { -1.0 };
+        match mode {
+            GeodesicMode::NullPhoton => {
+                let max_b = safe_r2.sqrt();
+                let ell = impact_val.clamp(-max_b, max_b);
+                let uphi = ell / safe_r2;
+                let ul = sign * (1.0 - (ell * ell) / safe_r2).max(0.0).sqrt();
+                (1.0, ul, uphi, 1.0)
+            }
+            GeodesicMode::TimelikeParticle => {
+                let uphi = impact_val / safe_r2;
+                let e =
+                    (1.0 + (impact_val * impact_val) / safe_r2 + radial_bias * radial_bias).sqrt();
+                (e, sign * radial_bias.abs(), uphi, e)
             }
         }
     }
 
-    fn integrate_wormhole(&mut self, steps: usize) {
+    fn integrate_wormhole_into(
+        &self,
+        steps: usize,
+        impact_val: f64,
+        out: &mut Vec<TrajectorySample>,
+    ) -> (bool, f64) {
         let b0 = self.state.scale_radius;
         let Ok(wh) = MorrisThorneWormhole::new(b0) else {
-            return;
+            return (false, 1.0);
         };
         let l0 = self.state.initial_radius;
-        let kappa = match self.state.mode {
-            GeodesicMode::NullPhoton => 0.0,
-            GeodesicMode::TimelikeParticle => 1.0,
-        };
-        let r2 = b0 * b0 + l0 * l0;
-        let ell = self.state.impact_or_momentum;
-        let uphi = ell / r2;
-        let e_sq = kappa + (ell * ell) / r2 + self.state.radial_bias * self.state.radial_bias;
-        let ut = e_sq.sqrt();
-        let ul =
-            self.state.radial_bias.signum() * (e_sq - kappa - (ell * ell) / r2).max(0.0).sqrt();
-
+        let (ut, ul, uphi, e_val) = Self::wormhole_initial_vel(
+            self.state.mode,
+            b0 * b0 + l0 * l0,
+            impact_val,
+            self.state.radial_bias,
+        );
         let sys = GeodesicSystem::new(wh);
         let mut state = ArrayState::<6>::from_pos_vel(
             &SVector::<f64, 3>::new(0.0, l0, 0.0),
@@ -215,24 +332,29 @@ impl GeodesicPlaygroundTool {
         );
         let mut solver = RungeKutta4::new(&state);
         let dt = self.state.step_size;
+        let norm0 = sys.metric_norm(&state).unwrap_or(0.0);
+        Self::push_wormhole_sample(out, self.state.mode, &wh, 0.0, &state, norm0);
 
-        let norm0 = sys.metric_norm(&state).unwrap_or(-kappa);
-        self.push_wormhole_sample(&wh, 0.0, &state, norm0);
         for step in 0..steps {
             let lambda = (step as f64) * dt;
             match sys.step_rk4(&mut solver, lambda, &mut state, dt) {
                 GeodesicStepStatus::Advanced { metric_norm } => {
-                    self.push_wormhole_sample(&wh, lambda + dt, &state, metric_norm);
+                    Self::push_wormhole_sample(
+                        out,
+                        self.state.mode,
+                        &wh,
+                        lambda + dt,
+                        &state,
+                        metric_norm,
+                    );
                     if state.0[1].abs() > 20.0 {
-                        break;
+                        return (false, e_val);
                     }
                 }
-                GeodesicStepStatus::HaltedSingularity => {
-                    self.halted_near_singularity = true;
-                    break;
-                }
+                GeodesicStepStatus::HaltedSingularity => return (true, e_val),
             }
         }
+        (false, e_val)
     }
 
     fn initial_4d_state(
@@ -240,197 +362,61 @@ impl GeodesicPlaygroundTool {
         rs: f64,
         spin_a: f64,
         r0: f64,
-    ) -> (SVector<f64, 4>, SVector<f64, 4>) {
-        let kappa = match self.state.mode {
-            GeodesicMode::NullPhoton => 0.0,
-            GeodesicMode::TimelikeParticle => 1.0,
-        };
+        impact_val: f64,
+    ) -> (SVector<f64, 4>, SVector<f64, 4>, f64) {
         let delta = (r0 * r0 - rs * r0 + spin_a * spin_a).max(1e-6);
-        let g00 = -(1.0 - rs / r0);
+        let sqrt_delta = delta.sqrt();
         let g03 = -(spin_a * rs) / r0;
         let g11 = (r0 * r0) / delta;
         let g33 = r0 * r0 + spin_a * spin_a + (spin_a * spin_a * rs) / r0;
 
-        let uphi = self.state.impact_or_momentum / (r0 * r0);
-        let ur = self.state.radial_bias * 0.45;
-        // Solve g00 * ut^2 + 2 * g03 * ut * uphi + (g11 * ur^2 + g33 * uphi^2 + kappa) = 0
-        let spatial = g11 * ur * ur + g33 * uphi * uphi + kappa;
-        let ut = if g00 < -1e-6 {
-            let b_quad = 2.0 * g03 * uphi;
-            let disc = (b_quad * b_quad - 4.0 * g00 * spatial).max(0.0);
-            (-b_quad - disc.sqrt()) / (2.0 * g00)
-        } else {
-            1.5
-        };
-        (
-            SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, 0.0),
-            SVector::<f64, 4>::new(ut.max(0.1), ur, 0.0, uphi),
-        )
-    }
-
-    fn push_4d_sample(
-        &mut self,
-        bh: &SchwarzschildBlackHole,
-        rs: f64,
-        proper_tau: f64,
-        state: &ArrayState<8>,
-        metric_norm: f64,
-    ) {
-        if self.samples.len() >= MAX_TRAJECTORY_SAMPLES {
-            return;
-        }
-        let r = state.0[1].max(rs);
-        let phi = state.0[3];
-        let z = flamm_paraboloid_z(rs, r).unwrap_or(0.0);
-        let (sin_p, cos_p) = phi.sin_cos();
-        let grav = bh
-            .gravitational_time_dilation(r.max(1.001 * rs))
-            .unwrap_or(0.0);
-        let ut = state.0[4].max(1e-6);
-        let dtau_dt = match self.state.mode {
-            GeodesicMode::NullPhoton => 0.0,
-            GeodesicMode::TimelikeParticle => (1.0 / ut).clamp(0.0, 1.0),
-        };
-        let beta_local = if grav > 1e-6 && dtau_dt > 0.0 {
-            let ratio = (dtau_dt / grav).clamp(0.0, 1.0);
-            (1.0 - ratio * ratio).max(0.0).sqrt().min(0.999)
-        } else {
-            0.0
-        };
-        let rate = combined_clock_rate(bh, r.max(1.001 * rs), beta_local * C).unwrap_or(dtau_dt);
-        let gamma = if beta_local > 0.0 {
-            1.0 / (1.0 - beta_local * beta_local).sqrt()
-        } else {
-            1.0
-        };
-
-        self.samples.push(TrajectorySample {
-            coord_ct: state.0[0],
-            proper_tau,
-            radial_coord: r,
-            phi,
-            radial_vel: state.0[5],
-            embed_xyz: [r * cos_p, r * sin_p, z],
-            metric_norm,
-            clock_rate: rate,
-            grav_dilation: grav,
-            lorentz_gamma: gamma,
-        });
-    }
-
-    fn push_wormhole_sample(
-        &mut self,
-        wh: &MorrisThorneWormhole,
-        proper_tau: f64,
-        state: &ArrayState<6>,
-        metric_norm: f64,
-    ) {
-        if self.samples.len() >= MAX_TRAJECTORY_SAMPLES {
-            return;
-        }
-        let l = state.0[1];
-        let phi = state.0[2];
-        let xyz = wh.embedding_xyz(l, phi).unwrap_or([0.0, 0.0, 0.0]);
-        let ut = state.0[3].max(1.0);
-        let clock_rate = match self.state.mode {
-            GeodesicMode::NullPhoton => 0.0,
-            GeodesicMode::TimelikeParticle => (1.0 / ut).clamp(0.0, 1.0),
-        };
-        self.samples.push(TrajectorySample {
-            coord_ct: state.0[0],
-            proper_tau,
-            radial_coord: l,
-            phi,
-            radial_vel: state.0[4],
-            embed_xyz: xyz,
-            metric_norm,
-            clock_rate,
-            grav_dilation: 1.0,
-            lorentz_gamma: ut,
-        });
-    }
-
-    /// Generates projected 2D curves for CSV/PNG/SVG export and `Plot3DViewport` rendering.
-    pub(super) fn collect_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        if self.samples.is_empty() {
-            let mut seeded = Self {
-                state: self.state.clone(),
-                samples: Vec::with_capacity(MAX_TRAJECTORY_SAMPLES),
-                halted_near_singularity: false,
-                last_tick: self.last_tick,
-                revision: self.revision,
-            };
-            seeded.rebuild_trajectory(260);
-            return seeded.collect_export_datasets();
-        }
-        let mut datasets = Vec::with_capacity(3);
-        let limit = self
-            .state
-            .scrub_index
-            .saturating_add(1)
-            .min(self.samples.len());
-        let traj: Vec<[f64; 2]> = self.samples[..limit]
-            .iter()
-            .map(|s| self.state.camera.project(&s.embed_xyz))
-            .collect();
-        datasets.push(("Geodesic Trajectory (Projected)".to_string(), traj));
-
-        let ring = self.reference_ring_projected(self.state.scale_radius, 0.0, 48);
-        datasets.push(("Horizon or Throat Ring".to_string(), ring));
-
-        let veff = self.effective_potential_curve(64);
-        datasets.push(("Effective Potential V_eff(r)".to_string(), veff));
-        datasets
-    }
-
-    pub(super) fn reference_ring_projected(
-        &self,
-        radius: f64,
-        z_height: f64,
-        segments: usize,
-    ) -> Vec<[f64; 2]> {
-        let n = segments.max(12);
-        let mut pts = Vec::with_capacity(n + 1);
-        for i in 0..=n {
-            let angle = TAU * (i as f64) / (n as f64);
-            let (s, c) = angle.sin_cos();
-            pts.push(
-                self.state
-                    .camera
-                    .project(&[radius * c, radius * s, z_height]),
-            );
-        }
-        pts
-    }
-
-    pub(super) fn effective_potential_curve(&self, points: usize) -> Vec<[f64; 2]> {
-        let n = points.max(16);
-        let mut curve = Vec::with_capacity(n);
-        match self.state.spacetime {
-            SpacetimePreset::Schwarzschild | SpacetimePreset::KerrEquatorial => {
-                let rs = self.state.scale_radius;
-                let kind = match self.state.mode {
-                    GeodesicMode::NullPhoton => GeodesicKind::Null,
-                    GeodesicMode::TimelikeParticle => GeodesicKind::Timelike,
+        match self.state.mode {
+            GeodesicMode::NullPhoton => {
+                let mut ell = impact_val;
+                if sqrt_delta - g03 > 1e-9 {
+                    ell = ell.min(g33 / (sqrt_delta - g03));
+                }
+                if sqrt_delta + g03 > 1e-9 {
+                    ell = ell.max(-g33 / (sqrt_delta + g03));
+                }
+                let ut = (g33 - (spin_a * rs / r0) * ell) / delta;
+                let uphi = ((spin_a * rs / r0) + (1.0 - rs / r0) * ell) / delta;
+                let ur_sq = ((delta / (r0 * r0)) * (ut - ell * uphi)).max(0.0);
+                let sign = if self.state.radial_bias > 0.0 {
+                    1.0
+                } else {
+                    -1.0
                 };
-                for i in 0..n {
-                    let r = 1.05 * rs + 16.0 * (i as f64) / ((n - 1) as f64);
-                    if let Ok(v) = effective_potential(rs, r, self.state.impact_or_momentum, kind) {
-                        curve.push([r, v]);
-                    }
-                }
+                (
+                    SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, 0.0),
+                    SVector::<f64, 4>::new(ut.max(1e-4), sign * ur_sq.sqrt(), 0.0, uphi),
+                    1.0,
+                )
             }
-            SpacetimePreset::MorrisThorneWormhole => {
-                if let Ok(wh) = MorrisThorneWormhole::new(self.state.scale_radius) {
-                    for i in 0..n {
-                        let l = -10.0 + 20.0 * (i as f64) / ((n - 1) as f64);
-                        if let Ok(v) = wh.effective_potential(l, self.state.impact_or_momentum) {
-                            curve.push([l, v]);
-                        }
-                    }
-                }
+            GeodesicMode::TimelikeParticle => {
+                let ell = impact_val;
+                let ur = self.state.radial_bias * 0.45;
+                let omega0 = (spin_a * rs) / (r0 * g33);
+                let ut = ((g33 / delta) * (1.0 + (ell * ell) / g33 + g11 * ur * ur))
+                    .max(1e-6)
+                    .sqrt();
+                let e = omega0 * ell + (delta / g33) * ut;
+                let uphi = ((spin_a * rs / r0) * e + (1.0 - rs / r0) * ell) / delta;
+                (
+                    SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, 0.0),
+                    SVector::<f64, 4>::new(ut, ur, 0.0, uphi),
+                    e,
+                )
             }
         }
-        curve
+    }
+}
+
+#[inline]
+fn finite_clamp(val: f64, lo: f64, hi: f64, fallback: f64) -> f64 {
+    if val.is_finite() {
+        val.clamp(lo, hi)
+    } else {
+        fallback
     }
 }

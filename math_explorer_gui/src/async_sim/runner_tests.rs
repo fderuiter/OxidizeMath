@@ -34,6 +34,8 @@ fn test_morphogenesis_runner_offload() {
         d_v: 100.0,
         dt: 0.05,
         high_contrast: false,
+        theme_mode: crate::app::ThemeMode::Dark,
+        heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));
 
     let mut runner = MorphogenesisRunner {
@@ -215,6 +217,7 @@ fn test_mri_runner_offload() {
         current_time: 0.0,
         history: VecDeque::new(),
         max_history: 1000,
+        twin: None,
         step_count: 0,
         rng: oxidize_core::rng::OxidizeRng::default(),
     };
@@ -279,6 +282,7 @@ fn test_physics_and_chaos_runners_step_once() {
         current_time: 0.0,
         history: VecDeque::new(),
         max_history: 100,
+        twin: None,
         step_count: 0,
         rng: oxidize_core::rng::OxidizeRng::default(),
     };
