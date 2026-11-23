@@ -355,6 +355,7 @@ impl MathExplorerApp {
             || self.dragging_quad_axes != (false, false)
             || self.command_palette.is_open
             || self.starter_gallery.is_open
+            || self.show_starter_gallery
             || self.show_help_menu
             || egui::Popup::is_any_open(ctx)
             || ctx.memory(|m| m.top_modal_layer().is_some())
@@ -395,13 +396,6 @@ impl MathExplorerApp {
         });
         if !inside_target {
             ctx.memory_mut(|m| m.surrender_focus(fid));
-        }
-    }
-
-    /// Applies any selection returned by the global command palette to `focused_pane`.
-    pub(super) fn apply_command_palette_selection(&mut self, ctx: &egui::Context) {
-        if let Some(selection) = self.command_palette.show(ctx, &self.tabs) {
-            self.execute_palette_selection(ctx, selection);
         }
     }
 

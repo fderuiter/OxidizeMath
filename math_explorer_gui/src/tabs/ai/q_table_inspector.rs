@@ -415,7 +415,7 @@ inventory::submit! {
         id: "QTableInspectorTool",
         display_name: "Q-Table Inspector",
         domain: "ai",
-        tags: &["q-learning", "temporal difference", "bellman", "value table", "rl"],
+        tags: &["q-learning", "bellman", "temporal difference", "action-value", "reinforcement learning"],
         build: || Box::new(QTableInspectorTool::default()),
     }
 }

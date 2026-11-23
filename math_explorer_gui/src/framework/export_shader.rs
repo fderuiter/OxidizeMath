@@ -114,6 +114,16 @@ impl SimulationFramework {
             .push_target(format, ExportTarget::Clipboard);
     }
 
+    /// Toggles the Theory Context Portal on this framework instance and syncs egui temp state.
+    pub(crate) fn toggle_theory_portal_with_ctx(&mut self, ctx: &egui::Context) {
+        self.show_theory_portal = !self.show_theory_portal;
+        let next = self.show_theory_portal;
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
+        });
+        ctx.request_repaint();
+    }
+
     /// Renders one-click WebGL2 (`#version 300 es`) and Shadertoy (`mainImage`) `.frag` and clipboard
     /// actions when the active tool advertises `caps.shader`.
     pub(super) fn render_shader_export_items(

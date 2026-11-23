@@ -319,7 +319,7 @@ inventory::submit! {
         id: "NeuralNetworkVizTool",
         display_name: "Neural Network Viz",
         domain: "neuroscience",
-        tags: &["spiking", "synapse", "integrate-and-fire", "circuit", "firing"],
+        tags: &["synapse", "coupled neurons", "connectome", "membrane", "spiking"],
         build: || Box::new(NeuralNetworkVizTool::default()),
     }
 }

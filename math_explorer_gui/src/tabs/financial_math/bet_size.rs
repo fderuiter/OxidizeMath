@@ -289,7 +289,7 @@ inventory::submit! {
         id: "BetSizeCalculatorTool",
         display_name: "Bet Size Calculator",
         domain: "financial_math",
-        tags: &["kelly criterion", "fractional kelly", "wager", "risk", "edge"],
+        tags: &["kelly", "kelly criterion", "wagering", "odds", "optimal fraction"],
         build: || Box::new(BetSizeCalculatorTool::default()),
     }
 }

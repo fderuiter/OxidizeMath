@@ -350,7 +350,7 @@ inventory::submit! {
         id: "HodgkinHuxleyTool",
         display_name: "Hodgkin-Huxley Model",
         domain: "neuroscience",
-        tags: &["action potential", "ion channels", "membrane", "squid axon"],
+        tags: &["action potential", "conductance", "ion channel", "membrane", "neuron"],
         build: || Box::new(UnifiedSimTool::<HodgkinHuxleyUnified>::new()),
     }
 }

@@ -106,6 +106,7 @@ pub trait ExplorerTab {
             | "Favoritism"
             | "Game Theory"
             | "Paradox Lab"
+            | "Population Structure"
             | "Traceability Portal" => "Applied Math",
 
             "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
@@ -208,6 +209,7 @@ pub trait ExplorerTab {
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
             "Paradox Lab" => "paradox_lab",
+            "Population Structure" => "cannibalism",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",
@@ -221,6 +223,7 @@ pub trait ExplorerTab {
     }
 
     /// Active inverse `ChallengeMetadata` identifier for `#challenge=<id>` share links.
+    #[cfg(test)]
     fn active_challenge_id(&self) -> Option<&'static str> {
         self.framework().and_then(|fw| fw.active_challenge_id())
     }

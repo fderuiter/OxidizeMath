@@ -170,15 +170,9 @@ pub(crate) fn record_stroke_in_rle(
     let r = (stroke.radius.round() as i32).clamp(0, 16);
     let val = u8::from(stroke.mode == BrushMode::Solid);
 
-    rasterize_disk_stroke(
-        (x0, y0),
-        (x1, y1),
-        r,
-        (LBM_WIDTH, LBM_HEIGHT),
-        |gx, gy| {
-            mask[flatten_2d_index(gx, gy, LBM_WIDTH)] = val;
-        },
-    );
+    rasterize_disk_stroke((x0, y0), (x1, y1), r, (LBM_WIDTH, LBM_HEIGHT), |gx, gy| {
+        mask[flatten_2d_index(gx, gy, LBM_WIDTH)] = val;
+    });
     sculpt_state.rle_mask = encode_rle_mask(&mask);
 }
 

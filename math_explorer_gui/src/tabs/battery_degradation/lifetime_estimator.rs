@@ -169,7 +169,7 @@ inventory::submit! {
         id: "LifetimeEstimatorTool",
         display_name: "Lifetime Estimator",
         domain: "battery_degradation",
-        tags: &["cycle life", "soh", "end-of-life", "battery", "prognostics"],
+        tags: &["battery", "cycle life", "end-of-life", "depth of discharge", "wohler", "longevity"],
         build: || Box::new(LifetimeEstimatorTool::default()),
     }
 }

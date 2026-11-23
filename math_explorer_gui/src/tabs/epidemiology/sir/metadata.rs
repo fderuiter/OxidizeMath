@@ -9,7 +9,7 @@ inventory::submit! {
         id: "SirTool",
         display_name: "SIR Model",
         domain: "epidemiology",
-        tags: &["sir", "kermack", "mckendrick", "epidemic", "compartmental"],
+        tags: &["sir", "seir", "kermack-mckendrick", "compartmental", "r0", "epidemic"],
         build: || Box::new(SirTool::default()),
     }
 }

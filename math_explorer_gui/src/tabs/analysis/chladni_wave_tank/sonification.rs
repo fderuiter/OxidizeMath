@@ -68,8 +68,7 @@ impl ChladniWaveTankTool {
         amplitude: f64,
         impulse: f32,
     ) {
-        self.solver
-            .inject_gaussian_pulse(nx, ny, sigma, amplitude);
+        self.solver.inject_gaussian_pulse(nx, ny, sigma, amplitude);
         if impulse.is_finite() {
             self.audio.pending_impulse = self.audio.pending_impulse.max(impulse.clamp(0.0, 1.0));
         }
@@ -97,8 +96,7 @@ impl ChladniWaveTankTool {
             super::ClampLayout::QuadSymmetry | super::ClampLayout::EdgeMidpoints => 4,
         };
         let total_pins = preset_pins + self.state.custom_clamps.len();
-        let domain_len =
-            base_len / (1.0 + 0.035 * (total_pins as f64)).sqrt();
+        let domain_len = base_len / (1.0 + 0.035 * (total_pins as f64)).sqrt();
         let params = self.pde_params();
         self.audio.latest_frame = chladni_wave_tank_frame(
             &self.audio.top_modes[..self.audio.mode_count],

@@ -224,7 +224,7 @@ inventory::submit! {
         id: "AttentionMapsTool",
         display_name: "Attention Maps",
         domain: "ai",
-        tags: &["transformer", "self-attention", "softmax", "heatmap", "qkv"],
+        tags: &["transformer", "self-attention", "softmax", "query", "key", "heatmap"],
         build: || Box::new(AttentionMapsTool::default()),
     }
 }

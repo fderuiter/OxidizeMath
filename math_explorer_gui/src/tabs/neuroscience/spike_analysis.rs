@@ -376,7 +376,7 @@ inventory::submit! {
         id: "SpikeAnalysisTool",
         display_name: "Spike Train Analysis",
         domain: "neuroscience",
-        tags: &["isi", "interspike", "raster", "firing rate", "electrophysiology"],
+        tags: &["isi", "inter-spike interval", "firing rate", "electrophysiology"],
         build: || Box::new(SpikeAnalysisTool::default()),
     }
 }

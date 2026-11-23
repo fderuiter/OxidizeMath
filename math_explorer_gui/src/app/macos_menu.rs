@@ -140,7 +140,7 @@ fn handle_file_event(app: &mut MathExplorerApp, ctx: &egui::Context, id: &str) -
 
 fn handle_palette_theme_event(app: &mut MathExplorerApp, ctx: &egui::Context, id: &str) -> bool {
     match id {
-        "view_explore_catalog" => {
+        "view_explore_catalog" | "starter_gallery" => {
             app.open_explore_catalog(ctx);
         }
         "cmd_palette" => {

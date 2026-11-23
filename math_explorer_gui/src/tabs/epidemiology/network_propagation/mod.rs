@@ -448,16 +448,7 @@ inventory::submit! {
         id: "NetworkPropagationTool",
         display_name: "Network Propagation",
         domain: "epidemiology",
-        tags: &[
-            "containment",
-            "r0",
-            "vaccination",
-            "quarantine",
-            "contact network",
-            "contagion",
-            "superspreader",
-            "outbreak",
-        ],
+        tags: &["containment", "r0", "vaccination", "quarantine", "contact network", "sir"],
         build: || Box::new(NetworkPropagationTool::default()),
     }
 }

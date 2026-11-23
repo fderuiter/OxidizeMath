@@ -264,7 +264,7 @@ inventory::submit! {
         id: "ActivationFunctionsTool",
         display_name: "Activation Functions",
         domain: "ai",
-        tags: &["relu", "sigmoid", "tanh", "gelu", "nonlinearity"],
+        tags: &["relu", "sigmoid", "tanh", "gelu", "softmax", "swish", "neural network"],
         build: || Box::new(ActivationFunctionsTool::default()),
     }
 }

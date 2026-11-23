@@ -434,7 +434,7 @@ inventory::submit! {
         id: "DoseCalculationTool",
         display_name: "Dose Calculation",
         domain: "medical",
-        tags: &["dosimetry", "point kernel", "gray", "inverse square", "radiation", "imrt"],
+        tags: &["psf", "convolution", "radiation therapy", "isodose", "kernel", "imrt"],
         build: || Box::new(DoseCalculationTool::default()),
     }
 }

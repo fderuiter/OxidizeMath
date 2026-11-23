@@ -280,7 +280,7 @@ inventory::submit! {
         id: "NetworkMetricsTool",
         display_name: "Network Metrics",
         domain: "graph_theory",
-        tags: &["centrality", "betweenness", "clustering", "degree", "pagerank"],
+        tags: &["centrality", "clustering", "watts-strogatz", "degree", "closeness"],
         build: || Box::new(NetworkMetricsTool::default()),
     }
 }

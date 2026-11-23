@@ -1,161 +1,335 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+//! Action catalog and active `CMD_REGISTRY` merging for the unified zero-prefix `CommandPalette`.
+
+use super::layout_specs::LAYOUT_AND_EXPORT_SPECS;
+use super::plot_specs::plot_and_camera_specs;
 use super::scoring::fuzzy_match_score;
+use eframe::egui;
 
-/// Workspace-level layout, theme, catalog, and export/share actions indexed in `CommandPalette`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum WorkspaceAction {
-    /// Open the global Starter Template Gallery across all domains.
-    ExploreCatalog,
-    /// Switch to Single viewport layout.
-    LayoutSingle,
-    /// Switch to Split Horizontal (left/right) viewport layout.
-    LayoutSplitHorizontal,
-    /// Switch to Split Vertical (top/bottom) viewport layout.
-    LayoutSplitVertical,
-    /// Switch to 2x2 Quad Grid viewport layout.
-    LayoutQuadGrid,
-    /// Duplicate the currently focused pane into an adjacent split pane.
-    DuplicateFocusedPane,
-    /// Swap primary and secondary viewport panes.
-    SwapPanes,
-    /// Activate Dark theme mode.
-    ThemeDark,
-    /// Activate Light theme mode.
-    ThemeLight,
-    /// Activate High Contrast theme mode.
-    ThemeHighContrast,
-    /// Queue CSV dataset export for the active tool in the focused pane.
-    ExportCsv,
-    /// Copy active dataset points as CSV to the clipboard.
-    CopyCsv,
-    /// Queue JSON dataset export for the active tool in the focused pane.
-    ExportJson,
-    /// Open high-resolution PNG/SVG/GIF figure export dialog for the active tool.
-    ExportPng,
-    /// Export the active tool's parameter preset JSON envelope.
-    ExportPresetJson,
-    /// Copy a shareable `#tab=...` simulation URL to the clipboard.
+/// Executable workspace, layout, theme, export, preset, playback, camera, or plot action.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PaletteAction {
+    OpenWorkspaceSession,
+    SaveWorkspaceSession,
+    SaveWorkspaceSessionAs,
     CopyShareLink,
+    Undo,
+    Redo,
+    Quit,
+    SetLayoutSingle,
+    SetLayoutSplitHorizontal,
+    SetLayoutSplitVertical,
+    SetLayoutQuadGrid,
+    DuplicateFocusedPane,
+    SwapPanes,
+    RotatePanesClockwise,
+    RotatePanesCounterClockwise,
+    FocusNextPane,
+    FocusPreviousPane,
+    FocusPane(usize),
+    ToggleLinkPlotAxes,
+    ToggleLinkPlotCursors,
+    ToggleSyncPlayback,
+    SetThemeDark,
+    SetThemeLight,
+    SetThemeHighContrast,
+    OpenStarterGallery,
+    ToggleTheoryPortal,
+    ToggleDiagnosticsPanel,
+    ToggleKeyboardShortcuts,
+    ExportCsv,
+    CopyCsvClipboard,
+    ExportJson,
+    OpenExportImageModal,
+    ExportWebGl2Shader,
+    CopyWebGl2Shader,
+    ExportShadertoyShader,
+    CopyShadertoyShader,
+    ImportPresetJson,
+    ExportPresetJson,
+    ResetParameters,
+    PlayPauseSimulation,
+    StepSimulationForward,
+    StepSimulationBack,
+    JumpPreviousKeyframe,
+    ResetSimulationPlayback,
+    CameraResetView,
+    CameraToggleProjection,
+    CameraZoomIn,
+    CameraZoomOut,
+    CameraPitchUp,
+    CameraPitchDown,
+    CameraYawLeft,
+    CameraYawRight,
+    CameraPanUp,
+    CameraPanDown,
+    CameraPanLeft,
+    CameraPanRight,
+    PlotZoomIn,
+    PlotZoomOut,
+    PlotResetBounds,
+    PlotPanLeft,
+    PlotPanRight,
+    PlotPanUp,
+    PlotPanDown,
+    PlotNextDataset,
+    PlotPreviousDataset,
+    PlotNextPoint,
+    PlotPreviousPoint,
+    PlotNextCriticalPoint,
+    PlotPreviousCriticalPoint,
+    PlotIsolateSeries,
+    PlotFitLinear,
+    PlotFitQuadratic,
+    PlotFitCubic,
+    PlotFitExponential,
+    PlotFitPowerLaw,
+    PlotFitLogarithmic,
+    PlotFitLogistic,
+    PlotFitSinusoidal,
+    PlotClearFit,
+    PlotToggleFitResiduals,
+    PlotToggleDataTable,
+    PlotOpenSettings,
+    DispatchedCommand { name: String, context: String },
 }
 
-impl WorkspaceAction {
-    /// Ordered catalog of all workspace actions available in `Ctrl+K` / `Cmd+K`.
-    pub const ALL: &'static [WorkspaceAction] = &[
-        Self::ExploreCatalog,
-        Self::LayoutSingle,
-        Self::LayoutSplitHorizontal,
-        Self::LayoutSplitVertical,
-        Self::LayoutQuadGrid,
-        Self::DuplicateFocusedPane,
-        Self::SwapPanes,
-        Self::ThemeDark,
-        Self::ThemeLight,
-        Self::ThemeHighContrast,
-        Self::ExportCsv,
-        Self::CopyCsv,
-        Self::ExportJson,
-        Self::ExportPng,
-        Self::ExportPresetJson,
-        Self::CopyShareLink,
-    ];
+#[derive(Clone, Copy)]
+pub(super) struct BuiltinCommandSpec {
+    pub(super) action: fn() -> PaletteAction,
+    pub(super) title: &'static str,
+    pub(super) category: &'static str,
+    pub(super) shortcut: Option<&'static str>,
+    pub(super) description: &'static str,
+    pub(super) aliases: &'static [&'static str],
+    pub(super) registry_key: Option<(&'static str, &'static str)>,
+}
 
-    /// User-facing action title displayed in `CommandPalette`.
-    #[must_use]
-    pub const fn title(self) -> &'static str {
-        match self {
-            Self::ExploreCatalog => "Explore Catalog (Starter Template Gallery)",
-            Self::LayoutSingle => "Viewport Layout: Single",
-            Self::LayoutSplitHorizontal => "Viewport Layout: Split Horizontal",
-            Self::LayoutSplitVertical => "Viewport Layout: Split Vertical",
-            Self::LayoutQuadGrid => "Viewport Layout: 2x2 Quad Grid",
-            Self::DuplicateFocusedPane => "Viewport Layout: Duplicate Focused Pane",
-            Self::SwapPanes => "Viewport Layout: Swap Panes",
-            Self::ThemeDark => "Theme: Dark Mode",
-            Self::ThemeLight => "Theme: Light Mode",
-            Self::ThemeHighContrast => "Theme: High Contrast Mode",
-            Self::ExportCsv => "Export: Save Dataset CSV",
-            Self::CopyCsv => "Export: Copy Dataset CSV to Clipboard",
-            Self::ExportJson => "Export: Save Dataset JSON",
-            Self::ExportPng => "Export: High-Res PNG / SVG / GIF Figure...",
-            Self::ExportPresetJson => "Export: Save Parameter Preset JSON",
-            Self::CopyShareLink => "Share: Copy Shareable Simulation Link",
-        }
-    }
-
-    /// Leading icon glyph for the action row in `CommandPalette`.
-    #[must_use]
-    pub const fn icon(self) -> &'static str {
-        match self {
-            Self::ExploreCatalog => "🧭",
-            Self::LayoutSingle
-            | Self::LayoutSplitHorizontal
-            | Self::LayoutSplitVertical
-            | Self::LayoutQuadGrid
-            | Self::DuplicateFocusedPane
-            | Self::SwapPanes => "🪟",
-            Self::ThemeDark | Self::ThemeLight | Self::ThemeHighContrast => "🎨",
-            Self::ExportCsv
-            | Self::CopyCsv
-            | Self::ExportJson
-            | Self::ExportPng
-            | Self::ExportPresetJson => "📊",
-            Self::CopyShareLink => "🔗",
-        }
-    }
-
-    /// Curated search keywords for matching workspace actions in `CommandPalette`.
-    #[must_use]
-    pub const fn keywords(self) -> &'static [&'static str] {
-        match self {
-            Self::ExploreCatalog => &[
-                "explore catalog",
-                "starter gallery",
-                "starter templates",
-                "browse presets",
-            ],
-            Self::LayoutSingle => &["single layout", "single pane", "one pane"],
-            Self::LayoutSplitHorizontal => {
-                &["split horizontal", "side by side", "two panes", "dual pane"]
-            }
-            Self::LayoutSplitVertical => &["split vertical", "stacked panes", "top bottom"],
-            Self::LayoutQuadGrid => &["quad grid", "2x2 layout", "four panes"],
-            Self::DuplicateFocusedPane => &["duplicate pane", "clone pane"],
-            Self::SwapPanes => &["swap panes", "switch panes"],
-            Self::ThemeDark => &["dark theme", "dark mode", "appearance dark"],
-            Self::ThemeLight => &["light theme", "light mode", "appearance light"],
-            Self::ThemeHighContrast => &["high contrast", "contrast theme", "accessible theme"],
-            Self::ExportCsv => &["export csv", "download csv", "save csv"],
-            Self::CopyCsv => &["copy csv", "clipboard csv"],
-            Self::ExportJson => &["export json", "download json", "save json"],
-            Self::ExportPng => &[
-                "export png",
-                "export svg",
-                "export gif",
-                "export figure",
-                "save image",
-            ],
-            Self::ExportPresetJson => &["export preset", "save preset json"],
-            Self::CopyShareLink => &["copy share link", "share url", "copy link"],
-        }
+pub(super) const fn cmd_key(mac: &'static str, other: &'static str) -> &'static str {
+    if cfg!(target_os = "macos") {
+        mac
+    } else {
+        other
     }
 }
 
-/// Scores a [`WorkspaceAction`] against `query`, returning `None` when unmatched.
-pub(crate) fn score_workspace_action(action: WorkspaceAction, query: &str) -> Option<usize> {
-    let q_trim = query.trim();
-    if q_trim.is_empty() {
-        return Some(0);
+#[allow(clippy::too_many_arguments)]
+pub(super) const fn spec(
+    action: fn() -> PaletteAction,
+    title: &'static str,
+    category: &'static str,
+    shortcut: Option<&'static str>,
+    description: &'static str,
+    aliases: &'static [&'static str],
+    registry_key: Option<(&'static str, &'static str)>,
+) -> BuiltinCommandSpec {
+    BuiltinCommandSpec {
+        action,
+        title,
+        category,
+        shortcut,
+        description,
+        aliases,
+        registry_key,
     }
+}
 
-    let mut best: Option<usize> = None;
-    let mut update = |cand: Option<usize>| {
-        if let Some(c) = cand {
-            best = Some(best.map_or(c, |cur| cur.min(c)));
+static WORKSPACE_AND_VIEW_SPECS: &[BuiltinCommandSpec] = &[
+    spec(
+        || PaletteAction::OpenWorkspaceSession,
+        "Open Workspace Session...",
+        "File",
+        Some(cmd_key("Cmd+O", "Ctrl+O")),
+        "Load a saved .mws or .json workspace session",
+        &["open session", "load workspace", "mws"],
+        Some(("File", "Open Workspace Session...")),
+    ),
+    spec(
+        || PaletteAction::SaveWorkspaceSession,
+        "Save Workspace Session",
+        "File",
+        Some(cmd_key("Cmd+S", "Ctrl+S")),
+        "Save the current workspace session to disk",
+        &["save session", "save workspace"],
+        Some(("File", "Save Workspace Session")),
+    ),
+    spec(
+        || PaletteAction::SaveWorkspaceSessionAs,
+        "Save Workspace Session As...",
+        "File",
+        Some(cmd_key("Cmd+Shift+S", "Ctrl+Shift+S")),
+        "Save the current workspace session to a new file",
+        &["save as", "export workspace"],
+        Some(("File", "Save Workspace Session As...")),
+    ),
+    spec(
+        || PaletteAction::CopyShareLink,
+        "Copy Share Link",
+        "File",
+        Some(cmd_key("Cmd+Shift+L", "Ctrl+Shift+L")),
+        "Copy a shareable URL encoding the active simulation state",
+        &[
+            "share url",
+            "shareable link",
+            "copy shareable simulation link",
+            "permalink",
+            "copy link",
+        ],
+        Some(("File", "Copy Share Link")),
+    ),
+    spec(
+        || PaletteAction::Undo,
+        "Undo",
+        "Edit",
+        Some(cmd_key("Cmd+Z", "Ctrl+Z")),
+        "Undo the most recent workspace parameter or tab change",
+        &["revert"],
+        Some(("Edit", "Undo")),
+    ),
+    spec(
+        || PaletteAction::Redo,
+        "Redo",
+        "Edit",
+        Some(cmd_key("Cmd+Shift+Z", "Ctrl+Y")),
+        "Re-apply the most recently undone workspace change",
+        &["repeat"],
+        Some(("Edit", "Redo")),
+    ),
+    spec(
+        || PaletteAction::Quit,
+        "Quit",
+        "File",
+        Some(cmd_key("Cmd+Q", "Ctrl+Q")),
+        "Close the application window",
+        &["exit", "close window"],
+        Some(("Global", "Quit")),
+    ),
+    spec(
+        || PaletteAction::OpenStarterGallery,
+        "Open Starter Gallery (Explore Catalog)",
+        "View",
+        Some(cmd_key("Cmd+Shift+G", "Ctrl+Shift+G")),
+        "Browse and filter pre-configured starter templates across all domains",
+        &[
+            "explore catalog",
+            "starter gallery",
+            "starter templates",
+            "presets gallery",
+            "browse presets",
+        ],
+        Some(("Global", "Explore Catalog")),
+    ),
+    spec(
+        || PaletteAction::ToggleTheoryPortal,
+        "Toggle Theory Context Portal",
+        "View",
+        None,
+        "Show or hide mathematical equations, derivations, and citations",
+        &["theory portal", "equations", "citations"],
+        None,
+    ),
+    spec(
+        || PaletteAction::ToggleDiagnosticsPanel,
+        "Toggle Issues & Diagnostics",
+        "View",
+        Some(cmd_key("Cmd+Shift+D", "Ctrl+Shift+D")),
+        "Toggle visibility of the Issues & Diagnostics telemetry panel",
+        &["diagnostics", "issues panel", "logs"],
+        Some(("Global", "Toggle Issues & Diagnostics")),
+    ),
+    spec(
+        || PaletteAction::ToggleKeyboardShortcuts,
+        "Keyboard Shortcuts",
+        "Help",
+        Some(cmd_key("Cmd+/", "Ctrl+/")),
+        "Open or close the keyboard shortcuts reference modal",
+        &["help", "cheatsheet", "hotkeys"],
+        Some(("Global", "Keyboard Shortcuts")),
+    ),
+    spec(
+        || PaletteAction::SetThemeDark,
+        "Theme: Dark",
+        "Appearance",
+        None,
+        "Switch application color palette to Dark theme",
+        &["dark", "dark mode", "dark theme"],
+        None,
+    ),
+    spec(
+        || PaletteAction::SetThemeLight,
+        "Theme: Light",
+        "Appearance",
+        None,
+        "Switch application color palette to Light theme",
+        &["light", "light mode", "light theme"],
+        None,
+    ),
+    spec(
+        || PaletteAction::SetThemeHighContrast,
+        "Theme: High Contrast",
+        "Appearance",
+        None,
+        "Switch application color palette to WCAG AAA High Contrast theme",
+        &["high contrast", "contrast theme", "accessible theme"],
+        None,
+    ),
+];
+
+pub(super) fn all_builtin_commands() -> impl Iterator<Item = &'static BuiltinCommandSpec> {
+    WORKSPACE_AND_VIEW_SPECS
+        .iter()
+        .chain(LAYOUT_AND_EXPORT_SPECS.iter())
+        .chain(plot_and_camera_specs())
+}
+
+pub(super) fn score_builtin_command(spec: &BuiltinCommandSpec, query: &str) -> Option<usize> {
+    if query.trim().is_empty() {
+        return Some(usize::MAX);
+    }
+    let mut best = fuzzy_match_score(spec.title, query);
+    for &alias in spec.aliases {
+        if let Some(s) = fuzzy_match_score(alias, query) {
+            best = Some(best.map_or(s, |cur| cur.min(s)));
         }
-    };
-
-    update(fuzzy_match_score(action.title(), q_trim).map(|s| if s == 0 { 0 } else { s + 10 }));
-    for kw in action.keywords() {
-        update(fuzzy_match_score(kw, q_trim).map(|s| if s == 0 { 0 } else { s + 8 }));
     }
-    best
+    if let Some(sc) = spec.shortcut {
+        if let Some(s) = fuzzy_match_score(sc, query) {
+            let weighted = s.saturating_add(4);
+            best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
+        }
+    }
+    for extra in [spec.category, spec.description] {
+        if let Some(s) = fuzzy_match_score(extra, query) {
+            let weighted = s.saturating_add(20);
+            best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
+        }
+    }
+    best.map(|s| if s == 0 { 0 } else { s.saturating_add(3) })
+}
+
+pub(super) fn extra_registry_commands(
+    ctx: &egui::Context,
+) -> Vec<egui_plot::commands::CommandMetadata> {
+    let reg = ctx.data(|d| {
+        d.get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new("CMD_REGISTRY"))
+            .unwrap_or_default()
+    });
+    let mut out: Vec<egui_plot::commands::CommandMetadata> = Vec::new();
+    for cmd in reg.commands {
+        if cmd.name == "Command Palette" {
+            continue;
+        }
+        let covered = all_builtin_commands().any(|b| {
+            b.registry_key
+                .is_some_and(|(cat, name)| cat == cmd.context && name == cmd.name)
+        });
+        let dup = out
+            .iter()
+            .any(|existing| existing.context == cmd.context && existing.name == cmd.name);
+        if !covered && !dup {
+            out.push(cmd);
+        }
+    }
+    out
 }

@@ -1,28 +1,30 @@
-//! Search-driven Command Palette (`Ctrl+K` / `Cmd+K`) indexing tabs, simulation tools,
-//! starter presets, and global workspace actions.
+//! Search-driven Command Palette (`Ctrl+K` / `Cmd+K`) indexing commands, domain tabs,
+//! simulation tools, and starter presets in one zero-prefix modal.
 
 mod actions;
+mod layout_specs;
+mod plot_specs;
 mod scoring;
+mod theory_index;
 mod ui;
 
-use actions::score_workspace_action;
-pub use actions::WorkspaceAction;
+pub use actions::PaletteAction;
+use actions::{all_builtin_commands, extra_registry_commands, score_builtin_command};
 use eframe::egui;
-pub(crate) use scoring::score_tool_in_domain;
-use scoring::score_tool_metadata;
+pub(crate) use scoring::score_tool_metadata;
 pub use scoring::{format_domain_title, fuzzy_match_score};
 
-/// Target tab, tool, starter preset, or workspace action selected from the command palette.
+/// Target tab, tool, starter preset, or executable action selected from `CommandPalette`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PaletteSelection {
     /// Target explorer tab index.
     pub tab_index: usize,
     /// Optional tool name to activate within the domain tab.
     pub tool_name: Option<String>,
-    /// Optional validated starter preset card to launch.
-    pub preset: Option<crate::starter_gallery::StarterCard>,
-    /// Optional global workspace action to execute.
-    pub action: Option<WorkspaceAction>,
+    /// Optional starter preset metadata to launch inside the target tab.
+    pub preset: Option<&'static crate::starter_gallery::StarterPresetMetadata>,
+    /// Optional executable workspace, layout, theme, export, playback, camera, or plot action.
+    pub action: Option<PaletteAction>,
 }
 
 impl PaletteSelection {
@@ -48,21 +50,23 @@ impl PaletteSelection {
         }
     }
 
-    /// Creates a selection launching a curated [`crate::starter_gallery::StarterCard`].
+    /// Creates a selection launching a curated starter preset inside `tab_index`.
     #[must_use]
-    pub fn preset(tab_index: usize, card: crate::starter_gallery::StarterCard) -> Self {
-        let tool_name = card.tool_name.map(str::to_string);
+    pub fn preset(
+        tab_index: usize,
+        preset: &'static crate::starter_gallery::StarterPresetMetadata,
+    ) -> Self {
         Self {
             tab_index,
-            tool_name,
-            preset: Some(card),
+            tool_name: preset.tool_name.map(str::to_string),
+            preset: Some(preset),
             action: None,
         }
     }
 
-    /// Creates a selection executing a [`WorkspaceAction`].
+    /// Creates a selection executing a global or contextual command action.
     #[must_use]
-    pub const fn action(action: WorkspaceAction) -> Self {
+    pub fn command(action: PaletteAction) -> Self {
         Self {
             tab_index: 0,
             tool_name: None,
@@ -72,7 +76,7 @@ impl PaletteSelection {
     }
 }
 
-/// Search result item in the command palette representing a tab, tool, starter preset, or action.
+/// Unified zero-prefix search result item in the command palette.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PaletteItem {
     /// Domain explorer tab entry.
@@ -97,13 +101,21 @@ pub enum PaletteItem {
     Preset {
         /// Index of the owning domain tab.
         tab_index: usize,
-        /// Launchable starter card configuration.
-        card: crate::starter_gallery::StarterCard,
+        /// Static starter preset registration metadata.
+        preset: &'static crate::starter_gallery::StarterPresetMetadata,
     },
-    /// Global workspace action entry.
-    Action {
-        /// Workspace action to execute on selection.
-        action: WorkspaceAction,
+    /// Executable workspace, viewport, export, or contextual command entry.
+    Command {
+        /// Action executed when selected.
+        action: PaletteAction,
+        /// Primary command title.
+        title: String,
+        /// Command category label.
+        category: String,
+        /// Optional keyboard shortcut label.
+        shortcut: Option<String>,
+        /// Human-readable description of the command.
+        description: String,
     },
 }
 
@@ -112,29 +124,27 @@ impl PaletteItem {
     #[must_use]
     pub fn to_selection(&self) -> PaletteSelection {
         match self {
-            PaletteItem::Tab { index, .. } => PaletteSelection::tab(*index),
-            PaletteItem::Tool {
+            Self::Tab { index, .. } => PaletteSelection::tab(*index),
+            Self::Tool {
                 tab_index, name, ..
             } => PaletteSelection::tool(*tab_index, *name),
-            PaletteItem::Preset { tab_index, card } => {
-                PaletteSelection::preset(*tab_index, card.clone())
-            }
-            PaletteItem::Action { action } => PaletteSelection::action(*action),
+            Self::Preset { tab_index, preset } => PaletteSelection::preset(*tab_index, preset),
+            Self::Command { action, .. } => PaletteSelection::command(action.clone()),
         }
     }
 
     /// Primary display title of this item.
     #[must_use]
-    pub fn title(&self) -> &'static str {
+    pub fn title(&self) -> &str {
         match self {
-            PaletteItem::Tab { name, .. } | PaletteItem::Tool { name, .. } => name,
-            PaletteItem::Preset { card, .. } => card.title,
-            PaletteItem::Action { action } => action.title(),
+            Self::Tab { name, .. } | Self::Tool { name, .. } => name,
+            Self::Preset { preset, .. } => preset.title,
+            Self::Command { title, .. } => title.as_str(),
         }
     }
 }
 
-/// Modal command palette providing instant search-driven navigation, presets, and actions.
+/// Modal command palette providing unified zero-prefix tab, tool, preset, and action execution.
 #[derive(Default)]
 pub struct CommandPalette {
     /// Whether the command palette modal is currently open.
@@ -153,24 +163,53 @@ pub struct CommandPalette {
 
 pub(crate) const SEARCH_WIDGET_INFO_ID: &str = "command_palette_search_info";
 
-pub(crate) fn resolve_tab_index_for_domain(
+pub(crate) fn resolve_domain_tab_index(
     tabs: &[Box<dyn crate::tabs::ExplorerTab>],
-    domain_slug: &str,
+    domain: &str,
 ) -> usize {
     if let Some(idx) = tabs
         .iter()
-        .position(|t| crate::url_state::matches_tab_slug(domain_slug, t.url_slug(), t.name()))
+        .position(|t| crate::url_state::matches_tab_slug(domain, t.url_slug(), t.name()))
     {
         return idx;
     }
     tabs.iter()
         .position(|t| {
-            let t_name = t.name().to_ascii_lowercase().replace(' ', "_");
+            let t_name = t.name().to_lowercase().replace(' ', "_");
             let t_clean = t_name.replace('&', "").replace("__", "_");
-            t_clean.contains(domain_slug)
+            t_clean.contains(domain)
+                || (domain == "ai"
+                    && (t.name() == "Artificial Intelligence" || t.name().starts_with("AI")))
+                || (domain == "biology" && t.name() == "Morphogenesis")
         })
         .unwrap_or(0)
 }
+
+fn score_preset_metadata(
+    preset: &crate::starter_gallery::StarterPresetMetadata,
+    query: &str,
+) -> Option<usize> {
+    if query.trim().is_empty() {
+        return Some(usize::MAX);
+    }
+    let domain_title = format_domain_title(preset.domain);
+    let mut best = fuzzy_match_score(preset.title, query);
+    for (candidate, penalty) in [
+        (preset.id, 2usize),
+        (preset.description, 12),
+        (preset.category, 20),
+        (preset.domain, 45),
+        (domain_title.as_ref(), 45),
+    ] {
+        if let Some(s) = fuzzy_match_score(candidate, query) {
+            let weighted = s.saturating_add(penalty);
+            best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
+        }
+    }
+    best.map(|s| if s == 0 { 0 } else { s.saturating_add(5) })
+}
+
+type RankedEntry = (PaletteItem, usize, usize, usize);
 
 impl CommandPalette {
     /// Opens the command palette modal, clearing the query and resetting selection.
@@ -201,55 +240,45 @@ impl CommandPalette {
         }
     }
 
-    /// Filters registered domain tabs using case-insensitive word-prefix and token matching.
-    pub fn filter_tabs(
-        &self,
-        tabs: &[Box<dyn crate::tabs::ExplorerTab>],
-    ) -> Vec<(usize, &'static str)> {
-        let mut matched: Vec<(usize, &'static str, usize)> = tabs
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, tab)| {
-                let tab_name = tab.name();
-                fuzzy_match_score(tab_name, &self.query).map(|score| (idx, tab_name, score))
-            })
-            .collect();
-
-        matched.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
-        matched
-            .into_iter()
-            .map(|(idx, name, _)| (idx, name))
-            .collect()
+    /// Filters commands, domain tabs, simulation tools, and starter presets in one zero-prefix list.
+    #[cfg(test)]
+    pub fn filter_items(&self, tabs: &[Box<dyn crate::tabs::ExplorerTab>]) -> Vec<PaletteItem> {
+        self.filter_items_with_ctx(None, tabs)
     }
 
-    /// Filters domain tabs, `ToolMetadata`, `StarterPresetMetadata` cards, and `WorkspaceAction`s.
-    pub fn filter_items(&self, tabs: &[Box<dyn crate::tabs::ExplorerTab>]) -> Vec<PaletteItem> {
-        let mut matched: Vec<(PaletteItem, usize, usize)> = Vec::new();
-        self.collect_tab_matches(tabs, &mut matched);
-        self.collect_tool_matches(tabs, &mut matched);
-        self.collect_preset_matches(tabs, &mut matched);
-        self.collect_action_matches(&mut matched);
+    /// Filters unified palette items, including active contextual shortcuts registered on `ctx`.
+    pub fn filter_items_with_ctx(
+        &self,
+        ctx: Option<&egui::Context>,
+        tabs: &[Box<dyn crate::tabs::ExplorerTab>],
+    ) -> Vec<PaletteItem> {
+        let mut matched: Vec<RankedEntry> = Vec::new();
+        self.collect_tab_and_tool_entries(tabs, &mut matched);
+        self.collect_preset_entries(tabs, &mut matched);
+        self.collect_command_entries(ctx, &mut matched);
 
         matched.sort_by(|a, b| {
             a.1.cmp(&b.1)
                 .then_with(|| a.2.cmp(&b.2))
+                .then_with(|| a.3.cmp(&b.3))
                 .then_with(|| a.0.title().cmp(b.0.title()))
         });
-        matched.into_iter().map(|(item, _, _)| item).collect()
+        matched.into_iter().map(|(item, _, _, _)| item).collect()
     }
 
-    fn collect_tab_matches(
+    fn collect_tab_and_tool_entries(
         &self,
         tabs: &[Box<dyn crate::tabs::ExplorerTab>],
-        matched: &mut Vec<(PaletteItem, usize, usize)>,
+        matched: &mut Vec<RankedEntry>,
     ) {
         for (idx, tab) in tabs.iter().enumerate() {
             let tab_name = tab.name();
             let mut score = fuzzy_match_score(tab_name, &self.query);
             let domain = tab.academic_domain();
             if !domain.is_empty() {
-                if let Some(domain_score) = fuzzy_match_score(domain, &self.query) {
-                    score = Some(score.map_or(domain_score, |s| s.min(domain_score)));
+                if let Some(ds) = fuzzy_match_score(domain, &self.query) {
+                    let weighted = ds.saturating_add(40);
+                    score = Some(score.map_or(weighted, |s| s.min(weighted)));
                 }
             }
             if let Some(s) = score {
@@ -260,19 +289,13 @@ impl CommandPalette {
                     },
                     s,
                     0,
+                    idx,
                 ));
             }
         }
-    }
-
-    fn collect_tool_matches(
-        &self,
-        tabs: &[Box<dyn crate::tabs::ExplorerTab>],
-        matched: &mut Vec<(PaletteItem, usize, usize)>,
-    ) {
         for meta in inventory::iter::<crate::framework::ToolMetadata> {
             if let Some(s) = score_tool_metadata(meta, &self.query) {
-                let tab_index = resolve_tab_index_for_domain(tabs, meta.domain);
+                let tab_index = resolve_domain_tab_index(tabs, meta.domain);
                 matched.push((
                     PaletteItem::Tool {
                         tab_index,
@@ -282,69 +305,87 @@ impl CommandPalette {
                     },
                     s,
                     1,
+                    0,
                 ));
             }
         }
     }
 
-    fn collect_preset_matches(
+    fn collect_preset_entries(
         &self,
         tabs: &[Box<dyn crate::tabs::ExplorerTab>],
-        matched: &mut Vec<(PaletteItem, usize, usize)>,
+        matched: &mut Vec<RankedEntry>,
     ) {
-        for card in crate::starter_gallery::get_all_starter_cards() {
-            if let Some(s) = crate::starter_gallery::score_starter_card(&card, &self.query) {
-                let tab_index = resolve_tab_index_for_domain(tabs, card.domain);
-                matched.push((PaletteItem::Preset { tab_index, card }, s, 2));
+        for preset in inventory::iter::<crate::starter_gallery::StarterPresetMetadata> {
+            if let Some(s) = score_preset_metadata(preset, &self.query) {
+                let tab_index = resolve_domain_tab_index(tabs, preset.domain);
+                matched.push((PaletteItem::Preset { tab_index, preset }, s, 2, 0));
             }
         }
     }
 
-    fn collect_action_matches(&self, matched: &mut Vec<(PaletteItem, usize, usize)>) {
-        for &action in WorkspaceAction::ALL {
-            if let Some(s) = score_workspace_action(action, &self.query) {
-                matched.push((PaletteItem::Action { action }, s, 3));
+    fn collect_command_entries(&self, ctx: Option<&egui::Context>, matched: &mut Vec<RankedEntry>) {
+        for (idx, spec) in all_builtin_commands().enumerate() {
+            if let Some(s) = score_builtin_command(spec, &self.query) {
+                matched.push((
+                    PaletteItem::Command {
+                        action: (spec.action)(),
+                        title: spec.title.to_string(),
+                        category: spec.category.to_string(),
+                        shortcut: spec.shortcut.map(str::to_string),
+                        description: spec.description.to_string(),
+                    },
+                    s,
+                    3,
+                    idx,
+                ));
             }
         }
+        let Some(ctx) = ctx else {
+            return;
+        };
+        self.collect_extra_ctx_commands(ctx, matched);
     }
 
-    /// Processes keyboard shortcuts (Arrow Up/Down, Enter, Escape) for navigating and selecting items.
-    pub fn handle_keyboard_inputs(
-        &mut self,
-        ctx: &egui::Context,
-        filtered_items: &[PaletteItem],
-    ) -> (Option<PaletteSelection>, bool) {
-        let mut selected_item = None;
-        let mut esc_pressed = false;
-
-        if !filtered_items.is_empty() {
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) {
-                self.selected_index = (self.selected_index + 1) % filtered_items.len();
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) {
-                self.selected_index = self
-                    .selected_index
-                    .checked_sub(1)
-                    .unwrap_or(filtered_items.len() - 1);
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
-                if let Some(item) = filtered_items.get(self.selected_index) {
-                    selected_item = Some(item.to_selection());
+    fn collect_extra_ctx_commands(&self, ctx: &egui::Context, matched: &mut Vec<RankedEntry>) {
+        let base_idx = 1000usize;
+        for (offset, cmd) in extra_registry_commands(ctx).into_iter().enumerate() {
+            let mut best = fuzzy_match_score(&cmd.name, &self.query);
+            for (extra, penalty) in [(&cmd.context, 20usize), (&cmd.description, 20)] {
+                if let Some(s) = fuzzy_match_score(extra, &self.query) {
+                    let weighted = s.saturating_add(penalty);
+                    best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
                 }
             }
+            if let Some(s) = best {
+                let adj = if s == 0 { 0 } else { s.saturating_add(3) };
+                matched.push((
+                    PaletteItem::Command {
+                        action: PaletteAction::DispatchedCommand {
+                            name: cmd.name.clone(),
+                            context: cmd.context.clone(),
+                        },
+                        title: format!("{}: {}", cmd.context, cmd.name),
+                        category: cmd.context,
+                        shortcut: Some(cmd.trigger.display_label()),
+                        description: cmd.description,
+                    },
+                    adj,
+                    3,
+                    base_idx + offset,
+                ));
+            }
         }
-
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-            esc_pressed = true;
-        }
-
-        (selected_item, esc_pressed)
     }
 }
 
 #[cfg(test)]
 #[path = "command_palette_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "command_palette/unified_tests.rs"]
+mod unified_tests;
 
 #[cfg(test)]
 #[path = "command_palette_actions_tests.rs"]

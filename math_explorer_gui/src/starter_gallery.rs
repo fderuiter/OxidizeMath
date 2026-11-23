@@ -1,10 +1,6 @@
 //! Starter Template, Guided Story & Challenge Gallery component providing a searchable cross-domain
 //! catalog for cold-launch discovery, per-tab pre-filtered browsing, and instant preset/story/challenge execution.
 
-use crate::framework::ToolMetadata;
-#[cfg(test)]
-use eframe::egui;
-
 #[path = "starter_gallery/cards.rs"]
 mod cards;
 #[path = "starter_gallery/challenge_ui.rs"]
@@ -13,6 +9,8 @@ mod challenge_ui;
 pub mod challenges;
 #[path = "starter_gallery/filter.rs"]
 mod filter;
+#[path = "starter_gallery/filter_ui.rs"]
+pub mod filter_ui;
 #[path = "starter_gallery/modal_ui.rs"]
 mod modal_ui;
 #[path = "starter_gallery/presets_builtin.rs"]
@@ -33,9 +31,15 @@ pub use filter::{
     academic_domain_for_slug, module_title_for_slug, score_challenge_card, score_starter_card,
     tool_tags_for_card, StarterGalleryFilterState,
 };
+pub use filter_ui::{
+    card_academic_domain, filter_challenge_cards, filter_goal_challenges, filter_starter_cards,
+    filter_stories, get_all_starter_cards, get_all_starter_cards_with_tools,
+    get_starter_cards_for_domain,
+};
 pub use presets_builtin::*;
 pub(crate) use root_host::{
-    begin_root_starter_gallery_scope, flush_deferred_starter_galleries, try_defer_starter_gallery,
+    begin_root_starter_gallery_scope, flush_deferred_starter_galleries,
+    is_root_starter_gallery_scope_active, try_defer_starter_gallery,
 };
 pub use root_host::{
     show_starter_gallery_overlay, show_starter_gallery_overlay_for_domain,
@@ -43,6 +47,11 @@ pub use root_host::{
     GlobalStarterGallery,
 };
 pub use stories::*;
+
+#[cfg(test)]
+use crate::framework::ToolMetadata;
+#[cfg(test)]
+use eframe::egui;
 
 /// Pre-configured starter simulation template card.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -92,6 +101,8 @@ impl PartialEq for StarterPresetMetadata {
     }
 }
 
+impl Eq for StarterPresetMetadata {}
+
 impl StarterPresetMetadata {
     /// Generates the JSON preset payload.
     #[inline]
@@ -117,67 +128,6 @@ impl StarterPresetMetadata {
 
 inventory::collect!(StarterPresetMetadata);
 
-/// Returns all registered `StarterPresetMetadata` cards across all compiled domains, deterministically sorted.
-#[must_use]
-pub fn get_all_starter_cards() -> Vec<StarterCard> {
-    let mut cards: Vec<StarterCard> = inventory::iter::<StarterPresetMetadata>
-        .into_iter()
-        .map(StarterPresetMetadata::to_card)
-        .collect();
-    cards.sort_by_key(|c| (c.title, c.id));
-    cards
-}
-
-/// Returns all global starter cards plus any dynamic fallback cards for `domain` if none were registered.
-#[must_use]
-pub fn get_global_or_domain_starter_cards(
-    domain: &str,
-    available_tools: &[&'static ToolMetadata],
-) -> Vec<StarterCard> {
-    let mut all = get_all_starter_cards();
-    let has_domain = all
-        .iter()
-        .any(|c| filter::same_module_slug(c.domain, domain));
-    if !has_domain {
-        all.extend(get_starter_cards_for_domain(domain, available_tools));
-        all.sort_by_key(|c| (c.title, c.id));
-    }
-    all
-}
-
-/// Returns curated or dynamically generated starter cards for a single simulation domain.
-pub fn get_starter_cards_for_domain(
-    domain: &str,
-    available_tools: &[&'static ToolMetadata],
-) -> Vec<StarterCard> {
-    let mut cards: Vec<StarterCard> = inventory::iter::<StarterPresetMetadata>
-        .into_iter()
-        .filter(|p| filter::same_module_slug(p.domain, domain))
-        .map(StarterPresetMetadata::to_card)
-        .collect();
-
-    if cards.is_empty() {
-        for meta in available_tools {
-            if meta.domain == domain {
-                cards.push(StarterCard {
-                    id: meta.id,
-                    title: meta.display_name,
-                    description:
-                        "Interactive simulation tool for mathematical exploration and analysis.",
-                    category: meta.domain,
-                    icon: "🔬",
-                    domain: meta.domain,
-                    tool_name: Some(meta.id),
-                    preset_json: None,
-                });
-            }
-        }
-    }
-
-    cards.sort_by_key(|c| (c.title, c.id));
-    cards
-}
-
 #[cfg(test)]
 #[path = "starter_gallery/tests.rs"]
 mod tests;
@@ -185,3 +135,7 @@ mod tests;
 #[cfg(test)]
 #[path = "starter_gallery/contract_tests.rs"]
 mod contract_tests;
+
+#[cfg(test)]
+#[path = "starter_gallery/search_tests.rs"]
+mod search_tests;

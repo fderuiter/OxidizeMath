@@ -277,7 +277,7 @@ inventory::submit! {
         id: "CrystalViewer",
         display_name: "Crystal Lattice Viewer",
         domain: "solid_state",
-        tags: &["bravais lattice", "unit cell", "bcc", "fcc", "crystallography"],
+        tags: &["bravais lattice", "bcc", "fcc", "unit cell", "crystallography", "3d"],
         build: || Box::new(CrystalViewer::default()),
     }
 }

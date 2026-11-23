@@ -1,3 +1,6 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::theory_index::corpus_for_tool;
 use std::borrow::Cow;
 
 /// Formats a snake_case domain identifier into a user-facing domain title.
@@ -9,6 +12,7 @@ pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
         "astrophysics" => Cow::Borrowed("Astrophysics"),
         "battery_degradation" => Cow::Borrowed("Battery Degradation"),
         "biology" => Cow::Borrowed("Biology"),
+        "cannibalism" => Cow::Borrowed("Population Structure"),
         "chaos" => Cow::Borrowed("Chaos Theory"),
         "climate" => Cow::Borrowed("Climate"),
         "clinical_trials" => Cow::Borrowed("Clinical Trials"),
@@ -21,6 +25,7 @@ pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
         "geometry_topology" => Cow::Borrowed("Geometry & Topology"),
         "graph_theory" => Cow::Borrowed("Graph Theory"),
         "medical" => Cow::Borrowed("Medical Physics"),
+        "morphogenesis" => Cow::Borrowed("Morphogenesis"),
         "mri" => Cow::Borrowed("MRI Physics"),
         "neuroscience" => Cow::Borrowed("Neuroscience"),
         "number_theory" => Cow::Borrowed("Number Theory"),
@@ -28,192 +33,233 @@ pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
         "quantum" => Cow::Borrowed("Quantum Mechanics"),
         "relativity" => Cow::Borrowed("General Relativity"),
         "solid_state" => Cow::Borrowed("Solid State Physics"),
-        other => Cow::Owned(
-            other
-                .split('_')
-                .filter(|part| !part.is_empty())
-                .map(|word| {
-                    let mut chars = word.chars();
-                    chars.next().map_or_else(String::new, |c| {
-                        format!("{}{}", c.to_uppercase(), chars.as_str())
-                    })
-                })
-                .collect::<Vec<_>>()
-                .join(" "),
-        ),
+        "traceability" => Cow::Borrowed("Traceability Portal"),
+        other => Cow::Owned(title_case_identifier(other)),
     }
 }
 
-pub(crate) fn score_tool_metadata(
-    meta: &crate::framework::ToolMetadata,
-    query: &str,
-) -> Option<usize> {
-    let domain_title = format_domain_title(meta.domain);
-    let formatted_entry = format!("{} ({})", meta.display_name, domain_title);
-    let domain_prefixed = format!("{} {}", domain_title, meta.display_name);
-    let mut score = fuzzy_match_score(meta.display_name, query);
-    for candidate in [meta.id, formatted_entry.as_str(), domain_prefixed.as_str()] {
-        if let Some(s) = fuzzy_match_score(candidate, query) {
-            score = Some(score.map_or(s, |cur| cur.min(s)));
-        }
-    }
-    for &tag in meta.tags {
-        if let Some(tag_score) = fuzzy_match_score(tag, query) {
-            score = Some(score.map_or(tag_score, |cur| cur.min(tag_score)));
-        }
-        let domain_tag = format!("{domain_title} {tag}");
-        let words = split_normalized_words(&domain_tag);
-        if let Some(gap_score) =
-            match_bounded_gap_word_prefixes(&words, &query.trim().to_lowercase())
-        {
-            score = Some(score.map_or(gap_score, |cur| cur.min(gap_score)));
-        }
-    }
-    for domain_candidate in [meta.domain, domain_title.as_ref()] {
-        if let Some(domain_score) = fuzzy_match_score(domain_candidate, query) {
-            let weighted = domain_score.saturating_add(50);
-            score = Some(score.map_or(weighted, |cur| cur.min(weighted)));
-        }
-    }
-    score
+fn title_case_identifier(raw: &str) -> String {
+    raw.split('_')
+        .filter(|part| !part.is_empty())
+        .map(|word| {
+            let mut chars = word.chars();
+            chars.next().map_or_else(String::new, |c| {
+                format!("{}{}", c.to_uppercase(), chars.as_str())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
-/// Scores `meta` within its already-selected simulation domain (display name, id, and curated tags).
-pub(crate) fn score_tool_in_domain(
-    meta: &crate::framework::ToolMetadata,
-    query: &str,
-) -> Option<usize> {
-    let mut score = fuzzy_match_score(meta.display_name, query);
-    if let Some(id_score) = fuzzy_match_score(meta.id, query) {
-        score = Some(score.map_or(id_score, |cur| cur.min(id_score)));
-    }
-    for &tag in meta.tags {
-        if let Some(tag_score) = fuzzy_match_score(tag, query) {
-            let weighted = tag_score.saturating_add(2);
-            score = Some(score.map_or(weighted, |cur| cur.min(weighted)));
+/// Folds common Latin diacritics to ASCII lowercase so queries like `schrodinger` match `Schrödinger`.
+pub(crate) fn fold_search_text(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        for lower in ch.to_lowercase() {
+            match lower {
+                'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => out.push('a'),
+                'ç' => out.push('c'),
+                'è' | 'é' | 'ê' | 'ë' => out.push('e'),
+                'ì' | 'í' | 'î' | 'ï' => out.push('i'),
+                'ñ' => out.push('n'),
+                'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' => out.push('o'),
+                'ù' | 'ú' | 'û' | 'ü' => out.push('u'),
+                'ý' | 'ÿ' => out.push('y'),
+                'ß' => out.push_str("ss"),
+                other => out.push(other),
+            }
         }
     }
-    score
+    out
 }
 
-fn split_normalized_words(text: &str) -> Vec<String> {
+/// Extracts folded alphanumeric word tokens, splitting on punctuation/whitespace and CamelCase boundaries.
+pub(crate) fn extract_search_words(input: &str) -> Vec<String> {
+    let chars: Vec<char> = input.chars().collect();
     let mut words = Vec::new();
     let mut current = String::new();
-    let mut prev_is_lower = false;
 
-    for ch in text.chars() {
+    for idx in 0..chars.len() {
+        let ch = chars[idx];
         if !ch.is_alphanumeric() {
             if !current.is_empty() {
-                words.push(std::mem::take(&mut current));
+                words.push(fold_search_text(&current));
+                current.clear();
             }
-            prev_is_lower = false;
             continue;
         }
-        let is_upper = ch.is_uppercase();
-        if is_upper && prev_is_lower && !current.is_empty() {
-            words.push(std::mem::take(&mut current));
+        if idx > 0 && !current.is_empty() {
+            let prev = chars[idx - 1];
+            let next_is_lower = chars.get(idx + 1).is_some_and(|n| n.is_lowercase());
+            let camel_split = (prev.is_lowercase() && ch.is_uppercase())
+                || (prev.is_uppercase() && ch.is_uppercase() && next_is_lower);
+            if camel_split {
+                words.push(fold_search_text(&current));
+                current.clear();
+            }
         }
-        for lower in ch.to_lowercase() {
-            current.push(lower);
-        }
-        prev_is_lower = ch.is_lowercase();
+        current.push(ch);
     }
     if !current.is_empty() {
-        words.push(current);
+        words.push(fold_search_text(&current));
     }
     words
 }
 
-fn match_word_prefix_score(words: &[String], query: &str) -> Option<usize> {
-    for (idx, word) in words.iter().enumerate() {
-        if word == query {
-            return Some(3 + idx);
+fn find_word_boundary_substring(haystack: &str, needle: &str) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    let mut offset = 0;
+    while let Some(rel) = haystack[offset..].find(needle) {
+        let pos = offset + rel;
+        let at_boundary = pos == 0
+            || haystack[..pos]
+                .chars()
+                .next_back()
+                .is_none_or(|prev| !prev.is_alphanumeric());
+        if at_boundary {
+            return Some(pos);
         }
-        if word.starts_with(query) {
-            return Some(5 + idx);
-        }
+        let step = haystack[pos..].chars().next().map_or(1, char::len_utf8);
+        offset = pos + step;
     }
     None
 }
 
-fn match_multi_term_tokens(text_lower: &str, words: &[String], query: &str) -> Option<usize> {
-    let terms: Vec<&str> = query
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|t| !t.is_empty())
-        .collect();
-    if terms.len() <= 1 {
-        return None;
-    }
-    if terms
-        .iter()
-        .all(|term| words.iter().any(|w| w.starts_with(term)))
-    {
-        return Some(40);
-    }
-    if terms.iter().all(|term| text_lower.contains(term)) {
-        return Some(85);
-    }
-    None
-}
-
-fn match_bounded_gap_word_prefixes(words: &[String], query: &str) -> Option<usize> {
-    if query.len() < 4 || words.len() < 2 || query.chars().any(|c| !c.is_alphanumeric()) {
-        return None;
-    }
-    for first_idx in 0..words.len() {
-        let first_word = words[first_idx].as_str();
-        let max_first = first_word.len().min(query.len().saturating_sub(1));
-        for first_len in 1..=max_first {
-            if !query.is_char_boundary(first_len) || !first_word.is_char_boundary(first_len) {
-                continue;
-            }
-            if first_word[..first_len] != query[..first_len] {
-                continue;
-            }
-            let rem = &query[first_len..];
-            let max_second = (first_idx + 2).min(words.len().saturating_sub(1));
-            for (second_idx, second_word_str) in words
-                .iter()
-                .enumerate()
-                .take(max_second + 1)
-                .skip(first_idx + 1)
-            {
-                let second_word = second_word_str.as_str();
-                if second_word.starts_with(rem) && (first_len >= 3 || rem.len() >= 3) {
-                    let gap = second_idx - first_idx - 1;
-                    return Some(110 + first_idx * 4 + gap * 8);
-                }
-            }
+fn score_multi_token_words(
+    words: &[String],
+    text_folded: &str,
+    q_tokens: &[String],
+) -> Option<usize> {
+    let mut in_order = true;
+    let mut search_from = 0usize;
+    for qt in q_tokens {
+        let word_pos = words.iter().position(|w| w.starts_with(qt.as_str()));
+        let Some(matched_idx) = word_pos else {
+            find_word_boundary_substring(text_folded, qt)?;
+            in_order = false;
+            continue;
+        };
+        if matched_idx < search_from {
+            in_order = false;
+        } else {
+            search_from = matched_idx + 1;
         }
     }
-    None
+    Some(if in_order { 25 } else { 35 })
 }
 
-/// Checks if `query` matches `text` using case-insensitive word-prefix, contiguous substring,
-/// multi-term token, and bounded-gap multi-word prefix scoring (lower score = higher relevance).
+/// Scores `query` against `text` strictly on word boundaries (lower score = higher relevance).
+///
+/// Scattered character-subsequence matches (e.g. `"qspin"` in `"Quantum / Spin"`) are rejected.
 pub fn fuzzy_match_score(text: &str, query: &str) -> Option<usize> {
-    let trimmed_query = query.trim().to_lowercase();
-    if trimmed_query.is_empty() {
+    let query_folded = fold_search_text(query.trim());
+    if query_folded.is_empty() {
         return Some(usize::MAX);
     }
 
-    let text_lower = text.to_lowercase();
-    if text_lower == trimmed_query {
+    let text_folded = fold_search_text(text.trim());
+    if text_folded == query_folded {
         return Some(0);
     }
-    if text_lower.starts_with(&trimmed_query) {
+    if text_folded.starts_with(&query_folded) {
         return Some(1);
     }
 
-    let words = split_normalized_words(text);
-    if let Some(word_score) = match_word_prefix_score(&words, &trimmed_query) {
-        return Some(word_score);
+    let words = extract_search_words(text);
+    if let Some(word_idx) = words.iter().position(|w| w == &query_folded) {
+        return Some(2 + word_idx);
     }
-    if let Some(pos) = text_lower.find(&trimmed_query) {
+    if let Some(pos) = find_word_boundary_substring(&text_folded, &query_folded) {
         return Some(10 + pos);
     }
-    if let Some(multi_score) = match_multi_term_tokens(&text_lower, &words, &trimmed_query) {
-        return Some(multi_score);
+    if let Some(word_idx) = words.iter().position(|w| w.starts_with(&query_folded)) {
+        return Some(14 + word_idx * 2);
     }
-    match_bounded_gap_word_prefixes(&words, &trimmed_query)
+
+    let q_tokens = extract_search_words(&query_folded);
+    if q_tokens.len() > 1 {
+        return score_multi_token_words(&words, &text_folded, &q_tokens);
+    }
+    None
+}
+
+fn merge_min(cur: Option<usize>, next: Option<usize>, penalty: usize) -> Option<usize> {
+    match (cur, next.map(|s| s.saturating_add(penalty))) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    }
+}
+
+/// Scores a registered [`crate::framework::ToolMetadata`] across display name, ID, tags,
+/// domain, starter presets, and lazy theory summary keywords on word boundaries.
+pub(crate) fn score_tool_metadata(
+    meta: &crate::framework::ToolMetadata,
+    query: &str,
+) -> Option<usize> {
+    if query.trim().is_empty() {
+        return Some(usize::MAX);
+    }
+    let domain_title = format_domain_title(meta.domain);
+    let formatted_entry = format!("{} ({})", meta.display_name, domain_title);
+
+    let mut score = fuzzy_match_score(meta.display_name, query);
+    for candidate in [meta.id, formatted_entry.as_str()] {
+        score = merge_min(score, fuzzy_match_score(candidate, query), 0);
+    }
+    for &tag in meta.tags {
+        score = merge_min(score, fuzzy_match_score(tag, query), 4);
+    }
+    for domain_candidate in [meta.domain, domain_title.as_ref()] {
+        score = merge_min(score, fuzzy_match_score(domain_candidate, query), 50);
+    }
+    if score.is_some_and(|s| s <= 2) {
+        return score;
+    }
+
+    if let Some(corpus) = corpus_for_tool(meta) {
+        for preset in &corpus.presets {
+            score = merge_min(score, fuzzy_match_score(preset.title, query), 8);
+            score = merge_min(score, fuzzy_match_score(preset.description, query), 16);
+            score = merge_min(score, fuzzy_match_score(preset.category, query), 24);
+        }
+        if score.is_none() {
+            score = merge_min(score, fuzzy_match_score(&corpus.theory_blob, query), 20);
+        }
+        if score.is_none() {
+            score = score_cross_field_tokens(meta, &domain_title, corpus, query);
+        }
+    }
+    score
+}
+
+fn score_cross_field_tokens(
+    meta: &crate::framework::ToolMetadata,
+    domain_title: &str,
+    corpus: &super::theory_index::ToolSearchCorpus,
+    query: &str,
+) -> Option<usize> {
+    let q_tokens = extract_search_words(query);
+    if q_tokens.len() <= 1 {
+        return None;
+    }
+    let all_matched = q_tokens.iter().all(|qt| {
+        fuzzy_match_score(meta.display_name, qt).is_some()
+            || fuzzy_match_score(meta.id, qt).is_some()
+            || fuzzy_match_score(meta.domain, qt).is_some()
+            || fuzzy_match_score(domain_title, qt).is_some()
+            || meta
+                .tags
+                .iter()
+                .any(|tag| fuzzy_match_score(tag, qt).is_some())
+            || corpus.presets.iter().any(|p| {
+                fuzzy_match_score(p.title, qt).is_some()
+                    || fuzzy_match_score(p.description, qt).is_some()
+            })
+            || fuzzy_match_score(&corpus.theory_blob, qt).is_some()
+    });
+    all_matched.then_some(45)
 }

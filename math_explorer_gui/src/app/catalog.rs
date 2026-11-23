@@ -1,10 +1,8 @@
-//! Global starter catalog routing, cold-boot lifecycle guards, and Command Palette action dispatch.
+//! Global starter catalog routing, cold-boot lifecycle guards, and pane launch helpers.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MathExplorerApp, SplitLayoutMode, ThemeMode, ViewportLayout};
-use crate::command_palette::{PaletteSelection, WorkspaceAction};
-use crate::framework::QuickExportAction;
+use super::{MathExplorerApp, SplitLayoutMode, ViewportLayout};
 use crate::starter_gallery::{
     ChallengeCard, GallerySelection, GoalChallengeMetadata, PresetStoryMetadata, StarterCard,
 };
@@ -42,6 +40,26 @@ impl MathExplorerApp {
         self.command_palette.close();
         self.close_pane_starter_galleries();
         self.starter_gallery.open_all(ctx);
+        self.show_starter_gallery = true;
+        self.last_synced_show_starter_gallery = true;
+        ctx.request_repaint();
+    }
+
+    fn sync_starter_gallery_flags(&mut self, ctx: &egui::Context) {
+        if self.show_starter_gallery != self.last_synced_show_starter_gallery {
+            if self.show_starter_gallery {
+                self.starter_gallery.open_all(ctx);
+            } else {
+                self.starter_gallery.close_silently();
+            }
+            self.last_synced_show_starter_gallery = self.show_starter_gallery;
+        }
+    }
+
+    fn update_synced_gallery_bool(&mut self) {
+        self.show_starter_gallery =
+            self.starter_gallery.is_open && !self.starter_gallery.is_cold_boot;
+        self.last_synced_show_starter_gallery = self.show_starter_gallery;
     }
 
     /// Dismisses the cold-boot starter gallery if workspace state was altered away from defaults.
@@ -57,6 +75,7 @@ impl MathExplorerApp {
             || self.show_diagnostics_panel
         {
             self.starter_gallery.dismiss_cold_boot();
+            self.update_synced_gallery_bool();
         }
     }
 
@@ -81,6 +100,7 @@ impl MathExplorerApp {
         if triggered {
             if self.starter_gallery.is_open {
                 self.starter_gallery.close_silently();
+                self.update_synced_gallery_bool();
                 crate::accessibility::announce_live_status(ctx, "Starter template gallery closed");
             } else {
                 self.open_explore_catalog(ctx);
@@ -90,26 +110,61 @@ impl MathExplorerApp {
 
     /// Renders the root `GlobalStarterGallery` modal and routes any selected item to `focused_pane`.
     pub(super) fn render_global_starter_gallery(&mut self, ctx: &egui::Context) {
+        self.sync_starter_gallery_flags(ctx);
         self.sync_cold_boot_starter_gallery();
         if self.command_palette.is_open && self.starter_gallery.is_open {
             self.starter_gallery.close_silently();
+            self.update_synced_gallery_bool();
             return;
         }
         let target_pane = self.active_focused_pane();
-        match self.starter_gallery.show(ctx) {
-            Some(GallerySelection::Starter(card)) => {
-                let _ = self.launch_starter_card_in_pane(ctx, target_pane, &card);
+        let selection = self.starter_gallery.show(ctx);
+        self.update_synced_gallery_bool();
+        if let Some(sel) = selection {
+            self.dispatch_gallery_selection_to_pane(ctx, target_pane, sel);
+        }
+    }
+
+    /// Routes a root-hoisted per-pane `StarterGallery` selection to `pane_idx`.
+    pub(crate) fn apply_deferred_starter_gallery_selection(
+        &mut self,
+        ctx: &egui::Context,
+        pane_idx: usize,
+        id_source: &str,
+        is_open: bool,
+        selected: Option<GallerySelection>,
+    ) {
+        let Some(selection) = selected else {
+            if let Some(tab) = self.pane_tab_mut(pane_idx) {
+                tab.apply_starter_gallery_selection(ctx, id_source, is_open, None);
             }
-            Some(GallerySelection::Story(story)) => {
-                let _ = self.launch_story_in_pane(ctx, target_pane, story);
+            return;
+        };
+        if let Some(tab) = self.pane_tab_mut(pane_idx) {
+            tab.apply_starter_gallery_selection(ctx, id_source, false, None);
+        }
+        self.dispatch_gallery_selection_to_pane(ctx, pane_idx, selection);
+    }
+
+    fn dispatch_gallery_selection_to_pane(
+        &mut self,
+        ctx: &egui::Context,
+        pane_idx: usize,
+        selection: GallerySelection,
+    ) {
+        match selection {
+            GallerySelection::Starter(card) => {
+                let _ = self.launch_starter_card_in_pane(ctx, pane_idx, &card);
             }
-            Some(GallerySelection::Challenge(ch)) => {
-                let _ = self.launch_challenge_in_pane(ctx, target_pane, &ch);
+            GallerySelection::Story(story) => {
+                let _ = self.launch_story_in_pane(ctx, pane_idx, story);
             }
-            Some(GallerySelection::GoalChallenge(goal)) => {
-                let _ = self.launch_goal_challenge_in_pane(ctx, target_pane, goal);
+            GallerySelection::Challenge(ch) => {
+                let _ = self.launch_challenge_in_pane(ctx, pane_idx, &ch);
             }
-            None => {}
+            GallerySelection::GoalChallenge(goal) => {
+                let _ = self.launch_goal_challenge_in_pane(ctx, pane_idx, goal);
+            }
         }
     }
 
@@ -120,6 +175,7 @@ impl MathExplorerApp {
         kind_label: &str,
     ) -> Result<usize, String> {
         self.starter_gallery.close_silently();
+        self.update_synced_gallery_bool();
         let tab_idx = self.find_tab_index_for_domain(domain).ok_or_else(|| {
             format!("No simulation module registered for {kind_label} domain '{domain}'")
         })?;
@@ -272,130 +328,5 @@ impl MathExplorerApp {
         };
         self.finalize_pane_launch(ctx, target_pane);
         res
-    }
-
-    /// Dispatches a `PaletteSelection` returned by `CommandPalette::show`.
-    pub(super) fn execute_palette_selection(
-        &mut self,
-        ctx: &egui::Context,
-        selection: PaletteSelection,
-    ) {
-        if let Some(action) = selection.action {
-            self.execute_workspace_action(ctx, action);
-            return;
-        }
-        if let Some(card) = selection.preset {
-            let _ = self.launch_starter_card_in_focused_pane(ctx, &card);
-            return;
-        }
-        if selection.tab_index >= self.tabs.len() {
-            return;
-        }
-        self.select_tab(ctx, selection.tab_index);
-        let Some(tool_name) = &selection.tool_name else {
-            return;
-        };
-        if let Some(tab) = self.focused_pane_tab_mut() {
-            tab.select_tool_by_name(tool_name);
-            let display_label = inventory::iter::<crate::framework::ToolMetadata>
-                .into_iter()
-                .find(|m| {
-                    m.id.eq_ignore_ascii_case(tool_name)
-                        || m.display_name.eq_ignore_ascii_case(tool_name)
-                })
-                .map_or(tool_name.as_str(), |m| m.display_name);
-            let msg = format!("Switched to tool {} in tab {}", display_label, tab.name());
-            crate::accessibility::announce_live_status(ctx, msg);
-        }
-        self.clear_active_pane_caches();
-    }
-
-    fn execute_workspace_action(&mut self, ctx: &egui::Context, action: WorkspaceAction) {
-        match action {
-            WorkspaceAction::ExploreCatalog => self.open_explore_catalog(ctx),
-            WorkspaceAction::LayoutSingle => self.apply_layout_action(ctx, ViewportLayout::Single),
-            WorkspaceAction::LayoutSplitHorizontal => {
-                self.apply_layout_action(ctx, ViewportLayout::SplitHorizontal);
-            }
-            WorkspaceAction::LayoutSplitVertical => {
-                self.apply_layout_action(ctx, ViewportLayout::SplitVertical);
-            }
-            WorkspaceAction::LayoutQuadGrid => {
-                self.apply_layout_action(ctx, ViewportLayout::QuadGrid);
-            }
-            WorkspaceAction::DuplicateFocusedPane => {
-                if let Some(dst) = self.duplicate_focused_pane(Some(ctx)) {
-                    let labels = self.viewport_layout.pane_labels();
-                    let label = labels.get(dst).copied().unwrap_or("Pane");
-                    crate::accessibility::announce_live_status(
-                        ctx,
-                        format!("Duplicated focused pane into {label}"),
-                    );
-                }
-            }
-            WorkspaceAction::SwapPanes => {
-                self.swap_panes();
-                crate::accessibility::announce_live_status(
-                    ctx,
-                    "Swapped primary and secondary panes",
-                );
-            }
-            WorkspaceAction::ThemeDark => self.apply_theme_action(ctx, ThemeMode::Dark),
-            WorkspaceAction::ThemeLight => self.apply_theme_action(ctx, ThemeMode::Light),
-            WorkspaceAction::ThemeHighContrast => {
-                self.apply_theme_action(ctx, ThemeMode::HighContrast);
-            }
-            WorkspaceAction::ExportCsv => {
-                self.apply_export_action(ctx, QuickExportAction::ExportCsv)
-            }
-            WorkspaceAction::CopyCsv => self.apply_export_action(ctx, QuickExportAction::CopyCsv),
-            WorkspaceAction::ExportJson => {
-                self.apply_export_action(ctx, QuickExportAction::ExportJson);
-            }
-            WorkspaceAction::ExportPng => {
-                self.apply_export_action(ctx, QuickExportAction::ExportPng)
-            }
-            WorkspaceAction::ExportPresetJson => {
-                self.apply_export_action(ctx, QuickExportAction::ExportPresetJson);
-            }
-            WorkspaceAction::CopyShareLink => self.copy_current_share_link(ctx),
-        }
-    }
-
-    fn apply_layout_action(&mut self, ctx: &egui::Context, layout: ViewportLayout) {
-        self.set_layout(layout);
-        crate::accessibility::announce_live_status(
-            ctx,
-            format!("Switched viewport layout to {}", layout.name()),
-        );
-    }
-
-    fn apply_theme_action(&mut self, ctx: &egui::Context, theme: ThemeMode) {
-        self.theme = theme;
-        self.theme.apply_to_context(ctx);
-        crate::accessibility::announce_live_status(
-            ctx,
-            format!("Switched theme to {}", theme.name()),
-        );
-    }
-
-    fn apply_export_action(&mut self, ctx: &egui::Context, action: QuickExportAction) {
-        let outcome = match self.focused_pane_tab_mut() {
-            Some(tab) => match tab.framework_mut() {
-                Some(fw) => fw.trigger_quick_export(ctx, action),
-                None => Err(format!(
-                    "Tab '{}' does not support tool exports",
-                    tab.name()
-                )),
-            },
-            None => Err("No active simulation pane selected".to_string()),
-        };
-        match outcome {
-            Ok(msg) => crate::accessibility::announce_live_status(ctx, msg),
-            Err(err) => {
-                self.session_manager.set_toast(err.clone(), true);
-                crate::accessibility::announce_live_assertive_status(ctx, &err);
-            }
-        }
     }
 }

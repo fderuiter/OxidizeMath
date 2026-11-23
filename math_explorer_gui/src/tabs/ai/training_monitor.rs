@@ -304,7 +304,7 @@ inventory::submit! {
         id: "TrainingMonitorTool",
         display_name: "Training Monitor",
         domain: "ai",
-        tags: &["gradient descent", "epoch", "loss curve", "backpropagation"],
+        tags: &["gradient descent", "sgd", "adam", "loss curve", "mlp", "backpropagation"],
         build: || Box::new(TrainingMonitorTool::default()),
     }
 }

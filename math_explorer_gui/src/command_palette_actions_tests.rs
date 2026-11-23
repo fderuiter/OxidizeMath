@@ -5,14 +5,14 @@ use crate::framework::ToolMetadata;
 use crate::starter_gallery::StarterPresetMetadata;
 
 #[test]
-fn test_all_68_tools_have_non_empty_curated_tags() {
+fn test_all_registered_tools_have_lowercase_curated_tags() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 76, "Expected all 76 registered ToolMetadata");
+    assert_eq!(tools.len(), 77, "Expected all 77 registered ToolMetadata");
 
     for meta in tools {
         assert!(
-            !meta.tags.is_empty(),
-            "ToolMetadata '{}' in domain '{}' must define curated tags",
+            meta.tags.len() >= 2,
+            "ToolMetadata '{}' in domain '{}' must define >= 2 curated tags",
             meta.id,
             meta.domain
         );
@@ -35,7 +35,7 @@ fn test_all_68_tools_have_non_empty_curated_tags() {
 }
 
 #[test]
-fn test_command_palette_indexes_all_85_starter_presets_and_16_workspace_actions() {
+fn test_command_palette_indexes_all_tabs_tools_starter_presets_and_commands() {
     let tabs = crate::tabs::instantiate_tabs();
     let palette = CommandPalette::default();
     let all_items = palette.filter_items(&tabs);
@@ -52,21 +52,21 @@ fn test_command_palette_indexes_all_85_starter_presets_and_16_workspace_actions(
         .iter()
         .filter(|i| matches!(i, PaletteItem::Preset { .. }))
         .count();
-    let action_count = all_items
+    let command_count = all_items
         .iter()
-        .filter(|i| matches!(i, PaletteItem::Action { .. }))
+        .filter(|i| matches!(i, PaletteItem::Command { .. }))
         .count();
 
-    assert_eq!(tab_count, 26, "Expected 26 ExplorerTab entries");
-    assert_eq!(tool_count, 76, "Expected 76 ToolMetadata entries");
+    assert_eq!(tab_count, 27, "Expected 27 ExplorerTab entries");
+    assert_eq!(tool_count, 77, "Expected 77 ToolMetadata entries");
     assert_eq!(
-        preset_count, 109,
-        "Expected 109 StarterPresetMetadata cards"
+        preset_count, 112,
+        "Expected 112 StarterPresetMetadata cards"
     );
     assert_eq!(
-        action_count,
-        WorkspaceAction::ALL.len(),
-        "Expected all WorkspaceAction entries"
+        command_count,
+        actions::all_builtin_commands().count(),
+        "Expected all built-in CommandPalette actions"
     );
 
     verify_every_preset_title_matches(&tabs);
@@ -76,31 +76,33 @@ fn verify_every_preset_title_matches(tabs: &[Box<dyn crate::tabs::ExplorerTab>])
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 109);
+    assert_eq!(presets.len(), 112);
 
-    for preset in presets {
+    for target in presets {
         let palette = CommandPalette {
-            query: preset.title.to_string(),
+            query: target.title.to_string(),
             ..Default::default()
         };
         let matches = palette.filter_items(tabs);
         let found = matches.iter().any(|item| match item {
-            PaletteItem::Preset { card, .. } => card.id == preset.id && card.title == preset.title,
+            PaletteItem::Preset { preset, .. } => {
+                preset.id == target.id && preset.title == target.title
+            }
             _ => false,
         });
         assert!(
             found,
             "CommandPalette::filter_items failed to match preset '{}' (id '{}')",
-            preset.title, preset.id
+            target.title, target.id
         );
     }
 }
 
 #[test]
-fn test_word_prefix_and_bounded_gap_scoring_rejects_klein_and_seir() {
+fn test_word_boundary_scoring_rejects_scattered_subsequence_noise() {
     let tabs = crate::tabs::instantiate_tabs();
 
-    for unmatched in ["klein", "seir", "zzzxq"] {
+    for unmatched in ["lsphz", "qspin", "zzzxq"] {
         let palette = CommandPalette {
             query: unmatched.to_string(),
             ..Default::default()
@@ -113,7 +115,7 @@ fn test_word_prefix_and_bounded_gap_scoring_rejects_klein_and_seir() {
 
         for meta in inventory::iter::<ToolMetadata> {
             assert_eq!(
-                score_tool_in_domain(meta, unmatched),
+                score_tool_metadata(meta, unmatched),
                 None,
                 "SimulationFramework sidebar filter matched '{unmatched}' on tool '{}'",
                 meta.id
@@ -123,12 +125,13 @@ fn test_word_prefix_and_bounded_gap_scoring_rejects_klein_and_seir() {
 }
 
 #[test]
-fn test_synonym_and_bounded_gap_queries_match_expected_models() {
+fn test_synonym_and_command_queries_match_expected_models_and_actions() {
     let tabs = crate::tabs::instantiate_tabs();
 
     let expected_queries: &[(&str, &str)] = &[
-        ("qspin", "Bloch Sphere"),
         ("kermack", "SIR"),
+        ("seir", "SIR"),
+        ("klein bottle", "Surface Viewer"),
         ("mandelbrot", "Mandelbrot"),
         ("harmonic oscillator", "Harmonic Oscillator"),
         ("turing", "Turing"),
@@ -142,7 +145,8 @@ fn test_synonym_and_bounded_gap_queries_match_expected_models() {
         ("explore catalog", "Explore Catalog"),
         ("2x2 quad", "2x2 Quad Grid"),
         ("high contrast", "High Contrast"),
-        ("shareable link", "Copy Shareable Simulation Link"),
+        ("shareable link", "Copy Share Link"),
+        ("save parameter preset json", "Export Preset JSON"),
     ];
 
     for &(query, expected_substr) in expected_queries {

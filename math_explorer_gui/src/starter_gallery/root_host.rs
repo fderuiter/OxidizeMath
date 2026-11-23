@@ -135,7 +135,14 @@ fn resolve_gallery_domain<'a>(
     }
 }
 
-fn spans_multiple_academic_domains(cards: &[StarterCard], challenges: &[ChallengeCard]) -> bool {
+fn spans_multiple_academic_domains(
+    id_source: &str,
+    cards: &[StarterCard],
+    challenges: &[ChallengeCard],
+) -> bool {
+    if id_source == "global_workspace" {
+        return true;
+    }
     let mut seen = HashSet::new();
     cards
         .iter()
@@ -206,7 +213,7 @@ pub fn show_starter_gallery_with_challenges_for_domain(
     initial_domain_slug: Option<&str>,
     is_open: &mut bool,
 ) -> Option<GallerySelection> {
-    let multi_domain = spans_multiple_academic_domains(cards, challenges);
+    let multi_domain = spans_multiple_academic_domains(id_source, cards, challenges);
     let (stories, goal_challenges) =
         resolve_stories_and_goals(id_source, cards, challenges, multi_domain);
     if cards.is_empty() && stories.is_empty() && challenges.is_empty() && goal_challenges.is_empty()
@@ -342,9 +349,14 @@ pub fn show_starter_gallery_overlay_for_domain(
     initial_domain_slug: Option<&str>,
     is_open: &mut bool,
 ) -> Option<StarterCard> {
-    let domain =
-        initial_domain_slug.unwrap_or_else(|| resolve_gallery_domain(id_source, cards, &[]));
-    let challenges = super::get_challenge_cards_for_domain(domain);
+    let multi_domain = spans_multiple_academic_domains(id_source, cards, &[]);
+    let challenges = if multi_domain {
+        super::get_all_challenge_cards()
+    } else {
+        let domain =
+            initial_domain_slug.unwrap_or_else(|| resolve_gallery_domain(id_source, cards, &[]));
+        super::get_challenge_cards_for_domain(domain)
+    };
     match show_starter_gallery_with_challenges_for_domain(
         ctx,
         id_source,
@@ -368,6 +380,14 @@ pub fn show_starter_gallery_overlay(
     is_open: &mut bool,
 ) -> Option<StarterCard> {
     show_starter_gallery_overlay_for_domain(ctx, id_source, cards, None, is_open)
+}
+
+/// Returns whether a root-level `StarterGallery` hoisting scope is currently active on `ctx`.
+pub(crate) fn is_root_starter_gallery_scope_active(ctx: &egui::Context) -> bool {
+    ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::new(DEFER_STARTER_GALLERY_TO_ROOT_KEY))
+            .unwrap_or(false)
+    })
 }
 
 /// Enables root-level hoisting of `StarterGallery` modals rendered during pane updates.
@@ -432,6 +452,7 @@ pub(crate) fn flush_deferred_starter_galleries(
     });
     if !requests.is_empty() {
         app.starter_gallery.close_silently();
+        app.show_starter_gallery = false;
     }
     for req in requests {
         dispatch_deferred_gallery_request(app, ctx, req);
@@ -452,35 +473,11 @@ fn dispatch_deferred_gallery_request(
         req.initial_domain_slug.as_deref(),
         &mut is_open,
     );
-    match selected {
-        Some(GallerySelection::Starter(card)) => {
-            if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
-                tab.apply_starter_gallery_selection(ctx, &req.id_source, false, None);
-            }
-            let _ = app.launch_starter_card_in_pane(ctx, req.pane_idx, &card);
-        }
-        Some(GallerySelection::Story(story)) => {
-            if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
-                tab.apply_starter_gallery_selection(ctx, &req.id_source, false, None);
-            }
-            let _ = app.launch_story_in_pane(ctx, req.pane_idx, story);
-        }
-        Some(GallerySelection::Challenge(ch)) => {
-            if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
-                tab.apply_starter_gallery_selection(ctx, &req.id_source, false, None);
-            }
-            let _ = app.launch_challenge_in_pane(ctx, req.pane_idx, &ch);
-        }
-        Some(GallerySelection::GoalChallenge(goal)) => {
-            if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
-                tab.apply_starter_gallery_selection(ctx, &req.id_source, false, None);
-            }
-            let _ = app.launch_goal_challenge_in_pane(ctx, req.pane_idx, goal);
-        }
-        None => {
-            if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
-                tab.apply_starter_gallery_selection(ctx, &req.id_source, is_open, None);
-            }
-        }
-    }
+    app.apply_deferred_starter_gallery_selection(
+        ctx,
+        req.pane_idx,
+        &req.id_source,
+        is_open,
+        selected,
+    );
 }

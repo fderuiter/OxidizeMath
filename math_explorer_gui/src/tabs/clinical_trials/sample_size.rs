@@ -288,7 +288,7 @@ inventory::submit! {
         id: "SampleSizeCalculatorTool",
         display_name: "Sample Size Calculator",
         domain: "clinical_trials",
-        tags: &["statistical power", "alpha", "cohort", "biostatistics", "trial"],
+        tags: &["statistical power", "hypothesis test", "effect size", "significance", "biostatistics", "rct"],
         build: || Box::new(SampleSizeCalculatorTool::default()),
     }
 }

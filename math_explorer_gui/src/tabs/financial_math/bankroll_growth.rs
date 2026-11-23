@@ -423,7 +423,7 @@ inventory::submit! {
         id: "BankrollGrowthTool",
         display_name: "Bankroll Growth",
         domain: "financial_math",
-        tags: &["geometric growth", "compounding", "drawdown", "portfolio"],
+        tags: &["kelly", "kelly criterion", "compounding", "wealth", "drawdown"],
         build: || Box::new(BankrollGrowthTool::default()),
     }
 }

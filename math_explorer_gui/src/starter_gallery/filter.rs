@@ -26,6 +26,7 @@ pub fn academic_domain_for_slug(domain_slug: &str) -> AcademicDomain {
         "astrophysics" | "chaos" | "fluid_dynamics" | "medical" | "mri" | "quantum"
         | "relativity" | "solid_state" => AcademicDomain::Physics,
         "battery_degradation"
+        | "cannibalism"
         | "clinical_trials"
         | "favoritism"
         | "game_theory"
@@ -48,6 +49,7 @@ pub fn module_title_for_slug(domain_slug: &str) -> &'static str {
         "astrophysics" => "Astrophysics",
         "battery_degradation" => "Battery Degradation",
         "biology" | "morphogenesis" => "Morphogenesis",
+        "cannibalism" => "Population Structure",
         "chaos" => "Chaos Theory",
         "climate" => "Climate",
         "clinical_trials" => "Clinical Trials",

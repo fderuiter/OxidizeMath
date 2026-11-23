@@ -177,7 +177,7 @@ inventory::submit! {
         id: "BandStructureTool",
         display_name: "Band Structure",
         domain: "solid_state",
-        tags: &["bloch waves", "kronig-penney", "brillouin zone", "band gap"],
+        tags: &["tight-binding", "brillouin zone", "dispersion", "bloch", "effective mass"],
         build: || Box::new(BandStructureTool::default()),
     }
 }

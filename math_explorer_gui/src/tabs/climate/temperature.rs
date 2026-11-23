@@ -157,7 +157,7 @@ inventory::submit! {
         id: "TemperatureAnomaliesTool",
         display_name: "Temperature Anomalies",
         domain: "climate",
-        tags: &["global warming", "anomaly", "surface temperature", "climatology"],
+        tags: &["gistemp", "global warming", "radiative forcing", "climatology", "anomaly", "climate"],
         build: || Box::new(TemperatureAnomaliesTool::default()),
     }
 }
