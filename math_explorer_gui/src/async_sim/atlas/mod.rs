@@ -211,6 +211,11 @@ pub trait RegimeCartographer: Send + Sync + 'static {
         None
     }
 
+    /// Optional additional analytical threshold curves rendered over the heatmap.
+    fn extra_overlay_contours(&self) -> Vec<(&'static str, Vec<[f64; 2]>)> {
+        Vec::new()
+    }
+
     /// Optional discrete `(regime_label, swatch_color)` legend entries shown above the plot.
     fn legend_entries(&self, _high_contrast: bool) -> Vec<(&'static str, egui::Color32)> {
         Vec::new()
