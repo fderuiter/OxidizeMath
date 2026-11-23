@@ -3197,7 +3197,6 @@ dependencies = [
  "rand_chacha",
  "serde",
  "syn 2.0.119",
- "thiserror 2.0.21",
  "toml",
  "wasm-bindgen",
  "wasm-bindgen-futures",

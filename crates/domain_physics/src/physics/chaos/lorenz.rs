@@ -31,8 +31,6 @@ pub struct LorenzBuilder {
     sigma: f64,
     rho: f64,
     beta: f64,
-    dt: f64,
-    integration_method: pure_math::pure_math::analysis::ode::IntegrationMethod,
 }
 
 impl Default for LorenzBuilder {
@@ -42,8 +40,6 @@ impl Default for LorenzBuilder {
             sigma: 10.0,
             rho: 28.0,
             beta: 8.0 / 3.0,
-            dt: 0.01,
-            integration_method: pure_math::pure_math::analysis::ode::IntegrationMethod::RungeKutta4,
         }
     }
 }
@@ -76,23 +72,6 @@ impl LorenzBuilder {
         self
     }
 
-    /// Sets the time step `dt`.
-    #[verified_engine::verified]
-    pub fn dt(mut self, val: f64) -> Self {
-        self.dt = val;
-        self
-    }
-
-    /// Sets the numerical integration method.
-    #[verified_engine::verified]
-    pub fn integration_method(
-        mut self,
-        val: pure_math::pure_math::analysis::ode::IntegrationMethod,
-    ) -> Self {
-        self.integration_method = val;
-        self
-    }
-
     /// Builds the `LorenzSystem` with the configured parameters and initial state.
     #[verified_engine::verified]
     pub fn build(self, state: LorenzState) -> LorenzSystem {
@@ -101,8 +80,6 @@ impl LorenzBuilder {
             rho: self.rho,
             beta: self.beta,
             state,
-            dt: self.dt,
-            integration_method: self.integration_method,
         }
     }
 }
@@ -155,10 +132,6 @@ pub struct LorenzSystem {
     pub beta: f64,
     /// The current state of the system.
     pub state: LorenzState,
-    /// The time step `dt`.
-    pub dt: f64,
-    /// The integration method to use.
-    pub integration_method: pure_math::pure_math::analysis::ode::IntegrationMethod,
 }
 
 impl TimeStepper<Vector3<f64>> for LorenzSystem {
@@ -243,83 +216,5 @@ impl TheoryDescribable for LorenzSystem {
         let mut map = HashMap::new();
         map.insert("default".to_string(), "Lorenz attractor state".to_string());
         map
-    }
-}
-
-use oxidize_core::{ModelConfig, ModelState, SimulationModel};
-
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[allow(missing_docs)]
-pub struct LorenzConfig {
-    #[allow(missing_docs)]
-    pub sigma: f64,
-    #[allow(missing_docs)]
-    pub rho: f64,
-    #[allow(missing_docs)]
-    pub beta: f64,
-    #[allow(missing_docs)]
-    pub dt: f64,
-    #[cfg_attr(feature = "serde", serde(default))]
-    #[allow(missing_docs)]
-    pub integration_method: pure_math::pure_math::analysis::ode::IntegrationMethod,
-}
-
-impl ModelConfig for LorenzConfig {}
-impl ModelState for LorenzState {}
-
-impl SimulationModel for LorenzSystem {
-    type Config = LorenzConfig;
-    type State = LorenzState;
-    type Error = std::io::Error;
-
-    #[verified_engine::verified]
-    fn initialize<R: rand::RngCore>(
-        config: Self::Config,
-        _provider: R,
-    ) -> Result<Self, Self::Error> {
-        // We initialize to an arbitrary point, maybe near the attractor.
-        let state = LorenzState::new(10.0, 10.0, 10.0);
-        Ok(LorenzBuilder::new()
-            .sigma(config.sigma)
-            .rho(config.rho)
-            .beta(config.beta)
-            .dt(config.dt)
-            .integration_method(config.integration_method)
-            .build(state))
-    }
-
-    #[verified_engine::verified]
-    fn step(&mut self) -> Result<(), Self::Error> {
-        let dt = self.dt;
-        match self.integration_method {
-            pure_math::pure_math::analysis::ode::IntegrationMethod::Euler => {
-                let mut solver = pure_math::pure_math::analysis::ode::Euler::new(&self.state.vec);
-                <Self as pure_math::pure_math::analysis::ode::TimeStepper<Vector3<f64>>>::step_with(
-                    self,
-                    &mut solver,
-                    dt,
-                );
-            }
-            pure_math::pure_math::analysis::ode::IntegrationMethod::Heun => {
-                let mut solver = pure_math::pure_math::analysis::ode::Heun::new(&self.state.vec);
-                <Self as pure_math::pure_math::analysis::ode::TimeStepper<Vector3<f64>>>::step_with(
-                    self,
-                    &mut solver,
-                    dt,
-                );
-            }
-            pure_math::pure_math::analysis::ode::IntegrationMethod::RungeKutta4 => {
-                <Self as pure_math::pure_math::analysis::ode::TimeStepper<Vector3<f64>>>::step(
-                    self, dt,
-                );
-            }
-        }
-        Ok(())
-    }
-
-    #[verified_engine::verified]
-    fn get_state(&self) -> Self::State {
-        self.state
     }
 }

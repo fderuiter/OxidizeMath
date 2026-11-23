@@ -7,8 +7,6 @@ mod seeds;
 #[cfg(test)]
 mod tests;
 
-use std::fmt;
-
 thread_local! {
     static FIT_MODEL_WITH_AXES_CALL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
@@ -63,28 +61,6 @@ impl FitType {
         Self::Sinusoidal,
     ];
 
-    /// Returns the polynomial degree when applicable (`0` for non-polynomial models).
-    #[must_use]
-    pub const fn degree(self) -> usize {
-        match self {
-            Self::Linear => 1,
-            Self::Polynomial(deg) => {
-                if deg < 1 {
-                    1
-                } else if deg > 4 {
-                    4
-                } else {
-                    deg
-                }
-            }
-            Self::Exponential
-            | Self::PowerLaw
-            | Self::Logarithmic
-            | Self::Logistic
-            | Self::Sinusoidal => 0,
-        }
-    }
-
     /// User-friendly menu label for the fit type.
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -124,12 +100,6 @@ impl FitType {
     #[must_use]
     pub const fn supports_log_mode(self) -> bool {
         matches!(self, Self::Exponential | Self::PowerLaw)
-    }
-}
-
-impl fmt::Display for FitType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.label())
     }
 }
 
@@ -191,53 +161,6 @@ impl FitResult {
     }
 }
 
-/// Computes least-squares linear or polynomial regression for a set of data points.
-#[must_use]
-pub fn fit_dataset(
-    points: &[[f64; 2]],
-    target_degree: usize,
-    dataset_name: &str,
-) -> Option<FitResult> {
-    fit_dataset_scaled(points, target_degree, dataset_name, false, false)
-}
-
-/// Computes least-squares polynomial regression in linear, semilog, or log-log coordinates.
-#[must_use]
-pub fn fit_dataset_scaled(
-    points: &[[f64; 2]],
-    target_degree: usize,
-    dataset_name: &str,
-    log_x: bool,
-    log_y: bool,
-) -> Option<FitResult> {
-    poly::fit_polynomial_scaled(points, target_degree, dataset_name, log_x, log_y)
-}
-
-/// Fits any preset [`FitType`] (linear, polynomial, or nonlinear) to `points`.
-///
-/// When `log_mode` is `true` on `Exponential` or `PowerLaw`, parameters are estimated via
-/// logarithmic linear least squares matching Desmos Log Mode; otherwise untransformed
-/// nonlinear least squares is solved via damped Levenberg-Marquardt.
-#[must_use]
-pub fn fit_model(
-    points: &[[f64; 2]],
-    fit_type: FitType,
-    dataset_name: &str,
-    log_mode: bool,
-) -> Option<FitResult> {
-    match fit_type {
-        FitType::Linear => poly::fit_polynomial_scaled(points, 1, dataset_name, false, false),
-        FitType::Polynomial(deg) => {
-            poly::fit_polynomial_scaled(points, deg.clamp(1, 4), dataset_name, false, false)
-        }
-        FitType::Exponential
-        | FitType::PowerLaw
-        | FitType::Logarithmic
-        | FitType::Logistic
-        | FitType::Sinusoidal => nonlinear::fit_nonlinear(points, fit_type, dataset_name, log_mode),
-    }
-}
-
 /// Fits a preset [`FitType`] respecting axis log flags for polynomial models and `log_mode` for nonlinear models.
 #[must_use]
 pub fn fit_model_with_axes(
@@ -260,7 +183,7 @@ pub fn fit_model_with_axes(
 
 #[cfg(all(test, feature = "serde"))]
 mod serde_tests {
-    use super::{FitResult, FitType, fit_model};
+    use super::{FitResult, FitType, fit_model_with_axes};
 
     #[test]
     fn fit_type_and_result_roundtrip_json() {
@@ -271,7 +194,8 @@ mod serde_tests {
         }
 
         let pts = [[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]];
-        let result = fit_model(&pts, FitType::Linear, "linear_demo", false).expect("fit linear");
+        let result = fit_model_with_axes(&pts, FitType::Linear, "linear_demo", false, false, false)
+            .expect("fit linear");
         let encoded = serde_json::to_string(&result).expect("serialize FitResult");
         let decoded: FitResult = serde_json::from_str(&encoded).expect("deserialize FitResult");
         assert_eq!(decoded, result);
