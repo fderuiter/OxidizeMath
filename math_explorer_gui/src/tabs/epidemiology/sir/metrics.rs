@@ -124,9 +124,10 @@ pub(super) fn render_simulation_plot(
     });
 
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+    let plot_height = (ui.available_width() * 0.5).clamp(220.0, 340.0);
     let plot = Plot::new("sir_plot")
         .id(plot_id)
-        .view_aspect(2.0)
+        .height(plot_height)
         .legend(egui_plot::Legend::default());
 
     plot.show(ui, |plot_ui| {
