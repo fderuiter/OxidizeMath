@@ -4,6 +4,12 @@
       "signature": "impl DiagnosticBus { pub fn emit (& self , _ : DiagnosticEvent) }"
     },
     {
+      "signature": "impl DiagnosticBus { pub fn emit_diagnostic < D : Diagnostic + ? Sized > (& self , _ : & D) }"
+    },
+    {
+      "signature": "impl DiagnosticBus { pub fn emit_diagnostic_with_source < D : Diagnostic + ? Sized > (& self , _ : & str , _ : & D ,) }"
+    },
+    {
       "signature": "impl DiagnosticBus { pub fn new () -> Self }"
     },
     {
@@ -936,6 +942,11 @@
       "signature": "pub trait KalmanSystem < T : RealField + Copy > { fn process_noise (& self , _ : T) -> DMatrix < T > }"
     }
   ],
+  "crates/domain_applied/src/applied/algorithms/mod.rs": [
+    {
+      "signature": "pub use kalman :: KalmanError"
+    }
+  ],
   "crates/domain_applied/src/applied/algorithms/sorting/divide_conquer.rs": [
     {
       "signature": "pub fn merge_sort < T : Ord + Clone > (_ : & [T]) -> SortingResult < T >"
@@ -1257,6 +1268,11 @@
     },
     {
       "signature": "pub trait HypothesisTest < Input > { fn test (& self , _ : Input) -> Result < TestResult , ClinicalTrialError > }"
+    }
+  ],
+  "crates/domain_applied/src/applied/clinical_trials/mod.rs": [
+    {
+      "signature": "pub use types :: ClinicalTrialError"
     }
   ],
   "crates/domain_applied/src/applied/clinical_trials/sample_size.rs": [
@@ -1959,6 +1975,9 @@
       "signature": "pub use types :: VoxelGrid"
     },
     {
+      "signature": "pub use types :: VoxelGridError"
+    },
+    {
       "signature": "pub use workspace :: IsosurfaceWorkspace"
     },
     {
@@ -2497,6 +2516,23 @@
     },
     {
       "signature": "pub enum PharmacokineticsError"
+    },
+    {
+      "signature": "pub use crate :: applied :: algorithms :: kalman :: KalmanError"
+    },
+    {
+      "signature": "pub use crate :: applied :: clinical_trials :: types :: ClinicalTrialError"
+    },
+    {
+      "signature": "pub use crate :: applied :: isosurface :: types :: VoxelGridError"
+    },
+    {
+      "signature": "pub use umbrella :: AppliedError"
+    }
+  ],
+  "crates/domain_applied/src/error/umbrella.rs": [
+    {
+      "signature": "pub enum AppliedError"
     }
   ],
   "crates/domain_applied/src/lib.rs": [
@@ -2504,7 +2540,13 @@
       "signature": "pub mod __doctest_facade"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: AppliedError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: BatteryError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ClinicalTrialError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EngineeringError } }"
@@ -2516,10 +2558,16 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: IsosurfaceError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: KalmanError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: LoraError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PharmacokineticsError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: VoxelGridError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
@@ -2528,7 +2576,13 @@
       "signature": "pub mod __doctest_facade { pub mod error }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: AppliedError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: BatteryError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: ClinicalTrialError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: EngineeringError } }"
@@ -2540,10 +2594,16 @@
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: IsosurfaceError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: KalmanError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: LoraError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: PharmacokineticsError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: VoxelGridError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use pure_math :: __doctest_facade :: prelude :: * } }"
@@ -2935,6 +2995,12 @@
   "crates/domain_biology/src/biology/mod.rs": [
     {
       "signature": "pub use crate :: error"
+    },
+    {
+      "signature": "pub use kinetics :: KineticsError"
+    },
+    {
+      "signature": "pub use reaction_diffusion :: ReactionDiffusionError"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/mod.rs": [
@@ -3320,6 +3386,20 @@
   "crates/domain_biology/src/error.rs": [
     {
       "signature": "pub enum HodgkinHuxleyError"
+    },
+    {
+      "signature": "pub use crate :: biology :: kinetics :: KineticsError"
+    },
+    {
+      "signature": "pub use crate :: biology :: reaction_diffusion :: ReactionDiffusionError"
+    },
+    {
+      "signature": "pub use umbrella :: BiologyError"
+    }
+  ],
+  "crates/domain_biology/src/error/umbrella.rs": [
+    {
+      "signature": "pub enum BiologyError"
     }
   ],
   "crates/domain_biology/src/lib.rs": [
@@ -3327,7 +3407,16 @@
       "signature": "pub mod __doctest_facade"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: BiologyError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: HodgkinHuxleyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: KineticsError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ReactionDiffusionError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use domain_applied :: __doctest_facade :: error :: * } }"
@@ -3336,7 +3425,16 @@
       "signature": "pub mod __doctest_facade { pub mod error }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: BiologyError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: HodgkinHuxleyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: KineticsError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: ReactionDiffusionError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use domain_applied :: __doctest_facade :: prelude :: * } }"
@@ -3803,6 +3901,9 @@
     },
     {
       "signature": "pub use crate :: error"
+    },
+    {
+      "signature": "pub use networks :: NetworkModelError"
     }
   ],
   "crates/domain_epidemiology/src/epidemiology/networks.rs": [
@@ -3943,6 +4044,17 @@
   "crates/domain_epidemiology/src/error.rs": [
     {
       "signature": "pub enum EpidemiologyError"
+    },
+    {
+      "signature": "pub use crate :: epidemiology :: networks :: NetworkModelError"
+    },
+    {
+      "signature": "pub use umbrella :: EpidemiologyDomainError"
+    }
+  ],
+  "crates/domain_epidemiology/src/error/umbrella.rs": [
+    {
+      "signature": "pub enum EpidemiologyDomainError"
     }
   ],
   "crates/domain_epidemiology/src/lib.rs": [
@@ -3950,7 +4062,13 @@
       "signature": "pub mod __doctest_facade"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EpidemiologyDomainError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EpidemiologyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: NetworkModelError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
@@ -3959,7 +4077,13 @@
       "signature": "pub mod __doctest_facade { pub mod error }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: EpidemiologyDomainError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: EpidemiologyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: NetworkModelError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use pure_math :: __doctest_facade :: prelude :: * } }"
@@ -4049,6 +4173,20 @@
     },
     {
       "signature": "pub enum StatMechError"
+    },
+    {
+      "signature": "pub use crate :: physics :: medical :: radar_gating :: GatingError"
+    },
+    {
+      "signature": "pub use crate :: physics :: nuclear :: types :: NuclearError"
+    },
+    {
+      "signature": "pub use umbrella :: PhysicsError"
+    }
+  ],
+  "crates/domain_physics/src/error/umbrella.rs": [
+    {
+      "signature": "pub enum PhysicsError"
     }
   ],
   "crates/domain_physics/src/lib.rs": [
@@ -4065,7 +4203,16 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: FluidError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: GatingError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: HighEnergyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: NuclearError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PhysicsError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: RadarError } }"
@@ -4095,7 +4242,16 @@
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: FluidError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: GatingError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: HighEnergyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: NuclearError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: PhysicsError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: RadarError } }"
@@ -4975,6 +5131,11 @@
   "crates/domain_physics/src/physics/medical/imaging.rs": [
     {
       "signature": "pub fn tracking_error (_ : f64 , _ : f64) -> f64"
+    }
+  ],
+  "crates/domain_physics/src/physics/medical/mod.rs": [
+    {
+      "signature": "pub use radar_gating :: GatingError"
     }
   ],
   "crates/domain_physics/src/physics/medical/optical_motion/calibration.rs": [
@@ -6476,6 +6637,26 @@
     },
     {
       "signature": "pub type MathResult < T > = std :: result :: Result < T , MathError >"
+    },
+    {
+      "signature": "pub use crate :: ast :: EvalError"
+    },
+    {
+      "signature": "pub use crate :: ast :: GlslError"
+    },
+    {
+      "signature": "pub use crate :: ast :: LexError"
+    },
+    {
+      "signature": "pub use crate :: ast :: ParseError"
+    },
+    {
+      "signature": "pub use umbrella :: MathCommonsError"
+    }
+  ],
+  "crates/math_commons/src/error/umbrella.rs": [
+    {
+      "signature": "pub enum MathCommonsError"
     }
   ],
   "crates/math_commons/src/fit/lm.rs": [
@@ -7291,6 +7472,44 @@
     },
     {
       "signature": "pub type Result < T > = math_commons :: error :: MathResult < T >"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: algebra :: linear_algebra :: numerical :: LinearAlgebraError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: algorithmic_information :: FractranError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: analysis :: evolution :: EvolutionError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: analysis :: optimization :: OptimizationError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: analysis :: roots :: AnalysisError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: analysis :: stochastic :: StochasticError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: analysis :: transforms :: TransformError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: EllipticCurveError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: number_theory :: ambs :: AmbsError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
+    },
+    {
+      "signature": "pub use umbrella :: PureMathError"
+    }
+  ],
+  "crates/pure_math/src/error/umbrella.rs": [
+    {
+      "signature": "pub enum PureMathError"
     }
   ],
   "crates/pure_math/src/lib.rs": [
@@ -7298,7 +7517,25 @@
       "signature": "pub mod __doctest_facade"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub type Result < T , E = Error > = std :: result :: Result < T , E > } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: AmbsError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: AnalysisError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: CopulaError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EllipticCurveError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EvolutionError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: FractranError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: Glicko2Error } }"
@@ -7307,28 +7544,64 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: KellyError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: LinearAlgebraError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MarkovError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: NumberTheoryError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OptimizationError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OuError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PureMathError as Error } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PureMathError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: StochasticError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: TdaError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: TensorError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: TransformError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ZipError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: EvalError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: FitError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: GlslError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: LexError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: MathCommonsError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: MathError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: MathResult } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: ParseError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error }"
@@ -7634,6 +7907,11 @@
       "signature": "pub fn natural_frequencies (_ : & DMatrix < f64 >) -> Vec < f64 >"
     }
   ],
+  "crates/pure_math/src/pure_math/algebra/linear_algebra/mod.rs": [
+    {
+      "signature": "pub use numerical :: LinearAlgebraError"
+    }
+  ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs": [
     {
       "signature": "pub enum LinearAlgebraError"
@@ -7660,6 +7938,9 @@
     },
     {
       "signature": "pub use group :: Zn"
+    },
+    {
+      "signature": "pub use linear_algebra :: LinearAlgebraError"
     },
     {
       "signature": "pub use polynomial :: Polynomial"
@@ -7976,6 +8257,11 @@
       "signature": "pub fn shannon_entropy_bits (_ : & [u8]) -> f64"
     }
   ],
+  "crates/pure_math/src/pure_math/algorithmic_information/mod.rs": [
+    {
+      "signature": "pub use fractran :: FractranError"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/complex/continuation.rs": [
     {
       "signature": "pub fn schwarz_reflect < F > (_ : F , _ : Complex64) -> Complex64 where F : Fn (Complex64) -> Complex64 ,"
@@ -8088,6 +8374,23 @@
     },
     {
       "signature": "pub trait Integrator { fn integrate < F > (& self , _ : F , _ : f64 , _ : f64 , _ : f64) -> IntegrationResult where F : Fn (f64) -> f64 }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/mod.rs": [
+    {
+      "signature": "pub use evolution :: EvolutionError"
+    },
+    {
+      "signature": "pub use optimization :: OptimizationError"
+    },
+    {
+      "signature": "pub use roots :: AnalysisError"
+    },
+    {
+      "signature": "pub use stochastic :: StochasticError"
+    },
+    {
+      "signature": "pub use transforms :: TransformError"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/momentum_dynamics.rs": [
@@ -8865,6 +9168,11 @@
       "signature": "pub fn laplace_transform < F , I > (_ : F , _ : Complex64 , _ : f64 , _ : & I) -> Complex64 where F : Fn (f64) -> f64 + Copy , I : Integrator ,"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/transforms/mod.rs": [
+    {
+      "signature": "pub use fourier :: TransformError"
+    }
+  ],
   "crates/pure_math/src/pure_math/differential_geometry/heat_equation.rs": [
     {
       "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn new (_ : & 'a S , _ : f64 , _ : (f64 , f64) , _ : (f64 , f64) , _ : (usize , usize) , _ : impl Fn (f64 , f64) -> f64 ,) -> Self }"
@@ -9268,6 +9576,12 @@
   ],
   "crates/pure_math/src/pure_math/number_theory/mod.rs": [
     {
+      "signature": "pub use ambs :: AmbsError"
+    },
+    {
+      "signature": "pub use crate :: error :: NumberTheoryError"
+    },
+    {
       "signature": "pub use primes :: is_prime"
     },
     {
@@ -9336,13 +9650,13 @@
   ],
   "crates/pure_math/src/pure_math/number_theory/ualbf.rs": [
     {
-      "signature": "pub enum NumberTheoryError"
-    },
-    {
       "signature": "pub fn ualbf_search (_ : u64 , _ : u32 , _ : & str , _ : & str ,) -> Result < UalbfSearchResult , NumberTheoryError >"
     },
     {
       "signature": "pub struct UalbfSearchResult"
+    },
+    {
+      "signature": "pub use crate :: error :: NumberTheoryError"
     }
   ],
   "crates/pure_math/src/pure_math/special_functions/bessel.rs": [
@@ -11157,10 +11471,22 @@
   ],
   "math_explorer/src/error.rs": [
     {
+      "signature": "pub enum Error"
+    },
+    {
+      "signature": "pub type Result < T , E = Error > = std :: result :: Result < T , E >"
+    },
+    {
       "signature": "pub use domain_ai :: error :: AIError"
     },
     {
+      "signature": "pub use domain_applied :: error :: AppliedError"
+    },
+    {
       "signature": "pub use domain_applied :: error :: BatteryError"
+    },
+    {
+      "signature": "pub use domain_applied :: error :: ClinicalTrialError"
     },
     {
       "signature": "pub use domain_applied :: error :: EngineeringError"
@@ -11172,16 +11498,37 @@
       "signature": "pub use domain_applied :: error :: IsosurfaceError"
     },
     {
+      "signature": "pub use domain_applied :: error :: KalmanError"
+    },
+    {
       "signature": "pub use domain_applied :: error :: LoraError"
     },
     {
       "signature": "pub use domain_applied :: error :: PharmacokineticsError"
     },
     {
+      "signature": "pub use domain_applied :: error :: VoxelGridError"
+    },
+    {
+      "signature": "pub use domain_biology :: error :: BiologyError"
+    },
+    {
       "signature": "pub use domain_biology :: error :: HodgkinHuxleyError"
     },
     {
+      "signature": "pub use domain_biology :: error :: KineticsError"
+    },
+    {
+      "signature": "pub use domain_biology :: error :: ReactionDiffusionError"
+    },
+    {
+      "signature": "pub use domain_epidemiology :: error :: EpidemiologyDomainError"
+    },
+    {
       "signature": "pub use domain_epidemiology :: error :: EpidemiologyError"
+    },
+    {
+      "signature": "pub use domain_epidemiology :: error :: NetworkModelError"
     },
     {
       "signature": "pub use domain_physics :: error :: ChaosError"
@@ -11193,7 +11540,16 @@
       "signature": "pub use domain_physics :: error :: FluidError"
     },
     {
+      "signature": "pub use domain_physics :: error :: GatingError"
+    },
+    {
       "signature": "pub use domain_physics :: error :: HighEnergyError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: NuclearError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: PhysicsError"
     },
     {
       "signature": "pub use domain_physics :: error :: RadarError"
@@ -11208,7 +11564,19 @@
       "signature": "pub use domain_physics :: error :: StatMechError"
     },
     {
+      "signature": "pub use math_commons :: error :: EvalError"
+    },
+    {
       "signature": "pub use math_commons :: error :: FitError"
+    },
+    {
+      "signature": "pub use math_commons :: error :: GlslError"
+    },
+    {
+      "signature": "pub use math_commons :: error :: LexError"
+    },
+    {
+      "signature": "pub use math_commons :: error :: MathCommonsError"
     },
     {
       "signature": "pub use math_commons :: error :: MathError"
@@ -11217,7 +11585,25 @@
       "signature": "pub use math_commons :: error :: MathResult"
     },
     {
+      "signature": "pub use math_commons :: error :: ParseError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: AmbsError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: AnalysisError"
+    },
+    {
       "signature": "pub use pure_math :: error :: CopulaError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: EllipticCurveError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: EvolutionError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: FractranError"
     },
     {
       "signature": "pub use pure_math :: error :: Glicko2Error"
@@ -11226,16 +11612,34 @@
       "signature": "pub use pure_math :: error :: KellyError"
     },
     {
+      "signature": "pub use pure_math :: error :: LinearAlgebraError"
+    },
+    {
       "signature": "pub use pure_math :: error :: MarkovError"
     },
     {
       "signature": "pub use pure_math :: error :: NumberTheoryError"
     },
     {
+      "signature": "pub use pure_math :: error :: OptimizationError"
+    },
+    {
       "signature": "pub use pure_math :: error :: OuError"
     },
     {
+      "signature": "pub use pure_math :: error :: PureMathError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: StochasticError"
+    },
+    {
       "signature": "pub use pure_math :: error :: TdaError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: TensorError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: TransformError"
     },
     {
       "signature": "pub use pure_math :: error :: ZipError"

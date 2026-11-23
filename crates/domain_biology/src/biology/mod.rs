@@ -84,6 +84,8 @@ pub mod reaction_diffusion;
 
 /// Error types for computational biology modules.
 pub use crate::error;
+pub use kinetics::KineticsError;
+pub use reaction_diffusion::ReactionDiffusionError;
 
 // [cite:favorite_child]
 
