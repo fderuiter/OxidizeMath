@@ -133,7 +133,7 @@ pub struct ComplexMappingTool {
     pub(crate) shader_preview: ShaderPreviewState,
     pub(crate) domain_texture: Option<egui::TextureHandle>,
     pub(crate) domain_texture_key: Option<u64>,
-    pub(crate) cache: cache::ContourGridCache,
+    pub(crate) cache: cache::ConformalGridCache,
 }
 
 impl Default for ComplexMappingTool {
@@ -164,7 +164,7 @@ impl Default for ComplexMappingTool {
             shader_preview: ShaderPreviewState::default(),
             domain_texture: None,
             domain_texture_key: None,
-            cache: cache::ContourGridCache::default(),
+            cache: cache::ConformalGridCache::default(),
         }
     }
 }
@@ -309,6 +309,17 @@ impl InteractiveTool for ComplexMappingTool {
 
     fn state_revision(&self) -> u64 {
         self.compute_state_revision()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+
+    fn sample_animation_frames(
+        &mut self,
+        _num_frames: usize,
+    ) -> Vec<egui_plot::export::DatasetFrame> {
+        Vec::new()
     }
 
     fn export_glsl_shader(
