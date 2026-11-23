@@ -5,7 +5,6 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 struct RawToolStates<'a> {
@@ -150,6 +149,49 @@ struct FrameworkStateDeserialize {
     plot_states: plot_persistence::SavedPlotStatesMap,
 }
 
+fn tool_json_eq(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    match (
+        serde_json::from_str::<serde_json::Value>(a),
+        serde_json::from_str::<serde_json::Value>(b),
+    ) {
+        (Ok(va), Ok(vb)) => va == vb,
+        _ => false,
+    }
+}
+
+/// Compares two serialized framework JSON payloads while ignoring transient overlay chrome
+/// (`show_theory_portal` and `show_starter_gallery`).
+pub(crate) fn framework_json_semantically_eq(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    let ca = egui_plot::export::strip_utf8_bom(a);
+    let cb = egui_plot::export::strip_utf8_bom(b);
+    let (Ok(da), Ok(db)) = (
+        serde_json::from_str::<FrameworkStateDeserialize>(ca),
+        serde_json::from_str::<FrameworkStateDeserialize>(cb),
+    ) else {
+        return ca == cb;
+    };
+    da.selected_tool_index == db.selected_tool_index
+        && da.selected_tool_name == db.selected_tool_name
+        && da.plot_states == db.plot_states
+        && da.tool_states.len() == db.tool_states.len()
+        && da
+            .tool_states
+            .iter()
+            .all(|(k, va)| db.tool_states.get(k).is_some_and(|vb| tool_json_eq(va, vb)))
+        && da.preset_tool_states.len() == db.preset_tool_states.len()
+        && da.preset_tool_states.iter().all(|(k, va)| {
+            db.preset_tool_states
+                .get(k)
+                .is_some_and(|vb| tool_json_eq(va, vb))
+        })
+}
+
 impl SimulationFramework {
     pub(super) fn bump_framework_revision(&mut self) {
         self.rev_cache.framework_revision = self.rev_cache.framework_revision.wrapping_add(1);
@@ -159,30 +201,6 @@ impl SimulationFramework {
         *self.rev_cache.active_tool_json.borrow_mut() = None;
         self.rev_cache.last_snapshot_rev = None;
         self.rev_cache.last_snapshot_source_datasets.clear();
-    }
-
-    /// Computes a deterministic O(1) revision token for this framework's persisted state.
-    pub fn state_revision(&self) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        self.rev_cache.framework_revision.hash(&mut hasher);
-        self.selected_tool_index.hash(&mut hasher);
-        self.show_theory_portal.hash(&mut hasher);
-        self.show_starter_gallery.hash(&mut hasher);
-        self.saved_tool_states.len().hash(&mut hasher);
-        self.preset_tool_states.len().hash(&mut hasher);
-        self.hash_saved_plot_states(&mut hasher);
-        if let Some(tool) = &self.active_tool {
-            tool.name().hash(&mut hasher);
-            let tool_rev = tool.state_revision();
-            if tool_rev > 0 {
-                1_u8.hash(&mut hasher);
-                tool_rev.hash(&mut hasher);
-            } else {
-                0_u8.hash(&mut hasher);
-                self.rev_cache.untracked_tool_revision.hash(&mut hasher);
-            }
-        }
-        hasher.finish().max(1)
     }
 
     pub(super) fn serialized_active_tool(&self) -> Option<(&'static str, Arc<str>)> {
@@ -404,12 +422,5 @@ impl SimulationFramework {
         } else {
             false
         }
-    }
-
-    /// Returns the active tool's interactive canvas `Id` if applicable.
-    pub fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.active_tool
-            .as_ref()
-            .and_then(|t| t.focused_canvas_id())
     }
 }
