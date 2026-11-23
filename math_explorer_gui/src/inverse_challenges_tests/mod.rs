@@ -37,37 +37,43 @@ fn contrast_ratio(fg: Color32, bg: Color32) -> f64 {
     (lighter + 0.05) / (darker + 0.05)
 }
 
+const REQUIRED_CHALLENGE_IDS: &[&str] = &[
+    "bloch_pi_inversion",
+    "bloch_hahn_spin_echo",
+    "mri_kspace_radial_cs",
+    "pk_therapeutic_window",
+    "win_ratio_severity_reversal",
+    "copula_heavy_tail_kelly",
+    "hmm_trellis_branch_rescue",
+    "lbm_low_drag_fairing",
+    "imrt_oar_sparing",
+    "radar_cough_zero_miss",
+    "quantum_barrier_50_split",
+    "epidemiology_hub_vaccination",
+    "epidemiology_bridge_quarantine",
+    "astrophysics_mystery_halo_fit",
+    "hasse_weil_boundary_p23",
+    "myerson_welfare_constrained_reserve",
+    "first_price_shading_equilibrium",
+    "ising_critical_droplet_nucleation",
+    "fermi_prisoners_dilemma_nucleation",
+    #[cfg(feature = "biology")]
+    "lenia_orbium_tail_regeneration",
+];
+
 #[test]
 fn test_federated_challenge_registry_and_gallery_tab_switch() {
     let cards: Vec<_> = inventory::iter::<ChallengeMetadata>
         .into_iter()
         .map(ChallengeMetadata::to_card)
         .collect();
-    let expected_min = if cfg!(feature = "biology") { 16 } else { 15 };
+    let expected_min = if cfg!(feature = "biology") { 20 } else { 19 };
     assert!(
         cards.len() >= expected_min,
         "Expected at least {expected_min} registered ChallengeMetadata entries, got {}",
         cards.len()
     );
-    for required_id in [
-        "bloch_pi_inversion",
-        "bloch_hahn_spin_echo",
-        "mri_kspace_radial_cs",
-        "pk_therapeutic_window",
-        "win_ratio_severity_reversal",
-        "copula_heavy_tail_kelly",
-        "hmm_trellis_branch_rescue",
-        "lbm_low_drag_fairing",
-        "imrt_oar_sparing",
-        "radar_cough_zero_miss",
-        "quantum_barrier_50_split",
-        "epidemiology_hub_vaccination",
-        "epidemiology_bridge_quarantine",
-        "astrophysics_mystery_halo_fit",
-        "hasse_weil_boundary_p23",
-        #[cfg(feature = "biology")]
-        "lenia_orbium_tail_regeneration",
-    ] {
+    for &required_id in REQUIRED_CHALLENGE_IDS {
         let meta = find_challenge_metadata(required_id)
             .unwrap_or_else(|| panic!("Missing ChallengeMetadata '{required_id}'"));
         let baseline = meta.generate_baseline_state();
@@ -106,6 +112,8 @@ fn assert_domain_challenge_counts() {
     assert_eq!(get_challenge_cards_for_domain("epidemiology").len(), 2);
     assert_eq!(get_challenge_cards_for_domain("astrophysics").len(), 1);
     assert_eq!(get_challenge_cards_for_domain("elliptic_curves").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("game_theory").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("solid_state").len(), 2);
     #[cfg(feature = "biology")]
     assert_eq!(get_challenge_cards_for_domain("biology").len(), 1);
 }
