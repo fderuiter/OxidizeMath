@@ -338,3 +338,5 @@ fn test_legend_checkbox_toggles_via_space_and_enter_keys() {
         "Enter must re-enable the hidden legend series"
     );
 }
+
+mod masking;
