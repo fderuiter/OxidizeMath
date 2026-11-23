@@ -29,6 +29,10 @@
 //!     and post-hoc Platt, temperature, and `PAVA` isotonic recalibrators.
 //! *   **[Kelly Criterion](kelly)**: Optimal capital allocation strategy to maximize logarithmic wealth growth.
 //! *   **[Market Pricing & Devigging](market_pricing)**: Zero-allocation bookmaker overround removal (`Multiplicative`, `Additive`, `Power`, `Shin`), `+EV` valuation, arbitrage, subset Dutching, middling, and live hedging.
+//! *   **[Risk of Ruin & Solvency](ruin)**: Exact Gambler's Ruin, Cramér-Lundberg adjustment coefficients,
+//!     proportional-Kelly drawdown barrier bounds, and zero-allocation Monte Carlo bankroll ensembles.
+//! *   **[Edge Validation & Calibration](validation)**: Closing Line Value (CLV), market vigorish removal,
+//!     Brier/log-loss proper scoring rules, and realized yield statistical significance.
 //! *   **[Copulas](copula)**: sophisticated dependency modeling (e.g., Gaussian Copula) for correlated events,
 //!     critical for pricing derivatives or "Same Game Parlays".
 //!
@@ -115,7 +119,9 @@ pub mod markov;
 pub mod match_models;
 pub mod ou_process;
 pub mod regression;
+pub mod ruin;
 pub mod tda;
+pub mod validation;
 pub mod zip_regression;
 
 // [cite:clinical_trials_statistics]
