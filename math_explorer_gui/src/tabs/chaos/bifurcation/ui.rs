@@ -149,6 +149,7 @@ impl BifurcationDiagram {
     }
 
     pub(super) fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
+        self.focused_canvas = None;
         egui::CentralPanel::default().show_inside(ui, |ui| {
             let palette = SemanticPalette::from_visuals(ui.visuals());
             let avail = ui.available_size();
@@ -194,6 +195,7 @@ impl BifurcationDiagram {
             .input(|i| i.pointer.button_released(egui::PointerButton::Primary));
 
         if resp.has_focus() {
+            self.focused_canvas = Some(resp.id);
             let (k_r, k_x0, k_ann) =
                 self.consume_focused_r_keys(plot_ui.ctx(), resp, pointer_released);
             r_changed |= k_r;

@@ -87,6 +87,7 @@ pub struct BifurcationDiagram {
     pub(crate) cobweb_transient: Vec<PlotPoint>,
     pub(crate) cobweb_cycle: Vec<PlotPoint>,
     pub(crate) orbit_points: Vec<PlotPoint>,
+    pub(crate) focused_canvas: Option<egui::Id>,
 }
 
 impl Default for BifurcationDiagram {
@@ -129,6 +130,7 @@ impl Default for BifurcationDiagram {
             cobweb_transient: Vec::new(),
             cobweb_cycle: Vec::new(),
             orbit_points: Vec::new(),
+            focused_canvas: None,
         };
         tool.recompute();
         tool
@@ -249,6 +251,10 @@ impl InteractiveTool for BifurcationDiagram {
 
     fn domain(&self) -> &'static str {
         "chaos"
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {

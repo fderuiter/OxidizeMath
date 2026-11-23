@@ -198,6 +198,7 @@ fn test_hover_click_arrow_keys_enter_and_tab_exit_same_frame() {
 
     let pre_focus = ctx.memory(|m| m.focused());
     assert!(pre_focus.is_some());
+    assert_eq!(tool.focused_canvas_id(), pre_focus);
     let _ = ctx.run(screen_input(key_press(egui::Key::Tab)), |c| tool.show(c));
     assert_ne!(ctx.memory(|m| m.focused()), pre_focus);
 }

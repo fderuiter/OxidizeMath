@@ -61,6 +61,7 @@ pub struct FractalViewer {
     pub(crate) julia_inset_texture: Option<egui::TextureHandle>,
     pub(crate) julia_inset_image: Option<egui::ColorImage>,
     pub(crate) julia_inset_key: Option<(u64, u64, u32, bool)>,
+    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) dirty: bool,
     pub(crate) requested_size: (usize, usize),
     pub(crate) request_generation: u64,
@@ -145,6 +146,7 @@ impl Default for FractalViewer {
             julia_inset_texture: None,
             julia_inset_image: Some(inset_img),
             julia_inset_key: Some(inset_key),
+            focused_canvas: None,
             dirty: true,
             requested_size: INITIAL_PREVIEW_SIZE,
             request_generation: 0,
@@ -209,6 +211,10 @@ impl InteractiveTool for FractalViewer {
 
     fn domain(&self) -> &'static str {
         "chaos"
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {

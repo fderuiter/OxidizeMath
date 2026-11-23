@@ -103,8 +103,11 @@ fn test_mandelbrot_hover_click_arrow_enter_and_tab_exit_updates_inset() {
 
     let pre_focus = ctx.memory(|m| m.focused());
     assert!(pre_focus.is_some());
+    assert_eq!(viewer.focused_canvas_id(), pre_focus);
     let _ = ctx.run(frame_input(key_event(egui::Key::Tab)), |c| viewer.show(c));
     assert_ne!(ctx.memory(|m| m.focused()), pre_focus);
+    let _ = ctx.run(frame_input(Vec::new()), |c| viewer.show(c));
+    assert!(viewer.focused_canvas_id().is_none());
 }
 
 #[test]

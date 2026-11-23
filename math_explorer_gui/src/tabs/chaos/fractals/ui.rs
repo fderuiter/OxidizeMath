@@ -252,6 +252,7 @@ impl FractalViewer {
         ctx: &egui::Context,
         max_texture_side: usize,
     ) {
+        self.focused_canvas = None;
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let available_size = ui.available_size();
             let raw_w = available_size.x.max(0.0) as usize;
@@ -303,13 +304,14 @@ impl FractalViewer {
     }
 
     fn finalize_canvas_a11y(
-        &self,
+        &mut self,
         ui: &egui::Ui,
         ctx: &egui::Context,
         response: &egui::Response,
         alt_label: &str,
         announce: bool,
     ) {
+        self.focused_canvas = response.has_focus().then_some(response.id);
         lock_canvas_arrow_keys(ui, response);
         paint_canvas_focus_ring(ui, response);
         let c_status = format!(
