@@ -60,6 +60,61 @@ pub trait PointSeries {
     fn point_at(&self, index: usize) -> [f64; 2] {
         [self.x_at(index), self.y_at(index)]
     }
+
+    /// Advances from `start` while each sample satisfies `(y == flat_y) & (x >= x_min) & (x <= x_max)`.
+    #[inline(always)]
+    fn advance_plateau_run(&self, mut start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let n = self.len();
+        while start < n {
+            let [x, y] = self.point_at(start);
+            if !((y == flat_y) & (x >= x_min) & (x <= x_max)) {
+                break;
+            }
+            start += 1;
+        }
+        start
+    }
+}
+
+#[inline(always)]
+fn advance_sample_slice_plateau<S: Sample2D>(
+    slice: &[S],
+    mut i: usize,
+    flat_y: f64,
+    x_min: f64,
+    x_max: f64,
+) -> usize {
+    let (chunks, _) = slice[i..].as_chunks::<4>();
+    for [s0, s1, s2, s3] in chunks {
+        let (x0, y0) = (s0.sample_x(), s0.sample_y());
+        let (x1, y1) = (s1.sample_x(), s1.sample_y());
+        let (x2, y2) = (s2.sample_x(), s2.sample_y());
+        let (x3, y3) = (s3.sample_x(), s3.sample_y());
+        let ok = (y0 == flat_y)
+            & (y1 == flat_y)
+            & (y2 == flat_y)
+            & (y3 == flat_y)
+            & (x0 >= x_min)
+            & (x0 <= x_max)
+            & (x1 >= x_min)
+            & (x1 <= x_max)
+            & (x2 >= x_min)
+            & (x2 <= x_max)
+            & (x3 >= x_min)
+            & (x3 <= x_max);
+        if !ok {
+            break;
+        }
+        i += 4;
+    }
+    for s in &slice[i..] {
+        let (x, y) = (s.sample_x(), s.sample_y());
+        if !((y == flat_y) & (x >= x_min) & (x <= x_max)) {
+            break;
+        }
+        i += 1;
+    }
+    i
 }
 
 impl<S: Sample2D> PointSeries for [S] {
@@ -82,6 +137,11 @@ impl<S: Sample2D> PointSeries for [S] {
     fn point_at(&self, index: usize) -> [f64; 2] {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
+    }
+
+    #[inline(always)]
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        advance_sample_slice_plateau(self, start, flat_y, x_min, x_max)
     }
 }
 
@@ -106,6 +166,11 @@ impl<S: Sample2D, const N: usize> PointSeries for [S; N] {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
     }
+
+    #[inline(always)]
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        advance_sample_slice_plateau(self, start, flat_y, x_min, x_max)
+    }
 }
 
 impl<S: Sample2D> PointSeries for Vec<S> {
@@ -129,6 +194,11 @@ impl<S: Sample2D> PointSeries for Vec<S> {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
     }
+
+    #[inline(always)]
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        advance_sample_slice_plateau(self, start, flat_y, x_min, x_max)
+    }
 }
 
 impl<T: PointSeries + ?Sized> PointSeries for &T {
@@ -150,6 +220,11 @@ impl<T: PointSeries + ?Sized> PointSeries for &T {
     #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         (**self).point_at(index)
+    }
+
+    #[inline(always)]
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        (**self).advance_plateau_run(start, flat_y, x_min, x_max)
     }
 }
 

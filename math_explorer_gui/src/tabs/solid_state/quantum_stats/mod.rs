@@ -338,11 +338,10 @@ impl InteractiveTool for QuantumStatsPhononTool {
         ui::show_quantum_stats_inside(self, parent_ui);
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
-    #[cfg(test)]
+
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
