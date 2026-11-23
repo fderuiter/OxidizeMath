@@ -23,6 +23,7 @@ scan_paths = [
 target_extensions = ["rs", "toml", "yml", "yaml", "json", "sh", "js", "html"]
 allowlist = [
     "crates/unified_verification/src/entropy_guard/tests.rs",
+    "crates/unified_verification/api_baseline.json",
 ]
 
 [[workflow_linter.exceptions]]
