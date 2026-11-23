@@ -155,6 +155,16 @@ impl SimulationRunner for MriRunner {
 
     fn get_snapshot(&self) -> StateSnapshot {
         let m = self.simulator.magnetization;
+        let b_field = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .b_field;
+        let sonification = if self.is_finite_state() {
+            crate::audio::mappings::mri_bloch_frame(m, self.simulator.m0, b_field, 0.0)
+        } else {
+            crate::audio::SonificationFrame::silent()
+        };
         let snapshot = MriSnapshot {
             current_time: self.current_time,
             magnetization: m,
@@ -166,7 +176,7 @@ impl SimulationRunner for MriRunner {
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data: vec![self.current_time, m.x, m.y, m.z],
             structured_data: Some(Box::new(snapshot)),
-            sonification: crate::audio::SonificationFrame::silent(),
+            sonification,
         }
     }
 

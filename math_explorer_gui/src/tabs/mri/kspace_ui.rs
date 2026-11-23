@@ -35,6 +35,7 @@ impl MriKSpaceTool {
         }
 
         while let Some(snap) = self.worker.update() {
+            self.latest_sonification = snap.sonification;
             if let Some(data) = snap
                 .structured_data
                 .as_ref()
