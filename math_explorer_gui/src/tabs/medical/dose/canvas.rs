@@ -159,11 +159,7 @@ pub fn render_dose_canvas(tool: &mut DoseCalculationTool, ui: &mut egui::Ui, ctx
     }
 }
 
-fn update_focus_and_a11y(
-    tool: &mut DoseCalculationTool,
-    ui: &mut egui::Ui,
-    resp: &egui::Response,
-) {
+fn update_focus_and_a11y(tool: &mut DoseCalculationTool, ui: &mut egui::Ui, resp: &egui::Response) {
     if resp.clicked() || tool.dragging_beam.is_some() {
         resp.request_focus();
     }
@@ -215,20 +211,28 @@ fn draw_gantry_handles(
         let angle = tool.beam_angles_deg[b];
         let outer = gantry_handle_pos_cm(angle);
         let rad = angle.to_radians();
-        let inner = [GANTRY_RAY_INNER_CM * rad.cos(), GANTRY_RAY_INNER_CM * rad.sin()];
+        let inner = [
+            GANTRY_RAY_INNER_CM * rad.cos(),
+            GANTRY_RAY_INNER_CM * rad.sin(),
+        ];
         let is_sel = tool.selected_beam == b || tool.dragging_beam == Some(b);
         let color = if is_sel { palette.accent } else { palette.info };
         plot_ui.line(
-            Line::new(format!("Beam {} Axis", b + 1), PlotPoints::from(vec![outer, inner]))
-                .color(color)
-                .width(if is_sel { 2.8_f32 } else { 1.8_f32 }),
+            Line::new(
+                format!("Beam {} Axis", b + 1),
+                PlotPoints::from(vec![outer, inner]),
+            )
+            .color(color)
+            .width(if is_sel { 2.8_f32 } else { 1.8_f32 }),
         );
         plot_ui.points(
             Points::new(format!("Beam {} Handle", b + 1), vec![outer])
                 .radius(if is_sel { 7.5_f32 } else { 5.8_f32 })
                 .color(color),
         );
-        let lbl = RichText::new(format!("B{} {:.0}°", b + 1, angle)).size(11.0).color(color);
+        let lbl = RichText::new(format!("B{} {:.0}°", b + 1, angle))
+            .size(11.0)
+            .color(color);
         let pt = PlotPoint::new(outer[0] * 1.11, outer[1] * 1.11);
         plot_ui.text(Text::new(format!("Beam {} Label", b + 1), pt, lbl).highlight(is_sel));
     }
@@ -239,8 +243,13 @@ fn sample_gantry_pointer(
     plot_ui: &PlotUi<'_>,
     ctx: &egui::Context,
 ) -> bool {
-    let (pressed, down, released) =
-        ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.primary_released()));
+    let (pressed, down, released) = ctx.input(|i| {
+        (
+            i.pointer.primary_pressed(),
+            i.pointer.primary_down(),
+            i.pointer.primary_released(),
+        )
+    });
     let resp = plot_ui.response();
     if pressed && (resp.hovered() || resp.dragged()) {
         if let Some(coord) = plot_ui.pointer_coordinate() {
@@ -273,10 +282,7 @@ fn sample_gantry_pointer(
     changed
 }
 
-fn hit_test_gantry_handle(
-    angles_deg: &[f64; IMRT_BEAM_COUNT],
-    pt_cm: [f64; 2],
-) -> Option<usize> {
+fn hit_test_gantry_handle(angles_deg: &[f64; IMRT_BEAM_COUNT], pt_cm: [f64; 2]) -> Option<usize> {
     let mut best: Option<(usize, f64)> = None;
     for (b, &deg) in angles_deg.iter().enumerate() {
         let h = gantry_handle_pos_cm(deg);
@@ -405,14 +411,20 @@ fn draw_contour_overlays(
 ) {
     if !tool.imrt_workspace.custom_contours {
         plot_ui.polygon(
-            Polygon::new("PTV Target (D_Rx)", circle_ring(IMRT_TUMOR_CENTER, IMRT_TUMOR_RADIUS_CM))
-                .fill_color(Color32::TRANSPARENT)
-                .stroke(Stroke::new(2.0_f32, palette.success)),
+            Polygon::new(
+                "PTV Target (D_Rx)",
+                circle_ring(IMRT_TUMOR_CENTER, IMRT_TUMOR_RADIUS_CM),
+            )
+            .fill_color(Color32::TRANSPARENT)
+            .stroke(Stroke::new(2.0_f32, palette.success)),
         );
         plot_ui.polygon(
-            Polygon::new("OAR (D_lim)", circle_ring(IMRT_OAR_CENTER, IMRT_OAR_RADIUS_CM))
-                .fill_color(Color32::TRANSPARENT)
-                .stroke(Stroke::new(2.0_f32, palette.error)),
+            Polygon::new(
+                "OAR (D_lim)",
+                circle_ring(IMRT_OAR_CENTER, IMRT_OAR_RADIUS_CM),
+            )
+            .fill_color(Color32::TRANSPARENT)
+            .stroke(Stroke::new(2.0_f32, palette.error)),
         );
     } else {
         draw_custom_mask_edges(
@@ -434,7 +446,10 @@ fn draw_contour_overlays(
             plot_ui.polygon(
                 Polygon::new(
                     "4D Respiratory OAR Excursion",
-                    circle_ring([IMRT_OAR_CENTER[0] + shift, IMRT_OAR_CENTER[1]], IMRT_OAR_RADIUS_CM),
+                    circle_ring(
+                        [IMRT_OAR_CENTER[0] + shift, IMRT_OAR_CENTER[1]],
+                        IMRT_OAR_RADIUS_CM,
+                    ),
                 )
                 .fill_color(Color32::TRANSPARENT)
                 .stroke(Stroke::new(1.3_f32, palette.warning)),

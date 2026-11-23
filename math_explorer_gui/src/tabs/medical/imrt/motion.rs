@@ -422,7 +422,8 @@ impl Standalone4dStepper {
 
         let r = pearson_correlation(&*self.pred_ring_mm, &*self.true_ring_mm).unwrap_or(0.0);
         let rmse = root_mean_square_error(&*self.pred_ring_mm, &*self.true_ring_mm).unwrap_or(0.0);
-        let err = spatial_accuracy_error(STANDALONE_RANGE_MM + pos_mm, STANDALONE_RANGE_MM + true_mm);
+        let err =
+            spatial_accuracy_error(STANDALONE_RANGE_MM + pos_mm, STANDALONE_RANGE_MM + true_mm);
         let duty = 100.0 * (self.active_frames as f64) / (self.total_frames.max(1) as f64);
 
         let snap = GatingTelemetry {

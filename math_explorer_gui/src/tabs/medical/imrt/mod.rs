@@ -279,7 +279,11 @@ impl ImrtWorkspace {
         self.dose_vec.fill(0.0);
         for b in 0..IMRT_BEAM_COUNT {
             let (sin_t, cos_t) = angles_deg[b].to_radians().sin_cos();
-            let (src_x, src_y, w_b) = (IMRT_SAD_CM * cos_t, IMRT_SAD_CM * sin_t, weights[b].max(0.0));
+            let (src_x, src_y, w_b) = (
+                IMRT_SAD_CM * cos_t,
+                IMRT_SAD_CM * sin_t,
+                weights[b].max(0.0),
+            );
             for y in 0..IMRT_GRID_DIM {
                 let py = voxel_coord_cm(y);
                 for x in 0..IMRT_GRID_DIM {

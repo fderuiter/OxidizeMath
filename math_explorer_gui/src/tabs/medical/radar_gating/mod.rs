@@ -34,6 +34,8 @@ pub struct RadarGatingTool {
     pub focused_canvas: Option<egui::Id>,
     /// Last rendered frame wall-clock duration in milliseconds.
     pub last_frame_ms: f64,
+    /// Tracks whether `notify_solver_diverged` was emitted for the current interlock latch.
+    pub interlock_notified: bool,
 }
 
 impl Default for RadarGatingTool {
@@ -48,6 +50,7 @@ impl Default for RadarGatingTool {
             dragging_target: None,
             focused_canvas: None,
             last_frame_ms: 0.0,
+            interlock_notified: false,
         }
     }
 }
@@ -74,6 +77,7 @@ impl RadarGatingTool {
     /// Resets playback, faults, and pipeline history using current parameters.
     pub fn reset_simulation(&mut self) {
         self.playing = false;
+        self.interlock_notified = false;
         self.pipeline.extra_clutter_active = false;
         self.pipeline.rebuild_all(&self.state);
         let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(false));
@@ -91,6 +95,7 @@ impl RadarGatingTool {
 
     /// Resets a latched `SafetyInterlock` back to `BeamState::Standby`.
     pub fn reset_interlock(&mut self) -> BeamState {
+        self.interlock_notified = false;
         let st = self.pipeline.reset_interlock_to_standby();
         let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(false));
         st
@@ -101,6 +106,24 @@ impl RadarGatingTool {
         let st = self.pipeline.arm_controller();
         let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(false));
         st
+    }
+
+    /// Extracts a stack-allocated 60 GHz Doppler and MUSIC [`crate::audio::SonificationFrame`].
+    #[must_use]
+    pub fn sonification_frame(&self) -> crate::audio::SonificationFrame {
+        crate::audio::mappings::medical_radar_frame(
+            &crate::audio::mappings::RadarDopplerAudioInput {
+                velocity_m_s: self.pipeline.fast_kalman.state[1],
+                amplitude_m: self.pipeline.fast_kalman.state[0],
+                bandwidth_ghz: self.state.bandwidth_ghz,
+                coarse_peak_count: self.pipeline.spectra.coarse_peak_count,
+                music_peak_count: self.pipeline.spectra.music_peak_count,
+                primary_beam_gain: self.pipeline.spectra.primary_beam_gain,
+                secondary_beam_gain: self.pipeline.spectra.secondary_beam_gain,
+                cough_timer_s: self.pipeline.cough_timer_s,
+                beam_state: self.pipeline.gating.state(),
+            },
+        )
     }
 }
 

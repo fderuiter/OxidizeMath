@@ -73,7 +73,11 @@ struct LinkBusRing {
 
 impl LinkBusRing {
     const fn new() -> Self {
-        Self { slots: [GatingTelemetry::empty(); GATING_RING_CAPACITY], write_seq: 0, latest: GatingTelemetry::empty() }
+        Self {
+            slots: [GatingTelemetry::empty(); GATING_RING_CAPACITY],
+            write_seq: 0,
+            latest: GatingTelemetry::empty(),
+        }
     }
 }
 

@@ -51,7 +51,10 @@ fn test_all_six_radar_gating_sites_publish_link_bus_telemetry() {
     ] {
         let before = current_write_seq();
         click_button_by_label(&ctx, &mut radar, label);
-        assert!(current_write_seq() > before, "'{label}' must publish telemetry");
+        assert!(
+            current_write_seq() > before,
+            "'{label}' must publish telemetry"
+        );
     }
     assert_eq!(
         latest_gating_telemetry().map(|t| t.beam_state),
@@ -82,9 +85,8 @@ fn click_button_by_label(ctx: &egui::Context, tool: &mut dyn InteractiveTool, ne
         .and_then(|ak| {
             ak.nodes.into_iter().find_map(|(_, node)| {
                 if node.label().is_some_and(|l| l.contains(needle)) {
-                    node.bounds().map(|b| {
-                        Pos2::new(0.5 * (b.x0 + b.x1) as f32, 0.5 * (b.y0 + b.y1) as f32)
-                    })
+                    node.bounds()
+                        .map(|b| Pos2::new(0.5 * (b.x0 + b.x1) as f32, 0.5 * (b.y0 + b.y1) as f32))
                 } else {
                     None
                 }
@@ -199,7 +201,10 @@ fn test_single_pane_4d_cough_sparing_and_interlock_halt() {
         dose.imrt_workspace.motion.ungated_steps,
     );
     dose.standalone_4d.inject_nan_fault();
-    assert_eq!(dose.step_4d_in_place().beam_state, BeamState::SafetyInterlock);
+    assert_eq!(
+        dose.step_4d_in_place().beam_state,
+        BeamState::SafetyInterlock
+    );
     assert_eq!(dose.imrt_workspace.motion.gated_steps, g0);
     assert_eq!(dose.imrt_workspace.motion.ungated_steps, u0);
 }
@@ -294,7 +299,10 @@ fn verify_split_horizontal_mws_roundtrip(sculpted_dose_json: &str) {
     let mws = mgr.create_envelope(app.get_app_state());
     let mut restored_app = MathExplorerApp::default();
     restored_app.load_state_from_json(&mws);
-    assert_eq!(restored_app.viewport_layout, ViewportLayout::SplitHorizontal);
+    assert_eq!(
+        restored_app.viewport_layout,
+        ViewportLayout::SplitHorizontal
+    );
     let fw1_after = restored_app
         .pane_tab_mut(1)
         .unwrap()
@@ -407,11 +415,15 @@ fn test_sonification_meter_and_sub_30ms_safety_interlock_mute() {
         },
         |ctx| tool.show(ctx),
     );
-    let has_meter = out
-        .platform_output
-        .accesskit_update
-        .is_some_and(|ak| ak.nodes.iter().any(|(_, n)| n.role() == egui::accesskit::Role::Meter));
-    assert!(has_meter, "DoseCalculationTool must expose AccessKit Role::Meter");
+    let has_meter = out.platform_output.accesskit_update.is_some_and(|ak| {
+        ak.nodes
+            .iter()
+            .any(|(_, n)| n.role() == egui::accesskit::Role::Meter)
+    });
+    assert!(
+        has_meter,
+        "DoseCalculationTool must expose AccessKit Role::Meter"
+    );
 
     let mut synth = OfflinePcmSynthesizer::new(48_000, 2_400);
     let _ = synth.set_muted_from_user_gesture(false);

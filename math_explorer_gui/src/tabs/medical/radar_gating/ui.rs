@@ -10,7 +10,6 @@ use super::state::{
 };
 use super::RadarGatingTool;
 use crate::app::theme::SemanticPalette;
-use crate::audio::mappings::radar_linac_frame;
 use crate::framework::{bounded_drag_value, PaneSidePanel, PlaybackAction, PlaybackTransport};
 use eframe::egui::{self, Color32, RichText};
 use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, VLine};
@@ -49,19 +48,6 @@ fn render_side_controls(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
     ui.heading("60 GHz MIMO Radar Gating");
     render_transport_and_status(tool, ui);
     ui.separator();
-    let audio_frame = radar_linac_frame(
-        tool.pipeline.gating.state(),
-        tool.pipeline.latest_disp_mm[1],
-        tool.pipeline.fast_kalman.state[1] * 1.0e3,
-        tool.pipeline.duty_cycle_percent(),
-        tool.pipeline.sim_time_s,
-    );
-    let is_paused = matches!(
-        tool.pipeline.gating.state(),
-        BeamState::Standby | BeamState::SafetyInterlock
-    );
-    crate::audio::render_sonification_panel(ui, "radar_gating", &audio_frame, is_paused);
-    ui.separator();
     let rf_changed = render_rf_and_music_controls(&mut tool.state, ui);
     ui.separator();
     let gating_changed = render_respiratory_and_gating_controls(&mut tool.state, ui);
@@ -74,6 +60,19 @@ fn render_side_controls(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
     } else if rf_changed {
         tool.pipeline.refresh_spectra_only(&tool.state);
     }
+
+    let is_interlocked = tool.pipeline.gating.state() == BeamState::SafetyInterlock;
+    if is_interlocked {
+        if !tool.interlock_notified {
+            tool.interlock_notified = true;
+            crate::audio::notify_solver_diverged();
+        }
+    } else {
+        tool.interlock_notified = false;
+    }
+    ui.separator();
+    let frame = tool.sonification_frame();
+    crate::audio::render_sonification_panel(ui, "radar_gating", &frame, is_interlocked);
 }
 
 fn render_transport_and_status(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
@@ -96,7 +95,7 @@ fn render_transport_and_status(tool: &mut RadarGatingTool, ui: &mut egui::Ui) {
             tool.reset_simulation();
             crate::audio::notify_playback_reset();
         }
-        None => {}
+        Some(PlaybackAction::StepBack | PlaybackAction::ScrubTo(_)) | None => {}
     }
 
     let palette = SemanticPalette::from_visuals(ui.visuals());
@@ -221,59 +220,45 @@ fn drag_usize_row(
     edited
 }
 
-fn labeled_f64_drag(
-    ui: &mut egui::Ui,
-    label: &str,
-    value: &mut f64,
-    range: std::ops::RangeInclusive<f64>,
-    speed: f64,
-) -> bool {
-    ui.horizontal(|ui| {
-        ui.label(label);
-        ui.add(bounded_drag_value(value, range, speed)).changed()
-    })
-    .inner
-}
-
 fn render_respiratory_and_gating_controls(state: &mut RadarGatingState, ui: &mut egui::Ui) -> bool {
     let mut changed = false;
     ui.label(RichText::new("Respiratory & Kalman Gating").strong());
-    changed |= labeled_f64_drag(
+    changed |= drag_f64_row(
         ui,
         "Breath Amp (mm):",
         &mut state.breath_amplitude_mm,
         1.0..=15.0,
         0.25,
     );
-    changed |= labeled_f64_drag(
+    changed |= drag_f64_row(
         ui,
         "Breath Period (s):",
         &mut state.breath_period_s,
         1.5..=12.0,
         0.2,
     );
-    changed |= labeled_f64_drag(
+    changed |= drag_f64_row(
         ui,
         "Gate Threshold (mm):",
         &mut state.gating_threshold_mm,
         -12.0..=12.0,
         0.2,
     );
-    changed |= labeled_f64_drag(
+    changed |= drag_f64_row(
         ui,
         "Hysteresis (mm):",
         &mut state.gating_hysteresis_mm,
         0.1..=5.0,
         0.1,
     );
-    changed |= labeled_f64_drag(
+    changed |= drag_f64_row(
         ui,
         "LINAC Latency (ms):",
         &mut state.system_latency_ms,
         0.0..=250.0,
         5.0,
     );
-    changed |= labeled_f64_drag(
+    changed |= drag_f64_row(
         ui,
         "Static Clutter:",
         &mut state.static_clutter_gain,

@@ -6,7 +6,7 @@
 use super::{CanvasKeyTarget, DoseCalculationTool, DoseDisplayMode};
 use crate::accessibility::{announce_live_status, AccessibleHoverText};
 use crate::app::{SemanticPalette, ThemeMode};
-use crate::audio::mappings::{imrt_delivery_frame, LinacGatePhase};
+use crate::audio::mappings::{imrt_delivery_frame, radar_linac_frame, LinacGatePhase};
 use crate::framework::{
     bounded_drag_value, scoped_panel_id, BrushInteractionMode, BrushMode, PaneSidePanel,
     PlaybackAction, PlaybackTransport,
@@ -18,8 +18,7 @@ use math_explorer::physics::medical::radar_gating::BeamState;
 /// Renders the `DoseCalculationTool` side panel and central `egui_plot` canvas inside `parent_ui`.
 pub fn show_tool_inside(tool: &mut DoseCalculationTool, parent_ui: &mut egui::Ui) {
     let ctx = parent_ui.ctx().clone();
-    let is_high_contrast =
-        ThemeMode::from_visuals(parent_ui.visuals()) == ThemeMode::HighContrast;
+    let is_high_contrast = ThemeMode::from_visuals(parent_ui.visuals()) == ThemeMode::HighContrast;
     let mut changed = false;
     if tool.high_contrast != is_high_contrast {
         tool.high_contrast = is_high_contrast;
@@ -108,43 +107,35 @@ fn render_side_panel_contents(tool: &mut DoseCalculationTool, ui: &mut egui::Ui)
 }
 
 fn render_medical_sonification(tool: &DoseCalculationTool, ui: &mut egui::Ui) {
+    let m = &tool.imrt_workspace.motion;
+    let s = &tool.imrt_workspace.summary;
     let (gate, ptv_gy, oar_gy, disp_mm, is_paused) = if !tool.imrt_mode {
         (LinacGatePhase::Standby, 0.0, 0.0, 0.0, true)
     } else if tool.gating_4d_enabled {
         let bs = tool.latest_telemetry.beam_state;
         let (ptv, oar) = match tool.display_mode {
-            DoseDisplayMode::Ungated4d if tool.imrt_workspace.motion.ungated_steps > 0 => (
-                tool.imrt_workspace.motion.ungated_ptv_mean_gy,
-                tool.imrt_workspace.motion.ungated_oar_max_gy.0,
-            ),
-            DoseDisplayMode::Gated4d if tool.imrt_workspace.motion.gated_steps > 0 => (
-                tool.imrt_workspace.motion.gated_ptv_mean_gy,
-                tool.imrt_workspace.motion.gated_oar_max_gy.0,
-            ),
-            _ => (
-                tool.imrt_workspace.summary.tumor_mean_gy,
-                tool.imrt_workspace.summary.oar_max_gy.0,
-            ),
+            DoseDisplayMode::Ungated4d if m.ungated_steps > 0 => {
+                (m.ungated_ptv_mean_gy, m.ungated_oar_max_gy.0)
+            }
+            DoseDisplayMode::Gated4d if m.gated_steps > 0 => {
+                (m.gated_ptv_mean_gy, m.gated_oar_max_gy.0)
+            }
+            _ => (s.tumor_mean_gy, s.oar_max_gy.0),
         };
         let paused = matches!(bs, BeamState::Standby | BeamState::SafetyInterlock);
-        (
-            LinacGatePhase::from(bs),
-            ptv,
-            oar,
-            tool.latest_telemetry.true_disp_mm,
-            paused,
-        )
+        let disp = tool.latest_telemetry.true_disp_mm;
+        (LinacGatePhase::from(bs), ptv, oar, disp, paused)
     } else {
         (
             LinacGatePhase::Armed,
-            tool.imrt_workspace.summary.tumor_mean_gy,
-            tool.imrt_workspace.summary.oar_max_gy.0,
+            s.tumor_mean_gy,
+            s.oar_max_gy.0,
             0.0,
             false,
         )
     };
 
-    let frame = imrt_delivery_frame(
+    let mut frame = imrt_delivery_frame(
         gate,
         disp_mm,
         ptv_gy,
@@ -153,6 +144,20 @@ fn render_medical_sonification(tool: &DoseCalculationTool, ui: &mut egui::Ui) {
         tool.oar_limit_gy,
         tool.imrt_workspace.motion.beam_energy_mev,
     );
+    if tool.imrt_mode && tool.gating_4d_enabled {
+        let t = tool.latest_telemetry;
+        let radar = radar_linac_frame(
+            gate,
+            t.measured_disp_mm,
+            t.velocity_mm_s,
+            t.duty_cycle_pct,
+            t.sim_time_s,
+        );
+        if radar.is_audible() {
+            frame.voices[4] = radar.voices[0];
+            frame.active_voices = 5;
+        }
+    }
     crate::audio::render_sonification_panel(ui, "dose_calculation", &frame, is_paused);
 }
 
@@ -176,7 +181,7 @@ fn render_4d_gating_panel(tool: &mut DoseCalculationTool, ui: &mut egui::Ui) -> 
             tool.reset_4d_simulation();
             crate::audio::notify_playback_reset();
         }
-        None => {}
+        Some(PlaybackAction::StepBack | PlaybackAction::ScrubTo(_)) | None => {}
     }
 
     render_4d_mode_and_fault_buttons(tool, ui);
@@ -184,7 +189,11 @@ fn render_4d_gating_panel(tool: &mut DoseCalculationTool, ui: &mut egui::Ui) -> 
     ui.horizontal(|ui| {
         ui.label("Gun Current I_b (mA):");
         if ui
-            .add(bounded_drag_value(&mut tool.beam_current_ma, 0.0..=300.0, 2.0))
+            .add(bounded_drag_value(
+                &mut tool.beam_current_ma,
+                0.0..=300.0,
+                2.0,
+            ))
             .changed()
         {
             changed = true;
@@ -223,7 +232,9 @@ fn render_4d_mode_and_fault_buttons(tool: &mut DoseCalculationTool, ui: &mut egu
         }
         if ui
             .button("Inject +10 mm Cough")
-            .accessible_hover_text("Inject a +10 mm thoracic cough transient into single-pane 4D breathing")
+            .accessible_hover_text(
+                "Inject a +10 mm thoracic cough transient into single-pane 4D breathing",
+            )
             .clicked()
         {
             tool.standalone_4d.inject_cough();
@@ -257,7 +268,10 @@ fn render_4d_clinical_metrics(tool: &DoseCalculationTool, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
         ui.label(format!("{src} | Gate:"));
         ui.label(RichText::new(state_lbl).strong().color(state_col));
-        ui.label(format!("({:.1}% duty)", tool.latest_telemetry.duty_cycle_pct));
+        ui.label(format!(
+            "({:.1}% duty)",
+            tool.latest_telemetry.duty_cycle_pct
+        ));
     });
     ui.label(format!(
         "Tracking — r: {:.3} | RMSE: {:.2} mm | Spatial Err: {:+.3}%",
@@ -336,7 +350,10 @@ fn render_contour_brush_toolbar(tool: &mut DoseCalculationTool, ui: &mut egui::U
     ui.horizontal_wrapped(|ui| {
         ui.label("Canvas Arrows:");
         if ui
-            .selectable_label(tool.canvas_key_target == CanvasKeyTarget::Brush, "Brush (B)")
+            .selectable_label(
+                tool.canvas_key_target == CanvasKeyTarget::Brush,
+                "Brush (B)",
+            )
             .clicked()
         {
             tool.canvas_key_target = CanvasKeyTarget::Brush;

@@ -430,7 +430,18 @@ inventory::submit! {
         id: "DoseCalculationTool",
         display_name: "Dose Calculation",
         domain: "medical",
-        tags: &["imrt", "radiotherapy", "gating", "contouring", "dosimetry"],
+        tags: &[
+            "psf",
+            "convolution",
+            "radiation therapy",
+            "radiotherapy",
+            "isodose",
+            "kernel",
+            "imrt",
+            "gating",
+            "contouring",
+            "dosimetry",
+        ],
         build: || Box::new(DoseCalculationTool::default()),
     }
 }
