@@ -102,7 +102,6 @@ pub struct BraessNetworkParadoxTool {
     pub(super) state: BraessState,
     pub(super) metrics: BraessMetrics,
     pub(super) revision: u64,
-    pub(super) canvas_id: Option<egui::Id>,
     pub(super) dynamic_flow: [f64; 3],
     pub(super) curve_wardrop: Vec<[f64; 2]>,
     pub(super) curve_closed: Vec<[f64; 2]>,
@@ -196,7 +195,6 @@ impl Default for BraessNetworkParadoxTool {
         let mut tool = Self {
             metrics: BraessMetrics::default(),
             revision: 1,
-            canvas_id: None,
             dynamic_flow: [0.5, 0.5, 0.0],
             curve_wardrop: Vec::new(),
             curve_closed: Vec::new(),
@@ -365,9 +363,6 @@ impl InteractiveTool for BraessNetworkParadoxTool {
     }
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
     }
     fn has_finite_parameters(&self) -> bool {
         self.state.validate().is_ok()

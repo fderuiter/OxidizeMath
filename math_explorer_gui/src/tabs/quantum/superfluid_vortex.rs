@@ -116,7 +116,6 @@ pub struct SuperfluidVortexTool {
     pub(crate) steps_per_frame: usize,
     pub(crate) last_step_ms: f64,
     pub(crate) state_rev: u64,
-    pub(crate) focused_canvas: Option<egui::Id>,
 }
 
 impl Default for SuperfluidVortexTool {
@@ -137,7 +136,6 @@ impl Default for SuperfluidVortexTool {
             steps_per_frame: 2,
             last_step_ms: 0.0,
             state_rev: 1,
-            focused_canvas: None,
         };
         tool.reseed_condensate();
         tool
@@ -232,10 +230,6 @@ impl InteractiveTool for SuperfluidVortexTool {
 
     fn state_revision(&self) -> u64 {
         self.state_rev
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn state_bounds(&self) -> ToolStateBounds {
