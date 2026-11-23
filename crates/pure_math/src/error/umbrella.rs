@@ -1,8 +1,8 @@
 use super::{
     AmbsError, AnalysisError, CopulaError, DiffeqError, EllipticCurveError, EloError,
-    EvolutionError, FractranError, Glicko2Error, KellyError, LinearAlgebraError,
-    MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
-    OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
+    LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError, NumberTheoryError,
+    OptimizationError, OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -66,6 +66,12 @@ pub enum PureMathError {
     /// Prime-exponent FRACTRAN register machine error.
     #[error("{0}")]
     Fractran(#[from] FractranError),
+    /// Graph theory solver or interchange error.
+    #[error("{0}")]
+    GraphTheory(#[from] GraphTheoryError),
+    /// Hyperbolic geometry and geodesic billiard error.
+    #[error("{0}")]
+    Hyperbolic(#[from] HyperbolicError),
     /// Numerical linear algebra error.
     #[error("{0}")]
     LinearAlgebra(#[from] LinearAlgebraError),
@@ -145,6 +151,8 @@ impl PureMathError {
             Self::EllipticCurve(err) => Some(err),
             Self::Evolution(err) => Some(err),
             Self::Fractran(err) => Some(err),
+            Self::GraphTheory(err) => Some(err),
+            Self::Hyperbolic(err) => Some(err),
             Self::LinearAlgebra(err) => Some(err),
             Self::Optimization(err) => Some(err),
             Self::Stochastic(err) => Some(err),

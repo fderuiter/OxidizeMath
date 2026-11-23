@@ -59,6 +59,8 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         EllipticCurveError::InvalidDegree.into(),
         EvolutionError::InvalidState.into(),
         FractranError::InvalidFractionSyntax.into(),
+        GraphTheoryError::UnknownEndpoint { node: 9 }.into(),
+        HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.into(),
         LinearAlgebraError::SingularMatrix.into(),
         OptimizationError::from(EvolutionError::ConversionError).into(),
         StochasticError::InvalidReactionIndex(3).into(),

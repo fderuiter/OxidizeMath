@@ -16,6 +16,10 @@ mod tests;
 
 use crate::error::FitError;
 use crate::series::PointSeries;
+use alloc::string::String;
+use alloc::{vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 pub use lm::{
     MAX_FIT_PARAMS, MAX_LM_ITERATIONS, levenberg_marquardt, levenberg_marquardt_filtered,
@@ -72,7 +76,7 @@ impl FitModel {
     ];
 
     /// Maps a polynomial degree (`1..=4`) to its canonical [`FitModel`] variant.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn from_degree(degree: usize) -> Result<Self, FitError> {
         match degree {
             1 => Ok(Self::Linear),
@@ -138,8 +142,8 @@ impl FitModel {
     }
 }
 
-impl std::fmt::Display for FitModel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for FitModel {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.label())
     }
 }
@@ -172,7 +176,7 @@ impl CurveFit {
     /// Constructs a new stack-backed [`CurveFit`].
     #[must_use]
     #[allow(clippy::too_many_arguments)]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn new(
         fit_model: FitModel,
         coeffs: [f64; 5],
@@ -217,10 +221,19 @@ impl CurveFit {
         &self.coeffs[..self.coeff_len]
     }
 
+    /// Returns `(u_mean, u_scale, centered_coeffs)` when centered polynomial conditioning was used.
+    #[inline]
+    #[must_use]
+    pub fn centered_polynomial(&self) -> Option<(f64, f64, &[f64])> {
+        self.poly_center_scale
+            .as_ref()
+            .map(|(m, s, c)| (*m, *s, &c[..self.coeff_len]))
+    }
+
     /// Evaluates the fitted curve at original data coordinate `x` with zero heap allocations.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn eval(&self, x: f64) -> f64 {
         self.eval_raw(x)
     }
@@ -260,7 +273,7 @@ impl CurveFit {
     }
 
     /// Writes `[x, y - y_hat]` residuals in original data space into `out` with zero allocations.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn residuals_into<P: PointSeries + ?Sized>(
         &self,
         points: &P,
@@ -326,7 +339,7 @@ impl CurveFit {
 }
 
 /// Fits a canonical [`FitModel`] to `points` with zero heap allocations.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn fit_model<P: PointSeries + ?Sized>(
     points: &P,
     model: FitModel,
@@ -336,7 +349,7 @@ pub fn fit_model<P: PointSeries + ?Sized>(
 }
 
 /// Fits a canonical [`FitModel`] respecting optional logarithmic plot axes for polynomials.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn fit_model_with_axes<P: PointSeries + ?Sized>(
     points: &P,
     model: FitModel,

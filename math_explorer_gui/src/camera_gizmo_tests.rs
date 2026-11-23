@@ -375,6 +375,8 @@ fn test_all_six_3d_tools_hide_2d_settings_and_preserve_exports() {
     let tool_specs = [
         ("SurfaceViewer", true),
         ("CurvatureHeatmap", true),
+        #[cfg(feature = "biology")]
+        ("SurfaceMorphogenesisTool", true),
         ("CrystalViewer", true),
         ("AttractorPlotter", true),
         ("SpinVisualizer", true),

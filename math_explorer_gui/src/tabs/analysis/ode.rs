@@ -2,6 +2,7 @@
 
 mod annotations;
 mod canvas;
+mod code_export;
 pub mod comparison;
 mod custom_spec;
 mod persistence;

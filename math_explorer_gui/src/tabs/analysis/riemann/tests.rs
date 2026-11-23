@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use std::collections::BTreeMap;
 
 #[test]
 fn test_riemann_tool_default_initialization() {
