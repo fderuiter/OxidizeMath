@@ -20,7 +20,7 @@ use num_complex::Complex;
 #[verified_engine::verified]
 fn try_extract_real_symmetric(matrix: &DMatrix<Complex<f64>>) -> Option<DMatrix<f64>> {
     let n = matrix.nrows();
-    if n < 4 || matrix.ncols() != n {
+    if n == 0 || matrix.ncols() != n {
         return None;
     }
     let src = matrix.as_slice();
@@ -85,8 +85,8 @@ fn real_symmetric_propagator(real_h: DMatrix<f64>, omega: f64) -> Option<Quantum
 /// Calculates the time evolution operator $U(t) = e^{-i\hat{H}t/\hbar}$.
 ///
 /// This implementation assumes the Hamiltonian $\hat{H}$ is time-independent.
-/// The operator is computed via orthogonal spectral decomposition for finite real-symmetric
-/// Hamiltonians ($N \ge 4$) and complex matrix exponentiation otherwise.
+/// The operator is computed via orthogonal spectral decomposition (`SymmetricEigen`) for finite
+/// real-symmetric Hamiltonians and Padé complex matrix exponentiation otherwise.
 ///
 /// $$ U(t) = \exp\left(-\frac{i}{\hbar} \hat{H} t\right) $$
 ///
@@ -138,19 +138,33 @@ pub fn time_evolution_operator(
     t: f64,
     h_bar: f64,
 ) -> QuantumOperator {
+    let nrows = hamiltonian.matrix.nrows();
+    let ncols = hamiltonian.matrix.ncols();
+    if nrows == 0 && ncols == 0 {
+        return QuantumOperator::new(DMatrix::zeros(0, 0));
+    }
     let omega = -t / h_bar;
-    if let Some(op) = omega
-        .is_finite()
-        .then(|| try_extract_real_symmetric(&hamiltonian.matrix))
-        .flatten()
+    if !omega.is_finite()
+        || hamiltonian
+            .matrix
+            .as_slice()
+            .iter()
+            .any(|c| !c.re.is_finite() || !c.im.is_finite())
+    {
+        return QuantumOperator::new(DMatrix::from_element(
+            nrows,
+            ncols,
+            Complex::new(f64::NAN, f64::NAN),
+        ));
+    }
+    if let Some(op) = try_extract_real_symmetric(&hamiltonian.matrix)
         .and_then(|real_h| real_symmetric_propagator(real_h, omega))
     {
         return op;
     }
 
-    // Fallback for small, complex Hermitian, non-symmetric, or non-finite operators
-    let i = Complex::new(0.0, 1.0);
-    let factor = -i * t / h_bar;
+    // Fallback for complex Hermitian or general non-symmetric finite operators
+    let factor = Complex::new(0.0, omega);
     let scaled_h = &hamiltonian.matrix * factor;
     QuantumOperator::new(scaled_h.exp())
 }
