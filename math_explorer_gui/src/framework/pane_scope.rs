@@ -3,36 +3,36 @@
 use super::{AccessibleHoverText, BrushMode, BrushStroke, InteractiveTool, PaneSidePanel};
 use eframe::egui;
 
-/// Primary pointer input modality active during a canvas interaction.
+/// Active pointer/touch input modality for an interactive simulation pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
-    /// Desktop mouse or trackpad pointer interaction.
+    /// Desktop mouse/trackpad pointer input.
     Mouse,
-    /// Single- or multi-touch screen interaction.
+    /// Direct multi-touch gesture input.
     Touch,
 }
 
 /// Event context provided to interaction hooks.
 pub struct InteractionContext<'a> {
-    /// Latest pointer position in screen coordinates, if hovering or interacting.
+    /// Current pointer position in screen coordinates, if hovering or interacting.
     pub pointer_pos: Option<egui::Pos2>,
-    /// Pointer drag delta in screen points since the previous frame.
+    /// Pointer drag delta since the previous frame.
     pub delta: egui::Vec2,
-    /// Whether the target widget is actively being dragged.
+    /// Whether the pointer is actively dragging on the canvas.
     pub is_dragging: bool,
-    /// Whether the target widget received a primary click on this frame.
+    /// Whether the canvas was clicked during this frame.
     pub is_clicked: bool,
-    /// Underlying `egui::Response` of the interactive canvas widget.
+    /// Underlying `egui` widget response for the canvas region.
     pub response: &'a egui::Response,
-    /// Active pointer input modality (`Mouse` or `Touch`).
+    /// Active pointer or touch input mode.
     pub input_mode: InputMode,
-    /// Multi-touch pinch/pan gesture metadata when available.
+    /// Active multi-touch gesture state, when present.
     pub multi_touch: Option<egui::MultiTouchInfo>,
-    /// Set of keyboard keys held down during the interaction frame.
+    /// Set of keyboard keys currently held down.
     pub keys_down: std::collections::HashSet<egui::Key>,
-    /// Active keyboard modifier state (`Shift`, `Ctrl`, `Alt`, `Cmd`).
+    /// Active keyboard modifiers (`Ctrl`, `Shift`, `Alt`, `Cmd`).
     pub modifiers: egui::Modifiers,
-    /// Interpolated spatial brush stroke segment in plot coordinates, if sculpting.
+    /// Optional spatial brush stroke synthesized from pointer drag events.
     pub brush_stroke: Option<BrushStroke>,
 }
 

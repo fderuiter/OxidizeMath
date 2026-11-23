@@ -136,8 +136,8 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     assert_eq!(
         tools.len(),
-        74,
-        "Expected all 74 registered InteractiveTools"
+        75,
+        "Expected all 75 registered InteractiveTools"
     );
 
     let mut source_app = MathExplorerApp::default();
@@ -199,8 +199,8 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
         .collect();
     assert_eq!(
         presets.len(),
-        108,
-        "Expected all 108 StarterPresetMetadata entries"
+        111,
+        "Expected all 111 StarterPresetMetadata entries"
     );
 
     for preset in presets {
