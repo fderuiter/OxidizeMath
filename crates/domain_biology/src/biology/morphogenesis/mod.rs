@@ -168,6 +168,40 @@ impl<K: ReactionKinetics<2>, D: SpatialDiffusion<2>> TuringSystem<2, K, D, Fused
     }
 }
 
+impl
+    TuringSystem<
+        2,
+        SchnakenbergKinetics,
+        crate::biology::diffusion::FiniteDifference3D,
+        FusedEulerSolver,
+    >
+{
+    /// Creates a 3D two-species Schnakenberg Turing system backed by 7-point Neumann [`crate::biology::diffusion::FiniteDifference3D`].
+    #[verified_engine::verified]
+    pub fn new_3d(
+        dims: (Dimension, Dimension, Dimension),
+        d_u: DiffusionCoeff,
+        d_v: DiffusionCoeff,
+        h: StepSize,
+        kinetics: SchnakenbergKinetics,
+    ) -> Self {
+        let diffusion =
+            crate::biology::diffusion::FiniteDifference3D::isotropic(dims.0, dims.1, dims.2, h);
+        let total = Dimension(diffusion.grid_len());
+        Self::new_with_kinetics(total, d_u, d_v, kinetics, diffusion)
+    }
+
+    /// Copies activator concentrations `u` into `out_voxels` as `f32` with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn write_activator_f32_into(&self, out_voxels: &mut [f32]) {
+        let u = self.u();
+        let len = out_voxels.len().min(u.len());
+        for i in 0..len {
+            out_voxels[i] = u[i] as f32;
+        }
+    }
+}
+
 // Generic implementation
 impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSolverStrategy<N>>
     TuringSystem<N, K, D, S>

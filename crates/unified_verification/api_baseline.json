@@ -170,6 +170,12 @@
     },
     {
       "signature": "pub fn project_covariance (_ : & Matrix3 < f64 > , _ : & Matrix4 < f64 > , _ : & SMatrix < f64 , 2 , 3 > ,) -> Matrix2 < f64 >"
+    },
+    {
+      "signature": "pub fn project_scene_into (_ : & Scene , _ : & SplatCameraProjection , _ : & mut Vec < Gaussian2D > ,)"
+    },
+    {
+      "signature": "pub struct SplatCameraProjection"
     }
   ],
   "crates/domain_ai/src/ai/gaussian_splatting/rendering.rs": [
@@ -1901,6 +1907,9 @@
   ],
   "crates/domain_applied/src/applied/isosurface/gradients.rs": [
     {
+      "signature": "impl CentralDifferenceEstimator { pub fn world_normal_and_magnitude (& self , _ : & VoxelGrid , _ : usize , _ : usize , _ : usize ,) -> (Point3D , f32) }"
+    },
+    {
       "signature": "pub struct CentralDifferenceEstimator"
     },
     {
@@ -1935,6 +1944,9 @@
       "signature": "pub use gradients :: GradientEstimator"
     },
     {
+      "signature": "pub use marching_cubes :: MarchingCubes"
+    },
+    {
       "signature": "pub use marching_cubes :: extract_isosurface"
     },
     {
@@ -1945,6 +1957,12 @@
     },
     {
       "signature": "pub use types :: VoxelGrid"
+    },
+    {
+      "signature": "pub use workspace :: IsosurfaceWorkspace"
+    },
+    {
+      "signature": "pub use workspace :: extract_isosurface_into"
     }
   ],
   "crates/domain_applied/src/applied/isosurface/tables.rs": [
@@ -1969,6 +1987,9 @@
       "signature": "impl VoxelGrid { pub fn data (& self) -> & [f32] }"
     },
     {
+      "signature": "impl VoxelGrid { pub fn data_mut (& mut self) -> & mut [f32] }"
+    },
+    {
       "signature": "impl VoxelGrid { pub fn depth (& self) -> usize }"
     },
     {
@@ -1979,6 +2000,12 @@
     },
     {
       "signature": "impl VoxelGrid { pub fn origin (& self) -> & Point3D }"
+    },
+    {
+      "signature": "impl VoxelGrid { pub fn reconfigure_in_place (& mut self , _ : (usize , usize , usize) , _ : Point3D , _ : Point3D ,) -> Result < () , VoxelGridError > }"
+    },
+    {
+      "signature": "impl VoxelGrid { pub fn set (& mut self , _ : usize , _ : usize , _ : usize , _ : f32) }"
     },
     {
       "signature": "impl VoxelGrid { pub fn set_origin (& mut self , _ : Point3D) }"
@@ -2024,6 +2051,26 @@
     },
     {
       "signature": "pub use oxidize_core :: mesh :: Point3D"
+    }
+  ],
+  "crates/domain_applied/src/applied/isosurface/workspace.rs": [
+    {
+      "signature": "impl < 'a , G : GradientEstimator > MarchingCubes < 'a , G > { pub fn extract_into (& self , _ : f32 , _ : & mut IsosurfaceWorkspace , _ : & mut Mesh ,) -> Result < () , IsosurfaceError > }"
+    },
+    {
+      "signature": "impl IsosurfaceWorkspace { pub fn new_lazy (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl IsosurfaceWorkspace { pub fn with_locked_capacity (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl IsosurfaceWorkspace { pub fn with_max_dimensions (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn extract_isosurface_into (_ : & VoxelGrid , _ : f32 , _ : & mut IsosurfaceWorkspace , _ : & mut Mesh ,) -> Result < () , IsosurfaceError >"
+    },
+    {
+      "signature": "pub struct IsosurfaceWorkspace"
     }
   ],
   "crates/domain_applied/src/applied/lorahub/ensemble.rs": [
@@ -2623,6 +2670,20 @@
       "signature": "pub struct FiniteDifference2D"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/fd3d.rs": [
+    {
+      "signature": "impl FiniteDifference3D { pub fn grid_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl FiniteDifference3D { pub fn isotropic (_ : Dimension , _ : Dimension , _ : Dimension , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl FiniteDifference3D { pub fn new (_ : Dimension , _ : Dimension , _ : Dimension , _ : StepSize , _ : StepSize , _ : StepSize ,) -> Self }"
+    },
+    {
+      "signature": "pub struct FiniteDifference3D"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/mod.rs": [
     {
       "signature": "pub trait SpatialDiffusion < const N : usize >"
@@ -2644,6 +2705,9 @@
     },
     {
       "signature": "pub use fd2d :: FiniteDifference2D"
+    },
+    {
+      "signature": "pub use fd3d :: FiniteDifference3D"
     }
   ],
   "crates/domain_biology/src/biology/evolution.rs": [
@@ -2718,6 +2782,12 @@
     },
     {
       "signature": "impl TuringSystem < 2 , SchnakenbergKinetics , FiniteDifference1D , FusedEulerSolver > { pub fn new (_ : Dimension , _ : DiffusionCoeff , _ : DiffusionCoeff , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl TuringSystem < 2 , SchnakenbergKinetics , crate :: biology :: diffusion :: FiniteDifference3D , FusedEulerSolver , > { pub fn new_3d (_ : (Dimension , Dimension , Dimension) , _ : DiffusionCoeff , _ : DiffusionCoeff , _ : StepSize , _ : SchnakenbergKinetics ,) -> Self }"
+    },
+    {
+      "signature": "impl TuringSystem < 2 , SchnakenbergKinetics , crate :: biology :: diffusion :: FiniteDifference3D , FusedEulerSolver , > { pub fn write_activator_f32_into (& self , _ : & mut [f32]) }"
     },
     {
       "signature": "pub struct DiffusionCoeff"
@@ -5615,7 +5685,57 @@
       "signature": "pub fn construct_1d_hamiltonian (_ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64 ,) -> QuantumOperator"
     },
     {
+      "signature": "pub fn construct_two_state_eigen_hamiltonian (_ : f64 , _ : f64 , _ : f64) -> QuantumOperator"
+    },
+    {
       "signature": "pub fn gaussian_wavepacket (_ : & [f64] , _ : f64 , _ : f64 , _ : f64) -> QuantumState"
+    }
+  ],
+  "crates/domain_physics/src/physics/quantum/hydrogenic.rs": [
+    {
+      "signature": "impl HydrogenicSuperposition3D { pub fn elapsed_time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl HydrogenicSuperposition3D { pub fn new (_ : OrbitalQuantumNumbers , _ : OrbitalQuantumNumbers , _ : usize , _ : usize , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl HydrogenicSuperposition3D { pub fn rebuild_propagator (& mut self , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl HydrogenicSuperposition3D { pub fn reconfigure_basis (& mut self , _ : OrbitalQuantumNumbers , _ : OrbitalQuantumNumbers , _ : usize , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl HydrogenicSuperposition3D { pub fn set_superposition (& mut self , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl HydrogenicSuperposition3D { pub fn step_in_place (& mut self) }"
+    },
+    {
+      "signature": "impl HydrogenicSuperposition3D { pub fn write_field_into (& self , _ : QuantumFieldObservable , _ : & mut [f32]) }"
+    },
+    {
+      "signature": "impl OrbitalQuantumNumbers { pub fn clamped (_ : u32 , _ : u32 , _ : i32) -> Self }"
+    },
+    {
+      "signature": "impl OrbitalQuantumNumbers { pub fn new (_ : u32 , _ : u32 , _ : i32) -> Result < Self , String > }"
+    },
+    {
+      "signature": "pub enum QuantumFieldObservable"
+    },
+    {
+      "signature": "pub fn hydrogenic_energy_au (_ : u32) -> f64"
+    },
+    {
+      "signature": "pub fn hydrogenic_orbital_cartesian (_ : OrbitalQuantumNumbers , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn hydrogenic_radial_wavefunction (_ : u32 , _ : u32 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct HydrogenicSuperposition3D"
+    },
+    {
+      "signature": "pub struct OrbitalQuantumNumbers"
     }
   ],
   "crates/domain_physics/src/physics/quantum/mod.rs": [
@@ -5632,7 +5752,28 @@
       "signature": "pub use hamiltonian :: construct_1d_hamiltonian"
     },
     {
+      "signature": "pub use hamiltonian :: construct_two_state_eigen_hamiltonian"
+    },
+    {
       "signature": "pub use hamiltonian :: gaussian_wavepacket"
+    },
+    {
+      "signature": "pub use hydrogenic :: HydrogenicSuperposition3D"
+    },
+    {
+      "signature": "pub use hydrogenic :: OrbitalQuantumNumbers"
+    },
+    {
+      "signature": "pub use hydrogenic :: QuantumFieldObservable"
+    },
+    {
+      "signature": "pub use hydrogenic :: hydrogenic_energy_au"
+    },
+    {
+      "signature": "pub use hydrogenic :: hydrogenic_orbital_cartesian"
+    },
+    {
+      "signature": "pub use hydrogenic :: hydrogenic_radial_wavefunction"
     },
     {
       "signature": "pub use schrodinger :: evolve_state"
@@ -6659,6 +6800,9 @@
       "signature": "pub fn flatten_2d_index (_ : usize , _ : usize , _ : usize) -> usize"
     },
     {
+      "signature": "pub fn flatten_3d_index (_ : usize , _ : usize , _ : usize , _ : usize , _ : usize) -> usize"
+    },
+    {
       "signature": "pub struct Dimension"
     },
     {
@@ -6972,6 +7116,15 @@
   "crates/oxidize_core/src/mesh/types.rs": [
     {
       "signature": "impl ColoredMesh { pub fn new (_ : Mesh , _ : Vec < VertexColor >) -> Self }"
+    },
+    {
+      "signature": "impl Mesh { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl Mesh { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl Mesh { pub fn with_capacity (_ : usize , _ : usize) -> Self }"
     },
     {
       "signature": "impl Point3D { pub const EPSILON : f32 }"
@@ -8187,6 +8340,9 @@
       "signature": "impl FusedStencilStepper { pub fn new_2d (_ : StepSize , _ : StepSize) -> Self }"
     },
     {
+      "signature": "impl FusedStencilStepper { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
       "signature": "impl FusedStencilStepper { pub fn step_1d_coupled_neumann < const N : usize , F > (& self , _ : usize , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators) -> [f64 ; N] , }"
     },
     {
@@ -8194,6 +8350,9 @@
     },
     {
       "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn step_3d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , StencilNeighbors3D < N > , & StencilOperators) -> [f64 ; N] , }"
     },
     {
       "signature": "impl StencilOperators { pub fn central_diff_1st (& self , _ : f64 , _ : f64) -> f64 }"
@@ -8205,16 +8364,25 @@
       "signature": "impl StencilOperators { pub fn central_diff_2nd_2d (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
     },
     {
+      "signature": "impl StencilOperators { pub fn central_diff_2nd_3d (& self , _ : f64 , _ : [f64 ; 6]) -> f64 }"
+    },
+    {
       "signature": "impl StencilOperators { pub fn new (_ : StepSize) -> Self }"
     },
     {
       "signature": "impl StencilOperators { pub fn new_2d (_ : StepSize , _ : StepSize) -> Self }"
     },
     {
+      "signature": "impl StencilOperators { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
       "signature": "impl StencilOperators { pub fn upwind_flux (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
     },
     {
       "signature": "pub struct FusedStencilStepper"
+    },
+    {
+      "signature": "pub struct StencilNeighbors3D < const N : usize >"
     },
     {
       "signature": "pub struct StencilOperators"
@@ -8938,9 +9106,15 @@
     },
     {
       "signature": "pub fn legendre_p_associated (_ : u64 , _ : i64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn real_spherical_harmonic (_ : u64 , _ : i64 , _ : f64 , _ : f64) -> f64"
     }
   ],
   "crates/pure_math/src/pure_math/special_functions/polynomials.rs": [
+    {
+      "signature": "pub fn associated_laguerre (_ : u64 , _ : f64 , _ : f64) -> f64"
+    },
     {
       "signature": "pub fn hermite (_ : u64 , _ : f64) -> f64"
     },
