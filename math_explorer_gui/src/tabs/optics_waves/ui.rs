@@ -17,26 +17,35 @@ use eframe::egui::{self, vec2, ColorImage};
 use math_explorer::physics::optics::refraction::OpticsPreset;
 
 impl OpticsWaveTool {
+    fn pull_latest_worker_snapshot(&mut self) {
+        if !self.dirty {
+            return;
+        }
+        let Some(snapshot) = self.worker.latest_snapshot() else {
+            return;
+        };
+        if let Some(data) = snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<OpticsFrameData>())
+        {
+            self.latest_frame = Some(data.clone());
+        } else if let Ok(px) = snapshot.pixels.try_read() {
+            if px.len() == snapshot.width * snapshot.height {
+                self.pixels = px.clone();
+            }
+        }
+    }
+
     fn sync_texture(&mut self, ctx: &egui::Context) {
         let high_contrast =
             ThemeMode::from_visuals(&ctx.style().visuals) == ThemeMode::HighContrast;
-        if let Some(snapshot) = self.worker.latest_snapshot() {
-            if self.dirty {
-                if let Some(data) = snapshot
-                    .structured_data
-                    .as_ref()
-                    .and_then(|d| d.downcast_ref::<OpticsFrameData>())
-                {
-                    self.latest_frame = Some(data.clone());
-                } else if let Ok(px) = snapshot.pixels.try_read() {
-                    if px.len() == snapshot.width * snapshot.height {
-                        self.pixels = px.clone();
-                    }
-                }
-            }
-        }
+        self.pull_latest_worker_snapshot();
         if !self.dirty && self.texture.is_some() {
             return;
+        }
+        if self.latest_frame.is_none() && self.pixels.is_empty() {
+            self.refresh_initial_preview();
         }
         let show_irradiance = self
             .params
@@ -217,6 +226,12 @@ impl OpticsWaveTool {
                         }
                         PlaybackAction::Step => {
                             let _ = self.worker.send_command(SimCommand::Step(1));
+                        }
+                        PlaybackAction::StepBack => {
+                            let _ = self.worker.send_command(SimCommand::StepBack(1));
+                        }
+                        PlaybackAction::ScrubTo(step) => {
+                            let _ = self.worker.send_command(SimCommand::SeekStep(step));
                         }
                         PlaybackAction::Reset => {
                             self.reset();

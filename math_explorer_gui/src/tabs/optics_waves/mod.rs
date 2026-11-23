@@ -1,8 +1,9 @@
-// @explorer_feature = "physics"
+//! Interactive Physics tab for 2D FDTD wave propagation, Hamiltonian ray caustics, and optical sensing.
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
-use std::sync::Arc;
 
 pub mod overlays;
 pub mod presets;
@@ -11,30 +12,20 @@ pub mod state;
 pub mod tool;
 pub mod ui;
 
-pub use runner::OpticsSharedParams;
+#[cfg(test)]
 pub use tool::OpticsWaveTool;
 
-/// Auto-discovered Physics tab for 2D FDTD wave propagation, ray caustics, and optical sensing.
+/// Static-inventory Physics tab for 2D FDTD wave propagation, ray caustics, and optical sensing.
 pub struct OpticsWaveTab {
     /// Underlying simulation framework managing presets, exports, URL sharing, and recovery.
     pub framework: crate::framework::SimulationFramework,
-    pub(crate) params: Arc<std::sync::RwLock<OpticsSharedParams>>,
 }
 
 impl Default for OpticsWaveTab {
     fn default() -> Self {
-        let mut framework = crate::framework::SimulationFramework::new("optics_waves");
-        let tool = OpticsWaveTool::default();
-        let params = Arc::clone(&tool.params);
-        let name = crate::framework::InteractiveTool::name(&tool).to_string();
-        let baseline = crate::framework::InteractiveTool::save_state(&tool);
-        framework.active_tool = Some(Box::new(tool));
-        if let Some(b) = baseline {
-            framework.saved_tool_states.insert(name, b.clone());
-            framework.baseline_tool_state = Some(b);
+        Self {
+            framework: crate::framework::SimulationFramework::new("optics_waves"),
         }
-        framework.cache_valid_snapshot();
-        Self { framework, params }
     }
 }
 
@@ -55,9 +46,9 @@ impl FiniteStateGuard for OpticsWaveTab {
     }
 
     fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.cfl_scale = (p.cfl_scale * 0.5).clamp(0.10, 1.00);
-        p.force_non_finite = false;
+        if let Some(tool) = self.framework.active_tool.as_mut() {
+            let _ = tool.clamp_parameters();
+        }
     }
 
     fn clamp_parameters(&mut self) {
@@ -67,8 +58,7 @@ impl FiniteStateGuard for OpticsWaveTab {
     }
 
     fn reset_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        *p = OpticsSharedParams::default();
+        self.framework = crate::framework::SimulationFramework::new("optics_waves");
     }
 }
 
@@ -110,6 +100,14 @@ impl ExplorerTab for OpticsWaveTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "optics_waves",
+        order: 18,
+        build: || Box::new(OpticsWaveTab::default()),
     }
 }
 

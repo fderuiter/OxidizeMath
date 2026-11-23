@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::presets::PRESET_OPTICS_VESELAGO;
-use super::{OpticsWaveTab, OpticsWaveTool};
+use super::tool::OpticsWaveTool;
+use super::OpticsWaveTab;
 use crate::app::ThemeMode;
 use crate::framework::InteractiveTool;
 use crate::tabs::ExplorerTab;

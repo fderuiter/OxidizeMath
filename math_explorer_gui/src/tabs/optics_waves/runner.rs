@@ -158,22 +158,16 @@ impl OpticsWaveRunner {
         let snap_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
         let medium = snap_params.to_medium();
         medium.apply_to_wave_field(&mut field);
-        let mut ray_tracer = HamiltonianRayTracer::new(32, 360, 256);
-        let ray_count = snap_params.ray_count.clamp(3, 31);
-        ray_tracer.trace_in_place(&medium, ray_count, 0.0035);
-        let mut detector_buf = vec![0.0; n];
-        let last_readout = sample_detector_line_in_place(
-            &field,
-            &snap_params.to_detector_config(),
-            &mut detector_buf,
-        );
+        let ray_tracer = HamiltonianRayTracer::new(32, 360, 256);
+        let detector_buf = vec![0.0; n];
+        let last_readout = DetectorReadout::default();
         Self {
             field,
             ray_tracer,
             detector_buf,
             last_readout,
             applied_medium: medium,
-            applied_rays: ray_count,
+            applied_rays: 0,
             params,
             diverged_flag: false,
         }

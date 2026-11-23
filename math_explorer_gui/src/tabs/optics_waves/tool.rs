@@ -36,17 +36,7 @@ impl Default for OpticsWaveTool {
     fn default() -> Self {
         let grid_size = default_grid_size();
         let params = Arc::new(std::sync::RwLock::new(OpticsSharedParams::default()));
-        let mut init_runner = OpticsWaveRunner::new(Arc::clone(&params), grid_size);
-        init_runner.step();
-        let init_snap = init_runner.get_snapshot();
-        let init_pixels = init_snap
-            .pixels
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let init_frame = init_snap
-            .structured_data
-            .and_then(|b| b.downcast::<OpticsFrameData>().ok().map(|d| *d));
+        let init_runner = OpticsWaveRunner::new(Arc::clone(&params), grid_size);
         let worker = BackgroundWorker::new(init_runner);
 
         Self {
@@ -54,8 +44,8 @@ impl Default for OpticsWaveTool {
             params,
             grid_size,
             texture: None,
-            pixels: init_pixels,
-            latest_frame: init_frame,
+            pixels: Vec::new(),
+            latest_frame: None,
             dirty: true,
             stepped_pixels: None,
             step_runner: None,
@@ -74,7 +64,8 @@ impl OpticsWaveTool {
         let grid_size = self.grid_size;
         self.worker
             .reset_or_respawn(|| OpticsWaveRunner::new(params, grid_size));
-        self.refresh_initial_preview();
+        self.pixels.clear();
+        self.latest_frame = None;
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
@@ -96,18 +87,10 @@ impl OpticsWaveTool {
         }
         let was_running = self.worker.is_running();
         self.grid_size = clamped;
-        let mut runner = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
-        runner.step();
-        let snap = runner.get_snapshot();
-        self.pixels = snap
-            .pixels
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        self.latest_frame = snap
-            .structured_data
-            .and_then(|b| b.downcast::<OpticsFrameData>().ok().map(|d| *d));
+        let runner = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
         self.worker = BackgroundWorker::new(runner);
+        self.pixels.clear();
+        self.latest_frame = None;
         self.stepped_pixels = None;
         self.step_runner = None;
         self.dirty = true;
@@ -116,7 +99,7 @@ impl OpticsWaveTool {
         }
     }
 
-    fn refresh_initial_preview(&mut self) {
+    pub(crate) fn refresh_initial_preview(&mut self) {
         let mut preview = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
         preview.step();
         let snap = preview.get_snapshot();
@@ -279,7 +262,15 @@ impl InteractiveTool for OpticsWaveTool {
                 ..Default::default()
             });
         }
-        None
+        let mut preview = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
+        preview.step();
+        let snap = preview.get_snapshot();
+        let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
+        Some(ColorImage {
+            size: [snap.width, snap.height],
+            pixels: px.clone(),
+            ..Default::default()
+        })
     }
 
     fn step_simulation(&mut self) {
@@ -376,7 +367,8 @@ impl InteractiveTool for OpticsWaveTool {
             self.grid_size = parsed.grid_size;
             let runner = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
             self.worker = BackgroundWorker::new(runner);
-            self.refresh_initial_preview();
+            self.pixels.clear();
+            self.latest_frame = None;
             self.stepped_pixels = None;
             self.step_runner = None;
             self.dirty = true;
