@@ -23,6 +23,7 @@ impl SimpsonParadoxLab {
         }
         self.render_metrics_grid(ui, &palette);
         ui.add_space(6.0);
+        self.render_simpson_atlas_panel(ui);
         self.render_rr_forest_plot(ui, &palette);
         let _ = self.callout_manager.render_ui(ui);
         self.render_retained_schedule_preview(ui);
@@ -129,12 +130,14 @@ impl SimpsonParadoxLab {
         }
 
         ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("⚖ Balance via StratifiedRandomizer")
-                .accessible_hover_text(
-                    "Run StratifiedRandomizer<BlockRandomizer> with seeded OxidizeRng to balance Mild and Severe arms",
-                )
-                .clicked()
+            let _ = self.atlas.show_toggle_button(ui);
+            if !crate::framework::is_challenge_mode_active(ui)
+                && ui
+                    .button("⚖ Compare Stratified Balance Preset")
+                    .accessible_hover_text(
+                        "Compare confounded cohorts against a balanced StratifiedRandomizer<BlockRandomizer> allocation",
+                    )
+                    .clicked()
             {
                 self.balance_via_stratified_randomizer(seed_counter);
             }

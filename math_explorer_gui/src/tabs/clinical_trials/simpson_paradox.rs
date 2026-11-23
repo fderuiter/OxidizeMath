@@ -11,7 +11,8 @@ use super::randomization_schedule::{
     build_deterministic_stratum_schedule, build_stratified_schedule_from_map,
     SubjectAllocationRecord,
 };
-use crate::framework::CalloutManager;
+use crate::async_sim::atlas::ParameterAtlasController;
+use crate::framework::{CalloutManager, CalloutSpec};
 use math_explorer::applied::clinical_trials::{
     analysis::{calculate_risk_metrics, RiskMetrics},
     design::{BlockRandomizer, Group, Patient, StratifiedRandomizer},
@@ -22,10 +23,10 @@ use oxidize_core::rng::{OxidizeRng, BASE_SEED};
 use rand::Rng;
 
 const ALPHA: f64 = 0.05;
-const MILD_TREAT_RATE: f64 = 0.10;
-const MILD_CTRL_RATE: f64 = 0.15;
-const SEVERE_TREAT_RATE: f64 = 0.30;
-const SEVERE_CTRL_RATE: f64 = 0.40;
+pub(super) const MILD_TREAT_RATE: f64 = 0.10;
+pub(super) const MILD_CTRL_RATE: f64 = 0.15;
+pub(super) const SEVERE_TREAT_RATE: f64 = 0.30;
+pub(super) const SEVERE_CTRL_RATE: f64 = 0.40;
 
 /// User hypothesis choice for the pooled trial winner before inspecting pooled RR.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -70,7 +71,12 @@ impl TableCounts {
         }
     }
 
-    fn from_share_and_rates(total_n: u32, treat_share: f64, p_treat: f64, p_ctrl: f64) -> Self {
+    pub(super) fn from_share_and_rates(
+        total_n: u32,
+        treat_share: f64,
+        p_treat: f64,
+        p_ctrl: f64,
+    ) -> Self {
         let n = total_n.max(4) as f64;
         let share = treat_share.clamp(0.10, 0.90);
         let n_treat = (n * share).round().max(2.0);
@@ -176,8 +182,11 @@ pub struct TableEvaluation {
 pub struct SimpsonParadoxLab {
     /// Editable trial allocation and cell-count configuration.
     pub config: SimpsonParadoxConfig,
+    /// Async 2D allocation-share confounding regime atlas.
+    pub atlas: ParameterAtlasController,
     /// Plot callout manager for RR confidence intervals and Simpson reversal alerts.
     pub callout_manager: CalloutManager,
+    hud_specs: Vec<CalloutSpec>,
     /// Latest Mild stratum evaluation.
     pub mild_eval: Option<TableEvaluation>,
     /// Latest Severe stratum evaluation.
@@ -199,7 +208,12 @@ impl Default for SimpsonParadoxLab {
             build_deterministic_stratum_schedule(cfg.mild_counts, cfg.severe_counts);
         let mut lab = Self {
             config: cfg,
+            atlas: ParameterAtlasController::new(vec![(
+                "mild_treatment_share",
+                "severe_treatment_share",
+            )]),
             callout_manager: CalloutManager::new(),
+            hud_specs: Vec::new(),
             mild_eval: None,
             severe_eval: None,
             pooled_eval: None,
@@ -366,6 +380,7 @@ impl SimpsonParadoxLab {
         sev: &TableEvaluation,
         pool: &TableEvaluation,
     ) {
+        self.callout_manager.sync_specs(&self.hud_specs);
         self.callout_manager.set_auto_callout(
             "mild_rr",
             [mild.risk.relative_risk, 3.0],
@@ -395,6 +410,44 @@ impl SimpsonParadoxLab {
             tag_text,
             [24.0, -22.0],
         );
+    }
+
+    /// Synchronizes external Story/Challenge HUD callout pins without dropping RR auto-callouts.
+    pub fn set_hud_callouts(&mut self, specs: &[CalloutSpec]) {
+        self.hud_specs = specs.to_vec();
+        if let (Some(mild), Some(sev), Some(pool)) = (
+            self.mild_eval.clone(),
+            self.severe_eval.clone(),
+            self.pooled_eval.clone(),
+        ) {
+            self.sync_callouts(&mild, &sev, &pool);
+        } else {
+            self.callout_manager.sync_specs(specs);
+        }
+    }
+
+    /// Returns live scalar observables for guided stories and AST goal challenges.
+    #[must_use]
+    pub fn observables(&self) -> Vec<(&'static str, f64)> {
+        let Some((mild, sev, pool)) = self
+            .mild_eval
+            .as_ref()
+            .zip(self.severe_eval.as_ref())
+            .and_then(|(m, s)| self.pooled_eval.as_ref().map(|p| (m, s, p)))
+        else {
+            return Vec::new();
+        };
+        vec![
+            ("mild_rr", mild.risk.relative_risk),
+            ("severe_rr", sev.risk.relative_risk),
+            ("pooled_rr", pool.risk.relative_risk),
+            (
+                "simpson_reversal",
+                if self.is_simpson_reversal { 1.0 } else { 0.0 },
+            ),
+            ("mild_treatment_share", self.config.mild_treatment_share),
+            ("severe_treatment_share", self.config.severe_treatment_share),
+        ]
     }
 }
 

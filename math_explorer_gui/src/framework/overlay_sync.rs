@@ -313,6 +313,7 @@ impl SimulationFramework {
             domain: domain.to_string(),
             preset_dialog: crate::presets::PresetDialogState::default(),
             export_queue: super::ExportQueue::default(),
+            gif_job: None,
             last_valid_snapshot: None,
             baseline_tool_state: None,
             current_valid_plot_datasets: Vec::new(),

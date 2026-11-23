@@ -9,6 +9,7 @@ pub mod pharmacokinetics;
 pub mod randomization;
 pub mod randomization_schedule;
 pub mod sample_size;
+pub mod simpson_atlas;
 pub mod simpson_paradox;
 pub mod survival;
 pub mod win_ratio;
