@@ -127,6 +127,12 @@ mod tests {
             ctx,
         );
         exercise_interactive_tool::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
+        exercise_interactive_tool::<
+            crate::tabs::morphogenesis::phyllotaxis_tool::PhyllotaxisLSystemTool,
+        >(ctx);
+        exercise_interactive_tool::<
+            crate::tabs::morphogenesis::evolution_kinetics_tool::EvolutionKineticsTool,
+        >(ctx);
         exercise_interactive_tool::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(
             ctx,
         );

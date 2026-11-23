@@ -1,0 +1,92 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath, amssymb}
+\usepackage{geometry}
+\usepackage{accessibility}
+
+\geometry{margin=1in}
+
+\title{Mathematical Foundations of Biological Morphogenesis, Spectral Lenia, and Developmental Phyllotaxis}
+\author{OxidizeMath Verification Collective}
+\date{\today}
+
+\newtheorem{proposition}{Proposition}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present the mathematical formulations and zero-allocation numerical architectures underlying the computational biology domain in \texttt{OxidizeMath}. Spanning four coupled scales of living matter, we derive (i) diffusion-driven Turing instabilities for Schnakenberg and Gray--Scott autocatalytic reaction--diffusion partial differential equations, (ii) spectral continuous cellular automata (\emph{Lenia}) integrated via transposed two-dimensional fast Fourier transform circular convolutions and toroidal circular-harmonic invariants, (iii) Vogel's golden-angle primordia packing and continued-fraction Fibonacci parastichy emergence coupled to parallel Lindenmayer rewriting grammars, and (iv) evolutionary Hawk--Dove replicator dynamics alongside Michaelis--Menten and cooperative Hill enzyme saturation kinetics.
+\end{abstract}
+
+\section{Reaction--Diffusion Morphogenesis}
+
+Following Turing~\cite{turing1952chemical}, consider a two-species activator--inhibitor field $\mathbf{c}(\mathbf{x}, t) = (u(\mathbf{x}, t), v(\mathbf{x}, t))^\top$ on a periodic two-dimensional domain $\Omega = [0, L_x) \times [0, L_y)$ governed by
+\begin{equation}
+\frac{\partial u}{\partial t} = D_u \nabla^2 u + R_u(u, v), \qquad
+\frac{\partial v}{\partial t} = D_v \nabla^2 v + R_v(u, v).
+\end{equation}
+In the Schnakenberg reaction model~\cite{schnakenberg1979simple}, cubic autocatalysis takes the form
+\begin{equation}
+R_u(u, v) = a - u + u^2 v, \qquad R_v(u, v) = b - u^2 v, \qquad (a, b > 0),
+\end{equation}
+admitting the spatially homogeneous equilibrium $(u^*, v^*) = \bigl(a + b,\, b / (a + b)^2\bigr)$. Differential diffusion ($D_v \gg D_u$) destabilizes Fourier modes $k > 0$ whenever $\det J(k^2) < 0$ for the dispersion Jacobian $J(k^2) = J_R - k^2 \mathrm{diag}(D_u, D_v)$, yielding stationary spot and labyrinthine stripe morphologies.
+
+In the open-flow Gray--Scott model~\cite{gray1984autocatalytic}, substrate $u$ is replenished at dimensionless feed rate $f$ while catalyst $v$ decays at composite rate $f + k$:
+\begin{equation}
+R_u(u, v) = -u v^2 + f(1 - u), \qquad R_v(u, v) = u v^2 - (f + k)v.
+\end{equation}
+Across $(f, k)$ parameter space, saddle-node and Hopf bifurcations generate self-replicating mitosis spots, coral labyrinths, and localized solitons discretized via cache-tiled five-point finite-difference Laplacians.
+
+\section{Spectral Continuous Cellular Automata (Lenia)}
+
+Chan~\cite{chan2019lenia} generalizes discrete outer-totalistic cellular automata to continuous space, time, and state $A^t : \mathbb{Z}_W \times \mathbb{Z}_H \to [0, 1]$. Given interaction radius $R > 0$ and concentric shell weights $\boldsymbol{\beta} = (\beta_0, \dots, \beta_{B-1})$, the radially symmetric bump core $K_C : (0, 1) \to (0, 1]$ and multi-ring shell $K_S$ are defined by
+\begin{equation}
+K_C(a) = \exp\!\left(4 - \frac{1}{a(1 - a)}\right), \qquad
+K_S(r) = \beta_{\lfloor B r \rfloor}\, K_C(B r - \lfloor B r \rfloor), \quad r = \frac{\|\Delta \mathbf{x}\|_2}{R} < 1,
+\end{equation}
+normalized to unit mass $\sum_{\mathbf{x}} K(\mathbf{x}) = 1$. Rather than evaluating the $O(W H R^2)$ spatial stencil directly, the neighborhood potential $U^t = K * A^t$ is computed exactly on the periodic torus via the convolution theorem:
+\begin{equation}
+U^t = \mathcal{F}_{2\mathrm{D}}^{-1}\!\Bigl(\mathcal{F}_{2\mathrm{D}}(K) \odot \mathcal{F}_{2\mathrm{D}}(A^t)\Bigr),
+\end{equation}
+requiring $O(W H \log(W H))$ operations using preplanned row and column transforms with preallocated transpose and scratch buffers. State evolution applies a smooth Gaussian growth mapping $G(u; \mu, \sigma) = 2 \exp\!\bigl(-(u - \mu)^2 / (2\sigma^2)\bigr) - 1$:
+\begin{equation}
+A^{t + \Delta t}(\mathbf{x}) = \min\!\Bigl(1,\, \max\!\bigl(0,\, A^t(\mathbf{x}) + \Delta t\, G(U^t(\mathbf{x}); \mu, \sigma)\bigr)\Bigr).
+\end{equation}
+For solitons such as \emph{Orbium unicaudatus} ($\mu = 0.15, \sigma = 0.015, R = 13$) translating across periodic boundaries, center-of-mass coordinates are extracted smoothly via circular first moments:
+\begin{equation}
+x_{\mathrm{cm}} = \frac{W}{2\pi} \operatorname{atan2}\!\left(\sum_{x,y} A(x,y)\sin\frac{2\pi x}{W},\; \sum_{x,y} A(x,y)\cos\frac{2\pi x}{W}\right) \bmod W,
+\end{equation}
+eliminating boundary-wrapping discontinuities in instantaneous velocity $\mathbf{v} = \Delta_{\mathbb{T}^2}\mathbf{x}_{\mathrm{cm}} / \Delta t$.
+
+\section{Golden-Angle Phyllotaxis and Nutrient-Coupled L-Systems}
+
+In Vogel's planar model of the capitulum meristem~\cite{vogel1979better}, sequential primordia $k \in \{0, 1, \dots, N-1\}$ occupy polar coordinates
+\begin{equation}
+r_k = c \sqrt{k + \tfrac{1}{2} + \phi(t)}, \qquad \theta_k = k \alpha, \qquad \alpha_\varphi = 2\pi(2 - \varphi) \approx 137.507764^\circ,
+\end{equation}
+where $\varphi = (1 + \sqrt{5}) / 2$ is the golden ratio and $\phi(t) \in [0, 1)$ is the continuous plastochron phase.
+
+\begin{proposition}[Fibonacci Parastichy Optimality]
+Because the simple continued-fraction expansion $\alpha_\varphi / (2\pi) = [0; 2, 1, 1, 1, \dots]$ has minimal partial quotients among irrational divergence angles, its principal convergents are ratios of consecutive Fibonacci numbers $F_{n-1} / F_{n+1}$ with alternating angular residuals $\Delta \theta_{F_n} = (F_n \alpha_\varphi \bmod 2\pi) \in (-\pi, \pi)$. Consequently, the Euclidean nearest-neighbor offsets $\Delta k \ge 1$ on an outer annulus of radius $r \propto \sqrt{N}$ partition into opposing winding families of cardinality $(F_m, F_{m+1})$.
+\end{proposition}
+
+Above-ground branching architecture is modeled concurrently via parallel Lindenmayer rewriting grammars~\cite{lindenmayer1968mathematical}, $G = (\Sigma, \omega, P)$, interpreted by a bounded stack-based two-dimensional turtle whose plastochron initiation rate, internode elongation, and branching angle are modulated by biochemical substrate uptake.
+
+\section{Evolutionary Replicator Dynamics and Enzyme Kinetics}
+
+At the molecular scale, enzymatic reaction velocity $v([S])$ transitions from hyperbolic Michaelis--Menten saturation~\cite{michaelis1913kinetik} ($n = 1$) to cooperative sigmoidal Hill binding~\cite{hill1910possible} ($n > 1$):
+\begin{equation}
+v([S]) = \frac{V_{\max} [S]^n}{K_m^n + [S]^n}.
+\end{equation}
+At the population scale, the two-strategy Hawk--Dove contest~\cite{maynardsmith1973logic} with resource value $V > 0$ and injury cost $C > 0$ evolves Hawk frequency $p_H \in [0, 1]$ under the replicator equation
+\begin{equation}
+\frac{dp_H}{dt} = p_H(1 - p_H)\bigl(W_H(p_H) - W_D(p_H)\bigr) = \frac{1}{2} p_H(1 - p_H)(V - p_H C),
+\end{equation}
+converging globally from interior initial conditions $p_H(0) \in (0, 1)$ to the unique Evolutionarily Stable Strategy $p_H^* = \min(V / C, 1)$.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

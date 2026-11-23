@@ -5,21 +5,38 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+/// Progressive 2D parameter regime atlas and Schnakenberg dispersion cartographer.
 pub mod atlas;
 mod atlas_bridge;
 pub mod counterfactual;
 mod counterfactual_tool;
 mod dataflow;
+/// Evolutionary replicator and enzyme saturation kinetics tool.
+pub mod evolution_kinetics_tool;
+/// UI rendering for [`evolution_kinetics_tool::EvolutionKineticsTool`].
+pub mod evolution_kinetics_ui;
 pub mod gray_scott_atlas;
 #[cfg(test)]
 mod legacy_runner;
+/// Continuous 2D FFT Lenia Studio tool and canvas.
 pub mod lenia;
+/// Vogel golden-angle phyllotaxis and nutrient-coupled L-system tool.
+pub mod phyllotaxis_tool;
+/// UI rendering for [`phyllotaxis_tool::PhyllotaxisLSystemTool`].
+pub mod phyllotaxis_ui;
+/// Reaction-diffusion presets, PRNG helper, and scientific metadata wrappers.
 pub mod presets;
+/// Multi-model reaction-diffusion simulation runner.
 pub mod runner;
 mod runner_twin;
+/// Microfluidic cell-role brush rasterization, RLE synchronization, and mask overlays.
 pub mod sculpt;
 mod seeding;
+/// Starter gallery preset payloads and registrations for biology tools.
+pub mod starter_presets;
+/// Multi-model Turing morphogenesis tool.
 pub mod tool;
+/// UI rendering for [`tool::MorphogenesisTool`].
 pub mod ui;
 
 #[cfg(test)]
@@ -29,11 +46,15 @@ pub use atlas::{
 #[cfg(test)]
 pub use counterfactual::MorphogenesisHeatmapMode;
 #[cfg(test)]
+pub use evolution_kinetics_tool::EvolutionKineticsTool;
+#[cfg(test)]
 pub use gray_scott_atlas::{
     classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
 };
 #[cfg(test)]
 pub use lenia::LeniaTool;
+#[cfg(test)]
+pub use phyllotaxis_tool::PhyllotaxisLSystemTool;
 #[cfg(test)]
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
@@ -61,9 +82,9 @@ pub struct LegacyMorphoState {
     pub pending_initial_start: bool,
 }
 
-/// Biology tab hosting [`MorphogenesisTool`] and [`lenia::LeniaTool`] inside [`crate::framework::SimulationFramework`].
+/// Biology tab hosting Turing morphogenesis, Lenia Studio, phyllotaxis L-systems, and evolution/kinetics tools.
 pub struct MorphogenesisTab {
-    /// Underlying simulation framework managing exports, presets, theory portal, and state guard.
+    /// Underlying simulation framework managing tool selection, exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,
 }
 
@@ -159,6 +180,10 @@ inventory::submit! {
 #[cfg(test)]
 mod counterfactual_tests;
 #[cfg(test)]
+mod new_tools_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests;
 
-// [cite:favorite_child]
+// [cite:biology]

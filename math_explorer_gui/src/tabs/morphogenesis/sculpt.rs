@@ -1,5 +1,6 @@
 //! Microfluidic cell-role brush rasterization, RLE synchronization, and high-contrast
-//! mask overlays for [`super::MorphogenesisTool`] and [`super::runner::MorphogenesisKineticsRunner`].
+//! mask overlays for [`crate::tabs::morphogenesis::MorphogenesisTool`] and
+//! [`crate::tabs::morphogenesis::runner::MorphogenesisKineticsRunner`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
