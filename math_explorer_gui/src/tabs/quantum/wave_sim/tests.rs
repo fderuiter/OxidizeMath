@@ -1,11 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::canvas::{ActiveCanvasDrag, K0_ARROW_SCALE, apply_emitter_drag, x_to_grid_index};
+use super::canvas::{apply_emitter_drag, x_to_grid_index, ActiveCanvasDrag, K0_ARROW_SCALE};
 use super::*;
-use crate::async_sim::unified::{UnifiedCanvasContext, UnifiedSimTool};
+use crate::async_sim::unified::{CompiledFormulaPayload, UnifiedCanvasContext, UnifiedSimTool};
+use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
 use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES};
+use math_commons::ast::{parse, CompiledExpr};
 use math_explorer::physics::quantum::evolve_state;
+use std::collections::BTreeMap;
 
 #[test]
 fn test_wave_unified_dt_caching_and_trajectory_parity() {
@@ -149,7 +152,11 @@ fn test_set_wavepacket_clamps_sigma_and_keeps_sculpted_potential_intact() {
     assert!(FiniteStateGuard::is_finite_state(&sim));
 
     let snap = sim.get_snapshot();
-    let wave = snap.structured_data.unwrap().downcast::<WaveData>().unwrap();
+    let wave = snap
+        .structured_data
+        .unwrap()
+        .downcast::<WaveData>()
+        .unwrap();
     assert!(wave.p_transmitted > 0.95);
     assert!((wave.p_transmitted + wave.p_reflected - 1.0).abs() < 1e-14);
 }
@@ -194,7 +201,10 @@ fn test_emitter_handle_dragging_updates_wavepacket_without_clearing_potential() 
     assert!((guard["x0"] + 1.2).abs() < 1e-12);
     assert!((guard["k0"] - 7.5).abs() < 1e-12);
     assert!((guard["sigma"] - 0.2).abs() < 1e-12);
-    assert_eq!(tool.custom_series.read().unwrap()[CUSTOM_POTENTIAL_KEY].len(), GRID_POINTS);
+    assert_eq!(
+        tool.custom_series.read().unwrap()[CUSTOM_POTENTIAL_KEY].len(),
+        GRID_POINTS
+    );
 }
 
 #[test]
@@ -222,7 +232,10 @@ fn test_custom_potential_url_roundtrip_flat_default_and_bounds_rejection() {
         .unwrap()
         .try_load_state(&saved)
         .expect("load sculpted state");
-    let envelope = fw.export_url_preset_json().unwrap().expect("preset envelope");
+    let envelope = fw
+        .export_url_preset_json()
+        .unwrap()
+        .expect("preset envelope");
     assert!(envelope.len() <= MAX_DECODED_URL_STATE_BYTES);
     let url = fw.encode_share_url().expect("share URL");
     let hash = &url[url.find('#').expect("fragment expected")..];
@@ -249,15 +262,14 @@ fn test_wcag_reticle_keyboard_sculpting_focus_ring_and_live_announcement() {
     }
 
     let out1 = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
-    assert!(
-        out1.platform_output
-            .accesskit_update
-            .as_ref()
-            .is_some_and(|ak| ak.nodes.iter().any(|(_, n)| {
-                n.role() == egui::accesskit::Role::GraphicsDocument
-                    && n.label() == Some("Quantum Potential Sculpting Canvas")
-            }))
-    );
+    assert!(out1
+        .platform_output
+        .accesskit_update
+        .as_ref()
+        .is_some_and(|ak| ak.nodes.iter().any(|(_, n)| {
+            n.role() == egui::accesskit::Role::GraphicsDocument
+                && n.label() == Some("Quantum Potential Sculpting Canvas")
+        })));
     let plot_id = ctx
         .data(|d| d.get_temp::<egui::Id>(egui::Id::new("quantum_plot_response_id")))
         .expect("quantum_plot_response_id must be registered");
@@ -285,4 +297,75 @@ fn test_wcag_reticle_keyboard_sculpting_focus_ring_and_live_announcement() {
     );
     let series = tool.custom_series.read().unwrap();
     assert!((series[CUSTOM_POTENTIAL_KEY][101] - 2.0).abs() < 1e-9);
+}
+
+fn assert_custom_vx_tool_roundtrip() {
+    let mut tool = UnifiedSimTool::<WaveUnified>::new();
+    tool.custom_formula_enabled = true;
+    {
+        let mut p = tool.params.write().unwrap();
+        p.insert("potential_type".to_string(), 1.0);
+        p.insert("dt".to_string(), 0.025);
+    }
+    let bar = tool.formula_bar.as_mut().expect("formula bar configured");
+    bar.set_expression("b * cos(x)^2");
+    let mut pmap = BTreeMap::new();
+    pmap.insert("b".to_string(), 3.5);
+    bar.set_params_map(&pmap);
+    tool.publish_formula_update();
+
+    let saved = tool
+        .save_state()
+        .expect("wave tool saves custom V(x) state");
+    assert!(saved.len() < MAX_DECODED_URL_STATE_BYTES);
+
+    let mut restored = UnifiedSimTool::<WaveUnified>::new();
+    restored
+        .try_load_state(&saved)
+        .expect("wave tool loads custom V(x) state");
+    assert!(restored.custom_formula_enabled);
+    assert_eq!(restored.params.read().unwrap()["potential_type"], 1.0);
+    let restored_bar = restored.formula_bar.as_ref().unwrap();
+    assert_eq!(restored_bar.raw_text, "b * cos(x)^2");
+    assert_eq!(restored_bar.params_map(), pmap);
+}
+
+#[test]
+fn test_wave_unified_custom_vx_hamiltonian_and_tool_roundtrip() {
+    let params = HashMap::from([
+        ("potential_type".to_string(), 0.0),
+        ("dt".to_string(), 0.03),
+    ]);
+    let mut sim = WaveUnified::new(&params);
+    sim.n_points = 24;
+    sim.init_system(0.0);
+
+    let expr = parse("0.1 * x^4 - a * x^2 + 3.0").unwrap();
+    let compiled = Arc::new(CompiledExpr::compile_with_vars(&expr, &["x"]).unwrap());
+    let mut param_buf = [0.0; 6];
+    param_buf[0] = 1.2;
+    let payload = CompiledFormulaPayload {
+        revision: 2,
+        compiled,
+        params: param_buf,
+        param_len: 1,
+    };
+
+    sim.apply_compiled_formula(Some(&payload), &params);
+    assert_eq!(sim.cached_dt, None);
+
+    let dx = (sim.x_max - sim.x_min) / (sim.n_points as f64 - 1.0);
+    let expected_v = DVector::from_iterator(
+        sim.n_points,
+        sim.x_axis
+            .iter()
+            .map(|&x| 0.1 * x.powi(4) - 1.2 * x * x + 3.0),
+    );
+    let expected_h = construct_1d_hamiltonian(&expected_v, dx, 1.0, 1.0);
+    assert!((&sim.hamiltonian.matrix - &expected_h.matrix).norm() < 1e-12);
+
+    sim.step(&params);
+    assert!(FiniteStateGuard::is_finite_state(&sim));
+    assert!((sim.psi.vector.norm() - 1.0).abs() < 1e-10);
+    assert_custom_vx_tool_roundtrip();
 }

@@ -8,16 +8,18 @@ mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
-use crate::async_sim::unified::{UnifiedCanvasContext, UnifiedModel, UnifiedSimTool};
+use crate::async_sim::unified::{
+    CompiledFormulaPayload, UnifiedCanvasContext, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool,
+};
 use crate::async_sim::{SimCommand, StateSnapshot};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::DiagnosticReport;
 use crate::url_state::CUSTOM_POTENTIAL_POINTS;
 use eframe::egui;
 use math_explorer::physics::quantum::{
-    MAX_SCULPT_POTENTIAL, MIN_SCULPT_POTENTIAL, PotentialPreset1D,
     apply_bresenham_potential_stroke, build_1d_potential_preset, construct_1d_hamiltonian,
     evolve_state_in_place, gaussian_wavepacket, partition_region_probabilities,
-    time_evolution_operator, QuantumOperator, QuantumState,
+    time_evolution_operator, PotentialPreset1D, QuantumOperator, QuantumState,
+    MAX_SCULPT_POTENTIAL, MIN_SCULPT_POTENTIAL,
 };
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
@@ -66,77 +68,13 @@ pub struct WaveUnified {
     pub(crate) x0: f64,
     pub(crate) k0: f64,
     pub(crate) sigma: f64,
+    pub(crate) last_formula: Option<CompiledFormulaPayload>,
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
 }
 
-pub(crate) fn clamp_wavepacket_params(x0: f64, k0: f64, sigma: f64) -> (f64, f64, f64) {
-    let sx0 = if x0.is_finite() {
-        x0.clamp(-4.5, 4.5)
-    } else {
-        DEFAULT_X0
-    };
-    let sk0 = if k0.is_finite() {
-        k0.clamp(-15.0, 15.0)
-    } else {
-        DEFAULT_K0
-    };
-    let ssigma = if sigma.is_finite() {
-        sigma.clamp(0.2, 2.0)
-    } else {
-        DEFAULT_SIGMA
-    };
-    (sx0, sk0, ssigma)
-}
-
-pub(crate) fn detect_barrier_index(potential: &DVector<f64>) -> usize {
-    let n = potential.len();
-    if n < 3 {
-        return 0;
-    }
-    let edge_ref = potential[0].max(potential[n - 1]);
-    let mut max_interior = f64::NEG_INFINITY;
-    for i in 1..(n - 1) {
-        let v = potential[i];
-        if v.is_finite() && v > max_interior {
-            max_interior = v;
-        }
-    }
-    if max_interior > edge_ref + 0.5 {
-        for i in (1..(n - 1)).rev() {
-            if potential[i].is_finite() && potential[i] >= max_interior - 0.25 {
-                return i;
-            }
-        }
-    }
-    n / 2
-}
-
-impl FiniteStateGuard for WaveUnified {
-    fn is_finite_state(&self) -> bool {
-        !self.diverged
-            && self
-                .psi
-                .vector
-                .iter()
-                .all(|c| c.re.is_finite() && c.im.is_finite())
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.diagnostic_report.as_ref()
-    }
-
-    fn diverged(&self) -> bool {
-        self.diverged || !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn reset_parameters(&mut self) {
-        self.diverged = false;
-        self.diagnostic_report = None;
-        self.step_count = 0;
-    }
-}
+pub(crate) use presets::{clamp_wavepacket_params, detect_barrier_index};
 
 impl UnifiedModel for WaveUnified {
     fn domain() -> &'static str {
@@ -169,6 +107,7 @@ impl UnifiedModel for WaveUnified {
             x0: DEFAULT_X0,
             k0: DEFAULT_K0,
             sigma: DEFAULT_SIGMA,
+            last_formula: None,
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
@@ -242,8 +181,7 @@ impl UnifiedModel for WaveUnified {
             .map(|&v| if v.is_finite() { v } else { 0.0 })
             .collect();
         let barrier_idx = detect_barrier_index(&self.potential);
-        let (p_transmitted, p_reflected) =
-            partition_region_probabilities(&self.psi, barrier_idx);
+        let (p_transmitted, p_reflected) = partition_region_probabilities(&self.psi, barrier_idx);
 
         let structured_data = Box::new(WaveData {
             time: self.time,
@@ -319,6 +257,24 @@ impl UnifiedModel for WaveUnified {
         presets::wave_parameter_choices(name)
     }
 
+    fn formula_spec() -> Option<UnifiedFormulaSpec> {
+        Some(presets::wave_formula_spec())
+    }
+
+    fn apply_compiled_formula(
+        &mut self,
+        formula: Option<&CompiledFormulaPayload>,
+        params: &HashMap<String, f64>,
+    ) {
+        self.last_formula = formula.cloned();
+        if self.last_formula.is_some() {
+            self.rebuild_custom_hamiltonian();
+        } else {
+            let potential_type = params.get("potential_type").copied().unwrap_or(0.0);
+            self.rebuild_preset_hamiltonian(potential_type);
+        }
+    }
+
     fn presets() -> Vec<(&'static str, HashMap<String, f64>)> {
         presets::wave_sidebar_presets()
     }
@@ -377,9 +333,12 @@ impl WaveUnified {
         self.x_axis = (0..self.n_points)
             .map(|i| self.x_min + i as f64 * dx)
             .collect();
-        self.potential =
-            build_1d_potential_preset(PotentialPreset1D::from_code(potential_type), &self.x_axis);
-        self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
+        self.potential = DVector::zeros(self.n_points);
+        if self.last_formula.is_some() {
+            self.rebuild_custom_hamiltonian();
+        } else {
+            self.rebuild_preset_hamiltonian(potential_type);
+        }
         self.propagator = QuantumOperator::new(DMatrix::zeros(self.n_points, self.n_points));
         self.cached_dt = None;
         self.hamiltonian_dirty = false;
@@ -455,12 +414,49 @@ impl WaveUnified {
         }
     }
 
-    fn restore_preset_potential(&mut self, params: &HashMap<String, f64>) {
-        let potential_type = params.get("potential_type").copied().unwrap_or(0.0);
+    fn rebuild_custom_hamiltonian(&mut self) {
+        if self.x_axis.len() < 2 {
+            return;
+        }
+        let dx = self.grid_dx();
+        if let Some(ref payload) = self.last_formula {
+            let p = &payload.params[..payload.param_len];
+            for (i, &x) in self.x_axis.iter().enumerate() {
+                let raw_v = payload.compiled.eval_1d(x, p);
+                self.potential[i] = if raw_v.is_finite() {
+                    raw_v.clamp(-1e4, 1e4)
+                } else {
+                    0.0
+                };
+            }
+        } else {
+            for (i, &x) in self.x_axis.iter().enumerate() {
+                self.potential[i] = 4.0 * (-x * x).exp();
+            }
+        }
+        self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
+        self.hamiltonian_dirty = false;
+        self.cached_dt = None;
+    }
+
+    fn rebuild_preset_hamiltonian(&mut self, potential_type: f64) {
+        if self.x_axis.len() < 2 {
+            return;
+        }
         self.potential =
             build_1d_potential_preset(PotentialPreset1D::from_code(potential_type), &self.x_axis);
-        self.hamiltonian_dirty = true;
+        self.hamiltonian = construct_1d_hamiltonian(&self.potential, self.grid_dx(), 1.0, 1.0);
+        self.hamiltonian_dirty = false;
         self.cached_dt = None;
+    }
+
+    fn restore_preset_potential(&mut self, params: &HashMap<String, f64>) {
+        if self.last_formula.is_some() {
+            self.rebuild_custom_hamiltonian();
+        } else {
+            let potential_type = params.get("potential_type").copied().unwrap_or(0.0);
+            self.rebuild_preset_hamiltonian(potential_type);
+        }
     }
 }
 

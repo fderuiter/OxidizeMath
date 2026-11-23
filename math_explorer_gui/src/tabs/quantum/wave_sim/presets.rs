@@ -1,9 +1,97 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 // [cite:quantum_mechanics]
 
-use super::{DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_X0, WaveUnified};
+use super::{WaveUnified, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_X0};
+use crate::async_sim::unified::UnifiedFormulaSpec;
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use nalgebra::DVector;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
+
+impl FiniteStateGuard for WaveUnified {
+    fn is_finite_state(&self) -> bool {
+        !self.diverged
+            && self
+                .psi
+                .vector
+                .iter()
+                .all(|c| c.re.is_finite() && c.im.is_finite())
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        self.diagnostic_report.as_ref()
+    }
+
+    fn diverged(&self) -> bool {
+        self.diverged || !FiniteStateGuard::is_finite_state(self)
+    }
+
+    fn reset_parameters(&mut self) {
+        self.diverged = false;
+        self.diagnostic_report = None;
+        self.step_count = 0;
+    }
+}
+
+pub(super) const DEFAULT_CUSTOM_POTENTIAL: &str = "a * exp(-x^2)";
+
+pub(crate) fn clamp_wavepacket_params(x0: f64, k0: f64, sigma: f64) -> (f64, f64, f64) {
+    let sx0 = if x0.is_finite() {
+        x0.clamp(-4.5, 4.5)
+    } else {
+        DEFAULT_X0
+    };
+    let sk0 = if k0.is_finite() {
+        k0.clamp(-15.0, 15.0)
+    } else {
+        DEFAULT_K0
+    };
+    let ssigma = if sigma.is_finite() {
+        sigma.clamp(0.2, 2.0)
+    } else {
+        DEFAULT_SIGMA
+    };
+    (sx0, sk0, ssigma)
+}
+
+pub(crate) fn detect_barrier_index(potential: &DVector<f64>) -> usize {
+    let n = potential.len();
+    if n < 3 {
+        return 0;
+    }
+    let edge_ref = potential[0].max(potential[n - 1]);
+    let mut max_interior = f64::NEG_INFINITY;
+    for i in 1..(n - 1) {
+        let v = potential[i];
+        if v.is_finite() && v > max_interior {
+            max_interior = v;
+        }
+    }
+    if max_interior > edge_ref + 0.5 {
+        for i in (1..(n - 1)).rev() {
+            if potential[i].is_finite() && potential[i] >= max_interior - 0.25 {
+                return i;
+            }
+        }
+    }
+    n / 2
+}
+
+pub(super) fn wave_formula_spec() -> UnifiedFormulaSpec {
+    UnifiedFormulaSpec {
+        lhs_label: "V(x)",
+        default_expr: DEFAULT_CUSTOM_POTENTIAL,
+        axes: &["x"],
+        presets: &[
+            ("Gaussian Barrier", "a * exp(-x^2)"),
+            ("Double Well", "0.08 * x^4 - a * x^2 + 3.0"),
+            ("Periodic Lattice", "a * cos(2 * x)^2"),
+            ("Tilted Harmonic", "0.3 * x^2 + a * x"),
+        ],
+        param_range: -8.0..=12.0,
+        param_default: 4.0,
+    }
+}
 
 pub(super) const POTENTIAL_CHOICES: &[(&str, f64)] = &[
     ("Infinite Potential Well", 0.0),

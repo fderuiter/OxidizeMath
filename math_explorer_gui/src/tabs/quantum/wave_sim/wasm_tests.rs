@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::{CUSTOM_POTENTIAL_KEY, WaveData, WaveUnified};
+use super::{WaveData, WaveUnified, CUSTOM_POTENTIAL_KEY};
 use crate::app::MathExplorerApp;
-use crate::async_sim::SimCommand;
 use crate::async_sim::unified::UnifiedSimTool;
+use crate::async_sim::SimCommand;
 use crate::url_state::{
-    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, read_browser_location_parts,
-    replace_browser_url_fragment,
+    read_browser_location_parts, replace_browser_url_fragment, MAX_DECODED_URL_STATE_BYTES,
+    MAX_URL_FRAGMENT_BYTES,
 };
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 

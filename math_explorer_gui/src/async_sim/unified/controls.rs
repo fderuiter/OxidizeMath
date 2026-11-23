@@ -87,7 +87,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 }
             }
         }
-
         let wavepacket_tuple = wavepacket_changed.then(|| {
             (
                 params_lock.get("x0").copied().unwrap_or(-2.0),
@@ -100,6 +99,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         if clear_series_needed {
             self.clear_custom_series();
         }
+        self.draw_custom_formula_controls(ui, ctx, &mut reset_needed);
         self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation(Some(ctx));
@@ -110,6 +110,39 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 .is_ok()
             {
                 ctx.request_repaint();
+            }
+        }
+    }
+
+    fn draw_custom_formula_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        reset_needed: &mut bool,
+    ) {
+        if let Some(spec) = M::formula_spec() {
+            ui.add_space(4.0);
+            let toggle_label = format!("Custom {} Formula", spec.lhs_label);
+            if ui
+                .checkbox(&mut self.custom_formula_enabled, toggle_label)
+                .changed()
+            {
+                self.clear_custom_series();
+                self.publish_formula_update();
+                *reset_needed = true;
+            }
+            if self.custom_formula_enabled {
+                let mut formula_changed = false;
+                if let Some(ref mut bar) = self.formula_bar {
+                    ui.add_space(4.0);
+                    formula_changed = bar.ui(ui);
+                }
+                if formula_changed {
+                    self.clear_custom_series();
+                    self.publish_formula_update();
+                    self.dirty = true;
+                    ctx.request_repaint();
+                }
             }
         }
     }

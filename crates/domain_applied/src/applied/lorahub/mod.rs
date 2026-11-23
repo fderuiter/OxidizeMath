@@ -20,6 +20,7 @@ theory_verification!(
         ALPHA = 32.0;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(
             ALPHA,
             32.0,
