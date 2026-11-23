@@ -26,7 +26,9 @@ mod tests {
         check_tool!(crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool);
         check_tool!(crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool);
         check_tool!(crate::tabs::solid_state::band_structure::BandStructureTool);
+        check_tool!(crate::tabs::solid_state::bcs::BcsSuperconductivityTool);
         check_tool!(crate::tabs::solid_state::ising::IsingModelTool);
+        check_tool!(crate::tabs::solid_state::quantum_stats::QuantumStatsPhononTool);
         check_tool!(crate::tabs::quantum::clebsch::ClebschGordanTool);
         check_tool!(crate::tabs::graph_theory::network_metrics::NetworkMetricsTool);
         check_tool!(crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool);
