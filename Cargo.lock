@@ -2470,6 +2470,7 @@ dependencies = [
  "png",
  "rand",
  "rfd",
+ "rustfft",
  "scientific_metadata",
  "serde",
  "serde_json",

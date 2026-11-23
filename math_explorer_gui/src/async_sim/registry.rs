@@ -55,6 +55,7 @@ mod tests {
                 pixels: Arc::new(std::sync::RwLock::new(vec![])),
                 custom_data: vec![],
                 structured_data: None,
+                sonification: crate::audio::SonificationFrame::silent(),
             }
         }
         fn get_steps_per_frame(&self) -> usize {

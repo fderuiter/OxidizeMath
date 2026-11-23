@@ -5378,6 +5378,9 @@
       "signature": "impl QuantumState { pub fn probability_density (& self) -> DVector < f64 > }"
     },
     {
+      "signature": "impl QuantumState { pub fn project_spatial_modes < const M : usize > (& self) -> [Complex < f64 > ; M] }"
+    },
+    {
       "signature": "impl QuantumState { pub fn spin_zero () -> Self }"
     },
     {
