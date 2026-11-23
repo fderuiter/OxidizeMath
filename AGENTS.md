@@ -23,7 +23,7 @@ Markdown verification gates:
 
 ## 2. Local Cargo Builds & CI Quality Gates
 
-Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) restore Cargo registry sources and profile-scoped `target/` caches via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (referencing `./.github/actions/cargo-cache` without caching mutable CLI binaries).
+Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) set `CARGO_INCREMENTAL: "0"` (leaving [.cargo/config.toml](.cargo/config.toml) untouched so local developer builds remain incremental), restore Cargo registry sources and filtered profile-scoped `target/` caches (excluding `incremental/`, `doc/`, `llvm-cov-target/`, `package/`, and `tmp/`) via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (`./.github/actions/cargo-cache`), and cache pinned CLI binaries (`cargo-audit`, `cargo-llvm-cov`, `trunk`, `wasm-bindgen-cli`, and `cargo-packager`) under `~/.cache/ci-tools/` outside `~/.cargo/bin` via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml) (`./.github/actions/ci-tool-cache`).
 
 Run workspace builds, fast diff-scoped pre-commit checks (`lint-staged`), and the full PR verification suite (`lint-all`) aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask` (`xtask` builds `unified_verification` with Cargo's default `dev` profile locally to skip release fat LTO):
 
@@ -132,16 +132,18 @@ cargo run -p xtask -- test-features physics
 cargo run -p xtask -- test-features core-only
 ```
 
+In CI, all eight `feature-matrix` legs share a single `features-shared` Linux `dev` cache: the `climate` leg writes the shared `target/` archive while the remaining seven legs pass `restore-only: true` (`actions/cache/restore`) to [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml).
+
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed traceability JSON metadata and pre-compress assets), enforces the 3 MB compressed bundle budget, executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, generates `SHA256SUMS`, and uploads `wasm_web_dist` on `refs/heads/main` before `deploy-pages` stages and verifies all 28 `compiled_papers` PDFs, refreshes `SHA256SUMS`, and publishes the GitHub Pages artifact.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [math_explorer_gui/Trunk.toml](math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed traceability JSON metadata and pre-compress assets), enforces the 3 MB compressed bundle budget, executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, generates `SHA256SUMS`, and uploads `wasm_web_dist` on `refs/heads/main` before `deploy-pages` stages and verifies all 28 `compiled_papers` PDFs, refreshes `SHA256SUMS`, and publishes the GitHub Pages artifact.
 
 ```bash
 # 1. Install the WebAssembly Rust target, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
 rustup target add wasm32-unknown-unknown
 sudo apt-get update
 sudo apt-get install -y brotli
-cargo binstall --no-confirm trunk wasm-bindgen-cli@0.2.130
+cargo binstall --no-confirm trunk@0.22.2 wasm-bindgen-cli@0.2.130
 python3 -m pip install --user playwright
 python3 -m playwright install --with-deps chromium
 

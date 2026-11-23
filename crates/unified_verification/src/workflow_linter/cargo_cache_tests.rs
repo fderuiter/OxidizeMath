@@ -42,12 +42,33 @@ fn test_cargo_cache_action_pins_v4_node20_and_hashes_cargo_toml() {
         );
     }
 
+    assert!(
+        yaml.get("inputs")
+            .and_then(|i| i.get("restore-only"))
+            .is_some(),
+        "cargo-cache action.yml must define a restore-only input"
+    );
+
+    assert_cargo_cache_uses_steps(steps);
+}
+
+fn assert_cargo_cache_uses_steps(steps: &[Value]) {
     let uses_steps: Vec<&Value> = steps.iter().filter(|s| s.get("uses").is_some()).collect();
-    assert_eq!(uses_steps.len(), 2, "Expected two actions/cache steps");
+    assert_eq!(
+        uses_steps.len(),
+        4,
+        "Expected read-write and restore-only steps for registry and target caches"
+    );
+    let mut target_step_count = 0usize;
     for step in uses_steps {
-        assert_eq!(
-            step.get("uses").and_then(Value::as_str),
-            Some("actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830")
+        let uses_str = step.get("uses").and_then(Value::as_str).unwrap_or_default();
+        assert!(
+            matches!(
+                uses_str,
+                "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830"
+                    | "actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830"
+            ),
+            "Unexpected action pin in cargo-cache: {uses_str}"
         );
         let cache_paths = step
             .get("with")
@@ -57,6 +78,113 @@ fn test_cargo_cache_action_pins_v4_node20_and_hashes_cargo_toml() {
         assert!(
             !cache_paths.contains(".cargo/bin"),
             "cargo-cache must never cache mutable ~/.cargo/bin binaries"
+        );
+        if cache_paths.contains("target/") {
+            target_step_count += 1;
+            for excluded in [
+                "incremental/",
+                "doc/",
+                "llvm-cov-target/",
+                "package/",
+                "tmp/",
+            ] {
+                assert!(
+                    cache_paths.contains(excluded) && cache_paths.contains('!'),
+                    "target cache path must exclude {excluded}, got: {cache_paths}"
+                );
+            }
+        }
+    }
+    assert_eq!(target_step_count, 2, "Expected two target cache steps");
+}
+
+#[test]
+fn test_ci_tool_cache_action_isolates_binaries_outside_cargo_bin() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let root = crate::manifest_cache::workspace_root_dir();
+    let action_path = root.join(".github/actions/ci-tool-cache/action.yml");
+    let content =
+        fs::read_to_string(&action_path).expect("ci-tool-cache action.yml should be readable");
+    let yaml: Value =
+        serde_saphyr::from_str(&content).expect("ci-tool-cache action.yml must be valid YAML");
+
+    let steps = yaml
+        .get("runs")
+        .and_then(|r| r.get("steps"))
+        .and_then(Value::as_array)
+        .expect("ci-tool-cache must define runs.steps");
+    let uses_steps: Vec<&Value> = steps.iter().filter(|s| s.get("uses").is_some()).collect();
+    assert_eq!(uses_steps.len(), 2, "Expected cache and binstall steps");
+    assert_eq!(
+        uses_steps[0].get("uses").and_then(Value::as_str),
+        Some("actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830")
+    );
+    let tool_cache_path = uses_steps[0]
+        .get("with")
+        .and_then(|w| w.get("path"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        tool_cache_path.contains(".cache/ci-tools/") && !tool_cache_path.contains(".cargo/bin"),
+        "ci-tool-cache must store binaries outside ~/.cargo/bin, got: {tool_cache_path}"
+    );
+    assert_eq!(
+        uses_steps[1].get("uses").and_then(Value::as_str),
+        Some("cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665")
+    );
+    assert_eq!(
+        uses_steps[1].get("if").and_then(Value::as_str),
+        Some("steps.tool-cache.outputs.cache-hit != 'true'"),
+        "cargo-binstall must be skipped on tool cache hits"
+    );
+}
+
+#[test]
+fn test_ci_workflow_shares_feature_matrix_cache_and_caches_pinned_tools() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let root = crate::manifest_cache::workspace_root_dir();
+    let ci_content = fs::read_to_string(root.join(".github/workflows/ci.yml"))
+        .expect("ci.yml should be readable");
+    let yaml: Value = serde_saphyr::from_str(&ci_content).expect("ci.yml must be valid YAML");
+
+    assert_eq!(
+        yaml.get("env")
+            .and_then(|e| e.get("CARGO_INCREMENTAL"))
+            .and_then(Value::as_str),
+        Some("0"),
+        "ci.yml must set CARGO_INCREMENTAL: \"0\" globally"
+    );
+
+    let fm_steps = yaml["jobs"]["feature-matrix"]["steps"]
+        .as_array()
+        .expect("feature-matrix must define steps");
+    let fm_cache = fm_steps
+        .iter()
+        .find(|s| s.get("uses").and_then(Value::as_str) == Some("./.github/actions/cargo-cache"))
+        .expect("feature-matrix must use cargo-cache");
+    assert_eq!(
+        fm_cache["with"]["scope"].as_str(),
+        Some("features-shared"),
+        "feature-matrix must share one features-shared scope"
+    );
+    assert!(
+        fm_cache["with"]["restore-only"]
+            .as_str()
+            .is_some_and(|expr| expr.contains("matrix.feature !=")),
+        "feature-matrix must gate 7 of 8 legs with restore-only"
+    );
+
+    for expected in [
+        "tool: cargo-audit",
+        "tool: cargo-llvm-cov",
+        "tool: trunk",
+        "tool: wasm-bindgen-cli",
+        "tool: cargo-packager",
+        "path: ~/.cache/trunk",
+    ] {
+        assert!(
+            ci_content.contains(expected),
+            "ci.yml missing expected cached tool entry: {expected}"
         );
     }
 }
