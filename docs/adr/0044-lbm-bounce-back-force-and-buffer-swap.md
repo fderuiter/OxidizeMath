@@ -1,4 +1,4 @@
-# ADR 0043: LBM Double-Buffer Swap Consolidation and Zero-Allocation Bounce-Back Force Telemetry
+# ADR 0044: LBM Double-Buffer Swap Consolidation and Zero-Allocation Bounce-Back Force Telemetry
 
 ## Status
 Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0037](0037-retire-physics-compatibility-shims.md), [ADR 0038](0038-federated-inverse-challenges-and-hud.md), [ADR 0039](0039-metric-agnostic-3d-tda-exact-z2-homology-and-chaos-mashup.md), and [ADR 0040](0040-promote-zero-alloc-curve-solvers-to-math-commons.md))
@@ -18,7 +18,7 @@ The D2Q9 Lattice Boltzmann solver in [`crates/domain_physics/src/physics/fluid_d
    - Provide `#[verified_engine::verified]` methods in [`telemetry.rs`](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/telemetry.rs), [`forces.rs`](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/forces.rs), and [`state.rs`](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/state.rs): `net_obstacle_force(&self) -> (f64, f64)`, `hydrodynamic_forces(&self) -> (f64, f64)`, `vorticity_curl(&self, x: usize, y: usize) -> f64`, and `obstacle_cell_count(&self) -> usize`.
    - Regenerate [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json) to record the public solver and state signatures.
 4. **Coverage-Mode Hot-Loop Fast Paths in `math_commons` and `pure_math::statistics::tda`**:
-   - Unroll `fast_forward_plateau` in [`crates/math_commons/src/poi/extrema.rs`](../../crates/math_commons/src/poi/extrema.rs) in 8-point branchless chunks (`&`), pair [`egui_plot/src/poi.rs`](../../egui_plot/src/poi.rs) with a direct `PlotPointSeries` view, and refactor [`crates/math_commons/src/fit/`](../../crates/math_commons/src/fit/poly.rs) symmetric matrix mirroring via `split_at_mut`.
+   - Unroll `fast_forward_plateau` in [`crates/math_commons/src/poi/extrema.rs`](../../crates/math_commons/src/poi/extrema.rs) in 8-point branchless chunks (`&`) and pair [`egui_plot/src/poi.rs`](../../egui_plot/src/poi.rs) with a direct `PlotPointSeries` view.
    - Convert `highest_set_bit` to `const fn`, inline `xor_pivot_slot`, and inline simplex sort comparators in [`crates/pure_math/src/pure_math/statistics/tda/boundary.rs`](../../crates/pure_math/src/pure_math/statistics/tda/boundary.rs) so 200k-sample plateau scans and 3D Vietoris-Rips boundary reductions stay well within interactive latency budgets under `-C instrument-coverage`.
 
 ## Consequences

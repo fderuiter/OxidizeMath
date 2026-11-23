@@ -83,12 +83,9 @@ impl CriticalPoint {
 
     /// Persistent callout badge label (`<= 128` chars) when pinned on canvas.
     pub fn callout_label(&self) -> String {
-        let raw = format!(
-            "{}: ({:.4}, {:.4})",
-            self.kind.label(),
-            self.point[0],
-            self.point[1]
-        );
+        let x_str = crate::format::format_readout_value(self.point[0], 4, 4);
+        let y_str = crate::format::format_readout_value(self.point[1], 4, 4);
+        let raw = format!("{}: ({x_str}, {y_str})", self.kind.label());
         raw.chars().take(128).collect()
     }
 }
