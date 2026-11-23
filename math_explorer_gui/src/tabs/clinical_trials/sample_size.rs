@@ -266,8 +266,10 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         }
         s.cards.validate()?;
         let result = match s.mode {
-            CalculationMode::Means => calculate_sample_size_means(s.alpha, s.power, s.delta, s.sigma)
-                .map_err(|e| e.to_string())?,
+            CalculationMode::Means => {
+                calculate_sample_size_means(s.alpha, s.power, s.delta, s.sigma)
+                    .map_err(|e| e.to_string())?
+            }
             CalculationMode::Proportions => {
                 calculate_sample_size_proportions(s.alpha, s.power, s.p1, s.p2)
                     .map_err(|e| e.to_string())?
