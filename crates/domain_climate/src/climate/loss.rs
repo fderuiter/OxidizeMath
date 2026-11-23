@@ -130,6 +130,48 @@ pub fn cera_loss(
         + lambda_emd * emd_loss
 }
 
+/// Computes the mean empirical Continuous Ranked Probability Score (`CRPS`) across ensemble
+/// forecast columns `(n_members, n_targets)` against scalar `observations`.
+#[verified_engine::verified]
+pub fn ensemble_crps_loss<S: Storage<f32, Dyn, Dyn>>(
+    ensemble_forecasts: &Matrix<f32, Dyn, Dyn, S>,
+    observations: &[f32],
+) -> math_commons::error::MathResult<f64> {
+    use math_commons::error::MathError;
+    use math_commons::math_kernel::types::Dimension;
+    use pure_math::pure_math::statistics::calibration::ensemble_crps_sorted;
+
+    if ensemble_forecasts.ncols() != observations.len() {
+        return Err(MathError::DimensionMismatch {
+            expected: Dimension(observations.len()),
+            actual: Dimension(ensemble_forecasts.ncols()),
+        });
+    }
+    if observations.is_empty() || ensemble_forecasts.nrows() == 0 {
+        return Err(MathError::NumericalError {
+            reason: "ensemble_crps_loss requires non-empty ensemble members and observations"
+                .to_string(),
+        });
+    }
+
+    let mut sorted_col = Vec::with_capacity(ensemble_forecasts.nrows());
+    let mut total_crps = 0.0;
+    for (col_idx, &obs) in observations.iter().enumerate() {
+        sorted_col.clear();
+        for &val in ensemble_forecasts.column(col_idx).iter() {
+            if !val.is_finite() {
+                return Err(MathError::NumericalError {
+                    reason: "Ensemble forecast contains non-finite value".to_string(),
+                });
+            }
+            sorted_col.push(f64::from(val));
+        }
+        sorted_col.sort_unstable_by(|a, b| a.total_cmp(b));
+        total_crps += ensemble_crps_sorted(&sorted_col, f64::from(obs))?;
+    }
+    Ok(total_crps / (observations.len() as f64))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +205,15 @@ mod tests {
         // Average EMD = (4 + 4) / 2 = 4.
         let emd = earth_movers_distance(&z1, &z2);
         assert!((emd - 4.0).abs() < math_commons::registry::TOLERANCE_FAST_F32);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_ensemble_crps_loss() {
+        // Two forecast columns, each with ensemble [0.0, 2.0] against observations [1.0, 1.0] -> CRPS = 0.5.
+        let ens = DMatrix::from_row_slice(2, 2, &[2.0_f32, 2.0, 0.0, 0.0]);
+        let obs = [1.0_f32, 1.0];
+        let crps = ensemble_crps_loss(&ens, &obs).expect("ensemble crps");
+        assert!((crps - 0.5).abs() < math_commons::registry::TOLERANCE_STANDARD);
     }
 }

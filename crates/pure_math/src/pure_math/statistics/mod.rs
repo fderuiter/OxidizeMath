@@ -19,6 +19,9 @@
 //!     where performance fluctuates around a long-term average.
 //!
 //! ###  Risk & Decision Theory
+//! *   **[Calibration & Proper Scoring Rules](calibration)**: Brier score with Murphy decomposition,
+//!     dataset log-loss, Gaussian and ensemble `CRPS`, `ECE`/`MCE` reliability curves, `ROC`/`PR-AUC`,
+//!     and post-hoc Platt, temperature, and `PAVA` isotonic recalibrators.
 //! *   **[Kelly Criterion](kelly)**: Optimal capital allocation strategy to maximize logarithmic wealth growth.
 //! *   **[Copulas](copula)**: sophisticated dependency modeling (e.g., Gaussian Copula) for correlated events,
 //!     critical for pricing derivatives or "Same Game Parlays".
@@ -96,6 +99,7 @@
 //! }
 //! ```
 
+pub mod calibration;
 pub mod copula;
 pub mod glicko2;
 pub mod kelly;

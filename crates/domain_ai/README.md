@@ -17,7 +17,8 @@ The crate enables educational exploration, deterministic unit verification, and 
 - **`reinforcement_learning`**: Decision-making agents implementing Q-learning, policy gradients, and Bellman value iterations.
 - **`gaussian_splatting`**: Mathematical foundations of 3D Gaussian Splatting and differentiable rasterization.
 - **`sds`**: Score Distillation Sampling bridging 2D diffusion priors with 3D representations.
-- **`self_calibration`**: Conformal prediction and uncertainty estimation algorithms.
+- **`calibration`**: Supervised proper scoring rules (`brier_score`, Murphy decomposition, symmetric `log_loss`, `CRPS`), reliability curves (`ECE`, `MCE`), `ROC`/`PR-AUC`, and post-hoc recalibrators (Platt scaling, learned temperature scaling, `PAVA` isotonic regression).
+- **`self_calibration`**: Label-free LLM answer-clustering self-consistency, entropy-based temperature heuristics, and self-distillation KL loss (`self_calibration_paper.tex`), alongside re-exported supervised `TemperatureScaler`.
 
 ---
 

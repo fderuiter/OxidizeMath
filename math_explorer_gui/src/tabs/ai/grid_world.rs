@@ -165,7 +165,11 @@ impl GridWorldTool {
             ui.heading("Controls");
             ui.separator();
             ui.horizontal_wrapped(|ui| {
-                if ui.button("▶ Step").accessible_hover_text("Advance the agent by one step").clicked() {
+                if ui
+                    .button("▶ Step")
+                    .accessible_hover_text("Advance the agent by one step")
+                    .clicked()
+                {
                     self.step_agent();
                 }
                 let (label, hover) = if self.is_playing {
@@ -180,22 +184,45 @@ impl GridWorldTool {
                     }
                 }
             });
-            if ui.button("▶ Train (100 Episodes)").accessible_hover_text("Train the agent for 100 episodes instantly").clicked() {
+            if ui
+                .button("▶ Train (100 Episodes)")
+                .accessible_hover_text("Train the agent for 100 episodes instantly")
+                .clicked()
+            {
                 self.train_batch();
             }
-            if ui.button("↻ Reset Agent").accessible_hover_text("Clear the Q-table and reset the agent's knowledge").clicked() {
+            if ui
+                .button("↻ Reset Agent")
+                .accessible_hover_text("Clear the Q-table and reset the agent's knowledge")
+                .clicked()
+            {
                 self.reset_agent();
             }
             ui.separator();
-            ui.heading("RL Hyperparameters");
-            let mut hp_changed = ui.add(egui::Slider::new(&mut self.learning_rate, 0.01..=1.0).text("Learning Rate (α)")).changed();
-            hp_changed |= ui.add(egui::Slider::new(&mut self.discount_factor, 0.0..=1.0).text("Discount Factor (γ)")).changed();
-            hp_changed |= ui.add(egui::Slider::new(&mut self.exploration_rate, 0.0..=1.0).text("Exploration Rate (ε)")).changed();
-            if hp_changed {
-                self.sync_agent_hyperparameters();
-            }
-            ui.add(egui::Slider::new(&mut self.playback_speed, 1.0..=20.0).text("Speed (Hz)"));
+            self.draw_hyperparameter_sliders(ui);
         });
+    }
+
+    fn draw_hyperparameter_sliders(&mut self, ui: &mut egui::Ui) {
+        ui.heading("RL Hyperparameters");
+        let mut hp_changed = ui
+            .add(egui::Slider::new(&mut self.learning_rate, 0.01..=1.0).text("Learning Rate (α)"))
+            .changed();
+        hp_changed |= ui
+            .add(
+                egui::Slider::new(&mut self.discount_factor, 0.0..=1.0).text("Discount Factor (γ)"),
+            )
+            .changed();
+        hp_changed |= ui
+            .add(
+                egui::Slider::new(&mut self.exploration_rate, 0.0..=1.0)
+                    .text("Exploration Rate (ε)"),
+            )
+            .changed();
+        if hp_changed {
+            self.sync_agent_hyperparameters();
+        }
+        ui.add(egui::Slider::new(&mut self.playback_speed, 1.0..=20.0).text("Speed (Hz)"));
     }
 
     fn draw_central_canvas(&self, parent_ui: &mut egui::Ui, input_mode: InputMode) {
@@ -207,10 +234,20 @@ impl GridWorldTool {
                 ui.label(format!("Steps: {}", self.steps));
                 ui.label(format!("Reward: {:.2}", self.total_reward));
             });
-            let cell_size = if input_mode == InputMode::Touch { 44.0 } else { 40.0 };
-            let grid_size = egui::vec2(self.env.width as f32 * cell_size, self.env.height as f32 * cell_size);
-            let (response, painter) = ui.allocate_painter(grid_size, egui::Sense::focusable_noninteractive());
-            let _ = response.clone().accessible_hover_text("Grid World Visualization");
+            let cell_size = if input_mode == InputMode::Touch {
+                44.0
+            } else {
+                40.0
+            };
+            let grid_size = egui::vec2(
+                self.env.width as f32 * cell_size,
+                self.env.height as f32 * cell_size,
+            );
+            let (response, painter) =
+                ui.allocate_painter(grid_size, egui::Sense::focusable_noninteractive());
+            let _ = response
+                .clone()
+                .accessible_hover_text("Grid World Visualization");
             let summary = format!(
                 "Agent at ({}, {}), Episode {}, Reward {:.2}",
                 self.current_state.x, self.current_state.y, self.episodes, self.total_reward
@@ -225,10 +262,21 @@ impl GridWorldTool {
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             for x in 0..self.env.width {
                 for y in 0..self.env.height {
-                    let top_left = response.rect.min + egui::vec2(x as f32 * cell_size, y as f32 * cell_size);
-                    let cell_rect = egui::Rect::from_min_size(top_left, egui::vec2(cell_size, cell_size));
-                    painter.rect_filled(cell_rect, 0.0, self.cell_fill(GridState { x, y }, &palette));
-                    painter.rect_stroke(cell_rect, 0.0, egui::Stroke::new(1.0_f32, palette.graph_edge), egui::StrokeKind::Middle);
+                    let top_left =
+                        response.rect.min + egui::vec2(x as f32 * cell_size, y as f32 * cell_size);
+                    let cell_rect =
+                        egui::Rect::from_min_size(top_left, egui::vec2(cell_size, cell_size));
+                    painter.rect_filled(
+                        cell_rect,
+                        0.0,
+                        self.cell_fill(GridState { x, y }, &palette),
+                    );
+                    painter.rect_stroke(
+                        cell_rect,
+                        0.0,
+                        egui::Stroke::new(1.0_f32, palette.graph_edge),
+                        egui::StrokeKind::Middle,
+                    );
                 }
             }
             crate::accessibility::paint_canvas_focus_ring(ui, &response);
@@ -370,28 +418,8 @@ inventory::submit! {
     }
 }
 
-impl scientific_metadata::theory::TheoryDescribable for GridWorldTool {
-    fn theory_description(&self) -> String {
-        format!(
-            "Tabular Q-Learning updates state-action values via Bellman temporal difference $Q(s,a) \\leftarrow Q(s,a) + \\alpha [R + \\gamma \\max_{{a'}} Q(s',a') - Q(s,a)]$ with $\\alpha = {:.2}$, $\\gamma = {:.2}$, and $\\epsilon = {:.2}$.",
-            self.learning_rate, self.discount_factor, self.exploration_rate
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Reinforcement Learning involves an agent that interacts with its environment to learn optimal actions, aiming to maximize a cumulative reward based on the Bellman equation.".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Sutton, R. S., & Barto, A. G. (2018). Reinforcement Learning: An Introduction. MIT press."
-            .into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert("learning_rate".into(), "The step size used to update the Q-values, controlling how much new information overrides old information.".into());
-        map.insert("discount_factor".into(), "Determines the importance of future rewards. A factor of 0 makes the agent opportunistic, while 1 makes it strive for long-term high reward.".into());
-        map.insert("exploration_rate".into(), "The probability that the agent will choose a random action instead of the best known action, facilitating exploration of the state space.".into());
-        map
-    }
-}
+#[path = "grid_world/preset.rs"]
+mod preset;
 
 #[cfg(test)]
 mod tests {
@@ -449,21 +477,9 @@ mod tests {
         );
         tool.current_state = tool.env.goal;
         tool.step_agent();
-        assert_eq!((tool.current_state, tool.steps, tool.episodes), (tool.env.start, 0, 1));
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Grid World RL","domain":"ai","timestamp":"2026-11-16T00:00:00Z"},"config":{"width":5,"height":5,"gamma":0.95,"playback_speed":8.0,"is_playing":false}}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "grid_world_starter",
-        title: "Grid World RL",
-        description: "Markov Decision Process navigation with obstacle avoidance and discount reward propagation.",
-        category: "Reinforcement Learning",
-        icon: "🗺️",
-        domain: "ai",
-        tool_name: Some("GridWorldTool"),
-        preset_generator: || STARTER_PRESET_JSON,
+        assert_eq!(
+            (tool.current_state, tool.steps, tool.episodes),
+            (tool.env.start, 0, 1)
+        );
     }
 }

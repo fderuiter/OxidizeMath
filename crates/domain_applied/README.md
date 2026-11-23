@@ -13,7 +13,7 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 - **`win_ratio`**: Prioritized composite endpoint evaluation for clinical research:
   - `WinRatioAnalysis`: Configurable hierarchical comparison engine for patient pairs.
   - Comparison strategies (`HigherIsBetter`, `LowerIsBetter`, `UnmatchedPairing`).
-- **`clinical_trials`**: Biostatistical trial design, sample size determination, and survival curves.
+- **`clinical_trials`**: Biostatistical trial design, sample size determination, prognostic risk calibration (`Brier`, Murphy decomposition, `ECE`, `ROC`/`PR-AUC`), and survival curves.
 - **`pharmacokinetics`**: One-compartment oral ADME kinetics (`PKParameters`, `BatemanModel`, `half_life`, `t_max`, `solve_ka`), multi-dose linear superposition (`SuperpositionModel`), biphasic extended-release formulations (`TwoPulseModel`), and stereoselective chiral mixtures (`EnantiomerModel`).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
 - **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
