@@ -33,7 +33,10 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0042: Zero-Allocation 2D Chladni Plate and Wave Tank Solver](adr/0042-2d-chladni-plate-and-wave-tank-solver.md)
 - [ADR 0043: Auto-Discovered Paradox Lab Tab for Stochastic Ratchets and Network Congestion](adr/0043-paradox-lab-interactive-tab.md)
 - [ADR 0043: Repair Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates](adr/0043-repair-guides-and-enforce-static-doc-gates.md)
-- [ADR 0044: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/0044-workspace-release-version-guards-and-wix-mapping.md)
+- [ADR 0044: Stack-Allocated General Relativity Geodesic Engine and Interactive Relativity Tab](adr/0044-geodesic-engine-and-relativity-tab.md)
+- [ADR 0044: Ratchet `missing_docs` Exemptions and Document Core API Entrypoints](adr/0044-ratchet-missing-docs-and-core-api-documentation.md)
+- [ADR 0044: Unify Build-Time Traceability Manifest Generation via `oxidize_core`](adr/0044-unify-build-time-traceability-engine.md)
+- [ADR 0045: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/0045-workspace-release-version-guards-and-wix-mapping.md)
 
 ## Contributing
 

@@ -120,3 +120,19 @@ fn test_ast_visitor_allow_recursion_preserves_verification_counts() {
     assert_eq!(visitor.verified_asserts, 2);
     assert!(!visitor.opted_out);
 }
+
+#[test]
+fn test_ast_visitor_ignores_verified_and_embed_theory_in_doc_comments() {
+    let code = format!(
+        "/// Example:\n/// ```rust\n/// use verified_engine_macros::embed_theory;\n/// #[embed_theory(\"papers/essay.tex\", label = \"eq:demo\")]\n/// #[{}]\n/// fn demo() {{}}\n/// ```\n/// [cite:math_commons]\nfn documented_helper() {{\n    assert!(true);\n}}\n",
+        "verified"
+    );
+    let file = syn::parse_file(&code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert_eq!(visitor.total_funcs, 1);
+    assert_eq!(visitor.verified_funcs, 0);
+    assert_eq!(visitor.semantic_integrity_funcs, 1);
+    assert_eq!(visitor.verified_modules, vec!["math_commons".to_string()]);
+}
