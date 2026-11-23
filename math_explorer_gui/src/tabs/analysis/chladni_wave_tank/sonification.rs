@@ -200,8 +200,26 @@ impl ChladniWaveTankTool {
     }
 
     pub(super) fn draw_ir_studio_section(&mut self, ui: &mut egui::Ui) {
-        ui.label("Stereo Impulse Response (.wav):");
-        let mut changed = self.draw_ir_pickup_drags(ui);
+        let mut changed = false;
+        ui.collapsing("Stereo Impulse Response (.wav)", |ui| {
+            changed |= self.draw_ir_pickup_drags(ui);
+            changed |= self.draw_ir_export_controls(ui);
+        });
+        if self.ir_studio.is_rendering && self.ir_studio.render_total > 0 {
+            let frac = (self.ir_studio.render_cursor as f32) / (self.ir_studio.render_total as f32);
+            ui.add(egui::ProgressBar::new(frac).text(format!(
+                "Rendering IR {:.0}% ({:.1} ms)",
+                frac * 100.0,
+                self.ir_studio.last_slice_ms
+            )));
+        }
+        if changed {
+            self.state_rev = self.state_rev.wrapping_add(1);
+        }
+    }
+
+    fn draw_ir_export_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
         ui.horizontal(|ui| {
             ui.label("Decay (s):");
             changed |= ui
@@ -246,17 +264,7 @@ impl ChladniWaveTankTool {
                 self.start_cooperative_ir_export(true);
             }
         });
-        if self.ir_studio.is_rendering && self.ir_studio.render_total > 0 {
-            let frac = (self.ir_studio.render_cursor as f32) / (self.ir_studio.render_total as f32);
-            ui.add(egui::ProgressBar::new(frac).text(format!(
-                "Rendering IR {:.0}% ({:.1} ms)",
-                frac * 100.0,
-                self.ir_studio.last_slice_ms
-            )));
-        }
-        if changed {
-            self.state_rev = self.state_rev.wrapping_add(1);
-        }
+        changed
     }
 
     fn draw_ir_pickup_drags(&mut self, ui: &mut egui::Ui) -> bool {

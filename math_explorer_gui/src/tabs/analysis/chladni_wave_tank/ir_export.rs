@@ -37,6 +37,26 @@ pub(super) const fn default_ir_duration_secs() -> f64 {
     1.5
 }
 
+pub(super) fn is_default_pickup_left(p: &[f64; 2]) -> bool {
+    *p == default_pickup_left()
+}
+
+pub(super) fn is_default_pickup_right(p: &[f64; 2]) -> bool {
+    *p == default_pickup_right()
+}
+
+pub(super) fn is_default_ir_duration_secs(d: &f64) -> bool {
+    (*d - default_ir_duration_secs()).abs() <= f64::EPSILON
+}
+
+pub(super) fn is_default_ir_sample_rate(r: &crate::audio::wav::WavSampleRate) -> bool {
+    *r == crate::audio::wav::WavSampleRate::Hz48000
+}
+
+pub(super) fn is_default_ir_format(f: &crate::audio::wav::WavSampleFormat) -> bool {
+    *f == crate::audio::wav::WavSampleFormat::Float32
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum PickupDragTarget {
     #[default]
@@ -122,7 +142,11 @@ pub(super) fn clamp_ir_fields(s: &mut ChladniWaveTankState) {
     };
 }
 
-pub(super) fn configure_solver_masks(solver: &mut Wave2DSolver, state: &ChladniWaveTankState) {
+pub(super) fn configure_solver_masks(
+    solver: &mut Wave2DSolver,
+    state: &ChladniWaveTankState,
+    refractive: Option<&super::refractive::RefractiveSandbox>,
+) {
     let w = solver.width();
     let h = solver.height();
     let scale = (w as f64) / (GRID_SIZE as f64);
@@ -156,18 +180,41 @@ pub(super) fn configure_solver_masks(solver: &mut Wave2DSolver, state: &ChladniW
         );
     }
     if state.lens_enabled {
-        let cx = (((44.0 * scale).round()) as usize).clamp(4, w.saturating_sub(4));
-        let ap = (state.lens_aperture * scale).max(4.0);
-        let ht = (8.0 * scale).max(2.0);
-        apply_biconvex_lens(
-            &mut solver.wave_speed_mask,
-            w,
-            h,
-            cx,
-            ap,
-            ht,
-            state.refractive_index,
-        );
+        apply_scaled_lens_mask(solver, state, scale, refractive);
+    }
+}
+
+fn apply_scaled_lens_mask(
+    solver: &mut Wave2DSolver,
+    state: &ChladniWaveTankState,
+    scale: f64,
+    refractive: Option<&super::refractive::RefractiveSandbox>,
+) {
+    let (w, h) = (solver.width(), solver.height());
+    match state.refractive_mode {
+        super::RefractiveMode::Biconvex => {
+            let cx = (((44.0 * scale).round()) as usize).clamp(4, w.saturating_sub(4));
+            let ap = (state.lens_aperture * scale).max(4.0);
+            let ht = (8.0 * scale).max(2.0);
+            apply_biconvex_lens(
+                &mut solver.wave_speed_mask,
+                w,
+                h,
+                cx,
+                ap,
+                ht,
+                state.refractive_index,
+            );
+        }
+        super::RefractiveMode::Formula => {
+            if let Some(sbx) = refractive {
+                sbx.populate_wave_speed_mask(&mut solver.wave_speed_mask, w, h);
+            } else {
+                let mut sbx = super::refractive::RefractiveSandbox::new();
+                sbx.sync_from_state(state);
+                sbx.populate_wave_speed_mask(&mut solver.wave_speed_mask, w, h);
+            }
+        }
     }
 }
 
@@ -222,7 +269,7 @@ impl ChladniIrStudio {
     fn prepare_plate_ir_solver(&mut self, state: &ChladniWaveTankState) {
         let sr = state.ir_sample_rate.hz() as f64;
         self.plate_solver.reset_all();
-        configure_solver_masks(&mut self.plate_solver, state);
+        configure_solver_masks(&mut self.plate_solver, state, None);
         let d = state.plate_stiffness.max(1.0e-5);
         let h = self.plate_solver.dx();
         let dt_max = (0.18 * h.powi(4) / d).sqrt();
@@ -261,7 +308,7 @@ impl ChladniIrStudio {
         } else {
             self.wave_solver.reset_all();
         }
-        configure_solver_masks(&mut self.wave_solver, state);
+        configure_solver_masks(&mut self.wave_solver, state, None);
         let c = state.wave_speed.max(0.25);
         let dt_max = 0.66 * cell_spacing / c;
         self.dt_per_sample = (0.90 * dt_max) * (48_000.0 / sr);

@@ -202,7 +202,7 @@ const PDE_BIHARMONIC_SLICE_PRESET_JSON: &str = r#"{
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "WavetableStudioTool",
-        display_name: "PDE & Formula Wavetable Studio",
+        display_name: "Wavetable Studio (PDE & Formula)",
         domain: "analysis",
         tags: &["wavetable", "fourier", "pde", "synthesizer", "wav"],
         build: || Box::new(WavetableStudioTool::default()),

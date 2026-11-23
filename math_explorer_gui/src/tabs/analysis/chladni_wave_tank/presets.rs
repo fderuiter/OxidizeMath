@@ -48,6 +48,7 @@ pub(super) fn is_valid_state(s: &ChladniWaveTankState) -> bool {
         && (8.0..=56.0).contains(&s.lens_aperture)
         && super::sonification::are_custom_clamps_valid(&s.custom_clamps)
         && super::ir_export::are_ir_fields_valid(s)
+        && super::refractive::are_refractive_fields_valid(s)
 }
 
 pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
@@ -68,6 +69,7 @@ pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
     s.lens_aperture = sanitize_bounded(s.lens_aperture, 8.0, 56.0, 34.0);
     super::sonification::sanitize_custom_clamps(&mut s.custom_clamps);
     super::ir_export::clamp_ir_fields(s);
+    super::refractive::sanitize_refractive_fields(s);
 }
 
 fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
@@ -106,6 +108,9 @@ fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
         ir_duration_secs: super::ir_export::default_ir_duration_secs(),
         ir_sample_rate: crate::audio::wav::WavSampleRate::Hz48000,
         ir_format: crate::audio::wav::WavSampleFormat::Float32,
+        refractive_mode: super::RefractiveMode::Biconvex,
+        refractive_expr: String::new(),
+        refractive_params: std::collections::BTreeMap::new(),
     }
 }
 
@@ -120,9 +125,9 @@ fn plate_preset_state(preset: TankPreset) -> ChladniWaveTankState {
             plate_stiffness: 0.0004,
             damping: 0.08,
             time_step: 0.002,
-            driver_x: 0.22,
-            driver_y: 0.50,
-            driver_frequency: 0.56,
+            driver_x: 0.35,
+            driver_y: 0.08,
+            driver_frequency: 0.3142,
             driver_amplitude: 65.0,
             show_sand_particles: true,
             ..base_tank_state(preset)
@@ -176,50 +181,6 @@ pub(super) fn default_state_for_preset(preset: TankPreset) -> ChladniWaveTankSta
             rng_seed: 0x1E25_F0C0,
             ..base_tank_state(preset)
         },
-    }
-}
-
-fn resonant_seed_sample(state: &ChladniWaveTankState, xn: f64, yn: f64) -> f64 {
-    let pi = std::f64::consts::PI;
-    if state.preset == TankPreset::CircularDrumhead {
-        let (dx, dy) = (xn - 0.5, yn - 0.5);
-        let r = (dx * dx + dy * dy).sqrt() / 0.45;
-        if r < 1.0 && r > 1.0e-6 {
-            let radial = (pi * r).sin() * (1.85 * pi * r).cos();
-            0.55 * radial * (dx * dx - dy * dy) / (dx * dx + dy * dy)
-        } else {
-            0.0
-        }
-    } else if state.medium == Wave2DMedium::BiharmonicPlate {
-        0.45 * ((3.0 * pi * xn).cos() * (pi * yn).cos() - (pi * xn).cos() * (3.0 * pi * yn).cos())
-    } else {
-        0.0
-    }
-}
-
-pub(super) fn seed_initial_resonant_field(
-    solver: &mut math_explorer::pure_math::analysis::pde::wave_2d::Wave2DSolver,
-    state: &ChladniWaveTankState,
-) {
-    if state.line_source {
-        return;
-    }
-    let (w, h) = (solver.width(), solver.height());
-    let (denom_x, denom_y) = ((w - 1).max(1) as f64, (h - 1).max(1) as f64);
-    let mut init = vec![0.0; w * h];
-    for y in 0..h {
-        let yn = (y as f64) / denom_y;
-        for x in 0..w {
-            let idx = y * w + x;
-            if solver.wall_mask[idx] > 0.5 {
-                init[idx] = resonant_seed_sample(state, (x as f64) / denom_x, yn);
-            }
-        }
-    }
-    if init.iter().any(|&v| v.abs() > 1.0e-9) {
-        solver.set_stationary_displacement(&init);
-    } else {
-        solver.inject_gaussian_pulse(state.driver_x, state.driver_y, 0.07, 0.45);
     }
 }
 
@@ -279,9 +240,9 @@ const SQUARE_CHLADNI_PRESET_JSON: &str = r#"{
     "time_step": 0.002,
     "driver_enabled": true,
     "line_source": false,
-    "driver_x": 0.22,
-    "driver_y": 0.5,
-    "driver_frequency": 0.56,
+    "driver_x": 0.35,
+    "driver_y": 0.08,
+    "driver_frequency": 0.3142,
     "driver_amplitude": 65.0,
     "barrier_enabled": false,
     "slit_count": 2,

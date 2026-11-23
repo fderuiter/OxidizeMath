@@ -172,7 +172,7 @@ impl WavetableStudioTool {
 
 impl InteractiveTool for WavetableStudioTool {
     fn name(&self) -> &'static str {
-        "PDE & Formula Wavetable Studio"
+        "Wavetable Studio (PDE & Formula)"
     }
 
     fn domain(&self) -> &'static str {

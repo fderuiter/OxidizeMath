@@ -2,6 +2,8 @@
 
 // [cite:graph_parameters_rust]
 
+use std::collections::BTreeMap;
+
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
@@ -10,16 +12,24 @@ use math_explorer::pure_math::analysis::pde::wave_2d::{
 };
 
 use crate::audio::wav::{WavSampleFormat, WavSampleRate};
-use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
+use crate::framework::{
+    CalloutManager, CalloutSpec, ExportCapabilities, InteractiveTool, ToolStateBounds,
+};
 
 mod canvas;
+mod eigenmodes;
 pub(crate) mod ir_export;
 mod presets;
+mod refractive;
 mod sonification;
 mod ui;
 
+pub(crate) use refractive::RefractiveMode;
+
 #[cfg(test)]
 mod ir_tests;
+#[cfg(test)]
+mod modal_and_lens_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -138,20 +148,38 @@ pub(crate) struct ChladniWaveTankState {
     pub rng_seed: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_clamps: Vec<[f64; 2]>,
-    #[serde(default = "ir_export::default_pickup_left")]
+    #[serde(
+        default = "ir_export::default_pickup_left",
+        skip_serializing_if = "ir_export::is_default_pickup_left"
+    )]
     pub pickup_left: [f64; 2],
-    #[serde(default = "ir_export::default_pickup_right")]
+    #[serde(
+        default = "ir_export::default_pickup_right",
+        skip_serializing_if = "ir_export::is_default_pickup_right"
+    )]
     pub pickup_right: [f64; 2],
-    #[serde(default = "ir_export::default_ir_duration_secs")]
+    #[serde(
+        default = "ir_export::default_ir_duration_secs",
+        skip_serializing_if = "ir_export::is_default_ir_duration_secs"
+    )]
     pub ir_duration_secs: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "ir_export::is_default_ir_sample_rate")]
     pub ir_sample_rate: WavSampleRate,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "ir_export::is_default_ir_format")]
     pub ir_format: WavSampleFormat,
+    #[serde(default, skip_serializing_if = "RefractiveMode::is_default")]
+    pub refractive_mode: RefractiveMode,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub refractive_expr: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub refractive_params: BTreeMap<String, f64>,
 }
 
 pub struct ChladniWaveTankTool {
     pub(crate) state: ChladniWaveTankState,
+    pub(crate) active_mode: (usize, usize),
+    pub(crate) refractive: refractive::RefractiveSandbox,
+    pub(crate) callout_manager: CalloutManager,
     pub(crate) audio: sonification::ChladniSonificationState,
     pub(crate) ir_studio: ir_export::ChladniIrStudio,
     pub(crate) solver: Wave2DSolver,
@@ -169,7 +197,6 @@ pub struct ChladniWaveTankTool {
     pub(crate) last_step_ms: f64,
     pub(crate) last_substeps: usize,
     pub(crate) state_rev: u64,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) analysis_dirty: bool,
 }
 
@@ -184,8 +211,12 @@ impl Default for ChladniWaveTankTool {
             GRID_SIZE,
             &solver.wall_mask,
         );
+        let active_mode = eigenmodes::default_mode_for_preset(state.preset);
         let mut tool = Self {
             state,
+            active_mode,
+            refractive: refractive::RefractiveSandbox::new(),
+            callout_manager: CalloutManager::new(),
             audio: sonification::ChladniSonificationState::default(),
             ir_studio: ir_export::ChladniIrStudio::default(),
             solver,
@@ -203,7 +234,6 @@ impl Default for ChladniWaveTankTool {
             last_step_ms: 0.0,
             last_substeps: 1,
             state_rev: 1,
-            focused_canvas: None,
             analysis_dirty: true,
         };
         tool.rebuild_domain_and_warmup(0);
@@ -236,6 +266,8 @@ impl ChladniWaveTankTool {
 
     pub(crate) fn apply_preset(&mut self, preset: TankPreset) {
         self.state = presets::default_state_for_preset(preset);
+        self.active_mode = eigenmodes::default_mode_for_preset(preset);
+        self.refractive.sync_from_state(&self.state);
         self.state_rev = self.state_rev.wrapping_add(1);
         let warmup = match preset {
             TankPreset::DoubleSlitInterference | TankPreset::AcousticLens => 24,
@@ -259,7 +291,12 @@ impl ChladniWaveTankTool {
             self.solver.reset_all();
         }
         self.rebuild_masks();
-        presets::seed_initial_resonant_field(&mut self.solver, &self.state);
+        eigenmodes::seed_eigenmode_field(
+            &mut self.solver,
+            &self.state,
+            self.active_mode.0,
+            self.active_mode.1,
+        );
         self.sand.reseed(
             self.state.rng_seed,
             GRID_SIZE,
@@ -277,7 +314,7 @@ impl ChladniWaveTankTool {
     }
 
     pub(crate) fn rebuild_masks(&mut self) {
-        ir_export::configure_solver_masks(&mut self.solver, &self.state);
+        ir_export::configure_solver_masks(&mut self.solver, &self.state, Some(&self.refractive));
     }
 
     pub(crate) fn advance_physics_step(&mut self) {
@@ -345,10 +382,6 @@ impl InteractiveTool for ChladniWaveTankTool {
         self.state_rev
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds {
             max_bytes: 8_192,
@@ -380,9 +413,19 @@ impl InteractiveTool for ChladniWaveTankTool {
             return Err("Chladni Wave Tank parameters out of finite valid bounds".into());
         }
         self.state = parsed;
+        self.active_mode = eigenmodes::default_mode_for_preset(self.state.preset);
+        self.refractive.sync_from_state(&self.state);
         self.state_rev = self.state_rev.wrapping_add(1);
         self.rebuild_domain_and_warmup(0);
         Ok(())
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.compute_observables()
+    }
+
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callout_manager.sync_specs(callouts);
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {

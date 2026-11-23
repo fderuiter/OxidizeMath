@@ -1,5 +1,6 @@
-// @explorer_feature = "pure_math"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod elliptic_curve_audio;
@@ -51,16 +52,20 @@ impl ExplorerTab for NumberTheoryTab {
         self.framework.select_tool_by_name(name)
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
-    }
-
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
         Some(&self.framework)
     }
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "number_theory",
+        order: 21,
+        build: || Box::new(NumberTheoryTab::default()),
     }
 }
 
