@@ -437,6 +437,6 @@ Multi-pane tools that operate on graphs or 3D landmark point clouds can subscrib
 - Spatial brush kit & field sculpting: [`math_explorer_gui/src/framework/spatial_brush.rs`](../../math_explorer_gui/src/framework/spatial_brush.rs) and [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](../adr/0045-spatial-brush-kit-and-field-sculpting.md)
 - Dual-backend sonification architecture: [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)
 - Example tool implementation (CERA): [`math_explorer_gui/src/tabs/climate/cera.rs`](../../math_explorer_gui/src/tabs/climate/cera.rs)
-- Example tool implementation (Radiation Dose): [`math_explorer_gui/src/tabs/medical/dose.rs`](../../math_explorer_gui/src/tabs/medical/dose.rs)
+- Example tool implementation (Radiation Dose): [`math_explorer_gui/src/tabs/medical/dose/mod.rs`](../../math_explorer_gui/src/tabs/medical/dose/mod.rs)
 - [System Overview](system_overview.md)
 - [Contributing Guide](../../CONTRIBUTING.md)
