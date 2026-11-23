@@ -188,10 +188,8 @@ impl InteractiveTool for NetworkMetricsTool {
         });
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            let (response, painter) = ui.allocate_painter(
-                ui.available_size(),
-                egui::Sense::focusable_noninteractive(),
-            );
+            let (response, painter) =
+                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
             let label = "Network Metrics Visualization";
             let _ = response.clone().accessible_hover_text(label);
             let summary = format!(
@@ -255,8 +253,11 @@ impl InteractiveTool for NetworkMetricsTool {
                 let lerp = |a: u8, b: u8| {
                     (f32::from(a) + (f32::from(b) - f32::from(a)) * t.clamp(0.0, 1.0)).round() as u8
                 };
-                let fill_color =
-                    egui::Color32::from_rgb(lerp(low.r(), high.r()), lerp(low.g(), high.g()), lerp(low.b(), high.b()));
+                let fill_color = egui::Color32::from_rgb(
+                    lerp(low.r(), high.r()),
+                    lerp(low.g(), high.g()),
+                    lerp(low.b(), high.b()),
+                );
 
                 painter.circle(screen_pos, 20.0, fill_color, (1.0, palette.node_stroke));
 

@@ -27,7 +27,8 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0013: Scientific Metadata Documentation Standard](adr/0013-scientific-metadata-documentation-standard.md)
 - [ADR 0013: Trait-Level Executable Doc-Test Suites](adr/0013-trait-level-runnable-doctests.md)
 - [ADR 0016: Standardize Crate Documentation Suite](adr/0016-standardize-crate-documentation-suite.md)
-- [ADR 0035: Glicko-2 Tournament, Correlated Risk & OU Workbenches, and Kelly Net-Odds Semantics](adr/0035-glicko2-copula-ou-workbenches-and-kelly-net-odds.md)
+- [ADR 0035: Spatial Fermi Games and Ising Droplet Brushes](adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md)
+- [ADR 0037: Glicko-2 Tournament, Correlated Risk & OU Workbenches, and Kelly Net-Odds Semantics](adr/0037-glicko2-copula-ou-workbenches-and-kelly-net-odds.md)
 
 ## Contributing
 

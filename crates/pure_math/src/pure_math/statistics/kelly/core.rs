@@ -44,42 +44,6 @@ impl Odds {
         Ok(Self(value))
     }
 
-    /// Creates odds from a net profit multiplier `b` (profit won per unit staked, must be > 0.0).
-    ///
-    /// Converts net odds `b` to decimal odds `1.0 + b`. For example:
-    /// - `b = 1.0` (even money, +100) yields decimal odds `2.0`
-    /// - `b = 1.5` (3:2 payout, +150) yields decimal odds `2.5`
-    ///
-    /// # Arguments
-    ///
-    /// * `net_odds` - Net profit multiplier `b` (must be finite and `> 0.0`)
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Odds, KellyError>` - The validated decimal odds or an error
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use pure_math::__doctest_facade as math_explorer;
-    /// use math_explorer::pure_math::statistics::kelly::Odds;
-    ///
-    /// let even_money = Odds::from_net_odds(1.0).unwrap();
-    /// assert_eq!(even_money.value(), 2.0);
-    /// assert_eq!(even_money.net_profit_multiplier(), 1.0);
-    /// ```
-    #[verified_engine::verified]
-    pub fn from_net_odds(net_odds: f64) -> Result<Self, KellyError> {
-        if net_odds <= 0.0 || !net_odds.is_finite() {
-            return Err(KellyError::InvalidOdds { value: net_odds });
-        }
-        let decimal = 1.0 + net_odds;
-        if decimal <= 1.0 || !decimal.is_finite() {
-            return Err(KellyError::InvalidOdds { value: net_odds });
-        }
-        Ok(Self(decimal))
-    }
-
     /// Returns the raw odds value.
     #[verified_engine::verified]
     pub fn value(&self) -> f64 {
@@ -93,6 +57,30 @@ impl Odds {
     #[verified_engine::verified]
     pub fn net_profit_multiplier(&self) -> f64 {
         self.0 - 1.0
+    }
+
+    /// Creates decimal odds from net profit multiplier `b` (`decimal = 1.0 + b`).
+    ///
+    /// Net odds represent profit won per unit staked (must be finite and `> 0.0`):
+    /// - Even money (`+100`): `b = 1.0` -> decimal odds `2.0`
+    /// - `5:2` payoff: `b = 2.5` -> decimal odds `3.5`
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::kelly::Odds;
+    ///
+    /// let even_money = Odds::from_net_odds(1.0).unwrap();
+    /// assert_eq!(even_money.value(), 2.0);
+    /// assert_eq!(even_money.net_profit_multiplier(), 1.0);
+    /// ```
+    #[verified_engine::verified]
+    pub fn from_net_odds(b: f64) -> Result<Self, KellyError> {
+        if !b.is_finite() || b <= 0.0 {
+            return Err(KellyError::InvalidOdds { value: b });
+        }
+        Self::new(1.0 + b)
     }
 
     /// Creates odds from American format.
@@ -259,24 +247,6 @@ mod tests {
 
     #[test]
     #[verified_engine::verified]
-    fn test_odds_from_net_odds() {
-        let even = Odds::from_net_odds(1.0).unwrap();
-        assert_eq!(even.value(), 2.0);
-        assert_eq!(even.net_profit_multiplier(), 1.0);
-
-        let three_to_two = Odds::from_net_odds(1.5).unwrap();
-        assert_eq!(three_to_two.value(), 2.5);
-        assert!((three_to_two.net_profit_multiplier() - 1.5).abs() < 1e-12);
-
-        assert!(Odds::from_net_odds(0.0).is_err());
-        assert!(Odds::from_net_odds(-0.5).is_err());
-        assert!(Odds::from_net_odds(f64::NAN).is_err());
-        assert!(Odds::from_net_odds(f64::INFINITY).is_err());
-        assert!(Odds::from_net_odds(f64::NEG_INFINITY).is_err());
-    }
-
-    #[test]
-    #[verified_engine::verified]
     fn test_odds_from_american() {
         // Underdog (+200)
         let odds = Odds::from_american(200.0).unwrap();
@@ -335,5 +305,27 @@ mod tests {
     fn test_bankroll_fraction_boundaries() {
         assert!(BankrollFraction::new(0.0).is_ok());
         assert!(BankrollFraction::new(1.0).is_ok());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_odds_from_net_odds() {
+        let even = Odds::from_net_odds(1.0).unwrap();
+        assert!((even.value() - 2.0).abs() < math_commons::registry::TOLERANCE_HIGH);
+        assert!(
+            (even.net_profit_multiplier() - 1.0).abs() < math_commons::registry::TOLERANCE_HIGH
+        );
+
+        let sub_even = Odds::from_net_odds(0.5).unwrap();
+        assert!((sub_even.value() - 1.5).abs() < math_commons::registry::TOLERANCE_HIGH);
+        assert!(
+            (sub_even.net_profit_multiplier() - 0.5).abs() < math_commons::registry::TOLERANCE_HIGH
+        );
+
+        assert!(Odds::from_net_odds(0.0).is_err());
+        assert!(Odds::from_net_odds(-0.5).is_err());
+        assert!(Odds::from_net_odds(f64::NAN).is_err());
+        assert!(Odds::from_net_odds(f64::INFINITY).is_err());
+        assert!(Odds::from_net_odds(f64::NEG_INFINITY).is_err());
     }
 }

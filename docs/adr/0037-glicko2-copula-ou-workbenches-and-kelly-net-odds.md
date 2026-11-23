@@ -1,4 +1,4 @@
-# ADR 0035: Glicko-2 Tournament, Correlated Risk & OU Workbenches, and Kelly Net-Odds Semantics
+# ADR 0037: Glicko-2 Tournament, Correlated Risk & OU Workbenches, and Kelly Net-Odds Semantics
 
 ## Status
 Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -23,8 +23,8 @@ Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 002
 
 ```text
 Updated GUI inventory totals:
-- InteractiveTools: 57 (35 plot + 7 raster + 15 non-export)
-- StarterPresetMetadata cards: 68
+- InteractiveTools: 62 (40 plot + 7 raster + 15 non-export)
+- StarterPresetMetadata cards: 73
 ```
 
 ## Consequences

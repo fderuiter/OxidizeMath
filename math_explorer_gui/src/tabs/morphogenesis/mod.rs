@@ -15,11 +15,18 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod atlas;
 pub mod presets;
 pub mod runner;
 pub mod tool;
 pub mod ui;
 
+#[cfg(test)]
+pub use atlas::{
+    classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+};
+#[cfg(test)]
+pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
 pub use runner::MorphogenesisRunner;
@@ -139,11 +146,17 @@ impl MorphogenesisTab {
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
-        let current_state = tool
+        let existing = tool
             .save_state()
-            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok())
+            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok());
+        let current_state = existing
+            .as_ref()
             .and_then(|s| s.state)
             .unwrap_or(SimWorkerState::Ready);
+        let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
+        let atlas_axes = existing
+            .map(|s| s.atlas_axes)
+            .unwrap_or_else(atlas::default_morpho_atlas_axes);
         let target_state = if current_state == SimWorkerState::Running {
             SimWorkerState::Running
         } else {
@@ -160,6 +173,8 @@ impl MorphogenesisTab {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            atlas_visible,
+            atlas_axes,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;
@@ -228,7 +243,11 @@ impl MorphogenesisTab {
 impl FiniteStateGuard for MorphogenesisTab {
     fn is_finite_state(&self) -> bool {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        p.a.is_finite() && p.b.is_finite() && p.d_u.is_finite() && p.d_v.is_finite() && p.dt.is_finite()
+        p.a.is_finite()
+            && p.b.is_finite()
+            && p.d_u.is_finite()
+            && p.d_v.is_finite()
+            && p.dt.is_finite()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -317,7 +336,8 @@ impl ExplorerTab for MorphogenesisTab {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.framework.import_url_preset_json(tool_id, preset_json)?;
+        self.framework
+            .import_url_preset_json(tool_id, preset_json)?;
         let cfg = self.export_config();
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = cfg.a;
