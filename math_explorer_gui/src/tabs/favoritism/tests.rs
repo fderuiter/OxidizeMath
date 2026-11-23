@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
-use eframe::egui;
+use eframe::egui::{self, CentralPanel, Frame};
 
 fn active_favoritism_state(tab: &FavoritismTab) -> FavoritismToolState {
     let json = tab
@@ -64,8 +64,7 @@ fn test_favoritism_all_13_controls_and_metadata_update_state_revision_and_roundt
 #[test]
 fn test_favoritism_clamps_selected_child_index_and_handles_legacy_json() {
     let mut tool = FavoritismTool::default();
-    let mut state: FavoritismToolState =
-        serde_json::from_str(&tool.save_state().unwrap()).unwrap();
+    let mut state: FavoritismToolState = serde_json::from_str(&tool.save_state().unwrap()).unwrap();
     state.selected_child_index = Some(99);
     let out_of_range_json = serde_json::to_string(&state).unwrap();
     tool.try_load_state(&out_of_range_json).unwrap();
@@ -99,7 +98,11 @@ fn test_favoritism_single_tool_hides_framework_sidebar_and_exports_data_and_png(
             screen_rect: Some(screen_rect),
             ..Default::default()
         },
-        |ctx| tab.show(ctx, &mut frame),
+        |ctx| {
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        },
     );
 
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
@@ -121,10 +124,15 @@ fn test_favoritism_single_tool_hides_framework_sidebar_and_exports_data_and_png(
             },
             |ctx| {
                 tab.framework.queue_export(fmt);
-                tab.show(ctx, &mut frame);
+                CentralPanel::default()
+                    .frame(Frame::NONE)
+                    .show(ctx, |ui| tab.show_inside(ui, &mut frame));
             },
         );
-        assert_eq!(tab.framework.export_status_severity, ExportStatusSeverity::Success);
+        assert_eq!(
+            tab.framework.export_status_severity,
+            ExportStatusSeverity::Success
+        );
     }
     let _ = std::fs::write(
         "/tmp/favoritism_leaderboard.png",
@@ -144,7 +152,11 @@ fn click_button_by_label(ctx: &egui::Context, tab: &mut FavoritismTab, label_sub
             screen_rect: Some(screen_rect),
             ..Default::default()
         },
-        |ctx| tab.show(ctx, &mut frame),
+        |ctx| {
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        },
     );
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
     let bounds = ak
@@ -177,7 +189,11 @@ fn click_button_by_label(ctx: &egui::Context, tab: &mut FavoritismTab, label_sub
             ],
             ..Default::default()
         },
-        |ctx| tab.show(ctx, &mut frame),
+        |ctx| {
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        },
     );
 }
 
@@ -188,9 +204,15 @@ fn test_favoritism_reset_live_region_theory_and_preset_io() {
 
     let mut tab = FavoritismTab::default();
     tab.load_state(r#"{"selected_child_index":1,"new_child_name":"Mutated Sibling"}"#);
-    assert_eq!(active_favoritism_state(&tab).new_child_name, "Mutated Sibling");
+    assert_eq!(
+        active_favoritism_state(&tab).new_child_name,
+        "Mutated Sibling"
+    );
     click_button_by_label(&ctx, &mut tab, "Reset Parameters");
-    assert_eq!(active_favoritism_state(&tab).children[0].name, "Golden Child");
+    assert_eq!(
+        active_favoritism_state(&tab).children[0].name,
+        "Golden Child"
+    );
     assert_eq!(active_favoritism_state(&tab).new_child_name, "New Child");
     let live_msg = crate::accessibility::with_live_region(|r| r.slots[r.active_slot].clone());
     assert_eq!(live_msg, "Parameters reset to baseline defaults");
@@ -218,15 +240,24 @@ fn test_favoritism_reset_live_region_theory_and_preset_io() {
         .unwrap()
         .import_preset_json(&preset_json)
         .expect("preset JSON import");
-    assert_eq!(active_favoritism_state(&fresh_tab).children[0].name, "Crisis Hero");
+    assert_eq!(
+        active_favoritism_state(&fresh_tab).children[0].name,
+        "Crisis Hero"
+    );
 
     assert!(!tab.framework.show_theory_portal);
     click_button_by_label(&ctx, &mut tab, "Theory");
     assert!(tab.framework.show_theory_portal);
     let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
-    assert!(scientific_metadata::citation_registry::CitationRegistry::get("Favoritism")
-        .is_some_and(|c| c.contains("Unified Favoritism Theory")));
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+    });
+    assert!(
+        scientific_metadata::citation_registry::CitationRegistry::get("Favoritism")
+            .is_some_and(|c| c.contains("Unified Favoritism Theory"))
+    );
 }
 
 #[test]
