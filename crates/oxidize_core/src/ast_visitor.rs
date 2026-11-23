@@ -302,10 +302,9 @@ impl AstVisitor {
             let attr_line = span_line(attr.span());
             if attr.path().is_ident("doc") {
                 let doc_text = quote::quote!(#attr).to_string();
-                let extracted =
-                    crate::traceability::TraceabilityEngine::<crate::vfs::DefaultVfs>::extract_citations(
-                        &doc_text,
-                    );
+                let extracted = crate::traceability::TraceabilityEngine::<
+                    crate::vfs::DefaultVfs,
+                >::extract_citations(&doc_text);
                 if !extracted.is_empty() {
                     has_semantic = true;
                     for cite in extracted {
