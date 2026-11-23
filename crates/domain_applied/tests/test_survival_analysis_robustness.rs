@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test survival analysis robustness.
 use domain_applied::applied::clinical_trials::survival_analysis::{
     Observation, kaplan_meier, try_estimate_hazard_ratio,
 };

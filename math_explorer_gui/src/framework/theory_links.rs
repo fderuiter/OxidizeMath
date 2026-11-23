@@ -95,6 +95,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
     }
     let aliases: &[&str] = match clean.as_str() {
         "chaos" => &["chaos_theory"],
+        "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
         "game_theory" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
         "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
