@@ -116,4 +116,22 @@ mod tests {
         assert!(take_worker_context(handle).is_none());
         assert!(unregister_worker_context(handle).is_none());
     }
+
+    #[test]
+    fn test_handle_registry_preserves_context_fields() {
+        let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
+        let (state_tx, state_rx) = crate::async_sim::sim_state_channel();
+        cmd_tx.send(SimCommand::Start).unwrap();
+        let handle = register_worker_context(WorkerContext {
+            runner: Box::new(DummyRunner),
+            cmd_rx,
+            state_tx,
+        });
+
+        let ctx = take_worker_context(handle).expect("Registered context must be retrievable");
+        assert_eq!(ctx.runner.get_steps_per_frame(), 1);
+        assert!(matches!(ctx.cmd_rx.try_recv(), Ok(SimCommand::Start)));
+        assert!(!ctx.state_tx.mark_seeded());
+        assert!(!state_rx.drain().disconnected);
+    }
 }
