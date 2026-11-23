@@ -10,7 +10,7 @@ use crate::tabs::chaos::attractors::AttractorPlotter;
 use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
 use crate::tabs::mri::MriTool;
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-use crate::tabs::quantum::wave_sim::WaveUnified;
+use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
 use crate::tabs::solid_state::ising::IsingModelTool;
 use eframe::egui;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -178,8 +178,8 @@ fn test_disconnected_faulted_worker_preserves_diagnostic_until_respawn() {
 fn test_unified_tools_render_non_empty_panels_on_frame_zero() {
     let ctx = egui::Context::default();
 
-    let mut wave = UnifiedSimTool::<WaveUnified>::new();
-    if let Some(snap) = wave.controller.latest_snapshot() {
+    let mut wave = WaveSimulatorTool::new();
+    if let Some(snap) = wave.worker.latest_snapshot() {
         if let Some(wdata) = snap
             .structured_data
             .as_ref()
@@ -441,5 +441,4 @@ fn test_unified_sim_paused_parameter_edits_refresh_snapshot_and_preserve_ready_s
     );
 
     assert_paused_sweep_refreshes::<HodgkinHuxleyUnified>("i_ext");
-    assert_paused_sweep_refreshes::<WaveUnified>("dt");
 }
