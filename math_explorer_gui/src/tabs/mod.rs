@@ -86,6 +86,7 @@ pub trait ExplorerTab {
         match self.name() {
             "Algorithmic Information"
             | "Analysis & Calculus"
+            | "Elliptic Curves"
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
@@ -94,6 +95,7 @@ pub trait ExplorerTab {
             "Astrophysics"
             | "Chaos Theory"
             | "Fluid Dynamics"
+            | "General Relativity"
             | "Medical Physics"
             | "MRI Physics"
             | "Quantum Mechanics"
@@ -157,7 +159,7 @@ pub trait ExplorerTab {
         fw.launch_starter_card(card)
     }
 
-    /// Applies either a starter card or inverse challenge selection from `StarterGallery`.
+    /// Applies a starter card, guided story, inverse challenge, or AST goal challenge selection from `StarterGallery`.
     fn apply_starter_gallery_selection(
         &mut self,
         ctx: &egui::Context,
@@ -177,6 +179,9 @@ pub trait ExplorerTab {
         }
     }
 
+    /// Synchronizes tab-level shared state after `SimulationFramework` launches a preset, story, or challenge.
+    fn sync_after_framework_launch(&mut self) {}
+
     /// Canonical URL slug identifying this tab in `#tab=<slug>` share links.
     fn url_slug(&self) -> &'static str {
         match self.name() {
@@ -188,11 +193,13 @@ pub trait ExplorerTab {
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
             "Clinical Trials" => "clinical_trials",
+            "Elliptic Curves" => "elliptic_curves",
             "Epidemiology" => "epidemiology",
             "Favoritism" => "favoritism",
             "Financial Math" => "financial_math",
             "Fluid Dynamics" => "fluid_dynamics",
             "Game Theory" => "game_theory",
+            "General Relativity" => "relativity",
             "Geometry & Topology" => "geometry_topology",
             "Graph Theory" => "graph_theory",
             "Medical Physics" => "medical",
@@ -232,6 +239,38 @@ pub trait ExplorerTab {
         }
     }
 
+    /// Encodes a `#tab=<slug>...` URL fragment for this tab (including active story or challenge IDs when present).
+    fn encode_url_share_fragment(&self) -> Result<String, String> {
+        if let Some(fw) = self.framework() {
+            return fw.encode_share_fragment_for_tab(self.url_slug());
+        }
+        let preset_json = self.export_url_preset_json()?;
+        crate::url_state::encode_share_fragment(
+            self.url_slug(),
+            self.active_tool_id(),
+            preset_json.as_deref(),
+        )
+    }
+
+    /// Validates and applies `ShareUrlParams` (supporting `&preset=`, `&challenge=`, `&step=`, and `&state=`).
+    fn import_url_share_params(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        if params.preset.is_none() && params.challenge.is_none() {
+            return self
+                .import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref());
+        }
+        if let Some(fw) = self.framework_mut() {
+            return fw.import_url_share_params(params, ctx);
+        }
+        Err(format!(
+            "Tab '{}' does not support story presets or challenges",
+            self.name()
+        ))
+    }
+
     /// Validates and applies a shared URL tool identifier and `PresetWrapper` JSON payload.
     fn import_url_preset_json(
         &mut self,
@@ -254,25 +293,6 @@ pub trait ExplorerTab {
             ));
         }
         Ok(())
-    }
-
-    /// Validates and applies shared URL `tool`, `challenge`, and `state` parameters.
-    fn import_url_share_params(
-        &mut self,
-        tool_id: Option<&str>,
-        challenge_id: Option<&str>,
-        preset_json: Option<&str>,
-    ) -> Result<(), String> {
-        if challenge_id.is_none() {
-            return self.import_url_preset_json(tool_id, preset_json);
-        }
-        if let Some(fw) = self.framework_mut() {
-            return fw.import_url_share_params(tool_id, challenge_id, preset_json);
-        }
-        Err(format!(
-            "Tab '{}' does not support inverse challenges",
-            self.name()
-        ))
     }
 }
 

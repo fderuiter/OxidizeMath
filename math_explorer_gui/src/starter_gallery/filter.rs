@@ -1,9 +1,12 @@
 //! Live text search, `AcademicDomain` mapping, and `TwinSlotLiveRegion` filter announcements
-//! for the global Starter Template Gallery, Inverse Challenges, and Command Palette.
+//! for the global Starter Template Gallery, Guided Stories, Challenges, and Command Palette.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{ChallengeCard, StarterCard, StarterGalleryTab};
+use super::{
+    goal_challenge_to_starter_card, story_to_starter_card, ChallengeCard, GoalChallengeMetadata,
+    PresetStoryMetadata, StarterCard, StarterGalleryTab,
+};
 use crate::app::domain_bar::AcademicDomain;
 use crate::command_palette::fuzzy_match_score;
 use crate::framework::ToolMetadata;
@@ -15,12 +18,13 @@ pub fn academic_domain_for_slug(domain_slug: &str) -> AcademicDomain {
     match domain_slug.trim() {
         "algorithmic_information"
         | "analysis"
+        | "elliptic_curves"
         | "financial_math"
         | "geometry_topology"
         | "graph_theory"
         | "number_theory" => AcademicDomain::PureMath,
         "astrophysics" | "chaos" | "fluid_dynamics" | "medical" | "mri" | "quantum"
-        | "solid_state" => AcademicDomain::Physics,
+        | "relativity" | "solid_state" => AcademicDomain::Physics,
         "battery_degradation"
         | "clinical_trials"
         | "favoritism"
@@ -47,6 +51,7 @@ pub fn module_title_for_slug(domain_slug: &str) -> &'static str {
         "chaos" => "Chaos Theory",
         "climate" => "Climate",
         "clinical_trials" => "Clinical Trials",
+        "elliptic_curves" => "Elliptic Curves",
         "epidemiology" => "Epidemiology",
         "favoritism" => "Favoritism",
         "financial_math" => "Financial Math",
@@ -60,6 +65,7 @@ pub fn module_title_for_slug(domain_slug: &str) -> &'static str {
         "number_theory" => "Number Theory",
         "paradox_lab" => "Paradox Lab",
         "quantum" => "Quantum Mechanics",
+        "relativity" => "General Relativity",
         "solid_state" => "Solid State Physics",
         "traceability" => "Traceability Portal",
         _ => "Simulation",
@@ -145,6 +151,39 @@ pub fn score_challenge_card(card: &ChallengeCard, query: &str) -> Option<usize> 
     score_domain_candidates(card.domain, query, best)
 }
 
+pub(super) fn score_story_metadata(story: &PresetStoryMetadata, query: &str) -> Option<usize> {
+    if query.trim().is_empty() {
+        return Some(usize::MAX);
+    }
+    let card = story_to_starter_card(story);
+    let mut best = score_starter_card(&card, query);
+    if let Some(s) = fuzzy_match_score(story.id, query) {
+        let weighted = s.saturating_add(6);
+        best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
+    }
+    best
+}
+
+pub(super) fn score_goal_challenge_metadata(
+    goal: &GoalChallengeMetadata,
+    query: &str,
+) -> Option<usize> {
+    if query.trim().is_empty() {
+        return Some(usize::MAX);
+    }
+    let card = goal_challenge_to_starter_card(goal);
+    let mut best = score_starter_card(&card, query);
+    if let Some(s) = fuzzy_match_score(goal.id, query) {
+        let weighted = s.saturating_add(6);
+        best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
+    }
+    if let Some(s) = fuzzy_match_score(goal.goal_summary, query) {
+        let weighted = s.saturating_add(20);
+        best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
+    }
+    best
+}
+
 fn score_domain_candidates(domain: &str, query: &str, mut best: Option<usize>) -> Option<usize> {
     let acad = academic_domain_for_slug(domain);
     let mod_title = module_title_for_slug(domain);
@@ -160,7 +199,7 @@ fn score_domain_candidates(domain: &str, query: &str, mut best: Option<usize>) -
 /// Interactive search, sub-tab, and `AcademicDomain` filter state for the Starter Gallery modal.
 #[derive(Clone, Debug, Default)]
 pub struct StarterGalleryFilterState {
-    /// Active gallery sub-tab (`Starters` or `Challenges`).
+    /// Active gallery sub-tab (`Starters`, `GuidedStories`, or `Challenges`).
     pub active_tab: StarterGalleryTab,
     /// Live search query entered by the user.
     pub search_query: String,
@@ -190,6 +229,15 @@ impl StarterGalleryFilterState {
         self.last_announced = None;
     }
 
+    fn pref_rank(&self, item_domain: &str) -> u8 {
+        u8::from(
+            !self
+                .preferred_slug
+                .as_deref()
+                .is_some_and(|slug| same_module_slug(slug, item_domain)),
+        )
+    }
+
     /// Counts starter cards matching `self.search_query` and the given `domain` (`None` = `All Domains`).
     #[must_use]
     pub fn count_matching_in_domain(
@@ -206,20 +254,45 @@ impl StarterGalleryFilterState {
             .count()
     }
 
-    /// Counts challenge cards matching `self.search_query` and the given `domain` (`None` = `All Domains`).
+    /// Counts guided stories matching `self.search_query` and `domain` (`None` = `All Domains`).
+    #[must_use]
+    pub fn count_matching_stories_in_domain(
+        &self,
+        stories: &[&'static PresetStoryMetadata],
+        domain: Option<AcademicDomain>,
+    ) -> usize {
+        stories
+            .iter()
+            .filter(|s| {
+                domain.is_none_or(|d| academic_domain_for_slug(s.domain) == d)
+                    && score_story_metadata(s, &self.search_query).is_some()
+            })
+            .count()
+    }
+
+    /// Counts inverse + AST goal challenges matching `self.search_query` and `domain`.
     #[must_use]
     pub fn count_matching_challenges_in_domain(
         &self,
         challenges: &[ChallengeCard],
+        goals: &[&'static GoalChallengeMetadata],
         domain: Option<AcademicDomain>,
     ) -> usize {
-        challenges
+        let inv = challenges
             .iter()
             .filter(|c| {
                 domain.is_none_or(|d| academic_domain_for_slug(c.domain) == d)
                     && score_challenge_card(c, &self.search_query).is_some()
             })
-            .count()
+            .count();
+        let ast = goals
+            .iter()
+            .filter(|g| {
+                domain.is_none_or(|d| academic_domain_for_slug(g.domain) == d)
+                    && score_goal_challenge_metadata(g, &self.search_query).is_some()
+            })
+            .count();
+        inv + ast
     }
 
     /// Filters and ranks `cards` according to `selected_domain`, `search_query`, and `preferred_slug`.
@@ -233,16 +306,9 @@ impl StarterGalleryFilterState {
             })
             .filter_map(|c| {
                 let score = score_starter_card(c, &self.search_query)?;
-                let pref = u8::from(
-                    !self
-                        .preferred_slug
-                        .as_deref()
-                        .is_some_and(|slug| same_module_slug(slug, c.domain)),
-                );
-                Some((c.clone(), score, pref))
+                Some((c.clone(), score, self.pref_rank(c.domain)))
             })
             .collect();
-
         matched.sort_by(|a, b| {
             a.1.cmp(&b.1)
                 .then_with(|| a.2.cmp(&b.2))
@@ -252,7 +318,34 @@ impl StarterGalleryFilterState {
         matched.into_iter().map(|(card, _, _)| card).collect()
     }
 
-    /// Filters and ranks `challenges` according to `selected_domain`, `search_query`, and `preferred_slug`.
+    /// Filters and ranks guided `stories` according to `selected_domain`, `search_query`, and `preferred_slug`.
+    #[must_use]
+    pub fn filter_stories(
+        &self,
+        stories: &[&'static PresetStoryMetadata],
+    ) -> Vec<&'static PresetStoryMetadata> {
+        let mut matched: Vec<(&'static PresetStoryMetadata, usize, u8)> = stories
+            .iter()
+            .copied()
+            .filter(|s| {
+                self.selected_domain
+                    .is_none_or(|dom| academic_domain_for_slug(s.domain) == dom)
+            })
+            .filter_map(|s| {
+                let score = score_story_metadata(s, &self.search_query)?;
+                Some((s, score, self.pref_rank(s.domain)))
+            })
+            .collect();
+        matched.sort_by(|a, b| {
+            a.1.cmp(&b.1)
+                .then_with(|| a.2.cmp(&b.2))
+                .then_with(|| a.0.title.cmp(b.0.title))
+                .then_with(|| a.0.id.cmp(b.0.id))
+        });
+        matched.into_iter().map(|(story, _, _)| story).collect()
+    }
+
+    /// Filters and ranks inverse `challenges` according to `selected_domain`, `search_query`, and `preferred_slug`.
     #[must_use]
     pub fn filter_challenges(&self, challenges: &[ChallengeCard]) -> Vec<ChallengeCard> {
         let mut matched: Vec<(ChallengeCard, usize, u8)> = challenges
@@ -263,16 +356,9 @@ impl StarterGalleryFilterState {
             })
             .filter_map(|c| {
                 let score = score_challenge_card(c, &self.search_query)?;
-                let pref = u8::from(
-                    !self
-                        .preferred_slug
-                        .as_deref()
-                        .is_some_and(|slug| same_module_slug(slug, c.domain)),
-                );
-                Some((c.clone(), score, pref))
+                Some((c.clone(), score, self.pref_rank(c.domain)))
             })
             .collect();
-
         matched.sort_by(|a, b| {
             a.1.cmp(&b.1)
                 .then_with(|| a.2.cmp(&b.2))
@@ -280,6 +366,33 @@ impl StarterGalleryFilterState {
                 .then_with(|| a.0.id.cmp(b.0.id))
         });
         matched.into_iter().map(|(card, _, _)| card).collect()
+    }
+
+    /// Filters and ranks playable AST `goals` according to `selected_domain`, `search_query`, and `preferred_slug`.
+    #[must_use]
+    pub fn filter_goal_challenges(
+        &self,
+        goals: &[&'static GoalChallengeMetadata],
+    ) -> Vec<&'static GoalChallengeMetadata> {
+        let mut matched: Vec<(&'static GoalChallengeMetadata, usize, u8)> = goals
+            .iter()
+            .copied()
+            .filter(|g| {
+                self.selected_domain
+                    .is_none_or(|dom| academic_domain_for_slug(g.domain) == dom)
+            })
+            .filter_map(|g| {
+                let score = score_goal_challenge_metadata(g, &self.search_query)?;
+                Some((g, score, self.pref_rank(g.domain)))
+            })
+            .collect();
+        matched.sort_by(|a, b| {
+            a.1.cmp(&b.1)
+                .then_with(|| a.2.cmp(&b.2))
+                .then_with(|| a.0.title.cmp(b.0.title))
+                .then_with(|| a.0.id.cmp(b.0.id))
+        });
+        matched.into_iter().map(|(goal, _, _)| goal).collect()
     }
 
     /// Emits a polite `TwinSlotLiveRegion` result-count update when the user changes tab, query, or domain filter.
@@ -311,7 +424,8 @@ fn format_gallery_filter_status(
 ) -> String {
     let (singular, plural) = match tab {
         StarterGalleryTab::Starters => ("starter preset", "starter presets"),
-        StarterGalleryTab::Challenges => ("inverse challenge", "inverse challenges"),
+        StarterGalleryTab::GuidedStories => ("guided story", "guided stories"),
+        StarterGalleryTab::Challenges => ("challenge", "challenges"),
     };
     match (count, domain) {
         (0, Some(dom)) => format!("No matching {plural} in {}", dom.name()),

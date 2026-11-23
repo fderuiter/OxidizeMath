@@ -1,10 +1,12 @@
-//! Starter Template & Inverse Challenge Gallery component providing a searchable cross-domain catalog
-//! for cold-launch discovery, per-tab pre-filtered browsing, and instant preset/challenge execution.
+//! Starter Template, Guided Story & Challenge Gallery component providing a searchable cross-domain
+//! catalog for cold-launch discovery, per-tab pre-filtered browsing, and instant preset/story/challenge execution.
 
 use crate::framework::ToolMetadata;
 #[cfg(test)]
 use eframe::egui;
 
+#[path = "starter_gallery/cards.rs"]
+mod cards;
 #[path = "starter_gallery/challenge_ui.rs"]
 mod challenge_ui;
 #[path = "starter_gallery/challenges.rs"]
@@ -17,6 +19,10 @@ mod modal_ui;
 mod presets_builtin;
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
+#[path = "starter_gallery/stories.rs"]
+pub mod stories;
+#[path = "starter_gallery/story_packs.rs"]
+mod story_packs;
 
 pub use challenges::{
     challenge_matches_domain, find_challenge_metadata, get_all_challenge_cards,
@@ -36,6 +42,7 @@ pub use root_host::{
     show_starter_gallery_with_challenges, show_starter_gallery_with_challenges_for_domain,
     GlobalStarterGallery,
 };
+pub use stories::*;
 
 /// Pre-configured starter simulation template card.
 #[derive(Clone, Debug, PartialEq, Eq)]

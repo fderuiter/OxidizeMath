@@ -280,8 +280,20 @@ impl SimulationFramework {
                 is_open = false;
                 ctx.request_repaint();
             }
+            Some(crate::starter_gallery::GallerySelection::Story(story)) => {
+                let _ = self.launch_story(story, 0);
+                self.flush_hud_announcements(ctx);
+                is_open = false;
+                ctx.request_repaint();
+            }
             Some(crate::starter_gallery::GallerySelection::Challenge(ch)) => {
                 let _ = self.launch_challenge_by_id(ch.id, Some(ctx));
+                is_open = false;
+                ctx.request_repaint();
+            }
+            Some(crate::starter_gallery::GallerySelection::GoalChallenge(goal)) => {
+                let _ = self.launch_challenge(goal);
+                self.flush_hud_announcements(ctx);
                 is_open = false;
                 ctx.request_repaint();
             }
@@ -385,6 +397,7 @@ impl SimulationFramework {
 
         self.show_export_action_bar(ui, id_source);
         self.show_challenge_hud(ui, id_source);
+        self.render_challenge_hud_panel(ui, &ctx, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
 
@@ -398,6 +411,8 @@ impl SimulationFramework {
             if self.is_diverged {
                 crate::audio::notify_solver_diverged();
                 ctx.request_repaint();
+            } else {
+                let _ = self.evaluate_challenge_predicates(Some(&ctx));
             }
         } else if let Some(tool) = &mut self.active_tool {
             // Solver execution halted: keep last valid plot data active in egui_plot

@@ -7,7 +7,7 @@ use crate::starter_gallery::StarterPresetMetadata;
 #[test]
 fn test_all_68_tools_have_non_empty_curated_tags() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 70, "Expected all 70 registered ToolMetadata");
+    assert_eq!(tools.len(), 74, "Expected all 74 registered ToolMetadata");
 
     for meta in tools {
         assert!(
@@ -57,9 +57,12 @@ fn test_command_palette_indexes_all_85_starter_presets_and_16_workspace_actions(
         .filter(|i| matches!(i, PaletteItem::Action { .. }))
         .count();
 
-    assert_eq!(tab_count, 24, "Expected 24 ExplorerTab entries");
-    assert_eq!(tool_count, 70, "Expected 70 ToolMetadata entries");
-    assert_eq!(preset_count, 99, "Expected 99 StarterPresetMetadata cards");
+    assert_eq!(tab_count, 26, "Expected 26 ExplorerTab entries");
+    assert_eq!(tool_count, 74, "Expected 74 ToolMetadata entries");
+    assert_eq!(
+        preset_count, 105,
+        "Expected 105 StarterPresetMetadata cards"
+    );
     assert_eq!(
         action_count,
         WorkspaceAction::ALL.len(),
@@ -73,7 +76,7 @@ fn verify_every_preset_title_matches(tabs: &[Box<dyn crate::tabs::ExplorerTab>])
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 99);
+    assert_eq!(presets.len(), 105);
 
     for preset in presets {
         let palette = CommandPalette {
@@ -131,6 +134,8 @@ fn test_synonym_and_bounded_gap_queries_match_expected_models() {
         ("turing", "Turing"),
         ("parrondo", "Parrondo"),
         ("braess", "Braess"),
+        ("schwarzschild", "Geodesic Playground"),
+        ("weierstrass", "Weierstrass"),
         ("explore catalog", "Explore Catalog"),
         ("2x2 quad", "2x2 Quad Grid"),
         ("high contrast", "High Contrast"),

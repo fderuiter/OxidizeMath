@@ -1,3 +1,6 @@
+//! Search-driven Command Palette (`Ctrl+K` / `Cmd+K`) indexing tabs, simulation tools,
+//! starter presets, and global workspace actions.
+
 mod actions;
 mod scoring;
 mod ui;
@@ -72,21 +75,34 @@ impl PaletteSelection {
 /// Search result item in the command palette representing a tab, tool, starter preset, or action.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PaletteItem {
+    /// Domain explorer tab entry.
     Tab {
+        /// Index in the application `tabs` slice.
         index: usize,
+        /// Display name of the tab.
         name: &'static str,
     },
+    /// Registered interactive simulation tool entry.
     Tool {
+        /// Index of the owning domain tab.
         tab_index: usize,
+        /// Display name of the tool.
         name: &'static str,
+        /// Canonical domain slug of the tool.
         domain: &'static str,
+        /// Curated search synonym and topic tags.
         tags: &'static [&'static str],
     },
+    /// Curated starter simulation preset entry.
     Preset {
+        /// Index of the owning domain tab.
         tab_index: usize,
+        /// Launchable starter card configuration.
         card: crate::starter_gallery::StarterCard,
     },
+    /// Global workspace action entry.
     Action {
+        /// Workspace action to execute on selection.
         action: WorkspaceAction,
     },
 }

@@ -2,11 +2,17 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::cards::{
+    render_starter_card_with_verb, render_stories_scroll_grid, render_story_domain_chips,
+};
 use super::challenge_ui::{
     render_challenge_domain_chips, render_challenges_scroll_grid, render_gallery_mode_tabs,
 };
-use super::filter::{academic_domain_for_slug, module_title_for_slug, StarterGalleryFilterState};
-use super::{ChallengeCard, GallerySelection, StarterCard, StarterGalleryTab};
+use super::filter::{academic_domain_for_slug, StarterGalleryFilterState};
+use super::{
+    ChallengeCard, GallerySelection, GoalChallengeMetadata, PresetStoryMetadata, StarterCard,
+    StarterGalleryTab,
+};
 use crate::app::domain_bar::AcademicDomain;
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -16,6 +22,13 @@ pub(crate) const STARTER_GALLERY_SEARCH_INFO_ID: &str = "starter_gallery_search_
 const GALLERY_SEARCH_LABEL: &str = "Search starter template gallery";
 const GALLERY_SEARCH_HINT: &str =
     "Search models, equations, topics, or domains (e.g. Mandelbrot, Kermack, Harmonic)...";
+
+pub(super) struct GalleryItems<'a> {
+    pub(super) cards: &'a [StarterCard],
+    pub(super) stories: &'a [&'static PresetStoryMetadata],
+    pub(super) challenges: &'a [ChallengeCard],
+    pub(super) goal_challenges: &'a [&'static GoalChallengeMetadata],
+}
 
 pub(super) struct GalleryOverlayMetrics {
     pub(super) max_w: f32,
@@ -55,59 +68,6 @@ pub(super) fn compute_gallery_metrics(ctx: &egui::Context) -> GalleryOverlayMetr
         card_w,
         cols,
     }
-}
-
-fn render_starter_card(ui: &mut egui::Ui, card: &StarterCard, card_width: f32) -> bool {
-    let mut launched = false;
-    let module_title = module_title_for_slug(card.domain);
-    egui::Frame::group(ui.style())
-        .inner_margin(14.0)
-        .corner_radius(8.0)
-        .show(ui, |ui| {
-            ui.set_width(card_width);
-            ui.set_max_width(card_width);
-            ui.set_min_height(152.0);
-            ui.vertical(|ui| {
-                ui.set_max_width(card_width);
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(card.icon).size(26.0));
-                    let text_w = (card_width - 42.0).max(56.0);
-                    ui.vertical(|ui| {
-                        ui.set_max_width(text_w);
-                        ui.add(
-                            egui::Label::new(egui::RichText::new(card.title).strong().size(15.0))
-                                .wrap(),
-                        );
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(format!(
-                                    "[{} · {}]",
-                                    card.category, module_title
-                                ))
-                                .small()
-                                .color(ui.visuals().weak_text_color()),
-                            )
-                            .truncate(),
-                        );
-                    });
-                });
-                ui.add_space(8.0);
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(card.description)
-                            .size(12.0)
-                            .color(ui.visuals().text_color()),
-                    )
-                    .wrap(),
-                );
-                ui.add_space(10.0);
-                let launch_btn = egui::Button::new(format!("▶ Launch {}", card.title)).truncate();
-                if ui.add_sized([card_width, 26.0], launch_btn).clicked() {
-                    launched = true;
-                }
-            });
-        });
-    launched
 }
 
 fn render_gallery_header(
@@ -203,11 +163,7 @@ fn render_domain_filter_chips(
             let is_selected = filter.selected_domain == Some(domain);
             let chip_label = format!("{} ({count})", domain.name());
             if ui.selectable_label(is_selected, chip_label).clicked() {
-                if is_selected {
-                    filter.selected_domain = None;
-                } else {
-                    filter.selected_domain = Some(domain);
-                }
+                filter.selected_domain = (!is_selected).then_some(domain);
                 filter.preferred_slug = None;
             }
         }
@@ -251,7 +207,7 @@ fn render_cards_scroll_grid(
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
                     for card in row {
-                        if render_starter_card(ui, card, m.card_w) {
+                        if render_starter_card_with_verb(ui, card, m.card_w, "▶ Launch") {
                             selected_card = Some(card.clone());
                             frame_ctx.close();
                         }
@@ -265,60 +221,87 @@ fn render_cards_scroll_grid(
 pub(super) fn render_searchable_gallery_body(
     ui: &mut egui::Ui,
     frame_ctx: &mut crate::ModalFrameContext,
-    cards: &[StarterCard],
-    challenges: &[ChallengeCard],
+    items: &GalleryItems<'_>,
     filter: &mut StarterGalleryFilterState,
     m: &GalleryOverlayMetrics,
 ) -> Option<GallerySelection> {
     ui.set_max_width(m.inner_w);
     ui.set_width(m.inner_w);
 
-    if cards.is_empty() && !challenges.is_empty() {
-        filter.active_tab = StarterGalleryTab::Challenges;
-    } else if challenges.is_empty() {
-        filter.active_tab = StarterGalleryTab::Starters;
-    }
+    let pre_cards = filter.filter_cards(items.cards);
+    let pre_stories = filter.filter_stories(items.stories);
+    let pre_challenges = filter.filter_challenges(items.challenges);
+    let pre_goals = filter.filter_goal_challenges(items.goal_challenges);
+    let total_challenges = items.challenges.len() + items.goal_challenges.len();
+    let shown_challenges = pre_challenges.len() + pre_goals.len();
 
-    let pre_cards = filter.filter_cards(cards);
-    let pre_challenges = filter.filter_challenges(challenges);
     let (shown, total) = match filter.active_tab {
-        StarterGalleryTab::Starters => (pre_cards.len(), cards.len()),
-        StarterGalleryTab::Challenges => (pre_challenges.len(), challenges.len()),
+        StarterGalleryTab::Starters => (pre_cards.len(), items.cards.len()),
+        StarterGalleryTab::GuidedStories => (pre_stories.len(), items.stories.len()),
+        StarterGalleryTab::Challenges => (shown_challenges, total_challenges),
     };
     render_gallery_header(ui, frame_ctx, m.inner_w, shown, total);
-    if !cards.is_empty() && !challenges.is_empty() {
+    if !items.stories.is_empty() || total_challenges > 0 {
         ui.add_space(4.0);
-        render_gallery_mode_tabs(ui, filter, pre_cards.len(), pre_challenges.len());
+        let counts = (pre_cards.len(), pre_stories.len(), shown_challenges);
+        render_gallery_mode_tabs(ui, filter, counts);
     }
     ui.add_space(4.0);
     render_search_bar(ui, filter, m.inner_w);
     ui.add_space(4.0);
     match filter.active_tab {
-        StarterGalleryTab::Starters => render_domain_filter_chips(ui, cards, filter, m.inner_w),
-        StarterGalleryTab::Challenges => {
-            render_challenge_domain_chips(ui, challenges, filter, m.inner_w);
+        StarterGalleryTab::Starters => {
+            render_domain_filter_chips(ui, items.cards, filter, m.inner_w)
         }
+        StarterGalleryTab::GuidedStories => {
+            render_story_domain_chips(ui, items.stories, filter, m.inner_w);
+        }
+        StarterGalleryTab::Challenges => render_challenge_domain_chips(
+            ui,
+            items.challenges,
+            items.goal_challenges,
+            filter,
+            m.inner_w,
+        ),
     }
     ui.add_space(4.0);
     ui.separator();
     ui.add_space(6.0);
 
+    render_active_tab_content(ui, frame_ctx, items, filter, m)
+}
+
+fn render_active_tab_content(
+    ui: &mut egui::Ui,
+    frame_ctx: &mut crate::ModalFrameContext,
+    items: &GalleryItems<'_>,
+    filter: &mut StarterGalleryFilterState,
+    m: &GalleryOverlayMetrics,
+) -> Option<GallerySelection> {
     match filter.active_tab {
         StarterGalleryTab::Starters => {
-            let filtered = filter.filter_cards(cards);
+            let filtered = filter.filter_cards(items.cards);
             if !ui.is_sizing_pass() {
                 filter.sync_live_announcement(ui.ctx(), filtered.len());
             }
             render_cards_scroll_grid(ui, frame_ctx, &filtered, filter, m)
                 .map(GallerySelection::Starter)
         }
-        StarterGalleryTab::Challenges => {
-            let filtered = filter.filter_challenges(challenges);
+        StarterGalleryTab::GuidedStories => {
+            let filtered = filter.filter_stories(items.stories);
             if !ui.is_sizing_pass() {
                 filter.sync_live_announcement(ui.ctx(), filtered.len());
             }
-            render_challenges_scroll_grid(ui, frame_ctx, &filtered, filter, m)
-                .map(GallerySelection::Challenge)
+            render_stories_scroll_grid(ui, frame_ctx, &filtered, filter, m)
+                .map(GallerySelection::Story)
+        }
+        StarterGalleryTab::Challenges => {
+            let filtered_inv = filter.filter_challenges(items.challenges);
+            let filtered_goals = filter.filter_goal_challenges(items.goal_challenges);
+            if !ui.is_sizing_pass() {
+                filter.sync_live_announcement(ui.ctx(), filtered_inv.len() + filtered_goals.len());
+            }
+            render_challenges_scroll_grid(ui, frame_ctx, &filtered_inv, &filtered_goals, filter, m)
         }
     }
 }
