@@ -63,6 +63,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Framework-Hosted 2D Parameter Atlases and Zero-Allocation Cartographers](adr/20261123-framework-hosted-2d-parameter-atlases.md)
 - [ADR 20261123: Zero-Allocation FreeSurfer Cortical Surface Physics, Potts MRF Segmentation, and 3D Cortical Morphometry Studio](adr/20261123-freesurfer-deformable-mrf-and-cortical-morphometry.md)
 - [ADR 20261123: Deterministic Genz Gaussian Copula and Parlay Engine](adr/20261123-genz-gaussian-copula-and-parlay-engine.md)
+- [ADR 20261123: Zero-Allocation Geometric Optics, Caustics, and Fraunhofer Diffraction Engine](adr/20261123-geometric-optics-caustics-and-diffraction-engine.md)
 - [ADR 20261123: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics](adr/20261123-glicko2-copula-ou-workbenches-and-kelly-net-odds.md)
 - [ADR 20261123: Exact Elimination Treewidth, Zero-Allocation Network Flow & MST Solvers, and Unified Graph Interchange](adr/20261123-graph-flows-treewidth-and-dot-interchange.md)
 - [ADR 20261123: Hierarchical Umbrella Error Enums, Full Submodule Error Re-Exports, and DiagnosticBus Emission Helpers](adr/20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md)

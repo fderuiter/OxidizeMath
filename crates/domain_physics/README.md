@@ -18,7 +18,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
 - **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, and zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`).
-- **`optics`**: Graded-index and negative-index refractive media (`refraction`), RK4 Hamiltonian ray tracing and caustic envelope detection (`caustics`), and calibrated optical detector models (`sensing`), complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`.
+- **`optics`**: Zero-allocation geometric & physical optics (`refraction`, `ray_tracing`, `caustics`, `diffraction`, `sensing`), covering Snell/Fresnel polarization, Cauchy dispersion, negative-index Veselago metamaterials, RK4 Hamiltonian & eikonal GRIN lenses (Luneburg, Maxwell fish-eye, Eaton, parabolic waveguide), coffee-cup nephroid & spherical-aberration caustics, Fraunhofer single-slit, grating, and circular Airy diffraction, and calibrated optical detector models (complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`).
 
 ---
 
@@ -81,6 +81,43 @@ let mut disk = GalacticDiskSystem::from_galaxy_model(
 disk.step_n_leapfrog(2.0, 20);
 assert!(disk.relative_energy_drift() < 1.0e-3);
 assert!(disk.relative_angular_momentum_drift() < 1.0e-11);
+```
+
+### Tracing Caustic Envelopes and Fraunhofer Diffraction Profiles
+
+Evaluate Brewster polarization extinction, extract coffee-cup nephroid caustics, and sample circular Airy diffraction into pre-allocated buffers:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::optics::{
+    AIRY_FIRST_ZERO_J1, CausticEnvelopeBuffer, OpticalBenchScene, PolarizationMode, RayFanConfig,
+    RayFanWorkspace, airy_normalized_intensity, brewster_angle, coffee_cup_cusp_x,
+    extract_caustic_envelope, fresnel_polarized, trace_ray_fan,
+};
+
+let theta_b = brewster_angle(1.0, 1.5168);
+let fresnel = fresnel_polarized(1.0, 1.5168, theta_b);
+assert!(fresnel.reflectance_p < 1.0e-24);
+assert!((fresnel.reflectance_s + fresnel.transmittance_s - 1.0).abs() < 1.0e-12);
+assert!(airy_normalized_intensity(AIRY_FIRST_ZERO_J1) < 1.0e-12);
+
+let mut ws = RayFanWorkspace::new(64, 8);
+let cfg = RayFanConfig {
+    scene: OpticalBenchScene::CoffeeCupMirror { radius: 2.0 },
+    ray_count: 51,
+    beam_half_width: 1.9,
+    source_x: -2.5,
+    source_y: 0.0,
+    launch_angle_rad: 0.0,
+    wavelength_nm: 550.0,
+    polychromatic: false,
+    polarization: PolarizationMode::Unpolarized,
+    bench_half_extent: 3.0,
+};
+trace_ray_fan(&cfg, &mut ws);
+let mut caustics = CausticEnvelopeBuffer::new(64, 32, -2.0, 2.0);
+assert!(extract_caustic_envelope(&ws, 1.0, 3.0, &mut caustics) > 30);
+assert_eq!(coffee_cup_cusp_x(2.0), 1.0);
 ```
 
 ---

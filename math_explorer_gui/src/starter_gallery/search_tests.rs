@@ -105,6 +105,7 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
     let no_ai_challenges = filter_challenge_cards(&all_challenges, "", Some(AcademicDomain::Ai));
     assert!(no_ai_challenges.is_empty());
 
+    assert_eq!(card_academic_domain("optics"), AcademicDomain::Physics);
     assert_eq!(card_academic_domain("relativity"), AcademicDomain::Physics);
     assert_eq!(
         card_academic_domain("elliptic_curves"),

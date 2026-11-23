@@ -132,7 +132,7 @@ pub struct WaveRunner {
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
     pub(crate) prev_mode_phases: [f64; 8],
-    sonification: crate::audio::SonificationFrame,
+    pub(crate) sonification: crate::audio::SonificationFrame,
 }
 
 impl WaveRunner {
@@ -187,17 +187,6 @@ impl WaveRunner {
         };
         runner.init_from_config(&cfg);
         runner
-    }
-
-    pub(crate) fn record_divergence(&mut self, param: &'static str, message: impl Into<String>) {
-        self.diverged = true;
-        self.sonification = crate::audio::SonificationFrame::silent();
-        self.diagnostic_report = Some(DiagnosticReport::new(
-            self.time,
-            self.step_count,
-            param,
-            message.into(),
-        ));
     }
 
     /// Rebuilds the spatial grid, clamped potential, Hamiltonian, and initial Gaussian wavepacket.

@@ -353,6 +353,7 @@ fn default_tool_priority(domain: &str, id: &str) -> u8 {
         ("quantum", "WaveSimulator")
         | ("solid_state", "IsingModelTool")
         | ("medical", "DoseCalculationTool")
+        | ("optics", "CausticsRayBenchTool")
         | ("relativity", "GeodesicPlaygroundTool")
         | ("elliptic_curves", "WeierstrassPlaygroundTool")
         | ("clinical_trials", "PharmacokineticsTool")
