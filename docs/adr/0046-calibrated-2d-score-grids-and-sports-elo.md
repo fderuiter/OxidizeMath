@@ -1,4 +1,4 @@
-# ADR 0044: Calibrated 2D Score Grids and Venue-Adjusted Sports Elo Engine
+# ADR 0046: Calibrated 2D Score Grids and Venue-Adjusted Sports Elo Engine
 
 ## Status
 Accepted (extends [ADR 0037](0037-glicko2-frozen-period-tournament-simulator.md) and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))

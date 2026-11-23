@@ -238,229 +238,209 @@ pub enum Glicko2Error {
 
 /// Errors returned by sports Elo rating updates, batch schedules, and line converters.
 #[derive(Debug, Clone, PartialEq, Error)]
-#[allow(missing_docs)]
 pub enum EloError {
+    /// Elo rating is non-finite (`NaN` or infinite).
     #[error("Elo rating must be finite (got {value})")]
-    InvalidRating { value: f64 },
+    InvalidRating {
+        /// Offending rating value.
+        value: f64,
+    },
+    /// Logistic scale parameter is non-positive or non-finite.
     #[error("Elo logistic scale must be positive and finite (got {value})")]
-    InvalidScale { value: f64 },
+    InvalidScale {
+        /// Offending scale parameter.
+        value: f64,
+    },
+    /// Elo update factor `K` is non-positive or non-finite.
     #[error("Elo K-factor must be positive and finite (got {value})")]
-    InvalidKFactor { value: f64 },
+    InvalidKFactor {
+        /// Offending K-factor value.
+        value: f64,
+    },
+    /// Home-advantage rating offset is non-finite.
     #[error("Elo home-advantage offset must be finite (got {value})")]
-    InvalidHomeAdvantage { value: f64 },
+    InvalidHomeAdvantage {
+        /// Offending home-advantage offset.
+        value: f64,
+    },
+    /// Match outcome score lies outside `[0.0, 1.0]` or is non-finite.
     #[error("match score must be in [0.0, 1.0] and finite (got {value})")]
-    InvalidScore { value: f64 },
+    InvalidScore {
+        /// Offending match score.
+        value: f64,
+    },
+    /// Seasonal mean-regression weight `theta` lies outside `[0.0, 1.0]` or is non-finite.
     #[error("regression factor theta must be in [0.0, 1.0] and finite (got {value})")]
-    InvalidRegressionFactor { value: f64 },
+    InvalidRegressionFactor {
+        /// Offending regression factor.
+        value: f64,
+    },
+    /// Elo-points-per-goal spread conversion factor is non-positive or non-finite.
     #[error("Elo points-per-goal scale must be positive and finite (got {value})")]
-    InvalidPointsPerElo { value: f64 },
+    InvalidPointsPerElo {
+        /// Offending points-per-goal factor.
+        value: f64,
+    },
+    /// Win probability is `0.0` or `1.0` and cannot produce finite two-way moneyline odds.
     #[error(
         "win probability must lie strictly in (0.0, 1.0) to quote moneyline odds (got {value})"
     )]
-    DegenerateProbability { value: f64 },
+    DegenerateProbability {
+        /// Offending win probability.
+        value: f64,
+    },
+    /// Team roster index is out of bounds for the supplied roster slice.
     #[error("team index {index} is out of bounds for roster of length {roster_len}")]
-    PlayerIndexOutOfBounds { index: usize, roster_len: usize },
+    PlayerIndexOutOfBounds {
+        /// Requested team index.
+        index: usize,
+        /// Length of the supplied roster slice.
+        roster_len: usize,
+    },
+    /// Match schedule attempted to pair a team against itself.
     #[error("self-match is not permitted for team index {team_index}")]
-    SelfMatch { team_index: usize },
+    SelfMatch {
+        /// Index of the team paired with itself.
+        team_index: usize,
+    },
+    /// Output or scratch slice length did not match the roster length.
     #[error("buffer length mismatch (expected {expected}, got {actual})")]
-    DimensionMismatch { expected: usize, actual: usize },
+    DimensionMismatch {
+        /// Expected buffer length.
+        expected: usize,
+        /// Actual buffer length provided.
+        actual: usize,
+    },
 }
 
 /// Errors returned by 2D score grids, Poisson/Dixon-Coles models, market pricers, and MLE calibration.
 #[derive(Debug, Clone, PartialEq, Error)]
-#[allow(missing_docs)]
 pub enum MatchModelError {
+    /// Requested `max_goals` cutoff exceeds the stack grid ceiling.
     #[error("max_goals {max_goals} exceeds supported grid limit {limit}")]
-    InvalidMaxGoals { max_goals: usize, limit: usize },
+    InvalidMaxGoals {
+        /// Requested maximum goals per team.
+        max_goals: usize,
+        /// Maximum supported goal cutoff.
+        limit: usize,
+    },
+    /// Expected goal rate `lambda` or `mu` is non-positive or non-finite.
     #[error("expected goal rate must be strictly positive and finite (got {value})")]
-    InvalidGoalRate { value: f64 },
-    #[error("bivariate Poisson component rate must be non-negative and finite (got {value})")]
-    InvalidSharedRate { value: f64 },
-    #[error("shared covariance {covariance} must lie in [0.0, {max_allowed}]")]
-    InvalidCovariance { covariance: f64, max_allowed: f64 },
-    #[error("Dixon-Coles rho {rho} is outside feasible bounds [{min}, {max}]")]
-    InvalidCorrelation { rho: f64, min: f64, max: f64 },
-    #[error("score grid total probability mass must be positive and finite (got {mass})")]
-    InvalidProbabilityMass { mass: f64 },
-    #[error("negative cell probability {value} at score ({home}, {away})")]
-    NegativeCellProbability {
-        home: usize,
-        away: usize,
+    InvalidGoalRate {
+        /// Offending goal rate.
         value: f64,
     },
+    /// Bivariate Poisson component rate is negative or non-finite.
+    #[error("bivariate Poisson component rate must be non-negative and finite (got {value})")]
+    InvalidSharedRate {
+        /// Offending component rate.
+        value: f64,
+    },
+    /// Shared goal covariance lies outside `[0.0, min(lambda, mu)]` or is non-finite.
+    #[error("shared covariance {covariance} must lie in [0.0, {max_allowed}]")]
+    InvalidCovariance {
+        /// Requested shared covariance.
+        covariance: f64,
+        /// Upper bound `min(lambda_home, mu_away)`.
+        max_allowed: f64,
+    },
+    /// Dixon-Coles low-score correlation `rho` violates non-negativity bounds on `tau`.
+    #[error("Dixon-Coles rho {rho} is outside feasible bounds [{min}, {max}]")]
+    InvalidCorrelation {
+        /// Offending `rho` value.
+        rho: f64,
+        /// Lower feasible bound `max(-1.0 / (lambda * mu), -1.0)`.
+        min: f64,
+        /// Upper feasible bound `min(1.0 / lambda, 1.0 / mu)`.
+        max: f64,
+    },
+    /// Score grid total probability mass is non-positive or non-finite.
+    #[error("score grid total probability mass must be positive and finite (got {mass})")]
+    InvalidProbabilityMass {
+        /// Computed grid probability mass.
+        mass: f64,
+    },
+    /// Score grid cell contains a negative or non-finite probability.
+    #[error("negative cell probability {value} at score ({home}, {away})")]
+    NegativeCellProbability {
+        /// Home goal count for the invalid cell.
+        home: usize,
+        /// Away goal count for the invalid cell.
+        away: usize,
+        /// Offending cell probability.
+        value: f64,
+    },
+    /// Queried `(home, away)` score exceeds the grid's `max_goals` bound.
     #[error("score ({home}, {away}) exceeds grid max_goals {max_goals}")]
     ScoreOutOfBounds {
+        /// Queried home goal count.
         home: usize,
+        /// Queried away goal count.
         away: usize,
+        /// Grid `max_goals` cutoff.
         max_goals: usize,
     },
+    /// Handicap or total line is non-finite, negative (for totals), or not a `0.25`-goal multiple.
     #[error("market line {line} must be finite, valid for market, and aligned to 0.25 increments")]
-    InvalidLine { line: f64 },
+    InvalidLine {
+        /// Offending handicap or total line.
+        line: f64,
+    },
+    /// Market has zero or unit active probability mass after excluding pushes.
     #[error("market quote is degenerate with active probability {probability}")]
-    DegenerateMarket { probability: f64 },
+    DegenerateMarket {
+        /// Active win probability causing degenerate odds.
+        probability: f64,
+    },
+    /// Exponential time-decay rate `xi` is negative or non-finite.
     #[error("time-decay parameter xi must be non-negative and finite (got {value})")]
-    InvalidDecayRate { value: f64 },
+    InvalidDecayRate {
+        /// Offending decay rate `xi`.
+        value: f64,
+    },
+    /// Historical match age is negative or non-finite.
     #[error("historical match age must be non-negative and finite (got {value})")]
-    InvalidMatchAge { value: f64 },
+    InvalidMatchAge {
+        /// Offending match age.
+        value: f64,
+    },
+    /// Calibration dataset contains fewer matches than required.
     #[error("insufficient historical matches (required at least {required}, got {actual})")]
-    InsufficientMatches { required: usize, actual: usize },
+    InsufficientMatches {
+        /// Minimum required match count.
+        required: usize,
+        /// Provided match count.
+        actual: usize,
+    },
+    /// Calibration league contains fewer than two teams.
     #[error("at least 2 teams are required for calibration (got {count})")]
-    InsufficientTeams { count: usize },
+    InsufficientTeams {
+        /// Provided team count.
+        count: usize,
+    },
+    /// Historical match references a team index outside `0..num_teams`.
     #[error("team index {index} is out of bounds for {num_teams} teams")]
-    TeamIndexOutOfBounds { index: usize, num_teams: usize },
+    TeamIndexOutOfBounds {
+        /// Offending team index.
+        index: usize,
+        /// Number of teams in the league.
+        num_teams: usize,
+    },
+    /// Historical match pairs a team against itself.
     #[error("self-match is not permitted for team index {team_index}")]
-    SelfMatch { team_index: usize },
+    SelfMatch {
+        /// Team index paired with itself.
+        team_index: usize,
+    },
+    /// Maximum likelihood optimization failed to produce finite parameters.
     #[error("Dixon-Coles MLE failed to produce finite parameters after {iterations} iterations")]
-    CalibrationFailed { iterations: usize },
+    CalibrationFailed {
+        /// Iteration count executed before failure.
+        iterations: usize,
+    },
 }
 
-impl std::fmt::Display for MarkovError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for MarkovError {
-    #[verified_engine::verified]
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Math(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl std::fmt::Display for ZipError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for ZipError {}
-
-impl std::fmt::Display for TdaError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::EmptyPointCloud => write!(f, "point cloud cannot be empty"),
-            Self::InvalidRadius { value } => {
-                write!(
-                    f,
-                    "filtration radius must be non-negative and finite (got {value})"
-                )
-            }
-            Self::InvalidDimension { dimension } => {
-                write!(f, "invalid homology dimension {dimension}")
-            }
-            Self::InsufficientPoints { required, actual } => {
-                write!(
-                    f,
-                    "insufficient points (required at least {required}, got {actual})"
-                )
-            }
-            Self::InvalidSimplex { reason } => write!(f, "invalid simplex: {reason}"),
-            Self::MatrixError { reason } => write!(f, "matrix computation failed: {reason}"),
-        }
-    }
-}
-
-impl std::error::Error for TdaError {}
-
-impl std::fmt::Display for CopulaError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for CopulaError {
-    #[verified_engine::verified]
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Math(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl std::fmt::Display for Glicko2Error {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidRating { value } => write!(f, "rating must be finite (got {value})"),
-            Self::InvalidRatingDeviation { value } => {
-                write!(
-                    f,
-                    "rating deviation must be positive and finite (got {value})"
-                )
-            }
-            Self::InvalidVolatility { value } => {
-                write!(f, "volatility must be positive and finite (got {value})")
-            }
-            Self::InvalidSystemConstant { value } => {
-                write!(
-                    f,
-                    "system constant tau must be in [0.3, 1.2] and finite (got {value})"
-                )
-            }
-            Self::InvalidOpponentCount { count } => write!(f, "invalid opponent count ({count})"),
-            Self::VolatilityConvergenceFailed { iterations } => {
-                write!(
-                    f,
-                    "volatility iteration failed to converge after {iterations} steps"
-                )
-            }
-            Self::InvalidScore { value } => {
-                write!(
-                    f,
-                    "match score must be in [0.0, 1.0] and finite (got {value})"
-                )
-            }
-            Self::EmptyMatchResults => write!(f, "match results cannot be empty"),
-            Self::PlayerIndexOutOfBounds { index, roster_len } => {
-                write!(
-                    f,
-                    "player index {index} is out of bounds for roster of length {roster_len}"
-                )
-            }
-            Self::SelfMatch { player_index } => {
-                write!(
-                    f,
-                    "self-match is not permitted for player index {player_index}"
-                )
-            }
-            Self::InsufficientPlayers { count } => {
-                write!(
-                    f,
-                    "at least 2 players are required for tournament pairings (got {count})"
-                )
-            }
-            Self::DimensionMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "buffer length mismatch (expected {expected}, got {actual})"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for Glicko2Error {}
-
-impl From<math_commons::error::MathError> for MarkovError {
-    fn from(err: math_commons::error::MathError) -> Self {
-        MarkovError::Math(err)
-    }
-}
-
-impl From<math_commons::error::MathError> for CopulaError {
-    fn from(err: math_commons::error::MathError) -> Self {
-        CopulaError::Math(err)
-    }
-}
-
+mod display_impls;
 mod submodule_diagnostics;
 mod umbrella;
 

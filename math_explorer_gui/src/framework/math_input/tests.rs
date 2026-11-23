@@ -240,3 +240,49 @@ fn test_coupled_expression_bank_shared_params_transient_edits_and_zero_alloc() {
     });
     assert!(acc.is_finite());
 }
+
+#[test]
+fn test_math_input_rejects_arity_unknown_func_and_out_of_scope_variables() {
+    let ode_cases = [
+        ("sin()", "expected 1 argument, found 0"),
+        ("atan(y, t)", "expected 1 argument, found 2"),
+        ("sin(x)", "Unknown variable 'x'"),
+    ];
+    for (expr, expected_substr) in ode_cases {
+        let bar = MathExpressionInputBar::new("y'", expr, vec![])
+            .with_axes(&["t", "y"])
+            .with_allowed_vars(&["t", "y", "k", "r", "cap_k"]);
+        assert!(!bar.is_valid(), "expected '{expr}' to be rejected");
+        let msg = bar.error_message().expect("expected error message");
+        assert!(
+            msg.contains(expected_substr),
+            "expected '{expected_substr}' in '{msg}' for '{expr}'"
+        );
+    }
+
+    let complex_cases = [
+        ("z^2 + c", "Unknown variable 'c'"),
+        ("conj(z)", "unknown function 'conj'"),
+    ];
+    let ctx = egui::Context::default();
+    for (expr, expected_substr) in complex_cases {
+        let mut bar = MathExpressionInputBar::new("w", expr, vec![])
+            .with_axes(&["z"])
+            .with_complex_mode(true)
+            .with_allowed_vars(&["z", "a"]);
+        assert!(!bar.is_valid(), "expected '{expr}' to be rejected");
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                bar.ui(ui);
+            });
+        });
+        let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+        let mut rendered = Vec::new();
+        collect_text_colors(&shapes, &mut rendered);
+        let badge = rendered
+            .iter()
+            .find(|(text, _)| text.contains("Syntax Error:"))
+            .expect("expected inline error badge");
+        assert!(badge.0.contains(expected_substr));
+    }
+}

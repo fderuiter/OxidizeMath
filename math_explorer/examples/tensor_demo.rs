@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for tensor demo.
 use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::pure_math::tensor::{RiemannianMetric, christoffel_symbols};
 
