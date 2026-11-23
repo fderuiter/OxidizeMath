@@ -1,4 +1,4 @@
-# ADR 0039: Stack-Allocated Geodesic Engine and General Relativity Tab
+# ADR 0040: Stack-Allocated Geodesic Engine and General Relativity Tab
 
 ## Status
 
