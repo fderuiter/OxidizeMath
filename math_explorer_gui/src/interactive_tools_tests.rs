@@ -46,6 +46,7 @@ mod tests {
         check_tool!(crate::tabs::ai::training_monitor::TrainingMonitorTool);
         check_tool!(crate::tabs::ai::loss_landscape::LossLandscapeTool);
         check_tool!(crate::tabs::ai::grid_world::GridWorldTool);
+        check_tool!(crate::tabs::ai::closed_loop_control::ClosedLoopControlTool);
         check_tool!(crate::tabs::medical::beam_profiling::BeamProfilingTool);
         check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
         check_tool!(crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool);

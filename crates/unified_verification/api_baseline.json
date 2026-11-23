@@ -272,6 +272,12 @@
       "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn select_action (& mut self , _ : & S , _ : & [A]) -> Option < A > }"
     },
     {
+      "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn select_action_into (& mut self , _ : & S , _ : & [A] , _ : & mut [f64] ,) -> Option < A > }"
+    },
+    {
+      "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn set_learning_params (& mut self , _ : UnitInterval , _ : UnitInterval ,) }"
+    },
+    {
       "signature": "impl < S , A , Q > QLearningAgent < S , A , Q > where S : State , A : Action , Q : QFunction < S , A > , { pub fn update (& mut self , _ : & S , _ : & A , _ : f64 , _ : & S , _ : & [A] ,) }"
     },
     {
@@ -326,6 +332,15 @@
       "signature": "pub use grid_world :: *"
     },
     {
+      "signature": "pub use q_function :: DiscreteAction"
+    },
+    {
+      "signature": "pub use q_function :: DiscreteState"
+    },
+    {
+      "signature": "pub use q_function :: FixedArrayQFunction"
+    },
+    {
       "signature": "pub use q_function :: TabularQFunction"
     },
     {
@@ -353,6 +368,27 @@
   "crates/domain_ai/src/ai/reinforcement_learning/q_function.rs": [
     {
       "signature": "impl < S , A > TabularQFunction < S , A > where S : State + Hash + Eq , A : Action + Hash + Eq , { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub const fn as_table (& self) -> & [[f64 ; ACTIONS] ; STATES] }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub fn copy_from_table (& mut self , _ : & [[f64 ; ACTIONS] ; STATES]) }"
+    },
+    {
+      "signature": "impl < const STATES : usize , const ACTIONS : usize > FixedArrayQFunction < STATES , ACTIONS > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "pub struct DiscreteAction"
+    },
+    {
+      "signature": "pub struct DiscreteState"
+    },
+    {
+      "signature": "pub struct FixedArrayQFunction < const STATES : usize , const ACTIONS : usize >"
     },
     {
       "signature": "pub struct TabularQFunction < S , A > where S : State + Hash + Eq , A : Action + Hash + Eq ,"
