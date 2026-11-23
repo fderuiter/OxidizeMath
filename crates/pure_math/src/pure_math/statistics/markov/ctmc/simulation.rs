@@ -2,11 +2,11 @@
 
 use super::{ContinuousMarkovChain, Result};
 use crate::error::MarkovError;
+use crate::pure_math::analysis::stochastic::{GillespieSolver, StochasticError, StochasticSystem};
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
 use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
-use rand_distr::{Distribution, Exp};
 
 impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     /// Generates a sample trajectory `(time, state)` from the CTMC via Gillespie's algorithm.
@@ -14,6 +14,25 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     /// # Errors
     ///
     /// Returns [`MarkovError::InvalidState`] if `initial_state` is out of bounds or `max_time < 0`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::markov::ContinuousMarkovChain;
+    /// use math_explorer::nalgebra::DMatrix;
+    ///
+    /// let generator = DMatrix::from_row_slice(2, 2, &[
+    ///     -1.0,  1.0,
+    ///      2.0, -2.0,
+    /// ]);
+    /// let chain = ContinuousMarkovChain::new(generator).unwrap();
+    /// let mut rng = math_explorer::rng::OxidizeRng::default();
+    ///
+    /// let trajectory = chain.simulate_trajectory(0, 10.0, &mut rng).unwrap();
+    /// assert!(!trajectory.is_empty());
+    /// assert_eq!(trajectory[0], (0.0, 0));
+    /// ```
     #[verified_engine::verified]
     pub fn simulate_trajectory<R: rand::Rng>(
         &self,
@@ -21,6 +40,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
         max_time: T,
         rng: &mut R,
     ) -> Result<Vec<(T, usize)>> {
+        debug_assert!(self.num_states > 0);
         if initial_state >= self.num_states {
             return Err(MarkovError::InvalidState {
                 reason: format!("Initial state {initial_state} out of bounds"),
@@ -35,59 +55,68 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
         let mut trajectory = vec![(T::zero(), initial_state)];
         let mut current_state = initial_state;
         let mut current_time = T::zero();
+        let mut solver = GillespieSolver::with_capacity(rng, self.num_states);
 
         while current_time < max_time {
-            let rate = -self.generator[(current_state, current_state)];
-            let rate_f64 = rate.to_f64().unwrap_or(0.0);
-            if rate <= T::zero() || rate_f64 <= 0.0 {
-                break;
-            }
-
-            let exp_dist = Exp::new(rate_f64).map_err(|_| {
+            let holding_time = solver.step(self, &mut current_state).map_err(|err| {
                 MarkovError::Math(math_commons::error::MathError::NumericalError {
-                    reason: format!("Invalid rate for exponential: {rate_f64}"),
+                    reason: err.to_string(),
                 })
             })?;
-            let holding_time: f64 = exp_dist.sample(rng);
-            current_time += T::from_f64(holding_time).unwrap();
+            if !holding_time.is_finite() {
+                break;
+            }
+            let Some(dt_val) = T::from_f64(holding_time) else {
+                return Err(MarkovError::Math(
+                    math_commons::error::MathError::ConversionError {
+                        reason: format!("Failed to convert holding time {holding_time}"),
+                    },
+                ));
+            };
+            current_time += dt_val;
             if current_time >= max_time {
                 break;
             }
-
-            let Some(next_state) = self.sample_jump_target(current_state, rate_f64, rng) else {
-                break;
-            };
-            current_state = next_state;
             trajectory.push((current_time, current_state));
         }
 
         Ok(trajectory)
     }
+}
 
+impl<T: RealField + Copy + ToPrimitive> StochasticSystem<usize> for ContinuousMarkovChain<T> {
     #[verified_engine::verified]
-    fn sample_jump_target<R: Rng>(
-        &self,
-        current_state: usize,
-        total_rate: f64,
-        rng: &mut R,
-    ) -> Option<usize> {
-        let threshold: f64 = rng.r#gen::<f64>() * total_rate;
-        let mut cumulative = 0.0_f64;
-        let mut fallback = None;
-
+    fn propensities(&self, state: &usize, out: &mut Vec<f64>) {
+        debug_assert!(*state < self.num_states);
+        let i = *state;
+        let tol = math_commons::registry::TOLERANCE_HIGH;
+        let total_exit = (-self.generator[(i, i)]).to_f64().unwrap_or(0.0);
+        if total_exit <= 0.0 {
+            return;
+        }
+        let min_edge = (total_exit * 1e-15).min(tol);
         for j in 0..self.num_states {
-            if j != current_state {
-                let r = self.generator[(current_state, j)].to_f64().unwrap_or(0.0);
-                if r > 0.0 {
-                    fallback = Some(j);
-                    cumulative += r;
-                    if threshold < cumulative {
-                        return Some(j);
-                    }
-                }
+            if j == i {
+                out.push(0.0);
+            } else {
+                let rate = self.generator[(i, j)].to_f64().unwrap_or(0.0);
+                out.push(if rate > min_edge { rate } else { 0.0 });
             }
         }
-        fallback
+    }
+
+    #[verified_engine::verified]
+    fn react(
+        &self,
+        state: &mut usize,
+        reaction_index: usize,
+    ) -> std::result::Result<(), StochasticError> {
+        debug_assert!(*state < self.num_states);
+        if reaction_index >= self.num_states {
+            return Err(StochasticError::InvalidReactionIndex(reaction_index));
+        }
+        *state = reaction_index;
+        Ok(())
     }
 }
 

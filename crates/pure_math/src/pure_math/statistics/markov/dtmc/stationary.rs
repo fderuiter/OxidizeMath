@@ -1,260 +1,182 @@
-//! QR linear nullspace stationary and limiting distributions for discrete-time Markov chains.
+//! Stationary and limiting distribution solvers for [`MarkovChain`].
 
-use super::MarkovChain;
-use nalgebra::{DMatrix, DVector, RealField};
+use super::{MarkovChain, Result};
+use crate::error::MarkovError;
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::{Dimension, flatten_2d_index};
+use math_commons::stochastic::SolverWorkspace;
+use nalgebra::{DVector, RealField};
 use num_traits::ToPrimitive;
 
 impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
-    /// Computes the unique stationary distribution $\pi$ solving $(P^T - I)\pi = 0$, $\sum_i \pi_i = 1$.
+    /// Computes the unique stationary distribution $\pi$ satisfying $\pi^T P = \pi^T$ and
+    /// $\sum_i \pi_i = 1$ via Tarjan SCC sink isolation and Householder QR.
     ///
-    /// Returns `Some(pi)` **if and only if** the chain has a single closed recurrent class
-    /// (determined via Tarjan SCC), regardless of periodicity. Chains with multiple closed
-    /// or absorbing classes have a multi-dimensional stationary simplex and return `None`.
+    /// Returns `None` when multiple closed sink classes exist (e.g. multi-absorbing chains where
+    /// stationary weights are non-unique). Handles periodic irreducible chains (such as bipartite
+    /// cycles) directly without power-iteration oscillation.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
+    /// use math_explorer::nalgebra::DMatrix;
+    ///
+    /// let transition_matrix = DMatrix::from_row_slice(2, 2, &[
+    ///     0.8, 0.2,
+    ///     0.4, 0.6,
+    /// ]);
+    /// let state_types = vec![StateType::Transient, StateType::Transient];
+    /// let chain = MarkovChain::<f64>::new(transition_matrix, state_types).unwrap();
+    ///
+    /// let pi = chain.stationary_distribution().unwrap();
+    /// assert!((pi[0] - 2.0 / 3.0).abs() < math_explorer::registry::TOLERANCE_HIGH);
+    /// assert!((pi[1] - 1.0 / 3.0).abs() < math_explorer::registry::TOLERANCE_HIGH);
+    /// ```
     #[must_use]
     #[verified_engine::verified]
     pub fn stationary_distribution(&self) -> Option<DVector<T>> {
-        let closed = self.closed_classes();
-        if closed.len() != 1 {
-            return None;
-        }
-
         let n = self.num_states();
-        if closed[0].states.len() == 1 {
-            let mut pi = DVector::zeros(n);
-            pi[closed[0].states[0]] = T::one();
-            return Some(pi);
-        }
-
-        solve_stochastic_qr_nullspace(&self.transition_matrix)
+        assert!(n > 0);
+        let mut ws = SolverWorkspace::new(n, 0);
+        let mut out = DVector::zeros(n);
+        self.stationary_distribution_with_workspace(&mut ws, &mut out)
+            .then_some(out)
     }
 
-    /// Computes $\lim_{k \to \infty} (\pi^{(0)})^T P^k$ from `initial_weights`.
-    ///
-    /// - For absorbing chains, projects transient weights through $B = N \cdot R$ (`u_A = B^T w_T + w_A`).
-    /// - For chains with aperiodic closed classes, projects initial mass onto each closed class's
-    ///   unique stationary distribution.
-    /// - Returns `None` if `initial_weights` is invalid or any positively weighted closed class is periodic.
-    #[must_use]
+    /// Computes the unique stationary distribution into `out` using preallocated [`SolverWorkspace`]
+    /// buffers with zero heap allocations when `ws.state_capacity() >= self.num_states()`.
     #[verified_engine::verified]
-    pub fn limiting_distribution(&self, initial_weights: &DVector<T>) -> Option<DVector<T>> {
-        let weights = self.normalize_initial_weights(initial_weights)?;
-        let fixed_tol = T::from_f64(1e-12).unwrap();
-        if (&(self.transition_matrix.transpose() * &weights) - &weights).amax() <= fixed_tol {
-            return Some(weights);
+    pub fn stationary_distribution_with_workspace(
+        &self,
+        ws: &mut SolverWorkspace,
+        out: &mut DVector<T>,
+    ) -> bool {
+        let n = self.num_states();
+        debug_assert_eq!(out.len(), n);
+        if n == 0 || out.len() != n {
+            return false;
         }
-
-        let closed = self.closed_classes();
-        if closed.is_empty() {
-            return None;
-        }
-
-        // Canonical absorbing case: project transient state weights directly through B = N * R.
-        if !self.absorbing_indices.is_empty() && closed.len() == self.absorbing_indices.len() {
-            return self.project_absorbing_limiting(&weights);
-        }
-
-        if closed.len() == 1 {
-            let rep = *closed[0].states.first()?;
-            if self.state_period(rep).ok()? != 1 {
-                return None;
+        {
+            let staged = ws.operator_staging_mut(n);
+            for r in 0..n {
+                for c in 0..n {
+                    let Some(v) = self.transition_matrix[(r, c)].to_f64() else {
+                        return false;
+                    };
+                    staged[flatten_2d_index(c, r, n)] = v;
+                }
             }
-            return self.stationary_distribution();
         }
-
-        self.project_general_aperiodic_limiting(&weights, &closed)
+        let Some(pi_f64) = ws.solve_staged_dtmc_stationary_slice(n) else {
+            return false;
+        };
+        for (i, &val) in pi_f64.iter().enumerate() {
+            let Some(cast) = T::from_f64(val) else {
+                return false;
+            };
+            out[i] = cast;
+        }
+        true
     }
 
-    /// Convenience wrapper computing `limiting_distribution` starting deterministically in `initial_state`.
+    /// Maps an initial state probability vector $\pi_0$ to its asymptotic limiting distribution
+    /// $\lim_{n \to \infty} \pi_0^T P^n$.
+    ///
+    /// For absorbing chains, transient mass is mapped through [`Self::absorption_probabilities`]
+    /// ($B = N \cdot R$) onto absorbing states ($\pi_{\infty}(a_j) = \pi_0(a_j) + \sum_i \pi_0(t_i) B_{ij}$,
+    /// $\pi_{\infty}(t_i) = 0$). For non-absorbing chains, returns the unique stationary distribution
+    /// when the unique closed recurrent class is aperiodic, or `Err(MarkovError::InvalidState)`
+    /// when periodicity or multiple non-absorbing closed classes prevent convergence.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `initial` is not a valid probability vector on `self.num_states()`,
+    /// $(I - Q)$ is singular, or the chain has no limiting distribution due to periodicity or
+    /// multiple non-absorbing closed classes.
+    #[verified_engine::verified]
+    pub fn limiting_distribution(&self, initial: &DVector<T>) -> Result<DVector<T>> {
+        let n = self.num_states();
+        debug_assert!(n > 0);
+        self.validate_initial_distribution(initial)?;
+
+        if !self.absorbing_indices.is_empty() {
+            return self.limiting_via_absorption(initial);
+        }
+
+        let Some(pi) = self.stationary_distribution() else {
+            return Err(MarkovError::InvalidState {
+                reason: "Chain has multiple closed recurrent classes and no absorbing states"
+                    .to_string(),
+            });
+        };
+        if self.period() != Some(1) {
+            return Err(MarkovError::InvalidState {
+                reason: "Periodic Markov chain has no limiting distribution".to_string(),
+            });
+        }
+        Ok(pi)
+    }
+
+    /// Convenience wrapper computing [`Self::limiting_distribution`] starting deterministically
+    /// in `initial_state`, returning `None` when `initial_state` is out of bounds or no limit exists.
     #[must_use]
     #[verified_engine::verified]
     pub fn limiting_distribution_from_state(&self, initial_state: usize) -> Option<DVector<T>> {
-        if initial_state >= self.num_states() {
+        let n = self.num_states();
+        if initial_state >= n {
             return None;
         }
-        let mut e = DVector::zeros(self.num_states());
+        let mut e = DVector::zeros(n);
         e[initial_state] = T::one();
-        self.limiting_distribution(&e)
+        self.limiting_distribution(&e).ok()
     }
 
     #[verified_engine::verified]
-    fn normalize_initial_weights(&self, weights: &DVector<T>) -> Option<DVector<T>> {
-        if weights.len() != self.num_states() {
-            return None;
-        }
-        let neg_tol = T::from_f64(1e-12).unwrap();
-        let sum_tol = T::from_f64(math_commons::registry::TOLERANCE_FAST).unwrap();
-        let mut cleaned = DVector::zeros(weights.len());
-        let mut total = T::zero();
-        for i in 0..weights.len() {
-            let w = weights[i];
-            if !w.is_finite() || w < -neg_tol {
-                return None;
-            }
-            let clamped = if w < T::zero() { T::zero() } else { w };
-            cleaned[i] = clamped;
-            total += clamped;
-        }
-        if (total - T::one()).abs() > sum_tol || total <= T::zero() {
-            return None;
-        }
-        Some(cleaned / total)
-    }
-
-    #[verified_engine::verified]
-    fn project_absorbing_limiting(&self, weights: &DVector<T>) -> Option<DVector<T>> {
+    fn validate_initial_distribution(&self, initial: &DVector<T>) -> Result<()> {
         let n = self.num_states();
-        let mut limiting = DVector::zeros(n);
+        debug_assert!(n > 0);
+        if initial.len() != n {
+            return Err(MarkovError::Math(MathError::DimensionMismatch {
+                expected: Dimension(n),
+                actual: Dimension(initial.len()),
+            }));
+        }
+        let mut sum = 0.0_f64;
+        let tol_hi = math_commons::registry::TOLERANCE_HIGH;
+        for i in 0..n {
+            let val = initial[i].to_f64().unwrap_or(f64::NAN);
+            if !val.is_finite() || val < -tol_hi || val > 1.0 + tol_hi {
+                return Err(MarkovError::InvalidProbability { value: val });
+            }
+            sum += val;
+        }
+        if (sum - 1.0).abs() > math_commons::registry::TOLERANCE_FAST {
+            return Err(MarkovError::NotStochastic {
+                reason: format!("Initial distribution sums to {sum}, expected 1.0"),
+            });
+        }
+        Ok(())
+    }
+
+    #[verified_engine::verified]
+    fn limiting_via_absorption(&self, initial: &DVector<T>) -> Result<DVector<T>> {
+        let n = self.num_states();
+        debug_assert!(!self.absorbing_indices.is_empty());
         if self.transient_indices.is_empty() {
-            return Some(weights.clone());
+            return Ok(initial.clone());
         }
-
-        let b = self.absorption_probabilities().ok()?;
-        let mut w_t = DVector::zeros(self.transient_indices.len());
-        for (k, &s) in self.transient_indices.iter().enumerate() {
-            w_t[k] = weights[s];
-        }
-
-        let absorbed_from_transient = b.transpose() * w_t;
-        for (j, &abs_state) in self.absorbing_indices.iter().enumerate() {
-            limiting[abs_state] = weights[abs_state] + absorbed_from_transient[j];
-        }
-        Some(limiting)
-    }
-
-    #[verified_engine::verified]
-    fn project_general_aperiodic_limiting(
-        &self,
-        weights: &DVector<T>,
-        closed: &[super::scc::CommunicatingClass],
-    ) -> Option<DVector<T>> {
-        let n = self.num_states();
-        let mut is_recurrent = vec![false; n];
-        for c in closed {
-            let rep = *c.states.first()?;
-            if self.state_period(rep).ok()? != 1 {
-                return None;
-            }
-            for &s in &c.states {
-                is_recurrent[s] = true;
-            }
-        }
-
-        let transient: Vec<usize> = (0..n).filter(|&s| !is_recurrent[s]).collect();
+        let b = self.absorption_probabilities()?;
         let mut limiting = DVector::zeros(n);
-
-        for c in closed {
-            let class_pi = solve_subchain_stationary(&self.transition_matrix, &c.states)?;
-            let hit_mass = self.class_absorption_mass(weights, &transient, &c.states)?;
-            for (local_idx, &state) in c.states.iter().enumerate() {
-                limiting[state] += hit_mass * class_pi[local_idx];
+        for (j, &abs_idx) in self.absorbing_indices.iter().enumerate() {
+            let mut mass = initial[abs_idx];
+            for (i, &tr_idx) in self.transient_indices.iter().enumerate() {
+                mass += initial[tr_idx] * b[(i, j)];
             }
+            limiting[abs_idx] = mass;
         }
-        Some(limiting)
+        Ok(limiting)
     }
-
-    #[verified_engine::verified]
-    fn class_absorption_mass(
-        &self,
-        weights: &DVector<T>,
-        transient: &[usize],
-        class_states: &[usize],
-    ) -> Option<T> {
-        let mut mass = class_states
-            .iter()
-            .fold(T::zero(), |acc, &s| acc + weights[s]);
-        if transient.is_empty() {
-            return Some(mass);
-        }
-
-        let m = transient.len();
-        let mut lhs = DMatrix::identity(m, m);
-        let mut rhs = DVector::zeros(m);
-        for (r, &i) in transient.iter().enumerate() {
-            for (col, &j) in transient.iter().enumerate() {
-                lhs[(r, col)] -= self.transition_matrix[(i, j)];
-            }
-            rhs[r] = class_states
-                .iter()
-                .fold(T::zero(), |acc, &s| acc + self.transition_matrix[(i, s)]);
-        }
-
-        let hit_probs = lhs.qr().solve(&rhs)?;
-        for (r, &i) in transient.iter().enumerate() {
-            mass += weights[i] * hit_probs[r];
-        }
-        Some(mass)
-    }
-}
-
-#[verified_engine::verified]
-fn solve_subchain_stationary<T: RealField + Copy + ToPrimitive>(
-    transition: &DMatrix<T>,
-    states: &[usize],
-) -> Option<DVector<T>> {
-    let m = states.len();
-    if m == 1 {
-        return Some(DVector::from_element(1, T::one()));
-    }
-    let mut sub = DMatrix::zeros(m, m);
-    for (r, &i) in states.iter().enumerate() {
-        for (c, &j) in states.iter().enumerate() {
-            sub[(r, c)] = transition[(i, j)];
-        }
-    }
-    solve_stochastic_qr_nullspace(&sub)
-}
-
-#[verified_engine::verified]
-fn solve_stochastic_qr_nullspace<T: RealField + Copy + ToPrimitive>(
-    transition: &DMatrix<T>,
-) -> Option<DVector<T>> {
-    let n = transition.nrows();
-    let mut a = DMatrix::zeros(n + 1, n);
-    for i in 0..n {
-        for j in 0..n {
-            let val = transition[(j, i)] - if i == j { T::one() } else { T::zero() };
-            a[(i, j)] = val;
-        }
-    }
-    for j in 0..n {
-        a[(n, j)] = T::one();
-    }
-
-    let mut b = DVector::zeros(n + 1);
-    b[n] = T::one();
-
-    let qr = a.qr();
-    let r = qr.r();
-    let r_max = (0..n).fold(T::zero(), |acc, i| acc.max(r[(i, i)].abs()));
-    let rank_tol = T::from_f64(1e-12).unwrap() * r_max;
-    if r_max <= T::zero() || (0..n).any(|i| r[(i, i)].abs() <= rank_tol) {
-        return None;
-    }
-
-    let q_t_b = qr.q().transpose() * b;
-    let mut pi = r.solve_upper_triangular(&q_t_b)?;
-
-    let clamp_tol = T::from_f64(1e-12).unwrap();
-    let mut total = T::zero();
-    for i in 0..n {
-        if !pi[i].is_finite() || pi[i] < -clamp_tol {
-            return None;
-        }
-        if pi[i] < T::zero() {
-            pi[i] = T::zero();
-        }
-        total += pi[i];
-    }
-    if total <= T::zero() {
-        return None;
-    }
-    pi /= total;
-
-    let residual = (&(transition.transpose() * &pi) - &pi).amax();
-    if residual > T::from_f64(1e-10).unwrap() {
-        return None;
-    }
-    Some(pi)
 }
 
 // [cite:clinical_trials_statistics]

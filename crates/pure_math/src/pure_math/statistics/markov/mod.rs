@@ -332,6 +332,7 @@ pub use hmm::{
     BaumWelchConfig, BaumWelchReport, BaumWelchResult, BaumWelchWorkspace, HiddenMarkovModel,
     ViterbiWorkspace,
 };
+pub use math_commons::stochastic::SolverWorkspace;
 pub use num_traits::ToPrimitive;
 pub use parrondo::{
     ParrondoEnsemble, ParrondoGame, ParrondoParams, ParrondoPhaseGridConfig, ParrondoPhasePoint,

@@ -406,3 +406,66 @@ fn test_dtmc_serde_roundtrip_and_validation_rejections() {
     let mut de = serde_json::Deserializer::from_str(&json);
     assert!(MarkovChain::<f64>::deserialize(&mut de).is_ok());
 }
+
+#[test]
+fn test_periodic_stationary_multi_sink_rejection_and_limiting_distribution() {
+    use math_commons::stochastic::SolverWorkspace;
+    use verified_engine::engine::VerifiedEngine;
+
+    // Periodic 3-state bipartite chain: 0 <-> {1, 2}, unique stationary = [0.5, 0.25, 0.25].
+    let p_periodic = DMatrix::from_row_slice(3, 3, &[0.0, 0.5, 0.5, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+    let periodic_chain = MarkovChain::new(p_periodic, vec![StateType::Transient; 3]).unwrap();
+    let pi = periodic_chain
+        .stationary_distribution()
+        .expect("periodic irreducible chain has unique stationary distribution");
+    assert_relative_eq!(pi[0], 0.5, epsilon = 1e-12);
+    assert_relative_eq!(pi[1], 0.25, epsilon = 1e-12);
+    assert_relative_eq!(pi[2], 0.25, epsilon = 1e-12);
+
+    // Periodic chain has no limiting distribution.
+    let init_periodic = DVector::from_vec(vec![1.0, 0.0, 0.0]);
+    assert!(
+        periodic_chain
+            .limiting_distribution(&init_periodic)
+            .is_err()
+    );
+
+    // Zero-allocation workspace solve.
+    let mut ws = SolverWorkspace::new(3, 0);
+    let mut out = DVector::zeros(3);
+    VerifiedEngine::run_verified(|| {
+        assert!(periodic_chain.stationary_distribution_with_workspace(&mut ws, &mut out));
+    });
+    assert_relative_eq!(out[0], 0.5, epsilon = 1e-12);
+
+    // Symmetric 4-state Gambler's Ruin: states 0 and 3 absorbing -> stationary is non-unique (None),
+    // while limiting_distribution maps initial distribution through absorption matrix B = N * R.
+    let p_ruin = DMatrix::from_row_slice(
+        4,
+        4,
+        &[
+            1.0, 0.0, 0.0, 0.0, //
+            0.5, 0.0, 0.5, 0.0, //
+            0.0, 0.5, 0.0, 0.5, //
+            0.0, 0.0, 0.0, 1.0, //
+        ],
+    );
+    let ruin_chain = MarkovChain::new(
+        p_ruin,
+        vec![
+            StateType::Absorbing,
+            StateType::Transient,
+            StateType::Transient,
+            StateType::Absorbing,
+        ],
+    )
+    .unwrap();
+    assert!(ruin_chain.stationary_distribution().is_none());
+
+    let start_at_1 = DVector::from_vec(vec![0.0, 1.0, 0.0, 0.0]);
+    let lim = ruin_chain.limiting_distribution(&start_at_1).unwrap();
+    assert_relative_eq!(lim[0], 2.0 / 3.0, epsilon = 1e-12);
+    assert_relative_eq!(lim[1], 0.0, epsilon = 1e-12);
+    assert_relative_eq!(lim[2], 0.0, epsilon = 1e-12);
+    assert_relative_eq!(lim[3], 1.0 / 3.0, epsilon = 1e-12);
+}

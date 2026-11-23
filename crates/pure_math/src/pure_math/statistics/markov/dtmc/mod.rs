@@ -312,6 +312,14 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
 
     /// Computes the Expected Possession Value (EPV) $N \cdot r$ for each transient state.
     ///
+    /// # Arguments
+    ///
+    /// * `rewards` - Reward for each absorbing state
+    ///
+    /// # Returns
+    ///
+    /// A vector of EPV values, one for each transient state.
+    ///
     /// # Errors
     ///
     /// Returns an error if `rewards.len() != self.num_absorbing()` or $N$ is singular.

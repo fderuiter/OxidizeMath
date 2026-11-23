@@ -131,7 +131,10 @@ pub mod core;
 pub mod exact_solver;
 pub mod solver;
 
-pub use analysis::{MomentumType, OuAnalyzer, PerformanceStats, estimate_ou_params};
+pub use analysis::{
+    MomentumType, OuAnalyzer, PerformanceStats, estimate_ou_params,
+    summarize_terminal_values_with_workspace,
+};
 pub use core::{LongTermMean, OuParams};
 pub use exact_solver::ExactOuSolver;
 pub use solver::{EulerMaruyama, TimeStep};

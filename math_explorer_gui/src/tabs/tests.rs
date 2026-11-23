@@ -87,6 +87,7 @@ fn test_build_script_emits_scoped_rerun_directives() {
     for expected in [
         "build.rs",
         "build_snapshot.rs",
+        "build_stage.rs",
         "src/tabs/mod.rs",
         "../traceability.toml",
         "../papers",
@@ -144,7 +145,8 @@ fn collect_static_mod_gates(mod_rs: &str) -> std::collections::BTreeMap<String, 
 
 #[test]
 fn test_static_tab_modules_match_filesystem_tabs_and_inventory_descriptors() {
-    let tabs_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/tabs");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
+    let tabs_dir = Path::new(&manifest_dir).join("src/tabs");
     let mod_rs = fs::read_to_string(tabs_dir.join("mod.rs")).expect("read src/tabs/mod.rs");
     let declared = collect_static_mod_gates(&mod_rs);
     let mut discovered = std::collections::BTreeSet::new();
