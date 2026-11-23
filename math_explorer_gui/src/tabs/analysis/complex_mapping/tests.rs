@@ -126,3 +126,247 @@ fn test_complex_mapping_clamps_grid_density_and_caches_contours_across_probe_mov
     let _ = ctx.run(egui::RawInput::default(), |c| live.show(c));
     assert_eq!(live.cache.eval_count, 1);
 }
+
+fn hover_frame_input(pos: egui::Pos2) -> egui::RawInput {
+    egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::Vec2::new(1024.0, 768.0),
+        )),
+        events: vec![egui::Event::PointerMoved(pos)],
+        ..Default::default()
+    }
+}
+
+fn run_tool_frame(ctx: &egui::Context, tool: &mut ComplexMappingTool, raw: egui::RawInput) {
+    let _ = ctx.run(raw, |c| {
+        egui_plot::clear_last_plot_datasets();
+        tool.show(c);
+    });
+}
+
+#[test]
+fn test_conformal_cache_reuse_invalidation_and_invalid_bounds_clearing() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut tool = ComplexMappingTool::default();
+    let ctx = egui::Context::default();
+    run_tool_frame(&ctx, &mut tool, hover_frame_input(egui::pos2(300.0, 300.0)));
+    assert_eq!(tool.cache.eval_count, 1);
+    let w_cap = tool.cache.w_vertical.points.capacity();
+    assert!(w_cap > 0);
+
+    // Idle, pointer hover, and inspection_point updates reuse cached contours without recomputing
+    run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
+    run_tool_frame(&ctx, &mut tool, hover_frame_input(egui::pos2(720.0, 340.0)));
+    tool.inspection_point = [0.25, -1.5];
+    run_tool_frame(&ctx, &mut tool, hover_frame_input(egui::pos2(740.0, 360.0)));
+    assert_eq!(tool.cache.eval_count, 1);
+
+    // Grid bounds, density, function, Custom formula, param, and fallback edits invalidate cache
+    tool.grid_min = -3.0;
+    run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
+    assert_eq!(tool.cache.eval_count, 2);
+    assert!(tool.cache.w_vertical.points.capacity() >= w_cap);
+
+    tool.grid_max = 3.0;
+    tool.grid_density = 8;
+    run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
+    assert_eq!(tool.cache.eval_count, 3);
+
+    tool.function = MappingFunction::Custom;
+    run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
+    assert_eq!(tool.cache.eval_count, 4);
+
+    tool.math_input.set_expression("z + a^2 / z");
+    run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
+    assert_eq!(tool.cache.eval_count, 5);
+
+    tool.math_input.set_param("a", 0.6);
+    run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
+    assert_eq!(tool.cache.eval_count, 6);
+
+    tool.math_input.set_expression("z +");
+    run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
+    assert_eq!(tool.cache.eval_count, 7);
+
+    // Invalid grid bounds clear cached contour buffers and recover cleanly once valid
+    tool.grid_min = 4.0;
+    tool.grid_max = 2.0;
+    run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
+    assert!(tool.cache.z_vertical.is_empty() && tool.cache.w_vertical.is_empty());
+
+    tool.grid_min = -2.0;
+    run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
+    assert_eq!(tool.cache.eval_count, 8);
+    assert!(!tool.cache.w_vertical.is_empty());
+}
+
+#[test]
+fn test_contour_batch_shapes_hover_log_split_and_nan_free_extract_points() {
+    use egui_plot::{PlotBounds, PlotItem as _, PlotTransform};
+
+    let mut tool = ComplexMappingTool {
+        function: MappingFunction::Inverse,
+        grid_density: 5,
+        ..Default::default()
+    };
+    assert!(tool.ensure_cached_contours());
+
+    let z_batch = cache::ContourBatch::new(
+        "Re(z) grid",
+        &tool.cache.z_vertical,
+        egui::Color32::LIGHT_BLUE,
+        tool.cache.generation,
+    );
+    let w_batch = cache::ContourBatch::new(
+        "u-contours",
+        &tool.cache.w_vertical,
+        egui::Color32::LIGHT_BLUE,
+        tool.cache.generation,
+    );
+    assert!(z_batch
+        .extract_points()
+        .into_iter()
+        .chain(w_batch.extract_points())
+        .all(|pt| pt[0].is_finite() && pt[1].is_finite()));
+    assert!(w_batch.extract_export_primitives().is_empty());
+
+    let frame = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 400.0));
+    let lin_tf = PlotTransform::new(frame, PlotBounds::from_min_max([-5.0, -5.0], [5.0, 5.0]), true);
+    let mid_pos = lin_tf.position_from_point(&egui_plot::PlotPoint::new(-1.02, 0.35));
+    let (snap_pt, _) = z_batch.closest_continuous_point(mid_pos, &lin_tf).unwrap();
+    assert!((snap_pt.x - (-1.0)).abs() < 1e-4 && (snap_pt.y - 0.35).abs() < 1e-3);
+
+    let mut log_tf =
+        PlotTransform::new(frame, PlotBounds::from_min_max([0.01, 0.01], [10.0, 10.0]), true);
+    log_tf.set_log_axis(egui::Vec2b::new(true, false));
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |c| {
+        egui::CentralPanel::default().show(c, |ui| {
+            let mut z_shapes = Vec::new();
+            z_batch.shapes(ui, &lin_tf, &mut z_shapes);
+            assert_eq!(z_shapes.len(), 5);
+            assert!(z_shapes.iter().all(|s| matches!(s, egui::Shape::LineSegment { .. })));
+
+            let mut w_log_shapes = Vec::new();
+            w_batch.shapes(ui, &log_tf, &mut w_log_shapes);
+            assert!(!w_log_shapes.is_empty());
+            for shape in &w_log_shapes {
+                if let egui::Shape::Path(path_shape) = shape {
+                    assert!(path_shape.points.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
+                }
+            }
+        });
+    });
+}
+
+#[test]
+fn test_state_revision_updates_across_all_tracked_inputs() {
+    let mut tool = ComplexMappingTool::default();
+    let r0 = tool.state_revision();
+    assert!(r0 > 0);
+
+    tool.function = MappingFunction::Sine;
+    let r1 = tool.state_revision();
+    assert!(r1 > 0 && r1 != r0);
+
+    tool.grid_min = -3.5;
+    let r2 = tool.state_revision();
+    assert_ne!(r2, r1);
+
+    tool.grid_max = 3.5;
+    let r3 = tool.state_revision();
+    assert_ne!(r3, r2);
+
+    tool.grid_density = 16;
+    let r4 = tool.state_revision();
+    assert_ne!(r4, r3);
+
+    tool.inspection_point = [0.25, -0.75];
+    let r5 = tool.state_revision();
+    assert_ne!(r5, r4);
+
+    tool.math_input.set_expression("sin(z) + 1/z");
+    let r6 = tool.state_revision();
+    assert_ne!(r6, r5);
+}
+
+fn dispatch_framework_export(
+    fw: &mut crate::framework::SimulationFramework,
+    ctx: &egui::Context,
+    fmt: crate::framework::ExportFormat,
+) {
+    let raw = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::Vec2::new(1024.0, 768.0),
+        )),
+        ..Default::default()
+    };
+    let _ = ctx.run(raw, |c| {
+        egui_plot::clear_last_plot_datasets();
+        fw.show_export_modal = fmt != crate::framework::ExportFormat::Csv;
+        fw.queue_export(fmt);
+        fw.show(c, "cm_export_fw");
+    });
+    assert!(
+        !fw.is_diverged(),
+        "FiniteStateGuard must not diverge on pole contours"
+    );
+    assert_eq!(
+        fw.export_status_severity,
+        crate::framework::ExportStatusSeverity::Success
+    );
+}
+
+#[test]
+fn test_finite_state_guard_and_disjoint_contour_exports_png_svg_gif_csv() {
+    use crate::framework::{ExportFormat, SimulationFramework};
+
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut pole_tool = ComplexMappingTool {
+        function: MappingFunction::Custom,
+        grid_density: 5,
+        inspection_point: [0.0, 0.0],
+        ..Default::default()
+    };
+    pole_tool.math_input.set_expression("z^3 - 1/z");
+
+    // Cold export_plot_primitives builds disjoint polylines before any UI frame runs
+    let cold_prims = pole_tool.export_plot_primitives();
+    let polyline_count = cold_prims
+        .iter()
+        .filter(|p| matches!(p, egui_plot::ExportPrimitive::Polyline { .. }))
+        .count();
+    assert!(polyline_count > 4 * pole_tool.grid_density);
+
+    let mut fw = SimulationFramework::new("__complex_mapping_export_test__");
+    fw.export_options.width = 320;
+    fw.export_options.height = 240;
+    fw.export_gif_frames = 4;
+    fw.active_tool = Some(Box::new(pole_tool));
+
+    let ctx = egui::Context::default();
+    dispatch_framework_export(&mut fw, &ctx, ExportFormat::Png);
+    let png = fw.export_queue.last_exported_bytes.as_deref().unwrap();
+    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+
+    dispatch_framework_export(&mut fw, &ctx, ExportFormat::Svg);
+    let svg = fw.export_queue.last_exported_content.as_deref().unwrap();
+    assert!(!svg.contains("NaN"));
+    assert!(svg.matches("<polyline ").count() >= polyline_count);
+
+    dispatch_framework_export(&mut fw, &ctx, ExportFormat::Gif);
+    let gif = fw.export_queue.last_exported_bytes.as_deref().unwrap();
+    assert!(gif.starts_with(b"GIF89a"));
+
+    dispatch_framework_export(&mut fw, &ctx, ExportFormat::Csv);
+    let csv = fw.export_queue.last_exported_content.as_deref().unwrap();
+    assert!(csv.contains("Re(z) grid,") && csv.contains("Im(z) grid,"));
+    assert!(csv.contains("\"u-contours\",") && csv.contains("\"v-contours\","));
+    assert!(!csv.contains("NaN") && !csv.contains("inf"));
+}
