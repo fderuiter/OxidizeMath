@@ -134,7 +134,11 @@ pub(crate) fn stamp_double_barrier_into(potential: &mut [f64], x_axis: &[f64]) {
     }
 }
 
-fn detect_sculpted_interval(potential: &[f64], base_potential: &[f64], x_axis: &[f64]) -> Option<(f64, f64)> {
+fn detect_sculpted_interval(
+    potential: &[f64],
+    base_potential: &[f64],
+    x_axis: &[f64],
+) -> Option<(f64, f64)> {
     let n = potential.len().min(base_potential.len()).min(x_axis.len());
     let mut first = None;
     let mut last = None;
@@ -186,9 +190,11 @@ impl WaveRunner {
         if !sparse.is_empty()
             && apply_sparse_potential(self.potential.as_mut_slice(), sparse).is_ok()
         {
-            if let Some((xl, xr)) =
-                detect_sculpted_interval(self.potential.as_slice(), &self.base_potential, &self.x_axis)
-            {
+            if let Some((xl, xr)) = detect_sculpted_interval(
+                self.potential.as_slice(),
+                &self.base_potential,
+                &self.x_axis,
+            ) {
                 self.x_left = xl;
                 self.x_right = xr;
             }
@@ -197,9 +203,11 @@ impl WaveRunner {
 
     pub(crate) fn rebuild_sculpted_hamiltonian(&mut self) {
         let dx = self.dx();
-        if let Some((xl, xr)) =
-            detect_sculpted_interval(self.potential.as_slice(), &self.base_potential, &self.x_axis)
-        {
+        if let Some((xl, xr)) = detect_sculpted_interval(
+            self.potential.as_slice(),
+            &self.base_potential,
+            &self.x_axis,
+        ) {
             self.x_left = xl;
             self.x_right = xr;
         } else if let Ok(cfg) = self.config.read() {
@@ -215,10 +223,7 @@ impl WaveRunner {
     pub(crate) fn handle_sculpt_command(&mut self, cmd: SimCommand) {
         match cmd {
             SimCommand::ApplyBrush {
-                cx,
-                r,
-                is_obstacle,
-                ..
+                cx, r, is_obstacle, ..
             } => {
                 let slice = self.potential.as_mut_slice();
                 apply_discrete_brush_to_potential(slice, &self.base_potential, cx, r, is_obstacle);
@@ -234,7 +239,10 @@ impl WaveRunner {
                 self.potential
                     .as_mut_slice()
                     .copy_from_slice(&self.base_potential);
-                let _ = apply_sparse_potential(self.potential.as_mut_slice(), &payload.sparse_potential);
+                let _ = apply_sparse_potential(
+                    self.potential.as_mut_slice(),
+                    &payload.sparse_potential,
+                );
                 self.rebuild_sculpted_hamiltonian();
             }
             SimCommand::ClearObstacles => self.restore_base_potential(),
@@ -272,7 +280,9 @@ impl WaveRunner {
 impl WaveSimulatorTool {
     fn base_potential_vec(&self) -> (Vec<f64>, Vec<f64>) {
         let dx = (GRID_X_MAX - GRID_X_MIN) / (GRID_POINTS as f64 - 1.0);
-        let x_axis: Vec<f64> = (0..GRID_POINTS).map(|i| GRID_X_MIN + i as f64 * dx).collect();
+        let x_axis: Vec<f64> = (0..GRID_POINTS)
+            .map(|i| GRID_X_MIN + i as f64 * dx)
+            .collect();
         let base = evaluate_potential_grid(
             self.preset,
             &x_axis,
@@ -284,7 +294,11 @@ impl WaveSimulatorTool {
         (x_axis, base.as_slice().to_vec())
     }
 
-    pub(crate) fn apply_ui_brush_stroke(&mut self, stroke: BrushStroke, ctx: Option<&egui::Context>) {
+    pub(crate) fn apply_ui_brush_stroke(
+        &mut self,
+        stroke: BrushStroke,
+        ctx: Option<&egui::Context>,
+    ) {
         let (_, base) = self.base_potential_vec();
         let mut current = base.clone();
         let _ = apply_sparse_potential(&mut current, &self.sparse_potential);
@@ -296,7 +310,9 @@ impl WaveSimulatorTool {
         self.bump_revision();
         self.export_runner = None;
         self.export_data = None;
-        let _ = self.worker.send_command(SimCommand::ApplyBrushStroke(stroke));
+        let _ = self
+            .worker
+            .send_command(SimCommand::ApplyBrushStroke(stroke));
         if let Some(c) = ctx {
             c.request_repaint();
         }
@@ -308,27 +324,7 @@ impl WaveSimulatorTool {
         }
     }
 
-    pub(crate) fn draw_sculpt_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.label("Potential V(x) Sculpting");
-        ui.horizontal(|ui| {
-            ui.selectable_value(
-                &mut self.brush_kit.interaction_mode,
-                BrushInteractionMode::Sculpt,
-                "🖌 Sculpt",
-            );
-            ui.selectable_value(
-                &mut self.brush_kit.interaction_mode,
-                BrushInteractionMode::Pan,
-                "✋ Pan",
-            );
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialBarrier, "Barrier");
-            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialWell, "Well");
-            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialStep, "Step");
-            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::Erase, "Erase");
-        });
-        ui.add(egui::Slider::new(&mut self.brush_kit.radius, 0.10..=1.20).text("Brush Width"));
+    fn draw_sculpt_action_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal_wrapped(|ui| {
             if ui.button("⛩ Stamp Double Barrier").clicked() {
                 let (x_axis, base) = self.base_potential_vec();
@@ -366,5 +362,33 @@ impl WaveSimulatorTool {
                 ctx.request_repaint();
             }
         });
+    }
+
+    pub(crate) fn draw_sculpt_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.label("Potential V(x) Sculpting");
+        ui.horizontal(|ui| {
+            ui.selectable_value(
+                &mut self.brush_kit.interaction_mode,
+                BrushInteractionMode::Sculpt,
+                "🖌 Sculpt",
+            );
+            ui.selectable_value(
+                &mut self.brush_kit.interaction_mode,
+                BrushInteractionMode::Pan,
+                "✋ Pan",
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(
+                &mut self.brush_kit.mode,
+                BrushMode::PotentialBarrier,
+                "Barrier",
+            );
+            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialWell, "Well");
+            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialStep, "Step");
+            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::Erase, "Erase");
+        });
+        ui.add(egui::Slider::new(&mut self.brush_kit.radius, 0.10..=1.20).text("Brush Width"));
+        self.draw_sculpt_action_buttons(ui, ctx);
     }
 }

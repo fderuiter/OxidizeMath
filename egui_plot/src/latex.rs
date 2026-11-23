@@ -62,9 +62,35 @@ fn truncate_chars(text: &str, max_chars: usize) -> &str {
     }
 }
 
-fn consume_node(remaining_nodes: &mut usize) -> Result<(), ()> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Error returned when bounded LaTeX math parsing fails.
+pub enum LatexParseError {
+    /// Input string exceeded maximum byte budget.
+    InputTooLong,
+    /// Expression nesting exceeded maximum recursion depth.
+    DepthLimitExceeded,
+    /// Parsed `MathBox` AST exceeded maximum node budget.
+    NodeBudgetExceeded,
+    /// Malformed LaTeX syntax (unbalanced braces or missing command argument).
+    SyntaxError,
+}
+
+impl std::fmt::Display for LatexParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InputTooLong => f.write_str("LaTeX input exceeds maximum length"),
+            Self::DepthLimitExceeded => f.write_str("LaTeX nesting exceeds maximum depth"),
+            Self::NodeBudgetExceeded => f.write_str("LaTeX AST exceeds maximum node budget"),
+            Self::SyntaxError => f.write_str("Malformed LaTeX math expression"),
+        }
+    }
+}
+
+impl std::error::Error for LatexParseError {}
+
+fn consume_node(remaining_nodes: &mut usize) -> Result<(), LatexParseError> {
     if *remaining_nodes == 0 {
-        return Err(());
+        return Err(LatexParseError::NodeBudgetExceeded);
     }
     *remaining_nodes -= 1;
     Ok(())
@@ -147,7 +173,7 @@ pub fn parse_prose_with_font(text: &str, font_id: FontId, color: Color32) -> Lay
             let mut remaining_chars = MAX_LAYOUT_CHARS;
             math_box_to_layout_job_mode(&math_box, &mut job, 0, &mut remaining_chars, true);
         }
-        Err(()) => append_upright_fallback(&mut job, text, font_id, color, MAX_FALLBACK_CHARS),
+        Err(_) => append_upright_fallback(&mut job, text, font_id, color, MAX_FALLBACK_CHARS),
     }
     job
 }
@@ -187,7 +213,7 @@ pub fn parse_latex_with_font(text: &str, font_id: FontId, color: Color32) -> Lay
     job
 }
 
-fn split_prose_math_spans(text: &str) -> Result<Vec<(bool, &str)>, ()> {
+fn split_prose_math_spans(text: &str) -> Result<Vec<(bool, &str)>, LatexParseError> {
     let mut spans = Vec::new();
     let mut cursor = 0;
     while let Some(rel_dollar) = text[cursor..].find('$') {
@@ -197,12 +223,16 @@ fn split_prose_math_spans(text: &str) -> Result<Vec<(bool, &str)>, ()> {
         }
         if text[dollar_idx..].starts_with("$$") {
             let math_start = dollar_idx + 2;
-            let rel_end = text[math_start..].find("$$").ok_or(())?;
+            let rel_end = text[math_start..]
+                .find("$$")
+                .ok_or(LatexParseError::SyntaxError)?;
             spans.push((true, &text[math_start..math_start + rel_end]));
             cursor = math_start + rel_end + 2;
         } else {
             let math_start = dollar_idx + 1;
-            let rel_end = text[math_start..].find('$').ok_or(())?;
+            let rel_end = text[math_start..]
+                .find('$')
+                .ok_or(LatexParseError::SyntaxError)?;
             spans.push((true, &text[math_start..math_start + rel_end]));
             cursor = math_start + rel_end + 1;
         }
@@ -213,9 +243,13 @@ fn split_prose_math_spans(text: &str) -> Result<Vec<(bool, &str)>, ()> {
     Ok(spans)
 }
 
-fn parse_prose_to_box(text: &str, base_font_id: &FontId, color: Color32) -> Result<MathBox, ()> {
+fn parse_prose_to_box(
+    text: &str,
+    base_font_id: &FontId,
+    color: Color32,
+) -> Result<MathBox, LatexParseError> {
     if text.len() > MAX_LATEX_INPUT_BYTES {
-        return Err(());
+        return Err(LatexParseError::InputTooLong);
     }
     let mut remaining_nodes = MAX_MATH_BOX_NODES;
     let spans = split_prose_math_spans(text)?;
@@ -242,14 +276,13 @@ fn parse_prose_to_box(text: &str, base_font_id: &FontId, color: Color32) -> Resu
 }
 
 /// Parses LaTeX string into `MathBox` AST tree.
-#[allow(clippy::result_unit_err)]
 pub fn parse_latex_to_box(
     text: &str,
     base_font_id: &FontId,
     color: Color32,
-) -> Result<MathBox, ()> {
+) -> Result<MathBox, LatexParseError> {
     if text.len() > MAX_LATEX_INPUT_BYTES {
-        return Err(());
+        return Err(LatexParseError::InputTooLong);
     }
     let mut remaining_nodes = MAX_MATH_BOX_NODES;
     parse_latex_to_box_bounded(text, base_font_id, color, 0, &mut remaining_nodes)
@@ -261,9 +294,12 @@ fn parse_latex_to_box_bounded(
     color: Color32,
     depth: usize,
     remaining_nodes: &mut usize,
-) -> Result<MathBox, ()> {
-    if text.len() > MAX_LATEX_INPUT_BYTES || depth > MAX_LATEX_DEPTH {
-        return Err(());
+) -> Result<MathBox, LatexParseError> {
+    if text.len() > MAX_LATEX_INPUT_BYTES {
+        return Err(LatexParseError::InputTooLong);
+    }
+    if depth > MAX_LATEX_DEPTH {
+        return Err(LatexParseError::DepthLimitExceeded);
     }
     if text.is_empty() {
         consume_node(remaining_nodes)?;
@@ -305,7 +341,10 @@ fn parse_latex_to_box_bounded(
     simplify_boxes(boxes, remaining_nodes)
 }
 
-fn simplify_boxes(boxes: Vec<MathBox>, remaining_nodes: &mut usize) -> Result<MathBox, ()> {
+fn simplify_boxes(
+    boxes: Vec<MathBox>,
+    remaining_nodes: &mut usize,
+) -> Result<MathBox, LatexParseError> {
     if boxes.len() == 1 {
         Ok(boxes.into_iter().next().unwrap())
     } else {
@@ -319,7 +358,7 @@ fn attach_script_box(
     script_box: MathBox,
     is_sup: bool,
     remaining_nodes: &mut usize,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     let prev_box = boxes.pop();
     let (sup_val, sub_val) = if is_sup {
         (Some(Box::new(script_box)), None)
@@ -360,9 +399,9 @@ fn parse_math_expression_boxes(
     color: Color32,
     depth: usize,
     remaining_nodes: &mut usize,
-) -> Result<Vec<MathBox>, ()> {
+) -> Result<Vec<MathBox>, LatexParseError> {
     if depth > MAX_LATEX_DEPTH {
-        return Err(());
+        return Err(LatexParseError::DepthLimitExceeded);
     }
     let chars: Vec<char> = expr.chars().collect();
     let (mut i, len) = (0, chars.len());
@@ -411,7 +450,7 @@ fn parse_math_expression_boxes(
             )?;
             boxes.push(gbox);
         } else if c == '}' {
-            return Err(());
+            return Err(LatexParseError::SyntaxError);
         } else if c.is_ascii_alphabetic() {
             let start = i;
             while i < len && chars[i].is_ascii_alphabetic() {
@@ -448,7 +487,7 @@ fn push_text_box(
     color: Color32,
     italics: bool,
     remaining_nodes: &mut usize,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     consume_node(remaining_nodes)?;
     boxes.push(MathBox::Text {
         text,
@@ -469,7 +508,7 @@ fn process_command_box(
     depth: usize,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     if let Some(sym) = map_latex_symbol(cmd) {
         return process_symbol_or_sqrt(
             cmd,
@@ -572,7 +611,7 @@ fn process_symbol_or_sqrt(
     depth: usize,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     if cmd == "sqrt" {
         skip_whitespace(chars, i);
         if *i < chars.len() && chars[*i] == '{' {
@@ -632,7 +671,7 @@ fn process_text_command(
     color: Color32,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     skip_whitespace(chars, i);
     if *i < chars.len() && chars[*i] == '{' {
         let (arg, next_i) = read_group_arg(chars, *i + 1)?;
@@ -647,7 +686,7 @@ fn process_text_command(
             remaining_nodes,
         )
     } else {
-        Err(())
+        Err(LatexParseError::SyntaxError)
     }
 }
 
@@ -658,10 +697,10 @@ fn process_mathbb_command(
     color: Color32,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     skip_whitespace(chars, i);
     if *i >= chars.len() || chars[*i] != '{' {
-        return Err(());
+        return Err(LatexParseError::SyntaxError);
     }
     let (arg, next_i) = read_group_arg(chars, *i + 1)?;
     *i = next_i;
@@ -677,16 +716,16 @@ fn process_frac_command(
     depth: usize,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     skip_whitespace(chars, i);
     if *i >= chars.len() || chars[*i] != '{' {
-        return Err(());
+        return Err(LatexParseError::SyntaxError);
     }
     let (num, after_num) = read_group_arg(chars, *i + 1)?;
     *i = after_num;
     skip_whitespace(chars, i);
     if *i >= chars.len() || chars[*i] != '{' {
-        return Err(());
+        return Err(LatexParseError::SyntaxError);
     }
     let (den, after_den) = read_group_arg(chars, *i + 1)?;
     *i = after_den;
@@ -710,10 +749,10 @@ fn process_pmod_command(
     depth: usize,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     skip_whitespace(chars, i);
     if *i >= chars.len() || chars[*i] != '{' {
-        return Err(());
+        return Err(LatexParseError::SyntaxError);
     }
     let (arg, next_i) = read_group_arg(chars, *i + 1)?;
     *i = next_i;
@@ -744,7 +783,7 @@ fn process_not_command(
     color: Color32,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     skip_whitespace(chars, i);
     if *i < chars.len() && chars[*i] == '\\' {
         let (next_cmd, next_i) = read_command(chars, *i + 1)?;
@@ -826,9 +865,9 @@ fn is_upright_operator_name(cmd: &str) -> bool {
     )
 }
 
-fn read_script_arg(chars: &[char], i: usize) -> Result<(String, usize), ()> {
+fn read_script_arg(chars: &[char], i: usize) -> Result<(String, usize), LatexParseError> {
     if i >= chars.len() {
-        return Err(());
+        return Err(LatexParseError::SyntaxError);
     }
     if chars[i] == '{' {
         read_group_arg(chars, i + 1)
@@ -841,7 +880,7 @@ fn read_script_arg(chars: &[char], i: usize) -> Result<(String, usize), ()> {
     }
 }
 
-fn read_group_arg(chars: &[char], mut i: usize) -> Result<(String, usize), ()> {
+fn read_group_arg(chars: &[char], mut i: usize) -> Result<(String, usize), LatexParseError> {
     let mut depth = 1;
     let start = i;
     while i < chars.len() {
@@ -856,12 +895,12 @@ fn read_group_arg(chars: &[char], mut i: usize) -> Result<(String, usize), ()> {
         }
         i += 1;
     }
-    Err(())
+    Err(LatexParseError::SyntaxError)
 }
 
-fn read_command(chars: &[char], mut i: usize) -> Result<(String, usize), ()> {
+fn read_command(chars: &[char], mut i: usize) -> Result<(String, usize), LatexParseError> {
     if i >= chars.len() {
-        return Err(());
+        return Err(LatexParseError::SyntaxError);
     }
     if !chars[i].is_ascii_alphabetic() {
         let s: String = std::iter::once(chars[i]).collect();
@@ -965,6 +1004,7 @@ fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
         "dots" | "ldots" => Some("…"),
         "cdots" => Some("⋯"),
         "cdot" => Some("·"),
+        "odot" => Some("⊙"),
         "times" => Some("×"),
         "div" => Some("÷"),
         "pm" => Some("±"),

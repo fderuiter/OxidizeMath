@@ -62,6 +62,10 @@ impl_error_from!(@cfg "biology":
     ReactionDiffusionError => ReactionDiffusion,
 );
 
+impl_error_from!(@cfg "climate":
+    ClimateError => Climate,
+);
+
 impl_error_from!(@cfg "epidemiology":
     EpidemiologyDomainError => EpidemiologyDomain,
     EpidemiologyError => Epidemiology,

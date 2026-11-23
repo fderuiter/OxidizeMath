@@ -1,6 +1,6 @@
-// @explorer_feature = "physics"
-// @explorer_order = 14
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod band_structure;
@@ -51,6 +51,14 @@ impl ExplorerTab for SolidStateTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "solid_state",
+        order: 14,
+        build: || Box::new(SolidStateTab::default()),
     }
 }
 
