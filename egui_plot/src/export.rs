@@ -808,19 +808,74 @@ fn color_image_to_rgba_bytes(image: &egui::ColorImage) -> Vec<u8> {
     rgba
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+static NATIVE_CLIPBOARD: std::sync::Mutex<Option<arboard::Clipboard>> = std::sync::Mutex::new(None);
+
+#[cfg(not(target_arch = "wasm32"))]
+fn should_retry_native_clipboard() -> bool {
+    cfg!(any(target_os = "macos", target_os = "windows"))
+        || std::env::var_os("DISPLAY").is_some()
+        || std::env::var_os("WAYLAND_DISPLAY").is_some()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn with_native_clipboard<F>(mut op: F) -> Result<(), String>
+where
+    F: FnMut(&mut arboard::Clipboard) -> Result<(), arboard::Error>,
+{
+    let max_attempts = if should_retry_native_clipboard() {
+        3
+    } else {
+        1
+    };
+    let mut slot = NATIVE_CLIPBOARD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut last_err = None;
+    for attempt in 0..max_attempts {
+        if slot.is_none() {
+            match arboard::Clipboard::new() {
+                Ok(cb) => *slot = Some(cb),
+                Err(err) => {
+                    last_err = Some(err.to_string());
+                    if attempt + 1 < max_attempts {
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    continue;
+                }
+            }
+        }
+        if let Some(clipboard) = slot.as_mut() {
+            match op(clipboard) {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    last_err = Some(err.to_string());
+                    *slot = None;
+                    if attempt + 1 < max_attempts {
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                }
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| "Clipboard write failed".to_string()))
+}
+
 /// Copy an `egui::ColorImage` to the system clipboard.
 pub fn copy_image_to_clipboard(image: &egui::ColorImage) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let rgba = color_image_to_rgba_bytes(image);
-        let img_data = arboard::ImageData {
-            width: image.width(),
-            height: image.height(),
-            bytes: std::borrow::Cow::Owned(rgba),
-        };
-        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-        clipboard.set_image(img_data).map_err(|e| e.to_string())?;
-        Ok(())
+        let width = image.width();
+        let height = image.height();
+        with_native_clipboard(|clipboard| {
+            let img_data = arboard::ImageData {
+                width,
+                height,
+                bytes: std::borrow::Cow::Borrowed(&rgba),
+            };
+            clipboard.set_image(img_data)
+        })
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -929,11 +984,7 @@ where
 pub fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-        clipboard
-            .set_text(text.to_owned())
-            .map_err(|e| e.to_string())?;
-        Ok(())
+        with_native_clipboard(|clipboard| clipboard.set_text(text.to_owned()))
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -1545,6 +1596,31 @@ mod tests {
         assert_eq!(res_direct.is_ok(), res_cb.is_ok());
         #[cfg(not(target_arch = "wasm32"))]
         assert!(callback_res.lock().unwrap().is_some());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_concurrent_clipboard_image_and_text_copies_thread_safe() {
+        let baseline_ok = copy_text_to_clipboard("probe").is_ok();
+        let img = egui::ColorImage::new([4, 4], vec![egui::Color32::GREEN; 16]);
+        std::thread::scope(|scope| {
+            for worker in 0..8 {
+                let img_ref = &img;
+                scope.spawn(move || {
+                    for iter in 0..6 {
+                        let payload = format!("Dataset,X,Y\nWorker{worker},{iter},1.0\n");
+                        let text_res = copy_text_to_clipboard(&payload);
+                        let text_cb = copy_text_to_clipboard_with_callback(&payload, |_| {});
+                        let img_res = copy_image_to_clipboard(img_ref);
+                        let img_cb = copy_image_to_clipboard_with_callback(img_ref, |_| {});
+                        assert_eq!(text_res.is_ok(), baseline_ok);
+                        assert_eq!(text_cb.is_ok(), baseline_ok);
+                        assert_eq!(img_res.is_ok(), baseline_ok);
+                        assert_eq!(img_cb.is_ok(), baseline_ok);
+                    }
+                });
+            }
+        });
     }
 
     #[test]

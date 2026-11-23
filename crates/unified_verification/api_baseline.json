@@ -7304,6 +7304,122 @@
     },
     {
       "signature": "pub struct Theorem12Bounds"
+    },
+    {
+      "signature": "pub use weierstrass :: AffinePointFp"
+    },
+    {
+      "signature": "pub use weierstrass :: ChordStepFp"
+    },
+    {
+      "signature": "pub use weierstrass :: HasseSweepEntry"
+    },
+    {
+      "signature": "pub use weierstrass :: MAX_WEIERSTRASS_PRIME"
+    },
+    {
+      "signature": "pub use weierstrass :: WeierstrassCurveFp"
+    },
+    {
+      "signature": "pub use weierstrass :: mod_inv_fp"
+    },
+    {
+      "signature": "pub use weierstrass :: mod_pow_fp"
+    },
+    {
+      "signature": "pub use weierstrass :: sweep_hasse_bounds"
+    },
+    {
+      "signature": "pub use weierstrass :: tonelli_shanks_fp"
+    }
+  ],
+  "crates/pure_math/src/pure_math/elliptic_curves/weierstrass.rs": [
+    {
+      "signature": "impl AffinePointFp { pub fn coordinates (self) -> Option < (i64 , i64) > }"
+    },
+    {
+      "signature": "impl AffinePointFp { pub fn from_coords (x : i64 , y : i64 , p : i64) -> Self }"
+    },
+    {
+      "signature": "impl AffinePointFp { pub fn is_infinity (self) -> bool }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn a (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn add_points (& self , p1 : AffinePointFp , p2 : AffinePointFp ,) -> Result < AffinePointFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn b (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn cardinality (& self) -> usize }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn chord_step (& self , p1 : AffinePointFp , p2 : AffinePointFp ,) -> Result < ChordStepFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn contains_point (& self , point : AffinePointFp) -> bool }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn discriminant (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn discriminant_factor (p : i64 , a : i64 , b : i64) -> Option < i64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn enumerate_points (& self , out : & mut [AffinePointFp]) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn frobenius_trace (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn hasse_bounds (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn negate_point (& self , point : AffinePointFp) -> Result < AffinePointFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn new (p : i64 , a : i64 , b : i64) -> Result < Self , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn p (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn point_order (& self , point : AffinePointFp) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn scalar_mul (& self , k : i64 , point : AffinePointFp ,) -> Result < AffinePointFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn torsion_orbit (& self , generator : AffinePointFp , out : & mut [AffinePointFp] ,) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "pub const MAX_WEIERSTRASS_PRIME : i64 = 1_000_000_000"
+    },
+    {
+      "signature": "pub enum AffinePointFp"
+    },
+    {
+      "signature": "pub struct WeierstrassCurveFp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: ChordStepFp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: HasseSweepEntry"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: mod_inv_fp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: mod_pow_fp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: sweep_hasse_bounds"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: tonelli_shanks_fp"
     }
   ],
   "crates/pure_math/src/pure_math/graph_theory/dijkstra.rs": [
