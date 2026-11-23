@@ -1,7 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::challenge::{
+    evaluate_mystery_residuals_into, MYSTERY_DWARF_TARGETS, NUM_MYSTERY_TARGETS,
+};
 use super::{clamp_finite, HaloKindChoice};
-use crate::framework::{FiniteStateGuard, InteractiveTool, TraceSnapshotManager};
+use crate::framework::{CalloutManager, FiniteStateGuard, InteractiveTool, TraceSnapshotManager};
 use eframe::egui;
 use math_explorer::physics::astrophysics::{
     sample_rotation_curve_into, BaryonicDiskConfig, DwarfMorphology, Magnitude, Mpc,
@@ -34,6 +37,13 @@ pub struct RotationCurveExplorer {
     pub(crate) cfg: RotationCurveState,
     pub(super) samples: Vec<VelocityDecomposition>,
     pub(super) counterpart_samples: Vec<VelocityDecomposition>,
+    pub(crate) target_residuals_kms: [f64; NUM_MYSTERY_TARGETS],
+    pub(crate) rmse_kms: f64,
+    pub(crate) reduced_chi_sq: f64,
+    pub(crate) counterpart_rmse_kms: f64,
+    pub(crate) counterpart_reduced_chi_sq: f64,
+    pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) callout_manager: CalloutManager,
     pub(super) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(super) revision: u64,
 }
@@ -58,6 +68,13 @@ impl Default for RotationCurveExplorer {
             },
             samples: vec![VelocityDecomposition::default(); CURVE_SAMPLES],
             counterpart_samples: vec![VelocityDecomposition::default(); CURVE_SAMPLES],
+            target_residuals_kms: [0.0; NUM_MYSTERY_TARGETS],
+            rmse_kms: 0.0,
+            reduced_chi_sq: 0.0,
+            counterpart_rmse_kms: 0.0,
+            counterpart_reduced_chi_sq: 0.0,
+            active_challenge: None,
+            callout_manager: CalloutManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             revision: 1,
         };
@@ -91,12 +108,9 @@ impl RotationCurveExplorer {
         }
     }
 
-    pub(crate) fn recalculate(&mut self) {
+    /// Recomputes curve samples and 16-target residuals into preallocated buffers with zero heap allocations.
+    pub(crate) fn recalculate_zero_alloc(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1);
-        self.samples
-            .resize(CURVE_SAMPLES, VelocityDecomposition::default());
-        self.counterpart_samples
-            .resize(CURVE_SAMPLES, VelocityDecomposition::default());
         let baryons = self.current_baryons();
         let (m, rs, c) = (
             self.cfg.halo_log10_mass,
@@ -106,8 +120,29 @@ impl RotationCurveExplorer {
         let r_max = self.cfg.max_radius_kpc.clamp(2.0, 25.0);
         let halo = self.cfg.halo_kind.build_profile(m, rs, c);
         sample_rotation_curve_into(0.05, r_max, &baryons, &halo, &mut self.samples);
+        let (rmse, chi_sq) =
+            evaluate_mystery_residuals_into(&baryons, &halo, &mut self.target_residuals_kms);
+        self.rmse_kms = rmse;
+        self.reduced_chi_sq = chi_sq;
+
         let alt = self.counterpart_halo_choice().build_profile(m, rs, c);
         sample_rotation_curve_into(0.05, r_max, &baryons, &alt, &mut self.counterpart_samples);
+        let mut alt_res = [0.0; NUM_MYSTERY_TARGETS];
+        let (alt_rmse, alt_chi) = evaluate_mystery_residuals_into(&baryons, &alt, &mut alt_res);
+        self.counterpart_rmse_kms = alt_rmse;
+        self.counterpart_reduced_chi_sq = alt_chi;
+    }
+
+    pub(crate) fn recalculate(&mut self) {
+        if self.samples.len() != CURVE_SAMPLES {
+            self.samples
+                .resize(CURVE_SAMPLES, VelocityDecomposition::default());
+        }
+        if self.counterpart_samples.len() != CURVE_SAMPLES {
+            self.counterpart_samples
+                .resize(CURVE_SAMPLES, VelocityDecomposition::default());
+        }
+        self.recalculate_zero_alloc();
     }
 
     fn apply_loaded_state(
@@ -132,6 +167,9 @@ impl RotationCurveExplorer {
         }
         if keep_snaps {
             s.snapshot_manager = std::mem::take(&mut self.cfg.snapshot_manager);
+        }
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut s);
         }
         self.cfg = s;
         self.recalculate();
@@ -167,6 +205,9 @@ impl FiniteStateGuard for RotationCurveExplorer {
         c.halo_scale_kpc = clamp_finite(c.halo_scale_kpc, 0.3, 10.0, 2.2);
         c.halo_concentration = clamp_finite(c.halo_concentration, 4.0, 25.0, 12.0);
         c.max_radius_kpc = clamp_finite(c.max_radius_kpc, 2.0, 25.0, 12.0);
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut self.cfg);
+        }
         self.recalculate();
     }
 }
@@ -247,7 +288,23 @@ impl InteractiveTool for RotationCurveExplorer {
                     .map(|s| [s.radius_kpc, s.v_halo_kms])
                     .collect(),
             ),
+            (
+                "Observed Dwarf v_obs (km/s)".into(),
+                MYSTERY_DWARF_TARGETS
+                    .iter()
+                    .map(|o| [o.radius_kpc, o.v_obs_kms])
+                    .collect(),
+            ),
         ]
+    }
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_astro_challenge(challenge_id)
+    }
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+    fn evaluate_challenge(&self) -> Option<crate::framework::ChallengeEvaluation> {
+        self.eval_astro_challenge()
     }
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
@@ -279,6 +336,7 @@ impl InteractiveTool for RotationCurveExplorer {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Dwarf-Galaxy Rotation Curve Decomposition");
             ui.label("Compare Keplerian baryonic falloff against cored (Burkert) and cuspy (NFW) dark-matter halos.");
+            self.sync_rotation_callouts();
             self.render_curve_plot(ui);
         });
     }

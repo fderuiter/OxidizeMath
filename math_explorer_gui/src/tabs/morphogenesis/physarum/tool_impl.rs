@@ -150,10 +150,6 @@ impl InteractiveTool for PhysarumTool {
         self.render_lab(ui);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }

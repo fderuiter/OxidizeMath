@@ -164,6 +164,11 @@ impl Default for PhysarumTool {
 }
 
 impl PhysarumTool {
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     /// Applies a canonical [`PhysarumPreset`] topology, resetting parameters, terminals, and obstacles.
     pub fn apply_preset(&mut self, preset: PhysarumPreset) {
         self.preset = preset;
