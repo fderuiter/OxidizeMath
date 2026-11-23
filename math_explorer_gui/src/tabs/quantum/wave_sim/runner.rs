@@ -412,16 +412,9 @@ impl WaveRunner {
             self.x_left,
             self.x_right,
         );
-        for p in &mut safe_prob {
-            if !p.is_finite() {
-                *p = 0.0;
-            }
-        }
-        let safe_potential: Vec<f64> = self
-            .potential
-            .iter()
-            .map(|&v| if v.is_finite() { v } else { 0.0 })
-            .collect();
+        let finite_zero = |v: f64| if v.is_finite() { v } else { 0.0 };
+        safe_prob.iter_mut().for_each(|p| *p = finite_zero(*p));
+        let safe_potential = self.potential.iter().map(|&v| finite_zero(v)).collect();
 
         WaveData {
             time: self.time,
@@ -463,9 +456,7 @@ impl SimulationRunner for WaveRunner {
                     .clone();
                 self.init_from_config(&cfg);
             }
-            SimCommand::SetSpeed(speed) => {
-                self.steps_per_frame = speed.max(1);
-            }
+            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed.max(1),
             other => self.handle_sculpt_command(other),
         }
     }
@@ -481,13 +472,12 @@ impl SimulationRunner for WaveRunner {
         } else {
             self.sonification
         };
-        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
         StateSnapshot {
             width: 0,
             height: 0,
             pixels: Arc::new(RwLock::new(Vec::new())),
             custom_data: Vec::new(),
-            structured_data: Some(structured_data),
+            structured_data: Some(Box::new(self.build_wave_data()) as Box<dyn Any + Send>),
             sonification,
         }
     }
