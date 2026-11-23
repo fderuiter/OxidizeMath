@@ -10,6 +10,12 @@ use std::fmt::Write;
 
 impl FractalViewer {
     pub(super) fn build_glsl_shader(&self, dialect: ShaderDialect) -> Result<String, String> {
+        if self.mode.is_custom() {
+            return Err(
+                "GLSL shader export is only supported for analytical Mandelbrot and Julia modes"
+                    .to_string(),
+            );
+        }
         if !self.has_finite_parameters() {
             return Err("Fractal parameters are non-finite or out of bounds".to_string());
         }
@@ -54,6 +60,8 @@ fn write_dialect_header(out: &mut String, dialect: ShaderDialect, mode: FractalM
     let family = match mode {
         FractalMode::Mandelbrot => "Mandelbrot",
         FractalMode::Julia => "Julia",
+        FractalMode::CustomMandelbrot => "Custom Mandelbrot",
+        FractalMode::CustomJulia => "Custom Julia",
     };
     writeln!(
         out,

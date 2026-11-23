@@ -10,10 +10,12 @@ mod file_io_queue;
 #[cfg(test)]
 use std::sync::PoisonError;
 
-pub(crate) use file_io_queue::process_plot_csv_import;
 #[cfg(test)]
 use file_io_queue::{MAX_PENDING_PLOT_IMPORTS, pending_imports_queue, pending_status_queue};
 pub use file_io_queue::{drain_import_status, drain_imported_datasets};
+pub(crate) use file_io_queue::{
+    enqueue_csv_text_import, parse_immediate_csv_overlay, process_plot_csv_import,
+};
 
 /// Strips a leading UTF-8 byte-order mark (`U+FEFF`) if present.
 #[inline]
@@ -238,6 +240,13 @@ mod wasm_file_io {
     }
 
     async fn read_file_text(file: File) -> Result<String, String> {
+        let byte_size = file.size();
+        if byte_size > crate::csv_import::MAX_CSV_IMPORT_BYTES as f64 {
+            return Err(format!(
+                "Selected file ({:.2} MiB) exceeds maximum allowed size of 2.0 MiB.",
+                byte_size / (1024.0 * 1024.0)
+            ));
+        }
         let reader =
             FileReader::new().map_err(|e| format!("Failed to initialize FileReader: {e:?}"))?;
         let mut onload_slot: Option<Closure<dyn FnMut(Event)>> = None;
@@ -372,28 +381,51 @@ pub use wasm_file_io::{
     PickerOutcome, download_browser_file, open_browser_file_picker, request_browser_repaint,
 };
 
+#[cfg(test)]
+static TEST_IMPORT_DIALOG_TRIGGERS: std::sync::Mutex<Vec<egui::Id>> =
+    std::sync::Mutex::new(Vec::new());
+
+#[cfg(test)]
+pub(crate) fn take_test_import_triggers() -> Vec<egui::Id> {
+    std::mem::take(
+        &mut *TEST_IMPORT_DIALOG_TRIGGERS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner),
+    )
+}
+
 /// Triggers a CSV/TSV file import dialog scoped to a specific target `plot_id`.
 pub fn trigger_import_csv_for_plot(ctx: &egui::Context, plot_id: egui::Id) {
-    let ctx_clone = ctx.clone();
-
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(test)]
     {
+        let _ = ctx;
+        TEST_IMPORT_DIALOG_TRIGGERS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(plot_id);
+    }
+
+    #[cfg(all(not(test), not(target_arch = "wasm32")))]
+    {
+        if std::env::var_os("CI").is_some() || std::env::var_os("RUST_TEST_THREADS").is_some() {
+            return;
+        }
+        let ctx_clone = ctx.clone();
         std::thread::spawn(move || {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("CSV / TSV File", &["csv", "tsv", "txt"])
                 .pick_file()
             {
                 let name = sanitize_download_filename(&path.to_string_lossy(), "dataset.csv");
-                let res = std::fs::read_to_string(&path)
-                    .map(|content| (name, content))
-                    .map_err(|e| format!("Failed to read CSV file: {e}"));
+                let res = read_bounded_csv_path(&path, &name);
                 process_plot_csv_import(&ctx_clone, plot_id, res);
             }
         });
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(not(test), target_arch = "wasm32"))]
     {
+        let ctx_clone = ctx.clone();
         open_browser_file_picker(
             ".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain",
             move |outcome| match outcome {
@@ -434,6 +466,23 @@ pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _fil
     {
         let _ = download_browser_file(filename, content);
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn read_bounded_csv_path(
+    path: &std::path::Path,
+    display_name: &str,
+) -> Result<(String, String), String> {
+    let meta = std::fs::metadata(path).map_err(|e| format!("Failed to inspect CSV file: {e}"))?;
+    if meta.len() > crate::csv_import::MAX_CSV_IMPORT_BYTES as u64 {
+        return Err(format!(
+            "CSV file {display_name} ({:.2} MiB) exceeds maximum allowed size of 2.0 MiB.",
+            meta.len() as f64 / (1024.0 * 1024.0)
+        ));
+    }
+    std::fs::read_to_string(path)
+        .map(|content| (display_name.to_owned(), content))
+        .map_err(|e| format!("Failed to read CSV file: {e}"))
 }
 
 #[cfg(test)]
