@@ -30,64 +30,31 @@ pub(crate) fn assert_no_serde_in_normal_deps(features: Option<&str>) {
     }
 }
 
+fn run_math_explorer_feature_leg(feature_flags: &[&str]) {
+    let mut test_args = vec!["test", "-p", "math_explorer"];
+    test_args.extend_from_slice(feature_flags);
+    run_cmd("cargo", &test_args);
+
+    let mut bench_args = vec!["test", "-p", "math_explorer", "--benches"];
+    bench_args.extend_from_slice(feature_flags);
+    run_cmd("cargo", &bench_args);
+}
+
 fn test_single_feature(feature: &str) {
     if feature == "core-only" || feature.is_empty() {
         assert_no_serde_in_normal_deps(None);
-        run_cmd(
-            "cargo",
-            &["test", "-p", "math_explorer", "--no-default-features"],
-        );
-        run_cmd(
-            "cargo",
-            &[
-                "test",
-                "-p",
-                "math_explorer",
-                "--no-default-features",
-                "--features",
-                "serde",
-            ],
-        );
+        run_math_explorer_feature_leg(&["--no-default-features"]);
+        run_math_explorer_feature_leg(&["--no-default-features", "--features", "serde"]);
         return;
     }
     if feature.split(',').any(|f| f.trim() == "serde") {
-        run_cmd(
-            "cargo",
-            &[
-                "test",
-                "-p",
-                "math_explorer",
-                "--no-default-features",
-                "--features",
-                feature,
-            ],
-        );
+        run_math_explorer_feature_leg(&["--no-default-features", "--features", feature]);
         return;
     }
     assert_no_serde_in_normal_deps(Some(feature));
-    run_cmd(
-        "cargo",
-        &[
-            "test",
-            "-p",
-            "math_explorer",
-            "--no-default-features",
-            "--features",
-            feature,
-        ],
-    );
+    run_math_explorer_feature_leg(&["--no-default-features", "--features", feature]);
     let with_serde = format!("{feature},serde");
-    run_cmd(
-        "cargo",
-        &[
-            "test",
-            "-p",
-            "math_explorer",
-            "--no-default-features",
-            "--features",
-            &with_serde,
-        ],
-    );
+    run_math_explorer_feature_leg(&["--no-default-features", "--features", &with_serde]);
 }
 
 pub fn test_features(args: &[String]) {
@@ -112,6 +79,6 @@ pub fn test_features(args: &[String]) {
         test_single_feature(f);
     }
     println!("=== Running all features ===");
-    run_cmd("cargo", &["test", "-p", "math_explorer", "--all-features"]);
+    run_math_explorer_feature_leg(&["--all-features"]);
     println!("All feature combinations passed successfully!");
 }

@@ -105,34 +105,50 @@ impl ChladniWaveTankTool {
                 );
             }
             if pulse {
-                self.solver.inject_gaussian_pulse(
+                self.trigger_mallet_pulse(
                     self.state.driver_x,
                     self.state.driver_y,
                     0.045,
                     1.0,
+                    1.0,
                 );
-                self.refresh_analysis_outputs();
                 crate::accessibility::announce_live_status(&ctx, "Injected Gaussian wave pulse");
             }
         }
+        self.handle_canvas_pointer_input(&ctx, response, rect);
+    }
 
-        if (response.clicked() || response.dragged()) && rect.width() > 1.0 && rect.height() > 1.0 {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
-                let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
-                let shift = ctx.input(|i| i.modifiers.shift);
-                if shift && response.clicked() && self.custom_clamps.len() < 16 {
-                    self.custom_clamps.push([nx, ny]);
-                    self.rebuild_masks();
-                } else {
-                    self.state.driver_x = nx;
-                    self.state.driver_y = ny;
-                    if response.clicked() {
-                        self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
-                    }
+    fn handle_canvas_pointer_input(
+        &mut self,
+        ctx: &egui::Context,
+        response: &egui::Response,
+        rect: Rect,
+    ) {
+        if !(response.clicked() || response.dragged())
+            || rect.width() <= 1.0
+            || rect.height() <= 1.0
+        {
+            return;
+        }
+        if let Some(pos) = response.interact_pointer_pos() {
+            let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
+            let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
+            let shift = ctx.input(|i| i.modifiers.shift);
+            if shift
+                && response.clicked()
+                && self.state.custom_clamps.len() < sonification::MAX_CUSTOM_CLAMPS
+            {
+                self.state.custom_clamps.push([nx, ny]);
+                self.rebuild_masks();
+                self.analysis_dirty = true;
+            } else {
+                self.state.driver_x = nx;
+                self.state.driver_y = ny;
+                if response.clicked() {
+                    self.trigger_mallet_pulse(nx, ny, 0.04, 0.65, 0.85);
                 }
-                self.state_rev = self.state_rev.wrapping_add(1);
             }
+            self.state_rev = self.state_rev.wrapping_add(1);
         }
     }
 

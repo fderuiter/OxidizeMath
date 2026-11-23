@@ -92,7 +92,7 @@ features = ["derive"]
 optional = true
 
 [dependencies.png]
-version = "0.18"
+workspace = true
 
 [dependencies.image]
 version = "0.25"
@@ -101,7 +101,7 @@ features = ["gif", "png"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = { workspace = true }
-arboard = "3.4"
+arboard = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }

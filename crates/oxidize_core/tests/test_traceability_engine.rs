@@ -2,242 +2,314 @@
 
 #![cfg(not(target_arch = "wasm32"))]
 
-#[cfg(feature = "serde")]
-use oxidize_core::traceability::TraceabilityReport;
-use oxidize_core::traceability::{AstCache, TraceabilityEngine};
-use oxidize_core::vfs::{DefaultVfs, VirtualFileSystem};
-use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
+use oxidize_core::traceability::TraceabilityEngine;
+use oxidize_core::vfs::DefaultVfs;
 
-struct MockVfs {
-    dirs: HashMap<String, Vec<String>>,
-    files: HashMap<String, Result<String, std::io::ErrorKind>>,
+#[test]
+fn test_verify_module_registered_and_extract_citations_without_ast_feature() {
+    assert!(TraceabilityEngine::<DefaultVfs>::verify_module_registered(
+        "pure_math"
+    ));
+    assert!(!TraceabilityEngine::<DefaultVfs>::verify_module_registered(
+        "nonexistent_unregistered_module_xyz"
+    ));
+    let sample = concat!("/// [cite", ":essay_1]\n// [cite", ":mod-2]");
+    let cites = TraceabilityEngine::<DefaultVfs>::extract_citations(sample);
+    assert_eq!(cites, vec!["essay_1", "mod-2"]);
 }
 
-impl VirtualFileSystem for MockVfs {
-    fn read_to_string(
-        &self,
-        path: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, std::io::Error>> + '_>> {
-        let key = path.to_string();
-        Box::pin(async move {
-            match self.files.get(&key) {
-                Some(Ok(content)) => Ok(content.clone()),
-                Some(Err(kind)) => Err(std::io::Error::new(*kind, format!("Failed reading {key}"))),
-                None => Err(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!("Missing file {key}"),
-                )),
-            }
-        })
+#[cfg(feature = "ast-analysis")]
+mod ast_analysis_tests {
+    #[cfg(feature = "serde")]
+    use oxidize_core::traceability::TraceabilityReport;
+    use oxidize_core::traceability::{AstCache, TraceabilityEngine};
+    use oxidize_core::vfs::{DefaultVfs, VirtualFileSystem};
+    use std::collections::HashMap;
+    use std::future::Future;
+    use std::pin::Pin;
+
+    struct MockVfs {
+        dirs: HashMap<String, Vec<String>>,
+        files: HashMap<String, Result<String, std::io::ErrorKind>>,
     }
 
-    fn write_to_file(
-        &self,
-        _path: &str,
-        _content: &[u8],
-    ) -> Pin<Box<dyn Future<Output = Result<(), std::io::Error>> + '_>> {
-        Box::pin(async move { Ok(()) })
-    }
-
-    fn list_dir(
-        &self,
-        path: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<String>, std::io::Error>> + '_>> {
-        let key = path.to_string();
-        Box::pin(async move {
-            self.dirs.get(&key).cloned().ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::NotFound, format!("Missing dir {key}"))
+    impl VirtualFileSystem for MockVfs {
+        fn read_to_string(
+            &self,
+            path: &str,
+        ) -> Pin<Box<dyn Future<Output = Result<String, std::io::Error>> + '_>> {
+            let key = path.to_string();
+            Box::pin(async move {
+                match self.files.get(&key) {
+                    Some(Ok(content)) => Ok(content.clone()),
+                    Some(Err(kind)) => {
+                        Err(std::io::Error::new(*kind, format!("Failed reading {key}")))
+                    }
+                    None => Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Missing file {key}"),
+                    )),
+                }
             })
-        })
-    }
-}
+        }
 
-fn workspace_prefix() -> String {
-    let (is_root, _) = oxidize_core::workspace::get_workspace_members();
-    let root = (!is_root)
-        .then(oxidize_core::workspace::find_workspace_root)
-        .flatten();
-    root.map(|p| format!("{}/", oxidize_core::path_utils::normalize_path(p)))
-        .unwrap_or_default()
-}
+        fn write_to_file(
+            &self,
+            _path: &str,
+            _content: &[u8],
+        ) -> Pin<Box<dyn Future<Output = Result<(), std::io::Error>> + '_>> {
+            Box::pin(async move { Ok(()) })
+        }
 
-#[test]
-fn test_traceability_engine_scan() {
-    let prefix = workspace_prefix();
-    let engine = TraceabilityEngine::new(DefaultVfs);
-    let d = format!("{prefix}crates/pure_math/src");
-    let dirs_ref = [d.as_str()];
-    let papers_dir = format!("{prefix}papers");
-    let res = futures::executor::block_on(engine.scan_repository(&dirs_ref, &papers_dir, false));
-    assert!(res.is_ok(), "Traceability scan of pure_math should succeed");
-    let report = res.unwrap();
-    assert!(report.scanned_files > 0);
-    assert!(report.orphaned_papers.is_empty());
-
-    #[cfg(feature = "serde")]
-    {
-        let serialized = toml::to_string(&report).expect("serialize TraceabilityReport");
-        let roundtrip: TraceabilityReport =
-            toml::from_str(&serialized).expect("deserialize TraceabilityReport");
-        assert_eq!(roundtrip, report);
-    }
-}
-
-#[test]
-fn test_scan_repository_reports_error_when_registry_missing() {
-    let mut dirs = HashMap::new();
-    dirs.insert("papers".to_string(), vec!["essay.tex".to_string()]);
-    let vfs = MockVfs {
-        dirs,
-        files: HashMap::new(),
-    };
-    let engine = TraceabilityEngine::new(vfs);
-    let res = futures::executor::block_on(engine.scan_repository(&["src"], "papers", false));
-    assert!(
-        res.is_err(),
-        "Missing traceability.toml must return Err instead of orphaned papers"
-    );
-}
-
-#[test]
-fn test_scan_repository_reports_error_when_discovered_source_unreadable() {
-    let mut dirs = HashMap::new();
-    dirs.insert("papers".to_string(), vec!["essay.tex".to_string()]);
-    dirs.insert("src".to_string(), vec!["broken.rs".to_string()]);
-
-    let mut files = HashMap::new();
-    files.insert(
-        "traceability.toml".to_string(),
-        Ok("[links]\nessay = \"essay.tex\"\n".to_string()),
-    );
-    files.insert(
-        "src/broken.rs".to_string(),
-        Err(std::io::ErrorKind::NotFound),
-    );
-
-    let engine = TraceabilityEngine::new(MockVfs { dirs, files });
-    let res = futures::executor::block_on(engine.scan_repository(&["src"], "papers", false));
-    assert!(
-        res.is_err(),
-        "Unreadable discovered .rs file must return Err instead of silent partial scan"
-    );
-}
-
-#[test]
-fn test_scan_repository_reports_error_when_papers_dir_missing() {
-    let mut files = HashMap::new();
-    files.insert(
-        "traceability.toml".to_string(),
-        Ok("[links]\nessay = \"essay.tex\"\n".to_string()),
-    );
-    let engine = TraceabilityEngine::new(MockVfs {
-        dirs: HashMap::new(),
-        files,
-    });
-    let res =
-        futures::executor::block_on(engine.scan_repository(&["src"], "missing_papers", false));
-    assert!(res.is_err(), "Missing papers_dir must return Err");
-}
-
-#[test]
-fn test_scan_repository_with_cache_parses_each_file_at_most_once() {
-    let prefix = workspace_prefix();
-    let engine = TraceabilityEngine::new(DefaultVfs);
-    let d = format!("{prefix}crates/pure_math/src");
-    let dirs_ref = [d.as_str()];
-    let papers_dir = format!("{prefix}papers");
-
-    let mut cache = AstCache::new();
-    let first = futures::executor::block_on(engine.scan_repository_with_cache(
-        &dirs_ref,
-        &papers_dir,
-        false,
-        &mut cache,
-    ))
-    .expect("first scan with cache should succeed");
-
-    assert!(first.scanned_files > 0);
-    assert_eq!(
-        cache.parse_calls(),
-        first.scanned_files,
-        "Each active Rust file in pure_math must be parsed exactly once instead of twice"
-    );
-
-    let parse_calls_after_first = cache.parse_calls();
-    let second = futures::executor::block_on(engine.scan_repository_with_cache(
-        &dirs_ref,
-        &papers_dir,
-        false,
-        &mut cache,
-    ))
-    .expect("second scan reusing warm cache should succeed");
-
-    assert_eq!(second, first);
-    assert_eq!(
-        cache.parse_calls(),
-        parse_calls_after_first,
-        "Warm AstCache must reuse parsed ASTs with zero additional syn::parse_file calls"
-    );
-}
-
-#[test]
-fn test_traceability_diagnostics_emit_spans_keys_densities_and_hints() {
-    let mut dirs = HashMap::new();
-    dirs.insert("papers".to_string(), vec!["essay.tex".to_string()]);
-    dirs.insert(
-        "crates/domain_ai/src".to_string(),
-        vec!["lib.rs".to_string(), "unverified.rs".to_string()],
-    );
-
-    let mut files = HashMap::new();
-    files.insert(
-        "traceability.toml".to_string(),
-        Ok("[links]\nessay = \"essay.tex\"\n".to_string()),
-    );
-    let lib_src = "mod unverified;\n// [cite:bad_cite]\n#[verified]\npub fn no_asserts() {}\ntheory_verification!(module = \"unregistered_mod\", constants = {}, test = {});\n".to_string();
-    files.insert("crates/domain_ai/src/lib.rs".to_string(), Ok(lib_src));
-    files.insert(
-        "crates/domain_ai/src/unverified.rs".to_string(),
-        Ok("\npub fn raw_helper() -> usize { 1 }\n".to_string()),
-    );
-
-    let engine = TraceabilityEngine::new(MockVfs { dirs, files });
-    let mut report = futures::executor::block_on(engine.scan_repository(
-        &["crates/domain_ai/src"],
-        "papers",
-        false,
-    ))
-    .expect("scan mock repo");
-    // Override verified_asserts to simulate sub-0.4 density while preserving per-file counts
-    report.verified_asserts = 0;
-    report.verified_funcs = 2;
-    report
-        .file_verified_counts
-        .insert("crates/domain_ai/src/lib.rs".to_string(), [0, 2]);
-
-    #[cfg(feature = "serde")]
-    {
-        let legacy_minimal: TraceabilityReport =
-            toml::from_str("scanned_files = 5\ntotal_funcs = 2\n").expect("legacy deserialize");
-        assert_eq!(legacy_minimal.scanned_files, 5);
-        assert!(legacy_minimal.unlinked_module_details.is_empty());
-        assert!(legacy_minimal.invalid_link_lines.is_empty());
-        assert!(legacy_minimal.unverified_module_spans.is_empty());
-        assert!(legacy_minimal.file_verified_counts.is_empty());
+        fn list_dir(
+            &self,
+            path: &str,
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<String>, std::io::Error>> + '_>> {
+            let key = path.to_string();
+            Box::pin(async move {
+                self.dirs.get(&key).cloned().ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::NotFound, format!("Missing dir {key}"))
+                })
+            })
+        }
     }
 
-    let (failed, lines) = oxidize_core::traceability::format_traceability_errors(&report);
-    assert!(failed);
-    let joined = lines.join("\n");
-    assert!(joined.contains("UNLINKED module `unregistered_mod` at crates/domain_ai/src/lib.rs:5"));
-    assert!(joined.contains("INVALID citation: `bad_cite` at crates/domain_ai/src/lib.rs:2"));
-    assert!(joined.contains("crates/domain_ai/src/unverified.rs:2 (fn `raw_helper`)"));
-    assert!(
-        joined
-            .contains("crates/domain_ai/src/lib.rs: 0.00 asserts/fn (0 asserts / 2 verified fns)")
-    );
-    assert!(joined.contains("traceability.toml"));
-    assert!(joined.contains("opt_out"));
+    fn workspace_prefix() -> String {
+        let (is_root, _) = oxidize_core::workspace::get_workspace_members();
+        let root = (!is_root)
+            .then(oxidize_core::workspace::find_workspace_root)
+            .flatten();
+        root.map(|p| format!("{}/", oxidize_core::path_utils::normalize_path(p)))
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn test_traceability_engine_scan() {
+        let prefix = workspace_prefix();
+        let engine = TraceabilityEngine::new(DefaultVfs);
+        let d = format!("{prefix}crates/pure_math/src");
+        let dirs_ref = [d.as_str()];
+        let papers_dir = format!("{prefix}papers");
+        let res =
+            futures::executor::block_on(engine.scan_repository(&dirs_ref, &papers_dir, false));
+        assert!(res.is_ok(), "Traceability scan of pure_math should succeed");
+        let report = res.unwrap();
+        assert!(report.scanned_files > 0);
+        assert!(report.orphaned_papers.is_empty());
+
+        #[cfg(feature = "serde")]
+        {
+            let serialized = toml::to_string(&report).expect("serialize TraceabilityReport");
+            let roundtrip: TraceabilityReport =
+                toml::from_str(&serialized).expect("deserialize TraceabilityReport");
+            assert_eq!(roundtrip, report);
+        }
+    }
+
+    #[test]
+    fn test_scan_repository_reports_error_when_registry_missing() {
+        let mut dirs = HashMap::new();
+        dirs.insert("papers".to_string(), vec!["essay.tex".to_string()]);
+        let vfs = MockVfs {
+            dirs,
+            files: HashMap::new(),
+        };
+        let engine = TraceabilityEngine::new(vfs);
+        let res = futures::executor::block_on(engine.scan_repository(&["src"], "papers", false));
+        assert!(
+            res.is_err(),
+            "Missing traceability.toml must return Err instead of orphaned papers"
+        );
+    }
+
+    #[test]
+    fn test_scan_repository_reports_error_when_discovered_source_unreadable() {
+        let mut dirs = HashMap::new();
+        dirs.insert("papers".to_string(), vec!["essay.tex".to_string()]);
+        dirs.insert("src".to_string(), vec!["broken.rs".to_string()]);
+
+        let mut files = HashMap::new();
+        files.insert(
+            "traceability.toml".to_string(),
+            Ok("[links]\nessay = \"essay.tex\"\n".to_string()),
+        );
+        files.insert(
+            "src/broken.rs".to_string(),
+            Err(std::io::ErrorKind::NotFound),
+        );
+
+        let engine = TraceabilityEngine::new(MockVfs { dirs, files });
+        let res = futures::executor::block_on(engine.scan_repository(&["src"], "papers", false));
+        assert!(
+            res.is_err(),
+            "Unreadable discovered .rs file must return Err instead of silent partial scan"
+        );
+    }
+
+    #[test]
+    fn test_scan_repository_reports_error_when_papers_dir_missing() {
+        let mut files = HashMap::new();
+        files.insert(
+            "traceability.toml".to_string(),
+            Ok("[links]\nessay = \"essay.tex\"\n".to_string()),
+        );
+        let engine = TraceabilityEngine::new(MockVfs {
+            dirs: HashMap::new(),
+            files,
+        });
+        let res =
+            futures::executor::block_on(engine.scan_repository(&["src"], "missing_papers", false));
+        assert!(res.is_err(), "Missing papers_dir must return Err");
+    }
+
+    #[test]
+    fn test_scan_repository_with_cache_parses_each_file_at_most_once() {
+        let prefix = workspace_prefix();
+        let engine = TraceabilityEngine::new(DefaultVfs);
+        let d = format!("{prefix}crates/pure_math/src");
+        let dirs_ref = [d.as_str()];
+        let papers_dir = format!("{prefix}papers");
+
+        let mut cache = AstCache::new();
+        let first = futures::executor::block_on(engine.scan_repository_with_cache(
+            &dirs_ref,
+            &papers_dir,
+            false,
+            &mut cache,
+        ))
+        .expect("first scan with cache should succeed");
+
+        assert!(first.scanned_files > 0);
+        assert_eq!(
+            cache.parse_calls(),
+            first.scanned_files,
+            "Each active Rust file in pure_math must be parsed exactly once instead of twice"
+        );
+
+        let parse_calls_after_first = cache.parse_calls();
+        let second = futures::executor::block_on(engine.scan_repository_with_cache(
+            &dirs_ref,
+            &papers_dir,
+            false,
+            &mut cache,
+        ))
+        .expect("second scan reusing warm cache should succeed");
+
+        assert_eq!(second, first);
+        assert_eq!(
+            cache.parse_calls(),
+            parse_calls_after_first,
+            "Warm AstCache must reuse parsed ASTs with zero additional syn::parse_file calls"
+        );
+    }
+
+    #[test]
+    fn test_traceability_diagnostics_emit_spans_keys_densities_and_hints() {
+        let mut dirs = HashMap::new();
+        dirs.insert("papers".to_string(), vec!["essay.tex".to_string()]);
+        dirs.insert(
+            "crates/domain_ai/src".to_string(),
+            vec!["lib.rs".to_string(), "unverified.rs".to_string()],
+        );
+
+        let mut files = HashMap::new();
+        files.insert(
+            "traceability.toml".to_string(),
+            Ok("[links]\nessay = \"essay.tex\"\n".to_string()),
+        );
+        let lib_src = "mod unverified;\n// [cite:bad_cite]\n#[verified]\npub fn no_asserts() {}\ntheory_verification!(module = \"unregistered_mod\", constants = {}, test = {});\n".to_string();
+        files.insert("crates/domain_ai/src/lib.rs".to_string(), Ok(lib_src));
+        files.insert(
+            "crates/domain_ai/src/unverified.rs".to_string(),
+            Ok("\npub fn raw_helper() -> usize { 1 }\n".to_string()),
+        );
+
+        let engine = TraceabilityEngine::new(MockVfs { dirs, files });
+        let mut report = futures::executor::block_on(engine.scan_repository(
+            &["crates/domain_ai/src"],
+            "papers",
+            false,
+        ))
+        .expect("scan mock repo");
+        // Override verified_asserts to simulate sub-0.4 density while preserving per-file counts
+        report.verified_asserts = 0;
+        report.verified_funcs = 2;
+        report
+            .file_verified_counts
+            .insert("crates/domain_ai/src/lib.rs".to_string(), [0, 2]);
+
+        #[cfg(feature = "serde")]
+        {
+            let legacy_minimal: TraceabilityReport =
+                toml::from_str("scanned_files = 5\ntotal_funcs = 2\n").expect("legacy deserialize");
+            assert_eq!(legacy_minimal.scanned_files, 5);
+            assert!(legacy_minimal.unlinked_module_details.is_empty());
+            assert!(legacy_minimal.invalid_link_lines.is_empty());
+            assert!(legacy_minimal.unverified_module_spans.is_empty());
+            assert!(legacy_minimal.file_verified_counts.is_empty());
+        }
+
+        let (failed, lines) = oxidize_core::traceability::format_traceability_errors(&report);
+        assert!(failed);
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("UNLINKED module `unregistered_mod` at crates/domain_ai/src/lib.rs:5")
+        );
+        assert!(joined.contains("INVALID citation: `bad_cite` at crates/domain_ai/src/lib.rs:2"));
+        assert!(joined.contains("crates/domain_ai/src/unverified.rs:2 (fn `raw_helper`)"));
+        assert!(
+            joined.contains(
+                "crates/domain_ai/src/lib.rs: 0.00 asserts/fn (0 asserts / 2 verified fns)"
+            )
+        );
+        assert!(joined.contains("traceability.toml"));
+        assert!(joined.contains("opt_out"));
+    }
+
+    #[test]
+    fn test_ast_cache_preload_sources_prefetches_without_duplicate_parses() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        let tmp = std::env::temp_dir().join(format!(
+            "oxidize_ast_preload_{}_{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&tmp).expect("create temp dir");
+        let file_a = tmp.join("alpha.rs");
+        let file_b = tmp.join("beta.rs");
+        std::fs::write(&file_a, "pub fn alpha() -> usize { 42 }\n").expect("write alpha.rs");
+        std::fs::write(&file_b, "pub struct Beta(pub f64);\n").expect("write beta.rs");
+
+        let mut cache = AstCache::new();
+        cache.preload_sources(&[&file_a, &file_b, &tmp.join("missing.rs")]);
+        assert!(
+            cache.is_empty(),
+            "preload_sources must defer syn::parse_file until owner-thread access"
+        );
+        assert_eq!(cache.parse_calls(), 0);
+
+        // Remove alpha.rs on disk to prove get_or_load_fs consumes the prefetched buffer.
+        std::fs::remove_file(&file_a).expect("remove alpha.rs after prefetch");
+        let entry_a = cache
+            .get_or_load_fs(&file_a)
+            .expect("prefetched alpha.rs should load without touching disk again");
+        assert!(entry_a.ast.is_some());
+        assert!(entry_a.content.contains("pub fn alpha()"));
+        assert_eq!(cache.parse_calls(), 1);
+
+        let entry_b = cache.get_or_load_fs(&file_b).expect("load beta.rs");
+        assert!(entry_b.ast.is_some());
+        assert_eq!(cache.parse_calls(), 2);
+        assert_eq!(cache.len(), 2);
+
+        // Re-preloading and re-querying warm entries must not re-read or re-parse.
+        cache.preload_sources(&[&file_a, &file_b]);
+        let _ = cache.get_or_load_fs(&file_a);
+        let _ = cache.get_or_load_fs(&file_b);
+        assert_eq!(cache.parse_calls(), 2);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

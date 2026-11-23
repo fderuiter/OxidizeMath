@@ -244,6 +244,7 @@ impl SimulationFramework {
         self.rev_cache.framework_revision = self.rev_cache.framework_revision.wrapping_add(1);
         self.rev_cache.untracked_tool_revision =
             self.rev_cache.untracked_tool_revision.wrapping_add(1);
+        self.rev_cache.untracked_url_digest.set(None);
         *self.rev_cache.active_tool_json.borrow_mut() = None;
         self.rev_cache.last_snapshot_rev = None;
         self.rev_cache.last_snapshot_source_datasets.clear();
