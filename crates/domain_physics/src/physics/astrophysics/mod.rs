@@ -37,6 +37,7 @@ theory_verification!(
         EXPECTED_V_CIRC_KMS = 130.0;
     },
     test = {
+        use approx::assert_relative_eq;
         let v_circ =
             (V_DISK_KMS * V_DISK_KMS + V_GAS_KMS * V_GAS_KMS + V_HALO_KMS * V_HALO_KMS).sqrt();
         assert_relative_eq!(

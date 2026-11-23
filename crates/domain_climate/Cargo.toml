@@ -12,9 +12,5 @@ verified_engine = { version = "0.1.0", path = "../verified_engine" }
 math_commons = { path = "../math_commons" }
 pure_math = { path = "../pure_math" }
 
-
-[dev-dependencies]
-approx = { workspace = true }
-
 [lints]
 workspace = true

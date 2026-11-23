@@ -314,7 +314,9 @@ fn test_ode_recovery_banner_and_action_dispatch() {
             let mut py = Vec::new();
             let mut pv = Vec::new();
             recovery::render_recovery_ui(ui, &mut tool, &mut changed, &mut py, &mut pv);
-            assert!(render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(&tool)).is_none());
+            assert!(
+                render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(&tool)).is_none()
+            );
             assert!(render_recovery_action_buttons(ui).is_none());
         });
     });
@@ -471,4 +473,3 @@ fn test_ode_untrusted_preset_and_session_step_caps() {
     );
     assert!(traj.time_series.is_empty());
 }
-
