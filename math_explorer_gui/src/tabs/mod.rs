@@ -2,55 +2,96 @@
 
 use eframe::egui;
 
+#[cfg(feature = "ai")]
+pub mod ai;
+#[cfg(feature = "pure_math")]
+pub mod algorithmic_information;
+#[cfg(feature = "pure_math")]
+pub mod analysis;
+#[cfg(feature = "physics")]
+pub mod astrophysics;
+#[cfg(feature = "applied")]
+pub mod battery_degradation;
+#[cfg(feature = "applied")]
+pub mod cannibalism;
+#[cfg(feature = "physics")]
+pub mod chaos;
+#[cfg(feature = "climate")]
+pub mod climate;
+#[cfg(feature = "applied")]
+pub mod clinical_trials;
+#[cfg(feature = "pure_math")]
+pub mod elliptic_curves;
+#[cfg(feature = "epidemiology")]
+pub mod epidemiology;
+#[cfg(feature = "applied")]
+pub mod favoritism;
+#[cfg(feature = "pure_math")]
+pub mod financial_math;
+#[cfg(feature = "physics")]
+pub mod fluid_dynamics;
+#[cfg(feature = "applied")]
+pub mod game_theory;
+#[cfg(feature = "pure_math")]
+pub mod geometry_topology;
+#[cfg(feature = "pure_math")]
+pub mod graph_theory;
+#[cfg(feature = "physics")]
+pub mod medical;
+#[cfg(feature = "biology")]
+pub mod morphogenesis;
+#[cfg(feature = "physics")]
+pub mod mri;
+#[cfg(feature = "biology")]
+pub mod neuroscience;
+#[cfg(feature = "pure_math")]
+pub mod number_theory;
+#[cfg(feature = "applied")]
+pub mod paradox_lab;
+#[cfg(feature = "physics")]
+pub mod quantum;
+#[cfg(feature = "physics")]
+pub mod relativity;
+#[cfg(feature = "physics")]
+pub mod solid_state;
+#[cfg(feature = "pure_math")]
+pub mod stochastic_processes;
+pub mod traceability;
+
 include!(concat!(env!("OUT_DIR"), "/generated_tabs.rs"));
 
-/// A trait for defining a tab in the Math Explorer application.
+/// Primary extension trait for defining a domain tab in the Math Explorer application.
 ///
-/// This trait serves as the primary extension point for the GUI. Each mathematical domain
-/// (e.g., MRI Physics, Game Theory) should implement this trait as a standalone struct.
+/// # Static Module Declaration & Constructor Generation
 ///
-/// # Automated Plugin Discovery
-///
-/// The `math_explorer_gui` application uses an automated build-time plugin discovery mechanism.
-/// To add a new tab to the GUI, you simply need to create a new module file in the `src/tabs` directory
-/// (or in any workspace dependency), and implement the `ExplorerTab` trait for your struct.
-///
-/// You MUST NOT manually edit `app.rs` or `tabs/mod.rs` to register your new tab. The `build.rs` script
-/// will automatically scan for the `impl ExplorerTab for YourStruct` pattern and generate the necessary
-/// inclusion and instantiation logic.
+/// Local tab modules under `src/tabs/` are declared statically with `pub mod` items (and matching
+/// `#[cfg(feature = "...")]` gates) in `src/tabs/mod.rs` so `rustc` and `cargo fmt` traverse the
+/// full tab module tree directly. At compile time, `build.rs` verifies that `src/tabs/mod.rs`
+/// declares every local tab module, scans `src/tabs/` (and workspace path dependencies) for
+/// `impl ExplorerTab for YourStruct` definitions, and generates `instantiate_tabs()` and
+/// `instantiate_tab()`.
 ///
 /// ## Configuration Attributes
 ///
-/// You can configure how your tab is built and displayed by adding special magic comments at the top of your module file:
-///
-/// - `// @explorer_feature = "feature_name"`: Tells the build script that this tab should only be included if the specified Cargo feature is enabled.
-/// - `// @explorer_order = 10`: Defines the order in which this tab appears in the navigation bar. Lower numbers appear first.
+/// - `// @explorer_feature = "feature_name"`: Gates constructor registration behind the matching Cargo feature (pair with `#[cfg(feature = "feature_name")]` on `pub mod` in `tabs/mod.rs`).
+/// - `// @explorer_order = 10`: Defines navigation bar display order (lower numbers appear first).
 ///
 /// # Example
 ///
 /// ```rust,no_run
 /// // @explorer_feature = "pure_math"
 /// // @explorer_order = 1
-///
 /// use math_explorer_gui::tabs::ExplorerTab;
 /// use eframe::egui;
 ///
 /// #[derive(Default)]
-/// pub struct MyTab {
-///     counter: i32,
-/// }
+/// pub struct MyTab { counter: i32 }
 ///
 /// impl ExplorerTab for MyTab {
-///     fn name(&self) -> &'static str {
-///         "My Tab"
-///     }
-///
+///     fn name(&self) -> &'static str { "My Tab" }
 ///     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
 ///         egui::CentralPanel::default().show_inside(ui, |ui| {
-///             ui.heading("My Tab");
-///             if ui.button("Increment").clicked() {
-///                 self.counter += 1;
-///             }
+///             if ui.button("Increment").clicked() { self.counter += 1; }
 ///             ui.label(format!("Count: {}", self.counter));
 ///         });
 ///     }
@@ -177,6 +218,7 @@ pub trait ExplorerTab {
             "Analysis & Calculus" => "analysis",
             "Astrophysics" => "astrophysics",
             "Battery Degradation" => "battery_degradation",
+            "Population Structure" => "cannibalism",
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
             "Clinical Trials" => "clinical_trials",
@@ -195,7 +237,6 @@ pub trait ExplorerTab {
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
             "Paradox Lab" => "paradox_lab",
-            "Population Structure" => "cannibalism",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Stochastic Processes" => "stochastic_processes",
@@ -310,6 +351,18 @@ mod tests {
             generated_tabs.contains("pub fn instantiate_tabs()"),
             "generated_tabs.rs should define instantiate_tabs"
         );
+        assert!(
+            generated_tabs.contains("pub fn instantiate_tab("),
+            "generated_tabs.rs should define instantiate_tab"
+        );
+        assert!(
+            !generated_tabs.contains("include!("),
+            "generated_tabs.rs must not emit inline include! module wrappers"
+        );
+        assert!(
+            !generated_tabs.contains("pub mod "),
+            "generated_tabs.rs must not emit inline pub mod wrappers"
+        );
 
         let build_output = read_build_script_output(out_dir);
         let rerun_paths: HashSet<&str> = build_output
@@ -328,6 +381,7 @@ mod tests {
         for expected in [
             "build.rs",
             "src/tabs",
+            "src/tabs/mod.rs",
             "Cargo.toml",
             "../crates/federated_registry/src",
             "../crates/oxidize_core/src",
@@ -348,5 +402,84 @@ mod tests {
                 "Missing expected cargo:rerun-if-changed={expected} in math_explorer_gui output"
             );
         }
+    }
+
+    fn collect_static_mod_gates(
+        mod_rs: &str,
+    ) -> std::collections::BTreeMap<String, Option<String>> {
+        let mut gates = std::collections::BTreeMap::new();
+        let mut active_cfg = None;
+        for line in mod_rs.lines() {
+            let clean = line.split("//").next().unwrap_or("").trim();
+            if clean.is_empty() {
+                continue;
+            }
+            if let Some(feat) = clean
+                .strip_prefix("#[cfg(feature = \"")
+                .and_then(|s| s.strip_suffix("\")]"))
+            {
+                active_cfg = Some(feat.to_string());
+            } else if let Some(name) = clean
+                .strip_prefix("pub mod ")
+                .and_then(|s| s.strip_suffix(';'))
+            {
+                gates.insert(name.trim().to_string(), active_cfg.take());
+            } else if !clean.starts_with("#[") {
+                active_cfg = None;
+            }
+        }
+        gates
+    }
+
+    #[test]
+    fn test_static_tab_modules_match_filesystem_tabs_and_feature_gates() {
+        let tabs_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/tabs");
+        let mod_rs = fs::read_to_string(tabs_dir.join("mod.rs")).expect("read src/tabs/mod.rs");
+        let declared = collect_static_mod_gates(&mod_rs);
+        let mut discovered = std::collections::BTreeMap::new();
+
+        for entry in fs::read_dir(&tabs_dir).expect("read src/tabs").flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if matches!(
+                name.as_str(),
+                "mod.rs" | "generated_tabs.rs" | "generated.rs"
+            ) {
+                continue;
+            }
+            let (mod_name, target) = if path.is_dir() {
+                (name, path.join("mod.rs"))
+            } else if let Some(stem) = name.strip_suffix(".rs") {
+                (stem.to_string(), path)
+            } else {
+                continue;
+            };
+            let Ok(src) = fs::read_to_string(&target) else {
+                continue;
+            };
+            let has_tab_impl = src.lines().any(|l| {
+                l.contains("impl ExplorerTab for ")
+                    || l.contains("impl crate::tabs::ExplorerTab for ")
+            });
+            if !has_tab_impl {
+                continue;
+            }
+            let feature = src.lines().find_map(|l| {
+                let (_, rest) = l.split_once("// @explorer_feature = \"")?;
+                let (feat, _) = rest.split_once('"')?;
+                Some(feat.to_string())
+            });
+            discovered.insert(mod_name, feature);
+        }
+
+        assert!(
+            discovered.len() >= 23,
+            "Expected at least 23 local tabs, found {}",
+            discovered.len()
+        );
+        assert_eq!(
+            declared, discovered,
+            "Static `pub mod` declarations in src/tabs/mod.rs must match local ExplorerTab files and @explorer_feature gates"
+        );
     }
 }

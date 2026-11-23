@@ -109,7 +109,10 @@ impl TheoryDescribable for DtmcTensorWorkbenchTool {
 
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("DTMC & Transition Tensor".to_string(), self.theory_description());
+        map.insert(
+            "DTMC & Transition Tensor".to_string(),
+            self.theory_description(),
+        );
         map
     }
 }
@@ -196,9 +199,7 @@ impl DtmcTensorWorkbenchTool {
     pub(super) fn build_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut datasets = vec![(
             "Empirical Visit Frequency".to_string(),
-            (0..3)
-                .map(|s| [s as f64, self.empirical_freq[s]])
-                .collect(),
+            (0..3).map(|s| [s as f64, self.empirical_freq[s]]).collect(),
         )];
         if let Some(pi) = self.stationary {
             datasets.push((

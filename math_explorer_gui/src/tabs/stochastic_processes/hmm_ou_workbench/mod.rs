@@ -13,7 +13,7 @@ use egui_plot::PlotPoint;
 use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::pure_math::statistics::markov::hmm::HiddenMarkovModel;
 use math_explorer::pure_math::statistics::ou_process::{
-    EulerMaruyama, ExactOuSolver, OuParams, TimeStep, estimate_ou_params,
+    estimate_ou_params, EulerMaruyama, ExactOuSolver, OuParams, TimeStep,
 };
 use math_explorer::rng::OxidizeRng;
 use scientific_metadata::theory::TheoryDescribable;

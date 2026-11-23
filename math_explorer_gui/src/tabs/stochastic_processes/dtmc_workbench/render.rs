@@ -153,8 +153,16 @@ impl DtmcTensorWorkbenchTool {
             return;
         }
         for (idx, c) in self.classes.iter().enumerate() {
-            let role = if c.is_closed { "Closed/Recurrent" } else { "Transient" };
-            let col = if c.is_closed { palette.success } else { palette.warning };
+            let role = if c.is_closed {
+                "Closed/Recurrent"
+            } else {
+                "Transient"
+            };
+            let col = if c.is_closed {
+                palette.success
+            } else {
+                palette.warning
+            };
             ui.colored_label(col, format!("Class {idx}: {:?} ({role})", c.states));
         }
         let period_str = self
@@ -167,7 +175,10 @@ impl DtmcTensorWorkbenchTool {
         match self.stationary {
             Some(pi) => ui.colored_label(
                 palette.success,
-                format!("QR Stationary π = [{:.3}, {:.3}, {:.3}]", pi[0], pi[1], pi[2]),
+                format!(
+                    "QR Stationary π = [{:.3}, {:.3}, {:.3}]",
+                    pi[0], pi[1], pi[2]
+                ),
             ),
             None => ui.colored_label(
                 palette.warning,
@@ -248,7 +259,10 @@ impl DtmcTensorWorkbenchTool {
     }
 
     fn render_hitting_chart(&self, ui: &mut egui::Ui, palette: &SemanticPalette, height: f32) {
-        ui.strong(format!("Mean First Hitting Time to State S{}", self.target_state));
+        ui.strong(format!(
+            "Mean First Hitting Time to State S{}",
+            self.target_state
+        ));
         let resp = Plot::new("dtmc_hitting_times_plot")
             .height(height)
             .x_axis_label("Starting State i")
@@ -270,7 +284,10 @@ impl DtmcTensorWorkbenchTool {
                 "Mean hitting times to S{}: [{:.2}, {:.2}, {:.2}]",
                 self.target_state, h[0], h[1], h[2]
             ),
-            None => format!("Target S{} unreachable from another closed class", self.target_state),
+            None => format!(
+                "Target S{} unreachable from another closed class",
+                self.target_state
+            ),
         };
         register_canvas_accessibility(
             ui,

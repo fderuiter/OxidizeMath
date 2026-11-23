@@ -149,7 +149,12 @@ impl DtmcTensorWorkbenchTool {
         let mut visits = [0_usize; 3];
         let mut rng = OxidizeRng::new(self.seed);
         if chain
-            .simulate_visits_into(self.initial_state.min(2), self.mc_steps, &mut visits, &mut rng)
+            .simulate_visits_into(
+                self.initial_state.min(2),
+                self.mc_steps,
+                &mut visits,
+                &mut rng,
+            )
             .is_ok()
             && self.mc_steps > 0
         {
@@ -169,7 +174,11 @@ impl DtmcTensorWorkbenchTool {
             DtmcModelPreset::ErgodicChain => {
                 let (r00, r01, r02) = normalize_row3(self.row0_stay, self.row0_to1);
                 let (r10, r11, r12) = normalize_row3(self.row1_to0, self.row1_stay);
-                let mat = DMatrix::from_row_slice(3, 3, &[r00, r01, r02, r10, r11, r12, 0.25, 0.35, 0.40]);
+                let mat = DMatrix::from_row_slice(
+                    3,
+                    3,
+                    &[r00, r01, r02, r10, r11, r12, 0.25, 0.35, 0.40],
+                );
                 Ok((mat, vec![StateType::Transient; 3]))
             }
             DtmcModelPreset::PeriodTwoWalk => {
@@ -183,11 +192,8 @@ impl DtmcTensorWorkbenchTool {
             }
             DtmcModelPreset::AsymmetricAbsorbing => {
                 let (r00, r01, r02) = normalize_absorbing_row(self.row0_stay, self.row0_to1);
-                let mat = DMatrix::from_row_slice(
-                    3,
-                    3,
-                    &[r00, r01, r02, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-                );
+                let mat =
+                    DMatrix::from_row_slice(3, 3, &[r00, r01, r02, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
                 Ok((
                     mat,
                     vec![
@@ -278,11 +284,8 @@ fn build_shot_clock_tensor() -> Result<TransitionTensor<f64>, String> {
     ];
     for (sec, r0) in slices {
         let ti = TimeIndex::new(sec).map_err(|e| e.to_string())?;
-        let mat = DMatrix::from_row_slice(
-            3,
-            3,
-            &[r0[0], r0[1], r0[2], 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-        );
+        let mat =
+            DMatrix::from_row_slice(3, 3, &[r0[0], r0[1], r0[2], 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
         tensor.add_time_slice(ti, mat).map_err(|e| e.to_string())?;
     }
     Ok(tensor)

@@ -117,11 +117,7 @@ impl CtmcQueueWorkbenchTool {
         let scale = 10.0_f64.powf(self.rate_log10.clamp(-7.0, 0.0));
         let wf = scale * self.forward_weight.clamp(0.2, 5.0);
         let wb = scale * self.backward_weight.clamp(0.2, 5.0);
-        let g = DMatrix::from_row_slice(
-            3,
-            3,
-            &[-wf, wf, 0.0, wb, -(wf + wb), wf, 0.0, wb, -wb],
-        );
+        let g = DMatrix::from_row_slice(3, 3, &[-wf, wf, 0.0, wb, -(wf + wb), wf, 0.0, wb, -wb]);
 
         let chain = match ContinuousMarkovChain::new(g) {
             Ok(c) => c,
@@ -138,9 +134,14 @@ impl CtmcQueueWorkbenchTool {
         let mut sojourns = [0.0_f64; 3];
         let mut rng = OxidizeRng::new(self.seed);
 
-        if let Ok(events) =
-            chain.simulate_gillespie_into(0, sim_horizon, &mut times, &mut states, &mut sojourns, &mut rng)
-        {
+        if let Ok(events) = chain.simulate_gillespie_into(
+            0,
+            sim_horizon,
+            &mut times,
+            &mut states,
+            &mut sojourns,
+            &mut rng,
+        ) {
             let total = sojourns.iter().sum::<f64>().max(f64::MIN_POSITIVE);
             self.ctmc_empirical = [
                 sojourns[0] / total,
@@ -164,7 +165,9 @@ impl CtmcQueueWorkbenchTool {
         self.queue_metrics = Some(metrics);
 
         let display_k = 12.min(self.capacity);
-        self.queue_analytic_pk = (0..=display_k).map(|k| queue.state_probability(k)).collect();
+        self.queue_analytic_pk = (0..=display_k)
+            .map(|k| queue.state_probability(k))
+            .collect();
         self.queue_ctmc_pk = queue
             .to_truncated_ctmc(self.capacity)
             .ok()
@@ -175,7 +178,8 @@ impl CtmcQueueWorkbenchTool {
         let mut times = [0.0_f64; MAX_TRAJ_EVENTS];
         let mut counts = [0_usize; MAX_TRAJ_EVENTS];
         let mut rng = OxidizeRng::new(self.seed);
-        let events = queue.simulate_trajectory_into(0, self.horizon, &mut times, &mut counts, &mut rng);
+        let events =
+            queue.simulate_trajectory_into(0, self.horizon, &mut times, &mut counts, &mut rng);
         let n_pts = events.min(MAX_TRAJ_EVENTS);
         self.primary_curve = build_step_curve(&times[..n_pts], &counts[..n_pts], 1.0);
         self.secondary_curve = vec![

@@ -39,7 +39,9 @@ impl HmmOuWorkbenchTool {
             for m in CalibrationMode::ALL {
                 if ui
                     .selectable_label(self.mode == m, m.label())
-                    .accessible_hover_text("Select HMM Viterbi + Baum-Welch or Exact OU + AR(1) calibration.")
+                    .accessible_hover_text(
+                        "Select HMM Viterbi + Baum-Welch or Exact OU + AR(1) calibration.",
+                    )
                     .clicked()
                 {
                     self.set_mode(m);
@@ -79,7 +81,9 @@ impl HmmOuWorkbenchTool {
             .add(egui::Slider::new(&mut self.emission_clarity, 0.55..=0.95).text("Clarity B_ii"))
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.em_iters, MIN_EM_ITERS..=MAX_EM_ITERS).text("EM Iters"))
+            .add(
+                egui::Slider::new(&mut self.em_iters, MIN_EM_ITERS..=MAX_EM_ITERS).text("EM Iters"),
+            )
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.prob_floor, 0.001..=0.10).text("Simplex Floor"))
@@ -94,7 +98,9 @@ impl HmmOuWorkbenchTool {
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.ou_theta, 0.10..=5.0).text("Reversion θ"))
-            .accessible_hover_text("Mean reversion speed theta; fast theta highlights ExactOuSolver accuracy.")
+            .accessible_hover_text(
+                "Mean reversion speed theta; fast theta highlights ExactOuSolver accuracy.",
+            )
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.ou_sigma, 0.05..=1.50).text("Volatility σ"))

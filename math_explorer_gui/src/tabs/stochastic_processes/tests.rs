@@ -2,12 +2,12 @@
 
 //! Unit, accessibility, URL hydration, and export tests for [`super::StochasticProcessesTab`].
 
-use super::ctmc_queue_workbench::CtmcQueueWorkbenchTool;
 use super::ctmc_queue_workbench::state::{ContinuousModelMode, PoissonVariant};
-use super::dtmc_workbench::DtmcTensorWorkbenchTool;
+use super::ctmc_queue_workbench::CtmcQueueWorkbenchTool;
 use super::dtmc_workbench::state::DtmcModelPreset;
-use super::hmm_ou_workbench::HmmOuWorkbenchTool;
+use super::dtmc_workbench::DtmcTensorWorkbenchTool;
 use super::hmm_ou_workbench::state::CalibrationMode;
+use super::hmm_ou_workbench::HmmOuWorkbenchTool;
 use super::StochasticProcessesTab;
 use crate::app::MathExplorerApp;
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
@@ -68,7 +68,9 @@ fn test_stochastic_processes_tab_discovers_all_three_workbenches_and_renders_a11
 fn test_dtmc_workbench_regimes_stationary_and_absorbing_invariants() {
     let mut tool = DtmcTensorWorkbenchTool::default();
     tool.apply_model_preset(DtmcModelPreset::PeriodTwoWalk);
-    let pi = tool.stationary.expect("Period-2 walk has unique stationary");
+    let pi = tool
+        .stationary
+        .expect("Period-2 walk has unique stationary");
     assert!((pi[0] - 0.25).abs() < 1e-12);
     assert!((pi[1] - 0.50).abs() < 1e-12);
     assert!((pi[2] - 0.25).abs() < 1e-12);
@@ -151,12 +153,13 @@ fn test_stochastic_workbenches_url_share_and_deferred_exports() {
         let share_url = app.encode_current_share_url().expect("encode share url");
         let hash_idx = share_url.find('#').expect("hash fragment");
         let mut restored = MathExplorerApp::default();
-        assert!(
-            restored
-                .apply_share_location_strings(&share_url[hash_idx..], "", None)
-                .unwrap()
+        assert!(restored
+            .apply_share_location_strings(&share_url[hash_idx..], "", None)
+            .unwrap());
+        assert_eq!(
+            restored.tabs[restored.selected_tab].active_tool_id(),
+            Some(tool_id)
         );
-        assert_eq!(restored.tabs[restored.selected_tab].active_tool_id(), Some(tool_id));
     }
 
     let ctx = egui::Context::default();

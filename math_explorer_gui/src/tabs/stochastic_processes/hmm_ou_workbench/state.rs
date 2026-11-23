@@ -111,7 +111,10 @@ impl TheoryDescribable for HmmOuWorkbenchTool {
 
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("HMM & OU Calibration".to_string(), self.theory_description());
+        map.insert(
+            "HMM & OU Calibration".to_string(),
+            self.theory_description(),
+        );
         map
     }
 }

@@ -36,7 +36,9 @@ impl CtmcQueueWorkbenchTool {
             for m in ContinuousModelMode::ALL {
                 if ui
                     .selectable_label(self.mode == m, m.label())
-                    .accessible_hover_text("Select continuous-time Markov, M/M/c queue, or Poisson model.")
+                    .accessible_hover_text(
+                        "Select continuous-time Markov, M/M/c queue, or Poisson model.",
+                    )
                     .clicked()
                 {
                     self.set_mode(m);
@@ -163,7 +165,10 @@ impl CtmcQueueWorkbenchTool {
                     palette.success,
                     format!("Expected Λ(T) = {:.2} arrivals", self.expected_arrivals),
                 );
-                ui.label(format!("Realized N(T) = {} thinned arrivals", self.realized_arrivals));
+                ui.label(format!(
+                    "Realized N(T) = {} thinned arrivals",
+                    self.realized_arrivals
+                ));
             }
         }
         ui.small(format!("Solved in {:.2} ms", self.last_compute_ms));
@@ -234,7 +239,10 @@ impl CtmcQueueWorkbenchTool {
                     BarChart::new("Gillespie Sojourn", emp).color(palette.series_color(1)),
                 );
             });
-        let summary = format!("Slow-rate CTMC scale 10^{:.1}, steady {:?}", self.rate_log10, self.ctmc_steady);
+        let summary = format!(
+            "Slow-rate CTMC scale 10^{:.1}, steady {:?}",
+            self.rate_log10, self.ctmc_steady
+        );
         register_canvas_accessibility(
             ui,
             &resp.response,

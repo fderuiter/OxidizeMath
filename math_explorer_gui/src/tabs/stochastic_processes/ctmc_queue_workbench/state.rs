@@ -287,7 +287,10 @@ impl CtmcQueueWorkbenchTool {
         }
     }
 
-    fn build_ctmc_export_bars(&self, pal: &crate::app::palette::SemanticPalette) -> Vec<ExportPrimitive> {
+    fn build_ctmc_export_bars(
+        &self,
+        pal: &crate::app::palette::SemanticPalette,
+    ) -> Vec<ExportPrimitive> {
         let mut prims = Vec::new();
         for s in 0..3 {
             let x = s as f64;
@@ -313,7 +316,10 @@ impl CtmcQueueWorkbenchTool {
         prims
     }
 
-    fn build_queue_export_bars(&self, pal: &crate::app::palette::SemanticPalette) -> Vec<ExportPrimitive> {
+    fn build_queue_export_bars(
+        &self,
+        pal: &crate::app::palette::SemanticPalette,
+    ) -> Vec<ExportPrimitive> {
         self.queue_analytic_pk
             .iter()
             .enumerate()
