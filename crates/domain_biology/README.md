@@ -10,13 +10,15 @@ By formalizing biological dynamics into clean, verified Rust algorithms, the cra
 
 ### Module Structure
 
-- **`neuroscience`**: Biophysical neuron models (Hodgkin-Huxley action potential generation, Izhikevich spiking patterns).
-- **`kinetics`**: Enzyme reaction kinetics, Michaelis-Menten equations, and cooperativity models (Hill equation).
-- **`reaction_diffusion`**: Spatial pattern generation including `GrayScottKinetics` and Turing reaction-diffusion systems.
-- **`morphogenesis`**: Mathematical models of biological tissue growth, `SchnakenbergKinetics` / `GrayScottKinetics` morphogen gradients, and cellular patterning.
+- **`neuroscience`**: Biophysical neuron models (Hodgkin-Huxley action potential generation, leaky integrate-and-fire spiking patterns).
+- **`kinetics`**: Enzyme reaction kinetics (`MichaelisMenten`) and allosteric cooperativity models (`HillKinetics`).
+- **`reaction_diffusion`**: Zero-allocation generic $N$-species reaction-diffusion engine (`ReactionDiffusionSystem`, `HillSubstrateReaction`) decoupled over `ReactionModel` and `DiffusionModel` traits.
+- **`morphogenesis`**: Mathematical models of biological tissue patterning, `SchnakenbergKinetics` / `GrayScottKinetics` morphogen gradients, and Turing instabilities.
+- **`lsystem`**: Zero-allocation deterministic D0L and parametric Lindenmayer vascular branching grammars (`LSystemEngine`, double-buffered $65{,}536$-symbol byte tape, and 2D bracketed turtle geometry).
+- **`phyllotaxis`**: Pre-allocated Vogel planar phyllotaxis (`VogelPhyllotaxisEngine`, $r_n = c\sqrt{n}, \theta_n = n\alpha$ up to $4{,}096$ primordia) and opposing Fibonacci $(F_k, F_{k+1})$ parastichy spiral analysis.
 - **`lenia`**: Spectral 2D Lenia continuous cellular automata (`LeniaEngine`, concentric-ring `KernelShells`, Gaussian growth curves, and `Orbium` / `Geminium` / `Hydrogeminium` / `Scutium` solitons).
-- **`evolution`**: Replicator dynamics, selection equations, and evolutionary game theory.
-- **`diffusion`**: Molecular concentration gradient solvers and Fickian diffusion mechanics.
+- **`evolution`**: Evolutionary game theory (`HawkDovePopulation`), replicator dynamics, and Evolutionarily Stable Strategy ($p^* = V / C$) equilibria.
+- **`diffusion`**: 1D, 2D, and 3D finite-difference Fickian diffusion operators (`FiniteDifference1D`, `FiniteDifference2D`, `FiniteDifference3D`).
 
 ---
 

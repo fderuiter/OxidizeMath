@@ -15,7 +15,7 @@ pub use domain_applied::error::{
 
 #[cfg(feature = "biology")]
 pub use domain_biology::error::{
-    BiologyError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
+    BiologyError, BotanicalError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
 };
 
 #[cfg(feature = "epidemiology")]
@@ -99,6 +99,9 @@ pub enum Error {
     /// Computational biology crate umbrella error.
     #[cfg(feature = "biology")]
     Biology(BiologyError),
+    /// Botanical morphogenesis (L-system or phyllotaxis) error.
+    #[cfg(feature = "biology")]
+    Botanical(BotanicalError),
     /// Hodgkin-Huxley cellular neuroscience error.
     #[cfg(feature = "biology")]
     HodgkinHuxley(HodgkinHuxleyError),

@@ -39,12 +39,17 @@ impl FermiGamePreset {
     }
 
     /// Canonical `[R, S, T, P]` 2x2 payoff matrix entries (`+1` Cooperator = row 0, `-1` Defector = row 1).
+    ///
+    /// `Self::HawkDove` derives its `[R, S, T, P]` entries directly from
+    /// [`math_explorer::biology::evolution::HawkDovePopulation`] (`V = 2.0, C = 4.0`, where
+    /// Cooperator = Dove and Defector = Hawk).
     #[must_use]
-    pub const fn payoffs(self) -> [f64; 4] {
+    pub fn payoffs(self) -> [f64; 4] {
         match self {
             Self::PrisonersDilemma | Self::Custom => [1.0, -0.1, 1.25, 0.0],
             Self::StagHunt => [2.0, 0.0, 1.2, 1.0],
-            Self::HawkDove => [1.0, 0.0, 2.0, -1.0],
+            Self::HawkDove => math_explorer::biology::evolution::HawkDovePopulation::new(2.0, 4.0)
+                .cooperator_defector_payoffs(),
         }
     }
 
@@ -58,7 +63,7 @@ impl FermiGamePreset {
     }
 }
 
-pub(super) const fn default_game_payoffs() -> [f64; 4] {
+pub(super) fn default_game_payoffs() -> [f64; 4] {
     FermiGamePreset::PrisonersDilemma.payoffs()
 }
 

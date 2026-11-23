@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 pub mod atlas;
 pub mod lenia;
+pub mod phyllotaxis_lsystem;
 pub mod presets;
 pub mod runner;
 pub mod sculpt;
@@ -30,6 +31,8 @@ pub use atlas::{
 };
 #[cfg(test)]
 pub use lenia::LeniaTool;
+#[cfg(test)]
+pub use phyllotaxis_lsystem::PhyllotaxisLSystemTool;
 #[cfg(test)]
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
@@ -409,4 +412,4 @@ impl ExplorerTab for MorphogenesisTab {
 #[cfg(test)]
 mod tests;
 
-// [cite:favorite_child]
+// [cite:biology]

@@ -6,7 +6,6 @@ pub mod hodgkin_huxley;
 pub mod neural_network_viz;
 pub mod spike_analysis;
 
-
 pub struct NeuroscienceTab {
     framework: crate::framework::SimulationFramework,
 }
@@ -53,4 +52,4 @@ impl ExplorerTab for NeuroscienceTab {
     }
 }
 
-// [cite:graph_parameters_rust]
+// [cite:biology]
