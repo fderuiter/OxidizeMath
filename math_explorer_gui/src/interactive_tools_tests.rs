@@ -35,6 +35,7 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::financial_math::market_execution::MarketExecutionTool,
         >(&ctx);
+        exercise_interactive_tool::<crate::tabs::game_theory::auction::MyersonAuctionTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(
             &ctx,
@@ -78,6 +79,9 @@ mod tests {
         exercise_interactive_tool::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(
             ctx,
         );
+        exercise_interactive_tool::<
+            crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool,
+        >(ctx);
         exercise_interactive_tool::<
             crate::tabs::geometry_topology::knot_braid_studio::KnotBraidStudioTool,
         >(ctx);

@@ -1,4 +1,4 @@
-//! Verifies that all 34 public error enums tested from `math_explorer::error`
+//! Verifies that all 35 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -15,10 +15,10 @@ use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
     AIError, BatteryError, BraidError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
     EloError, EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError,
-    Glicko2Error, HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, KnotError,
-    LoraError, MarketPricingError, MarkovError, MatchModelError, MathError, NumberTheoryError,
-    OuError, PharmacokineticsError, RadarError, SandpileError, SolidStateError, StandardModelError,
-    StatMechError, TdaError, ZipError,
+    Glicko2Error, HighEnergyError, HodgkinHuxleyError, HyperbolicError, IsosurfaceError,
+    KellyError, KnotError, LoraError, MarketPricingError, MarkovError, MatchModelError, MathError,
+    NumberTheoryError, OuError, PharmacokineticsError, RadarError, SandpileError, SolidStateError,
+    StandardModelError, StatMechError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -89,6 +89,10 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         &MatchModelError::InvalidGoalRate { value: 0.0 },
     );
     assert_readable_diagnostic("BraidError", &BraidError::InvalidStrandCount { strands: 0 });
+    assert_readable_diagnostic(
+        "HyperbolicError",
+        &HyperbolicError::DegenerateIsometry { determinant: 0.0 },
+    );
     assert_readable_diagnostic("KnotError", &KnotError::EmptyCurve);
 }
 

@@ -9,6 +9,7 @@ use crate::pure_math::{
         stochastic::StochasticError, transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
+    hyperbolic::HyperbolicError,
     knot_theory::KnotError,
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
@@ -285,6 +286,18 @@ impl Diagnostic for BraidError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("BraidError", self.to_string())
+    }
+}
+
+impl Diagnostic for HyperbolicError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("HyperbolicError", self.to_string())
     }
 }
 
