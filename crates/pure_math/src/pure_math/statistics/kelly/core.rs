@@ -10,6 +10,7 @@ pub use math_commons::primitives::UnitInterval;
 /// - Odds of 3.0 means you win $2 for every $1 bet (2:1)
 ///
 /// Note: This uses decimal odds format. To convert from:
+/// - Net odds (b): Use `Odds::from_net_odds()`
 /// - American odds: Use `Odds::from_american()`
 /// - Fractional odds: Use `Odds::from_fractional()`
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -325,5 +326,6 @@ mod tests {
         assert!(Odds::from_net_odds(-0.5).is_err());
         assert!(Odds::from_net_odds(f64::NAN).is_err());
         assert!(Odds::from_net_odds(f64::INFINITY).is_err());
+        assert!(Odds::from_net_odds(f64::NEG_INFINITY).is_err());
     }
 }

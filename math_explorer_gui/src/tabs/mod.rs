@@ -86,6 +86,7 @@ pub trait ExplorerTab {
         match self.name() {
             "Algorithmic Information"
             | "Analysis & Calculus"
+            | "Elliptic Curves"
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
@@ -178,6 +179,7 @@ pub trait ExplorerTab {
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
             "Clinical Trials" => "clinical_trials",
+            "Elliptic Curves" => "elliptic_curves",
             "Epidemiology" => "epidemiology",
             "Favoritism" => "favoritism",
             "Financial Math" => "financial_math",

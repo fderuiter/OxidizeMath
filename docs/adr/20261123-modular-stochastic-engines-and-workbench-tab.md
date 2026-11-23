@@ -1,4 +1,4 @@
-# ADR 0045: Modular Stochastic Engines and Dedicated Workbench Tab
+# ADR 20261123: Modular Stochastic Engines and Dedicated Workbench Tab
 
 ## Status
 
