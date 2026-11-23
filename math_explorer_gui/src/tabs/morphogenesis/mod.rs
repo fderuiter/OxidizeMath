@@ -13,6 +13,7 @@ pub mod canvas;
 /// Counterfactual shadow twin state and spatial difference heatmaps.
 pub mod counterfactual;
 mod counterfactual_tool;
+mod dataflow;
 /// Unified spatial diffusion operator combining `CellMask2D` microfluidics and 2D upwind advection.
 pub mod diffusion;
 /// Progressive 2D Gray-Scott saddle-node, Hopf, and Turing-mitosis parameter cartography.

@@ -64,25 +64,10 @@ pub(crate) fn apply_stroke_to_morpho_system<K: ReactionKinetics<2>>(
 
 pub(crate) fn enforce_system_mask<K: ReactionKinetics<2>>(
     system: &mut TuringSystem<2, K, CoupledMorphoDiffusion>,
-    width: usize,
-    height: usize,
+    _width: usize,
+    _height: usize,
 ) {
-    if !system.diffusion.mask.has_active_cells() {
-        return;
-    }
-    let emit_u = system.diffusion.mask.emitter_u_level;
-    let emit_v = system.diffusion.mask.emitter_v_level;
-    for idx in 0..(width * height) {
-        match ReactionCellRole::from_u8(system.diffusion.mask.roles()[idx]) {
-            ReactionCellRole::ZeroFluxWall | ReactionCellRole::Sink => {
-                system.u_mut()[idx] = 0.0;
-                system.v_mut()[idx] = 0.0;
-            }
-            ReactionCellRole::EmitterU => system.u_mut()[idx] = emit_u,
-            ReactionCellRole::EmitterV => system.v_mut()[idx] = emit_v,
-            ReactionCellRole::Free => {}
-        }
-    }
+    system.state.pin_cell_mask(&system.diffusion.mask);
 }
 
 pub(crate) fn record_morpho_stroke_rle(
@@ -214,6 +199,7 @@ impl super::MorphogenesisTool {
         self.stepped_pixels = None;
         self.step_runner = None;
         self.dirty = true;
+        self.invalidate_scalar_field_cache();
         if let Some(c) = ctx {
             c.request_repaint();
         }
@@ -238,6 +224,7 @@ impl super::MorphogenesisTool {
                 self.stepped_pixels = None;
                 self.step_runner = None;
                 self.dirty = true;
+                self.invalidate_scalar_field_cache();
                 ctx.request_repaint();
             }
             "clear_mask" => {
@@ -252,6 +239,7 @@ impl super::MorphogenesisTool {
                 self.stepped_pixels = None;
                 self.step_runner = None;
                 self.dirty = true;
+                self.invalidate_scalar_field_cache();
                 ctx.request_repaint();
             }
             _ => {}

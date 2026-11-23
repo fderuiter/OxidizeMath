@@ -170,8 +170,14 @@ impl MathExplorerApp {
         }
         if active_pane_count <= 1 {
             self.focused_pane = 0;
-        } else if self.focused_pane >= active_pane_count {
-            self.focused_pane = active_pane_count - 1;
+            self.pipeline_dag.clear();
+            self.dataflow_bus.prune_inactive(1);
+        } else {
+            if self.focused_pane >= active_pane_count {
+                self.focused_pane = active_pane_count - 1;
+            }
+            self.pipeline_dag.prune_inactive(active_pane_count);
+            self.dataflow_bus.prune_inactive(active_pane_count);
         }
     }
 
@@ -184,17 +190,18 @@ impl MathExplorerApp {
             return;
         };
         let keep = self.viewport_layout.pane_count();
-        let in_kept_pane = ctx.read_response(fid).is_some_and(|resp| {
-            ctx.data(|d| {
-                d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"))
-                    .is_none_or(|rects| {
-                        rects
-                            .iter()
-                            .take(keep)
-                            .any(|r| r.contains(resp.rect.center()))
-                    })
-            })
-        });
+        let in_kept_pane =
+            super::viewport::focus::inspect_widget_response(ctx, fid).is_some_and(|resp| {
+                ctx.data(|d| {
+                    d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"))
+                        .is_none_or(|rects| {
+                            rects
+                                .iter()
+                                .take(keep)
+                                .any(|r| r.contains(resp.rect.center()))
+                        })
+                })
+            });
         if !in_kept_pane {
             ctx.memory_mut(|m| m.surrender_focus(fid));
         }
@@ -208,6 +215,8 @@ impl MathExplorerApp {
                 slot.drop_active();
             }
         }
+        self.dataflow_bus.clear_pane(pane_idx);
+        self.prune_incompatible_pipeline_links();
     }
 
     /// Returns a mutable reference to the `ExplorerTab` assigned to `pane_idx`, instantiating lazily for secondary panes.
@@ -417,9 +426,10 @@ impl MathExplorerApp {
         if super::viewport::sash::is_any_sash_id(fid) {
             return;
         }
-        let inside_target = ctx.read_response(fid).is_some_and(|resp| {
-            super::viewport::focus::response_belongs_to_pane(&resp, target_pane_rect)
-        });
+        let inside_target =
+            super::viewport::focus::inspect_widget_response(ctx, fid).is_some_and(|resp| {
+                super::viewport::focus::response_belongs_to_pane(&resp, target_pane_rect)
+            });
         if !inside_target {
             ctx.memory_mut(|m| m.surrender_focus(fid));
         }

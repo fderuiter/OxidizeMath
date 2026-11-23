@@ -1,10 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::galactic_orbits_relativity::{
+    clamp_bh_config, is_valid_bh_config, OrbitLensOverlayConfig,
+};
 use super::{clamp_finite, HaloKindChoice};
 use crate::framework::{FiniteStateGuard, InteractiveTool};
 use eframe::egui;
 use math_explorer::physics::astrophysics::{
-    DwarfMorphology, GalacticDiskSystem, Mpc, OrbitParticleKind, OrbitPopulationConfig,
+    CentralBlackHoleConfig, DwarfMorphology, GalacticDiskSystem, Mpc, OrbitParticleKind,
+    OrbitPopulationConfig,
 };
 
 pub(super) const TRAIL_CAPACITY: usize = 64;
@@ -29,6 +33,10 @@ pub(crate) struct GalacticOrbitsState {
     pub(crate) disk_tracers: usize,
     pub(crate) tidal_tracers: usize,
     pub(crate) tidal_tangential_ratio: f64,
+    #[serde(default, skip_serializing_if = "CentralBlackHoleConfig::is_default")]
+    pub(crate) central_bh: CentralBlackHoleConfig,
+    #[serde(default, skip_serializing_if = "OrbitLensOverlayConfig::is_default")]
+    pub(crate) lens_overlay: OrbitLensOverlayConfig,
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) is_playing: bool,
 }
@@ -56,6 +64,8 @@ impl Default for GalacticOrbitSimulator {
             disk_tracers: 18,
             tidal_tracers: 8,
             tidal_tangential_ratio: 0.62,
+            central_bh: CentralBlackHoleConfig::default(),
+            lens_overlay: OrbitLensOverlayConfig::default(),
             is_playing: false,
         };
         let halo = cfg.halo_kind.build_profile(
@@ -105,6 +115,14 @@ impl GalacticOrbitSimulator {
                 tidal_tangential_ratio: c.tidal_tangential_ratio,
             },
         );
+        if c.central_bh.enabled {
+            self.system.set_central_black_hole(c.central_bh);
+            self.system.reseed_orbits(
+                c.disk_tracers.max(1),
+                c.tidal_tracers,
+                c.tidal_tangential_ratio,
+            );
+        }
         if prewarm_steps > 0 {
             self.system.step_n_leapfrog(self.cfg.dt_myr, prewarm_steps);
         }
@@ -161,6 +179,7 @@ impl GalacticOrbitSimulator {
                 out.push((format!("Tracer {idx} Orbit Trail"), trail_buf[..n].to_vec()));
             }
         }
+        self.append_relativistic_orbit_datasets(&mut out);
         out
     }
 }
@@ -181,6 +200,8 @@ impl FiniteStateGuard for GalacticOrbitSimulator {
         .into_iter()
         .all(f64::is_finite)
             && c.dt_myr > 0.0
+            && is_valid_bh_config(&c.central_bh)
+            && c.lens_overlay.is_valid()
             && self.system.particles().iter().all(|p| {
                 p.x_kpc.is_finite()
                     && p.y_kpc.is_finite()
@@ -207,6 +228,8 @@ impl FiniteStateGuard for GalacticOrbitSimulator {
         c.disk_tracers = c.disk_tracers.clamp(4, 48);
         c.tidal_tracers = c.tidal_tracers.clamp(0, 24);
         c.tidal_tangential_ratio = clamp_finite(c.tidal_tangential_ratio, 0.2, 1.2, 0.62);
+        clamp_bh_config(&mut c.central_bh);
+        c.lens_overlay.clamp_in_place();
         self.rebuild_system(0);
     }
 }
@@ -256,6 +279,8 @@ impl InteractiveTool for GalacticOrbitSimulator {
             || !(1..=16).contains(&s.substeps_per_frame)
             || !(4..=48).contains(&s.disk_tracers)
             || s.tidal_tracers > 24
+            || !is_valid_bh_config(&s.central_bh)
+            || !s.lens_overlay.is_valid()
         {
             return Err("Galactic orbit parameters out of valid physical bounds".into());
         }

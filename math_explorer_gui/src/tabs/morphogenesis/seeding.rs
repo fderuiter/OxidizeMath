@@ -160,6 +160,7 @@ impl MorphogenesisTool {
             self.stepped_pixels = None;
             self.step_runner = None;
             self.dirty = true;
+            self.invalidate_scalar_field_cache();
         } else {
             self.reset();
             let rle_mask = self
