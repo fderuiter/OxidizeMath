@@ -1,4 +1,4 @@
-# ADR 0040: Playback Timeline Scrubbing, Ring Buffers, and Twin Chaotic Trajectories
+# ADR 0042: Playback Timeline Scrubbing, Ring Buffers, and Twin Chaotic Trajectories
 
 ## Status
 

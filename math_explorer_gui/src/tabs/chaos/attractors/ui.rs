@@ -38,6 +38,13 @@ impl AttractorPlotter {
             self.draw_twin_initial_controls(ui, ctx);
             self.draw_simulation_and_scrubber_controls(ui, ctx, worker_faulted);
             self.draw_chaos_metrics_panel(ui);
+            ui.separator();
+            crate::audio::render_sonification_panel(
+                ui,
+                "attractors",
+                &self.latest_sonification,
+                self.is_paused() || worker_faulted,
+            );
 
             egui::CollapsingHeader::new("View")
                 .default_open(true)

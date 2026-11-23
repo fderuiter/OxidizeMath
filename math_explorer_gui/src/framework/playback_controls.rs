@@ -176,6 +176,13 @@ impl PlaybackTransport<'_> {
         action: PlaybackAction,
         should_announce: bool,
     ) {
+        match action {
+            PlaybackAction::Pause | PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {
+                crate::audio::notify_playback_paused();
+            }
+            PlaybackAction::Reset => crate::audio::notify_playback_reset(),
+            PlaybackAction::Play | PlaybackAction::Step => {}
+        }
         if should_announce {
             let announcement = self.format_announcement(action);
             announce_status(&announcement);

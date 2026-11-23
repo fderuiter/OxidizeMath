@@ -113,7 +113,10 @@ pub struct AttractorSnapshot {
 }
 
 impl AttractorSnapshot {
-    pub(super) fn into_state_snapshot(self) -> StateSnapshot {
+    pub(super) fn into_state_snapshot(
+        self,
+        sonification: crate::audio::SonificationFrame,
+    ) -> StateSnapshot {
         let v = self.current_vec;
         let steps = self.step_count as f64;
         StateSnapshot {
@@ -122,8 +125,41 @@ impl AttractorSnapshot {
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data: vec![v.x, v.y, v.z, steps],
             structured_data: Some(Box::new(self)),
+            sonification,
         }
     }
+}
+
+pub(super) fn build_runner_sonification(
+    runner: &super::AttractorRunner,
+    p: &AttractorSharedParams,
+    v: Vector3<f64>,
+) -> crate::audio::SonificationFrame {
+    let deriv = match (p.mode, p.custom_flow.as_deref(), p.system_kind) {
+        (AttractorMode::Custom, Some(job), _) => {
+            let rhs = job.eval_rhs(v);
+            [rhs.x, rhs.y, rhs.z]
+        }
+        (_, _, AttractorSystemKind::Rossler) => [
+            -v.y - v.z,
+            v.x + runner.rossler_primary.a * v.y,
+            runner.rossler_primary.b + v.z * (v.x - runner.rossler_primary.c),
+        ],
+        (_, _, AttractorSystemKind::DoublePendulum) => {
+            let s = runner.pendulum_primary.state.state.0;
+            [s[2], s[3], 0.0]
+        }
+        _ => [
+            runner.system.sigma * (v.y - v.x),
+            v.x * (runner.system.rho - v.z) - v.y,
+            v.x * v.y - runner.system.beta * v.z,
+        ],
+    };
+    let diverged = matches!(
+        runner.execution_state,
+        SolverExecutionState::Diverged { .. }
+    );
+    crate::audio::mappings::attractor_frame([v.x, v.y, v.z], deriv, diverged)
 }
 
 pub(super) fn build_runner_diagnostic(

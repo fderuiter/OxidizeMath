@@ -3,8 +3,8 @@
 
 use super::flow::{AttractorMode, CompiledFlowJob};
 use super::runner_types::{
-    build_runner_diagnostic, AttractorSharedParams, AttractorSnapshot, SolverExecutionState,
-    SyncedStepParams, MAX_SIMULATION_SPEED,
+    build_runner_diagnostic, build_runner_sonification, AttractorSharedParams, AttractorSnapshot,
+    SolverExecutionState, SyncedStepParams, MAX_SIMULATION_SPEED,
 };
 use super::twin_state::{AttractorSystemKind, TwinFrame};
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
@@ -433,13 +433,15 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let (mode, kind, dt, speed) = {
+        let (v, dt, speed, sonification) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            let v = self.active_primary_vec(p.mode, p.system_kind);
+            let sonification = build_runner_sonification(self, &p, v);
             (
-                p.mode,
-                p.system_kind,
+                v,
                 p.dt,
                 p.simulation_speed.clamp(1, MAX_SIMULATION_SPEED),
+                sonification,
             )
         };
         super::invariants::publish_runner_landmarks(self, dt, speed);
@@ -447,11 +449,11 @@ impl SimulationRunner for AttractorRunner {
             history: self.history.clone(),
             shadow_history: self.shadow_history.clone(),
             timeline: self.timeline.clone(),
-            current_vec: self.active_primary_vec(mode, kind),
+            current_vec: v,
             step_count: self.step_count,
             execution_state: self.execution_state,
         }
-        .into_state_snapshot()
+        .into_state_snapshot(sonification)
     }
 
     fn get_steps_per_frame(&self) -> usize {

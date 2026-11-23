@@ -154,10 +154,13 @@ impl AttractorPlotter {
 
     fn ingest_worker_snapshot(&mut self, was_paused: bool) {
         let ui_diverged = self.diverged();
-        let Some(data) = self
-            .worker
-            .update()
-            .and_then(|s| s.structured_data.as_ref())
+        let Some(snapshot) = self.worker.update() else {
+            return;
+        };
+        self.latest_sonification = snapshot.sonification;
+        let Some(data) = snapshot
+            .structured_data
+            .as_ref()
             .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
             .cloned()
         else {
@@ -240,6 +243,20 @@ impl InteractiveTool for AttractorPlotter {
         self.is_paused().hash(&mut h);
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
+        for offset in &self.fixed_callout_offsets {
+            let x_bits = if offset.x == 0.0 {
+                0
+            } else {
+                offset.x.to_bits()
+            };
+            let y_bits = if offset.y == 0.0 {
+                0
+            } else {
+                offset.y.to_bits()
+            };
+            x_bits.hash(&mut h);
+            y_bits.hash(&mut h);
+        }
         self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
@@ -372,6 +389,10 @@ impl InteractiveTool for AttractorPlotter {
         self.ingest_worker_snapshot(was_paused);
 
         let worker_faulted = self.worker.state().is_faulted();
+        if self.diverged() || worker_faulted {
+            self.latest_sonification = crate::audio::SonificationFrame::silent();
+            crate::audio::notify_solver_diverged();
+        }
         if !self.is_paused() && !worker_faulted {
             if !self.worker.is_running() {
                 let _ = self.worker.send_command(SimCommand::Start);

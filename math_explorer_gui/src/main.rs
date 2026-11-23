@@ -4,6 +4,7 @@ pub mod accessibility;
 mod app;
 #[allow(missing_docs)]
 pub mod async_sim;
+pub mod audio;
 #[allow(missing_docs)]
 pub mod camera;
 #[cfg(test)]
@@ -36,6 +37,8 @@ pub mod starter_gallery;
 mod tabs;
 mod telemetry;
 pub mod url_state;
+#[cfg(any(feature = "ai", feature = "biology", feature = "physics"))]
+pub mod volumetric_scene;
 pub mod web_io;
 #[cfg(target_arch = "wasm32")]
 mod webgl_recovery;

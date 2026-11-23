@@ -5,10 +5,12 @@ use super::twin_state::{
     AttractorSystemKind, ExtraChaosParams, DEFAULT_EPSILON, DEFAULT_PERTURBATION_EXPR,
 };
 use super::{
-    AttractorMode, AttractorPlotter, SolverExecutionState, DEFAULT_FLOW_EXPRS, MAX_SIMULATION_SPEED,
+    AttractorMode, AttractorPlotter, SolverExecutionState, DEFAULT_FIXED_CALLOUT_OFFSETS,
+    DEFAULT_FLOW_EXPRS, MAX_SIMULATION_SPEED,
 };
 use crate::framework::Camera3D;
 use crate::starter_gallery::StarterPresetMetadata;
+use eframe::egui;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::BTreeMap;
 
@@ -40,6 +42,12 @@ fn is_default_tube_radius(r: &f64) -> bool {
     (*r - super::export::DEFAULT_TUBE_RADIUS).abs() < 1e-12
 }
 
+fn is_default_fixed_callout_offsets(v: &[[f32; 2]; 2]) -> bool {
+    (0..2).all(|i| {
+        (0..2).all(|j| (v[i][j] - DEFAULT_FIXED_CALLOUT_OFFSETS[i][j]).abs() <= f32::EPSILON)
+    })
+}
+
 #[derive(serde::Serialize)]
 struct AttractorSaveState<'a> {
     sigma: f64,
@@ -51,6 +59,8 @@ struct AttractorSaveState<'a> {
     simulation_speed: usize,
     execution_state: SolverExecutionState,
     show_annotations: bool,
+    #[serde(skip_serializing_if = "is_default_fixed_callout_offsets")]
+    fixed_callout_offsets: [[f32; 2]; 2],
     camera: Camera3D,
     #[serde(skip_serializing_if = "AttractorMode::is_lorenz")]
     mode: AttractorMode,
@@ -83,6 +93,8 @@ struct AttractorState {
     execution_state: Option<SolverExecutionState>,
     #[serde(default = "default_annotations_enabled")]
     show_annotations: bool,
+    #[serde(default)]
+    fixed_callout_offsets: Option<[[f32; 2]; 2]>,
     #[serde(default)]
     paused: Option<bool>,
     #[serde(default)]
@@ -156,6 +168,7 @@ impl AttractorPlotter {
             simulation_speed: self.simulation_speed,
             execution_state: self.execution_state,
             show_annotations: self.show_annotations,
+            fixed_callout_offsets: self.fixed_callout_offsets.map(|v| [v.x, v.y]),
             camera: self.camera,
             mode: self.mode,
             custom_exprs,
@@ -171,7 +184,9 @@ impl AttractorPlotter {
         .ok()
     }
 
-    fn validate_deserialized_state(s: &AttractorState) -> Result<ExtraChaosParams, String> {
+    fn validate_deserialized_state(
+        s: &AttractorState,
+    ) -> Result<(ExtraChaosParams, [[f32; 2]; 2]), String> {
         if !s.sigma.is_finite()
             || !s.rho.is_finite()
             || !s.beta.is_finite()
@@ -186,6 +201,12 @@ impl AttractorPlotter {
             return Err(format!(
                 "AttractorPlotter parameters must be finite with dt > 0 and simulation_speed in 1..={MAX_SIMULATION_SPEED}"
             ));
+        }
+        let offsets = s
+            .fixed_callout_offsets
+            .unwrap_or(DEFAULT_FIXED_CALLOUT_OFFSETS);
+        if offsets.iter().flatten().any(|c| !c.is_finite()) {
+            return Err("AttractorPlotter fixed_callout_offsets must be finite".into());
         }
         if s.initial_state.iter().any(|c| !c.is_finite())
             || !s.epsilon.is_finite()
@@ -212,14 +233,14 @@ impl AttractorPlotter {
                 "AttractorPlotter auxiliary model parameters must be finite and positive".into(),
             );
         }
-        Ok(extra)
+        Ok((extra, offsets))
     }
 
     pub(super) fn deserialize_state(&mut self, state: &str) -> Result<(), String> {
         <Self as crate::framework::InteractiveTool>::state_bounds(self).validate_json(state)?;
         let s: AttractorState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid AttractorPlotter state: {e}"))?;
-        let extra = Self::validate_deserialized_state(&s)?;
+        let (extra, offsets) = Self::validate_deserialized_state(&s)?;
         let camera = Camera3D::from_preset_fields(
             s.camera,
             s.pitch,
@@ -237,6 +258,7 @@ impl AttractorPlotter {
         self.tube_radius = s.tube_radius;
         self.simulation_speed = s.simulation_speed;
         self.show_annotations = s.show_annotations;
+        self.fixed_callout_offsets = offsets.map(egui::Vec2::from);
         self.system_kind = s.system_kind;
         self.initial_state = s.initial_state;
         self.shadow_enabled = s.shadow_enabled;
@@ -373,48 +395,16 @@ impl TheoryDescribable for AttractorPlotter {
     }
 
     fn theory_parameters(&self) -> std::collections::HashMap<String, ParameterConstraint> {
-        let mut p = std::collections::HashMap::with_capacity(5);
-        p.insert(
-            "sigma".into(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 50.0,
-                step: 0.5,
-            },
-        );
-        p.insert(
-            "rho".into(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 100.0,
-                step: 0.5,
-            },
-        );
-        p.insert(
-            "beta".into(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 10.0,
-                step: 0.1,
-            },
-        );
-        p.insert(
-            "dt".into(),
-            ParameterConstraint {
-                min: 0.001,
-                max: 0.05,
-                step: 0.001,
-            },
-        );
-        p.insert(
-            "epsilon".into(),
-            ParameterConstraint {
-                min: 1e-12,
-                max: 1e-1,
-                step: 1e-9,
-            },
-        );
-        p
+        [
+            ("sigma", 0.0, 50.0, 0.5),
+            ("rho", 0.0, 100.0, 0.5),
+            ("beta", 0.0, 10.0, 0.1),
+            ("dt", 0.001, 0.05, 0.001),
+            ("epsilon", 1e-12, 1e-1, 1e-9),
+        ]
+        .into_iter()
+        .map(|(k, min, max, step)| (k.into(), ParameterConstraint { min, max, step }))
+        .collect()
     }
 }
 

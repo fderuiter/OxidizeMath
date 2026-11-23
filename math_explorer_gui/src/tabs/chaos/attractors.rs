@@ -50,6 +50,8 @@ mod preset;
 #[path = "attractors/export.rs"]
 pub mod export;
 
+pub(crate) const DEFAULT_FIXED_CALLOUT_OFFSETS: [[f32; 2]; 2] = [[35.0, -25.0], [-35.0, 25.0]];
+
 /// Interactive 3D strange attractor and twin-trajectory divergence explorer.
 pub struct AttractorPlotter {
     pub(crate) mode: AttractorMode,
@@ -84,6 +86,7 @@ pub struct AttractorPlotter {
     pub(crate) last_eval_error_announced: Option<String>,
     pub(crate) extra_params: ExtraChaosParams,
     pub(crate) metrics_cache: ChaosMetricsCache,
+    pub(super) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
 }
 
@@ -124,7 +127,7 @@ impl Default for AttractorPlotter {
             params,
             worker,
             show_annotations: true,
-            fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
+            fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
             system_kind: AttractorSystemKind::Lorenz,
             initial_state: initial,
@@ -137,6 +140,11 @@ impl Default for AttractorPlotter {
             last_eval_error_announced: None,
             extra_params: ExtraChaosParams::default(),
             metrics_cache: ChaosMetricsCache::default(),
+            latest_sonification: crate::audio::mappings::attractor_frame(
+                [1.0, 1.0, 1.0],
+                [0.0, 26.0, -1.67],
+                false,
+            ),
             invariants_cache: invariants::CachedAttractorInvariants::default(),
         }
     }
@@ -358,6 +366,7 @@ impl AttractorPlotter {
             self.system_kind.default_dt()
         };
         self.tube_radius = export::DEFAULT_TUBE_RADIUS;
+        self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
         self.epsilon = DEFAULT_EPSILON;
         self.perturbation_expr = DEFAULT_PERTURBATION_EXPR.to_string();
         self.perturbation_bar
