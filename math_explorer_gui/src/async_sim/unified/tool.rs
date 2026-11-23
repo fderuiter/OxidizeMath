@@ -305,10 +305,6 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         }
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_kit.focused_plot_id()
-    }
-
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -378,6 +374,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             .clone();
         let cmds = ext.apply_challenge(challenge_id, &mut next_params)?;
         *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
+        self.clear_stepped_state();
         self.dispatch_extension_commands(cmds, None);
         Ok(())
     }
