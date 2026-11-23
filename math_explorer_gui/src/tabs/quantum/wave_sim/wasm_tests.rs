@@ -1,8 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::{WaveData, WaveUnified, CUSTOM_POTENTIAL_KEY};
+use super::{WaveData, WaveSimulatorTool};
 use crate::app::MathExplorerApp;
-use crate::async_sim::unified::UnifiedSimTool;
 use crate::async_sim::SimCommand;
 use crate::url_state::{
     read_browser_location_parts, replace_browser_url_fragment, MAX_DECODED_URL_STATE_BYTES,
@@ -37,12 +36,12 @@ fn prepare_sculpted_quantum_app() -> (MathExplorerApp, usize, String) {
         .map(|i| if (92..=108).contains(&i) { 17.25 } else { -1.5 })
         .collect();
     let custom_json = serde_json::json!({
+        "preset": "RectangularBarrier",
         "dt": 0.02,
         "k0": 6.5,
-        "potential_type": 2.0,
         "sigma": 0.4,
         "x0": -2.5,
-        CUSTOM_POTENTIAL_KEY: sculpted,
+        "custom_potential": sculpted,
     })
     .to_string();
 
@@ -63,10 +62,10 @@ fn prepare_sculpted_quantum_app() -> (MathExplorerApp, usize, String) {
 
 #[wasm_bindgen_test]
 async fn wasm_paused_sculpt_stroke_wakes_worker_and_emits_updated_snapshot() {
-    let mut tool = UnifiedSimTool::<WaveUnified>::new();
+    let mut tool = WaveSimulatorTool::new();
     yield_browser_tick().await;
 
-    tool.controller
+    tool.worker
         .send_command(SimCommand::SculptStroke1D {
             i0: 95,
             v0: 12.0,
@@ -77,13 +76,13 @@ async fn wasm_paused_sculpt_stroke_wakes_worker_and_emits_updated_snapshot() {
 
     for _ in 0..10 {
         yield_browser_tick().await;
-        if tool.controller.update().is_some() {
+        if tool.worker.update().is_some() {
             break;
         }
     }
 
     let snap = tool
-        .controller
+        .worker
         .latest_snapshot()
         .expect("Paused wasm32 worker must emit updated snapshot");
     let wave = snap

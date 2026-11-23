@@ -2,9 +2,11 @@
 
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint, PlotPoints};
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::SirTool;
+use super::{SirTool, MAX_SIR_DURATION, MIN_SIR_DURATION};
 use crate::reflective_ui::render_copyable_metric;
 
 /// Computes interpolated `(peak_day, peak_infected)` from simulated `Infected` points.
@@ -102,4 +104,71 @@ pub(super) fn render_simulation_plot(ui: &mut egui::Ui, tool: &SirTool) {
         );
         tool.snapshot_manager.render_on_plot(plot_ui);
     });
+}
+
+impl TheoryDescribable for SirTool {
+    fn theory_description(&self) -> String {
+        let r0 = self.beta / self.gamma;
+        format!(
+            "Kermack-McKendrick SIR compartmental epidemic model: $\\frac{{dS}}{{dt}} = -\\frac{{\\beta S I}}{{N}}$, $\\frac{{dI}}{{dt}} = \\frac{{\\beta S I}}{{N}} - \\gamma I$, $\\frac{{dR}}{{dt}} = \\gamma I$. Transmission rate $\\beta = {:.3}$, recovery rate $\\gamma = {:.3}$, basic reproduction number $R_0 = {:.2}$.",
+            self.beta, self.gamma, r0
+        )
+    }
+
+    fn phonetic_description(&self) -> String {
+        "Kermack-McKendrick SIR compartmental epidemic model theory".into()
+    }
+
+    fn theory_citation(&self) -> String {
+        "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into()
+    }
+
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        HashMap::new()
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        let mut map = HashMap::with_capacity(5);
+        map.insert(
+            "N".to_string(),
+            ParameterConstraint {
+                min: 100.0,
+                max: 100_000.0,
+                step: 100.0,
+            },
+        );
+        map.insert(
+            "I0".to_string(),
+            ParameterConstraint {
+                min: 1.0,
+                max: 50_000.0,
+                step: 1.0,
+            },
+        );
+        map.insert(
+            "beta".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 5.0,
+                step: 0.02,
+            },
+        );
+        map.insert(
+            "gamma".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 1.0,
+                step: 0.01,
+            },
+        );
+        map.insert(
+            "duration".to_string(),
+            ParameterConstraint {
+                min: MIN_SIR_DURATION,
+                max: MAX_SIR_DURATION,
+                step: 1.0,
+            },
+        );
+        map
+    }
 }

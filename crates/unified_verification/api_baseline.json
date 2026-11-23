@@ -6184,6 +6184,27 @@
     },
     {
       "signature": "pub fn parse_workspace_members (content : & str) -> Result < Vec < String > , String >"
+    },
+    {
+      "signature": "pub use workspace_wasm :: HOST_ONLY_WORKSPACE_PACKAGES"
+    },
+    {
+      "signature": "pub use workspace_wasm :: WasmCrateSpec"
+    },
+    {
+      "signature": "pub use workspace_wasm :: WasmTestTargetKind"
+    },
+    {
+      "signature": "pub use workspace_wasm :: build_wasm_cargo_test_invocations"
+    },
+    {
+      "signature": "pub use workspace_wasm :: discover_wasm_crates"
+    },
+    {
+      "signature": "pub use workspace_wasm :: find_workspace_root"
+    },
+    {
+      "signature": "pub use workspace_wasm :: parse_workspace_members_std"
     }
   ],
   "crates/pure_math/src/error.rs": [
@@ -6791,6 +6812,83 @@
       "signature": "pub trait Integrator { fn integrate < F > (& self , f : F , min : f64 , max : f64 , eps : f64) -> IntegrationResult where F : Fn (f64) -> f64 }"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/momentum_dynamics.rs": [
+    {
+      "signature": "impl HamiltonianLeapfrog2D { pub fn new (mass : f64 , damping : f64) -> Self }"
+    },
+    {
+      "signature": "impl HamiltonianLeapfrog2D { pub fn step_with_kinetic < G , K > (& self , state : & mut PhasePoint2D , grad_fn : & mut G , kinetic_deriv : & mut K , dt : f64 ,) -> Result < () , EvolutionError > where G : FnMut (Vector2 < f64 >) -> Vector2 < f64 > , K : FnMut (f64) -> f64 , }"
+    },
+    {
+      "signature": "impl LangevinBaoab2D { pub fn new (mass : f64 , damping : f64 , temperature : f64) -> Self }"
+    },
+    {
+      "signature": "impl LangevinBaoab2D { pub fn step_with_kinetic < R , G , K > (& self , state : & mut PhasePoint2D , grad_fn : & mut G , kinetic_deriv : & mut K , rng : & mut R , dt : f64 ,) -> Result < () , EvolutionError > where R : RngCore + ? Sized , G : FnMut (Vector2 < f64 >) -> Vector2 < f64 > , K : FnMut (f64) -> f64 , }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn at_rest (q : Vector2 < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn from_velocity (q : Vector2 < f64 > , v : Vector2 < f64 > , mass : f64) -> Self }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn kinetic_energy (& self , mass : f64) -> f64 }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn new (q : Vector2 < f64 > , p : Vector2 < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn reflect_bounds (& mut self , q_min : Vector2 < f64 > , q_max : Vector2 < f64 > , restitution : f64) }"
+    },
+    {
+      "signature": "pub const MAX_DAMPING : f64 = 20.0"
+    },
+    {
+      "signature": "pub const MAX_DT : f64 = 0.1"
+    },
+    {
+      "signature": "pub const MAX_MASS : f64 = 50.0"
+    },
+    {
+      "signature": "pub const MAX_TEMPERATURE : f64 = 50.0"
+    },
+    {
+      "signature": "pub const MIN_DAMPING : f64 = 0.0"
+    },
+    {
+      "signature": "pub const MIN_DT : f64 = 1e-4"
+    },
+    {
+      "signature": "pub const MIN_MASS : f64 = 0.05"
+    },
+    {
+      "signature": "pub const MIN_TEMPERATURE : f64 = 0.0"
+    },
+    {
+      "signature": "pub fn clamp_damping (damping : f64) -> f64"
+    },
+    {
+      "signature": "pub fn clamp_dt (dt : f64) -> f64"
+    },
+    {
+      "signature": "pub fn clamp_mass (mass : f64) -> f64"
+    },
+    {
+      "signature": "pub fn clamp_temperature (temperature : f64) -> f64"
+    },
+    {
+      "signature": "pub struct HamiltonianLeapfrog2D"
+    },
+    {
+      "signature": "pub struct LangevinBaoab2D"
+    },
+    {
+      "signature": "pub struct PhasePoint2D"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/ode/mod.rs": [
     {
       "signature": "impl IntegrationMethod { pub const ALL : [Self ; 3] = [Self :: RungeKutta4 , Self :: Euler , Self :: Heun] }"
@@ -6931,6 +7029,9 @@
       "signature": "impl < T : RealField + Copy , Key > Adam < T , Key > where Key : Eq + std :: hash :: Hash + Clone , { pub fn new (lr : T) -> Result < Self , OptimizationError > }"
     },
     {
+      "signature": "impl < T : RealField + Copy > AdamState2D < T > { pub fn new () -> Self }"
+    },
+    {
       "signature": "impl < T : RealField + Copy > SGD < T > { pub fn new (learning_rate : T) -> Self }"
     },
     {
@@ -6950,6 +7051,9 @@
     },
     {
       "signature": "pub struct AdamState < T >"
+    },
+    {
+      "signature": "pub struct AdamState2D < T >"
     },
     {
       "signature": "pub struct L1RegularizedLeastSquares"
@@ -7346,6 +7450,122 @@
     },
     {
       "signature": "pub struct Theorem12Bounds"
+    },
+    {
+      "signature": "pub use weierstrass :: AffinePointFp"
+    },
+    {
+      "signature": "pub use weierstrass :: ChordStepFp"
+    },
+    {
+      "signature": "pub use weierstrass :: HasseSweepEntry"
+    },
+    {
+      "signature": "pub use weierstrass :: MAX_WEIERSTRASS_PRIME"
+    },
+    {
+      "signature": "pub use weierstrass :: WeierstrassCurveFp"
+    },
+    {
+      "signature": "pub use weierstrass :: mod_inv_fp"
+    },
+    {
+      "signature": "pub use weierstrass :: mod_pow_fp"
+    },
+    {
+      "signature": "pub use weierstrass :: sweep_hasse_bounds"
+    },
+    {
+      "signature": "pub use weierstrass :: tonelli_shanks_fp"
+    }
+  ],
+  "crates/pure_math/src/pure_math/elliptic_curves/weierstrass.rs": [
+    {
+      "signature": "impl AffinePointFp { pub fn coordinates (self) -> Option < (i64 , i64) > }"
+    },
+    {
+      "signature": "impl AffinePointFp { pub fn from_coords (x : i64 , y : i64 , p : i64) -> Self }"
+    },
+    {
+      "signature": "impl AffinePointFp { pub fn is_infinity (self) -> bool }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn a (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn add_points (& self , p1 : AffinePointFp , p2 : AffinePointFp ,) -> Result < AffinePointFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn b (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn cardinality (& self) -> usize }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn chord_step (& self , p1 : AffinePointFp , p2 : AffinePointFp ,) -> Result < ChordStepFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn contains_point (& self , point : AffinePointFp) -> bool }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn discriminant (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn discriminant_factor (p : i64 , a : i64 , b : i64) -> Option < i64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn enumerate_points (& self , out : & mut [AffinePointFp]) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn frobenius_trace (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn hasse_bounds (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn negate_point (& self , point : AffinePointFp) -> Result < AffinePointFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn new (p : i64 , a : i64 , b : i64) -> Result < Self , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn p (& self) -> i64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn point_order (& self , point : AffinePointFp) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn scalar_mul (& self , k : i64 , point : AffinePointFp ,) -> Result < AffinePointFp , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurveFp { pub fn torsion_orbit (& self , generator : AffinePointFp , out : & mut [AffinePointFp] ,) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "pub const MAX_WEIERSTRASS_PRIME : i64 = 1_000_000_000"
+    },
+    {
+      "signature": "pub enum AffinePointFp"
+    },
+    {
+      "signature": "pub struct WeierstrassCurveFp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: ChordStepFp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: HasseSweepEntry"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: mod_inv_fp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: mod_pow_fp"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: sweep_hasse_bounds"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: tonelli_shanks_fp"
     }
   ],
   "crates/pure_math/src/pure_math/graph_theory/dijkstra.rs": [

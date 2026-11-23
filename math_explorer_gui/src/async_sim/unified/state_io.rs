@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::persistence::{build_formula_bar, UnifiedFormulaState};
-use super::{UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
+use super::persistence::{build_formula_bar, UnifiedExtendedState};
+use super::{UnifiedModel, UnifiedSimTool};
+use crate::framework::InteractiveTool;
 use crate::url_state::quantize_bounded_url_series;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
@@ -55,7 +56,7 @@ fn collect_quantized_series<M: UnifiedModel>(
     Some(out)
 }
 
-fn validate_formula_series_map<M: UnifiedModel>(
+fn validate_extended_series_map<M: UnifiedModel>(
     raw_series: &BTreeMap<String, Vec<f64>>,
 ) -> Result<HashMap<String, Vec<f64>>, String> {
     let mut parsed = HashMap::new();
@@ -84,6 +85,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             if let Some(val) = params.get(key) {
                 val.to_bits().hash(&mut h);
             }
+        }
+        if let Some(atlas) = &self.atlas {
+            atlas.is_visible().hash(&mut h);
+            atlas.axis_keys().hash(&mut h);
         }
         self.custom_formula_enabled.hash(&mut h);
         if let Some(ref bar) = self.formula_bar {
@@ -124,26 +129,48 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
         let series = self.custom_series.read().unwrap_or_else(|e| e.into_inner());
         let quantized_series = collect_quantized_series::<M>(&series)?;
+        let formula_ext =
+            M::formula_spec()
+                .zip(self.formula_bar.as_ref())
+                .and_then(|(spec, bar)| {
+                    let active = self.custom_formula_enabled;
+                    let customized = bar.raw_text != spec.default_expr;
+                    (active || customized).then(|| {
+                        let cp = if active {
+                            bar.params_map()
+                        } else {
+                            BTreeMap::new()
+                        };
+                        (active, bar.raw_text.clone(), cp)
+                    })
+                });
+        let atlas_ext = self.atlas.as_ref().and_then(|atlas| {
+            (!atlas.has_default_persisted_state()).then(|| {
+                let (xk, yk) = atlas.axis_keys();
+                (atlas.is_visible(), [xk.to_string(), yk.to_string()])
+            })
+        });
 
-        if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_ref()) {
-            let active = self.custom_formula_enabled;
-            let customized = bar.raw_text != spec.default_expr;
-            if active || customized {
-                let sorted_params = params.iter().map(|(k, &v)| (k.clone(), v)).collect();
-                let custom_params = if active {
-                    bar.params_map()
-                } else {
-                    BTreeMap::new()
-                };
-                return serde_json::to_string(&UnifiedFormulaState {
-                    params: sorted_params,
-                    custom_formula_enabled: active,
-                    custom_expr: bar.raw_text.clone(),
-                    custom_params,
-                    custom_series: quantized_series,
-                })
-                .ok();
-            }
+        if formula_ext.is_some() || atlas_ext.is_some() {
+            let sorted_params = params.iter().map(|(k, &v)| (k.clone(), v)).collect();
+            let (custom_formula_enabled, custom_expr, custom_params) = match formula_ext {
+                Some((en, expr, cp)) => (en, Some(expr), cp),
+                None => (false, None, BTreeMap::new()),
+            };
+            let (atlas_visible, atlas_axes) = match atlas_ext {
+                Some((vis, axes)) => (vis, Some(axes)),
+                None => (false, None),
+            };
+            return serde_json::to_string(&UnifiedExtendedState {
+                params: sorted_params,
+                custom_formula_enabled,
+                custom_expr,
+                custom_params,
+                custom_series: quantized_series,
+                atlas_visible,
+                atlas_axes,
+            })
+            .ok();
         }
 
         if quantized_series.is_empty() {
@@ -192,12 +219,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         parsed_series: HashMap<String, Vec<f64>>,
     ) {
         let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-        for (name, constraint) in &self.param_metadata {
-            let val = parsed_scalars
-                .get(name)
-                .copied()
-                .unwrap_or_else(|| M::default_parameter(name, constraint));
-            guard.insert(name.clone(), val);
+        for (key, value) in parsed_scalars {
+            guard.insert(key.clone(), *value);
         }
         drop(guard);
         *self
@@ -206,30 +229,46 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .unwrap_or_else(|e| e.into_inner()) = parsed_series;
     }
 
-    fn deserialize_formula_state(
-        &mut self,
-        state: &str,
-        spec: &UnifiedFormulaSpec,
-    ) -> Result<(), String> {
-        let fs: UnifiedFormulaState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid formula simulation state for {}: {e}", M::name()))?;
-        self.validate_scalar_param_map(&fs.params)?;
-        if fs.custom_params.values().any(|v| !v.is_finite()) {
+    fn apply_extended_state(&mut self, ext: UnifiedExtendedState) -> Result<(), String> {
+        self.validate_scalar_param_map(&ext.params)?;
+        let has_formula = ext.custom_formula_enabled
+            || ext.custom_expr.is_some()
+            || !ext.custom_params.is_empty();
+        if M::formula_spec().is_none() && has_formula {
+            return Err(format!(
+                "{} does not support custom formula state",
+                M::name()
+            ));
+        }
+        if ext.custom_params.values().any(|v| !v.is_finite()) {
             return Err(format!(
                 "Non-finite custom formula parameter in {}",
                 M::name()
             ));
         }
-        let parsed_series = validate_formula_series_map::<M>(&fs.custom_series)?;
-        let scalar_map: HashMap<String, f64> = fs.params.into_iter().collect();
+        if self.atlas.is_none() && (ext.atlas_visible || ext.atlas_axes.is_some()) {
+            return Err(format!(
+                "{} does not support 2D parameter atlas state",
+                M::name()
+            ));
+        }
+        let parsed_series = validate_extended_series_map::<M>(&ext.custom_series)?;
+        self.apply_parsed_atlas_state(Some((ext.atlas_visible, ext.atlas_axes)))?;
+        let scalar_map: HashMap<String, f64> = ext.params.into_iter().collect();
         self.apply_loaded_scalars_and_series(&scalar_map, parsed_series);
-        let bar = self
-            .formula_bar
-            .get_or_insert_with(|| build_formula_bar(spec));
-        bar.set_expression(&fs.custom_expr);
-        bar.set_params_map(&fs.custom_params);
-        self.custom_formula_enabled = fs.custom_formula_enabled;
-        self.publish_formula_update();
+        if let Some(spec) = M::formula_spec() {
+            if let Some(expr) = ext.custom_expr {
+                let bar = self
+                    .formula_bar
+                    .get_or_insert_with(|| build_formula_bar(&spec));
+                bar.set_expression(&expr);
+                bar.set_params_map(&ext.custom_params);
+                self.custom_formula_enabled = ext.custom_formula_enabled;
+                self.publish_formula_update();
+            } else {
+                self.reset_formula_bar_to_default();
+            }
+        }
         self.texture = None;
         self.reset_simulation(None);
         Ok(())
@@ -268,16 +307,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     pub(super) fn deserialize_tool_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let raw_map: serde_json::Map<String, serde_json::Value> = serde_json::from_str(state)
             .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
-        if let Some(spec) = M::formula_spec() {
-            let is_formula_envelope = raw_map.contains_key("params")
-                || raw_map.contains_key("custom_expr")
-                || raw_map.contains_key("custom_formula_enabled")
-                || raw_map.contains_key("custom_params");
-            if is_formula_envelope {
-                return self.deserialize_formula_state(state, &spec);
-            }
+        let is_extended_envelope = raw_map.contains_key("params")
+            || raw_map.contains_key("custom_expr")
+            || raw_map.contains_key("custom_formula_enabled")
+            || raw_map.contains_key("custom_params")
+            || raw_map.contains_key("atlas_visible")
+            || raw_map.contains_key("atlas_axes");
+        if is_extended_envelope {
+            let ext: UnifiedExtendedState = serde_json::from_str(state)
+                .map_err(|e| format!("Invalid extended simulation state for {}: {e}", M::name()))?;
+            return self.apply_extended_state(ext);
         }
         if !self.param_metadata.is_empty() && raw_map.is_empty() {
             let expected: Vec<&str> = self.param_metadata.iter().map(|m| m.0.as_str()).collect();
@@ -289,13 +331,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
 
         let (parsed_scalars, parsed_series) = self.parse_state_map_entries(&raw_map)?;
+        self.apply_parsed_atlas_state(None)?;
         self.apply_loaded_scalars_and_series(&parsed_scalars, parsed_series);
-        self.custom_formula_enabled = false;
-        if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_mut()) {
-            bar.set_expression(spec.default_expr);
-            bar.set_params_map(&BTreeMap::new());
-            self.publish_formula_update();
-        }
+        self.reset_formula_bar_to_default();
         self.texture = None;
         self.reset_simulation(None);
         Ok(())

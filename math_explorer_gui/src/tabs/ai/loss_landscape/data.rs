@@ -49,6 +49,41 @@ impl LossMetric {
             }
         }
     }
+
+    #[inline]
+    #[must_use]
+    pub fn point_loss_derivative(self, residual: f64, huber_delta: f64) -> f64 {
+        match self {
+            Self::Mse => 2.0 * residual,
+            Self::Mae => {
+                if residual > 0.0 {
+                    1.0
+                } else if residual < 0.0 {
+                    -1.0
+                } else {
+                    0.0
+                }
+            }
+            Self::Huber => {
+                let delta = huber_delta.max(1e-6);
+                if residual.abs() <= delta {
+                    residual
+                } else {
+                    delta.copysign(residual)
+                }
+            }
+        }
+    }
+}
+
+#[must_use]
+pub const fn default_huber_delta() -> f64 {
+    DEFAULT_HUBER_DELTA
+}
+
+#[must_use]
+pub fn is_default_huber_delta(v: &f64) -> bool {
+    (*v - DEFAULT_HUBER_DELTA).abs() < 1e-12
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -102,7 +137,10 @@ pub fn sample_formula_targets(
 ) -> Option<Vec<[f64; 2]>> {
     let compiled = bar.active_compiled()?;
     let [x0, x1] = x_bounds;
-    if !x0.is_finite() || !x1.is_finite() || x0 >= x1 || !(2..=MAX_TABLE_ROWS).contains(&sample_count)
+    if !x0.is_finite()
+        || !x1.is_finite()
+        || x0 >= x1
+        || !(2..=MAX_TABLE_ROWS).contains(&sample_count)
     {
         return None;
     }
@@ -150,7 +188,9 @@ pub fn parse_target_table(text: &str) -> Result<Vec<[f64; 2]>, String> {
         }
         rows.push([x, y]);
         if rows.len() > MAX_TABLE_ROWS {
-            return Err(format!("Target table exceeds maximum {MAX_TABLE_ROWS} rows"));
+            return Err(format!(
+                "Target table exceeds maximum {MAX_TABLE_ROWS} rows"
+            ));
         }
     }
     if rows.is_empty() {
@@ -166,40 +206,3 @@ pub fn format_target_table(rows: &[[f64; 2]]) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
-
-pub const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Loss Landscape",
-    "domain": "ai",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "w_min": -1.0,
-    "w_max": 5.0,
-    "b_min": -2.0,
-    "b_max": 4.0,
-    "resolution": 30
-  }
-}"#;
-
-pub const NONCONVEX_SINUSOIDAL_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Non-Convex Sinusoidal Loss",
-    "domain": "ai",
-    "timestamp": "2026-11-21T00:00:00Z"
-  },
-  "config": {
-    "w_min": -4.0,
-    "w_max": 4.0,
-    "b_min": -3.0,
-    "b_max": 3.0,
-    "resolution": 32,
-    "predictor_mode": "Custom",
-    "custom_expr": "w * sin(b * x) + a",
-    "custom_params": {
-      "a": 1.0
-    }
-  }
-}"#;

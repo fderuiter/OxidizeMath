@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod atlas;
 mod canvas;
 mod controls;
 mod persistence;
@@ -7,7 +8,9 @@ mod state_io;
 pub mod tool;
 pub use tool::*;
 
-use crate::async_sim::{SimCommand, SimulationController, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    RegimeCartographer, SimCommand, SimulationController, SimulationRunner, StateSnapshot,
+};
 use crate::framework::MAX_SYNTHESIZED_PARAMS;
 use math_commons::ast::CompiledExpr;
 use scientific_metadata::theory::ParameterConstraint;
@@ -236,6 +239,25 @@ pub trait UnifiedModel:
     /// for parameter sensitivity analysis. Returns `None` when no fast scalar
     /// observable is available on the UI thread.
     fn evaluate_observable(_params: &HashMap<String, f64>) -> Option<(&'static str, f64)>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
+    /// Optional `(x_key, y_key)` parameter pairs exposed in a 2D [`crate::async_sim::ParameterAtlasController`].
+    fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)]
+    where
+        Self: Sized,
+    {
+        &[]
+    }
+
+    /// Constructs a zero-allocation [`RegimeCartographer`] for `axis_keys` when supported.
+    fn build_atlas_cartographer(
+        _params: &HashMap<String, f64>,
+        _axis_keys: (&'static str, &'static str),
+    ) -> Option<Arc<dyn RegimeCartographer>>
     where
         Self: Sized,
     {
