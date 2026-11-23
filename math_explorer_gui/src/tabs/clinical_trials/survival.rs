@@ -228,7 +228,7 @@ inventory::submit! {
         id: "SurvivalAnalysisTool",
         display_name: "Survival Curves (Kaplan-Meier)",
         domain: "clinical_trials",
-        tags: &[],
+        tags: &["kaplan-meier", "censoring", "hazard", "time-to-event", "nonparametric", "biostatistics"],
         build: || Box::new(SurvivalAnalysisTool::default()),
     }
 }

@@ -1,4 +1,5 @@
 // @explorer_feature = "pure_math"
+// @explorer_order = 27
 // Dedicated `Stochastic Processes` tab (`Pure Math`) hosting three interactive
 // `SimulationFramework` workbenches for DTMCs & transition tensors, CTMCs & M/M/c queues,
 // and HMMs & Ornstein-Uhlenbeck calibration.
