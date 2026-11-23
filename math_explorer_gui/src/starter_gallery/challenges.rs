@@ -101,14 +101,12 @@ inventory::collect!(ChallengeMetadata);
 pub enum GallerySelection {
     /// Forward starter preset card.
     Starter(super::StarterCard),
-    /// Inverse challenge card.
+    /// Multi-step guided story tour.
+    Story(&'static super::PresetStoryMetadata),
+    /// Inverse challenge card with locked boundary conditions.
     Challenge(ChallengeCard),
-}
-
-fn domains_match(requested: &str, candidate: &str) -> bool {
-    requested == candidate
-        || (requested == "biology" && candidate == "morphogenesis")
-        || (requested == "morphogenesis" && candidate == "biology")
+    /// Playable AST goal challenge card.
+    GoalChallenge(&'static super::GoalChallengeMetadata),
 }
 
 /// Returns sorted [`ChallengeCard`] entries registered for `domain`.
@@ -116,7 +114,7 @@ fn domains_match(requested: &str, candidate: &str) -> bool {
 pub fn get_challenge_cards_for_domain(domain: &str) -> Vec<ChallengeCard> {
     let mut cards: Vec<ChallengeCard> = inventory::iter::<ChallengeMetadata>
         .into_iter()
-        .filter(|c| domains_match(domain, c.domain))
+        .filter(|c| super::domain_matches_gallery(c.domain, domain))
         .map(ChallengeMetadata::to_card)
         .collect();
     cards.sort_by_key(|c| (c.title, c.id));
@@ -135,7 +133,7 @@ pub fn find_challenge_metadata(id: &str) -> Option<&'static ChallengeMetadata> {
 /// Checks whether `challenge` belongs to `domain`.
 #[must_use]
 pub fn challenge_matches_domain(challenge: &ChallengeMetadata, domain: &str) -> bool {
-    domains_match(domain, challenge.domain)
+    super::domain_matches_gallery(challenge.domain, domain)
 }
 
 // [cite:favorite_child]

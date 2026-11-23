@@ -1,4 +1,4 @@
-# ADR 0044: Zero-Allocation Short-Weierstrass Elliptic Curve Arithmetic and Auto-Discovered `EllipticCurvesTab`
+# ADR 0045: Zero-Allocation Short-Weierstrass Elliptic Curve Arithmetic and Auto-Discovered `EllipticCurvesTab`
 
 ## Status
 

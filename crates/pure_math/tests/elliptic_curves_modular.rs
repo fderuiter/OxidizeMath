@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for Weierstrass elliptic curves and modular invariants.
 // [cite:hurwitz_kronecker]
 // [cite:modular_polynomials_review]
 

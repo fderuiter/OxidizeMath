@@ -28,8 +28,8 @@ pub enum EllipticCurveError {
     #[error("Singular Weierstrass curve over F_{p}: 4*{a}^3 + 27*{b}^2 ≡ 0 (mod {p}).")]
     #[allow(missing_docs)]
     SingularCurve { p: i64, a: i64, b: i64 },
+    /// Real short-Weierstrass curve has zero discriminant $4a^3 + 27b^2 = 0$.
     #[error("Elliptic curve over R is singular because discriminant 4a^3 + 27b^2 vanishes.")]
-    #[allow(missing_docs)]
     SingularRealCurve,
     #[error("Point ({x}, {y}) does not satisfy y^2 ≡ x^3 + ax + b (mod {p}).")]
     #[allow(missing_docs)]
@@ -37,9 +37,14 @@ pub enum EllipticCurveError {
     #[error("Caller buffer length {provided} is smaller than required {required} elements.")]
     #[allow(missing_docs)]
     BufferTooSmall { required: usize, provided: usize },
+    /// Prime modulus exceeds the interactive lattice enumeration bound.
     #[error("Lattice point enumeration requires prime p <= {max_modulus} (got {modulus}).")]
-    #[allow(missing_docs)]
-    ModulusExceedsLatticeCap { modulus: i64, max_modulus: i64 },
+    ModulusExceedsLatticeCap {
+        /// Requested prime modulus.
+        modulus: i64,
+        /// Maximum supported prime modulus for full lattice enumeration.
+        max_modulus: i64,
+    },
 }
 
 /// Calculates the prime factorization of a given number `n`.
