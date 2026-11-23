@@ -468,6 +468,7 @@ pub enum Glicko2Error {
     DimensionMismatch { expected: usize, actual: usize },
 }
 
+mod sports;
 mod submodule_diagnostics;
 mod umbrella;
 
@@ -482,6 +483,7 @@ pub use crate::pure_math::{
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };
+pub use sports::{EloError, MatchModelError};
 pub use umbrella::PureMathError;
 
 #[cfg(test)]
