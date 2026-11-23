@@ -74,14 +74,6 @@ pub const MAX_CUSTOM_EXPR_BYTES: usize = 512;
 /// Default custom AST potential formula.
 pub const DEFAULT_CUSTOM_EXPR: &str = "v0 * exp(-(x / width)^4)";
 
-pub(super) fn finite_or(val: f64, fallback: f64) -> f64 {
-    if val.is_finite() {
-        val
-    } else {
-        fallback
-    }
-}
-
 /// Built-in 1D quantum potential profiles and custom AST formula mode.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
