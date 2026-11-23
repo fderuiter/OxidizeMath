@@ -145,6 +145,7 @@ allowlist = [
     "docs/adr/0042-2d-chladni-plate-and-wave-tank-solver.md",
     "docs/adr/0042-fft-lenia-engine-and-gray-scott-kinetics.md",
     "docs/adr/0042-fractran-vm-kolmogorov-and-algorithmic-info-tab.md",
+    "docs/adr/0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md",
 ]
 
 [[unused_dependencies]]
