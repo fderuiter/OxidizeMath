@@ -39,6 +39,8 @@ pub mod config;
 pub mod masks;
 /// Chladni sand particle drift and 2D Marching-Squares nodal contour extraction.
 pub mod particles_and_contours;
+/// Zero-allocation bilinear signed displacement and velocity pickup probes.
+pub mod probes;
 /// Pre-planned zero-allocation 2D FFT spectral analyzer.
 pub mod spectral;
 
@@ -54,6 +56,7 @@ pub use masks::{
     apply_sponge_layer,
 };
 pub use particles_and_contours::{ChladniSandSystem, MarchingSquares2D};
+pub use probes::WaveProbeSample;
 pub use spectral::{SpectralAnalyzer2D, SpectralMode2D, SpectralPeak2D};
 
 /// Zero-allocation 2D Verlet PDE solver with pre-allocated mask and stencil buffers.
@@ -63,6 +66,7 @@ pub struct Wave2DSolver {
     height: usize,
     ops: StencilOperators,
     time: f64,
+    last_dt: f64,
     u_prev: Vec<f64>,
     u_curr: Vec<f64>,
     u_next: Vec<f64>,
@@ -92,6 +96,7 @@ impl Wave2DSolver {
             height,
             ops: StencilOperators::new_2d(StepSize(dx), StepSize(dy)),
             time: 0.0,
+            last_dt: 0.0,
             u_prev: vec![0.0; len],
             u_curr: vec![0.0; len],
             u_next: vec![0.0; len],
@@ -168,6 +173,7 @@ impl Wave2DSolver {
         }
         self.u_next.fill(0.0);
         self.time = 0.0;
+        self.last_dt = 0.0;
         self.stationary_start = true;
     }
 
@@ -183,6 +189,7 @@ impl Wave2DSolver {
         self.detector_accum.fill(0.0);
         self.detector_samples = 0;
         self.time = 0.0;
+        self.last_dt = 0.0;
         self.stationary_start = false;
     }
 
@@ -213,7 +220,8 @@ impl Wave2DSolver {
         } else {
             1.0e-4
         };
-        let c_eff = params.wave_speed.abs() * masks::max_wave_speed_scale(&self.wave_speed_mask);
+        let max_speed_scale = masks::max_wave_speed_scale(&self.wave_speed_mask);
+        let c_eff = params.wave_speed.abs() * max_speed_scale;
         let dt_wave = if c_eff > 1.0e-12 {
             MAX_COURANT_NUMBER * min_h / c_eff
         } else {
@@ -221,7 +229,7 @@ impl Wave2DSolver {
         };
         let dt_plate =
             if params.medium == Wave2DMedium::BiharmonicPlate && params.plate_stiffness > 1.0e-18 {
-                let d_sqrt = params.plate_stiffness.sqrt();
+                let d_sqrt = params.plate_stiffness.sqrt() * max_speed_scale;
                 let inv_sum = self.ops.inv_dx_sq + self.ops.inv_dy_sq;
                 MAX_BIHARMONIC_NUMBER / (d_sqrt * inv_sum)
             } else {
@@ -363,6 +371,7 @@ impl Wave2DSolver {
         std::mem::swap(&mut self.u_prev, &mut self.u_curr);
         std::mem::swap(&mut self.u_curr, &mut self.u_next);
         self.stationary_start = false;
+        self.last_dt = dt;
         self.time += dt;
     }
 
@@ -383,10 +392,13 @@ impl Wave2DSolver {
         if self.wall_mask[idx] <= 0.5 || (on_edge && params.boundary != BoundaryMode2D::Neumann) {
             return 0.0;
         }
-        let local_c = params.wave_speed * self.wave_speed_mask[idx];
+        let speed_scale = self.wave_speed_mask[idx];
+        let local_c = params.wave_speed * speed_scale;
         let mut accel = (local_c * local_c) * self.laplacian_buf[idx];
         if params.medium == Wave2DMedium::BiharmonicPlate && params.plate_stiffness > 0.0 {
-            accel -= params.plate_stiffness * self.eval_biharmonic_at(x, y, idx, params.boundary);
+            accel -= params.plate_stiffness
+                * (speed_scale * speed_scale)
+                * self.eval_biharmonic_at(x, y, idx, params.boundary);
         }
         if driver.enabled {
             accel += masks::driver_force_at(self.width, self.height, x, y, driver, osc);
@@ -407,55 +419,5 @@ impl Wave2DSolver {
             self.detector_accum[y] += val * val;
         }
         self.detector_samples += 1;
-    }
-
-    /// Writes the time-averaged intensity profile $I(y)$ along the detector screen into `out`.
-    #[verified_engine::verified]
-    pub fn read_detector_profile(&self, det_x: usize, out: &mut [f64]) {
-        assert!(
-            out.len() >= self.height,
-            "Output buffer shorter than grid height"
-        );
-        if self.detector_samples > 0 {
-            let inv = 1.0 / (self.detector_samples as f64);
-            for (dst, &acc) in out.iter_mut().zip(self.detector_accum.iter()) {
-                *dst = acc * inv;
-            }
-        } else {
-            let col = det_x.min(self.width - 1);
-            for (y, dst) in out.iter_mut().enumerate().take(self.height) {
-                *dst = self.energy_ema[flatten_2d_index(col, y, self.width)];
-            }
-        }
-    }
-
-    /// Injects a smooth 2D Gaussian displacement pulse centered at normalized `(cx_norm, cy_norm)`.
-    #[verified_engine::verified]
-    pub fn inject_gaussian_pulse(
-        &mut self,
-        cx_norm: f64,
-        cy_norm: f64,
-        sigma_norm: f64,
-        amplitude: f64,
-    ) {
-        masks::inject_gaussian_pulse_into(
-            &mut self.u_curr,
-            &mut self.u_prev,
-            &self.wall_mask,
-            self.width,
-            self.height,
-            cx_norm,
-            cy_norm,
-            sigma_norm,
-            amplitude,
-        );
-    }
-
-    /// Samples the displacement field $u(x, y, t)$ at normalized off-grid pickup coordinates
-    /// `(x_norm, y_norm)` in `[0.0, 1.0]^2` using zero-allocation bilinear interpolation.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn sample_displacement_bilinear(&self, x_norm: f64, y_norm: f64) -> f64 {
-        masks::sample_bilinear_2d(&self.u_curr, self.width, self.height, x_norm, y_norm)
     }
 }

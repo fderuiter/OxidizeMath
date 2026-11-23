@@ -6,39 +6,6 @@ use math_commons::math_kernel::types::flatten_2d_index;
 
 use super::{BoundaryMode2D, DriverConfig2D, StencilOperators};
 
-/// Samples a contiguous `width x height` scalar grid at normalized coordinates `(x_norm, y_norm)`
-/// in `[0.0, 1.0]^2` via zero-allocation bilinear interpolation.
-#[inline]
-pub(super) fn sample_bilinear_2d(
-    field: &[f64],
-    width: usize,
-    height: usize,
-    x_norm: f64,
-    y_norm: f64,
-) -> f64 {
-    assert_eq!(field.len(), width * height);
-    assert!(width >= 2 && height >= 2, "Grid must be at least 2x2");
-    if !x_norm.is_finite() || !y_norm.is_finite() {
-        return 0.0;
-    }
-    let gx = x_norm.clamp(0.0, 1.0) * ((width - 1) as f64);
-    let gy = y_norm.clamp(0.0, 1.0) * ((height - 1) as f64);
-    let x0 = (gx.floor() as usize).min(width - 2);
-    let y0 = (gy.floor() as usize).min(height - 2);
-    let tx = (gx - (x0 as f64)).clamp(0.0, 1.0);
-    let ty = (gy - (y0 as f64)).clamp(0.0, 1.0);
-
-    let u00 = field[flatten_2d_index(x0, y0, width)];
-    let u10 = field[flatten_2d_index(x0 + 1, y0, width)];
-    let u01 = field[flatten_2d_index(x0, y0 + 1, width)];
-    let u11 = field[flatten_2d_index(x0 + 1, y0 + 1, width)];
-
-    let top = u00 + tx * (u10 - u00);
-    let bot = u01 + tx * (u11 - u01);
-    let out = top + ty * (bot - top);
-    if out.is_finite() { out } else { 0.0 }
-}
-
 /// Evaluates perimeter boundary Laplacian stencils without heap allocation.
 #[inline]
 #[allow(clippy::too_many_arguments)]

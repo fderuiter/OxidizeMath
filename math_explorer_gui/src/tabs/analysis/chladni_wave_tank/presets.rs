@@ -4,12 +4,29 @@
 
 use math_explorer::pure_math::analysis::pde::wave_2d::{BoundaryMode2D, Wave2DMedium};
 
+use super::sculpt::is_valid_sculpt_rle;
 use super::{
     ChladniWaveTankState, ChladniWaveTankTool, ClampLayout, SecondaryPlotMode, TankPreset,
     WaveColormap, AMP_MAX, AMP_MIN, DAMPING_MAX, DAMPING_MIN, DT_MAX, DT_MIN, FREQ_MAX, FREQ_MIN,
     GRID_SIZE, REFRACTIVE_MAX, REFRACTIVE_MIN, SLIT_SEP_MAX, SLIT_SEP_MIN, SPEED_MAX, SPEED_MIN,
     STIFFNESS_MAX, STIFFNESS_MIN,
 };
+
+pub(super) const fn default_pickup_x() -> f64 {
+    0.68
+}
+
+pub(super) const fn default_pickup_y() -> f64 {
+    0.52
+}
+
+pub(super) fn is_default_pickup_x(val: &f64) -> bool {
+    (*val - default_pickup_x()).abs() < 1.0e-12
+}
+
+pub(super) fn is_default_pickup_y(val: &f64) -> bool {
+    (*val - default_pickup_y()).abs() < 1.0e-12
+}
 
 fn sanitize_bounded(val: f64, min: f64, max: f64, fallback: f64) -> f64 {
     if val.is_finite() {
@@ -46,6 +63,11 @@ pub(super) fn is_valid_state(s: &ChladniWaveTankState) -> bool {
         && (REFRACTIVE_MIN..=REFRACTIVE_MAX).contains(&s.refractive_index)
         && s.lens_aperture.is_finite()
         && (8.0..=56.0).contains(&s.lens_aperture)
+        && s.pickup_x.is_finite()
+        && (0.0..=1.0).contains(&s.pickup_x)
+        && s.pickup_y.is_finite()
+        && (0.0..=1.0).contains(&s.pickup_y)
+        && is_valid_sculpt_rle(&s.sculpt_rle)
         && super::sonification::are_custom_clamps_valid(&s.custom_clamps)
         && super::ir_export::are_ir_fields_valid(s)
         && super::refractive::are_refractive_fields_valid(s)
@@ -67,6 +89,11 @@ pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
     s.detector_x = s.detector_x.clamp(8, GRID_SIZE - 4);
     s.refractive_index = sanitize_bounded(s.refractive_index, REFRACTIVE_MIN, REFRACTIVE_MAX, 1.6);
     s.lens_aperture = sanitize_bounded(s.lens_aperture, 8.0, 56.0, 34.0);
+    s.pickup_x = sanitize_bounded(s.pickup_x, 0.0, 1.0, default_pickup_x());
+    s.pickup_y = sanitize_bounded(s.pickup_y, 0.0, 1.0, default_pickup_y());
+    if !is_valid_sculpt_rle(&s.sculpt_rle) {
+        s.sculpt_rle.clear();
+    }
     super::sonification::sanitize_custom_clamps(&mut s.custom_clamps);
     super::ir_export::clamp_ir_fields(s);
     super::refractive::sanitize_refractive_fields(s);
@@ -102,6 +129,9 @@ fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
         show_nodal_contours: true,
         show_sand_particles: false,
         rng_seed: 0xC41A_D21E,
+        pickup_x: default_pickup_x(),
+        pickup_y: default_pickup_y(),
+        sculpt_rle: Vec::new(),
         custom_clamps: Vec::new(),
         pickup_left: super::ir_export::default_pickup_left(),
         pickup_right: super::ir_export::default_pickup_right(),
@@ -381,7 +411,7 @@ inventory::submit! {
         id: "ChladniWaveTankTool",
         display_name: "Wave Tank & 2D Chladni Plate",
         domain: "analysis",
-        tags: &["pde", "chladni", "waves", "diffraction", "fft"],
+        tags: &["pde", "chladni", "waves", "diffraction", "fft", "sonification", "phonons"],
         build: || Box::new(ChladniWaveTankTool::default()),
     }
 }

@@ -1,56 +1,56 @@
 # Interactive Tool Onboarding Walkthrough
 
-This document guides developers and researchers through creating a new interactive simulation tab in the `math_explorer_gui` application.
+This document guides developers and researchers through creating a new interactive simulation tool inside a multi-domain tab in the `math_explorer_gui` application.
 
 ## Overview
 
-The `math_explorer_gui` crate uses an extensible plugin architecture. Each interactive tab implements the [`InteractiveTool`](../../math_explorer_gui/src/framework/mod.rs) trait and registers itself with the global inventory using [`inventory::submit!`](../../math_explorer_gui/src/framework/mod.rs).
-
-The GUI runtime discovers registered tools automatically at startup and displays them in the navigation sidebar.
+The `math_explorer_gui` crate combines static `inventory` [`ExplorerTab`](../../math_explorer_gui/src/tabs/mod.rs) registration (`TabDescriptor`) with a federated tool catalog backed by [`SimulationFramework`](../../math_explorer_gui/src/framework/mod.rs). Each interactive simulation implements [`TheoryDescribable`](../../crates/scientific_metadata/src/theory.rs) and [`InteractiveTool`](../../math_explorer_gui/src/framework/mod.rs), renders inside scoped multi-pane viewports via [`InteractiveTool::show_inside`](../../math_explorer_gui/src/framework/mod.rs), and registers itself at startup using [`inventory::submit!`](../../math_explorer_gui/src/framework/mod.rs).
 
 ```mermaid
 graph TD
     subgraph Tool_Lifecycle
-        Reg[inventory::submit! ToolMetadata] --> Discovery[Catalog Discovery]
+        Reg[inventory::submit! ToolMetadata] --> Discovery[SimulationFramework Catalog Discovery]
         Discovery --> Inst[Instantiate Tool via build fn]
         Inst --> Loop[Frame Loop]
     end
 
     subgraph Frame_Execution
-        Loop --> Show[tool.show ctx]
-        Show --> LeftPanel[SidePanel: tool.show_ui]
-        Show --> CentralPanel[CentralPanel: allocate_painter]
+        Loop --> ShowInside[tool.show_inside parent_ui]
+        ShowInside --> LeftPanel[PaneSidePanel: Parameter Controls]
+        ShowInside --> CentralPanel[CentralPanel: Canvas / Plot / AccessKit]
         CentralPanel --> Events[Normalized Event Hooks: on_click, on_drag, on_keyboard]
-        CentralPanel --> Draw[tool.draw painter]
     end
 
     style Reg fill:#cde,stroke:#333
-    style Show fill:#dfd,stroke:#333
-    style Draw fill:#fed,stroke:#333
+    style ShowInside fill:#dfd,stroke:#333
+    style CentralPanel fill:#fed,stroke:#333
 ```
 
 ## Step-by-Step Implementation Guide
 
-Follow these four steps to implement and register a new simulation tool.
+Follow these four steps to implement and register a new simulation tool inside `math_explorer_gui/src/tabs/<domain>/<tool_name>.rs`.
 
-### Step 1: Define the Simulation State
+### Step 1: Define the Simulation State and Validated Serialization
 
-Create a new file in `math_explorer_gui/src/tabs/<domain>/<tool_name>.rs`. Define your model state struct with `Default`:
+Define your runtime simulation struct with `Default`, bounded time-stepping helpers, and a `#[serde(deny_unknown_fields)]` configuration snapshot struct for JSON preset persistence:
 
-```rust,ignore
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+```rust
+use serde::{Deserialize, Serialize};
 
-use crate::framework::InteractiveTool;
-use eframe::egui;
-use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::HashMap;
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HarmonicOscillatorState {
+    pub mass: f32,
+    pub spring_k: f32,
+    pub damping: f32,
+}
 
 pub struct HarmonicOscillatorTool {
-    mass: f32,
-    spring_k: f32,
-    damping: f32,
-    position: f32,
-    velocity: f32,
+    pub mass: f32,
+    pub spring_k: f32,
+    pub damping: f32,
+    pub position: f32,
+    pub velocity: f32,
 }
 
 impl Default for HarmonicOscillatorTool {
@@ -64,13 +64,74 @@ impl Default for HarmonicOscillatorTool {
         }
     }
 }
+
+impl HarmonicOscillatorTool {
+    pub fn advance_step(&mut self, dt: f32) {
+        assert!(self.mass > 0.0 && dt.is_finite());
+        let acceleration =
+            (-self.spring_k * self.position - self.damping * self.velocity) / self.mass;
+        self.velocity += acceleration * dt;
+        self.position += self.velocity * dt;
+    }
+
+    pub fn serialize_state_json(&self) -> Option<String> {
+        serde_json::to_string(&HarmonicOscillatorState {
+            mass: self.mass,
+            spring_k: self.spring_k,
+            damping: self.damping,
+        })
+        .ok()
+    }
+
+    pub fn restore_state_json(&mut self, state: &str) -> Result<(), String> {
+        let loaded: HarmonicOscillatorState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid oscillator state: {e}"))?;
+        if !loaded.mass.is_finite() || !(0.1..=10.0).contains(&loaded.mass) {
+            return Err("mass must be finite in [0.1, 10.0]".to_string());
+        }
+        if !loaded.spring_k.is_finite() || !(0.1..=50.0).contains(&loaded.spring_k) {
+            return Err("spring_k must be finite in [0.1, 50.0]".to_string());
+        }
+        if !loaded.damping.is_finite() || !(0.0..=2.0).contains(&loaded.damping) {
+            return Err("damping must be finite in [0.0, 2.0]".to_string());
+        }
+        self.mass = loaded.mass;
+        self.spring_k = loaded.spring_k;
+        self.damping = loaded.damping;
+        self.position = 1.0;
+        self.velocity = 0.0;
+        Ok(())
+    }
+}
+
+let mut oscillator = HarmonicOscillatorTool::default();
+oscillator.advance_step(0.05);
+assert!(oscillator.position < 1.0);
+let json = oscillator.serialize_state_json().expect("serializes");
+oscillator.mass = 4.0;
+oscillator.restore_state_json(&json).expect("restores valid state");
+assert!((oscillator.mass - 1.0).abs() < f32::EPSILON);
+assert!(oscillator.restore_state_json(r#"{"mass":1.0,"spring_k":10.0,"damping":0.1,"extra":1}"#).is_err());
 ```
 
 ### Step 2: Implement the `TheoryDescribable` Trait
 
-Each tool must expose verified theoretical descriptions, accessible phonetic descriptions, literature citations, and parameter metadata via [`TheoryDescribable`](../../crates/scientific_metadata/src/theory.rs):
+Each tool exposes verified theoretical descriptions, accessible phonetic descriptions, literature citations, governing LaTeX formulas, and parameter bounds via [`TheoryDescribable`](../../crates/scientific_metadata/src/theory.rs). All methods return owned `String` and `HashMap` values (`theory_description`, `phonetic_description`, `theory_citation`, `available_descriptions`, `theory_parameters`, and `theory_latex_equation`):
 
-```rust,ignore
+```rust
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use std::collections::HashMap;
+# pub struct HarmonicOscillatorTool {
+#     pub mass: f32,
+#     pub spring_k: f32,
+#     pub damping: f32,
+# }
+# impl Default for HarmonicOscillatorTool {
+#     fn default() -> Self {
+#         Self { mass: 1.0, spring_k: 10.0, damping: 0.1 }
+#     }
+# }
+
 impl TheoryDescribable for HarmonicOscillatorTool {
     fn theory_description(&self) -> String {
         format!(
@@ -103,10 +164,6 @@ impl TheoryDescribable for HarmonicOscillatorTool {
         map
     }
 
-    fn theory_latex_equation(&self) -> Option<String> {
-        Some(r"m \ddot{x}(t) + c \dot{x}(t) + k x(t) = 0".to_string())
-    }
-
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
         let mut params = HashMap::new();
         params.insert(
@@ -135,32 +192,29 @@ impl TheoryDescribable for HarmonicOscillatorTool {
         );
         params
     }
-}
-```
 
-### Step 3: Implement the `InteractiveTool` Trait
-
-Implement `InteractiveTool`. Provide `name()`, `domain()`, `theory()`, validated state serialization (`save_state()` and `try_load_state()` using `#[serde(deny_unknown_fields)]`), parameter controls in `show_ui()`, and canvas rendering in `draw()`.
-
-Note that the display frame loop invokes `show()` -> `show_ui()` and `draw()` (never `step_simulation()`). Interactive controls advance state inside `show_ui()` (or background workers), whereas `step_simulation()` is an optional offscreen hook invoked **only** during multi-frame GIF animation export (`InteractiveTool::sample_animation_frames` and raster GIF export), after which the framework restores the tool's saved state:
-
-```rust,ignore
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct HarmonicOscillatorState {
-    mass: f32,
-    spring_k: f32,
-    damping: f32,
-}
-
-impl HarmonicOscillatorTool {
-    fn advance_step(&mut self, dt: f32) {
-        let acceleration =
-            (-self.spring_k * self.position - self.damping * self.velocity) / self.mass;
-        self.velocity += acceleration * dt;
-        self.position += self.velocity * dt;
+    fn theory_latex_equation(&self) -> Option<String> {
+        Some(r"m \ddot{x}(t) + c \dot{x}(t) + k x(t) = 0".to_string())
     }
 }
+
+let tool = HarmonicOscillatorTool::default();
+assert!(tool.theory_description().contains("1.00 kg"));
+assert_eq!(tool.theory_parameters().len(), 3);
+assert!(tool.theory_latex_equation().is_some());
+```
+
+### Step 3: Implement the `InteractiveTool` Trait (`show_inside`)
+
+Because `math_explorer_gui` is a binary package (`src/main.rs`), import GUI framework types via crate-relative `crate::` paths (never `math_explorer_gui::`). `InteractiveTool::show` delegates to [`InteractiveTool::show_inside`](../../math_explorer_gui/src/framework/mod.rs) so tools render cleanly inside single-pane and multi-pane split viewports. Use `PaneSidePanel::left(scoped_panel_id(parent_ui, ...)).show_inside(parent_ui, ...)` for controls and `egui::CentralPanel::default().show_inside(parent_ui, ...)` for the visualization canvas (or rely on the default `show_inside` helper by overriding `show_ui` and `draw`).
+
+Note that the interactive frame loop invokes `show_inside()` every frame (never `step_simulation()`). Interactive controls advance state inside `show_inside()` (or background `async_sim` workers), whereas `step_simulation()` is an optional offscreen hook invoked **only** during multi-frame GIF animation export (`InteractiveTool::sample_animation_frames`), after which `SimulationFramework` restores the tool's saved state:
+
+```rust,ignore
+use crate::accessibility::{paint_canvas_focus_ring, register_canvas_accessibility};
+use crate::framework::{InteractiveTool, PaneSidePanel, scoped_panel_id};
+use eframe::egui;
+use scientific_metadata::theory::TheoryDescribable;
 
 impl InteractiveTool for HarmonicOscillatorTool {
     fn name(&self) -> &'static str {
@@ -176,59 +230,53 @@ impl InteractiveTool for HarmonicOscillatorTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&HarmonicOscillatorState {
-            mass: self.mass,
-            spring_k: self.spring_k,
-            damping: self.damping,
-        })
-        .ok()
+        self.serialize_state_json()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded: HarmonicOscillatorState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid oscillator state: {e}"))?;
-        if !loaded.mass.is_finite() || !(0.1..=10.0).contains(&loaded.mass) {
-            return Err("mass must be finite in [0.1, 10.0]".to_string());
-        }
-        if !loaded.spring_k.is_finite() || !(0.1..=50.0).contains(&loaded.spring_k) {
-            return Err("spring_k must be finite in [0.1, 50.0]".to_string());
-        }
-        if !loaded.damping.is_finite() || !(0.0..=2.0).contains(&loaded.damping) {
-            return Err("damping must be finite in [0.0, 2.0]".to_string());
-        }
-        self.mass = loaded.mass;
-        self.spring_k = loaded.spring_k;
-        self.damping = loaded.damping;
-        self.position = 1.0;
-        self.velocity = 0.0;
-        Ok(())
+        self.restore_state_json(state)
     }
 
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        ui.label("Oscillator Parameters:");
-        ui.add(egui::Slider::new(&mut self.mass, 0.1..=10.0).text("Mass (kg)"));
-        ui.add(egui::Slider::new(&mut self.spring_k, 0.1..=50.0).text("Spring Constant k"));
-        ui.add(egui::Slider::new(&mut self.damping, 0.0..=2.0).text("Damping c"));
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = scoped_panel_id(parent_ui, "harmonic_oscillator_controls");
+        PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+            ui.heading("Oscillator Parameters");
+            ui.add(egui::Slider::new(&mut self.mass, 0.1..=10.0).text("Mass (kg)"));
+            ui.add(egui::Slider::new(&mut self.spring_k, 0.1..=50.0).text("Spring Constant k"));
+            ui.add(egui::Slider::new(&mut self.damping, 0.0..=2.0).text("Damping c"));
 
-        ui.horizontal(|ui| {
-            if ui.button("Step").clicked() {
-                self.advance_step(0.05);
-            }
-            if ui.button("Reset Position").clicked() {
-                self.position = 1.0;
-                self.velocity = 0.0;
-            }
+            ui.horizontal(|ui| {
+                if ui.button("Step").clicked() {
+                    self.advance_step(0.05);
+                }
+                if ui.button("Reset Position").clicked() {
+                    self.position = 1.0;
+                    self.velocity = 0.0;
+                }
+            });
         });
-    }
 
-    fn draw(&mut self, _ui: &mut egui::Ui, response: &egui::Response, painter: &egui::Painter) {
-        let center = response.rect.center();
-        let scale = 100.0;
-        let bob_pos = egui::Pos2::new(center.x + self.position * scale, center.y);
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
+            let (response, painter) =
+                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
+            let summary = format!("x = {:.2} m, v = {:.2} m/s", self.position, self.velocity);
+            register_canvas_accessibility(
+                ui,
+                &response,
+                egui::accesskit::Role::GraphicsDocument,
+                "Damped Harmonic Oscillator Canvas",
+                Some(&summary),
+            );
+            paint_canvas_focus_ring(ui, &response);
 
-        // Draw spring anchor and mass bob
-        painter.line_segment([center, bob_pos], egui::Stroke::new(2.0, egui::Color32::GRAY));
-        painter.circle_filled(bob_pos, 15.0, egui::Color32::from_rgb(50, 150, 250));
+            let center = response.rect.center();
+            let bob_pos = egui::Pos2::new(center.x + self.position * 100.0, center.y);
+            painter.line_segment(
+                [center, bob_pos],
+                egui::Stroke::new(2.0_f32, egui::Color32::GRAY),
+            );
+            painter.circle_filled(bob_pos, 15.0, egui::Color32::from_rgb(50, 150, 250));
+        });
     }
 
     /// Invoked exclusively during offscreen multi-frame GIF animation export (`sample_animation_frames`).
@@ -238,11 +286,11 @@ impl InteractiveTool for HarmonicOscillatorTool {
 }
 ```
 
-Implementing `domain()`, `save_state()`, and `try_load_state()` automatically enables JSON preset export (`export_preset_json`), validated JSON preset import (`import_preset_json`), baseline parameter reset, and Starter Gallery template dispatch.
+Implementing `domain()`, `save_state()`, and `try_load_state()` automatically enables JSON preset export (`export_preset_json`), validated JSON preset import (`import_preset_json`), URL state sharing, baseline parameter reset, and Starter Gallery template dispatch.
 
-### Step 4: Register Tool and Starter Preset Metadata
+### Step 4: Register Tool Metadata and Expose the Domain Submodule
 
-Submit your `ToolMetadata` and `StarterPresetMetadata` entries with `inventory::submit!` at the bottom of the file. Ensure `STARTER_PRESET_JSON` wraps a `"config"` object matching your `#[serde(deny_unknown_fields)]` state struct and a `"metadata.domain"` matching `domain()`:
+Submit your `ToolMetadata` and `StarterPresetMetadata` entries via `inventory::submit!` at the bottom of `math_explorer_gui/src/tabs/<domain>/<tool_name>.rs`. Ensure `STARTER_PRESET_JSON` wraps a `"config"` object matching your `#[serde(deny_unknown_fields)]` state struct and a `"metadata.domain"` matching `domain()`:
 
 ```rust,ignore
 const STARTER_PRESET_JSON: &str = r#"{
@@ -287,7 +335,7 @@ Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing dom
 
 ## Event Handling Hooks
 
-The `InteractiveTool` trait provides default implementations for normalized interaction hooks. Override these methods as needed:
+When a tool uses the default `InteractiveTool::show_inside` pipeline (`show_ui` + `draw`), the framework provides normalized canvas interaction hooks:
 
 | Method Hook | Invocation Condition | Usage Example |
 | :--- | :--- | :--- |
@@ -300,12 +348,12 @@ The `InteractiveTool` trait provides default implementations for normalized inte
 
 ### Registering Tool Shortcuts for Discovery
 
-Because `on_keyboard` only executes when the simulation canvas holds focus, tools that define custom keyboard shortcuts must advertise their `CommandMetadata` every frame outside focus guards so hotkeys appear in the **Keyboard Shortcuts** modal (`?` or `Ctrl+/` / `Cmd+/`). Call `egui_plot::commands::CommandRegistryData::register` inside `show_ui` or `show` to record metadata without consuming input events. Do **not** intercept global history or session shortcuts (`Ctrl+Z` / `Cmd+Z`, `Ctrl+Y`, `Ctrl+Shift+Z` / `Cmd+Shift+Z`, `Ctrl+O`, `Ctrl+S`) inside tool handlers — `WorkspaceSessionManager` owns workspace-wide undo, redo, and file persistence before panes run:
+Tools that define custom keyboard shortcuts must advertise their `CommandMetadata` every frame outside focus guards so hotkeys appear in the **Keyboard Shortcuts** modal (`?` or `Ctrl+/` / `Cmd+/`). Call `egui_plot::commands::CommandRegistryData::register` inside `show_inside` or `show_ui` to record metadata without consuming input events. Do **not** intercept global history or session shortcuts (`Ctrl+Z` / `Cmd+Z`, `Ctrl+Y`, `Ctrl+Shift+Z` / `Cmd+Shift+Z`, `Ctrl+O`, `Ctrl+S`) inside tool handlers — `WorkspaceSessionManager` owns workspace-wide undo, redo, and file persistence before panes run:
 
 ```rust,ignore
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 
-// Inside InteractiveTool::show_ui(ui): advertise custom tool shortcuts (never consume Ctrl+Z / Ctrl+Y)
+// Inside InteractiveTool::show_inside(ui) or show_ui(ui): advertise custom shortcuts
 CommandRegistryData::register(
     ui.ctx(),
     "Add Node",
@@ -316,11 +364,11 @@ CommandRegistryData::register(
 );
 ```
 
-### Custom `show` Overrides, Focusable Canvases, and `AccessKit`
+### Custom `show_inside` Overrides, Focusable Canvases, and `AccessKit`
 
-The default `InteractiveTool::show` implementation allocates its central canvas with `egui::Sense::click_and_drag()` (which includes `egui::Sense::FOCUSABLE`) and dispatches `on_keyboard` when focused. When a tool overrides `InteractiveTool::show` directly, it must preserve keyboard reachability (`WCAG 2.2 SC 2.1.1`, `SC 2.1.2`, `SC 2.4.3`) and `AccessKit` semantics:
+The default `InteractiveTool::show_inside` implementation allocates its central canvas with `egui::Sense::click_and_drag()` (which includes `egui::Sense::FOCUSABLE`) and dispatches `on_keyboard` when focused. When a tool overrides `InteractiveTool::show_inside` directly, it must preserve keyboard reachability (`WCAG 2.2 SC 2.1.1`, `SC 2.1.2`, `SC 2.4.3`) and `AccessKit` semantics:
 
-1. **Custom Painter Regions**: Allocate custom canvases with `egui::Sense::focusable_noninteractive()` (for read-only visualizations) or `egui::Sense::click()` / `egui::Sense::click_and_drag()` (for interactive canvases) instead of `egui::Sense::hover()`. Attach an `AccessKit` role, non-empty label, and summary value via `crate::accessibility::register_canvas_accessibility` (built on `ctx.accesskit_node_builder`), and paint a focus ring via `crate::accessibility::paint_canvas_focus_ring`:
+1. **Custom Painter Regions**: Allocate custom canvases with `egui::Sense::focusable_noninteractive()` (for read-only visualizations) or `egui::Sense::click()` / `egui::Sense::click_and_drag()` (for interactive canvases) instead of `egui::Sense::hover()`. Attach an `AccessKit` role, non-empty label, and summary value via `crate::accessibility::register_canvas_accessibility`, and paint a focus ring via `crate::accessibility::paint_canvas_focus_ring`:
 
 ```rust,ignore
 let (response, painter) =
@@ -375,6 +423,7 @@ Interactive tools can map live mathematical invariants to real-time audio and `.
 ## Related References
 
 - Interactive tool trait definition: [`math_explorer_gui/src/framework/mod.rs`](../../math_explorer_gui/src/framework/mod.rs)
+- Static inventory tab registration: [`math_explorer_gui/src/tabs/mod.rs`](../../math_explorer_gui/src/tabs/mod.rs) and [ADR 20261123: Static Inventory Tab Registration and Scoped Build Scripts](../adr/20261123-inventory-tabs-and-scoped-build-scripts.md)
 - Spatial brush kit & field sculpting: [`math_explorer_gui/src/framework/spatial_brush.rs`](../../math_explorer_gui/src/framework/spatial_brush.rs) and [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](../adr/0045-spatial-brush-kit-and-field-sculpting.md)
 - Dual-backend sonification architecture: [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)
 - Example tool implementation (CERA): [`math_explorer_gui/src/tabs/climate/cera.rs`](../../math_explorer_gui/src/tabs/climate/cera.rs)
