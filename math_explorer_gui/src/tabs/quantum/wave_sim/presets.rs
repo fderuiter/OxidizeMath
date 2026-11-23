@@ -43,16 +43,6 @@ pub const DEFAULT_V0: f64 = 11.35;
 
 /// Minimum characteristic potential width.
 pub const WIDTH_MIN: f64 = 0.1;
-
-/// Returns `val` when finite, or `fallback` when `NaN` or infinite.
-#[inline]
-pub(super) const fn finite_or(val: f64, fallback: f64) -> f64 {
-    if val.is_finite() {
-        val
-    } else {
-        fallback
-    }
-}
 /// Maximum characteristic potential width.
 pub const WIDTH_MAX: f64 = 2.0;
 /// Default characteristic potential width.

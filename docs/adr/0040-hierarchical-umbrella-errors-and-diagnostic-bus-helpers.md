@@ -1,4 +1,4 @@
-# 0039. Hierarchical Umbrella Error Enums, Full Submodule Error Re-Exports, and DiagnosticBus Emission Helpers
+# 0040. Hierarchical Umbrella Error Enums, Full Submodule Error Re-Exports, and DiagnosticBus Emission Helpers
 
 ## Status
 

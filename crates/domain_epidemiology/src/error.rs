@@ -98,6 +98,7 @@ mod tests {
         let cases: Vec<EpidemiologyDomainError> = vec![
             epi.into(),
             NetworkModelError::InvalidNodeCount.into(),
+            NetworkModelError::InvalidIntervention.into(),
             sample_math.into(),
             pure_math::error::StochasticError::InvalidReactionIndex(5).into(),
         ];
