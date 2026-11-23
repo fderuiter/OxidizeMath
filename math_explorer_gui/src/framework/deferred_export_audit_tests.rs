@@ -153,7 +153,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     assert_eq!(plot_tool_count, 54, "Expected 54 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
     assert_eq!(unsupported_tool_count, 15, "Expected 15 non-figure tools");
-    assert_eq!(solid_3d_count, 5, "Expected 5 solid 3D geometric tools");
+    assert_eq!(solid_3d_count, 6, "Expected 6 solid 3D geometric tools");
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
         shader_tool_count, 3,
@@ -231,6 +231,7 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         "AttractorPlotter",
         "CrystalViewer",
         "SpinVisualizer",
+        "VolumetricFieldStudioTool",
     ];
     for id in solid_ids {
         let meta = inventory::iter::<crate::framework::ToolMetadata>
@@ -244,15 +245,28 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         .into_iter()
         .find(|m| m.id == "Gaussian Splatting")
         .expect("Gaussian Splatting registered");
-    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
-    gs_fw.active_tool = Some((gs_meta.build)());
+    verify_splat_mode_ply_and_assertive_stl_obj_warnings((gs_meta.build)());
 
-    clear_test_announcements();
-    run_deferred_export_frame(&mut gs_fw, ExportFormat::Stl, false);
-    assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
-    assert!(all_announcements()
-        .iter()
-        .any(|(_, prio)| prio == "assertive"));
+    let mut vol_splat =
+        crate::tabs::quantum::volumetric_studio::VolumetricFieldStudioTool::default();
+    vol_splat.config.render_mode =
+        crate::tabs::quantum::volumetric_studio::state::VolumetricRenderMode::GaussianRadianceCloud;
+    vol_splat.refresh_zero_alloc();
+    verify_splat_mode_ply_and_assertive_stl_obj_warnings(Box::new(vol_splat));
+}
+
+fn verify_splat_mode_ply_and_assertive_stl_obj_warnings(tool: Box<dyn InteractiveTool>) {
+    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
+    gs_fw.active_tool = Some(tool);
+
+    for blocked_fmt in [ExportFormat::Stl, ExportFormat::Obj] {
+        clear_test_announcements();
+        run_deferred_export_frame(&mut gs_fw, blocked_fmt, false);
+        assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
+        assert!(all_announcements()
+            .iter()
+            .any(|(_, prio)| prio == "assertive"));
+    }
 
     clear_test_announcements();
     let slot_before = with_live_region(|r| r.active_slot);

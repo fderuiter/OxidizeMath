@@ -131,6 +131,58 @@ pub const PRESET_3D_TURING_GYROID_JSON: &str = r#"{
   }
 }"#;
 
+/// Starter JSON for 3D Gyroid triply-periodic minimal surface (TPMS) thickened into a printable shell.
+pub const PRESET_3D_GYROID_TPMS_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "3D Gyroid TPMS Printable Shell",
+    "domain": "quantum",
+    "timestamp": "2026-11-23T00:00:00Z"
+  },
+  "config": {
+    "source": "custom_implicit_formula",
+    "render_mode": "marching_cubes_mesh",
+    "grid_resolution": 32,
+    "n1": 1,
+    "l1": 0,
+    "m1": 0,
+    "n2": 2,
+    "l2": 1,
+    "m2": 0,
+    "superposition_mix": 0.5,
+    "relative_phase": 0.0,
+    "quantum_dt": 0.08,
+    "observable": "signed_wavefunction",
+    "iso_threshold": 0.032,
+    "splat_scale": 1.0,
+    "turing_a": 0.1,
+    "turing_b": 0.9,
+    "turing_du": 1.0,
+    "turing_dv": 18.0,
+    "turing_dt": 0.008,
+    "implicit_expr": "sin(k * x) * cos(k * y) + sin(k * y) * cos(k * z) + sin(k * z) * cos(k * x)",
+    "formula_params": {
+      "k": 1.85
+    },
+    "implicit_level": 0.0,
+    "shell_enabled": true,
+    "wall_thickness": 0.42,
+    "x_bounds": [-2.5, 2.5],
+    "y_bounds": [-2.5, 2.5],
+    "z_bounds": [-2.5, 2.5],
+    "cut_enabled": false,
+    "cut_axis": "x",
+    "cut_offset": 0.0,
+    "probe_brush_enabled": true,
+    "running": false,
+    "camera": {
+      "pitch": 0.48,
+      "yaw": 0.64,
+      "zoom": 1.05
+    }
+  }
+}"#;
+
 inventory::submit! {
     StarterPresetMetadata {
         id: "volumetric_1s_2pz_dipole",
@@ -167,5 +219,18 @@ inventory::submit! {
         domain: "quantum",
         tool_name: Some("VolumetricFieldStudioTool"),
         preset_generator: || PRESET_3D_TURING_GYROID_JSON,
+    }
+}
+
+inventory::submit! {
+    StarterPresetMetadata {
+        id: "volumetric_3d_gyroid_tpms",
+        title: "3D Gyroid TPMS Printable Shell",
+        description: "Analytical 3D Gyroid triply-periodic minimal surface thickened into a watertight printable shell for STL, PLY, and OBJ export.",
+        category: "Volumetric Fields",
+        icon: "🕸",
+        domain: "quantum",
+        tool_name: Some("VolumetricFieldStudioTool"),
+        preset_generator: || PRESET_3D_GYROID_TPMS_JSON,
     }
 }

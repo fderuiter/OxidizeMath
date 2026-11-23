@@ -16,7 +16,7 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 - **`clinical_trials`**: Biostatistical trial design, sample size determination, and survival curves.
 - **`pharmacokinetics`**: One-compartment oral ADME kinetics (`PKParameters`, `BatemanModel`, `half_life`, `t_max`, `solve_ka`), multi-dose linear superposition (`SuperpositionModel`), biphasic extended-release formulations (`TwoPulseModel`), and stereoselective chiral mixtures (`EnantiomerModel`).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
-- **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
+- **`isosurface`**: 3D volumetric surface and watertight scalar-collar solid extraction (`MarchingCubes`, `IsosurfaceWorkspace`, `SolidClosureConfig`), including cutting-plane cap closure.
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.
 - **`game_theory`**: Mean Field Games, evolutionary matrix dynamics, and mechanism design.
 - **`lorahub` & `grpo`**: Machine learning parameter merging and group relative policy optimization.

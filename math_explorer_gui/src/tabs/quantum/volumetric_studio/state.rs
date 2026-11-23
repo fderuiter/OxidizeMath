@@ -4,9 +4,12 @@
 // [cite:isosurface_extraction]
 
 use crate::camera::Camera3D;
+use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
 use crate::volumetric_scene::VolumeCutFilter;
+use math_explorer::applied::isosurface::CuttingPlane;
 use math_explorer::physics::quantum::{OrbitalQuantumNumbers, QuantumFieldObservable};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Minimum interactive 3D voxel grid dimension (`16^3 = 4,096` voxels).
 pub const MIN_VOLUMETRIC_GRID: usize = 16;
@@ -16,8 +19,25 @@ pub const MAX_VOLUMETRIC_GRID: usize = 48;
 pub const STUDIO_VIEWPORT_EXTENT: f64 = 2.5;
 /// Camera distance used for perspective splat covariance projection.
 pub const STUDIO_CAMERA_DISTANCE: f64 = 5.5;
+/// Default 3D Gyroid TPMS implicit expression.
+pub const DEFAULT_IMPLICIT_EXPR: &str =
+    "sin(k * x) * cos(k * y) + sin(k * y) * cos(k * z) + sin(k * z) * cos(k * x)";
+/// Minimum coordinate bound for custom 3D implicit domains.
+pub const IMPLICIT_DOMAIN_MIN_BOUND: f64 = -25.0;
+/// Maximum coordinate bound for custom 3D implicit domains.
+pub const IMPLICIT_DOMAIN_MAX_BOUND: f64 = 25.0;
+/// Minimum span `hi - lo` along each coordinate axis for custom 3D implicit domains.
+pub const IMPLICIT_DOMAIN_MIN_SPAN: f64 = 0.1;
+/// Default symmetric `[min, max]` coordinate bounds for custom 3D implicit evaluation.
+pub const DEFAULT_IMPLICIT_BOUNDS: [f64; 2] = [-2.5, 2.5];
+/// Minimum shell wall thickness for implicit sheet surfaces.
+pub const MIN_IMPLICIT_WALL_THICKNESS: f64 = 0.05;
+/// Maximum shell wall thickness for implicit sheet surfaces.
+pub const MAX_IMPLICIT_WALL_THICKNESS: f64 = 1.5;
+/// Default shell wall thickness for TPMS sheet surfaces.
+pub const DEFAULT_IMPLICIT_WALL_THICKNESS: f64 = 0.42;
 
-/// Active 3D volumetric PDE / eigenstate generator.
+/// Active 3D volumetric PDE, eigenstate, or analytical implicit level-set generator.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldSourceMode {
@@ -26,6 +46,8 @@ pub enum FieldSourceMode {
     QuantumSuperposition,
     /// Two-species 3D Schnakenberg reaction-diffusion grid via `FiniteDifference3D`.
     TuringMorphogenesis,
+    /// User-authored 3D implicit level-set / SDF / TPMS formula $f(x, y, z) = c$.
+    CustomImplicitFormula,
 }
 
 impl FieldSourceMode {
@@ -34,6 +56,7 @@ impl FieldSourceMode {
         match self {
             Self::QuantumSuperposition => "3D Hydrogenic Superposition",
             Self::TuringMorphogenesis => "3D Turing Reaction-Diffusion",
+            Self::CustomImplicitFormula => "3D Implicit Formula / TPMS",
         }
     }
 }
@@ -133,6 +156,18 @@ fn default_true() -> bool {
     true
 }
 
+fn default_implicit_expr() -> String {
+    DEFAULT_IMPLICIT_EXPR.to_string()
+}
+
+const fn default_wall_thickness() -> f64 {
+    DEFAULT_IMPLICIT_WALL_THICKNESS
+}
+
+const fn default_bounds() -> [f64; 2] {
+    DEFAULT_IMPLICIT_BOUNDS
+}
+
 /// Complete serializable state for `VolumetricFieldStudioTool` (`#[serde(deny_unknown_fields)]`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -178,6 +213,30 @@ pub struct VolumetricStudioConfig {
     pub turing_dv: f64,
     /// Turing integration step `dt` in `[0.001, 0.05]`.
     pub turing_dt: f64,
+    /// User-authored 3D implicit formula $f(x, y, z)$.
+    #[serde(default = "default_implicit_expr")]
+    pub implicit_expr: String,
+    /// Active free parameter slider values (`<= 6`) for `implicit_expr`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub formula_params: BTreeMap<String, f64>,
+    /// Target implicit level value $c$ in $f(x, y, z) = c$ (`[-2.0, 2.0]`).
+    #[serde(default)]
+    pub implicit_level: f64,
+    /// Thickens zero-thickness implicit sheets into closed shells ($|f - c| - 0.5 w \le 0$).
+    #[serde(default = "default_true")]
+    pub shell_enabled: bool,
+    /// Scalar wall thickness $w$ in `[0.05, 1.5]` when `shell_enabled` is active.
+    #[serde(default = "default_wall_thickness")]
+    pub wall_thickness: f64,
+    /// Domain `[x_min, x_max]` mapped onto the 3D voxel grid in custom implicit mode.
+    #[serde(default = "default_bounds")]
+    pub x_bounds: [f64; 2],
+    /// Domain `[y_min, y_max]` mapped onto the 3D voxel grid in custom implicit mode.
+    #[serde(default = "default_bounds")]
+    pub y_bounds: [f64; 2],
+    /// Domain `[z_min, z_max]` mapped onto the 3D voxel grid in custom implicit mode.
+    #[serde(default = "default_bounds")]
+    pub z_bounds: [f64; 2],
     /// Enables 3D half-space cutting plane & cross-section nodal contours.
     pub cut_enabled: bool,
     /// Cutting-plane normal axis.
@@ -217,6 +276,14 @@ impl Default for VolumetricStudioConfig {
             turing_du: 1.0,
             turing_dv: 18.0,
             turing_dt: 0.008,
+            implicit_expr: default_implicit_expr(),
+            formula_params: BTreeMap::new(),
+            implicit_level: 0.0,
+            shell_enabled: true,
+            wall_thickness: DEFAULT_IMPLICIT_WALL_THICKNESS,
+            x_bounds: DEFAULT_IMPLICIT_BOUNDS,
+            y_bounds: DEFAULT_IMPLICIT_BOUNDS,
+            z_bounds: DEFAULT_IMPLICIT_BOUNDS,
             cut_enabled: false,
             cut_axis: SliceAxis::X,
             cut_offset: 0.0,
@@ -242,7 +309,15 @@ impl VolumetricStudioConfig {
         })
     }
 
-    /// Strictly validates all quantum numbers, PDE rates, grid bounds, and `Camera3D` pose.
+    /// World-space solid `CuttingPlane` cap specification when `cut_enabled` is active.
+    pub fn active_cutting_plane(&self) -> Option<CuttingPlane> {
+        self.cut_enabled.then(|| CuttingPlane {
+            axis: self.cut_axis.index(),
+            max_coord: (self.cut_offset.clamp(-1.0, 1.0) * STUDIO_VIEWPORT_EXTENT) as f32,
+        })
+    }
+
+    /// Strictly validates all quantum numbers, PDE rates, implicit bounds, grid bounds, and `Camera3D` pose.
     pub fn validate(&self) -> Result<(), String> {
         if !(MIN_VOLUMETRIC_GRID..=MAX_VOLUMETRIC_GRID).contains(&self.grid_resolution) {
             return Err(format!(
@@ -252,6 +327,15 @@ impl VolumetricStudioConfig {
         }
         OrbitalQuantumNumbers::new(self.n1, self.l1, self.m1)?;
         OrbitalQuantumNumbers::new(self.n2, self.l2, self.m2)?;
+        self.validate_scalar_ranges()?;
+        self.validate_implicit_fields()?;
+        if !self.camera.is_valid() {
+            return Err("Invalid Camera3D pose in VolumetricFieldStudioTool".into());
+        }
+        Ok(())
+    }
+
+    fn validate_scalar_ranges(&self) -> Result<(), String> {
         let ranges = [
             ("superposition_mix", self.superposition_mix, 0.0, 1.0),
             ("relative_phase", self.relative_phase, -4.0, 4.0),
@@ -263,6 +347,13 @@ impl VolumetricStudioConfig {
             ("turing_du", self.turing_du, 0.1, 5.0),
             ("turing_dv", self.turing_dv, 5.0, 60.0),
             ("turing_dt", self.turing_dt, 0.001, 0.05),
+            ("implicit_level", self.implicit_level, -2.0, 2.0),
+            (
+                "wall_thickness",
+                self.wall_thickness,
+                MIN_IMPLICIT_WALL_THICKNESS,
+                MAX_IMPLICIT_WALL_THICKNESS,
+            ),
             ("cut_offset", self.cut_offset, -1.0, 1.0),
         ];
         for (name, val, lo, hi) in ranges {
@@ -272,9 +363,27 @@ impl VolumetricStudioConfig {
                 ));
             }
         }
-        if !self.camera.is_valid() {
-            return Err("Invalid Camera3D pose in VolumetricFieldStudioTool".into());
+        Ok(())
+    }
+
+    fn validate_implicit_fields(&self) -> Result<(), String> {
+        if self.implicit_expr.trim().is_empty() || self.implicit_expr.len() > 512 {
+            return Err("implicit_expr must be non-empty and <= 512 bytes".into());
         }
+        if self.formula_params.len() > MAX_SYNTHESIZED_PARAMS {
+            return Err(format!(
+                "formula_params has {} entries (max {MAX_SYNTHESIZED_PARAMS})",
+                self.formula_params.len()
+            ));
+        }
+        for (k, &v) in &self.formula_params {
+            if k.is_empty() || k.len() > 32 || !v.is_finite() || !(-25.0..=25.0).contains(&v) {
+                return Err(format!("Invalid formula parameter '{k}'={v}"));
+            }
+        }
+        validate_domain_pair(self.x_bounds, "x_bounds")?;
+        validate_domain_pair(self.y_bounds, "y_bounds")?;
+        validate_domain_pair(self.z_bounds, "z_bounds")?;
         Ok(())
     }
 
@@ -284,13 +393,9 @@ impl VolumetricStudioConfig {
             .grid_resolution
             .clamp(MIN_VOLUMETRIC_GRID, MAX_VOLUMETRIC_GRID);
         let q1 = OrbitalQuantumNumbers::clamped(self.n1, self.l1, self.m1);
-        self.n1 = q1.n;
-        self.l1 = q1.l;
-        self.m1 = q1.m;
+        (self.n1, self.l1, self.m1) = (q1.n, q1.l, q1.m);
         let q2 = OrbitalQuantumNumbers::clamped(self.n2, self.l2, self.m2);
-        self.n2 = q2.n;
-        self.l2 = q2.l;
-        self.m2 = q2.m;
+        (self.n2, self.l2, self.m2) = (q2.n, q2.l, q2.m);
         self.superposition_mix = clamp_finite(self.superposition_mix, 0.0, 1.0, 0.5);
         self.relative_phase = clamp_finite(
             self.relative_phase,
@@ -306,11 +411,58 @@ impl VolumetricStudioConfig {
         self.turing_du = clamp_finite(self.turing_du, 0.1, 5.0, 1.0);
         self.turing_dv = clamp_finite(self.turing_dv, 5.0, 60.0, 18.0);
         self.turing_dt = clamp_finite(self.turing_dt, 0.001, 0.05, 0.008);
+        self.implicit_level = clamp_finite(self.implicit_level, -2.0, 2.0, 0.0);
+        self.wall_thickness = clamp_finite(
+            self.wall_thickness,
+            MIN_IMPLICIT_WALL_THICKNESS,
+            MAX_IMPLICIT_WALL_THICKNESS,
+            DEFAULT_IMPLICIT_WALL_THICKNESS,
+        );
+        self.x_bounds = clamp_domain_pair(self.x_bounds);
+        self.y_bounds = clamp_domain_pair(self.y_bounds);
+        self.z_bounds = clamp_domain_pair(self.z_bounds);
+        if self.implicit_expr.trim().is_empty() || self.implicit_expr.len() > 512 {
+            self.implicit_expr = default_implicit_expr();
+        }
+        for val in self.formula_params.values_mut() {
+            *val = clamp_finite(*val, -25.0, 25.0, 1.0);
+        }
         self.cut_offset = clamp_finite(self.cut_offset, -1.0, 1.0, 0.0);
         if !self.camera.is_valid() {
             self.camera.reset();
         }
     }
+}
+
+fn validate_domain_pair(bounds: [f64; 2], name: &str) -> Result<(), String> {
+    let [lo, hi] = bounds;
+    if !lo.is_finite()
+        || !hi.is_finite()
+        || !(IMPLICIT_DOMAIN_MIN_BOUND..=IMPLICIT_DOMAIN_MAX_BOUND).contains(&lo)
+        || !(IMPLICIT_DOMAIN_MIN_BOUND..=IMPLICIT_DOMAIN_MAX_BOUND).contains(&hi)
+        || lo + IMPLICIT_DOMAIN_MIN_SPAN > hi
+    {
+        return Err(format!(
+            "Domain '{name}'=[{lo}, {hi}] must be ordered within [{IMPLICIT_DOMAIN_MIN_BOUND}, {IMPLICIT_DOMAIN_MAX_BOUND}]"
+        ));
+    }
+    Ok(())
+}
+
+fn clamp_domain_pair(bounds: [f64; 2]) -> [f64; 2] {
+    let lo = clamp_finite(
+        bounds[0],
+        IMPLICIT_DOMAIN_MIN_BOUND,
+        IMPLICIT_DOMAIN_MAX_BOUND - IMPLICIT_DOMAIN_MIN_SPAN,
+        DEFAULT_IMPLICIT_BOUNDS[0],
+    );
+    let hi = clamp_finite(
+        bounds[1],
+        lo + IMPLICIT_DOMAIN_MIN_SPAN,
+        IMPLICIT_DOMAIN_MAX_BOUND,
+        DEFAULT_IMPLICIT_BOUNDS[1].max(lo + IMPLICIT_DOMAIN_MIN_SPAN),
+    );
+    [lo, hi]
 }
 
 fn clamp_finite(val: f64, lo: f64, hi: f64, fallback: f64) -> f64 {

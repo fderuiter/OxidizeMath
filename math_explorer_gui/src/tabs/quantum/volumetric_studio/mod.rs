@@ -7,47 +7,53 @@
 // [cite:favorite_child]
 
 pub mod engine;
+mod export_3d;
+pub mod formula;
 pub mod presets;
 mod render;
 pub mod state;
 mod ui;
 
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::framework::{ExportCapabilities, InteractiveTool, ToolMetadata, ToolStateBounds};
+use crate::framework::{
+    ExportCapabilities, InteractiveTool, MathExpressionInputBar, ToolMetadata, ToolStateBounds,
+};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use engine::VolumetricEngine;
 use scientific_metadata::theory::TheoryDescribable;
-use state::VolumetricStudioConfig;
+use state::{VolumetricRenderMode, VolumetricStudioConfig};
 use std::hash::{Hash, Hasher};
-use std::sync::mpsc::Receiver;
 
 /// Interactive 3D volumetric field studio uniting quantum eigenstates, 3D Turing PDEs,
-/// `MarchingCubes` nodal surfaces, `.obj` Wavefront export, and `Gaussian3D` radiance splatting.
+/// custom 3D implicit/TPMS formulas, watertight solid `.stl`/`.ply`/`.obj` exports, and 3DGS `.ply`.
 pub struct VolumetricFieldStudioTool {
     /// Validated serializable studio configuration.
     pub config: VolumetricStudioConfig,
+    /// Reusable `MathExpressionInputBar` compiling `f(x, y, z)` bytecode and up to 6 parameter sliders.
+    pub formula_bar: MathExpressionInputBar,
     /// Pre-allocated zero-allocation 3D PDE, isosurface, and splatting workspace.
     pub engine: VolumetricEngine,
     pub(super) splat_texture: Option<egui::TextureHandle>,
     pub(super) splat_dirty: bool,
     pub(super) last_step_tick: PlatformInstant,
-    pub(super) obj_save_rx: Option<Receiver<Result<String, String>>>,
-    pub(super) export_status: Option<(String, bool)>,
 }
 
 impl Default for VolumetricFieldStudioTool {
     fn default() -> Self {
-        let config = VolumetricStudioConfig::default();
-        let engine = VolumetricEngine::new(&config);
+        let mut config = VolumetricStudioConfig::default();
+        let mut formula_bar = formula::build_implicit_formula_bar(&config.implicit_expr);
+        formula_bar.set_params_map(&config.formula_params);
+        config.formula_params = formula_bar.params_map();
+        let mut engine = VolumetricEngine::new(&config);
+        engine.sync_formula_from_bar(&formula_bar);
         Self {
             config,
+            formula_bar,
             engine,
             splat_texture: None,
             splat_dirty: true,
             last_step_tick: PlatformInstant::now(),
-            obj_save_rx: None,
-            export_status: None,
         }
     }
 }
@@ -66,9 +72,14 @@ impl VolumetricFieldStudioTool {
         self.splat_dirty = true;
     }
 
-    /// Exports the active `MarchingCubes` nodal surface to a Wavefront `.obj` string.
-    pub fn export_obj_string(&self) -> Result<String, String> {
-        self.engine.export_obj_string(&self.config)
+    pub(super) fn sync_valid_formula_to_config_and_engine(&mut self) {
+        if self.formula_bar.is_valid() {
+            self.config
+                .implicit_expr
+                .clone_from(&self.formula_bar.raw_text);
+            self.config.formula_params = self.formula_bar.params_map();
+            self.engine.sync_formula_from_bar(&self.formula_bar);
+        }
     }
 }
 
@@ -89,6 +100,9 @@ impl FiniteStateGuard for VolumetricFieldStudioTool {
 
     fn reset_parameters(&mut self) {
         self.config = VolumetricStudioConfig::default();
+        self.formula_bar = formula::build_implicit_formula_bar(&self.config.implicit_expr);
+        self.config.formula_params = self.formula_bar.params_map();
+        self.engine.sync_formula_from_bar(&self.formula_bar);
         self.engine.reset_simulation(&self.config);
         self.splat_dirty = true;
     }
@@ -108,7 +122,30 @@ impl InteractiveTool for VolumetricFieldStudioTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        if self.config.render_mode == VolumetricRenderMode::GaussianRadianceCloud {
+            ExportCapabilities::plot().with_3d_splat_ply()
+        } else {
+            ExportCapabilities::plot().with_3d_solid()
+        }
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        self.config
+            .render_mode
+            .uses_mesh()
+            .then(|| self.build_colored_solid_mesh_3d().map(|c| c.mesh))
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        self.config
+            .render_mode
+            .uses_mesh()
+            .then(|| self.build_colored_solid_mesh_3d())
+    }
+
+    fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
+        (self.config.render_mode == VolumetricRenderMode::GaussianRadianceCloud)
+            .then(|| self.export_splat_ply_bytes())
     }
 
     fn state_bounds(&self) -> ToolStateBounds {
@@ -133,6 +170,22 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         self.config.turing_du.to_bits().hash(&mut h);
         self.config.turing_dv.to_bits().hash(&mut h);
         self.config.turing_dt.to_bits().hash(&mut h);
+        self.config.implicit_expr.hash(&mut h);
+        for (k, &v) in &self.config.formula_params {
+            k.hash(&mut h);
+            v.to_bits().hash(&mut h);
+        }
+        self.config.implicit_level.to_bits().hash(&mut h);
+        self.config.shell_enabled.hash(&mut h);
+        self.config.wall_thickness.to_bits().hash(&mut h);
+        for b in [
+            self.config.x_bounds,
+            self.config.y_bounds,
+            self.config.z_bounds,
+        ] {
+            b[0].to_bits().hash(&mut h);
+            b[1].to_bits().hash(&mut h);
+        }
         self.config.cut_enabled.hash(&mut h);
         self.config.cut_axis.hash(&mut h);
         self.config.cut_offset.to_bits().hash(&mut h);
@@ -155,7 +208,21 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         let parsed: VolumetricStudioConfig = serde_json::from_str(state)
             .map_err(|e| format!("Invalid VolumetricFieldStudioTool state: {e}"))?;
         parsed.validate()?;
+        let mut bar = formula::build_implicit_formula_bar(&parsed.implicit_expr);
+        if !bar.is_valid() {
+            let reason = bar
+                .error_message()
+                .unwrap_or_else(|| "invalid implicit_expr".into());
+            return Err(format!(
+                "Invalid VolumetricFieldStudioTool implicit_expr: {reason}"
+            ));
+        }
+        bar.set_params_map(&parsed.formula_params);
+        bar.clamp_active_params(-25.0..=25.0);
+        self.formula_bar = bar;
         self.config = parsed;
+        self.config.formula_params = self.formula_bar.params_map();
+        self.engine.sync_formula_from_bar(&self.formula_bar);
         self.engine.diverged = false;
         self.engine.diagnostic_report = None;
         self.refresh_zero_alloc();
@@ -164,6 +231,11 @@ impl InteractiveTool for VolumetricFieldStudioTool {
 
     fn clamp_parameters(&mut self) -> bool {
         self.config.clamp_in_place();
+        if !self.formula_bar.is_valid() {
+            self.formula_bar.set_expression(&self.config.implicit_expr);
+        }
+        self.formula_bar.clamp_active_params(-25.0..=25.0);
+        self.sync_valid_formula_to_config_and_engine();
         self.engine.diverged = false;
         self.engine.diagnostic_report = None;
         self.refresh_zero_alloc();
@@ -178,6 +250,16 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         self.poll_async_and_playback(ui.ctx());
         self.draw_side_panel(ui);
         self.draw_viewport(ui);
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 

@@ -1,13 +1,29 @@
 //! Integration tests for test isosurface.
 #[cfg(test)]
 mod tests {
-    use domain_applied::applied::isosurface::{Mesh, Point3D, VoxelGrid, extract_isosurface};
+    use domain_applied::applied::isosurface::{
+        Mesh, Point3D, SolidClosureConfig, VoxelGrid, extract_isosurface, extract_solid_isosurface,
+    };
     use std::collections::HashMap;
     use verified_engine::allocator::VerifiedAllocator;
     use verified_engine::engine::VerifiedEngine;
 
     #[global_allocator]
     static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
+
+    fn compute_signed_volume(mesh: &Mesh) -> f64 {
+        let (triangles, remainder) = mesh.indices.as_chunks::<3>();
+        assert!(remainder.is_empty());
+        let mut sum = 0.0_f64;
+        for &[i0, i1, i2] in triangles {
+            let (a, b, c) = (mesh.vertices[i0], mesh.vertices[i1], mesh.vertices[i2]);
+            let (ax, ay, az) = (f64::from(a.x), f64::from(a.y), f64::from(a.z));
+            let (bx, by, bz) = (f64::from(b.x), f64::from(b.y), f64::from(b.z));
+            let (cx, cy, cz) = (f64::from(c.x), f64::from(c.y), f64::from(c.z));
+            sum += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
+        }
+        sum / 6.0
+    }
 
     fn assert_closed_manifold(mesh: &Mesh) {
         assert!(
@@ -202,6 +218,15 @@ mod tests {
         assert_eq!(
             mesh.vertices.len(),
             count_sign_changing_lattice_edges(&grid, 0.0)
+        );
+
+        let solid_sphere =
+            extract_solid_isosurface(&grid, 0.0, SolidClosureConfig::sublevel()).unwrap();
+        assert_closed_manifold(&solid_sphere);
+        assert!(solid_sphere.normals.iter().all(|n| n.is_finite()));
+        assert!(
+            compute_signed_volume(&solid_sphere) > 0.0,
+            "8x6x7 clipped sphere solid must have positive signed volume"
         );
 
         // Minimal 2x2x3 grid where y loop runs once per z slice (tests Z-row reset across z > 0)

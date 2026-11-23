@@ -1,18 +1,23 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 //! Zero-allocation 3D triangle projection, cutting-plane contour tracing, radial node counting,
-//! and manifold Wavefront `.obj` export for [`super::VolumetricEngine`].
+//! and solid `MarchingCubes` extraction for [`super::VolumetricEngine`].
 // [cite:isosurface_extraction]
 
-use super::super::state::{VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT};
-use super::VolumetricEngine;
+use super::super::state::{FieldSourceMode, VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT};
+use super::{ProbeReadout, VolumetricEngine};
 use crate::camera::Camera3D;
 use crate::volumetric_scene::VolumeCutFilter;
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::applied::isosurface::{
-    CentralDifferenceEstimator, IsosurfaceWorkspace, MarchingCubes, VoxelGrid,
+    CentralDifferenceEstimator, MarchingCubes, SolidClosureConfig, VoxelGrid,
 };
-use oxidize_core::mesh::{export_mesh_to_obj_string, Mesh, Point3D as CorePoint3D};
+use math_explorer::biology::diffusion::FiniteDifference3D;
+use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use math_explorer::math_kernel::types::flatten_3d_index;
+use math_explorer::physics::quantum::OrbitalQuantumNumbers;
+use math_explorer::pure_math::special_functions::legendre::legendre_p_associated;
+use oxidize_core::mesh::{Mesh, Point3D as CorePoint3D};
 
 /// Maximum painter facets emitted per frame to keep `egui_plot::Polygon` crisp at 60 FPS.
 pub const MAX_RENDERED_FACETS: usize = 2_400;
@@ -40,10 +45,18 @@ pub fn project_meshes_into(
     out: &mut Vec<ProjectedFacet>,
 ) {
     out.clear();
-    let cap = out.capacity().min(MAX_RENDERED_FACETS);
-    if cap == 0 {
+    let max_cap = out.capacity().min(MAX_RENDERED_FACETS);
+    if max_cap == 0 {
         return;
     }
+    let cap = match cut {
+        Some(c) => {
+            let frac = ((c.max_coord + STUDIO_VIEWPORT_EXTENT) / (2.0 * STUDIO_VIEWPORT_EXTENT))
+                .clamp(0.15, 0.95);
+            (((max_cap as f64) * frac).round() as usize).clamp(16.min(max_cap), max_cap)
+        }
+        None => max_cap,
+    };
     let total_tris = (pos_mesh.indices.len() / 3)
         + if has_neg {
             neg_mesh.indices.len() / 3
@@ -56,20 +69,17 @@ pub fn project_meshes_into(
     let stride = (total_tris / cap).max(1);
     let pos_base = [58_u8, 170_u8, 250_u8];
     let neg_base = [248_u8, 118_u8, 62_u8];
-    append_projected_mesh(pos_mesh, pos_base, false, stride, cut, camera, cap, out);
+    append_projected_mesh(pos_mesh, pos_base, stride, camera, cap, out);
     if has_neg && out.len() < cap {
-        append_projected_mesh(neg_mesh, neg_base, true, stride, cut, camera, cap, out);
+        append_projected_mesh(neg_mesh, neg_base, stride, camera, cap, out);
     }
     out.sort_unstable_by(|a, b| a.depth.total_cmp(&b.depth));
 }
 
-#[allow(clippy::too_many_arguments)]
 fn append_projected_mesh(
     mesh: &Mesh,
     rgb: [u8; 3],
-    invert_normal: bool,
     stride: usize,
-    cut: Option<VolumeCutFilter>,
     camera: &Camera3D,
     cap: usize,
     out: &mut Vec<ProjectedFacet>,
@@ -84,14 +94,6 @@ fn append_projected_mesh(
         let b = tri_idx * 3;
         let (i0, i1, i2) = (mesh.indices[b], mesh.indices[b + 1], mesh.indices[b + 2]);
         let (v0, v1, v2) = (mesh.vertices[i0], mesh.vertices[i1], mesh.vertices[i2]);
-        if let Some(c) = cut {
-            let cx = ((v0.x + v1.x + v2.x) as f64) / 3.0;
-            let cy = ((v0.y + v1.y + v2.y) as f64) / 3.0;
-            let cz = ((v0.z + v1.z + v2.z) as f64) / 3.0;
-            if [cx, cy, cz][c.axis.min(2)] > c.max_coord {
-                continue;
-            }
-        }
         let c0 = camera.rotate_to_camera_space(&[v0.x as f64, v0.y as f64, v0.z as f64]);
         let c1 = camera.rotate_to_camera_space(&[v1.x as f64, v1.y as f64, v1.z as f64]);
         let c2 = camera.rotate_to_camera_space(&[v2.x as f64, v2.y as f64, v2.z as f64]);
@@ -100,12 +102,7 @@ fn append_projected_mesh(
             .get(i0)
             .copied()
             .unwrap_or(CorePoint3D::new(0.0, 0.0, 1.0));
-        let sign = if invert_normal { -1.0 } else { 1.0 };
-        let nc = camera.rotate_to_camera_space(&[
-            sign * (n_raw.x as f64),
-            sign * (n_raw.y as f64),
-            sign * (n_raw.z as f64),
-        ]);
+        let nc = camera.rotate_to_camera_space(&[n_raw.x as f64, n_raw.y as f64, n_raw.z as f64]);
         let lambert = (nc[0] * light[0] + nc[1] * light[1] + nc[2] * light[2]).abs();
         let shade = (0.38 + 0.62 * lambert).clamp(0.35, 1.0) as f32;
         let fill = egui::Color32::from_rgba_unmultiplied(
@@ -250,106 +247,6 @@ impl VolumetricEngine {
         crossings
     }
 
-    /// Exports the active `MarchingCubes` surface(s) to Wavefront `.obj` text with finite unit normals.
-    pub fn export_obj_string(&self, cfg: &VolumetricStudioConfig) -> Result<String, String> {
-        let mut combined = Mesh::new();
-        let cut = cfg.active_cut_filter();
-        let iso = (cfg.iso_threshold as f32).clamp(0.001, 2.0);
-        if self.pos_mesh.vertices.is_empty() && self.neg_mesh.vertices.is_empty() {
-            let mut ws =
-                IsosurfaceWorkspace::new_lazy(self.voxel_grid.width(), self.voxel_grid.height());
-            let mut tmp_pos = Mesh::new();
-            let _ = MarchingCubes::new(&self.voxel_grid, CentralDifferenceEstimator).extract_into(
-                iso,
-                &mut ws,
-                &mut tmp_pos,
-            );
-            append_sanitized_mesh(&tmp_pos, false, cut, &mut combined);
-        } else {
-            append_sanitized_mesh(&self.pos_mesh, false, cut, &mut combined);
-            append_sanitized_mesh(&self.neg_mesh, true, cut, &mut combined);
-        }
-        if combined.indices.is_empty() && cut.is_some() {
-            append_sanitized_mesh(&self.pos_mesh, false, None, &mut combined);
-            append_sanitized_mesh(&self.neg_mesh, true, None, &mut combined);
-        }
-        if combined.indices.is_empty() {
-            return Err("No isosurface triangles at current iso_threshold to export.".into());
-        }
-        export_mesh_to_obj_string(&combined).map_err(|e| format!("OBJ export error: {e}"))
-    }
-}
-
-fn append_sanitized_mesh(
-    src: &Mesh,
-    flip_winding: bool,
-    cut: Option<VolumeCutFilter>,
-    dst: &mut Mesh,
-) {
-    let mut remap = vec![usize::MAX; src.vertices.len()];
-    for &[i0, i1, i2] in src.indices.as_chunks::<3>().0 {
-        let (v0, v1, v2) = (src.vertices[i0], src.vertices[i1], src.vertices[i2]);
-        if let Some(c) = cut {
-            let cent = [
-                ((v0.x + v1.x + v2.x) as f64) / 3.0,
-                ((v0.y + v1.y + v2.y) as f64) / 3.0,
-                ((v0.z + v1.z + v2.z) as f64) / 3.0,
-            ];
-            if cent[c.axis.min(2)] > c.max_coord {
-                continue;
-            }
-        }
-        let face_n = sanitize_normal((v1 - v0).cross(v2 - v0));
-        let ordered = if flip_winding {
-            [i0, i2, i1]
-        } else {
-            [i0, i1, i2]
-        };
-        for idx in ordered {
-            if remap[idx] == usize::MAX {
-                let new_idx = dst.vertices.len();
-                remap[idx] = new_idx;
-                let v = src.vertices[idx];
-                dst.vertices.push(sanitize_point(v));
-                let raw_n = src.normals.get(idx).copied().unwrap_or(face_n);
-                let signed_n = if flip_winding { -raw_n } else { raw_n };
-                dst.normals
-                    .push(sanitize_normal_with_fallback(signed_n, face_n));
-            }
-            dst.indices.push(remap[idx]);
-        }
-    }
-}
-
-fn sanitize_point(p: CorePoint3D) -> CorePoint3D {
-    CorePoint3D::new(
-        if p.x.is_finite() { p.x } else { 0.0 },
-        if p.y.is_finite() { p.y } else { 0.0 },
-        if p.z.is_finite() { p.z } else { 0.0 },
-    )
-}
-
-fn sanitize_normal(n: CorePoint3D) -> CorePoint3D {
-    let clean = sanitize_point(n);
-    let u = clean.normalize();
-    if u.magnitude() > 0.5 {
-        u
-    } else {
-        CorePoint3D::new(0.0, 0.0, 1.0)
-    }
-}
-
-fn sanitize_normal_with_fallback(n: CorePoint3D, fallback: CorePoint3D) -> CorePoint3D {
-    let clean = sanitize_point(n);
-    let u = clean.normalize();
-    if u.magnitude() > 0.5 {
-        u
-    } else {
-        fallback
-    }
-}
-
-impl VolumetricEngine {
     pub(super) fn extract_isosurfaces_zero_alloc(
         &mut self,
         cfg: &VolumetricStudioConfig,
@@ -357,26 +254,132 @@ impl VolumetricEngine {
         signed: bool,
         cut: Option<VolumeCutFilter>,
     ) {
-        if cfg.render_mode.uses_mesh() {
-            let mc = MarchingCubes::new(&self.voxel_grid, CentralDifferenceEstimator);
-            let _ = mc.extract_into(iso, &mut self.iso_ws, &mut self.pos_mesh);
-            if signed {
-                let _ = mc.extract_into(-iso, &mut self.iso_ws, &mut self.neg_mesh);
-            } else {
-                self.neg_mesh.clear();
-            }
-            project_meshes_into(
-                &self.pos_mesh,
-                &self.neg_mesh,
-                signed,
-                cut,
-                &cfg.camera,
-                &mut self.projected_facets,
-            );
-        } else {
+        if !cfg.render_mode.uses_mesh() {
             self.pos_mesh.clear();
             self.neg_mesh.clear();
             self.projected_facets.clear();
+            return;
+        }
+        let cut_plane = cfg.active_cutting_plane();
+        let mc = MarchingCubes::new(&self.voxel_grid, CentralDifferenceEstimator);
+        let has_neg = if cfg.source == FieldSourceMode::CustomImplicitFormula {
+            let closure = SolidClosureConfig::superlevel().with_cutting_plane(cut_plane);
+            let _ = mc.extract_solid_into(0.0, closure, &mut self.iso_ws, &mut self.pos_mesh);
+            self.neg_mesh.clear();
+            false
+        } else {
+            let pos_closure = SolidClosureConfig::superlevel().with_cutting_plane(cut_plane);
+            let _ = mc.extract_solid_into(iso, pos_closure, &mut self.iso_ws, &mut self.pos_mesh);
+            if signed {
+                let neg_closure = SolidClosureConfig::sublevel().with_cutting_plane(cut_plane);
+                let _ =
+                    mc.extract_solid_into(-iso, neg_closure, &mut self.iso_ws, &mut self.neg_mesh);
+            } else {
+                self.neg_mesh.clear();
+            }
+            signed
+        };
+        project_meshes_into(
+            &self.pos_mesh,
+            &self.neg_mesh,
+            has_neg,
+            cut,
+            &cfg.camera,
+            &mut self.projected_facets,
+        );
+    }
+
+    /// Samples `world_pt`, evaluates `legendre_p_associated`, and optionally injects a 3D perturbation pulse.
+    pub fn apply_probe_or_pulse(
+        &mut self,
+        cfg: &mut VolumetricStudioConfig,
+        world_pt: [f64; 3],
+    ) -> ProbeReadout {
+        let clamped = [
+            world_pt[0].clamp(-STUDIO_VIEWPORT_EXTENT, STUDIO_VIEWPORT_EXTENT),
+            world_pt[1].clamp(-STUDIO_VIEWPORT_EXTENT, STUDIO_VIEWPORT_EXTENT),
+            world_pt[2].clamp(-STUDIO_VIEWPORT_EXTENT, STUDIO_VIEWPORT_EXTENT),
+        ];
+        if cfg.probe_brush_enabled {
+            match cfg.source {
+                FieldSourceMode::TuringMorphogenesis => {
+                    inject_turing_pulse(&mut self.turing, self.voxel_grid.width(), clamped);
+                }
+                FieldSourceMode::QuantumSuperposition => {
+                    let wrapped = ((cfg.relative_phase + 0.45 + std::f64::consts::PI)
+                        .rem_euclid(std::f64::consts::TAU))
+                        - std::f64::consts::PI;
+                    cfg.relative_phase = wrapped;
+                    self.quantum
+                        .set_superposition(cfg.superposition_mix, cfg.relative_phase);
+                    self.cached_mix_phase = (
+                        cfg.superposition_mix.to_bits(),
+                        cfg.relative_phase.to_bits(),
+                    );
+                }
+                FieldSourceMode::CustomImplicitFormula => {}
+            }
+            self.step_and_extract_zero_alloc(cfg, false);
+        }
+        let scalar_value = sample_voxel_nearest(&self.voxel_grid, clamped);
+        let r =
+            (clamped[0] * clamped[0] + clamped[1] * clamped[1] + clamped[2] * clamped[2]).sqrt();
+        let cos_theta = if r > 1e-9 {
+            (clamped[2] / r).clamp(-1.0, 1.0)
+        } else {
+            1.0
+        };
+        let q1 = OrbitalQuantumNumbers::clamped(cfg.n1, cfg.l1, cfg.m1);
+        let legendre_polar = legendre_p_associated(q1.l as u64, q1.m as i64, cos_theta);
+        let readout = ProbeReadout {
+            world_pos: clamped,
+            scalar_value,
+            legendre_polar,
+        };
+        self.probe = Some(readout);
+        readout
+    }
+}
+
+fn sample_voxel_nearest(grid: &VoxelGrid, world_pt: [f64; 3]) -> f32 {
+    let dim = grid.width().max(2);
+    let norm = |c: f64| {
+        (((c + STUDIO_VIEWPORT_EXTENT) / (2.0 * STUDIO_VIEWPORT_EXTENT)) * ((dim - 1) as f64))
+            .round()
+            .clamp(0.0, (dim - 1) as f64) as usize
+    };
+    grid.get(norm(world_pt[0]), norm(world_pt[1]), norm(world_pt[2]))
+}
+
+fn inject_turing_pulse(
+    sys: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference3D>,
+    dim: usize,
+    world_pt: [f64; 3],
+) {
+    let to_idx = |c: f64| {
+        (((c + STUDIO_VIEWPORT_EXTENT) / (2.0 * STUDIO_VIEWPORT_EXTENT)) * ((dim - 1) as f64))
+            .round()
+            .clamp(0.0, (dim - 1) as f64) as isize
+    };
+    let (cx, cy, cz) = (
+        to_idx(world_pt[0]),
+        to_idx(world_pt[1]),
+        to_idx(world_pt[2]),
+    );
+    let rad = (dim as isize / 7).clamp(2, 5);
+    let sigma_sq = ((rad as f64) * 0.65).powi(2).max(0.5);
+    for dz in -rad..=rad {
+        let z = (cz + dz).clamp(0, (dim - 1) as isize) as usize;
+        for dy in -rad..=rad {
+            let y = (cy + dy).clamp(0, (dim - 1) as isize) as usize;
+            for dx in -rad..=rad {
+                let x = (cx + dx).clamp(0, (dim - 1) as isize) as usize;
+                let r2 = ((dx * dx + dy * dy + dz * dz) as f64) / sigma_sq;
+                let env = (-0.5 * r2).exp();
+                let idx = flatten_3d_index(x, y, z, dim, dim);
+                sys.u_mut()[idx] = (sys.u()[idx] + 0.85 * env).clamp(0.02, 6.0);
+                sys.v_mut()[idx] = (sys.v()[idx] - 0.25 * env).clamp(0.02, 6.0);
+            }
         }
     }
 }

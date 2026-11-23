@@ -7,21 +7,26 @@
 #[path = "engine_mesh.rs"]
 pub mod mesh_ops;
 
+use super::formula::{
+    build_implicit_formula_bar, default_compiled_gyroid, extract_implicit_splats_into,
+    populate_implicit_voxel_grid,
+};
 use super::state::{
     FieldSourceMode, QuantumObservableChoice, VolumetricStudioConfig, MAX_VOLUMETRIC_GRID,
     MIN_VOLUMETRIC_GRID, STUDIO_CAMERA_DISTANCE, STUDIO_VIEWPORT_EXTENT,
 };
+use crate::framework::math_input::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
 use crate::framework::recovery::DiagnosticReport;
 use crate::volumetric_scene::{
     extract_voxel_splats_into, presets::seed_3d_turing_gyroid, project_and_rasterize_workspace,
     VolumetricSplatWorkspace, MAX_DYNAMIC_SPLATS,
 };
+use math_commons::ast::CompiledExpr;
 use math_explorer::applied::isosurface::{IsosurfaceWorkspace, Point3D, VoxelGrid};
 use math_explorer::biology::diffusion::FiniteDifference3D;
 use math_explorer::biology::morphogenesis::{DiffusionCoeff, SchnakenbergKinetics, TuringSystem};
-use math_explorer::math_kernel::types::{flatten_3d_index, Dimension, StepSize};
+use math_explorer::math_kernel::types::{Dimension, StepSize};
 use math_explorer::physics::quantum::{HydrogenicSuperposition3D, OrbitalQuantumNumbers};
-use math_explorer::pure_math::special_functions::legendre::legendre_p_associated;
 use mesh_ops::{extract_slice_contours_into, ProjectedFacet, MAX_RENDERED_FACETS};
 use oxidize_core::mesh::Mesh;
 
@@ -72,6 +77,9 @@ pub struct VolumetricEngine {
     pub diverged: bool,
     /// Structured divergence report when `diverged` is set.
     pub diagnostic_report: Option<DiagnosticReport>,
+    compiled_formula: CompiledExpr,
+    formula_params_buf: [f64; MAX_SYNTHESIZED_PARAMS],
+    formula_param_len: usize,
     cached_q_key: QuantumStructKey,
     cached_mix_phase: (u64, u64),
     cached_t_key: TuringStructKey,
@@ -83,38 +91,29 @@ impl VolumetricEngine {
         let dim = cfg
             .grid_resolution
             .clamp(MIN_VOLUMETRIC_GRID, MAX_VOLUMETRIC_GRID);
-        let max_voxels = MAX_VOLUMETRIC_GRID.pow(3);
-        let mut backing = Vec::with_capacity(max_voxels);
-        backing.resize(dim * dim * dim, 0.0_f32);
-        let (step, orig) = grid_step_and_origin(dim);
-        let voxel_grid = VoxelGrid::builder()
-            .dimensions(dim, dim, dim)
-            .data(backing)
-            .voxel_size(Point3D::new(step, step, step))
-            .origin(Point3D::new(orig, orig, orig))
-            .build()
-            .expect("valid studio voxel grid");
+        let voxel_grid = build_studio_voxel_grid(dim);
         let q1 = OrbitalQuantumNumbers::clamped(cfg.n1, cfg.l1, cfg.m1);
         let q2 = OrbitalQuantumNumbers::clamped(cfg.n2, cfg.l2, cfg.m2);
-        let phys_ext = cfg.physical_quantum_extent();
         let mut quantum = HydrogenicSuperposition3D::new(
             q1,
             q2,
             dim,
             MAX_VOLUMETRIC_GRID,
-            phys_ext,
+            cfg.physical_quantum_extent(),
             cfg.quantum_dt,
         );
         quantum.set_superposition(cfg.superposition_mix, cfg.relative_phase);
         let mut turing = build_turing_3d(dim, cfg);
         seed_3d_turing_gyroid(&mut turing, dim, cfg.turing_a, cfg.turing_b, TURING_SEED);
+        let mut init_bar = build_implicit_formula_bar(&cfg.implicit_expr);
+        init_bar.set_params_map(&cfg.formula_params);
         let mut engine = Self {
             voxel_grid,
             quantum,
             turing,
             iso_ws: IsosurfaceWorkspace::with_locked_capacity(
-                MAX_VOLUMETRIC_GRID,
-                MAX_VOLUMETRIC_GRID,
+                MAX_VOLUMETRIC_GRID + 2,
+                MAX_VOLUMETRIC_GRID + 2,
             ),
             pos_mesh: Mesh::with_capacity(MESH_VERTEX_CAP, MESH_INDEX_CAP),
             neg_mesh: Mesh::with_capacity(MESH_VERTEX_CAP, MESH_INDEX_CAP),
@@ -125,6 +124,9 @@ impl VolumetricEngine {
             step_count: 0,
             diverged: false,
             diagnostic_report: None,
+            compiled_formula: default_compiled_gyroid(),
+            formula_params_buf: [2.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            formula_param_len: 1,
             cached_q_key: quantum_key(cfg, dim),
             cached_mix_phase: (
                 cfg.superposition_mix.to_bits(),
@@ -132,8 +134,21 @@ impl VolumetricEngine {
             ),
             cached_t_key: turing_key(cfg, dim),
         };
+        engine.sync_formula_from_bar(&init_bar);
         engine.step_and_extract_zero_alloc(cfg, false);
         engine
+    }
+
+    /// Cold-path synchronization of the compiled 3D formula bytecode and active parameter slice.
+    pub fn sync_formula_from_bar(&mut self, bar: &MathExpressionInputBar) {
+        if let Some(compiled) = bar.active_compiled() {
+            self.compiled_formula = compiled.clone();
+        }
+        let slice = bar.param_slice();
+        let len = slice.len().min(MAX_SYNTHESIZED_PARAMS);
+        self.formula_params_buf = [0.0; MAX_SYNTHESIZED_PARAMS];
+        self.formula_params_buf[..len].copy_from_slice(&slice[..len]);
+        self.formula_param_len = len;
     }
 
     /// Synchronizes basis grids or 3D Turing lattices when structural parameters change.
@@ -212,6 +227,7 @@ impl VolumetricEngine {
                 );
                 self.cached_t_key = turing_key(cfg, dim);
             }
+            FieldSourceMode::CustomImplicitFormula => {}
         }
         self.step_and_extract_zero_alloc(cfg, false);
     }
@@ -247,13 +263,17 @@ impl VolumetricEngine {
         let iso = (cfg.iso_threshold as f32).clamp(0.001, 2.0);
         self.extract_isosurfaces_zero_alloc(cfg, iso, signed, cut);
         if cfg.render_mode.uses_splats() {
-            extract_voxel_splats_into(
-                &self.voxel_grid,
-                iso * 0.45,
-                signed,
-                cut,
-                &mut self.splat_ws,
-            );
+            if cfg.source == FieldSourceMode::CustomImplicitFormula {
+                extract_implicit_splats_into(&self.voxel_grid, cut, &mut self.splat_ws);
+            } else {
+                extract_voxel_splats_into(
+                    &self.voxel_grid,
+                    iso * 0.45,
+                    signed,
+                    cut,
+                    &mut self.splat_ws,
+                );
+            }
             self.splat_ws.recompute_density_counts(cfg.splat_scale);
             project_and_rasterize_workspace(
                 &mut self.splat_ws,
@@ -264,7 +284,18 @@ impl VolumetricEngine {
                 64,
             );
         }
-        extract_slice_contours_into(&self.voxel_grid, cut, iso, signed, &mut self.slice_contours);
+        let contour_iso = if cfg.source == FieldSourceMode::CustomImplicitFormula {
+            0.0
+        } else {
+            iso
+        };
+        extract_slice_contours_into(
+            &self.voxel_grid,
+            cut,
+            contour_iso,
+            signed,
+            &mut self.slice_contours,
+        );
     }
 
     fn advance_source_in_place(&mut self, cfg: &VolumetricStudioConfig) {
@@ -302,6 +333,7 @@ impl VolumetricEngine {
                     ));
                 }
             }
+            FieldSourceMode::CustomImplicitFormula => {}
         }
     }
 
@@ -319,61 +351,33 @@ impl VolumetricEngine {
                     *slot -= u_ss;
                 }
             }
-        }
-    }
-
-    /// Samples `world_pt`, evaluates `legendre_p_associated`, and optionally injects a 3D perturbation pulse.
-    pub fn apply_probe_or_pulse(
-        &mut self,
-        cfg: &mut VolumetricStudioConfig,
-        world_pt: [f64; 3],
-    ) -> ProbeReadout {
-        let clamped = [
-            world_pt[0].clamp(-STUDIO_VIEWPORT_EXTENT, STUDIO_VIEWPORT_EXTENT),
-            world_pt[1].clamp(-STUDIO_VIEWPORT_EXTENT, STUDIO_VIEWPORT_EXTENT),
-            world_pt[2].clamp(-STUDIO_VIEWPORT_EXTENT, STUDIO_VIEWPORT_EXTENT),
-        ];
-        if cfg.probe_brush_enabled {
-            match cfg.source {
-                FieldSourceMode::TuringMorphogenesis => {
-                    inject_turing_pulse(&mut self.turing, self.voxel_grid.width(), clamped);
-                }
-                FieldSourceMode::QuantumSuperposition => {
-                    let wrapped = ((cfg.relative_phase + 0.45 + std::f64::consts::PI)
-                        .rem_euclid(std::f64::consts::TAU))
-                        - std::f64::consts::PI;
-                    cfg.relative_phase = wrapped;
-                    self.quantum
-                        .set_superposition(cfg.superposition_mix, cfg.relative_phase);
-                    self.cached_mix_phase = (
-                        cfg.superposition_mix.to_bits(),
-                        cfg.relative_phase.to_bits(),
-                    );
-                }
+            FieldSourceMode::CustomImplicitFormula => {
+                let params = &self.formula_params_buf[..self.formula_param_len];
+                populate_implicit_voxel_grid(
+                    &mut self.voxel_grid,
+                    cfg,
+                    &self.compiled_formula,
+                    params,
+                );
             }
-            self.step_and_extract_zero_alloc(cfg, false);
         }
-        let scalar_value = sample_voxel_nearest(&self.voxel_grid, clamped);
-        let r =
-            (clamped[0] * clamped[0] + clamped[1] * clamped[1] + clamped[2] * clamped[2]).sqrt();
-        let cos_theta = if r > 1e-9 {
-            (clamped[2] / r).clamp(-1.0, 1.0)
-        } else {
-            1.0
-        };
-        let q1 = OrbitalQuantumNumbers::clamped(cfg.n1, cfg.l1, cfg.m1);
-        let legendre_polar = legendre_p_associated(q1.l as u64, q1.m as i64, cos_theta);
-        let readout = ProbeReadout {
-            world_pos: clamped,
-            scalar_value,
-            legendre_polar,
-        };
-        self.probe = Some(readout);
-        readout
     }
 }
 
-fn is_signed_field(cfg: &VolumetricStudioConfig) -> bool {
+fn build_studio_voxel_grid(dim: usize) -> VoxelGrid {
+    let mut backing = Vec::with_capacity(MAX_VOLUMETRIC_GRID.pow(3));
+    backing.resize(dim * dim * dim, 0.0_f32);
+    let (step, orig) = grid_step_and_origin(dim);
+    VoxelGrid::builder()
+        .dimensions(dim, dim, dim)
+        .data(backing)
+        .voxel_size(Point3D::new(step, step, step))
+        .origin(Point3D::new(orig, orig, orig))
+        .build()
+        .expect("valid studio voxel grid")
+}
+
+pub(super) fn is_signed_field(cfg: &VolumetricStudioConfig) -> bool {
     matches!(
         (cfg.source, cfg.observable),
         (
@@ -422,47 +426,4 @@ fn build_turing_3d(
         StepSize(1.0),
         SchnakenbergKinetics::new(cfg.turing_a, cfg.turing_b),
     )
-}
-
-fn sample_voxel_nearest(grid: &VoxelGrid, world_pt: [f64; 3]) -> f32 {
-    let dim = grid.width().max(2);
-    let norm = |c: f64| {
-        (((c + STUDIO_VIEWPORT_EXTENT) / (2.0 * STUDIO_VIEWPORT_EXTENT)) * ((dim - 1) as f64))
-            .round()
-            .clamp(0.0, (dim - 1) as f64) as usize
-    };
-    grid.get(norm(world_pt[0]), norm(world_pt[1]), norm(world_pt[2]))
-}
-
-fn inject_turing_pulse(
-    sys: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference3D>,
-    dim: usize,
-    world_pt: [f64; 3],
-) {
-    let to_idx = |c: f64| {
-        (((c + STUDIO_VIEWPORT_EXTENT) / (2.0 * STUDIO_VIEWPORT_EXTENT)) * ((dim - 1) as f64))
-            .round()
-            .clamp(0.0, (dim - 1) as f64) as isize
-    };
-    let (cx, cy, cz) = (
-        to_idx(world_pt[0]),
-        to_idx(world_pt[1]),
-        to_idx(world_pt[2]),
-    );
-    let rad = (dim as isize / 7).clamp(2, 5);
-    let sigma_sq = ((rad as f64) * 0.65).powi(2).max(0.5);
-    for dz in -rad..=rad {
-        let z = (cz + dz).clamp(0, (dim - 1) as isize) as usize;
-        for dy in -rad..=rad {
-            let y = (cy + dy).clamp(0, (dim - 1) as isize) as usize;
-            for dx in -rad..=rad {
-                let x = (cx + dx).clamp(0, (dim - 1) as isize) as usize;
-                let r2 = ((dx * dx + dy * dy + dz * dz) as f64) / sigma_sq;
-                let env = (-0.5 * r2).exp();
-                let idx = flatten_3d_index(x, y, z, dim, dim);
-                sys.u_mut()[idx] = (sys.u()[idx] + 0.85 * env).clamp(0.02, 6.0);
-                sys.v_mut()[idx] = (sys.v()[idx] - 0.25 * env).clamp(0.02, 6.0);
-            }
-        }
-    }
 }

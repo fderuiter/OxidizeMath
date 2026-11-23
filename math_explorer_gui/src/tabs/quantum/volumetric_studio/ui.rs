@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-//! Side-panel controls, `PlaybackTransport`, orbital/Turing parameter editors, cutting-plane
-//! inspector, and `.obj` Wavefront mesh export dialog for [`super::VolumetricFieldStudioTool`].
+//! Side-panel controls, `PlaybackTransport`, orbital/Turing/implicit parameter editors, and
+//! cutting-plane inspector for [`super::VolumetricFieldStudioTool`].
 // [cite:quantum_mechanics]
 // [cite:isosurface_extraction]
 
@@ -11,30 +11,15 @@ use super::state::{
 use super::VolumetricFieldStudioTool;
 use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
 use crate::volumetric_scene::OPACITY_THRESHOLD;
-use crate::web_io::{spawn_save_as_file_dialog, PlatformInstant, SaveAsDialogConfig};
+use crate::web_io::PlatformInstant;
 use eframe::egui;
 use math_explorer::physics::quantum::OrbitalQuantumNumbers;
-use std::sync::mpsc;
 use std::time::Duration;
 
 const FRAME_STEP_INTERVAL: Duration = Duration::from_millis(28);
-const OBJ_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
-    filter_name: "Wavefront OBJ Mesh",
-    extensions: &["obj"],
-    fallback_filename: "volumetric_nodal_surface.obj",
-    write_error_prefix: "Failed to write OBJ mesh",
-};
 
 impl VolumetricFieldStudioTool {
     pub(super) fn poll_async_and_playback(&mut self, ctx: &egui::Context) {
-        let completed = self.obj_save_rx.as_ref().and_then(|rx| rx.try_recv().ok());
-        if let Some(result) = completed {
-            match result {
-                Ok(msg) => self.export_status = Some((msg, false)),
-                Err(err) => self.export_status = Some((err, true)),
-            }
-            self.obj_save_rx = None;
-        }
         if self.config.running && !self.engine.diverged {
             let now = PlatformInstant::now();
             if now.duration_since(self.last_step_tick) >= FRAME_STEP_INTERVAL {
@@ -62,7 +47,7 @@ impl VolumetricFieldStudioTool {
                 self.refresh_zero_alloc();
             }
             ui.separator();
-            self.draw_probe_and_export_section(ui);
+            self.draw_probe_and_telemetry_section(ui);
             ui.separator();
             egui::CollapsingHeader::new("View")
                 .default_open(true)
@@ -114,21 +99,21 @@ impl VolumetricFieldStudioTool {
         egui::ComboBox::from_label("3D Volume Engine")
             .selected_text(self.config.source.label())
             .show_ui(ui, |ui| {
-                ui.selectable_value(
-                    &mut self.config.source,
+                for mode in [
                     FieldSourceMode::QuantumSuperposition,
-                    FieldSourceMode::QuantumSuperposition.label(),
-                );
-                ui.selectable_value(
-                    &mut self.config.source,
                     FieldSourceMode::TuringMorphogenesis,
-                    FieldSourceMode::TuringMorphogenesis.label(),
-                );
+                    FieldSourceMode::CustomImplicitFormula,
+                ] {
+                    ui.selectable_value(&mut self.config.source, mode, mode.label());
+                }
             });
         changed |= self.config.source != prev_src;
         match self.config.source {
             FieldSourceMode::QuantumSuperposition => changed |= self.draw_quantum_controls(ui),
             FieldSourceMode::TuringMorphogenesis => changed |= self.draw_turing_controls(ui),
+            FieldSourceMode::CustomImplicitFormula => {
+                changed |= super::formula::draw_implicit_controls(self, ui);
+            }
         }
         changed
     }
@@ -252,13 +237,15 @@ impl VolumetricFieldStudioTool {
                 .text("Grid Voxels³"),
             )
             .changed();
-        c |= ui
-            .add(
-                egui::Slider::new(&mut self.config.iso_threshold, 0.002..=0.8)
-                    .logarithmic(true)
-                    .text("Iso Level τ"),
-            )
-            .changed();
+        if self.config.source != FieldSourceMode::CustomImplicitFormula {
+            c |= ui
+                .add(
+                    egui::Slider::new(&mut self.config.iso_threshold, 0.002..=0.8)
+                        .logarithmic(true)
+                        .text("Iso Level τ"),
+                )
+                .changed();
+        }
         c |= ui
             .add(egui::Slider::new(&mut self.config.splat_scale, 0.2..=4.0).text("Splat Scale"))
             .changed();
@@ -287,7 +274,7 @@ impl VolumetricFieldStudioTool {
         c
     }
 
-    fn draw_probe_and_export_section(&mut self, ui: &mut egui::Ui) {
+    fn draw_probe_and_telemetry_section(&mut self, ui: &mut egui::Ui) {
         ui.checkbox(
             &mut self.config.probe_brush_enabled,
             "Click Viewport to Perturb / Pulse",
@@ -298,18 +285,7 @@ impl VolumetricFieldStudioTool {
                 p.world_pos[0], p.world_pos[1], p.world_pos[2], p.scalar_value, p.legendre_polar
             ));
         }
-        if ui.button("📦 Export Nodal Mesh (.obj)").clicked() {
-            self.trigger_obj_export_dialog();
-        }
-        if let Some((msg, is_err)) = &self.export_status {
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let color = if *is_err {
-                palette.error
-            } else {
-                palette.accent
-            };
-            ui.colored_label(color, msg);
-        }
+        ui.small("3D Export: use toolbar Export modal for STL / PLY / OBJ.");
         let dc = self.engine.splat_ws.density_counts;
         let tris = (self.engine.pos_mesh.indices.len() + self.engine.neg_mesh.indices.len()) / 3;
         ui.small(format!(
@@ -337,32 +313,6 @@ impl VolumetricFieldStudioTool {
         self.config.m2 = q2.2;
         self.config.superposition_mix = mix;
         self.config.iso_threshold = iso;
-    }
-
-    fn trigger_obj_export_dialog(&mut self) {
-        match self.export_obj_string() {
-            Ok(obj_text) => {
-                let default_name = match self.config.source {
-                    FieldSourceMode::QuantumSuperposition => format!(
-                        "orbital_n{}l{}m{}_nodal_mesh.obj",
-                        self.config.n1, self.config.l1, self.config.m1
-                    ),
-                    FieldSourceMode::TuringMorphogenesis => "turing_3d_gyroid_mesh.obj".to_string(),
-                };
-                let (tx, rx) = mpsc::channel();
-                self.obj_save_rx = Some(rx);
-                spawn_save_as_file_dialog(
-                    tx,
-                    OBJ_SAVE_CONFIG,
-                    &default_name,
-                    obj_text,
-                    |path, _| format!("Exported Wavefront OBJ: {}", path.display()),
-                );
-            }
-            Err(err) => {
-                self.export_status = Some((err, true));
-            }
-        }
     }
 }
 
