@@ -231,6 +231,98 @@ fn test_chladni_sand_drift_and_marching_squares_contours() {
 
 #[test]
 #[verified_engine::verified]
+fn test_bilinear_signed_probe_and_top_peaks_multi_mode_extraction() {
+    let n = 64_usize;
+    let mut solver = Wave2DSolver::new_unit_square(n);
+    let mut init = vec![0.0; n * n];
+    let denom = (n - 1) as f64;
+    for y in 0..n {
+        let yn = (y as f64) / denom;
+        for x in 0..n {
+            let xn = (x as f64) / denom;
+            let m1 = (2.0 * PI * 3.0 * xn).cos() * (2.0 * PI * 2.0 * yn).cos();
+            let m2 = 0.55 * (2.0 * PI * 6.0 * xn).cos() * (2.0 * PI * 5.0 * yn).cos();
+            init[flatten_2d_index(x, y, n)] = m1 + m2;
+        }
+    }
+    solver.set_stationary_displacement(&init);
+    let p0 = solver.sample_probe(0.5, 0.5);
+    assert!(p0.displacement < -0.3, "Signed trough must stay negative");
+    assert_eq!(p0.velocity, 0.0, "Stationary start velocity must be zero");
+
+    let params = Wave2DParams {
+        medium: Wave2DMedium::BiharmonicPlate,
+        boundary: BoundaryMode2D::Neumann,
+        wave_speed: 0.0,
+        plate_stiffness: 1.0e-3,
+        damping: 0.01,
+    };
+    let mut saw_pos_vel = false;
+    let mut saw_neg_vel = false;
+    for _ in 0..120 {
+        solver.step(&params, 0.002);
+        let s = solver.sample_probe(0.33, 0.25);
+        saw_pos_vel |= s.velocity > 1.0e-3;
+        saw_neg_vel |= s.velocity < -1.0e-3;
+    }
+    assert!(
+        saw_pos_vel && saw_neg_vel,
+        "Signed pickup velocity must capture both positive and negative half-cycles"
+    );
+
+    let mut fft = SpectralAnalyzer2D::new(n, n);
+    fft.compute_spectrum(&init);
+    let mut peaks = [SpectralPeak2D::default(); 8];
+    let count = fft.top_peaks(&mut peaks);
+    assert!(
+        count >= 4,
+        "Expected symmetric (±3,2) and (±6,5) standing-wave modes"
+    );
+    assert_eq!(peaks[0], fft.dominant_peak());
+    assert!(peaks[0].magnitude >= peaks[1].magnitude);
+    assert!(peaks[1].magnitude > peaks[2].magnitude);
+    assert!((peaks[0].k_radial - (13.0_f64).sqrt()).abs() < 1.2);
+    assert!((peaks[1].k_radial - (13.0_f64).sqrt()).abs() < 1.2);
+    assert_eq!(peaks[0].kx, -peaks[1].kx);
+    assert!((peaks[2].k_radial - (61.0_f64).sqrt()).abs() < 1.5);
+    assert!((peaks[3].k_radial - (61.0_f64).sqrt()).abs() < 1.5);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_biharmonic_soundboard_rib_wave_speed_mask_shifts_plate_frequency() {
+    let n = 48_usize;
+    let mut base = Wave2DSolver::new_unit_square(n);
+    let mut braced = Wave2DSolver::new_unit_square(n);
+    for y in 16..32 {
+        for x in 8..40 {
+            braced.wave_speed_mask[flatten_2d_index(x, y, n)] = 1.55;
+        }
+    }
+    base.inject_gaussian_pulse(0.45, 0.45, 0.08, 1.0);
+    braced.inject_gaussian_pulse(0.45, 0.45, 0.08, 1.0);
+    let params = Wave2DParams {
+        medium: Wave2DMedium::BiharmonicPlate,
+        boundary: BoundaryMode2D::Clamped,
+        wave_speed: 0.0,
+        plate_stiffness: 8.0e-4,
+        damping: 0.02,
+    };
+    for _ in 0..40 {
+        base.step(&params, 0.003);
+        braced.step(&params, 0.003);
+    }
+    let pb = base.sample_probe(0.62, 0.50);
+    let pr = braced.sample_probe(0.62, 0.50);
+    assert!(pb.displacement.is_finite() && pr.displacement.is_finite());
+    assert!(
+        (pb.displacement - pr.displacement).abs() > 1.0e-4,
+        "Soundboard bracing mask must alter Kirchhoff-Love flexural propagation"
+    );
+}
+
+#[test]
+#[verified_engine::verified]
 fn test_extract_top_modes_rank_conjugate_dedup_and_phase() {
     let n = 64_usize;
     let mut fft = SpectralAnalyzer2D::new(n, n);
@@ -261,4 +353,90 @@ fn test_extract_top_modes_rank_conjugate_dedup_and_phase() {
     assert!((modes[0].magnitude - dom.magnitude).abs() < 1.0e-12);
     assert!((modes[0].phase - phase1).abs() < 1.0e-9);
     assert!((modes[1].phase - phase2).abs() < 1.0e-9);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_effective_courant_scales_with_sub_unity_refractive_index() {
+    let mut solver = Wave2DSolver::new(32, 32, 1.0, 1.0);
+    let params = Wave2DParams {
+        medium: Wave2DMedium::AcousticWave,
+        boundary: BoundaryMode2D::Sponge,
+        wave_speed: 1.0,
+        plate_stiffness: 0.0,
+        damping: 0.002,
+    };
+    assert!((solver.effective_courant(&params, 0.40) - 0.40).abs() < 1.0e-12);
+
+    // Slow lens (n = 1.65 -> s = 1 / 1.65 < 1.0): ambient tank still sets peak speed = 1.0
+    solver.wave_speed_mask[flatten_2d_index(16, 16, 32)] = 1.0 / 1.65;
+    assert!((solver.effective_courant(&params, 0.40) - 0.40).abs() < 1.0e-12);
+
+    // Fast-wave metamaterial (n = 0.6 -> s = 1.6667): 2 substeps (dt_sub = 0.20), Courant = 0.3333
+    solver.wave_speed_mask[flatten_2d_index(16, 16, 32)] = 1.0 / 0.6;
+    let (substeps, dt_sub) = solver.safe_substep_plan(&params, 0.40);
+    assert_eq!(substeps, 2);
+    assert!((dt_sub - 0.20).abs() < 1.0e-12);
+    let cfl = solver.effective_courant(&params, 0.40);
+    assert!(
+        (cfl - (1.0 / 3.0)).abs() < 1.0e-6,
+        "Expected peak Courant 0.3333 at n = 0.6, got {cfl:.6}"
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_square_chladni_plate_resonant_mode_13_correlation_at_60s() {
+    let n = 48_usize;
+    let mut solver = Wave2DSolver::new_unit_square(n);
+    masks::apply_point_clamp(&mut solver.wall_mask, n, n, 0.5, 0.5, 1.0);
+    let denom = (n - 1) as f64;
+    let mut target_mode = vec![0.0; n * n];
+    for y in 0..n {
+        let yn = (y as f64) / denom;
+        for x in 0..n {
+            let idx = flatten_2d_index(x, y, n);
+            if solver.wall_mask[idx] > 0.5 {
+                let xn = (x as f64) / denom;
+                target_mode[idx] = 0.45
+                    * ((3.0 * PI * xn).cos() * (PI * yn).cos()
+                        - (PI * xn).cos() * (3.0 * PI * yn).cos());
+            }
+        }
+    }
+    solver.set_stationary_displacement(&target_mode);
+
+    let params = Wave2DParams {
+        medium: Wave2DMedium::BiharmonicPlate,
+        boundary: BoundaryMode2D::Neumann,
+        wave_speed: 0.0,
+        plate_stiffness: 0.0004,
+        damping: 0.08,
+    };
+    let driver = DriverConfig2D {
+        enabled: true,
+        line_source: false,
+        x_norm: 0.35,
+        y_norm: 0.08,
+        frequency: 0.3142,
+        amplitude: 65.0,
+        radius_cells: 1.5,
+    };
+    while solver.time() < 60.0 {
+        solver.step_driven(&params, &driver, 0.01, None);
+    }
+
+    let modal = solver.modal_field();
+    let dot: f64 = modal
+        .iter()
+        .zip(target_mode.iter())
+        .map(|(a, b)| a * b)
+        .sum();
+    let norm_a: f64 = modal.iter().map(|a| a * a).sum::<f64>().sqrt();
+    let norm_b: f64 = target_mode.iter().map(|b| b * b).sum::<f64>().sqrt();
+    let corr = (dot / (norm_a * norm_b).max(1.0e-12)).abs();
+    assert!(
+        corr >= 0.60,
+        "Expected modal_field correlation >= 0.60 at t = 60 s, got {corr:.4}"
+    );
 }

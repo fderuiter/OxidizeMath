@@ -2,11 +2,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{
-    LENIA_ATLAS_AXIS_PAIRS, default_lenia_atlas_axes, is_default_lenia_atlas_axes,
-};
 use crate::framework::MAX_SYNTHESIZED_PARAMS;
-use math_commons::ast::{CompiledExpr, parse_equation};
+use math_commons::ast::{parse_equation, CompiledExpr};
 use math_explorer::biology::lenia::{
     GrowthParams, LeniaSpecies, MAX_GRID_SIZE, MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MIN_GRID_SIZE,
     MIN_KERNEL_RADIUS,
@@ -17,10 +14,6 @@ use std::collections::{BTreeMap, HashMap};
 
 pub(crate) const fn default_brush_radius() -> f64 {
     4.0
-}
-
-const fn is_false(flag: &bool) -> bool {
-    !*flag
 }
 
 /// Compact `< 4 KiB` URL-safe and preset-safe genome state for [`super::LeniaTool`].
@@ -54,15 +47,6 @@ pub struct LeniaToolState {
     /// Whether continuous stepping is actively running.
     #[serde(default)]
     pub playing: bool,
-    /// Whether the 2D soliton viability atlas panel is open.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub atlas_visible: bool,
-    /// Selected `(x_key, y_key)` axis pair for the 2D viability atlas.
-    #[serde(
-        default = "default_lenia_atlas_axes",
-        skip_serializing_if = "is_default_lenia_atlas_axes"
-    )]
-    pub atlas_axes: [String; 2],
     /// Optional custom 1D growth formula `G(u)` overriding Gaussian growth.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub growth_expr: Option<String>,
@@ -102,7 +86,7 @@ impl LeniaToolState {
             ));
         }
         self.validate_rings()?;
-        self.validate_atlas_and_sandboxes()
+        self.validate_sandboxes()
     }
 
     fn validate_rings(&self) -> Result<(), String> {
@@ -128,16 +112,7 @@ impl LeniaToolState {
         Ok(())
     }
 
-    fn validate_atlas_and_sandboxes(&self) -> Result<(), String> {
-        let pair_ok = LENIA_ATLAS_AXIS_PAIRS
-            .iter()
-            .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1]);
-        if !pair_ok {
-            return Err(format!(
-                "Unsupported Lenia atlas_axes ('{}', '{}')",
-                self.atlas_axes[0], self.atlas_axes[1]
-            ));
-        }
+    fn validate_sandboxes(&self) -> Result<(), String> {
         if let Some(expr) = &self.growth_expr {
             validate_1d_formula("growth_expr", expr, "u")?;
         }
@@ -156,8 +131,12 @@ fn validate_1d_formula(field: &str, raw: &str, axis: &str) -> Result<(), String>
             "Lenia {field} must be non-empty and at most 256 characters"
         ));
     }
-    let (_, ast) = parse_equation(trimmed)
-        .map_err(|e| format!("Invalid Lenia {field}: {}", e.user_message_for_input(trimmed)))?;
+    let (_, ast) = parse_equation(trimmed).map_err(|e| {
+        format!(
+            "Invalid Lenia {field}: {}",
+            e.user_message_for_input(trimmed)
+        )
+    })?;
     let compiled = CompiledExpr::compile_with_vars(&ast, &[axis])
         .map_err(|e| format!("Invalid Lenia {field}: {e}"))?;
     if compiled.param_names().len() > MAX_SYNTHESIZED_PARAMS {
@@ -336,8 +315,8 @@ impl TheoryDescribable for LeniaTheory {
     }
 
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        let mut params = self.growth.theory_parameters();
-        params.insert(
+        let mut map = self.growth.theory_parameters();
+        map.insert(
             "radius".to_string(),
             ParameterConstraint {
                 min: MIN_KERNEL_RADIUS,
@@ -345,7 +324,7 @@ impl TheoryDescribable for LeniaTheory {
                 step: 0.5,
             },
         );
-        params.insert(
+        map.insert(
             "dt".to_string(),
             ParameterConstraint {
                 min: 0.005,
@@ -353,7 +332,23 @@ impl TheoryDescribable for LeniaTheory {
                 step: 0.005,
             },
         );
-        params
+        map.insert(
+            "perturbation".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 0.35,
+                step: 0.01,
+            },
+        );
+        map.insert(
+            "brush_radius".to_string(),
+            ParameterConstraint {
+                min: 1.0,
+                max: 24.0,
+                step: 0.5,
+            },
+        );
+        map
     }
 
     fn theory_latex_equation(&self) -> Option<String> {

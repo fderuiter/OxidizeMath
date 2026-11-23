@@ -103,6 +103,91 @@ mod kelly_packs {
     }
 }
 
+#[cfg(feature = "pure_math")]
+mod chladni_wave_tank_packs {
+    use super::*;
+
+    const PLATE_NODAL_DETUNED: &str = r#"{"metadata":{"schema_version":"1.0","title":"Detuned Nodal Forcing","domain":"analysis","timestamp":"2026-11-23T00:00:00Z"},"config":{"preset":"SquareChladniPlate","medium":"BiharmonicPlate","boundary":"Neumann","clamp_layout":"CenterPin","colormap":"PerceptualThermal","secondary_plot":"RadialFftSpectrum","wave_speed":0.0,"plate_stiffness":0.0004,"damping":0.08,"time_step":0.002,"driver_enabled":true,"line_source":false,"driver_x":0.22,"driver_y":0.5,"driver_frequency":0.56,"driver_amplitude":65.0,"barrier_enabled":false,"slit_count":2,"slit_width":3,"slit_separation":32.0,"barrier_x":28,"detector_x":96,"lens_enabled":false,"refractive_index":1.6,"lens_aperture":34.0,"show_nodal_contours":true,"show_sand_particles":true,"rng_seed":3290092062}}"#;
+    const PLATE_RESONANT_13: &str = r#"{"metadata":{"schema_version":"1.0","title":"Resonant Chladni Mode (1, 3)","domain":"analysis","timestamp":"2026-11-23T00:00:00Z"},"config":{"preset":"SquareChladniPlate","medium":"BiharmonicPlate","boundary":"Neumann","clamp_layout":"CenterPin","colormap":"PerceptualThermal","secondary_plot":"RadialFftSpectrum","wave_speed":0.0,"plate_stiffness":0.0004,"damping":0.08,"time_step":0.002,"driver_enabled":true,"line_source":false,"driver_x":0.35,"driver_y":0.08,"driver_frequency":0.3142,"driver_amplitude":65.0,"barrier_enabled":false,"slit_count":2,"slit_width":3,"slit_separation":32.0,"barrier_x":28,"detector_x":96,"lens_enabled":false,"refractive_index":1.6,"lens_aperture":34.0,"show_nodal_contours":true,"show_sand_particles":true,"rng_seed":3290092062}}"#;
+    const LENS_BICONVEX_BASE: &str = r#"{"metadata":{"schema_version":"1.0","title":"Biconvex Baseline Lens","domain":"analysis","timestamp":"2026-11-23T00:00:00Z"},"config":{"preset":"AcousticLens","medium":"AcousticWave","boundary":"Sponge","clamp_layout":"None","colormap":"PerceptualThermal","secondary_plot":"DetectorCrossSection","wave_speed":1.0,"plate_stiffness":0.0,"damping":0.002,"time_step":0.4,"driver_enabled":true,"line_source":true,"driver_x":0.12598425196850394,"driver_y":0.5,"driver_frequency":0.14,"driver_amplitude":2.8,"barrier_enabled":false,"slit_count":2,"slit_width":3,"slit_separation":32.0,"barrier_x":28,"detector_x":92,"lens_enabled":true,"refractive_index":1.65,"lens_aperture":38.0,"show_nodal_contours":true,"show_sand_particles":false,"rng_seed":505802944}}"#;
+    const LENS_LUNEBURG_AST: &str = r#"{"metadata":{"schema_version":"1.0","title":"Luneburg Metamaterial Focus","domain":"analysis","timestamp":"2026-11-23T00:00:00Z"},"config":{"preset":"AcousticLens","medium":"AcousticWave","boundary":"Sponge","clamp_layout":"None","colormap":"PerceptualThermal","secondary_plot":"DetectorCrossSection","wave_speed":1.0,"plate_stiffness":0.0,"damping":0.002,"time_step":0.4,"driver_enabled":true,"line_source":true,"driver_x":0.12598425196850394,"driver_y":0.5,"driver_frequency":0.14,"driver_amplitude":2.8,"barrier_enabled":false,"slit_count":2,"slit_width":3,"slit_separation":32.0,"barrier_x":28,"detector_x":92,"lens_enabled":true,"refractive_index":1.65,"lens_aperture":38.0,"show_nodal_contours":true,"show_sand_particles":false,"rng_seed":505802944,"refractive_mode":"Formula","refractive_expr":"sqrt(1 + a * max(0, 1 - ((x - 0.45)^2 + (y - 0.5)^2) / r^2))","refractive_params":{"a":1.0,"r":0.31}}}"#;
+
+    const CHLADNI_STEPS: &[StoryStep] = &[
+        StoryStep {
+            title: "Detuned Nodal Forcing Scatters Sand",
+            narrative: "Driving (0.22, 0.50) along a nodal symmetry axis at detuned 0.56 Hz starves the (1, 3) cosine mode and leaves sand grains agitated.",
+            preset_generator: || PLATE_NODAL_DETUNED,
+            callouts: &[pin("chladni_fft", [3.0, 0.02], [28.0, -22.0], "Detuned forcing splits modal energy")],
+            focus_observables: &["driver_frequency", "sand_nodal_energy", "dominant_k"],
+        },
+        StoryStep {
+            title: "Resonant Mode (1, 3) Antinode Lock",
+            narrative: "Clicking mode (1, 3) moves the driver to antinode (0.35, 0.08) at f₁,₃ = 0.3142 Hz, locking crisp fourfold Chladni nodal contours.",
+            preset_generator: || PLATE_RESONANT_13,
+            callouts: &[pin("chladni_fft", [3.16, 0.05], [28.0, -24.0], "Sharp |k| peak at mode (1, 3)")],
+            focus_observables: &["driver_frequency", "sand_nodal_energy", "dominant_k"],
+        },
+        StoryStep {
+            title: "Continuous Luneburg GRIN Focusing",
+            narrative: "Replacing a sharp biconvex boundary with n(x, y) = √(1 + a(1 - r²/R²)) bends wavefronts without spherical aberration into a >= 3.3x focal peak.",
+            preset_generator: || LENS_LUNEBURG_AST,
+            callouts: &[pin("lens_focus", [63.5, 1.5], [32.0, -24.0], "Aberration-free Luneburg focus at y = 63.5")],
+            focus_observables: &["focal_gain", "focal_fwhm", "effective_courant"],
+        },
+    ];
+
+    inventory::submit! {
+        PresetStoryMetadata {
+            id: "chladni_resonance_and_metamaterial_tour",
+            title: "Chladni Eigenmodes & Luneburg Lenses",
+            description: "Compare detuned nodal forcing against resonant (1, 3) Chladni modes and sculpt aberration-free 2D GRIN acoustic lenses.",
+            category: "Guided Story",
+            icon: "🔔",
+            domain: "analysis",
+            tool_name: "ChladniWaveTankTool",
+            steps: CHLADNI_STEPS,
+        }
+    }
+
+    inventory::submit! {
+        GoalChallengeMetadata {
+            id: "chladni_nodal_resonance",
+            title: "Pin & Lock a Chladni Eigenmode",
+            description: "Select a resonant eigenmode off the nodal line, place a custom nodal pin, and settle the 4,000 sand grains.",
+            category: "Challenge",
+            icon: "🎯",
+            domain: "analysis",
+            tool_name: "ChladniWaveTankTool",
+            initial_preset_generator: || PLATE_NODAL_DETUNED,
+            goal_summary: "Click mode (1, 3) in the 6x6 lattice, Shift+Click at least one nodal clamp pin on a dark contour, and let sand_nodal_energy settle below 0.22.",
+            predicate_expr: "abs(driver_frequency - 0.3142) < 0.02 && custom_pin_count >= 1.0 && sand_nodal_energy > 0.001 && sand_nodal_energy < 0.22",
+            hint: "Click '1,3' in the Eigenmode Lattice to tune 0.3142 Hz at (0.35, 0.08), then Shift+Click on a nodal contour line on the plate.",
+            win_message: "Challenge solved: Resonant antinode forcing and nodal pinning locked the (1, 3) Chladni sand figure!",
+            callouts: &[pin("chladni_goal", [3.16, 0.04], [28.0, -22.0], "Lock mode (1, 3) & Shift+Click a nodal pin")],
+            focus_observables: &["driver_frequency", "custom_pin_count", "sand_nodal_energy"],
+        }
+    }
+
+    inventory::submit! {
+        GoalChallengeMetadata {
+            id: "metamaterial_luneburg_focus",
+            title: "Sculpt a 3.3x Metamaterial Focus",
+            description: "Replace the biconvex lens (~2.49x gain) with a continuous 2D n(x, y) Luneburg or GRIN profile reaching >= 3.3x focal gain.",
+            category: "Challenge",
+            icon: "🔍",
+            domain: "analysis",
+            tool_name: "ChladniWaveTankTool",
+            initial_preset_generator: || LENS_BICONVEX_BASE,
+            goal_summary: "Switch Acoustic Lens to '2D Formula n(x, y)' with a Luneburg or Parabolic GRIN expression so focal_gain >= 3.3 and focal_fwhm <= 20.",
+            predicate_expr: "focal_gain >= 3.3 && focal_fwhm <= 20.0",
+            hint: "Select '2D Formula n(x, y)' under Acoustic Lens and pick the 'Luneburg' or 'Parabolic GRIN' preset, then let wavefronts reach x = 92.",
+            win_message: "Challenge solved: Your continuous 2D refractive-index profile beat spherical aberration with >= 3.3x focal gain!",
+            callouts: &[pin("lens_goal", [63.5, 1.2], [32.0, -24.0], "Raise focal_gain >= 3.3x & narrow FWHM <= 20")],
+            focus_observables: &["focal_gain", "focal_fwhm", "effective_courant"],
+        }
+    }
+}
+
 #[cfg(feature = "applied")]
 mod replicator_packs {
     use super::*;
@@ -357,7 +442,7 @@ mod lenia_packs {
             initial_preset_generator: || LENIA_GEMINIUM_INIT,
             goal_summary: "Lower Growth μ near 0.24 and widen Width σ near 0.036 so Geminium undergoes lobe expansion/fission (220 < total_mass < 700, active_area > 340, centroid_speed > 0.04).",
             predicate_expr: "total_mass > 220.0 && total_mass < 700.0 && active_area > 340.0 && centroid_speed > 0.04",
-            hint: "Drag Growth μ down from 0.34 to ~0.24 and Width σ up from 0.020 to ~0.036 (or open the 2D Parameter Atlas and click Localized Soliton).",
+            hint: "Drag Growth μ down from 0.34 to ~0.24 and Width σ up from 0.020 to ~0.036 (or open the 2D Parameter Atlas and click Stable Soliton Niche).",
             win_message: "Challenge solved: Geminium's 3-ring neighborhood potential entered the viable growth window and triggered twin-lobe fission!",
             callouts: &[pin("geminium_fission_niche", [0.24, 1.0], [16.0, -24.0], "Target fission niche (μ ≈ 0.24, σ ≈ 0.036)")],
             focus_observables: &["mu", "sigma", "max_potential", "total_mass", "active_area"],

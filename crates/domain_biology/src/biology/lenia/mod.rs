@@ -35,6 +35,7 @@
 pub mod engine;
 /// Zero-allocation `32x32` stack-buffered radix-2 2D FFT soliton viability probe.
 pub mod fft_probe;
+mod fft_radix2;
 /// Concentric-ring kernel shells, Gaussian growth mappings, and compiled AST rule evaluators.
 pub mod kernel;
 /// Canonical soliton species genomes and deterministic seeding helpers.

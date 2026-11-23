@@ -1,15 +1,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::counterfactual_tool::render_mri_plot_curves;
 use super::pulse::{MriPulseMode, MRI_PULSE_SAMPLES};
 use super::runner::MriSnapshot;
 use super::tool::MriTool;
+use crate::app::SemanticPalette;
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    render_divergence_strip, CounterfactualTransport, PlaybackAction, PlaybackTransport,
+};
 use eframe::egui;
-use egui_plot::{Legend, Line, Plot, Points, VLine};
+use egui_plot::{Legend, Plot, Points, VLine};
 
 impl MriTool {
     fn draw_relaxation_controls(&mut self, ui: &mut egui::Ui) {
@@ -248,6 +252,17 @@ impl MriTool {
                 .unwrap_or_else(|e| e.into_inner())
                 .time_scale = self.time_scale;
         }
+
+        let can_fork =
+            self.current_step_index() > 0 && self.worker.state() != SimWorkerState::Faulted;
+        let is_forked = self.twin.is_some();
+        if let Some(cf_action) =
+            CounterfactualTransport::new(&mut self.branch_engine, can_fork, is_forked).show(ui)
+        {
+            let _ = self.apply_mri_branch_action(cf_action);
+            ctx.request_repaint();
+        }
+        self.render_refocus_pulse_button(ui, ctx);
     }
 
     fn draw_pulse_playhead_controls(&mut self, ui: &mut egui::Ui) {
@@ -274,7 +289,15 @@ impl MriTool {
                     self.pulse_workspace.playhead_idx =
                         (self.pulse_workspace.playhead_idx + 1) % MRI_PULSE_SAMPLES;
                 }
-                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
+                PlaybackAction::StepBack => {
+                    self.pulse_workspace.playhead_playing = false;
+                    self.pulse_workspace.playhead_idx =
+                        self.pulse_workspace.playhead_idx.saturating_sub(1);
+                }
+                PlaybackAction::ScrubTo(step) => {
+                    self.pulse_workspace.playhead_playing = false;
+                    self.pulse_workspace.playhead_idx = step.min(last);
+                }
                 PlaybackAction::Reset => {
                     self.pulse_workspace.playhead_playing = false;
                     self.pulse_workspace.playhead_idx = 0;
@@ -351,6 +374,9 @@ impl MriTool {
     fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Magnetization Vector Evolution");
+            if let Some(ref snap) = self.branch_engine.active_snapshot {
+                render_divergence_strip(ui, "MRI Bloch Relaxation", snap);
+            }
 
             if self.mx_points.len() <= 1 {
                 render_empty_plot_guidance(
@@ -359,21 +385,20 @@ impl MriTool {
                 );
             }
 
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            let palette = SemanticPalette::from_visuals(ui.visuals());
             Plot::new("bloch_plot")
                 .legend(Legend::default())
                 .x_axis_label("Time (s)")
                 .y_axis_label("Magnetization (M/M0)")
                 .view_aspect(2.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(
-                        Line::new("Mx (Transverse)", &self.mx_points[..]).color(palette.axis_x),
-                    );
-                    plot_ui.line(
-                        Line::new("My (Transverse)", &self.my_points[..]).color(palette.axis_y),
-                    );
-                    plot_ui.line(
-                        Line::new("Mz (Longitudinal)", &self.mz_points[..]).color(palette.axis_z),
+                    render_mri_plot_curves(
+                        self.twin.as_ref(),
+                        &self.mx_points,
+                        &self.my_points,
+                        &self.mz_points,
+                        plot_ui,
+                        &palette,
                     );
                     if self.mx_points.len() == 1 {
                         let mx0 = [self.mx_points[0].x, self.mx_points[0].y];
@@ -428,7 +453,9 @@ impl MriTool {
                     self.current_time = data.current_time;
                     self.simulator.magnetization = data.magnetization;
                     self.history = data.history.clone();
+                    self.twin = data.twin.clone();
                     self.update_plot_buffers();
+                    self.sync_mri_branch_engine();
                 }
             }
         } else if self.pulse_workspace.playhead_playing {

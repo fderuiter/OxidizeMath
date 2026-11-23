@@ -71,7 +71,8 @@ pub use crate::{
         MAX_FIT_PARAMS, fit_custom_evaluator, fit_model_with_axes,
     },
     fit_overlay::{
-        fit_custom_with_registered_callback, has_custom_fit_callback, register_custom_fit_callback,
+        DispatchedPlotUiAction, dispatch_plot_ui_action, fit_custom_with_registered_callback,
+        has_custom_fit_callback, register_custom_fit_callback,
     },
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
@@ -82,7 +83,9 @@ pub use crate::{
     latex::{parse_latex_to_layout_job, parse_prose_with_inline_math, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::{CanvasCallout, PlotMemory},
-    modal_lifecycle::{ModalFrameContext, ModalLifecycle},
+    modal_lifecycle::{
+        ModalFrameContext, ModalLifecycle, active_top_modal_layer, with_masked_pane_input,
+    },
     plot_ui::PlotUi,
     poi::{CriticalPoint, CriticalPointKind, MAX_CRITICAL_POINTS, detect_critical_points},
     sidecar_3d::{
@@ -1923,6 +1926,30 @@ impl<'a> Plot<'a> {
         }
 
         let mut access_state = Self::load_frame_access_state(ui, plot_id, &mem);
+        if let Some(ui_action) = fit_overlay::take_dispatched_plot_ui_action(ui.ctx()) {
+            match ui_action {
+                DispatchedPlotUiAction::SetFit(Some(ft)) if allow_2d_analysis => {
+                    access_state.fit_model = Some(ft);
+                    access_state.show_fit_overlay = true;
+                }
+                DispatchedPlotUiAction::SetFit(None) => {
+                    access_state.fit_model = None;
+                    access_state.show_fit_overlay = false;
+                }
+                DispatchedPlotUiAction::ToggleFitResiduals if allow_2d_analysis => {
+                    access_state.show_fit_residuals = !access_state.show_fit_residuals;
+                }
+                DispatchedPlotUiAction::ToggleDataTable => {
+                    access_state.show_table = !access_state.show_table;
+                }
+                DispatchedPlotUiAction::OpenPlotSettings if !scene_3d_mode => {
+                    access_state.show_settings_modal = true;
+                    mem.show_settings_modal = true;
+                }
+                _ => {}
+            }
+            ui.ctx().request_repaint();
+        }
         if scene_3d_mode {
             access_state.log_x = false;
             access_state.log_y = false;
@@ -2044,8 +2071,14 @@ impl<'a> Plot<'a> {
         if !critical_points.is_empty() {
             commands::CommandRegistryData::register_poi_navigation(ui.ctx());
         }
+        let has_a11y_dispatch =
+            commands::CommandRegistryData::has_pending_dispatch(ui.ctx(), "Plot Accessibility");
+        if has_a11y_dispatch {
+            response.request_focus();
+        }
+        let plot_focused_or_dispatched = response.has_focus() || has_a11y_dispatch;
         let lazy_accessible_datasets: Option<Vec<(String, SharedPoints, Color32)>> =
-            (response.has_focus() || access_state.show_table).then(|| {
+            (plot_focused_or_dispatched || access_state.show_table).then(|| {
                 if let Some(ref sidecar) = sidecar_3d {
                     let ds = sidecar.accessible_shared_datasets_2d();
                     if !ds.is_empty() {
@@ -2054,7 +2087,7 @@ impl<'a> Plot<'a> {
                 }
                 collect_shared_accessible_datasets(&items, &item_shared_points)
             });
-        if response.has_focus() {
+        if plot_focused_or_dispatched {
             if allow_2d_analysis {
                 poi_interaction::handle_focused_plot_poi_keys(
                     ui,
@@ -2710,6 +2743,7 @@ impl<'a> Plot<'a> {
                 access_state.edit_callout_text = mem.callouts[idx].label.clone();
                 access_state.edit_callout_offset = mem.callouts[idx].offset;
                 access_state.show_edit_callout_modal = true;
+                response.request_focus();
             } else {
                 let snap_px =
                     cursor_snap_distance.unwrap_or_else(|| ui.style().interaction.interact_radius);
@@ -2764,6 +2798,7 @@ impl<'a> Plot<'a> {
             response
         };
 
+        let focus_widget_id = response.id;
         response.context_menu(|ui| {
             if allow_2d_analysis {
                 if ui.button("Add Callout").clicked() {
@@ -2777,6 +2812,7 @@ impl<'a> Plot<'a> {
                     access_state.new_callout_text = String::new();
                     access_state.new_callout_offset = [30.0, -30.0];
                     access_state.show_add_callout_modal = true;
+                    ui.ctx().memory_mut(|m| m.request_focus(focus_widget_id));
                     ui.close();
                 }
 
@@ -2831,6 +2867,7 @@ impl<'a> Plot<'a> {
             }
             if ui.button("Save PNG").clicked() {
                 access_state.export_modal.open = true;
+                ui.ctx().memory_mut(|m| m.request_focus(focus_widget_id));
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
@@ -2863,6 +2900,9 @@ impl<'a> Plot<'a> {
             }
             if has_table_content && table_btn.clicked() {
                 access_state.show_table = !access_state.show_table;
+                if access_state.show_table {
+                    ui.ctx().memory_mut(|m| m.request_focus(focus_widget_id));
+                }
                 ui.close();
             }
             if show_toolbar {
@@ -2880,6 +2920,7 @@ impl<'a> Plot<'a> {
             if !scene_3d_mode && ui.button("🔧 Plot Settings").clicked() {
                 access_state.show_settings_modal = true;
                 mem.show_settings_modal = true;
+                ui.ctx().memory_mut(|m| m.request_focus(focus_widget_id));
                 ui.close();
             }
 
@@ -3011,8 +3052,14 @@ impl<'a> Plot<'a> {
         let reset_enabled = ui.is_enabled();
         register_plot_viewport_commands(ui.ctx(), zoom_axes.any(), pan_axes, reset_enabled);
 
-        if !response.has_focus()
-            || ui.input(|i| i.modifiers.ctrl || i.modifiers.command || i.modifiers.alt)
+        let has_viewport_dispatch =
+            commands::CommandRegistryData::has_pending_dispatch(ui.ctx(), "Plot Viewport");
+        if has_viewport_dispatch {
+            response.request_focus();
+        }
+        if !has_viewport_dispatch
+            && (!response.has_focus()
+                || ui.input(|i| i.modifiers.ctrl || i.modifiers.command || i.modifiers.alt))
         {
             return;
         }
@@ -3637,10 +3684,12 @@ fn handle_focused_plot_dataset_keys(
 ) {
     use crate::commands::{CommandRegistryData, CommandTrigger};
     let num_items = accessible_datasets.len();
+    let has_dispatch = CommandRegistryData::has_pending_dispatch(ui.ctx(), "Plot Accessibility");
     if num_items == 0
-        || ui.input(|i| {
-            i.modifiers.shift || i.modifiers.alt || i.modifiers.ctrl || i.modifiers.command
-        })
+        || (!has_dispatch
+            && ui.input(|i| {
+                i.modifiers.shift || i.modifiers.alt || i.modifiers.ctrl || i.modifiers.command
+            }))
     {
         return;
     }

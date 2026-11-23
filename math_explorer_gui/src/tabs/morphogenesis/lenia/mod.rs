@@ -3,6 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod atlas;
+mod atlas_bridge;
 mod canvas;
 pub mod challenge;
 pub mod presets;
@@ -14,12 +15,12 @@ mod atlas_sandbox_tests;
 #[cfg(test)]
 mod tests;
 
-pub use atlas::LENIA_ATLAS_AXIS_PAIRS;
+#[cfg(test)]
+pub use atlas::{LeniaCartographer, LeniaRegime, LENIA_ATLAS_AXIS_PAIRS};
 pub use presets::{LeniaBrushMode, LeniaSpeciesPreset, LeniaTheory, LeniaToolState};
 #[cfg(test)]
 pub use sandbox::compute_potential_distribution;
 
-use crate::async_sim::atlas::ParameterAtlasController;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{
     CalloutManager, CalloutSpec, ChallengeEvaluation, ExportCapabilities, InteractiveTool,
@@ -65,8 +66,6 @@ pub struct LeniaTool {
     pub brush_mode: LeniaBrushMode,
     /// Whether continuous simulation playback is running.
     pub playing: bool,
-    /// Progressive 2D `(mu, sigma)` / `(radius, mu)` soliton viability atlas controller.
-    pub atlas: ParameterAtlasController,
     /// 1D formula sandbox for custom growth mapping `G(u)`.
     pub growth_bar: MathExpressionInputBar,
     /// 1D formula sandbox for custom radial kernel `K(r)`.
@@ -112,7 +111,6 @@ impl Default for LeniaTool {
             brush_radius: default_brush_radius(),
             brush_mode: LeniaBrushMode::Deposit,
             playing: false,
-            atlas: ParameterAtlasController::new(LENIA_ATLAS_AXIS_PAIRS.to_vec()),
             growth_bar: build_growth_sandbox(genome.growth.mu, genome.growth.sigma),
             kernel_bar: build_kernel_sandbox(),
             use_custom_kernel: false,
@@ -139,6 +137,11 @@ impl Default for LeniaTool {
 }
 
 impl LeniaTool {
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     /// Loads a canonical [`LeniaSpeciesPreset`] genome and reseeds the periodic grid via `OxidizeRng`.
     pub fn apply_species_preset(&mut self, species: LeniaSpeciesPreset) {
         if self.is_kernel_locked_by_challenge() {
@@ -226,7 +229,6 @@ impl LeniaTool {
     }
 
     fn current_state_snapshot(&self) -> LeniaToolState {
-        let (xk, yk) = self.atlas.axis_keys();
         let sb = self.serialize_sandbox_fields();
         LeniaToolState {
             radius: self.radius,
@@ -241,8 +243,6 @@ impl LeniaTool {
             brush_radius: self.brush_radius,
             brush_mode: self.brush_mode,
             playing: self.playing,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
             growth_expr: sb.growth_expr,
             growth_params: sb.growth_params,
             kernel_expr: sb.kernel_expr,
@@ -296,10 +296,6 @@ impl InteractiveTool for LeniaTool {
         self.render_studio(ui);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }
@@ -329,6 +325,37 @@ impl InteractiveTool for LeniaTool {
         true
     }
 
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        atlas::LENIA_ATLAS_AXIS_PAIRS
+    }
+
+    fn active_atlas_coords(&self, axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        let get = |k: &str| match k {
+            "mu" => self.mu,
+            "sigma" => self.sigma,
+            "radius" => self.radius,
+            _ => 0.0,
+        };
+        (get(axis_keys.0), get(axis_keys.1))
+    }
+
+    fn atlas_context_signature(&self, axis_keys: (&'static str, &'static str)) -> u64 {
+        self.lenia_atlas_context_sig(axis_keys)
+    }
+
+    fn build_atlas_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<std::sync::Arc<dyn crate::async_sim::atlas::RegimeCartographer>> {
+        Some(std::sync::Arc::new(atlas::LeniaCartographer::from_tool(
+            self, axis_keys,
+        )))
+    }
+
+    fn apply_atlas_teleport(&mut self, ev: crate::async_sim::atlas::AtlasTeleportEvent) {
+        self.handle_lenia_atlas_teleport(ev);
+    }
+
     fn state_bounds(&self) -> ToolStateBounds {
         crate::url_state::URL_JSON_BOUNDS
     }
@@ -350,8 +377,6 @@ impl InteractiveTool for LeniaTool {
         self.brush_radius.to_bits().hash(&mut h);
         self.brush_mode.hash(&mut h);
         self.playing.hash(&mut h);
-        self.atlas.is_visible().hash(&mut h);
-        self.atlas.selected_pair_index().hash(&mut h);
         self.use_custom_kernel.hash(&mut h);
         self.growth_bar.state_fingerprint().hash(&mut h);
         self.kernel_bar.state_fingerprint().hash(&mut h);
@@ -388,9 +413,6 @@ impl InteractiveTool for LeniaTool {
         self.brush_radius = parsed.brush_radius;
         self.brush_mode = parsed.brush_mode;
         self.playing = parsed.playing;
-        self.atlas
-            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
-        self.atlas.set_visible(parsed.atlas_visible);
         self.restore_sandbox_fields(
             parsed.growth_expr.as_deref(),
             &parsed.growth_params,

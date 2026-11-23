@@ -1,75 +1,64 @@
-//! Downsampled `32x32` 2D FFT soliton viability atlas (`LeniaSpectralCartographer`)
-//! wired into [`crate::async_sim::atlas::ParameterAtlasController`].
+//! Downsampled `32x32` 2D FFT soliton viability cartographer (`LeniaCartographer` /
+//! `LeniaSpectralCartographer`) wired into [`crate::framework::SimulationFramework`]'s
+//! `FrameworkAtlasHost` for [`super::LeniaTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[cfg(test)]
+use super::LeniaSpeciesPreset;
 use super::LeniaTool;
 use crate::async_sim::atlas::{
-    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent, RegimeCartographer,
-    atlas_regime_color,
+    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
 };
 use crate::framework::InteractiveTool;
-use crate::framework::recovery::FiniteStateGuard;
 use eframe::egui;
 use math_explorer::biology::lenia::{
-    CompiledGrowthRule, CompiledKernelRule, GrowthParams, LeniaProbeOutcome, LeniaProbeSpec,
-    LeniaSpecies, MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MAX_LENIA_RULE_PARAMS, MIN_KERNEL_RADIUS,
-    PROBE_CELLS, evaluate_lenia_probe_32_preseeded, precompute_probe_kernel_hat_32,
-    seed_probe_species_32,
+    evaluate_lenia_probe_32_preseeded, fft_2d_forward_32, fft_2d_inverse_32,
+    precompute_probe_kernel_hat_32, seed_probe_species_32, CompiledGrowthRule, CompiledKernelRule,
+    GrowthParams, LeniaProbeOutcome, LeniaProbeSpec, LeniaSpecies, MAX_KERNEL_RADIUS,
+    MAX_KERNEL_RINGS, MAX_LENIA_RULE_PARAMS, MIN_KERNEL_RADIUS, PROBE_CELLS, PROBE_STEPS,
 };
 use num_complex::Complex;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 
-/// Supported `(x_key, y_key)` parameter axis pairs for [`LeniaSpectralCartographer`].
-pub const LENIA_ATLAS_AXIS_PAIRS: &[(&str, &str)] = &[("mu", "sigma"), ("radius", "mu")];
+/// Supported `(x_key, y_key)` parameter axis pairs for [`LeniaCartographer`].
+pub const LENIA_ATLAS_AXIS_PAIRS: &[(&str, &str)] =
+    &[("mu", "sigma"), ("radius", "mu"), ("mu", "radius")];
 
-/// Integrated torus mass threshold below which the organism is considered extinct/washed out.
+/// Integrated torus mass threshold below which a soliton is considered washed out on teleport.
 pub const WASHOUT_MASS_THRESHOLD: f64 = 0.25;
 
-/// Default serialized atlas axis keys for [`super::LeniaToolState`].
-#[must_use]
-pub fn default_lenia_atlas_axes() -> [String; 2] {
-    ["mu".to_string(), "sigma".to_string()]
-}
-
-/// Predicate skipping default `atlas_axes` during JSON serialization for backward compatibility.
-#[must_use]
-pub fn is_default_lenia_atlas_axes(axes: &[String; 2]) -> bool {
-    axes[0] == "mu" && axes[1] == "sigma"
-}
-
 /// Analytical slope $\mu / \sigma = \sqrt{2 \ln 2}$ along the Gaussian $G(0; \mu, \sigma) = 0$ locus.
+#[inline]
 #[must_use]
 pub fn gaussian_vacuum_boundary_slope() -> f64 {
     (2.0_f64 * std::f64::consts::LN_2).sqrt()
 }
 
-/// Discrete qualitative dynamical regimes classified by [`LeniaSpectralCartographer`].
+/// Discrete qualitative dynamical regimes classified by [`LeniaCartographer`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LeniaRegime {
     /// Initial soliton starves and decays to vacuum ($A \to 0$).
     Extinction = 0,
     /// Self-sustaining localized glider, shield, or dividing multi-lobe soliton.
-    LocalizedSoliton = 1,
-    /// Unbounded halo expansion saturating the domain while $G(0) \le 0$.
-    OvergrownBlob = 2,
+    StableSoliton = 1,
+    /// Outward-expanding wave or colony saturating the domain while $G(0) \le 0$.
+    ExpandingWave = 2,
     /// Unstable empty vacuum ($G(0) > 0$) triggering spontaneous global explosion.
     VacuumExplosion = 3,
 }
 
 impl LeniaRegime {
-    /// Converts a raw `u8` cell regime index into [`Self`].
+    /// Converts a raw `u8` cell regime code into [`Self`].
     #[inline]
     #[must_use]
     pub const fn from_u8(code: u8) -> Self {
         match code {
             0 => Self::Extinction,
-            1 => Self::LocalizedSoliton,
-            2 => Self::OvergrownBlob,
+            1 => Self::StableSoliton,
+            2 => Self::ExpandingWave,
             _ => Self::VacuumExplosion,
         }
     }
@@ -80,8 +69,8 @@ impl LeniaRegime {
     pub const fn from_probe(outcome: LeniaProbeOutcome) -> Self {
         match outcome {
             LeniaProbeOutcome::Extinction => Self::Extinction,
-            LeniaProbeOutcome::LocalizedSoliton => Self::LocalizedSoliton,
-            LeniaProbeOutcome::OvergrownBlob => Self::OvergrownBlob,
+            LeniaProbeOutcome::LocalizedSoliton => Self::StableSoliton,
+            LeniaProbeOutcome::OvergrownBlob => Self::ExpandingWave,
             LeniaProbeOutcome::VacuumExplosion => Self::VacuumExplosion,
         }
     }
@@ -92,8 +81,8 @@ impl LeniaRegime {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Extinction => "Extinction",
-            Self::LocalizedSoliton => "Localized Soliton",
-            Self::OvergrownBlob => "Overgrown Blob",
+            Self::StableSoliton => "Stable Soliton Niche",
+            Self::ExpandingWave => "Expanding Colony",
             Self::VacuumExplosion => "Vacuum Explosion",
         }
     }
@@ -104,7 +93,13 @@ fn lenia_axis_spec(
     key: &'static str,
 ) -> AtlasAxisSpec {
     let (resolved, label, min, max, step) = match key {
-        "radius" => ("radius", "Kernel Radius (R)", MIN_KERNEL_RADIUS, MAX_KERNEL_RADIUS, 0.5),
+        "radius" => (
+            "radius",
+            "Kernel Radius (R)",
+            MIN_KERNEL_RADIUS,
+            MAX_KERNEL_RADIUS,
+            0.5,
+        ),
         "sigma" => ("sigma", "Growth Width (σ)", 0.002, 0.15, 0.001),
         _ => ("mu", "Growth Center (μ)", 0.01, 0.60, 0.005),
     };
@@ -116,86 +111,176 @@ fn lenia_axis_spec(
     )
 }
 
+struct CartographerBuildInput<'a> {
+    theory_params: &'a HashMap<String, ParameterConstraint>,
+    axis_keys: (&'static str, &'static str),
+    species: LeniaSpecies,
+    radius: f64,
+    ring_weights_slice: &'a [f64],
+    growth: GrowthParams,
+    dt: f64,
+    custom_growth: Option<CompiledGrowthRule>,
+    custom_kernel: Option<CompiledKernelRule>,
+}
+
 /// Zero-allocation `32x32` 2D FFT parameter-regime cartographer for Lenia solitons.
 #[derive(Clone, Debug)]
-pub struct LeniaSpectralCartographer {
-    axes: AtlasAxisPair,
+pub struct LeniaCartographer {
+    pub(super) axes: AtlasAxisPair,
     species: LeniaSpecies,
     seed_radius: f64,
     base_radius: f64,
     base_mu: f64,
-    base_sigma: f64,
+    pub(super) base_sigma: f64,
     base_dt: f64,
     ring_weights: [f64; MAX_KERNEL_RINGS],
     ring_count: usize,
-    custom_growth: Option<CompiledGrowthRule>,
-    mu_slot: Option<usize>,
+    pub(super) custom_growth: Option<CompiledGrowthRule>,
+    pub(super) mu_slot: Option<usize>,
     sigma_slot: Option<usize>,
     custom_kernel: Option<CompiledKernelRule>,
     initial_state: [f64; PROBE_CELLS],
     initial_mass: f64,
     precomputed_kernel_hat: Option<[Complex<f64>; PROBE_CELLS]>,
+    max_initial_u0: Option<f64>,
+    non_negative_kernel: bool,
 }
 
-impl LeniaSpectralCartographer {
-    /// Builds a snapshot [`LeniaSpectralCartographer`] from [`LeniaTool`]'s active genome and rules.
+/// Type alias preserving both `LeniaCartographer` and `LeniaSpectralCartographer` names.
+#[cfg(test)]
+pub type LeniaSpectralCartographer = LeniaCartographer;
+
+fn compute_max_initial_u0(
+    initial_state: &[f64; PROBE_CELLS],
+    k_hat: &[Complex<f64>; PROBE_CELLS],
+) -> f64 {
+    let mut freq = [Complex::new(0.0, 0.0); PROBE_CELLS];
+    for (dst, &v) in freq.iter_mut().zip(initial_state.iter()) {
+        *dst = Complex::new(v, 0.0);
+    }
+    fft_2d_forward_32(&mut freq);
+    for (f, &h) in freq.iter_mut().zip(k_hat.iter()) {
+        *f *= h;
+    }
+    fft_2d_inverse_32(&mut freq);
+    freq.iter().fold(0.0_f64, |acc, c| acc.max(c.re))
+}
+
+fn pack_ring_weights(slice: &[f64]) -> ([f64; MAX_KERNEL_RINGS], usize) {
+    let mut ring_weights = [0.0; MAX_KERNEL_RINGS];
+    let ring_count = slice.len().clamp(1, MAX_KERNEL_RINGS);
+    if slice.is_empty() {
+        ring_weights[0] = 1.0;
+    } else {
+        ring_weights[..ring_count].copy_from_slice(&slice[..ring_count]);
+    }
+    (ring_weights, ring_count)
+}
+
+fn precompute_invariant_kernel_hat(
+    inp: &CartographerBuildInput<'_>,
+    ring_slice: &[f64],
+) -> Option<[Complex<f64>; PROBE_CELLS]> {
+    (inp.axis_keys.0 != "radius" && inp.axis_keys.1 != "radius").then(|| {
+        let mut k_hat = [Complex::new(0.0, 0.0); PROBE_CELLS];
+        let spec = LeniaProbeSpec {
+            species: inp.species,
+            seed_radius: inp.radius,
+            kernel_radius: inp.radius,
+            ring_weights: ring_slice,
+            growth: inp.growth,
+            dt: inp.dt,
+            custom_growth: None,
+            custom_kernel: inp.custom_kernel.as_ref().map(|r| (r, r.params())),
+        };
+        precompute_probe_kernel_hat_32(&spec, &mut k_hat);
+        k_hat
+    })
+}
+
+impl LeniaCartographer {
+    /// Precomputes the `32x32` 2D FFT soliton seed and invariant kernel spectrum for `axis_keys`.
+    #[cfg(test)]
+    #[must_use]
+    pub fn new(
+        theory_params: &HashMap<String, ParameterConstraint>,
+        axis_keys: (&'static str, &'static str),
+        species: LeniaSpeciesPreset,
+        radius: f64,
+        ring_weights_slice: &[f64],
+        growth: GrowthParams,
+        dt: f64,
+    ) -> Self {
+        Self::from_input(CartographerBuildInput {
+            theory_params,
+            axis_keys,
+            species: species.to_domain(),
+            radius,
+            ring_weights_slice,
+            growth,
+            dt,
+            custom_growth: None,
+            custom_kernel: None,
+        })
+    }
+
+    /// Builds a snapshot [`LeniaCartographer`] from [`LeniaTool`], including active AST sandboxes.
     #[must_use]
     pub fn from_tool(tool: &LeniaTool, axis_keys: (&'static str, &'static str)) -> Self {
         let theory_params = tool.theory().theory_parameters();
-        let mut ring_weights = [0.0; MAX_KERNEL_RINGS];
-        let ring_count = tool.ring_weights.len().clamp(1, MAX_KERNEL_RINGS);
-        for (dst, &w) in ring_weights.iter_mut().zip(tool.ring_weights.iter().take(ring_count)) {
-            *dst = w;
-        }
-        let custom_growth = tool.engine.custom_growth().cloned();
-        let (mu_slot, sigma_slot) = if let Some(rule) = &custom_growth {
+        Self::from_input(CartographerBuildInput {
+            theory_params: &theory_params,
+            axis_keys,
+            species: tool.species.to_domain(),
+            radius: tool.radius,
+            ring_weights_slice: &tool.ring_weights,
+            growth: GrowthParams::new(tool.mu, tool.sigma),
+            dt: tool.dt,
+            custom_growth: tool.engine.custom_growth().cloned(),
+            custom_kernel: tool.engine.custom_kernel().cloned(),
+        })
+    }
+
+    fn from_input(inp: CartographerBuildInput<'_>) -> Self {
+        let (ring_weights, ring_count) = pack_ring_weights(inp.ring_weights_slice);
+        let (mu_slot, sigma_slot) = inp.custom_growth.as_ref().map_or((None, None), |rule| {
             let names = rule.compiled().param_names();
             (
                 names.iter().position(|n| n == "mu"),
                 names.iter().position(|n| n == "sigma"),
             )
-        } else {
-            (None, None)
-        };
-        let species = tool.species.to_domain();
-        let custom_kernel = tool.engine.custom_kernel().cloned();
-        let mut initial_state = [0.0; PROBE_CELLS];
-        let initial_mass = seed_probe_species_32(species, tool.radius, &mut initial_state);
-        let precomputed_kernel_hat = (axis_keys.0 != "radius" && axis_keys.1 != "radius").then(|| {
-            let mut k_hat = [Complex::new(0.0, 0.0); PROBE_CELLS];
-            let spec = LeniaProbeSpec {
-                species,
-                seed_radius: tool.radius,
-                kernel_radius: tool.radius,
-                ring_weights: &ring_weights[..ring_count],
-                growth: GrowthParams::new(tool.mu, tool.sigma),
-                dt: tool.dt,
-                custom_growth: None,
-                custom_kernel: custom_kernel.as_ref().map(|r| (r, r.params())),
-            };
-            precompute_probe_kernel_hat_32(&spec, &mut k_hat);
-            k_hat
         });
+        let mut initial_state = [0.0; PROBE_CELLS];
+        let initial_mass = seed_probe_species_32(inp.species, inp.radius, &mut initial_state);
+        let precomputed_kernel_hat =
+            precompute_invariant_kernel_hat(&inp, &ring_weights[..ring_count]);
+        let max_initial_u0 = precomputed_kernel_hat
+            .as_ref()
+            .map(|kh| compute_max_initial_u0(&initial_state, kh));
+        let non_negative_kernel =
+            inp.custom_kernel.is_none() && ring_weights[..ring_count].iter().all(|&w| w >= 0.0);
         Self {
             axes: AtlasAxisPair {
-                x: lenia_axis_spec(&theory_params, axis_keys.0),
-                y: lenia_axis_spec(&theory_params, axis_keys.1),
+                x: lenia_axis_spec(inp.theory_params, inp.axis_keys.0),
+                y: lenia_axis_spec(inp.theory_params, inp.axis_keys.1),
             },
-            species,
-            seed_radius: tool.radius,
-            base_radius: tool.radius,
-            base_mu: tool.mu,
-            base_sigma: tool.sigma,
-            base_dt: tool.dt,
+            species: inp.species,
+            seed_radius: inp.radius,
+            base_radius: inp.radius,
+            base_mu: inp.growth.mu,
+            base_sigma: inp.growth.sigma,
+            base_dt: inp.dt,
             ring_weights,
             ring_count,
-            custom_growth,
+            custom_growth: inp.custom_growth,
             mu_slot,
             sigma_slot,
-            custom_kernel,
+            custom_kernel: inp.custom_kernel,
             initial_state,
             initial_mass,
             precomputed_kernel_hat,
+            max_initial_u0,
+            non_negative_kernel,
         }
     }
 
@@ -216,7 +301,7 @@ impl LeniaSpectralCartographer {
     }
 
     #[inline]
-    fn stack_growth_params(
+    pub(super) fn stack_growth_params(
         &self,
         rule: &CompiledGrowthRule,
         mu: f64,
@@ -235,92 +320,63 @@ impl LeniaSpectralCartographer {
         (buf, len)
     }
 
-    fn gaussian_contour(&self) -> Option<Vec<[f64; 2]>> {
-        let slope = gaussian_vacuum_boundary_slope();
-        match (self.axes.x.key, self.axes.y.key) {
-            ("mu", "sigma") => {
-                let s_lo = self.axes.y.constraint.min.max(self.axes.x.constraint.min / slope);
-                let s_hi = self.axes.y.constraint.max.min(self.axes.x.constraint.max / slope);
-                if s_hi <= s_lo {
-                    return None;
-                }
-                let pts = (0..=64)
-                    .map(|idx| {
-                        let t = (idx as f64) / 64.0;
-                        let s = s_lo + t * (s_hi - s_lo);
-                        [slope * s, s]
-                    })
-                    .collect();
-                Some(pts)
-            }
-            ("radius", "mu") => {
-                let mu_c = slope * self.base_sigma;
-                (self.axes.y.constraint.min..=self.axes.y.constraint.max)
-                    .contains(&mu_c)
-                    .then(|| {
-                        vec![
-                            [self.axes.x.constraint.min, mu_c],
-                            [self.axes.x.constraint.max, mu_c],
-                        ]
-                    })
-            }
-            _ => None,
+    #[inline]
+    fn fast_gaussian_bound(&self, mu: f64, sigma: f64) -> Option<AtlasCell> {
+        if self.custom_growth.is_some() {
+            return None;
         }
-    }
-
-    fn custom_bisected_contour(&self, rule: &CompiledGrowthRule) -> Option<Vec<[f64; 2]>> {
-        self.mu_slot?;
-        let eval_g0 = |mu: f64, sigma: f64| {
-            let (buf, len) = self.stack_growth_params(rule, mu, sigma);
-            rule.evaluate_with_params(0.0, &buf[..len])
-        };
-        let bisect_mu = |sigma: f64, lo_bound: f64, hi_bound: f64| -> Option<f64> {
-            let (mut lo, mut hi) = (lo_bound, hi_bound);
-            let (mut flo, fhi) = (eval_g0(lo, sigma), eval_g0(hi, sigma));
-            if flo.signum() == fhi.signum() && flo.abs() > 1e-6 && fhi.abs() > 1e-6 {
-                return None;
-            }
-            for _ in 0..36 {
-                let mid = 0.5 * (lo + hi);
-                let fm = eval_g0(mid, sigma);
-                if fm == 0.0 || (flo > 0.0 && fm < 0.0) || (flo < 0.0 && fm > 0.0) {
-                    hi = mid;
-                } else {
-                    lo = mid;
-                    flo = fm;
-                }
-            }
-            Some(0.5 * (lo + hi))
-        };
-        match (self.axes.x.key, self.axes.y.key) {
-            ("mu", "sigma") => {
-                let mut pts = Vec::with_capacity(65);
-                for idx in 0..=64 {
-                    let s = self.axes.y.constraint.min + (idx as f64 / 64.0) * self.axes.y.span();
-                    if let Some(mu) = bisect_mu(s, self.axes.x.constraint.min, self.axes.x.constraint.max) {
-                        pts.push([mu, s]);
-                    }
-                }
-                (pts.len() >= 2).then_some(pts)
-            }
-            ("radius", "mu") => bisect_mu(
-                self.base_sigma,
-                self.axes.y.constraint.min,
-                self.axes.y.constraint.max,
-            )
-            .map(|mu_c| vec![[self.axes.x.constraint.min, mu_c], [self.axes.x.constraint.max, mu_c]]),
-            _ => None,
+        if mu < gaussian_vacuum_boundary_slope() * sigma {
+            return Some(AtlasCell {
+                regime: LeniaRegime::VacuumExplosion as u8,
+                primary: PROBE_CELLS as f64,
+                secondary: 1.0,
+            });
         }
+        if let Some(max_u0) = self
+            .max_initial_u0
+            .filter(|&u| self.non_negative_kernel && u < mu)
+        {
+            let d = max_u0 - mu;
+            let g_bound = 2.0 * (-0.5 * (d * d) / (sigma * sigma)).exp() - 1.0;
+            let dt = if self.base_dt.is_finite() {
+                self.base_dt.clamp(0.01, 0.5)
+            } else {
+                0.1
+            };
+            if g_bound < 0.0 && 1.0 + (PROBE_STEPS as f64) * dt * g_bound <= 0.0 {
+                return Some(AtlasCell {
+                    regime: LeniaRegime::Extinction as u8,
+                    primary: 0.0,
+                    secondary: 0.0,
+                });
+            }
+        }
+        None
     }
 }
 
-impl RegimeCartographer for LeniaSpectralCartographer {
+impl RegimeCartographer for LeniaCartographer {
     fn axes(&self) -> AtlasAxisPair {
         self.axes.clone()
     }
 
     fn evaluate_cell(&self, p1: f64, p2: f64) -> AtlasCell {
         let (radius, mu, sigma) = self.resolve_coords(p1, p2);
+        if !mu.is_finite()
+            || !sigma.is_finite()
+            || !radius.is_finite()
+            || sigma <= 0.0
+            || radius < MIN_KERNEL_RADIUS
+        {
+            return AtlasCell {
+                regime: LeniaRegime::VacuumExplosion as u8,
+                primary: 1.0,
+                secondary: 1.0,
+            };
+        }
+        if let Some(fast_cell) = self.fast_gaussian_bound(mu, sigma) {
+            return fast_cell;
+        }
         let mut g_buf = [0.0; MAX_LENIA_RULE_PARAMS];
         let custom_g = self.custom_growth.as_ref().map(|rule| {
             let (tmp, len) = self.stack_growth_params(rule, mu, sigma);
@@ -357,9 +413,9 @@ impl RegimeCartographer for LeniaSpectralCartographer {
 
     fn color_for_cell(&self, cell: AtlasCell, high_contrast: bool) -> egui::Color32 {
         let intensity = match LeniaRegime::from_u8(cell.regime) {
-            LeniaRegime::Extinction => (cell.primary * 0.25).clamp(0.05, 0.55),
-            LeniaRegime::LocalizedSoliton => (cell.primary / 24.0).clamp(0.35, 1.0),
-            LeniaRegime::OvergrownBlob => (cell.primary / 160.0).clamp(0.30, 1.0),
+            LeniaRegime::Extinction => (cell.primary * 0.25).clamp(0.20, 0.55),
+            LeniaRegime::StableSoliton => (cell.primary / 24.0).clamp(0.35, 1.0),
+            LeniaRegime::ExpandingWave => (cell.primary / 160.0).clamp(0.30, 1.0),
             LeniaRegime::VacuumExplosion => 0.90,
         };
         atlas_regime_color(cell.regime, 4, intensity, high_contrast)
@@ -393,93 +449,23 @@ impl RegimeCartographer for LeniaSpectralCartographer {
         } else {
             self.gaussian_contour()?
         };
-        Some(("Vacuum Stability G(0) = 0", pts))
+        Some(("G(0, μ, σ) = 0", pts))
     }
 
     fn legend_entries(&self, high_contrast: bool) -> Vec<(&'static str, egui::Color32)> {
         [
             LeniaRegime::Extinction,
-            LeniaRegime::LocalizedSoliton,
-            LeniaRegime::OvergrownBlob,
+            LeniaRegime::StableSoliton,
+            LeniaRegime::ExpandingWave,
             LeniaRegime::VacuumExplosion,
         ]
         .into_iter()
-        .map(|r| (r.label(), atlas_regime_color(r as u8, 4, 0.72, high_contrast)))
+        .map(|r| {
+            (
+                r.label(),
+                atlas_regime_color(r as u8, 4, 0.75, high_contrast),
+            )
+        })
         .collect()
-    }
-}
-
-impl LeniaTool {
-    pub(crate) fn atlas_context_signature(&self) -> u64 {
-        let (xk, yk) = self.atlas.axis_keys();
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        self.species.hash(&mut h);
-        self.dt.to_bits().hash(&mut h);
-        for (name, val) in [("radius", self.radius), ("mu", self.mu), ("sigma", self.sigma)] {
-            if name != xk && name != yk {
-                name.hash(&mut h);
-                val.to_bits().hash(&mut h);
-            }
-        }
-        for &w in &self.ring_weights {
-            w.to_bits().hash(&mut h);
-        }
-        self.use_custom_kernel.hash(&mut h);
-        self.growth_bar.state_fingerprint().hash(&mut h);
-        self.kernel_bar.state_fingerprint().hash(&mut h);
-        h.finish()
-    }
-
-    pub(crate) fn active_atlas_coords(&self) -> (f64, f64) {
-        let (xk, yk) = self.atlas.axis_keys();
-        let lookup = |k: &str| match k {
-            "radius" => self.radius,
-            "sigma" => self.sigma,
-            _ => self.mu,
-        };
-        (lookup(xk), lookup(yk))
-    }
-
-    pub(crate) fn build_cartographer_arc(
-        &self,
-        axis_keys: (&'static str, &'static str),
-    ) -> Arc<dyn RegimeCartographer> {
-        Arc::new(LeniaSpectralCartographer::from_tool(self, axis_keys))
-    }
-
-    /// Applies an [`AtlasTeleportEvent`] to `LeniaTool`, auto-reseeding washed-out solitons
-    /// (`total_mass < 0.25`) when teleporting into `Localized Soliton`.
-    pub fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
-        let lock_kernel = self.is_kernel_locked_by_challenge();
-        for (key, val) in [(ev.x_key, ev.x_val), (ev.y_key, ev.y_val)] {
-            match key {
-                "radius" if !lock_kernel => self.radius = val.clamp(MIN_KERNEL_RADIUS, MAX_KERNEL_RADIUS),
-                "mu" => {
-                    self.mu = val.clamp(0.01, 0.60);
-                    self.growth_bar.set_param("mu", self.mu);
-                }
-                "sigma" => {
-                    self.sigma = val.clamp(0.002, 0.15);
-                    self.growth_bar.set_param("sigma", self.sigma);
-                }
-                _ => {}
-            }
-        }
-        self.diagnostic = None;
-        if !self.parameters_within_safe_bounds() {
-            FiniteStateGuard::clamp_parameters(self);
-        } else {
-            self.sync_engine_parameters();
-        }
-        if ev.regime_label == LeniaRegime::LocalizedSoliton.label()
-            && self.engine.telemetry().total_mass < WASHOUT_MASS_THRESHOLD
-        {
-            self.reseed_current_genome();
-        } else {
-            self.engine.refresh_telemetry();
-            self.record_telemetry_sample();
-            self.refresh_pixels_in_place();
-            self.user_mutation_nonce = self.user_mutation_nonce.wrapping_add(1);
-        }
     }
 }

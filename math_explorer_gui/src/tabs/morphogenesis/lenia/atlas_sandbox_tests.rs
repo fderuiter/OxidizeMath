@@ -1,19 +1,19 @@
-//! Acceptance tests for `LeniaSpectralCartographer`, live `U = A * K` potential overlays,
-//! `CompiledExpr` growth/kernel sandboxes, URL round-tripping, and Lenia challenges/stories.
+//! Acceptance tests for `LeniaCartographer` (`LeniaSpectralCartographer`), live `U = A * K`
+//! potential overlays, `CompiledExpr` growth/kernel sandboxes, URL round-tripping, and Lenia
+//! challenges/stories.
 
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::atlas::{
-    LeniaRegime, LeniaSpectralCartographer, WASHOUT_MASS_THRESHOLD,
-    gaussian_vacuum_boundary_slope,
+    gaussian_vacuum_boundary_slope, LeniaRegime, LeniaSpectralCartographer, WASHOUT_MASS_THRESHOLD,
 };
 use super::challenge::CHALLENGE_ORBIUM_TAIL_REGEN;
 use super::sandbox::{CHAN_POLYNOMIAL_GROWTH_EXPR, CHAN_POLYNOMIAL_KERNEL_EXPR};
 use super::*;
 use crate::async_sim::atlas::RegimeCartographer;
 use crate::framework::{InteractiveTool, SimulationFramework};
-use crate::starter_gallery::{GoalChallengeMetadata, PresetStoryMetadata, find_challenge_metadata};
-use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, encode_base64url};
+use crate::starter_gallery::{find_challenge_metadata, GoalChallengeMetadata, PresetStoryMetadata};
+use crate::url_state::{encode_base64url, MAX_DECODED_URL_STATE_BYTES};
 
 fn screen_input() -> egui::RawInput {
     egui::RawInput {
@@ -25,60 +25,71 @@ fn screen_input() -> egui::RawInput {
     }
 }
 
+fn downcast_lenia_mut(fw: &mut SimulationFramework) -> &mut LeniaTool {
+    fw.active_tool
+        .as_mut()
+        .and_then(|t| t.as_any_mut())
+        .and_then(|a| a.downcast_mut::<LeniaTool>())
+        .expect("LeniaTool active")
+}
+
 #[test]
 fn test_atlas_teleport_auto_reseeds_extinct_torus_and_sustains_orbium_80_steps() {
     let ctx = egui::Context::default();
-    let mut tool = LeniaTool {
-        mu: 0.35,
-        sigma: 0.012,
-        ..Default::default()
+    let mut fw = SimulationFramework::new("biology");
+    assert!(fw.select_tool_by_name("LeniaTool"));
+    fw.set_parameter_atlas_visible(true);
+
+    {
+        let tool = downcast_lenia_mut(&mut fw);
+        tool.mu = 0.35;
+        tool.sigma = 0.012;
+        tool.engine.clear();
+        tool.record_telemetry_sample();
+        assert!(tool.engine.telemetry().total_mass < WASHOUT_MASS_THRESHOLD);
+    }
+
+    let _ = ctx.run(screen_input(), |egui_ctx| {
+        egui::CentralPanel::default().show(egui_ctx, |ui| fw.show_inside(ui, "biology"));
+    });
+
+    let ev = {
+        let tool_ref = fw.active_tool.as_deref().expect("active tool");
+        let ctrl = fw
+            .atlas_host
+            .ensure_controller_for(tool_ref)
+            .expect("framework atlas controller");
+        ctrl.teleport_to(Some(&ctx), 0.15, 0.015)
+            .expect("teleport inside (mu, sigma) atlas")
     };
+    assert_eq!(ev.regime_label, LeniaRegime::StableSoliton.label());
 
-    // Drive torus into Extinction (total_mass < 0.25)
-    tool.engine.clear();
-    tool.record_telemetry_sample();
-    assert!(tool.engine.telemetry().total_mass < WASHOUT_MASS_THRESHOLD);
-
-    // Open (mu, sigma) atlas and render a frame so active_cartographer is populated
-    tool.atlas.set_visible(true);
-    let _ = ctx.run(screen_input(), |ctx| tool.show(ctx));
-
-    let ev = tool
-        .atlas
-        .teleport_to(Some(&ctx), 0.15, 0.015)
-        .expect("teleport inside (mu, sigma) atlas");
-    assert_eq!(ev.regime_label, LeniaRegime::LocalizedSoliton.label());
-
+    let tool = downcast_lenia_mut(&mut fw);
     tool.apply_atlas_teleport(ev);
-    assert!((tool.mu - 0.15).abs() < 1e-12);
-    assert!((tool.sigma - 0.015).abs() < 1e-12);
-    assert!(
-        tool.engine.telemetry().total_mass > 20.0,
-        "Extinct torus must auto-reseed Orbium on Localized Soliton teleport"
-    );
+    assert!((tool.mu - 0.15).abs() < 1e-12 && (tool.sigma - 0.015).abs() < 1e-12);
+    assert!(tool.engine.telemetry().total_mass > 20.0);
 
-    let cx0 = tool.engine.telemetry().centroid_x;
-    let cy0 = tool.engine.telemetry().centroid_y;
+    let (cx0, cy0) = (
+        tool.engine.telemetry().centroid_x,
+        tool.engine.telemetry().centroid_y,
+    );
     for _ in 0..80 {
         tool.step_once();
     }
     let tel = tool.engine.telemetry();
     let disp = (tel.centroid_x - cx0).hypot(tel.centroid_y - cy0);
-    assert!(
-        disp > 3.5 && tel.centroid_speed > 0.05 && tel.total_mass > 20.0,
-        "Reseeded Orbium must sustain translation over 80 steps: disp={disp}, tel={tel:?}"
-    );
+    assert!(disp > 3.5 && tel.centroid_speed > 0.05 && tel.total_mass > 20.0);
 
-    // Verify ("radius", "mu") secondary axis pair also resolves and evaluates cleanly
-    tool.atlas
-        .set_axis_keys("radius", "mu")
-        .expect("radius vs mu axis pair");
-    let cart_rm = LeniaSpectralCartographer::from_tool(&tool, ("radius", "mu"));
-    let cell = cart_rm.evaluate_cell(13.0, 0.15);
-    assert_eq!(
-        LeniaRegime::from_u8(cell.regime),
-        LeniaRegime::LocalizedSoliton
-    );
+    for (pair, x, y) in [
+        (("radius", "mu"), 13.0, 0.15),
+        (("mu", "radius"), 0.15, 13.0),
+    ] {
+        let cart = LeniaSpectralCartographer::from_tool(tool, pair);
+        assert_eq!(
+            LeniaRegime::from_u8(cart.evaluate_cell(x, y).regime),
+            LeniaRegime::StableSoliton
+        );
+    }
 }
 
 #[test]
@@ -87,8 +98,8 @@ fn test_cartographer_overlay_contour_and_zero_heap_allocations() {
     let gauss_cart = LeniaSpectralCartographer::from_tool(&tool, ("mu", "sigma"));
     let (label, pts) = gauss_cart
         .overlay_contour()
-        .expect("Gaussian G(0) = 0 contour");
-    assert!(label.contains("G(0) = 0"));
+        .expect("Gaussian G(0, μ, σ) = 0 contour");
+    assert_eq!(label, "G(0, μ, σ) = 0");
     assert!(pts.len() >= 16);
     let slope = gaussian_vacuum_boundary_slope();
     for &[mu, sigma] in &pts {
@@ -116,7 +127,7 @@ fn test_cartographer_overlay_contour_and_zero_heap_allocations() {
         });
     assert_eq!(
         LeniaRegime::from_u8(c_loc.regime),
-        LeniaRegime::LocalizedSoliton
+        LeniaRegime::StableSoliton
     );
     assert_eq!(
         LeniaRegime::from_u8(c_vac.regime),
@@ -124,7 +135,7 @@ fn test_cartographer_overlay_contour_and_zero_heap_allocations() {
     );
     assert_eq!(
         LeniaRegime::from_u8(c_custom.regime),
-        LeniaRegime::LocalizedSoliton
+        LeniaRegime::StableSoliton
     );
 }
 
@@ -237,10 +248,9 @@ fn assert_tampered_challenge_url_clamps_radius(meta: &crate::framework::Challeng
     );
 
     let mut app = crate::app::MathExplorerApp::default();
-    assert!(
-        app.apply_share_location_strings(&fragment, "", None)
-            .expect("hydrate challenge URL")
-    );
+    assert!(app
+        .apply_share_location_strings(&fragment, "", None)
+        .expect("hydrate challenge URL"));
     let bio_idx = app
         .tabs
         .iter()
@@ -266,7 +276,6 @@ fn test_orbium_tail_regeneration_challenge_url_clamp_and_healing_pass() {
         .expect("lenia_orbium_tail_regeneration registered");
     assert_eq!(meta.domain, "biology");
 
-    // Intact 64x64 Orbium reference mass vs tail-cut challenge mass
     let mut intact = LeniaTool {
         grid_size: 64,
         ..Default::default()
@@ -296,7 +305,6 @@ fn test_orbium_tail_regeneration_challenge_url_clamp_and_healing_pass() {
 
     assert_tampered_challenge_url_clamps_radius(meta);
 
-    // Tune (mu, sigma) to (0.15, 0.015), step until healed mass and speed stabilize, and verify pass
     let tool = fw
         .active_tool
         .as_mut()

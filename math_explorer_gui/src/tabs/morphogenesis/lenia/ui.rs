@@ -1,9 +1,9 @@
-//! Side-panel `AnimatedSlider` controls, 2D viability atlas panel, formula sandboxes,
-//! and paired `egui_plot` potential/telemetry inspector for [`super::LeniaTool`].
+//! Side-panel `AnimatedSlider` controls, formula sandboxes, and paired `egui_plot`
+//! potential/telemetry inspector for [`super::LeniaTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::sandbox::{POTENTIAL_HIST_BINS, compute_potential_distribution};
+use super::sandbox::{compute_potential_distribution, POTENTIAL_HIST_BINS};
 use super::{LeniaBrushMode, LeniaSpeciesPreset, LeniaTool};
 use crate::async_sim::SimWorkerState;
 use crate::framework::recovery::FiniteStateGuard;
@@ -45,10 +45,6 @@ impl LeniaTool {
                 ui.separator();
                 self.draw_recovery_banner(ui);
                 self.draw_playback_and_species(ui);
-                ui.add_space(4.0);
-                if self.atlas.show_toggle_button(ui) {
-                    self.user_mutation_nonce = self.user_mutation_nonce.wrapping_add(1);
-                }
                 ui.separator();
                 self.draw_kernel_and_growth_sliders(ui);
                 ui.separator();
@@ -94,9 +90,13 @@ impl LeniaTool {
         } else {
             SimWorkerState::Ready
         };
+        let canvas_focused = self
+            .focused_canvas
+            .is_some_and(|id| ui.ctx().memory(|m| m.has_focus(id)));
         if let Some(action) =
             PlaybackTransport::from_worker_state("lenia_transport", "Lenia Studio", transport_state)
                 .can_reset(true)
+                .allow_space_shortcut(!canvas_focused)
                 .show(ui)
         {
             match action {
@@ -181,7 +181,9 @@ impl LeniaTool {
         {
             self.push_mu_sigma_to_growth_bar();
             self.sync_engine_parameters();
-            self.user_mutation_nonce = self.user_mutation_nonce.wrapping_add(1);
+            if !self.reseed_if_extinct_entering_viable() {
+                self.user_mutation_nonce = self.user_mutation_nonce.wrapping_add(1);
+            }
         }
     }
 
@@ -260,12 +262,13 @@ impl LeniaTool {
                     let canvas_side = cols[0].available_width().min(avail.y - 16.0);
                     cols[0].vertical_centered(|ui| {
                         self.draw_interactive_canvas(ui, canvas_side);
-                        ui.small("Drag to paint (Shift/Right-drag to slice); Tab + Arrows + Space to stamp.");
+                        ui.small(
+                            "Drag to paint (Shift/Right-drag to slice); Tab + Arrows + Space to stamp.",
+                        );
                     });
                     egui::ScrollArea::vertical()
                         .id_salt("lenia_right_inspector_scroll")
                         .show(&mut cols[1], |ui| {
-                            self.draw_atlas_section(ui);
                             self.draw_inspector_plots(ui, avail.y);
                         });
                 });
@@ -273,32 +276,10 @@ impl LeniaTool {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let side = avail.x.min(320.0);
                     self.draw_interactive_canvas(ui, side);
-                    self.draw_atlas_section(ui);
                     self.draw_inspector_plots(ui, 360.0);
                 });
             }
         });
-    }
-
-    fn draw_atlas_section(&mut self, ui: &mut egui::Ui) {
-        if !self.atlas.is_visible() {
-            return;
-        }
-        let (ax, ay) = self.active_atlas_coords();
-        let sig = self.atlas_context_signature();
-        let builder_snap = self.build_cartographer_arc(self.atlas.axis_keys());
-        let ev = self.atlas.show_panel(
-            ui,
-            "lenia_viability",
-            ax,
-            ay,
-            sig,
-            move |_keys| builder_snap,
-        );
-        if let Some(teleport) = ev {
-            self.apply_atlas_teleport(teleport);
-        }
-        ui.separator();
     }
 
     fn draw_inspector_plots(&mut self, ui: &mut egui::Ui, total_height: f32) {

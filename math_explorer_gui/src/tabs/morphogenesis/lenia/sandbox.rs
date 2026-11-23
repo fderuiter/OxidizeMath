@@ -59,9 +59,18 @@ pub fn build_growth_sandbox(mu: f64, sigma: f64) -> MathExpressionInputBar {
     .with_param_spec("mu", "Growth μ", 0.01..=0.60, mu)
     .with_param_spec("sigma", "Width σ", 0.002..=0.15, sigma)
     .with_disallowed_vars(&[
-        ("x", "Growth G(u) depends on neighborhood potential 'u', not spatial 'x'."),
-        ("y", "Growth G(u) depends on neighborhood potential 'u', not spatial 'y'."),
-        ("r", "Use 'u' in G(u); normalized distance 'r' belongs in Kernel K(r)."),
+        (
+            "x",
+            "Growth G(u) depends on neighborhood potential 'u', not spatial 'x'.",
+        ),
+        (
+            "y",
+            "Growth G(u) depends on neighborhood potential 'u', not spatial 'y'.",
+        ),
+        (
+            "r",
+            "Use 'u' in G(u); normalized distance 'r' belongs in Kernel K(r).",
+        ),
     ]);
     bar.set_param("mu", mu);
     bar.set_param("sigma", sigma);
@@ -86,9 +95,18 @@ pub fn build_kernel_sandbox() -> MathExpressionInputBar {
     .with_param_spec("w", "Shell Half-Width w", 0.05..=0.80, 0.50)
     .with_param_spec("s", "Step Softness s", 0.01..=0.20, 0.04)
     .with_disallowed_vars(&[
-        ("x", "Radial kernel K(r) depends on normalized distance 'r' in [0, 1]."),
-        ("y", "Radial kernel K(r) depends on normalized distance 'r' in [0, 1]."),
-        ("u", "Use 'r' in K(r); neighborhood potential 'u' belongs in Growth G(u)."),
+        (
+            "x",
+            "Radial kernel K(r) depends on normalized distance 'r' in [0, 1].",
+        ),
+        (
+            "y",
+            "Radial kernel K(r) depends on normalized distance 'r' in [0, 1].",
+        ),
+        (
+            "u",
+            "Use 'r' in K(r); neighborhood potential 'u' belongs in Growth G(u).",
+        ),
     ]);
     bar.set_param("b", 0.50);
     bar.set_param("w", 0.50);

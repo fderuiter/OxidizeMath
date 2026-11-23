@@ -5,7 +5,7 @@
 use eframe::egui;
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    analytic_clamped_square_omega, young_double_slit_fringe_spacing, BoundaryMode2D, Wave2DMedium,
+    young_double_slit_fringe_spacing, BoundaryMode2D, Wave2DMedium,
 };
 
 use super::*;
@@ -23,6 +23,13 @@ impl ChladniWaveTankTool {
                 self.draw_preset_and_transport_controls(ui);
                 ui.separator();
                 self.draw_sonification_section(ui);
+                ui.separator();
+                self.draw_sculpt_controls(ui);
+                #[cfg(feature = "physics")]
+                {
+                    ui.separator();
+                    self.draw_physics_metamaterial_controls(ui);
+                }
                 ui.separator();
                 self.draw_medium_and_clamp_controls(ui);
                 ui.separator();
@@ -246,26 +253,26 @@ impl ChladniWaveTankTool {
                 ))
                 .changed();
         });
-        ui.horizontal(|ui| {
-            ui.label("Driver (x, y):");
-            changed |= ui
-                .add(bounded_drag_value(
-                    &mut self.state.driver_x,
-                    0.0..=1.0,
-                    0.01,
-                ))
-                .changed();
-            changed |= ui
-                .add(bounded_drag_value(
-                    &mut self.state.driver_y,
-                    0.0..=1.0,
-                    0.01,
-                ))
-                .changed();
-        });
+        changed |= draw_unit_pair_drags(
+            ui,
+            "Driver (x, y):",
+            &mut self.state.driver_x,
+            &mut self.state.driver_y,
+        );
+        changed |= draw_unit_pair_drags(
+            ui,
+            "Pickup (x, y):",
+            &mut self.state.pickup_x,
+            &mut self.state.pickup_y,
+        );
         if changed {
             self.state_rev = self.state_rev.wrapping_add(1);
+            self.analysis_dirty = true;
             self.solver.reset_detector();
+        }
+        if !self.state.line_source {
+            ui.add_space(4.0);
+            self.draw_eigenmode_lattice_ui(ui);
         }
     }
 
@@ -300,16 +307,7 @@ impl ChladniWaveTankTool {
             });
         }
         if self.state.lens_enabled {
-            ui.horizontal(|ui| {
-                ui.label("Refractive n:");
-                mask_changed |= ui
-                    .add(bounded_drag_value(
-                        &mut self.state.refractive_index,
-                        REFRACTIVE_MIN..=REFRACTIVE_MAX,
-                        0.05,
-                    ))
-                    .changed();
-            });
+            mask_changed |= self.draw_refractive_controls(ui);
         }
         if ui
             .add(egui::Slider::new(&mut self.state.detector_x, 16..=118).text("Detector X"))
@@ -378,6 +376,7 @@ impl ChladniWaveTankTool {
             .selected_text(match self.state.secondary_plot {
                 SecondaryPlotMode::DetectorCrossSection => "Detector I(y)",
                 SecondaryPlotMode::RadialFftSpectrum => "2D FFT Spectrum",
+                SecondaryPlotMode::PhononDispersion => "Phonon ω(|k|)",
             })
             .show_ui(ui, |ui| {
                 changed |= ui
@@ -394,6 +393,16 @@ impl ChladniWaveTankTool {
                         "2D FFT Spectrum",
                     )
                     .changed();
+                #[cfg(feature = "physics")]
+                {
+                    changed |= ui
+                        .selectable_value(
+                            &mut self.state.secondary_plot,
+                            SecondaryPlotMode::PhononDispersion,
+                            "Phonon ω(|k|)",
+                        )
+                        .changed();
+                }
             });
         changed
     }
@@ -419,14 +428,28 @@ impl ChladniWaveTankTool {
                 (self.state.detector_x.saturating_sub(self.state.barrier_x)).max(1) as f64;
             let dy = young_double_slit_fringe_spacing(lam, self.state.slit_separation, screen_d);
             render_copyable_metric(ui, "Young Fringe Δy", &format!("{dy:.2} cells"));
-        } else if self.state.medium == Wave2DMedium::BiharmonicPlate {
-            let omega11 =
-                analytic_clamped_square_omega(1, 1, 1.0, self.state.plate_stiffness.max(1.0e-9));
+        } else if self.state.lens_enabled {
+            let (gain, fwhm) = super::refractive::detector_focal_metrics(&self.detector_buf);
             render_copyable_metric(
                 ui,
-                "Clamped f(1,1)",
-                &format!("{:.2} Hz", omega11 / std::f64::consts::TAU),
+                "Focal Gain / FWHM",
+                &format!("{gain:.2}x ({fwhm:.0} cells)"),
             );
+        } else {
+            let (m, n) = self.active_mode;
+            let label = super::eigenmodes::mode_metric_label(&self.state, m, n);
+            let hz = super::eigenmodes::mode_frequency_hz(&self.state, self.solver.dx(), m, n);
+            render_copyable_metric(ui, &label, &format!("{hz:.4} Hz"));
         }
     }
+}
+
+fn draw_unit_pair_drags(ui: &mut egui::Ui, label: &str, x: &mut f64, y: &mut f64) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(label);
+        changed |= ui.add(bounded_drag_value(x, 0.0..=1.0, 0.01)).changed();
+        changed |= ui.add(bounded_drag_value(y, 0.0..=1.0, 0.01)).changed();
+    });
+    changed
 }

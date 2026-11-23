@@ -1,5 +1,6 @@
 //! Zero-allocation `32x32` stack-buffered radix-2 2D FFT soliton viability probe.
 
+use super::fft_radix2::{HERMITIAN_CELLS, convolve_real_hermitian_32, fft_2d_32_in_place};
 use super::kernel::{
     CompiledGrowthRule, CompiledKernelRule, GrowthParams, KernelShells,
     write_normalized_torus_kernel,
@@ -7,7 +8,6 @@ use super::kernel::{
 use super::presets::{LeniaSpecies, analytic_species_density};
 use math_commons::math_kernel::types::flatten_2d_index;
 use num_complex::Complex;
-use std::f64::consts::FRAC_1_SQRT_2;
 
 /// Side length of the downsampled 2D periodic FFT probe torus (`32`).
 pub const PROBE_SIDE: usize = 32;
@@ -17,33 +17,6 @@ pub const PROBE_CELLS: usize = PROBE_SIDE * PROBE_SIDE;
 pub const PROBE_STEPS: usize = 24;
 /// Spatial downsampling factor mapping full-grid Lenia radii onto the `32x32` probe torus.
 pub const PROBE_DOWNSAMPLE: f64 = 0.5;
-
-const C1: f64 = 0.980_785_280_403_230_4;
-const S1: f64 = 0.195_090_322_016_128_25;
-const C2: f64 = 0.923_879_532_511_286_7;
-const S2: f64 = 0.382_683_432_365_089_8;
-const C3: f64 = 0.831_469_612_302_545_2;
-const S3: f64 = 0.555_570_233_019_602_2;
-
-/// Precomputed forward radix-2 twiddle factors $\cos(2\pi k/32), -\sin(2\pi k/32)$ for $k \in 0..16$.
-const TWIDDLE_32_FWD: [(f64, f64); 16] = [
-    (1.0, 0.0),
-    (C1, -S1),
-    (C2, -S2),
-    (C3, -S3),
-    (FRAC_1_SQRT_2, -FRAC_1_SQRT_2),
-    (S3, -C3),
-    (S2, -C2),
-    (S1, -C1),
-    (0.0, -1.0),
-    (-S1, -C1),
-    (-S2, -C2),
-    (-S3, -C3),
-    (-FRAC_1_SQRT_2, -FRAC_1_SQRT_2),
-    (-C3, -S3),
-    (-C2, -S2),
-    (-C1, -S1),
-];
 
 /// Qualitative dynamical outcome of a 24-step `32x32` Lenia soliton probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -91,56 +64,6 @@ pub struct LeniaProbeSpec<'a> {
     pub custom_growth: Option<(&'a CompiledGrowthRule, &'a [f64])>,
     /// Optional custom compiled radial kernel formula and active parameter slice.
     pub custom_kernel: Option<(&'a CompiledKernelRule, &'a [f64])>,
-}
-
-#[verified_engine::verified]
-fn fft_1d_32_in_place(row: &mut [Complex<f64>], inverse: bool) {
-    for idx in 0..PROBE_SIDE {
-        let rev = ((idx as u8).reverse_bits() >> 3) as usize;
-        if idx < rev {
-            row.swap(idx, rev);
-        }
-    }
-    let sign = if inverse { -1.0 } else { 1.0 };
-    let mut len = 2usize;
-    while len <= PROBE_SIDE {
-        let half = len / 2;
-        let stride = PROBE_SIDE / len;
-        let mut base = 0usize;
-        while base < PROBE_SIDE {
-            for j in 0..half {
-                let (tw_re, tw_im) = TWIDDLE_32_FWD[j * stride];
-                let w = Complex::new(tw_re, sign * tw_im);
-                let u = row[base + j];
-                let v = row[base + j + half] * w;
-                row[base + j] = u + v;
-                row[base + j + half] = u - v;
-            }
-            base += len;
-        }
-        len *= 2;
-    }
-}
-
-#[verified_engine::verified]
-fn transpose_square_32(grid: &mut [Complex<f64>; PROBE_CELLS]) {
-    for y in 0..PROBE_SIDE {
-        for x in (y + 1)..PROBE_SIDE {
-            grid.swap(y * PROBE_SIDE + x, x * PROBE_SIDE + y);
-        }
-    }
-}
-
-#[verified_engine::verified]
-fn fft_2d_32_in_place(grid: &mut [Complex<f64>; PROBE_CELLS], inverse: bool) {
-    for row in grid.as_chunks_mut::<PROBE_SIDE>().0 {
-        fft_1d_32_in_place(row, inverse);
-    }
-    transpose_square_32(grid);
-    for col in grid.as_chunks_mut::<PROBE_SIDE>().0 {
-        fft_1d_32_in_place(col, inverse);
-    }
-    transpose_square_32(grid);
 }
 
 /// Executes an unscaled in-place 2D radix-2 forward FFT on a `32x32` stack buffer.
@@ -202,14 +125,14 @@ pub fn precompute_probe_kernel_hat_32(
             shells.shell_unnormalized(r)
         });
     }
-    fft_2d_forward_32(kernel_hat);
+    fft_2d_32_in_place(kernel_hat, false);
     let inv_area = 1.0 / (PROBE_CELLS as f64);
     for bin in kernel_hat.iter_mut() {
         *bin *= inv_area;
     }
 }
 
-#[verified_engine::verified]
+#[inline]
 fn eval_probe_growth(spec: &LeniaProbeSpec<'_>, u: f64) -> f64 {
     if let Some((rule, params)) = spec.custom_growth {
         rule.evaluate_with_params(u, params)
@@ -245,7 +168,6 @@ pub fn evaluate_lenia_probe_32_preseeded(
         precompute_probe_kernel_hat_32(spec, &mut scratch_k_hat);
         &scratch_k_hat
     };
-    let mut freq_buf = [Complex::new(0.0, 0.0); PROBE_CELLS];
 
     let dt = if spec.dt.is_finite() {
         spec.dt.clamp(0.01, 0.5)
@@ -253,7 +175,7 @@ pub fn evaluate_lenia_probe_32_preseeded(
         0.1
     };
     let (final_mass, active_count, peak_potential) =
-        step_probe_loop(spec, dt, &mut state, kernel_hat, &mut freq_buf);
+        step_probe_loop(spec, dt, &mut state, kernel_hat);
     let active_fraction = (active_count as f64) / (PROBE_CELLS as f64);
     let outcome = classify_probe_outcome(initial_mass, final_mass, active_fraction);
 
@@ -284,51 +206,101 @@ pub fn evaluate_lenia_probe_32(spec: &LeniaProbeSpec<'_>) -> LeniaProbeSummary {
     evaluate_lenia_probe_32_preseeded(spec, &state, initial_mass, None)
 }
 
-#[verified_engine::verified]
+#[inline]
+fn advance_probe_cells(
+    spec: &LeniaProbeSpec<'_>,
+    dt: f64,
+    mu: f64,
+    inv_neg_two_sigma_sq: f64,
+    state: &mut [f64; PROBE_CELLS],
+    u_buf: &[f64; PROBE_CELLS],
+) -> (f64, usize, f64, f64) {
+    let mut mass = 0.0;
+    let mut active = 0usize;
+    let mut peak_u = 0.0_f64;
+    let mut max_a = 0.0_f64;
+    if let Some((rule, params)) = spec.custom_growth {
+        let mut idx = 0usize;
+        while idx < PROBE_CELLS {
+            let u = u_buf[idx];
+            if u > peak_u {
+                peak_u = u;
+            }
+            let next_a = (state[idx] + dt * rule.evaluate_with_params(u, params)).clamp(0.0, 1.0);
+            state[idx] = next_a;
+            mass += next_a;
+            if next_a > max_a {
+                max_a = next_a;
+            }
+            if next_a > 0.01 {
+                active += 1;
+            }
+            idx += 1;
+        }
+    } else {
+        let mut idx = 0usize;
+        while idx < PROBE_CELLS {
+            let u = u_buf[idx];
+            if u > peak_u {
+                peak_u = u;
+            }
+            let d = u - mu;
+            let g = 2.0 * ((d * d) * inv_neg_two_sigma_sq).exp() - 1.0;
+            let next_a = (state[idx] + dt * g).clamp(0.0, 1.0);
+            state[idx] = next_a;
+            mass += next_a;
+            if next_a > max_a {
+                max_a = next_a;
+            }
+            if next_a > 0.01 {
+                active += 1;
+            }
+            idx += 1;
+        }
+    }
+    (mass, active, peak_u, max_a)
+}
+
+#[inline]
 fn step_probe_loop(
     spec: &LeniaProbeSpec<'_>,
     dt: f64,
     state: &mut [f64; PROBE_CELLS],
     kernel_hat: &[Complex<f64>; PROBE_CELLS],
-    freq_buf: &mut [Complex<f64>; PROBE_CELLS],
 ) -> (f64, usize, f64) {
-    let mut mass = 0.0;
-    let mut active = 0usize;
-    let mut peak_u = 0.0_f64;
+    let mut tilde_cols = [Complex { re: 0.0, im: 0.0 }; HERMITIAN_CELLS];
+    let mut u_buf = [0.0_f64; PROBE_CELLS];
+    let mut stats = (0.0, 0usize, 0.0_f64);
+    let mu = spec.growth.mu;
+    let inv_neg_two_sigma_sq = -0.5 / (spec.growth.sigma * spec.growth.sigma);
+    let monotone_eligible = spec.custom_growth.is_none()
+        && spec.custom_kernel.is_none()
+        && spec.ring_weights.iter().all(|&w| w >= 0.0);
 
-    for _ in 0..PROBE_STEPS {
-        for (dst, &val) in freq_buf.iter_mut().zip(state.iter()) {
-            *dst = Complex::new(val, 0.0);
-        }
-        fft_2d_forward_32(freq_buf);
-        for (freq, &k_hat) in freq_buf.iter_mut().zip(kernel_hat.iter()) {
-            *freq *= k_hat;
-        }
-        fft_2d_inverse_32(freq_buf);
-
-        mass = 0.0;
-        active = 0;
-        peak_u = 0.0;
-        for (cell, freq) in state.iter_mut().zip(freq_buf.iter()) {
-            let u = freq.re;
-            if u > peak_u {
-                peak_u = u;
-            }
-            let next_a = (*cell + dt * eval_probe_growth(spec, u)).clamp(0.0, 1.0);
-            *cell = next_a;
-            mass += next_a;
-            if next_a > 0.01 {
-                active += 1;
-            }
-        }
-        if mass <= 1e-6 {
+    let mut step_idx = 0usize;
+    while step_idx < PROBE_STEPS {
+        convolve_real_hermitian_32(state, kernel_hat, &mut tilde_cols, &mut u_buf);
+        let (mass, active, peak_u, max_a) =
+            advance_probe_cells(spec, dt, mu, inv_neg_two_sigma_sq, state, &u_buf);
+        stats = (mass, active, peak_u);
+        if mass <= 0.02 {
             break;
         }
+        if monotone_eligible && peak_u < mu {
+            let d = peak_u - mu;
+            let g_bound = 2.0 * ((d * d) * inv_neg_two_sigma_sq).exp() - 1.0;
+            let rem = (PROBE_STEPS - 1 - step_idx) as f64;
+            if g_bound < 0.0 && max_a + rem * dt * g_bound <= 0.0 {
+                stats = (0.0, 0, 0.0);
+                break;
+            }
+        }
+        step_idx += 1;
     }
-    (mass, active, peak_u)
+    stats
 }
 
-#[verified_engine::verified]
+#[inline]
 fn classify_probe_outcome(
     initial_mass: f64,
     final_mass: f64,

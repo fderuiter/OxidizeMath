@@ -3,8 +3,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::presets::{LeniaSpeciesPreset, LeniaToolState, default_brush_radius};
-use super::{LeniaTool, sandbox};
+use super::presets::{default_brush_radius, LeniaSpeciesPreset, LeniaToolState};
+use super::{sandbox, LeniaTool};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{CalloutSpec, ChallengeEvaluation, ChallengeMetadata};
 use math_explorer::biology::lenia::{MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MIN_KERNEL_RADIUS};
@@ -36,8 +36,6 @@ fn generate_orbium_regen_baseline() -> String {
         brush_radius: 4.0,
         brush_mode: super::LeniaBrushMode::Slice,
         playing: false,
-        atlas_visible: false,
-        atlas_axes: super::atlas::default_lenia_atlas_axes(),
         growth_expr: None,
         growth_params: std::collections::BTreeMap::new(),
         kernel_expr: None,
@@ -110,7 +108,10 @@ impl LeniaTool {
         self.callouts.sync_specs(specs);
     }
 
-    pub(crate) fn set_active_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+    pub(crate) fn set_active_challenge(
+        &mut self,
+        challenge_id: Option<&str>,
+    ) -> Result<(), String> {
         match challenge_id {
             None => {
                 self.active_challenge = None;
