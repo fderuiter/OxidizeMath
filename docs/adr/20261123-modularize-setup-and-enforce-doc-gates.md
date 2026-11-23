@@ -1,4 +1,4 @@
-# ADR 0047: Modularize Setup and Enforce Static Documentation Gates
+# ADR 20261123: Modularize Setup and Enforce Static Documentation Gates
 
 ## Status
 Accepted (extends [ADR 0008](0008-xtask-lint-all-pre-commit.md), [ADR 0036](0036-harden-ast-and-doctest-policy-audits.md), and [ADR 0043](0043-repair-guides-and-enforce-static-doc-gates.md))

@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#[cfg(feature = "ast-analysis")]
 #[allow(missing_docs)]
 pub mod ast_visitor;
 #[allow(missing_docs)]

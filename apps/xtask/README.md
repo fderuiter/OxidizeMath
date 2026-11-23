@@ -28,7 +28,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `test-policy-audit` | Audits workspace crates for unauthorized lint/dead-code/`missing_docs` bypasses and unused dependencies. | Active |
 | `test-wasm` | Discovers and executes `wasm32-unknown-unknown` unit and browser tests across all compatible workspace crates (anchored to the workspace root), builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 3 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
 | `traceability` | Verifies academic paper citation bindings and `#[verified]` coverage. | Active |
-| `verify-records` | Verifies architectural decision records (`--staged` supported), enforcing `NNNN-slug.md` naming, `# ` and `## Status` headings, unique 4-digit IDs, and ACMR updates on core changes. | Active |
+| `verify-records` | Verifies architectural decision records (`--staged` supported), enforcing `YYYYMMDD-slug.md` naming with valid dates and unique slugs for new ADRs, freezing legacy `NNNN-slug.md` prefixes, requiring `# ` and `## Status` headings, and checking ACMR updates on core changes. | Active |
 | `verify-suite` | Runs the full coverage-instrumented high-integrity verification suite. | Active |
 
 ### Maintenance & Onboarding Tasks
