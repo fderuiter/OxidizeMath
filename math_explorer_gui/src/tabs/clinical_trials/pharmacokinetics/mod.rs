@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub mod challenge;
 pub mod export;
 pub mod metrics;
 pub mod model;
@@ -17,7 +18,8 @@ mod ui_tests;
 pub use persistence::STARTER_PRESET_JSON;
 
 use crate::framework::{
-    ExportCapabilities, InteractiveTool, ToolStateBounds, TraceSnapshotManager,
+    CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool, ToolStateBounds,
+    TraceSnapshotManager,
 };
 use eframe::egui;
 use egui_plot::PlotPoint;
@@ -179,6 +181,12 @@ pub struct PharmacokineticsTool {
     pub mtc: f64,
     /// Toggle base-10 logarithmic Y-axis projection.
     pub log10_y: bool,
+    /// Active inverse challenge ID when running in challenge mode.
+    pub active_challenge: Option<&'static str>,
+    /// Preallocated trajectory and scoring workspace for `pk_therapeutic_window`.
+    pub workspace: challenge::PkWorkspace,
+    /// Automated and manual plot callouts.
+    pub callout_manager: CalloutManager,
 
     pub(crate) compiled: Option<model::CompiledFormulation>,
     pub(crate) effective_ka: f64,
@@ -225,6 +233,9 @@ impl Default for PharmacokineticsTool {
             mec: 1.5,
             mtc: 5.0,
             log10_y: false,
+            active_challenge: None,
+            workspace: challenge::PkWorkspace::default(),
+            callout_manager: CalloutManager::new(),
             compiled: None,
             effective_ka: 1.2,
             solver_error: None,
@@ -280,12 +291,20 @@ impl PharmacokineticsTool {
         )
     }
 
-    /// Rebuilds the superposition models and evaluates concentration curves and PK metrics.
+    /// Rebuilds the superposition models and evaluates concentration curves, callouts, and PK metrics.
     pub fn recalculate(&mut self) {
+        if self.active_challenge.is_some() {
+            self.enforce_challenge_locks();
+        }
         self.revision = self.revision.wrapping_add(1).max(1);
         self.last_param_summary = self.param_summary();
         self.compile_models();
         self.evaluate_sampled_regimen();
+        if self.active_challenge.is_some() {
+            let state = self.to_challenge_regimen_state();
+            self.workspace.evaluate(&state);
+        }
+        self.sync_callouts();
     }
 }
 
@@ -340,6 +359,18 @@ impl InteractiveTool for PharmacokineticsTool {
 
     fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
         self.load_pk_state(state, true)
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_pk_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.eval_pk_challenge()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
