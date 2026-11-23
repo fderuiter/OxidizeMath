@@ -1,26 +1,22 @@
 //! Hoverable fitted curve & residual stem series injection, wrapping badge / error banner
 //! rendering, `Fit Curve` menus, and custom regression callback registration.
 
-use std::{
-    hash::{Hash, Hasher},
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 use egui::{Color32, Pos2, Rect, RichText, Stroke, Ui, pos2, vec2};
 
 use crate::{
-    AccessState, Corner,
+    AccessState, Corner, SharedPoints,
     a11y::{self, AccessibleTooltipExt as _},
     emit_plot_live_message,
     fit::{
         CustomFitCallback, CustomFitEvaluator, FitResult, FitType, MAX_FIT_PARAMS,
-        fit_custom_evaluator, fit_model_with_axes,
+        fit_custom_evaluator,
     },
     items::{Line, LineStyle, MarkerShape, PlotItem, Points},
+    runtime_cache::{CachedItemSeries, FitRequest, PlotRuntimeCache},
     transform::PlotTransform,
 };
-
-pub(crate) type BaseDatasetTuple = (String, Vec<[f64; 2]>, Color32);
 
 const DISPATCHED_PLOT_UI_ACTION_KEY: &str = "DISPATCHED_PLOT_UI_ACTION";
 
@@ -77,7 +73,7 @@ pub(crate) enum FitOverlayStatus {
     Hidden,
     /// Fit converged and produced a valid [`FitResult`].
     Succeeded {
-        result: Box<FitResult>,
+        result: Arc<FitResult>,
         accent_color: Color32,
     },
     /// Fit was requested by the user, but failed on the active dataset.
@@ -93,13 +89,7 @@ impl FitOverlayStatus {
     pub(crate) const fn can_toggle_visibility(&self) -> bool {
         matches!(self, Self::Succeeded { .. } | Self::Hidden)
     }
-
-    #[must_use]
-    pub(crate) const fn did_inject_items(&self) -> bool {
-        matches!(self, Self::Succeeded { .. })
-    }
 }
-
 static CUSTOM_FIT_CALLBACK: RwLock<Option<CustomFitCallback>> = RwLock::new(None);
 
 /// Registers an application-level custom formula compiler callback for `FitType::Custom` overlays.
@@ -118,6 +108,17 @@ pub fn has_custom_fit_callback() -> bool {
         .read()
         .ok()
         .is_some_and(|slot| slot.is_some())
+}
+
+pub(crate) fn custom_fit_callback_ptr() -> usize {
+    CUSTOM_FIT_CALLBACK
+        .read()
+        .ok()
+        .and_then(|slot| {
+            slot.as_ref()
+                .map(|cb| Arc::as_ptr(cb) as *const () as usize)
+        })
+        .unwrap_or(0)
 }
 
 /// Compiles `formula` via the registered callback and fits it to `points` using 6-parameter LM.
@@ -156,75 +157,88 @@ fn parse_seed_list(raw: &str) -> Result<Vec<f64>, String> {
     }
     Ok(out)
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct FitCacheKey {
-    pub(crate) fit_type: FitType,
-    pub(crate) dataset_idx: usize,
-    pub(crate) log_x: bool,
-    pub(crate) log_y: bool,
-    pub(crate) log_mode: bool,
-    pub(crate) dataset_hash: u64,
-    pub(crate) custom_hash: u64,
+pub(crate) fn solve_custom_fit(
+    ds_pts: &[[f64; 2]],
+    ds_name: &str,
+    formula: &str,
+    seeds_text: &str,
+) -> Result<FitResult, String> {
+    let seeds = parse_seed_list(seeds_text)?;
+    fit_custom_with_registered_callback(ds_pts, formula, &seeds, ds_name)
 }
 
-fn hash_fit_dataset(name: &str, points: &[[f64; 2]]) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    name.hash(&mut hasher);
-    points.len().hash(&mut hasher);
-    for pt in points {
-        pt[0].to_bits().hash(&mut hasher);
-        pt[1].to_bits().hash(&mut hasher);
+fn select_valid_dataset_index(base_series: &[CachedItemSeries], access_state: &mut AccessState) {
+    let valid_first = base_series
+        .iter()
+        .enumerate()
+        .find(|(_, entry)| entry.points.len() >= 2)
+        .map(|(idx, _)| idx);
+    if let Some(first_idx) = valid_first
+        && base_series
+            .get(access_state.fit_dataset_idx)
+            .is_none_or(|entry| entry.points.len() < 2)
+    {
+        access_state.fit_dataset_idx = first_idx;
     }
-    hasher.finish()
 }
 
-fn hash_custom_fit_config(access_state: &AccessState, fit_type: FitType) -> u64 {
-    if fit_type != FitType::Custom {
-        return 0;
-    }
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    access_state.custom_fit_formula.hash(&mut hasher);
-    access_state.custom_fit_seeds_text.hash(&mut hasher);
-    has_custom_fit_callback().hash(&mut hasher);
-    hasher.finish()
-}
-
-/// Computes the active regression fit (if enabled) and appends hoverable fitted curve and
-/// optional vertical residual stem series directly into `items` BEFORE legend construction.
+/// Computes or reuses the memoized active regression fit (if enabled) and appends hoverable
+/// fitted curve and optional vertical residual stem series directly into `items` BEFORE legend
+/// construction.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compute_and_inject_fit_items<'a>(
     ui: &Ui,
     items: &mut Vec<Box<dyn PlotItem + 'a>>,
-    base_datasets: &[BaseDatasetTuple],
+    base_series: &[CachedItemSeries],
+    runtime_cache: &mut PlotRuntimeCache,
     access_state: &mut AccessState,
     transform: &PlotTransform,
     log_x: bool,
     log_y: bool,
 ) -> FitOverlayStatus {
-    select_valid_dataset_index(base_datasets, access_state);
+    select_valid_dataset_index(base_series, access_state);
 
     let Some(fit_type) = access_state.fit_model else {
+        access_state.custom_fit_error = None;
         access_state.last_fit_error_announced = None;
+        runtime_cache.clear_fit();
         return FitOverlayStatus::Inactive;
     };
     if !access_state.show_fit_overlay {
         return FitOverlayStatus::Hidden;
     }
-    let Some((ds_name, ds_pts, ds_color)) = base_datasets.get(access_state.fit_dataset_idx) else {
+    let Some(target) = base_series.get(access_state.fit_dataset_idx) else {
         return FitOverlayStatus::Failed {
             fit_type,
             dataset_name: "Selected series".to_owned(),
             reason: "No visible series data available for curve fitting.".to_owned(),
         };
     };
-    let disp_name = display_dataset_name(ds_name, access_state.fit_dataset_idx);
-    let Some(fit_res) =
-        resolve_cached_fit(ds_pts, fit_type, &disp_name, log_x, log_y, access_state)
-    else {
-        let reason = access_state
-            .custom_fit_error
-            .clone()
+    let disp_name = display_dataset_name(&target.name, access_state.fit_dataset_idx);
+    let log_mode = access_state.fit_log_mode && fit_type.supports_log_mode();
+    let cb_ptr = if fit_type == FitType::Custom {
+        custom_fit_callback_ptr()
+    } else {
+        0
+    };
+    let (fit_opt, curve_pts, custom_err) = runtime_cache.resolve_fit_and_curve(&FitRequest {
+        ds_pts: &target.points,
+        ds_name: &disp_name,
+        fit_type,
+        log_x,
+        log_y,
+        fit_log_mode: log_mode,
+        custom_formula: &access_state.custom_fit_formula,
+        custom_seeds_text: &access_state.custom_fit_seeds_text,
+        custom_callback_ptr: cb_ptr,
+        need_curve: true,
+        transform,
+    });
+    access_state.custom_fit_error = custom_err.clone();
+    let Some(fit_res) = fit_opt else {
+        let reason = custom_err
             .filter(|_| fit_type == FitType::Custom)
-            .unwrap_or_else(|| diagnose_fit_failure(ds_pts, fit_type, log_x, log_y));
+            .unwrap_or_else(|| diagnose_fit_failure(&target.points, fit_type, log_x, log_y));
         return FitOverlayStatus::Failed {
             fit_type,
             dataset_name: disp_name,
@@ -233,108 +247,19 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
     };
 
     access_state.last_fit_error_announced = None;
-    let accent = resolve_fit_accent_color(ui, *ds_color);
+    let accent = resolve_fit_accent_color(ui, target.color);
     append_fitted_series(
         ui,
         items,
         &fit_res,
+        curve_pts,
         &disp_name,
         accent,
-        transform,
         access_state,
     );
     FitOverlayStatus::Succeeded {
-        result: Box::new(fit_res),
+        result: fit_res,
         accent_color: accent,
-    }
-}
-
-fn select_valid_dataset_index(base_datasets: &[BaseDatasetTuple], access_state: &mut AccessState) {
-    let valid_first = base_datasets
-        .iter()
-        .enumerate()
-        .find(|(_, (_, pts, _))| pts.len() >= 2)
-        .map(|(idx, _)| idx);
-    if let Some(first_idx) = valid_first
-        && base_datasets
-            .get(access_state.fit_dataset_idx)
-            .is_none_or(|(_, pts, _)| pts.len() < 2)
-    {
-        access_state.fit_dataset_idx = first_idx;
-    }
-}
-
-fn resolve_cached_fit(
-    ds_pts: &[[f64; 2]],
-    fit_type: FitType,
-    disp_name: &str,
-    log_x: bool,
-    log_y: bool,
-    access_state: &mut AccessState,
-) -> Option<FitResult> {
-    let log_mode = access_state.fit_log_mode && fit_type.supports_log_mode();
-    let cache_key = FitCacheKey {
-        fit_type,
-        dataset_idx: access_state.fit_dataset_idx,
-        log_x,
-        log_y,
-        log_mode,
-        dataset_hash: hash_fit_dataset(disp_name, ds_pts),
-        custom_hash: hash_custom_fit_config(access_state, fit_type),
-    };
-    if let Some((ref prev_key, ref prev_res)) = access_state.cached_fit
-        && *prev_key == cache_key
-    {
-        return prev_res.clone();
-    }
-    let solved = resolve_active_fit(
-        ds_pts,
-        disp_name,
-        fit_type,
-        access_state,
-        log_x,
-        log_y,
-        log_mode,
-    );
-    access_state.cached_fit = Some((cache_key, solved.clone()));
-    solved
-}
-
-fn resolve_active_fit(
-    ds_pts: &[[f64; 2]],
-    ds_name: &str,
-    fit_type: FitType,
-    access_state: &mut AccessState,
-    log_x: bool,
-    log_y: bool,
-    log_mode: bool,
-) -> Option<FitResult> {
-    if fit_type == FitType::Custom {
-        let seeds = match parse_seed_list(&access_state.custom_fit_seeds_text) {
-            Ok(s) => s,
-            Err(err) => {
-                access_state.custom_fit_error = Some(err);
-                return None;
-            }
-        };
-        match fit_custom_with_registered_callback(
-            ds_pts,
-            &access_state.custom_fit_formula,
-            &seeds,
-            ds_name,
-        ) {
-            Ok(res) => {
-                access_state.custom_fit_error = None;
-                Some(res)
-            }
-            Err(err) => {
-                access_state.custom_fit_error = Some(err);
-                None
-            }
-        }
-    } else {
-        access_state.custom_fit_error = None;
-        fit_model_with_axes(ds_pts, fit_type, ds_name, log_x, log_y, log_mode).ok()
     }
 }
 
@@ -350,12 +275,11 @@ fn append_fitted_series<'a>(
     ui: &Ui,
     items: &mut Vec<Box<dyn PlotItem + 'a>>,
     fit_res: &FitResult,
+    curve_pts: SharedPoints,
     disp_name: &str,
     accent: Color32,
-    transform: &PlotTransform,
     access_state: &AccessState,
 ) {
-    let curve_pts = sample_fit_curve(fit_res, transform);
     if curve_pts.len() >= 2 {
         let line_name = format!("Fit ({}): {disp_name}", fit_res.fit_type.short_label());
         let line = Line::new(line_name, curve_pts)
@@ -387,37 +311,32 @@ fn diagnose_fit_failure(
         FitType::Quartic => 5,
         _ => 2,
     };
-    let finite: Vec<[f64; 2]> = points
-        .iter()
-        .copied()
-        .filter(|p| p[0].is_finite() && p[1].is_finite())
-        .collect();
-    if finite.len() < min_pts {
-        return format!(
-            "Requires at least {min_pts} finite points (found {}).",
-            finite.len()
-        );
+    let (mut finite_n, mut pos_x, mut pos_y, mut neg_y) = (0usize, 0usize, 0usize, 0usize);
+    let (mut x_min, mut x_max) = (f64::INFINITY, f64::NEG_INFINITY);
+    for &[x, y] in points {
+        if x.is_finite() && y.is_finite() {
+            finite_n += 1;
+            pos_x += usize::from(x > 0.0);
+            pos_y += usize::from(y > 0.0);
+            neg_y += usize::from(y < 0.0);
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+        }
+    }
+    if finite_n < min_pts {
+        return format!("Requires at least {min_pts} finite points (found {finite_n}).");
     }
     let needs_pos_x = log_x || matches!(fit_type, FitType::PowerLaw | FitType::Logarithmic);
-    if needs_pos_x && finite.iter().filter(|p| p[0] > 0.0).count() < min_pts {
+    if needs_pos_x && pos_x < min_pts {
         return "Requires strictly positive X values (x > 0) for logarithmic/power domain."
             .to_owned();
     }
-    if log_y && finite.iter().filter(|p| p[1] > 0.0).count() < min_pts {
+    if log_y && pos_y < min_pts {
         return "Requires strictly positive Y values (y > 0) on logarithmic Y-axis.".to_owned();
     }
-    if matches!(fit_type, FitType::Exponential | FitType::PowerLaw) {
-        let pos_y = finite.iter().filter(|p| p[1] > 0.0).count();
-        let neg_y = finite.iter().filter(|p| p[1] < 0.0).count();
-        if pos_y < 2 && neg_y < 2 {
-            return "Requires at least 2 non-zero Y values of matching sign.".to_owned();
-        }
+    if matches!(fit_type, FitType::Exponential | FitType::PowerLaw) && pos_y < 2 && neg_y < 2 {
+        return "Requires at least 2 non-zero Y values of matching sign.".to_owned();
     }
-    let (x_min, x_max) = finite
-        .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
-            (lo.min(p[0]), hi.max(p[0]))
-        });
     if (x_max - x_min).abs() <= 1e-15 {
         return "Cannot fit constant-X dataset (zero X variance).".to_owned();
     }
@@ -426,36 +345,6 @@ fn diagnose_fit_failure(
         fit_type.short_label()
     )
 }
-
-fn sample_fit_curve(fit_res: &FitResult, transform: &PlotTransform) -> Vec<[f64; 2]> {
-    let bounds = transform.bounds();
-    let (x_min, x_max) = (bounds.min[0], bounds.max[0]);
-    if !x_min.is_finite() || !x_max.is_finite() || x_max <= x_min {
-        return Vec::new();
-    }
-    let count = 200_usize;
-    let use_log_x = transform.log_axis().x && x_min > 0.0;
-    let (lo_log, hi_log) = if use_log_x {
-        (x_min.log10(), x_max.log10())
-    } else {
-        (0.0, 0.0)
-    };
-    let mut out = Vec::with_capacity(count + 1);
-    for i in 0..=count {
-        let t = i as f64 / (count as f64);
-        let x = if use_log_x {
-            10.0_f64.powf(lo_log + t * (hi_log - lo_log))
-        } else {
-            x_min + t * (x_max - x_min)
-        };
-        let y = fit_res.eval(x);
-        if x.is_finite() && y.is_finite() {
-            out.push([x, y]);
-        }
-    }
-    out
-}
-
 fn residual_stem_color(ui: &Ui, accent: Color32) -> Color32 {
     if ui.visuals().dark_mode {
         Color32::from_rgb(
@@ -684,7 +573,6 @@ fn paint_failed_fit_banner(
                     .clicked()
                     {
                         access_state.fit_model = None;
-                        access_state.cached_fit = None;
                         access_state.custom_fit_error = None;
                         access_state.last_fit_error_announced = None;
                     }
@@ -706,16 +594,16 @@ fn format_metric_compact(v: f64) -> String {
 /// Renders the shared `Fit Curve` menu items for both the docked header and context menu.
 pub(crate) fn render_fit_curve_menu(
     ui: &mut Ui,
-    base_datasets: &[BaseDatasetTuple],
+    base_datasets: &[CachedItemSeries],
     access_state: &mut AccessState,
     in_context_menu: bool,
     fit_status: &FitOverlayStatus,
 ) {
-    let valid: Vec<(usize, &String, &Vec<[f64; 2]>)> = base_datasets
+    let valid: Vec<(usize, &str, usize)> = base_datasets
         .iter()
         .enumerate()
-        .filter(|(_, (_, pts, _))| pts.len() >= 2)
-        .map(|(i, (name, pts, _))| (i, name, pts))
+        .filter(|(_, entry)| entry.points.len() >= 2)
+        .map(|(i, entry)| (i, entry.name.as_str(), entry.points.len()))
         .collect();
     if valid.is_empty() {
         let reason = "Requires a dataset with at least 2 points for curve fitting";
@@ -725,6 +613,13 @@ pub(crate) fn render_fit_curve_menu(
                 .accessible_tooltip(reason);
         }
         return;
+    }
+    if let Some(&(first_idx, _, _)) = valid.first()
+        && !valid
+            .iter()
+            .any(|&(idx, _, _)| idx == access_state.fit_dataset_idx)
+    {
+        access_state.fit_dataset_idx = first_idx;
     }
     render_dataset_selector(ui, &valid, access_state);
     ui.label(RichText::new("Fit Model:").small().weak());
@@ -770,7 +665,6 @@ fn render_context_fit_actions(
     }
     if ui.button("Clear Fit").clicked() {
         access_state.fit_model = None;
-        access_state.cached_fit = None;
         access_state.custom_fit_error = None;
         access_state.last_fit_error_announced = None;
         ui.close();
@@ -811,19 +705,19 @@ fn render_custom_fit_controls(ui: &mut Ui, access_state: &mut AccessState) {
 
 fn render_dataset_selector(
     ui: &mut Ui,
-    valid: &[(usize, &String, &Vec<[f64; 2]>)],
+    valid: &[(usize, &str, usize)],
     access_state: &mut AccessState,
 ) {
     if valid.len() <= 1 {
         return;
     }
     ui.label(RichText::new("Select Dataset:").small().weak());
-    for &(idx, name, pts) in valid {
+    for &(idx, name, len) in valid {
         let label = display_dataset_name(name, idx);
         if ui
             .selectable_label(
                 access_state.fit_dataset_idx == idx,
-                format!("{label} ({} pts)", pts.len()),
+                format!("{label} ({len} pts)"),
             )
             .clicked()
         {

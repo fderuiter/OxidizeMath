@@ -57,6 +57,9 @@ fn test_word_boundary_search_matches_scientific_terms_and_rejects_noise() {
         ("split horizontal", "Layout: Split Horizontal"),
         ("high contrast", "Theme: High Contrast"),
         ("starter gallery", "Open Starter Gallery"),
+        ("step back", "Step Back"),
+        ("previous keyframe", "Previous Keyframe"),
+        ("correlated risk", "Correlated Risk"),
     ] {
         palette.query = query.to_string();
         let items = palette.filter_items(&tabs);

@@ -51,6 +51,8 @@ pub enum PaletteAction {
     ResetParameters,
     PlayPauseSimulation,
     StepSimulationForward,
+    StepSimulationBack,
+    JumpPreviousKeyframe,
     ResetSimulationPlayback,
     CameraResetView,
     CameraToggleProjection,

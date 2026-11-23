@@ -408,6 +408,8 @@ fn dispatched_command_pair(action: &PaletteAction) -> Option<(&'static str, &'st
     Some(match action {
         A::PlayPauseSimulation => ("Simulation Playback", "Play / Pause"),
         A::StepSimulationForward => ("Simulation Playback", "Step Forward"),
+        A::StepSimulationBack => ("Simulation Playback", "Step Back"),
+        A::JumpPreviousKeyframe => ("Simulation Playback", "Previous Keyframe"),
         A::ResetSimulationPlayback => ("Simulation Playback", "Reset Simulation"),
         A::CameraResetView => ("Camera 3D", "Reset View"),
         A::CameraToggleProjection => ("Camera 3D", "Toggle Projection"),

@@ -6,10 +6,10 @@
 mod state;
 
 use super::bankroll_ensemble::{BankrollEnsembleLab, BankrollLabMode};
-use crate::accessibility::AccessibleHoverText;
+use crate::accessibility::{announce_live_status, AccessibleHoverText};
 use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoint};
+use egui_plot::{Legend, Line, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::kelly::{
     expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
     UnitInterval,
@@ -44,7 +44,7 @@ fn finite_kelly_growth_rate(p: &UnitInterval, o: &Odds, stake_fraction: f64) -> 
     }
 }
 
-fn settle_bet(bankroll: f64, fraction: &BankrollFraction, net_b: f64, win: bool) -> f64 {
+pub(crate) fn settle_bet(bankroll: f64, fraction: &BankrollFraction, net_b: f64, win: bool) -> f64 {
     settle_raw_fraction(bankroll, fraction.value(), net_b, win)
 }
 
@@ -125,6 +125,15 @@ impl BankrollGrowthTool {
     pub fn rerun_simulation(&mut self) {
         self.seed_counter = self.seed_counter.wrapping_add(1);
         self.recalculate();
+    }
+
+    /// Evaluates one Full-Kelly wager outcome from `bankroll` using the tool's active `(probability, odds)`.
+    #[cfg(test)]
+    pub fn evaluate_full_kelly_bet(&self, bankroll: f64, win: bool) -> Result<f64, String> {
+        let p = UnitInterval::new(self.probability).map_err(|e| format!("Error: {e}"))?;
+        let o = Odds::from_net_odds(self.odds).map_err(|e| format!("Error: {e}"))?;
+        let fk = kelly_fraction(&p, &o).map_err(|e| format!("Error: {e}"))?;
+        Ok(settle_bet(bankroll, &fk, o.net_profit_multiplier(), win))
     }
 
     fn clear_trajectories(&mut self) {
@@ -212,18 +221,23 @@ impl BankrollGrowthTool {
         changed |= ui
             .add(
                 egui::Slider::new(&mut self.initial_bankroll, 100.0..=10_000.0)
-                    .text("Initial Bankroll"),
+                    .text("Initial Bankroll ($)"),
             )
+            .accessible_hover_text("Starting capital before the first wager")
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.probability, 0.01..=0.99).text("Win Probability (p)"))
+            .accessible_hover_text("Estimated true win probability for each independent bet")
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.odds, 0.1..=10.0).text("Net Odds (b)"))
-            .accessible_hover_text("Net profit multiplier. E.g., for +100 / even money, b = 1.0.")
+            .accessible_hover_text(
+                "Net profit multiplier per unit staked. For even money (+100 / decimal 2.0), b = 1.0.",
+            )
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.num_bets, 10..=1000).text("Number of Bets"))
+            .accessible_hover_text("Number of sequential wagers in the simulated path")
             .changed();
         changed |= ui
             .add(
@@ -263,16 +277,18 @@ impl BankrollGrowthTool {
                 .clicked()
             {
                 self.rerun_simulation();
+                announce_live_status(ui.ctx(), "Recomputed Kelly bankroll growth paths");
                 *changed = false;
             }
             if ui
                 .button("↻ Reset to Defaults")
                 .accessible_hover_text(
-                    "Reset initial bankroll, win probability, odds, and bet count to default values",
+                    "Reset initial bankroll, win probability, net odds, and bet count to defaults",
                 )
                 .clicked()
             {
                 self.reset_defaults();
+                announce_live_status(ui.ctx(), "Reset bankroll growth parameters to defaults");
                 *changed = false;
             }
             ui.small(format!(
@@ -294,7 +310,7 @@ impl BankrollGrowthTool {
         ui.heading("Bankroll Simulation");
         Plot::new("bankroll_growth_plot")
             .view_aspect(2.0)
-            .legend(egui_plot::Legend::default())
+            .legend(Legend::default())
             .show(ui, |plot_ui| {
                 plot_ui.line(
                     Line::new("Full Kelly", &self.full_kelly_points[..])
@@ -330,6 +346,12 @@ impl InteractiveTool for BankrollGrowthTool {
     }
     fn domain(&self) -> &'static str {
         "financial_math"
+    }
+    fn has_finite_parameters(&self) -> bool {
+        self.initial_bankroll.is_finite()
+            && self.probability.is_finite()
+            && self.odds.is_finite()
+            && self.stake_multiplier.is_finite()
     }
 
     fn observables(&self) -> Vec<(&'static str, f64)> {

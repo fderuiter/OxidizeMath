@@ -3,7 +3,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimTool};
-use crate::async_sim::{SculptStatePayload, SimCommand, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    CheckpointParams, SculptStatePayload, SimCommand, SimulationRunner, StateSnapshot,
+    TimeTravelCheckpoint,
+};
 use crate::framework::MAX_RLE_MASK_CELLS;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
@@ -172,7 +175,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 }
 
-/// Background worker runner driving a [`UnifiedModel`] with shared parameters, formulas, and sculpt state.
+/// Background worker runner driving a [`UnifiedModel`] with shared parameters, formulas, sculpt state,
+/// and optional time-travel checkpoint hooks.
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,
@@ -189,6 +193,18 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
             params,
             Arc::new(RwLock::new(SculptStatePayload::default())),
             Arc::new(RwLock::new(None)),
+        )
+    }
+
+    /// Creates a runner sharing both `params` and an optional [`CompiledFormulaPayload`] slot.
+    pub fn with_formula(
+        params: Arc<RwLock<HashMap<String, f64>>>,
+        formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+    ) -> Self {
+        Self::with_shared(
+            params,
+            Arc::new(RwLock::new(SculptStatePayload::default())),
+            formula,
         )
     }
 
@@ -221,19 +237,39 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
         }
     }
 
-    fn sync_formula(&mut self, current_params: &HashMap<String, f64>) {
-        let payload_opt = self
-            .formula
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let next_rev = payload_opt.as_ref().map(|p| p.revision);
-        if next_rev != self.applied_formula_rev {
-            self.model
-                .apply_compiled_formula(payload_opt.as_ref(), current_params);
-            self.applied_formula_rev = next_rev;
-            self.apply_sculpt_if_present(current_params);
+    fn sync_formula_fields(
+        model: &mut M,
+        sculpt_state: &RwLock<SculptStatePayload>,
+        formula: &RwLock<Option<CompiledFormulaPayload>>,
+        applied_formula_rev: &mut Option<u64>,
+        current_params: &HashMap<String, f64>,
+    ) {
+        let next_rev = {
+            let guard = formula.read().unwrap_or_else(|e| e.into_inner());
+            let rev = guard.as_ref().map(|p| p.revision);
+            if rev == *applied_formula_rev {
+                return;
+            }
+            model.apply_compiled_formula(guard.as_ref(), current_params);
+            rev
+        };
+        *applied_formula_rev = next_rev;
+        if M::supports_spatial_brush() {
+            let sculpt = sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+            if !sculpt.is_empty() {
+                model.apply_sculpt_payload(&sculpt, current_params);
+            }
         }
+    }
+
+    fn sync_formula(&mut self, current_params: &HashMap<String, f64>) {
+        Self::sync_formula_fields(
+            &mut self.model,
+            &self.sculpt_state,
+            &self.formula,
+            &mut self.applied_formula_rev,
+            current_params,
+        );
     }
 
     fn sync_sculpt_from_model(&self, current_params: &HashMap<String, f64>) {
@@ -285,13 +321,15 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
     }
 
     fn step(&mut self) {
-        let current_params = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        self.sync_formula(&current_params);
-        self.model.step(&current_params);
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        Self::sync_formula_fields(
+            &mut self.model,
+            &self.sculpt_state,
+            &self.formula,
+            &mut self.applied_formula_rev,
+            &guard,
+        );
+        self.model.step(&guard);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -308,5 +346,35 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
 
     fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
         self.model.diagnostic_report().cloned()
+    }
+
+    fn checkpoint_stride(&self) -> Option<usize> {
+        self.model.checkpoint_stride()
+    }
+
+    fn current_step(&self) -> usize {
+        self.model.current_step()
+    }
+
+    fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        self.model.capture_checkpoint(&guard)
+    }
+
+    fn capture_active_params(&self) -> Option<CheckpointParams> {
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        self.model.capture_active_params(&guard)
+    }
+
+    fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
+        self.model.restore_checkpoint(checkpoint);
+    }
+
+    fn rebuild_history(&mut self, front: &[TimeTravelCheckpoint], back: &[TimeTravelCheckpoint]) {
+        self.model.rebuild_history(front, back);
+    }
+
+    fn replay_step(&mut self, params: &CheckpointParams) {
+        self.model.replay_step(params);
     }
 }
