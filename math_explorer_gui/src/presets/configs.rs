@@ -119,39 +119,99 @@ pub struct ReplicatorPresetConfig {
     pub symbolic_params: std::collections::BTreeMap<String, f64>,
 }
 
+const MAX_REPLICATOR_STRATEGIES: usize = 16;
+const MAX_STRATEGY_NAME_BYTES: usize = 128;
+const MIN_REPLICATOR_DT: f64 = 1e-6;
+const MAX_REPLICATOR_DT: f64 = 5.0;
+const MAX_REPLICATOR_TIME_HORIZON: f64 = 10_000.0;
+const MAX_REPLICATOR_PAYOFF_ABS: f64 = 1e4;
+
 impl ReplicatorPresetConfig {
-    /// Validates matrix dimensions, strategy counts, and optional symbolic payoff formulas.
+    /// Validates matrix dimensions, numeric domain and step bounds, and optional symbolic formulas.
     pub fn validate(&self) -> Result<(), String> {
         let rows = self.payoff_matrix.len();
-        if rows == 0 {
-            return Err("Payoff matrix must not be empty".to_string());
+        if rows == 0 || rows > MAX_REPLICATOR_STRATEGIES {
+            return Err(format!(
+                "Payoff matrix strategy count ({rows}) must be in 1..={MAX_REPLICATOR_STRATEGIES}"
+            ));
         }
         for (i, row) in self.payoff_matrix.iter().enumerate() {
             if row.len() != rows {
                 return Err(format!(
-                    "Payoff matrix must be square (row {} has length {}, expected {})",
-                    i,
+                    "Payoff matrix must be square (row {i} has length {}, expected {rows})",
                     row.len(),
-                    rows
                 ));
+            }
+            for (j, &val) in row.iter().enumerate() {
+                if !val.is_finite()
+                    || !(-MAX_REPLICATOR_PAYOFF_ABS..=MAX_REPLICATOR_PAYOFF_ABS).contains(&val)
+                {
+                    return Err(format!(
+                        "Payoff matrix entry ({i}, {j}) must be finite and within [-10000, 10000]"
+                    ));
+                }
             }
         }
         if self.strategy_names.len() != rows {
             return Err(format!(
-                "Strategy names count ({}) does not match payoff matrix dimensions ({}x{})",
+                "Strategy names count ({}) does not match payoff matrix dimensions ({rows}x{rows})",
                 self.strategy_names.len(),
-                rows,
-                rows
             ));
         }
+        if self
+            .strategy_names
+            .iter()
+            .any(|name| name.len() > MAX_STRATEGY_NAME_BYTES)
+        {
+            return Err(format!(
+                "Strategy names must be at most {MAX_STRATEGY_NAME_BYTES} bytes"
+            ));
+        }
+        self.validate_population_and_time_bounds(rows)?;
+        self.validate_symbolic(rows)
+    }
+
+    fn validate_population_and_time_bounds(&self, rows: usize) -> Result<(), String> {
         if self.initial_population.len() != rows {
             return Err(format!(
-                "Initial population count ({}) does not match strategy count ({})",
+                "Initial population count ({}) does not match strategy count ({rows})",
                 self.initial_population.len(),
-                rows
             ));
         }
-        self.validate_symbolic(rows)
+        if !self
+            .initial_population
+            .iter()
+            .all(|p| p.is_finite() && (0.0..=1.0).contains(p))
+        {
+            return Err(
+                "Initial population proportions must be finite and within [0, 1]".to_string(),
+            );
+        }
+        let pop_sum: f64 = self.initial_population.iter().copied().sum();
+        if !pop_sum.is_finite() || pop_sum <= 0.0 {
+            return Err("Initial population sum must be strictly positive".to_string());
+        }
+        if !self.dt.is_finite() || !(MIN_REPLICATOR_DT..=MAX_REPLICATOR_DT).contains(&self.dt) {
+            return Err(format!(
+                "Replicator dt ({}) must be finite and within [{MIN_REPLICATOR_DT}, {MAX_REPLICATOR_DT}]",
+                self.dt
+            ));
+        }
+        if !self.time_horizon.is_finite()
+            || self.time_horizon <= 0.0
+            || self.time_horizon > MAX_REPLICATOR_TIME_HORIZON
+        {
+            return Err(format!(
+                "Replicator time_horizon ({}) must be finite and within (0, {MAX_REPLICATOR_TIME_HORIZON}]",
+                self.time_horizon
+            ));
+        }
+        if checked_ode_step_count(self.dt, self.time_horizon).is_none() {
+            return Err(format!(
+                "Replicator ODE step count (time_horizon / dt) exceeds maximum allowed limit ({MAX_ODE_STEPS})"
+            ));
+        }
+        Ok(())
     }
 
     fn validate_symbolic(&self, rows: usize) -> Result<(), String> {

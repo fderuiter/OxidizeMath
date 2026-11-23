@@ -31,7 +31,11 @@ impl ReplicatorDynamicsTool {
                     if self.symbolic_mode {
                         ui.label(format!("{:.2}", self.payoff_matrix[(i, j)]));
                     } else if ui
-                        .add(egui::DragValue::new(&mut self.payoff_matrix[(i, j)]).speed(0.1))
+                        .add(
+                            egui::DragValue::new(&mut self.payoff_matrix[(i, j)])
+                                .speed(0.1)
+                                .range(-1e4..=1e4),
+                        )
                         .changed()
                     {
                         self.recompute_trajectory_preserving_playback();

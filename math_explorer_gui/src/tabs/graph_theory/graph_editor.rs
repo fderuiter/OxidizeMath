@@ -254,11 +254,22 @@ impl GraphEditorTool {
 
     fn click_add_node(&mut self, pos: Pos2) {
         if self.hovered_node.is_none() {
+            let Some(next_id) = self
+                .next_node_id
+                .checked_add(1)
+                .filter(|_| self.next_node_id < u32::MAX as usize)
+            else {
+                crate::accessibility::announce_status(
+                    "Cannot add node: node identifier limit reached",
+                );
+                return;
+            };
             self.push_undo_snapshot();
+            let node_id = self.next_node_id;
             let node_index = self.graph.add_node(pos);
-            self.node_indices.insert(self.next_node_id, node_index);
-            self.node_positions.insert(self.next_node_id, pos);
-            self.next_node_id += 1;
+            self.node_indices.insert(node_id, node_index);
+            self.node_positions.insert(node_id, pos);
+            self.next_node_id = next_id;
         }
     }
 
@@ -448,5 +459,7 @@ impl GraphEditorTool {
 
 // [cite:graph_parameters_rust]
 
+#[cfg(test)]
+mod bounds_tests;
 #[cfg(test)]
 mod tests;
