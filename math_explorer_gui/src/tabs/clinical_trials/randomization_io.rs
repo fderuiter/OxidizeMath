@@ -6,7 +6,62 @@
 use std::sync::mpsc::{channel, Receiver};
 
 use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
+use eframe::egui;
+use egui_plot::{Legend, Line, Plot, PlotPoints};
 use math_explorer::applied::clinical_trials::design::{Group, Patient};
+
+/// Default deterministic RNG seed for trial subject allocation.
+pub const DEFAULT_RNG_SEED: u64 = 42;
+
+/// Default multi-stratum enrollment specification.
+pub const DEFAULT_STRATA_SPEC: &str = "Age<65:12, Age>=65:12";
+
+/// Returns [`DEFAULT_RNG_SEED`] for `serde(default)`.
+#[must_use]
+pub const fn default_seed() -> u64 {
+    DEFAULT_RNG_SEED
+}
+
+/// Returns `true` when `seed` equals [`DEFAULT_RNG_SEED`].
+#[must_use]
+pub const fn is_default_seed(seed: &u64) -> bool {
+    *seed == DEFAULT_RNG_SEED
+}
+
+/// Returns [`DEFAULT_STRATA_SPEC`] as an owned `String` for `serde(default)`.
+#[must_use]
+pub fn default_strata_spec() -> String {
+    DEFAULT_STRATA_SPEC.to_string()
+}
+
+/// Returns `true` when `spec` matches [`DEFAULT_STRATA_SPEC`].
+#[must_use]
+pub fn is_default_strata_spec(spec: &str) -> bool {
+    spec == DEFAULT_STRATA_SPEC
+}
+
+/// Renders the cumulative treatment, control, and arm-imbalance trajectory plot.
+pub fn draw_balance_plot(schedule: &[ScheduleRow], ui: &mut egui::Ui) {
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+    ui.heading("Cumulative Arm Balance Trajectory");
+    let (trt_pts, ctrl_pts, diff_pts) = build_cumulative_series(schedule);
+    Plot::new("randomization_balance_plot")
+        .legend(Legend::default())
+        .view_aspect(2.0)
+        .x_axis_label("Enrolled Subject Index")
+        .y_axis_label("Cumulative Subjects / Imbalance")
+        .show(ui, |plot_ui| {
+            plot_ui.line(
+                Line::new("Treatment Enrolled", PlotPoints::new(trt_pts)).color(palette.success),
+            );
+            plot_ui.line(
+                Line::new("Control Enrolled", PlotPoints::new(ctrl_pts))
+                    .color(palette.series_color(0)),
+            );
+            plot_ui
+                .line(Line::new("Imbalance (T - C)", PlotPoints::new(diff_pts)).color(palette.warning));
+        });
+}
 
 const SCHEDULE_CSV_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
     filter_name: "Randomization Schedule (*.csv)",
@@ -198,5 +253,20 @@ impl ScheduleSaveIo {
         }
     }
 }
+
+/// Default starter preset payload for [`super::randomization::RandomizationTool`].
+pub const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Permuted Block Randomization",
+    "domain": "clinical_trials",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "randomization_type": "Block",
+    "n_subjects": 24,
+    "block_size": 4
+  }
+}"#;
 
 // [cite:clinical_trials_statistics]

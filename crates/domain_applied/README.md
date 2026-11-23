@@ -15,7 +15,7 @@ The crate spans life sciences, material engineering, distributed systems, and qu
   - Comparison and pairing strategies (`HigherIsBetter`, `LowerIsBetter`, `ThresholdComparator`, `UnmatchedPairing`, `MatchedPairing`).
   - Analytical bivariate survival simulation (`BivariateWeibullModel`, `ProbabilityWinRatioContext`, `WinLossCounts`).
 - **`clinical_trials`**: Biostatistical trial design (`SimpleRandomizer`, `BlockRandomizer`, `StratifiedRandomizer`), sample size and power determination, hypothesis testing (`TTestIndependent`, `ChiSquare2x2`, `calculate_risk_metrics`), and survival analysis (`kaplan_meier`, `try_estimate_hazard_ratio`, `log_rank_test`).
-- **`pharmacokinetics`**: Bateman function models for drug absorption, distribution, metabolism, and elimination (ADME).
+- **`pharmacokinetics`**: One-compartment oral ADME kinetics (`PKParameters`, `BatemanModel`, `half_life`, `t_max`, `solve_ka`), multi-dose linear superposition (`SuperpositionModel`), biphasic extended-release formulations (`TwoPulseModel`), and stereoselective chiral mixtures (`EnantiomerModel`).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
 - **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.
@@ -67,8 +67,31 @@ assert_eq!(losses, 0);
 assert!(statistics.win_ratio.is_infinite() || statistics.win_ratio > 1.0);
 ```
 
+### Modeling Multi-Dose ADME Pharmacokinetics
+
+Calibrate oral absorption rates from target peak times and evaluate multi-dose plasma curves across immediate-release, biphasic two-pulse, or chiral enantiomer regimens:
+
+```rust
+# use domain_applied::__doctest_facade as math_explorer;
+use math_explorer::applied::pharmacokinetics::{
+    half_life, solve_ka, t_max, BatemanModel, PKParameters, PharmacokineticModel,
+    SuperpositionModel, TwoPulseModel,
+};
+
+let ke = std::f64::consts::LN_2 / 8.0;
+let ka = solve_ka(2.0, ke, 1.0, 100, 1.0e-7).expect("Convergent absorption rate");
+assert!((half_life(ke) - 8.0).abs() < 1.0e-9);
+assert!((t_max(ka, ke) - 2.0).abs() < 1.0e-6);
+
+let params = PKParameters::new(0.85, 100.0, ka, ke, 35.0).expect("Valid PK parameters");
+let xr_pulse = TwoPulseModel::new(BatemanModel::new(params), 4.0, 0.5, 0.5);
+let regimen = SuperpositionModel::new(xr_pulse, vec![0.0, 12.0, 24.0]);
+
+assert!(regimen.concentration(26.0) > regimen.concentration(2.0));
+```
+
 ---
 
 ## 3. Ecosystem Integration
 
-Algorithms from `domain_applied` power interactive simulation workbenches in `math_explorer_gui`—including the Win Ratio Workbench, two-arm Kaplan-Meier survival curves with log-rank testing and risk tables, seeded stratified randomization schedules, and power-curve sample size calculators—enabling local scenario exploration for clinical biostatisticians, battery engineers, and data scientists.
+Algorithms from `domain_applied` power interactive simulation workbenches in `math_explorer_gui`—including the Win Ratio Workbench, the `Pharmacokinetics (ADME)` multi-dose regimen planner, two-arm Kaplan-Meier survival curves with log-rank testing and risk tables, seeded stratified randomization schedules and Simpson's paradox labs, and power-curve sample size calculators in `ClinicalTrialsTab`—enabling local scenario exploration for clinical biostatisticians, pharmacometricians, battery engineers, and data scientists.
