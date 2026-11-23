@@ -233,7 +233,7 @@ fn assert_expected_capability_counts(counts: [usize; 8]) {
     let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
     let expected_plot = if has_surface_morpho { 66 } else { 65 };
-    let expected_solid = if has_surface_morpho { 7 } else { 6 };
+    let expected_solid = if has_surface_morpho { 8 } else { 7 };
     let expected_non_shader = if has_surface_morpho { 84 } else { 83 };
     assert_eq!(
         plot, expected_plot,
@@ -379,6 +379,7 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         "CrystalViewer",
         "SpinVisualizer",
         "CorticalMorphometryTool",
+        "VolumetricFieldStudioTool",
     ];
     for id in solid_ids {
         let meta = inventory::iter::<crate::framework::ToolMetadata>
