@@ -6,7 +6,7 @@ impl crate::tabs::ExplorerTab for MockTab {
     fn name(&self) -> &'static str {
         self.0
     }
-    fn show(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {}
+    fn show_inside(&mut self, _ui: &mut egui::Ui, _frame: &mut eframe::Frame) {}
 }
 
 fn mock_tabs() -> Vec<Box<dyn crate::tabs::ExplorerTab>> {

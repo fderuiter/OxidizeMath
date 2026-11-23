@@ -47,3 +47,30 @@ pub fn laguerre(n: u64, x: f64) -> f64 {
     }
     l_curr
 }
+
+/// Generalized (Associated) Laguerre Polynomial $L_n^{(\alpha)}(x)$ for radial hydrogenic eigenstates.
+///
+/// Satisfies the upward three-term recurrence:
+/// $(k+1)L_{k+1}^{(\alpha)}(x) = (2k + 1 + \alpha - x)L_k^{(\alpha)}(x) - (k + \alpha)L_{k-1}^{(\alpha)}(x)$
+/// with $L_0^{(\alpha)}(x) = 1$ and $L_1^{(\alpha)}(x) = 1 + \alpha - x$.
+#[verified_engine::verified]
+pub fn associated_laguerre(n: u64, alpha: f64, x: f64) -> f64 {
+    if n == 0 {
+        return 1.0;
+    }
+    if n == 1 {
+        return 1.0 + alpha - x;
+    }
+
+    let mut l_prev = 1.0;
+    let mut l_curr = 1.0 + alpha - x;
+
+    for k in 1..n {
+        let k_f = k as f64;
+        let l_next =
+            ((2.0 * k_f + 1.0 + alpha - x) * l_curr - (k_f + alpha) * l_prev) / (k_f + 1.0);
+        l_prev = l_curr;
+        l_curr = l_next;
+    }
+    l_curr
+}

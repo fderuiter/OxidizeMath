@@ -4,10 +4,20 @@ use super::*;
 use crate::async_sim::{SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
+use egui::{CentralPanel, Frame};
 use math_commons::math_kernel::colormap::heatmap_color;
-use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
+use std::{sync::Arc, thread, time::Duration};
+
+fn raw_screen_input(w: f32, h: f32, events: Vec<egui::Event>) -> egui::RawInput {
+    egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(w, h),
+        )),
+        events,
+        ..Default::default()
+    }
+}
 
 fn wait_for_morphogenesis_snapshot(tool: &mut MorphogenesisTool) {
     for _ in 0..600 {
@@ -38,6 +48,15 @@ fn morpho_state(tab: &MorphogenesisTab) -> MorphogenesisToolState {
     let json = tab.framework.active_tool.as_ref().unwrap().save_state();
     serde_json::from_str(&json.expect("MorphogenesisTool state"))
         .expect("valid Morphogenesis state")
+}
+
+fn render_tab_frame(ctx: &egui::Context, tab: &mut MorphogenesisTab) {
+    let mut frame = eframe::Frame::_new_kittest();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+    });
 }
 
 fn render_tool_frame(ctx: &egui::Context, tool: &mut MorphogenesisTool) -> egui::FullOutput {
@@ -260,8 +279,7 @@ fn test_morphogenesis_all_controls_update_state_revision_and_legacy_compatibilit
     assert_eq!(morpho_state(&restored).state, Some(SimWorkerState::Ready));
 
     let ctx = egui::Context::default();
-    let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+    render_tab_frame(&ctx, &mut tab);
     assert_eq!(morpho_state(&tab).state, Some(SimWorkerState::Running));
     let saved_running = tab.save_state().expect("save_state should succeed");
     restored.load_state(&saved_running);
@@ -280,15 +298,12 @@ fn test_morphogenesis_all_controls_update_state_revision_and_legacy_compatibilit
 fn assert_tab_png_export(tab: &mut MorphogenesisTab) {
     let ctx = egui::Context::default();
     let mut frame = eframe::Frame::_new_kittest();
-    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
-    let raw = egui::RawInput {
-        screen_rect: Some(screen_rect),
-        ..Default::default()
-    };
-    let _ = ctx.run(raw, |ctx| {
+    let _ = ctx.run(raw_screen_input(1280.0, 800.0, Vec::new()), |ctx| {
         tab.framework.show_export_modal = true;
         tab.framework.queue_export(ExportFormat::Png);
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
     assert_eq!(
         tab.framework.export_status_severity,
@@ -342,14 +357,11 @@ fn test_morphogenesis_poisoned_lock_and_zero_allocation_step_and_png_export() {
 
 fn click_morpho_button(ctx: &egui::Context, tab: &mut MorphogenesisTab, label_substr: &str) {
     let mut frame = eframe::Frame::_new_kittest();
-    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
-    let out = ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            ..Default::default()
-        },
-        |ctx| tab.show(ctx, &mut frame),
-    );
+    let out = ctx.run(raw_screen_input(1400.0, 900.0, Vec::new()), |ctx| {
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+    });
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
     let bounds = ak
         .nodes
@@ -361,28 +373,18 @@ fn click_morpho_button(ctx: &egui::Context, tab: &mut MorphogenesisTab, label_su
         ((bounds.x0 + bounds.x1) * 0.5) as f32,
         ((bounds.y0 + bounds.y1) * 0.5) as f32,
     );
-    let _ = ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            events: vec![
-                egui::Event::PointerMoved(center),
-                egui::Event::PointerButton {
-                    pos: center,
-                    button: egui::PointerButton::Primary,
-                    pressed: true,
-                    modifiers: egui::Modifiers::NONE,
-                },
-                egui::Event::PointerButton {
-                    pos: center,
-                    button: egui::PointerButton::Primary,
-                    pressed: false,
-                    modifiers: egui::Modifiers::NONE,
-                },
-            ],
-            ..Default::default()
-        },
-        |ctx| tab.show(ctx, &mut frame),
-    );
+    let btn = |pressed| egui::Event::PointerButton {
+        pos: center,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let events = vec![egui::Event::PointerMoved(center), btn(true), btn(false)];
+    let _ = ctx.run(raw_screen_input(1400.0, 900.0, events), |ctx| {
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+    });
 }
 
 fn assert_workspace_undo_and_mws_roundtrip(ctx: &egui::Context) {
@@ -440,8 +442,7 @@ fn test_morphogenesis_undo_mws_reset_live_region_theory_and_preset_io() {
     assert!(!tab.framework.show_theory_portal);
     click_morpho_button(&ctx, &mut tab, "Theory");
     assert!(tab.framework.show_theory_portal);
-    let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+    render_tab_frame(&ctx, &mut tab);
     assert!(
         scientific_metadata::citation_registry::CitationRegistry::get("Turing Morphogenesis")
             .is_some_and(|c| !c.is_empty())
@@ -461,9 +462,8 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
     assert_eq!(morpho_state(&tab).state, Some(SimWorkerState::Ready));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 
-    let mut frame = eframe::Frame::_new_kittest();
     for _ in 0..400 {
-        let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+        render_tab_frame(&ctx, &mut tab);
         let _ = render_tool_frame(&ctx, &mut tool);
         if morpho_state(&tab).state == Some(SimWorkerState::Faulted)
             && tool.worker.state() == SimWorkerState::Faulted
