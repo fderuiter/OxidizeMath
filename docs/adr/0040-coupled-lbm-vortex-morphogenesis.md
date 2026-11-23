@@ -1,4 +1,4 @@
-# ADR 0039: Coupled D2Q9 Lattice Boltzmann Vortex Engine for 2D Advection-Reaction-Diffusion Morphogenesis
+# ADR 0040: Coupled D2Q9 Lattice Boltzmann Vortex Engine for 2D Advection-Reaction-Diffusion Morphogenesis
 
 ## Status
 Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0008](0008-finite-state-guard-solver-divergence.md), [ADR 0021](0021-precompute-stencil-reciprocals.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
