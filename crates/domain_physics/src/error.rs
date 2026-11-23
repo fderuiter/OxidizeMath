@@ -429,7 +429,10 @@ impl Diagnostic for StatMechError {
 }
 mod umbrella;
 
-pub use crate::physics::{medical::radar_gating::GatingError, nuclear::types::NuclearError};
+pub use crate::physics::{
+    medical::radar_gating::GatingError, nuclear::types::NuclearError,
+    stat_mech::sandpile::SandpileError,
+};
 pub use umbrella::PhysicsError;
 
 #[cfg(test)]

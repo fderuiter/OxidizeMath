@@ -1,6 +1,6 @@
 use super::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-    RadarError, SolidStateError, StandardModelError, StatMechError,
+    RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
 use diagnostics::{Diagnostic, Severity};
 use domain_applied::error::{AppliedError, KalmanError};
@@ -54,6 +54,9 @@ pub enum PhysicsError {
     /// Radar array and MUSIC estimation error.
     #[error("{0}")]
     Radar(#[from] RadarError),
+    /// Abelian sandpile lattice and Kirchhoff Bareiss error.
+    #[error("{0}")]
+    Sandpile(#[from] SandpileError),
     /// Solid-state physics solver error.
     #[error("{0}")]
     SolidState(#[from] SolidStateError),
@@ -158,6 +161,7 @@ impl PhysicsError {
             Self::HighEnergy(err) => err,
             Self::Nuclear(err) => err,
             Self::Radar(err) => err,
+            Self::Sandpile(err) => err,
             Self::SolidState(err) => err,
             Self::StandardModel(err) => err,
             Self::StatMech(err) => err,

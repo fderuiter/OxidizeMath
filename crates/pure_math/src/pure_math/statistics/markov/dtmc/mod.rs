@@ -14,6 +14,8 @@ pub type Result<T> = std::result::Result<T, MarkovError>;
 use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;
 
+#[cfg(feature = "serde")]
+mod serde_impl;
 mod types;
 pub use types::StateType;
 
@@ -105,6 +107,11 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     #[verified_engine::verified]
     pub fn new(transition_matrix: DMatrix<T>, state_types: Vec<StateType>) -> Result<Self> {
         let n = transition_matrix.nrows();
+        if n == 0 {
+            return Err(MarkovError::InvalidState {
+                reason: "Markov chain must have at least one state".to_string(),
+            });
+        }
 
         // Validate dimensions
         if transition_matrix.ncols() != n {
@@ -154,29 +161,15 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
             }
         }
 
-        // Separate transient and absorbing indices
         let transient_indices: Vec<usize> = state_types
             .iter()
             .enumerate()
-            .filter_map(|(i, t)| {
-                if *t == StateType::Transient {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(i, &t)| (t == StateType::Transient).then_some(i))
             .collect();
-
         let absorbing_indices: Vec<usize> = state_types
             .iter()
             .enumerate()
-            .filter_map(|(i, t)| {
-                if *t == StateType::Absorbing {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(i, &t)| (t == StateType::Absorbing).then_some(i))
             .collect();
 
         Ok(MarkovChain {

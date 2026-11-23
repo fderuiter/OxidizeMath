@@ -9,6 +9,9 @@ pub type Result<T> = std::result::Result<T, MarkovError>;
 use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;
 
+#[cfg(feature = "serde")]
+mod serde_impl;
+
 /// A continuous-time Markov chain characterized by its generator matrix.
 ///
 /// # Mathematical Background
@@ -75,6 +78,11 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     #[verified_engine::verified]
     pub fn new(generator: DMatrix<T>) -> Result<Self> {
         let n = generator.nrows();
+        if n == 0 {
+            return Err(MarkovError::InvalidGenerator {
+                reason: "Generator matrix must have at least one state".to_string(),
+            });
+        }
 
         if generator.ncols() != n {
             return Err(crate::error::MarkovError::Math(

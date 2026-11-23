@@ -334,19 +334,8 @@ impl SimulationRunner for MriKSpaceRunner {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.high_contrast, p.config.selected_voxel)
         };
-        let n = self.size;
-        let total = n * n;
-        let half = n / 2;
-        let mut kspace_log = vec![0.0; total];
-        for c in 0..n {
-            let dc = (c + half) % n;
-            for r in 0..n {
-                let dr = (r + half) % n;
-                let z = self.masked_kspace_rm[flatten_2d_index(r, c, n)];
-                kspace_log[flatten_2d_index(dc, dr, n)] =
-                    (1.0 + (z.re * z.re + z.im * z.im).sqrt()).ln();
-            }
-        }
+        let total = self.size * self.size;
+        let kspace_log = self.shifted_kspace_log_magnitude();
         let mut phantom_rgba = vec![Color32::BLACK; total];
         let mut kspace_rgba = vec![Color32::BLACK; total];
         let mut recon_rgba = vec![Color32::BLACK; total];
@@ -357,6 +346,7 @@ impl SimulationRunner for MriKSpaceRunner {
         let sr = sel_voxel[0].min(self.size.saturating_sub(1));
         let sc = sel_voxel[1].min(self.size.saturating_sub(1));
         let sidx = flatten_2d_index(sc, sr, self.size);
+        let (nrmse_pct, acceleration_r) = self.compute_kspace_metrics();
         let sonification = self.snapshot_sonification(sel_voxel);
         let structured = MriKSpaceSnapshot {
             grid_size: self.size,
@@ -368,6 +358,8 @@ impl SimulationRunner for MriKSpaceRunner {
             kspace_rgba,
             recon_rgba: recon_rgba.clone(),
             recon_mag: self.recon_mag.clone(),
+            nrmse_pct,
+            acceleration_r,
             selected_spins: self.spins[sidx],
             selected_net_m: self.net_voxel_spin(sel_voxel),
             selected_tissue: [
@@ -414,5 +406,48 @@ impl SimulationRunner for MriKSpaceRunner {
                 "Non-finite voxel spin or reconstructed k-space magnitude encountered.",
             )
         })
+    }
+}
+
+impl MriKSpaceRunner {
+    fn shifted_kspace_log_magnitude(&self) -> Vec<f64> {
+        let n = self.size;
+        let half = n / 2;
+        let mut kspace_log = vec![0.0; n * n];
+        for c in 0..n {
+            let dc = (c + half) % n;
+            for r in 0..n {
+                let dr = (r + half) % n;
+                let z = self.masked_kspace_rm[flatten_2d_index(r, c, n)];
+                kspace_log[flatten_2d_index(dc, dr, n)] =
+                    (1.0 + (z.re * z.re + z.im * z.im).sqrt()).ln();
+            }
+        }
+        kspace_log
+    }
+
+    /// Computes zero-allocation `(nrmse_pct, acceleration_r)` against `self.rho` and `self.kspace_mask`.
+    #[must_use]
+    pub fn compute_kspace_metrics(&self) -> (f64, f64) {
+        let total = self.rho.len();
+        let mut err_sq = 0.0_f64;
+        let mut ref_sq = 0.0_f64;
+        for (&recon, &truth) in self.recon_mag.iter().zip(&self.rho) {
+            let diff = recon - truth;
+            err_sq += diff * diff;
+            ref_sq += truth * truth;
+        }
+        let nrmse_pct = if ref_sq > 1.0e-12 {
+            100.0 * (err_sq / ref_sq).sqrt()
+        } else {
+            0.0
+        };
+        let sampled: f64 = self.kspace_mask.iter().map(|&m| m.clamp(0.0, 1.0)).sum();
+        let acceleration_r = if total == 0 {
+            1.0
+        } else {
+            (total as f64) / sampled.max(1.0)
+        };
+        (nrmse_pct, acceleration_r)
     }
 }

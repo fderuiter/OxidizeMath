@@ -106,3 +106,87 @@ where
         Ok(Self { table })
     }
 }
+
+/// Zero-copy discretized state index for fixed-capacity tabular reinforcement learning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DiscreteState(pub usize);
+
+impl State for DiscreteState {}
+
+/// Zero-copy discretized action index for fixed-capacity tabular reinforcement learning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DiscreteAction(pub usize);
+
+impl Action for DiscreteAction {}
+
+/// Preallocated fixed-array `QFunction` over `STATES` discrete states and `ACTIONS` discrete actions.
+///
+/// Unlike [`TabularQFunction`], lookups and Bellman updates index directly into a contiguous
+/// `[[f64; ACTIONS]; STATES]` array with zero dynamic heap allocations.
+#[derive(Debug, Clone)]
+pub struct FixedArrayQFunction<const STATES: usize, const ACTIONS: usize> {
+    table: [[f64; ACTIONS]; STATES],
+}
+
+impl<const STATES: usize, const ACTIONS: usize> Default for FixedArrayQFunction<STATES, ACTIONS> {
+    #[verified_engine::verified]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const STATES: usize, const ACTIONS: usize> FixedArrayQFunction<STATES, ACTIONS> {
+    /// Creates a zero-initialized fixed-capacity Q-table.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn new() -> Self {
+        Self {
+            table: [[0.0; ACTIONS]; STATES],
+        }
+    }
+
+    /// Resets all stored state-action Q-values to `0.0` in place.
+    #[verified_engine::verified]
+    pub fn reset(&mut self) {
+        self.table = [[0.0; ACTIONS]; STATES];
+    }
+
+    /// Borrows the raw `[STATES][ACTIONS]` Q-value table.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn as_table(&self) -> &[[f64; ACTIONS]; STATES] {
+        &self.table
+    }
+
+    /// Overwrites the Q-value table from a snapshot array in place.
+    #[verified_engine::verified]
+    pub fn copy_from_table(&mut self, src: &[[f64; ACTIONS]; STATES]) {
+        self.table = *src;
+    }
+}
+
+impl<const STATES: usize, const ACTIONS: usize> QFunction<DiscreteState, DiscreteAction>
+    for FixedArrayQFunction<STATES, ACTIONS>
+{
+    #[verified_engine::verified]
+    fn value(&self, state: &DiscreteState, action: &DiscreteAction) -> f64 {
+        self.table
+            .get(state.0)
+            .and_then(|row| row.get(action.0))
+            .copied()
+            .unwrap_or(0.0)
+    }
+
+    #[verified_engine::verified]
+    fn update(&mut self, state: &DiscreteState, action: &DiscreteAction, value: f64) {
+        if let Some(slot) = self
+            .table
+            .get_mut(state.0)
+            .and_then(|row| row.get_mut(action.0))
+        {
+            *slot = value;
+        }
+    }
+}

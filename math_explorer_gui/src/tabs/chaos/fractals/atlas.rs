@@ -56,7 +56,7 @@ impl FractalRegime {
     }
 }
 
-/// Default serialized atlas axis keys for [`super::runner::FractalState`].
+/// Default serialized atlas axis keys for `FractalState`.
 #[must_use]
 pub fn default_fractal_atlas_axes() -> [String; 2] {
     ["julia_re".to_string(), "julia_im".to_string()]

@@ -1,91 +1,7 @@
-use super::{
-    ContinuousMarkovChain, HiddenMarkovModel, ParrondoParams, ParrondoSchedule, TimeIndex,
-    TransitionTensor,
-};
-use nalgebra::{DMatrix, DVector, RealField};
+use super::{ParrondoParams, ParrondoSchedule, TimeIndex, TransitionTensor};
+use nalgebra::{DMatrix, RealField};
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-impl<T> Serialize for ContinuousMarkovChain<T>
-where
-    T: RealField + Copy + ToPrimitive + Serialize,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        #[derive(Serialize)]
-        struct CtmcRef<'a, U: RealField + Copy + ToPrimitive + Serialize> {
-            generator: &'a DMatrix<U>,
-        }
-        CtmcRef {
-            generator: self.generator(),
-        }
-        .serialize(serializer)
-    }
-}
-
-impl<'de, T> Deserialize<'de> for ContinuousMarkovChain<T>
-where
-    T: RealField + Copy + ToPrimitive + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(bound(deserialize = "U: RealField + Copy + ToPrimitive + Deserialize<'de>"))]
-        struct CtmcRaw<U: RealField + Copy + ToPrimitive> {
-            generator: DMatrix<U>,
-        }
-        let raw = CtmcRaw::<T>::deserialize(deserializer)?;
-        ContinuousMarkovChain::new(raw.generator).map_err(serde::de::Error::custom)
-    }
-}
-
-impl<T> Serialize for HiddenMarkovModel<T>
-where
-    T: RealField + Copy + ToPrimitive + Serialize,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        #[derive(Serialize)]
-        struct HmmRef<'a, U: RealField + Copy + ToPrimitive + Serialize> {
-            initial: &'a DVector<U>,
-            transitions: &'a DMatrix<U>,
-            emissions: &'a DMatrix<U>,
-        }
-        HmmRef {
-            initial: self.initial(),
-            transitions: self.transitions(),
-            emissions: self.emissions(),
-        }
-        .serialize(serializer)
-    }
-}
-
-impl<'de, T> Deserialize<'de> for HiddenMarkovModel<T>
-where
-    T: RealField + Copy + ToPrimitive + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(bound(deserialize = "U: RealField + Copy + ToPrimitive + Deserialize<'de>"))]
-        struct HmmRaw<U: RealField + Copy + ToPrimitive> {
-            initial: DVector<U>,
-            transitions: DMatrix<U>,
-            emissions: DMatrix<U>,
-        }
-        let raw = HmmRaw::<T>::deserialize(deserializer)?;
-        HiddenMarkovModel::new(raw.initial, raw.transitions, raw.emissions)
-            .map_err(serde::de::Error::custom)
-    }
-}
 
 impl<T> Serialize for TransitionTensor<T>
 where
@@ -206,7 +122,7 @@ mod tests {
         let restored: MarkovChain<f64> = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.num_states(), 2);
 
-        let bad_json = r#"{"transition_matrix":[0.5,0.2,0.0,1.0,2,2],"state_types":["Transient","Absorbing"]}"#;
+        let bad_json = r#"{"transition_matrix":[[0.5,0.2],[0.0,1.0]],"state_types":["Transient","Absorbing"]}"#;
         assert!(serde_json::from_str::<MarkovChain<f64>>(bad_json).is_err());
 
         let g = DMatrix::from_row_slice(2, 2, &[-2.0, 2.0, 3.0, -3.0]);

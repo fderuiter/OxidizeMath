@@ -21,8 +21,6 @@ pub struct TorusCanvasOutcome {
     pub arrow_delta: i32,
     /// Whether the user pressed `Q` while focused to toggle between selecting $P$ and $Q$.
     pub toggle_selector: bool,
-    /// Active canvas `Id` when this canvas currently holds keyboard focus.
-    pub focused_canvas_id: Option<egui::Id>,
 }
 
 /// View state borrowed by [`render_torus_canvas`].
@@ -446,7 +444,6 @@ fn collect_torus_interactions(
         }
     }
     if response.has_focus() {
-        outcome.focused_canvas_id = Some(response.id);
         ui.input(|i| {
             if i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::ArrowUp) {
                 outcome.arrow_delta = 1;

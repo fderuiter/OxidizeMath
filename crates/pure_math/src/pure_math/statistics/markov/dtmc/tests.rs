@@ -265,3 +265,45 @@ fn test_validation_errors() {
     let states = vec![StateType::Absorbing, StateType::Transient];
     assert!(MarkovChain::new(p, states).is_err());
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_dtmc_serde_roundtrip_and_validation_rejections() {
+    use serde::Deserialize;
+
+    let p = DMatrix::from_row_slice(3, 3, &[0.5, 0.3, 0.2, 0.2, 0.6, 0.2, 0.0, 0.0, 1.0]);
+    let states = vec![
+        StateType::Transient,
+        StateType::Transient,
+        StateType::Absorbing,
+    ];
+    let chain = MarkovChain::new(p, states).unwrap();
+    let json = serde_json::to_string(&chain).unwrap();
+    let decoded: MarkovChain<f64> = serde_json::from_str(&json).unwrap();
+    assert_eq!(decoded.num_transient(), 2);
+    assert_eq!(decoded.num_absorbing(), 1);
+
+    // Reject non-stochastic DTMC row via MarkovError::NotStochastic
+    let bad_row =
+        r#"{"transition_matrix":[[0.5,0.2],[0.0,1.0]],"state_types":["Transient","Absorbing"]}"#;
+    let err = serde_json::from_str::<MarkovChain<f64>>(bad_row).unwrap_err();
+    assert!(err.to_string().contains("not stochastic"));
+
+    // Reject absorbing row without self-loop 1.0 via MarkovError::InvalidState
+    let bad_abs =
+        r#"{"transition_matrix":[[0.5,0.5],[0.4,0.6]],"state_types":["Transient","Absorbing"]}"#;
+    let err2 = serde_json::from_str::<MarkovChain<f64>>(bad_abs).unwrap_err();
+    assert!(err2.to_string().contains("Invalid Markov state"));
+
+    // Reject NaN raw token and out-of-range probability
+    let bad_prob =
+        r#"{"transition_matrix":[[1.5,-0.5],[0.0,1.0]],"state_types":["Transient","Absorbing"]}"#;
+    let err3 = serde_json::from_str::<MarkovChain<f64>>(bad_prob).unwrap_err();
+    assert!(err3.to_string().contains("Invalid probability"));
+    let bad_nan =
+        r#"{"transition_matrix":[[NaN,1.0],[0.0,1.0]],"state_types":["Transient","Absorbing"]}"#;
+    assert!(serde_json::from_str::<MarkovChain<f64>>(bad_nan).is_err());
+
+    let mut de = serde_json::Deserializer::from_str(&json);
+    assert!(MarkovChain::<f64>::deserialize(&mut de).is_ok());
+}

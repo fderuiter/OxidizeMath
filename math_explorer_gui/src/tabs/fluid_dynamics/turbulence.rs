@@ -1,3 +1,5 @@
+use super::turbulence_atlas::{TurbulenceCartographer, TURBULENCE_ATLAS_AXIS_PAIRS};
+use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_commons::primitives::{NonNegativeFloat, PositiveFloat};
@@ -6,7 +8,7 @@ use math_explorer::physics::fluid_dynamics::regimes::{
 };
 
 #[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum Geometry {
+pub(crate) enum Geometry {
     Pipe,
     FlatPlate,
 }
@@ -23,11 +25,11 @@ struct TurbulenceState {
 
 pub struct TurbulenceTool {
     // Physics Parameters
-    density: f64,           // kg/m^3
-    dynamic_viscosity: f64, // Pa.s
-    velocity: f64,          // m/s
-    length: f64,            // m (Diameter or Length)
-    geometry: Geometry,
+    pub(crate) density: f64,           // kg/m^3
+    pub(crate) dynamic_viscosity: f64, // Pa.s
+    pub(crate) velocity: f64,          // m/s
+    pub(crate) length: f64,            // m (Diameter or Length)
+    pub(crate) geometry: Geometry,
 
     // Visualization State
     time: f64,
@@ -58,6 +60,51 @@ impl InteractiveTool for TurbulenceTool {
 
     fn domain(&self) -> &'static str {
         "fluid_dynamics"
+    }
+
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.density.to_bits().hash(&mut h);
+        self.dynamic_viscosity.to_bits().hash(&mut h);
+        self.velocity.to_bits().hash(&mut h);
+        self.length.to_bits().hash(&mut h);
+        (self.geometry as u8).hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        TURBULENCE_ATLAS_AXIS_PAIRS
+    }
+
+    fn active_atlas_coords(&self, axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        self.turb_atlas_coords(axis_keys)
+    }
+
+    fn atlas_context_signature(&self, axis_keys: (&'static str, &'static str)) -> u64 {
+        self.turb_atlas_signature(axis_keys)
+    }
+
+    fn build_atlas_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<std::sync::Arc<dyn RegimeCartographer>> {
+        TurbulenceCartographer::new(self, axis_keys)
+            .map(|c| std::sync::Arc::new(c) as std::sync::Arc<dyn RegimeCartographer>)
+    }
+
+    fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
+        self.apply_turbulence_teleport(ev);
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn save_state(&self) -> Option<String> {
@@ -306,6 +353,19 @@ impl scientific_metadata::theory::TheoryDescribable for TurbulenceTool {
             "Inertial forces dominate, chaotic eddy vortex cascades".into(),
         );
         map
+    }
+
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        let c = |min, max, step| ParameterConstraint { min, max, step };
+        std::collections::HashMap::from([
+            ("density".to_string(), c(0.1, 20_000.0, 10.0)),
+            ("dynamic_viscosity".to_string(), c(1e-6, 10.0, 1e-4)),
+            ("velocity".to_string(), c(0.01, 1000.0, 0.1)),
+            ("length".to_string(), c(0.001, 100.0, 0.01)),
+        ])
     }
 }
 
