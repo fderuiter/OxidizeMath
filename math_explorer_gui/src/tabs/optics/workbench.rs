@@ -184,6 +184,7 @@ pub struct FourierOpticsWorkbenchTool {
     pub(crate) cache: RefCell<Option<WorkbenchCache>>,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) texture_key: u64,
+    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) last_tick: PlatformInstant,
     pub(crate) revision: u64,
 }
@@ -195,6 +196,7 @@ impl Default for FourierOpticsWorkbenchTool {
             cache: RefCell::new(None),
             texture: None,
             texture_key: 0,
+            focused_canvas: None,
             last_tick: PlatformInstant::now(),
             revision: 1,
         }
@@ -216,6 +218,10 @@ impl InteractiveTool for FourierOpticsWorkbenchTool {
 
     fn state_revision(&self) -> u64 {
         self.revision
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -316,12 +322,10 @@ impl InteractiveTool for FourierOpticsWorkbenchTool {
         self.render_workbench(ui);
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
 
-    #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }

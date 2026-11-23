@@ -82,6 +82,7 @@ impl FourierOpticsWorkbenchTool {
         };
         self.paint_viewport_overlays(&painter, rect, &overlay_palette);
         crate::accessibility::paint_canvas_focus_ring(ui, &response);
+        self.focused_canvas = response.has_focus().then_some(response.id);
         ui.small("Drag horizontally to scrub propagation z • Arrow keys adjust z / GS iterations");
     }
 

@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::lattice_boltzmann::render::{draw_fairing_canvas_overlay, sync_fairing_callouts};
 use super::lbm_fairing::{
     apply_stroke_to_fairing_mask, decode_mask_hex, encode_fairing_mask_rle, encode_mask_hex,
     restore_inlet_and_core_mask, FairingStamp, LbmFairingEvaluator, LbmSerializedState,
@@ -404,6 +405,10 @@ impl UnifiedUiExtension for LbmUiExtension {
     }
 
     fn on_brush_stroke(&mut self, stroke: &BrushStroke) -> bool {
+        let (gx, gy) =
+            crate::framework::SpatialBrushKit::plot_to_grid_y_up(stroke.end, LBM_WIDTH, LBM_HEIGHT);
+        self.cursor_x = gx.clamp(LBM_INLET_COLS as i32, LBM_WIDTH as i32 - 1);
+        self.cursor_y = gy.clamp(0, LBM_HEIGHT as i32 - 1);
         if apply_stroke_to_fairing_mask(&mut self.mask, stroke, self.active_challenge.is_some()) {
             self.evaluator
                 .evaluate_mask_in_place(&self.mask, CHALLENGE_LBM_VISCOSITY);
@@ -452,23 +457,16 @@ impl UnifiedUiExtension for LbmUiExtension {
 
     fn handle_canvas_overlay(
         &mut self,
-        ctx: &egui::Context,
+        _ctx: &egui::Context,
         visuals: &egui::Visuals,
         plot_ui: &mut egui_plot::PlotUi,
     ) -> Vec<SimCommand> {
-        super::lbm_atlas::paint_lbm_fairing_overlay(visuals, plot_ui, self.cursor_x, self.cursor_y);
-        let resp = plot_ui.response().clone();
-        self.handle_sculpt_keys_ctx(ctx, &resp)
+        draw_fairing_canvas_overlay(visuals, plot_ui, self.cursor_x, self.cursor_y);
+        Vec::new()
     }
 
     fn sync_callouts(&self, _snap: Option<&StateSnapshot>, callouts: &mut CalloutManager) {
-        let m = &self.evaluator.latest;
-        let core_pos = [LBM_CORE_X as f64 + 0.5, LBM_CORE_Y as f64 + 0.5];
-        let core_lbl = format!("Core R=4 | N={}", m.n_solid);
-        callouts.set_auto_callout("lbm_core", core_pos, core_lbl, [-36.0, -26.0]);
-        let drag_pos = [LBM_CORE_X as f64 + 14.0, LBM_CORE_Y as f64 + 10.0];
-        let drag_lbl = format!("C_D = {:.3} (≤ {:.3})", m.c_d, 0.82 * m.c_d_cylinder);
-        callouts.set_auto_callout("lbm_drag", drag_pos, drag_lbl, [28.0, -16.0]);
+        sync_fairing_callouts(&self.evaluator.latest, callouts);
     }
 
     fn state_revision_salt(&self) -> u64 {
