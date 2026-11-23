@@ -427,7 +427,18 @@ inventory::submit! {
         id: "OdeSolverTool",
         display_name: "ODE Solvers",
         domain: "analysis",
-        tags: &[],
+        tags: &[
+            "ode",
+            "rk4",
+            "runge-kutta",
+            "euler",
+            "dormand-prince",
+            "differential equation",
+            "van der pol",
+            "lotka-volterra",
+            "phase portrait",
+            "poincare",
+        ],
         build: || Box::new(OdeSolverTool::default()),
     }
 }
