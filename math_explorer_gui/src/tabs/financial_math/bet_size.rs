@@ -106,7 +106,6 @@ impl InteractiveTool for BetSizeCalculatorTool {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
             self.show_ui(ui);
@@ -274,14 +273,11 @@ impl InteractiveTool for BetSizeCalculatorTool {
             }
             (Err(e), _) => {
                 ui.label(
-                    egui::RichText::new(format!("Invalid Probability: {}", e))
-                        .color(palette.error),
+                    egui::RichText::new(format!("Invalid Probability: {}", e)).color(palette.error),
                 );
             }
             (_, Err(e)) => {
-                ui.label(
-                    egui::RichText::new(format!("Invalid Odds: {}", e)).color(palette.error),
-                );
+                ui.label(egui::RichText::new(format!("Invalid Odds: {}", e)).color(palette.error));
             }
         }
     }

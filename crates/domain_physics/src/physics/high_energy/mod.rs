@@ -110,6 +110,7 @@ theory_verification!(
         DUMMY = 1.0;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(DUMMY, 1.0, epsilon = math_commons::registry::TOLERANCE_FAST);
     }
 );
