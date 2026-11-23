@@ -87,3 +87,37 @@ fn test_pure_math_error_zero_allocation_propagation() {
     let (err, _) = VerifiedEngine::run_verified(|| propagate_pure_math_question_mark(true));
     assert!(err.is_err());
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_glicko2_tournament_variants_umbrella_and_diagnostics() {
+    let variants = [
+        Glicko2Error::PlayerIndexOutOfBounds {
+            index: 4,
+            roster_len: 3,
+        },
+        Glicko2Error::SelfMatch { player_index: 1 },
+        Glicko2Error::InsufficientPlayers { count: 1 },
+        Glicko2Error::DimensionMismatch {
+            expected: 4,
+            actual: 2,
+        },
+    ];
+    let bus = DiagnosticBus::new();
+    for leaf in variants {
+        let msg = leaf.to_string();
+        let umbrella = PureMathError::from(leaf);
+        assert!(umbrella.source().is_some());
+        assert_eq!(umbrella.to_string(), msg);
+        let meta = umbrella.metadata();
+        assert_eq!(
+            meta.get("error_type").map(String::as_str),
+            Some("Glicko2Error")
+        );
+        assert_eq!(
+            meta.get("description").map(String::as_str),
+            Some(msg.as_str())
+        );
+        bus.emit_diagnostic(&umbrella);
+    }
+}

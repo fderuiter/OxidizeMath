@@ -48,10 +48,6 @@ pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
-pub(crate) use export_types::{
-    ActionBarExportStatus, CustomClipboardWriter, CustomExportWriter, ExportFormat, ExportRequest,
-    ExportTarget,
-};
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;
 pub use pane_scope::{

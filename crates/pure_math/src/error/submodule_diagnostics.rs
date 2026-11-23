@@ -1,3 +1,7 @@
+use super::{
+    CopulaError, Glicko2Error, KellyError, MarkovError, NumberTheoryError, OuError, TdaError,
+    ZipError,
+};
 use crate::pure_math::{
     algebra::linear_algebra::numerical::LinearAlgebraError,
     analysis::{
@@ -17,6 +21,102 @@ fn error_metadata(error_type: &str, description: String) -> HashMap<String, Stri
     map.insert("error_type".to_string(), error_type.to_string());
     map.insert("description".to_string(), description);
     map
+}
+
+impl Diagnostic for NumberTheoryError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("NumberTheoryError", self.to_string())
+    }
+}
+
+impl Diagnostic for KellyError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("KellyError", self.to_string())
+    }
+}
+
+impl Diagnostic for MarkovError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("MarkovError", self.to_string())
+    }
+}
+
+impl Diagnostic for OuError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("OuError", self.to_string())
+    }
+}
+
+impl Diagnostic for ZipError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("ZipError", self.to_string())
+    }
+}
+
+impl Diagnostic for TdaError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("TdaError", self.to_string())
+    }
+}
+
+impl Diagnostic for CopulaError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("CopulaError", self.to_string())
+    }
+}
+
+impl Diagnostic for Glicko2Error {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("Glicko2Error", self.to_string())
+    }
 }
 
 impl Diagnostic for AmbsError {
