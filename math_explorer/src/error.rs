@@ -35,10 +35,10 @@ pub use domain_physics::error::{
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
     AmbsError, AnalysisError, BayesianError, CopulaError, DistributionError, EllipticCurveError,
-    EloError, EvolutionError, FractranError, Glicko2Error, HyperbolicError, KellyError,
-    LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError, NumberTheoryError,
-    OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    EloError, EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError,
+    KellyError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
+    NumberTheoryError, OptimizationError, OuError, PureMathError, StochasticError, TdaError,
+    TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -197,6 +197,9 @@ pub enum Error {
     /// Glicko-2 rating error.
     #[cfg(feature = "pure_math")]
     Glicko2(Glicko2Error),
+    /// Graph theory solver or interchange error.
+    #[cfg(feature = "pure_math")]
+    GraphTheory(GraphTheoryError),
     /// Hyperbolic geometry and geodesic billiard error.
     #[cfg(feature = "pure_math")]
     Hyperbolic(HyperbolicError),
