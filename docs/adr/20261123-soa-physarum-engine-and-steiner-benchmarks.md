@@ -1,4 +1,4 @@
-# ADR 0045: Zero-Allocation Structure-of-Arrays Physarum Engine and Live Steiner Benchmarks
+# ADR 20261123: Zero-Allocation Structure-of-Arrays Physarum Engine and Live Steiner Benchmarks
 
 ## Status
 
