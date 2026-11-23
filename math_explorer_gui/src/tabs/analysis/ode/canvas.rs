@@ -1,17 +1,18 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::comparison::{compute_discrepancy, simulate_ode, OdeSimSpec, SolverTrajectory};
+use super::comparison::{
+    build_view_trace_series, compute_series_discrepancy, simulate_ode, OdeSimSpec,
+    SolverTrajectory, TrajectoryView,
+};
 use super::recovery;
 use super::systems::CustomOdeSpec;
 use super::OdeSolverTool;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{InteractiveTool, TraceSeries};
-use crate::presets::OdePreset;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 impl InteractiveTool for OdeSolverTool {
@@ -67,15 +68,12 @@ impl InteractiveTool for OdeSolverTool {
         let mut changed = false;
         self.sync_series_cache();
 
-        let sweeps_before = crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
+        let sweeps_before =
+            crate::reflective_ui::slider::current_pass_active_sweep_count(parent_ui.ctx());
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "ode_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            changed |= self.render_sidebar_controls(ui);
+            changed |= self.render_sidebar_controls(ui, sweeps_before);
         });
-        let sweep_active =
-            crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx()) > sweeps_before;
-
-        self.apply_sidebar_changes(changed, sweep_active);
         self.sync_series_cache();
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
@@ -117,6 +115,75 @@ impl OdeSolverTool {
         }
     }
 
+    fn simulate_if_inactive(
+        &self,
+        target: IntegrationMethod,
+        reuse_active: bool,
+        custom_spec: Option<&CustomOdeSpec>,
+    ) -> Option<SolverTrajectory> {
+        if reuse_active && self.method == target {
+            None
+        } else {
+            Some(simulate_ode(&self.sim_spec(target, custom_spec)))
+        }
+    }
+
+    fn trajectory_view<'a>(
+        &'a self,
+        target: IntegrationMethod,
+        simulated: &'a Option<SolverTrajectory>,
+    ) -> TrajectoryView<'a> {
+        if let Some(traj) = simulated {
+            TrajectoryView {
+                method: traj.method,
+                time_series: &traj.time_series,
+                y_series: &traj.y_series,
+                v_series: &traj.v_series,
+                diverged: traj.diverged,
+                is_active_reused: false,
+            }
+        } else {
+            TrajectoryView {
+                method: target,
+                time_series: &self.time_series,
+                y_series: &self.y_series,
+                v_series: &self.v_series,
+                diverged: self.diverged,
+                is_active_reused: true,
+            }
+        }
+    }
+
+    fn build_comparison_snapshot_series(
+        &self,
+        views: &[TrajectoryView<'_>],
+    ) -> Vec<(&'static str, Vec<TraceSeries>)> {
+        let labels = self.active_state_labels();
+        let (t1_lbl, t2_lbl, _, _) = labels;
+        let phase_active = self.is_phase_plane_active();
+        let has_v = self.has_second_state();
+        let cache_matches = !phase_active
+            && self
+                .series_cache
+                .matches_series(&self.time_series, &self.y_series, &self.v_series);
+        views
+            .iter()
+            .map(|view| {
+                let series = if view.is_active_reused && cache_matches {
+                    let (py, pv) = self.series_cache.shared_points();
+                    let mut out = vec![TraceSeries::new(t1_lbl, py)];
+                    if has_v && !pv.is_empty() {
+                        out.push(TraceSeries::new(t2_lbl, pv));
+                    }
+                    out
+                } else {
+                    build_view_trace_series(view, labels, has_v, phase_active)
+                };
+                (view.method.name(), series)
+            })
+            .collect()
+    }
+
     pub(super) fn recalculate_comparison(&mut self) {
         self.comparison_manager.clear();
         if !self.comparison_mode {
@@ -124,56 +191,54 @@ impl OdeSolverTool {
         }
 
         let custom_spec = self.build_custom_ode_spec();
-        let rk4 =
-            simulate_ode(&self.sim_spec(IntegrationMethod::RungeKutta4, custom_spec.as_ref()));
-        let euler = simulate_ode(&self.sim_spec(IntegrationMethod::Euler, custom_spec.as_ref()));
-        let heun = simulate_ode(&self.sim_spec(IntegrationMethod::Heun, custom_spec.as_ref()));
+        let reuse_active =
+            !self.has_custom_input_error() || !self.time_series.is_empty() || self.diverged;
+        let rk4_sim = self.simulate_if_inactive(
+            IntegrationMethod::RungeKutta4,
+            reuse_active,
+            custom_spec.as_ref(),
+        );
+        let euler_sim =
+            self.simulate_if_inactive(IntegrationMethod::Euler, reuse_active, custom_spec.as_ref());
+        let heun_sim =
+            self.simulate_if_inactive(IntegrationMethod::Heun, reuse_active, custom_spec.as_ref());
 
-        if !self.has_custom_input_error() && (rk4.diverged || euler.diverged || heun.diverged) {
+        let (any_diverged, euler_rk4, heun_rk4, euler_heun, snapshots) = {
+            let rk4 = self.trajectory_view(IntegrationMethod::RungeKutta4, &rk4_sim);
+            let euler = self.trajectory_view(IntegrationMethod::Euler, &euler_sim);
+            let heun = self.trajectory_view(IntegrationMethod::Heun, &heun_sim);
+
+            let any_diverged = rk4.diverged || euler.diverged || heun.diverged;
+            let euler_rk4 = compute_series_discrepancy(
+                euler.y_series,
+                euler.v_series,
+                rk4.y_series,
+                rk4.v_series,
+            );
+            let heun_rk4 = compute_series_discrepancy(
+                heun.y_series,
+                heun.v_series,
+                rk4.y_series,
+                rk4.v_series,
+            );
+            let euler_heun = compute_series_discrepancy(
+                euler.y_series,
+                euler.v_series,
+                heun.y_series,
+                heun.v_series,
+            );
+            let snapshots = self.build_comparison_snapshot_series(&[rk4, euler, heun]);
+            (any_diverged, euler_rk4, heun_rk4, euler_heun, snapshots)
+        };
+
+        if !self.has_custom_input_error() && any_diverged {
             self.diverged = true;
         }
-
-        self.discrepancy_euler_rk4 = compute_discrepancy(&euler, &rk4);
-        self.discrepancy_heun_rk4 = compute_discrepancy(&heun, &rk4);
-        self.discrepancy_euler_heun = compute_discrepancy(&euler, &heun);
-
-        self.populate_comparison_snapshots(&[rk4, euler, heun]);
-    }
-
-    pub(super) fn populate_comparison_snapshots(&mut self, trajs: &[SolverTrajectory]) {
-        let (t1_lbl, t2_lbl, px_lbl, py_lbl) = self.active_state_labels();
-        let phase_active = self.is_phase_plane_active();
-        let has_v = self.has_second_state();
-        for traj in trajs {
-            let series = if phase_active {
-                let pts_phase: Vec<[f64; 2]> = traj
-                    .y_series
-                    .iter()
-                    .zip(&traj.v_series)
-                    .map(|(&x, &y)| [x, y])
-                    .collect();
-                vec![TraceSeries::new(format!("({px_lbl}, {py_lbl})"), pts_phase)]
-            } else {
-                let pts_y: Vec<[f64; 2]> = traj
-                    .time_series
-                    .iter()
-                    .zip(&traj.y_series)
-                    .map(|(&t, &y)| [t, y])
-                    .collect();
-                let mut out = vec![TraceSeries::new(t1_lbl, pts_y)];
-                if has_v && !traj.v_series.is_empty() {
-                    let pts_v: Vec<[f64; 2]> = traj
-                        .time_series
-                        .iter()
-                        .zip(&traj.v_series)
-                        .map(|(&t, &v)| [t, v])
-                        .collect();
-                    out.push(TraceSeries::new(t2_lbl, pts_v));
-                }
-                out
-            };
-            self.comparison_manager
-                .add_snapshot(traj.method.name(), "", series);
+        self.discrepancy_euler_rk4 = euler_rk4;
+        self.discrepancy_heun_rk4 = heun_rk4;
+        self.discrepancy_euler_heun = euler_heun;
+        for (label, series) in snapshots {
+            self.comparison_manager.add_snapshot(label, "", series);
         }
     }
 
@@ -331,116 +396,5 @@ impl OdeSolverTool {
             }
         }
         datasets
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
-    fn theory_description(&self) -> String {
-        match self.preset {
-            OdePreset::Exponential => "First-order linear ordinary differential equation describing exponential growth or decay proportional to current quantity.".into(),
-            OdePreset::HarmonicOscillator => "Second-order ordinary differential equation modeling simple harmonic motion under a Hooke's law restoring force.".into(),
-            OdePreset::LogisticGrowth => "Nonlinear ordinary differential equation modeling density-dependent population growth with an environmental carrying capacity.".into(),
-            OdePreset::LinearSystem2D => "Planar 2x2 linear dynamical system classified on the Poincaré trace-determinant bifurcation diagram.".into(),
-            OdePreset::PlanarCustom => "Coupled 2D planar ordinary differential equations: x' = f(t, x, y), y' = g(t, x, y).".into(),
-            OdePreset::Custom if self.custom_coupled => "Coupled two-state ordinary differential equation system: y' = f(t, y, v), v' = g(t, y, v)".into(),
-            OdePreset::Custom => "Custom user-defined ordinary differential equation: y' = f(t, y)".into(),
-        }
-    }
-    fn phonetic_description(&self) -> String {
-        "Ordinary differential equations theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        match self.preset {
-            OdePreset::Exponential
-            | OdePreset::LinearSystem2D
-            | OdePreset::PlanarCustom
-            | OdePreset::Custom => {
-                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
-            }
-            OdePreset::HarmonicOscillator => {
-                "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into()
-            }
-            OdePreset::LogisticGrowth => {
-                "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into()
-            }
-        }
-    }
-    fn theory_latex_equation(&self) -> Option<String> {
-        let eq = match self.preset {
-            OdePreset::Exponential => r"\frac{dy}{dt} = k y",
-            OdePreset::HarmonicOscillator => r"\frac{d^2 y}{dt^2} = -k y",
-            OdePreset::LogisticGrowth => r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
-            OdePreset::LinearSystem2D => r"\dot{\mathbf{x}} = A \mathbf{x}",
-            OdePreset::PlanarCustom | OdePreset::Custom => return None,
-        };
-        Some(eq.into())
-    }
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        HashMap::from([
-            (
-                "Exponential".into(),
-                "First-order linear ODE representing exponential growth or decay".into(),
-            ),
-            (
-                "Harmonic Oscillator".into(),
-                "Second-order linear ODE representing simple harmonic motion".into(),
-            ),
-            (
-                "Logistic Growth".into(),
-                "Nonlinear first-order ODE modeling population growth with carrying capacity"
-                    .into(),
-            ),
-            (
-                "Linear 2D".into(),
-                "Planar 2x2 linear system with Poincaré stability regimes".into(),
-            ),
-            (
-                "Planar Custom".into(),
-                "Coupled 2D user-defined ODE phase-plane system".into(),
-            ),
-            (
-                "Custom".into(),
-                "Custom user-defined scalar or coupled ordinary differential equation".into(),
-            ),
-        ])
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "harmonic_oscillator",
-        title: "Harmonic Oscillator",
-        description: "y'' = -k·y: Second-order differential equation modeling undamped periodic spring motion.",
-        category: "Differential Equations",
-        icon: "〰️",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_HARMONIC_OSCILLATOR,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "logistic_growth",
-        title: "Logistic Growth",
-        description: "y' = r·y·(1 - y/K): Non-linear growth constrained by carrying capacity K.",
-        category: "Population Dynamics",
-        icon: "📈",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_LOGISTIC_GROWTH,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "exponential_decay",
-        title: "Exponential Decay",
-        description: "y' = k·y: First-order differential decay process with constant half-life.",
-        category: "Calculus",
-        icon: "📉",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_EXPONENTIAL_DECAY,
     }
 }

@@ -73,6 +73,7 @@ pub struct OdeSolverTool {
     pub(crate) revision: u64,
     pub(crate) series_cache: series_cache::OdeSeriesCache,
     pub(crate) synced_legacy_params: [f64; 3],
+    pub(crate) active_baseline_hash: Option<u64>,
 }
 
 fn default_scalar_ode_input() -> MathExpressionInputBar {
@@ -185,6 +186,7 @@ impl Default for OdeSolverTool {
             revision: 1,
             series_cache: series_cache::OdeSeriesCache::default(),
             synced_legacy_params: [1.0, 1.0, 10.0],
+            active_baseline_hash: None,
         };
         tool.seed_default_custom_params();
         tool.recalculate();
@@ -355,6 +357,7 @@ impl OdeSolverTool {
         self.v_series.clear();
         self.diverged = false;
         self.diagnostic_report = None;
+        self.active_baseline_hash = None;
 
         self.recalculate_active();
         self.recalculate_seeded_orbits();
@@ -418,6 +421,9 @@ impl OdeSolverTool {
             emit_divergence_telemetry("OdeSolverTool", t_div, step_idx, &var_name, &message);
             self.diagnostic_report =
                 Some(DiagnosticReport::new(t_div, step_idx, var_name, message));
+        } else if !self.diverged {
+            self.active_baseline_hash =
+                Some(self.compute_active_baseline_hash(custom_spec.as_ref()));
         }
     }
 }

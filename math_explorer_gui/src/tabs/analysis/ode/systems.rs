@@ -305,6 +305,7 @@ fn eval_planar_custom_final(
         return f64::NAN;
     };
     let mut params = p_map.clone();
+    params.entry("cap_k".to_string()).or_insert(cap_k);
     params.insert("K".to_string(), cap_k);
     let dyn_sys = PlanarAstOde {
         x_expr,
@@ -342,4 +343,117 @@ fn step_final<const N: usize, D: OdeSystem<ArrayState<N>>>(
         }
     }
     state.0[0]
+}
+
+impl OdeSolverTool {
+    pub(crate) fn compute_active_baseline_hash(&self, custom_spec: Option<&CustomOdeSpec>) -> u64 {
+        use crate::sensitivity::canonical_f64_bits;
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (self.preset as u8, self.method as u8).hash(&mut hasher);
+        for val in [
+            self.dt,
+            self.total_time,
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+            self.ic_y0,
+            self.ic_v0,
+        ] {
+            canonical_f64_bits(val).hash(&mut hasher);
+        }
+        for val in self.matrix_a.iter().flatten() {
+            canonical_f64_bits(*val).hash(&mut hasher);
+        }
+        if self.preset == OdePreset::PlanarCustom {
+            self.planar_x_input.raw_text.hash(&mut hasher);
+            self.planar_y_input.raw_text.hash(&mut hasher);
+        }
+        if let Some(spec) = custom_spec {
+            1_u8.hash(&mut hasher);
+            spec.hash_with_params(&mut hasher);
+        } else {
+            0_u8.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    fn reusable_baseline_final_y(
+        &self,
+        custom_spec: Option<&CustomOdeSpec>,
+        param_refs: &[(&str, f64)],
+    ) -> Option<f64> {
+        if self.diverged || self.has_custom_input_error() {
+            return None;
+        }
+        let steps = crate::presets::checked_ode_step_count(self.dt, self.total_time)?;
+        if self.y_series.len() != steps + 1
+            || (self.has_second_state() && self.v_series.len() != steps + 1)
+        {
+            return None;
+        }
+        if self.active_baseline_hash != Some(self.compute_active_baseline_hash(custom_spec)) {
+            return None;
+        }
+        if self.preset == OdePreset::Custom
+            && !custom_spec.is_some_and(|spec| spec.matches_baseline_params(param_refs))
+        {
+            return None;
+        }
+        self.y_series.last().copied().filter(|v| v.is_finite())
+    }
+
+    pub(super) fn run_sensitivity_analysis(&mut self, defer_gesture: bool) {
+        if defer_gesture {
+            self.sensitivity_engine.defer_for_gesture();
+            return;
+        }
+
+        use crate::sensitivity::canonical_f64_bits;
+
+        let dynamic_params = self.collect_sensitivity_params();
+        let param_refs: Vec<(&str, f64)> = dynamic_params
+            .iter()
+            .map(|(k, v)| (k.as_str(), *v))
+            .collect();
+
+        let custom_spec = self.build_custom_ode_spec();
+        let baseline_hint = self.reusable_baseline_final_y(custom_spec.as_ref(), &param_refs);
+        let base_spec = super::comparison::OdeSimSpec {
+            preset: self.preset,
+            method: self.method,
+            dt: self.dt,
+            total_time: self.total_time,
+            param_k: self.param_k,
+            param_r: self.param_r,
+            param_cap_k: self.param_cap_k,
+            ic_y0: self.ic_y0,
+            ic_v0: self.ic_v0,
+            matrix_a: self.matrix_a,
+            custom_spec: custom_spec.as_ref(),
+            planar_x_expr: self.planar_x_input.cached_expr(),
+            planar_y_expr: self.planar_y_input.cached_expr(),
+        };
+        let custom_ctx =
+            (self.preset == OdePreset::Custom).then_some(CustomOdeContext(custom_spec.as_ref()));
+        let planar_ctx = (self.preset == OdePreset::PlanarCustom).then_some((
+            self.planar_x_input.raw_text.as_str(),
+            self.planar_y_input.raw_text.as_str(),
+        ));
+        let context = (
+            base_spec.preset as u8,
+            base_spec.method as u8,
+            canonical_f64_bits(base_spec.dt),
+            canonical_f64_bits(base_spec.total_time),
+            custom_ctx,
+            planar_ctx,
+        );
+
+        self.sensitivity_engine.compute_with_baseline(
+            &param_refs,
+            &context,
+            baseline_hint,
+            |p_map| eval_ode_final_state_planar(&base_spec, p_map),
+        );
+    }
 }

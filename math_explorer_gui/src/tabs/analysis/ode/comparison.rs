@@ -366,26 +366,27 @@ fn execute_steps_2d<D: OdeSystem<ArrayState<2>>, S: Solver<ArrayState<2>>>(
 
 /// Computes maximum discrepancy and root-mean-square discrepancy between two solver trajectories
 /// across `y(t)` and (when present for coupled 2-state systems) `v(t)`.
+#[cfg(test)]
+#[must_use]
 pub fn compute_discrepancy(a: &SolverTrajectory, b: &SolverTrajectory) -> SolverDiscrepancy {
+    compute_series_discrepancy(&a.y_series, &a.v_series, &b.y_series, &b.v_series)
+}
+
+/// Computes maximum discrepancy and root-mean-square discrepancy between slice-backed `(y, v)` series.
+#[must_use]
+pub fn compute_series_discrepancy(
+    a_y: &[f64],
+    a_v: &[f64],
+    b_y: &[f64],
+    b_v: &[f64],
+) -> SolverDiscrepancy {
     let mut max_err: f64 = 0.0;
     let mut sum_sq_err: f64 = 0.0;
     let mut count: usize = 0;
 
-    accumulate_series_discrepancy(
-        &a.y_series,
-        &b.y_series,
-        &mut max_err,
-        &mut sum_sq_err,
-        &mut count,
-    );
-    if !a.v_series.is_empty() && !b.v_series.is_empty() {
-        accumulate_series_discrepancy(
-            &a.v_series,
-            &b.v_series,
-            &mut max_err,
-            &mut sum_sq_err,
-            &mut count,
-        );
+    accumulate_series_discrepancy(a_y, b_y, &mut max_err, &mut sum_sq_err, &mut count);
+    if !a_v.is_empty() && !b_v.is_empty() {
+        accumulate_series_discrepancy(a_v, b_v, &mut max_err, &mut sum_sq_err, &mut count);
     }
 
     let rms_error = if count > 0 {
@@ -417,4 +418,49 @@ fn accumulate_series_discrepancy(
             *count += 1;
         }
     }
+}
+pub(super) struct TrajectoryView<'a> {
+    pub(super) method: IntegrationMethod,
+    pub(super) time_series: &'a [f64],
+    pub(super) y_series: &'a [f64],
+    pub(super) v_series: &'a [f64],
+    pub(super) diverged: bool,
+    pub(super) is_active_reused: bool,
+}
+
+pub(super) fn build_view_trace_series(
+    view: &TrajectoryView<'_>,
+    labels: (&'static str, &'static str, &'static str, &'static str),
+    has_v: bool,
+    phase_active: bool,
+) -> Vec<crate::framework::TraceSeries> {
+    use crate::framework::TraceSeries;
+
+    let (t1_lbl, t2_lbl, px_lbl, py_lbl) = labels;
+    if phase_active {
+        let pts_phase: Vec<[f64; 2]> = view
+            .y_series
+            .iter()
+            .zip(view.v_series)
+            .map(|(&x, &y)| [x, y])
+            .collect();
+        return vec![TraceSeries::new(format!("({px_lbl}, {py_lbl})"), pts_phase)];
+    }
+    let pts_y: Vec<[f64; 2]> = view
+        .time_series
+        .iter()
+        .zip(view.y_series)
+        .map(|(&t, &y)| [t, y])
+        .collect();
+    let mut series = vec![TraceSeries::new(t1_lbl, pts_y)];
+    if has_v && !view.v_series.is_empty() {
+        let pts_v: Vec<[f64; 2]> = view
+            .time_series
+            .iter()
+            .zip(view.v_series)
+            .map(|(&t, &v)| [t, v])
+            .collect();
+        series.push(TraceSeries::new(t2_lbl, pts_v));
+    }
+    series
 }

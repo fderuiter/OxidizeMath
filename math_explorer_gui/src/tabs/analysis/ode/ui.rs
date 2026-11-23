@@ -1,8 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::comparison::OdeSimSpec;
 use super::phase_plane::PLANAR_COUPLED_PRESETS;
-use super::systems::eval_ode_final_state_planar;
 use super::OdeSolverTool;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
@@ -11,7 +9,11 @@ use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
 impl OdeSolverTool {
-    pub(super) fn render_sidebar_controls(&mut self, ui: &mut egui::Ui) -> bool {
+    pub(super) fn render_sidebar_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        sweeps_before: usize,
+    ) -> bool {
         let mut changed = false;
         changed |= self.render_preset_selector(ui);
         if self.has_second_state() {
@@ -25,8 +27,20 @@ impl OdeSolverTool {
         }
         changed |= self.render_initial_condition_inputs(ui);
         changed |= self.render_solver_settings_controls(ui);
-        self.render_snapshots_and_sensitivity(ui);
+
+        let sweep_active =
+            crate::reflective_ui::slider::current_pass_active_sweep_count(ui.ctx()) > sweeps_before;
+        self.apply_sidebar_changes(changed, sweep_active);
+        self.sync_series_cache();
+
+        if self.comparison_mode {
+            self.render_discrepancy_panel(ui);
+        }
+        let defer_sensitivity =
+            crate::sensitivity::is_transient_parameter_gesture(ui.ctx(), sweep_active);
+        self.render_snapshots_and_sensitivity(ui, defer_sensitivity);
         if self.callout_manager.render_ui(ui) {
+            self.bump_revision();
             changed = true;
         }
         changed
@@ -277,14 +291,10 @@ impl OdeSolverTool {
         changed |= ui
             .checkbox(&mut self.show_annotations, "Show Annotations")
             .changed();
-
-        if self.comparison_mode {
-            self.render_discrepancy_panel(ui);
-        }
         changed
     }
 
-    fn render_snapshots_and_sensitivity(&mut self, ui: &mut egui::Ui) {
+    fn render_snapshots_and_sensitivity(&mut self, ui: &mut egui::Ui, defer_gesture: bool) {
         ui.add_space(10.0);
         let param_summary = self.param_summary();
         let (t1_lbl, t2_lbl, _, _) = self.active_state_labels();
@@ -303,7 +313,7 @@ impl OdeSolverTool {
             self.bump_revision();
         }
 
-        self.run_sensitivity_analysis();
+        self.run_sensitivity_analysis(defer_gesture);
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
     }
 
@@ -339,7 +349,7 @@ impl OdeSolverTool {
         }
     }
 
-    fn collect_sensitivity_params(&self) -> Vec<(String, f64)> {
+    pub(super) fn collect_sensitivity_params(&self) -> Vec<(String, f64)> {
         let mut out: Vec<(String, f64)> = Vec::with_capacity(8);
         let push_pairs = |dst: &mut Vec<(String, f64)>, pairs: &[(&str, f64)]| {
             dst.extend(pairs.iter().map(|&(k, v)| (k.to_string(), v)));
@@ -388,51 +398,5 @@ impl OdeSolverTool {
             OdePreset::Custom => self.push_scalar_custom_sensitivity_params(&mut out),
         }
         out
-    }
-
-    fn run_sensitivity_analysis(&mut self) {
-        use crate::sensitivity::canonical_f64_bits;
-
-        let dynamic_params = self.collect_sensitivity_params();
-        let param_refs: Vec<(&str, f64)> = dynamic_params
-            .iter()
-            .map(|(k, v)| (k.as_str(), *v))
-            .collect();
-
-        let custom_spec = self.build_custom_ode_spec();
-        let base_spec = OdeSimSpec {
-            preset: self.preset,
-            method: self.method,
-            dt: self.dt,
-            total_time: self.total_time,
-            param_k: self.param_k,
-            param_r: self.param_r,
-            param_cap_k: self.param_cap_k,
-            ic_y0: self.ic_y0,
-            ic_v0: self.ic_v0,
-            matrix_a: self.matrix_a,
-            custom_spec: custom_spec.as_ref(),
-            planar_x_expr: self.planar_x_input.cached_expr(),
-            planar_y_expr: self.planar_y_input.cached_expr(),
-        };
-        let custom_ctx = (self.preset == OdePreset::Custom)
-            .then_some(super::systems::CustomOdeContext(custom_spec.as_ref()));
-        let planar_ctx = (self.preset == OdePreset::PlanarCustom).then_some((
-            self.planar_x_input.raw_text.as_str(),
-            self.planar_y_input.raw_text.as_str(),
-        ));
-        let context = (
-            base_spec.preset as u8,
-            base_spec.method as u8,
-            canonical_f64_bits(base_spec.dt),
-            canonical_f64_bits(base_spec.total_time),
-            custom_ctx,
-            planar_ctx,
-        );
-
-        self.sensitivity_engine
-            .compute_with_context(&param_refs, &context, |p_map| {
-                eval_ode_final_state_planar(&base_spec, p_map)
-            });
     }
 }
