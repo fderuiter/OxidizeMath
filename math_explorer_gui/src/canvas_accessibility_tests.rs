@@ -107,6 +107,12 @@ fn test_pure_math_custom_canvases_and_rasters_receive_tab_focus_and_labels() {
     let mut spiral = crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut spiral, "Ulam Prime Spiral");
 
+    let mut fractran = crate::tabs::number_theory::fractran_machine::FractranMachineTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut fractran,
+        "FRACTRAN Minsky Counter-Machine Graph",
+    );
+
     let mut chladni = crate::tabs::analysis::chladni_wave_tank::ChladniWaveTankTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(
         &mut chladni,

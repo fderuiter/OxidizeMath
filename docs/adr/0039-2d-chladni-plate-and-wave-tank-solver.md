@@ -1,4 +1,4 @@
-# ADR 0038: Zero-Allocation 2D Chladni Plate and Wave Tank Solver
+# ADR 0039: Zero-Allocation 2D Chladni Plate and Wave Tank Solver
 
 ## Status
 

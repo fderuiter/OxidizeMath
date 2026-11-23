@@ -325,16 +325,6 @@ pub fn wave_parameter_constraints() -> HashMap<String, ParameterConstraint> {
     ])
 }
 
-/// Returns `value` when finite, or `fallback` otherwise.
-#[must_use]
-pub const fn finite_or(value: f64, fallback: f64) -> f64 {
-    if value.is_finite() {
-        value
-    } else {
-        fallback
-    }
-}
-
 /// Human-readable display labels for all wave simulator parameters (no raw underscores).
 #[must_use]
 pub fn wave_parameter_label(name: &str) -> &'static str {

@@ -11,11 +11,9 @@ fn test_custom_3d_flow_worker_streaming_zero_alloc_and_roundtrip() {
         mode: AttractorMode::Custom,
         ..Default::default()
     };
-    plotter.flow_bank.set_expressions(&[
-        "sin(y) - b * x",
-        "sin(z) - b * y",
-        "sin(x) - b * z",
-    ]);
+    plotter
+        .flow_bank
+        .set_expressions(&["sin(y) - b * x", "sin(z) - b * y", "sin(x) - b * z"]);
     let mut pmap = BTreeMap::new();
     pmap.insert("b".to_string(), 0.19);
     plotter.flow_bank.set_params_map(&pmap);
