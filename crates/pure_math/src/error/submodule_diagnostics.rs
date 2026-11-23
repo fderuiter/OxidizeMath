@@ -55,7 +55,13 @@ impl Diagnostic for MarkovError {
 
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("MarkovError", self.to_string())
+        let mut map = error_metadata("MarkovError", self.to_string());
+        if let Self::Math(math_err) = self {
+            for (k, v) in math_err.metadata() {
+                map.entry(k).or_insert(v);
+            }
+        }
+        map
     }
 }
 
@@ -103,7 +109,13 @@ impl Diagnostic for CopulaError {
 
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("CopulaError", self.to_string())
+        let mut map = error_metadata("CopulaError", self.to_string());
+        if let Self::Math(math_err) = self {
+            for (k, v) in math_err.metadata() {
+                map.entry(k).or_insert(v);
+            }
+        }
+        map
     }
 }
 
