@@ -1,6 +1,6 @@
 use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
-    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
+    Glicko2Error, GraphTheoryError, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
     OptimizationError, OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
@@ -53,6 +53,9 @@ pub enum PureMathError {
     /// Prime-exponent FRACTRAN register machine error.
     #[error("{0}")]
     Fractran(#[from] FractranError),
+    /// Graph theory solver or interchange error.
+    #[error("{0}")]
+    GraphTheory(#[from] GraphTheoryError),
     /// Numerical linear algebra error.
     #[error("{0}")]
     LinearAlgebra(#[from] LinearAlgebraError),
@@ -128,6 +131,7 @@ impl PureMathError {
             Self::EllipticCurve(err) => err,
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
+            Self::GraphTheory(err) => err,
             Self::LinearAlgebra(err) => err,
             Self::Optimization(err) => err,
             Self::Stochastic(err) => err,

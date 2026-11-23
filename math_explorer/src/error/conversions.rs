@@ -95,6 +95,7 @@ impl_error_from!(@cfg "pure_math":
     EvolutionError => Evolution,
     FractranError => Fractran,
     Glicko2Error => Glicko2,
+    GraphTheoryError => GraphTheory,
     KellyError => Kelly,
     LinearAlgebraError => LinearAlgebra,
     MarkovError => Markov,

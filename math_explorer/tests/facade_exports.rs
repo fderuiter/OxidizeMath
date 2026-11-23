@@ -198,6 +198,10 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors
     g.add_edge(a, b, 1.0);
     assert_eq!(g.node_count(), 2);
     assert_pure_math_eighteen_errors();
+
+    let graph_err = math_explorer::prelude::GraphTheoryError::UnknownEndpoint { node: 7 };
+    let facade_graph_err: math_explorer::prelude::Error = graph_err.clone().into();
+    assert_eq!(facade_graph_err.to_string(), graph_err.to_string());
 }
 
 #[cfg(feature = "ai")]

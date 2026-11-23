@@ -8326,6 +8326,9 @@
       "signature": "pub use crate :: pure_math :: elliptic_curves :: EllipticCurveError"
     },
     {
+      "signature": "pub use crate :: pure_math :: graph_theory :: GraphTheoryError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: number_theory :: ambs :: AmbsError"
     },
     {
@@ -8367,6 +8370,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: Glicko2Error } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: GraphTheoryError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: KellyError } }"
@@ -10587,6 +10593,11 @@
       "signature": "pub struct DijkstraResult < W >"
     }
   ],
+  "crates/pure_math/src/pure_math/graph_theory/error.rs": [
+    {
+      "signature": "pub enum GraphTheoryError"
+    }
+  ],
   "crates/pure_math/src/pure_math/graph_theory/graph.rs": [
     {
       "signature": "impl < N , E > Graph < N , E > { pub fn add_edge (& mut self , _ : NodeIndex , _ : NodeIndex , _ : E) }"
@@ -10601,6 +10612,95 @@
       "signature": "pub struct Graph < N , E >"
     }
   ],
+  "crates/pure_math/src/pure_math/graph_theory/interchange/csv.rs": [
+    {
+      "signature": "pub fn parse_edge_csv (_ : & str) -> Result < InterchangeGraph , GraphTheoryError >"
+    },
+    {
+      "signature": "pub fn to_edge_csv (_ : & InterchangeGraph) -> Result < String , GraphTheoryError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/interchange/dot.rs": [
+    {
+      "signature": "pub fn parse_dot (_ : & str) -> Result < InterchangeGraph , GraphTheoryError >"
+    },
+    {
+      "signature": "pub use dot_emit :: to_dot"
+    },
+    {
+      "signature": "pub use dot_emit :: to_styled_dot"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/interchange/graphml.rs": [
+    {
+      "signature": "pub fn parse_graphml (_ : & str) -> Result < InterchangeGraph , GraphTheoryError >"
+    },
+    {
+      "signature": "pub fn to_graphml (_ : & InterchangeGraph) -> Result < String , GraphTheoryError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/interchange/mod.rs": [
+    {
+      "signature": "impl InterchangeGraph { pub fn ensure_node (& mut self , _ : usize) -> Result < () , GraphTheoryError > }"
+    },
+    {
+      "signature": "impl InterchangeGraph { pub fn insert_node (& mut self , _ : InterchangeNode) -> Result < () , GraphTheoryError > }"
+    },
+    {
+      "signature": "impl InterchangeGraph { pub fn new (_ : bool) -> Self }"
+    },
+    {
+      "signature": "impl InterchangeGraph { pub fn push_edge (& mut self , _ : usize , _ : usize , _ : f64 ,) -> Result < () , GraphTheoryError > }"
+    },
+    {
+      "signature": "impl InterchangeGraph { pub fn validate (& self) -> Result < () , GraphTheoryError > }"
+    },
+    {
+      "signature": "pub const MAX_INTERCHANGE_EDGES : usize"
+    },
+    {
+      "signature": "pub const MAX_INTERCHANGE_VERTICES : usize"
+    },
+    {
+      "signature": "pub struct DotEdgeStyle"
+    },
+    {
+      "signature": "pub struct DotNodeStyle"
+    },
+    {
+      "signature": "pub struct DotStyleOverlay"
+    },
+    {
+      "signature": "pub struct InterchangeEdge"
+    },
+    {
+      "signature": "pub struct InterchangeGraph"
+    },
+    {
+      "signature": "pub struct InterchangeNode"
+    },
+    {
+      "signature": "pub use csv :: parse_edge_csv"
+    },
+    {
+      "signature": "pub use csv :: to_edge_csv"
+    },
+    {
+      "signature": "pub use dot :: parse_dot"
+    },
+    {
+      "signature": "pub use dot :: to_dot"
+    },
+    {
+      "signature": "pub use dot :: to_styled_dot"
+    },
+    {
+      "signature": "pub use graphml :: parse_graphml"
+    },
+    {
+      "signature": "pub use graphml :: to_graphml"
+    }
+  ],
   "crates/pure_math/src/pure_math/graph_theory/layout.rs": [
     {
       "signature": "pub fn circular_layout < N , E > (_ : & Graph < N , E > , _ : LayoutBounds ,) -> HashMap < NodeIndex , (f32 , f32) >"
@@ -10613,6 +10713,69 @@
     },
     {
       "signature": "pub type LayoutBounds = (f32 , f32 , f32 , f32)"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/max_flow_min_cut.rs": [
+    {
+      "signature": "impl EdmondsKarpScratch { pub fn prepare (& mut self , _ : usize , _ : & [(usize , usize , f64)] , _ : bool ,) -> Result < () , GraphTheoryError > }"
+    },
+    {
+      "signature": "impl EdmondsKarpScratch { pub fn with_capacity (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn max_flow_min_cut (_ : usize , _ : & [(usize , usize , f64)] , _ : usize , _ : usize , _ : bool ,) -> Result < MaxFlowMinCutResult , GraphTheoryError >"
+    },
+    {
+      "signature": "pub fn solve_max_flow_min_cut_in_place (_ : & mut EdmondsKarpScratch , _ : usize , _ : usize , _ : & mut [f64] , _ : & mut [bool] ,) -> Result < MaxFlowSummary , GraphTheoryError >"
+    },
+    {
+      "signature": "pub struct AugmentingPathStep"
+    },
+    {
+      "signature": "pub struct EdmondsKarpScratch"
+    },
+    {
+      "signature": "pub struct MaxFlowMinCutResult"
+    },
+    {
+      "signature": "pub struct MaxFlowSummary"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/minimum_spanning_tree.rs": [
+    {
+      "signature": "impl KruskalScratch { pub fn reserve_for (& mut self , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl KruskalScratch { pub fn with_capacity (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn minimum_spanning_tree (_ : usize , _ : & [(usize , usize , f64)] ,) -> Result < MstResult , GraphTheoryError >"
+    },
+    {
+      "signature": "pub fn solve_minimum_spanning_tree_in_place (_ : & mut KruskalScratch , _ : usize , _ : & [(usize , usize , f64)] , _ : & mut [bool] ,) -> Result < MstSummary , GraphTheoryError >"
+    },
+    {
+      "signature": "pub struct KruskalScratch"
+    },
+    {
+      "signature": "pub struct MstEdgeStep"
+    },
+    {
+      "signature": "pub struct MstResult"
+    },
+    {
+      "signature": "pub struct MstSummary"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/mod.rs": [
+    {
+      "signature": "pub use error :: GraphTheoryError"
+    },
+    {
+      "signature": "pub use max_flow_min_cut :: max_flow_min_cut as solve_max_flow_min_cut"
+    },
+    {
+      "signature": "pub use minimum_spanning_tree :: minimum_spanning_tree as solve_minimum_spanning_tree"
     }
   ],
   "crates/pure_math/src/pure_math/graph_theory/parameters/degree.rs": [
@@ -10644,7 +10807,19 @@
   ],
   "crates/pure_math/src/pure_math/graph_theory/parameters/treewidth.rs": [
     {
+      "signature": "impl TreewidthScratch { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_EXACT_TREEWIDTH_VERTICES : usize"
+    },
+    {
       "signature": "pub fn treewidth < N , E > (_ : & Graph < N , E >) -> usize"
+    },
+    {
+      "signature": "pub fn treewidth_in_place < N , E > (_ : & Graph < N , E > , _ : & mut TreewidthScratch) -> usize"
+    },
+    {
+      "signature": "pub struct TreewidthScratch"
     }
   ],
   "crates/pure_math/src/pure_math/logic.rs": [
@@ -12952,6 +13127,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: Glicko2Error"
+    },
+    {
+      "signature": "pub use pure_math :: error :: GraphTheoryError"
     },
     {
       "signature": "pub use pure_math :: error :: KellyError"
