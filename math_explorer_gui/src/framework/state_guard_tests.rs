@@ -405,7 +405,7 @@ fn test_starter_card_launch_updates_baseline_and_snapshot_for_reset() {
 }
 
 #[test]
-fn test_apply_preset_json_malformed_surfaces_toast_and_telemetry_warning() {
+fn test_apply_starter_card_malformed_surfaces_toast_and_telemetry_warning() {
     let mut framework = SimulationFramework::new("analysis");
     assert!(framework.preset_dialog.toast_error.is_none());
 
@@ -415,7 +415,11 @@ fn test_apply_preset_json_malformed_surfaces_toast_and_telemetry_warning() {
     let mut warning = None;
     for _ in 0..5 {
         let err_msg = framework
-            .apply_preset_json("{not valid preset json")
+            .apply_starter_card(
+                "Malformed Preset",
+                Some("OdeSolverTool"),
+                Some("{not valid preset json"),
+            )
             .expect_err("Malformed JSON must return Err");
         let toast = framework
             .preset_dialog

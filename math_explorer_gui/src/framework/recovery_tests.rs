@@ -7,7 +7,7 @@ use crate::framework::InteractiveTool;
 use crate::tabs::climate::cera::CeraTool;
 use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
 use crate::tabs::morphogenesis::{
-    MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
+    MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTool,
 };
 use crate::tabs::quantum::wave_sim::{WavePotentialPreset, WaveRunner, WaveSimConfig};
 use eframe::egui;
@@ -232,7 +232,7 @@ fn test_morphogenesis_divergence_and_recovery() {
         kinetics,
         diffusion,
     );
-    MorphogenesisTab::initialize_system(&mut system, width, height);
+    MorphogenesisTool::initialize_system(&mut system, width, height);
 
     let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
         a: 0.1,
@@ -263,23 +263,27 @@ fn test_morphogenesis_divergence_and_recovery() {
 
     // Verify plot_concentration sanitizes non-finite floats
     let corrupted_data = vec![f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 0.5, 1.0];
-    let image = MorphogenesisTab::plot_concentration(&corrupted_data, 5, 1);
+    let image = MorphogenesisTool::plot_concentration(&corrupted_data, 5, 1);
     assert_eq!(image.pixels.len(), 5);
 
-    // Test MorphogenesisTab recovery remedies
-    let mut tab = MorphogenesisTab::default();
-    tab.params.write().unwrap().dt = 0.05;
-    tab.auto_scale_step_size();
-    assert_eq!(tab.params.read().unwrap().dt, 0.025);
+    // Test MorphogenesisTool recovery remedies
+    let mut tool = MorphogenesisTool::default();
+    tool.params.write().unwrap().dt = 0.05;
+    tool.auto_scale_step_size();
+    assert_eq!(tool.params.read().unwrap().dt, 0.025);
 
-    tab.params.write().unwrap().a = 50.0;
-    tab.clamp_parameters();
-    assert!(tab.params.read().unwrap().a <= 1.0);
+    tool.params.write().unwrap().dt = 1e-5;
+    tool.auto_scale_step_size();
+    assert_eq!(tool.params.read().unwrap().dt, 1e-4);
 
-    tab.reset_parameters();
-    assert_eq!(tab.params.read().unwrap().a, 0.1);
-    assert_eq!(tab.params.read().unwrap().b, 0.9);
-    assert_eq!(tab.params.read().unwrap().dt, 0.05);
+    tool.params.write().unwrap().a = 50.0;
+    FiniteStateGuard::clamp_parameters(&mut tool);
+    assert!(tool.params.read().unwrap().a <= 1.0);
+
+    tool.reset_parameters();
+    assert_eq!(tool.params.read().unwrap().a, 0.1);
+    assert_eq!(tool.params.read().unwrap().b, 0.9);
+    assert_eq!(tool.params.read().unwrap().dt, 0.05);
 }
 
 #[test]

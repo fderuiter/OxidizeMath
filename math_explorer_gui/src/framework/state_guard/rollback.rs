@@ -332,25 +332,6 @@ impl SimulationFramework {
         self.last_valid_snapshot = Some(snap);
     }
 
-    /// Applies a preset JSON envelope to the active tool, refreshing baseline/snapshot on success.
-    pub fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let res = match &mut self.active_tool {
-            Some(tool) => tool.import_preset_json(json_str),
-            None => Err("No active tool selected for preset import".to_string()),
-        };
-        match res {
-            Ok(()) => {
-                self.preset_dialog.toast_error = None;
-                self.sync_active_baseline();
-                Ok(())
-            }
-            Err(err) => {
-                self.preset_dialog.record_import_error(err.clone());
-                Err(err)
-            }
-        }
-    }
-
     /// Rebuilds a clean target tool instance for a starter card and synchronizes baseline/reset snapshots.
     pub fn apply_starter_card(
         &mut self,

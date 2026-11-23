@@ -1,4 +1,5 @@
 use super::*;
+use crate::framework::{InteractiveTool, ToolStateBounds};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -18,22 +19,33 @@ fn test_roundtrip_preset_envelope_and_bom_stripping() {
     assert!(json.contains("test_domain"));
     assert!(json.contains("42.5"));
 
-    let restored: DummyConfig =
-        deserialize_preset_envelope(&json, "test_domain", "Dummy Tool").unwrap();
+    let restored: DummyConfig = deserialize_preset_envelope_bounded(
+        &json,
+        "test_domain",
+        "Dummy Tool",
+        ToolStateBounds::DEFAULT,
+    )
+    .unwrap();
     assert_eq!(restored, config);
 
     let bom_json = format!("\u{feff}{json}");
-    let bom_restored: DummyConfig =
-        deserialize_preset_envelope(&bom_json, "test_domain", "Dummy Tool").unwrap();
+    let bom_restored: DummyConfig = deserialize_preset_envelope_bounded(
+        &bom_json,
+        "test_domain",
+        "Dummy Tool",
+        ToolStateBounds::DEFAULT,
+    )
+    .unwrap();
     assert_eq!(bom_restored, config);
 }
 
 #[test]
 fn test_corrupted_json_and_empty_domain_graceful_failure() {
-    let bad_schema = deserialize_preset_envelope::<DummyConfig>(
+    let bad_schema = deserialize_preset_envelope_bounded::<DummyConfig>(
         "INVALID JSON CONTENT {",
         "test_domain",
         "Dummy Tool",
+        ToolStateBounds::DEFAULT,
     );
     assert!(bad_schema
         .unwrap_err()
@@ -48,8 +60,12 @@ fn test_corrupted_json_and_empty_domain_graceful_failure() {
         },
     )
     .unwrap();
-    let unsupported =
-        deserialize_preset_envelope::<DummyConfig>(&valid_json, "", "Unsupported Tool");
+    let unsupported = deserialize_preset_envelope_bounded::<DummyConfig>(
+        &valid_json,
+        "",
+        "Unsupported Tool",
+        ToolStateBounds::DEFAULT,
+    );
     assert_eq!(
         unsupported.unwrap_err(),
         "Preset import not supported for Unsupported Tool"
@@ -71,8 +87,12 @@ fn test_domain_mismatch_failure() {
         }
     }"#;
 
-    let result =
-        deserialize_preset_envelope::<DummyConfig>(wrong_domain_json, "test_domain", "Dummy Tool");
+    let result = deserialize_preset_envelope_bounded::<DummyConfig>(
+        wrong_domain_json,
+        "test_domain",
+        "Dummy Tool",
+        ToolStateBounds::DEFAULT,
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Domain mismatch"));
 }
@@ -143,8 +163,10 @@ fn test_checked_ode_step_count_bounds_and_step_caps() {
 }
 
 #[test]
-fn test_morphogenesis_preset_config_roundtrip() {
-    let config = MorphogenesisPresetConfig {
+fn test_morphogenesis_tool_state_envelope_roundtrip() {
+    use crate::tabs::morphogenesis::{atlas::default_morpho_atlas_axes, MorphogenesisToolState};
+
+    let config = MorphogenesisToolState {
         a: 0.14,
         b: 0.86,
         d_u: 1.0,
@@ -152,11 +174,22 @@ fn test_morphogenesis_preset_config_roundtrip() {
         dt: 0.02,
         width: 80,
         height: 80,
+        state: None,
+        paused: None,
+        pending_initial_start: false,
+        atlas_visible: false,
+        atlas_axes: default_morpho_atlas_axes(),
     };
 
     let json = serialize_preset_envelope("Stripes Test", "biology", &config).unwrap();
-    let deserialized: MorphogenesisPresetConfig =
-        deserialize_preset_envelope(&json, "biology", "Morphogenesis").unwrap();
+    let deserialized: MorphogenesisToolState = deserialize_preset_envelope_bounded(
+        &json,
+        "biology",
+        "Turing Morphogenesis",
+        ToolStateBounds::DEFAULT,
+    )
+    .unwrap();
+    assert!(deserialized.validate().is_ok());
     assert_eq!(deserialized, config);
 }
 
@@ -202,7 +235,12 @@ fn test_preset_dialog_poll_pending_import_export_and_cancel_cleanup() {
         .unwrap();
 
     assert!(dialog.poll_pending_import(|json_str| {
-        state = deserialize_preset_envelope(json_str, "test_domain", "Dummy Tool")?;
+        state = deserialize_preset_envelope_bounded(
+            json_str,
+            "test_domain",
+            "Dummy Tool",
+            ToolStateBounds::DEFAULT,
+        )?;
         Ok(())
     }));
     assert_eq!(state.value, 77.25);
@@ -283,7 +321,12 @@ fn test_preset_dialog_invalid_json_and_export_error_toasts() {
         .send(Ok(("corrupt.json".to_string(), "{ malformed".to_string())))
         .unwrap();
     assert!(!dialog.poll_pending_import(|json_str| {
-        state = deserialize_preset_envelope(json_str, "test_domain", "Dummy Tool")?;
+        state = deserialize_preset_envelope_bounded(
+            json_str,
+            "test_domain",
+            "Dummy Tool",
+            ToolStateBounds::DEFAULT,
+        )?;
         Ok(())
     }));
     assert_eq!(state.value, 12.5);
@@ -351,9 +394,9 @@ fn test_preset_filename_sanitization_matches_web_io_contract() {
 }
 
 #[test]
-fn test_morphogenesis_tab_shares_poll_pending_import_lifecycle() {
-    let mut tab = crate::tabs::morphogenesis::MorphogenesisTab::default();
-    let exported = tab.to_json_string().unwrap();
+fn test_morphogenesis_tool_shares_poll_pending_import_lifecycle() {
+    let mut tool = crate::tabs::morphogenesis::MorphogenesisTool::default();
+    let exported = tool.export_preset_json().unwrap();
 
     let mut dialog = PresetDialogState::default();
     let (tx, rx) = channel();
@@ -361,7 +404,7 @@ fn test_morphogenesis_tab_shares_poll_pending_import_lifecycle() {
     tx.send(Ok(("morphogenesis_preset.json".to_string(), exported)))
         .unwrap();
 
-    assert!(dialog.poll_pending_import(|json_str| tab.from_json_str(json_str)));
+    assert!(dialog.poll_pending_import(|json_str| tool.import_preset_json(json_str)));
     assert_eq!(
         dialog.toast_info.as_deref(),
         Some("Loaded preset from morphogenesis_preset.json")

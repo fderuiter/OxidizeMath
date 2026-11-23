@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::framework::SimulationFramework;
-use crate::tabs::morphogenesis::MorphogenesisTab;
+use crate::framework::{InteractiveTool, SimulationFramework};
+use crate::tabs::morphogenesis::{MorphogenesisTab, MorphogenesisTool};
 use crate::tabs::ExplorerTab;
 use federated_registry::{global_registry, Severity};
 
@@ -56,7 +56,7 @@ fn test_all_57_starter_cards_launch_and_sync_framework_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 67);
+    assert_eq!(presets.len(), 71);
 
     for preset in presets {
         let json = preset.generate_preset();
@@ -125,12 +125,12 @@ fn test_all_52_tools_export_and_import_preset_roundtrip() {
         );
     }
 
-    let mut morph = MorphogenesisTab::default();
-    morph.from_json_str(PRESET_TURING_STRIPES).unwrap();
-    let morph_json = morph.to_json_string().unwrap();
-    let mut morph_restored = MorphogenesisTab::default();
-    morph_restored.from_json_str(&morph_json).unwrap();
-    assert_eq!(morph_restored.export_config(), morph.export_config());
+    let mut morph = MorphogenesisTool::default();
+    morph.import_preset_json(PRESET_TURING_STRIPES).unwrap();
+    let morph_json = morph.export_preset_json().unwrap();
+    let mut morph_restored = MorphogenesisTool::default();
+    morph_restored.import_preset_json(&morph_json).unwrap();
+    assert_eq!(morph_restored.save_state(), morph.save_state());
 }
 
 #[test]
@@ -163,13 +163,13 @@ fn test_all_52_tools_reject_unknown_fields_and_wrong_domain() {
         );
     }
 
-    let mut morph = MorphogenesisTab::default();
-    let morph_exported = morph.to_json_string().unwrap();
+    let mut morph = MorphogenesisTool::default();
+    let morph_exported = morph.export_preset_json().unwrap();
     assert!(morph
-        .from_json_str(&inject_unknown_config_field(&morph_exported))
+        .import_preset_json(&inject_unknown_config_field(&morph_exported))
         .is_err());
     assert!(morph
-        .from_json_str(&replace_preset_domain(&morph_exported, "quantum"))
+        .import_preset_json(&replace_preset_domain(&morph_exported, "quantum"))
         .is_err());
 }
 
