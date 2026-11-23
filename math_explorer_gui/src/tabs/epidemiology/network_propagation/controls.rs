@@ -53,6 +53,7 @@ impl NetworkPropagationTool {
                     }
                 }
                 PlaybackAction::Step => self.step_once(),
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => self.reset_network(),
             }
         }

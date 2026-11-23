@@ -355,3 +355,30 @@ fn test_wasm_quantum_barrier_50_split_clamp_and_step() {
     tool.try_load_state(&clamped).unwrap();
     assert!(!tool.evaluate_challenge().unwrap().passed);
 }
+
+#[test]
+fn test_wave_simulator_animated_slider_sweeps_continuous_parameters() {
+    use super::presets::wave_parameter_label;
+    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+
+    let mut tool = WaveSimulatorTool::default();
+    let initial_x0 = tool.x0;
+    let ctx = egui::Context::default();
+    save_slider_state(
+        &ctx,
+        egui::Id::new(("wave_sim_param", wave_parameter_label("x0"))),
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Oscillate,
+        },
+    );
+    let _ = ctx.run(
+        egui::RawInput {
+            predicted_dt: 0.1,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+    assert!(tool.x0 > initial_x0);
+}

@@ -16,6 +16,7 @@ use crate::async_sim::{SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{
     BrushMode, BrushStroke, CalloutManager, PlaybackAction, PlaybackTransport, SpatialBrushKit,
 };
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
 
@@ -99,6 +100,7 @@ impl WaveSimulatorTool {
                 PlaybackAction::Step => {
                     let _ = self.worker.send_command(SimCommand::Step(1));
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.sync_config_and_reset(Some(ctx));
                 }
@@ -337,10 +339,11 @@ fn draw_bounded_slider(
     hover_desc: &str,
 ) -> bool {
     let prev = *value;
-    let slider = egui::Slider::new(value, range)
+    let slider = AnimatedSlider::new(value, range.clone())
+        .hard_bounds(range)
         .step_by(step)
-        .clamping(egui::SliderClamping::Always)
-        .text(label);
+        .text(label)
+        .id_salt(("wave_sim_param", label));
     let resp = ui.add(slider);
     let _ = resp.clone().accessible_hover_text(hover_desc);
     resp.changed() && (*value - prev).abs() > 1.0e-9

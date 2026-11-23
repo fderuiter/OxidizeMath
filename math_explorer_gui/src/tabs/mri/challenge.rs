@@ -70,14 +70,16 @@ impl MriKSpaceTool {
             .unwrap_or_else(|e| e.into_inner())
             .config = self.config.clone();
         let fresh = MriKSpaceRunner::new(Arc::clone(&self.params));
-        if let Some(snap) = fresh
-            .get_snapshot()
+        let fresh_snap = fresh.get_snapshot();
+        self.latest_sonification = fresh_snap.sonification;
+        if let Some(snap) = fresh_snap
             .structured_data
             .as_ref()
             .and_then(|d| d.downcast_ref::<MriKSpaceSnapshot>())
         {
             self.latest = snap.clone();
         }
+        self.fault_notified = false;
         let params = Arc::clone(&self.params);
         self.worker
             .reset_or_respawn(move || MriKSpaceRunner::new(params));

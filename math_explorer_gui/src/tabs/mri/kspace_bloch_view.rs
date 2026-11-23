@@ -3,12 +3,26 @@
 use super::kspace_tool::MriKSpaceTool;
 use super::kspace_types::ISOCHROMAT_COUNT;
 use crate::accessibility::AccessibleTheoryHover;
+use crate::async_sim::SimWorkerState;
 use crate::framework::{bounded_drag_value, Plot3DViewport};
 use eframe::egui;
 use egui_plot::{Line, PlotPoint, Points};
 
 impl MriKSpaceTool {
-    pub(crate) fn draw_selected_voxel_telemetry(&self, ui: &mut egui::Ui) {
+    pub(crate) fn draw_selected_voxel_telemetry(&mut self, ui: &mut egui::Ui) {
+        let is_faulted = self.worker.state() == SimWorkerState::Faulted;
+        if is_faulted {
+            if !self.fault_notified {
+                self.fault_notified = true;
+                crate::audio::notify_solver_diverged();
+            }
+        } else {
+            self.fault_notified = false;
+        }
+        let frame = self.latest_sonification;
+        crate::audio::render_sonification_panel(ui, "mri_kspace", &frame, is_faulted);
+        ui.separator();
+
         let [sr, sc] = self.config.selected_voxel;
         let [rho, t1, t2, db0] = self.latest.selected_tissue;
         ui.label(format!(

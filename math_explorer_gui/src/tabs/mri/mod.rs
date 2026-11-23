@@ -1,6 +1,7 @@
-// @explorer_feature = "physics"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::async_sim::SimWorkerState;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
@@ -127,6 +128,14 @@ impl ExplorerTab for MriTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "mri",
+        order: 11,
+        build: || Box::new(MriTab::default()),
     }
 }
 
