@@ -212,7 +212,9 @@ impl WaveRunner {
         let n = self.n_points.max(2);
         let dx = (self.x_max - self.x_min) / (n as f64 - 1.0);
         self.x_axis = (0..n).map(|i| self.x_min + i as f64 * dx).collect();
-        (self.x_left, self.x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
+        let (x_left, x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
+        self.x_left = x_left;
+        self.x_right = x_right;
         self.potential = evaluate_potential_grid(
             cfg.preset,
             &self.x_axis,
@@ -226,16 +228,8 @@ impl WaveRunner {
         self.cached_dt = None;
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
-        let safe_x0 = if cfg.x0.is_finite() {
-            cfg.x0
-        } else {
-            DEFAULT_X0
-        };
-        let safe_k0 = if cfg.k0.is_finite() {
-            cfg.k0
-        } else {
-            DEFAULT_K0
-        };
+        let finite_or = |v: f64, d: f64| if v.is_finite() { v } else { d };
+        let (safe_x0, safe_k0) = (finite_or(cfg.x0, DEFAULT_X0), finite_or(cfg.k0, DEFAULT_K0));
         let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {

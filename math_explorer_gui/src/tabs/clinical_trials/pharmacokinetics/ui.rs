@@ -36,8 +36,11 @@ fn render_sidebar_contents(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) {
     let prev_summary = tool.last_param_summary.clone();
     let prev_series = export::build_active_trace_series(tool);
 
+    let locked = tool.active_challenge.is_some();
     let mut changed = false;
-    changed |= render_formulation_section(tool, ui);
+    ui.add_enabled_ui(!locked, |ui| {
+        changed |= render_formulation_section(tool, ui);
+    });
     ui.add_space(4.0);
     changed |= render_adme_parameters_section(tool, ui);
     ui.add_space(4.0);
@@ -146,15 +149,10 @@ fn render_enantiomer_sliders(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui)
 }
 
 fn render_adme_parameters_section(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) -> bool {
+    let locked = tool.active_challenge.is_some();
     let mut changed = false;
     ui.group(|ui| {
         ui.label(egui::RichText::new("PK / ADME Parameters").strong());
-        changed |= ui
-            .add(
-                egui::Slider::new(&mut tool.bioavailability, 0.0..=1.0).text("Bioavailability (F)"),
-            )
-            .accessible_hover_text("Systemic oral bioavailability fraction F (0.0 to 1.0)")
-            .changed();
         changed |= ui
             .add(
                 egui::Slider::new(&mut tool.dose_mg, 0.0..=MAX_DOSE_MG)
@@ -162,15 +160,24 @@ fn render_adme_parameters_section(tool: &mut PharmacokineticsTool, ui: &mut egui
             )
             .accessible_hover_text("Maintenance oral dose amount in milligrams")
             .changed();
-        changed |= ui
-            .add(
-                egui::Slider::new(&mut tool.volume_l, MIN_VOLUME_L..=MAX_VOLUME_L)
-                    .text("Volume V_d (L)"),
-            )
-            .accessible_hover_text("Apparent volume of distribution in liters")
-            .changed();
-        changed |= render_elimination_controls(tool, ui);
-        changed |= render_absorption_controls(tool, ui);
+        ui.add_enabled_ui(!locked, |ui| {
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut tool.bioavailability, 0.0..=1.0)
+                        .text("Bioavailability (F)"),
+                )
+                .accessible_hover_text("Systemic oral bioavailability fraction F (0.0 to 1.0)")
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut tool.volume_l, MIN_VOLUME_L..=MAX_VOLUME_L)
+                        .text("Volume V_d (L)"),
+                )
+                .accessible_hover_text("Apparent volume of distribution in liters")
+                .changed();
+            changed |= render_elimination_controls(tool, ui);
+            changed |= render_absorption_controls(tool, ui);
+        });
     });
     changed
 }
@@ -250,13 +257,16 @@ fn render_absorption_controls(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui
 }
 
 fn render_schedule_section(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) -> bool {
+    let locked = tool.active_challenge.is_some();
     let mut changed = false;
     ui.group(|ui| {
         ui.label(egui::RichText::new("Multi-Dose Regimen Schedule").strong());
-        changed |= ui
-            .add(egui::Slider::new(&mut tool.n_doses, 1..=MAX_DOSES).text("Dose Count (N)"))
-            .accessible_hover_text("Number of scheduled dose slots (1 to 64)")
-            .changed();
+        ui.add_enabled_ui(!locked, |ui| {
+            changed |= ui
+                .add(egui::Slider::new(&mut tool.n_doses, 1..=MAX_DOSES).text("Dose Count (N)"))
+                .accessible_hover_text("Number of scheduled dose slots (1 to 64)")
+                .changed();
+        });
         changed |= ui
             .add(
                 egui::Slider::new(&mut tool.interval_hours, MIN_INTERVAL_H..=MAX_INTERVAL_H)
@@ -264,13 +274,15 @@ fn render_schedule_section(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) -
             )
             .accessible_hover_text("Time interval tau between scheduled maintenance doses")
             .changed();
-        changed |= ui
-            .add(
-                egui::Slider::new(&mut tool.horizon_hours, MIN_HORIZON_H..=MAX_HORIZON_H)
-                    .text("Horizon (h)"),
-            )
-            .accessible_hover_text("Total plasma simulation duration in hours")
-            .changed();
+        ui.add_enabled_ui(!locked, |ui| {
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut tool.horizon_hours, MIN_HORIZON_H..=MAX_HORIZON_H)
+                        .text("Horizon (h)"),
+                )
+                .accessible_hover_text("Total plasma simulation duration in hours")
+                .changed();
+        });
         changed |= ui
             .checkbox(
                 &mut tool.use_loading_dose,
@@ -290,7 +302,9 @@ fn render_schedule_section(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) -
         if changed {
             tool.missed_slots.retain(|&idx| idx < tool.n_doses);
         }
-        changed |= render_missed_slot_chips(tool, ui);
+        ui.add_enabled_ui(!locked, |ui| {
+            changed |= render_missed_slot_chips(tool, ui);
+        });
     });
     changed
 }
@@ -337,24 +351,27 @@ fn render_missed_slot_chips(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) 
 }
 
 fn render_window_section(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) -> bool {
+    let locked = tool.active_challenge.is_some();
     let mut changed = false;
     ui.group(|ui| {
         ui.label(egui::RichText::new("Therapeutic Window & Scale").strong());
-        if ui
-            .add(egui::Slider::new(&mut tool.mec, 0.0..=MAX_MEC).text("MEC (mg/L)"))
-            .accessible_hover_text("Minimum Effective Concentration threshold in mg/L")
-            .changed()
-        {
-            if tool.mtc <= tool.mec {
-                tool.mtc = (tool.mec + 0.5).min(MAX_MTC);
+        ui.add_enabled_ui(!locked, |ui| {
+            if ui
+                .add(egui::Slider::new(&mut tool.mec, 0.0..=MAX_MEC).text("MEC (mg/L)"))
+                .accessible_hover_text("Minimum Effective Concentration threshold in mg/L")
+                .changed()
+            {
+                if tool.mtc <= tool.mec {
+                    tool.mtc = (tool.mec + 0.5).min(MAX_MTC);
+                }
+                changed = true;
             }
-            changed = true;
-        }
-        let min_mtc = (tool.mec + 0.05).min(MAX_MTC);
-        changed |= ui
-            .add(egui::Slider::new(&mut tool.mtc, min_mtc..=MAX_MTC).text("MTC (mg/L)"))
-            .accessible_hover_text("Minimum Toxic Concentration ceiling in mg/L")
-            .changed();
+            let min_mtc = (tool.mec + 0.05).min(MAX_MTC);
+            changed |= ui
+                .add(egui::Slider::new(&mut tool.mtc, min_mtc..=MAX_MTC).text("MTC (mg/L)"))
+                .accessible_hover_text("Minimum Toxic Concentration ceiling in mg/L")
+                .changed();
+        });
         changed |= ui
             .checkbox(&mut tool.log10_y, "Base-10 Logarithmic Y-Axis (log10 C)")
             .accessible_hover_text("Toggle semi-logarithmic base-10 concentration axis")

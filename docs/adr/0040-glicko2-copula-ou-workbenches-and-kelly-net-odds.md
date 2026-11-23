@@ -1,4 +1,4 @@
-# ADR 0038: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics
+# ADR 0040: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics
 
 ## Status
 Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0037](0037-glicko2-frozen-period-tournament-simulator.md))
@@ -23,8 +23,8 @@ Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 002
 
 ```text
 Updated GUI inventory totals:
-- InteractiveTools: 62 (40 plot + 7 raster + 15 non-export)
-- StarterPresetMetadata cards: 74
+- InteractiveTools: 63 (41 plot + 7 raster + 15 non-figure)
+- StarterPresetMetadata cards: 79
 ```
 
 ## Consequences
