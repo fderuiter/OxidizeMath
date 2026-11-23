@@ -5,28 +5,29 @@ use super::gradients::{
 };
 use super::tables::{CUBE_EDGE_FLAGS, EDGE_CONNECTION, TRIANGLE_CONNECTION_TABLE};
 use super::types::{Mesh, Point3D, VoxelGrid};
+use super::workspace::IsosurfaceWorkspace;
 use crate::error::IsosurfaceError;
 
 /// Data for a single cube in the grid.
-struct CubeData {
+pub(super) struct CubeData {
     /// Values at the 8 corners.
-    values: [f32; 8],
+    pub(super) values: [f32; 8],
     /// Positions of the 8 corners.
-    positions: [Point3D; 8],
+    pub(super) positions: [Point3D; 8],
     /// Normals at the 8 corners.
-    normals: [Point3D; 8],
+    pub(super) normals: [Point3D; 8],
     /// The case index (0-255).
-    index: usize,
+    pub(super) index: usize,
     /// Coordinate of the cube in the grid (x, y, z).
-    coords: (usize, usize, usize),
+    pub(super) coords: (usize, usize, usize),
 }
 
 /// Marching Cubes algorithm implementation.
 ///
 /// Converts a scalar field (voxel grid) into a polygonal mesh.
 pub struct MarchingCubes<'a, G: GradientEstimator> {
-    grid: &'a VoxelGrid,
-    estimator: G,
+    pub(super) grid: &'a VoxelGrid,
+    pub(super) estimator: G,
 }
 
 impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
@@ -78,83 +79,14 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
     /// ```
     #[verified_engine::verified]
     pub fn extract(&self, threshold: f32) -> Result<Mesh, IsosurfaceError> {
-        let mut mesh = Mesh::default();
-        let mut edge_cache = SliceEdgeCache::new(self.grid.width(), self.grid.height());
-        self.extract_into(threshold, &mut edge_cache, &mut mesh)?;
+        let mut workspace = IsosurfaceWorkspace::new_lazy(self.grid.width(), self.grid.height());
+        let mut mesh = Mesh::new();
+        self.extract_into(threshold, &mut workspace, &mut mesh)?;
         Ok(mesh)
     }
 
-    /// Extracts the isosurface into pre-allocated [`SliceEdgeCache`] and [`Mesh`] buffers
-    /// so inner loops execute with zero dynamic heap allocations when capacity suffices.
     #[verified_engine::verified]
-    pub fn extract_into(
-        &self,
-        threshold: f32,
-        edge_cache: &mut SliceEdgeCache,
-        mesh: &mut Mesh,
-    ) -> Result<(), IsosurfaceError> {
-        self.validate_grid()?;
-        mesh.vertices.clear();
-        mesh.normals.clear();
-        mesh.indices.clear();
-        edge_cache.prepare(self.grid.width(), self.grid.height());
-
-        let stride_y = self.grid.width();
-        let stride_z = self.grid.width() * self.grid.height();
-        let spacing = self.grid.voxel_size();
-        let inv_voxel_size = Point3D::new(1.0 / spacing.x, 1.0 / spacing.y, 1.0 / spacing.z);
-
-        for z in 0..self.grid.depth() - 1 {
-            if z > 0 {
-                edge_cache.advance_z();
-            }
-            let z_interior = z > 0 && z < self.grid.depth() - 2;
-
-            for y in 0..self.grid.height() - 1 {
-                if y > 0 {
-                    edge_cache.advance_y();
-                }
-                let row_is_interior = z_interior && y > 0 && y < self.grid.height() - 2;
-                let mut cached_gradients: Option<[Point3D; 4]> = None;
-
-                for x in 0..self.grid.width() - 1 {
-                    let base_idx = z * stride_z + y * stride_y + x;
-                    let (values, index) =
-                        self.get_cube_values_fast(base_idx, stride_y, stride_z, threshold);
-
-                    if CUBE_EDGE_FLAGS[index] == 0 {
-                        cached_gradients = None;
-                        continue;
-                    }
-
-                    let positions = self.get_cube_positions(x, y, z);
-                    let (cube_normals, right_face) = self.compute_gradients_fast(
-                        (x, y, z),
-                        base_idx,
-                        (stride_y, stride_z),
-                        inv_voxel_size,
-                        row_is_interior,
-                        cached_gradients,
-                    );
-                    cached_gradients = Some(right_face);
-
-                    let cube_data = CubeData {
-                        values,
-                        positions,
-                        normals: cube_normals,
-                        index,
-                        coords: (x, y, z),
-                    };
-
-                    self.triangulate_cube(&cube_data, threshold, mesh, edge_cache);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    #[verified_engine::verified]
-    fn validate_grid(&self) -> Result<(), IsosurfaceError> {
+    pub(super) fn validate_grid(&self) -> Result<(), IsosurfaceError> {
         if self.grid.width() < 2 || self.grid.height() < 2 || self.grid.depth() < 2 {
             return Err(IsosurfaceError::InvalidGrid(
                 "Grid dimensions must be at least 2x2x2".to_string(),
@@ -188,7 +120,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
     ///
     #[inline(always)]
     #[verified_engine::verified]
-    fn get_cube_values_fast(
+    pub(super) fn get_cube_values_fast(
         &self,
         base_idx: usize,
         stride_y: usize,
@@ -224,7 +156,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
 
     #[inline]
     #[verified_engine::verified]
-    fn get_cube_positions(&self, x: usize, y: usize, z: usize) -> [Point3D; 8] {
+    pub(super) fn get_cube_positions(&self, x: usize, y: usize, z: usize) -> [Point3D; 8] {
         let x_pos = self.grid.origin().x + (x as f32) * self.grid.voxel_size().x;
         let y_pos = self.grid.origin().y + (y as f32) * self.grid.voxel_size().y;
         let z_pos = self.grid.origin().z + (z as f32) * self.grid.voxel_size().z;
@@ -248,7 +180,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
     /// Computes physical gradient vectors for the 8 corners of a cube with X-axis face caching.
     #[inline(always)]
     #[verified_engine::verified]
-    fn compute_gradients_fast(
+    pub(super) fn compute_gradients_fast(
         &self,
         coords: (usize, usize, usize),
         base_idx: usize,
@@ -339,7 +271,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
 
     #[inline]
     #[verified_engine::verified]
-    fn triangulate_cube(
+    pub(super) fn triangulate_cube(
         &self,
         cube: &CubeData,
         threshold: f32,

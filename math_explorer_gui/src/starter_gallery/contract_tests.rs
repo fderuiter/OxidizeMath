@@ -56,8 +56,7 @@ fn test_all_57_starter_cards_launch_and_sync_framework_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = if cfg!(feature = "applied") { 85 } else { 73 };
-    assert_eq!(presets.len(), expected_presets);
+    assert_eq!(presets.len(), 100);
 
     for preset in presets {
         let json = preset.generate_preset();

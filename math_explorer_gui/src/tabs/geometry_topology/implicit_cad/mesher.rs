@@ -7,7 +7,7 @@ use eframe::egui::Color32;
 use math_commons::ast::{Expr, parse_equation};
 use math_explorer::applied::isosurface::marching_cubes::MarchingCubes;
 use math_explorer::applied::isosurface::{
-    CentralDifferenceEstimator, Mesh, Point3D, SliceEdgeCache, VoxelGrid,
+    CentralDifferenceEstimator, IsosurfaceWorkspace, Mesh, Point3D, VoxelGrid,
 };
 use oxidize_core::mesh::{MeshDiagnostics, analyze_mesh};
 
@@ -47,7 +47,7 @@ pub struct ProjectedFacet {
 /// Reusable pre-allocated buffers for zero-allocation-inner-loop implicit meshing.
 pub struct ImplicitCadWorkspace {
     grid: VoxelGrid,
-    edge_cache: SliceEdgeCache,
+    iso_workspace: IsosurfaceWorkspace,
     /// Latest extracted millimeter triangle mesh.
     pub mesh: Mesh,
     /// Cached manifold diagnostics for `mesh`.
@@ -71,7 +71,7 @@ impl Default for ImplicitCadWorkspace {
             .expect("valid default voxel grid");
         Self {
             grid,
-            edge_cache: SliceEdgeCache::preallocated(res, res),
+            iso_workspace: IsosurfaceWorkspace::with_max_dimensions(MAX_GRID_RES, MAX_GRID_RES),
             mesh: Mesh {
                 vertices: Vec::with_capacity(16_384),
                 normals: Vec::with_capacity(16_384),
@@ -140,7 +140,7 @@ impl ImplicitCadWorkspace {
             .set_clamp_exterior(params.seal_boundaries.then_some(0.0));
 
         let extractor = MarchingCubes::new(&self.grid, CentralDifferenceEstimator);
-        if let Err(e) = extractor.extract_into(0.0, &mut self.edge_cache, &mut self.mesh) {
+        if let Err(e) = extractor.extract_into(0.0, &mut self.iso_workspace, &mut self.mesh) {
             self.last_error = Some(format!("Isosurface extraction error: {e}"));
             self.diagnostics = MeshDiagnostics::default();
             return;

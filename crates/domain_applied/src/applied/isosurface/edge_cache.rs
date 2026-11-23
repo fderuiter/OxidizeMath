@@ -60,36 +60,6 @@ impl SliceEdgeCache {
         }
     }
 
-    /// Creates a pre-allocated rolling cache for zero-allocation Marching Cubes extraction.
-    #[verified_engine::verified]
-    pub fn preallocated(width: usize, height: usize) -> Self {
-        let mut cache = Self::new(width, height);
-        cache.allocate_buffers();
-        cache
-    }
-
-    /// Resets and resizes the cache for a `width x height` XY slice, reusing existing heap capacity.
-    #[verified_engine::verified]
-    pub fn prepare(&mut self, width: usize, height: usize) {
-        self.width = width;
-        self.height = height;
-        self.xy_len = width * height * 2;
-        if self.allocated {
-            self.curr_xy.resize(self.xy_len, EMPTY_EDGE_VERTEX);
-            self.next_xy.resize(self.xy_len, EMPTY_EDGE_VERTEX);
-            self.curr_z_row.resize(self.width, EMPTY_EDGE_VERTEX);
-            self.next_z_row.resize(self.width, EMPTY_EDGE_VERTEX);
-            self.curr_xy.fill(EMPTY_EDGE_VERTEX);
-            self.next_xy.fill(EMPTY_EDGE_VERTEX);
-            self.curr_z_row.fill(EMPTY_EDGE_VERTEX);
-            self.next_z_row.fill(EMPTY_EDGE_VERTEX);
-            self.curr_xy_dirty = false;
-            self.next_xy_dirty = false;
-            self.curr_z_dirty = false;
-            self.next_z_dirty = false;
-        }
-    }
-
     #[cold]
     #[inline(never)]
     #[verified_engine::verified]
@@ -101,6 +71,62 @@ impl SliceEdgeCache {
         self.allocated = true;
         debug_assert_eq!(self.curr_xy.len(), self.xy_len);
         debug_assert_eq!(self.curr_z_row.len(), self.width);
+    }
+
+    /// Pre-allocates rolling slice edge buffers up to `max_width x max_height` for zero-allocation reuse.
+    #[verified_engine::verified]
+    pub(super) fn with_capacity(max_width: usize, max_height: usize) -> Self {
+        let w = max_width.max(2);
+        let h = max_height.max(2);
+        let xy_len = w * h * 2;
+        Self {
+            width: w,
+            height: h,
+            xy_len,
+            allocated: true,
+            curr_xy: vec![EMPTY_EDGE_VERTEX; xy_len],
+            next_xy: vec![EMPTY_EDGE_VERTEX; xy_len],
+            curr_z_row: vec![EMPTY_EDGE_VERTEX; w],
+            next_z_row: vec![EMPTY_EDGE_VERTEX; w],
+            curr_xy_dirty: false,
+            next_xy_dirty: false,
+            curr_z_dirty: false,
+            next_z_dirty: false,
+        }
+    }
+
+    /// Resets active XY dimensions and clears any dirty edge slots in-place without reallocating if capacity suffices.
+    #[verified_engine::verified]
+    pub(super) fn reset_for_dimensions(&mut self, width: usize, height: usize) {
+        let w = width.max(2);
+        let h = height.max(2);
+        let xy_len = w * h * 2;
+        self.width = w;
+        self.height = h;
+        self.xy_len = xy_len;
+        if !self.allocated {
+            return;
+        }
+        if self.curr_xy.len() >= xy_len
+            && self.next_xy.len() >= xy_len
+            && self.curr_z_row.len() >= w
+            && self.next_z_row.len() >= w
+        {
+            clear_if_dirty(&mut self.curr_xy, &mut self.curr_xy_dirty);
+            clear_if_dirty(&mut self.next_xy, &mut self.next_xy_dirty);
+            clear_if_dirty(&mut self.curr_z_row, &mut self.curr_z_dirty);
+            clear_if_dirty(&mut self.next_z_row, &mut self.next_z_dirty);
+        } else {
+            self.curr_xy.fill(EMPTY_EDGE_VERTEX);
+            self.next_xy.fill(EMPTY_EDGE_VERTEX);
+            self.curr_z_row.fill(EMPTY_EDGE_VERTEX);
+            self.next_z_row.fill(EMPTY_EDGE_VERTEX);
+            self.curr_xy_dirty = false;
+            self.next_xy_dirty = false;
+            self.curr_z_dirty = false;
+            self.next_z_dirty = false;
+            self.allocate_buffers();
+        }
     }
 
     /// Rotates XY plane buffers when advancing to `z > 0` and resets Z-edge rows.

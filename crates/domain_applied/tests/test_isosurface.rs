@@ -269,7 +269,9 @@ mod tests {
     #[verified_engine::verified]
     fn test_empty_grid_and_preallocated_extract_into_zero_heap_allocations() {
         use domain_applied::applied::isosurface::marching_cubes::MarchingCubes;
-        use domain_applied::applied::isosurface::{CentralDifferenceEstimator, SliceEdgeCache};
+        use domain_applied::applied::isosurface::{
+            CentralDifferenceEstimator, IsosurfaceWorkspace,
+        };
 
         let empty_grid = VoxelGrid::builder()
             .dimensions(16, 12, 10)
@@ -301,7 +303,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let mut cache = SliceEdgeCache::preallocated(n, n);
+        let mut workspace = IsosurfaceWorkspace::with_max_dimensions(n, n);
         let mut mesh = Mesh {
             vertices: Vec::with_capacity(2048),
             normals: Vec::with_capacity(2048),
@@ -311,7 +313,9 @@ mod tests {
 
         let (empty_mesh, metrics) = VerifiedEngine::run_verified(|| {
             let empty = extract_isosurface(&empty_grid, 0.0).unwrap();
-            extractor.extract_into(0.0, &mut cache, &mut mesh).unwrap();
+            extractor
+                .extract_into(0.0, &mut workspace, &mut mesh)
+                .unwrap();
             empty
         });
 

@@ -150,18 +150,16 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    let (exp_plot, exp_unsup, exp_solid, exp_non_shader) = if cfg!(feature = "applied") {
-        (42, 16, 6, 62)
-    } else {
-        (37, 12, 5, 53)
-    };
-    assert_eq!(plot_tool_count, exp_plot);
-    assert_eq!(raster_tool_count, 7);
-    assert_eq!(unsupported_tool_count, exp_unsup);
-    assert_eq!(solid_3d_count, exp_solid);
-    assert_eq!(splat_3d_count, 1);
-    assert_eq!(shader_tool_count, 3);
-    assert_eq!(non_shader_tool_count, exp_non_shader);
+    assert_eq!(plot_tool_count, 46, "Expected 46 Plot dataset+figure tools");
+    assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
+    assert_eq!(unsupported_tool_count, 16, "Expected 16 non-figure tools");
+    assert_eq!(solid_3d_count, 6, "Expected 6 solid 3D geometric tools");
+    assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
+    assert_eq!(
+        shader_tool_count, 3,
+        "Expected 3 analytical GLSL shader tools"
+    );
+    assert_eq!(non_shader_tool_count, 66, "Expected 66 non-shader tools");
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {

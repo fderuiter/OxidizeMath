@@ -113,7 +113,6 @@ pub fn export_mesh_to_obj_string(mesh: &Mesh) -> Result<String, Error> {
     let estimated_size = mesh.vertices.len() * 25 + normals.len() * 25 + triangles.len() * 30 + 100;
     let mut out = String::with_capacity(estimated_size);
 
-    out.push_str("# OxidizeMath Wavefront OBJ (units: mm)\n");
     out.push_str("o oxidize_mesh\n");
     for v in &mesh.vertices {
         let _ = writeln!(out, "v {} {} {}", v.x, v.y, v.z);

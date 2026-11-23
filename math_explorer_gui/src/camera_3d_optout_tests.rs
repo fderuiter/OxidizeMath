@@ -74,6 +74,37 @@ fn plot_3d_viewport_suppresses_pois_hover_snapping_and_callouts() {
     assert!(mem.callouts.is_empty());
 }
 
+#[test]
+fn plot_3d_viewport_opts_out_of_2d_csv_import_and_paste() {
+    let ctx = egui::Context::default();
+    let mut camera = Camera3D::default();
+    let mut plot_id = egui::Id::NULL;
+    let paste_out = ctx.run(
+        viewport_input(vec![egui::Event::Paste("x,y\n0,1\n1,2\n".to_string())]),
+        |sub_ctx| {
+            egui::CentralPanel::default().show(sub_ctx, |ui| {
+                Plot3DViewport::new("optout_3d_csv", 4.0).show(ui, &mut camera, |plot_ui| {
+                    plot_id = plot_ui.plot_id();
+                    plot_ui.line(Line::new(
+                        "proj_curve",
+                        PlotPoints::new(vec![[-2.0, -1.0], [0.0, 2.0], [2.0, -1.0]]),
+                    ));
+                });
+            });
+        },
+    );
+    let has_import_btn = paste_out
+        .shapes
+        .iter()
+        .any(|s| format!("{:?}", s.shape).contains("Import CSV"));
+    assert!(
+        !has_import_btn,
+        "Plot3DViewport must hide 2D Import CSV toolbar controls"
+    );
+    let mem_after = PlotMemory::load(&ctx, plot_id).expect("3D viewport memory after paste");
+    assert!(mem_after.imported_datasets.is_empty());
+}
+
 #[cfg(all(feature = "pure_math", feature = "physics", feature = "ai"))]
 #[test]
 fn all_six_plot_3d_viewport_tools_emit_zero_2d_pois_across_interactions() {
