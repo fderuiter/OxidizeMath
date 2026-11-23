@@ -11,7 +11,7 @@ pub mod playground;
 pub mod presets;
 
 #[cfg(test)]
-pub use inspector::ChristoffelInspectorTool;
+pub use inspector::{ChristoffelInspectorTool, InspectorManifold};
 #[cfg(test)]
 pub use playground::{GeodesicPlaygroundTool, SpacetimePreset};
 
@@ -67,6 +67,8 @@ impl ExplorerTab for RelativityTab {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_atlas;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
