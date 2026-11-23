@@ -218,6 +218,7 @@ pub fn render_recovery_ui(
 ) {
     if let Some(action) = render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(tool)) {
         apply_recovery_action(tool, action, changed, plot_points_y, plot_points_v);
+        tool.run_sensitivity_analysis(false);
     }
 }
 
@@ -234,5 +235,6 @@ pub(super) fn render_recovery_ui_in_place(
         }
         *changed = true;
         tool.sync_series_cache();
+        tool.run_sensitivity_analysis(false);
     }
 }

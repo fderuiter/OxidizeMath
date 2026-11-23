@@ -123,9 +123,9 @@ impl MultivariateNewton {
         F: FnMut(&[f64; N]) -> [f64; N],
     {
         if N == 0 || N > MAX_STACK_NEWTON_DIM {
-            return Err(AnalysisError::InvalidParameters(format!(
-                "Fixed-size Newton dimension N={N} must lie in 1..={MAX_STACK_NEWTON_DIM}."
-            )));
+            return Err(AnalysisError::InvalidParameters(
+                "Fixed-size Newton dimension must lie in 1..=16",
+            ));
         }
         let mut x = initial;
         let mut fx = [0.0; MAX_STACK_NEWTON_DIM];
@@ -172,9 +172,9 @@ impl MultivariateNewton {
         J: FnMut(&[f64; N]) -> [[f64; N]; N],
     {
         if N == 0 || N > MAX_STACK_NEWTON_DIM {
-            return Err(AnalysisError::InvalidParameters(format!(
-                "Fixed-size Newton dimension N={N} must lie in 1..={MAX_STACK_NEWTON_DIM}."
-            )));
+            return Err(AnalysisError::InvalidParameters(
+                "Fixed-size Newton dimension must lie in 1..=16",
+            ));
         }
         validate_newton_params(&initial, self.tolerance)?;
         let mut x = initial;
@@ -195,7 +195,7 @@ impl MultivariateNewton {
             }
             if !solve_linear_in_place(&mut jac_flat[..N * N], &mut rhs[..N], N, PIVOT_TOL) {
                 return Err(AnalysisError::InvalidParameters(
-                    "Singular or non-finite Jacobian in MultivariateNewton.".into(),
+                    "Singular or non-finite Jacobian in MultivariateNewton",
                 ));
             }
             for i in 0..N {
@@ -244,9 +244,7 @@ impl MultivariateNewton {
     {
         let n = x.len();
         if n == 0 {
-            return Err(AnalysisError::InvalidParameters(
-                "Dimension must be >= 1.".into(),
-            ));
+            return Err(AnalysisError::InvalidParameters("Dimension must be >= 1"));
         }
         self.ensure_workspace(n);
         run_newton_kernel(
@@ -297,9 +295,7 @@ impl MultivariateNewton {
     {
         let n = state.len();
         if n == 0 {
-            return Err(AnalysisError::InvalidParameters(
-                "Dimension must be >= 1.".into(),
-            ));
+            return Err(AnalysisError::InvalidParameters("Dimension must be >= 1"));
         }
         self.ensure_workspace(n);
         let mut x_scratch = state.clone();
@@ -342,7 +338,7 @@ impl MultivariateNewton {
 fn validate_newton_params(x: &[f64], tolerance: f64) -> Result<(), AnalysisError> {
     if !tolerance.is_finite() || tolerance < 0.0 || x.iter().any(|v| !v.is_finite()) {
         return Err(AnalysisError::InvalidParameters(
-            "Initial guess and tolerance must be finite.".into(),
+            "Initial guess and tolerance must be finite",
         ));
     }
     Ok(())
@@ -354,7 +350,7 @@ fn max_abs_finite(vals: &[f64]) -> Result<f64, AnalysisError> {
     for &v in vals {
         if !v.is_finite() {
             return Err(AnalysisError::InvalidParameters(
-                "Non-finite residual or step encountered in MultivariateNewton.".into(),
+                "Non-finite residual or step encountered in MultivariateNewton",
             ));
         }
         let a = v.abs();
@@ -409,7 +405,7 @@ fn run_newton_kernel(
         }
         if !solve_linear_in_place(jac, delta, n, PIVOT_TOL) {
             return Err(AnalysisError::InvalidParameters(
-                "Singular or ill-conditioned Jacobian in MultivariateNewton.".into(),
+                "Singular or ill-conditioned Jacobian in MultivariateNewton",
             ));
         }
         let step_norm = damp_newton_step(f, x, fx, f_plus, trial_x, delta, &mut res_norm)?;
@@ -447,7 +443,7 @@ fn assemble_central_jacobian(
             let entry = (f_plus[row] - f_minus[row]) * inv_2h;
             if !entry.is_finite() {
                 return Err(AnalysisError::InvalidParameters(
-                    "Non-finite finite-difference Jacobian entry.".into(),
+                    "Non-finite finite-difference Jacobian entry",
                 ));
             }
             jac[math_commons::math_kernel::types::flatten_2d_index(col, row, n)] = entry;
@@ -490,7 +486,7 @@ fn damp_newton_step(
         alpha *= 0.5;
     }
     Err(AnalysisError::InvalidParameters(
-        "Damped Newton backtracking encountered only non-finite residuals.".into(),
+        "Damped Newton backtracking encountered only non-finite residuals",
     ))
 }
 

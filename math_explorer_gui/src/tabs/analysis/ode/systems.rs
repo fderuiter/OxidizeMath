@@ -2,7 +2,6 @@
 
 //! ODE model definitions and zero-allocation `CompiledExpr` evaluation helpers.
 
-use super::OdeSolverTool;
 use crate::framework::math_input::{
     CoupledExpressionBank, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS,
 };
@@ -207,6 +206,52 @@ impl CustomOdeSpec {
         matches!(self, Self::Coupled { .. })
     }
 
+    /// Hashes compiled bytecode and active inline parameter values for baseline state verification.
+    pub(super) fn hash_with_params<H: Hasher>(&self, state: &mut H) {
+        CustomOdeContext(Some(self)).hash(state);
+        let (params, len) = match self {
+            Self::Scalar {
+                params, param_len, ..
+            }
+            | Self::Coupled {
+                params, param_len, ..
+            } => (params, *param_len),
+        };
+        len.hash(state);
+        for &val in &params[..len] {
+            crate::sensitivity::canonical_f64_bits(val).hash(state);
+        }
+    }
+
+    /// Returns `true` when `self` uses identical parameter bindings to `eval_ode_final_state` for `param_refs`.
+    #[must_use]
+    pub(super) fn matches_baseline_params(&self, param_refs: &[(&str, f64)]) -> bool {
+        let (names, params, len, coupled) = match self {
+            Self::Scalar {
+                expr,
+                params,
+                param_len,
+            } => (expr.param_names(), params, *param_len, false),
+            Self::Coupled {
+                dy,
+                params,
+                param_len,
+                ..
+            } => (dy.param_names(), params, *param_len, true),
+        };
+        names.iter().take(len).enumerate().all(|(idx, name)| {
+            name != "y0"
+                && (!coupled || name != "v0")
+                && param_refs
+                    .iter()
+                    .find(|(k, _)| *k == name.as_str())
+                    .is_some_and(|(_, val)| {
+                        crate::sensitivity::canonical_f64_bits(*val)
+                            == crate::sensitivity::canonical_f64_bits(params[idx])
+                    })
+        })
+    }
+
     /// Clones this spec while overriding named parameter slots from `p_map` (for sensitivity sweeps).
     #[must_use]
     pub fn with_param_overrides(&self, p_map: &HashMap<String, f64>) -> Self {
@@ -275,6 +320,7 @@ impl OdeSystem<VecState> for CustomOdeSpec {
     }
 }
 
+#[cfg(test)]
 pub fn eval_ode_final_state(
     preset: OdePreset,
     method: IntegrationMethod,
@@ -283,9 +329,30 @@ pub fn eval_ode_final_state(
     p_map: &HashMap<String, f64>,
     custom_spec: Option<&CustomOdeSpec>,
 ) -> f64 {
+    eval_ode_final_state_with_tol(
+        preset,
+        method,
+        dt,
+        total_time,
+        super::DEFAULT_ODE_ADAPTIVE_TOL,
+        p_map,
+        custom_spec,
+    )
+}
+
+pub fn eval_ode_final_state_with_tol(
+    preset: OdePreset,
+    method: IntegrationMethod,
+    dt: f64,
+    total_time: f64,
+    adaptive_tol: f64,
+    p_map: &HashMap<String, f64>,
+    custom_spec: Option<&CustomOdeSpec>,
+) -> f64 {
     let Some(steps) = crate::presets::checked_ode_step_count(dt, total_time) else {
         return f64::NAN;
     };
+    let tol = super::comparison::sanitize_adaptive_tol(adaptive_tol);
     let y0 = p_map.get("y0").copied().unwrap_or(1.0);
     let v0 = p_map.get("v0").copied().unwrap_or(0.0);
     let k = p_map.get("k").copied().unwrap_or(1.0);
@@ -293,18 +360,30 @@ pub fn eval_ode_final_state(
     let cap_k = p_map.get("cap_k").copied().unwrap_or(10.0);
 
     match preset {
-        OdePreset::Exponential => {
-            let init = VecState(vec![y0]);
-            step_model(init, ExponentialOde { k }, method, steps, dt)
-        }
-        OdePreset::HarmonicOscillator => {
-            let init = VecState(vec![y0, v0]);
-            step_model(init, HarmonicOscillatorOde { k }, method, steps, dt)
-        }
-        OdePreset::LogisticGrowth => {
-            let init = VecState(vec![y0]);
-            step_model(init, LogisticGrowthOde { r, cap_k }, method, steps, dt)
-        }
+        OdePreset::Exponential => step_model(
+            VecState(vec![y0]),
+            ExponentialOde { k },
+            method,
+            steps,
+            dt,
+            tol,
+        ),
+        OdePreset::HarmonicOscillator => step_model(
+            VecState(vec![y0, v0]),
+            HarmonicOscillatorOde { k },
+            method,
+            steps,
+            dt,
+            tol,
+        ),
+        OdePreset::LogisticGrowth => step_model(
+            VecState(vec![y0]),
+            LogisticGrowthOde { r, cap_k },
+            method,
+            steps,
+            dt,
+            tol,
+        ),
         OdePreset::Custom => {
             if let Some(spec) = custom_spec {
                 let dynamics = spec.with_param_overrides(p_map);
@@ -313,7 +392,7 @@ pub fn eval_ode_final_state(
                 } else {
                     VecState(vec![y0])
                 };
-                step_model(init, dynamics, method, steps, dt)
+                step_model(init, dynamics, method, steps, dt, tol)
             } else {
                 f64::NAN
             }
@@ -339,7 +418,9 @@ fn step_model<D: OdeSystem<VecState> + Clone>(
     method: IntegrationMethod,
     steps: usize,
     dt: f64,
+    rtol: f64,
 ) -> f64 {
+    let atol = (rtol * 0.01).max(1e-14);
     match method {
         IntegrationMethod::RungeKutta4 => {
             run_n_steps(init.clone(), dyn_sys, RungeKutta4::new(&init), steps, dt)
@@ -348,13 +429,10 @@ fn step_model<D: OdeSystem<VecState> + Clone>(
             run_n_steps(init.clone(), dyn_sys, Euler::new(&init), steps, dt)
         }
         IntegrationMethod::Heun => run_n_steps(init.clone(), dyn_sys, Heun::new(&init), steps, dt),
-        IntegrationMethod::DormandPrince45 => run_n_steps(
-            init.clone(),
-            dyn_sys,
-            DormandPrince45::new(&init),
-            steps,
-            dt,
-        ),
+        IntegrationMethod::DormandPrince45 => {
+            let solver = DormandPrince45::new(&init).with_tolerances(rtol, atol);
+            run_n_steps(init, dyn_sys, solver, steps, dt)
+        }
         IntegrationMethod::BackwardEuler => {
             run_n_steps(init.clone(), dyn_sys, BackwardEuler::new(&init), steps, dt)
         }
@@ -366,106 +444,8 @@ fn step_model<D: OdeSystem<VecState> + Clone>(
             dt,
         ),
         IntegrationMethod::Rosenbrock23 => {
-            run_n_steps(init.clone(), dyn_sys, Rosenbrock23::new(&init), steps, dt)
+            let solver = Rosenbrock23::new(&init).with_tolerances(rtol, atol);
+            run_n_steps(init, dyn_sys, solver, steps, dt)
         }
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
-    fn theory_description(&self) -> String {
-        match self.preset {
-            OdePreset::Exponential => "First-order linear ordinary differential equation describing exponential growth or decay proportional to current quantity.".into(),
-            OdePreset::HarmonicOscillator => "Second-order ordinary differential equation modeling simple harmonic motion under a Hooke's law restoring force.".into(),
-            OdePreset::LogisticGrowth => "Nonlinear ordinary differential equation modeling density-dependent population growth with an environmental carrying capacity.".into(),
-            OdePreset::Custom if self.custom_coupled => "Coupled two-state ordinary differential equation system: y' = f(t, y, v), v' = g(t, y, v)".into(),
-            OdePreset::Custom => "Custom user-defined ordinary differential equation: y' = f(t, y)".into(),
-        }
-    }
-    fn phonetic_description(&self) -> String {
-        "Ordinary differential equations theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        match self.preset {
-            OdePreset::Exponential => {
-                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
-            }
-            OdePreset::HarmonicOscillator => {
-                "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into()
-            }
-            OdePreset::LogisticGrowth => {
-                "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into()
-            }
-            OdePreset::Custom => {
-                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
-            }
-        }
-    }
-    fn theory_latex_equation(&self) -> Option<String> {
-        let eq = match self.preset {
-            OdePreset::Exponential => r"\frac{dy}{dt} = k y",
-            OdePreset::HarmonicOscillator => r"\frac{d^2 y}{dt^2} = -k y",
-            OdePreset::LogisticGrowth => r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
-            OdePreset::Custom => return None,
-        };
-        Some(eq.into())
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "Exponential".into(),
-            "First-order linear ODE representing exponential growth or decay".into(),
-        );
-        map.insert(
-            "Harmonic Oscillator".into(),
-            "Second-order linear ODE representing simple harmonic motion".into(),
-        );
-        map.insert(
-            "Logistic Growth".into(),
-            "Nonlinear first-order ODE modeling population growth with carrying capacity".into(),
-        );
-        map.insert(
-            "Custom".into(),
-            "Custom user-defined scalar or coupled ordinary differential equation".into(),
-        );
-        map
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "harmonic_oscillator",
-        title: "Harmonic Oscillator",
-        description: "y'' = -k·y: Second-order differential equation modeling undamped periodic spring motion.",
-        category: "Differential Equations",
-        icon: "〰️",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_HARMONIC_OSCILLATOR,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "logistic_growth",
-        title: "Logistic Growth",
-        description: "y' = r·y·(1 - y/K): Non-linear growth constrained by carrying capacity K.",
-        category: "Population Dynamics",
-        icon: "📈",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_LOGISTIC_GROWTH,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "exponential_decay",
-        title: "Exponential Decay",
-        description: "y' = k·y: First-order differential decay process with constant half-life.",
-        category: "Calculus",
-        icon: "📉",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_EXPONENTIAL_DECAY,
     }
 }

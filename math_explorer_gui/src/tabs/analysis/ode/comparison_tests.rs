@@ -212,3 +212,85 @@ fn test_ode_tool_non_autonomous_and_stiff_implicit_solvers() {
         );
     }
 }
+
+fn reference_oscillator_trajectory(method: IntegrationMethod) -> comparison::SolverTrajectory {
+    comparison::simulate_preset(
+        OdePreset::HarmonicOscillator,
+        method,
+        0.02,
+        4.0,
+        2.5,
+        1.0,
+        10.0,
+        1.2,
+        -0.4,
+        None,
+    )
+}
+
+#[test]
+fn test_ode_comparison_reuses_active_trajectory_with_exact_parity_across_methods() {
+    use crate::web_io::PlatformInstant;
+    use comparison::{compute_discrepancy, compute_series_discrepancy};
+
+    let refs = IntegrationMethod::ALL.map(reference_oscillator_trajectory);
+    assert_eq!(
+        compute_discrepancy(&refs[1], &refs[0]),
+        compute_series_discrepancy(
+            &refs[1].y_series,
+            &refs[1].v_series,
+            &refs[0].y_series,
+            &refs[0].v_series,
+        )
+    );
+
+    let expected_labels = IntegrationMethod::ALL.map(|m| m.name());
+    let start = PlatformInstant::now();
+    for active_method in IntegrationMethod::ALL {
+        let mut tool = OdeSolverTool {
+            preset: OdePreset::HarmonicOscillator,
+            method: active_method,
+            param_k: 2.5,
+            ic_y0: 1.2,
+            ic_v0: -0.4,
+            dt: 0.02,
+            total_time: 4.0,
+            comparison_mode: true,
+            ..Default::default()
+        };
+        tool.recalculate();
+
+        let snaps = tool.comparison_manager().snapshots();
+        let labels: Vec<&str> = snaps.iter().map(|s| s.label.as_str()).collect();
+        assert_eq!(labels, expected_labels);
+        assert_eq!(
+            tool.discrepancy_euler_rk4(),
+            compute_discrepancy(&refs[1], &refs[0])
+        );
+        assert_eq!(
+            tool.discrepancy_heun_rk4(),
+            compute_discrepancy(&refs[2], &refs[0])
+        );
+        assert_eq!(
+            tool.discrepancy_euler_heun(),
+            compute_discrepancy(&refs[1], &refs[2])
+        );
+        assert_eq!(
+            tool.discrepancy_rk4_dp45,
+            compute_discrepancy(&refs[0], &refs[3])
+        );
+        assert_eq!(
+            tool.discrepancy_be_ros23,
+            compute_discrepancy(&refs[4], &refs[6])
+        );
+
+        for (snap, expected) in snaps.iter().zip(&refs) {
+            assert_eq!(snap.series[0].points.len(), expected.y_series.len());
+            assert_eq!(snap.series[1].points.len(), expected.v_series.len());
+            let last_pt = snap.series[0].points.last().expect("last y point");
+            let last_ref = *expected.y_series.last().expect("expected final y");
+            assert_eq!(last_pt[1].to_bits(), last_ref.to_bits());
+        }
+    }
+    assert!(start.elapsed().as_secs_f64() >= 0.0);
+}

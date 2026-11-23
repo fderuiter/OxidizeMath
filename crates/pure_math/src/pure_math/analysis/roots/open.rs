@@ -19,7 +19,7 @@ use crate::pure_math::analysis::dense_linear::canonical_zero;
 /// let root = solver.find_root(|x| x * x - 2.0, 1.0, 2.0).unwrap();
 /// assert!((root - std::f64::consts::SQRT_2).abs() < math_explorer::registry::TOLERANCE_FAST);
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NewtonRaphson {
     /// Maximum number of iterations.
     pub max_iterations: usize,
@@ -49,19 +49,18 @@ impl NewtonRaphson {
         F: Fn(f64) -> f64,
         D: Fn(f64) -> f64,
     {
-        if !guess.is_finite() || !self.tolerance.is_finite() || self.tolerance < 0.0 {
-            return Err(AnalysisError::InvalidParameters(
-                "Initial guess and tolerance must be finite.".into(),
-            ));
+        if !guess.is_finite() || !self.tolerance.is_finite() || self.tolerance <= 0.0 {
+            return Err(AnalysisError::InvalidBracket {
+                min: guess,
+                max: guess,
+            });
         }
 
         let mut x = guess;
         for _ in 0..self.max_iterations {
             let y = f(x);
             if !y.is_finite() {
-                return Err(AnalysisError::InvalidParameters(format!(
-                    "Non-finite function value at x={x}: {y}"
-                )));
+                return Err(AnalysisError::ConvergenceError(canonical_zero(x)));
             }
             if y == 0.0 || y.abs() < self.tolerance {
                 return Ok(canonical_zero(x));
@@ -69,9 +68,7 @@ impl NewtonRaphson {
 
             let dy = f_prime(x);
             if !dy.is_finite() || dy.abs() < 1e-14 {
-                return Err(AnalysisError::InvalidParameters(format!(
-                    "Derivative invalid or too small at x={x}: {dy}"
-                )));
+                return Err(AnalysisError::DerivativeTooSmall { x, derivative: dy });
             }
 
             let next_x = x - y / dy;
@@ -104,10 +101,12 @@ impl RootFinder for NewtonRaphson {
     where
         F: Fn(f64) -> f64,
     {
-        if !min.is_finite() || !max.is_finite() {
-            return Err(AnalysisError::InvalidParameters(
-                "Initial bounds for Newton-Raphson must be finite.".into(),
-            ));
+        if !min.is_finite()
+            || !max.is_finite()
+            || !self.tolerance.is_finite()
+            || self.tolerance <= 0.0
+        {
+            return Err(AnalysisError::InvalidBracket { min, max });
         }
         let guess = min + 0.5 * (max - min);
         let h = 1e-7;
@@ -132,7 +131,7 @@ impl RootFinder for NewtonRaphson {
 /// let root = solver.find_root(|x| x.exp() - 3.0 * x, 0.0, 1.0).unwrap();
 /// assert!((root - 0.619_061_286).abs() < math_explorer::registry::TOLERANCE_FAST);
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Secant {
     /// Maximum number of iterations before returning [`AnalysisError::ConvergenceError`].
     pub max_iterations: usize,
@@ -158,9 +157,7 @@ impl Secant {
     {
         if !x0.is_finite() || !x1.is_finite() || !self.tolerance.is_finite() || self.tolerance < 0.0
         {
-            return Err(AnalysisError::InvalidParameters(
-                "Secant initial guesses and tolerance must be finite.".into(),
-            ));
+            return Err(AnalysisError::InvalidBracket { min: x0, max: x1 });
         }
 
         let mut prev_x = x0;
@@ -172,9 +169,9 @@ impl Secant {
 
         let mut prev_f = f(prev_x);
         if !prev_f.is_finite() {
-            return Err(AnalysisError::InvalidParameters(format!(
-                "Non-finite evaluation at x0={prev_x}: {prev_f}"
-            )));
+            return Err(AnalysisError::InvalidParameters(
+                "Non-finite evaluation at initial Secant point x0",
+            ));
         }
         if prev_f == 0.0 || prev_f.abs() <= self.tolerance {
             return Ok(canonical_zero(prev_x));
@@ -182,9 +179,9 @@ impl Secant {
 
         let mut curr_f = f(curr_x);
         if !curr_f.is_finite() {
-            return Err(AnalysisError::InvalidParameters(format!(
-                "Non-finite evaluation at x1={curr_x}: {curr_f}"
-            )));
+            return Err(AnalysisError::InvalidParameters(
+                "Non-finite evaluation at initial Secant point x1",
+            ));
         }
         if curr_f == 0.0 || curr_f.abs() <= self.tolerance {
             return Ok(canonical_zero(curr_x));
@@ -193,9 +190,10 @@ impl Secant {
         for _ in 0..self.max_iterations {
             let denom = curr_f - prev_f;
             if denom.abs() < 1e-14 {
-                return Err(AnalysisError::InvalidParameters(format!(
-                    "Secant slope vanished between x={prev_x} and x={curr_x}."
-                )));
+                return Err(AnalysisError::DerivativeTooSmall {
+                    x: curr_x,
+                    derivative: denom,
+                });
             }
             let next_x = curr_x - curr_f * (curr_x - prev_x) / denom;
             if !next_x.is_finite() {
@@ -203,9 +201,9 @@ impl Secant {
             }
             let next_f = f(next_x);
             if !next_f.is_finite() {
-                return Err(AnalysisError::InvalidParameters(format!(
-                    "Non-finite evaluation during Secant step at x={next_x}: {next_f}"
-                )));
+                return Err(AnalysisError::InvalidParameters(
+                    "Non-finite evaluation during Secant step",
+                ));
             }
             if next_f == 0.0
                 || next_f.abs() <= self.tolerance

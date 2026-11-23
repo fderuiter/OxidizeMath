@@ -125,7 +125,7 @@ pub fn simulate_preset_with_tol(
     traj
 }
 
-fn sanitize_adaptive_tol(adaptive_tol: f64) -> f64 {
+pub(super) fn sanitize_adaptive_tol(adaptive_tol: f64) -> f64 {
     if adaptive_tol.is_finite() {
         adaptive_tol.clamp(MIN_ODE_ADAPTIVE_TOL, MAX_ODE_ADAPTIVE_TOL)
     } else {
@@ -136,34 +136,37 @@ fn sanitize_adaptive_tol(adaptive_tol: f64) -> f64 {
 fn dispatch_preset_simulation(
     traj: &mut SolverTrajectory,
     preset: OdePreset,
-    params: [f64; 3],
-    ic: [f64; 2],
+    [k, r, cap_k]: [f64; 3],
+    [y0, v0]: [f64; 2],
     custom_spec: Option<&CustomOdeSpec>,
     sched: StepSchedule,
 ) {
     match preset {
-        OdePreset::Exponential => run_step_loop(
-            traj,
-            VecState(vec![ic[0]]),
-            ExponentialOde { k: params[0] },
-            sched,
-        ),
+        OdePreset::Exponential => {
+            run_step_loop(traj, VecState(vec![y0]), ExponentialOde { k }, sched)
+        }
         OdePreset::HarmonicOscillator => run_step_loop(
             traj,
-            VecState(vec![ic[0], ic[1]]),
-            HarmonicOscillatorOde { k: params[0] },
+            VecState(vec![y0, v0]),
+            HarmonicOscillatorOde { k },
             sched,
         ),
         OdePreset::LogisticGrowth => run_step_loop(
             traj,
-            VecState(vec![ic[0]]),
-            LogisticGrowthOde {
-                r: params[1],
-                cap_k: params[2],
-            },
+            VecState(vec![y0]),
+            LogisticGrowthOde { r, cap_k },
             sched,
         ),
-        OdePreset::Custom => run_custom_ode(traj, custom_spec, ic, sched),
+        OdePreset::Custom => {
+            if let Some(spec) = custom_spec {
+                let init = if spec.is_coupled() {
+                    vec![y0, v0]
+                } else {
+                    vec![y0]
+                };
+                run_step_loop(traj, VecState(init), spec.clone(), sched);
+            }
+        }
     }
 }
 
@@ -203,20 +206,15 @@ fn validate_initial_state(
     Some(num_steps)
 }
 
-fn run_custom_ode(
+fn run_with_solver<D: OdeSystem<VecState>, S: Solver<VecState>>(
     traj: &mut SolverTrajectory,
-    spec: Option<&CustomOdeSpec>,
-    ic: [f64; 2],
+    init: VecState,
+    dynamics: D,
+    solver: S,
     sched: StepSchedule,
 ) {
-    if let Some(spec) = spec {
-        let init_state = if spec.is_coupled() {
-            VecState(vec![ic[0], ic[1]])
-        } else {
-            VecState(vec![ic[0]])
-        };
-        run_step_loop(traj, init_state, spec.clone(), sched);
-    }
+    let mut model = OdeModel::new(init, dynamics, solver);
+    execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
 }
 
 fn run_step_loop<D: OdeSystem<VecState> + Clone>(
@@ -229,34 +227,32 @@ fn run_step_loop<D: OdeSystem<VecState> + Clone>(
     let atol = (rtol * 0.01).max(1e-14);
     match sched.method {
         IntegrationMethod::RungeKutta4 => {
-            let mut model = OdeModel::new(init.clone(), dynamics, RungeKutta4::new(&init));
-            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+            let s = RungeKutta4::new(&init);
+            run_with_solver(traj, init, dynamics, s, sched);
         }
         IntegrationMethod::Euler => {
-            let mut model = OdeModel::new(init.clone(), dynamics, Euler::new(&init));
-            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+            let s = Euler::new(&init);
+            run_with_solver(traj, init, dynamics, s, sched);
         }
         IntegrationMethod::Heun => {
-            let mut model = OdeModel::new(init.clone(), dynamics, Heun::new(&init));
-            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+            let s = Heun::new(&init);
+            run_with_solver(traj, init, dynamics, s, sched);
         }
         IntegrationMethod::DormandPrince45 => {
-            let solver = DormandPrince45::new(&init).with_tolerances(rtol, atol);
-            let mut model = OdeModel::new(init, dynamics, solver);
-            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+            let s = DormandPrince45::new(&init).with_tolerances(rtol, atol);
+            run_with_solver(traj, init, dynamics, s, sched);
         }
         IntegrationMethod::BackwardEuler => {
-            let mut model = OdeModel::new(init.clone(), dynamics, BackwardEuler::new(&init));
-            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+            let s = BackwardEuler::new(&init);
+            run_with_solver(traj, init, dynamics, s, sched);
         }
         IntegrationMethod::ImplicitTrapezoidal => {
-            let mut model = OdeModel::new(init.clone(), dynamics, ImplicitTrapezoidal::new(&init));
-            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+            let s = ImplicitTrapezoidal::new(&init);
+            run_with_solver(traj, init, dynamics, s, sched);
         }
         IntegrationMethod::Rosenbrock23 => {
-            let solver = Rosenbrock23::new(&init).with_tolerances(rtol, atol);
-            let mut model = OdeModel::new(init, dynamics, solver);
-            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+            let s = Rosenbrock23::new(&init).with_tolerances(rtol, atol);
+            run_with_solver(traj, init, dynamics, s, sched);
         }
     }
 }
@@ -293,60 +289,159 @@ fn execute_steps<D, S>(
     }
 }
 
-/// Computes maximum discrepancy and root-mean-square discrepancy between two solver trajectories.
+/// Computes maximum discrepancy and root-mean-square discrepancy between two solver trajectories
+/// across `y(t)` and (when present for coupled 2-state systems) `v(t)`.
+#[cfg(test)]
+#[must_use]
 pub fn compute_discrepancy(a: &SolverTrajectory, b: &SolverTrajectory) -> SolverDiscrepancy {
-    let mut max_err: f64 = 0.0;
-    let mut sum_sq_err: f64 = 0.0;
-    let mut count: usize = 0;
+    compute_series_discrepancy(&a.y_series, &a.v_series, &b.y_series, &b.v_series)
+}
 
-    accumulate_series_discrepancy(
-        &a.y_series,
-        &b.y_series,
-        &mut max_err,
-        &mut sum_sq_err,
-        &mut count,
-    );
-    if !a.v_series.is_empty() && !b.v_series.is_empty() {
-        accumulate_series_discrepancy(
-            &a.v_series,
-            &b.v_series,
-            &mut max_err,
-            &mut sum_sq_err,
-            &mut count,
-        );
+/// Computes maximum discrepancy and root-mean-square discrepancy between slice-backed `(y, v)` series.
+#[must_use]
+pub fn compute_series_discrepancy(
+    a_y: &[f64],
+    a_v: &[f64],
+    b_y: &[f64],
+    b_v: &[f64],
+) -> SolverDiscrepancy {
+    let mut acc = (0.0_f64, 0.0_f64, 0_usize);
+    accumulate_series_discrepancy(a_y, b_y, &mut acc);
+    if !a_v.is_empty() && !b_v.is_empty() {
+        accumulate_series_discrepancy(a_v, b_v, &mut acc);
     }
-
-    let rms_error = if count > 0 {
-        (sum_sq_err / count as f64).sqrt()
-    } else {
-        0.0
-    };
     SolverDiscrepancy {
-        max_error: max_err,
-        rms_error,
+        max_error: acc.0,
+        rms_error: if acc.2 > 0 {
+            (acc.1 / acc.2 as f64).sqrt()
+        } else {
+            0.0
+        },
     }
 }
 
-fn accumulate_series_discrepancy(
-    sa: &[f64],
-    sb: &[f64],
-    max_err: &mut f64,
-    sum_sq_err: &mut f64,
-    count: &mut usize,
-) {
+fn accumulate_series_discrepancy(sa: &[f64], sb: &[f64], acc: &mut (f64, f64, usize)) {
     for (&va, &vb) in sa.iter().zip(sb.iter()) {
         if va.is_finite() && vb.is_finite() {
             let err = (va - vb).abs();
-            if err > *max_err {
-                *max_err = err;
-            }
-            *sum_sq_err += err * err;
-            *count += 1;
+            acc.0 = acc.0.max(err);
+            acc.1 += err * err;
+            acc.2 += 1;
         }
     }
 }
 
+struct TrajectoryView<'a> {
+    method: IntegrationMethod,
+    time_series: &'a [f64],
+    y_series: &'a [f64],
+    v_series: &'a [f64],
+    diverged: bool,
+    is_active_reused: bool,
+}
+
+impl TrajectoryView<'_> {
+    fn discrepancy(&self, other: &Self) -> SolverDiscrepancy {
+        compute_series_discrepancy(self.y_series, self.v_series, other.y_series, other.v_series)
+    }
+}
+
+fn build_view_trace_series(
+    view: &TrajectoryView<'_>,
+    has_v: bool,
+    v_label: &str,
+) -> Vec<TraceSeries> {
+    let zip = |vals: &[f64]| -> Vec<[f64; 2]> {
+        view.time_series
+            .iter()
+            .zip(vals)
+            .map(|(&t, &v)| [t, v])
+            .collect()
+    };
+    let mut series = vec![TraceSeries::new("y(t)", zip(view.y_series))];
+    if has_v && !view.v_series.is_empty() {
+        series.push(TraceSeries::new(v_label, zip(view.v_series)));
+    }
+    series
+}
+
 impl OdeSolverTool {
+    fn simulate_if_inactive(
+        &self,
+        target: IntegrationMethod,
+        reuse_active: bool,
+        custom_spec: Option<&CustomOdeSpec>,
+    ) -> Option<SolverTrajectory> {
+        (!reuse_active || self.method != target).then(|| {
+            simulate_preset_with_tol(
+                self.preset,
+                target,
+                self.dt,
+                self.total_time,
+                self.adaptive_tol,
+                self.param_k,
+                self.param_r,
+                self.param_cap_k,
+                self.ic_y0,
+                self.ic_v0,
+                custom_spec,
+            )
+        })
+    }
+
+    fn trajectory_view<'a>(
+        &'a self,
+        target: IntegrationMethod,
+        simulated: &'a Option<SolverTrajectory>,
+    ) -> TrajectoryView<'a> {
+        if let Some(traj) = simulated {
+            TrajectoryView {
+                method: traj.method,
+                time_series: &traj.time_series,
+                y_series: &traj.y_series,
+                v_series: &traj.v_series,
+                diverged: traj.diverged,
+                is_active_reused: false,
+            }
+        } else {
+            TrajectoryView {
+                method: target,
+                time_series: &self.time_series,
+                y_series: &self.y_series,
+                v_series: &self.v_series,
+                diverged: self.diverged,
+                is_active_reused: true,
+            }
+        }
+    }
+
+    fn build_comparison_snapshot_series(
+        &self,
+        views: &[TrajectoryView<'_>],
+    ) -> Vec<(&'static str, Vec<TraceSeries>)> {
+        let has_v = self.has_second_state();
+        let v_label = self.second_state_label();
+        let cache_matches =
+            self.series_cache
+                .matches_series(&self.time_series, &self.y_series, &self.v_series);
+        views
+            .iter()
+            .map(|view| {
+                let series = if view.is_active_reused && cache_matches {
+                    let (py, pv) = self.series_cache.shared_points();
+                    let mut s = vec![TraceSeries::new("y(t)", py)];
+                    if has_v && !pv.is_empty() {
+                        s.push(TraceSeries::new(v_label, pv));
+                    }
+                    s
+                } else {
+                    build_view_trace_series(view, has_v, v_label)
+                };
+                (view.method.name(), series)
+            })
+            .collect()
+    }
+
     pub(super) fn recalculate_comparison(&mut self) {
         self.comparison_manager.clear();
         if !self.comparison_mode {
@@ -354,61 +449,38 @@ impl OdeSolverTool {
         }
 
         let custom_spec = self.build_custom_ode_spec();
-        let trajs: Vec<SolverTrajectory> = IntegrationMethod::ALL
-            .iter()
-            .map(|&m| {
-                simulate_preset_with_tol(
-                    self.preset,
-                    m,
-                    self.dt,
-                    self.total_time,
-                    self.adaptive_tol,
-                    self.param_k,
-                    self.param_r,
-                    self.param_cap_k,
-                    self.ic_y0,
-                    self.ic_v0,
-                    custom_spec.as_ref(),
-                )
-            })
-            .collect();
+        let reuse_active =
+            !self.has_custom_input_error() || !self.time_series.is_empty() || self.diverged;
+        let sims = IntegrationMethod::ALL
+            .map(|m| self.simulate_if_inactive(m, reuse_active, custom_spec.as_ref()));
 
-        if trajs.iter().any(|t| t.diverged) {
+        let (any_diverged, euler_rk4, heun_rk4, euler_heun, rk4_dp45, be_ros23, snapshots) = {
+            let views: [TrajectoryView<'_>; 7] = std::array::from_fn(|idx| {
+                self.trajectory_view(IntegrationMethod::ALL[idx], &sims[idx])
+            });
+            // Order matches IntegrationMethod::ALL: [RK4, Euler, Heun, DP45, BE, Trap, Ros23]
+            let snapshots = self.build_comparison_snapshot_series(&views);
+            (
+                views.iter().any(|v| v.diverged),
+                views[1].discrepancy(&views[0]),
+                views[2].discrepancy(&views[0]),
+                views[1].discrepancy(&views[2]),
+                views[0].discrepancy(&views[3]),
+                views[4].discrepancy(&views[6]),
+                snapshots,
+            )
+        };
+
+        if any_diverged {
             self.diverged = true;
         }
-
-        // Order matches IntegrationMethod::ALL: [RK4, Euler, Heun, DP45, BE, Trap, Ros23]
-        self.discrepancy_euler_rk4 = compute_discrepancy(&trajs[1], &trajs[0]);
-        self.discrepancy_heun_rk4 = compute_discrepancy(&trajs[2], &trajs[0]);
-        self.discrepancy_euler_heun = compute_discrepancy(&trajs[1], &trajs[2]);
-        self.discrepancy_rk4_dp45 = compute_discrepancy(&trajs[0], &trajs[3]);
-        self.discrepancy_be_ros23 = compute_discrepancy(&trajs[4], &trajs[6]);
-
-        self.populate_comparison_snapshots(&trajs);
-    }
-
-    pub(super) fn populate_comparison_snapshots(&mut self, trajs: &[SolverTrajectory]) {
-        let has_v = self.has_second_state();
-        let v_label = self.second_state_label();
-        for traj in trajs {
-            let pts_y: Vec<[f64; 2]> = traj
-                .time_series
-                .iter()
-                .zip(&traj.y_series)
-                .map(|(&t, &y)| [t, y])
-                .collect();
-            let mut series = vec![TraceSeries::new("y(t)", pts_y)];
-            if has_v && !traj.v_series.is_empty() {
-                let pts_v: Vec<[f64; 2]> = traj
-                    .time_series
-                    .iter()
-                    .zip(&traj.v_series)
-                    .map(|(&t, &v)| [t, v])
-                    .collect();
-                series.push(TraceSeries::new(v_label, pts_v));
-            }
-            self.comparison_manager
-                .add_snapshot(traj.method.name(), "", series);
+        self.discrepancy_euler_rk4 = euler_rk4;
+        self.discrepancy_heun_rk4 = heun_rk4;
+        self.discrepancy_euler_heun = euler_heun;
+        self.discrepancy_rk4_dp45 = rk4_dp45;
+        self.discrepancy_be_ros23 = be_ros23;
+        for (label, series) in snapshots {
+            self.comparison_manager.add_snapshot(label, "", series);
         }
     }
 }

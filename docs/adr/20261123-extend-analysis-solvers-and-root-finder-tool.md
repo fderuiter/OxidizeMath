@@ -19,7 +19,7 @@ Previously, `pure_math::analysis` had several algorithmic and ergonomic gaps acr
    - Added internal stack-friendly helpers (`canonical_zero`, `has_strict_sign_change`, `solve_linear_in_place`, `lu_factor_in_place`, `lu_solve_in_place`) operating on caller-supplied slices without heap allocation.
 
 2. **Extended Root-Finding (`pure_math::analysis::roots`):**
-   - Hardened [`bracketing.rs`](../../crates/pure_math/src/pure_math/analysis/roots/bracketing.rs) so `Bisection` rejects `NaN`/`Inf` endpoints and evaluations with `AnalysisError::InvalidParameters`, canonicalizes `-0.0` exact roots to `0.0`, and tests strict sign changes without `f64::signum()`. Added Brent-Dekker `Brent`.
+   - Hardened [`bracketing.rs`](../../crates/pure_math/src/pure_math/analysis/roots/bracketing.rs) so `Bisection` and Brent-Dekker `Brent` reject `NaN`/`Inf` bounds and evaluations via `Copy` zero-allocation `AnalysisError` variants (`InvalidBracket`, `RootNotBracketed`, `InvalidParameters(&'static str)`), canonicalize `-0.0` exact roots to `0.0`, and test strict sign changes without `f64::signum()`.
    - Added derivative-free `Secant` alongside hardened `NewtonRaphson` in [`open.rs`](../../crates/pure_math/src/pure_math/analysis/roots/open.rs), and added stack-allocated (`SVector<f64, N>`) and pre-allocated dynamic (`DVector<f64>`) `MultivariateNewton` in [`multivariate.rs`](../../crates/pure_math/src/pure_math/analysis/roots/multivariate.rs).
 
 3. **Extended Quadrature (`pure_math::analysis::integration`):**

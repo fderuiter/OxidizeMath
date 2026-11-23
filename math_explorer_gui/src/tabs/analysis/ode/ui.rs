@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::systems::eval_ode_final_state;
+use super::systems::eval_ode_final_state_with_tol;
 use super::OdeSolverTool;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
@@ -9,14 +9,30 @@ use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
 impl OdeSolverTool {
-    pub(super) fn render_sidebar_controls(&mut self, ui: &mut egui::Ui) -> bool {
+    pub(super) fn render_sidebar_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        sweeps_before: usize,
+    ) -> bool {
         let mut changed = false;
         changed |= self.render_preset_selector(ui);
         changed |= self.render_parameter_inputs(ui);
         changed |= self.render_initial_condition_inputs(ui);
         changed |= self.render_solver_settings_controls(ui);
-        self.render_snapshots_and_sensitivity(ui);
+
+        let sweep_active =
+            crate::reflective_ui::slider::current_pass_active_sweep_count(ui.ctx()) > sweeps_before;
+        self.apply_sidebar_changes(changed, sweep_active);
+        self.sync_series_cache();
+
+        if self.comparison_mode {
+            self.render_discrepancy_panel(ui);
+        }
+        let defer_sensitivity =
+            crate::sensitivity::is_transient_parameter_gesture(ui.ctx(), sweep_active);
+        self.render_snapshots_and_sensitivity(ui, defer_sensitivity);
         if self.callout_manager.render_ui(ui) {
+            self.bump_revision();
             changed = true;
         }
         changed
@@ -191,9 +207,6 @@ impl OdeSolverTool {
         changed |= ui
             .checkbox(&mut self.show_annotations, "Show Annotations")
             .changed();
-        if self.comparison_mode {
-            self.render_discrepancy_panel(ui);
-        }
         changed
     }
 
@@ -240,7 +253,7 @@ impl OdeSolverTool {
         changed
     }
 
-    fn render_snapshots_and_sensitivity(&mut self, ui: &mut egui::Ui) {
+    fn render_snapshots_and_sensitivity(&mut self, ui: &mut egui::Ui, defer_gesture: bool) {
         ui.add_space(10.0);
         let param_summary = self.param_summary();
         let has_v = self.has_second_state();
@@ -259,7 +272,7 @@ impl OdeSolverTool {
             self.bump_revision();
         }
 
-        self.run_sensitivity_analysis();
+        self.run_sensitivity_analysis(defer_gesture);
 
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
     }
@@ -315,7 +328,67 @@ impl OdeSolverTool {
         dynamic_params
     }
 
-    fn run_sensitivity_analysis(&mut self) {
+    pub(crate) fn compute_active_baseline_hash(
+        &self,
+        custom_spec: Option<&super::systems::CustomOdeSpec>,
+    ) -> u64 {
+        use crate::sensitivity::canonical_f64_bits;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (self.preset as u8, self.method as u8).hash(&mut hasher);
+        for val in [
+            self.dt,
+            self.total_time,
+            super::comparison::sanitize_adaptive_tol(self.adaptive_tol),
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+            self.ic_y0,
+            self.ic_v0,
+        ] {
+            canonical_f64_bits(val).hash(&mut hasher);
+        }
+        if let Some(spec) = custom_spec {
+            1_u8.hash(&mut hasher);
+            spec.hash_with_params(&mut hasher);
+        } else {
+            0_u8.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    fn reusable_baseline_final_y(
+        &self,
+        custom_spec: Option<&super::systems::CustomOdeSpec>,
+        param_refs: &[(&str, f64)],
+    ) -> Option<f64> {
+        if self.diverged || self.has_custom_input_error() {
+            return None;
+        }
+        let steps = crate::presets::checked_ode_step_count(self.dt, self.total_time)?;
+        if self.y_series.len() != steps + 1
+            || (self.has_second_state() && self.v_series.len() != steps + 1)
+        {
+            return None;
+        }
+        if self.active_baseline_hash != Some(self.compute_active_baseline_hash(custom_spec)) {
+            return None;
+        }
+        if self.preset == OdePreset::Custom
+            && !custom_spec.is_some_and(|spec| spec.matches_baseline_params(param_refs))
+        {
+            return None;
+        }
+        self.y_series.last().copied().filter(|v| v.is_finite())
+    }
+
+    pub(super) fn run_sensitivity_analysis(&mut self, defer_gesture: bool) {
+        if defer_gesture {
+            self.sensitivity_engine.defer_for_gesture();
+            return;
+        }
+
         use crate::sensitivity::canonical_f64_bits;
 
         let dynamic_params = self.collect_sensitivity_params();
@@ -328,7 +401,9 @@ impl OdeSolverTool {
         let current_method = self.method;
         let current_dt = self.dt;
         let current_total_time = self.total_time;
+        let current_tol = super::comparison::sanitize_adaptive_tol(self.adaptive_tol);
         let custom_spec = self.build_custom_ode_spec();
+        let baseline_hint = self.reusable_baseline_final_y(custom_spec.as_ref(), &param_refs);
         let custom_ctx = (current_preset == OdePreset::Custom)
             .then_some(super::systems::CustomOdeContext(custom_spec.as_ref()));
         let context = (
@@ -336,19 +411,25 @@ impl OdeSolverTool {
             current_method as u8,
             canonical_f64_bits(current_dt),
             canonical_f64_bits(current_total_time),
+            canonical_f64_bits(current_tol),
             custom_ctx,
         );
 
-        self.sensitivity_engine
-            .compute_with_context(&param_refs, &context, |p_map| {
-                eval_ode_final_state(
+        self.sensitivity_engine.compute_with_baseline(
+            &param_refs,
+            &context,
+            baseline_hint,
+            |p_map| {
+                eval_ode_final_state_with_tol(
                     current_preset,
                     current_method,
                     current_dt,
                     current_total_time,
+                    current_tol,
                     p_map,
                     custom_spec.as_ref(),
                 )
-            });
+            },
+        );
     }
 }

@@ -11,18 +11,18 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 ### Module Structure
 
 - **`algebra`**: Abstract algebraic structures and type hierarchies:
-  - Groups, rings, and finite fields (`Fp`).
+  - Semigroups, monoids, groups (`Group`, `AbelianGroup`, `Zn<N>`, `is_subgroup`, `generate_left_coset`), rings, and finite fields (`Fp`).
   - Polynomial rings and polynomial arithmetic over arbitrary fields.
 - **`number_theory`**: Prime number generation (`primes_up_to`), primality testing, integer partition theory, and Q-series.
 - **`analysis`**:
-  - **Root-Finding (`roots`)**: Hardened sign-change `Bisection` (`NaN`/`Inf` rejection and canonical `0.0`), Brent-Dekker hybrid `Brent`, open `NewtonRaphson` and derivative-free `Secant`, and zero-allocation `MultivariateNewton` (`SVector<f64, N>` and `DVector<f64>`).
+  - **Root-Finding (`roots`)**: Zero-allocation bracketed, derivative, and open solvers including hardened sign-change `roots::Bisection` (`NaN`/`Inf` rejection and canonical `0.0`), Brent-Dekker hybrid `roots::Brent`, `roots::NewtonRaphson`, derivative-free `roots::Secant`, and `roots::MultivariateNewton` (`SVector<f64, N>` and `DVector<f64>`).
   - **Numerical Integration (`integration`)**: Two-grid Richardson `Trapezoidal`, composite `Simpson`, adaptive Chebyshev `ClenshawCurtis`, and stack-bounded 64-panel adaptive `GaussKronrod15` (`G7-K15`).
-  - **Ordinary Differential Equations (`ode`)**: Time-aware `TimeStepper` and `OdeModel`, `IndexedState`, explicit fixed-step (`Euler`, `Heun`, `RungeKutta4`), embedded adaptive (`DormandPrince45`), L-stable / stiff implicit Newton (`BackwardEuler`, `ImplicitTrapezoidal`), linearly implicit adaptive (`Rosenbrock23`), and zero-allocation symplectic Hamiltonian (`StormerVerlet`, `Yoshida4`, `GaussLegendre4` over `HamiltonianSystem` / `SeparableHamiltonian`) solvers.
+  - **Ordinary Differential Equations (`ode`)**: Time-aware `OdeSystem`, `TimeStepper`, `OdeModel`, and `IndexedState` with explicit fixed-step (`Euler`, `Heun`, `RungeKutta4`), embedded adaptive (`DormandPrince45`), L-stable / stiff implicit Newton (`BackwardEuler`, `ImplicitTrapezoidal`), linearly implicit adaptive (`Rosenbrock23`), and zero-allocation symplectic Hamiltonian (`StormerVerlet`, `Yoshida4`, `GaussLegendre4` over `HamiltonianSystem` / `SeparableHamiltonian`) solvers.
   - **Partial Differential Equations (`pde`)**: 1D and zero-allocation 2D solvers (`pde::wave_2d::Wave2DSolver` for hyperbolic wave tanks, Kirchhoff-Love biharmonic Chladni plates, Chladni sand drift, Marching-Squares nodal contours, and pre-planned 2D FFT spectra).
 - **`differential_geometry`**: Manifolds, metric tensors, and Riemannian curvature.
 - **`elliptic_curves`**: Zero-allocation short-Weierstrass curve group arithmetic ($P + Q$, $\[k\]P$, cyclic orbits) over $\mathbb{R}$ and prime fields $\mathbb{F}_p$, Frobenius traces $a_p$, Hasse-Weil verification, Breuer modular polynomial valuation bounds, and bridges to binary quadratic forms (`BQF`), Hurwitz-Kronecker class numbers, and modular $q$-series (`QSeries<i64>`).
 - **`graph_theory`**: Network graph structures, centrality metrics, and traversal algorithms.
-- **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck), ranking systems (Glicko-2), and Kelly criterion decision models.
+- **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck), ranking systems (Glicko-2), Kelly criterion decision models, and zero-allocation bookmaker market pricing (`market_pricing` for Multiplicative, Additive, Power, and Shin devigging, `+EV`, arbitrage, Dutching, middles, and hedging).
 - **`special_functions`**: Classical mathematical functions (Bessel functions, Legendre polynomials).
 
 ---

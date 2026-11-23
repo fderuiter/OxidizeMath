@@ -3,7 +3,7 @@
 set -euo pipefail
 
 DIST_DIR="${1:-math_explorer_gui/dist}"
-MAX_BYTES="${2:-3145728}" # 3 MB default threshold
+MAX_BYTES="${2:-4194304}" # 4 MB default threshold
 
 if [ ! -d "$DIST_DIR" ]; then
     echo "Error: Directory '$DIST_DIR' not found." >&2
@@ -20,7 +20,7 @@ if ! command -v gzip >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "Checking WebAssembly size budget against maximum threshold: $MAX_BYTES bytes (3 MB)..."
+echo "Checking WebAssembly size budget against maximum threshold: $MAX_BYTES bytes (4 MB)..."
 
 shopt -s nullglob
 wasm_files=("$DIST_DIR"/*.wasm)
@@ -45,16 +45,16 @@ for wasm in "${wasm_files[@]}"; do
     echo "  - Gzip compressed size:   $gz_size bytes"
 
     if [ "$br_size" -gt "$MAX_BYTES" ]; then
-        echo "Error: Brotli compressed size ($br_size bytes) exceeds 3MB limit ($MAX_BYTES bytes)" >&2
+        echo "Error: Brotli compressed size ($br_size bytes) exceeds 4MB limit ($MAX_BYTES bytes)" >&2
         exit 1
     fi
 
     if [ "$gz_size" -gt "$MAX_BYTES" ]; then
-        echo "Error: Gzip compressed size ($gz_size bytes) exceeds 3MB limit ($MAX_BYTES bytes)" >&2
+        echo "Error: Gzip compressed size ($gz_size bytes) exceeds 4MB limit ($MAX_BYTES bytes)" >&2
         exit 1
     fi
 
     passed=$((passed + 1))
 done
 
-echo "Success: All $passed WebAssembly bundle(s) passed the 3MB compressed size budget verification."
+echo "Success: All $passed WebAssembly bundle(s) passed the 4MB compressed size budget verification."

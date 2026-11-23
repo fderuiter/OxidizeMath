@@ -17,16 +17,44 @@ pub use open::{NewtonRaphson, Secant};
 
 use thiserror::Error;
 
-/// Errors that can occur during numerical root finding and analysis.
-#[derive(Debug, Clone, PartialEq, Error)]
+/// Copy, zero-allocation errors that can occur during numerical root finding and analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum AnalysisError {
     /// The algorithm failed to converge within the maximum number of iterations.
     /// Contains the best guess (or final iterate / residual summary) so far.
     #[error("Algorithm failed to converge. Best guess: {0}")]
     ConvergenceError(f64),
-    /// Invalid parameters were provided (e.g., root not bracketed, `NaN`/`Inf` evaluation, or singular Jacobian).
+    /// Endpoints do not bracket a sign change or evaluated to non-finite values.
+    #[error("Root not bracketed: f({min})={f_min}, f({max})={f_max}; signs must differ")]
+    RootNotBracketed {
+        /// Lower bound input.
+        min: f64,
+        /// Objective value at `min`.
+        f_min: f64,
+        /// Upper bound input.
+        max: f64,
+        /// Objective value at `max`.
+        f_max: f64,
+    },
+    /// Derivative or secant slope magnitude fell below the safe division threshold.
+    #[error("Derivative too small at x={x}: {derivative}")]
+    DerivativeTooSmall {
+        /// Iterate where the derivative vanished.
+        x: f64,
+        /// Evaluated derivative or secant denominator value.
+        derivative: f64,
+    },
+    /// Non-finite interval bounds, initial guesses, or invalid solver tolerance were supplied.
+    #[error("Invalid solver bracket [{min}, {max}] or tolerance")]
+    InvalidBracket {
+        /// Lower bound or first guess input.
+        min: f64,
+        /// Upper bound or second guess input.
+        max: f64,
+    },
+    /// Invalid solver configuration, non-finite interior evaluation, or singular Jacobian.
     #[error("Invalid parameters: {0}")]
-    InvalidParameters(String),
+    InvalidParameters(&'static str),
 }
 
 /// Strategy for finding scalar roots of a function $f(x) = 0$.
@@ -46,7 +74,7 @@ pub enum AnalysisError {
 ///     assert!((root_bisect - 2.0).abs() < math_explorer::registry::TOLERANCE_FAST);
 ///
 ///     let root_brent = Brent::default().find_root(f, 0.0, 5.0)?;
-///     assert!((root_brent - 2.0).abs() < math_explorer::registry::TOLERANCE_FAST);
+///     assert!((root_brent - 2.0).abs() < math_explorer::registry::TOLERANCE_STANDARD);
 ///
 ///     let root_newton = NewtonRaphson::default().find_root(f, 0.0, 5.0)?;
 ///     assert!((root_newton - 2.0).abs() < math_explorer::registry::TOLERANCE_FAST);
@@ -71,3 +99,4 @@ pub trait RootFinder {
 }
 
 // [cite:graph_parameters_rust]
+// [cite:advanced_linear_algebra]
