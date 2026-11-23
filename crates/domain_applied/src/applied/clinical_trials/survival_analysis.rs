@@ -1,12 +1,11 @@
-//! Nonparametric Kaplan-Meier survival analysis, bootstrap confidence bands, and hazard ratios.
+//! Nonparametric Kaplan-Meier survival analysis, bootstrap confidence bands, hazard ratios, and log-rank tests.
 
 use super::types::{ClinicalTrialError, SurvivalTime};
-use oxidize_core::rng::OxidizeRng;
-use pure_math::pure_math::statistics::bootstrap::BootstrapMethod;
-use pure_math::pure_math::statistics::monte_carlo::{
-    normal_cdf_fast, normal_inv_cdf_fast, two_sided_normal_z,
-};
-use rand::RngCore;
+use statrs::distribution::{ChiSquared, ContinuousCDF};
+
+#[path = "survival_analysis/bootstrap.rs"]
+mod bootstrap;
+pub use bootstrap::{BootstrapSurvivalPoint, kaplan_meier_bootstrap};
 
 /// Represents a single subject's outcome in a survival analysis study.
 #[derive(Debug, Clone, Copy)]
@@ -33,27 +32,6 @@ pub struct TimePoint {
     /// Number of events that occurred at time $t$.
     pub n_events: usize,
     /// Number of subjects censored at time $t$.
-    pub n_censored: usize,
-}
-
-/// Kaplan-Meier survival point augmented with nonparametric bootstrap confidence bounds.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BootstrapSurvivalPoint {
-    /// Anchor event or censoring time $t$.
-    pub time: f64,
-    /// Point-estimate survival probability $\hat{S}(t) \in [0, 1]$.
-    pub survival_probability: f64,
-    /// Nonparametric bootstrap standard error of $\hat{S}(t)$.
-    pub standard_error: f64,
-    /// Lower confidence bound clamped to `[0.0, 1.0]`.
-    pub ci_lower: f64,
-    /// Upper confidence bound clamped to `[0.0, 1.0]`.
-    pub ci_upper: f64,
-    /// Number of subjects at risk just prior to $t$ in the observed cohort.
-    pub n_at_risk: usize,
-    /// Number of observed events at $t$.
-    pub n_events: usize,
-    /// Number of censored observations at $t$.
     pub n_censored: usize,
 }
 
@@ -125,222 +103,6 @@ pub fn kaplan_meier(observations: &[Observation]) -> Vec<TimePoint> {
     curve
 }
 
-/// Computes nonparametric Efron (1981) bootstrap confidence bands (`Percentile` or `BCa`)
-/// for the Kaplan-Meier survival curve over preallocated resample buffers.
-///
-/// # Errors
-/// Returns [`ClinicalTrialError`] if fewer than 2 observations are supplied, `n_replicates == 0`,
-/// or `confidence_level` lies outside `(0.0, 1.0)`.
-#[verified_engine::verified]
-pub fn kaplan_meier_bootstrap(
-    observations: &[Observation],
-    n_replicates: usize,
-    confidence_level: f64,
-    method: BootstrapMethod,
-    rng: &mut OxidizeRng,
-) -> Result<Vec<BootstrapSurvivalPoint>, ClinicalTrialError> {
-    let n = observations.len();
-    if n < 2 {
-        return Err(ClinicalTrialError::InsufficientSampleSize {
-            required: 2,
-            actual: n,
-        });
-    }
-    if n_replicates == 0 {
-        return Err(ClinicalTrialError::InvalidData(
-            "Bootstrap replicate count must be positive".to_string(),
-        ));
-    }
-    let z_upper = two_sided_normal_z(confidence_level)
-        .map_err(|e| ClinicalTrialError::InvalidData(e.to_string()))?;
-
-    let base_curve = kaplan_meier(observations);
-    let n_times = base_curve.len();
-    let mut resampled = vec![observations[0]; n];
-    let mut grid = vec![0.0_f64; n_times * n_replicates];
-    let mut curve_eval = vec![0.0_f64; n_times];
-
-    for rep in 0..n_replicates {
-        for slot in &mut resampled {
-            let idx = draw_index(rng, n);
-            *slot = observations[idx];
-        }
-        evaluate_sorted_km_at_times(&mut resampled, &base_curve, &mut curve_eval);
-        for (row, &s_val) in grid.chunks_exact_mut(n_replicates).zip(&curve_eval) {
-            row[rep] = s_val;
-        }
-    }
-
-    let mut jack_accels = vec![0.0_f64; n_times];
-    if method == BootstrapMethod::BCa {
-        compute_survival_jackknife_accels(observations, &base_curve, &mut jack_accels);
-    }
-
-    let alpha_half = 0.5 * (1.0 - confidence_level);
-    let mut out = Vec::with_capacity(n_times);
-    for (k, (tp, row)) in base_curve
-        .iter()
-        .zip(grid.chunks_exact_mut(n_replicates))
-        .enumerate()
-    {
-        row.sort_unstable_by(f64::total_cmp);
-        let mean = row.iter().sum::<f64>() / (n_replicates as f64);
-        let se = if n_replicates > 1 {
-            let ss: f64 = row.iter().map(|&v| (v - mean) * (v - mean)).sum();
-            (ss / ((n_replicates - 1) as f64)).sqrt()
-        } else {
-            0.0
-        };
-        let (ci_lower, ci_upper) = match method {
-            BootstrapMethod::Percentile => (
-                quantile_sorted(row, alpha_half),
-                quantile_sorted(row, 1.0 - alpha_half),
-            ),
-            BootstrapMethod::BCa => {
-                bca_survival_bounds(row, tp.survival_probability, z_upper, jack_accels[k])
-            }
-        };
-        out.push(BootstrapSurvivalPoint {
-            time: tp.time,
-            survival_probability: tp.survival_probability,
-            standard_error: se,
-            ci_lower: ci_lower.clamp(0.0, 1.0),
-            ci_upper: ci_upper.clamp(0.0, 1.0),
-            n_at_risk: tp.n_at_risk,
-            n_events: tp.n_events,
-            n_censored: tp.n_censored,
-        });
-    }
-    Ok(out)
-}
-
-#[verified_engine::verified]
-fn evaluate_sorted_km_at_times(
-    sample: &mut [Observation],
-    anchors: &[TimePoint],
-    out_surv: &mut [f64],
-) {
-    sample.sort_unstable_by(|a, b| a.time.as_f64().total_cmp(&b.time.as_f64()));
-    let tol = math_commons::registry::TOLERANCE_STANDARD;
-    let mut i = 0_usize;
-    let mut n_at_risk = sample.len();
-    let mut surv = 1.0_f64;
-
-    for (tp, slot) in anchors.iter().zip(out_surv.iter_mut()) {
-        while i < sample.len() && sample[i].time.as_f64() <= tp.time + tol {
-            let t_grp = sample[i].time.as_f64();
-            let mut d_i = 0_usize;
-            let mut c_i = 0_usize;
-            while i < sample.len() && (sample[i].time.as_f64() - t_grp).abs() < tol {
-                if sample[i].event_occurred {
-                    d_i += 1;
-                } else {
-                    c_i += 1;
-                }
-                i += 1;
-            }
-            if d_i > 0 && n_at_risk > 0 {
-                surv *= 1.0 - (d_i as f64) / (n_at_risk as f64);
-            }
-            n_at_risk = n_at_risk.saturating_sub(d_i + c_i);
-        }
-        *slot = surv.clamp(0.0, 1.0);
-    }
-}
-
-#[verified_engine::verified]
-fn compute_survival_jackknife_accels(
-    observations: &[Observation],
-    anchors: &[TimePoint],
-    accels: &mut [f64],
-) {
-    let n = observations.len();
-    let k_len = anchors.len();
-    let mut loo = vec![observations[0]; n - 1];
-    let mut eval_buf = vec![0.0_f64; k_len];
-    let mut jack_grid = vec![0.0_f64; k_len * n];
-
-    for drop_idx in 0..n {
-        loo[..drop_idx].copy_from_slice(&observations[..drop_idx]);
-        loo[drop_idx..].copy_from_slice(&observations[drop_idx + 1..]);
-        evaluate_sorted_km_at_times(&mut loo, anchors, &mut eval_buf);
-        for (row, &val) in jack_grid.chunks_exact_mut(n).zip(&eval_buf) {
-            row[drop_idx] = val;
-        }
-    }
-
-    for (row, accel_slot) in jack_grid.chunks_exact(n).zip(accels.iter_mut()) {
-        let mean = row.iter().sum::<f64>() / (n as f64);
-        let mut s2 = 0.0;
-        let mut s3 = 0.0;
-        for &v in row {
-            let d = mean - v;
-            let d2 = d * d;
-            s2 += d2;
-            s3 += d2 * d;
-        }
-        let denom = 6.0 * s2.powf(1.5);
-        *accel_slot = if denom > 1e-30 { s3 / denom } else { 0.0 };
-    }
-}
-
-#[verified_engine::verified]
-fn bca_survival_bounds(
-    sorted_reps: &[f64],
-    point_est: f64,
-    z_upper: f64,
-    accel: f64,
-) -> (f64, f64) {
-    let b = sorted_reps.len();
-    if sorted_reps[0] == sorted_reps[b - 1] {
-        return (point_est, point_est);
-    }
-    let less = sorted_reps.iter().filter(|&&v| v < point_est).count();
-    let eq = sorted_reps.iter().filter(|&&v| v == point_est).count();
-    let min_p = 0.5 / (b as f64);
-    let prop = ((less as f64) + 0.5 * (eq as f64)) / (b as f64);
-    let z0 = normal_inv_cdf_fast(prop.clamp(min_p, 1.0 - min_p));
-
-    let adj = |z_a: f64| -> f64 {
-        let num = z0 + z_a;
-        let den = 1.0 - accel * num;
-        if den.abs() <= 1e-12 {
-            if num >= 0.0 { 1.0 } else { 0.0 }
-        } else {
-            normal_cdf_fast(z0 + num / den).clamp(0.0, 1.0)
-        }
-    };
-    (
-        quantile_sorted(sorted_reps, adj(-z_upper)),
-        quantile_sorted(sorted_reps, adj(z_upper)),
-    )
-}
-
-#[inline]
-#[verified_engine::verified]
-fn draw_index(rng: &mut OxidizeRng, upper: usize) -> usize {
-    let bound = upper as u64;
-    let zone = u64::MAX - (u64::MAX % bound);
-    loop {
-        let r = rng.next_u64();
-        if r < zone {
-            return (r % bound) as usize;
-        }
-    }
-}
-
-#[inline]
-#[verified_engine::verified]
-fn quantile_sorted(sorted: &[f64], prob: f64) -> f64 {
-    if sorted.len() == 1 {
-        return sorted[0];
-    }
-    let pos = prob.clamp(0.0, 1.0) * ((sorted.len() - 1) as f64);
-    let lo = pos.floor() as usize;
-    let hi = pos.ceil() as usize;
-    sorted[lo] + (pos - (lo as f64)) * (sorted[hi] - sorted[lo])
-}
-
 /// Calculates a simple Hazard Ratio estimate based on incidence density.
 /// HR = (Events1 / TotalTime1) / (Events2 / TotalTime2)
 #[verified_engine::verified]
@@ -382,7 +144,142 @@ pub fn try_estimate_hazard_ratio(
     Ok((events1 / time1) / (events2 / time2))
 }
 
+/// Summary statistics from a two-arm Mantel-Haenszel survival log-rank test.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LogRankResult {
+    /// Mantel-Haenszel chi-square test statistic ($\chi^2$ with 1 degree of freedom).
+    pub statistic: f64,
+    /// Two-sided survival equivalence p-value derived from $\chi^2_1$.
+    pub p_value: f64,
+    /// Observed events $O_1$ in `group1`.
+    pub observed_group1: f64,
+    /// Expected events $E_1$ in `group1` under the null hypothesis of identical hazards.
+    pub expected_group1: f64,
+    /// Hypergeometric Mantel-Haenszel variance $V_1$ accumulated across distinct event times.
+    pub variance: f64,
+}
+
+#[verified_engine::verified]
+fn next_anchor_time(g1: &[Observation], i1: usize, g2: &[Observation], i2: usize) -> f64 {
+    match (g1.get(i1), g2.get(i2)) {
+        (Some(a), Some(b)) => a.time.as_f64().min(b.time.as_f64()),
+        (Some(a), None) => a.time.as_f64(),
+        (None, Some(b)) => b.time.as_f64(),
+        (None, None) => 0.0,
+    }
+}
+
+#[verified_engine::verified]
+fn step_arm_at_time(obs: &[Observation], cursor: &mut usize, anchor_t: f64) -> (usize, usize) {
+    let mut events = 0;
+    let mut censored = 0;
+    while *cursor < obs.len()
+        && (obs[*cursor].time.as_f64() - anchor_t).abs()
+            < math_commons::registry::TOLERANCE_STANDARD
+    {
+        if obs[*cursor].event_occurred {
+            events += 1;
+        } else {
+            censored += 1;
+        }
+        *cursor += 1;
+    }
+    (events, censored)
+}
+
+/// Computes the two-arm Mantel-Haenszel log-rank test using caller-supplied scratch buffers.
+///
+/// When `scratch1` and `scratch2` are preallocated with at least `group1.len()` and `group2.len()`
+/// capacity, sorting and event-time accumulation perform zero dynamic heap allocations.
+#[verified_engine::verified]
+pub fn log_rank_test_into(
+    group1: &[Observation],
+    group2: &[Observation],
+    scratch1: &mut Vec<Observation>,
+    scratch2: &mut Vec<Observation>,
+) -> Result<LogRankResult, ClinicalTrialError> {
+    if group1.is_empty() || group2.is_empty() {
+        return Err(ClinicalTrialError::InsufficientSampleSize {
+            required: 1,
+            actual: group1.len().min(group2.len()),
+        });
+    }
+
+    scratch1.clear();
+    scratch1.extend_from_slice(group1);
+    scratch1.sort_unstable_by(|a, b| a.time.as_f64().total_cmp(&b.time.as_f64()));
+
+    scratch2.clear();
+    scratch2.extend_from_slice(group2);
+    scratch2.sort_unstable_by(|a, b| a.time.as_f64().total_cmp(&b.time.as_f64()));
+
+    let mut i1 = 0;
+    let mut i2 = 0;
+    let mut n1_risk = scratch1.len();
+    let mut n2_risk = scratch2.len();
+    let mut observed_1 = 0.0;
+    let mut expected_1 = 0.0;
+    let mut variance_1 = 0.0;
+
+    while i1 < scratch1.len() || i2 < scratch2.len() {
+        let t = next_anchor_time(scratch1, i1, scratch2, i2);
+        let (d1, c1) = step_arm_at_time(scratch1, &mut i1, t);
+        let (d2, c2) = step_arm_at_time(scratch2, &mut i2, t);
+        let d = d1 + d2;
+        let n = n1_risk + n2_risk;
+
+        if d > 0 && n > 0 {
+            let n_f = n as f64;
+            let d_f = d as f64;
+            let n1_f = n1_risk as f64;
+            let n2_f = n2_risk as f64;
+            observed_1 += d1 as f64;
+            expected_1 += d_f * (n1_f / n_f);
+            if n > 1 {
+                variance_1 += (n1_f * n2_f * d_f * (n_f - d_f)) / (n_f * n_f * (n_f - 1.0));
+            }
+        }
+
+        n1_risk -= d1 + c1;
+        n2_risk -= d2 + c2;
+    }
+
+    if variance_1 <= 0.0 {
+        return Err(ClinicalTrialError::StatisticalError(
+            "Log-rank variance is zero (no comparable uncensored events across arms)".to_string(),
+        ));
+    }
+
+    let statistic = (observed_1 - expected_1).powi(2) / variance_1;
+    let dist =
+        ChiSquared::new(1.0).map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
+    let p_value = (1.0 - dist.cdf(statistic)).clamp(0.0, 1.0);
+
+    Ok(LogRankResult {
+        statistic,
+        p_value,
+        observed_group1: observed_1,
+        expected_group1: expected_1,
+        variance: variance_1,
+    })
+}
+
+/// Computes the two-arm Mantel-Haenszel log-rank test statistic and two-sided $\chi^2_1$ p-value.
+///
+/// Preallocates sorted observation buffers outside the time-step scan before delegating to
+/// [`log_rank_test_into`].
+#[verified_engine::verified]
+pub fn log_rank_test(
+    group1: &[Observation],
+    group2: &[Observation],
+) -> Result<LogRankResult, ClinicalTrialError> {
+    let mut scratch1 = Vec::with_capacity(group1.len());
+    let mut scratch2 = Vec::with_capacity(group2.len());
+    log_rank_test_into(group1, group2, &mut scratch1, &mut scratch2)
+}
+
 #[cfg(test)]
+#[path = "survival_analysis/tests.rs"]
 mod tests;
 
 // [cite:clinical_trials_statistics]

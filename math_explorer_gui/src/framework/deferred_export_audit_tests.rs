@@ -217,20 +217,20 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 67, "Expected 67 Plot dataset+figure tools");
+    assert_eq!(plot_tool_count, 69, "Expected 69 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 8, "Expected 8 raster figure tools");
     assert_eq!(
         dataset_only_tool_count, 0,
         "Expected 0 dataset-only registered tools"
     );
-    assert_eq!(unsupported_tool_count, 13, "Expected 13 non-figure tools");
+    assert_eq!(unsupported_tool_count, 12, "Expected 12 non-figure tools");
     assert_eq!(solid_3d_count, 7, "Expected 7 solid 3D geometric tools");
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
-    assert_eq!(non_shader_tool_count, 85, "Expected 85 non-shader tools");
+    assert_eq!(non_shader_tool_count, 86, "Expected 86 non-shader tools");
 }
 
 #[derive(Default)]
