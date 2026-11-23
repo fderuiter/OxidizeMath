@@ -176,7 +176,11 @@ impl PotentialFlowTool {
                 }
                 let v = self.field.velocity(x, y);
                 let magnitude = v.norm();
-                if !v.x.is_finite() || !v.y.is_finite() || !magnitude.is_finite() || magnitude <= 1e-6 {
+                if !v.x.is_finite()
+                    || !v.y.is_finite()
+                    || !magnitude.is_finite()
+                    || magnitude <= 1e-6
+                {
                     continue;
                 }
                 let arrow_len = (magnitude * 0.1).min(step * 0.8);

@@ -43,7 +43,8 @@ impl PotentialFlowTool {
             .and_then(|p| self.hit_test_cached_handle(p, hit_radius))
             .is_some();
         let sculpting = self.brush_kit.is_sculpting();
-        let allow_drag = !sculpting && !self.stamp_mode && self.active_drag.is_none() && !press_hits;
+        let allow_drag =
+            !sculpting && !self.stamp_mode && self.active_drag.is_none() && !press_hits;
         let allow_wheel_zoom = !sculpting && !hover_hits && self.active_drag.is_none();
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
@@ -60,8 +61,7 @@ impl PotentialFlowTool {
                 .allow_zoom(allow_wheel_zoom)
                 .allow_scroll(allow_wheel_zoom)
                 .show(ui, |plot_ui| {
-                    strokes =
-                        self.render_canvas_plot_contents(plot_ui, hit_radius, r, sculpting);
+                    strokes = self.render_canvas_plot_contents(plot_ui, hit_radius, r, sculpting);
                 });
 
             for stroke in strokes {
@@ -446,10 +446,13 @@ impl PotentialFlowTool {
         }
         if !stag.is_empty() {
             plot_ui.points(
-                Points::new("Stagnation Points", egui_plot::PlotPoints::from_shared(stag))
-                    .shape(MarkerShape::Diamond)
-                    .radius(5.5_f32)
-                    .color(palette.warning),
+                Points::new(
+                    "Stagnation Points",
+                    egui_plot::PlotPoints::from_shared(stag),
+                )
+                .shape(MarkerShape::Diamond)
+                .radius(5.5_f32)
+                .color(palette.warning),
             );
         }
         self.draw_handle_markers(plot_ui, &palette, canvas_focused);

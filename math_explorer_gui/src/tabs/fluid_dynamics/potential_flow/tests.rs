@@ -223,8 +223,15 @@ fn potential_flow_clamps_high_grid_state_and_caches_static_arrow_field() {
 fn test_cylinder_streamlines_stagnation_and_kutta_lift_observables() {
     let mut tool = PotentialFlowTool::default();
     let (streamlines, stag) = tool.ensure_cached_contours();
-    assert!(!streamlines.is_empty(), "streamline contours must be generated");
-    assert_eq!(stag.len(), 2, "symmetric cylinder has 2 exterior stagnation points");
+    assert!(
+        !streamlines.is_empty(),
+        "streamline contours must be generated"
+    );
+    assert_eq!(
+        stag.len(),
+        2,
+        "symmetric cylinder has 2 exterior stagnation points"
+    );
 
     let mut spinning = PotentialFlowTool::default();
     spinning.elements.push(SerializedFlowElement {
@@ -258,7 +265,10 @@ fn test_cylinder_streamlines_stagnation_and_kutta_lift_observables() {
         .find(|(k, _)| *k == "stagnation_count")
         .unwrap()
         .1;
-    assert_eq!(sup_stag, 1.0, "supercritical spin detaches a single exterior saddle");
+    assert_eq!(
+        sup_stag, 1.0,
+        "supercritical spin detaches a single exterior saddle"
+    );
 }
 
 #[test]

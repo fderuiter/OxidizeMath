@@ -475,7 +475,15 @@ inventory::submit! {
         id: "PotentialFlowTool",
         display_name: "Potential Flow",
         domain: "fluid_dynamics",
-        tags: &["streamlines", "vortex", "aerodynamics", "rk4"],
+        tags: &[
+            "laplace",
+            "irrotational",
+            "incompressible",
+            "streamlines",
+            "vortex",
+            "aerodynamics",
+            "rk4",
+        ],
         build: || Box::new(PotentialFlowTool::default()),
     }
 }
