@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 //! Integration and zero-allocation verification tests for continuous chaotic systems.
 
 use domain_physics::physics::chaos::double_pendulum::{DoublePendulumBuilder, DoublePendulumState};

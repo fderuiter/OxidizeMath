@@ -1,6 +1,5 @@
-//! Plot rendering and offscreen export builders for [`super::ParrondoParadoxTool`].
+//! Plot rendering for [`super::ParrondoParadoxTool`].
 
-use super::export::to_pairs;
 use super::{ParrondoParadoxTool, ParrondoViewMode};
 use crate::accessibility::{paint_canvas_focus_ring, register_canvas_accessibility};
 use crate::app::SemanticPalette;
@@ -364,58 +363,6 @@ impl ParrondoParadoxTool {
                 .shape(MarkerShape::Diamond)
                 .radius(6.5_f32),
         );
-    }
-
-    pub(super) fn build_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        match self.view_mode {
-            ParrondoViewMode::SplitOverview | ParrondoViewMode::PhaseWedge => {
-                let mut out = vec![
-                    ("Paradox Wedge".into(), to_pairs(&self.paradox_scatter)),
-                    (
-                        "Non-Paradox Grid".into(),
-                        to_pairs(&self.non_paradox_scatter),
-                    ),
-                    (
-                        "Active Operating Point".into(),
-                        vec![[self.p_a_base - self.epsilon, self.epsilon]],
-                    ),
-                ];
-                if !self.boundary_schedule.is_empty() {
-                    out.push(("E[dW_sched] = 0".into(), to_pairs(&self.boundary_schedule)));
-                }
-                out
-            }
-            ParrondoViewMode::WealthTrajectories => vec![
-                ("Game A Ensemble".into(), to_pairs(&self.traj_a)),
-                ("Game B Ensemble".into(), to_pairs(&self.traj_b)),
-                ("50/50 Mixture Ensemble".into(), to_pairs(&self.traj_mix)),
-                ("Schedule Ensemble".into(), to_pairs(&self.traj_schedule)),
-                (
-                    "Schedule Exact Drift".into(),
-                    to_pairs(&self.drift_schedule),
-                ),
-            ],
-            ParrondoViewMode::TrapOccupancy => {
-                let Some(ref r) = self.report else {
-                    return Vec::new();
-                };
-                let m = self.modulus.min(r.pi_b.len());
-                vec![
-                    (
-                        "pi_B".into(),
-                        (0..m).map(|s| [s as f64, r.pi_b[s]]).collect(),
-                    ),
-                    (
-                        "pi_mix".into(),
-                        (0..m).map(|s| [s as f64, r.pi_mix[s]]).collect(),
-                    ),
-                    (
-                        "pi_schedule".into(),
-                        (0..m).map(|s| [s as f64, r.pi_schedule_mean[s]]).collect(),
-                    ),
-                ]
-            }
-        }
     }
 }
 

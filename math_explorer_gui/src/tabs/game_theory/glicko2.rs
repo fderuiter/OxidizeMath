@@ -2,10 +2,14 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[cfg(test)]
+use crate::framework::InteractiveTool;
 use crate::presets::{
     Glicko2MatchPreset, Glicko2PairingMode, Glicko2PeriodPreset, Glicko2TournamentPresetConfig,
     MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS,
 };
+#[cfg(test)]
+use eframe::egui;
 use math_explorer::pure_math::statistics::glicko2::{
     evaluate_rating_period, evaluate_sequential_period, round_robin_schedule,
     simulate_period_matches, swiss_pairings, GlickoPlayer, Pairing, PeriodMatch, Rating,
@@ -14,14 +18,12 @@ use math_explorer::pure_math::statistics::glicko2::{
 use oxidize_core::rng::OxidizeRng;
 use std::collections::HashSet;
 
-#[path = "glicko2/dialogs.rs"]
-pub(crate) mod dialogs;
 #[path = "glicko2/io.rs"]
 pub(crate) mod io;
 #[path = "glicko2/plots.rs"]
 mod plots;
-#[path = "glicko2/tool_impl.rs"]
-mod tool_impl;
+#[path = "glicko2/state.rs"]
+mod state;
 #[path = "glicko2/ui.rs"]
 mod ui;
 

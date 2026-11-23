@@ -56,7 +56,7 @@ fn test_all_57_starter_cards_launch_and_sync_framework_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 102);
+    assert_eq!(presets.len(), 108);
 
     for preset in presets {
         let json = preset.generate_preset();
@@ -283,4 +283,46 @@ fn test_single_starter_gallery_button_per_simulation_view() {
         1,
         "Expected exactly 1 Starter Gallery button for MorphogenesisTab"
     );
+}
+
+#[test]
+fn test_all_story_and_challenge_presets_launch_and_compile_ast_cleanly() {
+    let stories: Vec<&'static PresetStoryMetadata> =
+        inventory::iter::<PresetStoryMetadata>.into_iter().collect();
+    let challenges: Vec<&'static GoalChallengeMetadata> = inventory::iter::<GoalChallengeMetadata>
+        .into_iter()
+        .collect();
+    assert!(stories.len() >= 4, "expected flagship guided stories");
+    assert!(challenges.len() >= 4, "expected flagship AST challenges");
+
+    for story in stories {
+        assert!(!story.steps.is_empty(), "story '{}' has no steps", story.id);
+        let mut fw = SimulationFramework::new(story.domain);
+        for step_idx in 0..story.steps.len() {
+            fw.launch_story(story, step_idx).unwrap_or_else(|e| {
+                panic!("Story '{}' step {step_idx} failed to launch: {e}", story.id)
+            });
+            let bad = inject_unknown_config_field((story.steps[step_idx].preset_generator)());
+            assert!(fw
+                .active_tool
+                .as_mut()
+                .unwrap()
+                .import_preset_json(&bad)
+                .is_err());
+        }
+    }
+
+    for challenge in challenges {
+        crate::framework::CompiledGoalPredicate::compile(challenge.predicate_expr)
+            .unwrap_or_else(|e| panic!("Challenge '{}' invalid AST: {e}", challenge.id));
+        let mut fw = SimulationFramework::new(challenge.domain);
+        fw.launch_challenge(challenge)
+            .unwrap_or_else(|e| panic!("Challenge '{}' failed to launch: {e}", challenge.id));
+        assert_eq!(
+            fw.evaluate_challenge_predicates(None),
+            Some(false),
+            "Initial preset for challenge '{}' must start unsolved",
+            challenge.id
+        );
+    }
 }

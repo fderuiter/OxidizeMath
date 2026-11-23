@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for battery degradation.
 use domain_applied::applied::battery_degradation::{Capacity, DepthOfDischarge, PowerLawModel};
 
 const TOLERANCE: f64 = 0.3;

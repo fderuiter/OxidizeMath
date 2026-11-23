@@ -421,6 +421,16 @@ impl InteractiveTool for SirTool {
 
 // [cite:graph_parameters_rust]
 
+inventory::submit! {
+    crate::framework::ToolMetadata {
+        id: "SirTool",
+        display_name: "SIR Model",
+        domain: "epidemiology",
+        tags: &[],
+        build: || Box::new(SirTool::default()),
+    }
+}
+
 impl TheoryDescribable for SirTool {
     fn theory_description(&self) -> String {
         let r0 = self.beta / self.gamma;
@@ -457,3 +467,21 @@ impl TheoryDescribable for SirTool {
 
 #[cfg(test)]
 mod tests;
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": { "schema_version": "1.0", "title": "Kermack-McKendrick SIR Model", "domain": "epidemiology", "timestamp": "2026-11-16T00:00:00Z" },
+  "config": { "n": 10000.0, "i0": 25.0, "beta": 0.3, "gamma": 0.1, "duration": 120.0 }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "sir_starter",
+        title: "Kermack-McKendrick SIR Model",
+        description: "dS/dt = -βSI/N, dI/dt = βSI/N - γI: Compartmental epidemic outbreak dynamics and herd immunity.",
+        category: "Compartmental Models",
+        icon: "🦠",
+        domain: "epidemiology",
+        tool_name: Some("SirTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}
