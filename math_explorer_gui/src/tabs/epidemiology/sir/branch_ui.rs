@@ -7,8 +7,7 @@ use crate::app::SemanticPalette;
 use crate::framework::{
     announce_branch_cleared, announce_branch_forked, build_branch_metadata_dataset_2d,
     build_dashed_export_primitives, build_fork_vline_primitive, BranchDivergenceHud,
-    BranchMetadata, PlaybackAction, PlaybackTransport, TimelineBranchAction,
-    TimelineTransportState,
+    BranchMetadata, TimelineBranchAction, TimelineTransportState,
 };
 use crate::tabs::epidemiology::sir::SirTool;
 use eframe::egui;
@@ -92,47 +91,12 @@ impl SirTool {
         ))
     }
 
-    pub(in crate::tabs::epidemiology::sir) fn render_sir_transport_and_hud(
+    pub(in crate::tabs::epidemiology::sir) fn render_sir_timeline_branch_hud(
         &mut self,
         ui: &mut egui::Ui,
     ) {
-        let ts = self.sir_timeline_state();
-        let (play_act, branch_act) =
-            PlaybackTransport::in_thread("sir_transport", "SIR Model", self.branch.is_playing)
-                .can_reset(true)
-                .show_with_timeline(ui, ts);
-        if let Some(pa) = play_act {
-            match pa {
-                PlaybackAction::Play => self.branch.is_playing = true,
-                PlaybackAction::Pause => self.branch.is_playing = false,
-                PlaybackAction::Step => {
-                    self.branch.is_playing = false;
-                    self.step_lockstep(1);
-                }
-                PlaybackAction::StepBack => {
-                    self.branch.is_playing = false;
-                    self.apply_sir_timeline_action(
-                        TimelineBranchAction::StepBack,
-                        Some(ui.ctx()),
-                        false,
-                    );
-                }
-                PlaybackAction::ScrubTo(step) => {
-                    self.branch.is_playing = false;
-                    self.scrub_to_step(step);
-                }
-                PlaybackAction::Reset => {
-                    self.branch.is_playing = false;
-                    self.recalculate();
-                }
-            }
-        }
-        if let Some(ba) = branch_act {
-            self.apply_sir_timeline_action(ba, Some(ui.ctx()), false);
-        }
-        if self.branch.is_playing {
-            self.step_lockstep(2);
-            ui.ctx().request_repaint();
+        if self.cf.fork.is_some() {
+            return;
         }
         let peak_summary = self.sir_peak_reduction_summary();
         if let Some(ref twin) = self.branch.shadow {
@@ -195,6 +159,9 @@ impl SirTool {
     pub(in crate::tabs::epidemiology::sir) fn build_sir_export_primitives(
         &self,
     ) -> Vec<ExportPrimitive> {
+        if self.cf.fork.is_some() {
+            return egui_plot::get_last_plot_primitives();
+        }
         let Some(ref twin) = self.branch.shadow else {
             return egui_plot::get_last_plot_primitives();
         };

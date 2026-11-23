@@ -4,13 +4,14 @@ use super::branch::{
     register_mri_runner_branch, with_existing_mri_runner_branch, MriBranchRuntime,
     MriBranchSnapshot,
 };
+use super::counterfactual::step_bloch_rotating_frame;
 use crate::async_sim::{
     CheckpointParams, CheckpointPayload, SimCommand, SimulationRunner, StateSnapshot,
     TimeTravelCheckpoint,
 };
 use crate::framework::recovery::DiagnosticReport;
 use math_explorer::physics::mri::bloch::BlochSimulator;
-use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
+use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use nalgebra::Vector3;
 use oxidize_core::rng::OxidizeRng;
 use std::collections::VecDeque;
@@ -48,6 +49,7 @@ pub struct MriSnapshot {
     pub magnetization: Vector3<f64>,
     pub history: VecDeque<(f64, Vector3<f64>)>,
     pub branch: MriBranchSnapshot,
+    pub twin: Option<super::MriTwinState>,
 }
 
 #[allow(missing_docs)]
@@ -58,6 +60,7 @@ pub struct MriRunner {
     pub current_time: f64,
     pub history: VecDeque<(f64, Vector3<f64>)>,
     pub max_history: usize,
+    pub twin: Option<super::MriTwinState>,
     pub step_count: usize,
     pub rng: OxidizeRng,
 }
@@ -87,6 +90,7 @@ impl MriRunner {
             current_time: 0.0,
             history,
             max_history,
+            twin: None,
             step_count: 0,
             rng: OxidizeRng::new(0x4D52_495F_424C_4F43),
         }
@@ -97,10 +101,10 @@ impl MriRunner {
     }
 
     pub(crate) fn advance_bloch_ticks_pub(&mut self, ticks: usize) {
-        self.advance_bloch_ticks(ticks);
+        self.advance_bloch_ticks(ticks, true);
     }
 
-    fn sync_params_and_get_scale(&mut self) -> f64 {
+    pub(super) fn sync_params_and_get_scale(&mut self) -> f64 {
         let (t1, t2, b_field, time_scale) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.t1, p.t2, p.b_field, p.time_scale)
@@ -111,30 +115,22 @@ impl MriRunner {
         time_scale
     }
 
-    fn advance_bloch_ticks(&mut self, ticks: usize) {
-        use math_explorer::physics::mri::bloch::rotating_frame_effective_field;
-        use math_explorer::physics::mri::proton;
-
+    fn advance_bloch_ticks(&mut self, ticks: usize, step_twin_too: bool) {
         let dt = 0.001;
-        let b_lab = self.simulator.b_field;
-        let omega_rf = proton::larmor_frequency(b_lab.z);
-        let b1_amp = b_lab.x.hypot(b_lab.y);
-        let phase_rad = b_lab.y.atan2(b_lab.x);
-        let b_rot = rotating_frame_effective_field(b_lab.z, omega_rf, b1_amp, phase_rad);
-        let max_phase_step = proton::GYROMAGNETIC_RATIO * b_rot.norm() * dt;
-        let sub_steps = if max_phase_step.is_finite() && max_phase_step > 0.25 {
-            (max_phase_step / 0.25).ceil().min(64.0) as usize
-        } else {
-            1
-        };
-        let sub_dt = dt / (sub_steps as f64);
-
-        self.simulator.b_field = b_rot;
         for _ in 0..ticks {
-            for _ in 0..sub_steps {
-                TimeStepper::step_with(&mut self.simulator, &mut self.solver, sub_dt);
+            let next_time = self.current_time + dt;
+            if step_twin_too {
+                if let Some(ref mut twin) = self.twin {
+                    twin.step_branch_a(next_time, dt, self.max_history);
+                }
             }
-            self.current_time += dt;
+            let used_spin_echo = self.twin.as_mut().is_some_and(|twin| {
+                twin.step_branch_b_spin_echo(&mut self.simulator, &mut self.solver, dt)
+            });
+            if !used_spin_echo {
+                step_bloch_rotating_frame(&mut self.simulator, &mut self.solver, dt, 0.0);
+            }
+            self.current_time = next_time;
             self.step_count += 1;
             let m = self.simulator.magnetization;
             if !m.x.is_finite() || !m.y.is_finite() || !m.z.is_finite() {
@@ -149,8 +145,12 @@ impl MriRunner {
             let _ = with_existing_mri_runner_branch(&self.params, |b| {
                 b.on_step_in_place(dt, max_h, t_now, m);
             });
+            if step_twin_too {
+                if let Some(ref mut twin) = self.twin {
+                    twin.observe_lockstep(self.current_time, m);
+                }
+            }
         }
-        self.simulator.b_field = b_lab;
     }
 }
 
@@ -165,11 +165,46 @@ impl SimulationRunner for MriRunner {
             self.rng = OxidizeRng::new(0x4D52_495F_424C_4F43);
             self.history.clear();
             self.history.push_back((0.0, initial_m));
+            self.twin = None;
             let _ = with_existing_mri_runner_branch(&self.params, |b| {
                 MriBranchRuntime::reset(b, initial_m);
             });
+        } else if !self.handle_branch_command(&cmd) {
+            if let SimCommand::Custom(ref custom) = cmd {
+                self.handle_custom_command(custom);
+            }
+        }
+    }
+
+    fn has_counterfactual_twin(&self) -> bool {
+        self.twin.is_some()
+    }
+
+    fn step_branch_a(&mut self) {
+        let time_scale = self.sync_params_and_get_scale();
+        let steps = if time_scale.is_finite() && time_scale > 0.0 {
+            (time_scale.ceil().min(MAX_MRI_STEPS_PER_FRAME as f64) as usize).max(1)
         } else {
-            let _ = self.handle_branch_command(&cmd);
+            1
+        };
+        if let Some(ref mut twin) = self.twin {
+            for idx in 1..=steps {
+                let next_time = self.current_time + idx as f64 * 0.001;
+                twin.step_branch_a(next_time, 0.001, self.max_history);
+            }
+        }
+    }
+
+    fn step_branch_b(&mut self) {
+        let time_scale = self.sync_params_and_get_scale();
+        let steps = if time_scale.is_finite() && time_scale > 0.0 {
+            (time_scale.ceil().min(MAX_MRI_STEPS_PER_FRAME as f64) as usize).max(1)
+        } else {
+            1
+        };
+        self.advance_bloch_ticks(steps, false);
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.current_time, self.simulator.magnetization);
         }
     }
 
@@ -180,12 +215,12 @@ impl SimulationRunner for MriRunner {
         } else {
             1
         };
-        self.advance_bloch_ticks(steps);
+        self.advance_bloch_ticks(steps, true);
     }
 
     fn step_once(&mut self) {
         let _ = self.sync_params_and_get_scale();
-        self.advance_bloch_ticks(1);
+        self.advance_bloch_ticks(1, true);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -205,6 +240,7 @@ impl SimulationRunner for MriRunner {
             magnetization: m,
             history: self.history.clone(),
             branch: self.snapshot_branch(),
+            twin: self.twin.clone(),
         };
         StateSnapshot {
             width: 0,
@@ -291,6 +327,7 @@ impl SimulationRunner for MriRunner {
         }
         self.step_count = checkpoint.step;
         self.rng = checkpoint.rng.clone();
+        self.twin = None;
         let t_now = self.current_time;
         let _ = with_existing_mri_runner_branch(&self.params, |b| {
             b.step_count = checkpoint.step;
@@ -342,7 +379,7 @@ impl SimulationRunner for MriRunner {
                 self.simulator.b_field = Vector3::new(p[3], p[4], p[5]);
             }
         }
-        self.advance_bloch_ticks(1);
+        self.advance_bloch_ticks(1, false);
     }
 
     fn running_substeps_per_tick(&self) -> usize {
@@ -360,6 +397,6 @@ impl SimulationRunner for MriRunner {
 
     fn step_running_substep(&mut self) {
         let _ = self.sync_params_and_get_scale();
-        self.advance_bloch_ticks(1);
+        self.advance_bloch_ticks(1, true);
     }
 }

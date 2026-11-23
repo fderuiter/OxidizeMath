@@ -244,6 +244,32 @@ fn test_sir_100k_steps_decimates_display_polylines_and_preserves_peak_and_export
 }
 
 #[test]
+fn test_sir_forked_100k_steps_decimates_both_branches_and_exports_full_series() {
+    let mut tool = SirTool {
+        duration: 10_000.0,
+        ..Default::default()
+    };
+    assert!(tool.fork_at_day(10.0));
+    tool.beta = 0.2;
+    tool.recalculate();
+
+    let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
+    assert!(tool.display_s.len() <= cap && tool.cf.display_s_a.len() <= cap);
+    assert!(tool.display_i.len() <= cap && tool.cf.display_i_a.len() <= cap);
+    assert!(tool.display_r.len() <= cap && tool.cf.display_r_a.len() <= cap);
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |c| tool.show(c));
+    let plot_datasets = egui_plot::get_last_plot_datasets();
+    assert_eq!(plot_datasets.len(), 6);
+    assert!(plot_datasets.iter().all(|(_, pts)| pts.len() <= cap));
+
+    let exported = tool.export_datasets();
+    assert_eq!(exported.len(), 6);
+    assert!(exported.iter().all(|(_, pts)| pts.len() == 100_001));
+}
+
+#[test]
 fn test_sir_plot_uses_shared_import_csv_toolbar_without_duplicate_header_button() {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();

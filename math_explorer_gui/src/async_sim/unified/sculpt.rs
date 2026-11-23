@@ -176,8 +176,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 }
 
-/// Background worker runner driving a [`UnifiedModel`] with shared parameters, formulas, sculpt state,
-/// time-travel checkpoint hooks, and lockstep shadow-twin branching.
+/// Background [`SimulationRunner`] adapter driving a [`UnifiedModel`] with shared parameters,
+/// formula revisions, persisted [`SculptStatePayload`] masks, time-travel checkpoint hooks, and lockstep shadow-twin branching.
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,

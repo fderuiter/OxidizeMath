@@ -30,6 +30,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(super) dirty: bool,
+    pub(crate) step_model: Option<M>,
     pub(super) stepped_snapshot: Option<StateSnapshot>,
     cached_theory_desc: String,
     cached_latex_eq: Option<String>,
@@ -106,6 +107,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             steps_per_frame: 5,
             texture: None,
             dirty: true,
+            step_model: None,
             stepped_snapshot: None,
             cached_theory_desc: temp_model.theory_description(),
             cached_latex_eq: temp_model.theory_latex_equation(),
@@ -127,6 +129,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.controller.state()
     }
 
+    pub(super) fn clear_stepped_state(&mut self) {
+        self.step_model = None;
+        self.stepped_snapshot = None;
+    }
+
     pub(super) fn dispatch_extension_commands(
         &mut self,
         commands: Vec<SimCommand>,
@@ -135,6 +142,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         if commands.is_empty() {
             return;
         }
+        self.clear_stepped_state();
         for cmd in commands {
             let _ = self.controller.send_command(cmd);
         }
@@ -166,7 +174,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     pub(super) fn respawn_preserving_sculpt(&mut self, ctx: Option<&egui::Context>) {
-        self.stepped_snapshot = None;
+        self.clear_stepped_state();
         if let Some(ext) = &mut self.ui_extension {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             ext.on_reset(&p);
@@ -211,6 +219,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .send_command(SimCommand::ApplyBrushStroke(stroke))
             .is_ok()
         {
+            self.clear_stepped_state();
             self.dirty = true;
             if let Some(c) = ctx {
                 c.request_repaint();
@@ -293,21 +302,26 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
 
     fn step_simulation(&mut self) {
         if let Ok(params) = self.params.read() {
-            let mut model = M::new(&params);
-            if self.custom_formula_enabled {
-                let payload = self
-                    .shared_formula
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
-                model.apply_compiled_formula(payload.as_ref(), &params);
-            }
-            if M::supports_spatial_brush() {
-                let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-                if !sculpt.is_empty() {
-                    model.apply_sculpt_payload(&sculpt, &params);
+            let custom_formula_enabled = self.custom_formula_enabled;
+            let shared_formula = &self.shared_formula;
+            let sculpt_state = &self.sculpt_state;
+            let model = self.step_model.get_or_insert_with(|| {
+                let mut m = M::new(&params);
+                if custom_formula_enabled {
+                    let payload = shared_formula
+                        .read()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+                    m.apply_compiled_formula(payload.as_ref(), &params);
                 }
-            }
+                if M::supports_spatial_brush() {
+                    let sculpt = sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+                    if !sculpt.is_empty() {
+                        m.apply_sculpt_payload(&sculpt, &params);
+                    }
+                }
+                m
+            });
             for _ in 0..self.steps_per_frame.max(1) {
                 model.step(&params);
             }
@@ -319,6 +333,10 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         if let Some(stroke) = ctx.brush_stroke {
             self.dispatch_brush_stroke(stroke, Some(&ctx.response.ctx));
         }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
     }
 
     fn state_revision(&self) -> u64 {
@@ -390,6 +408,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             .clone();
         let cmds = ext.apply_challenge(challenge_id, &mut next_params)?;
         *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
+        self.clear_stepped_state();
         self.dispatch_extension_commands(cmds, None);
         Ok(())
     }
@@ -431,7 +450,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let has_update = self.controller.update().is_some();
         if has_update {
-            self.stepped_snapshot = None;
+            self.clear_stepped_state();
             self.dirty = true;
         }
         self.draw_left_panel(ui);

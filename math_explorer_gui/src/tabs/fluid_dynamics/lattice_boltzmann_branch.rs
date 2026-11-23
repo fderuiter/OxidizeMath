@@ -53,6 +53,7 @@ impl Clone for LbmUnified {
             active_profile_param: self.active_profile_param,
             challenge_core_locked: self.challenge_core_locked,
             display_vorticity: self.display_vorticity,
+            high_contrast: self.high_contrast,
             diverged: self.diverged,
             diagnostic_report: self.diagnostic_report.clone(),
             step_count: self.step_count,

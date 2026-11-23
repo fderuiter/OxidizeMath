@@ -3,6 +3,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::counterfactual::step_bloch_rotating_frame;
 use super::pulse::MRI_PULSE_SAMPLES;
 use super::runner::MriSnapshot;
 use super::tool::MriTool;
@@ -16,9 +17,6 @@ use crate::framework::{
 };
 use eframe::egui;
 use egui_plot::{Line, LineStyle, PlotPoints, PlotUi, VLine};
-use math_explorer::physics::mri::bloch::rotating_frame_effective_field;
-use math_explorer::physics::mri::proton;
-use math_explorer::pure_math::analysis::ode::TimeStepper;
 use nalgebra::Vector3;
 use std::collections::VecDeque;
 
@@ -44,7 +42,7 @@ impl MriTool {
             self.sync_branch.step_count = cp_step;
             self.sync_branch.current_time = cp_time;
             while self.sync_branch.step_count < target_step {
-                self.step_continuous_sync(0.01);
+                self.step_continuous_replay(0.01);
             }
             if let Some(ref twin) = self.sync_branch.shadow {
                 if self.sync_branch.step_count < twin.fork_step {
@@ -73,34 +71,46 @@ impl MriTool {
         let _ = self.worker.send_command(SimCommand::ClearBranch);
     }
 
-    pub(super) fn step_continuous_sync(&mut self, dt: f64) {
+    fn step_continuous_replay(&mut self, dt: f64) {
         if self.history.is_empty() {
             self.history
                 .push_back((self.current_time, self.simulator.magnetization));
         }
-        let b_lab = self.simulator.b_field;
-        let omega_rf = proton::larmor_frequency(b_lab.z);
-        let b1_amp = b_lab.x.hypot(b_lab.y);
-        let phase_rad = b_lab.y.atan2(b_lab.x);
-        let b_rot = rotating_frame_effective_field(b_lab.z, omega_rf, b1_amp, phase_rad);
-        let max_phase_step = proton::GYROMAGNETIC_RATIO * b_rot.norm() * dt;
-        let sub_steps = if max_phase_step.is_finite() && max_phase_step > 0.25 {
-            (max_phase_step / 0.25).ceil().min(64.0) as usize
-        } else {
-            1
-        };
-        let sub_dt = dt / (sub_steps as f64);
-        self.simulator.b_field = b_rot;
-        for _ in 0..sub_steps {
-            TimeStepper::step_with(&mut self.simulator, &mut self.solver, sub_dt);
-        }
-        self.simulator.b_field = b_lab;
+        step_bloch_rotating_frame(&mut self.simulator, &mut self.solver, dt, 0.0);
         self.current_time += dt;
         if self.history.len() >= self.max_history {
             self.history.pop_front();
         }
         let m = self.simulator.magnetization;
         self.history.push_back((self.current_time, m));
+        self.sync_branch
+            .on_step_in_place(dt, self.max_history, self.current_time, m);
+    }
+
+    pub(super) fn step_continuous_sync(&mut self, dt: f64) {
+        if self.history.is_empty() {
+            self.history
+                .push_back((self.current_time, self.simulator.magnetization));
+        }
+        let next_t = self.current_time + dt;
+        if let Some(ref mut twin) = self.twin {
+            twin.step_branch_a(next_t, dt, self.max_history);
+        }
+        let used_echo = self.twin.as_mut().is_some_and(|twin| {
+            twin.step_branch_b_spin_echo(&mut self.simulator, &mut self.solver, dt)
+        });
+        if !used_echo {
+            step_bloch_rotating_frame(&mut self.simulator, &mut self.solver, dt, 0.0);
+        }
+        self.current_time = next_t;
+        if self.history.len() >= self.max_history {
+            self.history.pop_front();
+        }
+        let m = self.simulator.magnetization;
+        self.history.push_back((self.current_time, m));
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.current_time, m);
+        }
         self.sync_branch
             .on_step_in_place(dt, self.max_history, self.current_time, m);
     }
@@ -342,6 +352,35 @@ impl MriTool {
     }
 
     pub(super) fn build_mri_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        if let Some(ref twin) = self.twin {
+            if !self.history.is_empty() {
+                let map_xyz = |h: &VecDeque<(f64, Vector3<f64>)>, labels: [&str; 3]| {
+                    vec![
+                        (
+                            labels[0].to_string(),
+                            h.iter().map(|(t, m)| [*t, m.x]).collect(),
+                        ),
+                        (
+                            labels[1].to_string(),
+                            h.iter().map(|(t, m)| [*t, m.y]).collect(),
+                        ),
+                        (
+                            labels[2].to_string(),
+                            h.iter().map(|(t, m)| [*t, m.z]).collect(),
+                        ),
+                    ]
+                };
+                let mut out = map_xyz(
+                    &self.history,
+                    ["Mx (Branch B)", "My (Branch B)", "Mz (Branch B)"],
+                );
+                out.extend(map_xyz(
+                    &twin.history_a,
+                    ["Mx (Branch A)", "My (Branch A)", "Mz (Branch A)"],
+                ));
+                return out;
+            }
+        }
         let hist = self.effective_primary_history();
         let mx: Vec<[f64; 2]> = hist.iter().map(|(t, m)| [*t, m.x]).collect();
         let my: Vec<[f64; 2]> = hist.iter().map(|(t, m)| [*t, m.y]).collect();
@@ -375,7 +414,7 @@ impl MriTool {
 
     pub(super) fn build_mri_export_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
         let view = self.sync_branch.effective_view();
-        if !view.fork_active {
+        if self.twin.is_some() || !view.fork_active {
             return egui_plot::get_last_plot_primitives();
         }
         let palette = SemanticPalette::for_theme(ThemeMode::Dark);

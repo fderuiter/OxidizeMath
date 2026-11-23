@@ -295,7 +295,7 @@ impl SirTool {
     }
 
     /// Advances primary and shadow SIR models in lockstep by `count` steps (`dt = 0.1`).
-    pub fn step_lockstep(&mut self, count: usize) {
+    pub(super) fn step_timeline_branch_lockstep(&mut self, count: usize) {
         let dyn_now = self.current_dynamics();
         for _ in 0..count {
             if self.branch.current_step >= MAX_SIR_STEPS {
@@ -356,7 +356,7 @@ impl SirTool {
             twin.divergence.reset();
         }
         let delta_steps = horizon_steps.saturating_sub(fork_step);
-        self.step_lockstep(delta_steps);
+        self.step_timeline_branch_lockstep(delta_steps);
         self.last_param_summary = self.param_summary();
     }
 }

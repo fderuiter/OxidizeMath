@@ -13,7 +13,7 @@ use crate::framework::{
     TimelineTransportState, TraceSeries, TraceSnapshotManager,
 };
 use crate::reflective_ui::AnimatedSlider;
-use atlas::{default_sir_atlas_axes, is_default_sir_atlas_axes, SIR_ATLAS_AXIS_PAIRS};
+use atlas::SIR_ATLAS_AXIS_PAIRS;
 #[cfg(test)]
 pub use atlas::{SirCartographer, SirRegime};
 use branch::SirBranchRuntime;
@@ -23,41 +23,14 @@ use math_explorer::epidemiology::compartmental::SIRModel;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::hash::{Hash, Hasher};
 
-const MIN_SIR_DURATION: f64 = 10.0;
-const MAX_SIR_DURATION: f64 = 365.0;
+#[path = "sir/counterfactual.rs"]
+pub mod counterfactual;
+pub use counterfactual::*;
+
+pub(super) const MIN_SIR_DURATION: f64 = 10.0;
+pub(super) const MAX_SIR_DURATION: f64 = 365.0;
 const MAX_SIR_HARD_DURATION: f64 = 10_000.0;
-const MAX_SIR_STEPS: usize = 100_000;
-
-#[derive(serde::Serialize)]
-struct SirStateRef<'a> {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    snapshot_manager: Option<&'a TraceSnapshotManager>,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    atlas_visible: bool,
-    #[serde(skip_serializing_if = "is_default_sir_atlas_axes")]
-    atlas_axes: [String; 2],
-}
-
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SirState {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
-    #[serde(default)]
-    snapshot_manager: TraceSnapshotManager,
-    #[serde(default)]
-    atlas_visible: bool,
-    #[serde(default = "default_sir_atlas_axes")]
-    atlas_axes: [String; 2],
-}
+pub(super) const MAX_SIR_STEPS: usize = 100_000;
 
 #[allow(missing_docs)]
 pub struct SirTool {
@@ -82,6 +55,7 @@ pub struct SirTool {
     pub(super) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(super) last_param_summary: String,
     pub(super) revision: u64,
+    pub cf: SirCounterfactualState,
     pub(super) series_key: (usize, usize, usize, usize, usize, usize),
     pub(super) series_finite: bool,
     pub(super) cached_peak: Option<(f64, f64)>,
@@ -107,6 +81,7 @@ impl Default for SirTool {
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
             revision: 1,
+            cf: SirCounterfactualState::default(),
             series_key: (0, 0, 0, 0, 0, 0),
             series_finite: true,
             cached_peak: None,
@@ -211,8 +186,19 @@ impl SirTool {
         self.last_param_summary = self.param_summary();
 
         if !self.duration.is_finite() || self.duration <= 0.0 {
+            self.cf.branch_engine.clear();
             return;
         }
+        let end_step = self.effective_end_step();
+        if let Some(desc) = self.cf.fork {
+            self.recalculate_forked(desc, end_step);
+            self.sync_series_cache();
+            return;
+        }
+        self.cf.reset_branch_a_points();
+        self.cf.branch_engine.clear();
+
+        // Ensure parameters are valid before passing to model
         let n = self.n.max(1.0);
         let i0 = self.i0.clamp(0.0, n);
         let beta = self.beta.max(0.0);
@@ -220,12 +206,7 @@ impl SirTool {
 
         if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
             let dt = 0.1;
-            let raw_steps = self.duration / dt;
-            if !raw_steps.is_finite() || raw_steps < 0.0 {
-                return;
-            }
-            let steps = raw_steps.min(MAX_SIR_STEPS as f64) as usize;
-            let Some(point_cap) = steps.checked_add(1) else {
+            let Some(point_cap) = end_step.checked_add(1) else {
                 return;
             };
             if self.s_points.try_reserve(point_cap).is_err()
@@ -234,7 +215,7 @@ impl SirTool {
             {
                 return;
             }
-            for i in 0..=steps {
+            for i in 0..=end_step {
                 let t = i as f64 * dt;
                 let state = model.state();
                 self.s_points.push(PlotPoint::new(t, state.s));
@@ -242,64 +223,9 @@ impl SirTool {
                 self.r_points.push(PlotPoint::new(t, state.r));
                 model.step(dt);
             }
-            self.rebuild_timeline_from_recalculate(model, steps);
+            self.rebuild_timeline_from_recalculate(model, end_step);
         }
         self.sync_series_cache();
-    }
-
-    fn load_sir_state(&mut self, state: &str, preserve_snapshots: bool) -> Result<(), String> {
-        self.state_bounds().validate_json(state)?;
-        let s: SirState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid SIR state: {e}"))?;
-        if ![s.n, s.i0, s.beta, s.gamma, s.duration]
-            .iter()
-            .all(|v| v.is_finite())
-            || !(100.0..=100_000.0).contains(&s.n)
-            || !(1.0..=s.n).contains(&s.i0)
-            || !(0.0..=5.0).contains(&s.beta)
-            || !(0.0..=1.0).contains(&s.gamma)
-            || s.duration < 0.0
-        {
-            return Err("SIR parameters out of bounds".into());
-        }
-        self.atlas
-            .set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1])?;
-        self.atlas.set_visible(s.atlas_visible);
-        self.n = s.n;
-        self.i0 = s.i0;
-        self.beta = s.beta;
-        self.gamma = s.gamma;
-        self.duration = s.duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION);
-        if !preserve_snapshots {
-            self.snapshot_manager = s.snapshot_manager;
-        }
-        self.recalculate();
-        Ok(())
-    }
-
-    fn hash_shared_parameters(&self, h: &mut impl Hasher) {
-        for val in [self.n, self.i0, self.beta, self.gamma, self.duration] {
-            val.to_bits().hash(h);
-        }
-        self.atlas.is_visible().hash(h);
-        self.atlas.axis_keys().hash(h);
-    }
-
-    fn serialize_sir_state(&self, include_snapshots: bool) -> Option<String> {
-        let (xk, yk) = self.atlas.axis_keys();
-        let snapshot_manager = (include_snapshots && !self.snapshot_manager.is_empty())
-            .then_some(&self.snapshot_manager);
-        serde_json::to_string(&SirStateRef {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
-            snapshot_manager,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
-        })
-        .ok()
     }
 }
 
@@ -355,30 +281,27 @@ impl InteractiveTool for SirTool {
         }
     }
 
+    fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
+        self.cf.branch_engine.active_snapshot.clone()
+    }
+
+    fn apply_counterfactual_action(
+        &mut self,
+        action: crate::framework::BranchControlAction,
+    ) -> bool {
+        self.apply_sir_branch_action(action)
+    }
+
+    fn step_simulation(&mut self) {
+        self.step_lockstep(5);
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = Vec::new();
-        if !self.s_points.is_empty() {
-            let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-            datasets.push(("Susceptible".to_string(), to_pairs(&self.s_points)));
-            datasets.push(("Infected".to_string(), to_pairs(&self.i_points)));
-            datasets.push(("Recovered".to_string(), to_pairs(&self.r_points)));
-        }
-        self.append_branch_export_datasets(&mut datasets);
-        datasets.extend(self.snapshot_manager.export_datasets());
-        for (name, pts) in egui_plot::get_last_plot_datasets() {
-            if !datasets.iter().any(|(existing, _)| existing == &name) {
-                datasets.push((name, pts));
-            }
-        }
-        datasets
+        self.collect_sir_export_datasets()
     }
 
     fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
         self.build_sir_export_primitives()
-    }
-
-    fn step_simulation(&mut self) {
-        self.step_lockstep(1);
     }
 
     fn timeline_transport_state(&self) -> Option<TimelineTransportState> {
@@ -430,7 +353,6 @@ impl InteractiveTool for SirTool {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             self.sync_series_cache();
             ui.vertical(|ui| {
-                self.render_sir_transport_and_hud(ui);
                 ui.heading("Parameters");
                 let sweeps_before =
                     crate::reflective_ui::slider::current_pass_active_sweep_count(ui.ctx());
@@ -439,7 +361,7 @@ impl InteractiveTool for SirTool {
                     crate::reflective_ui::slider::current_pass_active_sweep_count(ui.ctx())
                         > sweeps_before;
                 if changed {
-                    if self.branch.shadow.is_some() {
+                    if self.branch.shadow.is_some() && self.cf.fork.is_none() {
                         self.recompute_counterfactual_from_fork(sweep_active);
                     } else {
                         self.record_history_and_recalculate(sweep_active);
@@ -447,25 +369,12 @@ impl InteractiveTool for SirTool {
                 }
                 metrics::render_epidemic_metrics(ui, self);
                 self.render_sir_readouts_and_atlas(ui);
+                self.render_counterfactual_bar(ui);
+                self.render_sir_timeline_branch_hud(ui);
                 ui.separator();
                 metrics::render_simulation_plot(ui, self);
-                ui.add_space(8.0);
-                let param_summary = self.param_summary();
-                let current_len = self.snapshot_manager.len();
-                let (s_pts, i_pts, r_pts) = (&self.s_points, &self.i_points, &self.r_points);
-                if self.snapshot_manager.render_ui(ui, move || {
-                    let label = format!("Baseline {}", current_len + 1);
-                    let to_pairs =
-                        |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-                    let series = vec![
-                        TraceSeries::new("Susceptible", to_pairs(s_pts)),
-                        TraceSeries::new("Infected", to_pairs(i_pts)),
-                        TraceSeries::new("Recovered", to_pairs(r_pts)),
-                    ];
-                    Some((label, param_summary, series))
-                }) {
-                    self.revision = self.revision.wrapping_add(1).max(1);
-                }
+                ui.add_space(6.0);
+                self.render_snapshot_bar(ui);
                 let defer_sensitivity =
                     crate::sensitivity::is_transient_parameter_gesture(ui.ctx(), sweep_active);
                 self.evaluate_sensitivity(ui, defer_sensitivity);

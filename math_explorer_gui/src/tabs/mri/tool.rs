@@ -51,6 +51,9 @@ pub struct MriToolState {
     /// Legacy boolean pause flag accepted on deserialization.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused: Option<bool>,
+    /// Optional compact counterfactual fork descriptor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork: Option<super::MriForkDescriptor>,
     /// Optional rotating-frame RF pulse sequence parameters (omitted in default forward mode).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pulse: Option<RfPulseConfig>,
@@ -117,6 +120,10 @@ pub struct MriTool {
     /// Background Bloch worker controller.
     pub worker: BackgroundWorker<MriRunner>,
     pub(crate) sync_branch: MriBranchRuntime,
+    /// Optional counterfactual shadow twin state (`Branch A` + spin-echo ensemble).
+    pub twin: Option<super::MriTwinState>,
+    /// Shared framework `CounterfactualBranchEngine` state.
+    pub branch_engine: crate::framework::CounterfactualBranchEngine,
     /// Automated target & extremum plot callouts.
     pub callout_manager: CalloutManager,
     /// Rotating-frame RF pulse sequence settings.
@@ -181,6 +188,8 @@ impl Default for MriTool {
             params,
             worker,
             sync_branch: MriBranchRuntime::with_initial_state(initial_m),
+            twin: None,
+            branch_engine: crate::framework::CounterfactualBranchEngine::with_delta(0.0),
             callout_manager,
             pulse_config,
             pulse_workspace: MriPulseWorkspace::default(),
@@ -193,43 +202,6 @@ impl Default for MriTool {
 }
 
 impl MriTool {
-    #[cfg(test)]
-    #[allow(missing_docs)]
-    pub fn restart_worker(&mut self) {
-        let (t1, t2, b_field) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.t1, p.t2, p.b_field)
-        };
-        self.simulator.t1 = t1;
-        self.simulator.t2 = t2;
-        self.simulator.b_field = b_field;
-        let mut runner_simulator =
-            BlochSimulator::new(self.simulator.magnetization, self.simulator.m0);
-        runner_simulator.set_relaxation(t1, t2);
-        runner_simulator.set_b_field(b_field);
-        let mut history = self.history.clone();
-        if history.is_empty() {
-            history.push_back((self.current_time, self.simulator.magnetization));
-        }
-        let runner = MriRunner {
-            simulator: runner_simulator,
-            solver: RungeKutta4::new(&self.simulator.magnetization),
-            params: Arc::clone(&self.params),
-            current_time: self.current_time,
-            history,
-            max_history: self.max_history,
-            step_count: (self.current_time / 0.001).round() as usize,
-            rng: oxidize_core::rng::OxidizeRng::new(0x4D52_495F_424C_4F43),
-        };
-        self.worker = BackgroundWorker::new(runner);
-    }
-
-    #[cfg(test)]
-    #[allow(missing_docs)]
-    pub fn retry(&mut self) {
-        self.restart_worker();
-    }
-
     /// Repopulates cached plot point buffers from `history` while preserving allocated capacity.
     pub fn update_plot_buffers(&mut self) {
         self.mx_points.clear();
@@ -276,6 +248,8 @@ impl MriTool {
         self.my_points.clear();
         self.mz_points.clear();
         self.sync_branch.reset(initial_m);
+        self.twin = None;
+        self.branch_engine.clear();
         if self.active_challenge.is_none() {
             self.pulse_config = RfPulseConfig::default();
         }
@@ -326,6 +300,17 @@ impl InteractiveTool for MriTool {
         ExportCapabilities::plot()
     }
 
+    fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
+        self.branch_engine.active_snapshot.clone()
+    }
+
+    fn apply_counterfactual_action(
+        &mut self,
+        action: crate::framework::BranchControlAction,
+    ) -> bool {
+        self.apply_mri_branch_action(action)
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         self.build_mri_export_datasets()
     }
@@ -358,6 +343,7 @@ impl InteractiveTool for MriTool {
         self.step_continuous_sync(0.01);
         self.latest_sonification = self.current_sonification_frame();
         self.update_plot_buffers();
+        self.sync_mri_branch_engine();
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -377,6 +363,14 @@ impl InteractiveTool for MriTool {
         self.simulator.b_field.z.to_bits().hash(&mut h);
         self.time_scale.to_bits().hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
+        if let Some(ref twin) = self.twin {
+            true.hash(&mut h);
+            twin.fork_step.hash(&mut h);
+            twin.delta_x.to_bits().hash(&mut h);
+            twin.spin_echo.is_some().hash(&mut h);
+        } else {
+            false.hash(&mut h);
+        }
         self.pulse_config.mode.hash(&mut h);
         self.pulse_config.b1_amp.to_bits().hash(&mut h);
         self.pulse_config.duration_tau.to_bits().hash(&mut h);

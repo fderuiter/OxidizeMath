@@ -11,6 +11,7 @@ mod persistence;
 pub mod sculpt;
 pub mod tool;
 pub use branching::{UnifiedBranchRuntime, UnifiedBranchSharedState, UnifiedCheckpointSlot};
+pub use persistence::{CompiledFormulaPayload, UnifiedFormulaSpec};
 pub use sculpt::UnifiedSimRunner;
 pub use tool::*;
 
@@ -18,14 +19,10 @@ use crate::async_sim::{
     CheckpointParams, RegimeCartographer, SculptStatePayload, SimCommand, StateSnapshot,
     TimeTravelCheckpoint,
 };
-use crate::framework::{
-    BrushStroke, CalloutManager, ChallengeEvaluation, SpatialBrushKit, MAX_SYNTHESIZED_PARAMS,
-};
+use crate::framework::{BrushStroke, CalloutManager, ChallengeEvaluation, SpatialBrushKit};
 use eframe::egui;
-use math_commons::ast::CompiledExpr;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
-use std::ops::RangeInclusive;
 use std::sync::{Arc, RwLock};
 
 pub(crate) const SYNC_PARAMETERS_COMMAND: &str = "__sync_parameters__";
@@ -116,36 +113,6 @@ pub trait UnifiedUiExtension: Send {
     }
 }
 
-/// Specification for an opt-in custom formula input bar on a [`UnifiedModel`].
-#[derive(Clone, Debug)]
-pub struct UnifiedFormulaSpec {
-    /// Left-hand side equation label (e.g. `"V(x)"`).
-    pub lhs_label: &'static str,
-    /// Initial default expression string.
-    pub default_expr: &'static str,
-    /// Coordinate axis variable names bound to leading bytecode slots (e.g. `&["x"]`).
-    pub axes: &'static [&'static str],
-    /// Curated `(display_name, expression)` presets.
-    pub presets: &'static [(&'static str, &'static str)],
-    /// Slider range bounds for auto-synthesized free parameters.
-    pub param_range: RangeInclusive<f64>,
-    /// Default value assigned to newly discovered free parameters.
-    pub param_default: f64,
-}
-
-/// `Arc`-shared compiled formula payload streamed to [`UnifiedSimRunner`] without worker-side parsing.
-#[derive(Clone, Debug)]
-pub struct CompiledFormulaPayload {
-    /// Monotonic revision incremented on formula or parameter slider edits.
-    pub revision: u64,
-    /// Compiled postfix AST bytecode.
-    pub compiled: Arc<CompiledExpr>,
-    /// Stack-allocated parameter values aligned with `compiled`.
-    pub params: [f64; MAX_SYNTHESIZED_PARAMS],
-    /// Number of active parameter slots in `params`.
-    pub param_len: usize,
-}
-
 #[allow(missing_docs)]
 pub trait UnifiedModel:
     Send
@@ -179,6 +146,14 @@ pub trait UnifiedModel:
 
     /// Extract a visual snapshot of the state.
     fn get_snapshot(&self) -> StateSnapshot;
+
+    /// Converts a [`StateSnapshot`] into exportable 2D `(series_name, points)` datasets.
+    fn snapshot_datasets(snapshot: &StateSnapshot) -> Vec<(String, Vec<[f64; 2]>)>
+    where
+        Self: Sized,
+    {
+        persistence::default_snapshot_datasets(snapshot, Self::is_raster_model(), Self::name())
+    }
 
     /// Process any custom commands (e.g. ApplyBrush). Default is no-op.
     fn process_command(&mut self, _cmd: SimCommand, _params: &HashMap<String, f64>) {}

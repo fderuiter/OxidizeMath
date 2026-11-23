@@ -3,13 +3,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    AttractorMode, AttractorPlotter, CompiledFlowJob, SolverExecutionState, MAX_SIMULATION_SPEED,
+    AttractorMode, AttractorPlotter, CompiledFlowJob, SolverExecutionState,
+    ATTRACTOR_RING_CAPACITY, MAX_SIMULATION_SPEED,
 };
-use crate::app::SemanticPalette;
-use crate::async_sim::{SimCommand, SimWorkerState};
+use crate::async_sim::SimCommand;
 use crate::framework::{
     announce_branch_cleared, announce_branch_forked, BranchDivergenceHud, BranchMetadata,
-    PlaybackAction, PlaybackTransport, TimelineBranchAction, TimelineTransportState,
+    TimelineBranchAction, TimelineTransportState,
 };
 use eframe::egui;
 use egui_plot::{LineStyle, MarkerShape};
@@ -79,7 +79,40 @@ impl AttractorPlotter {
             .send_command(SimCommand::Custom("PerturbDeltaX:1e-5".to_string()));
     }
 
+    pub(super) fn step_single_tick(
+        &mut self,
+        cap: usize,
+        custom_job: Option<&CompiledFlowJob>,
+    ) -> bool {
+        let current_vec = self.system.state.vec;
+        if !current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite() {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: current_vec,
+                diverged_at_step: self.step_count,
+            };
+            return false;
+        }
+        if let Some(ref mut twin) = self.twin {
+            if !twin.step_branch_a(self.dt, cap) {
+                self.execution_state = SolverExecutionState::Diverged {
+                    invalid_vec: twin.system_a.state.vec,
+                    diverged_at_step: self.step_count,
+                };
+                return false;
+            }
+        }
+        if !self.step_single_local_tick(custom_job) {
+            return false;
+        }
+        let vec = self.system.state.vec;
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.step_count, self.dt, vec);
+        }
+        true
+    }
+
     pub(super) fn step_single_local_tick(&mut self, custom_job: Option<&CompiledFlowJob>) -> bool {
+        let cap = self.max_points.clamp(1, ATTRACTOR_RING_CAPACITY);
         let current_vec = self.system.state.vec;
         if !current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite() {
             self.execution_state = SolverExecutionState::Diverged {
@@ -102,7 +135,7 @@ impl AttractorPlotter {
             };
             return false;
         }
-        if self.history.len() >= self.max_points {
+        if self.history.len() >= cap {
             self.history.pop_front();
         }
         self.history.push_back(vec);
@@ -118,16 +151,22 @@ impl AttractorPlotter {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
+        let cap = self.max_points.clamp(1, ATTRACTOR_RING_CAPACITY);
         let custom_job = (self.mode == AttractorMode::Custom)
             .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
         for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
-            if !self.step_single_local_tick(custom_job.as_ref()) {
+            if !self.step_single_tick(cap, custom_job.as_ref()) {
                 break;
             }
         }
+        self.sync_local_branch_engine();
     }
 
-    fn append_shadow_to_scene(&mut self, palette: SemanticPalette) {
+    pub(super) fn append_shadow_to_scene_colors(
+        &mut self,
+        shadow_color: egui::Color32,
+        accent_color: egui::Color32,
+    ) {
         let view = self.sync_branch.effective_view(self.step_count);
         if !view.fork_active || view.shadow_history.len() < 2 {
             return;
@@ -140,7 +179,7 @@ impl AttractorPlotter {
         self.scene_builder.add_polyline(
             "Shadow Baseline",
             &shadow_pts,
-            egui::Stroke::new(1.5_f32, palette.series_color(1)),
+            egui::Stroke::new(1.5_f32, shadow_color),
             LineStyle::Dashed { length: 6.0_f32 },
             true,
         );
@@ -149,53 +188,8 @@ impl AttractorPlotter {
                 "Fork @ t_k",
                 &[Point3::new(fv.x, fv.y, fv.z)],
                 5.5_f32,
-                palette.accent,
+                accent_color,
                 MarkerShape::Diamond,
-                true,
-            );
-        }
-    }
-
-    pub(super) fn populate_scene_with_shadow(&mut self, palette: SemanticPalette) {
-        let series_color = palette.series_color(0);
-        let origin_offset = match self.mode {
-            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
-            AttractorMode::Custom => Point3::origin(),
-        };
-        self.scene_builder.begin(self.camera);
-        self.scene_builder.set_origin_offset(origin_offset);
-        self.append_shadow_to_scene(palette);
-
-        self.trajectory_scratch.clear();
-        self.trajectory_scratch
-            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
-        if !self.trajectory_scratch.is_empty() {
-            if self.trajectory_scratch.len() == 1 {
-                self.scene_builder.add_points(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    4.0_f32,
-                    series_color,
-                    MarkerShape::Circle,
-                    true,
-                );
-            } else {
-                self.scene_builder.add_polyline(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    egui::Stroke::new(1.5_f32, series_color),
-                    LineStyle::Solid,
-                    true,
-                );
-            }
-        } else if self.is_finite_state() {
-            let v = self.system.state.vec;
-            self.scene_builder.add_points(
-                "Initial State",
-                &[Point3::new(v.x, v.y, v.z)],
-                4.0_f32,
-                series_color,
-                MarkerShape::Circle,
                 true,
             );
         }
@@ -270,55 +264,41 @@ impl AttractorPlotter {
         }
     }
 
-    pub(super) fn draw_attractor_transport_and_hud(
+    pub(super) fn draw_timeline_branch_hud_if_active(
         &mut self,
         ui: &mut egui::Ui,
         ctx: &egui::Context,
-        transport_state: SimWorkerState,
-    ) -> Option<PlaybackAction> {
-        let ts = self.attractor_timeline_state();
-        let (play_act, branch_act) = PlaybackTransport::from_worker_state(
-            "attractor_transport",
-            "Attractor Plotter",
-            transport_state,
-        )
-        .can_reset(true)
-        .show_with_timeline(ui, ts);
-
-        if let Some(ba) = branch_act {
-            self.apply_attractor_timeline_action(ba, Some(ctx), false);
-        }
-
+    ) {
         let view = self.sync_branch.effective_view(self.step_count);
-        if view.fork_active {
-            ui.horizontal(|ui| {
-                if ui
-                    .button("🦋 Perturb Δx (+1e-5)")
-                    .on_hover_text(
-                        "Inject a 1e-5 state offset into the active branch to observe exponential chaotic separation",
-                    )
-                    .clicked()
-                {
-                    self.apply_butterfly_perturbation();
-                    ctx.request_repaint();
-                }
-            });
-            let clear = BranchDivergenceHud::new(
-                "attractor_branch_hud",
-                "Attractor Plotter",
-                view.fork_step.unwrap_or(self.step_count),
-                view.fork_time.unwrap_or(view.current_time),
-                "s",
-                view.divergence,
-            )
-            .show(ui);
-            if clear {
-                announce_branch_cleared(ctx, "Attractor Plotter");
-                self.clear_branch();
+        if !view.fork_active {
+            return;
+        }
+        ui.horizontal(|ui| {
+            if ui
+                .button("🦋 Perturb Δx (+1e-5)")
+                .on_hover_text(
+                    "Inject a 1e-5 state offset into the active branch to observe exponential chaotic separation",
+                )
+                .clicked()
+            {
+                self.apply_butterfly_perturbation();
                 ctx.request_repaint();
             }
+        });
+        let clear = BranchDivergenceHud::new(
+            "attractor_branch_hud",
+            "Attractor Plotter",
+            view.fork_step.unwrap_or(self.step_count),
+            view.fork_time.unwrap_or(view.current_time),
+            "s",
+            view.divergence,
+        )
+        .show(ui);
+        if clear {
+            announce_branch_cleared(ctx, "Attractor Plotter");
+            self.clear_branch();
+            ctx.request_repaint();
         }
-        play_act
     }
 
     pub(crate) fn attractor_branch_metadata(&self) -> Option<BranchMetadata> {

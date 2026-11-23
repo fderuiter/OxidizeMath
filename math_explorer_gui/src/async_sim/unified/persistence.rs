@@ -1,10 +1,76 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::sculpt::{validate_rle_mask_entries, validate_sparse_potential_entries};
-use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
+use super::{UnifiedModel, UnifiedSimTool};
+use crate::async_sim::StateSnapshot;
 use crate::framework::{InteractiveTool, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
+use math_commons::ast::CompiledExpr;
 use std::collections::{BTreeMap, HashMap};
+use std::ops::RangeInclusive;
 use std::sync::Arc;
+
+/// Specification for an opt-in custom formula input bar on a [`UnifiedModel`].
+#[derive(Clone, Debug)]
+pub struct UnifiedFormulaSpec {
+    /// Left-hand side equation label (e.g. `"V(x)"`).
+    pub lhs_label: &'static str,
+    /// Initial default expression string.
+    pub default_expr: &'static str,
+    /// Coordinate axis variable names bound to leading bytecode slots (e.g. `&["x"]`).
+    pub axes: &'static [&'static str],
+    /// Curated `(display_name, expression)` presets.
+    pub presets: &'static [(&'static str, &'static str)],
+    /// Slider range bounds for auto-synthesized free parameters.
+    pub param_range: RangeInclusive<f64>,
+    /// Default value assigned to newly discovered free parameters.
+    pub param_default: f64,
+}
+
+/// `Arc`-shared compiled formula payload streamed to [`super::UnifiedSimRunner`] without worker-side parsing.
+#[derive(Clone, Debug)]
+pub struct CompiledFormulaPayload {
+    /// Monotonic revision incremented on formula or parameter slider edits.
+    pub revision: u64,
+    /// Compiled postfix AST bytecode.
+    pub compiled: Arc<CompiledExpr>,
+    /// Stack-allocated parameter values aligned with `compiled`.
+    pub params: [f64; MAX_SYNTHESIZED_PARAMS],
+    /// Number of active parameter slots in `params`.
+    pub param_len: usize,
+}
+
+pub(super) fn default_snapshot_datasets(
+    snapshot: &StateSnapshot,
+    is_raster: bool,
+    model_name: &str,
+) -> Vec<(String, Vec<[f64; 2]>)> {
+    if is_raster {
+        return Vec::new();
+    }
+    #[cfg(feature = "physics")]
+    if let Some(wave) = snapshot
+        .structured_data
+        .as_ref()
+        .and_then(|d| d.downcast_ref::<crate::tabs::quantum::wave_sim::WaveData>())
+    {
+        return crate::tabs::quantum::wave_sim::presets::build_wave_datasets(wave);
+    }
+    let pairs = snapshot.custom_data.as_chunks::<2>().0;
+    if pairs.is_empty() {
+        return Vec::new();
+    }
+    let mut points = Vec::with_capacity(pairs.len());
+    for &[x, y] in pairs {
+        if x.is_finite() && y.is_finite() {
+            points.push([x, y]);
+        }
+    }
+    if points.is_empty() {
+        Vec::new()
+    } else {
+        vec![(model_name.to_string(), points)]
+    }
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -51,6 +117,7 @@ pub(super) fn snapshot_formula_payload(
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(crate) fn publish_formula_update(&mut self) {
+        self.clear_stepped_state();
         if !self.custom_formula_enabled {
             *self
                 .shared_formula

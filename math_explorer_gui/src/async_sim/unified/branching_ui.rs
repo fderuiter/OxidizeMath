@@ -15,10 +15,16 @@ use eframe::egui;
 use egui_plot::{ExportPrimitive, Line, LineStyle, PlotPoints, VLine};
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
-    pub(super) fn draw_unified_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    pub(super) fn draw_unified_transport(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        canvas_sculpt_focused: bool,
+    ) {
         let state = self.controller.state();
         let transport = PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
-            .can_reset(true);
+            .can_reset(true)
+            .allow_space_shortcut(!canvas_sculpt_focused);
 
         if !M::supports_timeline_branch() {
             if let Some(play_act) = transport
@@ -45,6 +51,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     fn handle_unified_play_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
+        self.clear_stepped_state();
         match action {
             PlaybackAction::Play => {
                 let _ = self.controller.send_command(SimCommand::Start);
@@ -229,6 +236,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
             TimelineBranchAction::ClearBranch => SimCommand::ClearBranch,
         };
+        self.clear_stepped_state();
         let _ = self.controller.send_command(cmd);
         self.dirty = true;
         if let Some(c) = ctx {
@@ -276,6 +284,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let g = self.branch_state.read().unwrap_or_else(|e| e.into_inner());
         if M::is_raster_model() {
             return Self::build_raster_branch_datasets(&g);
+        }
+
+        if let Some(snap) = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot())
+        {
+            if !g.fork_active {
+                let model_ds = M::snapshot_datasets(snap);
+                if !model_ds.is_empty() {
+                    return model_ds;
+                }
+            }
         }
 
         let mut out = Vec::new();

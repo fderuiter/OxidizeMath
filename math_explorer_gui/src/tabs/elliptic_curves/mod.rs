@@ -6,13 +6,20 @@
 use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
+pub mod atlas;
 mod chord_tangent_canvas;
 mod chord_tangent_scene;
 pub mod chord_tangent_tool;
 mod chord_tangent_ui;
+pub mod handoff;
 pub mod modular_invariants_tool;
 mod modular_invariants_ui;
+pub mod observables;
+pub(crate) mod singular_scene;
+pub use observables::CHALLENGE_HASSE_WEIL_BOUNDARY_P23;
 
+#[cfg(test)]
+mod atlas_challenge_tests;
 #[cfg(test)]
 mod tests;
 

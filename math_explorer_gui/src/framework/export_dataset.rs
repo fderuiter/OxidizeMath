@@ -3,78 +3,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::*;
-use eframe::egui;
-
-pub(super) struct FrameworkExportSource<'a> {
-    pub(super) active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
-    pub(super) cached_tool_name: Option<&'static str>,
-    pub(super) cached_plot_datasets: &'a [(String, egui_plot::SharedPoints)],
-    pub(super) export_queue: &'a mut ExportQueue,
-    pub(super) status_color: egui::Color32,
-    pub(super) ctx: egui::Context,
-}
-
-impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
-    fn export_datasets(&mut self) -> Vec<egui_plot::export::ExportDataset> {
-        let Some(tool) = self.active_tool.as_ref() else {
-            return Vec::new();
-        };
-        let mut datasets = tool.export_datasets();
-        if datasets.is_empty()
-            && self.cached_tool_name == Some(tool.name())
-            && !self.cached_plot_datasets.is_empty()
-        {
-            datasets = super::export_queue::materialize_shared_datasets(self.cached_plot_datasets);
-        }
-        append_missing_branch_metadata_2d(tool.as_ref(), &mut datasets);
-        datasets
-    }
-
-    fn sample_gif_frames(&mut self, num_frames: usize) -> Vec<egui_plot::export::DatasetFrame> {
-        let step_count = num_frames.max(1);
-        let Some(tool) = self.active_tool.as_mut() else {
-            return Vec::new();
-        };
-        let frames = tool.sample_animation_frames(step_count);
-        if frames.is_empty()
-            && self.cached_tool_name == Some(tool.name())
-            && !self.cached_plot_datasets.is_empty()
-        {
-            let owned = super::export_queue::materialize_shared_datasets(self.cached_plot_datasets);
-            egui_plot::export::sample_progressive_frames(&owned, step_count)
-        } else {
-            frames
-        }
-    }
-
-    fn figure_capability(&self) -> (bool, &'static str) {
-        if let Some(tool) = self.active_tool.as_ref() {
-            let caps = tool.export_capabilities();
-            (caps.figure, caps.figure_disabled_reason)
-        } else {
-            let caps = ExportCapabilities::none();
-            (caps.figure, caps.figure_disabled_reason)
-        }
-    }
-
-    fn status_color(&self) -> Option<egui::Color32> {
-        Some(self.status_color)
-    }
-
-    fn intercept_action(&mut self, action: egui_plot::ExportModalAction) -> bool {
-        let (format, target) = match action {
-            egui_plot::ExportModalAction::SavePng => (ExportFormat::Png, ExportTarget::File),
-            egui_plot::ExportModalAction::SaveSvg => (ExportFormat::Svg, ExportTarget::File),
-            egui_plot::ExportModalAction::SaveGif => (ExportFormat::Gif, ExportTarget::File),
-            egui_plot::ExportModalAction::CopyClipboard => {
-                (ExportFormat::Png, ExportTarget::Clipboard)
-            }
-        };
-        self.export_queue.push_target(format, target);
-        self.ctx.request_repaint();
-        true
-    }
-}
 
 impl SimulationFramework {
     /// Resolves export datasets for the active tool, falling back to `current_valid_plot_datasets`
@@ -187,7 +115,7 @@ impl SimulationFramework {
     }
 }
 
-fn append_missing_branch_metadata_2d(
+pub(super) fn append_missing_branch_metadata_2d(
     tool: &dyn InteractiveTool,
     datasets: &mut Vec<(String, Vec<[f64; 2]>)>,
 ) {

@@ -1,5 +1,8 @@
 pub mod atlas_host;
 pub mod brush_codec;
+pub mod brush_dispatch;
+#[cfg(all(test, feature = "physics", feature = "biology"))]
+mod brush_dispatch_tests;
 pub mod callout_overlay;
 pub mod challenge;
 mod challenge_hud;
@@ -8,12 +11,15 @@ mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod counterfactual;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_3d;
 mod export_dataset;
 mod export_figure;
+mod export_modal_host;
+mod export_persistence;
 mod export_queue;
 #[cfg(test)]
 pub(crate) use export_queue::deferred_export_tests;
@@ -68,6 +74,7 @@ pub mod story_hud;
 pub(crate) mod theory_links;
 #[cfg(test)]
 mod theory_links_tests;
+mod theory_portal;
 pub mod timeline_branch;
 mod timeline_hooks;
 pub mod trace_overlay;
@@ -75,9 +82,11 @@ mod ui;
 mod url_share;
 
 pub use brush_codec::*;
+pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
+pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
@@ -85,6 +94,8 @@ pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use history_ui::render_workspace_history_buttons;
 pub use math_input::*;
+#[cfg(any(feature = "pure_math", feature = "applied"))]
+pub(crate) use overlay_sync::record_theory_portal_toggle;
 pub use pane_scope::{
     is_button_activation_focused, is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed,
     is_text_edit_focused, record_focused_widget_type_from_output, scoped_panel_id, InputMode,
@@ -106,7 +117,9 @@ pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
-use overlay_sync::{FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache};
+pub(super) use overlay_sync::{
+    FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache,
+};
 use scientific_metadata::theory::TheoryDescribable;
 
 pub struct ToolMetadata {
@@ -139,22 +152,13 @@ pub trait InteractiveTool {
     ///
     /// # Accessibility Requirements for Custom `show_inside` Overrides
     ///
-    /// The default implementation allocates its central canvas with [`egui::Sense::click_and_drag`]
-    /// (which includes [`egui::Sense::FOCUSABLE`]) and dispatches [`Self::on_keyboard`] when
-    /// `response.has_focus()` is true. When overriding `show_inside` directly:
-    ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`] (or
-    ///   [`egui::Sense::click`] / [`egui::Sense::click_and_drag`] for interactive canvases) instead
-    ///   of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))`
-    ///   instead of raw `ui.image(texture)` calls so `AccessKit` exposes `Role::Image` and non-empty
-    ///   alternative text.
-    /// - Populate `AccessKit` metadata (`Role`, non-empty `label`, and dynamic `value` summary) via
-    ///   `ctx.accesskit_node_builder(response.id, ...)` (or
-    ///   `crate::accessibility::register_canvas_accessibility`) and draw a high-contrast focus ring
-    ///   when `response.has_focus()`.
-    /// - If the canvas consumes arrow keys, call `Memory::set_focus_lock_filter` with
-    ///   `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
+    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`],
+    ///   or [`egui::Sense::click_and_drag`] instead of `Sense::hover()` so `Tab` traversal reaches the visualization.
+    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` so `AccessKit`
+    ///   exposes `Role::Image` and non-empty alternative text.
+    /// - Populate `AccessKit` metadata via `crate::accessibility::register_canvas_accessibility` and draw a
+    ///   high-contrast focus ring when `response.has_focus()`.
+    /// - When consuming arrow keys, set `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
     ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
@@ -188,6 +192,11 @@ pub trait InteractiveTool {
     /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
     fn url_state_revision(&self) -> u64 {
         self.state_revision()
+    }
+
+    /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        None
     }
 
     /// Direct numeric parameter finiteness hook without JSON serialization.
@@ -390,6 +399,16 @@ pub trait InteractiveTool {
         None
     }
 
+    /// Optional hook returning the active counterfactual divergence snapshot for `SimulationFramework`.
+    fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
+        None
+    }
+
+    /// Optional hook applying a `CounterfactualBranchEngine` action (`Fork`, `Swap`, `Clear`, `SetPerturbation`).
+    fn apply_counterfactual_action(&mut self, _action: BranchControlAction) -> bool {
+        false
+    }
+
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(
         &mut self,
@@ -398,14 +417,12 @@ pub trait InteractiveTool {
         timeline_hooks::sample_tool_animation_frames(self, num_frames)
     }
 
-    /// Returns a type-erased reference for test inspection of concrete tool state.
-    #[cfg(test)]
+    /// Returns a type-erased reference for concrete tool state inspection.
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
     }
 
-    /// Returns a mutable type-erased reference for test manipulation of concrete tool state.
-    #[cfg(test)]
+    /// Returns a mutable type-erased reference for concrete tool state updates (e.g. cross-tab handoffs).
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
@@ -423,8 +440,8 @@ pub struct SimulationFramework {
     pub saved_plot_states: plot_persistence::SavedPlotStatesMap,
     pub(super) plot_sync_generation: u64,
     pub search_query: String,
-    last_announced_count: Option<usize>,
-    last_announced_query: String,
+    pub(super) last_announced_count: Option<usize>,
+    pub(super) last_announced_query: String,
     pub show_export_modal: bool,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
@@ -435,7 +452,6 @@ pub struct SimulationFramework {
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub(crate) export_queue: ExportQueue,
-
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
     /// Baseline parameters snapshot on tool load.
@@ -450,6 +466,8 @@ pub struct SimulationFramework {
     pub diagnostic_report: Option<DiagnosticReport>,
     /// Simulation frame / step counter.
     pub step_counter: usize,
+    /// Counterfactual shadow twin engine state synchronized with the active tool.
+    pub branch_engine: CounterfactualBranchEngine,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
     /// Declarative guided story and AST challenge HUD state.

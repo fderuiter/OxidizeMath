@@ -9,9 +9,8 @@ use crate::framework::{
     compute_slice_divergence, BranchDivergenceAccumulator, BranchDivergenceMetrics,
     TimelineRingBuffer,
 };
-use math_explorer::physics::mri::bloch::{rotating_frame_effective_field, BlochSimulator};
-use math_explorer::physics::mri::proton;
-use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
+use math_explorer::physics::mri::bloch::BlochSimulator;
+use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
@@ -50,7 +49,6 @@ pub struct MriBranchSnapshot {
 pub struct MriShadowTwin {
     pub(crate) simulator: BlochSimulator,
     pub(crate) solver: RungeKutta4<Vector3<f64>>,
-    pub(crate) b_lab: Vector3<f64>,
     pub(crate) current_time: f64,
     pub(crate) baseline_summary: String,
     pub(crate) fork_step: usize,
@@ -61,22 +59,12 @@ pub struct MriShadowTwin {
 
 impl MriShadowTwin {
     fn step_rotating_frame_in_place(&mut self, dt: f64) -> Vector3<f64> {
-        let omega_rf = proton::larmor_frequency(self.b_lab.z);
-        let b1_amp = self.b_lab.x.hypot(self.b_lab.y);
-        let phase_rad = self.b_lab.y.atan2(self.b_lab.x);
-        let b_rot = rotating_frame_effective_field(self.b_lab.z, omega_rf, b1_amp, phase_rad);
-        let max_phase_step = proton::GYROMAGNETIC_RATIO * b_rot.norm() * dt;
-        let sub_steps = if max_phase_step.is_finite() && max_phase_step > 0.25 {
-            (max_phase_step / 0.25).ceil().min(64.0) as usize
-        } else {
-            1
-        };
-        let sub_dt = dt / (sub_steps as f64);
-        self.simulator.b_field = b_rot;
-        for _ in 0..sub_steps {
-            TimeStepper::step_with(&mut self.simulator, &mut self.solver, sub_dt);
-        }
-        self.simulator.b_field = self.b_lab;
+        super::counterfactual::step_bloch_rotating_frame(
+            &mut self.simulator,
+            &mut self.solver,
+            dt,
+            0.0,
+        );
         self.current_time += dt;
         self.simulator.magnetization
     }
@@ -186,7 +174,6 @@ impl MriBranchRuntime {
         self.shadow = Some(MriShadowTwin {
             simulator: twin_sim,
             solver: RungeKutta4::new(&m),
-            b_lab,
             current_time,
             baseline_summary: summary,
             fork_step: self.step_count,
@@ -375,6 +362,7 @@ impl MriRunner {
         }
         self.simulator.magnetization = Vector3::new(cp_m[0], cp_m[1], cp_m[2]);
         self.current_time = cp_time;
+        self.step_count = cp_step;
         if cp_step < target_step {
             let _ = self.sync_params_pub();
             self.advance_bloch_ticks_pub(target_step - cp_step);
