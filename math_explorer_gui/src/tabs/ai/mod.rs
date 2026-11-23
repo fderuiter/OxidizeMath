@@ -1,16 +1,17 @@
-// @explorer_feature = "ai"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod activation_functions;
 pub mod attention_maps;
+pub mod gaussian_splatting;
 pub mod grid_world;
 pub mod loss_landscape;
 pub mod q_table_inspector;
 pub mod reward_plots;
 pub mod tokenization;
 pub mod training_monitor;
-pub mod gaussian_splatting;
 
 pub struct AiTab {
     framework: crate::framework::SimulationFramework,
@@ -55,6 +56,14 @@ impl ExplorerTab for AiTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "ai",
+        order: 100,
+        build: || Box::new(AiTab::default()),
     }
 }
 

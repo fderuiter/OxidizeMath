@@ -175,9 +175,7 @@ impl GaussianSplattingTool {
             let [tx, ty, vz] = self.camera.rotate_to_camera_space(&world_arr);
             let tz = (dist - vz).max(0.25);
             let (jacobian, proj_scale) = match self.camera.projection {
-                ProjectionMode::Parallel => {
-                    (Matrix2x3::new(zoom, 0.0, 0.0, 0.0, zoom, 0.0), zoom)
-                }
+                ProjectionMode::Parallel => (Matrix2x3::new(zoom, 0.0, 0.0, 0.0, zoom, 0.0), zoom),
                 ProjectionMode::Perspective => (
                     projection::compute_jacobian(&Vector3::new(tx, ty, tz), focal, focal),
                     focal / tz,

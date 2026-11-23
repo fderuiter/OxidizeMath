@@ -1,5 +1,6 @@
-// @explorer_feature = "applied"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod state;
@@ -90,6 +91,14 @@ impl ExplorerTab for FavoritismTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "favoritism",
+        order: 100,
+        build: || Box::new(FavoritismTab::default()),
     }
 }
 

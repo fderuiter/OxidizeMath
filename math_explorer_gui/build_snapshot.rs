@@ -309,8 +309,15 @@ fn serialize_manifest_json(builder: &ManifestBuilder) -> String {
     )
 }
 
+fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
+    if fs::read(path).is_ok_and(|existing| existing == content.as_bytes()) {
+        return Ok(());
+    }
+    fs::write(path, content)
+}
+
 fn write_manifest_outputs(out_dir: &Path, json: &str) {
-    fs::write(out_dir.join(MANIFEST_FILENAME), json)
+    write_if_changed(&out_dir.join(MANIFEST_FILENAME), json)
         .expect("Failed to write OUT_DIR/traceability_manifest.json");
 
     if let Some(profile_dir) = out_dir
@@ -318,18 +325,18 @@ fn write_manifest_outputs(out_dir: &Path, json: &str) {
         .find(|p| p.file_name().and_then(|n| n.to_str()) == Some("build"))
         .and_then(Path::parent)
     {
-        let _ = fs::write(profile_dir.join(MANIFEST_FILENAME), json);
+        let _ = write_if_changed(&profile_dir.join(MANIFEST_FILENAME), json);
         if let Some(parent_target) = profile_dir.parent() {
-            let _ = fs::write(parent_target.join(MANIFEST_FILENAME), json);
+            let _ = write_if_changed(&parent_target.join(MANIFEST_FILENAME), json);
         }
     }
 
     if let Some(custom_target) = env::var_os("CARGO_TARGET_DIR") {
         let target_path = PathBuf::from(custom_target);
         if target_path.is_dir() {
-            let _ = fs::write(target_path.join(MANIFEST_FILENAME), json);
+            let _ = write_if_changed(&target_path.join(MANIFEST_FILENAME), json);
         }
     } else if Path::new("../target").is_dir() {
-        let _ = fs::write(Path::new("../target").join(MANIFEST_FILENAME), json);
+        let _ = write_if_changed(&Path::new("../target").join(MANIFEST_FILENAME), json);
     }
 }

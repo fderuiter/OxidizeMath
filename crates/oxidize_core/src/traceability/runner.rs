@@ -57,36 +57,7 @@ const IGNORED_TRACEABILITY_MEMBERS: &[&str] = &[
     "egui_plot",
 ];
 
-fn scan_src_dir(src_path: PathBuf, is_root: bool, code_dirs: &mut Vec<String>) {
-    let mut stack = vec![src_path];
-
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        let mut has_rs_files = false;
-        for entry in entries.flatten() {
-            let Ok(file_type) = entry.file_type() else {
-                continue;
-            };
-            if file_type.is_dir() {
-                stack.push(entry.path());
-            } else if file_type.is_file() && entry.path().extension().is_some_and(|ext| ext == "rs")
-            {
-                has_rs_files = true;
-            }
-        }
-        if has_rs_files {
-            let mut target_dir = crate::path_utils::normalize_path(&dir);
-            if !is_root && target_dir.starts_with("../../") {
-                target_dir = target_dir.trim_start_matches("../../").to_string();
-            }
-            code_dirs.push(target_dir);
-        }
-    }
-}
-
-/// Discovers active workspace source directories subject to traceability verification.
+/// Discovers active workspace module roots subject to traceability verification.
 pub fn discover_workspace_code_dirs() -> Vec<String> {
     let (is_root, members) = crate::workspace::get_workspace_members();
     let mut code_dirs = Vec::new();
@@ -104,7 +75,11 @@ pub fn discover_workspace_code_dirs() -> Vec<String> {
         };
 
         if src_path.is_dir() {
-            scan_src_dir(src_path, is_root, &mut code_dirs);
+            let mut target_dir = crate::path_utils::normalize_path(&src_path);
+            if !is_root && target_dir.starts_with("../../") {
+                target_dir = target_dir.trim_start_matches("../../").to_string();
+            }
+            code_dirs.push(target_dir);
         }
     }
     code_dirs

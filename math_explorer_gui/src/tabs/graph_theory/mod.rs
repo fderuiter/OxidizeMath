@@ -1,5 +1,6 @@
-// @explorer_feature = "pure_math"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod algorithm_visualizer;
@@ -53,6 +54,14 @@ impl ExplorerTab for GraphTheoryTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "graph_theory",
+        order: 100,
+        build: || Box::new(GraphTheoryTab::default()),
     }
 }
 

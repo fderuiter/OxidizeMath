@@ -1,5 +1,6 @@
 mod analysis;
 mod cache;
+mod module_tree;
 mod runner;
 
 pub use cache::{AstCache, CachedRustFile};
@@ -193,17 +194,13 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     ) -> Result<(), std::io::Error> {
         for dir in code_dirs {
             let normalized = crate::path_utils::normalize_path(dir);
-            let lib = crate::path_utils::join_and_normalize(&normalized, "lib.rs");
-            let main = crate::path_utils::join_and_normalize(&normalized, "main.rs");
             let mut has_entrypoint = false;
-
-            if self.load_cached_optional(&lib, cache).await? {
-                self.parse_module_tree(&lib, active_files, cache).await?;
-                has_entrypoint = true;
-            }
-            if self.load_cached_optional(&main, cache).await? {
-                self.parse_module_tree(&main, active_files, cache).await?;
-                has_entrypoint = true;
+            for entry_name in ["lib.rs", "main.rs", "mod.rs"] {
+                let entry = crate::path_utils::join_and_normalize(&normalized, entry_name);
+                if self.load_cached_optional(&entry, cache).await? {
+                    self.parse_module_tree(&entry, active_files, cache).await?;
+                    has_entrypoint = true;
+                }
             }
             if !has_entrypoint {
                 self.gather_files_fallback(&normalized, active_files)
@@ -409,12 +406,27 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         }
         active_files.insert(norm_file_path.clone());
 
-        let submodules = collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
-        let dir_path = module_child_dir(&norm_file_path);
+        let submodules =
+            module_tree::collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
+        let parent_dir = module_tree::module_parent_dir(&norm_file_path);
+        let dir_path = module_tree::module_child_dir(&norm_file_path);
         for submodule in submodules {
-            let path1 = crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}.rs"));
-            let path2 =
-                crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}/mod.rs"));
+            if let Some(rel_path) = submodule.custom_path {
+                let custom = crate::path_utils::join_and_normalize(
+                    &parent_dir,
+                    rel_path.trim_start_matches("./"),
+                );
+                if self.load_cached_optional(&custom, cache).await? {
+                    self.parse_module_tree(&custom, active_files, cache).await?;
+                }
+                continue;
+            }
+            let path1 =
+                crate::path_utils::join_and_normalize(&dir_path, format!("{}.rs", submodule.ident));
+            let path2 = crate::path_utils::join_and_normalize(
+                &dir_path,
+                format!("{}/mod.rs", submodule.ident),
+            );
 
             if self.load_cached_optional(&path1, cache).await? {
                 self.parse_module_tree(&path1, active_files, cache).await?;
@@ -424,42 +436,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         }
         Ok(())
     }
-}
-
-#[derive(Default)]
-struct SubmoduleCollector {
-    submodules: Vec<String>,
-}
-
-impl<'ast> syn::visit::Visit<'ast> for SubmoduleCollector {
-    fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
-        if node.content.is_none() {
-            self.submodules.push(node.ident.to_string());
-        }
-        syn::visit::visit_item_mod(self, node);
-    }
-}
-
-fn collect_external_submodules(ast: Option<&syn::File>) -> Vec<String> {
-    let Some(ast) = ast else {
-        return Vec::new();
-    };
-    let mut collector = SubmoduleCollector::default();
-    syn::visit::Visit::visit_file(&mut collector, ast);
-    collector.submodules
-}
-
-fn module_child_dir(norm_file_path: &str) -> String {
-    let mut dir_parts: Vec<&str> = norm_file_path.split('/').collect();
-    let is_mod_rs = norm_file_path.ends_with("mod.rs")
-        || norm_file_path.ends_with("lib.rs")
-        || norm_file_path.ends_with("main.rs");
-    if is_mod_rs {
-        dir_parts.pop();
-    } else if let Some(stem) = dir_parts.pop().map(|s| s.strip_suffix(".rs").unwrap_or(s)) {
-        dir_parts.push(stem);
-    }
-    dir_parts.join("/")
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]

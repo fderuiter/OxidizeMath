@@ -116,17 +116,24 @@ impl ExplorerTab for FluidDynamicsTab {
 ```
 
 ### 2. Register the Module
-In `src/tabs/mod.rs`, add your module:
+In `src/tabs/mod.rs`, declare your feature-gated module:
 
 ```text
+#[cfg(feature = "physics")]
 pub mod fluid_dynamics;
 ```
 
-### 3. Add to App
-In `src/app.rs` (or wherever the tabs are initialized, likely in `MathExplorerApp::default`), add your tab to the list:
+### 3. Submit to Inventory
+In `src/tabs/fluid_dynamics.rs` (or `mod.rs`), register a static [`TabDescriptor`](src/tabs/mod.rs):
 
 ```text
-Box::new(FluidDynamicsTab::default()),
+inventory::submit! {
+    crate::tabs::TabDescriptor {
+        id: "fluid_dynamics",
+        order: 100,
+        build: || Box::new(FluidDynamicsTab::default()),
+    }
+}
 ```
 
 ### Design Principles

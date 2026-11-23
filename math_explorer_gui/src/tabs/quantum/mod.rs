@@ -1,11 +1,11 @@
-// @explorer_feature = "physics"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod clebsch;
 pub mod spin_viz;
 pub mod wave_sim;
-
 
 pub struct QuantumTab {
     framework: crate::framework::SimulationFramework,
@@ -50,6 +50,14 @@ impl ExplorerTab for QuantumTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "quantum",
+        order: 100,
+        build: || Box::new(QuantumTab::default()),
     }
 }
 

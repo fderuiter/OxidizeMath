@@ -2,37 +2,97 @@
 
 use eframe::egui;
 
-include!(concat!(env!("OUT_DIR"), "/generated_tabs.rs"));
+#[cfg(feature = "ai")]
+pub mod ai;
+#[cfg(feature = "pure_math")]
+pub mod analysis;
+#[cfg(feature = "applied")]
+pub mod battery_degradation;
+#[cfg(feature = "physics")]
+pub mod chaos;
+#[cfg(feature = "climate")]
+pub mod climate;
+#[cfg(feature = "applied")]
+pub mod clinical_trials;
+#[cfg(feature = "epidemiology")]
+pub mod epidemiology;
+#[cfg(feature = "applied")]
+pub mod favoritism;
+#[cfg(feature = "pure_math")]
+pub mod financial_math;
+#[cfg(feature = "physics")]
+pub mod fluid_dynamics;
+#[cfg(feature = "applied")]
+pub mod game_theory;
+#[cfg(feature = "pure_math")]
+pub mod geometry_topology;
+#[cfg(feature = "pure_math")]
+pub mod graph_theory;
+#[cfg(feature = "physics")]
+pub mod medical;
+#[cfg(feature = "biology")]
+pub mod morphogenesis;
+#[cfg(feature = "physics")]
+pub mod mri;
+#[cfg(feature = "biology")]
+pub mod neuroscience;
+#[cfg(feature = "pure_math")]
+pub mod number_theory;
+#[cfg(feature = "physics")]
+pub mod quantum;
+#[cfg(feature = "physics")]
+pub mod solid_state;
+pub mod traceability;
+
+/// Static registration descriptor for a GUI domain tab collected via [`inventory`].
+#[derive(Clone, Copy)]
+pub struct TabDescriptor {
+    /// Canonical module and URL slug used as a deterministic secondary sort key.
+    pub id: &'static str,
+    /// Primary navigation bar sort priority (lower numbers appear first; default `100`).
+    pub order: i32,
+    /// Constructor returning a boxed default instance of the tab.
+    pub build: fn() -> Box<dyn ExplorerTab>,
+}
+
+inventory::collect!(TabDescriptor);
+
+fn sorted_tab_descriptors() -> Vec<&'static TabDescriptor> {
+    let mut descriptors: Vec<&'static TabDescriptor> =
+        inventory::iter::<TabDescriptor>.into_iter().collect();
+    descriptors.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.id.cmp(b.id)));
+    descriptors
+}
+
+/// Instantiates all enabled GUI tabs in deterministic `(order, id)` navigation order.
+pub fn instantiate_tabs() -> Vec<Box<dyn ExplorerTab>> {
+    sorted_tab_descriptors()
+        .into_iter()
+        .map(|d| (d.build)())
+        .collect()
+}
+
+/// Instantiates a single enabled GUI tab by its deterministic `(order, id)` index.
+pub fn instantiate_tab(index: usize) -> Option<Box<dyn ExplorerTab>> {
+    sorted_tab_descriptors().get(index).map(|d| (d.build)())
+}
 
 /// A trait for defining a tab in the Math Explorer application.
 ///
 /// This trait serves as the primary extension point for the GUI. Each mathematical domain
-/// (e.g., MRI Physics, Game Theory) should implement this trait as a standalone struct.
+/// (e.g., MRI Physics, Game Theory) implements this trait as a standalone struct.
 ///
-/// # Automated Plugin Discovery
+/// # Static Inventory Registration
 ///
-/// The `math_explorer_gui` application uses an automated build-time plugin discovery mechanism.
-/// To add a new tab to the GUI, you simply need to create a new module file in the `src/tabs` directory
-/// (or in any workspace dependency), and implement the `ExplorerTab` trait for your struct.
-///
-/// You MUST NOT manually edit `app.rs` or `tabs/mod.rs` to register your new tab. The `build.rs` script
-/// will automatically scan for the `impl ExplorerTab for YourStruct` pattern and generate the necessary
-/// inclusion and instantiation logic.
-///
-/// ## Configuration Attributes
-///
-/// You can configure how your tab is built and displayed by adding special magic comments at the top of your module file:
-///
-/// - `// @explorer_feature = "feature_name"`: Tells the build script that this tab should only be included if the specified Cargo feature is enabled.
-/// - `// @explorer_order = 10`: Defines the order in which this tab appears in the navigation bar. Lower numbers appear first.
+/// To add a new tab to `math_explorer_gui`:
+/// 1. Declare a feature-gated `pub mod your_tab;` item in `src/tabs/mod.rs`.
+/// 2. Implement [`ExplorerTab`] and [`Default`] on your tab struct.
+/// 3. Register a [`TabDescriptor`] via `inventory::submit!`.
 ///
 /// # Example
 ///
-/// ```rust,no_run
-/// // @explorer_feature = "pure_math"
-/// // @explorer_order = 1
-///
-/// use math_explorer_gui::tabs::ExplorerTab;
+/// ```rust,ignore
+/// use crate::tabs::{ExplorerTab, TabDescriptor};
 /// use eframe::egui;
 ///
 /// #[derive(Default)]
@@ -53,6 +113,14 @@ include!(concat!(env!("OUT_DIR"), "/generated_tabs.rs"));
 ///             }
 ///             ui.label(format!("Count: {}", self.counter));
 ///         });
+///     }
+/// }
+///
+/// inventory::submit! {
+///     TabDescriptor {
+///         id: "my_tab",
+///         order: 100,
+///         build: || Box::new(MyTab::default()),
 ///     }
 /// }
 /// ```
@@ -229,6 +297,7 @@ pub trait ExplorerTab {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
+    use super::{instantiate_tab, instantiate_tabs};
     use std::collections::HashSet;
     use std::fs;
     use std::path::Path;
@@ -249,14 +318,44 @@ mod tests {
     }
 
     #[test]
-    fn test_build_script_emits_rerun_directives_for_tabs_and_path_deps() {
+    fn test_inventory_tabs_preserve_deterministic_slug_order() {
+        let tabs = instantiate_tabs();
+        assert!(!tabs.is_empty(), "Traceability tab is always enabled");
+        let slugs: Vec<&str> = tabs.iter().map(|t| t.url_slug()).collect();
+        let mut sorted = slugs.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(slugs, sorted, "Tab slugs must be unique and sorted");
+
+        for (idx, tab) in tabs.iter().enumerate() {
+            let single = instantiate_tab(idx).expect("instantiate_tab must resolve valid index");
+            assert_eq!(single.name(), tab.name());
+            assert_eq!(single.url_slug(), tab.url_slug());
+        }
+        assert!(instantiate_tab(tabs.len()).is_none());
+
+        #[cfg(all(
+            feature = "pure_math",
+            feature = "applied",
+            feature = "ai",
+            feature = "biology",
+            feature = "climate",
+            feature = "epidemiology",
+            feature = "physics"
+        ))]
+        assert_eq!(tabs.len(), 21, "All 21 GUI domain tabs must register");
+    }
+
+    #[test]
+    fn test_build_script_emits_scoped_rerun_directives() {
         let out_dir = Path::new(env!("OUT_DIR"));
-        let generated_tabs = fs::read_to_string(out_dir.join("generated_tabs.rs"))
-            .expect("OUT_DIR/generated_tabs.rs must be generated by build.rs");
         assert!(
-            generated_tabs.contains("pub fn instantiate_tabs()"),
-            "generated_tabs.rs should define instantiate_tabs"
+            !out_dir.join("generated_tabs.rs").exists(),
+            "OUT_DIR/generated_tabs.rs must no longer be generated"
         );
+        let manifest = fs::read_to_string(out_dir.join("traceability_manifest.json"))
+            .expect("OUT_DIR/traceability_manifest.json must be generated by build.rs");
+        assert!(manifest.contains("\"paper_coverage\""));
 
         let build_output = read_build_script_output(out_dir);
         let rerun_paths: HashSet<&str> = build_output
@@ -274,25 +373,34 @@ mod tests {
 
         for expected in [
             "build.rs",
-            "src/tabs",
-            "Cargo.toml",
+            "build_snapshot.rs",
+            "build_snapshot_scan.rs",
+            "src/tabs/mod.rs",
+            "../traceability.toml",
+            "../papers",
             "../crates/federated_registry/src",
             "../crates/oxidize_core/src",
-            "../math_explorer/src",
             "../crates/math_commons/src",
             "../crates/scientific_metadata/src",
             "../crates/diagnostics/src",
-            "../crates/federated_registry/src/lib.rs",
-            "../crates/oxidize_core/src/lib.rs",
-            "../math_explorer/src/lib.rs",
-            "../crates/math_commons/src/lib.rs",
-            "../crates/math_commons/src/ast",
-            "../crates/scientific_metadata/src/lib.rs",
-            "../crates/diagnostics/src/lib.rs",
         ] {
             assert!(
                 rerun_paths.contains(expected),
                 "Missing expected cargo:rerun-if-changed={expected} in math_explorer_gui output"
+            );
+        }
+
+        for excluded in [
+            "Cargo.toml",
+            "../crates/unified_verification/src",
+            "../crates/markdown_tests/src",
+            "../crates/verified_engine/src",
+            "../crates/verified_engine_macros/src",
+            "../apps/xtask/src",
+        ] {
+            assert!(
+                !rerun_paths.contains(excluded),
+                "Unexpected cross-workspace rerun directive {excluded} in math_explorer_gui output"
             );
         }
     }

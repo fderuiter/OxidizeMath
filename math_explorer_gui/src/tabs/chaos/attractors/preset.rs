@@ -63,8 +63,13 @@ impl AttractorPlotter {
             .iter()
             .zip(DEFAULT_FLOW_EXPRS.iter())
             .any(|(a, b)| a != b);
-        let custom_exprs = (self.mode == AttractorMode::Custom || nondefault_exprs)
-            .then(|| [expr_vec[0].clone(), expr_vec[1].clone(), expr_vec[2].clone()]);
+        let custom_exprs = (self.mode == AttractorMode::Custom || nondefault_exprs).then(|| {
+            [
+                expr_vec[0].clone(),
+                expr_vec[1].clone(),
+                expr_vec[2].clone(),
+            ]
+        });
         let custom_params = if self.mode == AttractorMode::Custom {
             self.flow_bank.params_map()
         } else {

@@ -223,7 +223,12 @@ impl RegimeCartographer for HodgkinHuxleyCartographer {
             HodgkinHuxleyRegime::TonicFiring,
         ]
         .into_iter()
-        .map(|r| (r.label(), atlas_regime_color(r as u8, 3, 0.7, high_contrast)))
+        .map(|r| {
+            (
+                r.label(),
+                atlas_regime_color(r as u8, 3, 0.7, high_contrast),
+            )
+        })
         .collect()
     }
 }

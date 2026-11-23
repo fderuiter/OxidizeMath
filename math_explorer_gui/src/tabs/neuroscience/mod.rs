@@ -1,11 +1,11 @@
-// @explorer_feature = "biology"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod hodgkin_huxley;
 pub mod neural_network_viz;
 pub mod spike_analysis;
-
 
 pub struct NeuroscienceTab {
     framework: crate::framework::SimulationFramework,
@@ -50,6 +50,14 @@ impl ExplorerTab for NeuroscienceTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "neuroscience",
+        order: 100,
+        build: || Box::new(NeuroscienceTab::default()),
     }
 }
 

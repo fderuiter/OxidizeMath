@@ -1,9 +1,10 @@
-// @explorer_feature = "climate"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 pub mod cera;
 pub mod co2_projections;
 pub mod temperature;
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub struct ClimateTab {
@@ -49,6 +50,14 @@ impl ExplorerTab for ClimateTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "climate",
+        order: 100,
+        build: || Box::new(ClimateTab::default()),
     }
 }
 

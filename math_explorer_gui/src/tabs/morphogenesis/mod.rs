@@ -1,10 +1,11 @@
-// @explorer_feature = "biology"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::async_sim::SimWorkerState;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisPresetConfig;
 #[cfg(test)]
 use crate::presets::{deserialize_preset_envelope, serialize_preset_envelope};
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 #[cfg(test)]
 use eframe::egui::ColorImage;
@@ -243,7 +244,11 @@ impl MorphogenesisTab {
 impl FiniteStateGuard for MorphogenesisTab {
     fn is_finite_state(&self) -> bool {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        p.a.is_finite() && p.b.is_finite() && p.d_u.is_finite() && p.d_v.is_finite() && p.dt.is_finite()
+        p.a.is_finite()
+            && p.b.is_finite()
+            && p.d_u.is_finite()
+            && p.d_v.is_finite()
+            && p.dt.is_finite()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -332,7 +337,8 @@ impl ExplorerTab for MorphogenesisTab {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.framework.import_url_preset_json(tool_id, preset_json)?;
+        self.framework
+            .import_url_preset_json(tool_id, preset_json)?;
         let cfg = self.export_config();
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = cfg.a;
@@ -341,6 +347,14 @@ impl ExplorerTab for MorphogenesisTab {
         p.d_v = cfg.d_v;
         p.dt = cfg.dt;
         Ok(())
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "morphogenesis",
+        order: 100,
+        build: || Box::new(MorphogenesisTab::default()),
     }
 }
 

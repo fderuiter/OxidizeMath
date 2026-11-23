@@ -231,9 +231,14 @@ mod tests {
             );
         }
 
-        for expected in [
-            "build.rs",
-            "src/path_utils.rs",
+        for expected in ["build.rs", "src/path_utils.rs"] {
+            assert!(
+                rerun_paths.contains(expected),
+                "Missing expected cargo:rerun-if-changed={expected} in oxidize_core output"
+            );
+        }
+
+        for excluded in [
             "../../papers",
             "../../math_explorer/src",
             "../../math_explorer_gui/src/tabs",
@@ -241,8 +246,8 @@ mod tests {
             "../../math_explorer_gui/src/tabs/traceability",
         ] {
             assert!(
-                rerun_paths.contains(expected),
-                "Missing expected cargo:rerun-if-changed={expected} in oxidize_core output"
+                !rerun_paths.contains(excluded),
+                "Native oxidize_core build must not watch VFS directory {excluded}"
             );
         }
     }

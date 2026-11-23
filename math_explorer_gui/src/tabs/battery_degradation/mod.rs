@@ -1,10 +1,10 @@
-// @explorer_feature = "applied"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod capacity_fade;
 pub mod lifetime_estimator;
-
 
 pub struct BatteryDegradationTab {
     framework: crate::framework::SimulationFramework,
@@ -49,6 +49,14 @@ impl ExplorerTab for BatteryDegradationTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "battery_degradation",
+        order: 100,
+        build: || Box::new(BatteryDegradationTab::default()),
     }
 }
 

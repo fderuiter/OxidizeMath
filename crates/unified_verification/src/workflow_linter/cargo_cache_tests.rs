@@ -148,28 +148,38 @@ fn test_workspace_build_script_outputs_emit_rerun_directives() {
     let ox_output = find_latest_build_output(&build_root, "oxidize_core", "vfs_data.rs")
         .expect("oxidize_core build output must exist because unified_verification depends on it");
     let ox_rerun = parse_rerun_directives(&ox_output);
-    for expected in [
-        "build.rs",
-        "../../papers",
-        "../../math_explorer/src",
-        "../../math_explorer_gui/src/tabs",
-    ] {
+    for expected in ["build.rs", "src/path_utils.rs"] {
         assert!(
             ox_rerun.contains(expected),
             "oxidize_core output missing cargo:rerun-if-changed={expected}"
         );
     }
+    for excluded in [
+        "../../papers",
+        "../../math_explorer/src",
+        "../../math_explorer_gui/src/tabs",
+    ] {
+        assert!(
+            !ox_rerun.contains(excluded),
+            "native oxidize_core output must not watch {excluded}"
+        );
+    }
 
-    if let Some(gui_output) =
-        find_latest_build_output(&build_root, "math_explorer_gui", "generated_tabs.rs")
-    {
+    if let Some(gui_output) = find_latest_build_output(
+        &build_root,
+        "math_explorer_gui",
+        "traceability_manifest.json",
+    ) {
         let gui_rerun = parse_rerun_directives(&gui_output);
         for expected in [
-            "src/tabs",
-            "Cargo.toml",
+            "build.rs",
+            "build_snapshot.rs",
+            "build_snapshot_scan.rs",
+            "src/tabs/mod.rs",
+            "../traceability.toml",
+            "../papers",
             "../crates/federated_registry/src",
             "../crates/oxidize_core/src",
-            "../math_explorer/src",
             "../crates/math_commons/src",
             "../crates/scientific_metadata/src",
             "../crates/diagnostics/src",
@@ -177,6 +187,19 @@ fn test_workspace_build_script_outputs_emit_rerun_directives() {
             assert!(
                 gui_rerun.contains(expected),
                 "math_explorer_gui output missing cargo:rerun-if-changed={expected}"
+            );
+        }
+        for excluded in [
+            "Cargo.toml",
+            "../crates/unified_verification/src",
+            "../crates/markdown_tests/src",
+            "../crates/verified_engine/src",
+            "../crates/verified_engine_macros/src",
+            "../apps/xtask/src",
+        ] {
+            assert!(
+                !gui_rerun.contains(excluded),
+                "math_explorer_gui output must not watch unrelated crate {excluded}"
             );
         }
     }

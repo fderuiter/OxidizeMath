@@ -1,5 +1,6 @@
-// @explorer_feature = "pure_math"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod curvature_heatmap;
@@ -51,6 +52,14 @@ impl ExplorerTab for GeometryTopologyTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "geometry_topology",
+        order: 100,
+        build: || Box::new(GeometryTopologyTab::default()),
     }
 }
 

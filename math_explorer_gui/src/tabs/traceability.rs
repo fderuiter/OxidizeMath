@@ -1,13 +1,12 @@
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use std::collections::HashMap;
 
-#[path = "traceability/presets.rs"]
-mod presets_impl;
-pub use presets_impl::*;
-#[path = "traceability/scanner.rs"]
+mod presets;
+pub use presets::*;
 mod scanner;
-#[path = "traceability/web_snapshot.rs"]
 mod web_snapshot;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -22,9 +21,7 @@ pub struct TraceabilityTab {
     repo_path: Option<String>,
     user_picked_repo: bool,
     report_rx: Option<
-        std::sync::mpsc::Receiver<
-            Result<oxidize_core::traceability::TraceabilityReport, String>,
-        >,
+        std::sync::mpsc::Receiver<Result<oxidize_core::traceability::TraceabilityReport, String>>,
     >,
     cert_rx: Option<std::sync::mpsc::Receiver<Option<web_snapshot::VerificationCertificate>>>,
     certificate: Option<web_snapshot::VerificationCertificate>,
@@ -73,10 +70,7 @@ impl TraceabilityTab {
     }
 
     #[cfg(all(test, not(target_arch = "wasm32")))]
-    pub(crate) fn join_relative_segments(
-        base: &std::path::Path,
-        rel: &str,
-    ) -> std::path::PathBuf {
+    pub(crate) fn join_relative_segments(base: &std::path::Path, rel: &str) -> std::path::PathBuf {
         scanner::join_relative_segments(base, rel)
     }
 
@@ -396,8 +390,15 @@ impl ExplorerTab for TraceabilityTab {
     }
 }
 
+inventory::submit! {
+    TabDescriptor {
+        id: "traceability",
+        order: 100,
+        build: || Box::new(TraceabilityTab::default()),
+    }
+}
+
 #[cfg(test)]
-#[path = "traceability/tests.rs"]
 mod tests;
 
 // [cite:essay]

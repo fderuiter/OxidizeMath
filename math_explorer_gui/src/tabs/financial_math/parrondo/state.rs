@@ -3,7 +3,7 @@
 use super::ParrondoParadoxTool;
 use crate::framework::{StarterPresetMetadata, ToolMetadata};
 use math_explorer::error::KellyError;
-use math_explorer::pure_math::statistics::kelly::{Odds, UnitInterval, kelly_fraction};
+use math_explorer::pure_math::statistics::kelly::{kelly_fraction, Odds, UnitInterval};
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
 
