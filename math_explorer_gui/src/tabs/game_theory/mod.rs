@@ -5,6 +5,7 @@ use eframe::egui;
 
 pub mod auction;
 pub mod glicko2;
+pub mod markov;
 pub mod replicator;
 
 pub struct GameTheoryTab {
