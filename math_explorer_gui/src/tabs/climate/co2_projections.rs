@@ -55,50 +55,46 @@ impl InteractiveTool for Co2ProjectionsTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
-        });
-    }
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            ui.heading("Global CO2 Concentration Projections");
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::Slider::new(&mut self.reduction_scenario, 0.0..=1.0)
+                        .text("Emission Reduction Scenario"),
+                );
+                ui.checkbox(&mut self.synthetic_walk, "Synthetic Random Walk");
+            });
 
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Global CO2 Concentration Projections");
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::Slider::new(&mut self.reduction_scenario, 0.0..=1.0)
-                    .text("Emission Reduction Scenario"),
-            );
-            ui.checkbox(&mut self.synthetic_walk, "Synthetic Random Walk");
-        });
+            let (historical, projected) = if self.synthetic_walk {
+                let mut rng = oxidize_core::rng::OxidizeRng::default();
+                math_explorer::climate::dataset::get_co2_projections_with_rng(
+                    &mut rng,
+                    self.reduction_scenario,
+                )
+            } else {
+                math_explorer::climate::dataset::get_co2_projections(self.reduction_scenario)
+            };
 
-        let (historical, projected) = if self.synthetic_walk {
-            let mut rng = oxidize_core::rng::OxidizeRng::default();
-            math_explorer::climate::dataset::get_co2_projections_with_rng(
-                &mut rng,
-                self.reduction_scenario,
-            )
-        } else {
-            math_explorer::climate::dataset::get_co2_projections(self.reduction_scenario)
-        };
+            let plot = Plot::new("co2_projections_plot")
+                .view_aspect(2.0)
+                .x_axis_formatter(|x, _range| format!("{:.0}", x.value))
+                .y_axis_formatter(|y, _range| format!("{:.1} ppm", y.value))
+                .legend(egui_plot::Legend::default());
 
-        let plot = Plot::new("co2_projections_plot")
-            .view_aspect(2.0)
-            .x_axis_formatter(|x, _range| format!("{:.0}", x.value))
-            .y_axis_formatter(|y, _range| format!("{:.1} ppm", y.value))
-            .legend(egui_plot::Legend::default());
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            plot.show(ui, |plot_ui| {
+                let hist_points = PlotPoints::new(historical);
+                let hist_line = Line::new("Historical CO2", hist_points)
+                    .width(2.0_f32)
+                    .color(palette.series_color(0));
+                plot_ui.line(hist_line);
 
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        plot.show(ui, |plot_ui| {
-            let hist_points = PlotPoints::new(historical);
-            let hist_line = Line::new("Historical CO2", hist_points)
-                .width(2.0_f32)
-                .color(palette.series_color(0));
-            plot_ui.line(hist_line);
-
-            let proj_points = PlotPoints::new(projected);
-            let proj_line = Line::new("Projected CO2", proj_points)
-                .width(2.0_f32)
-                .color(palette.series_color(3));
-            plot_ui.line(proj_line);
+                let proj_points = PlotPoints::new(projected);
+                let proj_line = Line::new("Projected CO2", proj_points)
+                    .width(2.0_f32)
+                    .color(palette.series_color(3));
+                plot_ui.line(proj_line);
+            });
         });
     }
 }

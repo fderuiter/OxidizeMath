@@ -2,8 +2,11 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::challenge_ui::{
+    render_challenge_domain_chips, render_challenges_scroll_grid, render_gallery_mode_tabs,
+};
 use super::filter::{academic_domain_for_slug, module_title_for_slug, StarterGalleryFilterState};
-use super::StarterCard;
+use super::{ChallengeCard, GallerySelection, StarterCard, StarterGalleryTab};
 use crate::app::domain_bar::AcademicDomain;
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -263,31 +266,59 @@ pub(super) fn render_searchable_gallery_body(
     ui: &mut egui::Ui,
     frame_ctx: &mut crate::ModalFrameContext,
     cards: &[StarterCard],
+    challenges: &[ChallengeCard],
     filter: &mut StarterGalleryFilterState,
     m: &GalleryOverlayMetrics,
-) -> Option<StarterCard> {
+) -> Option<GallerySelection> {
     ui.set_max_width(m.inner_w);
     ui.set_width(m.inner_w);
 
-    let initial_filtered = filter.filter_cards(cards);
-    render_gallery_header(
-        ui,
-        frame_ctx,
-        m.inner_w,
-        initial_filtered.len(),
-        cards.len(),
-    );
+    if cards.is_empty() && !challenges.is_empty() {
+        filter.active_tab = StarterGalleryTab::Challenges;
+    } else if challenges.is_empty() {
+        filter.active_tab = StarterGalleryTab::Starters;
+    }
+
+    let pre_cards = filter.filter_cards(cards);
+    let pre_challenges = filter.filter_challenges(challenges);
+    let (shown, total) = match filter.active_tab {
+        StarterGalleryTab::Starters => (pre_cards.len(), cards.len()),
+        StarterGalleryTab::Challenges => (pre_challenges.len(), challenges.len()),
+    };
+    render_gallery_header(ui, frame_ctx, m.inner_w, shown, total);
+    if !cards.is_empty() && !challenges.is_empty() {
+        ui.add_space(4.0);
+        render_gallery_mode_tabs(ui, filter, pre_cards.len(), pre_challenges.len());
+    }
     ui.add_space(4.0);
     render_search_bar(ui, filter, m.inner_w);
     ui.add_space(4.0);
-    render_domain_filter_chips(ui, cards, filter, m.inner_w);
+    match filter.active_tab {
+        StarterGalleryTab::Starters => render_domain_filter_chips(ui, cards, filter, m.inner_w),
+        StarterGalleryTab::Challenges => {
+            render_challenge_domain_chips(ui, challenges, filter, m.inner_w);
+        }
+    }
     ui.add_space(4.0);
     ui.separator();
     ui.add_space(6.0);
 
-    let filtered_cards = filter.filter_cards(cards);
-    if !ui.is_sizing_pass() {
-        filter.sync_live_announcement(ui.ctx(), filtered_cards.len());
+    match filter.active_tab {
+        StarterGalleryTab::Starters => {
+            let filtered = filter.filter_cards(cards);
+            if !ui.is_sizing_pass() {
+                filter.sync_live_announcement(ui.ctx(), filtered.len());
+            }
+            render_cards_scroll_grid(ui, frame_ctx, &filtered, filter, m)
+                .map(GallerySelection::Starter)
+        }
+        StarterGalleryTab::Challenges => {
+            let filtered = filter.filter_challenges(challenges);
+            if !ui.is_sizing_pass() {
+                filter.sync_live_announcement(ui.ctx(), filtered.len());
+            }
+            render_challenges_scroll_grid(ui, frame_ctx, &filtered, filter, m)
+                .map(GallerySelection::Challenge)
+        }
     }
-    render_cards_scroll_grid(ui, frame_ctx, &filtered_cards, filter, m)
 }

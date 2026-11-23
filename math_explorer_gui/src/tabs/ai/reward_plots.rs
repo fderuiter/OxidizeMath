@@ -148,6 +148,7 @@ impl SimulationRunner for RewardPlotsRunner {
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data: vec![self.episodes_trained as f64],
             structured_data: Some(snapshot_data),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

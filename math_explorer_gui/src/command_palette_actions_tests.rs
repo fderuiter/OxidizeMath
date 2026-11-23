@@ -5,9 +5,9 @@ use crate::framework::ToolMetadata;
 use crate::starter_gallery::StarterPresetMetadata;
 
 #[test]
-fn test_all_60_tools_have_non_empty_curated_tags() {
+fn test_all_64_tools_have_non_empty_curated_tags() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 60, "Expected all 60 registered ToolMetadata");
+    assert_eq!(tools.len(), 64, "Expected all 64 registered ToolMetadata");
 
     for meta in tools {
         assert!(
@@ -35,7 +35,7 @@ fn test_all_60_tools_have_non_empty_curated_tags() {
 }
 
 #[test]
-fn test_command_palette_indexes_all_71_starter_presets_and_16_workspace_actions() {
+fn test_command_palette_indexes_all_82_starter_presets_and_16_workspace_actions() {
     let tabs = crate::tabs::instantiate_tabs();
     let palette = CommandPalette::default();
     let all_items = palette.filter_items(&tabs);
@@ -57,9 +57,9 @@ fn test_command_palette_indexes_all_71_starter_presets_and_16_workspace_actions(
         .filter(|i| matches!(i, PaletteItem::Action { .. }))
         .count();
 
-    assert_eq!(tab_count, 21, "Expected 21 ExplorerTab entries");
-    assert_eq!(tool_count, 60, "Expected 60 ToolMetadata entries");
-    assert_eq!(preset_count, 71, "Expected 71 StarterPresetMetadata cards");
+    assert_eq!(tab_count, 22, "Expected 22 ExplorerTab entries");
+    assert_eq!(tool_count, 64, "Expected 64 ToolMetadata entries");
+    assert_eq!(preset_count, 82, "Expected 82 StarterPresetMetadata cards");
     assert_eq!(
         action_count,
         WorkspaceAction::ALL.len(),
@@ -73,7 +73,7 @@ fn verify_every_preset_title_matches(tabs: &[Box<dyn crate::tabs::ExplorerTab>])
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 71);
+    assert_eq!(presets.len(), 82);
 
     for preset in presets {
         let palette = CommandPalette {

@@ -5,7 +5,7 @@
 use super::{MathExplorerApp, SplitLayoutMode, ThemeMode, ViewportLayout};
 use crate::command_palette::{PaletteSelection, WorkspaceAction};
 use crate::framework::QuickExportAction;
-use crate::starter_gallery::StarterCard;
+use crate::starter_gallery::{ChallengeCard, GallerySelection, StarterCard};
 use eframe::egui;
 
 impl MathExplorerApp {
@@ -86,15 +86,22 @@ impl MathExplorerApp {
         }
     }
 
-    /// Renders the root `GlobalStarterGallery` modal and routes any selected card to `focused_pane`.
+    /// Renders the root `GlobalStarterGallery` modal and routes any selected card or challenge to `focused_pane`.
     pub(super) fn render_global_starter_gallery(&mut self, ctx: &egui::Context) {
         self.sync_cold_boot_starter_gallery();
         if self.command_palette.is_open && self.starter_gallery.is_open {
             self.starter_gallery.close_silently();
             return;
         }
-        if let Some(card) = self.starter_gallery.show(ctx) {
-            let _ = self.launch_starter_card_in_focused_pane(ctx, &card);
+        match self.starter_gallery.show(ctx) {
+            Some(GallerySelection::Starter(card)) => {
+                let _ = self.launch_starter_card_in_focused_pane(ctx, &card);
+            }
+            Some(GallerySelection::Challenge(ch)) => {
+                let target_pane = self.active_focused_pane();
+                let _ = self.launch_challenge_in_pane(ctx, target_pane, &ch);
+            }
+            None => {}
         }
     }
 
@@ -161,6 +168,53 @@ impl MathExplorerApp {
                 Err(err)
             }
         }
+    }
+
+    /// Routes an inverse `ChallengeCard` to `pane_idx`, switching to the target `ExplorerTab` and activating its baseline.
+    pub fn launch_challenge_in_pane(
+        &mut self,
+        ctx: &egui::Context,
+        pane_idx: usize,
+        ch: &ChallengeCard,
+    ) -> Result<(), String> {
+        self.starter_gallery.close_silently();
+        let tab_idx = self.find_tab_index_for_domain(ch.domain).ok_or_else(|| {
+            format!(
+                "No simulation module registered for challenge domain '{}'",
+                ch.domain
+            )
+        })?;
+
+        let pane_count = self.viewport_layout.pane_count();
+        let target_pane = if pane_idx < pane_count {
+            pane_idx
+        } else {
+            self.active_focused_pane()
+        };
+        self.focus_pane(target_pane);
+        if target_pane == 0 && self.pane_tabs.is_empty() {
+            self.selected_tab = tab_idx;
+        } else {
+            self.set_pane_tab(target_pane, tab_idx);
+        }
+
+        let res = {
+            let tab = self
+                .pane_tab_mut(target_pane)
+                .ok_or_else(|| format!("Target pane {target_pane} is unavailable"))?;
+            let tab_name = tab.name();
+            let fw = tab
+                .framework_mut()
+                .ok_or_else(|| format!("Tab '{tab_name}' does not support inverse challenges"))?;
+            fw.launch_challenge_by_id(ch.id, Some(ctx))
+        };
+
+        if let Some(slot) = self.pane_slots.slot_mut(target_pane) {
+            slot.snapshot_active();
+        }
+        self.clear_active_pane_caches();
+        ctx.request_repaint();
+        res
     }
 
     /// Dispatches a `PaletteSelection` returned by `CommandPalette::show`.

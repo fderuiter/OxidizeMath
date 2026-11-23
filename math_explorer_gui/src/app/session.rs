@@ -312,3 +312,45 @@ impl WorkspaceSessionManager {
         }
     }
 }
+
+impl MathExplorerApp {
+    /// Serializes the entire application state (selected tab, panel toggles, individual tab states) to JSON.
+    pub fn save_state_to_json(&self) -> String {
+        if self.session_manager.lifecycle_state == SessionLifecycleState::DragEditing {
+            self.clear_active_pane_caches();
+        }
+        serde_json::to_string(&self.get_app_state()).unwrap_or_default()
+    }
+
+    /// Deserializes and restores the application state from JSON.
+    pub fn load_state_from_json(&mut self, json_str: &str) {
+        match self.session_manager.parse_envelope(json_str) {
+            Ok(app_state) => self.apply_app_state(app_state),
+            Err(err) => {
+                crate::telemetry::emit_telemetry(
+                    "MathExplorerApp",
+                    federated_registry::Severity::Warning,
+                    format!(
+                        "Failed to parse saved session state, resetting to defaults: {}",
+                        err
+                    ),
+                    std::collections::HashMap::new(),
+                );
+            }
+        }
+    }
+
+    /// Restores the previous application state from the workspace undo history stack.
+    pub fn undo(&mut self) {
+        let mut sm = std::mem::take(&mut self.session_manager);
+        sm.execute_undo(self);
+        self.session_manager = sm;
+    }
+
+    /// Re-applies an undone application state from the workspace redo history stack.
+    pub fn redo(&mut self) {
+        let mut sm = std::mem::take(&mut self.session_manager);
+        sm.execute_redo(self);
+        self.session_manager = sm;
+    }
+}

@@ -10,6 +10,7 @@ mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
 mod share_link;
+pub mod shared_json;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -56,6 +57,7 @@ mod wasm_tests;
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
+pub use shared_json::SharedTabJson;
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
@@ -209,32 +211,6 @@ impl MathExplorerApp {
         app_state.apply(self);
     }
 
-    /// Serializes the entire application state (selected tab, panel toggles, individual tab states) to JSON.
-    pub fn save_state_to_json(&self) -> String {
-        if self.session_manager.lifecycle_state == SessionLifecycleState::DragEditing {
-            self.clear_active_pane_caches();
-        }
-        serde_json::to_string(&self.get_app_state()).unwrap_or_default()
-    }
-
-    /// Deserializes and restores the application state from JSON.
-    pub fn load_state_from_json(&mut self, json_str: &str) {
-        match self.session_manager.parse_envelope(json_str) {
-            Ok(app_state) => self.apply_app_state(app_state),
-            Err(err) => {
-                crate::telemetry::emit_telemetry(
-                    "MathExplorerApp",
-                    Severity::Warning,
-                    format!(
-                        "Failed to parse saved session state, resetting to defaults: {}",
-                        err
-                    ),
-                    std::collections::HashMap::new(),
-                );
-            }
-        }
-    }
-
     /// Selects an active tab by index, synchronizing primary pane and emitting accessibility announcements.
     pub fn select_tab(&mut self, ctx: &egui::Context, tab_idx: usize) {
         domain_bar::select_tab(self, ctx, tab_idx);
@@ -243,20 +219,6 @@ impl MathExplorerApp {
     /// Assigns a simulation module to a specific viewport pane, synchronizing state and announcing the change.
     pub fn select_pane_tab(&mut self, ctx: &egui::Context, pane_idx: usize, tab_idx: usize) {
         domain_bar::select_pane_tab(self, ctx, pane_idx, tab_idx);
-    }
-
-    /// Restores the previous application state from the workspace undo history stack.
-    pub fn undo(&mut self) {
-        let mut sm = std::mem::take(&mut self.session_manager);
-        sm.execute_undo(self);
-        self.session_manager = sm;
-    }
-
-    /// Re-applies an undone application state from the workspace redo history stack.
-    pub fn redo(&mut self) {
-        let mut sm = std::mem::take(&mut self.session_manager);
-        sm.execute_redo(self);
-        self.session_manager = sm;
     }
 }
 
@@ -275,6 +237,13 @@ impl eframe::App for MathExplorerApp {
 
         crate::accessibility::ensure_plot_live_bridge();
         crate::accessibility::sync_context_live_messages(ctx, true);
+        if ctx.input(|i| {
+            i.events
+                .iter()
+                .any(|e| matches!(e, egui::Event::WindowFocused(false)))
+        }) {
+            crate::audio::notify_window_blurred();
+        }
 
         self.flush_stale_pane_focus(ctx);
         let mut session_mgr = std::mem::take(&mut self.session_manager);
@@ -451,6 +420,7 @@ impl eframe::App for MathExplorerApp {
         };
 
         self.prune_inactive_pane_slots(active_layout.pane_count());
+        domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
         self.sync_workspace_history_bridge(ctx);
 
         if active_layout != ViewportLayout::Single {

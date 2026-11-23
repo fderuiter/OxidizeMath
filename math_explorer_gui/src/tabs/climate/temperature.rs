@@ -115,41 +115,37 @@ impl InteractiveTool for TemperatureAnomaliesTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
-        });
-    }
-
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.heading("Global Temperature Anomalies (1951–1980 Baseline)");
-            if ui
-                .checkbox(&mut self.synthetic_walk, "Synthetic Random Walk")
-                .changed()
-            {
-                if self.synthetic_walk {
-                    self.custom_series = None;
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading("Global Temperature Anomalies (1951–1980 Baseline)");
+                if ui
+                    .checkbox(&mut self.synthetic_walk, "Synthetic Random Walk")
+                    .changed()
+                {
+                    if self.synthetic_walk {
+                        self.custom_series = None;
+                    }
+                    self.revision = self.revision.wrapping_add(1).max(1);
                 }
-                self.revision = self.revision.wrapping_add(1).max(1);
-            }
-        });
+            });
 
-        let plot = Plot::new("temperature_anomalies_plot")
-            .view_aspect(2.0)
-            .x_axis_formatter(|x, _range| format!("{:.0}", x.value))
-            .y_axis_formatter(|y, _range| format!("{:.2}°C", y.value))
-            .legend(egui_plot::Legend::default());
+            let plot = Plot::new("temperature_anomalies_plot")
+                .view_aspect(2.0)
+                .x_axis_formatter(|x, _range| format!("{:.0}", x.value))
+                .y_axis_formatter(|y, _range| format!("{:.2}°C", y.value))
+                .legend(egui_plot::Legend::default());
 
-        let series_name = if self.custom_series.is_none() && self.synthetic_walk {
-            "Synthetic Random Walk"
-        } else {
-            "GISTEMP Temperature Anomaly"
-        };
-        let active_series = self.active_series();
-        plot.show(ui, |plot_ui| {
-            let points = PlotPoints::from_iter(active_series.iter().copied());
-            let line = Line::new(series_name, points).width(2.0_f32);
-            plot_ui.line(line);
+            let series_name = if self.custom_series.is_none() && self.synthetic_walk {
+                "Synthetic Random Walk"
+            } else {
+                "GISTEMP Temperature Anomaly"
+            };
+            let active_series = self.active_series();
+            plot.show(ui, |plot_ui| {
+                let points = PlotPoints::from_iter(active_series.iter().copied());
+                let line = Line::new(series_name, points).width(2.0_f32);
+                plot_ui.line(line);
+            });
         });
     }
 }

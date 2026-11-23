@@ -2,7 +2,7 @@ use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use crate::framework::{bounded_drag_value, InteractiveTool, MathExpressionInputBar};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
-use egui_plot::{Plot, PlotPoint, Points};
+use egui_plot::{Plot, PlotPoint, Points, VLine};
 use math_explorer::physics::chaos::logistic;
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::{BTreeMap, HashMap};
@@ -33,6 +33,7 @@ pub struct BifurcationDiagram {
     map_mode: BifurcationMapMode,
     r_min: f64,
     r_max: f64,
+    probe_r: f64,
     steps: usize,
     x0: f64,
     math_input: MathExpressionInputBar,
@@ -62,6 +63,7 @@ impl Default for BifurcationDiagram {
             map_mode: BifurcationMapMode::Logistic,
             r_min: 2.5,
             r_max: 4.0,
+            probe_r: 3.50,
             steps: 500,
             x0: 0.5,
             math_input,
@@ -135,6 +137,7 @@ impl BifurcationDiagram {
             {
                 self.r_min = self.r_min.clamp(0.0, 3.95);
                 self.r_max = self.r_max.clamp(self.r_min + 0.05, 4.0);
+                self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
                 changed = true;
             }
             if ui
@@ -194,12 +197,27 @@ impl BifurcationDiagram {
             .clicked()
             || changed
         {
+            self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
             self.recompute();
         }
+
+        self.draw_audio_probe(ui);
 
         ui.separator();
         ui.label("Zoom: Use mouse wheel to zoom, drag to pan.");
         ui.label("Double-click to reset view.");
+    }
+
+    fn draw_audio_probe(&mut self, ui: &mut egui::Ui) {
+        self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
+        ui.separator();
+        let _ = ui.add(
+            AnimatedSlider::new(&mut self.probe_r, self.r_min..=self.r_max)
+                .text("Sweep r (Audio)")
+                .id_salt("bifurcation_probe_r"),
+        );
+        let frame = crate::audio::mappings::bifurcation_frame(self.probe_r);
+        crate::audio::render_sonification_panel(ui, "bifurcation", &frame, false);
     }
 }
 
@@ -314,6 +332,7 @@ impl InteractiveTool for BifurcationDiagram {
         self.map_mode = s.map_mode;
         self.r_min = s.r_min;
         self.r_max = s.r_max;
+        self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
         self.steps = s.steps;
         self.x0 = s.x0;
         self.math_input
@@ -340,6 +359,7 @@ impl InteractiveTool for BifurcationDiagram {
                             .radius(1.0_f32)
                             .color(palette.series_color(0)),
                     );
+                    plot_ui.vline(VLine::new("Audio Probe r", self.probe_r).color(palette.warning));
                 })
                 .response;
             response.accessible_theory_hover(self);

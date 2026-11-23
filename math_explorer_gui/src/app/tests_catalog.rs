@@ -87,7 +87,8 @@ fn test_cold_boot_opens_global_starter_gallery_and_session_or_url_dismisses_it()
     let _ = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
     assert!(find_node_by_label(&out, "Starter Template Gallery").is_some());
-    assert!(find_node_by_label(&out, "All Domains (71)").is_some());
+    assert!(find_node_by_label(&out, "All Domains (82)").is_some());
+    assert!(find_node_by_label(&out, "Inverse Challenges (5)").is_some());
     for domain in AcademicDomain::ALL {
         assert!(
             find_node_by_label(&out, domain.name()).is_some(),
@@ -287,15 +288,15 @@ fn test_per_tab_starter_gallery_prefilters_active_domain_and_expands_to_all_doma
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
 
     // Pre-filtered to Biology (with Kermack-McKendrick SIR Model visible)
-    assert!(find_node_by_label(&out, "of 71)").is_some());
-    assert!(find_node_by_label(&out, "(71 of 71)").is_none());
+    assert!(find_node_by_label(&out, "of 82)").is_some());
+    assert!(find_node_by_label(&out, "(82 of 82)").is_none());
     assert!(find_node_by_label(&out, "Kermack-McKendrick SIR Model").is_some());
 
-    // One-click expansion to "All Domains (71)" without closing modal
-    let all_chip = find_node_by_label(&out, "All Domains (71)").expect("All Domains chip");
+    // One-click expansion to "All Domains (82)" without closing modal
+    let all_chip = find_node_by_label(&out, "All Domains (82)").expect("All Domains chip");
     let _ = click_accesskit_node(&ctx, &mut app, &mut frame, all_chip);
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
-    assert!(find_node_by_label(&out, "(71 of 71)").is_some());
+    assert!(find_node_by_label(&out, "(82 of 82)").is_some());
     assert!(
         app.tabs[epi_idx].framework().unwrap().show_starter_gallery,
         "Per-tab modal must stay open after expanding to All Domains"
@@ -406,5 +407,40 @@ fn test_command_palette_workspace_actions_update_layout_theme_catalog_and_export
     assert!(
         msg.contains("preset JSON"),
         "Expected polite export announcement for preset JSON, got '{msg}'"
+    );
+}
+
+#[test]
+fn test_global_starter_gallery_inverse_challenges_tab_launches_in_focused_pane() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let mut app = MathExplorerApp::default();
+    let mut frame = eframe::Frame::_new_kittest();
+
+    app.starter_gallery.close_silently();
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    app.focus_pane(1);
+    let primary_tab_before = app.pane_tabs[0];
+
+    app.open_explore_catalog(&ctx);
+    let _ = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
+    let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
+    let challenges_tab =
+        find_node_by_label(&out, "Inverse Challenges (5)").expect("Inverse Challenges sub-tab");
+    let _ = click_accesskit_node(&ctx, &mut app, &mut frame, challenges_tab);
+
+    app.starter_gallery.filter.search_query = "therapeutic".to_string();
+    let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
+    let start_btn = find_node_by_label(&out, "Start Multi-Dose Therapeutic Window")
+        .expect("Start challenge button");
+    let _ = click_accesskit_node(&ctx, &mut app, &mut frame, start_btn);
+
+    let trials_idx = app.find_tab_index_for_domain("clinical_trials").unwrap();
+    assert_eq!(app.pane_tabs[0], primary_tab_before);
+    assert_eq!(app.pane_tabs[1], trials_idx);
+    assert_eq!(
+        app.pane_tab_mut(1).unwrap().active_challenge_id(),
+        Some("pk_therapeutic_window")
     );
 }

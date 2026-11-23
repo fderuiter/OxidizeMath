@@ -2,7 +2,7 @@
 
 use super::filter::StarterGalleryFilterState;
 use super::modal_ui::{compute_gallery_metrics, render_searchable_gallery_body};
-use super::StarterCard;
+use super::{ChallengeCard, GallerySelection, StarterCard, StarterGalleryTab};
 use eframe::egui;
 use std::collections::HashSet;
 
@@ -16,17 +16,18 @@ struct DeferredStarterGalleryRequest {
     id_source: String,
     modal_source: String,
     cards: Vec<StarterCard>,
+    challenges: Vec<ChallengeCard>,
     initial_domain_slug: Option<String>,
 }
 
-/// Root-level global Starter Template Gallery modal state owned by `MathExplorerApp`.
+/// Root-level global Starter Template & Inverse Challenge Gallery modal state owned by `MathExplorerApp`.
 #[derive(Clone, Debug, Default)]
 pub struct GlobalStarterGallery {
     /// Whether the global starter gallery modal is currently open.
     pub is_open: bool,
     /// True only for the initial cold-boot presentation before any session/URL/tab override.
     pub is_cold_boot: bool,
-    /// Active text search and `AcademicDomain` filter state.
+    /// Active text search, sub-tab, and `AcademicDomain` filter state.
     pub filter: StarterGalleryFilterState,
     was_open: bool,
 }
@@ -78,14 +79,16 @@ impl GlobalStarterGallery {
         self.was_open = false;
     }
 
-    /// Renders the global starter gallery via `ModalLifecycle`, returning a selected `StarterCard`.
-    pub fn show(&mut self, ctx: &egui::Context) -> Option<StarterCard> {
+    /// Renders the global starter & challenge gallery via `ModalLifecycle`.
+    pub fn show(&mut self, ctx: &egui::Context) -> Option<GallerySelection> {
         let cards = super::get_all_starter_cards();
+        let challenges = super::get_all_challenge_cards();
         let was_open = self.was_open;
         let selected = run_gallery_modal_lifecycle(
             ctx,
             egui::Id::new(GLOBAL_STARTER_GALLERY_MODAL_ID),
             &cards,
+            &challenges,
             &mut self.filter,
             &mut self.is_open,
         );
@@ -105,11 +108,15 @@ fn run_gallery_modal_lifecycle(
     ctx: &egui::Context,
     modal_id: egui::Id,
     cards: &[StarterCard],
+    challenges: &[ChallengeCard],
     filter: &mut StarterGalleryFilterState,
     is_open: &mut bool,
-) -> Option<StarterCard> {
+) -> Option<GallerySelection> {
+    if cards.is_empty() && challenges.is_empty() {
+        return None;
+    }
     let m = compute_gallery_metrics(ctx);
-    let mut selected_card = None;
+    let mut selected = None;
     let frame = egui::Frame::window(&ctx.style())
         .inner_margin(16)
         .corner_radius(12.0)
@@ -121,28 +128,31 @@ fn run_gallery_modal_lifecycle(
         .max_width(m.max_w)
         .max_height(m.max_h)
         .show(ctx, is_open, |ui, frame_ctx| {
-            selected_card = render_searchable_gallery_body(ui, frame_ctx, cards, filter, &m);
+            selected = render_searchable_gallery_body(ui, frame_ctx, cards, challenges, filter, &m);
         });
 
-    selected_card
+    selected
 }
 
-fn spans_multiple_academic_domains(cards: &[StarterCard]) -> bool {
+fn spans_multiple_academic_domains(cards: &[StarterCard], challenges: &[ChallengeCard]) -> bool {
     let mut seen = HashSet::new();
     cards
         .iter()
-        .any(|c| seen.insert(super::academic_domain_for_slug(c.domain)) && seen.len() > 1)
+        .map(|c| c.domain)
+        .chain(challenges.iter().map(|c| c.domain))
+        .any(|dom| seen.insert(super::academic_domain_for_slug(dom)) && seen.len() > 1)
 }
 
-/// Renders a starter gallery overlay with optional initial domain pre-filtering.
-pub fn show_starter_gallery_overlay_for_domain(
+/// Renders a starter & inverse challenge gallery overlay with optional initial domain pre-filtering.
+pub fn show_starter_gallery_with_challenges_for_domain(
     ctx: &egui::Context,
     id_source: &str,
     cards: &[StarterCard],
+    challenges: &[ChallengeCard],
     initial_domain_slug: Option<&str>,
     is_open: &mut bool,
-) -> Option<StarterCard> {
-    if cards.is_empty() {
+) -> Option<GallerySelection> {
+    if cards.is_empty() && challenges.is_empty() {
         return None;
     }
     let modal_id = egui::Id::new(format!("{id_source}_starter_gallery_overlay"));
@@ -165,14 +175,18 @@ pub fn show_starter_gallery_overlay_for_domain(
         .unwrap_or_else(|| {
             let mut f = StarterGalleryFilterState::default();
             if let Some(slug) = initial_domain_slug {
-                if spans_multiple_academic_domains(cards) {
+                if spans_multiple_academic_domains(cards, challenges) {
                     f.reset_to_domain(slug);
                 }
+            }
+            if cards.is_empty() && !challenges.is_empty() {
+                f.active_tab = StarterGalleryTab::Challenges;
             }
             f
         });
 
-    let selected = run_gallery_modal_lifecycle(ctx, modal_id, cards, &mut filter, is_open);
+    let selected =
+        run_gallery_modal_lifecycle(ctx, modal_id, cards, challenges, &mut filter, is_open);
     if selected.is_some() {
         *is_open = false;
     } else if !*is_open {
@@ -189,6 +203,42 @@ pub fn show_starter_gallery_overlay_for_domain(
         }
     });
     selected
+}
+
+/// Renders the central canvas starter & inverse challenge gallery overlay clamped to root window bounds.
+pub fn show_starter_gallery_with_challenges(
+    ctx: &egui::Context,
+    id_source: &str,
+    cards: &[StarterCard],
+    challenges: &[ChallengeCard],
+    is_open: &mut bool,
+) -> Option<GallerySelection> {
+    show_starter_gallery_with_challenges_for_domain(
+        ctx, id_source, cards, challenges, None, is_open,
+    )
+}
+
+/// Renders a starter gallery overlay with optional initial domain pre-filtering.
+pub fn show_starter_gallery_overlay_for_domain(
+    ctx: &egui::Context,
+    id_source: &str,
+    cards: &[StarterCard],
+    initial_domain_slug: Option<&str>,
+    is_open: &mut bool,
+) -> Option<StarterCard> {
+    let domain = initial_domain_slug.or_else(|| cards.first().map(|c| c.domain));
+    let challenges = domain.map_or_else(Vec::new, super::get_challenge_cards_for_domain);
+    match show_starter_gallery_with_challenges_for_domain(
+        ctx,
+        id_source,
+        cards,
+        &challenges,
+        initial_domain_slug,
+        is_open,
+    ) {
+        Some(GallerySelection::Starter(card)) => Some(card),
+        Some(GallerySelection::Challenge(_)) | None => None,
+    }
 }
 
 /// Renders the central canvas starter gallery card overlay clamped to root window bounds.
@@ -217,6 +267,7 @@ pub(crate) fn try_defer_starter_gallery(
     id_source: &str,
     modal_source: &str,
     cards: Vec<StarterCard>,
+    challenges: Vec<ChallengeCard>,
     initial_domain_slug: Option<&str>,
 ) -> bool {
     ctx.data_mut(|d| {
@@ -240,6 +291,7 @@ pub(crate) fn try_defer_starter_gallery(
             id_source: id_source.to_string(),
             modal_source: modal_source.to_string(),
             cards,
+            challenges,
             initial_domain_slug: initial_domain_slug.map(str::to_string),
         });
         d.insert_temp(key, queue);
@@ -264,20 +316,32 @@ pub(crate) fn flush_deferred_starter_galleries(
     }
     for req in requests {
         let mut is_open = true;
-        let selected = show_starter_gallery_overlay_for_domain(
+        let selected = show_starter_gallery_with_challenges_for_domain(
             ctx,
             &req.modal_source,
             &req.cards,
+            &req.challenges,
             req.initial_domain_slug.as_deref(),
             &mut is_open,
         );
-        if let Some(card) = selected {
-            if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
-                tab.apply_starter_gallery_outcome(ctx, &req.id_source, false, None);
+        match selected {
+            Some(GallerySelection::Starter(card)) => {
+                if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
+                    tab.apply_starter_gallery_selection(ctx, &req.id_source, false, None);
+                }
+                let _ = app.launch_starter_card_in_pane(ctx, req.pane_idx, &card);
             }
-            let _ = app.launch_starter_card_in_pane(ctx, req.pane_idx, &card);
-        } else if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
-            tab.apply_starter_gallery_outcome(ctx, &req.id_source, is_open, None);
+            Some(GallerySelection::Challenge(ch)) => {
+                if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
+                    tab.apply_starter_gallery_selection(ctx, &req.id_source, false, None);
+                }
+                let _ = app.launch_challenge_in_pane(ctx, req.pane_idx, &ch);
+            }
+            None => {
+                if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
+                    tab.apply_starter_gallery_selection(ctx, &req.id_source, is_open, None);
+                }
+            }
         }
     }
 }
