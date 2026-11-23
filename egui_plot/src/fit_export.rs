@@ -52,16 +52,24 @@ impl FitResult {
     /// Returns `true` when the regression contains non-empty finite coefficients and finite $R^2$.
     #[must_use]
     pub fn has_finite_coefficients(&self) -> bool {
+        let centered_ok = self.poly_centered.as_ref().is_none_or(|(m, s, c)| {
+            m.is_finite()
+                && s.is_finite()
+                && *s > 0.0
+                && !c.is_empty()
+                && c.iter().all(|v| v.is_finite())
+        });
         self.coefficients.len() >= required_coeff_count(self.fit_type)
             && self.coefficients.iter().all(|c| c.is_finite())
             && self.r_squared.is_finite()
+            && centered_ok
     }
 
     fn validate_exportable(&self) -> Result<(), String> {
         if self.coefficients.len() < required_coeff_count(self.fit_type) {
             return Err("FitResult contains insufficient model coefficients.".to_string());
         }
-        if !self.coefficients.iter().all(|c| c.is_finite()) || !self.r_squared.is_finite() {
+        if !self.has_finite_coefficients() {
             return Err("FitResult contains non-finite coefficients or R².".to_string());
         }
         Ok(())
@@ -143,8 +151,20 @@ impl FitResult {
 }
 
 fn format_poly_rust_body(fit: &FitResult) -> String {
-    let coeffs_literal = fit
-        .coefficients
+    let (z_binding, active_coeffs): (String, &[f64]) =
+        if let Some((u_mean, u_scale, ref centered)) = fit.poly_centered {
+            (
+                format!(
+                    "    let z = (u - {}) / {};",
+                    format_rs_f64(u_mean),
+                    format_rs_f64(u_scale)
+                ),
+                centered.as_slice(),
+            )
+        } else {
+            ("    let z = u;".to_string(), fit.coefficients.as_slice())
+        };
+    let coeffs_literal = active_coeffs
         .iter()
         .map(|&c| format_rs_f64(c))
         .collect::<Vec<_>>()
@@ -161,21 +181,32 @@ fn format_poly_rust_body(fit: &FitResult) -> String {
     };
     format!(
         "{u_binding}\n\
+         {z_binding}\n\
          \x20   let coeffs: [f64; {}] = [{coeffs_literal}];\n\
          \x20   let mut poly = 0.0_f64;\n\
-         \x20   let mut u_pow = 1.0_f64;\n\
-         \x20   for coeff in coeffs {{\n\
-         \x20       poly += coeff * u_pow;\n\
-         \x20       u_pow *= u;\n\
+         \x20   for coeff in coeffs.into_iter().rev() {{\n\
+         \x20       poly = poly * z + coeff;\n\
          \x20   }}\n\
          {ret_expr}",
-        fit.coefficients.len()
+        active_coeffs.len()
     )
 }
 
 fn format_poly_python_body(fit: &FitResult) -> String {
-    let coeffs_literal = fit
-        .coefficients
+    let (z_line, active_coeffs): (String, &[f64]) =
+        if let Some((u_mean, u_scale, ref centered)) = fit.poly_centered {
+            (
+                format!(
+                    "    z = (u - {}) / {}",
+                    format_py_f64(u_mean),
+                    format_py_f64(u_scale)
+                ),
+                centered.as_slice(),
+            )
+        } else {
+            ("    z = u".to_string(), fit.coefficients.as_slice())
+        };
+    let coeffs_literal = active_coeffs
         .iter()
         .map(|&c| format_py_f64(c))
         .collect::<Vec<_>>()
@@ -192,12 +223,11 @@ fn format_poly_python_body(fit: &FitResult) -> String {
     };
     format!(
         "{u_lines}\n\
+         {z_line}\n\
          \x20   coeffs = [{coeffs_literal}]\n\
          \x20   poly = 0.0\n\
-         \x20   u_pow = 1.0\n\
-         \x20   for coeff in coeffs:\n\
-         \x20       poly += coeff * u_pow\n\
-         \x20       u_pow *= u\n\
+         \x20   for coeff in reversed(coeffs):\n\
+         \x20       poly = poly * z + coeff\n\
          {ret_line}"
     )
 }
@@ -585,6 +615,7 @@ mod tests {
             log_x: false,
             log_y: false,
             log_mode: false,
+            poly_centered: None,
         };
         assert!(!bad.has_finite_coefficients());
         assert!(bad.to_latex().is_err());
