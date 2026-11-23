@@ -1,10 +1,10 @@
 // @explorer_feature = "applied"
+// @explorer_order = 33
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod capacity_fade;
 pub mod lifetime_estimator;
-
 
 pub struct BatteryDegradationTab {
     framework: crate::framework::SimulationFramework,

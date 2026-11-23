@@ -163,6 +163,11 @@ impl FactorizationTool {
                 false,
                 "Factorization Tool",
             );
+            let dispatched = egui_plot::commands::CommandRegistryData::take_dispatched(
+                ui.ctx(),
+                "Analyze Factorization",
+                "Factorization Tool",
+            );
             let enter_pressed =
                 response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             if enter_pressed {
@@ -179,6 +184,7 @@ impl FactorizationTool {
                 )
                 .clicked()
                 || enter_pressed
+                || dispatched
             {
                 self.analyze_current_input();
             }
@@ -276,7 +282,7 @@ inventory::submit! {
         id: "FactorizationTool",
         display_name: "Factorization Tool",
         domain: "number_theory",
-        tags: &[],
+        tags: &["prime", "miller-rabin", "trial division", "primality", "arithmetic"],
         build: || Box::new(FactorizationTool::default()),
     }
 }

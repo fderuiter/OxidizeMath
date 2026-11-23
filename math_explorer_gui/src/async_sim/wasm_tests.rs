@@ -1,7 +1,5 @@
 use super::*;
-use crate::presets::MorphogenesisKineticsMode;
 use crate::tabs::chaos::attractors::{AttractorMode, AttractorRunner, AttractorSharedParams};
-use crate::tabs::morphogenesis::runner::MorphogenesisKineticsState;
 use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTool};
 use std::sync::RwLock;
 use wasm_bindgen::JsCast;
@@ -50,13 +48,7 @@ async fn wasm_worker_checkpoint_step_stepback_seek_and_reset() {
         dt: 0.002,
         high_contrast: false,
     }));
-    let ks = Arc::new(RwLock::new(MorphogenesisKineticsState {
-        mode: MorphogenesisKineticsMode::Schnakenberg,
-        f: 0.0367,
-        k: 0.0649,
-    }));
-    let mask_rle = Arc::new(RwLock::new(Vec::new()));
-    let runner = MorphogenesisTool::create_kinetics_runner(&params, &ks, &mask_rle, 20, 20);
+    let runner = MorphogenesisTool::create_runner(&params, 20, 20);
     let mut controller = SimulationController::new(runner);
     assert_eq!(controller.timeline_metadata().unwrap().stride, 16);
 

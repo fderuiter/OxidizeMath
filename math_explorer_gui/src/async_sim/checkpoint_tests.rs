@@ -34,14 +34,7 @@ fn make_morpho_runner(
         dt,
         high_contrast: false,
     }));
-    let ks = Arc::new(RwLock::new(MorphogenesisKineticsState {
-        mode: MorphogenesisKineticsMode::Schnakenberg,
-        f: 0.0367,
-        k: 0.0649,
-    }));
-    let mask_rle = Arc::new(RwLock::new(Vec::new()));
-    let mut runner =
-        MorphogenesisTool::create_kinetics_runner(&params, &ks, &mask_rle, width, height);
+    let mut runner = MorphogenesisTool::create_runner(&params, width, height);
     runner.noise_amplitude = noise_amplitude;
     (runner, params)
 }

@@ -419,7 +419,7 @@ inventory::submit! {
         id: "CeraTool",
         display_name: "CERA Model",
         domain: "climate",
-        tags: &["cera", "climate"],
+        tags: &["cera", "climate", "earth mover", "autoencoder", "alignment"],
         build: || Box::new(CeraTool::default()),
     }
 }
@@ -472,3 +472,6 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+#[cfg(test)]
+#[path = "cera_tests.rs"]
+mod tests;
