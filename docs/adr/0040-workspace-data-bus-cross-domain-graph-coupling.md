@@ -1,4 +1,4 @@
-# ADR 0038: `WorkspaceDataBus` Cross-Domain Graph Coupling and Zero-Allocation Graph Solvers
+# ADR 0040: `WorkspaceDataBus` Cross-Domain Graph Coupling and Zero-Allocation Graph Solvers
 
 ## Status
 Accepted (extends [ADR 0009](0009-reusable-graph-layout-algorithms.md), [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0022](0022-unify-preset-state-serialization.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -18,7 +18,7 @@ Accepted (extends [ADR 0009](0009-reusable-graph-layout-algorithms.md), [ADR 001
    - Upgrade [`GraphEditorTool`](../../math_explorer_gui/src/tabs/graph_theory/graph_editor.rs) with excitatory (`+w`) and inhibitory (`-w`) edge-painting brushes, a $K_{1,k}$ hub-and-spoke stamp, a drag-across edge-severing stroke, and normalized `[0, 1]^2` `SharedGraph` publication on every graph mutation, undo/redo, layout, or preset load.
    - Couple six tools across five scientific domains with safe node budgets and polite warning banners:
      - [`NetworkMetricsTool`](../../math_explorer_gui/src/tabs/graph_theory/network_metrics.rs) and [`AlgorithmVisualizerTool`](../../math_explorer_gui/src/tabs/graph_theory/algorithm_visualizer.rs) (live degree/clustering/component/diameter invariants and BFS/DFS/Dijkstra re-runs).
-     - [`NetworkPropagationTool`](../../math_explorer_gui/src/tabs/epidemiology/network_propagation.rs) (`<= 500` nodes, computing analytical `heterogeneous_r0` and streaming `EpidemicTraceSignal`) paired with empirical stochastic $S(t), I(t), R(t)$ overlays in [`SirTool`](../../math_explorer_gui/src/tabs/epidemiology/sir.rs).
+     - [`NetworkPropagationTool`](../../math_explorer_gui/src/tabs/epidemiology/network_propagation/mod.rs) (`<= 500` nodes, computing analytical `heterogeneous_r0` and streaming `EpidemicTraceSignal`) paired with empirical stochastic $S(t), I(t), R(t)$ overlays in [`SirTool`](../../math_explorer_gui/src/tabs/epidemiology/sir.rs).
      - [`NeuralNetworkVizTool`](../../math_explorer_gui/src/tabs/neuroscience/neural_network_viz.rs) (`<= 32` Hodgkin-Huxley neurons, mapping positive/negative edge weights to excitatory/inhibitory `Synapse` conductances).
      - [`IsingModelTool`](../../math_explorer_gui/src/tabs/solid_state/ising.rs) (`<= 1000` spins, switching to `GraphSpinSystem` when following a live graph while preserving 2D `SpinLattice` mode).
      - [`ReplicatorDynamicsTool`](../../math_explorer_gui/src/tabs/game_theory/replicator.rs) (`<= 500` agents, overlaying spatial graph trajectories alongside the mean-field ODE curve).

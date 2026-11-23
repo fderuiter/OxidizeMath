@@ -1,0 +1,136 @@
+name: CI Tool Cache
+description: Restore and cache pinned Cargo CLI binaries outside ~/.cargo/bin without network downloads on cache hits.
+
+inputs:
+  tool:
+    description: Cargo CLI crate name to cache and install (for example cargo-audit, cargo-llvm-cov, trunk, wasm-bindgen-cli, or cargo-packager).
+    required: true
+  version:
+    description: Explicit pinned semantic version of the tool.
+    required: true
+  binary:
+    description: Executable stem to verify after restore or install (defaults to inputs.tool).
+    required: false
+    default: ""
+  disable-compile:
+    description: Disable source compilation fallback in cargo-binstall when set to 'true'.
+    required: false
+    default: "true"
+  github-token:
+    description: GitHub token passed to cargo-binstall when querying GitHub Releases on cache miss.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs and configure isolated tool path
+      id: tool-meta
+      shell: bash
+      env:
+        INPUT_TOOL: ${{ inputs.tool }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_BINARY: ${{ inputs.binary }}
+        RUNNER_OS_NAME: ${{ runner.os }}
+      run: |
+        set -euo pipefail
+
+        tool_name="$(printf '%s' "${INPUT_TOOL:-}" | tr -d '\r')"
+        tool_version="$(printf '%s' "${INPUT_VERSION:-}" | tr -d '\r')"
+        binary_name="$(printf '%s' "${INPUT_BINARY:-}" | tr -d '\r')"
+
+        IDENT_RE='^[a-zA-Z0-9_-]+$'
+        SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+([+-][a-zA-Z0-9._-]+)?$'
+
+        if ! [[ "$tool_name" =~ $IDENT_RE ]]; then
+          echo "Error: Invalid tool identifier '${tool_name}'" >&2
+          exit 1
+        fi
+        if ! [[ "$tool_version" =~ $SEMVER_RE ]]; then
+          echo "Error: Tool '${tool_name}' must pin an explicit semantic version, got '${tool_version}'" >&2
+          exit 1
+        fi
+        if [ -z "$binary_name" ]; then
+          binary_name="$tool_name"
+        elif ! [[ "$binary_name" =~ $IDENT_RE ]]; then
+          echo "Error: Invalid binary stem '${binary_name}'" >&2
+          exit 1
+        fi
+
+        raw_home="${USERPROFILE:-${HOME:-}}"
+        if [ -z "$raw_home" ]; then
+          echo "Error: Unable to determine runner home directory" >&2
+          exit 1
+        fi
+        unix_home="${raw_home//\\//}"
+        cache_slug="${tool_name}-${tool_version}"
+        tool_root="${unix_home}/.cache/ci-tools/${cache_slug}"
+        bin_dir="${tool_root}/bin"
+
+        mkdir -p "$bin_dir"
+        if [ "${RUNNER_OS_NAME:-}" = "Windows" ]; then
+          win_root="${tool_root//\//\\}"
+          printf '%s\\bin\n' "$win_root" >> "$GITHUB_PATH"
+        else
+          printf '%s\n' "$bin_dir" >> "$GITHUB_PATH"
+        fi
+
+        {
+          printf 'cache-slug=%s\n' "$cache_slug"
+          printf 'binary=%s\n' "$binary_name"
+          printf 'tool-root=%s\n' "$tool_root"
+          printf 'bin-dir=%s\n' "$bin_dir"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Cache pinned tool directory
+      id: tool-cache
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.cache/ci-tools/${{ steps.tool-meta.outputs.cache-slug }}
+        key: ${{ runner.os }}-${{ runner.arch }}-ci-tool-${{ steps.tool-meta.outputs.cache-slug }}
+
+    - name: Install cargo-binstall on cache miss
+      if: steps.tool-cache.outputs.cache-hit != 'true'
+      uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+
+    - name: Install pinned tool binary on cache miss
+      if: steps.tool-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        TOOL_NAME: ${{ inputs.tool }}
+        TOOL_VERSION: ${{ inputs.version }}
+        TOOL_ROOT: ${{ steps.tool-meta.outputs.tool-root }}
+        DISABLE_COMPILE: ${{ inputs.disable-compile }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+
+        args=(--no-confirm --force --root "$TOOL_ROOT")
+        if [ "${DISABLE_COMPILE:-true}" = "true" ]; then
+          args+=(--disable-strategies compile)
+        fi
+
+        cargo binstall "${args[@]}" "${TOOL_NAME}@${TOOL_VERSION}"
+
+    - name: Verify cached or installed tool binary
+      shell: bash
+      env:
+        BIN_DIR: ${{ steps.tool-meta.outputs.bin-dir }}
+        BIN_NAME: ${{ steps.tool-meta.outputs.binary }}
+        RUNNER_OS_NAME: ${{ runner.os }}
+      run: |
+        set -euo pipefail
+
+        if [ -f "${BIN_DIR}/${BIN_NAME}" ]; then
+          bin_path="${BIN_DIR}/${BIN_NAME}"
+          if [ "${RUNNER_OS_NAME:-}" != "Windows" ] && [ ! -x "$bin_path" ]; then
+            chmod +x "$bin_path"
+          fi
+        elif [ -f "${BIN_DIR}/${BIN_NAME}.exe" ]; then
+          bin_path="${BIN_DIR}/${BIN_NAME}.exe"
+        else
+          echo "Error: Expected cached or installed binary '${BIN_NAME}' in '${BIN_DIR}'" >&2
+          exit 1
+        fi
+
+        "$bin_path" --version

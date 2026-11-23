@@ -1,4 +1,4 @@
-//! Starter presets for [`super::NetworkPropagationTool`], including hub-and-spoke superspreaders.
+//! Starter and containment challenge presets for [`super::NetworkPropagationTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -65,6 +65,36 @@ pub(super) const HUB_SPOKE_SUPERSPREADERS_JSON: &str = r#"{
   }
 }"#;
 
+pub(super) const HUB_VACCINATION_CHALLENGE_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Super-Spreader Hub Vaccination",
+    "domain": "epidemiology",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "num_nodes": 72,
+    "beta": 0.16,
+    "gamma": 0.05,
+    "seed": 20261121
+  }
+}"#;
+
+pub(super) const BRIDGE_CUT_CHALLENGE_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Community Bridge Quarantine",
+    "domain": "epidemiology",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "num_nodes": 56,
+    "beta": 0.22,
+    "gamma": 0.04,
+    "seed": 20261122
+  }
+}"#;
+
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "network_propagation_starter",
@@ -88,5 +118,31 @@ inventory::submit! {
         domain: "epidemiology",
         tool_name: Some("NetworkPropagationTool"),
         preset_generator: || HUB_SPOKE_SUPERSPREADERS_JSON,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "network_propagation_hub_vaccination",
+        title: "Super-Spreader Hub Vaccination",
+        description: "Immunize up to 5 high-degree hubs on a seeded geometric contact network to collapse R₀.",
+        category: "Containment Challenges",
+        icon: "💉",
+        domain: "epidemiology",
+        tool_name: Some("NetworkPropagationTool"),
+        preset_generator: || HUB_VACCINATION_CHALLENGE_JSON,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "network_propagation_bridge_cut",
+        title: "Community Bridge Quarantine",
+        description: "Quarantine up to 5 inter-cluster bridge edges on a seeded contact graph to halt contagion spread.",
+        category: "Containment Challenges",
+        icon: "✂️",
+        domain: "epidemiology",
+        tool_name: Some("NetworkPropagationTool"),
+        preset_generator: || BRIDGE_CUT_CHALLENGE_JSON,
     }
 }

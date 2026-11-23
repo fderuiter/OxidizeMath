@@ -171,7 +171,7 @@ impl MathExplorerApp {
         if let Some(slot) = self.pane_slots.slot_mut(sec_pane) {
             s_old_sec = slot.saved_states.get(&p0_name).cloned();
             if let Some(s0) = s_old_p0 {
-                slot.saved_states.insert(sec_name, s0);
+                slot.saved_states.insert(sec_name, s0.into());
             }
         }
         if let Some(saved) = s_old_sec {
@@ -197,7 +197,8 @@ impl MathExplorerApp {
             self.tabs[new_p0] = box_sec;
         } else if let Some(slot) = self.pane_slots.slot_mut(sec_pane) {
             if let Some(st) = box_sec.save_state() {
-                slot.saved_states.insert(box_sec.name().to_string(), st);
+                slot.saved_states
+                    .insert(box_sec.name().to_string(), st.into());
             }
             let p0_name = self.tabs[new_p0].name().to_string();
             if let Some(saved) = slot.saved_states.get(&p0_name).cloned() {
