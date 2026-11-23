@@ -7,6 +7,10 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::randomization_schedule::{
+    build_deterministic_stratum_schedule, build_stratified_schedule_from_map,
+    SubjectAllocationRecord,
+};
 use crate::framework::CalloutManager;
 use math_explorer::applied::clinical_trials::{
     analysis::{calculate_risk_metrics, RiskMetrics},
@@ -184,18 +188,24 @@ pub struct SimpsonParadoxLab {
     pub is_simpson_reversal: bool,
     /// Validation or statistical error message when counts are invalid.
     pub validation_error: Option<String>,
+    /// Retained per-patient allocation schedule (`M-i`, `S-i`) for audit and `.csv`/`.json` export.
+    pub allocated_schedule: Vec<SubjectAllocationRecord>,
 }
 
 impl Default for SimpsonParadoxLab {
     fn default() -> Self {
+        let cfg = SimpsonParadoxConfig::default();
+        let allocated_schedule =
+            build_deterministic_stratum_schedule(cfg.mild_counts, cfg.severe_counts);
         let mut lab = Self {
-            config: SimpsonParadoxConfig::default(),
+            config: cfg,
             callout_manager: CalloutManager::new(),
             mild_eval: None,
             severe_eval: None,
             pooled_eval: None,
             is_simpson_reversal: false,
             validation_error: None,
+            allocated_schedule,
         };
         lab.recalculate();
         lab
@@ -206,6 +216,10 @@ impl SimpsonParadoxLab {
     /// Resets the lab to the canonical confounded Simpson's paradox configuration.
     pub fn reset_confounded_preset(&mut self) {
         self.config = SimpsonParadoxConfig::default();
+        self.allocated_schedule = build_deterministic_stratum_schedule(
+            self.config.mild_counts,
+            self.config.severe_counts,
+        );
         self.callout_manager.clear_auto();
         self.recalculate();
     }
@@ -223,6 +237,10 @@ impl SimpsonParadoxLab {
             self.config.severe_treatment_share,
             SEVERE_TREAT_RATE,
             SEVERE_CTRL_RATE,
+        );
+        self.allocated_schedule = build_deterministic_stratum_schedule(
+            self.config.mild_counts,
+            self.config.severe_counts,
         );
         self.recalculate();
     }
@@ -250,6 +268,7 @@ impl SimpsonParadoxLab {
         let Ok(assigned) = strat_rand.assign_stratified(&mut rng, &patients) else {
             return;
         };
+        self.allocated_schedule = build_stratified_schedule_from_map(&patients, &assigned);
         self.populate_counts_from_assignments(&patients, &assigned, &mut rng);
         self.recalculate();
     }

@@ -10,10 +10,12 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 
 ### Module Structure
 
-- **`win_ratio`**: Prioritized composite endpoint evaluation for clinical research:
-  - `WinRatioAnalysis`: Configurable hierarchical comparison engine for patient pairs.
-  - Comparison strategies (`HigherIsBetter`, `LowerIsBetter`, `UnmatchedPairing`).
-- **`clinical_trials`**: Biostatistical trial design, sample size determination, and survival curves.
+- **`win_ratio`**: Prioritized composite endpoint and bivariate Weibull probability win ratio evaluation for clinical research:
+  - `WinRatioAnalysis` & `WinRatioStats`: Configurable hierarchical comparison engine (`HigherIsBetter`, `LowerIsBetter`, `ThresholdComparator`) across `UnmatchedPairing` and `MatchedPairing` cohorts with 95% confidence intervals and p-values (`calculate_statistics`).
+  - `sample_win_ratio`: Pocock et al. (2012) two-tier matched-pair `WinLossCounts` (`calculate_sample_win_ratio`, `calculate_win_proportion`, `calculate_confidence_interval`, `calculate_significance_test_statistic`).
+  - `probability_win_ratio` & `simulation`: Parametric `BivariateWeibullModel` (`SimulationParams`, `win_ratio_parameter`) and Clenshaw-Curtis numerical integration (`ProbabilityWinRatioContext`, `calculate_probability_win_ratio`) over censoring horizons $c$.
+  - `bmi`: Anthropometric `calculate_bmi` covariate derivation ($\text{kg}/\text{m}^2$).
+- **`clinical_trials`**: Biostatistical trial design (`SimpleRandomizer`, `BlockRandomizer`, `StratifiedRandomizer`), Neyman-Pearson sample size determination (`calculate_sample_size_means`, `calculate_sample_size_proportions`), hypothesis testing (`TTestIndependent`, `ChiSquare2x2`), relative risk/odds ratio metrics (`calculate_risk_metrics`), and right-censored survival analysis (`kaplan_meier`, `try_estimate_hazard_ratio`).
 - **`pharmacokinetics`**: One-compartment oral ADME kinetics (`PKParameters`, `BatemanModel`, `half_life`, `t_max`, `solve_ka`), multi-dose linear superposition (`SuperpositionModel`), biphasic extended-release formulations (`TwoPulseModel`), and stereoselective chiral mixtures (`EnantiomerModel`).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
 - **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
@@ -26,39 +28,69 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 
 ## 2. Developer Instructions
 
-### Evaluating Clinical Outcomes with the Win Ratio
+### Evaluating Clinical Outcomes with the Win Ratio & Bivariate Weibull `PR(c)`
 
-Analyze hierarchical composite endpoints using pair-wise comparison strategies:
+Analyze hierarchical composite endpoints across fatal, hospitalization, and thresholded continuous biomarker tiers alongside Clenshaw-Curtis `PR(c)` integrals:
 
 ```rust
 # use domain_applied::__doctest_facade as math_explorer;
-use math_explorer::applied::win_ratio::pair_comparison::{
-    calculate_statistics, HigherIsBetter, UnmatchedPairing, WinRatioAnalysis,
+use math_explorer::applied::win_ratio::{
+    bmi::calculate_bmi,
+    pair_comparison::{
+        calculate_statistics, HigherIsBetter, LowerIsBetter, ThresholdComparator,
+        UnmatchedPairing, WinRatioAnalysis,
+    },
+    probability_win_ratio::{calculate_probability_win_ratio, ProbabilityWinRatioContext},
+    simulation::{
+        conditional_survival_x_given_t_control, conditional_survival_x_given_t_treatment,
+        marginal_survival_t_control, marginal_survival_t_treatment, pdf_t_control,
+        pdf_t_treatment, pdf_x_given_t_control, pdf_x_given_t_treatment, win_ratio_parameter,
+        SimulationParams,
+    },
 };
 
-// Define patient outcomes: [Survival Time, Hospitalization-Free Days]
-let treatment_patients = vec![
-    vec![900.0, 800.0],
-    vec![900.0, 500.0],
-];
+// Derive baseline BMI covariate and define [Survival Days, Hospitalizations, Biomarker]
+let bmi = calculate_bmi(74.0, 1.75);
+assert!(bmi > 24.0 && bmi < 25.0);
 
-let control_patients = vec![
-    vec![200.0, 100.0],
-    vec![300.0, 150.0],
-];
+let treatment_patients = vec![vec![900.0, 0.0, 78.0], vec![860.0, 1.0, 72.0]];
+let control_patients = vec![vec![320.0, 3.0, 55.0], vec![900.0, 2.0, 60.0]];
 
-// Configure hierarchical evaluation (Survival evaluated before Hospitalization)
+// Configure 3-tier hierarchy: Survival (higher), Hospitalizations (lower), Biomarker (threshold >= 5.0)
 let analysis = WinRatioAnalysis::new()
     .add_strategy(Box::new(HigherIsBetter))
-    .add_strategy(Box::new(HigherIsBetter));
+    .add_strategy(Box::new(LowerIsBetter))
+    .add_strategy(Box::new(ThresholdComparator { threshold: 5.0 }));
 
-// Perform pairwise comparison across cohorts
-let (wins, losses) = analysis.evaluate_pairs(&treatment_patients, &control_patients, &UnmatchedPairing);
+let (wins, losses) =
+    analysis.evaluate_pairs(&treatment_patients, &control_patients, &UnmatchedPairing);
 let statistics = calculate_statistics(wins, losses).expect("Valid statistics");
+assert_eq!((wins, losses), (3, 1));
+assert!((statistics.win_ratio - 3.0).abs() < 1.0e-12);
 
-assert_eq!(wins, 4);
-assert_eq!(losses, 0);
-assert!(statistics.win_ratio.is_infinite() || statistics.win_ratio > 1.0);
+// Evaluate Bivariate Weibull probability win ratio PR(c) at follow-up horizon c = 10.0
+let params = SimulationParams::new(0.10, 0.20, 0.80, 0.70);
+let c = 10.0;
+let pr_ctx = ProbabilityWinRatioContext::new(
+    marginal_survival_t_control(c, &params),
+    marginal_survival_t_treatment(c, &params),
+    c,
+    1.0e-6,
+);
+let w_c = pr_ctx.calculate_win_probability(
+    |t| marginal_survival_t_treatment(t, &params),
+    |t| pdf_t_control(t, &params),
+    |x| conditional_survival_x_given_t_treatment(x, c, &params),
+    |x| pdf_x_given_t_control(x, c, &params),
+);
+let l_c = pr_ctx.calculate_loss_probability(
+    |t| marginal_survival_t_control(t, &params),
+    |t| pdf_t_treatment(t, &params),
+    |x| conditional_survival_x_given_t_control(x, c, &params),
+    |x| pdf_x_given_t_treatment(x, c, &params),
+);
+let pr_c = calculate_probability_win_ratio(w_c, l_c);
+assert!(pr_c > 1.0 && win_ratio_parameter(&params) > 1.0);
 ```
 
 ### Modeling Multi-Dose ADME Pharmacokinetics
@@ -88,4 +120,10 @@ assert!(regimen.concentration(26.0) > regimen.concentration(2.0));
 
 ## 3. Ecosystem Integration
 
-Algorithms from `domain_applied` feed interactive simulation calculators in `math_explorer_gui`—including the `Pharmacokinetics (ADME)` multi-dose regimen planner, survival analysis, and trial sample size tools in `ClinicalTrialsTab`—enabling visual scenario exploration for clinical biostatisticians, pharmacometricians, battery engineers, and data scientists.
+Algorithms from `domain_applied` power interactive, HIPAA-safe client-side clinical workbenches in `math_explorer_gui` under `ClinicalTrialsTab`:
+
+- **`Composite Win Ratio` (`WinRatioTool`)**: Evaluates prioritized multi-tier `WinRatioAnalysis` (`HigherIsBetter`, `LowerIsBetter`, `ThresholdComparator`) across `UnmatchedPairing` and `MatchedPairing`, Pocock `WinLossCounts`, secondary continuous `TTestIndependent` (`GroupData`), `calculate_bmi`, and Clenshaw-Curtis `ProbabilityWinRatioContext` `BivariateWeibullModel` `PR(c)` curves with local CSV/TSV cohort import and `.md`/`.csv` report downloads.
+- **`Survival Curves (Kaplan-Meier)` (`SurvivalAnalysisTool`)**: Multi-arm CSV/TSV right-censored `kaplan_meier` estimation, `try_estimate_hazard_ratio`, `TimePoint` risk-set tables, and `.csv`/`.md`/`.svg` exports.
+- **`Sample Size Calculator` (`SampleSizeCalculatorTool`)**: Interactive `1 - \beta` vs $N$ statistical power curves for `Means` and `Proportions` with `.csv`/`.md` protocol sizing cards.
+- **`Randomization` (`RandomizationTool` & `SimpsonParadoxLab`)**: Retained per-patient allocation schedules (`Simple`, `Block`, and `Stratified`), cumulative arm-balance plots, and `.csv`/`.json` schedule exports.
+- **`Pharmacokinetics (ADME)` (`PharmacokineticsTool`)**: Multi-dose immediate-release, biphasic extended-release, and chiral ADME regimen planning.

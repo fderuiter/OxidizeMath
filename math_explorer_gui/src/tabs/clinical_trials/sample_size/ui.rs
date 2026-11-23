@@ -1,0 +1,225 @@
+//! Split-pane UI for `SampleSizeCalculatorTool`: parameter sliders, power curve plot, and protocol table.
+
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::export::{format_protocol_csv, format_protocol_markdown};
+use super::{CalculationMode, SampleSizeCalculatorTool};
+use crate::accessibility::AccessibleHoverText;
+use crate::app::SemanticPalette;
+use crate::reflective_ui::render_copyable_metric;
+use eframe::egui;
+use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints, Points};
+
+/// Renders the `SampleSizeCalculatorTool` sidebar, interactive power curve, and protocol sizing table.
+pub fn show_sample_size_inside(tool: &mut SampleSizeCalculatorTool, ui: &mut egui::Ui) {
+    tool.io_state.poll_save("protocol sizing table");
+    let panel_id = crate::framework::scoped_panel_id(ui, "sample_size_sidebar");
+    crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            render_sidebar_controls(tool, ui);
+        });
+    });
+
+    egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            render_power_curve_plot(tool, ui);
+            ui.add_space(8.0);
+            ui.separator();
+            render_protocol_sizing_table(tool, ui);
+        });
+    });
+}
+
+fn render_sidebar_controls(tool: &mut SampleSizeCalculatorTool, ui: &mut egui::Ui) {
+    ui.heading("Sample Size Design");
+    ui.label("Two-arm 1:1 Neyman-Pearson trial sizing.");
+    ui.add_space(6.0);
+
+    let mut changed = render_mode_and_error_controls(tool, ui);
+    ui.add_space(4.0);
+    changed |= render_effect_controls(tool, ui);
+    if changed {
+        tool.recalculate();
+    }
+
+    ui.separator();
+    render_required_size_banner(tool, ui);
+    ui.separator();
+    render_protocol_export_buttons(tool, ui);
+    tool.io_state.render_status(ui);
+}
+
+fn render_mode_and_error_controls(tool: &mut SampleSizeCalculatorTool, ui: &mut egui::Ui) -> bool {
+    let mut changed = false;
+    ui.group(|ui| {
+        ui.label(egui::RichText::new("Endpoint Family").strong());
+        changed |= ui
+            .radio_value(
+                &mut tool.mode,
+                CalculationMode::Means,
+                "Compare Means (t-test)",
+            )
+            .changed();
+        changed |= ui
+            .radio_value(
+                &mut tool.mode,
+                CalculationMode::Proportions,
+                "Compare Proportions (Chi-square)",
+            )
+            .changed();
+    });
+
+    ui.add_space(4.0);
+    ui.group(|ui| {
+        ui.label(egui::RichText::new("Error Rates").strong());
+        changed |= ui
+            .add(egui::Slider::new(&mut tool.alpha, 0.001..=0.20).text("α (Two-Sided)"))
+            .accessible_hover_text("Significance level α (e.g., 0.05 for 5% Type I error)")
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut tool.power, 0.50..=0.999).text("Power (1 - β)"))
+            .accessible_hover_text("Target statistical power 1 - β (e.g., 0.80 or 0.90)")
+            .changed();
+    });
+    changed
+}
+
+fn render_effect_controls(tool: &mut SampleSizeCalculatorTool, ui: &mut egui::Ui) -> bool {
+    let mut changed = false;
+    ui.group(|ui| match tool.mode {
+        CalculationMode::Means => {
+            ui.label(egui::RichText::new("Continuous Effect Assumptions").strong());
+            changed |= ui
+                .add(egui::Slider::new(&mut tool.delta, 0.01..=5.0).text("Effect Size (δ)"))
+                .accessible_hover_text("Minimum clinically meaningful difference between arms")
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut tool.sigma, 0.1..=10.0).text("Common SD (σ)"))
+                .accessible_hover_text("Assumed population standard deviation σ")
+                .changed();
+        }
+        CalculationMode::Proportions => {
+            ui.label(egui::RichText::new("Binary Event Proportions").strong());
+            changed |= ui
+                .add(egui::Slider::new(&mut tool.p1, 0.01..=0.99).text("Control p₁"))
+                .accessible_hover_text("Expected event proportion in Control group")
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut tool.p2, 0.01..=0.99).text("Treatment p₂"))
+                .accessible_hover_text("Expected event proportion in Treatment group")
+                .changed();
+        }
+    });
+    changed
+}
+
+fn render_required_size_banner(tool: &SampleSizeCalculatorTool, ui: &mut egui::Ui) {
+    let palette = SemanticPalette::from_visuals(ui.visuals());
+    match &tool.result {
+        Ok(n) => {
+            render_copyable_metric(ui, "Required per Arm (N)", &n.to_string());
+            render_copyable_metric(ui, "Total Enrollment (2N)", &(n * 2).to_string());
+        }
+        Err(err) => {
+            ui.colored_label(palette.error, format!("⚠ Error: {err}"));
+        }
+    }
+}
+
+fn render_protocol_export_buttons(tool: &mut SampleSizeCalculatorTool, ui: &mut egui::Ui) {
+    ui.label(egui::RichText::new("Protocol Sizing Exports").strong());
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .button("⬇ Protocol (.csv)")
+            .accessible_hover_text("Download protocol power-milestone sizing schedule as CSV")
+            .clicked()
+        {
+            tool.io_state
+                .trigger_save_csv("protocol_sample_size.csv", format_protocol_csv(tool));
+        }
+        if ui
+            .button("⬇ Protocol (.md)")
+            .accessible_hover_text("Download Markdown clinical protocol sample-size card")
+            .clicked()
+        {
+            tool.io_state.trigger_save_markdown(
+                "protocol_sample_size_card.md",
+                format_protocol_markdown(tool),
+            );
+        }
+        if ui
+            .button("📋 Copy Card")
+            .accessible_hover_text("Copy Markdown protocol sizing card to clipboard")
+            .clicked()
+        {
+            ui.ctx().copy_text(format_protocol_markdown(tool));
+            tool.io_state
+                .record_info("Copied protocol sizing card to clipboard".into());
+        }
+    });
+}
+
+fn render_power_curve_plot(tool: &SampleSizeCalculatorTool, ui: &mut egui::Ui) {
+    ui.heading("Statistical Power Curve (1 - β vs Sample Size per Arm N)");
+    let palette = SemanticPalette::from_visuals(ui.visuals());
+
+    Plot::new("sample_size_power_curve_plot")
+        .height(310.0)
+        .legend(Legend::default())
+        .x_axis_label("Sample Size per Arm (N)")
+        .y_axis_label("Statistical Power (1 - β)")
+        .include_y(0.48)
+        .include_y(1.0)
+        .show(ui, |plot_ui| {
+            if !tool.power_curve.is_empty() {
+                plot_ui.line(
+                    Line::new(
+                        "Power Curve (1 - β)",
+                        PlotPoints::new(tool.power_curve.clone()),
+                    )
+                    .color(palette.series_color(0))
+                    .width(2.4_f32),
+                );
+            }
+            plot_ui.hline(
+                HLine::new(format!("Target Power = {:.2}", tool.power), tool.power)
+                    .color(palette.warning)
+                    .style(LineStyle::Dashed { length: 8.0 }),
+            );
+            if let Ok(req_n) = tool.result {
+                plot_ui.points(
+                    Points::new(
+                        format!("Operating Point (N = {req_n}, 1-β = {:.2})", tool.power),
+                        vec![[req_n as f64, tool.power]],
+                    )
+                    .radius(5.5_f32)
+                    .color(palette.success),
+                );
+            }
+        });
+}
+
+fn render_protocol_sizing_table(tool: &SampleSizeCalculatorTool, ui: &mut egui::Ui) {
+    ui.heading("Protocol Power-Milestone Sizing Schedule");
+    if tool.protocol_rows.is_empty() {
+        ui.label("Adjust effect parameters (δ > 0 or p₁ ≠ p₂) to generate protocol milestones.");
+        return;
+    }
+    egui::Grid::new("protocol_sizing_grid")
+        .striped(true)
+        .spacing([24.0, 4.0])
+        .show(ui, |ui| {
+            ui.strong("Target Power (1 - β)");
+            ui.strong("Per-Arm Sample Size (N)");
+            ui.strong("Total 2-Arm Enrollment (2N)");
+            ui.end_row();
+            for row in &tool.protocol_rows {
+                ui.label(format!("{:.0}% ({:.2})", row.power * 100.0, row.power));
+                ui.label(row.n_per_arm.to_string());
+                ui.label(row.total_n.to_string());
+                ui.end_row();
+            }
+        });
+}
+
+// [cite:clinical_trials_statistics]
