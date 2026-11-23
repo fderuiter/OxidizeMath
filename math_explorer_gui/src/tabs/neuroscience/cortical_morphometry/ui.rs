@@ -46,13 +46,10 @@ impl CorticalMorphometryTool {
             });
 
         ui.add_space(4.0);
-        ui.add(
-            egui::Slider::new(&mut self.inflation, 0.0..=1.0)
-                .text("Cortical Inflation"),
-        )
-        .accessible_hover_text(
-            "Continuously unfolds buried sulci (0.0 folded cortex to 1.0 smooth ellipsoid)",
-        );
+        ui.add(egui::Slider::new(&mut self.inflation, 0.0..=1.0).text("Cortical Inflation"))
+            .accessible_hover_text(
+                "Continuously unfolds buried sulci (0.0 folded cortex to 1.0 smooth ellipsoid)",
+            );
         ui.add(
             egui::Slider::new(&mut self.sulcal_depth_mm, 0.2..=4.0)
                 .text("Sulcal Fold Amplitude (mm)"),
@@ -67,14 +64,8 @@ impl CorticalMorphometryTool {
         egui::CollapsingHeader::new("Deformable Surface Physics")
             .default_open(true)
             .show(ui, |ui| {
-                ui.add(
-                    egui::Slider::new(&mut self.alpha, 0.0..=2.0)
-                        .text("Membrane Tension (α)"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut self.beta, 0.0..=2.0)
-                        .text("Laplacian Bending (β)"),
-                );
+                ui.add(egui::Slider::new(&mut self.alpha, 0.0..=2.0).text("Membrane Tension (α)"));
+                ui.add(egui::Slider::new(&mut self.beta, 0.0..=2.0).text("Laplacian Bending (β)"));
                 ui.add(
                     egui::Slider::new(&mut self.sigma, 0.2..=3.0)
                         .text("MRI Smoothing Kernel σ (mm)"),
@@ -84,8 +75,7 @@ impl CorticalMorphometryTool {
                         .text("Evolution Step Rate (η)"),
                 );
                 ui.add(
-                    egui::Slider::new(&mut self.evolution_steps, 0..=25)
-                        .text("Deformable Steps"),
+                    egui::Slider::new(&mut self.evolution_steps, 0..=25).text("Deformable Steps"),
                 );
             });
     }
@@ -120,14 +110,8 @@ impl CorticalMorphometryTool {
         ui.collapsing("Mesh Resolution & Camera", |ui| {
             self.u_resolution = self.u_resolution.clamp(12, 48);
             self.v_resolution = self.v_resolution.clamp(12, 36);
-            ui.add(
-                egui::Slider::new(&mut self.u_resolution, 12..=48)
-                    .text("Azimuthal Rings (U)"),
-            );
-            ui.add(
-                egui::Slider::new(&mut self.v_resolution, 12..=36)
-                    .text("Meridional Rings (V)"),
-            );
+            ui.add(egui::Slider::new(&mut self.u_resolution, 12..=48).text("Azimuthal Rings (U)"));
+            ui.add(egui::Slider::new(&mut self.v_resolution, 12..=36).text("Meridional Rings (V)"));
             self.camera.ui(ui);
         });
     }
@@ -141,9 +125,7 @@ impl CorticalMorphometryTool {
         ));
         ui.label(format!(
             "Total Surface Energy: {:.1} (E_int {:.1}, E_ext {:.1})",
-            self.cache.total_energy,
-            self.cache.internal_energy_val,
-            self.cache.external_energy_val
+            self.cache.total_energy, self.cache.internal_energy_val, self.cache.external_energy_val
         ));
         ui.label(format!(
             "Segmentation Accuracy: MRF {:.1}% vs ML {:.1}%",

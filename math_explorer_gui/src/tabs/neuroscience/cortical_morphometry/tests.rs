@@ -97,14 +97,20 @@ fn test_singular_collinear_glm_renders_warning_banner_without_panic() {
         "Expected singular X^T X warning, got {:?}",
         tool.cache.glm_warning
     );
-    let ak = out.platform_output.accesskit_update.expect("AccessKit tree");
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .expect("AccessKit tree");
     let rendered_banner = ak.nodes.iter().any(|(_, n)| {
         n.label()
             .into_iter()
             .chain(n.value())
             .any(|t| t.contains("singular"))
     });
-    assert!(rendered_banner, "Expected singular GLM warning banner in UI");
+    assert!(
+        rendered_banner,
+        "Expected singular GLM warning banner in UI"
+    );
 }
 
 #[test]
