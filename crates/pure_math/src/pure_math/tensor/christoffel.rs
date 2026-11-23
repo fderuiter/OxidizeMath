@@ -1,6 +1,7 @@
 use super::metric::Metric;
+use super::static_metric::{StaticMetric, static_christoffel_symbols};
 use super::types::TensorError;
-use nalgebra::{DMatrix, DVector};
+use nalgebra::{DMatrix, DVector, SMatrix, SVector};
 
 /// Computes the Christoffel symbols of the second kind $\Gamma^k_{ij}$ at a given point.
 ///
@@ -104,4 +105,83 @@ pub fn christoffel_symbols(
     }
 
     Ok(gammas)
+}
+
+/// Computes the Christoffel symbols of the second kind $\Gamma^k_{ij}$ on stack-allocated
+/// [`SMatrix`] buffers without `DMatrix` heap allocations.
+///
+/// Uses fixed-dimension [`StaticMetric`] central-difference evaluation so interactive geodesic,
+/// Paczyński-Wiita connection validation, and WebAssembly loops run with zero heap allocations.
+///
+/// # Errors
+///
+/// Returns [`TensorError::SingularMetric`] if `point` contains non-finite coordinates or if the
+/// metric tensor is singular at `point` or any central-difference stencil evaluation.
+///
+/// # Examples
+///
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::nalgebra::{SMatrix, SVector};
+/// use math_explorer::pure_math::tensor::StaticRiemannianMetric;
+/// use math_explorer::pure_math::tensor::christoffel::christoffel_symbols_fixed;
+///
+/// let polar = StaticRiemannianMetric::<_, 2>::new(|p: &SVector<f64, 2>| {
+///     let r = p[0];
+///     Ok(SMatrix::<f64, 2, 2>::new(1.0, 0.0, 0.0, r * r))
+/// });
+/// let pt = SVector::<f64, 2>::new(2.0, std::f64::consts::FRAC_PI_4);
+/// let gammas = christoffel_symbols_fixed(&polar, &pt).unwrap();
+/// assert!((gammas[0][(1, 1)] - (-2.0)).abs() < 1e-6);
+/// assert!((gammas[1][(0, 1)] - 0.5).abs() < 1e-6);
+/// ```
+#[verified_engine::verified]
+pub fn christoffel_symbols_fixed<M: StaticMetric<N> + ?Sized, const N: usize>(
+    metric: &M,
+    point: &SVector<f64, N>,
+) -> Result<[SMatrix<f64, N, N>; N], TensorError> {
+    static_christoffel_symbols(metric, point)
+}
+
+#[cfg(test)]
+mod fixed_tests {
+    use super::*;
+    use crate::pure_math::tensor::{RiemannianMetric, StaticRiemannianMetric, TwoSphereMetric};
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_christoffel_symbols_fixed_zero_alloc_and_matches_dynamic() {
+        let dyn_polar = RiemannianMetric::new(|p: &DVector<f64>| {
+            let r = p[0];
+            DMatrix::from_vec(2, 2, vec![1.0, 0.0, 0.0, r * r])
+        });
+        let fixed_polar = StaticRiemannianMetric::<_, 2>::new(|p: &SVector<f64, 2>| {
+            let r = p[0];
+            Ok(SMatrix::<f64, 2, 2>::new(1.0, 0.0, 0.0, r * r))
+        });
+        let sphere = TwoSphereMetric::new(2.5).expect("valid radius");
+
+        let dyn_pt = DVector::from_vec(vec![3.0, 0.8]);
+        let fixed_pt = SVector::<f64, 2>::new(3.0, 0.8);
+        let dyn_gamma = christoffel_symbols(&dyn_polar, &dyn_pt).expect("dynamic christoffel");
+
+        let ((fixed_gamma, sphere_gamma), metrics) =
+            verified_engine::engine::VerifiedEngine::run_verified(|| {
+                let g1 = christoffel_symbols_fixed(&fixed_polar, &fixed_pt).expect("fixed polar");
+                let g2 = christoffel_symbols_fixed(&sphere, &fixed_pt).expect("fixed sphere");
+                (g1, g2)
+            });
+        assert!(metrics.function_calls > 0);
+
+        for k in 0..2 {
+            for i in 0..2 {
+                for j in 0..2 {
+                    assert!((fixed_gamma[k][(i, j)] - dyn_gamma[k][(i, j)]).abs() < 1e-6);
+                }
+            }
+        }
+        let exact_sphere = sphere.christoffel_at(&fixed_pt).expect("exact sphere");
+        assert!((sphere_gamma[0][(1, 1)] - exact_sphere[0][(1, 1)]).abs() < 1e-7);
+        assert!((sphere_gamma[1][(0, 1)] - exact_sphere[1][(0, 1)]).abs() < 1e-7);
+    }
 }

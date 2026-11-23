@@ -405,12 +405,10 @@ impl InteractiveTool for IsingModelTool {
         self.eval_ising_challenge()
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
 
-    #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
