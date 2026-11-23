@@ -1,4 +1,5 @@
 // @explorer_feature = "physics"
+// @explorer_order = 18
 // Interactive 2D Helmholtz angular-spectrum wave diffraction and Gerchberg-Saxton
 // phase-holography workbench under the Physics academic domain.
 
