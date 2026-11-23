@@ -1005,21 +1005,37 @@ def run_parallel_preload_and_sw_http_cache_check(
                 return
 
             rev = revision_state["rev"]
-            accept_enc = self.headers.get("Accept-Encoding", "")
             content_encoding: str | None = None
-            br_sidecar = target.with_name(target.name + ".br")
-            gz_sidecar = target.with_name(target.name + ".gz")
+            accept_tokens = {
+                tok.split(";")[0].strip().lower()
+                for tok in self.headers.get("Accept-Encoding", "").split(",")
+                if tok.strip()
+            }
+            br_target = Path(f"{target}.br")
+            gz_target = Path(f"{target}.gz")
             if clean_path == "/bootstrap.js" and rev > 1:
                 payload = target.read_bytes() + f"\n// origin-rev-{rev}\n".encode("utf-8")
-            elif "br" in accept_enc and br_sidecar.is_file():
-                payload = br_sidecar.read_bytes()
+            elif (
+                clean_path.endswith(".wasm")
+                and "br" in accept_tokens
+                and br_target.is_file()
+                and br_target.stat().st_size > 0
+            ):
+                payload = br_target.read_bytes()
                 content_encoding = "br"
-            elif "gzip" in accept_enc and gz_sidecar.is_file():
-                payload = gz_sidecar.read_bytes()
+            elif (
+                clean_path.endswith(".wasm")
+                and "gzip" in accept_tokens
+                and gz_target.is_file()
+                and gz_target.stat().st_size > 0
+            ):
+                payload = gz_target.read_bytes()
                 content_encoding = "gzip"
             else:
                 payload = target.read_bytes()
-            etag = f'"{rel_name}-{content_encoding or "identity"}-v{rev}-{len(payload)}"'
+
+            enc_tag = content_encoding or "identity"
+            etag = f'"{rel_name}-{enc_tag}-v{rev}-{len(payload)}"'
             content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
             if clean_path.endswith(".wasm"):
                 content_type = "application/wasm"
@@ -1029,8 +1045,9 @@ def run_parallel_preload_and_sw_http_cache_check(
                     origin_hits.append((clean_path, 304))
                 self.send_response(304)
                 self.send_header("ETag", etag)
-                self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Cache-Control", "public, max-age=600")
+                if clean_path.endswith(".wasm"):
+                    self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Content-Security-Policy", csp)
                 self.end_headers()
                 return
@@ -1041,7 +1058,8 @@ def run_parallel_preload_and_sw_http_cache_check(
             self.send_header("Content-Type", content_type)
             if content_encoding:
                 self.send_header("Content-Encoding", content_encoding)
-            self.send_header("Vary", "Accept-Encoding")
+            if clean_path.endswith(".wasm"):
+                self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("ETag", etag)
             self.send_header("Cache-Control", "public, max-age=600")

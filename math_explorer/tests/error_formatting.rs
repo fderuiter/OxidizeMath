@@ -1,4 +1,4 @@
-//! Verifies that all 30 public error enums re-exported by `math_explorer::error`
+//! Verifies that all 31 public error enums re-exported by `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -17,7 +17,8 @@ use math_explorer::error::{
     DoseFluenceError, EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError,
     Glicko2Error, HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError,
     MarkovError, MathError, NumberTheoryError, OuError, PharmacokineticsError, RadarError,
-    ShannonError, SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
+    SandpileError, ShannonError, SolidStateError, StandardModelError, StatMechError, TdaError,
+    ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -123,7 +124,7 @@ fn applied_ai_bio_climate_epi_errors_emit_readable_display_and_metadata() {
 }
 
 #[test]
-fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
+fn physics_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "ChaosError",
         &ChaosError::InvalidParameter("dt".to_string()),
@@ -154,6 +155,14 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         },
     );
     assert_readable_diagnostic(
+        "SandpileError",
+        &SandpileError::InvalidDimensions {
+            width: 0,
+            height: 8,
+            max_dim: 128,
+        },
+    );
+    assert_readable_diagnostic(
         "SolidStateError",
         &SolidStateError::PauliExclusionViolation { requested: 2 },
     );
@@ -162,7 +171,10 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         &StandardModelError::UnbrokenSymmetry { mu2: 1.0 },
     );
     assert_readable_diagnostic("StatMechError", &StatMechError::InvalidTemperature(-5.0));
+}
 
+#[test]
+fn wrapped_math_errors_emit_readable_display_and_metadata() {
     let math_err = MathError::StrictlyOutOfBounds {
         value: 0.0,
         min: 0.0,

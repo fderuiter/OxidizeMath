@@ -76,8 +76,40 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     ]
 }
 
-pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+fn verify_physics_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     vec![
+        check_leaf(
+            error::ChaosError::InvalidParameter("sigma".to_string()),
+            bus,
+        ),
+        check_leaf(error::DoseFluenceError::Singularity, bus),
+        check_leaf(error::FluidError::InvalidViscosity { value: -0.1 }, bus),
+        check_leaf(error::GatingError::InterlockLatched, bus),
+        check_leaf(error::HighEnergyError::InvalidMomentum, bus),
+        check_leaf(error::NuclearError::InvalidHalfLife, bus),
+        check_leaf(
+            error::RadarError::InvalidConfiguration("cfg".to_string()),
+            bus,
+        ),
+        check_leaf(
+            error::SandpileError::InvalidDimensions {
+                width: 0,
+                height: 8,
+                max_dim: 128,
+            },
+            bus,
+        ),
+        check_leaf(
+            error::SolidStateError::ComputationError("err".to_string()),
+            bus,
+        ),
+        check_leaf(error::StandardModelError::InvalidFlavors { nf: -1.0 }, bus),
+        check_leaf(error::StatMechError::InvalidTemperature(-5.0), bus),
+    ]
+}
+
+pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+    let mut leaves = vec![
         check_leaf(error::AIError::OptimizationDivergence, bus),
         check_leaf(error::BatteryError::NegativeCycles(-5.0), bus),
         check_leaf(error::ClinicalTrialError::ZeroTotalCount, bus),
@@ -110,26 +142,9 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::ClimateError::ZeroLevels, bus),
         check_leaf(error::EpidemiologyError::SingularTransitionMatrix, bus),
         check_leaf(error::NetworkModelError::InvalidNodeCount, bus),
-        check_leaf(
-            error::ChaosError::InvalidParameter("sigma".to_string()),
-            bus,
-        ),
-        check_leaf(error::DoseFluenceError::Singularity, bus),
-        check_leaf(error::FluidError::InvalidViscosity { value: -0.1 }, bus),
-        check_leaf(error::GatingError::InterlockLatched, bus),
-        check_leaf(error::HighEnergyError::InvalidMomentum, bus),
-        check_leaf(error::NuclearError::InvalidHalfLife, bus),
-        check_leaf(
-            error::RadarError::InvalidConfiguration("cfg".to_string()),
-            bus,
-        ),
-        check_leaf(
-            error::SolidStateError::ComputationError("err".to_string()),
-            bus,
-        ),
-        check_leaf(error::StandardModelError::InvalidFlavors { nf: -1.0 }, bus),
-        check_leaf(error::StatMechError::InvalidTemperature(-5.0), bus),
-    ]
+    ];
+    leaves.extend(verify_physics_leaves(bus));
+    leaves
 }
 
 pub fn verify_six_umbrellas_and_fifteen_wrappers(bus: &DiagnosticBus) {
@@ -199,11 +214,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 52);
-    assert_eq!(*events.lock().unwrap(), 52);
+    assert_eq!(converted.len(), 53);
+    assert_eq!(*events.lock().unwrap(), 53);
 
     verify_six_umbrellas_and_fifteen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 58);
+    assert_eq!(*events.lock().unwrap(), 59);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -240,6 +255,7 @@ fn verify_prelude_domain_leaves() {
         p::HighEnergyError,
         p::NuclearError,
         p::RadarError,
+        p::SandpileError,
         p::SolidStateError,
         p::StandardModelError,
         p::StatMechError,

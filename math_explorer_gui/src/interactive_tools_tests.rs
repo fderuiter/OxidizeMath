@@ -25,6 +25,7 @@ mod tests {
             &ctx,
         );
         smoke_check_tool::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(&ctx);
+        smoke_check_tool::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(&ctx);
         smoke_check_tool::<
             crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool,
         >(&ctx);
@@ -57,8 +58,12 @@ mod tests {
         smoke_check_tool::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(&ctx);
         smoke_check_tool::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(&ctx);
         smoke_check_tool::<crate::tabs::ai::grid_world::GridWorldTool>(&ctx);
+        smoke_check_tool::<crate::tabs::ai::closed_loop_control::ClosedLoopControlTool>(&ctx);
         smoke_check_tool::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(&ctx);
         smoke_check_tool::<crate::tabs::medical::dose::DoseCalculationTool>(&ctx);
+        smoke_check_tool::<crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool>(
+            &ctx,
+        );
         smoke_check_tool::<crate::tabs::medical::radar_gating::RadarGatingTool>(&ctx);
         smoke_check_tool::<crate::tabs::epidemiology::network_propagation::NetworkPropagationTool>(
             &ctx,

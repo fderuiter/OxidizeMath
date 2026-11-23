@@ -6,6 +6,7 @@ use eframe::egui;
 pub mod auction;
 pub mod decision_bandit;
 pub mod glicko2;
+pub mod markov;
 pub mod mean_field;
 pub mod nash_shapley;
 pub mod replicator;
