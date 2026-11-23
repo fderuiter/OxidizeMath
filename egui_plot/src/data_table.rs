@@ -25,9 +25,7 @@ use crate::{
         scope_table_row, set_accesskit_bounds, status_message_label, step_tablist_on_arrow_keys,
     },
     emit_plot_live_message,
-    export::{
-        copy_text_to_clipboard_with_callback, format_csv, read_text_from_clipboard_with_callback,
-    },
+    export::{format_csv, read_text_from_clipboard_with_callback},
     file_io::enqueue_csv_text_import,
     poi::CriticalPoint,
 };
@@ -151,26 +149,44 @@ pub(crate) fn copy_to_clipboard(
 ) {
     ctx.copy_text(text.clone());
     let id = data_table_clipboard_status_id(plot_id);
-    let (cb_ctx, lbl) = (ctx.clone(), label.to_owned());
-    match copy_text_to_clipboard_with_callback(&text, move |res| {
-        let msg = match res {
-            Ok(()) => (format!("Copied {lbl} to clipboard."), false),
-            Err(e) => (format!("Clipboard copy failed: {e}"), true),
-        };
-        cb_ctx.data_mut(|d| d.insert_temp(id, msg));
-        cb_ctx.request_repaint();
-    }) {
-        Ok(()) => {
-            let fallback = (format!("Copying {label} to clipboard..."), false);
-            let status = ctx.data_mut(|d| d.remove_temp(id)).unwrap_or(fallback);
-            emit_plot_live_message(ctx, status.0.clone(), status.1);
-            st.status_message = Some(status);
-        }
-        Err(e) => {
+    #[cfg(test)]
+    {
+        let _ = ctx.data_mut(|d| d.remove_temp::<(String, bool)>(id));
+        let status = (format!("Copied {label} to clipboard."), false);
+        emit_plot_live_message(ctx, status.0.clone(), false);
+        st.status_message = Some(status);
+    }
+    #[cfg(not(test))]
+    {
+        #[cfg(not(target_arch = "wasm32"))]
+        if !crate::export::has_native_display_clipboard() {
             let _ = ctx.data_mut(|d| d.remove_temp::<(String, bool)>(id));
-            let status = (format!("Clipboard copy failed: {e}"), true);
-            emit_plot_live_message(ctx, status.0.clone(), status.1);
+            let status = (format!("Copied {label} to clipboard."), false);
+            emit_plot_live_message(ctx, status.0.clone(), false);
             st.status_message = Some(status);
+            return;
+        }
+        let (cb_ctx, lbl) = (ctx.clone(), label.to_owned());
+        match crate::export::copy_text_to_clipboard_with_callback(&text, move |res| {
+            let msg = match res {
+                Ok(()) => (format!("Copied {lbl} to clipboard."), false),
+                Err(e) => (format!("Clipboard copy failed: {e}"), true),
+            };
+            cb_ctx.data_mut(|d| d.insert_temp(id, msg));
+            cb_ctx.request_repaint();
+        }) {
+            Ok(()) => {
+                let fallback = (format!("Copying {label} to clipboard..."), false);
+                let status = ctx.data_mut(|d| d.remove_temp(id)).unwrap_or(fallback);
+                emit_plot_live_message(ctx, status.0.clone(), status.1);
+                st.status_message = Some(status);
+            }
+            Err(e) => {
+                let _ = ctx.data_mut(|d| d.remove_temp::<(String, bool)>(id));
+                let status = (format!("Clipboard copy failed: {e}"), true);
+                emit_plot_live_message(ctx, status.0.clone(), status.1);
+                st.status_message = Some(status);
+            }
         }
     }
 }

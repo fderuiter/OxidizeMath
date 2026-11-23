@@ -628,7 +628,7 @@ fn color_image_to_rgba_bytes(image: &egui::ColorImage) -> Vec<u8> {
 static NATIVE_CLIPBOARD: std::sync::Mutex<Option<arboard::Clipboard>> = std::sync::Mutex::new(None);
 
 #[cfg(not(target_arch = "wasm32"))]
-fn should_retry_native_clipboard() -> bool {
+pub(crate) fn has_native_display_clipboard() -> bool {
     cfg!(any(target_os = "macos", target_os = "windows"))
         || std::env::var_os("DISPLAY").is_some()
         || std::env::var_os("WAYLAND_DISPLAY").is_some()
@@ -639,11 +639,7 @@ fn with_native_clipboard<F>(mut op: F) -> Result<(), String>
 where
     F: FnMut(&mut arboard::Clipboard) -> Result<(), arboard::Error>,
 {
-    let max_attempts = if should_retry_native_clipboard() {
-        3
-    } else {
-        1
-    };
+    let max_attempts = if has_native_display_clipboard() { 3 } else { 1 };
     let mut slot = NATIVE_CLIPBOARD
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
