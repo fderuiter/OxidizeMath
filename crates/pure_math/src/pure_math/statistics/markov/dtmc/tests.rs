@@ -286,19 +286,19 @@ fn test_dtmc_serde_roundtrip_and_validation_rejections() {
     let bad_row =
         r#"{"transition_matrix":[[0.5,0.2],[0.0,1.0]],"state_types":["Transient","Absorbing"]}"#;
     let err = serde_json::from_str::<MarkovChain<f64>>(bad_row).unwrap_err();
-    assert!(err.to_string().contains("NotStochastic"));
+    assert!(err.to_string().contains("not stochastic"));
 
     // Reject absorbing row without self-loop 1.0 via MarkovError::InvalidState
     let bad_abs =
         r#"{"transition_matrix":[[0.5,0.5],[0.4,0.6]],"state_types":["Transient","Absorbing"]}"#;
     let err2 = serde_json::from_str::<MarkovChain<f64>>(bad_abs).unwrap_err();
-    assert!(err2.to_string().contains("InvalidState"));
+    assert!(err2.to_string().contains("Invalid Markov state"));
 
     // Reject NaN raw token and out-of-range probability
     let bad_prob =
         r#"{"transition_matrix":[[1.5,-0.5],[0.0,1.0]],"state_types":["Transient","Absorbing"]}"#;
     let err3 = serde_json::from_str::<MarkovChain<f64>>(bad_prob).unwrap_err();
-    assert!(err3.to_string().contains("InvalidProbability"));
+    assert!(err3.to_string().contains("Invalid probability"));
     let bad_nan =
         r#"{"transition_matrix":[[NaN,1.0],[0.0,1.0]],"state_types":["Transient","Absorbing"]}"#;
     assert!(serde_json::from_str::<MarkovChain<f64>>(bad_nan).is_err());

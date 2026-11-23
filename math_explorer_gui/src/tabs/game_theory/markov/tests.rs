@@ -15,7 +15,8 @@ fn test_utf8_and_bom_csv_and_json_imports_plus_atomic_rollback() {
     let baseline = tool.save_state().expect("baseline state");
 
     // UTF-8 BOM-prefixed CSV observation sequence with header and labels
-    let bom_csv = "\u{feff}step,observation\n0,Small Up\n1,Large Up\n2,Flat\n3,Small Down\n4,Large Down\n";
+    let bom_csv =
+        "\u{feff}step,observation\n0,Small Up\n1,Large Up\n2,Flat\n3,Small Down\n4,Large Down\n";
     let msg = tool.import_file_str(bom_csv).expect("BOM CSV import");
     assert!(msg.contains("5 CSV observation"));
     assert_eq!(tool.config.hmm.observations, vec![1, 0, 2, 3, 4]);
@@ -24,7 +25,9 @@ fn test_utf8_and_bom_csv_and_json_imports_plus_atomic_rollback() {
 
     // Atomic rollback on malformed CSV observation symbol
     let snapshot_after_valid = tool.save_state().unwrap();
-    assert!(tool.import_file_str("step,observation\n0,NOT_A_SYMBOL\n").is_err());
+    assert!(tool
+        .import_file_str("step,observation\n0,NOT_A_SYMBOL\n")
+        .is_err());
     assert_eq!(tool.save_state().unwrap(), snapshot_after_valid);
 
     // UTF-8 BOM-prefixed standalone HiddenMarkovModel JSON import and roundtrip

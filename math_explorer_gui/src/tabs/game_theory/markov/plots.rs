@@ -29,10 +29,7 @@ impl MarkovSequenceWorkbenchTool {
                         "Posterior Heatmap + Viterbi Path",
                     ),
                     (HmmPlotView::PosteriorLines, "γ_t(i) Posterior Trajectories"),
-                    (
-                        HmmPlotView::LogLikelihoodCurve,
-                        "Baum-Welch Log-Likelihood",
-                    ),
+                    (HmmPlotView::LogLikelihoodCurve, "Baum-Welch Log-Likelihood"),
                 ] {
                     ui.selectable_value(&mut self.hmm_plot_view, view, label);
                 }
@@ -112,12 +109,9 @@ impl MarkovSequenceWorkbenchTool {
                 let avg_p = row[t..end_t].iter().sum::<f64>() / (end_t - t) as f64;
                 let (x0, x1) = (t as f64 - 0.5, end_t as f64 - 0.5);
                 let (y0, y1) = (s as f64, (s + 1) as f64);
-                let cell = Polygon::new(
-                    "",
-                    vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
-                )
-                .fill_color(posterior_cell_color(avg_p, high_contrast))
-                .stroke(egui::Stroke::NONE);
+                let cell = Polygon::new("", vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]])
+                    .fill_color(posterior_cell_color(avg_p, high_contrast))
+                    .stroke(egui::Stroke::NONE);
                 plot_ui.polygon(cell);
                 t = end_t;
             }
@@ -264,8 +258,17 @@ impl MarkovSequenceWorkbenchTool {
             plot_ui.bar_chart(BarChart::new("Steady-State π", bars).width(0.55));
         } else {
             let src = self.config.ctmc.source_state;
-            let row = self.ctmc_out.eval_matrix.get(src).cloned().unwrap_or_default();
-            let pts: Vec<[f64; 2]> = row.into_iter().enumerate().map(|(j, p)| [j as f64, p]).collect();
+            let row = self
+                .ctmc_out
+                .eval_matrix
+                .get(src)
+                .cloned()
+                .unwrap_or_default();
+            let pts: Vec<[f64; 2]> = row
+                .into_iter()
+                .enumerate()
+                .map(|(j, p)| [j as f64, p])
+                .collect();
             plot_ui.line(Line::new("P(t_eval)", pts).color(palette.series_color(0)));
         }
     }
@@ -329,12 +332,9 @@ impl MarkovSequenceWorkbenchTool {
                     .width(2.1_f32),
                 );
                 plot_ui.points(
-                    Points::new(
-                        format!("N[{}, :]", self.config.dtmc.state_names[st_i]),
-                        pts,
-                    )
-                    .color(palette.series_color(r))
-                    .radius(4.2_f32),
+                    Points::new(format!("N[{}, :]", self.config.dtmc.state_names[st_i]), pts)
+                        .color(palette.series_color(r))
+                        .radius(4.2_f32),
                 );
             }
         }

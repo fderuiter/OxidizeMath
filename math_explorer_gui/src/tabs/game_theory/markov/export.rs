@@ -18,8 +18,9 @@ impl MarkovSequenceWorkbenchTool {
     /// Formats the decoded Viterbi state sequence and per-step Forward-Backward posteriors as CSV.
     #[must_use]
     pub fn format_hmm_timeline_csv(&self) -> String {
-        let mut header =
-            String::from("step,observation_idx,observation_label,viterbi_state_idx,viterbi_state_label");
+        let mut header = String::from(
+            "step,observation_idx,observation_label,viterbi_state_idx,viterbi_state_label",
+        );
         for name in &self.config.hmm.state_names {
             header.push_str(&format!(",posterior_{}", csv_escape_field(name)));
         }

@@ -311,7 +311,7 @@ mod tests {
         // Reject non-stochastic transition row via MarkovError
         let bad_row = r#"{"initial":[0.5,0.5],"transitions":[[0.8,0.5],[0.4,0.6]],"emissions":[[0.5,0.5],[0.5,0.5]]}"#;
         let err = serde_json::from_str::<HiddenMarkovModel<f64>>(bad_row).unwrap_err();
-        assert!(err.to_string().contains("NotStochastic"));
+        assert!(err.to_string().contains("not stochastic"));
 
         // Reject unknown fields
         let unknown = r#"{"initial":[0.5,0.5],"transitions":[[0.5,0.5],[0.5,0.5]],"emissions":[[0.5,0.5],[0.5,0.5]],"extra":1}"#;

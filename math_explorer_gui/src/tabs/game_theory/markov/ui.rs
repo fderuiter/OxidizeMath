@@ -135,7 +135,8 @@ impl MarkovSequenceWorkbenchTool {
                     }
                     if ui.button("⬇ DTMC Report (.json)").clicked() {
                         let json = self.format_dtmc_report_json();
-                        self.io_state.trigger_save_json("dtmc_epv_report.json", json);
+                        self.io_state
+                            .trigger_save_json("dtmc_epv_report.json", json);
                     }
                 });
             }

@@ -48,7 +48,10 @@ fn resolve_symbol_token(token: &str, symbol_names: &[String]) -> Result<usize, S
 }
 
 fn is_obs_csv_header(cols: &[&str], symbol_names: &[String]) -> bool {
-    let first = cols.first().map(|s| s.trim().trim_matches('"')).unwrap_or("");
+    let first = cols
+        .first()
+        .map(|s| s.trim().trim_matches('"'))
+        .unwrap_or("");
     if resolve_symbol_token(first, symbol_names).is_ok() {
         return false;
     }
@@ -220,8 +223,9 @@ impl MarkovSequenceWorkbenchTool {
             .collect();
         let num_abs = dtmc.num_absorbing();
         if candidate.dtmc.absorbing_rewards.len() != num_abs {
-            candidate.dtmc.absorbing_rewards =
-                (0..num_abs).map(|k| if k == 0 { 1.0 } else { 0.0 }).collect();
+            candidate.dtmc.absorbing_rewards = (0..num_abs)
+                .map(|k| if k == 0 { 1.0 } else { 0.0 })
+                .collect();
         }
         self.apply_config(candidate)?;
         Ok(format!("{n}-state Absorbing DTMC"))
@@ -242,8 +246,8 @@ impl MarkovSequenceWorkbenchTool {
             return Ok("preset envelope".to_string());
         }
         if cleaned.contains("\"hmm\"") && cleaned.contains("\"ctmc\"") {
-            let cfg: MarkovWorkbenchPresetConfig =
-                serde_json::from_str(cleaned).map_err(|e| format!("Invalid workbench JSON: {e}"))?;
+            let cfg: MarkovWorkbenchPresetConfig = serde_json::from_str(cleaned)
+                .map_err(|e| format!("Invalid workbench JSON: {e}"))?;
             self.apply_config(cfg)?;
             return Ok("workbench configuration".to_string());
         }
@@ -278,9 +282,11 @@ impl MarkovSequenceWorkbenchTool {
         let mut obs = Vec::with_capacity(tokens.len());
         for (idx, tok) in tokens.iter().enumerate() {
             let sym = match tok {
-                JsonObsToken::Index(v) => (*v < self.config.hmm.symbol_names.len())
-                    .then_some(*v)
-                    .ok_or_else(|| format!("Entry {}: symbol {v} out of bounds", idx + 1))?,
+                JsonObsToken::Index(v) => {
+                    (*v < self.config.hmm.symbol_names.len())
+                        .then_some(*v)
+                        .ok_or_else(|| format!("Entry {}: symbol {v} out of bounds", idx + 1))?
+                }
                 JsonObsToken::Label(s) => resolve_symbol_token(s, &self.config.hmm.symbol_names)
                     .map_err(|e| format!("Entry {}: {e}", idx + 1))?,
             };
@@ -353,8 +359,9 @@ impl MarkovSequenceWorkbenchTool {
             .filter(|&&k| k == DtmcStateKind::Absorbing)
             .count();
         if candidate.dtmc.absorbing_rewards.len() != num_abs {
-            candidate.dtmc.absorbing_rewards =
-                (0..num_abs).map(|k| if k == 0 { 1.0 } else { 0.0 }).collect();
+            candidate.dtmc.absorbing_rewards = (0..num_abs)
+                .map(|k| if k == 0 { 1.0 } else { 0.0 })
+                .collect();
         }
         candidate.dtmc.transition_matrix = rows;
         self.apply_config(candidate)?;

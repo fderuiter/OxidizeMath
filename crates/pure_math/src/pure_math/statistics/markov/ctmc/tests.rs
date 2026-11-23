@@ -181,11 +181,11 @@ fn test_ctmc_serde_roundtrip_and_invalid_generator_rejection() {
     // Reject row not summing to 0 and negative off-diagonal rates via MarkovError::InvalidGenerator
     let bad_sum = r#"{"generator":[[-1.0,2.0],[3.0,-3.0]]}"#;
     let err = serde_json::from_str::<ContinuousMarkovChain<f64>>(bad_sum).unwrap_err();
-    assert!(err.to_string().contains("InvalidGenerator"));
+    assert!(err.to_string().contains("Invalid generator matrix"));
 
     let bad_off_diag = r#"{"generator":[[1.0,-1.0],[3.0,-3.0]]}"#;
     let err2 = serde_json::from_str::<ContinuousMarkovChain<f64>>(bad_off_diag).unwrap_err();
-    assert!(err2.to_string().contains("InvalidGenerator"));
+    assert!(err2.to_string().contains("Invalid generator matrix"));
 
     // Reject NaN generator entries via MarkovError::InvalidGenerator
     let rows = vec![vec![f64::NAN, 0.0], vec![0.0, 0.0]];
@@ -194,5 +194,5 @@ fn test_ctmc_serde_roundtrip_and_invalid_generator_rejection() {
         SeqDeserializer::new(rows.into_iter()),
     )));
     let nan_err = ContinuousMarkovChain::<f64>::deserialize(de).unwrap_err();
-    assert!(nan_err.to_string().contains("InvalidGenerator"));
+    assert!(nan_err.to_string().contains("Invalid generator matrix"));
 }

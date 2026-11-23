@@ -178,7 +178,9 @@ impl MarkovSequenceWorkbenchTool {
         let mut viterbi_path = vec![0_usize; obs.len()];
         hmm.viterbi_into(obs, &mut self.vit_ws, &mut viterbi_path)
             .map_err(|e| e.to_string())?;
-        let gamma = hmm.posterior_probabilities(obs).map_err(|e| e.to_string())?;
+        let gamma = hmm
+            .posterior_probabilities(obs)
+            .map_err(|e| e.to_string())?;
         let posteriors = (0..hmm.num_states())
             .map(|s| (0..obs.len()).map(|t| gamma[(s, t)]).collect())
             .collect();
@@ -210,7 +212,9 @@ impl MarkovSequenceWorkbenchTool {
         let mut sweep_probs = vec![Vec::with_capacity(samples); n];
         for step in 0..samples {
             let t = self.config.ctmc.horizon_time * (step as f64 / (samples - 1) as f64);
-            let p_t = chain.transition_probabilities(t).map_err(|e| e.to_string())?;
+            let p_t = chain
+                .transition_probabilities(t)
+                .map_err(|e| e.to_string())?;
             sweep_times.push(t);
             for state_j in 0..n {
                 sweep_probs[state_j].push(p_t[(src, state_j)]);
@@ -368,7 +372,10 @@ impl MarkovSequenceWorkbenchTool {
         self.apply_config(next)
     }
 
-    pub(crate) fn apply_config(&mut self, config: MarkovWorkbenchPresetConfig) -> Result<(), String> {
+    pub(crate) fn apply_config(
+        &mut self,
+        config: MarkovWorkbenchPresetConfig,
+    ) -> Result<(), String> {
         config.validate()?;
         let prev = self.config.clone();
         let prev_bw = (self.hmm_out.bw_history.clone(), self.hmm_out.last_bw_report);
