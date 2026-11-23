@@ -41,7 +41,8 @@ impl FractalViewer {
             for col in (0..width).step_by(c_stride) {
                 let re = center_re + ((col as f64) / (width as f64) - 0.5) * scale_x;
                 let pt = Complex::new(re, im);
-                let iters = eval_point_iterations(self.mode, pt, julia_c, max_iter, custom_job.as_ref());
+                let iters =
+                    eval_point_iterations(self.mode, pt, julia_c, max_iter, custom_job.as_ref());
                 rows.push(vec![
                     ExportCell::UInt(row as u64),
                     ExportCell::UInt(col as u64),

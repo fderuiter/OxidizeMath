@@ -141,3 +141,24 @@ fn test_ast_visitor_ignores_embed_theory_and_verified_inside_doc_comments() {
     assert_eq!(visitor.verified_funcs, 0);
     assert_eq!(visitor.verified_modules, vec!["quantum".to_string()]);
 }
+
+#[test]
+fn test_ast_visitor_ignores_macro_examples_in_doc_comments() {
+    let code = concat!(
+        "/// Example:\n",
+        "/// ```rust\n",
+        "/// use verified_engine_macros::embed_theory;\n",
+        "/// #[embed_theory(\"papers/mmwave_radiotherapy_setup.tex\", label = \"eq:range\")]\n",
+        "/// #[verified]\n",
+        "/// fn demo() {}\n",
+        "/// ```\n",
+        "pub fn macro_entrypoint() {}\n",
+    );
+    let file = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert_eq!(visitor.total_funcs, 1);
+    assert_eq!(visitor.verified_funcs, 0);
+    assert!(visitor.verified_modules.is_empty());
+}

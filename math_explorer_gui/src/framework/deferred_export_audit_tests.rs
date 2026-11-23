@@ -286,12 +286,12 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         feature = "pure_math"
     ))]
     {
-        assert_eq!(counts.plot_tools, 67, "Expected 67 dataset+figure tools");
+        assert_eq!(counts.plot_tools, 68, "Expected 68 dataset+figure tools");
         assert_eq!(counts.dataset_only, 7, "Expected 7 dataset-only tools");
         assert_eq!(counts.solid_3d, 5, "Expected 5 solid 3D geometric tools");
         assert_eq!(counts.splat_3d, 1, "Expected 1 3DGS splat PLY tool");
         assert_eq!(counts.shader_tools, 3, "Expected 3 analytical GLSL tools");
-        assert_eq!(counts.non_shader_tools, 71, "Expected 71 non-shader tools");
+        assert_eq!(counts.non_shader_tools, 72, "Expected 72 non-shader tools");
     }
 }
 

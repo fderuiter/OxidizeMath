@@ -37,7 +37,7 @@ pub enum SimCommand {
     },
     /// Dispatches an interpolated [`BrushStroke`] to the worker model.
     ApplyBrushStroke(BrushStroke),
-    /// Replaces the worker's persisted [`SculptStatePayload`].
+    /// Synchronizes persisted [`SculptStatePayload`] state with the worker model.
     SyncSculptState(SculptStatePayload),
     #[allow(missing_docs)]
     ClearObstacles,
