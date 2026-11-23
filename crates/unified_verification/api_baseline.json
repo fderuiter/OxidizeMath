@@ -1358,7 +1358,107 @@
       "signature": "pub fn stirling_approximation_ln_factorial (_ : u64) -> f64"
     }
   ],
+  "crates/domain_applied/src/applied/battery_degradation/calibration.rs": [
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn calibrate_from_cycles < P : PointSeries + ? Sized > (& self , _ : & P , _ : DepthOfDischarge ,) -> Result < CalibratedAgingFit , FitError > }"
+    },
+    {
+      "signature": "pub fn calibrate_electrochemical_model < P : PointSeries + ? Sized > (_ : & ElectrochemicalAgingModel , _ : & P , _ : DepthOfDischarge ,) -> Result < CalibratedAgingFit , FitError >"
+    },
+    {
+      "signature": "pub struct CalibratedAgingFit"
+    }
+  ],
+  "crates/domain_applied/src/applied/battery_degradation/duty.rs": [
+    {
+      "signature": "impl DutySegment { pub fn commute () -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn fast_charge () -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn storage (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub const DAYS_PER_YEAR : f64"
+    },
+    {
+      "signature": "pub const MAX_DUTY_SEGMENTS : usize"
+    },
+    {
+      "signature": "pub fn estimate_duty_lifetime (_ : & ElectrochemicalAgingModel , _ : & [DutySegment] , _ : Capacity ,) -> DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub fn evaluate_duty_point (_ : & ElectrochemicalAgingModel , _ : & [DutySegment] , _ : f64 ,) -> DutyPointBreakdown"
+    },
+    {
+      "signature": "pub struct DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub struct DutyPointBreakdown"
+    },
+    {
+      "signature": "pub struct DutySegment"
+    }
+  ],
   "crates/domain_applied/src/applied/battery_degradation/mod.rs": [
+    {
+      "signature": "pub use calibration :: CalibratedAgingFit"
+    },
+    {
+      "signature": "pub use calibration :: calibrate_electrochemical_model"
+    },
+    {
+      "signature": "pub use duty :: DAYS_PER_YEAR"
+    },
+    {
+      "signature": "pub use duty :: DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub use duty :: DutyPointBreakdown"
+    },
+    {
+      "signature": "pub use duty :: DutySegment"
+    },
+    {
+      "signature": "pub use duty :: MAX_DUTY_SEGMENTS"
+    },
+    {
+      "signature": "pub use duty :: estimate_duty_lifetime"
+    },
+    {
+      "signature": "pub use duty :: evaluate_duty_point"
+    },
+    {
+      "signature": "pub use model :: ChemistryPreset"
+    },
+    {
+      "signature": "pub use model :: DegradationModel"
+    },
+    {
+      "signature": "pub use model :: ElectrochemicalAgingModel"
+    },
+    {
+      "signature": "pub use model :: MAX_C_RATE"
+    },
+    {
+      "signature": "pub use model :: MAX_EXPONENT_Z"
+    },
+    {
+      "signature": "pub use model :: MAX_TEMPERATURE_C"
+    },
+    {
+      "signature": "pub use model :: MIN_C_RATE"
+    },
+    {
+      "signature": "pub use model :: MIN_EXPONENT_Z"
+    },
+    {
+      "signature": "pub use model :: MIN_TEMPERATURE_C"
+    },
     {
       "signature": "pub use model :: PowerLawModel"
     },
@@ -1377,6 +1477,84 @@
   ],
   "crates/domain_applied/src/applied/battery_degradation/model.rs": [
     {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn activation_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn c_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn c_rate_exponent (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn exponent_z (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn preset (& self) -> ChemistryPreset }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn sei_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn temperature_c (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn arrhenius_factor (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn c_rate_stress_factor (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn coupled_capacity (& self , _ : Cycles , _ : DepthOfDischarge , _ : f64) -> Capacity }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn cycles_to_capacity (& self , _ : Capacity , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn cycling_loss (& self , _ : Cycles , _ : DepthOfDischarge) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn from_preset (_ : ChemistryPreset) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn new (_ : ChemistryPreset , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn sei_calendar_loss (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn temperature_k (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_c_rate (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_dod_law (self , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_exponent_z (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_kinetics (self , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_sei_rate (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_temperature_c (self , _ : f64) -> Self }"
+    },
+    {
       "signature": "impl PowerLawModel { pub fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
     },
     {
@@ -1392,6 +1570,36 @@
       "signature": "impl PowerLawModel { pub fn standard () -> Self }"
     },
     {
+      "signature": "pub const CELSIUS_TO_KELVIN : f64"
+    },
+    {
+      "signature": "pub const GAS_CONSTANT_R : f64"
+    },
+    {
+      "signature": "pub const MAX_C_RATE : f64"
+    },
+    {
+      "signature": "pub const MAX_EXPONENT_Z : f64"
+    },
+    {
+      "signature": "pub const MAX_TEMPERATURE_C : f64"
+    },
+    {
+      "signature": "pub const MIN_C_RATE : f64"
+    },
+    {
+      "signature": "pub const MIN_EXPONENT_Z : f64"
+    },
+    {
+      "signature": "pub const MIN_TEMPERATURE_C : f64"
+    },
+    {
+      "signature": "pub const REFERENCE_TEMPERATURE_K : f64"
+    },
+    {
+      "signature": "pub struct ElectrochemicalAgingModel"
+    },
+    {
       "signature": "pub struct PowerLawModel"
     },
     {
@@ -1405,6 +1613,41 @@
     },
     {
       "signature": "pub trait DegradationModel { fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "pub use preset :: ChemistryPreset"
+    }
+  ],
+  "crates/domain_applied/src/applied/battery_degradation/model/preset.rs": [
+    {
+      "signature": "impl ChemistryPreset { pub const ALL : [Self ; 4] }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_activation_energy (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_alpha (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_beta (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_c_rate_exponent (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_exponent_z (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_sei_rate (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn description (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum ChemistryPreset"
     }
   ],
   "crates/domain_applied/src/applied/battery_degradation/types.rs": [
@@ -7231,6 +7474,12 @@
       "signature": "pub use spin :: spin_from_bloch_angles"
     },
     {
+      "signature": "pub use tridiagonal :: CrankNicolsonPropagator1D"
+    },
+    {
+      "signature": "pub use tridiagonal :: TridiagonalHamiltonian1D"
+    },
+    {
       "signature": "pub use types :: QuantumOperator"
     },
     {
@@ -7271,6 +7520,74 @@
       "signature": "pub fn spin_from_bloch_angles (_ : f64 , _ : f64) -> QuantumState"
     }
   ],
+  "crates/domain_physics/src/physics/quantum/tridiagonal.rs": [
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn configure_dt (& mut self , _ : & TridiagonalHamiltonian1D , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn dt (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn evolve_in_place (& mut self , _ : & mut QuantumState) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn evolve_substeps_in_place (& mut self , _ : & mut QuantumState , _ : usize) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn invalidate (& mut self) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn new (_ : & TridiagonalHamiltonian1D , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn diagonal (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn expectation_value (& self , _ : & QuantumState) -> f64 }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn from_potential (_ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn from_potential_slice (_ : & [f64] , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn new (_ : Vec < f64 > , _ : Vec < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn off_diagonal (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn update_from_potential (& mut self , _ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn update_potential_in_place (& mut self , _ : & [f64] , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct CrankNicolsonPropagator1D"
+    },
+    {
+      "signature": "pub struct TridiagonalHamiltonian1D"
+    }
+  ],
   "crates/domain_physics/src/physics/quantum/types.rs": [
     {
       "signature": "impl QuantumOperator { pub fn commutator (& self , _ : & QuantumOperator) -> QuantumOperator }"
@@ -7301,6 +7618,9 @@
     },
     {
       "signature": "impl QuantumState { pub fn probability_density (& self) -> DVector < f64 > }"
+    },
+    {
+      "signature": "impl QuantumState { pub fn probability_density_in_place (& self , _ : & mut [f64]) }"
     },
     {
       "signature": "impl QuantumState { pub fn project_spatial_modes < const M : usize > (& self) -> [Complex < f64 > ; M] }"
@@ -12510,6 +12830,12 @@
     },
     {
       "signature": "pub use criterion :: variants"
+    },
+    {
+      "signature": "pub use super :: ruin"
+    },
+    {
+      "signature": "pub use super :: validation"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/market_pricing/devig.rs": [
@@ -13699,6 +14025,158 @@
       "signature": "pub fn multivariate_linear_regression (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Option < DVector < f64 > >"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/ruin/analytical.rs": [
+    {
+      "signature": "impl PortfolioBet { pub fn new (_ : UnitInterval , _ : Odds , _ : f64 , _ : f64 ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl PortfolioBet { pub fn unit_weight (_ : UnitInterval , _ : Odds , _ : f64) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn gamblers_ruin_infinite (_ : f64 , _ : & UnitInterval ,) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn gamblers_ruin_with_target (_ : f64 , _ : f64 , _ : f64 , _ : & UnitInterval ,) -> Result < GamblersRuinResult , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_lundberg_ruin (_ : & [PortfolioBet] , _ : f64 ,) -> Result < LundbergSolution , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_single_bet_lundberg (_ : & UnitInterval , _ : & Odds , _ : f64 , _ : f64 ,) -> Result < LundbergSolution , KellyError >"
+    },
+    {
+      "signature": "pub struct GamblersRuinResult"
+    },
+    {
+      "signature": "pub struct LundbergSolution"
+    },
+    {
+      "signature": "pub struct PortfolioBet"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/ruin/barrier.rs": [
+    {
+      "signature": "impl ProportionalPortfolioBet { pub fn new (_ : UnitInterval , _ : Odds , _ : BankrollFraction , _ : f64 ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl ProportionalPortfolioBet { pub fn unit_weight (_ : UnitInterval , _ : Odds , _ : BankrollFraction ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn kelly_barrier_risk (_ : & UnitInterval , _ : & Odds , _ : & BankrollFraction , _ : f64 ,) -> Result < KellyBarrierRisk , KellyError >"
+    },
+    {
+      "signature": "pub fn portfolio_kelly_barrier_risk (_ : & [ProportionalPortfolioBet] , _ : f64 ,) -> Result < KellyBarrierRisk , KellyError >"
+    },
+    {
+      "signature": "pub struct KellyBarrierRisk"
+    },
+    {
+      "signature": "pub struct ProportionalPortfolioBet"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/ruin/ensemble.rs": [
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn drawdown_quantile (& mut self , _ : f64) -> Result < f64 , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn max_drawdowns (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn median_trajectory (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn reset (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn simulate_fixed_stake_portfolio (& mut self , _ : f64 , _ : f64 , _ : Option < f64 > , _ : & [PortfolioBet] , _ : usize , _ : & mut OxidizeRng ,) -> Result < EnsembleSolvencyReport , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn simulate_proportional (& mut self , _ : f64 , _ : f64 , _ : & ProportionalPortfolioBet , _ : usize , _ : & mut OxidizeRng ,) -> Result < EnsembleSolvencyReport , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn simulate_proportional_portfolio (& mut self , _ : f64 , _ : f64 , _ : & [ProportionalPortfolioBet] , _ : usize , _ : & mut OxidizeRng ,) -> Result < EnsembleSolvencyReport , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn terminal_wealths (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn with_capacity (_ : usize , _ : usize) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl WilsonInterval { pub fn width (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn wilson_interval_95 (_ : usize , _ : usize) -> Result < WilsonInterval , KellyError >"
+    },
+    {
+      "signature": "pub fn wilson_score_interval (_ : usize , _ : usize , _ : f64 ,) -> Result < WilsonInterval , KellyError >"
+    },
+    {
+      "signature": "pub struct BankrollEnsembleWorkspace"
+    },
+    {
+      "signature": "pub struct DrawdownQuantiles"
+    },
+    {
+      "signature": "pub struct EnsembleSolvencyReport"
+    },
+    {
+      "signature": "pub struct WilsonInterval"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/ruin/mod.rs": [
+    {
+      "signature": "pub use analytical :: GamblersRuinResult"
+    },
+    {
+      "signature": "pub use analytical :: LundbergSolution"
+    },
+    {
+      "signature": "pub use analytical :: PortfolioBet"
+    },
+    {
+      "signature": "pub use analytical :: gamblers_ruin_infinite"
+    },
+    {
+      "signature": "pub use analytical :: gamblers_ruin_with_target"
+    },
+    {
+      "signature": "pub use analytical :: solve_lundberg_ruin"
+    },
+    {
+      "signature": "pub use analytical :: solve_single_bet_lundberg"
+    },
+    {
+      "signature": "pub use barrier :: KellyBarrierRisk"
+    },
+    {
+      "signature": "pub use barrier :: ProportionalPortfolioBet"
+    },
+    {
+      "signature": "pub use barrier :: kelly_barrier_risk"
+    },
+    {
+      "signature": "pub use barrier :: portfolio_kelly_barrier_risk"
+    },
+    {
+      "signature": "pub use ensemble :: BankrollEnsembleWorkspace"
+    },
+    {
+      "signature": "pub use ensemble :: DrawdownQuantiles"
+    },
+    {
+      "signature": "pub use ensemble :: EnsembleSolvencyReport"
+    },
+    {
+      "signature": "pub use ensemble :: WilsonInterval"
+    },
+    {
+      "signature": "pub use ensemble :: wilson_interval_95"
+    },
+    {
+      "signature": "pub use ensemble :: wilson_score_interval"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/tda/boundary.rs": [
     {
       "signature": "impl Z2BoundaryWorkspace { pub fn clear_column (& mut self , _ : usize) }"
@@ -14121,6 +14599,143 @@
     },
     {
       "signature": "pub struct TdaFiltrationWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/calibration.rs": [
+    {
+      "signature": "pub fn binary_log_loss (_ : & [f64] , _ : & [bool]) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn brier_score (_ : & [f64] , _ : & [bool]) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn compare_calibration (_ : & [f64] , _ : & [f64] , _ : & [bool] ,) -> Result < CalibrationComparison , KellyError >"
+    },
+    {
+      "signature": "pub fn settled_closing_calibration (_ : & [SettledBet]) -> Result < (f64 , f64) , KellyError >"
+    },
+    {
+      "signature": "pub struct CalibrationComparison"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/clv.rs": [
+    {
+      "signature": "impl SettledBet { pub fn new (_ : Odds , _ : UnitInterval , _ : f64 , _ : bool ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn devig_multi_way (_ : & [Odds]) -> Result < Vec < UnitInterval > , KellyError >"
+    },
+    {
+      "signature": "pub fn devig_multi_way_into (_ : & [Odds] , _ : & mut [UnitInterval] ,) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn devig_two_way (_ : & Odds , _ : & Odds ,) -> Result < (UnitInterval , UnitInterval) , KellyError >"
+    },
+    {
+      "signature": "pub fn single_bet_clv (_ : & Odds , _ : & UnitInterval ,) -> Result < ClvMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn single_bet_clv_two_way (_ : & Odds , _ : & Odds , _ : & Odds ,) -> Result < ClvMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn summarize_clv (_ : & [SettledBet]) -> Result < ClvSummary , KellyError >"
+    },
+    {
+      "signature": "pub struct ClvMetrics"
+    },
+    {
+      "signature": "pub struct ClvSummary"
+    },
+    {
+      "signature": "pub struct SettledBet"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/mod.rs": [
+    {
+      "signature": "pub use calibration :: CalibrationComparison"
+    },
+    {
+      "signature": "pub use calibration :: binary_log_loss"
+    },
+    {
+      "signature": "pub use calibration :: brier_score"
+    },
+    {
+      "signature": "pub use calibration :: compare_calibration"
+    },
+    {
+      "signature": "pub use calibration :: settled_closing_calibration"
+    },
+    {
+      "signature": "pub use clv :: ClvMetrics"
+    },
+    {
+      "signature": "pub use clv :: ClvSummary"
+    },
+    {
+      "signature": "pub use clv :: SettledBet"
+    },
+    {
+      "signature": "pub use clv :: devig_multi_way"
+    },
+    {
+      "signature": "pub use clv :: devig_multi_way_into"
+    },
+    {
+      "signature": "pub use clv :: devig_two_way"
+    },
+    {
+      "signature": "pub use clv :: single_bet_clv"
+    },
+    {
+      "signature": "pub use clv :: single_bet_clv_two_way"
+    },
+    {
+      "signature": "pub use clv :: summarize_clv"
+    },
+    {
+      "signature": "pub use significance :: SampleSize95"
+    },
+    {
+      "signature": "pub use significance :: YieldSignificance"
+    },
+    {
+      "signature": "pub use significance :: Z_95_ONE_SIDED"
+    },
+    {
+      "signature": "pub use significance :: Z_95_TWO_SIDED"
+    },
+    {
+      "signature": "pub use significance :: evaluate_yield_against_closing"
+    },
+    {
+      "signature": "pub use significance :: evaluate_yield_significance"
+    },
+    {
+      "signature": "pub use significance :: required_bets_for_95_significance"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/significance.rs": [
+    {
+      "signature": "pub const Z_95_ONE_SIDED : f64"
+    },
+    {
+      "signature": "pub const Z_95_TWO_SIDED : f64"
+    },
+    {
+      "signature": "pub fn evaluate_yield_against_closing (_ : & [SettledBet] ,) -> Result < YieldSignificance , KellyError >"
+    },
+    {
+      "signature": "pub fn evaluate_yield_significance (_ : & [SettledBet]) -> Result < YieldSignificance , KellyError >"
+    },
+    {
+      "signature": "pub fn required_bets_for_95_significance (_ : f64 , _ : & [Odds] , _ : Option < & [UnitInterval] > ,) -> Result < SampleSize95 , KellyError >"
+    },
+    {
+      "signature": "pub struct SampleSize95"
+    },
+    {
+      "signature": "pub struct YieldSignificance"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/zip_regression/core.rs": [

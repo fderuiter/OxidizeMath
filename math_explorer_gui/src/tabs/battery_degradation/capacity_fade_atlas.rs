@@ -3,13 +3,17 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+// [cite:battery_degradation]
+
 use super::capacity_fade::CapacityFadeTool;
 use crate::async_sim::atlas::{
     atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
     RegimeCartographer,
 };
 use eframe::egui;
-use math_explorer::applied::battery_degradation::{Cycles, DepthOfDischarge, PowerLawModel};
+use math_explorer::applied::battery_degradation::{
+    Capacity, Cycles, DepthOfDischarge, ElectrochemicalAgingModel,
+};
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 
 /// Supported 2D parameter atlas axis pairs for [`CapacityFadeTool`].
@@ -18,7 +22,7 @@ pub const CAPACITY_FADE_ATLAS_AXIS_PAIRS: &[(&str, &str)] = &[("dod", "cycles_to
 /// Stack-resident zero-allocation battery state-of-health regime cartographer.
 pub struct CapacityFadeCartographer {
     axes: AtlasAxisPair,
-    model: PowerLawModel,
+    model: ElectrochemicalAgingModel,
 }
 
 impl CapacityFadeCartographer {
@@ -52,7 +56,7 @@ impl CapacityFadeCartographer {
                     },
                 ),
             },
-            model: PowerLawModel::standard(),
+            model: tool.active_model(),
         })
     }
 }
@@ -114,12 +118,15 @@ impl RegimeCartographer for CapacityFadeCartographer {
     fn overlay_contour(&self) -> Option<(&'static str, Vec<[f64; 2]>)> {
         let mut pts_80 = Vec::with_capacity(48);
         let steps = 47;
+        let target_80 = Capacity::new_clamped(0.8);
         for i in 0..=steps {
             let frac = (i as f64) / (steps as f64);
             let dod = self.axes.x.constraint.min + frac * self.axes.x.span();
-            let (n80, _) = CapacityFadeTool::projected_life_cycles(dod);
-            if (self.axes.y.constraint.min..=self.axes.y.constraint.max).contains(&n80) {
-                pts_80.push([dod, n80]);
+            if let Ok(d) = DepthOfDischarge::new(dod) {
+                let n80 = self.model.cycles_to_capacity(target_80, d).as_f64();
+                if (self.axes.y.constraint.min..=self.axes.y.constraint.max).contains(&n80) {
+                    pts_80.push([dod, n80]);
+                }
             }
         }
         (pts_80.len() >= 2).then_some(("First-Life Knee (80% SOH)", pts_80))
