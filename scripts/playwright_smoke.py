@@ -5,19 +5,23 @@ from __future__ import annotations
 
 import argparse
 import functools
+import gzip
 import html.parser
 import http.server
 import mimetypes
 import os
+import re
 try:
     import resource
 except ImportError:  # pragma: no cover - Windows
     resource = None  # type: ignore[assignment]
 import socketserver
+import subprocess
 import sys
 import threading
 import time
 import tomllib
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from playwright.sync_api import (
@@ -119,12 +123,185 @@ class ReusableThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPSe
     request_queue_size = 128
 
 
+STARTUP_TELEMETRY_PROBE_JS = b"""(function () {
+    const trace = {
+        bytesTexts: [],
+        politeAnnouncements: [],
+        sawHundredPercent: false,
+        sawDownloadCompleteAnnouncement: false,
+    };
+    window.__mathExplorerSmokeTrace = trace;
+
+    function recordDomSnapshot() {
+        const bytesEl = document.getElementById('loading_bytes');
+        if (bytesEl) {
+            const txt = (bytesEl.textContent || '').trim();
+            if (txt && trace.bytesTexts[trace.bytesTexts.length - 1] !== txt) {
+                trace.bytesTexts.push(txt);
+            }
+            if (txt.indexOf('(100%)') !== -1) {
+                trace.sawHundredPercent = true;
+            }
+        }
+        const progressEl = document.getElementById('loading_progress');
+        if (progressEl) {
+            const vText = progressEl.getAttribute('aria-valuetext') || '';
+            if (/^100%\\b/.test(vText)) {
+                trace.sawHundredPercent = true;
+            }
+        }
+        const slot0 = document.getElementById('aria-live-polite-slot-0');
+        const slot1 = document.getElementById('aria-live-polite-slot-1');
+        const s0 = slot0 && slot0.textContent ? slot0.textContent.trim() : '';
+        const s1 = slot1 && slot1.textContent ? slot1.textContent.trim() : '';
+        const activePolite = s0 || s1;
+        if (
+            activePolite &&
+            trace.politeAnnouncements[trace.politeAnnouncements.length - 1] !== activePolite
+        ) {
+            trace.politeAnnouncements.push(activePolite);
+            if (activePolite.indexOf('Download complete.') !== -1) {
+                trace.sawDownloadCompleteAnnouncement = true;
+            }
+        }
+    }
+
+    const attachObserver = () => {
+        const root = document.documentElement || document;
+        if (!root || typeof MutationObserver === 'undefined') {
+            return;
+        }
+        recordDomSnapshot();
+        const obs = new MutationObserver(() => {
+            recordDomSnapshot();
+        });
+        obs.observe(root, {
+            subtree: true,
+            childList: true,
+            characterData: true,
+            attributes: true,
+            attributeFilter: ['value', 'max', 'aria-valuenow', 'aria-valuetext'],
+        });
+    };
+
+    if (document.documentElement) {
+        attachObserver();
+    } else {
+        document.addEventListener('DOMContentLoaded', attachObserver, { once: true });
+    }
+})();
+"""
+
+
 class CspDistRequestHandler(http.server.SimpleHTTPRequestHandler):
     csp_header: str = ""
+    truncated_br_chunk: bytes = b""
+
+    def _referer_query_param(self, key: str) -> str:
+        referer = self.headers.get("Referer", "")
+        if not referer:
+            return ""
+        parsed = urllib.parse.urlsplit(referer)
+        vals = urllib.parse.parse_qs(parsed.query).get(key)
+        return vals[0] if vals else ""
+
+    def _serve_custom_wasm_mode(self, mode: str) -> bool:
+        dist_root = Path(self.directory)
+        wasm_path = dist_root / "math_explorer_gui_bg.wasm"
+        br_path = dist_root / "math_explorer_gui_bg.wasm.br"
+        gz_path = dist_root / "math_explorer_gui_bg.wasm.gz"
+
+        if mode == "drop_identity":
+            raw = wasm_path.read_bytes()
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/wasm")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw[:131072])
+            self.wfile.flush()
+            self.close_connection = True
+            return True
+
+        if mode == "drop_brotli":
+            br = br_path.read_bytes()
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/wasm")
+            self.send_header("Content-Encoding", "br")
+            self.send_header("Content-Length", str(len(br)))
+            self.end_headers()
+            self.wfile.write(br[:65536])
+            self.wfile.flush()
+            self.close_connection = True
+            return True
+
+        if mode == "truncated_chunked":
+            raw = wasm_path.read_bytes()
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/wasm")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            for part in (raw[:65536], raw[65536:131072]):
+                self.wfile.write(f"{len(part):x}\r\n".encode("ascii") + part + b"\r\n")
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+            self.close_connection = True
+            return True
+
+        if mode == "truncated_brotli_chunked":
+            part = self.truncated_br_chunk
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/wasm")
+            self.send_header("Content-Encoding", "br")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            self.wfile.write(f"{len(part):x}\r\n".encode("ascii") + part + b"\r\n0\r\n\r\n")
+            self.wfile.flush()
+            self.close_connection = True
+            return True
+
+        if mode in ("full_br", "full_gz", "chunked_br", "chunked_gz"):
+            is_br = "br" in mode
+            is_chunked = mode.startswith("chunked_")
+            payload = (br_path if is_br else gz_path).read_bytes()
+            encoding = "br" if is_br else "gzip"
+            slices = 4 if is_chunked else 8
+            step = max(1, (len(payload) + slices - 1) // slices)
+
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/wasm")
+            self.send_header("Content-Encoding", encoding)
+            if is_chunked:
+                self.send_header("Transfer-Encoding", "chunked")
+            else:
+                self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+
+            for offset in range(0, len(payload), step):
+                chunk = payload[offset : offset + step]
+                if is_chunked:
+                    self.wfile.write(f"{len(chunk):x}\r\n".encode("ascii") + chunk + b"\r\n")
+                else:
+                    self.wfile.write(chunk)
+                self.wfile.flush()
+                if offset + step < len(payload):
+                    time.sleep(0.03)
+            if is_chunked:
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+                self.close_connection = True
+            return True
+
+        return False
 
     def do_GET(self) -> None:
+        clean_path = self.path.split("?")[0]
         referer = self.headers.get("Referer", "")
-        if "stall_timeout_ms=" in referer and self.path.split("?")[0].endswith(".wasm"):
+        if "stall_timeout_ms=" in referer and clean_path.endswith(".wasm"):
             time.sleep(0.9)
             try:
                 body = b"\x00asm\x01\x00\x00\x00"
@@ -136,6 +313,14 @@ class CspDistRequestHandler(http.server.SimpleHTTPRequestHandler):
             except OSError:
                 pass
             return
+        if clean_path.endswith(".wasm"):
+            wasm_mode = self._referer_query_param("wasm_mode")
+            if wasm_mode:
+                try:
+                    if self._serve_custom_wasm_mode(wasm_mode):
+                        return
+                except OSError:
+                    return
         try:
             super().do_GET()
         except OSError:
@@ -148,6 +333,298 @@ class CspDistRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def log_message(self, fmt: str, *args: object) -> None:
         return
+
+
+def verify_stamped_dist_artifacts(dist_dir: Path) -> tuple[int, int, int]:
+    wasm_path = dist_dir / "math_explorer_gui_bg.wasm"
+    br_path = dist_dir / "math_explorer_gui_bg.wasm.br"
+    gz_path = dist_dir / "math_explorer_gui_bg.wasm.gz"
+    bootstrap_path = dist_dir / "bootstrap.js"
+    bootstrap_gz = dist_dir / "bootstrap.js.gz"
+    bootstrap_br = dist_dir / "bootstrap.js.br"
+
+    for artifact in (wasm_path, br_path, gz_path, bootstrap_path, bootstrap_gz, bootstrap_br):
+        if not artifact.is_file():
+            raise RuntimeError(f"Expected staged artifact missing at {artifact}")
+
+    wasm_size = wasm_path.stat().st_size
+    br_size = br_path.stat().st_size
+    gz_size = gz_path.stat().st_size
+    bootstrap_bytes = bootstrap_path.read_bytes()
+    bootstrap_text = bootstrap_bytes.decode("utf-8")
+
+    for const_name, expected_val in (
+        ("WASM_SOURCE_SIZE", wasm_size),
+        ("WASM_BROTLI_SIZE", br_size),
+        ("WASM_GZIP_SIZE", gz_size),
+    ):
+        match = re.search(rf"^const {const_name} = (\d+);$", bootstrap_text, flags=re.MULTILINE)
+        if not match or int(match.group(1)) != expected_val:
+            raise AssertionError(
+                f"Expected {const_name} = {expected_val} in {bootstrap_path}, got {match.group(0) if match else None!r}"
+            )
+
+    if gzip.decompress(bootstrap_gz.read_bytes()) != bootstrap_bytes:
+        raise AssertionError("bootstrap.js.gz does not match stamped bootstrap.js")
+    br_decoded = subprocess.run(
+        ["brotli", "-d", "-c", str(bootstrap_br)], capture_output=True, check=True
+    ).stdout
+    if br_decoded != bootstrap_bytes:
+        raise AssertionError("bootstrap.js.br does not match stamped bootstrap.js")
+
+    print(
+        f"[PASS] dist_stamping: source={wasm_size}B, brotli={br_size}B, gzip={gz_size}B (.gz/.br bootstrap match)"
+    )
+    return wasm_size, br_size, gz_size
+
+
+def install_telemetry_probe(page: Page, dist_dir: Path) -> None:
+    reload_bytes = STARTUP_TELEMETRY_PROBE_JS + (dist_dir / "reload.js").read_bytes()
+    page.route(
+        "**/reload.js*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="text/javascript",
+            body=reload_bytes,
+        ),
+    )
+
+
+def run_truncated_stream_check(
+    browser: Browser,
+    base_url: str,
+    dist_dir: Path,
+    scenario: str,
+    wasm_mode: str,
+    screenshot_path: Path | None = None,
+) -> None:
+    context = browser.new_context(viewport={"width": 1280, "height": 800})
+    try:
+        page = context.new_page()
+        csp_violations: list[str] = []
+        attach_csp_observer(page, csp_violations)
+        install_telemetry_probe(page, dist_dir)
+
+        page.goto(f"{base_url}/?wasm_mode={wasm_mode}", wait_until="domcontentloaded")
+        verify_error_recovery(page, scenario, EXPECTED_FAULTS["network"])
+        page.wait_for_timeout(40)
+
+        trace = page.evaluate("() => window.__mathExplorerSmokeTrace")
+        if trace["sawHundredPercent"]:
+            raise AssertionError(
+                f"[{scenario}] Truncated stream flashed fake 100% progress: {trace['bytesTexts']}"
+            )
+        if trace["sawDownloadCompleteAnnouncement"]:
+            raise AssertionError(
+                f"[{scenario}] Truncated stream announced download completion: {trace['politeAnnouncements']}"
+            )
+        assert_zero_csp_violations(scenario, csp_violations)
+
+        if screenshot_path is not None:
+            page.screenshot(path=str(screenshot_path))
+        print(
+            f"[PASS] {scenario}: category='network', 0 fake 100% banners, 0 completion announcements"
+        )
+    finally:
+        context.close()
+
+
+def extract_reported_totals_mb(bytes_texts: list[str]) -> list[float]:
+    totals: list[float] = []
+    for entry in bytes_texts:
+        slash_match = re.search(r"/\s*([0-9]+\.[0-9]+)\s*MB\b", entry)
+        if slash_match:
+            totals.append(float(slash_match.group(1)))
+            continue
+        loaded_match = re.search(r"^([0-9]+\.[0-9]+)\s*MB\s+loaded\b", entry)
+        if loaded_match:
+            totals.append(float(loaded_match.group(1)))
+    return totals
+
+
+def run_compressed_progress_and_aria_check(
+    browser: Browser,
+    base_url: str,
+    dist_dir: Path,
+    scenario: str,
+    wasm_mode: str,
+    expected_wire_bytes: int,
+    uncompressed_bytes: int,
+    screenshot_path: Path | None = None,
+) -> None:
+    context = browser.new_context(viewport={"width": 1280, "height": 800})
+    try:
+        page = context.new_page()
+        csp_violations: list[str] = []
+        console_errors: list[str] = []
+        page_errors: list[str] = []
+        attach_csp_observer(page, csp_violations)
+        page.on(
+            "console",
+            lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
+        )
+        page.on("pageerror", lambda exc: page_errors.append(str(exc)))
+        install_telemetry_probe(page, dist_dir)
+
+        page.goto(f"{base_url}/?wasm_mode={wasm_mode}", wait_until="domcontentloaded")
+        expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+        expect(page.locator("#error_container")).to_be_hidden()
+        expect(page.locator("#the_canvas_id")).to_be_visible()
+        expect(page.locator("#the_canvas_id")).to_be_focused()
+
+        trace = page.evaluate("() => window.__mathExplorerSmokeTrace")
+        expected_mb = round(expected_wire_bytes / 1_000_000.0, 2)
+        uncompressed_mb = round(uncompressed_bytes / 1_000_000.0, 2)
+        reported_totals = extract_reported_totals_mb(trace["bytesTexts"])
+        if not reported_totals:
+            raise AssertionError(
+                f"[{scenario}] Expected MB totals in #loading_bytes, observed: {trace['bytesTexts']}"
+            )
+        for observed_mb in reported_totals:
+            if abs(observed_mb - expected_mb) > 0.01:
+                raise AssertionError(
+                    f"[{scenario}] Expected wire total {expected_mb:.2f} MB (±0.01 MB), got {observed_mb:.2f} MB in {trace['bytesTexts']}"
+                )
+            if abs(observed_mb - uncompressed_mb) <= 0.05:
+                raise AssertionError(
+                    f"[{scenario}] Inflated decoded total {observed_mb:.2f} MB reported instead of wire {expected_mb:.2f} MB"
+                )
+
+        polite_log: list[str] = trace["politeAnnouncements"]
+        required_sequence = [
+            "WebAssembly download 25% complete.",
+            "WebAssembly download 50% complete.",
+            "WebAssembly download 75% complete.",
+            "Download complete. Compiling WebAssembly module.",
+        ]
+        indices: list[int] = []
+        for milestone in required_sequence:
+            if milestone not in polite_log:
+                raise AssertionError(
+                    f"[{scenario}] Missing polite ARIA milestone {milestone!r} in {polite_log}"
+                )
+            indices.append(polite_log.index(milestone))
+        if indices != sorted(indices):
+            raise AssertionError(
+                f"[{scenario}] Polite ARIA milestones announced out of order: {polite_log}"
+            )
+
+        assert_zero_csp_violations(scenario, csp_violations)
+        if console_errors:
+            raise AssertionError(f"[{scenario}] Console errors detected: {console_errors}")
+        if page_errors:
+            raise AssertionError(f"[{scenario}] Uncaught page errors detected: {page_errors}")
+
+        if screenshot_path is not None:
+            page.screenshot(path=str(screenshot_path))
+        print(
+            f"[PASS] {scenario}: wire_total={reported_totals[-1]:.2f} MB (expected {expected_mb:.2f} MB), ARIA 25%->50%->75%->compile verified"
+        )
+    finally:
+        context.close()
+
+
+def run_internal_error_and_fallback_compile_checks(
+    browser: Browser,
+    base_url: str,
+    screenshot_path: Path | None = None,
+) -> None:
+    internal_messages = (
+        "out of memory",
+        "too much recursion",
+        "allocation size overflow",
+    )
+
+    def _make_loader_fulfiller(payload: bytes) -> Callable[[Route], None]:
+        def _fulfill(route: Route) -> None:
+            route.fulfill(
+                status=200,
+                content_type="text/javascript",
+                body=payload,
+            )
+
+        return _fulfill
+
+    captured_shot = False
+    for trap_msg in internal_messages:
+        loader_stub = (
+            "export default async function init() {\n"
+            f"    const err = new Error({trap_msg!r});\n"
+            "    err.name = 'InternalError';\n"
+            "    throw err;\n"
+            "}\n"
+        ).encode("utf-8")
+        fulfill_loader = _make_loader_fulfiller(loader_stub)
+
+        for mode_label, use_fallback in (("reload", False), ("bootstrap_fallback", True)):
+            ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+            try:
+                pg = ctx.new_page()
+                csp_violations: list[str] = []
+                attach_csp_observer(pg, csp_violations)
+                if use_fallback:
+                    pg.route(
+                        "**/reload.js*",
+                        lambda route: route.fulfill(
+                            status=200,
+                            content_type="text/javascript",
+                            body=b"// fallback handler check without reload.js\n",
+                        ),
+                    )
+                pg.route("**/math_explorer_gui.js*", fulfill_loader)
+                pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+                err_box = pg.locator("#error_container")
+                expect(err_box).to_be_visible(timeout=12_000)
+                expect(err_box).to_have_attribute("data-error-active", "true")
+                expect(err_box).to_have_attribute("data-error-category", "compile")
+                expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
+                expect(pg.locator("#webgl_reload_button")).to_be_focused()
+                if not use_fallback:
+                    expect(pg.locator("#aria-live-assertive")).to_contain_text(
+                        "WebAssembly startup error"
+                    )
+                assert_zero_csp_violations(f"internal_error_{mode_label}_{trap_msg}", csp_violations)
+                if screenshot_path and not captured_shot and not use_fallback:
+                    pg.screenshot(path=str(screenshot_path), full_page=True)
+                    captured_shot = True
+            finally:
+                ctx.close()
+
+    # Also verify bootstrap.js fallback classifies complete invalid fault_corrupt_wasm as compile
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    try:
+        pg = ctx.new_page()
+        csp_violations = []
+        attach_csp_observer(pg, csp_violations)
+        pg.route(
+            "**/reload.js*",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="text/javascript",
+                body=b"// fallback handler corrupt wasm check\n",
+            ),
+        )
+        pg.route(
+            "**/math_explorer_gui_bg.wasm*",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/wasm",
+                body=b"corrupted-wasm-payload-bytes",
+            ),
+        )
+        pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+        err_box = pg.locator("#error_container")
+        expect(err_box).to_be_visible(timeout=12_000)
+        expect(err_box).to_have_attribute("data-error-category", "compile")
+        expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
+        expect(pg.locator("#webgl_reload_button")).to_be_focused()
+        assert_zero_csp_violations("fallback_corrupt_wasm", csp_violations)
+    finally:
+        ctx.close()
+
+    print(
+        "[PASS] internal_error_and_fallback_compile: Firefox InternalError traps and corrupt WASM route to 'compile' in reload.js and bootstrap.js"
+    )
 
 
 def load_and_verify_production_csp(trunk_toml: Path, dist_dir: Path) -> str:
@@ -511,11 +988,18 @@ def run_smoke_suite(
 ) -> None:
     configure_mimetypes()
     csp = load_and_verify_production_csp(trunk_toml, dist_dir)
+    wasm_size, br_size, gz_size = verify_stamped_dist_artifacts(dist_dir)
     if screenshot_dir is not None:
         screenshot_dir.mkdir(parents=True, exist_ok=True)
 
+    raw_wasm_prefix = (dist_dir / "math_explorer_gui_bg.wasm").read_bytes()[:131072]
+    truncated_br_prefix = subprocess.run(
+        ["brotli", "-c", "-9"], input=raw_wasm_prefix, capture_output=True, check=True
+    ).stdout
+
     class BoundHandler(CspDistRequestHandler):
         csp_header = csp
+        truncated_br_chunk = truncated_br_prefix
 
     handler = functools.partial(BoundHandler, directory=str(dist_dir))
     server = ReusableThreadingTCPServer(("127.0.0.1", 0), handler)
@@ -608,6 +1092,52 @@ def run_smoke_suite(
                             ),
                         ),
                         screenshot_dir / "smoke_fault_compile_corrupt_wasm.png"
+                        if screenshot_dir
+                        else None,
+                    ),
+                )
+
+                for trunc_scenario, trunc_mode, trunc_shot in (
+                    (
+                        "fault_wasm_socket_drop_identity",
+                        "drop_identity",
+                        screenshot_dir / "smoke_fault_network_truncated_stream.png"
+                        if screenshot_dir
+                        else None,
+                    ),
+                    ("fault_wasm_socket_drop_brotli", "drop_brotli", None),
+                    ("fault_wasm_truncated_chunked", "truncated_chunked", None),
+                    ("fault_wasm_truncated_brotli_chunked", "truncated_brotli_chunked", None),
+                ):
+                    run_with_crash_retry(
+                        webgl_pool,
+                        trunc_scenario,
+                        lambda b, sc=trunc_scenario, md=trunc_mode, sh=trunc_shot: run_truncated_stream_check(
+                            b, base_url, dist_dir, sc, md, sh
+                        ),
+                    )
+
+                for enc_scenario, enc_mode, expected_wire in (
+                    ("compressed_brotli_wire_progress", "full_br", br_size),
+                    ("compressed_brotli_chunked_progress", "chunked_br", br_size),
+                    ("compressed_gzip_wire_progress", "full_gz", gz_size),
+                    ("compressed_gzip_chunked_progress", "chunked_gz", gz_size),
+                ):
+                    run_with_crash_retry(
+                        webgl_pool,
+                        enc_scenario,
+                        lambda b, sc=enc_scenario, md=enc_mode, ew=expected_wire: run_compressed_progress_and_aria_check(
+                            b, base_url, dist_dir, sc, md, ew, wasm_size
+                        ),
+                    )
+
+                run_with_crash_retry(
+                    webgl_pool,
+                    "internal_error_and_fallback_compile",
+                    lambda b: run_internal_error_and_fallback_compile_checks(
+                        b,
+                        base_url,
+                        screenshot_dir / "smoke_fault_compile_internal_error.png"
                         if screenshot_dir
                         else None,
                     ),
