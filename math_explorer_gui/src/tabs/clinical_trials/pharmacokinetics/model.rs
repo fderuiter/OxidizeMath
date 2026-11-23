@@ -102,7 +102,7 @@ pub(crate) fn solve_ka_calibrated(
 }
 
 #[inline]
-fn project_plot_y(c: f64, log10_y: bool) -> f64 {
+pub(super) fn project_plot_y(c: f64, log10_y: bool) -> f64 {
     let clamped = c.max(0.0);
     if log10_y {
         clamped.max(LOG10_CONC_FLOOR).log10()

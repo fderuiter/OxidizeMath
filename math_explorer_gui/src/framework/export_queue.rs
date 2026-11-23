@@ -2,7 +2,7 @@ use super::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Supported formats for deferred end-of-frame dataset, figure, and code exports.
+/// Supported formats for deferred end-of-frame dataset, figure, code, and 3D exports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ExportFormat {
     /// Comma-separated values dataset format (`.csv`).
@@ -21,6 +21,12 @@ pub(crate) enum ExportFormat {
     Rust,
     /// Standalone Python 3 (`numpy` / `scipy`) numerical script (`.py`).
     Python,
+    /// Binary Stereolithography watertight 3D mesh format (`.stl`).
+    Stl,
+    /// Polygon File Format for colored 3D meshes and 3DGS splats (`.ply`).
+    Ply,
+    /// Wavefront 3D mesh format (`.obj`).
+    Obj,
     /// Standalone WebGL2 (`#version 300 es`) fragment shader (`.frag`).
     GlslWebGl2,
     /// Standalone Shadertoy (`mainImage`) fragment shader (`.frag`).
@@ -38,6 +44,9 @@ impl ExportFormat {
             Self::Tex => ("tex", "LaTeX", "LaTeX Document", "model"),
             Self::Rust => ("rs", "Rust", "Rust Source File", "model"),
             Self::Python => ("py", "Python", "Python Script", "model"),
+            Self::Stl => ("stl", "STL", "STL 3D Mesh", "mesh"),
+            Self::Ply => ("ply", "PLY", "PLY 3D Model", "mesh"),
+            Self::Obj => ("obj", "OBJ", "Wavefront OBJ Mesh", "mesh"),
             Self::GlslWebGl2 => (
                 "frag",
                 "WebGL2 GLSL",
@@ -259,6 +268,9 @@ impl SimulationFramework {
             (ExportFormat::Gif, _) => self.dispatch_gif_export(),
             (ExportFormat::Tex | ExportFormat::Rust | ExportFormat::Python, target) => {
                 self.dispatch_code_export(req.format, target, ctx);
+            }
+            (ExportFormat::Stl | ExportFormat::Ply | ExportFormat::Obj, target) => {
+                self.dispatch_3d_export(req.format, target, ctx);
             }
             (ExportFormat::GlslWebGl2 | ExportFormat::GlslShadertoy, target) => {
                 self.dispatch_shader_export(req.format, target, ctx);
