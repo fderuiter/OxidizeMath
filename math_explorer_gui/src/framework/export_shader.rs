@@ -6,6 +6,14 @@ use super::export_ui::export_action_button;
 use super::*;
 use eframe::egui;
 
+fn format_clipboard_error(err: &str) -> String {
+    if err.contains("Export CSV") {
+        format!("Clipboard unavailable: {err}")
+    } else {
+        format!("Clipboard unavailable ({err}). Please use Export CSV to save to disk.")
+    }
+}
+
 impl SimulationFramework {
     /// Queues a direct GLSL fragment shader clipboard copy for deferred end-of-frame dispatch.
     pub(crate) fn queue_shader_clipboard_export(&mut self, format: ExportFormat) {
@@ -172,12 +180,12 @@ impl SimulationFramework {
                 egui_plot::export::copy_text_to_clipboard_with_callback(content, move |cb| {
                     egui_ctx.data_mut(|d| {
                         let status = match cb {
-                            Ok(()) => super::export_queue::ActionBarExportStatus {
+                            Ok(()) => ActionBarExportStatus {
                                 message: format!("Copied {label} {noun} to clipboard!"),
                                 is_error: false,
                                 expires_at_time: None,
                             },
-                            Err(err) => super::export_queue::ActionBarExportStatus {
+                            Err(err) => ActionBarExportStatus {
                                 message: format_clipboard_error(&err),
                                 is_error: true,
                                 expires_at_time: None,
@@ -191,13 +199,5 @@ impl SimulationFramework {
                 egui_plot::export::copy_text_to_clipboard(content)
             }
         }
-    }
-}
-
-fn format_clipboard_error(err: &str) -> String {
-    if err.contains("Export CSV") {
-        format!("Clipboard unavailable: {err}")
-    } else {
-        format!("Clipboard unavailable ({err}). Please use Export CSV to save to disk.")
     }
 }
