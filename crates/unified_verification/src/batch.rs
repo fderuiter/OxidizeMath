@@ -172,7 +172,8 @@ pub(crate) fn select_touched_policy_members(
     touched
 }
 
-pub(crate) fn run_batch_staged_for_paths(
+pub(crate) fn run_batch_staged_for_paths_in_dir(
+    repo_dir: &Path,
     all_staged: &[String],
     existing_staged: &[String],
     workspace_members: &[String],
@@ -183,6 +184,10 @@ pub(crate) fn run_batch_staged_for_paths(
     }
 
     let mut passed = true;
+    if !crate::records::verify_records_in_dir_opts(repo_dir, None, None, true) {
+        passed = false;
+    }
+
     let staged_rs: Vec<String> = existing_staged
         .iter()
         .filter(|p| p.ends_with(".rs"))
@@ -210,7 +215,9 @@ pub(crate) fn run_batch_staged_for_paths(
         }
     }
 
-    crate::utils::check_staged_duplicates();
+    if repo_dir == Path::new(".") {
+        crate::utils::check_staged_duplicates();
+    }
 
     if all_staged.iter().any(|p| p.starts_with(".github/"))
         && !crate::workflow_linter::lint_workflows()
@@ -221,13 +228,29 @@ pub(crate) fn run_batch_staged_for_paths(
     passed
 }
 
+pub(crate) fn run_batch_staged_for_paths(
+    all_staged: &[String],
+    existing_staged: &[String],
+    workspace_members: &[String],
+    cache: &mut AstCache,
+) -> bool {
+    run_batch_staged_for_paths_in_dir(
+        Path::new("."),
+        all_staged,
+        existing_staged,
+        workspace_members,
+        cache,
+    )
+}
+
 pub fn run_batch_staged() -> bool {
+    let _root_guard = crate::manifest_cache::WorkspaceRootGuard::enter();
     let all_staged = git_cached_paths(&[]);
     let existing_staged: Vec<String> = git_cached_paths(&["--diff-filter=ACMR"])
         .into_iter()
         .filter(|p| Path::new(p).is_file())
         .collect();
-    let (_, members) = oxidize_core::workspace::get_workspace_members();
+    let (_, members) = crate::manifest_cache::discover_workspace();
     let mut cache = AstCache::new();
     run_batch_staged_for_paths(&all_staged, &existing_staged, &members, &mut cache)
 }
@@ -332,6 +355,66 @@ mod tests {
             cache.parse_calls(),
             "Every physical Rust file in the workspace must be parsed by syn::parse_file at most once"
         );
+    }
+
+    #[test]
+    fn test_batch_staged_enforces_adr_for_staged_core_changes() {
+        use crate::utils::test_utils::TempTestDir;
+
+        let dir = TempTestDir::new("batch_staged_adr_gate");
+        let run_git = |args: &[&str]| {
+            let status = Command::new("git")
+                .current_dir(&*dir)
+                .args(args)
+                .status()
+                .unwrap();
+            assert!(status.success(), "git {:?} failed", args);
+        };
+        run_git(&["init"]);
+        run_git(&["branch", "-M", "main"]);
+        run_git(&["config", "user.email", "test@example.com"]);
+        run_git(&["config", "user.name", "Test"]);
+        fs::write(dir.join("README.md"), "init\n").unwrap();
+        run_git(&["add", "."]);
+        run_git(&["commit", "-m", "init"]);
+
+        fs::create_dir_all(dir.join("crates/pure_math/src")).unwrap();
+        fs::write(
+            dir.join("crates/pure_math/src/lib.rs"),
+            "pub fn unrecorded() -> i32 { 1 }\n",
+        )
+        .unwrap();
+        run_git(&["add", "crates/pure_math/src/lib.rs"]);
+
+        let mut cache = AstCache::new();
+        let staged_only_core = vec!["crates/pure_math/src/lib.rs".to_string()];
+        assert!(!run_batch_staged_for_paths_in_dir(
+            &dir,
+            &staged_only_core,
+            &[],
+            &[],
+            &mut cache,
+        ));
+
+        fs::create_dir_all(dir.join("docs/adr")).unwrap();
+        fs::write(
+            dir.join("docs/adr/0001-core-edit.md"),
+            "# ADR 0001: Core Edit\n\n## Status\n\nAccepted\n",
+        )
+        .unwrap();
+        run_git(&["add", "docs/adr/0001-core-edit.md"]);
+
+        let staged_with_adr = vec![
+            "crates/pure_math/src/lib.rs".to_string(),
+            "docs/adr/0001-core-edit.md".to_string(),
+        ];
+        assert!(run_batch_staged_for_paths_in_dir(
+            &dir,
+            &staged_with_adr,
+            &[],
+            &[],
+            &mut cache,
+        ));
     }
 
     #[test]

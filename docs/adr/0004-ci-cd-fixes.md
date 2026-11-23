@@ -1,5 +1,9 @@
 # ADR 0004: CI/CD Fixes for Dependencies
 
+## Status
+
+Accepted
+
 ## Context
 Recent changes to `math_explorer` and `crates/markdown_tests` updated `Cargo.toml` to restore necessary dev-dependencies for testing. This triggered the core-modification check in the unified verification suite, which expects an Architectural Decision Record (ADR) update for any changes in these directories.
 
