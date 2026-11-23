@@ -95,13 +95,27 @@ pub fn load_allowlist(whitelist_path: &Path) -> HashSet<String> {
     allowlist
 }
 
-/// Checks an entrypoint file (`lib.rs` or `main.rs`) for the required active doc attribute.
-pub fn check_entrypoint_attribute(entry_path: &Path) -> Result<(), String> {
+struct DocAuditPatterns {
+    entrypoint_doc_re: Regex,
+}
+
+impl DocAuditPatterns {
+    fn new() -> Self {
+        Self {
+            entrypoint_doc_re: Regex::new(
+                r#"^#!\[doc\s*=\s*include_str!\(\s*"(\.\./)?README\.md"\s*\)\]"#,
+            )
+            .expect("Valid regex"),
+        }
+    }
+}
+
+fn check_entrypoint_attribute_with_regex(
+    entry_path: &Path,
+    doc_regex: &Regex,
+) -> Result<(), String> {
     let content = fs::read_to_string(entry_path)
         .map_err(|e| format!("{}: Could not read entrypoint: {}", entry_path.display(), e))?;
-
-    let doc_regex = Regex::new(r#"^#!\[doc\s*=\s*include_str!\(\s*"(\.\./)?README\.md"\s*\)\]"#)
-        .expect("Valid regex");
 
     let has_doc_attr = content
         .lines()
@@ -117,6 +131,13 @@ pub fn check_entrypoint_attribute(entry_path: &Path) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Checks an entrypoint file (`lib.rs` or `main.rs`) for the required active doc attribute.
+#[cfg(test)]
+pub fn check_entrypoint_attribute(entry_path: &Path) -> Result<(), String> {
+    let patterns = DocAuditPatterns::new();
+    check_entrypoint_attribute_with_regex(entry_path, &patterns.entrypoint_doc_re)
 }
 
 /// Scans a crate README file for prohibited placeholder strings.
@@ -181,7 +202,18 @@ pub fn check_content_thresholds(
 }
 
 /// Performs documentation audit on a single workspace crate directory.
+#[cfg(test)]
 pub fn audit_crate(crate_name: &str, crate_dir: &Path, is_allowlisted: bool) -> AuditReport {
+    let patterns = DocAuditPatterns::new();
+    audit_crate_with_patterns(crate_name, crate_dir, is_allowlisted, &patterns)
+}
+
+fn audit_crate_with_patterns(
+    crate_name: &str,
+    crate_dir: &Path,
+    is_allowlisted: bool,
+    patterns: &DocAuditPatterns,
+) -> AuditReport {
     let mut report = AuditReport::new();
 
     // 1. Verify localized README.md exists
@@ -225,14 +257,16 @@ pub fn audit_crate(crate_name: &str, crate_dir: &Path, is_allowlisted: bool) -> 
 
     if lib_rs.is_file() {
         checked_entrypoint = true;
-        if let Err(e) = check_entrypoint_attribute(&lib_rs) {
+        if let Err(e) = check_entrypoint_attribute_with_regex(&lib_rs, &patterns.entrypoint_doc_re)
+        {
             report.add(e);
         }
     }
 
     if main_rs.is_file() {
         checked_entrypoint = true;
-        if let Err(e) = check_entrypoint_attribute(&main_rs) {
+        if let Err(e) = check_entrypoint_attribute_with_regex(&main_rs, &patterns.entrypoint_doc_re)
+        {
             report.add(e);
         }
     }
@@ -290,11 +324,14 @@ fn run_doc_audit_in_base(workspace_root: &Path, members: &[String], args: &[Stri
         load_allowlist(&whitelist_file)
     };
 
+    let patterns = DocAuditPatterns::new();
     let mut report = AuditReport::new();
     for member in members {
         let crate_dir = crate::manifest_cache::resolve_workspace_path_from(workspace_root, member);
         let is_allowlisted = allowlist.contains(member) || staging_mode;
-        report.extend(audit_crate(member, &crate_dir, is_allowlisted).violations);
+        report.extend(
+            audit_crate_with_patterns(member, &crate_dir, is_allowlisted, &patterns).violations,
+        );
     }
 
     report.extend(facade_imports::audit_facade_import_hygiene(workspace_root));
