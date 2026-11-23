@@ -1,6 +1,8 @@
 //! GLSL ES 3.00 colormap and WCAG 2.2 dark-canvas contrast emitters mirroring [`super::colormap`].
 // [cite:math_commons]
 
+use alloc::string::String;
+
 /// Emits the GLSL ES 3.00 `heatmap_color(float t)` function mapping `[0.0, 1.0]` to RGB (`vec3`).
 #[must_use]
 pub const fn glsl_heatmap_color_fn() -> &'static str {
