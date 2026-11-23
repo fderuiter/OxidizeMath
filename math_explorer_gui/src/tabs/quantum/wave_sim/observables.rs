@@ -7,8 +7,6 @@ use super::presets::{
 };
 use super::WaveSimulatorTool;
 use math_commons::ast::Expr;
-use math_explorer::physics::quantum::QuantumState;
-use nalgebra::DVector;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 
@@ -79,20 +77,22 @@ pub struct TunnelingObservables {
     pub left_wall_prob: f64,
 }
 
-/// Zero-allocation Born R/B/T integration directly over [`QuantumState`] complex amplitudes.
+/// Integrates a slice of Born probabilities $|\psi(x_i)|^2$ into reflection, barrier, and transmission sums.
 #[must_use]
-pub(crate) fn compute_tunneling_from_psi(
+pub fn compute_tunneling_observables_slice(
     x_axis: &[f64],
-    psi: &QuantumState,
+    prob_density: &[f64],
     x_left: f64,
     x_right: f64,
 ) -> TunnelingObservables {
     let mut obs = TunnelingObservables::default();
-    for (&x, c) in x_axis.iter().zip(psi.vector.as_slice().iter()) {
-        let p = c.norm_sqr();
+    let len = x_axis.len().min(prob_density.len());
+    for i in 0..len {
+        let p = prob_density[i];
         if !p.is_finite() {
             continue;
         }
+        let x = x_axis[i];
         if x < x_left {
             obs.reflection += p;
         } else if x <= x_right {
@@ -162,38 +162,6 @@ impl ScatterLatchState {
             self.wall_arrived = true;
         }
     }
-}
-
-/// Integrates [`math_explorer::physics::quantum::QuantumState::probability_density`] into reflection, barrier, and transmission sums.
-#[must_use]
-pub fn compute_tunneling_observables(
-    x_axis: &[f64],
-    prob_density: &DVector<f64>,
-    x_left: f64,
-    x_right: f64,
-) -> TunnelingObservables {
-    let mut obs = TunnelingObservables::default();
-    let len = x_axis.len().min(prob_density.len());
-    for i in 0..len {
-        let p = prob_density[i];
-        if !p.is_finite() {
-            continue;
-        }
-        let x = x_axis[i];
-        if x < x_left {
-            obs.reflection += p;
-        } else if x <= x_right {
-            obs.barrier_prob += p;
-        } else {
-            obs.transmission += p;
-        }
-        if x > RIGHT_WALL_GUARD_X {
-            obs.right_wall_prob += p;
-        } else if x < -RIGHT_WALL_GUARD_X {
-            obs.left_wall_prob += p;
-        }
-    }
-    obs
 }
 
 /// Structured snapshot payload emitted by [`super::WaveRunner`] to the UI thread.

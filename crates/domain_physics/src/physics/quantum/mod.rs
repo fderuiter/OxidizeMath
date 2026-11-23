@@ -80,6 +80,7 @@ pub mod hydrogenic;
 pub mod schrodinger;
 #[allow(missing_docs)]
 pub mod spin;
+pub mod tridiagonal;
 #[allow(missing_docs)]
 pub mod types;
 
@@ -101,6 +102,7 @@ pub use schrodinger::{
     transmission_probability,
 };
 pub use spin::{set_spin_bloch_angles_in_place, sigma_x, sigma_y, sigma_z, spin_from_bloch_angles};
+pub use tridiagonal::{CrankNicolsonPropagator1D, TridiagonalHamiltonian1D};
 pub use types::{QuantumOperator, QuantumState};
 
 // [cite:quantum_mechanics]

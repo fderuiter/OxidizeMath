@@ -210,6 +210,7 @@ impl WaveRunner {
         }
         self.barrier_idx = detect_barrier_index(&self.potential);
         self.hamiltonian_dirty = true;
+        self.propagator.invalidate();
         self.cached_dt = None;
         self.update_observables_in_place();
     }

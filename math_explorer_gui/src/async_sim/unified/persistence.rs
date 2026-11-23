@@ -1,9 +1,41 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
+use super::{UnifiedModel, UnifiedSimTool};
 use crate::framework::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
+use math_commons::ast::CompiledExpr;
 use std::collections::BTreeMap;
+use std::ops::RangeInclusive;
 use std::sync::Arc;
+
+/// Specification for an opt-in custom formula input bar on a [`UnifiedModel`].
+#[derive(Clone, Debug)]
+pub struct UnifiedFormulaSpec {
+    /// Left-hand side equation label (e.g. `"V(x)"`).
+    pub lhs_label: &'static str,
+    /// Initial default expression string.
+    pub default_expr: &'static str,
+    /// Coordinate axis variable names bound to leading bytecode slots (e.g. `&["x"]`).
+    pub axes: &'static [&'static str],
+    /// Curated `(display_name, expression)` presets.
+    pub presets: &'static [(&'static str, &'static str)],
+    /// Slider range bounds for auto-synthesized free parameters.
+    pub param_range: RangeInclusive<f64>,
+    /// Default value assigned to newly discovered free parameters.
+    pub param_default: f64,
+}
+
+/// `Arc`-shared compiled formula payload streamed to [`super::UnifiedSimRunner`] without worker-side parsing.
+#[derive(Clone, Debug)]
+pub struct CompiledFormulaPayload {
+    /// Monotonic revision incremented on formula or parameter slider edits.
+    pub revision: u64,
+    /// Compiled postfix AST bytecode.
+    pub compiled: Arc<CompiledExpr>,
+    /// Stack-allocated parameter values aligned with `compiled`.
+    pub params: [f64; MAX_SYNTHESIZED_PARAMS],
+    /// Number of active parameter slots in `params`.
+    pub param_len: usize,
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -52,6 +84,7 @@ pub(super) fn snapshot_formula_payload(
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(crate) fn publish_formula_update(&mut self) {
+        self.clear_stepped_state();
         if !self.custom_formula_enabled {
             *self
                 .shared_formula

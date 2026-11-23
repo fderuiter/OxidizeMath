@@ -15,6 +15,8 @@ mod drag_bounds_and_rollback_tests;
 mod export_3d;
 mod export_dataset;
 mod export_figure;
+mod export_modal_host;
+mod export_persistence;
 mod export_queue;
 #[cfg(test)]
 pub(crate) use export_queue::deferred_export_tests;
@@ -68,6 +70,7 @@ pub mod story_hud;
 pub(crate) mod theory_links;
 #[cfg(test)]
 mod theory_links_tests;
+mod theory_portal;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
@@ -84,6 +87,8 @@ pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use history_ui::render_workspace_history_buttons;
 pub use math_input::*;
+#[cfg(any(feature = "pure_math", feature = "applied"))]
+pub(crate) use overlay_sync::record_theory_portal_toggle;
 pub use pane_scope::{
     is_button_activation_focused, is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed,
     is_text_edit_focused, record_focused_widget_type_from_output, scoped_panel_id, InputMode,
@@ -400,7 +405,6 @@ pub trait InteractiveTool {
     ) -> Vec<egui_plot::export::DatasetFrame> {
         let count = num_frames.max(1);
         let mut frames = Vec::with_capacity(count);
-
         for _ in 0..count {
             self.step_simulation();
             let ds = self.export_datasets();
@@ -408,14 +412,12 @@ pub trait InteractiveTool {
                 frames.push(ds);
             }
         }
-
         if frames.is_empty() {
             let ds = self.export_datasets();
             if !ds.is_empty() {
                 frames = egui_plot::export::sample_progressive_frames(&ds, count);
             }
         }
-
         frames
     }
 
@@ -456,7 +458,6 @@ pub struct SimulationFramework {
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub(crate) export_queue: ExportQueue,
-
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
     /// Baseline parameters snapshot on tool load.

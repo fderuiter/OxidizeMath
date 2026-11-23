@@ -159,6 +159,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                             if let Some(ext) = &mut self.ui_extension {
                                 ext.on_custom_action(action);
                             }
+                            self.clear_stepped_state();
                             self.dirty = true;
                             ctx.request_repaint();
                         }
@@ -203,6 +204,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         if reset_needed {
             self.reset_simulation(Some(ctx));
         } else if let Some((x0, k0, sigma)) = edits.wavepacket {
+            self.clear_stepped_state();
             if self
                 .controller
                 .send_command(SimCommand::SetWavepacket { x0, k0, sigma })
@@ -212,6 +214,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 ctx.request_repaint();
             }
         } else if slider_changed {
+            self.clear_stepped_state();
             self.refresh_paused_simulation(Some(ctx));
         }
     }
@@ -445,7 +448,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     fn refresh_paused_simulation(&mut self, ctx: Option<&egui::Context>) {
         if self.controller.state().is_ready() {
-            self.stepped_snapshot = None;
+            self.clear_stepped_state();
             let _ = self.controller.send_command(SimCommand::Custom(
                 super::SYNC_PARAMETERS_COMMAND.to_string(),
             ));
