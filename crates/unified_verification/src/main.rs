@@ -101,6 +101,7 @@ fn main() {
         "check-file-lengths" => run_check_file_lengths_cli(&args[2..]),
         "lint-workflows" => exit_if_failed(workflow_linter::lint_workflows()),
         "check-docs" => exit_if_failed(doc_audit::run_doc_audit(&args[2..])),
+        "list-examples" => exit_if_failed(doc_audit::list_registered_examples_cli()),
         _ => {
             eprintln!("Unknown command: {}", args[1]);
             std::process::exit(1);
