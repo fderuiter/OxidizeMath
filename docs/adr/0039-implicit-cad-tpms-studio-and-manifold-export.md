@@ -1,7 +1,7 @@
-# ADR 0038: Implicit CAD & TPMS Studio, Boundary-Sealed Marching Cubes, and Millimeter Manifold Export
+# ADR 0039: Implicit CAD & TPMS Studio, Boundary-Sealed Marching Cubes, and Millimeter Manifold Export
 
 ## Status
-Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
+Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0038](0038-watertight-3d-stl-and-ply-exports.md))
 
 ## Context
 OxidizeMath already included symbolic AST parsing in [`crates/math_commons/src/ast/mod.rs`](../../crates/math_commons/src/ast/mod.rs), Marching Cubes extraction in [`crates/domain_applied/src/applied/isosurface/mod.rs`](../../crates/domain_applied/src/applied/isosurface/mod.rs), parametric differential geometry in [`crates/pure_math/src/pure_math/differential_geometry/surface.rs`](../../crates/pure_math/src/pure_math/differential_geometry/surface.rs), and Wavefront `.obj` serialization in [`crates/oxidize_core/src/mesh/export.rs`](../../crates/oxidize_core/src/mesh/export.rs). Four gaps prevented browser and desktop users from authoring watertight, 3D-printable millimeter meshes directly inside `math_explorer_gui`:

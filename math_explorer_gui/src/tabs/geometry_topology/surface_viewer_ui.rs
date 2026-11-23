@@ -50,7 +50,7 @@ impl SurfaceViewer {
             });
 
             ui.separator();
-            self.draw_obj_export_section(ui);
+            self.draw_scaled_export_section(ui);
         });
     }
 
@@ -77,9 +77,11 @@ impl SurfaceViewer {
                     }
                     SurfaceType::KleinBottle => {
                         ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
+                        self.draw_wall_thickness_slider(ui);
                     }
                     SurfaceType::CustomHeightfield | SurfaceType::CustomParametric => {
                         self.custom_sandbox.ui_for_type(ui, self.surface_type);
+                        self.draw_wall_thickness_slider(ui);
                     }
                 }
                 ui.add(
@@ -90,7 +92,20 @@ impl SurfaceViewer {
             });
     }
 
-    fn draw_obj_export_section(&mut self, ui: &mut egui::Ui) {
+    fn draw_wall_thickness_slider(&mut self, ui: &mut egui::Ui) {
+        use crate::tabs::geometry_topology::export_utils::{
+            MAX_WALL_THICKNESS, MIN_WALL_THICKNESS,
+        };
+        ui.add(
+            egui::Slider::new(
+                &mut self.wall_thickness,
+                MIN_WALL_THICKNESS..=MAX_WALL_THICKNESS,
+            )
+            .text("Shell Wall Thickness"),
+        );
+    }
+
+    fn draw_scaled_export_section(&mut self, ui: &mut egui::Ui) {
         let diag = self.ensure_mesh_diagnostics();
         ui.small(format!(
             "Bounds: {:.1} × {:.1} × {:.1} mm | Open edges: {} | NaN normals: {}",
@@ -111,23 +126,7 @@ impl SurfaceViewer {
             if ui.button("Download .OBJ (mm)").clicked() {
                 self.download_scaled_obj();
             }
-            let is_saving = self.obj_export_rx.is_some();
-            if ui
-                .add_enabled(!is_saving, egui::Button::new("Export to OBJ"))
-                .clicked()
-            {
-                self.trigger_obj_export();
-            }
         });
-        if let Some((message, is_error)) = &self.obj_export_status {
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let color = if *is_error {
-                palette.error
-            } else {
-                palette.success
-            };
-            ui.colored_label(color, message);
-        }
     }
 
     fn download_scaled_stl(&self) {

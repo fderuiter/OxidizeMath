@@ -86,6 +86,13 @@ impl Default for ImplicitCadWorkspace {
 }
 
 impl ImplicitCadWorkspace {
+    /// Returns `true` when the cached mesh already corresponds to `params`.
+    pub fn matches_params(&self, params: &ImplicitCadParams) -> bool {
+        let mut normalized = params.clone();
+        normalized.resolution = normalized.resolution.clamp(MIN_GRID_RES, MAX_GRID_RES);
+        self.last_built.as_ref() == Some(&normalized)
+    }
+
     /// Rebuilds the voxel field and Marching Cubes mesh only when parameters have changed.
     pub fn ensure_up_to_date(&mut self, params: &ImplicitCadParams) {
         let mut normalized = params.clone();

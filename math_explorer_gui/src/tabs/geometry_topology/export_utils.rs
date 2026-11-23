@@ -1,259 +1,454 @@
 #![cfg_attr(any(), verified(opt_out = "infrastructure"))]
 
+#[path = "export_utils_scaled.rs"]
+mod scaled;
+
 use math_explorer::pure_math::differential_geometry::surface::ParametricSurface;
+use nalgebra::Vector3;
 use oxidize_core::mesh::{Mesh, Point3D};
+pub use scaled::*;
+use std::f64::consts::{PI, TAU};
 
-/// Builds a seam- and pole-welded triangle [`Mesh`] for `surface` over its natural `(u, v)` domain.
-#[cfg(test)]
-#[must_use]
-pub fn surface_to_mesh(surface: &dyn ParametricSurface, u_res: usize, v_res: usize) -> Mesh {
-    surface_to_mesh_scaled(surface, u_res, v_res, 1.0)
+/// Minimum normal-offset shell wall thickness for non-orientable or open-patch surface printing.
+pub const MIN_WALL_THICKNESS: f64 = 0.05;
+/// Maximum normal-offset shell wall thickness for non-orientable or open-patch surface printing.
+pub const MAX_WALL_THICKNESS: f64 = 0.50;
+/// Default normal-offset shell wall thickness.
+pub const DEFAULT_WALL_THICKNESS: f64 = 0.15;
+
+pub(super) fn clamp_grid_res(res: usize) -> usize {
+    res.clamp(4, math_commons::registry::MAX_GRID_SIZE)
 }
 
-/// Builds a seam- and pole-welded triangle [`Mesh`] scaled by `scale_mm` physical millimeters.
-#[cfg(test)]
-#[must_use]
-pub fn surface_to_mesh_scaled(
-    surface: &dyn ParametricSurface,
-    u_res: usize,
-    v_res: usize,
-    scale_mm: f32,
-) -> Mesh {
-    surface_to_mesh_with_domain_scaled(
-        surface,
-        surface.u_domain(),
-        surface.v_domain(),
-        u_res,
-        v_res,
-        scale_mm,
-    )
-}
-
-/// Builds a seam- and pole-welded triangle [`Mesh`] over explicit `(u_range, v_range)` domains,
-/// scaled by `scale_mm` physical millimeters.
-#[must_use]
-pub fn surface_to_mesh_with_domain_scaled(
-    surface: &dyn ParametricSurface,
-    u_range: (f64, f64),
-    v_range: (f64, f64),
-    u_res: usize,
-    v_res: usize,
-    scale_mm: f32,
-) -> Mesh {
-    let u_steps = u_res.max(3);
-    let v_steps = v_res.max(3);
-    let natural_u = same_interval(u_range, surface.u_domain());
-    let natural_v = same_interval(v_range, surface.v_domain());
-    if surface.has_v_poles() && natural_u && natural_v {
-        build_polar_surface_mesh(surface, u_range, v_range, u_steps, v_steps, scale_mm)
+fn safe_unit_vector(v: Vector3<f64>, fallback: Vector3<f64>) -> Vector3<f64> {
+    let norm = v.norm();
+    if norm.is_finite() && norm > 1e-12 {
+        v / norm
     } else {
-        build_grid_surface_mesh(
-            surface,
-            u_range,
-            v_range,
-            (natural_u && surface.is_u_periodic(), natural_v && surface.is_v_periodic()),
-            u_steps,
-            v_steps,
-            scale_mm,
-        )
+        fallback
     }
 }
 
-fn same_interval(a: (f64, f64), b: (f64, f64)) -> bool {
-    (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9
+fn to_p3(x: f64, y: f64, z: f64) -> Point3D {
+    Point3D::new(x as f32, y as f32, z as f32)
 }
 
-fn push_surface_sample(
-    surface: &dyn ParametricSurface,
-    u: f64,
-    v: f64,
-    scale_mm: f32,
-    vertices: &mut Vec<Point3D>,
-    normals: &mut Vec<Point3D>,
-) {
-    let p = surface.position(u, v);
-    let n = surface.mesh_normal(u, v);
-    vertices.push(Point3D::new(
-        p.x as f32 * scale_mm,
-        p.y as f32 * scale_mm,
-        p.z as f32 * scale_mm,
-    ));
-    normals.push(Point3D::new(n.x as f32, n.y as f32, n.z as f32));
+pub(super) fn is_standard_polar_domain(u_range: (f64, f64), v_range: (f64, f64)) -> bool {
+    u_range.0.abs() < 1e-9
+        && (u_range.1 - TAU).abs() < 1e-7
+        && v_range.0.abs() < 1e-9
+        && ((v_range.1 - PI).abs() < 1e-7 || (v_range.1 - TAU).abs() < 1e-7)
 }
 
-fn build_polar_surface_mesh(
+pub(super) fn is_standard_tau_domain(u_range: (f64, f64), v_range: (f64, f64)) -> bool {
+    u_range.0.abs() < 1e-9
+        && (u_range.1 - TAU).abs() < 1e-7
+        && v_range.0.abs() < 1e-9
+        && (v_range.1 - TAU).abs() < 1e-7
+}
+
+pub(super) fn has_polar_singularities(surface: &dyn ParametricSurface) -> bool {
+    let n0 = surface.position(0.0, 0.0);
+    let n1 = surface.position(1.1, 0.0);
+    let s0 = surface.position(0.0, PI);
+    let s1 = surface.position(1.1, PI);
+    (n0 - n1).norm() < 1e-8 && (s0 - s1).norm() < 1e-8 && (n0 - s0).norm() > 1e-6
+}
+
+pub(super) fn has_direct_periodic_seams(surface: &dyn ParametricSurface) -> bool {
+    let p_u0 = surface.position(0.0, 0.7);
+    let p_u1 = surface.position(TAU, 0.7);
+    let p_v0 = surface.position(0.7, 0.0);
+    let p_v1 = surface.position(0.7, TAU);
+    (p_u0 - p_u1).norm() < 1e-7 && (p_v0 - p_v1).norm() < 1e-7
+}
+
+pub(super) fn has_klein_seam_topology(surface: &dyn ParametricSurface) -> bool {
+    let v_closed_a = (surface.position(0.7, 0.0) - surface.position(0.7, TAU)).norm() < 1e-7;
+    let v_closed_b = (surface.position(2.1, 0.0) - surface.position(2.1, TAU)).norm() < 1e-7;
+    if !v_closed_a || !v_closed_b {
+        return false;
+    }
+    let (_, min_seam_sq_err) = detect_u_seam_bijection_with_error(surface, 16);
+    min_seam_sq_err < 1e-6
+}
+
+/// Builds a closed genus-0 manifold mesh for polar surfaces (`v` in `[0, PI]`, welded poles at `(0, 0, ±1)`).
+pub fn polar_surface_to_manifold_mesh(
     surface: &dyn ParametricSurface,
-    u_range: (f64, f64),
-    v_range: (f64, f64),
-    u_steps: usize,
-    v_steps: usize,
-    scale_mm: f32,
-) -> Mesh {
-    let (u_min, u_max) = u_range;
-    let (v_min, v_max) = v_range;
-    let u_periodic = surface.is_u_periodic();
-    let u_cols = if u_periodic { u_steps } else { u_steps + 1 };
-    let ring_count = v_steps - 1;
-    let total_verts = 2 + ring_count * u_cols;
+    u_res: usize,
+    v_res: usize,
+) -> Result<Mesh, String> {
+    let nu = clamp_grid_res(u_res);
+    let nv = clamp_grid_res(v_res);
+    let north = surface.position(0.0, 0.0);
+    let south = surface.position(0.0, PI);
+    if !north.coords.iter().all(|c| c.is_finite()) || !south.coords.iter().all(|c| c.is_finite()) {
+        return Err("Surface pole coordinates must be finite".to_string());
+    }
 
-    let mut vertices = Vec::with_capacity(total_verts);
-    let mut normals = Vec::with_capacity(total_verts);
-    let mut indices = Vec::with_capacity(u_steps * (2 + ring_count.saturating_sub(1) * 2) * 3);
+    let num_verts = 2 + (nv - 1) * nu;
+    let mut vertices = Vec::with_capacity(num_verts);
+    let mut normals = Vec::with_capacity(num_verts);
+    vertices.push(to_p3(north.x, north.y, north.z));
+    normals.push(Point3D::new(0.0, 0.0, 1.0));
+    vertices.push(to_p3(south.x, south.y, south.z));
+    normals.push(Point3D::new(0.0, 0.0, -1.0));
 
-    // North pole (index 0)
-    push_surface_sample(surface, u_min, v_min, scale_mm, &mut vertices, &mut normals);
-
-    // Interior latitude rings j = 1..v_steps
-    for j in 1..v_steps {
-        let v = v_min + (v_max - v_min) * (j as f64 / v_steps as f64);
-        for i in 0..u_cols {
-            let u = u_min + (u_max - u_min) * (i as f64 / u_steps as f64);
-            push_surface_sample(surface, u, v, scale_mm, &mut vertices, &mut normals);
+    for j in 1..nv {
+        let v = PI * (j as f64 / nv as f64);
+        for i in 0..nu {
+            let u = TAU * (i as f64 / nu as f64);
+            let p = surface.position(u, v);
+            if !p.coords.iter().all(|c| c.is_finite()) {
+                return Err("Surface position contains non-finite coordinate".to_string());
+            }
+            let radial = safe_unit_vector(p.coords, Vector3::new(0.0, 0.0, 1.0));
+            let outward = safe_unit_vector(
+                surface.partial_v(u, v).cross(&surface.partial_u(u, v)),
+                radial,
+            );
+            vertices.push(to_p3(p.x, p.y, p.z));
+            normals.push(to_p3(outward.x, outward.y, outward.z));
         }
     }
 
-    // South pole (index south_idx)
-    let south_idx = vertices.len();
-    push_surface_sample(surface, u_min, v_max, scale_mm, &mut vertices, &mut normals);
-
-    let ring_idx = |ring: usize, col: usize| -> usize { 1 + ring * u_cols + col };
-
-    for i in 0..u_steps {
-        let inext = if u_periodic { (i + 1) % u_steps } else { i + 1 };
-        // North polar fan (outward CCW)
-        indices.extend_from_slice(&[0, ring_idx(0, i), ring_idx(0, inext)]);
-
-        // Interior quad strips
-        for r in 0..ring_count.saturating_sub(1) {
-            let r00 = ring_idx(r, i);
-            let r10 = ring_idx(r, inext);
-            let r01 = ring_idx(r + 1, i);
-            let r11 = ring_idx(r + 1, inext);
-            indices.extend_from_slice(&[r00, r01, r11, r00, r11, r10]);
-        }
-
-        // South polar fan (outward CCW)
-        let last = ring_count - 1;
-        indices.extend_from_slice(&[ring_idx(last, i), south_idx, ring_idx(last, inext)]);
-    }
-
-    Mesh {
+    let indices = build_polar_indices(nu, nv);
+    Ok(Mesh {
         vertices,
         normals,
         indices,
-    }
+    })
 }
 
-fn build_grid_surface_mesh(
+fn build_polar_indices(nu: usize, nv: usize) -> Vec<usize> {
+    let ring = |j: usize, i: usize| -> usize { 2 + (j - 1) * nu + (i % nu) };
+    let mut indices = Vec::with_capacity(6 * (nv - 1) * nu);
+    for i in 0..nu {
+        indices.extend_from_slice(&[0, ring(1, i), ring(1, i + 1)]);
+    }
+    for j in 1..(nv - 1) {
+        for i in 0..nu {
+            let (r00, r10, r11, r01) = (
+                ring(j, i),
+                ring(j + 1, i),
+                ring(j + 1, i + 1),
+                ring(j, i + 1),
+            );
+            indices.extend_from_slice(&[r00, r10, r11, r00, r11, r01]);
+        }
+    }
+    for i in 0..nu {
+        indices.extend_from_slice(&[1, ring(nv - 1, i + 1), ring(nv - 1, i)]);
+    }
+    indices
+}
+
+/// Builds a closed genus-1 manifold mesh for doubly periodic surfaces (`u, v` in `[0, 2*PI)`).
+pub fn periodic_surface_to_manifold_mesh(
     surface: &dyn ParametricSurface,
-    u_range: (f64, f64),
-    v_range: (f64, f64),
-    periodicity: (bool, bool),
-    u_steps: usize,
-    v_steps: usize,
-    scale_mm: f32,
-) -> Mesh {
-    let (u_min, u_max) = u_range;
-    let (v_min, v_max) = v_range;
-    let (u_periodic, v_periodic) = periodicity;
-    let u_cols = if u_periodic { u_steps } else { u_steps + 1 };
-    let v_rows = if v_periodic { v_steps } else { v_steps + 1 };
+    u_res: usize,
+    v_res: usize,
+) -> Result<Mesh, String> {
+    let nu = clamp_grid_res(u_res);
+    let nv = clamp_grid_res(v_res);
+    let mut vertices = Vec::with_capacity(nu * nv);
+    let mut normals = Vec::with_capacity(nu * nv);
 
-    let mut vertices = Vec::with_capacity(u_cols * v_rows);
-    let mut normals = Vec::with_capacity(u_cols * v_rows);
-    let mut indices = Vec::with_capacity(u_steps * v_steps * 6);
-
-    for i in 0..u_cols {
-        let u = u_min + (u_max - u_min) * (i as f64 / u_steps as f64);
-        for j in 0..v_rows {
-            let v = v_min + (v_max - v_min) * (j as f64 / v_steps as f64);
-            push_surface_sample(surface, u, v, scale_mm, &mut vertices, &mut normals);
+    for i in 0..nu {
+        let u = TAU * (i as f64 / nu as f64);
+        for j in 0..nv {
+            let v = TAU * (j as f64 / nv as f64);
+            let p = surface.position(u, v);
+            if !p.coords.iter().all(|c| c.is_finite()) {
+                return Err("Surface position contains non-finite coordinate".to_string());
+            }
+            let n = safe_unit_vector(
+                surface.partial_u(u, v).cross(&surface.partial_v(u, v)),
+                Vector3::new(0.0, 0.0, 1.0),
+            );
+            vertices.push(to_p3(p.x, p.y, p.z));
+            normals.push(to_p3(n.x, n.y, n.z));
         }
     }
 
-    for i in 0..u_steps {
-        let inext = if u_periodic { (i + 1) % u_steps } else { i + 1 };
-        for j in 0..v_steps {
-            let jnext = if v_periodic { (j + 1) % v_steps } else { j + 1 };
-            let idx00 = i * v_rows + j;
-            let idx10 = inext * v_rows + j;
-            let idx01 = i * v_rows + jnext;
-            let idx11 = inext * v_rows + jnext;
-            indices.extend_from_slice(&[idx00, idx10, idx11, idx00, idx11, idx01]);
+    let mut indices = Vec::with_capacity(6 * nu * nv);
+    let idx = |i: usize, j: usize| -> usize { (i % nu) * nv + (j % nv) };
+    for i in 0..nu {
+        for j in 0..nv {
+            let (v00, v10, v11, v01) = (idx(i, j), idx(i + 1, j), idx(i + 1, j + 1), idx(i, j + 1));
+            indices.extend_from_slice(&[v00, v10, v11, v00, v11, v01]);
         }
     }
-
-    Mesh {
+    Ok(Mesh {
         vertices,
         normals,
         indices,
+    })
+}
+
+fn detect_u_seam_bijection_with_error(
+    surface: &dyn ParametricSurface,
+    nv: usize,
+) -> (Vec<(usize, bool)>, f64) {
+    let p0: Vec<_> = (0..nv)
+        .map(|j| surface.position(0.0, TAU * (j as f64 / nv as f64)).coords)
+        .collect();
+    let p_end: Vec<_> = (0..nv)
+        .map(|j| surface.position(TAU, TAU * (j as f64 / nv as f64)).coords)
+        .collect();
+
+    let sample_step = (nv / 64).max(1);
+    let mut best = (false, 0_usize, f64::INFINITY);
+    for reverse_v in [false, true] {
+        for shift in 0..nv {
+            let mut err = 0.0_f64;
+            for j in (0..nv).step_by(sample_step) {
+                let m = if reverse_v {
+                    (shift + nv - j) % nv
+                } else {
+                    (j + shift) % nv
+                };
+                err += (p_end[j] - p0[m]).norm_squared();
+            }
+            if err < best.2 {
+                best = (reverse_v, shift, err);
+            }
+        }
     }
+
+    let (reverse_v, shift, min_err) = best;
+    let same_orient = !reverse_v;
+    let map = (0..nv)
+        .map(|j| {
+            let m = if reverse_v {
+                (shift + nv - j) % nv
+            } else {
+                (j + shift) % nv
+            };
+            (m, same_orient)
+        })
+        .collect();
+    (map, min_err)
+}
+
+/// Extrudes a normal-offset solid shell (`wall_thickness` in `[0.05, 0.50]`) stitching Klein seams into a watertight solid.
+pub fn extrude_surface_wall_shell(
+    surface: &dyn ParametricSurface,
+    u_res: usize,
+    v_res: usize,
+    wall_thickness: f64,
+) -> Result<Mesh, String> {
+    if !wall_thickness.is_finite() {
+        return Err("Wall thickness must be finite".to_string());
+    }
+    let half_t = 0.5 * wall_thickness.clamp(MIN_WALL_THICKNESS, MAX_WALL_THICKNESS);
+    let nu = clamp_grid_res(u_res);
+    let raw_nv = clamp_grid_res(v_res);
+    let nv = if raw_nv.is_multiple_of(2) {
+        raw_nv
+    } else {
+        (raw_nv + 1).min(math_commons::registry::MAX_GRID_SIZE)
+    };
+
+    let sheet_len = nu * nv;
+    let mut vertices = vec![Point3D::new(0.0, 0.0, 0.0); 2 * sheet_len];
+    let mut normals = vec![Point3D::new(0.0, 0.0, 1.0); 2 * sheet_len];
+    for i in 0..nu {
+        let u = TAU * (i as f64 / nu as f64);
+        for j in 0..nv {
+            let v = TAU * (j as f64 / nv as f64);
+            let p = surface.position(u, v);
+            if !p.coords.iter().all(|c| c.is_finite()) {
+                return Err("Surface position contains non-finite coordinate".to_string());
+            }
+            let n = safe_unit_vector(
+                surface.partial_u(u, v).cross(&surface.partial_v(u, v)),
+                Vector3::new(0.0, 0.0, 1.0),
+            );
+            let p_out = p.coords + n * half_t;
+            let p_in = p.coords - n * half_t;
+            let k = i * nv + j;
+            vertices[k] = to_p3(p_out.x, p_out.y, p_out.z);
+            normals[k] = to_p3(n.x, n.y, n.z);
+            vertices[sheet_len + k] = to_p3(p_in.x, p_in.y, p_in.z);
+            normals[sheet_len + k] = to_p3(-n.x, -n.y, -n.z);
+        }
+    }
+
+    let (seam_map, _) = detect_u_seam_bijection_with_error(surface, nv);
+    let indices = build_wall_shell_indices(nu, nv, &seam_map);
+    Ok(Mesh {
+        vertices,
+        normals,
+        indices,
+    })
+}
+
+fn build_wall_shell_indices(nu: usize, nv: usize, seam_map: &[(usize, bool)]) -> Vec<usize> {
+    let sheet_len = nu * nv;
+    let outer_at = |i: usize, j: usize| -> usize {
+        let jj = j % nv;
+        if i < nu {
+            i * nv + jj
+        } else {
+            let (m, same_orient) = seam_map[jj];
+            if same_orient {
+                m
+            } else {
+                sheet_len + m
+            }
+        }
+    };
+    let inner_at = |i: usize, j: usize| -> usize {
+        let jj = j % nv;
+        if i < nu {
+            sheet_len + i * nv + jj
+        } else {
+            let (m, same_orient) = seam_map[jj];
+            if same_orient {
+                sheet_len + m
+            } else {
+                m
+            }
+        }
+    };
+
+    let mut indices = Vec::with_capacity(12 * sheet_len);
+    for i in 0..nu {
+        for j in 0..nv {
+            let (o00, o10, o11, o01) = (
+                outer_at(i, j),
+                outer_at(i + 1, j),
+                outer_at(i + 1, j + 1),
+                outer_at(i, j + 1),
+            );
+            indices.extend_from_slice(&[o00, o10, o11, o00, o11, o01]);
+
+            let (w00, w10, w11, w01) = (
+                inner_at(i, j),
+                inner_at(i + 1, j),
+                inner_at(i + 1, j + 1),
+                inner_at(i, j + 1),
+            );
+            indices.extend_from_slice(&[w00, w11, w10, w00, w01, w11]);
+        }
+    }
+    indices
+}
+
+/// Extrudes an open rectangular `(u, v)` surface patch into a closed genus-0 solid slab with stitched rim walls.
+pub fn extrude_open_patch_wall_shell(
+    surface: &dyn ParametricSurface,
+    u_range: (f64, f64),
+    v_range: (f64, f64),
+    u_res: usize,
+    v_res: usize,
+    wall_thickness: f64,
+) -> Result<Mesh, String> {
+    if !wall_thickness.is_finite() {
+        return Err("Wall thickness must be finite".to_string());
+    }
+    let thickness = wall_thickness.clamp(MIN_WALL_THICKNESS, MAX_WALL_THICKNESS);
+    let nu = clamp_grid_res(u_res);
+    let nv = clamp_grid_res(v_res);
+    let (u_min, u_max) = u_range;
+    let (v_min, v_max) = v_range;
+    let stride = nv + 1;
+    let sheet_len = (nu + 1) * stride;
+    let mut vertices = vec![Point3D::new(0.0, 0.0, 0.0); 2 * sheet_len];
+    let mut normals = vec![Point3D::new(0.0, 0.0, 1.0); 2 * sheet_len];
+
+    for i in 0..=nu {
+        let u = u_min + (u_max - u_min) * (i as f64 / nu as f64);
+        for j in 0..=nv {
+            let v = v_min + (v_max - v_min) * (j as f64 / nv as f64);
+            let p = surface.position(u, v);
+            if !p.coords.iter().all(|c| c.is_finite()) {
+                return Err("Surface position contains non-finite coordinate".to_string());
+            }
+            let n = safe_unit_vector(
+                surface.partial_u(u, v).cross(&surface.partial_v(u, v)),
+                Vector3::new(0.0, 0.0, 1.0),
+            );
+            let p_out = p.coords;
+            let p_in = p.coords - n * thickness;
+            let k = i * stride + j;
+            vertices[k] = to_p3(p_out.x, p_out.y, p_out.z);
+            normals[k] = to_p3(n.x, n.y, n.z);
+            vertices[sheet_len + k] = to_p3(p_in.x, p_in.y, p_in.z);
+            normals[sheet_len + k] = to_p3(-n.x, -n.y, -n.z);
+        }
+    }
+
+    let indices = build_open_patch_shell_indices(nu, nv);
+    Ok(Mesh {
+        vertices,
+        normals,
+        indices,
+    })
+}
+
+fn build_open_patch_shell_indices(nu: usize, nv: usize) -> Vec<usize> {
+    let stride = nv + 1;
+    let sheet_len = (nu + 1) * stride;
+    let at = |i: usize, j: usize| -> usize { i * stride + j };
+    let mut indices = Vec::with_capacity(12 * nu * nv + 12 * (nu + nv));
+
+    for i in 0..nu {
+        for j in 0..nv {
+            let (o00, o10, o11, o01) = (at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1));
+            indices.extend_from_slice(&[o00, o10, o11, o00, o11, o01]);
+            let (w00, w10, w11, w01) = (
+                sheet_len + o00,
+                sheet_len + o10,
+                sheet_len + o11,
+                sheet_len + o01,
+            );
+            indices.extend_from_slice(&[w00, w11, w10, w00, w01, w11]);
+        }
+    }
+
+    let mut perim = Vec::with_capacity(2 * (nu + nv));
+    perim.extend((0..nu).map(|i| at(i, 0)));
+    perim.extend((0..nv).map(|j| at(nu, j)));
+    perim.extend((1..=nu).rev().map(|i| at(i, nv)));
+    perim.extend((1..=nv).rev().map(|j| at(0, j)));
+
+    for k in 0..perim.len() {
+        let a = perim[k];
+        let b = perim[(k + 1) % perim.len()];
+        indices.extend_from_slice(&[b, a, sheet_len + a, b, sheet_len + a, sheet_len + b]);
+    }
+    indices
+}
+
+/// Dispatches `surface` over `(u_range, v_range)` to polar welding, periodic welding, Klein shell extrusion, or rim-stitched slab extrusion.
+pub fn surface_to_mesh_with_domain_and_thickness(
+    surface: &dyn ParametricSurface,
+    u_range: (f64, f64),
+    v_range: (f64, f64),
+    u_res: usize,
+    v_res: usize,
+    wall_thickness: f64,
+) -> Result<Mesh, String> {
+    if is_standard_polar_domain(u_range, v_range) && has_polar_singularities(surface) {
+        return polar_surface_to_manifold_mesh(surface, u_res, v_res);
+    }
+    if is_standard_tau_domain(u_range, v_range) {
+        if has_direct_periodic_seams(surface) {
+            return periodic_surface_to_manifold_mesh(surface, u_res, v_res);
+        }
+        if has_klein_seam_topology(surface) {
+            return extrude_surface_wall_shell(surface, u_res, v_res, wall_thickness);
+        }
+    }
+    extrude_open_patch_wall_shell(surface, u_range, v_range, u_res, v_res, wall_thickness)
 }
 
 #[cfg(test)]
-mod tests {
-    #![cfg_attr(any(), verified(opt_out = "tests"))]
+#[path = "export_utils_tests.rs"]
+mod tests;
 
-    use super::*;
-    use math_commons::ast::{CompiledExpr, parse};
-    use math_explorer::pure_math::differential_geometry::surface::{
-        CompiledHeightfieldSurface, KleinBottle, Sphere, SurfaceAnalysis, Torus,
-    };
-    use oxidize_core::mesh::analyze_mesh;
-    use std::f64::consts::PI;
-
-    #[test]
-    fn test_sphere_30x30_welded_watertight_zero_nan_normals_and_area_within_2_percent() {
-        let radius = 2.5_f64;
-        let sphere = Sphere { radius };
-        // Verify pole normals in SurfaceAnalysis never produce 0.0/0.0 NaNs
-        let north_n = sphere.unit_normal(0.0, 0.0);
-        let south_n = sphere.unit_normal(1.2, PI);
-        assert!(north_n.iter().all(|c| c.is_finite()));
-        assert!(south_n.iter().all(|c| c.is_finite()));
-
-        let mesh = surface_to_mesh(&sphere, 30, 30);
-        let diag = analyze_mesh(&mesh);
-        assert!(diag.is_watertight());
-        assert_eq!(diag.open_edges, 0);
-        assert_eq!(diag.nan_normals, 0);
-        assert!(diag.signed_volume_mm3 > 0.0);
-
-        let exact_area = 4.0 * PI * radius * radius;
-        let rel_err = (diag.area_mm2 - exact_area).abs() / exact_area;
-        assert!(
-            rel_err < 0.02,
-            "Expected Sphere 30x30 area within 2% of {exact_area}, got {} (rel_err={rel_err})",
-            diag.area_mm2
-        );
-    }
-
-    #[test]
-    fn test_torus_klein_bottle_and_custom_heightfield_exports() {
-        let torus = Torus {
-            major_radius: 2.0,
-            minor_radius: 0.5,
-        };
-        let torus_mesh = surface_to_mesh_scaled(&torus, 30, 30, 10.0);
-        let torus_diag = analyze_mesh(&torus_mesh);
-        assert!(torus_diag.is_watertight());
-        assert_eq!(torus_diag.open_edges, 0);
-        assert_eq!(torus_diag.nan_normals, 0);
-        assert!(torus_diag.signed_volume_mm3 > 0.0);
-
-        let klein = KleinBottle { radius: 2.0 };
-        let klein_mesh = surface_to_mesh_scaled(&klein, 30, 30, 10.0);
-        let klein_diag = analyze_mesh(&klein_mesh);
-        assert_eq!(klein_diag.nan_normals, 0);
-
-        let saddle_compiled =
-            CompiledExpr::compile_with_vars(&parse("0.25 * (x^2 - y^2)").unwrap(), &["x", "y"])
-                .unwrap();
-        let saddle = CompiledHeightfieldSurface::new(saddle_compiled, &[]);
-        let saddle_mesh = surface_to_mesh_scaled(&saddle, 16, 16, 10.0);
-        let saddle_diag = analyze_mesh(&saddle_mesh);
-        assert_eq!(saddle_diag.nan_normals, 0);
-        assert!((saddle_diag.dimensions_mm.x - 40.0).abs() < 1e-3);
-        assert!((saddle_diag.dimensions_mm.y - 40.0).abs() < 1e-3);
-    }
-}
+#[cfg(test)]
+pub use tests::{count_open_and_nonmanifold_edges, euler_characteristic, signed_volume};

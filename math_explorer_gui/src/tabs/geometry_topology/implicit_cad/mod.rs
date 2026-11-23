@@ -12,7 +12,7 @@ pub mod presets;
 #[cfg(test)]
 mod tests;
 
-use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Plot3DViewport};
 use crate::presets::serialize_compact_preset_envelope;
 use crate::url_state::{
     build_share_url_from_fragment, copy_share_url_to_clipboard, encode_share_fragment,
@@ -284,6 +284,27 @@ impl InteractiveTool for ImplicitCadStudio {
 
     fn domain(&self) -> &'static str {
         "geometry_topology"
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        let params = self.current_params();
+        if self.workspace.matches_params(&params) {
+            if let Some(err) = &self.workspace.last_error {
+                return Some(Err(err.clone()));
+            }
+            return Some(Ok(self.workspace.mesh.clone()));
+        }
+        let mut ws = ImplicitCadWorkspace::default();
+        ws.ensure_up_to_date(&params);
+        if let Some(err) = ws.last_error {
+            Some(Err(err))
+        } else {
+            Some(Ok(ws.mesh))
+        }
     }
 
     fn save_state(&self) -> Option<String> {
