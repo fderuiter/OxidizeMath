@@ -244,24 +244,34 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+        let step_dt = if dt.is_finite() && dt > 0.0 { dt } else { 0.01 };
         if let SolverExecutionState::Diverged {
             invalid_vec,
             diverged_at_step,
         } = self.execution_state
         {
+            let var = if !invalid_vec.x.is_finite() {
+                "x"
+            } else if !invalid_vec.y.is_finite() {
+                "y"
+            } else if !invalid_vec.z.is_finite() {
+                "z"
+            } else {
+                "lorenz_state"
+            };
             Some(DiagnosticReport::new(
-                diverged_at_step as f64,
+                diverged_at_step as f64 * step_dt,
                 diverged_at_step,
-                "lorenz_state",
+                var,
                 format!(
                     "Non-finite attractor state [{:.2}, {:.2}, {:.2}] at step {}",
                     invalid_vec.x, invalid_vec.y, invalid_vec.z, diverged_at_step
                 ),
             ))
         } else if !self.is_finite_state() {
-            let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
             Some(DiagnosticReport::new(
-                self.step_count as f64 * if dt.is_finite() { dt } else { 0.01 },
+                self.step_count as f64 * step_dt,
                 self.step_count,
                 "lorenz_state",
                 "Non-finite attractor trajectory coordinates detected",

@@ -140,6 +140,7 @@ impl SimulationFramework {
         let target_idx = self.resolve_url_tool_index(tool_id)?;
         let meta = self.available_tools[target_idx];
         let mut candidate = (meta.build)();
+        let factory_state = candidate.save_state();
         if let Some(json_str) = preset_json {
             crate::url_state::validate_url_preset_json(json_str)?;
             candidate.import_preset_json(json_str)?;
@@ -162,12 +163,22 @@ impl SimulationFramework {
             candidate.theory().theory_citation(),
         );
         self.selected_tool_index = Some(target_idx);
+        self.factory_tool_state = factory_state.clone();
         self.active_tool = Some(candidate);
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.show_starter_gallery = false;
         self.preset_dialog.toast_error = None;
-        self.sync_active_baseline();
+        if preset_json.is_some() {
+            self.sync_active_baseline();
+        } else {
+            self.preset_tool_state = None;
+            if let Some(tool) = &self.active_tool {
+                self.preset_tool_states.remove(tool.name());
+            }
+            self.baseline_tool_state = factory_state;
+            self.refresh_saved_and_snapshot_after_reset();
+        }
         Ok(())
     }
 }

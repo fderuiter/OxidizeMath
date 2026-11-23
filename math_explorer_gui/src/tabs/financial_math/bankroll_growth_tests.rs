@@ -3,24 +3,46 @@
 use super::*;
 
 #[test]
-fn test_bankroll_growth_reset_defaults() {
-    let mut tool = BankrollGrowthTool {
-        initial_bankroll: 5000.0,
-        probability: 0.70,
-        odds: 3.0,
-        num_bets: 500,
-        ..Default::default()
-    };
-    tool.recalculate();
+fn test_bankroll_growth_omits_local_reset_and_restores_via_framework() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let mut tool = BankrollGrowthTool::default();
+    let out = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| tool.show_ui(ui));
+    });
+    let ak = out.platform_output.accesskit_update.as_ref().unwrap();
+    assert!(
+        ak.nodes
+            .iter()
+            .any(|(_, n)| n.label().is_some_and(|l| l.contains("Rerun Simulation"))),
+        "BankrollGrowthTool must retain its Rerun Simulation action"
+    );
+    assert!(
+        !ak.nodes
+            .iter()
+            .any(|(_, n)| n.label().is_some_and(|l| l.contains("Reset to Defaults"))),
+        "BankrollGrowthTool must not render a duplicate local Reset to Defaults button"
+    );
 
-    tool.reset_defaults();
-
-    assert_eq!(tool.initial_bankroll, 1000.0);
-    assert_eq!(tool.probability, 0.55);
-    assert_eq!(tool.odds, 2.0);
-    assert_eq!(tool.num_bets, 100);
-    assert_eq!(tool.full_kelly_points.len(), 101);
-    assert!(tool.error_msg.is_none());
+    let mut fw = crate::framework::SimulationFramework::new("financial_math");
+    assert!(fw.select_tool_by_name("Bankroll Growth"));
+    fw.active_tool
+        .as_mut()
+        .unwrap()
+        .try_load_state(
+            r#"{"initial_bankroll":5000.0,"probability":0.7,"odds":3.0,"num_bets":500}"#,
+        )
+        .unwrap();
+    fw.reset_to_factory_defaults();
+    let restored_json = fw.active_tool.as_ref().unwrap().save_state().unwrap();
+    let mut verify = BankrollGrowthTool::default();
+    verify.try_load_state(&restored_json).unwrap();
+    assert_eq!(verify.initial_bankroll, 1000.0);
+    assert_eq!(verify.probability, 0.55);
+    assert_eq!(verify.odds, 2.0);
+    assert_eq!(verify.num_bets, 100);
+    assert_eq!(verify.full_kelly_points.len(), 101);
+    assert!(verify.error_msg.is_none());
 }
 
 #[test]

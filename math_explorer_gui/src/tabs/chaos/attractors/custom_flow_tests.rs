@@ -11,11 +11,9 @@ fn test_custom_3d_flow_worker_streaming_zero_alloc_and_roundtrip() {
         mode: AttractorMode::Custom,
         ..Default::default()
     };
-    plotter.flow_bank.set_expressions(&[
-        "sin(y) - b * x",
-        "sin(z) - b * y",
-        "sin(x) - b * z",
-    ]);
+    plotter
+        .flow_bank
+        .set_expressions(&["sin(y) - b * x", "sin(z) - b * y", "sin(x) - b * z"]);
     let mut pmap = BTreeMap::new();
     pmap.insert("b".to_string(), 0.19);
     plotter.flow_bank.set_params_map(&pmap);
@@ -69,4 +67,34 @@ fn test_custom_3d_flow_worker_streaming_zero_alloc_and_roundtrip() {
         vec!["sin(y) - b * x", "sin(z) - b * y", "sin(x) - b * z"]
     );
     assert_eq!(restored.flow_bank.params_map(), pmap);
+}
+
+#[test]
+fn test_attractor_ready_and_reset_hold_paused_at_initial_coords_across_frames() {
+    let ctx = eframe::egui::Context::default();
+    let mut plotter = AttractorPlotter::default();
+    for _ in 0..5 {
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| plotter.show(ctx));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
+    assert!(plotter.is_paused());
+    assert_eq!(plotter.step_count, 0);
+    assert!(plotter.history.is_empty());
+    assert_eq!(plotter.system.state.vec, Vector3::new(1.0, 1.0, 1.0));
+
+    plotter.step_simulation();
+    assert!(plotter.step_count > 0);
+    assert_ne!(plotter.system.state.vec, Vector3::new(1.0, 1.0, 1.0));
+
+    plotter.reset();
+    for _ in 0..5 {
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| plotter.show(ctx));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
+    assert!(plotter.is_paused());
+    assert_eq!(plotter.step_count, 0);
+    assert!(plotter.history.is_empty());
+    assert_eq!(plotter.system.state.vec, Vector3::new(1.0, 1.0, 1.0));
 }

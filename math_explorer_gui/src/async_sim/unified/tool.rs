@@ -2,8 +2,8 @@
 
 use super::persistence::build_formula_bar;
 use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimRunner};
-use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
+use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{
     InteractiveTool, MathExpressionInputBar, PlaybackAction, PlaybackTransport,
 };
@@ -111,80 +111,49 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
-    fn handle_recovery_action(
-        &mut self,
-        action: crate::framework::recovery::RecoveryAction,
-        ctx: Option<&egui::Context>,
-    ) {
-        use crate::framework::recovery::RecoveryAction;
-        match action {
-            RecoveryAction::AutoScaleStepSize => {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                if let Some(dt) = p.get_mut("dt") {
-                    *dt = (*dt * 0.5).max(1e-4);
-                } else if let Some(visc) = p.get_mut("viscosity") {
-                    *visc = (*visc * 0.5).max(0.00333);
-                }
-                drop(p);
-                self.reset_simulation(ctx);
-            }
-            RecoveryAction::ClampParameters => {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                for (name, c) in &self.param_metadata {
-                    if let Some(v) = p.get_mut(name) {
-                        *v = if !v.is_finite() {
-                            M::parameter_choices(name)
-                                .first()
-                                .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice)
-                        } else {
-                            v.clamp(c.min, c.max)
-                        };
-                    }
-                }
-                drop(p);
-                self.reset_simulation(ctx);
-            }
-            RecoveryAction::ResetParameters => {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                for (name, c) in &self.param_metadata {
-                    let d = match name.as_str() {
-                        "viscosity" => 0.02,
-                        "dt" => 0.05,
-                        "potential_type" => 0.0,
-                        _ => M::parameter_choices(name)
-                            .first()
-                            .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice),
-                    };
-                    p.insert(name.clone(), d);
-                }
-                drop(p);
-                if let Some(spec) = M::formula_spec() {
-                    self.custom_formula_enabled = false;
-                    self.formula_bar = Some(build_formula_bar(&spec));
-                    self.publish_formula_update();
-                }
-                self.reset_simulation(ctx);
-                let _ = self.controller.send_command(SimCommand::Start);
+    fn auto_scale_model_step(&mut self, ctx: Option<&egui::Context>) {
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(dt) = p.get_mut("dt") {
+            *dt = if dt.is_finite() && *dt > 0.0 {
+                (*dt * 0.5).max(1e-4)
+            } else {
+                0.025
+            };
+        } else if let Some(visc) = p.get_mut("viscosity") {
+            *visc = if visc.is_finite() && *visc > 0.0 {
+                (*visc * 0.5).max(0.00333)
+            } else {
+                0.02
+            };
+        }
+        drop(p);
+        self.reset_simulation(ctx);
+    }
+
+    fn clamp_model_parameters(&mut self, ctx: Option<&egui::Context>) {
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.retain(|k, v| v.is_finite() || self.param_metadata.iter().any(|(m, _)| m == k));
+        for (name, c) in &self.param_metadata {
+            if let Some(v) = p.get_mut(name) {
+                *v = if !v.is_finite() {
+                    M::parameter_choices(name)
+                        .first()
+                        .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice)
+                } else {
+                    v.clamp(c.min, c.max)
+                };
             }
         }
+        drop(p);
+        if let Some(bar) = self.formula_bar.as_mut() {
+            let range = M::formula_spec().map_or(-10.0..=10.0, |s| s.param_range);
+            bar.clamp_active_params(range);
+            self.publish_formula_update();
+        }
+        self.reset_simulation(ctx);
     }
 
     fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let state = self.controller.state();
-        if let Some(fault_action) =
-            render_worker_fault_banner(ui, state, self.controller.diagnostic_report(), true)
-        {
-            match fault_action {
-                WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters => {
-                    self.reset_simulation(Some(ctx));
-                }
-                WorkerFaultAction::Recovery(action) => {
-                    self.handle_recovery_action(action, Some(ctx));
-                }
-            }
-            ui.separator();
-        }
-
         let state = self.controller.state();
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.horizontal(|ui| {
@@ -356,11 +325,41 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         Some(self)
     }
 
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        if let Some(report) = self.controller.diagnostic_report() {
+            return Some(report.clone());
+        }
+        if !self.has_finite_parameters() {
+            let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+            let bad_var = self
+                .param_metadata
+                .iter()
+                .map(|(k, _)| k.as_str())
+                .find(|&k| params.get(k).is_some_and(|v| !v.is_finite()))
+                .or_else(|| {
+                    params
+                        .iter()
+                        .find(|(_, v)| !v.is_finite())
+                        .map(|(k, _)| k.as_str())
+                })
+                .unwrap_or("state");
+            return Some(DiagnosticReport::new(
+                0.0,
+                0,
+                bad_var,
+                format!("{} encountered non-finite solver state.", M::name()),
+            ));
+        }
+        None
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.auto_scale_model_step(None);
+        true
+    }
+
     fn clamp_parameters(&mut self) -> bool {
-        self.handle_recovery_action(
-            crate::framework::recovery::RecoveryAction::ClampParameters,
-            None,
-        );
+        self.clamp_model_parameters(None);
         true
     }
 

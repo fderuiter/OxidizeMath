@@ -2,10 +2,7 @@
 
 use super::{AttractorPlotter, SolverExecutionState};
 use crate::accessibility::AccessibleTheoryHover;
-use crate::async_sim::ui::{
-    render_custom_fault_banner, render_empty_plot_guidance, render_worker_fault_banner,
-    WorkerFaultAction,
-};
+use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
@@ -19,18 +16,6 @@ impl AttractorPlotter {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("3D Chaotic Attractor");
             ui.separator();
-
-            if worker_faulted && !self.diverged() {
-                if let Some(action) = render_worker_fault_banner(
-                    ui,
-                    self.worker.state(),
-                    self.worker.diagnostic_report(),
-                    false,
-                ) {
-                    self.apply_fault_action(action, ctx);
-                    ui.separator();
-                }
-            }
 
             ui.horizontal(|ui| {
                 let prev_mode = self.mode;
@@ -189,79 +174,6 @@ impl AttractorPlotter {
         }
     }
 
-    fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {
-        use crate::framework::recovery::RecoveryAction;
-        match action {
-            WorkerFaultAction::Reset => self.reset(),
-            WorkerFaultAction::Recovery(RecoveryAction::AutoScaleStepSize) => {
-                self.dt = if self.dt.is_finite() {
-                    (self.dt * 0.5).max(0.001)
-                } else {
-                    0.005
-                };
-                self.reset();
-            }
-            WorkerFaultAction::Recovery(RecoveryAction::ClampParameters) => {
-                self.system.sigma = if self.system.sigma.is_finite() {
-                    self.system.sigma.clamp(0.0, 50.0)
-                } else {
-                    10.0
-                };
-                self.system.rho = if self.system.rho.is_finite() {
-                    self.system.rho.clamp(0.0, 100.0)
-                } else {
-                    28.0
-                };
-                self.system.beta = if self.system.beta.is_finite() {
-                    self.system.beta.clamp(0.0, 10.0)
-                } else {
-                    8.0 / 3.0
-                };
-                self.dt = if self.dt.is_finite() {
-                    self.dt.clamp(0.001, 0.05)
-                } else {
-                    0.01
-                };
-                self.reset();
-            }
-            WorkerFaultAction::ResetParameters
-            | WorkerFaultAction::Recovery(RecoveryAction::ResetParameters) => {
-                self.reset_parameters();
-            }
-        }
-        ctx.request_repaint();
-    }
-
-    fn draw_central_fault_banner(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if let SolverExecutionState::Diverged {
-            invalid_vec,
-            diverged_at_step,
-        } = self.execution_state
-        {
-            let detail = format!(
-                "Step {} | Coordinates: [{:.2}, {:.2}, {:.2}]",
-                diverged_at_step, invalid_vec.x, invalid_vec.y, invalid_vec.z
-            );
-            if let Some(action) = render_custom_fault_banner(
-                ui,
-                "⚠ Solver Divergence Warning: Non-finite state detected. Simulation halted.",
-                Some(&detail),
-                true,
-            ) {
-                self.apply_fault_action(action, ctx);
-            }
-        } else if self.worker.state() == SimWorkerState::Faulted {
-            if let Some(action) = render_worker_fault_banner(
-                ui,
-                self.worker.state(),
-                self.worker.diagnostic_report(),
-                false,
-            ) {
-                self.apply_fault_action(action, ctx);
-            }
-        }
-    }
-
     fn clear_callout_drag(&mut self, plot_ui: &egui_plot::PlotUi<'_>) {
         if self.dragged_callout.take().is_some() {
             let pid = plot_ui.plot_id();
@@ -389,10 +301,8 @@ impl AttractorPlotter {
         plot_ui.callout(callout_neg);
     }
 
-    pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
+    pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.draw_central_fault_banner(ui, ctx);
-
             if self.history.is_empty() && !self.diverged() {
                 render_empty_plot_guidance(
                     ui,

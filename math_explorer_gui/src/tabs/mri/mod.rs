@@ -127,6 +127,72 @@ impl ExplorerTab for MriTab {
     }
 }
 
+impl tool::MriTool {
+    pub(super) fn build_diagnostic_report(
+        &self,
+    ) -> Option<crate::framework::recovery::DiagnosticReport> {
+        use crate::framework::InteractiveTool as _;
+        if let Some(report) = self.worker.diagnostic_report() {
+            return Some(report.clone());
+        }
+        if !self.has_finite_parameters() {
+            let t = if self.current_time.is_finite() {
+                self.current_time
+            } else {
+                0.0
+            };
+            let var = if !self.simulator.t1.is_finite() {
+                "t1"
+            } else if !self.simulator.t2.is_finite() {
+                "t2"
+            } else if !self.simulator.b_field.x.is_finite()
+                || !self.simulator.b_field.y.is_finite()
+                || !self.simulator.b_field.z.is_finite()
+            {
+                "b_field"
+            } else if !self.time_scale.is_finite() {
+                "time_scale"
+            } else {
+                "magnetization"
+            };
+            return Some(crate::framework::recovery::DiagnosticReport::new(
+                t,
+                self.history.len(),
+                var,
+                "Bloch magnetization vector or MRI parameter became non-finite.",
+            ));
+        }
+        None
+    }
+
+    pub(super) fn clamp_mri_parameters(&mut self) {
+        self.simulator.t1 = if self.simulator.t1.is_finite() {
+            self.simulator.t1.clamp(0.1, 5.0)
+        } else {
+            tool::DEFAULT_MRI_T1
+        };
+        self.simulator.t2 = if self.simulator.t2.is_finite() {
+            self.simulator.t2.clamp(0.01, 2.0)
+        } else {
+            tool::DEFAULT_MRI_T2
+        };
+        let clamp_b = |v: f64, fallback: f64| {
+            if v.is_finite() {
+                v.clamp(-50.0, 50.0)
+            } else {
+                fallback
+            }
+        };
+        self.simulator.b_field = nalgebra::Vector3::new(
+            clamp_b(self.simulator.b_field.x, 0.0),
+            clamp_b(self.simulator.b_field.y, 0.0),
+            clamp_b(self.simulator.b_field.z, tool::DEFAULT_MRI_BZ),
+        );
+        self.time_scale = sanitize_mri_time_scale(self.time_scale);
+        self.reset();
+    }
+}
+
 #[cfg(test)]
 mod kspace_tests;
 #[cfg(test)]

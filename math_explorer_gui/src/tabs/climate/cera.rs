@@ -1,5 +1,5 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard, RecoveryAction};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
@@ -162,7 +162,10 @@ impl CeraTool {
     fn draw_controls(&mut self, ui: &mut egui::Ui) {
         let mut arch_changed = false;
         arch_changed |= ui
-            .add(egui::Slider::new(&mut self.in_channels, 1..=MAX_IN_CHANNELS).text("Input Channels"))
+            .add(
+                egui::Slider::new(&mut self.in_channels, 1..=MAX_IN_CHANNELS)
+                    .text("Input Channels"),
+            )
             .changed();
         if ui
             .add(
@@ -181,13 +184,18 @@ impl CeraTool {
             )
             .changed();
         arch_changed |= ui
-            .add(egui::Slider::new(&mut self.num_levels, 1..=MAX_NUM_LEVELS).text("Number of Levels"))
+            .add(
+                egui::Slider::new(&mut self.num_levels, 1..=MAX_NUM_LEVELS)
+                    .text("Number of Levels"),
+            )
             .changed();
         arch_changed |= ui
             .add(egui::Slider::new(&mut self.output_size, 1..=MAX_OUTPUT_SIZE).text("Output Size"))
             .changed();
 
         if arch_changed {
+            self.diverged = false;
+            self.diagnostic_report = None;
             self.clear_persisted_model();
             self.prediction_result = None;
         }
@@ -207,6 +215,8 @@ impl CeraTool {
                 .accessible_hover_text("Reset persisted CERA model weights and loss history")
                 .clicked()
             {
+                self.diverged = false;
+                self.diagnostic_report = None;
                 self.clear_persisted_model();
                 self.prediction_result = None;
             }
@@ -355,9 +365,40 @@ impl InteractiveTool for CeraTool {
         Ok(())
     }
 
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.diagnostic_report.clone().or_else(|| {
+            self.diverged.then(|| {
+                DiagnosticReport::new(
+                    0.0,
+                    self.epochs_trained,
+                    "prediction",
+                    "CERA neural network output diverged: non-finite loss or prediction detected.",
+                )
+            })
+        })
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.num_levels = (self.num_levels / 2).max(1);
+        self.diverged = false;
+        self.diagnostic_report = None;
+        self.clear_persisted_model();
+        true
+    }
+
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -368,25 +409,6 @@ impl InteractiveTool for CeraTool {
 
     fn show_ui(&mut self, ui: &mut egui::Ui) {
         ui.heading("CERA Climate Representation Alignment");
-        if self.diverged {
-            if let Some(action) = crate::framework::recovery::render_recovery_banner(
-                ui,
-                self.diagnostic_report.as_ref(),
-            ) {
-                match action {
-                    RecoveryAction::AutoScaleStepSize => {
-                        self.num_levels = (self.num_levels / 2).max(1);
-                        self.diverged = false;
-                        self.diagnostic_report = None;
-                        self.clear_persisted_model();
-                    }
-                    RecoveryAction::ClampParameters => FiniteStateGuard::clamp_parameters(self),
-                    RecoveryAction::ResetParameters => self.reset_parameters(),
-                }
-            }
-            ui.separator();
-        }
-
         self.draw_controls(ui);
         ui.separator();
         if !self.diverged {
@@ -422,9 +444,18 @@ impl scientific_metadata::theory::TheoryDescribable for CeraTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("in_channels".into(), "Number of atmospheric input variables per vertical level.".into());
-        map.insert("latent_channels".into(), "Total compressed autoencoder latent channels.".into());
-        map.insert("aligned_channels".into(), "Subset of latent channels aligned via Earth Mover's Distance.".into());
+        map.insert(
+            "in_channels".into(),
+            "Number of atmospheric input variables per vertical level.".into(),
+        );
+        map.insert(
+            "latent_channels".into(),
+            "Total compressed autoencoder latent channels.".into(),
+        );
+        map.insert(
+            "aligned_channels".into(),
+            "Subset of latent channels aligned via Earth Mover's Distance.".into(),
+        );
         map
     }
 }
@@ -459,34 +490,5 @@ inventory::submit! {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cera_tool_reduces_loss_and_emits_distinct_channels() {
-        let mut tool = CeraTool::default();
-        tool.train_epochs(3);
-        tool.train_epochs(3);
-
-        assert_eq!(tool.epochs_trained, 6);
-        assert_eq!(tool.loss_history.len(), 6);
-        let first_loss = *tool.loss_history.first().unwrap();
-        let last_loss = *tool.loss_history.last().unwrap();
-        assert!(
-            last_loss < first_loss,
-            "Expected CERA loss to decrease across epochs ({first_loss} -> {last_loss})"
-        );
-
-        let preds = tool
-            .prediction_result
-            .as_ref()
-            .expect("prediction populated")
-            .as_ref()
-            .expect("valid prediction");
-        assert_eq!(preds.len(), tool.output_size);
-        assert!(
-            preds.windows(2).any(|w| (w[0] - w[1]).abs() > 1e-6),
-            "Expected distinct channel outputs, got {preds:?}"
-        );
-    }
-}
+#[path = "cera_tests.rs"]
+mod tests;

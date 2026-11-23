@@ -243,3 +243,161 @@ fn test_reset_parameters_rebuilds_from_factory_when_baseline_missing() {
     assert!(egui_plot::get_last_plot_datasets().is_empty());
     assert!(framework.current_valid_plot_datasets.is_empty());
 }
+
+fn find_button_center_by_label(output: &egui::FullOutput, needle: &str) -> egui::Pos2 {
+    let ak = output
+        .platform_output
+        .accesskit_update
+        .as_ref()
+        .expect("AccessKit tree must be emitted");
+    let bounds = ak
+        .nodes
+        .iter()
+        .find_map(|(_, node)| {
+            let label = node.label().unwrap_or("");
+            if node.role() == egui::accesskit::Role::Button && label.contains(needle) {
+                node.bounds()
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| panic!("Toolbar button containing '{needle}' must exist"));
+    egui::pos2(
+        ((bounds.x0 + bounds.x1) * 0.5) as f32,
+        ((bounds.y0 + bounds.y1) * 0.5) as f32,
+    )
+}
+
+fn assert_persisted_dual_baselines(
+    fw: &SimulationFramework,
+    preset_state: &str,
+    factory_state: &str,
+) {
+    let persisted = fw.save_state().expect("framework save_state");
+    let mut restored_fw = SimulationFramework::new("analysis");
+    restored_fw.load_state(&persisted);
+    assert!(restored_fw.has_preset_baseline());
+    assert!(restored_fw.reset_to_preset());
+    assert_eq!(
+        restored_fw.active_tool.as_ref().unwrap().save_state(),
+        Some(preset_state.to_string())
+    );
+    restored_fw.reset_to_factory_defaults();
+    assert_eq!(
+        restored_fw.active_tool.as_ref().unwrap().save_state(),
+        Some(factory_state.to_string())
+    );
+}
+
+#[test]
+fn test_dual_baselines_revert_to_preset_and_factory_defaults_via_toolbar_and_persistence() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+
+    let mut fw = SimulationFramework::new("analysis");
+    let ode_idx = find_ode_tool_index(&fw);
+    fw.select_tool(ode_idx);
+    let factory_state = fw.factory_tool_state.clone().expect("factory baseline");
+    assert!(!fw.has_preset_baseline());
+
+    let preset_cfg = mutate_dt_in_state(&factory_state, 0.08);
+    let envelope = format!(
+        r#"{{"metadata":{{"schema_version":"1.0","title":"Test ODE Preset","domain":"analysis","timestamp":"2026-11-22T00:00:00Z"}},"config":{preset_cfg}}}"#
+    );
+    fw.apply_preset_json(&envelope)
+        .expect("preset JSON should apply");
+    assert!(fw.has_preset_baseline());
+    let preset_state = fw.preset_tool_state.clone().expect("preset baseline");
+    assert_ne!(preset_state, factory_state);
+    assert_eq!(fw.factory_tool_state.as_ref(), Some(&factory_state));
+
+    let user_modified = mutate_dt_in_state(&preset_state, 0.22);
+    fw.active_tool.as_mut().unwrap().load_state(&user_modified);
+
+    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 800.0));
+    let out0 = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        },
+        |ctx| fw.show(ctx, "dual_baseline_toolbar"),
+    );
+
+    let preset_btn = find_button_center_by_label(&out0, "Revert to Preset");
+    let out1 = click_toolbar_button(
+        &ctx,
+        &mut fw,
+        screen_rect,
+        preset_btn,
+        "dual_baseline_toolbar",
+    );
+    assert_eq!(
+        fw.active_tool.as_ref().unwrap().save_state(),
+        Some(preset_state.clone())
+    );
+    assert_eq!(fw.factory_tool_state.as_ref(), Some(&factory_state));
+
+    let factory_btn = find_button_center_by_label(&out1, "Factory Defaults");
+    let _ = click_toolbar_button(
+        &ctx,
+        &mut fw,
+        screen_rect,
+        factory_btn,
+        "dual_baseline_toolbar",
+    );
+    assert_eq!(
+        fw.active_tool.as_ref().unwrap().save_state(),
+        Some(factory_state.clone())
+    );
+    assert!(
+        fw.has_preset_baseline(),
+        "Factory reset must retain active preset baseline so user can revert back to preset"
+    );
+    assert_persisted_dual_baselines(&fw, &preset_state, &factory_state);
+}
+
+#[test]
+fn test_all_registered_tools_preserve_factory_and_preset_baselines() {
+    let mut domains: Vec<&'static str> = inventory::iter::<crate::framework::ToolMetadata>
+        .into_iter()
+        .map(|m| m.domain)
+        .collect();
+    domains.sort_unstable();
+    domains.dedup();
+    assert!(!domains.is_empty());
+
+    for domain in domains {
+        let mut fw = SimulationFramework::new(domain);
+        for idx in 0..fw.available_tools.len() {
+            fw.select_tool(idx);
+            let expected_factory = (fw.available_tools[idx].build)().save_state();
+            assert_eq!(
+                fw.factory_tool_state, expected_factory,
+                "Tool {} in domain {domain} must capture factory_tool_state on selection",
+                fw.available_tools[idx].display_name
+            );
+        }
+
+        let cards =
+            crate::starter_gallery::get_starter_cards_for_domain(domain, &fw.available_tools);
+        for card in cards.iter().filter(|c| c.preset_json.is_some()) {
+            assert!(fw.launch_starter_card(card).is_ok());
+            assert!(
+                fw.factory_tool_state.is_some(),
+                "Starter card '{}' in {domain} must retain factory_tool_state",
+                card.title
+            );
+            assert!(
+                fw.preset_tool_state.is_some(),
+                "Starter card '{}' in {domain} must record preset_tool_state",
+                card.title
+            );
+            let preset_snap = fw.preset_tool_state.clone();
+            let factory_snap = fw.factory_tool_state.clone();
+            fw.reset_to_factory_defaults();
+            assert_eq!(fw.active_tool.as_ref().unwrap().save_state(), factory_snap);
+            assert!(fw.reset_to_preset());
+            assert_eq!(fw.active_tool.as_ref().unwrap().save_state(), preset_snap);
+        }
+    }
+}

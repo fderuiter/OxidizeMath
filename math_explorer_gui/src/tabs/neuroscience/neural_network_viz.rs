@@ -54,8 +54,11 @@ impl Default for NeuralNetworkVizTool {
 }
 
 impl NeuralNetworkVizTool {
-    fn reset(&mut self) {
-        *self = Self::default();
+    pub(crate) fn reset(&mut self) {
+        self.is_running = false;
+        for neuron in &mut self.neurons {
+            *neuron = HodgkinHuxleyNeuron::new(-65.0);
+        }
     }
 
     pub(crate) fn step_once(&mut self) {
@@ -138,8 +141,7 @@ impl NeuralNetworkVizTool {
                     } else {
                         palette.error
                     };
-                    let color =
-                        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
+                    let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
                     painter.line_segment([p2, p1], (1.0 + weight.abs() as f32, color));
                 }
             }
@@ -150,10 +152,8 @@ impl NeuralNetworkVizTool {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Network Visualization");
 
-            let (response, painter) = ui.allocate_painter(
-                ui.available_size(),
-                egui::Sense::focusable_noninteractive(),
-            );
+            let (response, painter) =
+                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
             let label = "Neural Network Visualization: Showing interconnected neurons";
             let _ = response.clone().accessible_hover_text(label);
             let summary = format!("{} interconnected neurons", self.neurons.len());
@@ -253,7 +253,10 @@ impl InteractiveTool for NeuralNetworkVizTool {
             return Err("NeuralNetworkViz parameters or dimensions out of bounds".into());
         }
         if s.weights.is_empty() && n == 5 {
-            self.reset();
+            let defaults = Self::default();
+            self.neurons = defaults.neurons;
+            self.positions = defaults.positions;
+            self.weights = defaults.weights;
         } else {
             let radius = 100.0;
             self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
@@ -330,6 +333,29 @@ mod tests {
         tool.step_once();
         assert!(!tool.is_running);
         assert_ne!(tool.neurons[0].v(), initial_v0);
+    }
+
+    #[test]
+    fn test_neural_network_viz_reset_preserves_sliders_and_custom_weights() {
+        let mut tool = NeuralNetworkVizTool::default();
+        let custom_inputs = vec![24.0, -5.0, 12.5, 8.0, 31.0];
+        tool.external_input = custom_inputs.clone();
+        tool.weights[1][0] = 4.25;
+        tool.weights[3][2] = -2.75;
+        let expected_weights = tool.weights.clone();
+        tool.is_running = true;
+        for _ in 0..10 {
+            tool.step();
+        }
+        assert!(tool.neurons.iter().any(|n| (n.v() + 65.0).abs() > 1e-3));
+
+        tool.reset();
+        assert!(!tool.is_running);
+        assert_eq!(tool.external_input, custom_inputs);
+        assert_eq!(tool.weights, expected_weights);
+        for neuron in &tool.neurons {
+            assert!((neuron.v() + 65.0).abs() < 1e-9);
+        }
     }
 }
 

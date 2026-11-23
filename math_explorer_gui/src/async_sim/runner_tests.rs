@@ -368,7 +368,8 @@ fn test_attractor_plotter_manual_step_keeps_paused() {
     let mut plotter = AttractorPlotter::default();
     let ctx = eframe::egui::Context::default();
 
-    // Start worker and wait until at least one running trajectory batch lands
+    // Start worker from initial paused Ready state and wait until at least one running batch lands
+    plotter.try_resume().expect("start attractor worker");
     for _ in 0..500 {
         let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
             plotter.show(ctx);

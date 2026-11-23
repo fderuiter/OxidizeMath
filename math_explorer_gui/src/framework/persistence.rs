@@ -13,6 +13,12 @@ struct RawToolStates<'a> {
     active: Option<(&'a str, &'a str)>,
 }
 
+impl RawToolStates<'_> {
+    fn is_empty(&self) -> bool {
+        self.saved.is_empty() && self.active.is_none()
+    }
+}
+
 impl Serialize for RawToolStates<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let extra = usize::from(
@@ -120,6 +126,8 @@ struct FrameworkStateSerialize<'a> {
     show_theory_portal: bool,
     show_starter_gallery: bool,
     tool_states: RawToolStates<'a>,
+    #[serde(skip_serializing_if = "RawToolStates::is_empty")]
+    preset_tool_states: RawToolStates<'a>,
 }
 
 #[derive(Deserialize)]
@@ -131,6 +139,8 @@ struct FrameworkStateDeserialize {
     show_starter_gallery: bool,
     #[serde(deserialize_with = "deserialize_tool_states")]
     tool_states: HashMap<String, String>,
+    #[serde(default, deserialize_with = "deserialize_tool_states")]
+    preset_tool_states: HashMap<String, String>,
 }
 
 pub(super) fn capture_isolated_tool_datasets(
@@ -190,6 +200,7 @@ impl SimulationFramework {
         self.show_theory_portal.hash(&mut hasher);
         self.show_starter_gallery.hash(&mut hasher);
         self.saved_tool_states.len().hash(&mut hasher);
+        self.preset_tool_states.len().hash(&mut hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(&mut hasher);
             let tool_rev = tool.state_revision();
@@ -244,6 +255,10 @@ impl SimulationFramework {
                     .as_ref()
                     .map(|(name, json)| (*name, json.as_ref())),
             },
+            preset_tool_states: RawToolStates {
+                saved: &self.preset_tool_states,
+                active: None,
+            },
         };
         serde_json::to_string(&state).ok()
     }
@@ -261,6 +276,7 @@ impl SimulationFramework {
         self.show_theory_portal = state.show_theory_portal;
         self.show_starter_gallery = false;
         self.saved_tool_states = state.tool_states;
+        self.preset_tool_states = state.preset_tool_states;
         self.bump_framework_revision();
 
         let tool_idx = state
@@ -294,7 +310,17 @@ impl SimulationFramework {
         let meta = self.available_tools[idx];
         self.is_diverged = false;
         self.diagnostic_report = None;
+        if self.factory_tool_state.is_none() {
+            self.factory_tool_state = (meta.build)().save_state();
+        }
         if let Some(tool) = &mut self.active_tool {
+            let preset_state = self
+                .preset_tool_states
+                .get(tool.name())
+                .or_else(|| self.preset_tool_states.get(meta.id))
+                .cloned();
+            self.preset_tool_state = preset_state.clone();
+            self.baseline_tool_state = preset_state.or_else(|| self.factory_tool_state.clone());
             if let Some(saved) = self
                 .saved_tool_states
                 .get(tool.name())
@@ -308,7 +334,9 @@ impl SimulationFramework {
                 }
                 if !tool.has_finite_parameters() {
                     let fresh = (meta.build)();
-                    self.baseline_tool_state = fresh.save_state();
+                    let factory = fresh.save_state();
+                    self.factory_tool_state = factory.clone();
+                    self.baseline_tool_state = self.preset_tool_state.clone().or(factory);
                     *tool = fresh;
                 }
             }
@@ -345,6 +373,11 @@ impl SimulationFramework {
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();
         let factory_baseline_state = new_tool.save_state();
+        let preset_baseline_state = self
+            .preset_tool_states
+            .get(new_tool.name())
+            .or_else(|| self.preset_tool_states.get(meta.id))
+            .cloned();
         if let Some(state) = self
             .saved_tool_states
             .get(new_tool.name())
@@ -357,7 +390,9 @@ impl SimulationFramework {
         self.export_status_message = None;
         self.export_queue.status = None;
         self.step_counter = 0;
-        self.baseline_tool_state = factory_baseline_state;
+        self.factory_tool_state = factory_baseline_state.clone();
+        self.preset_tool_state = preset_baseline_state.clone();
+        self.baseline_tool_state = preset_baseline_state.or(factory_baseline_state);
         let recovery_state = new_tool.save_recovery_state();
         let rev = new_tool.state_revision();
         let initial_datasets = capture_isolated_tool_datasets(new_tool.as_ref());

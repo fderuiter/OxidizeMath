@@ -2,9 +2,7 @@
 
 use super::runner::MriSnapshot;
 use super::tool::MriTool;
-use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
-};
+use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
@@ -133,19 +131,6 @@ impl MriTool {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("MRI Physics Control");
             ui.separator();
-
-            if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
-                render_worker_fault_banner(
-                    ui,
-                    self.worker.state(),
-                    self.worker.diagnostic_report(),
-                    false,
-                )
-            {
-                self.reset();
-                ctx.request_repaint();
-                ui.separator();
-            }
 
             self.draw_relaxation_controls(ui);
             self.draw_magnetic_field_controls(ui);

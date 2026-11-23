@@ -3,9 +3,18 @@ pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
 pub mod decimate;
+#[cfg(all(
+    test,
+    feature = "biology",
+    feature = "climate",
+    feature = "physics",
+    feature = "pure_math"
+))]
+mod divergence_unification_tests;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_figure;
+mod export_preset_bar;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
@@ -172,6 +181,17 @@ pub trait InteractiveTool {
     /// Direct numeric parameter finiteness hook without JSON serialization.
     fn has_finite_parameters(&self) -> bool {
         true
+    }
+
+    /// Structured solver divergence report (`t_diverged`, `step_index`, `variable`, `message`)
+    /// surfaced to the shared framework recovery banner without wall-clock session uptime.
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        None
+    }
+
+    /// Optional hook to halve or scale down numerical step size on solver divergence, returning true if handled.
+    fn auto_scale_step_size(&mut self) -> bool {
+        false
     }
 
     /// Optional hook to serialize tool-specific parameters into a String (e.g. JSON).
@@ -368,8 +388,14 @@ pub struct SimulationFramework {
 
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
-    /// Baseline parameters snapshot on tool load.
+    /// Active reset baseline parameters (loaded preset when present, otherwise factory defaults).
     pub baseline_tool_state: Option<String>,
+    /// Pristine initial factory default parameters from `ToolMetadata::build` for the active tool.
+    pub factory_tool_state: Option<String>,
+    /// Active loaded preset parameters for the active tool (`None` until a preset is loaded).
+    pub preset_tool_state: Option<String>,
+    /// Per-tool map of active loaded preset baselines preserved across tool switches and sessions.
+    pub preset_tool_states: std::collections::HashMap<String, String>,
     /// Last validated finite plot datasets.
     pub current_valid_plot_datasets: Vec<(String, Vec<[f64; 2]>)>,
     /// Last validated finite 3D world-coordinate plot datasets.
@@ -420,6 +446,9 @@ impl SimulationFramework {
             export_queue: ExportQueue::default(),
             last_valid_snapshot: None,
             baseline_tool_state: None,
+            factory_tool_state: None,
+            preset_tool_state: None,
+            preset_tool_states: std::collections::HashMap::new(),
             current_valid_plot_datasets: Vec::new(),
             current_valid_plot_datasets_3d: Vec::new(),
             is_diverged: false,

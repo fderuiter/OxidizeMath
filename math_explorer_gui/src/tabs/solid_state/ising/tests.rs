@@ -364,3 +364,34 @@ fn test_ising_fermi_game_presets_and_state_roundtrip() {
     assert_eq!(restored.brush_radius, 12);
     assert!(!restored.brush_cooperator);
 }
+
+#[test]
+fn test_ising_try_load_state_clears_stale_lattice_and_recomputes_metrics() {
+    let mut tool = IsingModelTool::default();
+    tool.step_simulation();
+    assert!(tool.stepped_pixels.is_some());
+    tool.magnetization = -1.0;
+    tool.energy = -20_000.0;
+    tool.spatial_history.push_back([15.0, 0.05]);
+    tool.params
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .total_trials
+        .store(50_000, Ordering::Relaxed);
+
+    tool.try_load_state(
+        r#"{"temperature":2.5,"j_coupling":-1.5,"h_field":1.2,"state":"Ready","steps_per_frame":1000}"#,
+    )
+    .expect("Ising state should load cleanly");
+
+    assert!(tool.stepped_pixels.is_none());
+    assert_eq!(tool.current_sweeps(), 0.0);
+    assert_eq!(tool.spatial_history.len(), 1);
+    assert_eq!(tool.spatial_history[0][0], 0.0);
+    assert_ne!(tool.magnetization, -1.0);
+    assert_ne!(tool.energy, -20_000.0);
+
+    let snap = tool.worker.latest_snapshot().expect("fresh snapshot");
+    assert!((tool.magnetization - snap.custom_data[0]).abs() < 1e-12);
+    assert!((tool.energy - snap.custom_data[1]).abs() < 1e-9);
+}

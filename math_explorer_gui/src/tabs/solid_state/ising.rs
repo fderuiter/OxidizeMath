@@ -100,6 +100,10 @@ impl IsingModelTool {
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
+        self.reinitialize_lattice_and_metrics();
+    }
+
+    fn reinitialize_lattice_and_metrics(&mut self) {
         self.params
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -111,6 +115,7 @@ impl IsingModelTool {
         };
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
+        self.pending_ode_resync = false;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
         self.dirty = true;
@@ -145,7 +150,10 @@ impl IsingModelTool {
 impl Default for IsingModelTool {
     fn default() -> Self {
         let (temperature, j_coupling, h_field, steps_per_frame) = (2.269, 1.0, 0.0, 5000);
-        let (mode, game_preset) = (IsingInteractionMode::Ferromagnetic, FermiGamePreset::default());
+        let (mode, game_preset) = (
+            IsingInteractionMode::Ferromagnetic,
+            FermiGamePreset::default(),
+        );
         let game_payoffs = preset::default_game_payoffs();
         let params = Arc::new(std::sync::RwLock::new(IsingSharedParams {
             temperature,
@@ -334,7 +342,7 @@ impl InteractiveTool for IsingModelTool {
         self.brush_cooperator = s.brush_cooperator;
         self.steps_per_frame = s.steps_per_frame;
         self.sync_shared_params();
-        self.recompute_replicator_curve();
+        self.reinitialize_lattice_and_metrics();
 
         let target_state = s.state.unwrap_or_else(|| {
             if s.running.unwrap_or(false) {
@@ -344,14 +352,8 @@ impl InteractiveTool for IsingModelTool {
             }
         });
         if target_state == SimWorkerState::Running {
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        } else if self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
+            let _ = self.worker.send_command(SimCommand::Start);
         }
-        self.stepped_pixels = None;
-        self.dirty = true;
         Ok(())
     }
 

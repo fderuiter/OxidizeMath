@@ -1,8 +1,55 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{AttractorMode, AttractorPlotter, SolverExecutionState, DEFAULT_FLOW_EXPRS};
-use crate::framework::Camera3D;
+use crate::framework::recovery::DiagnosticReport;
+use crate::framework::{Camera3D, InteractiveTool};
 use std::collections::BTreeMap;
+
+impl AttractorPlotter {
+    pub(super) fn build_diagnostic_report(&self) -> Option<DiagnosticReport> {
+        if let Some(report) = self.worker.diagnostic_report() {
+            return Some(report.clone());
+        }
+        let step_dt = if self.dt.is_finite() && self.dt > 0.0 {
+            self.dt
+        } else {
+            0.01
+        };
+        if let SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } = self.execution_state
+        {
+            let var = if !invalid_vec.x.is_finite() {
+                "x"
+            } else if !invalid_vec.y.is_finite() {
+                "y"
+            } else if !invalid_vec.z.is_finite() {
+                "z"
+            } else {
+                "lorenz_state"
+            };
+            return Some(DiagnosticReport::new(
+                diverged_at_step as f64 * step_dt,
+                diverged_at_step,
+                var,
+                format!(
+                    "Non-finite attractor state [{:.2}, {:.2}, {:.2}] at step {}",
+                    invalid_vec.x, invalid_vec.y, invalid_vec.z, diverged_at_step
+                ),
+            ));
+        }
+        if !self.has_finite_parameters() {
+            return Some(DiagnosticReport::new(
+                self.step_count as f64 * step_dt,
+                self.step_count,
+                "parameters",
+                "Non-finite attractor parameter or state detected.",
+            ));
+        }
+        None
+    }
+}
 
 const fn default_annotations_enabled() -> bool {
     true
@@ -63,8 +110,13 @@ impl AttractorPlotter {
             .iter()
             .zip(DEFAULT_FLOW_EXPRS.iter())
             .any(|(a, b)| a != b);
-        let custom_exprs = (self.mode == AttractorMode::Custom || nondefault_exprs)
-            .then(|| [expr_vec[0].clone(), expr_vec[1].clone(), expr_vec[2].clone()]);
+        let custom_exprs = (self.mode == AttractorMode::Custom || nondefault_exprs).then(|| {
+            [
+                expr_vec[0].clone(),
+                expr_vec[1].clone(),
+                expr_vec[2].clone(),
+            ]
+        });
         let custom_params = if self.mode == AttractorMode::Custom {
             self.flow_bank.params_map()
         } else {

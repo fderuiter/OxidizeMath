@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::async_sim::{BackgroundWorker, SimCommand};
+use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{Camera3D, CoupledExpressionBank, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
 use egui_plot::{LineStyle, MarkerShape};
@@ -95,7 +96,9 @@ impl AttractorPlotter {
     pub fn is_paused(&self) -> bool {
         matches!(
             self.execution_state,
-            SolverExecutionState::Paused | SolverExecutionState::Diverged { .. }
+            SolverExecutionState::Ready
+                | SolverExecutionState::Paused
+                | SolverExecutionState::Diverged { .. }
         )
     }
 
@@ -191,6 +194,7 @@ impl AttractorPlotter {
             .reset_or_respawn(|| AttractorRunner::from_params(params));
     }
 
+    #[cfg(test)]
     pub fn reset_parameters(&mut self) {
         self.system.sigma = 10.0;
         self.system.rho = 28.0;
@@ -290,7 +294,21 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn has_finite_parameters(&self) -> bool {
-        !self.diverged() && self.is_finite_state()
+        !self.diverged() && !self.worker.state().is_faulted() && self.is_finite_state()
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.build_diagnostic_report()
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.dt = if self.dt.is_finite() && self.dt > 0.0 {
+            (self.dt * 0.5).max(0.001)
+        } else {
+            0.005
+        };
+        self.reset();
+        true
     }
 
     fn save_state(&self) -> Option<String> {
@@ -299,6 +317,16 @@ impl InteractiveTool for AttractorPlotter {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.deserialize_state(state)
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn step_simulation(&mut self) {
@@ -411,7 +439,7 @@ impl InteractiveTool for AttractorPlotter {
         }
 
         self.draw_side_panel(ui, &ctx);
-        self.draw_central_panel(ui, &ctx);
+        self.draw_central_panel(ui);
     }
 }
 

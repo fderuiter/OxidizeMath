@@ -112,12 +112,9 @@ fn test_mri_fault_halts_repaints_and_recovers() {
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 }
 
-#[test]
-fn test_mri_all_6_controls_persist_hash_and_reset_restores_defaults() {
-    let mut tool = MriTool::default();
+fn mutate_all_6_mri_controls(tool: &mut MriTool) {
     let mut prev_rev = tool.state_revision();
     assert!(prev_rev > 0);
-
     for mutate in [
         |t: &mut MriTool| {
             t.simulator.t1 = 2.4;
@@ -144,11 +141,17 @@ fn test_mri_all_6_controls_persist_hash_and_reset_restores_defaults() {
             t.params.write().unwrap().time_scale = 12.0;
         },
     ] {
-        mutate(&mut tool);
+        mutate(tool);
         let next_rev = tool.state_revision();
         assert_ne!(next_rev, prev_rev);
         prev_rev = next_rev;
     }
+}
+
+#[test]
+fn test_mri_all_6_controls_persist_hash_and_reset_restores_defaults() {
+    let mut tool = MriTool::default();
+    mutate_all_6_mri_controls(&mut tool);
 
     let saved = tool.save_state().expect("save_state must succeed");
     let mut restored = MriTool::default();
@@ -159,17 +162,63 @@ fn test_mri_all_6_controls_persist_hash_and_reset_restores_defaults() {
     assert_eq!(restored.simulator.b_field, Vector3::new(0.03, -0.02, 1.75));
     assert_eq!(restored.time_scale, 12.0);
 
-    // Requirement 6: reset() restores default t1, t2, b_field, and time_scale
+    restored.step_simulation();
+    assert!(restored.current_time > 0.0 && !restored.history.is_empty());
+
+    // Requirement 6: playback reset() restarts trajectory while preserving user parameters
     restored.reset();
-    assert_eq!(restored.simulator.t1, 1.0);
-    assert_eq!(restored.simulator.t2, 0.1);
+    assert_eq!(restored.current_time, 0.0);
+    assert_eq!(
+        restored.simulator.magnetization,
+        Vector3::new(1.0, 0.0, 0.0)
+    );
+    assert!(restored.history.is_empty() && restored.mx_points.is_empty());
+    assert_eq!(restored.simulator.t1, 2.4);
+    assert_eq!(restored.simulator.t2, 0.45);
+    assert_eq!(restored.simulator.b_field, Vector3::new(0.03, -0.02, 1.75));
+    assert_eq!(restored.time_scale, 12.0);
+    {
+        let shared = restored.params.read().unwrap();
+        assert_eq!((shared.t1, shared.t2, shared.time_scale), (2.4, 0.45, 12.0));
+        assert_eq!(shared.b_field, Vector3::new(0.03, -0.02, 1.75));
+    }
+
+    restored.reset_parameters();
+    assert_eq!(
+        (
+            restored.simulator.t1,
+            restored.simulator.t2,
+            restored.time_scale
+        ),
+        (1.0, 0.1, 1.0)
+    );
     assert_eq!(restored.simulator.b_field, Vector3::new(0.0, 0.0, 1.0));
-    assert_eq!(restored.time_scale, 1.0);
-    let shared = restored.params.read().unwrap();
-    assert_eq!(shared.t1, 1.0);
-    assert_eq!(shared.t2, 0.1);
-    assert_eq!(shared.b_field, Vector3::new(0.0, 0.0, 1.0));
-    assert_eq!(shared.time_scale, 1.0);
+}
+
+#[test]
+fn test_mri_try_load_state_clears_stale_trajectory_and_resets_time() {
+    let mut tool = MriTool::default();
+    for _ in 0..10 {
+        tool.step_simulation();
+    }
+    assert!(tool.current_time > 0.0);
+    assert!(tool.history.len() > 1);
+    assert!(tool.mx_points.len() > 1);
+    assert_ne!(tool.simulator.magnetization, Vector3::new(1.0, 0.0, 0.0));
+
+    tool.try_load_state(
+        r#"{"t1":1.8,"t2":0.3,"bx":0.02,"by":-0.01,"bz":1.5,"time_scale":4.0,"state":"Ready"}"#,
+    )
+    .expect("MRI preset state should load");
+
+    assert_eq!(tool.current_time, 0.0);
+    assert_eq!(tool.simulator.magnetization, Vector3::new(1.0, 0.0, 0.0));
+    assert!(tool.history.is_empty());
+    assert!(tool.mx_points.is_empty());
+    let exported = tool.export_datasets();
+    assert_eq!(exported[0].1, vec![[0.0, 1.0]]);
+    assert_eq!(exported[1].1, vec![[0.0, 0.0]]);
+    assert_eq!(exported[2].1, vec![[0.0, 0.0]]);
 }
 
 #[test]

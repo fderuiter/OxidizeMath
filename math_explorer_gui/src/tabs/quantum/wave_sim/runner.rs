@@ -228,8 +228,16 @@ impl WaveRunner {
         self.cached_dt = None;
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
-        let safe_x0 = cfg.x0.is_finite().then_some(cfg.x0).unwrap_or(DEFAULT_X0);
-        let safe_k0 = cfg.k0.is_finite().then_some(cfg.k0).unwrap_or(DEFAULT_K0);
+        let safe_x0 = if cfg.x0.is_finite() {
+            cfg.x0
+        } else {
+            DEFAULT_X0
+        };
+        let safe_k0 = if cfg.k0.is_finite() {
+            cfg.k0
+        } else {
+            DEFAULT_K0
+        };
         let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
@@ -322,19 +330,30 @@ impl WaveRunner {
         }
     }
 
+    fn has_finite_psi(&self) -> bool {
+        self.psi
+            .vector
+            .iter()
+            .all(|c| c.re.is_finite() && c.im.is_finite())
+    }
+
+    fn record_divergence(&mut self, variable: &str, reason: impl Into<String>) {
+        self.diverged = true;
+        self.diagnostic_report = Some(DiagnosticReport::new(
+            self.time,
+            self.step_count,
+            variable,
+            reason,
+        ));
+    }
+
     /// Advances the quantum state by an explicit `dt` step.
     pub fn step_with_dt(&mut self, dt: f64) {
         if self.diverged {
             return;
         }
         if !dt.is_finite() || dt <= 0.0 {
-            self.diverged = true;
-            self.diagnostic_report = Some(DiagnosticReport::new(
-                self.time,
-                self.step_count,
-                "dt",
-                format!("Invalid non-finite time step dt: {dt}"),
-            ));
+            self.record_divergence("dt", format!("Invalid non-finite time step dt: {dt}"));
             return;
         }
         self.refresh_propagator(dt);
@@ -342,36 +361,20 @@ impl WaveRunner {
         evolve_state_in_place(&mut self.psi, &self.propagator, &mut self.scratch);
         self.time += dt;
 
-        if !self
-            .psi
-            .vector
-            .iter()
-            .all(|c| c.re.is_finite() && c.im.is_finite())
-        {
-            self.diverged = true;
-            self.diagnostic_report = Some(DiagnosticReport::new(
-                self.time,
-                self.step_count,
+        if !self.has_finite_psi() {
+            self.record_divergence(
                 "psi",
                 "Non-finite wave packet amplitude detected during time evolution.",
-            ));
+            );
             return;
         }
 
         self.psi.normalize_in_place();
-        if !self
-            .psi
-            .vector
-            .iter()
-            .all(|c| c.re.is_finite() && c.im.is_finite())
-        {
-            self.diverged = true;
-            self.diagnostic_report = Some(DiagnosticReport::new(
-                self.time,
-                self.step_count,
+        if !self.has_finite_psi() {
+            self.record_divergence(
                 "psi_norm",
                 "Wave function normalization diverged: non-finite norm encountered.",
-            ));
+            );
             return;
         }
         self.update_observables_in_place();
@@ -419,13 +422,7 @@ impl WaveRunner {
 
 impl FiniteStateGuard for WaveRunner {
     fn is_finite_state(&self) -> bool {
-        if self.diverged {
-            return false;
-        }
-        self.psi
-            .vector
-            .iter()
-            .all(|c| c.re.is_finite() && c.im.is_finite())
+        !self.diverged && self.has_finite_psi()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {

@@ -1,8 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::recovery;
 use super::OdeSolverTool;
-use crate::framework::recovery::FiniteStateGuard;
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
@@ -49,6 +48,30 @@ impl InteractiveTool for OdeSolverTool {
         self.deserialize_state(state, false)
     }
 
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        OdeSolverTool::diagnostic_report(self).cloned().or_else(|| {
+            (!FiniteStateGuard::is_finite_state(self)).then(|| {
+                let t_div = self
+                    .time_series
+                    .last()
+                    .copied()
+                    .filter(|t| t.is_finite())
+                    .unwrap_or(0.0);
+                DiagnosticReport::new(
+                    t_div,
+                    self.time_series.len(),
+                    "parameters",
+                    "Non-finite ODE solver parameter or state detected.",
+                )
+            })
+        })
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        OdeSolverTool::auto_scale_step_size(self);
+        true
+    }
+
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true
@@ -68,12 +91,17 @@ impl InteractiveTool for OdeSolverTool {
         self.apply_sidebar_changes(changed, sweep_active);
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.render_plot_canvas(ui, &mut changed);
+            self.render_plot_canvas(ui);
         });
     }
 
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
 }
@@ -116,14 +144,8 @@ impl OdeSolverTool {
         });
     }
 
-    pub(super) fn render_plot_canvas(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
+    pub(super) fn render_plot_canvas(&mut self, ui: &mut egui::Ui) {
         ui.heading("Solution Trajectory");
-
-        if FiniteStateGuard::diverged(self) {
-            let mut scratch_y = Vec::new();
-            let mut scratch_v = Vec::new();
-            recovery::render_recovery_ui(ui, self, changed, &mut scratch_y, &mut scratch_v);
-        }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let line_y = Line::new("y(t)", PlotPoints::from_shared(Arc::clone(&self.display_y)))
@@ -140,9 +162,11 @@ impl OdeSolverTool {
                 if !self.comparison_mode {
                     plot_ui.line(line_y);
                     if has_v && !self.display_v.is_empty() {
-                        let line_v =
-                            Line::new(v_label, PlotPoints::from_shared(Arc::clone(&self.display_v)))
-                                .color(palette.series_color(1));
+                        let line_v = Line::new(
+                            v_label,
+                            PlotPoints::from_shared(Arc::clone(&self.display_v)),
+                        )
+                        .color(palette.series_color(1));
                         plot_ui.line(line_v);
                     }
                 } else {

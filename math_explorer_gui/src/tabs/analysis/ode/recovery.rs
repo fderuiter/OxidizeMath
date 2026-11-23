@@ -1,10 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::OdeSolverTool;
-use crate::framework::recovery::{
-    render_recovery_banner, DiagnosticReport, FiniteStateGuard, RecoveryAction,
-};
+#[cfg(test)]
+use crate::framework::recovery::{render_recovery_banner, RecoveryAction};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::OdePreset;
+#[cfg(test)]
 use eframe::egui;
 
 /// Checks whether an [`OdeSolverTool`] is in a completely finite numerical state.
@@ -157,6 +158,7 @@ pub fn clamp_ode_step_settings(dt: &mut f64, total_time: &mut f64) {
 
 /// Applies a centralized [`RecoveryAction`] to [`OdeSolverTool`] via [`FiniteStateGuard`]
 /// and refreshes the active plot point buffers.
+#[cfg(test)]
 pub fn apply_recovery_action(
     tool: &mut OdeSolverTool,
     action: RecoveryAction,
@@ -183,6 +185,7 @@ pub fn apply_recovery_action(
 }
 
 /// Renders the centralized recovery banner and immediately applies recovery remedies to the tool.
+#[cfg(test)]
 pub fn render_recovery_ui(
     ui: &mut egui::Ui,
     tool: &mut super::OdeSolverTool,

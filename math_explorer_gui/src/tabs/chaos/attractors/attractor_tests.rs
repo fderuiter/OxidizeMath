@@ -9,7 +9,7 @@ use eframe::egui;
 fn test_attractor_divergence_detection() {
     let mut plotter = AttractorPlotter::default();
     assert!(!plotter.diverged());
-    assert!(!plotter.is_paused());
+    assert!(plotter.is_paused());
     assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
 
     // Introduce a non-finite state
@@ -20,18 +20,24 @@ fn test_attractor_divergence_detection() {
 
     assert!(plotter.diverged() && plotter.is_paused());
     match plotter.execution_state {
-        SolverExecutionState::Diverged { invalid_vec, diverged_at_step } => {
+        SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } => {
             assert!(invalid_vec.x.is_nan() && diverged_at_step == 0);
         }
         _ => panic!("Expected Diverged execution state"),
     }
 
     // Verify history contains no non-finite values
-    assert!(plotter.history.iter().all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+    assert!(plotter
+        .history
+        .iter()
+        .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
 
-    // Reset clears diverged flag cleanly and restores Ready
+    // Reset clears diverged flag cleanly and restores paused Ready state
     plotter.reset();
-    assert!(!plotter.diverged() && !plotter.is_paused());
+    assert!(!plotter.diverged() && plotter.is_paused());
     assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
     assert_eq!(plotter.step_count, 0);
 }
@@ -74,14 +80,15 @@ fn test_attractor_transition_validation_non_finite_rejection() {
     plotter.on_slider_changed();
     assert!(plotter.diverged());
 
-    // Explicit reset restores Ready state and finite coordinates
+    // Explicit reset restores paused Ready state and finite coordinates
     plotter.reset();
     assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
-    assert!(!plotter.diverged() && !plotter.is_paused() && plotter.is_finite_state());
+    assert!(!plotter.diverged() && plotter.is_paused() && plotter.is_finite_state());
 
     // Resume now succeeds
     assert!(plotter.try_resume().is_ok());
     assert_eq!(plotter.execution_state, SolverExecutionState::Running);
+    assert!(!plotter.is_paused());
 }
 
 #[test]
@@ -121,7 +128,10 @@ fn test_attractor_step_counting_and_divergence_metadata() {
 
     assert!(plotter.diverged());
     match plotter.execution_state {
-        SolverExecutionState::Diverged { invalid_vec, diverged_at_step } => {
+        SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } => {
             assert!(invalid_vec.y.is_infinite());
             assert_eq!(diverged_at_step, plotter.simulation_speed);
         }
@@ -418,8 +428,20 @@ fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
         egui::Pos2::ZERO,
         egui::vec2(1000.0, 700.0),
     ));
-    let _ = ctx.run(egui::RawInput { screen_rect: screen, ..Default::default() }, |ctx| plotter.show(ctx));
-    let out = ctx.run(egui::RawInput { screen_rect: screen, ..Default::default() }, |ctx| plotter.show(ctx));
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: screen,
+            ..Default::default()
+        },
+        |ctx| plotter.show(ctx),
+    );
+    let out = ctx.run(
+        egui::RawInput {
+            screen_rect: screen,
+            ..Default::default()
+        },
+        |ctx| plotter.show(ctx),
+    );
 
     let start = find_callout_center(&out.shapes, "Fixed Point C+");
     let end = start + egui::vec2(30.0, -20.0);
@@ -430,7 +452,12 @@ fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
         screen_rect: screen,
         events: vec![
             egui::Event::PointerMoved(start),
-            egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE },
+            egui::Event::PointerButton {
+                pos: start,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
         ],
         ..Default::default()
     };
@@ -443,7 +470,12 @@ fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
     let _ = ctx.run(drag, |ctx| plotter.show(ctx));
     let release = egui::RawInput {
         screen_rect: screen,
-        events: vec![egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE }],
+        events: vec![egui::Event::PointerButton {
+            pos: end,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
         ..Default::default()
     };
     let _ = ctx.run(release, |ctx| plotter.show(ctx));

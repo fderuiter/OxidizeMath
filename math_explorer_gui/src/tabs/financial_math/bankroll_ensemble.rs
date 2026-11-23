@@ -98,13 +98,6 @@ impl BankrollEnsembleLab {
         }
     }
 
-    /// Resets custom fraction, hypothesis state, and callouts to defaults.
-    pub fn reset_defaults(&mut self) {
-        self.custom_fraction = DEFAULT_CUSTOM_FRACTION;
-        self.hypothesis = None;
-        self.callout_manager.clear_auto();
-    }
-
     /// Clamps `custom_fraction` into the safe finite interval `0.0..=0.95`.
     pub fn clamp_fraction(&mut self) {
         if !self.custom_fraction.is_finite() {

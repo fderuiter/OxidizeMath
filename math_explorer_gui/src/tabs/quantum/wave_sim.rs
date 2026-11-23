@@ -19,7 +19,7 @@ pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::recovery::RecoveryAction;
+use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{ExportCapabilities, InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use math_commons::ast::Expr;
@@ -150,43 +150,6 @@ impl WaveSimulatorTool {
             c.request_repaint();
         }
     }
-
-    pub(crate) fn reset_to_defaults(&mut self, ctx: Option<&egui::Context>) {
-        self.preset = WavePotentialPreset::InfiniteWell;
-        self.x0 = DEFAULT_X0;
-        self.k0 = DEFAULT_K0;
-        self.sigma = DEFAULT_SIGMA;
-        self.v0 = DEFAULT_V0;
-        self.width = DEFAULT_WIDTH;
-        self.dt = DEFAULT_DT;
-        self.steps_per_frame = DEFAULT_STEPS_PER_FRAME;
-        self.math_input.set_expression(DEFAULT_CUSTOM_EXPR);
-        if let Some(expr) = self.math_input.expr() {
-            self.last_valid_expr = expr.clone();
-        }
-        self.sync_config_and_reset(ctx);
-    }
-
-    pub(crate) fn handle_recovery_action(&mut self, action: RecoveryAction, ctx: &egui::Context) {
-        match action {
-            RecoveryAction::AutoScaleStepSize => {
-                self.dt = if self.dt.is_finite() && self.dt > 0.0 {
-                    (self.dt * 0.5).max(DT_RECOVERY_MIN)
-                } else {
-                    DEFAULT_DT
-                };
-                self.sync_config_and_reset(Some(ctx));
-            }
-            RecoveryAction::ClampParameters => {
-                self.clamp_wave_parameters();
-                ctx.request_repaint();
-            }
-            RecoveryAction::ResetParameters => {
-                self.reset_to_defaults(Some(ctx));
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        }
-    }
 }
 
 impl InteractiveTool for WaveSimulatorTool {
@@ -238,6 +201,38 @@ impl InteractiveTool for WaveSimulatorTool {
 
     fn has_finite_parameters(&self) -> bool {
         self.parameters_are_valid()
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        if let Some(report) = self.worker.diagnostic_report() {
+            return Some(report.clone());
+        }
+        if !self.has_finite_parameters() {
+            let var = if !self.dt.is_finite() {
+                "dt"
+            } else if !self.v0.is_finite() {
+                "v0"
+            } else {
+                "wave_state"
+            };
+            return Some(DiagnosticReport::new(
+                0.0,
+                0,
+                var,
+                "Wave simulator encountered non-finite parameter or solver state.",
+            ));
+        }
+        None
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.dt = if self.dt.is_finite() && self.dt > 0.0 {
+            (self.dt * 0.5).max(DT_RECOVERY_MIN)
+        } else {
+            DEFAULT_DT
+        };
+        self.sync_config_and_reset(None);
+        true
     }
 
     fn save_state(&self) -> Option<String> {

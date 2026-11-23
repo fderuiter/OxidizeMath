@@ -5,6 +5,7 @@ use super::runner::{
 };
 use super::theory::MriBlochTheory;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
+use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui_plot::PlotPoint;
@@ -197,22 +198,51 @@ impl MriTool {
         }
     }
 
-    /// Restores factory default `t1`, `t2`, `b_field`, and `time_scale` and resets magnetization to `(M0, 0, 0)`.
+    /// Restarts dynamic magnetization to `(M0, 0, 0)` and clears history while preserving finite user parameters.
     pub fn reset(&mut self) {
-        let default_b = Vector3::new(0.0, 0.0, DEFAULT_MRI_BZ);
+        if !self.simulator.t1.is_finite() || self.simulator.t1 <= 0.0 {
+            self.simulator.t1 = DEFAULT_MRI_T1;
+        }
+        if !self.simulator.t2.is_finite() || self.simulator.t2 <= 0.0 {
+            self.simulator.t2 = DEFAULT_MRI_T2;
+        }
+        if !self.simulator.b_field.x.is_finite() {
+            self.simulator.b_field.x = 0.0;
+        }
+        if !self.simulator.b_field.y.is_finite() {
+            self.simulator.b_field.y = 0.0;
+        }
+        if !self.simulator.b_field.z.is_finite() {
+            self.simulator.b_field.z = DEFAULT_MRI_BZ;
+        }
+        self.time_scale = super::runner::sanitize_mri_time_scale(self.time_scale);
+        self.sync_shared_params();
+        self.reset_dynamic_trajectory(false);
+    }
+
+    /// Restores factory default `t1`, `t2`, `b_field`, and `time_scale` and resets magnetization to `(M0, 0, 0)`.
+    #[cfg(test)]
+    pub fn reset_parameters(&mut self) {
         self.simulator.t1 = DEFAULT_MRI_T1;
         self.simulator.t2 = DEFAULT_MRI_T2;
-        self.simulator.b_field = default_b;
+        self.simulator.b_field = Vector3::new(0.0, 0.0, DEFAULT_MRI_BZ);
         self.time_scale = DEFAULT_MRI_TIME_SCALE;
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.t1 = DEFAULT_MRI_T1;
-            p.t2 = DEFAULT_MRI_T2;
-            p.b_field = default_b;
-            p.time_scale = DEFAULT_MRI_TIME_SCALE;
-        }
+        self.sync_shared_params();
+        self.reset_dynamic_trajectory(false);
+    }
+
+    fn sync_shared_params(&self) {
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.t1 = self.simulator.t1;
+        p.t2 = self.simulator.t2;
+        p.b_field = self.simulator.b_field;
+        p.time_scale = self.time_scale;
+    }
+
+    fn reset_dynamic_trajectory(&mut self, replace_worker: bool) {
         let initial_m = Vector3::new(self.simulator.m0, 0.0, 0.0);
         self.simulator.magnetization = initial_m;
+        self.solver = RungeKutta4::new(&initial_m);
         self.current_time = 0.0;
         self.history.clear();
         self.mx_points.clear();
@@ -220,8 +250,12 @@ impl MriTool {
         self.mz_points.clear();
         let params = Arc::clone(&self.params);
         let m0 = self.simulator.m0;
-        self.worker
-            .reset_or_respawn(|| MriRunner::new(params, initial_m, m0));
+        if replace_worker {
+            self.worker = BackgroundWorker::new(MriRunner::new(params, initial_m, m0));
+        } else {
+            self.worker
+                .reset_or_respawn(|| MriRunner::new(params, initial_m, m0));
+        }
     }
 
     fn apply_worker_state(&mut self, target_state: SimWorkerState) {
@@ -354,25 +388,51 @@ impl InteractiveTool for MriTool {
         self.simulator.t2 = parsed.t2;
         self.simulator.b_field = b_field;
         self.time_scale = parsed.time_scale;
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.t1 = parsed.t1;
-            p.t2 = parsed.t2;
-            p.b_field = b_field;
-            p.time_scale = parsed.time_scale;
-        }
+        self.sync_shared_params();
+        self.reset_dynamic_trajectory(true);
         self.apply_worker_state(target_state);
         Ok(())
     }
 
     fn has_finite_parameters(&self) -> bool {
+        let m = self.simulator.magnetization;
         self.simulator.t1.is_finite()
             && self.simulator.t2.is_finite()
             && self.simulator.b_field.x.is_finite()
             && self.simulator.b_field.y.is_finite()
             && self.simulator.b_field.z.is_finite()
             && self.time_scale.is_finite()
+            && self.current_time.is_finite()
+            && m.x.is_finite()
+            && m.y.is_finite()
+            && m.z.is_finite()
             && self.worker.state() != SimWorkerState::Faulted
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.build_diagnostic_report()
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.time_scale =
+            (super::runner::sanitize_mri_time_scale(self.time_scale) * 0.5).max(MIN_MRI_TIME_SCALE);
+        self.reset();
+        true
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        self.clamp_mri_parameters();
+        true
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 

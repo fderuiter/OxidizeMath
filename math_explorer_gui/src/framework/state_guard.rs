@@ -3,6 +3,8 @@
 use super::recovery::*;
 use super::SimulationFramework;
 
+#[path = "state_guard/baselines.rs"]
+mod baselines;
 #[path = "state_guard/rollback.rs"]
 mod rollback;
 
@@ -151,6 +153,11 @@ impl SimulationFramework {
     fn check_captured_or_tool_divergence(
         &self,
     ) -> Result<(bool, CapturedDatasets), DiagnosticReport> {
+        if let Some(tool) = &self.active_tool {
+            if let Some(report) = tool.diagnostic_report() {
+                return Err(report);
+            }
+        }
         let has_plot_datasets = match egui_plot::check_last_plot_datasets_finite() {
             Ok(present) => present,
             Err((series_name, axis, idx, bad_val)) => {
@@ -168,7 +175,7 @@ impl SimulationFramework {
         if let Some(tool) = &self.active_tool {
             if !tool.has_finite_parameters() {
                 return Err(DiagnosticReport::new(
-                    self.start_time.elapsed().as_secs_f64(),
+                    0.0,
                     self.step_counter,
                     "state",
                     "Non-finite floating-point state encountered in active tool parameters.",
@@ -189,46 +196,50 @@ impl SimulationFramework {
     pub fn inspect_runtime_state(&mut self) -> Result<(), DiagnosticReport> {
         match self.check_captured_or_tool_divergence() {
             Ok((has_plot_datasets, tool_datasets)) => {
-                if !self.is_diverged {
-                    let active_name = self.active_tool.as_ref().map(|t| t.name());
-                    let plot_datasets_3d = egui_plot::get_last_plot_datasets_3d();
-                    if !plot_datasets_3d.is_empty() {
-                        self.current_valid_plot_datasets_3d = plot_datasets_3d;
-                    }
-                    if has_plot_datasets {
-                        let capture_hash = egui_plot::last_plot_capture_hash();
-                        let same_capture = active_name.is_some_and(|name| {
-                            self.rev_cache.last_plot_capture_hash == Some((name, capture_hash))
-                        }) && !self.current_valid_plot_datasets.is_empty()
-                            && self.sync_state.datasets_owner_tool == active_name;
-                        if !same_capture {
-                            self.current_valid_plot_datasets = egui_plot::get_last_plot_datasets();
-                            if let Some(name) = active_name {
-                                self.rev_cache.last_plot_capture_hash = Some((name, capture_hash));
-                            }
-                        }
-                        self.sync_state.datasets_owner_tool = active_name;
-                    } else if !tool_datasets.is_empty() {
-                        self.current_valid_plot_datasets = tool_datasets;
-                        self.rev_cache.last_plot_capture_hash = None;
-                        self.sync_state.datasets_owner_tool = active_name;
-                    }
-                    self.step_counter += 1;
+                self.is_diverged = false;
+                self.diagnostic_report = None;
+                let active_name = self.active_tool.as_ref().map(|t| t.name());
+                let plot_datasets_3d = egui_plot::get_last_plot_datasets_3d();
+                if !plot_datasets_3d.is_empty() {
+                    self.current_valid_plot_datasets_3d = plot_datasets_3d;
                 }
+                if has_plot_datasets {
+                    let capture_hash = egui_plot::last_plot_capture_hash();
+                    let same_capture = active_name.is_some_and(|name| {
+                        self.rev_cache.last_plot_capture_hash == Some((name, capture_hash))
+                    }) && !self.current_valid_plot_datasets.is_empty()
+                        && self.sync_state.datasets_owner_tool == active_name;
+                    if !same_capture {
+                        self.current_valid_plot_datasets = egui_plot::get_last_plot_datasets();
+                        if let Some(name) = active_name {
+                            self.rev_cache.last_plot_capture_hash = Some((name, capture_hash));
+                        }
+                    }
+                    self.sync_state.datasets_owner_tool = active_name;
+                } else if !tool_datasets.is_empty() {
+                    self.current_valid_plot_datasets = tool_datasets;
+                    self.rev_cache.last_plot_capture_hash = None;
+                    self.sync_state.datasets_owner_tool = active_name;
+                }
+                self.step_counter += 1;
                 Ok(())
             }
             Err(report) => {
-                let tool_name = self
-                    .active_tool
-                    .as_ref()
-                    .map_or("SimulationFramework", |t| t.name());
-                emit_divergence_telemetry(
-                    tool_name,
-                    report.t_diverged,
-                    report.step_index,
-                    &report.variable,
-                    &report.message,
-                );
+                let should_emit =
+                    !self.is_diverged || self.diagnostic_report.as_ref() != Some(&report);
+                if should_emit {
+                    let tool_name = self
+                        .active_tool
+                        .as_ref()
+                        .map_or("SimulationFramework", |t| t.name());
+                    emit_divergence_telemetry(
+                        tool_name,
+                        report.t_diverged,
+                        report.step_index,
+                        &report.variable,
+                        &report.message,
+                    );
+                }
                 self.is_diverged = true;
                 self.diagnostic_report = Some(report.clone());
                 Err(report)
