@@ -1191,7 +1191,13 @@ impl<'a> Plot<'a> {
                     if let (Some(height), Some(aspect)) = (height, view_aspect) {
                         height * aspect
                     } else {
-                        ui.available_size_before_wrap().x
+                        let avail_w = ui.available_size_before_wrap().x;
+                        let clip_w = ui.clip_rect().max.x - pos.x;
+                        if clip_w.is_finite() && clip_w >= min_size.x {
+                            avail_w.min(clip_w)
+                        } else {
+                            avail_w
+                        }
                     }
                 })
                 .at_least(min_size.x);
@@ -4896,7 +4902,12 @@ impl<'b> PreparedPlot<'_, 'b> {
 /// ```
 fn next_power(value: f64, base: f64) -> f64 {
     debug_assert_ne!(value, 0.0, "Bad input"); // can be negative (typical for Y axis)
-    base.powi(value.abs().log(base).ceil() as i32)
+    let abs_value = value.abs();
+    let mut exp = abs_value.log(base).ceil() as i32;
+    if base.powi(exp) <= abs_value {
+        exp += 1;
+    }
+    base.powi(exp)
 }
 
 #[test]

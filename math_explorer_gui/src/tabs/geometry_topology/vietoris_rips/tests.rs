@@ -11,7 +11,7 @@ use super::presets::{ShapePreset, DEFAULT_PRESET_POINTS};
 use super::*;
 use crate::framework::{InteractiveTool, SimulationFramework};
 use crate::url_state::{UrlStateSignature, UrlSyncController, MAX_DECODED_URL_STATE_BYTES};
-use egui_plot::export::{ExportOptions, color32_image_to_png};
+use egui_plot::export::{color32_image_to_png, ExportOptions};
 use egui_plot::export_primitives::{export_primitives_svg, render_primitives_image};
 use egui_plot::PlotPoints;
 use std::f64::consts::{E, PI};

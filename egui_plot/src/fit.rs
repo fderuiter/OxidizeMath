@@ -1,6 +1,8 @@
 //! Curve fitting and nonlinear regression analysis for discrete 2D plot datasets.
 
 mod custom;
+#[cfg(test)]
+mod domain_shift_tests;
 mod lm;
 mod nonlinear;
 mod poly;
