@@ -119,3 +119,42 @@ fn test_run_ast_visitor_execution() {
     let _lock = crate::DIR_LOCK.lock().unwrap();
     assert!(run_ast_visitor());
 }
+
+#[test]
+fn test_clone_detector_reports_spans_fn_names_hints_and_line_zero_fallback() {
+    let src = concat!(
+        "pub struct Grid { data: Vec<f64> }\n",
+        "impl Grid {\n",
+        "    pub fn sample_cell(&self, row: usize, width: usize, col: usize) -> f64 {\n",
+        "        self.data[row * width + col]\n",
+        "    }\n",
+        "}\n",
+        "pub fn to_rgb(x: f64, y: f64, z: f64) -> [u8; 3] {\n",
+        "    [(x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8]\n",
+        "}\n",
+    );
+    let ast = syn::parse_file(src).expect("parse clone test file");
+    let findings = detect_clones_in_ast(Path::new("crates/demo/src/grid.rs"), &ast);
+    assert_eq!(
+        findings.len(),
+        2,
+        "expected both index and color clones: {findings:?}"
+    );
+    assert!(findings[0].contains("crates/demo/src/grid.rs:4 (fn `sample_cell`)"));
+    assert!(findings[0].contains("flatten_2d_index"));
+    assert!(findings[1].contains("crates/demo/src/grid.rs:7 (fn `to_rgb`)"));
+    assert!(findings[1].contains("colormap"));
+
+    // Macro-generated spans reporting line 0 must omit `:0`
+    let line_zero_findings = format_clone_findings(
+        "crates/demo/src/macro_gen.rs",
+        &[(Some("macro_generated".to_string()), 0)],
+        &[("macro_rgb".to_string(), 0)],
+    );
+    assert_eq!(line_zero_findings.len(), 2);
+    assert!(
+        line_zero_findings[0].contains("at crates/demo/src/macro_gen.rs (fn `macro_generated`)")
+    );
+    assert!(line_zero_findings[1].contains("at crates/demo/src/macro_gen.rs (fn `macro_rgb`)"));
+    assert!(!line_zero_findings[0].contains(":0") && !line_zero_findings[1].contains(":0"));
+}

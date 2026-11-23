@@ -119,6 +119,8 @@ struct FrameworkStateSerialize<'a> {
     show_theory_portal: bool,
     show_starter_gallery: bool,
     tool_states: RawToolStates<'a>,
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    plot_states: &'a plot_persistence::SavedPlotStatesMap,
 }
 
 #[derive(Deserialize)]
@@ -130,6 +132,11 @@ struct FrameworkStateDeserialize {
     show_starter_gallery: bool,
     #[serde(deserialize_with = "deserialize_tool_states")]
     tool_states: HashMap<String, String>,
+    #[serde(
+        default,
+        deserialize_with = "plot_persistence::deserialize_plot_states"
+    )]
+    plot_states: plot_persistence::SavedPlotStatesMap,
 }
 
 pub(super) fn capture_isolated_tool_datasets(
@@ -172,6 +179,37 @@ fn capture_isolated_tool_datasets_3d(tool: &dyn InteractiveTool) -> Vec<(String,
     datasets_3d
 }
 
+struct Mix64Hasher(u64);
+
+impl std::hash::Hasher for Mix64Hasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        let (chunks, rem) = bytes.as_chunks::<8>();
+        for &chunk in chunks {
+            self.write_u64(u64::from_le_bytes(chunk));
+        }
+        if !rem.is_empty() {
+            let mut buf = [0_u8; 8];
+            buf[..rem.len()].copy_from_slice(rem);
+            self.write_u64(u64::from_le_bytes(buf) ^ ((rem.len() as u64) << 56));
+        }
+    }
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.0 = (self.0 ^ i)
+            .wrapping_mul(0x517c_c1b7_2722_0a95)
+            .rotate_left(17);
+    }
+    #[inline]
+    fn write_usize(&mut self, i: usize) {
+        self.write_u64(i as u64);
+    }
+}
+
 impl SimulationFramework {
     pub(super) fn bump_framework_revision(&mut self) {
         self.rev_cache.framework_revision = self.rev_cache.framework_revision.wrapping_add(1);
@@ -183,33 +221,31 @@ impl SimulationFramework {
 
     /// Computes a deterministic O(1) revision token for this framework's persisted state.
     pub fn state_revision(&self) -> u64 {
-        #[inline]
-        fn mix64(acc: u64, val: u64) -> u64 {
-            (acc ^ val)
-                .wrapping_mul(0x517c_c1b7_2722_0a95)
-                .rotate_left(17)
-        }
-        let mut h = mix64(0x9e37_79b9_7f4a_7c15, self.rev_cache.framework_revision);
-        h = mix64(
-            h,
-            self.selected_tool_index.map_or(u64::MAX, |idx| idx as u64),
-        );
+        use std::hash::Hasher;
+        let mut hasher = Mix64Hasher(0x9e37_79b9_7f4a_7c15);
+        hasher.write_u64(self.rev_cache.framework_revision);
+        hasher.write_u64(self.selected_tool_index.map_or(u64::MAX, |idx| idx as u64));
         let flags =
             u64::from(self.show_theory_portal) | (u64::from(self.show_starter_gallery) << 1);
-        h = mix64(h, flags);
-        h = mix64(h, self.saved_tool_states.len() as u64);
+        hasher.write_u64(flags);
+        hasher.write_usize(self.saved_tool_states.len());
+        if !self.saved_plot_states.is_empty() {
+            self.hash_saved_plot_states(&mut hasher);
+        }
         if let Some(tool) = &self.active_tool {
             let name = tool.name();
-            h = mix64(h, name.as_ptr() as usize as u64);
-            h = mix64(h, name.len() as u64);
+            hasher.write_usize(name.as_ptr() as usize);
+            hasher.write_usize(name.len());
             let tool_rev = tool.state_revision();
             if tool_rev > 0 {
-                h = mix64(mix64(h, 1), tool_rev);
+                hasher.write_u64(1);
+                hasher.write_u64(tool_rev);
             } else {
-                h = mix64(mix64(h, 0), self.rev_cache.untracked_tool_revision);
+                hasher.write_u64(0);
+                hasher.write_u64(self.rev_cache.untracked_tool_revision);
             }
         }
-        h.max(1)
+        hasher.finish().max(1)
     }
 
     pub(super) fn serialized_active_tool(&self) -> Option<(&'static str, Arc<str>)> {
@@ -252,6 +288,7 @@ impl SimulationFramework {
                     .as_ref()
                     .map(|(name, json)| (*name, json.as_ref())),
             },
+            plot_states: &self.saved_plot_states,
         };
         serde_json::to_string(&state).ok()
     }
@@ -269,6 +306,8 @@ impl SimulationFramework {
         self.show_theory_portal = state.show_theory_portal;
         self.show_starter_gallery = false;
         self.saved_tool_states = state.tool_states;
+        self.saved_plot_states = state.plot_states;
+        self.bump_plot_sync_generation();
         self.bump_framework_revision();
 
         let tool_idx = state
@@ -348,7 +387,10 @@ impl SimulationFramework {
             self.saved_tool_states
                 .insert(old_name.to_string(), old_json.to_string());
         }
+        self.bump_plot_sync_generation();
         self.bump_framework_revision();
+        self.active_challenge = None;
+        self.challenge_was_passed = false;
         self.selected_tool_index = Some(index);
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();
@@ -385,6 +427,7 @@ impl SimulationFramework {
             new_tool.theory().theory_citation(),
         );
         self.active_tool = Some(new_tool);
+        self.promote_legacy_plot_keys_for_active_tool();
     }
 
     /// Selects and activates a tool by ID, display name, or tag in `available_tools` (case-insensitively).

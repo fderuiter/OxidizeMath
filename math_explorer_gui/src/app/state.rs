@@ -3,6 +3,7 @@
 use super::theme::ThemeMode;
 use super::viewport::compare_sync::ComparisonSyncConfig;
 use super::viewport::ViewportLayout;
+use super::SharedTabJson;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::cell::RefCell;
@@ -67,8 +68,8 @@ pub(super) fn has_frame_input(ctx: &egui::Context) -> bool {
 
 #[derive(Default)]
 struct TabCacheInner {
-    slots: Vec<Option<(&'static str, u64, Option<String>)>>,
-    assembled: HashMap<String, String>,
+    slots: Vec<Option<(&'static str, u64, Option<SharedTabJson>)>>,
+    assembled: HashMap<String, SharedTabJson>,
     assembled_valid: bool,
 }
 
@@ -96,7 +97,7 @@ impl TabCacheInner {
         if hit {
             return false;
         }
-        let fresh = tab.save_state();
+        let fresh = tab.save_state().map(SharedTabJson::from);
         match &fresh {
             Some(s) => {
                 self.assembled.insert(name.to_string(), s.clone());
@@ -139,7 +140,7 @@ impl TabStateCache {
         tabs: &[Box<dyn ExplorerTab>],
         active_primary: usize,
         had_input: bool,
-    ) -> HashMap<String, String> {
+    ) -> HashMap<String, SharedTabJson> {
         let mut guard = self.inner.borrow_mut();
         let cache = &mut *guard;
         if cache.slots.len() != tabs.len() {
@@ -262,7 +263,7 @@ pub struct AppState {
     pub show_diagnostics_panel: bool,
     #[serde(default)]
     pub theme: ThemeMode,
-    pub tab_states: HashMap<String, String>,
+    pub tab_states: HashMap<String, SharedTabJson>,
     #[serde(default)]
     pub split_layout_mode: SplitLayoutMode,
     #[serde(default = "default_secondary_tab")]
@@ -281,7 +282,7 @@ pub struct AppState {
     #[serde(default)]
     pub focused_pane: usize,
     #[serde(default)]
-    pub pane_tab_states: Vec<HashMap<String, String>>,
+    pub pane_tab_states: Vec<HashMap<String, SharedTabJson>>,
     #[serde(default)]
     pub compare_sync: ComparisonSyncConfig,
 }

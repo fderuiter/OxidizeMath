@@ -49,17 +49,17 @@ depends = [
 default = ["math_explorer", "ai", "applied", "biology", "climate", "epidemiology", "physics", "pure_math"]
 pure_math = ["math_explorer/pure_math"]
 applied = ["math_explorer/applied", "pure_math"]
-ai = ["math_explorer/ai", "applied", "pure_math"]
-biology = ["math_explorer/biology", "applied", "pure_math"]
+ai = ["math_explorer/ai", "math_explorer/biology", "math_explorer/physics", "applied", "pure_math"]
+biology = ["math_explorer/biology", "math_explorer/ai", "math_explorer/physics", "applied", "pure_math"]
 climate = ["math_explorer/climate", "ai"]
 epidemiology = ["math_explorer/epidemiology", "pure_math"]
-physics = ["math_explorer/physics", "applied", "pure_math"]
+physics = ["math_explorer/physics", "math_explorer/ai", "math_explorer/biology", "applied", "pure_math"]
 
 [dependencies]
 futures = { workspace = true }
 federated_registry = { path = "../crates/federated_registry" }
 eframe = { workspace = true }
-egui_plot = "0.34.1"
+egui_plot = { version = "0.34.1", features = ["serde"] }
 nalgebra = { workspace = true }
 oxidize_core = { path = "../crates/oxidize_core" }
 math_explorer = { path = "../math_explorer", optional = true }
@@ -85,27 +85,38 @@ console_error_panic_hook = { workspace = true }
 wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 web-sys = { workspace = true, features = [
+    "AnalyserNode",
+    "AudioContext",
+    "AudioContextState",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioParam",
+    "BaseAudioContext",
+    "BiquadFilterNode",
+    "BiquadFilterType",
     "CssStyleDeclaration",
-    "DedicatedWorkerGlobalScope",
     "Document",
+    "DynamicsCompressorNode",
     "Element",
     "ErrorEvent",
     "Event",
     "EventInit",
+    "GainNode",
     "History",
     "HtmlCanvasElement",
     "HtmlElement",
     "Location",
     "MediaQueryList",
-    "MessageEvent",
     "Node",
     "NodeList",
+    "OscillatorNode",
+    "OscillatorType",
+    "PeriodicWave",
+    "PeriodicWaveOptions",
     "Response",
+    "StereoPannerNode",
     "Storage",
     "Window",
-    "Worker",
-    "WorkerOptions",
-    "WorkerType",
 ] }
 
 [target.wasm32-unknown-unknown.dependencies]
@@ -113,6 +124,7 @@ wasm-bindgen-futures = { workspace = true }
 
 [dev-dependencies]
 png = "0.18"
+rustfft = { workspace = true }
 verified_engine = { path = "../crates/verified_engine" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]

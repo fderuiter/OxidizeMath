@@ -156,9 +156,11 @@ impl OdeSolverTool {
                 if !self.comparison_mode {
                     plot_ui.line(line_y);
                     if has_v && !self.display_v.is_empty() {
-                        let line_v =
-                            Line::new(v_label, PlotPoints::from_shared(Arc::clone(&self.display_v)))
-                                .color(palette.series_color(1));
+                        let line_v = Line::new(
+                            v_label,
+                            PlotPoints::from_shared(Arc::clone(&self.display_v)),
+                        )
+                        .color(palette.series_color(1));
                         plot_ui.line(line_v);
                     }
                 } else {

@@ -423,3 +423,6 @@ mod recovery_tests;
 
 #[cfg(test)]
 mod sensitivity_tests;
+
+#[cfg(test)]
+mod solver_poi_tests;
