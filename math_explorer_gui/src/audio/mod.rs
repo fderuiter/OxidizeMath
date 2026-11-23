@@ -288,6 +288,8 @@ mod number_theory_tests;
 #[cfg(test)]
 mod rl_tests;
 #[cfg(test)]
+mod spin_resonance_tests;
+#[cfg(test)]
 mod tests;
 
 #[cfg(all(test, feature = "physics"))]
