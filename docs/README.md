@@ -34,7 +34,8 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0039: Network Epidemic Containment Primitives, Active Degree Moments, and Zero-Allocation Stepping](adr/0039-network-epidemic-containment-primitives.md)
 - [ADR 0040: Galactic Dynamics Kernels and Auto-Discovered Astrophysics Tab](adr/0040-galactic-dynamics-and-astrophysics-tab.md)
 - [ADR 0041: Unified 3D Volumetric Field Studio and Zero-Allocation Surface/Splat Kernels](adr/0041-volumetric-field-studio-zero-alloc-3d-kernels.md)
-- [ADR 0042: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0042-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
+- [ADR 0042: Zero-Allocation 2D Chladni Plate and Wave Tank Solver](adr/0042-2d-chladni-plate-and-wave-tank-solver.md)
+- [ADR 0043: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0043-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 
 ## Contributing
 
