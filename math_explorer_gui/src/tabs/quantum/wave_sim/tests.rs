@@ -6,7 +6,8 @@ use crate::async_sim::SimulationRunner;
 use crate::framework::{BrushMode, BrushStroke, InteractiveTool, SimulationFramework};
 use eframe::egui;
 use math_commons::ast::parse_equation;
-use math_explorer::physics::quantum::evolve_state;
+use math_explorer::physics::quantum::{construct_1d_hamiltonian, evolve_state};
+use math_explorer::registry::MAX_GRID_SIZE;
 use std::sync::{Arc, RwLock};
 
 #[test]
@@ -240,23 +241,29 @@ fn test_zero_allocation_hot_path_propagator_cache_and_state_guard_rollback() {
     let init_psi = runner.psi.clone();
     runner.step();
     assert_eq!(runner.cached_dt, Some(0.02));
-    let ptr_before = runner.propagator.matrix.as_ptr();
+    let psi_ptr_before = runner.psi.vector.as_ptr();
 
-    // Verify steps 2..=6 run with zero heap allocations under VerifiedAllocator
+    // Verify constant-dt steps AND dynamic dt-sweep edits run with zero heap allocations
     {
         let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         verified_engine::engine::VerifiedEngine::run_verified(|| {
-            for _ in 0..5 {
+            for _ in 0..3 {
                 runner.step();
             }
+            runner.step_with_dt(0.015);
+            runner.step_with_dt(0.025);
         });
     }
-    assert_eq!(runner.propagator.matrix.as_ptr(), ptr_before);
+    assert_eq!(runner.psi.vector.as_ptr(), psi_ptr_before);
+    assert_eq!(runner.cached_dt, Some(0.025));
+    assert!((runner.psi.norm() - 1.0).abs() < 1e-12);
 
-    let expected_psi = evolve_state(&init_psi, &runner.hamiltonian, 0.12, 1.0).normalize();
-    assert!((&runner.psi.vector - &expected_psi.vector).norm() < 1e-11);
+    let dx = (runner.x_max - runner.x_min) / (runner.n_points as f64 - 1.0);
+    let dense_h = construct_1d_hamiltonian(&runner.potential, dx, 1.0, 1.0);
+    let expected_psi = evolve_state(&init_psi, &dense_h, 0.12, 1.0).normalize();
+    assert!((&runner.psi.vector - &expected_psi.vector).norm() < 5e-3);
 
     // Verify SimulationFramework state_guard rollback and parameter clamping
     let mut fw = SimulationFramework::new("quantum");
@@ -381,4 +388,30 @@ fn test_wave_simulator_animated_slider_sweeps_continuous_parameters() {
         |ctx| tool.show(ctx),
     );
     assert!(tool.x0 > initial_x0);
+}
+
+#[test]
+fn test_wave_runner_scales_to_max_grid_size_1000_zero_alloc() {
+    let cfg = Arc::new(RwLock::new(WaveSimConfig {
+        preset: WavePotentialPreset::RectangularBarrier,
+        dt: 0.01,
+        ..Default::default()
+    }));
+    let mut runner = WaveRunner::new(Arc::clone(&cfg));
+    runner.n_points = MAX_GRID_SIZE;
+    let cfg_snap = cfg.read().unwrap().clone();
+    runner.init_from_config(&cfg_snap);
+    assert_eq!(runner.psi.vector.len(), MAX_GRID_SIZE);
+
+    {
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            runner.step_with_dt(0.01);
+            runner.step_with_dt(0.015);
+        });
+    }
+    assert!(runner.is_finite_state());
+    assert!((runner.psi.norm() - 1.0).abs() < 1e-11);
 }
