@@ -1,15 +1,58 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{
-    WavePotentialPreset, DEFAULT_CUSTOM_EXPR, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA,
-    DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, DT_MAX, DT_MIN,
+    default_compiled_expr, WavePotentialPreset, DEFAULT_CUSTOM_EXPR, DEFAULT_DT, DEFAULT_K0,
+    DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, DT_MAX, DT_MIN,
     DT_RECOVERY_MIN, GRID_POINTS, K0_MAX, K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME,
     POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN, SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX,
     WIDTH_MIN, X0_MAX, X0_MIN,
 };
 use super::WaveSimulatorTool;
 use crate::async_sim::SimWorkerState;
+use math_commons::ast::Expr;
 use std::hash::{Hash, Hasher};
+
+/// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`super::WaveRunner`].
+#[derive(Clone, Debug)]
+pub struct WaveSimConfig {
+    /// Selected potential profile or custom AST mode.
+    pub preset: WavePotentialPreset,
+    /// Initial Gaussian packet center $x_0$.
+    pub x0: f64,
+    /// Initial wave number $k_0$ ($E_0 = k_0^2 / 2$).
+    pub k0: f64,
+    /// Initial Gaussian spatial width $\sigma$.
+    pub sigma: f64,
+    /// Potential barrier scale $V_0$.
+    pub v0: f64,
+    /// Potential barrier width $w$.
+    pub width: f64,
+    /// Unitary propagation time step $\Delta t$.
+    pub dt: f64,
+    /// Worker steps executed per visual frame.
+    pub steps_per_frame: usize,
+    /// Last valid compiled AST expression for `V(x)`.
+    pub custom_expr: Expr,
+    /// Optional sparse `(index, value)` sculpted potential overrides.
+    pub sparse_potential: Vec<(u16, f64)>,
+}
+
+impl Default for WaveSimConfig {
+    fn default() -> Self {
+        Self {
+            preset: WavePotentialPreset::InfiniteWell,
+            x0: DEFAULT_X0,
+            k0: DEFAULT_K0,
+            sigma: DEFAULT_SIGMA,
+            v0: DEFAULT_V0,
+            width: DEFAULT_WIDTH,
+            dt: DEFAULT_DT,
+            steps_per_frame: DEFAULT_STEPS_PER_FRAME,
+            custom_expr: default_compiled_expr(),
+            sparse_potential: Vec::new(),
+        }
+    }
+}
 
 fn default_x0() -> f64 {
     DEFAULT_X0
@@ -62,6 +105,10 @@ struct WaveSimStateRef<'a> {
     custom_expr: &'a str,
     #[serde(skip_serializing_if = "<[_]>::is_empty")]
     sparse_potential: &'a [(u16, f64)],
+    #[serde(skip_serializing_if = "super::atlas::is_false")]
+    atlas_visible: bool,
+    #[serde(skip_serializing_if = "super::atlas::is_default_wave_atlas_axes")]
+    atlas_axes: [String; 2],
 }
 
 #[derive(serde::Deserialize)]
@@ -89,6 +136,10 @@ struct WaveSimState {
     custom_expr: String,
     #[serde(default)]
     sparse_potential: Vec<(u16, f64)>,
+    #[serde(default)]
+    atlas_visible: bool,
+    #[serde(default = "super::atlas::default_wave_atlas_axes")]
+    atlas_axes: [String; 2],
 }
 
 impl WaveSimState {
@@ -158,6 +209,8 @@ impl WaveSimulatorTool {
         self.dt.to_bits().hash(&mut hasher);
         self.steps_per_frame.hash(&mut hasher);
         self.math_input.raw_text.hash(&mut hasher);
+        self.atlas.is_visible().hash(&mut hasher);
+        self.atlas.axis_keys().hash(&mut hasher);
         self.active_challenge.hash(&mut hasher);
         for &(idx, val) in &self.sparse_potential {
             idx.hash(&mut hasher);
@@ -189,6 +242,7 @@ impl WaveSimulatorTool {
 
     pub(crate) fn serialize_state(&self) -> Option<String> {
         let bounded_expr = truncate_utf8_bytes(&self.math_input.raw_text, MAX_CUSTOM_EXPR_BYTES);
+        let (ax_x, ax_y) = self.atlas.axis_keys();
         serde_json::to_string(&WaveSimStateRef {
             preset: self.preset,
             x0: self.x0,
@@ -200,6 +254,8 @@ impl WaveSimulatorTool {
             steps_per_frame: self.steps_per_frame,
             custom_expr: bounded_expr,
             sparse_potential: &self.sparse_potential,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [ax_x.to_string(), ax_y.to_string()],
         })
         .ok()
     }
@@ -208,6 +264,9 @@ impl WaveSimulatorTool {
         let parsed: WaveSimState =
             serde_json::from_str(state).map_err(|e| format!("Invalid WaveSimulator state: {e}"))?;
         let preset = parsed.validate()?;
+        self.atlas
+            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.atlas.set_visible(parsed.atlas_visible);
 
         self.preset = preset;
         self.x0 = parsed.x0;
@@ -223,6 +282,7 @@ impl WaveSimulatorTool {
             self.last_valid_expr = expr.clone();
         }
         self.enforce_challenge_locks();
+        self.pending_slider_reset = false;
         self.sync_config_and_reset(None);
         Ok(())
     }

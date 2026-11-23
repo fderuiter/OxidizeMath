@@ -2,6 +2,7 @@
 // [cite:math_commons]
 
 use crate::series::PointSeries;
+use alloc::vec::Vec;
 
 /// Default maximum intersections collected by [`intersect_polylines`].
 pub const MAX_POLYLINE_INTERSECTIONS: usize = 256;
@@ -11,7 +12,7 @@ pub const MAX_POLYLINE_INTERSECTIONS: usize = 256;
 /// Uses an $O(|a| + |b|)$ two-cursor knot sweep when both polylines are strictly increasing
 /// in `x`, and falls back to bounded segment-pair AABB filtering for parametric curves.
 /// Performs zero heap allocations.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn intersect_polylines_into<A, B>(
     a: &A,
     b: &B,
@@ -246,7 +247,7 @@ fn scan_general_against_b<B: PointSeries + ?Sized>(
 
 /// Linearly interpolates segment `(p0, p1)` at horizontal coordinate `x`.
 #[inline]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn eval_segment_at_x(p0: [f64; 2], p1: [f64; 2], x: f64) -> f64 {
     eval_segment_at_x_raw(p0, p1, x)
 }
@@ -262,7 +263,7 @@ fn eval_segment_at_x_raw(p0: [f64; 2], p1: [f64; 2], x: f64) -> f64 {
 }
 
 /// Computes the exact 2D intersection of closed line segments `(a0, a1)` and `(b0, b1)`.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn segment_intersection_2d(
     a0: [f64; 2],
     a1: [f64; 2],
