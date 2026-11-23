@@ -2,18 +2,15 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{LeniaCartographer, LeniaRegime};
-use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
+use crate::framework::MAX_SYNTHESIZED_PARAMS;
+use math_commons::ast::{parse_equation, CompiledExpr};
 use math_explorer::biology::lenia::{
     GrowthParams, LeniaSpecies, MAX_GRID_SIZE, MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MIN_GRID_SIZE,
     MIN_KERNEL_RADIUS,
 };
-use scientific_metadata::theory::TheoryDescribable;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-
-const EXTINCTION_MASS_FLOOR: f64 = 1e-4;
+use std::collections::{BTreeMap, HashMap};
 
 pub(crate) const fn default_brush_radius() -> f64 {
     4.0
@@ -50,6 +47,18 @@ pub struct LeniaToolState {
     /// Whether continuous stepping is actively running.
     #[serde(default)]
     pub playing: bool,
+    /// Optional custom 1D growth formula `G(u)` overriding Gaussian growth.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub growth_expr: Option<String>,
+    /// Synthesized free-parameter values for `growth_expr`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub growth_params: BTreeMap<String, f64>,
+    /// Optional custom 1D radial kernel formula `K(r)` overriding concentric bump shells.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kernel_expr: Option<String>,
+    /// Synthesized free-parameter values for `kernel_expr`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub kernel_params: BTreeMap<String, f64>,
 }
 
 impl LeniaToolState {
@@ -76,7 +85,8 @@ impl LeniaToolState {
                 self.grid_size, MIN_GRID_SIZE, MAX_GRID_SIZE
             ));
         }
-        self.validate_rings()
+        self.validate_rings()?;
+        self.validate_sandboxes()
     }
 
     fn validate_rings(&self) -> Result<(), String> {
@@ -101,6 +111,56 @@ impl LeniaToolState {
         }
         Ok(())
     }
+
+    fn validate_sandboxes(&self) -> Result<(), String> {
+        if let Some(expr) = &self.growth_expr {
+            validate_1d_formula("growth_expr", expr, "u")?;
+        }
+        if let Some(expr) = &self.kernel_expr {
+            validate_1d_formula("kernel_expr", expr, "r")?;
+        }
+        validate_param_map("growth_params", &self.growth_params)?;
+        validate_param_map("kernel_params", &self.kernel_params)
+    }
+}
+
+fn validate_1d_formula(field: &str, raw: &str, axis: &str) -> Result<(), String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.len() > 256 {
+        return Err(format!(
+            "Lenia {field} must be non-empty and at most 256 characters"
+        ));
+    }
+    let (_, ast) = parse_equation(trimmed).map_err(|e| {
+        format!(
+            "Invalid Lenia {field}: {}",
+            e.user_message_for_input(trimmed)
+        )
+    })?;
+    let compiled = CompiledExpr::compile_with_vars(&ast, &[axis])
+        .map_err(|e| format!("Invalid Lenia {field}: {e}"))?;
+    if compiled.param_names().len() > MAX_SYNTHESIZED_PARAMS {
+        return Err(format!(
+            "Lenia {field} defines too many parameters ({} > {MAX_SYNTHESIZED_PARAMS})",
+            compiled.param_names().len()
+        ));
+    }
+    Ok(())
+}
+
+fn validate_param_map(field: &str, map: &BTreeMap<String, f64>) -> Result<(), String> {
+    if map.len() > MAX_SYNTHESIZED_PARAMS {
+        return Err(format!(
+            "Lenia {field} exceeds maximum parameter count ({MAX_SYNTHESIZED_PARAMS})"
+        ));
+    }
+    for (key, &val) in map {
+        if key.is_empty() || key.len() > 32 || !val.is_finite() || !(-100.0..=100.0).contains(&val)
+        {
+            return Err(format!("Invalid Lenia {field} entry '{key}' = {val}"));
+        }
+    }
+    Ok(())
 }
 
 /// JSON preset envelope for canonical `Orbium` glider in Lenia Studio.
@@ -232,7 +292,7 @@ pub struct LeniaTheory {
 
 impl TheoryDescribable for LeniaTheory {
     fn theory_description(&self) -> String {
-        "Lenia generalizes Conway's Game of Life to continuous space, time, and states via FFT circular ring convolutions and Gaussian growth niches."
+        "Lenia generalizes Conway's Game of Life to continuous space, time, and states via FFT circular ring convolutions and Gaussian or polynomial growth niches."
             .to_string()
     }
 
@@ -254,10 +314,7 @@ impl TheoryDescribable for LeniaTheory {
         map
     }
 
-    fn theory_parameters(
-        &self,
-    ) -> HashMap<String, scientific_metadata::theory::ParameterConstraint> {
-        use scientific_metadata::theory::ParameterConstraint;
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
         let mut map = self.growth.theory_parameters();
         map.insert(
             "radius".to_string(),
@@ -299,111 +356,6 @@ impl TheoryDescribable for LeniaTheory {
             r"A_{t+\Delta t} = \operatorname{clamp}\!\left(A_t + \Delta t \, G\!\left(\mathcal{F}^{-1}(\mathcal{F}(A_t)\odot \hat{K});\,\mu,\sigma\right),\,0,\,1\right)"
                 .to_string(),
         )
-    }
-}
-
-impl super::LeniaTool {
-    pub(super) fn sanitize_rings_and_field(&mut self) {
-        if self.ring_weights.is_empty() {
-            self.ring_weights.push(1.0);
-        }
-        self.ring_weights.truncate(MAX_KERNEL_RINGS);
-        for w in &mut self.ring_weights {
-            *w = if w.is_finite() {
-                w.clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-        }
-        if self.ring_weights.iter().copied().sum::<f64>() <= 1e-6 {
-            self.ring_weights[0] = 1.0;
-        }
-        if !self.engine.state().iter().all(|v| v.is_finite()) {
-            for cell in self.engine.state_mut() {
-                *cell = if cell.is_finite() {
-                    cell.clamp(0.0, 1.0)
-                } else {
-                    0.0
-                };
-            }
-            self.engine.refresh_telemetry();
-        }
-    }
-
-    /// Returns `true` when current `(mu, sigma, radius, dt)` lies inside a viable soliton or colony regime.
-    #[must_use]
-    pub fn is_current_niche_viable(&self) -> bool {
-        let theory = self.theory.theory_parameters();
-        let cart = LeniaCartographer::new(
-            &theory,
-            ("mu", "sigma"),
-            self.species,
-            self.radius,
-            &self.ring_weights,
-            GrowthParams::new(self.mu, self.sigma),
-            self.dt,
-        );
-        let cell = cart.evaluate_cell(self.mu, self.sigma);
-        matches!(
-            LeniaRegime::from_u8(cell.regime),
-            LeniaRegime::StableSoliton | LeniaRegime::ExpandingWave
-        )
-    }
-
-    /// Re-seeds the active species genome automatically when an extinct grid (`total_mass <= 1e-4`)
-    /// enters a viable soliton niche.
-    pub fn reseed_if_extinct_entering_viable(&mut self) -> bool {
-        if self.engine.telemetry().total_mass <= EXTINCTION_MASS_FLOOR
-            && self.is_current_niche_viable()
-        {
-            self.reseed_current_genome();
-            return true;
-        }
-        false
-    }
-
-    #[cfg(test)]
-    pub(crate) fn is_finite_and_extinct_for_test(&self) -> bool {
-        let mass = self.engine.telemetry().total_mass;
-        mass.is_finite() && mass <= EXTINCTION_MASS_FLOOR
-    }
-
-    pub(crate) fn lenia_atlas_context_sig(&self, axis_keys: (&'static str, &'static str)) -> u64 {
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        self.species.hash(&mut h);
-        self.dt.to_bits().hash(&mut h);
-        self.ring_weights.len().hash(&mut h);
-        for &w in &self.ring_weights {
-            w.to_bits().hash(&mut h);
-        }
-        for (name, val) in [
-            ("mu", self.mu),
-            ("sigma", self.sigma),
-            ("radius", self.radius),
-        ] {
-            if name != axis_keys.0 && name != axis_keys.1 {
-                name.hash(&mut h);
-                val.to_bits().hash(&mut h);
-            }
-        }
-        h.finish().max(1)
-    }
-
-    pub(crate) fn handle_lenia_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
-        for (key, val) in [(ev.x_key, ev.x_val), (ev.y_key, ev.y_val)] {
-            match key {
-                "mu" => self.mu = val.clamp(0.01, 0.60),
-                "sigma" => self.sigma = val.clamp(0.002, 0.15),
-                "radius" => self.radius = val.clamp(4.0, 32.0),
-                _ => {}
-            }
-        }
-        self.diagnostic = None;
-        self.sync_engine_parameters();
-        if !self.reseed_if_extinct_entering_viable() {
-            self.refresh_pixels_in_place();
-            self.user_mutation_nonce = self.user_mutation_nonce.wrapping_add(1);
-        }
     }
 }
 

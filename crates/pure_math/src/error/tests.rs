@@ -54,6 +54,7 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         EllipticCurveError::InvalidDegree.into(),
         EvolutionError::InvalidState.into(),
         FractranError::InvalidFractionSyntax.into(),
+        HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.into(),
         LinearAlgebraError::SingularMatrix.into(),
         OptimizationError::from(EvolutionError::ConversionError).into(),
         StochasticError::InvalidReactionIndex(3).into(),
@@ -128,6 +129,42 @@ fn test_glicko2_tournament_variants_umbrella_and_diagnostics() {
         assert_eq!(
             meta.get("description").map(String::as_str),
             Some(msg.as_str())
+        );
+        bus.emit_diagnostic(&umbrella);
+    }
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_kelly_validation_and_solvency_variants_umbrella_and_diagnostics() {
+    let variants = [
+        KellyError::InvalidStake { value: -5.0 },
+        KellyError::InvalidBarrier {
+            floor: 120.0,
+            initial_wealth: 100.0,
+        },
+        KellyError::InsufficientBets {
+            required: 2,
+            actual: 0,
+        },
+        KellyError::DimensionMismatch {
+            expected: 4,
+            actual: 3,
+        },
+        KellyError::ConvergenceFailed {
+            reason: "bracket failed",
+        },
+    ];
+    let bus = DiagnosticBus::new();
+    for leaf in variants {
+        let msg = leaf.to_string();
+        let umbrella = PureMathError::from(leaf);
+        assert!(umbrella.source().is_some());
+        assert_eq!(umbrella.to_string(), msg);
+        let meta = umbrella.metadata();
+        assert_eq!(
+            meta.get("error_type").map(String::as_str),
+            Some("KellyError")
         );
         bus.emit_diagnostic(&umbrella);
     }

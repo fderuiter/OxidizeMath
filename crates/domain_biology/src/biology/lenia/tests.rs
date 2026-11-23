@@ -183,3 +183,111 @@ fn test_all_species_genomes_and_deterministic_rng_seeding() {
     stamp_species_at(&mut engine, LeniaSpecies::Scutium, 12, 12, 0.01, &mut rng);
     assert!(engine.telemetry().total_mass > before);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_compiled_rules_clamp_non_finite_and_sustain_polynomial_orbium() {
+    use math_commons::ast::{CompiledExpr, parse};
+
+    let chan_poly = parse("2 * max(0, 1 - ((u - mu) / (3 * sigma))^2)^4 - 1").expect("parse");
+    let compiled_g = CompiledExpr::compile_with_vars(&chan_poly, &["u"]).expect("compile g");
+    assert_eq!(compiled_g.param_names(), &["mu", "sigma"]);
+    let growth_rule = CompiledGrowthRule::new(compiled_g, &[0.15, 0.015]);
+    assert!((growth_rule.evaluate(0.15) - 1.0).abs() < 1e-12);
+    assert!((growth_rule.evaluate(0.0) + 1.0).abs() < 1e-12);
+
+    let singular_g =
+        CompiledExpr::compile_with_vars(&parse("1 / (u - 0.25)").expect("parse"), &["u"])
+            .expect("compile");
+    let singular_rule = CompiledGrowthRule::new(singular_g, &[]);
+    for u in [0.0, 0.25, 0.5, f64::NAN, f64::INFINITY] {
+        let val = singular_rule.evaluate(u);
+        assert!(val.is_finite() && (-1.0..=1.0).contains(&val));
+    }
+
+    let poly_shell = CompiledExpr::compile_with_vars(
+        &parse("max(0, 1 - ((r - 0.5) / 0.22)^2)^4").expect("parse"),
+        &["r"],
+    )
+    .expect("compile k");
+    let kernel_rule = CompiledKernelRule::new(poly_shell, &[]);
+    let mut spatial = vec![Complex::new(0.0, 0.0); 64 * 64];
+    let raw_sum = kernel_rule.write_wrapped_spatial_kernel(64, 64, 13.0, &mut spatial);
+    assert!(raw_sum > 5.0);
+    let norm_sum: f64 = spatial.iter().map(|c| c.re).sum();
+    assert!((norm_sum - 1.0).abs() < 1e-12);
+
+    let mut rng = OxidizeRng::new(42);
+    let mut engine = LeniaEngine::from_species(128, 128, LeniaSpecies::Orbium, 0.0, &mut rng);
+    assert!(
+        (engine.max_potential() - 0.225).abs() < 0.035,
+        "initial Orbium max(U)={} expected near 0.225",
+        engine.max_potential()
+    );
+    engine.set_custom_growth(Some(growth_rule));
+    for _ in 0..80 {
+        engine.step();
+    }
+    assert!(
+        engine.telemetry().total_mass > 20.0 && engine.telemetry().centroid_speed > 0.05,
+        "Chan polynomial Orbium should sustain translation: {:?}",
+        engine.telemetry()
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_fft_probe_32_convolution_accuracy_and_regime_classification() {
+    let shells = KernelShells::new(6.5, &[1.0, 0.5]);
+    let mut state = [0.0_f64; PROBE_CELLS];
+    seed_probe_species_32(LeniaSpecies::Orbium, 13.0, &mut state);
+
+    let mut spatial_k = [Complex::new(0.0, 0.0); PROBE_CELLS];
+    shells.write_wrapped_spatial_kernel(PROBE_SIDE, PROBE_SIDE, &mut spatial_k);
+    let expected = direct_circular_convolution(&state, &spatial_k, PROBE_SIDE, PROBE_SIDE);
+
+    let mut k_hat = spatial_k;
+    fft_2d_forward_32(&mut k_hat);
+    for c in &mut k_hat {
+        *c *= 1.0 / (PROBE_CELLS as f64);
+    }
+    let mut freq = [Complex::new(0.0, 0.0); PROBE_CELLS];
+    for (dst, &a) in freq.iter_mut().zip(state.iter()) {
+        *dst = Complex::new(a, 0.0);
+    }
+    fft_2d_forward_32(&mut freq);
+    for (f, &kh) in freq.iter_mut().zip(k_hat.iter()) {
+        *f *= kh;
+    }
+    fft_2d_inverse_32(&mut freq);
+    for idx in 0..PROBE_CELLS {
+        assert!((freq[idx].re - expected[idx]).abs() < 1e-12);
+    }
+
+    let make_spec = |mu: f64, sigma: f64| LeniaProbeSpec {
+        species: LeniaSpecies::Orbium,
+        seed_radius: 13.0,
+        kernel_radius: 13.0,
+        ring_weights: &[1.0],
+        growth: GrowthParams::new(mu, sigma),
+        dt: 0.1,
+        custom_growth: None,
+        custom_kernel: None,
+    };
+    assert_eq!(
+        evaluate_lenia_probe_32(&make_spec(0.15, 0.015)).outcome,
+        LeniaProbeOutcome::LocalizedSoliton
+    );
+    assert_eq!(
+        evaluate_lenia_probe_32(&make_spec(0.28, 0.015)).outcome,
+        LeniaProbeOutcome::Extinction
+    );
+    assert_eq!(
+        evaluate_lenia_probe_32(&make_spec(0.10, 0.055)).outcome,
+        LeniaProbeOutcome::OvergrownBlob
+    );
+    assert_eq!(
+        evaluate_lenia_probe_32(&make_spec(0.02, 0.04)).outcome,
+        LeniaProbeOutcome::VacuumExplosion
+    );
+}

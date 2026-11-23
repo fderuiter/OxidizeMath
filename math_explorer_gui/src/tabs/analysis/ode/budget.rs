@@ -1,9 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::persistence::OdeState;
+use super::phase_plane::{
+    DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, MAX_QUIVER_GRID, MAX_SEEDED_ORBITS,
+};
 use super::systems::default_coupled_ode_bank;
-use super::{default_ode_math_input, OdeSolverTool};
+use super::{default_ode_math_inputs, default_scalar_ode_input, OdeSolverTool};
 use crate::presets::{checked_ode_step_count, OdePreset, MAX_ODE_STEPS};
+use math_commons::ast::Expr;
 
 /// Maximum `steps * ast_nodes` work budget for interactive custom ODE trajectories.
 pub(crate) const MAX_CUSTOM_ODE_WORK_BUDGET: usize = 250_000;
@@ -14,31 +18,58 @@ pub(crate) const MAX_SENSITIVITY_ODE_WORK_BUDGET: usize = 100_000;
 /// Maximum serialized parameter map entries accepted when hydrating an ODE state payload.
 const MAX_ODE_CUSTOM_PARAMS_LEN: usize = 16;
 
+fn expr_node_count(root: &Expr) -> usize {
+    let mut count = 0usize;
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        count = count.saturating_add(1);
+        match node {
+            Expr::Number(_) | Expr::Variable(_) => {}
+            Expr::Unary { expr, .. } => stack.push(expr),
+            Expr::Binary { left, right, .. } => {
+                stack.push(right);
+                stack.push(left);
+            }
+            Expr::Function { args, .. } => stack.extend(args.iter()),
+        }
+    }
+    count.max(1)
+}
+
 impl OdeSolverTool {
-    /// Returns the total compiled AST instruction/node count for the active custom ODE formula(s).
+    #[must_use]
+    const fn uses_ast_work_budget(&self) -> bool {
+        matches!(self.preset, OdePreset::Custom | OdePreset::PlanarCustom)
+    }
+
+    /// Returns the total AST node/instruction count for the active custom or planar ODE formula(s).
     #[must_use]
     pub(crate) fn custom_ast_node_count(&self) -> usize {
-        if self.preset != OdePreset::Custom {
-            return 1;
-        }
-        if self.custom_coupled {
-            self.coupled_bank
+        match self.preset {
+            OdePreset::Custom if self.custom_coupled => self
+                .coupled_bank
                 .active_compiled()
                 .iter()
                 .map(|c| c.instructions().len())
                 .sum::<usize>()
-                .max(1)
-        } else {
-            self.math_input
+                .max(1),
+            OdePreset::Custom => self
+                .math_input
                 .active_compiled()
-                .map_or(1, |c| c.instructions().len().max(1))
+                .map_or(1, |c| c.instructions().len().max(1)),
+            OdePreset::PlanarCustom => {
+                let nx = self.planar_x_input.cached_expr().map_or(1, expr_node_count);
+                let ny = self.planar_y_input.cached_expr().map_or(1, expr_node_count);
+                nx.saturating_add(ny).max(1)
+            }
+            _ => 1,
         }
     }
 
     /// Maximum integration step count permitted for the current ODE configuration.
     #[must_use]
     pub(crate) fn max_allowed_ode_steps(&self) -> usize {
-        if self.preset != OdePreset::Custom {
+        if !self.uses_ast_work_budget() {
             return MAX_ODE_STEPS;
         }
         (MAX_CUSTOM_ODE_WORK_BUDGET / self.custom_ast_node_count()).clamp(1, MAX_ODE_STEPS)
@@ -63,9 +94,9 @@ impl OdeSolverTool {
         min_dt
     }
 
-    /// Clamps finite positive `dt` in `OdePreset::Custom` mode so `steps * ast_nodes` stays bounded.
+    /// Clamps finite positive `dt` in AST-backed ODE modes so `steps * ast_nodes` stays bounded.
     pub(crate) fn clamp_dt_to_work_budget(&mut self) {
-        if self.preset != OdePreset::Custom
+        if !self.uses_ast_work_budget()
             || !self.dt.is_finite()
             || self.dt <= 0.0
             || !self.total_time.is_finite()
@@ -79,15 +110,11 @@ impl OdeSolverTool {
         }
     }
 
-    /// Resolves the UI `dt` DragValue floor and clamps `self.dt` in Custom mode if needed.
+    /// Resolves the UI `dt` DragValue floor and clamps `self.dt` in AST-backed modes if needed.
     pub(crate) fn resolve_ui_min_dt(&mut self, changed: &mut bool) -> f64 {
         let min_dt =
             Self::min_dt_for_step_cap(self.total_time.max(0.1), self.max_allowed_ode_steps());
-        if self.preset == OdePreset::Custom
-            && self.dt.is_finite()
-            && self.dt > 0.0
-            && self.dt < min_dt
-        {
+        if self.uses_ast_work_budget() && self.dt.is_finite() && self.dt > 0.0 && self.dt < min_dt {
             self.dt = min_dt;
             *changed = true;
         }
@@ -97,7 +124,7 @@ impl OdeSolverTool {
     /// Effective `dt` for finite-difference sensitivity runs, enforcing `MAX_SENSITIVITY_ODE_WORK_BUDGET`.
     #[must_use]
     pub(crate) fn sensitivity_effective_dt(&self) -> f64 {
-        if self.preset != OdePreset::Custom
+        if !self.uses_ast_work_budget()
             || !self.dt.is_finite()
             || self.dt <= 0.0
             || !self.total_time.is_finite()
@@ -122,10 +149,27 @@ pub(super) fn validate_deserialized_ode_state(s: &OdeState) -> Result<(), String
         || !s.param_cap_k.is_finite()
         || !s.ic_y0.is_finite()
         || !s.ic_v0.is_finite()
+        || !s.matrix_a.iter().flatten().all(|v| v.is_finite())
         || !s.custom_params.values().all(|v| v.is_finite())
         || !s.coupled_params.values().all(|v| v.is_finite())
     {
         return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
+    }
+    if !(2..=MAX_QUIVER_GRID).contains(&s.quiver_density) {
+        return Err(format!(
+            "Quiver grid density ({}) must be between 2 and {MAX_QUIVER_GRID}",
+            s.quiver_density
+        ));
+    }
+    if s.seeded_ic.len() > MAX_SEEDED_ORBITS
+        || !s
+            .seeded_ic
+            .iter()
+            .all(|pt| pt[0].is_finite() && pt[1].is_finite())
+    {
+        return Err(format!(
+            "Seeded orbits must be finite and contain at most {MAX_SEEDED_ORBITS} initial states"
+        ));
     }
     if s.custom_params.len() > MAX_ODE_CUSTOM_PARAMS_LEN
         || s.coupled_params.len() > MAX_ODE_CUSTOM_PARAMS_LEN
@@ -144,7 +188,7 @@ pub(super) fn validate_deserialized_ode_state(s: &OdeState) -> Result<(), String
 
 fn validate_ode_custom_expressions(s: &OdeState) -> Result<(), String> {
     if !s.custom_expr.is_empty() || (s.preset == Some(OdePreset::Custom) && !s.custom_coupled) {
-        let mut bar = default_ode_math_input();
+        let mut bar = default_scalar_ode_input();
         bar.set_expression(&s.custom_expr);
         if !bar.is_valid() {
             let reason = bar
@@ -161,6 +205,22 @@ fn validate_ode_custom_expressions(s: &OdeState) -> Result<(), String> {
                 .first_error()
                 .unwrap_or_else(|| "invalid coupled ODE expression".to_string());
             return Err(format!("Invalid coupled ODE expression: {reason}"));
+        }
+    }
+    if s.preset == Some(OdePreset::PlanarCustom)
+        || s.planar_x_expr != DEFAULT_PLANAR_X_EXPR
+        || s.planar_y_expr != DEFAULT_PLANAR_Y_EXPR
+    {
+        let (_, mut px_bar, mut py_bar) = default_ode_math_inputs();
+        px_bar.set_expression(&s.planar_x_expr);
+        py_bar.set_expression(&s.planar_y_expr);
+        for (axis, bar) in [("x'", &px_bar), ("y'", &py_bar)] {
+            if !bar.is_valid() {
+                let reason = bar
+                    .error_message()
+                    .unwrap_or_else(|| format!("invalid planar {axis} expression"));
+                return Err(format!("Invalid planar {axis} ODE expression: {reason}"));
+            }
         }
     }
     Ok(())

@@ -275,41 +275,77 @@ fn handle_canvas_click(
 
 fn canvas_a11y_summary(tool: &WeierstrassPlaygroundTool) -> String {
     match tool.state.field_mode {
-        CurveFieldMode::Real => match WeierstrassCurve::new(tool.state.real_a, tool.state.real_b) {
-            Ok(curve) => {
-                let p = snap_real_point(&curve, tool.state.real_px, tool.state.real_p_upper);
-                let q = snap_real_point(&curve, tool.state.real_qx, tool.state.real_q_upper);
-                let sum = curve.add(p, q);
-                format!(
-                    "Real curve y^2 = x^3 + {:.2}x + {:.2}; P = {}, Q = {}, P + Q = {}",
-                    curve.a,
-                    curve.b,
-                    fmt_real_pt(p),
-                    fmt_real_pt(q),
-                    fmt_real_pt(sum)
-                )
-            }
-            Err(err) => err.to_string(),
-        },
-        CurveFieldMode::FiniteField => {
-            match PrimeWeierstrassCurve::new(tool.state.mod_a, tool.state.mod_b, tool.state.prime_p)
-            {
-                Ok(curve) => {
-                    let (p, q) = tool.current_fp_points();
-                    let sum = curve.add(p, q);
-                    let kp = curve.scalar_mul(tool.state.scalar_k, p);
-                    format!(
-                        "Torus F_{}: P = {}, Q = {}, P + Q = {}, [{}]P = {}",
-                        curve.p,
-                        fmt_fp_pt(p),
-                        fmt_fp_pt(q),
-                        fmt_fp_pt(sum),
-                        tool.state.scalar_k,
-                        fmt_fp_pt(kp)
-                    )
-                }
-                Err(err) => err.to_string(),
-            }
+        CurveFieldMode::Real => real_a11y_summary(tool),
+        CurveFieldMode::FiniteField => fp_a11y_summary(tool),
+    }
+}
+
+fn real_a11y_summary(tool: &WeierstrassPlaygroundTool) -> String {
+    match WeierstrassCurve::new(tool.state.real_a, tool.state.real_b) {
+        Ok(curve) => {
+            let p = snap_real_point(&curve, tool.state.real_px, tool.state.real_p_upper);
+            let q = snap_real_point(&curve, tool.state.real_qx, tool.state.real_q_upper);
+            let sum = curve.add(p, q);
+            format!(
+                "Real curve y^2 = x^3 + {:.2}x + {:.2}; P = {}, Q = {}, P + Q = {}",
+                curve.a,
+                curve.b,
+                fmt_real_pt(p),
+                fmt_real_pt(q),
+                fmt_real_pt(sum)
+            )
         }
+        Err(_) => math_explorer::pure_math::elliptic_curves::RealSingularCubic::classify(
+            tool.state.real_a,
+            tool.state.real_b,
+        )
+        .map_or_else(
+            || "Singular real Weierstrass curve".into(),
+            |s| {
+                format!(
+                    "Singular real {}: vertex ({:.2}, 0)",
+                    s.kind.label(),
+                    s.singular_x
+                )
+            },
+        ),
+    }
+}
+
+fn fp_a11y_summary(tool: &WeierstrassPlaygroundTool) -> String {
+    match PrimeWeierstrassCurve::new(tool.state.mod_a, tool.state.mod_b, tool.state.prime_p) {
+        Ok(curve) => {
+            let (p, q) = tool.current_fp_points();
+            let sum = curve.add(p, q);
+            let kp = curve.scalar_mul(tool.state.scalar_k, p);
+            format!(
+                "Torus F_{}: P = {}, Q = {}, P + Q = {}, [{}]P = {}",
+                curve.p,
+                fmt_fp_pt(p),
+                fmt_fp_pt(q),
+                fmt_fp_pt(sum),
+                tool.state.scalar_k,
+                fmt_fp_pt(kp)
+            )
+        }
+        Err(_) => math_explorer::pure_math::elliptic_curves::FpSingularCubic::classify(
+            tool.state.mod_a,
+            tool.state.mod_b,
+            tool.state.prime_p,
+        )
+        .ok()
+        .flatten()
+        .map_or_else(
+            || format!("Torus F_{} singular curve", tool.state.prime_p),
+            |s| {
+                format!(
+                    "Torus F_{} singular {}: vertex ({}, 0), {} affine points",
+                    s.p,
+                    s.kind.label(),
+                    s.singular_x,
+                    s.affine_point_count()
+                )
+            },
+        ),
     }
 }

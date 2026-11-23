@@ -405,8 +405,13 @@ pub use counterfactual_presets::*;
 
 #[path = "starter_gallery/challenges.rs"]
 pub mod challenges;
+#[cfg(feature = "pure_math")]
+#[path = "starter_gallery/elliptic_packs.rs"]
+mod elliptic_packs;
 #[path = "starter_gallery/filter_ui.rs"]
 pub mod filter_ui;
+#[path = "starter_gallery/paradox_packs.rs"]
+mod paradox_packs;
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
 #[path = "starter_gallery/stories.rs"]

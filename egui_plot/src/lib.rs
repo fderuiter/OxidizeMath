@@ -19,6 +19,7 @@ pub mod export_modal;
 pub mod export_primitives;
 mod file_io;
 mod fit;
+mod fit_export;
 mod fit_overlay;
 mod format;
 mod items;
@@ -50,8 +51,9 @@ pub use crate::{
     a11y::{contrast_ratio, focus_ring_stroke},
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     export::{
-        AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
-        color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
+        AspectRatioOption, DEFAULT_GIF_SPEED, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
+        StreamingGifEncoder, color32_image_to_png, color32_images_to_gif,
+        color32_images_to_gif_with_speed, copy_image_to_clipboard,
         copy_image_to_clipboard_with_callback, copy_text_to_clipboard,
         copy_text_to_clipboard_with_callback, export_csv, export_csv_3d, export_custom_gif,
         export_custom_image, export_custom_png, export_custom_svg, export_json, export_json_3d,
@@ -59,7 +61,8 @@ pub use crate::{
     },
     export_modal::{
         CallbackExportSource, ExportDataSource, ExportModalAction, ExportModalBindings,
-        ExportModalConfig, ExportModalState, clipboard_status_id, show_export_modal,
+        ExportModalConfig, ExportModalState, ModalGifJobHandle, clipboard_status_id,
+        show_export_modal,
     },
     export_primitives::{
         ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
@@ -83,7 +86,9 @@ pub use crate::{
     latex::{parse_latex_to_layout_job, parse_prose_with_inline_math, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::{CanvasCallout, PlotMemory},
-    modal_lifecycle::{ModalFrameContext, ModalLifecycle},
+    modal_lifecycle::{
+        ModalFrameContext, ModalLifecycle, active_top_modal_layer, with_masked_pane_input,
+    },
     plot_ui::PlotUi,
     poi::{CriticalPoint, CriticalPointKind, MAX_CRITICAL_POINTS, detect_critical_points},
     sidecar_3d::{
@@ -2741,6 +2746,7 @@ impl<'a> Plot<'a> {
                 access_state.edit_callout_text = mem.callouts[idx].label.clone();
                 access_state.edit_callout_offset = mem.callouts[idx].offset;
                 access_state.show_edit_callout_modal = true;
+                response.request_focus();
             } else {
                 let snap_px =
                     cursor_snap_distance.unwrap_or_else(|| ui.style().interaction.interact_radius);
@@ -2795,6 +2801,7 @@ impl<'a> Plot<'a> {
             response
         };
 
+        let focus_widget_id = response.id;
         response.context_menu(|ui| {
             if allow_2d_analysis {
                 if ui.button("Add Callout").clicked() {
@@ -2808,6 +2815,7 @@ impl<'a> Plot<'a> {
                     access_state.new_callout_text = String::new();
                     access_state.new_callout_offset = [30.0, -30.0];
                     access_state.show_add_callout_modal = true;
+                    ui.ctx().memory_mut(|m| m.request_focus(focus_widget_id));
                     ui.close();
                 }
 
@@ -2862,6 +2870,7 @@ impl<'a> Plot<'a> {
             }
             if ui.button("Save PNG").clicked() {
                 access_state.export_modal.open = true;
+                ui.ctx().memory_mut(|m| m.request_focus(focus_widget_id));
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
@@ -2894,6 +2903,9 @@ impl<'a> Plot<'a> {
             }
             if has_table_content && table_btn.clicked() {
                 access_state.show_table = !access_state.show_table;
+                if access_state.show_table {
+                    ui.ctx().memory_mut(|m| m.request_focus(focus_widget_id));
+                }
                 ui.close();
             }
             if show_toolbar {
@@ -2911,6 +2923,7 @@ impl<'a> Plot<'a> {
             if !scene_3d_mode && ui.button("🔧 Plot Settings").clicked() {
                 access_state.show_settings_modal = true;
                 mem.show_settings_modal = true;
+                ui.ctx().memory_mut(|m| m.request_focus(focus_widget_id));
                 ui.close();
             }
 

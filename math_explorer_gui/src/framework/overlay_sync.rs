@@ -9,6 +9,37 @@ pub(crate) struct FrameworkSyncState {
     pub(super) starter_gallery: Option<bool>,
     pub(super) datasets_owner_tool: Option<&'static str>,
     pub(super) last_modal_scope_id: Option<egui::Id>,
+    pub(super) theory_portal_trigger: Option<egui::Id>,
+    pub(super) default_theory_toggle: Option<egui::Id>,
+}
+
+pub(crate) fn record_default_theory_portal_toggle(ctx: &egui::Context, toggle_id: egui::Id) {
+    ctx.data_mut(|d| {
+        if let Some(inst_key) =
+            d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
+        {
+            d.insert_temp(inst_key.with("default_toggle_id"), toggle_id);
+        }
+    });
+}
+
+pub(crate) fn record_theory_portal_toggle(
+    ctx: &egui::Context,
+    trigger_id: egui::Id,
+    next_open: bool,
+) {
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next_open);
+        if let Some(inst_key) =
+            d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
+        {
+            d.insert_temp(inst_key, next_open);
+            if next_open {
+                d.insert_temp(inst_key.with("trigger_id"), trigger_id);
+            }
+        }
+    });
+    ctx.request_repaint();
 }
 
 #[derive(Clone, Copy)]
@@ -111,9 +142,68 @@ impl SimulationFramework {
             (p, g)
         });
 
+        let prev_portal = self.sync_state.theory_portal.unwrap_or(false);
         self.show_theory_portal = portal;
         self.show_starter_gallery = gallery;
+        if portal && !prev_portal {
+            self.capture_theory_portal_trigger(ctx, id_source);
+        }
         self.write_overlay_keys(ctx, id_source);
+    }
+
+    pub(super) fn capture_theory_portal_trigger(&mut self, ctx: &egui::Context, id_source: &str) {
+        let inst_portal = egui::Id::new(("SHOW_THEORY_PORTAL_INST", id_source, self.instance_id));
+        let (recorded_trigger, default_toggle) = ctx.data(|d| {
+            (
+                d.get_temp::<egui::Id>(inst_portal.with("trigger_id")),
+                d.get_temp::<egui::Id>(inst_portal.with("default_toggle_id")),
+            )
+        });
+        if let Some(def_id) = default_toggle {
+            self.sync_state.default_theory_toggle = Some(def_id);
+        }
+        if let Some(trig_id) = recorded_trigger {
+            self.sync_state.theory_portal_trigger = Some(trig_id);
+        } else if let Some(focused) = ctx.memory(|m| m.focused()) {
+            self.sync_state.theory_portal_trigger = Some(focused);
+        }
+    }
+
+    pub(super) fn refresh_default_theory_toggle(&mut self, ctx: &egui::Context, id_source: &str) {
+        let inst_portal = egui::Id::new(("SHOW_THEORY_PORTAL_INST", id_source, self.instance_id));
+        let (recorded_trigger, default_toggle) = ctx.data_mut(|d| {
+            let key = inst_portal.with("trigger_id");
+            let trig = d.get_temp::<egui::Id>(key);
+            d.remove::<egui::Id>(key);
+            let def = d.get_temp::<egui::Id>(inst_portal.with("default_toggle_id"));
+            (trig, def)
+        });
+        if let Some(def_id) = default_toggle {
+            self.sync_state.default_theory_toggle = Some(def_id);
+        }
+        if let Some(trig_id) = recorded_trigger {
+            self.sync_state.theory_portal_trigger = Some(trig_id);
+        }
+    }
+
+    pub(super) fn close_theory_portal_and_restore_focus(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+    ) {
+        self.show_theory_portal = false;
+        self.sync_state.theory_portal = Some(false);
+        self.write_overlay_keys(ctx, id_source);
+        let restore_id = self
+            .sync_state
+            .theory_portal_trigger
+            .take()
+            .or(self.sync_state.default_theory_toggle);
+        if let Some(target_id) = restore_id {
+            ctx.memory_mut(|m| m.request_focus(target_id));
+        }
+        crate::accessibility::announce_live_status(ctx, "Theory Context Portal closed");
+        ctx.request_repaint();
     }
 
     pub(super) fn sync_overlays_after_frame(&mut self, ctx: &egui::Context, id_source: &str) {
@@ -197,15 +287,7 @@ impl SimulationFramework {
 
     /// Constructs a [`SimulationFramework`] populated with registered tools for `domain`.
     pub fn new(domain: &str) -> Self {
-        let mut available_tools: Vec<&'static super::ToolMetadata> =
-            inventory::iter::<super::ToolMetadata>
-                .into_iter()
-                .filter(|t| t.domain == domain)
-                .collect();
-
-        available_tools
-            .sort_by_key(|t| (default_tool_priority(domain, t.id), t.display_name, t.id));
-
+        let available_tools = sorted_domain_tools(domain);
         let mut framework = Self {
             available_tools,
             active_tool: None,
@@ -220,6 +302,8 @@ impl SimulationFramework {
             last_announced_count: None,
             last_announced_query: String::new(),
             show_export_modal: false,
+            show_code_export_modal: false,
+            code_export_tab: super::CodeExportTab::default(),
             export_options: egui_plot::export::ExportOptions::default(),
             export_bg_dark: true,
             export_gif_fps: 15,
@@ -229,6 +313,7 @@ impl SimulationFramework {
             domain: domain.to_string(),
             preset_dialog: crate::presets::PresetDialogState::default(),
             export_queue: super::ExportQueue::default(),
+            gif_job: None,
             last_valid_snapshot: None,
             baseline_tool_state: None,
             current_valid_plot_datasets: Vec::new(),
@@ -243,16 +328,24 @@ impl SimulationFramework {
             challenge_was_passed: false,
             instance_id: next_framework_id(),
             sync_state: FrameworkSyncState::default(),
-            rev_cache: super::FrameworkRevisionCache::default(),
+            rev_cache: FrameworkRevisionCache::default(),
             atlas_host: super::atlas_host::FrameworkAtlasHost::default(),
         };
-
         if !framework.available_tools.is_empty() {
             framework.select_tool(0);
         }
-
         framework
     }
+}
+
+fn sorted_domain_tools(domain: &str) -> Vec<&'static super::ToolMetadata> {
+    let mut available_tools: Vec<&'static super::ToolMetadata> =
+        inventory::iter::<super::ToolMetadata>
+            .into_iter()
+            .filter(|t| t.domain == domain)
+            .collect();
+    available_tools.sort_by_key(|t| (default_tool_priority(domain, t.id), t.display_name, t.id));
+    available_tools
 }
 
 fn default_tool_priority(domain: &str, id: &str) -> u8 {

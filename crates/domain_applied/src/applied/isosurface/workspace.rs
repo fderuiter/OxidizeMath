@@ -43,6 +43,11 @@ impl IsosurfaceWorkspace {
             lock_mesh_capacity: true,
         }
     }
+
+    #[inline(always)]
+    pub(super) const fn is_capacity_locked(&self) -> bool {
+        self.lock_mesh_capacity
+    }
 }
 
 impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {

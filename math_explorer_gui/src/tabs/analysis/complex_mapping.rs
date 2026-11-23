@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 
 #[path = "complex_mapping/cache.rs"]
 mod cache;
+#[path = "complex_mapping/code_export.rs"]
+mod code_export;
 #[path = "complex_mapping/shader.rs"]
 mod shader;
 #[path = "complex_mapping/ui.rs"]
@@ -235,7 +237,11 @@ impl InteractiveTool for ComplexMappingTool {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::plot().with_shader()
+        crate::framework::ExportCapabilities::plot_with_code().with_shader()
+    }
+
+    fn export_code_artifact(&self) -> Option<crate::framework::CodeArtifact> {
+        self.build_code_artifact()
     }
 
     fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {

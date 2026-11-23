@@ -60,6 +60,14 @@ fn test_ode_rejects_invalid_and_oversized_balanced_custom_expr_quickly() {
     );
     assert!(res.is_err());
     assert!(t_share.elapsed().as_millis() < 250);
+
+    // Also reject invalid or oversized PlanarCustom AST payloads
+    let bad_planar_state = format!(
+        r#"{{"preset":"PlanarCustom","dt":0.01,"total_time":10.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"planar_x_expr":"y","planar_y_expr":"{expr_h8}"}}"#
+    );
+    let mut planar_tool = OdeSolverTool::default();
+    assert!(planar_tool.try_load_state(&bad_planar_state).is_err());
+    assert_eq!(planar_tool.preset, OdePreset::Exponential);
 }
 
 #[test]
