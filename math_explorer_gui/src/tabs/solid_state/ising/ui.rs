@@ -210,6 +210,7 @@ impl IsingModelTool {
                 PlaybackAction::Step => {
                     let _ = self.worker.send_command(SimCommand::Step(1));
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.reset();
                     ctx.request_repaint();
@@ -311,6 +312,7 @@ impl IsingModelTool {
             multi_touch: ui.input(|i| i.multi_touch()),
             keys_down: ui.input(|i| i.keys_down.clone()),
             modifiers: ui.input(|i| i.modifiers),
+            brush_stroke: None,
         };
         self.on_brush(&interaction_ctx);
     }

@@ -210,17 +210,12 @@ fn morpho_axis_spec(
     theory_params: &HashMap<String, ParameterConstraint>,
     key: &'static str,
 ) -> AtlasAxisSpec {
-    let (label, min, max, step) = match key {
-        "a" => ("Activator Rate (a)", 0.0, 1.0, 0.01),
-        "b" => ("Inhibitor Rate (b)", 0.0, 2.0, 0.01),
-        "d_u" => ("Activator Diffusion (D_u)", 0.1, 5.0, 0.05),
-        "d_v" => ("Inhibitor Diffusion (D_v)", 10.0, 200.0, 1.0),
-        _ => ("Time Step (dt)", 1e-4, 0.1, 5e-4),
-    };
-    let resolved_key = if matches!(key, "a" | "b" | "d_u" | "d_v" | "dt") {
-        key
-    } else {
-        "dt"
+    let (resolved_key, label, min, max, step) = match key {
+        "a" => ("a", "Activator Rate (a)", 0.0, 1.0, 0.01),
+        "b" => ("b", "Inhibitor Rate (b)", 0.0, 2.0, 0.01),
+        "d_u" => ("d_u", "Activator Diffusion (D_u)", 0.1, 5.0, 0.05),
+        "d_v" => ("d_v", "Inhibitor Diffusion (D_v)", 10.0, 200.0, 1.0),
+        _ => ("dt", "Time Step (dt)", 1e-4, 0.1, 5e-4),
     };
     AtlasAxisSpec::from_theory(
         theory_params,
@@ -408,11 +403,12 @@ impl MorphogenesisTool {
             return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
         }
         if let Some(snap) = self.worker.latest_snapshot() {
-            if let Some(u_data) = snap
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<Vec<f64>>())
-            {
+            let u_slice = snap.structured_data.as_ref().and_then(|d| {
+                d.downcast_ref::<super::runner::MorphoSnapshotData>()
+                    .map(|m| m.u_data.as_slice())
+                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+            });
+            if let Some(u_data) = u_slice {
                 let v = grid_u_variance(u_data);
                 return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
             }
@@ -443,6 +439,7 @@ impl MorphogenesisTool {
             sr.system.kinetics.b = b;
             sr.system.diffusion_coeffs = [d_u, d_v];
             Self::initialize_adapter_system(&mut sr.system, self.width, self.height);
+            sr.enforce_mask_concentrations();
         }
         let _ = self
             .worker

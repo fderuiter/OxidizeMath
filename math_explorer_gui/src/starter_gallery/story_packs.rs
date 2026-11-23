@@ -27,9 +27,9 @@ const fn pin(
 mod kelly_packs {
     use super::*;
 
-    const STEP_HALF: &str = r#"{"metadata":{"schema_version":"1.0","title":"Half Kelly Stability","domain":"financial_math","timestamp":"2026-11-21T00:00:00Z"},"config":{"initial_bankroll":1000.0,"probability":0.6,"odds":2.0,"num_bets":200,"stake_multiplier":0.5}}"#;
-    const STEP_FULL: &str = r#"{"metadata":{"schema_version":"1.0","title":"Full Kelly Optimum","domain":"financial_math","timestamp":"2026-11-21T00:00:00Z"},"config":{"initial_bankroll":1000.0,"probability":0.6,"odds":2.0,"num_bets":200}}"#;
-    const STEP_RUIN: &str = r#"{"metadata":{"schema_version":"1.0","title":"Overbetting Ruin","domain":"financial_math","timestamp":"2026-11-21T00:00:00Z"},"config":{"initial_bankroll":1000.0,"probability":0.6,"odds":2.0,"num_bets":200,"stake_multiplier":2.5}}"#;
+    const STEP_HALF: &str = r#"{"metadata":{"schema_version":"1.0","title":"Half Kelly Stability","domain":"financial_math","timestamp":"2026-11-21T00:00:00Z"},"config":{"initial_bankroll":1000.0,"probability":0.6,"odds":1.0,"num_bets":200,"stake_multiplier":0.5}}"#;
+    const STEP_FULL: &str = r#"{"metadata":{"schema_version":"1.0","title":"Full Kelly Optimum","domain":"financial_math","timestamp":"2026-11-21T00:00:00Z"},"config":{"initial_bankroll":1000.0,"probability":0.6,"odds":1.0,"num_bets":200}}"#;
+    const STEP_RUIN: &str = r#"{"metadata":{"schema_version":"1.0","title":"Overbetting Ruin","domain":"financial_math","timestamp":"2026-11-21T00:00:00Z"},"config":{"initial_bankroll":1000.0,"probability":0.6,"odds":1.0,"num_bets":200,"stake_multiplier":2.5}}"#;
 
     const KELLY_STEPS: &[StoryStep] = &[
         StoryStep {
@@ -80,7 +80,7 @@ mod kelly_packs {
             initial_preset_generator: || STEP_FULL,
             goal_summary: "Keep a positive-edge bet (expected_value > 0.05) while raising Stake Multiplier above 2.0f* so expected_growth_rate drops below -0.01.",
             predicate_expr: "expected_value > 0.05 && stake_multiplier > 2.0 && expected_growth_rate < -0.01",
-            hint: "Drag the 'Stake Multiplier (× f*)' slider above 2.2 while keeping Win Probability at 0.60 and Decimal Odds at 2.0.",
+            hint: "Drag the 'Stake Multiplier (× f*)' slider above 2.2 while keeping Win Probability at 0.60 and Net Odds at 1.0.",
             win_message: "Challenge solved: Kelly Ruin Trap! Even with positive expected value, betting above 2f* yields negative logarithmic growth.",
             callouts: &[pin("kelly_challenge_baseline", [0.0, 1000.0], [36.0, -24.0], "Initial bankroll W₀ = 1000")],
             focus_observables: &["expected_value", "stake_multiplier", "expected_growth_rate"],

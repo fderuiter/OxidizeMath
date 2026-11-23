@@ -76,7 +76,7 @@ impl BankrollGrowthTool {
         .all(|v| v.is_finite())
             || !(100.0..=10_000.0).contains(&s.initial_bankroll)
             || !(0.01..=0.99).contains(&s.probability)
-            || !(1.01..=10.0).contains(&s.odds)
+            || !(0.1..=10.0).contains(&s.odds)
             || !(10..=1000).contains(&s.num_bets)
             || !(0.0..=3.0).contains(&s.stake_multiplier)
             || !(0.0..=MAX_CUSTOM_FRACTION).contains(&s.custom_fraction)
@@ -84,7 +84,7 @@ impl BankrollGrowthTool {
             return Err("Bankroll simulation parameters out of bounds".into());
         }
         let p = UnitInterval::new(s.probability).map_err(|e| format!("Error: {e}"))?;
-        let o = Odds::new(s.odds).map_err(|e| format!("Error: {e}"))?;
+        let o = Odds::from_net_odds(s.odds).map_err(|e| format!("Error: {e}"))?;
         if s.mode == BankrollLabMode::KellyStrategies {
             kelly_fraction(&p, &o).map_err(|e| format!("Error: {e}"))?;
             variants::half_kelly(&p, &o).map_err(|e| format!("Error: {e}"))?;
@@ -106,12 +106,12 @@ impl BankrollGrowthTool {
 
 impl scientific_metadata::theory::TheoryDescribable for BankrollGrowthTool {
     fn theory_description(&self) -> String {
-        let b = (self.odds - 1.0).max(1e-6);
+        let b = self.odds.max(1e-6);
         let q = 1.0 - self.probability;
         let f_kelly = ((b * self.probability - q) / b).clamp(-10.0, 1.0);
         format!(
-            "Capital compounding trajectory under Kelly criterion betting: $W_T = W_0 \\prod_{{t=1}}^T (1 + f R_t)$ with initial capital $W_0 = {:.1}$, win probability $p = {:.2}$, decimal odds $O = {:.2}$ (net odds $b = {:.2}$), and optimal fraction $f^* = {:.3}$.",
-            self.initial_bankroll, self.probability, self.odds, b, f_kelly
+            "Capital compounding trajectory under Kelly criterion betting: $W_T = W_0 \\prod_{{t=1}}^T (1 + f R_t)$ with initial capital $W_0 = {:.1}$, win probability $p = {:.2}$, net odds $b = {:.2}$, and optimal fraction $f^* = {:.3}$.",
+            self.initial_bankroll, self.probability, self.odds, f_kelly
         )
     }
     fn phonetic_description(&self) -> String {
@@ -152,7 +152,7 @@ mod starter_preset_export {
   "config": {
     "initial_bankroll": 5000.0,
     "probability": 0.6,
-    "odds": 2.5,
+    "odds": 1.5,
     "num_bets": 150
   }
 }"#;
