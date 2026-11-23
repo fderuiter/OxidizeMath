@@ -408,3 +408,49 @@ fn static_frames_reuse_cached_pois_and_defer_export_primitive_materialization() 
         1
     );
 }
+
+#[test]
+fn flat_plateau_chunk_skip_preserves_y_intercept_and_nan_reset() {
+    let tf = make_transform([-80.0, -10.0], [80.0, 10.0]);
+
+    // 37-point flat plateau crossing x = 0 mid-plateau + 35-point negative-x valley
+    let mut pts = Vec::new();
+    pts.push([-75.0, 0.0]);
+    for k in 0..35 {
+        pts.push([-74.0 + k as f64, -4.0]);
+    }
+    pts.push([-39.0, 0.0]);
+    for k in 0..37 {
+        pts.push([-20.0 + k as f64, 4.0]);
+    }
+    pts.push([18.0, 0.0]);
+
+    let items: Vec<Box<dyn PlotItem>> = vec![Box::new(Line::new("Plateau", pts))];
+    let pois = detect_critical_points(&items, &tf);
+    assert!(
+        pois.iter()
+            .any(|p| p.kind == CriticalPointKind::YIntercept && (p.point[1] - 4.0).abs() < 1e-9),
+        "expected y-intercept on flat plateau crossing x = 0, got {pois:?}"
+    );
+    assert!(pois.iter().any(|p| p.kind == CriticalPointKind::LocalMin
+        && (p.point[0] + 57.0).abs() < 1e-9
+        && (p.point[1] + 4.0).abs() < 1e-9));
+    assert!(pois.iter().any(|p| p.kind == CriticalPointKind::LocalMax
+        && (p.point[0] + 2.0).abs() < 1e-9
+        && (p.point[1] - 4.0).abs() < 1e-9));
+
+    // Mid-chunk NaN inside a >32-point plateau must reset plateau state without spurious extremum
+    let mut nan_pts = vec![[1.0, 0.0]];
+    for k in 0..40 {
+        let y = if k == 21 { f64::NAN } else { 5.0 };
+        nan_pts.push([2.0 + k as f64, y]);
+    }
+    nan_pts.push([43.0, 0.0]);
+    let nan_items: Vec<Box<dyn PlotItem>> = vec![Box::new(Line::new("BrokenPlateau", nan_pts))];
+    let nan_pois = detect_critical_points(&nan_items, &tf);
+    assert!(
+        nan_pois
+            .iter()
+            .all(|p| p.kind != CriticalPointKind::LocalMax)
+    );
+}
