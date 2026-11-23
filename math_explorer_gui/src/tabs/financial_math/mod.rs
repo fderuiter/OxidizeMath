@@ -1,10 +1,12 @@
 // @explorer_feature = "pure_math"
+// @explorer_order = 24
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod bankroll_ensemble;
 pub mod bankroll_growth;
 pub mod bet_size;
+pub mod correlated_risk;
 pub mod parrondo;
 
 pub struct FinancialMathTab {

@@ -1,4 +1,4 @@
-# ADR 0047: Zero-Allocation FreeSurfer Cortical Surface Physics, Potts MRF Segmentation, and 3D Cortical Morphometry Studio
+# ADR 20261123: Zero-Allocation FreeSurfer Cortical Surface Physics, Potts MRF Segmentation, and 3D Cortical Morphometry Studio
 
 ## Status
 Accepted (extends [ADR 0018](0018-uniform-spatial-grid-cortical-thickness.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0041](0041-volumetric-field-studio-zero-alloc-3d-kernels.md))

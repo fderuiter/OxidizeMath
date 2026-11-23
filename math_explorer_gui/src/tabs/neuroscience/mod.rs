@@ -1,4 +1,5 @@
 // @explorer_feature = "biology"
+// @explorer_order = 41
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
@@ -6,7 +7,6 @@ pub mod cortical_morphometry;
 pub mod hodgkin_huxley;
 pub mod neural_network_viz;
 pub mod spike_analysis;
-
 
 pub struct NeuroscienceTab {
     framework: crate::framework::SimulationFramework,
