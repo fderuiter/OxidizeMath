@@ -64,6 +64,71 @@ fn qualify_scope(scope: &[String], sig: String) -> String {
     wrapped
 }
 
+fn normalize_path_types(path: &mut syn::Path) {
+    for seg in &mut path.segments {
+        if let syn::PathArguments::AngleBracketed(ab) = &mut seg.arguments {
+            for arg in &mut ab.args {
+                if let syn::GenericArgument::Type(t) = arg {
+                    normalize_type(t);
+                }
+            }
+        }
+    }
+}
+
+fn normalize_type(ty: &mut syn::Type) {
+    match ty {
+        syn::Type::BareFn(bf) => {
+            for arg in &mut bf.inputs {
+                arg.attrs.clear();
+                arg.name = None;
+                normalize_type(&mut arg.ty);
+            }
+            if let syn::ReturnType::Type(_, ret) = &mut bf.output {
+                normalize_type(ret);
+            }
+        }
+        syn::Type::Tuple(t) => t.elems.iter_mut().for_each(normalize_type),
+        syn::Type::Reference(r) => normalize_type(&mut r.elem),
+        syn::Type::Slice(s) => normalize_type(&mut s.elem),
+        syn::Type::Array(a) => normalize_type(&mut a.elem),
+        syn::Type::Ptr(p) => normalize_type(&mut p.elem),
+        syn::Type::Paren(p) => normalize_type(&mut p.elem),
+        syn::Type::Group(g) => normalize_type(&mut g.elem),
+        syn::Type::Path(tp) => normalize_path_types(&mut tp.path),
+        _ => {}
+    }
+}
+
+fn normalize_signature(sig: &syn::Signature) -> syn::Signature {
+    let mut normalized = sig.clone();
+    for input in &mut normalized.inputs {
+        match input {
+            syn::FnArg::Receiver(recv) => {
+                recv.attrs.clear();
+                if recv.reference.is_none() {
+                    recv.mutability = None;
+                }
+                if recv.colon_token.is_some() {
+                    normalize_type(&mut recv.ty);
+                }
+            }
+            syn::FnArg::Typed(pat_type) => {
+                pat_type.attrs.clear();
+                *pat_type.pat = syn::Pat::Wild(syn::PatWild {
+                    attrs: Vec::new(),
+                    underscore_token: Default::default(),
+                });
+                normalize_type(&mut pat_type.ty);
+            }
+        }
+    }
+    if let syn::ReturnType::Type(_, ret) = &mut normalized.output {
+        normalize_type(ret);
+    }
+    normalized
+}
+
 #[derive(Default)]
 pub(crate) struct ApiVisitor {
     pub(crate) items: Vec<ApiItem>,
@@ -189,7 +254,7 @@ impl ApiVisitor {
         for item in &i.items {
             match item {
                 syn::TraitItem::Fn(m) if !has_cfg_test(&m.attrs) => {
-                    let sig = &m.sig;
+                    let sig = normalize_signature(&m.sig);
                     let raw = quote::quote!(pub trait #trait_ident #trait_gen { #sig }).to_string();
                     self.push_item(raw, &m.attrs, parent_dep.clone());
                 }
@@ -197,17 +262,10 @@ impl ApiVisitor {
                     let c_id = &c.ident;
                     let c_gen = &c.generics;
                     let ty = &c.ty;
-                    let raw = if let Some((_, expr)) = &c.default {
-                        quote::quote!(
-                            pub trait #trait_ident #trait_gen { const #c_id #c_gen : #ty = #expr }
-                        )
-                        .to_string()
-                    } else {
-                        quote::quote!(
-                            pub trait #trait_ident #trait_gen { const #c_id #c_gen : #ty }
-                        )
-                        .to_string()
-                    };
+                    let raw = quote::quote!(
+                        pub trait #trait_ident #trait_gen { const #c_id #c_gen : #ty }
+                    )
+                    .to_string();
                     self.push_item(raw, &c.attrs, parent_dep.clone());
                 }
                 syn::TraitItem::Type(t) if !has_cfg_test(&t.attrs) => {
@@ -238,7 +296,7 @@ impl ApiVisitor {
                 syn::ImplItem::Fn(m)
                     if matches!(m.vis, syn::Visibility::Public(_)) && !has_cfg_test(&m.attrs) =>
                 {
-                    let sig = &m.sig;
+                    let sig = normalize_signature(&m.sig);
                     let raw = quote::quote!(impl #impl_gen #self_ty #wc { pub #sig }).to_string();
                     self.push_item(raw, &m.attrs, parent_dep.clone());
                 }
@@ -248,9 +306,8 @@ impl ApiVisitor {
                     let c_id = &c.ident;
                     let c_gen = &c.generics;
                     let ty = &c.ty;
-                    let expr = &c.expr;
                     let raw = quote::quote!(
-                        impl #impl_gen #self_ty #wc { pub const #c_id #c_gen : #ty = #expr }
+                        impl #impl_gen #self_ty #wc { pub const #c_id #c_gen : #ty }
                     )
                     .to_string();
                     self.push_item(raw, &c.attrs, parent_dep.clone());
@@ -280,7 +337,7 @@ impl<'ast> Visit<'ast> for ApiVisitor {
             && !has_cfg_test(&i.attrs)
             && self.active_allows(&i.sig.ident.to_string())
         {
-            let sig = &i.sig;
+            let sig = normalize_signature(&i.sig);
             self.push_item(quote::quote!(pub #sig).to_string(), &i.attrs, None);
         }
     }
@@ -379,9 +436,8 @@ impl<'ast> Visit<'ast> for ApiVisitor {
             let ident = &i.ident;
             let generics = &i.generics;
             let ty = &i.ty;
-            let expr = &i.expr;
             self.push_item(
-                quote::quote!(pub const #ident #generics : #ty = #expr).to_string(),
+                quote::quote!(pub const #ident #generics : #ty).to_string(),
                 &i.attrs,
                 None,
             );
@@ -396,9 +452,8 @@ impl<'ast> Visit<'ast> for ApiVisitor {
             let mutability = &i.mutability;
             let ident = &i.ident;
             let ty = &i.ty;
-            let expr = &i.expr;
             self.push_item(
-                quote::quote!(pub static #mutability #ident : #ty = #expr).to_string(),
+                quote::quote!(pub static #mutability #ident : #ty).to_string(),
                 &i.attrs,
                 None,
             );

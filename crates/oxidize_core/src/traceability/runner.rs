@@ -1,5 +1,6 @@
 //! Native workspace discovery, dashboard printing, and in-process traceability execution helpers.
 
+use super::analysis::{format_path_line, invalid_link_key};
 use super::{AstCache, TraceabilityEngine, TraceabilityReport};
 use crate::vfs::VirtualFileSystem;
 use std::future::Future;
@@ -113,7 +114,120 @@ pub fn discover_workspace_code_dirs() -> Vec<String> {
     code_dirs
 }
 
-fn check_semantic_and_density_errors(report: &TraceabilityReport) -> bool {
+fn format_unlinked_and_invalid(report: &TraceabilityReport, lines: &mut Vec<String>) -> bool {
+    let mut failed = false;
+    if !report.unlinked_module_details.is_empty() || !report.unlinked_code.is_empty() {
+        lines.push("\n=== Unlinked Modules ===".to_string());
+        lines.push(
+            "The following modules contain a verification macro or citation missing from `[links]` in `traceability.toml`:"
+                .to_string(),
+        );
+        if !report.unlinked_module_details.is_empty() {
+            for (file, key, line) in &report.unlinked_module_details {
+                let loc = format_path_line(file, *line);
+                lines.push(format!("   [!] UNLINKED module `{key}` at {loc}"));
+                lines.push(format!(
+                    "       Hint: Register `{key} = \"<paper>.tex\"` (or `\"spec:<id>\"`) under `[links]` in `traceability.toml`."
+                ));
+            }
+        } else {
+            for file in &report.unlinked_code {
+                lines.push(format!("   [!] UNLINKED module in {file}"));
+                lines.push(
+                    "       Hint: Register the module key under `[links]` in `traceability.toml`."
+                        .to_string(),
+                );
+            }
+        }
+        failed = true;
+    }
+
+    if !report.invalid_links.is_empty() {
+        lines.push("\n=== Validation Failures ===".to_string());
+        lines.push("Invalid citations were found:".to_string());
+        for (file, cite) in &report.invalid_links {
+            let line = report
+                .invalid_link_lines
+                .get(&invalid_link_key(file, cite))
+                .copied()
+                .unwrap_or(0);
+            let loc = format_path_line(file, line);
+            lines.push(format!("   [!] INVALID citation: `{cite}` at {loc}"));
+            lines.push(format!(
+                "       Hint: Add `{cite} = \"<paper>.tex\"` under `[links]` in `traceability.toml`, or run `cargo run -p oxidize_core --bin traceability_cli -- --auto-fix`."
+            ));
+        }
+        failed = true;
+    }
+
+    if !report.orphaned_papers.is_empty() {
+        if !failed {
+            lines.push("\n=== Validation Failures ===".to_string());
+        }
+        lines.push(format!(
+            "Orphaned papers found: {:?} (Hint: link each `.tex` paper under `[links]` in `traceability.toml`).",
+            report.orphaned_papers
+        ));
+        failed = true;
+    }
+    failed
+}
+
+fn format_module_and_bypass_errors(report: &TraceabilityReport, lines: &mut Vec<String>) -> bool {
+    let mut failed = false;
+    if !report.unverified_modules.is_empty() {
+        lines.push(
+            "\n[!] Unverified Modules (Missing theory_verification! or #[verified]):".to_string(),
+        );
+        for file in &report.unverified_modules {
+            if let Some((fn_name, line)) = report.unverified_module_spans.get(file) {
+                let loc = format_path_line(file, *line);
+                lines.push(format!("  - {loc} (fn `{fn_name}`)"));
+            } else {
+                lines.push(format!("  - {file}"));
+            }
+        }
+        lines.push(
+            "  Hint: Add `#[verified]` / `theory_verification!` and register `[links]` in `traceability.toml`, or opt out non-mathematical code with `#![cfg_attr(any(), verified(opt_out = \"reason\"))]` (or item `#[verified(opt_out = \"reason\")]`)."
+                .to_string(),
+        );
+        lines.push("\nThreshold not met: False Green detected!".to_string());
+        failed = true;
+    }
+
+    if !report.invalid_tiers.is_empty() {
+        lines.push("\n[!] Invalid Verification Tiers Detected:".to_string());
+        for item in &report.invalid_tiers {
+            lines.push(format!("  - {item}"));
+        }
+        lines.push(
+            "  Hint: `pure_math` modules must use deterministic `theory_verification!` instead of `stochastic_signature_verification!`."
+                .to_string(),
+        );
+        failed = true;
+    }
+
+    if !report.vacuous_bypasses.is_empty() {
+        lines.push(
+            "\n[!] Vacuous Bypasses Detected in AI Modules (Zero Initializations):".to_string(),
+        );
+        for file in &report.vacuous_bypasses {
+            let line = report.vacuous_bypass_spans.get(file).copied().unwrap_or(0);
+            lines.push(format!("  - {}", format_path_line(file, line)));
+        }
+        lines.push(
+            "  Hint: Replace zero initializers (`zeros`, `fill(0)`, `0.0` constants) in `stochastic_test` with deterministic non-zero inputs."
+                .to_string(),
+        );
+        failed = true;
+    }
+    failed
+}
+
+fn format_semantic_and_density_errors(
+    report: &TraceabilityReport,
+    lines: &mut Vec<String>,
+) -> bool {
     let mut failed = false;
     let mut unverified_semantics: Vec<&String> = report
         .semantic_integrity_status
@@ -122,11 +236,15 @@ fn check_semantic_and_density_errors(report: &TraceabilityReport) -> bool {
         .collect();
 
     if !unverified_semantics.is_empty() {
-        println!("\n[!] Unverified Semantic Integrity Statuses Detected:");
+        lines.push("\n[!] Unverified Semantic Integrity Statuses Detected:".to_string());
         unverified_semantics.sort();
         for module in unverified_semantics {
-            println!("  - {}: Unverified", module);
+            lines.push(format!("  - {module}: Unverified"));
         }
+        lines.push(
+            "  Hint: Add `#[verified]` or `theory_verification!` in a module linked to this key in `traceability.toml`."
+                .to_string(),
+        );
         failed = true;
     }
 
@@ -136,85 +254,43 @@ fn check_semantic_and_density_errors(report: &TraceabilityReport) -> bool {
         0.0
     };
     if report.verified_funcs > 0 && verified_density < 0.4 {
-        println!(
-            "\n[!] Assertion Density Failure: Verified modules have a density of {:.2} asserts/fn, which is below the minimum required 0.4 asserts/fn.",
-            verified_density
+        lines.push(format!(
+            "\n[!] Assertion Density Failure: Verified modules have a density of {verified_density:.2} asserts/fn, which is below the minimum required 0.4 asserts/fn."
+        ));
+        for (file, &[asserts, funcs]) in &report.file_verified_counts {
+            if funcs > 0 {
+                let file_density = asserts as f64 / funcs as f64;
+                if file_density < 0.4 {
+                    lines.push(format!(
+                        "  - {file}: {file_density:.2} asserts/fn ({asserts} asserts / {funcs} verified fns)"
+                    ));
+                }
+            }
+        }
+        lines.push(
+            "  Hint: Add post-condition `assert!` / `assert_eq!` checks to `#[verified]` functions or mark delegating helpers with `#[verified(opt_out = \"reason\")]`."
+                .to_string(),
         );
         failed = true;
     }
     failed
 }
 
-fn report_list_section(
-    header: &str,
-    subtitle: Option<&str>,
-    prefix: &str,
-    items: &[String],
-) -> bool {
-    if items.is_empty() {
-        return false;
-    }
-    println!("\n{header}");
-    if let Some(sub) = subtitle {
-        println!("{sub}");
-    }
-    for item in items {
-        println!("{prefix}{item}");
-    }
-    true
+/// Formats all traceability diagnostics for `report`, returning `(failed, lines)`.
+pub fn format_traceability_errors(report: &TraceabilityReport) -> (bool, Vec<String>) {
+    let mut lines = Vec::new();
+    let mut failed = format_unlinked_and_invalid(report, &mut lines);
+    failed |= format_module_and_bypass_errors(report, &mut lines);
+    failed |= format_semantic_and_density_errors(report, &mut lines);
+    (failed, lines)
 }
 
 /// Evaluates all traceability invariants on `report`, printing diagnostics and returning `true` if any check failed.
 pub fn check_and_print_traceability_errors(report: &TraceabilityReport) -> bool {
-    let mut failed = report_list_section(
-        "=== Unlinked Modules ===",
-        Some(
-            "The following modules contain a verification macro but are missing from the registry:",
-        ),
-        "   [!] UNLINKED module: ",
-        &report.unlinked_code,
-    );
-
-    if !report.invalid_links.is_empty() {
-        println!("\n=== Validation Failures ===");
-        println!("Invalid citations were found (see details above).");
-        for (file, cite) in &report.invalid_links {
-            println!("   [!] INVALID citation: {} in {}", cite, file);
-        }
-        failed = true;
+    let (failed, lines) = format_traceability_errors(report);
+    for line in lines {
+        println!("{line}");
     }
-
-    if !report.orphaned_papers.is_empty() {
-        if !failed {
-            println!("\n=== Validation Failures ===");
-        }
-        println!("Orphaned papers found: {:?}", report.orphaned_papers);
-        failed = true;
-    }
-
-    if report_list_section(
-        "[!] Unverified Modules (Missing theory_verification! or #[verified]):",
-        None,
-        "  - ",
-        &report.unverified_modules,
-    ) {
-        println!("\nThreshold not met: False Green detected!");
-        failed = true;
-    }
-
-    failed |= report_list_section(
-        "[!] Invalid Verification Tiers Detected:",
-        None,
-        "  - ",
-        &report.invalid_tiers,
-    );
-    failed |= report_list_section(
-        "[!] Vacuous Bypasses Detected in AI Modules (Zero Initializations):",
-        None,
-        "  - ",
-        &report.vacuous_bypasses,
-    );
-    failed |= check_semantic_and_density_errors(report);
     failed
 }
 
