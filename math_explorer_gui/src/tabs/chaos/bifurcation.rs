@@ -374,7 +374,7 @@ inventory::submit! {
         id: "BifurcationDiagram",
         display_name: "Bifurcation Diagram",
         domain: "chaos",
-        tags: &[],
+        tags: &["logistic map", "period doubling", "feigenbaum", "orbit diagram", "chaos"],
         build: || Box::new(BifurcationDiagram::default()),
     }
 }

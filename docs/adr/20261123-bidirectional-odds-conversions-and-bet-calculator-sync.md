@@ -19,4 +19,4 @@ Three mathematical and interactive-state defects affected [`pure_math::statistic
 
 ## Consequences
 - **Positive**: All four odds representations convert bidirectionally with zero heap allocations under `VerifiedEngine::run_verified`, `-100.0` and `+100.0` behave symmetrically, and `BetSizeCalculatorTool` keeps converted readouts, logarithmic growth curves, and Kelly theory metadata synchronized without dead-zone errors.
-- **Neutral**: Inventory export capability audits track `54` plot tools (including `BetSizeCalculatorTool` and `CorrelatedRiskScenarioTool`), `7` raster tools, and `15` non-figure tools across the `76` registered `InteractiveTool` implementations.
+- **Neutral**: Inventory export capability audits track `55` plot tools (including `BetSizeCalculatorTool` and `CorrelatedRiskScenarioTool`), `7` raster tools, and `15` non-figure tools across the `77` registered `InteractiveTool` implementations.
