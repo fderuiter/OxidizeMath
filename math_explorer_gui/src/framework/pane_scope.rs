@@ -12,9 +12,9 @@ pub enum InputMode {
     Touch,
 }
 
-/// Event context provided to interaction hooks.
+/// Event context provided to [`InteractiveTool`] interaction hooks.
 pub struct InteractionContext<'a> {
-    /// Current pointer position in screen coordinates, if hovering or interacting.
+    /// Pointer position in widget or plot coordinates, if hovering or interacting.
     pub pointer_pos: Option<egui::Pos2>,
     /// Pointer drag delta since the previous frame.
     pub delta: egui::Vec2,
@@ -22,7 +22,7 @@ pub struct InteractionContext<'a> {
     pub is_dragging: bool,
     /// Whether the canvas was clicked during this frame.
     pub is_clicked: bool,
-    /// Underlying `egui` widget response for the canvas region.
+    /// Underlying `egui::Response` for the interactive canvas region.
     pub response: &'a egui::Response,
     /// Active pointer or touch input mode (`Mouse` or `Touch`).
     pub input_mode: InputMode,
@@ -32,7 +32,7 @@ pub struct InteractionContext<'a> {
     pub keys_down: std::collections::HashSet<egui::Key>,
     /// Active keyboard modifiers (`Ctrl`, `Shift`, `Alt`, `Cmd`).
     pub modifiers: egui::Modifiers,
-    /// Optional spatial [`BrushStroke`] synthesized from pointer drag events for [`InteractiveTool::on_brush`].
+    /// Optional interpolated plot-space [`BrushStroke`] for [`InteractiveTool::on_brush`].
     pub brush_stroke: Option<BrushStroke>,
 }
 
