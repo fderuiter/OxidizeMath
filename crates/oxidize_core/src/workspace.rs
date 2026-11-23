@@ -125,6 +125,7 @@ pub fn get_workspace_members_from_paths(primary: &Path, fallback: &Path) -> (boo
 }
 
 /// Parses the `workspace.members` array from a TOML string.
+#[cfg(feature = "ast-analysis")]
 pub fn parse_workspace_members(content: &str) -> Result<Vec<String>, String> {
     let table = content
         .parse::<toml::Table>()
@@ -141,6 +142,70 @@ pub fn parse_workspace_members(content: &str) -> Result<Vec<String>, String> {
         .collect();
 
     Ok(members)
+}
+
+#[cfg(not(feature = "ast-analysis"))]
+fn validate_toml_bracket_balance(content: &str) -> Result<(), String> {
+    let mut bracket_depth: i32 = 0;
+    let mut in_double = false;
+    let mut in_single = false;
+    let mut in_comment = false;
+    let mut escaped = false;
+
+    for ch in content.chars() {
+        if ch == '\n' {
+            in_comment = false;
+            escaped = false;
+            continue;
+        }
+        if in_comment {
+            continue;
+        }
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && in_double {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' && !in_single {
+            in_double = !in_double;
+        } else if ch == '\'' && !in_double {
+            in_single = !in_single;
+        } else if !in_double && !in_single {
+            if ch == '#' {
+                in_comment = true;
+            } else if ch == '[' {
+                bracket_depth += 1;
+            } else if ch == ']' {
+                bracket_depth -= 1;
+                if bracket_depth < 0 {
+                    return Err("Failed to parse Cargo.toml: unmatched ']'".to_string());
+                }
+            }
+        }
+    }
+
+    if in_double || in_single || bracket_depth != 0 {
+        return Err("Failed to parse Cargo.toml: malformed TOML syntax".to_string());
+    }
+    Ok(())
+}
+
+/// Parses the `workspace.members` array from a TOML string.
+#[cfg(not(feature = "ast-analysis"))]
+pub fn parse_workspace_members(content: &str) -> Result<Vec<String>, String> {
+    validate_toml_bracket_balance(content)?;
+    parse_workspace_members_std(content).map_err(|err| {
+        if err.contains("Could not find [workspace] section") {
+            "Could not find workspace.members array in Cargo.toml".to_string()
+        } else if err.contains("Malformed") || err.contains("Unterminated") {
+            format!("Failed to parse Cargo.toml: {err}")
+        } else {
+            err
+        }
+    })
 }
 
 #[cfg(test)]

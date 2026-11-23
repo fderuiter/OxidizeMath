@@ -1,4 +1,4 @@
-# ADR 0047: Hybrid Headless Chromium and Node.js WebAssembly Test Gate
+# ADR 20261123: Hybrid Headless Chromium and Node.js WebAssembly Test Gate
 
 ## Status
 

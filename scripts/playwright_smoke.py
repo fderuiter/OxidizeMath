@@ -545,6 +545,17 @@ def run_internal_error_and_fallback_compile_checks(
 
         return _fulfill
 
+    def _attach_unrouted_abort_guard(page: Page, watched_suffixes: tuple[str, ...]) -> list[str]:
+        aborted: list[str] = []
+        page.on(
+            "requestfailed",
+            lambda req: aborted.append(f"{req.url}: {req.failure}")
+            if req.failure == "net::ERR_ABORTED"
+            and any(req.url.split("?")[0].endswith(s) for s in watched_suffixes)
+            else None,
+        )
+        return aborted
+
     captured_shot = False
     for trap_msg in internal_messages:
         loader_stub = (
@@ -562,6 +573,10 @@ def run_internal_error_and_fallback_compile_checks(
                 pg = ctx.new_page()
                 csp_violations: list[str] = []
                 attach_csp_observer(pg, csp_violations)
+                watched = ("/bootstrap.js", "/initializer.js") + (
+                    () if use_fallback else ("/reload.js",)
+                )
+                aborted_unrouted = _attach_unrouted_abort_guard(pg, watched)
                 if use_fallback:
                     pg.route(
                         "**/reload.js*",
@@ -573,16 +588,23 @@ def run_internal_error_and_fallback_compile_checks(
                     )
                 pg.route("**/math_explorer_gui.js*", fulfill_loader)
                 pg.goto(f"{base_url}/", wait_until="domcontentloaded")
-                err_box = pg.locator("#error_container")
-                expect(err_box).to_be_visible(timeout=12_000)
-                expect(err_box).to_have_attribute("data-error-active", "true")
-                expect(err_box).to_have_attribute("data-error-category", "compile")
-                expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
-                expect(pg.locator("#webgl_reload_button")).to_be_focused()
-                if not use_fallback:
-                    expect(pg.locator("#aria-live-assertive")).to_contain_text(
-                        "WebAssembly startup error"
-                    )
+                try:
+                    err_box = pg.locator("#error_container")
+                    expect(err_box).to_be_visible(timeout=12_000)
+                    expect(err_box).to_have_attribute("data-error-active", "true")
+                    expect(err_box).to_have_attribute("data-error-category", "compile")
+                    expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
+                    expect(pg.locator("#webgl_reload_button")).to_be_focused()
+                    if not use_fallback:
+                        expect(pg.locator("#aria-live-assertive")).to_contain_text(
+                            "WebAssembly startup error"
+                        )
+                except AssertionError as exc:
+                    if aborted_unrouted:
+                        raise TransientBrowserCrashError(
+                            f"[internal_error_{mode_label}] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                        ) from exc
+                    raise
                 assert_zero_csp_violations(f"internal_error_{mode_label}_{trap_msg}", csp_violations)
                 if screenshot_path and not captured_shot and not use_fallback:
                     pg.screenshot(path=str(screenshot_path), full_page=True)
@@ -596,6 +618,9 @@ def run_internal_error_and_fallback_compile_checks(
         pg = ctx.new_page()
         csp_violations = []
         attach_csp_observer(pg, csp_violations)
+        aborted_unrouted = _attach_unrouted_abort_guard(
+            pg, ("/bootstrap.js", "/initializer.js", "/math_explorer_gui.js")
+        )
         pg.route(
             "**/reload.js*",
             lambda route: route.fulfill(
@@ -613,11 +638,18 @@ def run_internal_error_and_fallback_compile_checks(
             ),
         )
         pg.goto(f"{base_url}/", wait_until="domcontentloaded")
-        err_box = pg.locator("#error_container")
-        expect(err_box).to_be_visible(timeout=12_000)
-        expect(err_box).to_have_attribute("data-error-category", "compile")
-        expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
-        expect(pg.locator("#webgl_reload_button")).to_be_focused()
+        try:
+            err_box = pg.locator("#error_container")
+            expect(err_box).to_be_visible(timeout=12_000)
+            expect(err_box).to_have_attribute("data-error-category", "compile")
+            expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
+            expect(pg.locator("#webgl_reload_button")).to_be_focused()
+        except AssertionError as exc:
+            if aborted_unrouted:
+                raise TransientBrowserCrashError(
+                    f"[fallback_corrupt_wasm] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                ) from exc
+            raise
         assert_zero_csp_violations("fallback_corrupt_wasm", csp_violations)
     finally:
         ctx.close()
@@ -1004,19 +1036,18 @@ def run_parallel_preload_and_sw_http_cache_check(
                 self.wfile.write(b"Not Found")
                 return
 
-            rev = revision_state["rev"]
-            raw_mutated = clean_path == "/bootstrap.js" and rev > 1
-            br_target = target.with_name(target.name + ".br")
             accept_enc = self.headers.get("Accept-Encoding", "")
-            use_br = (not raw_mutated) and br_target.is_file() and ("br" in accept_enc)
-            if use_br:
-                payload = br_target.read_bytes()
-            else:
-                payload = target.read_bytes()
-                if raw_mutated:
-                    payload = payload + f"\n// origin-rev-{rev}\n".encode("utf-8")
-            enc_tag = "br" if use_br else "id"
-            etag = f'"{rel_name}-v{rev}-{enc_tag}-{len(payload)}"'
+            br_target = Path(f"{target}.br")
+            use_brotli = (
+                clean_path.endswith(".wasm")
+                and "br" in accept_enc
+                and br_target.is_file()
+            )
+            payload = br_target.read_bytes() if use_brotli else target.read_bytes()
+            rev = revision_state["rev"]
+            if clean_path == "/bootstrap.js" and rev > 1:
+                payload = payload + f"\n// origin-rev-{rev}\n".encode("utf-8")
+            etag = f'"{rel_name}-v{rev}-{len(payload)}"'
             content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
 
             if self.headers.get("If-None-Match") == etag:
@@ -1024,8 +1055,9 @@ def run_parallel_preload_and_sw_http_cache_check(
                     origin_hits.append((clean_path, 304))
                 self.send_response(304)
                 self.send_header("ETag", etag)
-                self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Cache-Control", "public, max-age=600")
+                if use_brotli:
+                    self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Content-Security-Policy", csp)
                 self.end_headers()
                 return
@@ -1034,9 +1066,9 @@ def run_parallel_preload_and_sw_http_cache_check(
                 origin_hits.append((clean_path, 200))
             self.send_response(200)
             self.send_header("Content-Type", content_type)
-            if use_br:
+            if use_brotli:
                 self.send_header("Content-Encoding", "br")
-            self.send_header("Vary", "Accept-Encoding")
+                self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("ETag", etag)
             self.send_header("Cache-Control", "public, max-age=600")
