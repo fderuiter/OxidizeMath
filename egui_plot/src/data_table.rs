@@ -25,7 +25,10 @@ use crate::{
         scope_table_row, set_accesskit_bounds, status_message_label, step_tablist_on_arrow_keys,
     },
     emit_plot_live_message,
-    export::{copy_text_to_clipboard_with_callback, format_csv},
+    export::{
+        copy_text_to_clipboard_with_callback, format_csv, read_text_from_clipboard_with_callback,
+    },
+    file_io::enqueue_csv_text_import,
     poi::CriticalPoint,
 };
 
@@ -61,6 +64,73 @@ pub struct DataTableState {
 #[must_use]
 pub fn data_table_clipboard_status_id(plot_id: Id) -> Id {
     plot_id.with("data_table_clipboard_status")
+}
+
+pub(crate) fn set_data_table_allow_csv_import(ctx: &Context, plot_id: Id, allow: bool) {
+    ctx.data_mut(|d| d.insert_temp(plot_id.with("allow_csv_import"), allow));
+}
+
+fn data_table_allows_csv_import(ctx: &Context, plot_id: Id) -> bool {
+    ctx.data(|d| {
+        d.get_temp::<bool>(plot_id.with("allow_csv_import"))
+            .unwrap_or(true)
+    })
+}
+
+fn handle_data_table_paste_events(ctx: &Context, plot_id: Id, state: &mut DataTableState) {
+    if !data_table_allows_csv_import(ctx, plot_id) {
+        return;
+    }
+    let pasted: Vec<String> = ctx.input_mut(|i| {
+        let mut collected = Vec::new();
+        i.events.retain(|evt| {
+            if let egui::Event::Paste(text) = evt {
+                collected.push(text.clone());
+                false
+            } else {
+                true
+            }
+        });
+        collected
+    });
+    for text in pasted {
+        let status = enqueue_csv_text_import(ctx, plot_id, "clipboard", &text);
+        if !status.1 {
+            state.view_mode = DataTableViewMode::SeriesData;
+        }
+        state.status_message = Some(status);
+    }
+}
+
+fn paste_from_clipboard_into_table(ctx: &Context, plot_id: Id, st: &mut DataTableState) {
+    let status_id = data_table_clipboard_status_id(plot_id);
+    let cb_ctx = ctx.clone();
+    match read_text_from_clipboard_with_callback(move |res| {
+        let status = match res {
+            Ok(text) => enqueue_csv_text_import(&cb_ctx, plot_id, "clipboard", &text),
+            Err(err) => (err, true),
+        };
+        cb_ctx.data_mut(|d| d.insert_temp(status_id, status));
+        cb_ctx.request_repaint();
+    }) {
+        Ok(()) => {
+            let fallback = ("Reading CSV/TSV from clipboard...".to_owned(), false);
+            if let Some(resolved) = ctx.data_mut(|d| d.remove_temp::<(String, bool)>(status_id)) {
+                if !resolved.1 {
+                    st.view_mode = DataTableViewMode::SeriesData;
+                }
+                st.status_message = Some(resolved);
+            } else {
+                emit_plot_live_message(ctx, fallback.0.clone(), false);
+                st.status_message = Some(fallback);
+            }
+        }
+        Err(err) => {
+            let _ = ctx.data_mut(|d| d.remove_temp::<(String, bool)>(status_id));
+            emit_plot_live_message(ctx, err.clone(), true);
+            st.status_message = Some((err, true));
+        }
+    }
 }
 
 /// Drain any completed asynchronous clipboard status for `plot_id` into `state`.
@@ -164,6 +234,7 @@ struct TableView<'a> {
     plot_id: Id,
     series: &'a [TableSeriesRef<'a>],
     shared_x: bool,
+    allow_csv_import: bool,
     state: &'a mut DataTableState,
 }
 
@@ -482,6 +553,12 @@ impl TableView<'_> {
                     format_csv(&ds),
                 );
             }
+            if self.allow_csv_import {
+                let paste_btn = modal_action_button(ui, true, "Paste Clipboard", "");
+                if paste_btn.clicked() {
+                    paste_from_clipboard_into_table(ui.ctx(), self.plot_id, self.state);
+                }
+            }
             close_clicked = ui.button("Close").clicked();
             if has_data {
                 let hint = format!(
@@ -558,7 +635,11 @@ impl TableView<'_> {
             ui.label(
                 RichText::new("No data points are currently available for this plot.").strong(),
             );
-            let sub = "Run or reset the simulation, or enable a visible series to inspect values.";
+            let sub = if self.allow_csv_import {
+                "Press Ctrl+V, click Paste Clipboard, or use Import CSV to plot tabular data."
+            } else {
+                "Run or reset the simulation, or enable a visible series to inspect values."
+            };
             ui.label(RichText::new(sub).small().weak());
             return self.render_footer(ui, 0);
         }
@@ -660,6 +741,21 @@ fn render_header_row(ui: &mut Ui, table_id: Id, cols: &[(String, Color32)], widt
     );
 }
 
+#[cfg(test)]
+fn collect_nonempty_series(
+    datasets: &[(String, Vec<[f64; 2]>, Color32)],
+) -> Vec<TableSeriesRef<'_>> {
+    datasets
+        .iter()
+        .filter(|(_, p, _)| !p.is_empty())
+        .map(|(name, points, color)| TableSeriesRef {
+            name,
+            points,
+            color: *color,
+        })
+        .collect()
+}
+
 /// Render the Data Table modal with both `Series Data` and `Critical Points` views.
 #[cfg(test)]
 pub(crate) fn show_data_table_modal_with_pois(
@@ -676,15 +772,7 @@ pub(crate) fn show_data_table_modal_with_pois(
         let _ = ModalLifecycle::new(plot_id.with("data_table_modal")).show(ctx, open, |_, _| {});
         return;
     }
-    let series: Vec<_> = datasets
-        .iter()
-        .filter(|(_, p, _)| !p.is_empty())
-        .map(|(name, points, color)| TableSeriesRef {
-            name,
-            points,
-            color: *color,
-        })
-        .collect();
+    let series = collect_nonempty_series(datasets);
     render_data_table_modal_series(
         ctx,
         plot_id,
@@ -741,7 +829,16 @@ fn render_data_table_modal_series(
     critical_points: &[CriticalPoint],
 ) {
     let shared_x = series.len() > 1 && series_share_x(series);
-    preprocess_data_table_frame(ctx, plot_id, state, series, shared_x, critical_points);
+    let allow_csv_import = data_table_allows_csv_import(ctx, plot_id);
+    preprocess_data_table_frame(
+        ctx,
+        plot_id,
+        state,
+        series,
+        shared_x,
+        allow_csv_import,
+        critical_points,
+    );
     let max_w = (ctx.content_rect().width() - 48.0).clamp(360.0, 740.0);
     ModalLifecycle::new(plot_id.with("data_table_modal"))
         .title(window_title)
@@ -757,6 +854,7 @@ fn render_data_table_modal_series(
                         plot_id,
                         series,
                         shared_x,
+                        allow_csv_import,
                         state,
                     };
                     view.render_body(ui)
@@ -771,15 +869,18 @@ fn render_data_table_modal_series(
         });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn preprocess_data_table_frame(
     ctx: &Context,
     plot_id: Id,
     state: &mut DataTableState,
     series: &[TableSeriesRef<'_>],
     shared_x: bool,
+    allow_csv_import: bool,
     critical_points: &[CriticalPoint],
 ) {
-    if series.is_empty() && !critical_points.is_empty() {
+    handle_data_table_paste_events(ctx, plot_id, state);
+    if series.is_empty() && !critical_points.is_empty() && state.status_message.is_none() {
         state.view_mode = DataTableViewMode::CriticalPoints;
     }
     if state.view_mode == DataTableViewMode::CriticalPoints {
@@ -790,6 +891,7 @@ fn preprocess_data_table_frame(
             plot_id,
             series,
             shared_x,
+            allow_csv_import,
             state,
         };
         let idx = if shared_x || series.len() == 1 {

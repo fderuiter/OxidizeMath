@@ -83,8 +83,15 @@ impl SimulationFramework {
 
                     ui.separator();
                     ui.heading("Citations");
-                    render_theory_summary_with_export(ui, &theory.theory_citation(), None)
+                    let citation_text = theory.theory_citation();
+                    render_theory_summary_with_export(ui, &citation_text, None)
                         .accessible_hover_text("Academic citations");
+                    super::theory_links::render_portal_links_for_framework(
+                        self,
+                        ui,
+                        tool.as_ref(),
+                        &citation_text,
+                    );
 
                     let mut entries: Vec<(String, String)> = theory
                         .available_descriptions()

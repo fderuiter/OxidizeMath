@@ -104,15 +104,10 @@ pub(super) fn render_epidemic_metrics(ui: &mut egui::Ui, tool: &SirTool) {
     }
 }
 
-/// Renders the SIR simulation plot and CSV dataset import header.
+/// Renders the SIR simulation plot.
 pub(super) fn render_simulation_plot(ui: &mut egui::Ui, tool: &SirTool) {
     let plot_id = ui.make_persistent_id("sir_plot");
-    ui.horizontal(|ui| {
-        ui.heading("Simulation");
-        if ui.button("Import Dataset (CSV)").clicked() {
-            egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
-        }
-    });
+    ui.heading("Simulation");
 
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
     let plot = Plot::new("sir_plot")

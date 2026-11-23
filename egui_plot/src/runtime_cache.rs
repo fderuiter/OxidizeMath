@@ -29,6 +29,7 @@ pub(crate) struct CachedItemSeries {
     pub(crate) source_vec_ptr: Option<usize>,
     pub(crate) color: Color32,
     pub(crate) bounds: PlotBounds,
+    pub(crate) companion_visual_only: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -150,6 +151,7 @@ impl PlotRuntimeCache {
             && self.0.series.iter().zip(items.iter()).all(|(entry, item)| {
                 entry.id == item.id()
                     && entry.name == item.name()
+                    && entry.companion_visual_only == item.is_companion_visual_only()
                     && item.matches_cached_series(&entry.points, entry.source_vec_ptr)
             });
         matches.then_some(self.0.series.as_slice())
@@ -165,6 +167,7 @@ impl PlotRuntimeCache {
                 entry.id == item.id()
                     && entry.name == item.name()
                     && entry.color == item.color()
+                    && entry.companion_visual_only == item.is_companion_visual_only()
                     && item.matches_cached_series(&entry.points, entry.source_vec_ptr)
             });
         if all_match {
@@ -205,6 +208,7 @@ impl PlotRuntimeCache {
                 source_vec_ptr: item.shared_vec_ptr(),
                 color: item.color(),
                 bounds,
+                companion_visual_only: item.is_companion_visual_only(),
             });
         }
         let inner = Arc::make_mut(&mut self.0);
