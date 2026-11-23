@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use math_explorer::applied::pharmacokinetics::{
-    DoseEvent, MAX_REGIMEN_EVENTS, ReleaseFormulation, TherapeuticWindow,
+    DoseEvent, ReleaseFormulation, TherapeuticWindow, MAX_REGIMEN_EVENTS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -119,10 +119,26 @@ impl RegimenState {
             cal_half_life_h: 6.93,
             show_baseline: true,
             events: vec![
-                CompactDoseEvent { t: 0.0, d: 100.0, xr: false },
-                CompactDoseEvent { t: 12.0, d: 100.0, xr: false },
-                CompactDoseEvent { t: 24.0, d: 100.0, xr: false },
-                CompactDoseEvent { t: 36.0, d: 100.0, xr: false },
+                CompactDoseEvent {
+                    t: 0.0,
+                    d: 100.0,
+                    xr: false,
+                },
+                CompactDoseEvent {
+                    t: 12.0,
+                    d: 100.0,
+                    xr: false,
+                },
+                CompactDoseEvent {
+                    t: 24.0,
+                    d: 100.0,
+                    xr: false,
+                },
+                CompactDoseEvent {
+                    t: 36.0,
+                    d: 100.0,
+                    xr: false,
+                },
             ],
         }
     }
@@ -138,10 +154,26 @@ impl RegimenState {
     pub fn missed_dose_catchup_scenario() -> Self {
         let mut s = Self::uniform_maintenance_scenario();
         s.events = vec![
-            CompactDoseEvent { t: 0.0, d: 100.0, xr: false },
-            CompactDoseEvent { t: 18.0, d: 150.0, xr: false },
-            CompactDoseEvent { t: 24.0, d: 100.0, xr: false },
-            CompactDoseEvent { t: 36.0, d: 100.0, xr: false },
+            CompactDoseEvent {
+                t: 0.0,
+                d: 100.0,
+                xr: false,
+            },
+            CompactDoseEvent {
+                t: 18.0,
+                d: 150.0,
+                xr: false,
+            },
+            CompactDoseEvent {
+                t: 24.0,
+                d: 100.0,
+                xr: false,
+            },
+            CompactDoseEvent {
+                t: 36.0,
+                d: 100.0,
+                xr: false,
+            },
         ];
         s
     }
@@ -174,10 +206,26 @@ impl RegimenState {
             cal_half_life_h: 10.0,
             show_baseline: false,
             events: vec![
-                CompactDoseEvent { t: 0.0, d: 25.0, xr: true },
-                CompactDoseEvent { t: 10.0, d: 7.5, xr: false },
-                CompactDoseEvent { t: 24.0, d: 20.0, xr: true },
-                CompactDoseEvent { t: 34.0, d: 7.5, xr: false },
+                CompactDoseEvent {
+                    t: 0.0,
+                    d: 25.0,
+                    xr: true,
+                },
+                CompactDoseEvent {
+                    t: 10.0,
+                    d: 7.5,
+                    xr: false,
+                },
+                CompactDoseEvent {
+                    t: 24.0,
+                    d: 20.0,
+                    xr: true,
+                },
+                CompactDoseEvent {
+                    t: 34.0,
+                    d: 7.5,
+                    xr: false,
+                },
             ],
         }
     }
@@ -301,8 +349,7 @@ impl RegimenState {
             } else {
                 ReleaseFormulation::ImmediateRelease
             };
-            let domain_ev =
-                DoseEvent::new(ev.t, ev.d, formulation).map_err(|e| e.to_string())?;
+            let domain_ev = DoseEvent::new(ev.t, ev.d, formulation).map_err(|e| e.to_string())?;
             out.push(domain_ev);
         }
         Ok(out)

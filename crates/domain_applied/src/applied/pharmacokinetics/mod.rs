@@ -159,6 +159,7 @@ theory_verification!(
         DOSE = 100.0;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(
             DOSE,
             100.0,

@@ -75,6 +75,7 @@ theory_verification!(
         PAYOFF = 5.0;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(
             PAYOFF,
             5.0,

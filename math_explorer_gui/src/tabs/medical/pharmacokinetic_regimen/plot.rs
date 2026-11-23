@@ -8,8 +8,8 @@ use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints, Points, Polygo
 use crate::app::{SemanticPalette, ThemeMode};
 use crate::reflective_ui::render_copyable_metric;
 
-use super::PharmacokineticRegimenTool;
 use super::state::PkModelKind;
+use super::PharmacokineticRegimenTool;
 
 impl PharmacokineticRegimenTool {
     pub(super) fn render_kpi_bar(&self, ui: &mut egui::Ui, theme_mode: ThemeMode) {

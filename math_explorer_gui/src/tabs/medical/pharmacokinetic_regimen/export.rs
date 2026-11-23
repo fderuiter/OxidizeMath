@@ -10,8 +10,8 @@ use serde::Serialize;
 
 use crate::app::{SemanticPalette, ThemeMode};
 
-use super::ComputedCurves;
 use super::state::{PkModelKind, RegimenState};
+use super::ComputedCurves;
 
 const DISCLAIMER: &str =
     "Educational ADME mathematical simulation only; not clinical prescribing advice.";
@@ -75,9 +75,8 @@ struct ReportEvent {
 
 /// Formats the scheduled [`RegimenState`] events and sampled pre-dose concentrations as CSV.
 pub fn format_schedule_csv(state: &RegimenState, curves: &ComputedCurves) -> String {
-    let mut csv = String::from(
-        "event_index,time_h,dose_mg,formulation,lag_time_h,f1,f2,c_at_dose_mg_l\n",
-    );
+    let mut csv =
+        String::from("event_index,time_h,dose_mg,formulation,lag_time_h,f1,f2,c_at_dose_mg_l\n");
     let f1 = state.xr_f1;
     let f2 = (1.0 - f1).max(0.0);
     for (idx, ev) in state.events.iter().enumerate() {
@@ -328,12 +327,7 @@ pub fn build_export_primitives(
     if y_top > state.mtc {
         prims.push(ExportPrimitive::Polyline {
             name: "Supratherapeutic Zone (> MTC)".to_string(),
-            points: vec![
-                [0.0, state.mtc],
-                [h, state.mtc],
-                [h, y_top],
-                [0.0, y_top],
-            ],
+            points: vec![[0.0, state.mtc], [h, state.mtc], [h, y_top], [0.0, y_top]],
             color: mtc_color,
             stroke_width: 1.0_f32,
             closed: true,

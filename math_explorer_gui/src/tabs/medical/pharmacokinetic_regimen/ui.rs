@@ -4,14 +4,14 @@
 
 use eframe::egui::{self, RichText, Slider, SliderClamping};
 use math_explorer::applied::pharmacokinetics::{
-    MAX_REGIMEN_EVENTS, calibrate_ka_from_half_life, half_life, t_max,
+    calibrate_ka_from_half_life, half_life, t_max, MAX_REGIMEN_EVENTS,
 };
 
 use crate::accessibility::AccessibleHoverText;
 
-use super::PharmacokineticRegimenTool;
 use super::export::{spawn_csv_schedule_download, spawn_json_report_download};
 use super::state::{CompactDoseEvent, PkModelKind, RegimenState};
+use super::PharmacokineticRegimenTool;
 
 impl PharmacokineticRegimenTool {
     pub(super) fn render_inside(&mut self, parent_ui: &mut egui::Ui) {
@@ -137,7 +137,12 @@ impl PharmacokineticRegimenTool {
 
     fn render_core_rate_sliders(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
-        changed |= Self::clamped_slider(ui, &mut self.state.maintenance_dose_mg, 5.0..=1000.0, "Ref Dose D (mg)");
+        changed |= Self::clamped_slider(
+            ui,
+            &mut self.state.maintenance_dose_mg,
+            5.0..=1000.0,
+            "Ref Dose D (mg)",
+        );
         changed |= Self::clamped_slider(ui, &mut self.state.tau_h, 2.0..=48.0, "Interval tau (h)");
         changed |= Self::clamped_slider(ui, &mut self.state.horizon_h, 12.0..=168.0, "Horizon (h)");
         changed |= Self::clamped_slider(ui, &mut self.state.f, 0.05..=1.0, "Bioavailability F");
@@ -153,8 +158,12 @@ impl PharmacokineticRegimenTool {
         range: std::ops::RangeInclusive<f64>,
         label: &str,
     ) -> bool {
-        ui.add(Slider::new(value, range).clamping(SliderClamping::Always).text(label))
-            .changed()
+        ui.add(
+            Slider::new(value, range)
+                .clamping(SliderClamping::Always)
+                .text(label),
+        )
+        .changed()
     }
 
     fn render_xr_and_chiral_sliders(&mut self, ui: &mut egui::Ui) -> bool {
@@ -312,10 +321,20 @@ impl PharmacokineticRegimenTool {
         ui.horizontal(|ui| {
             ui.monospace(format!("#{:02}", idx + 1));
             *changed |= ui
-                .add(egui::DragValue::new(&mut ev.t).speed(0.5).range(0.0..=768.0).suffix(" h"))
+                .add(
+                    egui::DragValue::new(&mut ev.t)
+                        .speed(0.5)
+                        .range(0.0..=768.0)
+                        .suffix(" h"),
+                )
                 .changed();
             *changed |= ui
-                .add(egui::DragValue::new(&mut ev.d).speed(5.0).range(0.0..=5000.0).suffix(" mg"))
+                .add(
+                    egui::DragValue::new(&mut ev.d)
+                        .speed(5.0)
+                        .range(0.0..=5000.0)
+                        .suffix(" mg"),
+                )
                 .changed();
             *changed |= ui.checkbox(&mut ev.xr, "XR").changed();
             if ui

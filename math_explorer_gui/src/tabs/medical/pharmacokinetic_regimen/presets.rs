@@ -7,8 +7,8 @@ use std::sync::OnceLock;
 
 use scientific_metadata::theory::TheoryDescribable;
 
-use super::PharmacokineticRegimenTool;
 use super::state::RegimenState;
+use super::PharmacokineticRegimenTool;
 
 fn preset_loading_dose_json() -> &'static str {
     static JSON: OnceLock<String> = OnceLock::new();
@@ -125,10 +125,7 @@ impl TheoryDescribable for PharmacokineticRegimenTool {
             "ke".into(),
             "First-order systemic elimination rate constant ke (1/h)".into(),
         );
-        map.insert(
-            "v".into(),
-            "Apparent volume of distribution Vd (L)".into(),
-        );
+        map.insert("v".into(), "Apparent volume of distribution Vd (L)".into());
         map.insert(
             "mec".into(),
             "Minimum Effective Concentration (mg/L) lower bound of therapeutic window".into(),

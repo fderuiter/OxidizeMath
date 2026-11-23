@@ -14,7 +14,7 @@ The crate spans life sciences, material engineering, distributed systems, and qu
   - `WinRatioAnalysis`: Configurable hierarchical comparison engine for patient pairs.
   - Comparison strategies (`HigherIsBetter`, `LowerIsBetter`, `UnmatchedPairing`).
 - **`clinical_trials`**: Biostatistical trial design, sample size determination, and survival curves.
-- **`pharmacokinetics`**: One-compartment Bateman ADME kinetics, chiral (`EnantiomerModel`) and biphasic extended-release (`TwoPulseModel`) formulations, variable per-event multi-dose superposition (`DoseEvent`, `RegimenSuperposition`), `solve_ka` half-life calibration, and zero-allocation therapeutic-window exposure analytics (`TherapeuticWindow`, `ExposureSummary`).
+- **`pharmacokinetics`**: One-compartment oral Bateman ADME kinetics (`PKParameters`, `BatemanModel`, `half_life`, `t_max`, `solve_ka`, `calibrate_ka_from_half_life`), uniform (`SuperpositionModel`) and variable per-event multi-dose superposition (`DoseEvent`, `RegimenSuperposition`), biphasic extended-release formulations (`TwoPulseModel`), stereoselective chiral mixtures (`EnantiomerModel`), and zero-allocation therapeutic-window exposure analytics (`TherapeuticWindow`, `ExposureSummary`).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
 - **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.
@@ -61,8 +61,31 @@ assert_eq!(losses, 0);
 assert!(statistics.win_ratio.is_infinite() || statistics.win_ratio > 1.0);
 ```
 
+### Modeling Multi-Dose ADME Pharmacokinetics
+
+Calibrate oral absorption rates from target peak times and evaluate multi-dose plasma curves across immediate-release, biphasic two-pulse, or chiral enantiomer regimens:
+
+```rust
+# use domain_applied::__doctest_facade as math_explorer;
+use math_explorer::applied::pharmacokinetics::{
+    half_life, solve_ka, t_max, BatemanModel, PKParameters, PharmacokineticModel,
+    SuperpositionModel, TwoPulseModel,
+};
+
+let ke = std::f64::consts::LN_2 / 8.0;
+let ka = solve_ka(2.0, ke, 1.0, 100, 1.0e-7).expect("Convergent absorption rate");
+assert!((half_life(ke) - 8.0).abs() < 1.0e-9);
+assert!((t_max(ka, ke) - 2.0).abs() < 1.0e-6);
+
+let params = PKParameters::new(0.85, 100.0, ka, ke, 35.0).expect("Valid PK parameters");
+let xr_pulse = TwoPulseModel::new(BatemanModel::new(params), 4.0, 0.5, 0.5);
+let regimen = SuperpositionModel::new(xr_pulse, vec![0.0, 12.0, 24.0]);
+
+assert!(regimen.concentration(26.0) > regimen.concentration(2.0));
+```
+
 ---
 
 ## 3. Ecosystem Integration
 
-Algorithms from `domain_applied` feed interactive simulation calculators in `math_explorer_gui`, enabling visual scenario exploration for clinical biostatisticians, battery engineers, and data scientists.
+Algorithms from `domain_applied` feed interactive simulation calculators in `math_explorer_gui`—including the `Pharmacokinetics (ADME)` workbench and survival/sample-size tools in `ClinicalTrialsTab` alongside the `Pharmacokinetic Regimen` planner in `MedicalTab`—enabling visual scenario exploration for clinical biostatisticians, pharmacometricians, battery engineers, and data scientists.

@@ -3,20 +3,18 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use egui_plot::export::ExportOptions;
-use egui_plot::export_primitives::{
-    decode_png_rgba, export_primitives_svg, render_primitives_image,
-};
-use math_explorer::applied::pharmacokinetics::{MAX_REGIMEN_EVENTS, t_max};
+use egui_plot::export_primitives::{export_primitives_svg, render_primitives_image};
+use math_explorer::applied::pharmacokinetics::{t_max, MAX_REGIMEN_EVENTS};
 
 use crate::framework::{InteractiveTool, StarterPresetMetadata};
 use crate::url_state::{
-    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, encode_share_fragment,
-    parse_share_location,
+    encode_share_fragment, parse_share_location, MAX_DECODED_URL_STATE_BYTES,
+    MAX_URL_FRAGMENT_BYTES,
 };
 
-use super::PharmacokineticRegimenTool;
 use super::export::{format_exposure_report_json, format_schedule_csv};
 use super::state::{CompactDoseEvent, RegimenState};
+use super::PharmacokineticRegimenTool;
 
 #[test]
 fn test_max_64_events_fits_url_json_bounds_and_roundtrips_share_link() {
@@ -30,12 +28,9 @@ fn test_max_64_events_fits_url_json_bounds_and_roundtrips_share_link() {
         .collect();
     tool.recalculate();
 
-    let compact_envelope = crate::presets::serialize_compact_preset_envelope(
-        tool.name(),
-        tool.domain(),
-        &tool.state,
-    )
-    .expect("compact preset envelope");
+    let compact_envelope =
+        crate::presets::serialize_compact_preset_envelope(tool.name(), tool.domain(), &tool.state)
+            .expect("compact preset envelope");
     assert!(
         compact_envelope.len() <= MAX_DECODED_URL_STATE_BYTES,
         "64-event envelope was {} bytes > {MAX_DECODED_URL_STATE_BYTES}",
@@ -120,8 +115,12 @@ fn test_calibration_and_svg_png_csv_json_exports() {
 
     let img = render_primitives_image(&prims, &options).expect("PNG raster");
     let png = egui_plot::export::color32_image_to_png(&img).expect("PNG bytes");
-    let (w, h, pixels) = decode_png_rgba(&png).expect("decode PNG");
-    assert!(w > 0 && h > 0 && !pixels.is_empty());
+    let mut reader = png::Decoder::new(std::io::Cursor::new(&png))
+        .read_info()
+        .expect("decode PNG header");
+    let mut buf = vec![0_u8; reader.output_buffer_size().expect("PNG buffer size")];
+    let info = reader.next_frame(&mut buf).expect("decode PNG frame");
+    assert!(info.width > 0 && info.height > 0 && info.buffer_size() > 0);
 
     let csv = format_schedule_csv(&tool.state, &tool.curves);
     assert!(csv.contains("event_index,time_h,dose_mg,formulation"));
