@@ -5,6 +5,7 @@
 
 use super::SimpleRng;
 use crate::async_sim::SimWorkerState;
+use crate::framework::decode_rle_mask;
 pub use crate::presets::{
     default_auto_dt, default_gray_scott_f, default_gray_scott_k, MorphogenesisKinetics,
     DEFAULT_GRAY_SCOTT_F, DEFAULT_GRAY_SCOTT_K,
@@ -12,7 +13,7 @@ pub use crate::presets::{
 use eframe::egui::{self, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::SpatialDiffusion;
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 
@@ -26,16 +27,6 @@ const fn default_schnakenberg_a() -> f64 {
 
 const fn default_schnakenberg_b() -> f64 {
     0.9
-}
-
-/// Pointer interaction mode on the 2D morphogenesis plot canvas.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum CanvasInteractionMode {
-    /// Primary drag injects reagent; secondary drag restores local equilibrium.
-    #[default]
-    Brush,
-    /// Pointer drag and scroll pan/zoom the `egui_plot` viewport.
-    Navigate,
 }
 
 /// Complete validated state schema for [`super::MorphogenesisTool`], backward-compatible with `PRESET_TURING_*`.
@@ -81,6 +72,9 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Optional RLE-encoded `ReactionCellRole` mask (`[role, run_len]` pairs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mask_rle: Vec<[u32; 2]>,
     /// Persisted visibility of the progressive 2D parameter atlas (never raster pixels).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub atlas_visible: bool,
@@ -93,7 +87,7 @@ pub struct MorphogenesisToolState {
 }
 
 impl MorphogenesisToolState {
-    /// Validates finiteness and domain bounds for all reaction-diffusion parameters.
+    /// Validates finiteness, RLE cell mask integrity, and domain bounds for all parameters.
     pub fn validate(&self) -> Result<(), String> {
         let checks = [
             ("a", self.a, 0.0, 1.0),
@@ -116,6 +110,9 @@ impl MorphogenesisToolState {
                 "Morphogenesis dimensions {}x{} must be within 1..=512",
                 self.width, self.height
             ));
+        }
+        if !self.mask_rle.is_empty() {
+            decode_rle_mask(&self.mask_rle, self.width * self.height)?;
         }
         let valid_axes = super::cartographer::MORPHO_ATLAS_AXIS_PAIRS
             .iter()
@@ -152,8 +149,8 @@ impl MorphogenesisToolState {
     }
 }
 
-pub(crate) fn initialize_schnakenberg_system(
-    system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+pub(crate) fn initialize_schnakenberg_system<D: SpatialDiffusion<2>>(
+    system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
     width: usize,
     height: usize,
 ) {
@@ -170,8 +167,8 @@ pub(crate) fn initialize_schnakenberg_system(
     }
 }
 
-pub(crate) fn initialize_gray_scott_system(
-    system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+pub(crate) fn initialize_gray_scott_system<D: SpatialDiffusion<2>>(
+    system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
     width: usize,
     height: usize,
 ) {
@@ -199,8 +196,8 @@ pub(crate) fn initialize_gray_scott_system(
     }
 }
 
-fn seed_gray_scott_patch(
-    system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+fn seed_gray_scott_patch<D: SpatialDiffusion<2>>(
+    system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
     width: usize,
     height: usize,
     cx: i32,
@@ -221,8 +218,8 @@ fn seed_gray_scott_patch(
     }
 }
 
-pub(crate) fn initialize_for_kinetics(
-    system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+pub(crate) fn initialize_for_kinetics<D: SpatialDiffusion<2>>(
+    system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
     kinetics: MorphogenesisKinetics,
     width: usize,
     height: usize,
@@ -259,8 +256,8 @@ pub fn spatial_variance(data: &[f64]) -> f64 {
     }
 }
 
-pub(crate) fn ensure_nucleated_for_kinetics(
-    system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+pub(crate) fn ensure_nucleated_for_kinetics<D: SpatialDiffusion<2>>(
+    system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
     kinetics: MorphogenesisKinetics,
     width: usize,
     height: usize,
@@ -276,8 +273,8 @@ pub(crate) fn ensure_nucleated_for_kinetics(
     }
 }
 
-pub(crate) fn apply_chemical_brush(
-    system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+pub(crate) fn apply_chemical_brush<D: SpatialDiffusion<2>>(
+    system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
     kinetics: MorphogenesisKinetics,
     dims: (usize, usize),
     circle: (i32, i32, i32),

@@ -9,7 +9,7 @@ use eframe::egui;
 #[cfg(test)]
 use eframe::egui::ColorImage;
 #[cfg(test)]
-use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::SpatialDiffusion;
 #[cfg(test)]
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,7 @@ pub mod cartographer;
 pub mod lenia;
 pub mod presets;
 pub mod runner;
+pub mod sculpt;
 pub mod state;
 pub mod teleport;
 pub mod tool;
@@ -100,8 +101,8 @@ impl MorphogenesisTab {
 
     /// Initializes `system` around its `(a + b, b / (a + b)^2)` steady state with deterministic noise.
     #[cfg(test)]
-    pub fn initialize_system(
-        system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    pub fn initialize_system<D: SpatialDiffusion<2>>(
+        system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
         width: usize,
         height: usize,
     ) {
@@ -187,9 +188,17 @@ impl MorphogenesisTab {
         };
         let pending_initial_start = target_state != SimWorkerState::Running
             && existing.as_ref().is_some_and(|s| s.pending_initial_start);
-        let atlas_axes = existing
-            .map(|s| s.atlas_axes)
-            .unwrap_or_else(cartographer::default_morpho_atlas_axes);
+        let (existing_mask, atlas_axes) = match existing {
+            Some(s) => {
+                let keep_mask = if s.width == config.width && s.height == config.height {
+                    s.mask_rle
+                } else {
+                    Vec::new()
+                };
+                (keep_mask, s.atlas_axes)
+            }
+            None => (Vec::new(), cartographer::default_morpho_atlas_axes()),
+        };
         let state = MorphogenesisToolState {
             kinetics_mode: config.kinetics,
             a: config.a,
@@ -205,6 +214,7 @@ impl MorphogenesisTab {
             state: Some(target_state),
             paused: None,
             pending_initial_start,
+            mask_rle: existing_mask,
             atlas_visible,
             atlas_axes,
         };

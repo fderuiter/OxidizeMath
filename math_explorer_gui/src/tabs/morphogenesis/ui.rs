@@ -1,28 +1,29 @@
-//! Side-panel controls, 2D stability atlas integration, and brushable plot canvas
+//! Side-panel controls, 2D stability atlas integration, and accessible brushable plot canvas
 //! for [`super::MorphogenesisTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::draw_regime_atlas;
 use super::cartographer::MorphogenesisCartographer;
-use super::runner::MAX_CFL_SUBSTEPS;
+use super::runner::{MorphoSnapshotData, MAX_CFL_SUBSTEPS};
+use super::sculpt::{build_maze_rle, draw_morpho_sculpt_controls, overlay_cell_mask_colors};
 #[cfg(test)]
 use super::state::initialize_schnakenberg_system;
-use super::state::{
-    plot_concentration_with_contrast, CanvasInteractionMode, MorphogenesisKinetics,
-};
+use super::state::{plot_concentration_with_contrast, MorphogenesisKinetics};
 use super::MorphogenesisTool;
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::SimCommand;
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    BrushMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
+};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use egui_plot::{Plot, PlotImage, PlotPoint};
 #[cfg(test)]
-use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::SpatialDiffusion;
 use math_explorer::biology::morphogenesis::FusedEulerSolver;
 #[cfg(test)]
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
@@ -51,18 +52,21 @@ impl MorphogenesisTool {
             crate::app::ThemeMode::from_visuals(&ctx.style().visuals)
                 == crate::app::ThemeMode::HighContrast
         });
-        if let Some(u_data) = snapshot
+        if let Some(mdata) = snapshot
             .structured_data
             .as_ref()
-            .and_then(|d| d.downcast_ref::<Vec<f64>>())
-            .filter(|u| u.len() == num_pixels)
+            .and_then(|d| d.downcast_ref::<MorphoSnapshotData>())
+            .filter(|m| m.u_data.len() == num_pixels)
         {
-            let recolored = plot_concentration_with_contrast(
-                u_data,
+            let mut recolored = plot_concentration_with_contrast(
+                &mdata.u_data,
                 snapshot.width,
                 snapshot.height,
                 high_contrast,
             );
+            if !mdata.mask_roles.is_empty() {
+                overlay_cell_mask_colors(&mut recolored, &mdata.mask_roles, high_contrast);
+            }
             self.pixels.copy_from_slice(&recolored.pixels);
         } else if snapshot_pixels.len() == num_pixels {
             self.pixels.copy_from_slice(&snapshot_pixels);
@@ -211,19 +215,29 @@ impl MorphogenesisTool {
         }
     }
 
-    fn draw_brush_controls(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Canvas:");
-            ui.selectable_value(&mut self.canvas_mode, CanvasInteractionMode::Brush, "Brush");
-            ui.selectable_value(
-                &mut self.canvas_mode,
-                CanvasInteractionMode::Navigate,
-                "Navigate",
-            );
-        });
-        if self.canvas_mode == CanvasInteractionMode::Brush {
-            ui.add(egui::Slider::new(&mut self.brush_radius, 1..=12).text("Brush r"));
-            ui.small("Primary drag: inject | Secondary: erase");
+    fn handle_sculpt_command(&mut self, cmd: &str, ctx: &egui::Context) {
+        match cmd {
+            "stamp_maze" => {
+                *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
+                    build_maze_rle(self.width, self.height);
+                let _ = self
+                    .worker
+                    .send_command(SimCommand::Custom("stamp_maze".to_string()));
+                self.pending_brush_frames = 4;
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+            "clear_mask" => {
+                self.mask_rle
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clear();
+                let _ = self.worker.send_command(SimCommand::ClearObstacles);
+                self.pending_brush_frames = 4;
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+            _ => {}
         }
     }
 
@@ -247,19 +261,22 @@ impl MorphogenesisTool {
                 self.apply_gray_scott_preset(0.030, 0.060, 0.2, 0.1, 1.0);
             }
         });
-        if let Some(u_data) = self.worker.latest_snapshot().as_ref().and_then(|s| {
-            s.structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<Vec<f64>>())
-                .map(|u| (u.clone(), s.width, s.height))
-        }) {
-            let splat_count =
-                crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
-                    &u_data.0, u_data.1, u_data.2,
-                )
-                .gaussians
-                .len();
-            ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
+        if let Some(snapshot) = self.worker.latest_snapshot() {
+            if let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
+                d.downcast_ref::<MorphoSnapshotData>()
+                    .map(|m| m.u_data.as_slice())
+                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+            }) {
+                let splat_count =
+                    crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
+                        u_data,
+                        snapshot.width,
+                        snapshot.height,
+                    )
+                    .gaussians
+                    .len();
+                ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
+            }
         }
         ui.separator();
         let _ = self.atlas.show_toggle_button(ui);
@@ -303,8 +320,6 @@ impl MorphogenesisTool {
                 ui.separator();
                 self.draw_parameter_sliders(ui);
                 ui.separator();
-                self.draw_brush_controls(ui);
-                ui.separator();
 
                 if let Some(action) = PlaybackTransport::from_worker_state(
                     "morphogenesis_transport",
@@ -331,12 +346,17 @@ impl MorphogenesisTool {
                     }
                 }
 
+                if let Some(cmd) =
+                    draw_morpho_sculpt_controls(ui, &mut self.brush_kit, &mut self.reagent_brush)
+                {
+                    self.handle_sculpt_command(cmd, &ctx);
+                }
                 self.draw_presets(ui);
             });
         });
     }
 
-    fn draw_field_plot(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn draw_field_plot(&mut self, ui: &mut egui::Ui) {
         let Some(texture) = self.texture.clone() else {
             render_empty_plot_guidance(
                 ui,
@@ -347,18 +367,16 @@ impl MorphogenesisTool {
 
         let w = self.width as f32;
         let h = self.height as f32;
-        let navigate = self.canvas_mode == CanvasInteractionMode::Navigate;
-        let brush_r = self.brush_radius;
-        let mut brush_cmd: Option<SimCommand> = None;
-
-        Plot::new("morphogenesis_plot")
+        let allow_pan = !self.brush_kit.is_sculpting();
+        let mut strokes = Vec::new();
+        let plot_resp = Plot::new("morphogenesis_plot")
             .data_aspect(1.0)
             .view_aspect(1.0)
             .show_grid(false)
             .show_axes([false, false])
-            .allow_drag(navigate)
-            .allow_zoom(navigate)
-            .allow_scroll(navigate)
+            .allow_drag(allow_pan)
+            .allow_zoom(allow_pan)
+            .allow_scroll(allow_pan)
             .show(ui, |plot_ui| {
                 plot_ui.image(PlotImage::new(
                     "morphogenesis_image",
@@ -366,48 +384,17 @@ impl MorphogenesisTool {
                     PlotPoint::new(f64::from(w) / 2.0, f64::from(h) / 2.0),
                     [w, h],
                 ));
-
-                if !navigate
-                    && plot_ui.response().hovered()
-                    && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
-                {
-                    if let Some(pos) = plot_ui.pointer_coordinate() {
-                        let cx = pos.x.floor() as i32;
-                        let cy = (f64::from(h) - pos.y).floor() as i32;
-                        if cx >= 0 && cx < self.width as i32 && cy >= 0 && cy < self.height as i32 {
-                            brush_cmd = Some(SimCommand::ApplyBrush {
-                                cx,
-                                cy,
-                                r: brush_r,
-                                is_obstacle: ctx.input(|i| i.pointer.primary_down()),
-                            });
-                        }
-                    }
-                }
+                strokes = self.brush_kit.sample_plot(
+                    plot_ui,
+                    [0.5, 0.5],
+                    [f64::from(w) - 0.5, f64::from(h) - 0.5],
+                    Some(BrushMode::Erase),
+                );
             });
-
-        if let Some(cmd) = brush_cmd {
-            if self.worker.send_command(cmd).is_ok() {
-                self.pending_brush_frames = 4;
-                ctx.request_repaint();
-            }
+        for stroke in strokes {
+            let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
+            self.on_brush(&ic);
         }
-    }
-
-    fn build_progressive_cartographer(
-        &self,
-        keys: (&'static str, &'static str),
-    ) -> std::sync::Arc<MorphogenesisCartographer> {
-        let p = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let theory_params = self.theory.theory_parameters();
-        std::sync::Arc::new(
-            MorphogenesisCartographer::new(&theory_params, keys, p.a, p.b, p.d_u, p.d_v, p.dt)
-                .with_kinetics(p.kinetics, p.f, p.k, p.auto_dt),
-        )
     }
 
     pub(crate) fn draw_canvas(&mut self, ui: &mut egui::Ui) {
@@ -415,7 +402,7 @@ impl MorphogenesisTool {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             self.sync_texture_from_snapshot(&ctx);
             if !self.atlas.is_visible() {
-                self.draw_field_plot(ui, &ctx);
+                self.draw_field_plot(ui);
                 return;
             }
             let (ax, ay) = self.active_axis_values();
@@ -449,18 +436,17 @@ impl MorphogenesisTool {
             let mut teleport = None;
             if ui.available_width() >= 620.0 {
                 ui.columns(2, |cols| {
-                    self.draw_field_plot(&mut cols[0], &ctx);
+                    self.draw_field_plot(&mut cols[0]);
                     teleport =
                         self.atlas
                             .show_panel(&mut cols[1], "morphogenesis", ax, ay, sig, build);
                 });
             } else {
-                let _ = self.build_progressive_cartographer(self.atlas.axis_keys());
                 teleport = self
                     .atlas
                     .show_panel(ui, "morphogenesis", ax, ay, sig, build);
                 ui.separator();
-                self.draw_field_plot(ui, &ctx);
+                self.draw_field_plot(ui);
             }
             if let Some(ev) = teleport {
                 self.apply_atlas_teleport(ev);
@@ -470,8 +456,8 @@ impl MorphogenesisTool {
     }
 
     #[cfg(test)]
-    pub(crate) fn initialize_system(
-        system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    pub(crate) fn initialize_system<D: SpatialDiffusion<2>>(
+        system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
         width: usize,
         height: usize,
     ) {

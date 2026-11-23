@@ -4,6 +4,7 @@
 
 use super::atlas::{classify_gray_scott, GrayScottRegime};
 use super::cartographer::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
+use super::runner::MorphoSnapshotData;
 use super::state::{
     ensure_nucleated_for_kinetics, initialize_schnakenberg_system, MorphogenesisKinetics,
     DEFAULT_GRAY_SCOTT_F, DEFAULT_GRAY_SCOTT_K,
@@ -63,11 +64,12 @@ impl MorphogenesisTool {
             return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
         }
         if let Some(snap) = self.worker.latest_snapshot() {
-            if let Some(u_data) = snap
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<Vec<f64>>())
-            {
+            let u_slice = snap.structured_data.as_ref().and_then(|d| {
+                d.downcast_ref::<MorphoSnapshotData>()
+                    .map(|m| m.u_data.as_slice())
+                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+            });
+            if let Some(u_data) = u_slice {
                 let v = grid_u_variance(u_data);
                 return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
             }
@@ -91,6 +93,7 @@ impl MorphogenesisTool {
                 self.width,
                 self.height,
             );
+            sr.enforce_mask_concentrations();
         }
         let _ = self
             .worker
@@ -131,6 +134,7 @@ impl MorphogenesisTool {
             sr.system.kinetics.b = p.b;
             sr.system.diffusion_coeffs = [p.d_u, p.d_v];
             initialize_schnakenberg_system(&mut sr.system, self.width, self.height);
+            sr.enforce_mask_concentrations();
         }
         let _ = self
             .worker

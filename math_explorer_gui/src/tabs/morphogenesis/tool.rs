@@ -1,4 +1,4 @@
-//! Interactive tool controller for 2D Schnakenberg Turing and Gray-Scott morphogenesis.
+//! Interactive tool controller for 2D Schnakenberg Turing, Gray-Scott, and microfluidic morphogenesis.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -6,19 +6,13 @@ use super::atlas::AtlasCache;
 use super::cartographer::MORPHO_ATLAS_AXIS_PAIRS;
 use super::presets::MorphogenesisTheory;
 use super::runner::{MorphogenesisRunner, MorphogenesisSharedParams};
-use super::state::{
-    initialize_for_kinetics, CanvasInteractionMode, MorphogenesisKinetics, MorphogenesisToolState,
-};
+use super::sculpt::default_morpho_brush_kit;
+use super::state::{MorphogenesisKinetics, MorphogenesisToolState};
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::FiniteStateGuard;
-use crate::framework::{ExportCapabilities, InteractiveTool};
+use crate::framework::{ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit};
 use eframe::egui::{self, ColorImage};
-use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::{
-    DiffusionCoeff, GrayScottKinetics, SchnakenbergKinetics, TuringSystem,
-};
-use math_explorer::math_kernel::types::{Dimension, StepSize};
 use scientific_metadata::theory::TheoryDescribable;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -30,6 +24,9 @@ pub struct MorphogenesisTool {
     /// Progressive 2D parameter regime atlas controller.
     pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+    pub(crate) mask_rle: Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+    pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) reagent_brush: bool,
     pub(crate) width: usize,
     pub(crate) height: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
@@ -40,8 +37,6 @@ pub struct MorphogenesisTool {
     pub(crate) pending_initial_start: bool,
     pub(crate) last_high_contrast: Option<bool>,
     pub(crate) atlas_cache: AtlasCache,
-    pub(crate) canvas_mode: CanvasInteractionMode,
-    pub(crate) brush_radius: i32,
     pub(crate) pending_brush_frames: u8,
     pub(crate) theory: MorphogenesisTheory,
 }
@@ -51,7 +46,8 @@ impl Default for MorphogenesisTool {
         let width = 100;
         let height = 100;
         let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams::default()));
-        let runner = Self::create_runner(&params, width, height);
+        let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
+        let runner = Self::create_masked_runner(&params, &mask_rle, width, height);
         let worker = BackgroundWorker::new(runner);
         let theory = MorphogenesisTheory::new(Arc::clone(&params));
 
@@ -59,6 +55,9 @@ impl Default for MorphogenesisTool {
             worker,
             atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
+            mask_rle,
+            brush_kit: default_morpho_brush_kit(),
+            reagent_brush: false,
             width,
             height,
             texture: None,
@@ -69,8 +68,6 @@ impl Default for MorphogenesisTool {
             pending_initial_start: true,
             last_high_contrast: None,
             atlas_cache: AtlasCache::default(),
-            canvas_mode: CanvasInteractionMode::Brush,
-            brush_radius: 4,
             pending_brush_frames: 0,
             theory,
         }
@@ -78,42 +75,21 @@ impl Default for MorphogenesisTool {
 }
 
 impl MorphogenesisTool {
+    #[cfg(test)]
     pub(crate) fn create_runner(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         width: usize,
         height: usize,
     ) -> MorphogenesisRunner {
-        let p = params.read().unwrap_or_else(|e| e.into_inner()).clone();
-        let kinetics = SchnakenbergKinetics { a: p.a, b: p.b };
-        let gray_scott = GrayScottKinetics::new(p.f, p.k);
-        let diffusion = FiniteDifference2D::new(
-            Dimension(width),
-            Dimension(height),
-            StepSize(1.0),
-            StepSize(1.0),
-        );
-        let mut system = TuringSystem::new_with_kinetics(
-            Dimension(width * height),
-            DiffusionCoeff(p.d_u),
-            DiffusionCoeff(p.d_v),
-            kinetics,
-            diffusion,
-        );
-        initialize_for_kinetics(&mut system, p.kinetics, width, height);
-        MorphogenesisRunner {
-            system,
-            kinetics: p.kinetics,
-            gray_scott,
-            params: Arc::clone(params),
-            width,
-            height,
-        }
+        let mask = Arc::new(std::sync::RwLock::new(Vec::new()));
+        Self::create_masked_runner(params, &mask, width, height)
     }
 
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
-        let runner = Self::create_runner(&self.params, self.width, self.height);
+        let runner =
+            Self::create_masked_runner(&self.params, &self.mask_rle, self.width, self.height);
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
         self.step_runner = None;
@@ -130,10 +106,11 @@ impl MorphogenesisTool {
     /// Resets the worker in place or respawns a disconnected worker in `Ready` state.
     pub fn reset(&mut self) {
         let params = Arc::clone(&self.params);
+        let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
         self.worker
-            .reset_or_respawn(|| Self::create_runner(&params, width, height));
+            .reset_or_respawn(|| Self::create_masked_runner(&params, &mask, width, height));
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
@@ -263,15 +240,25 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn step_simulation(&mut self) {
-        let runner = self
-            .step_runner
-            .get_or_insert_with(|| Self::create_runner(&self.params, self.width, self.height));
+        let runner = self.step_runner.get_or_insert_with(|| {
+            Self::create_masked_runner(&self.params, &self.mask_rle, self.width, self.height)
+        });
         for _ in 0..5 {
             runner.step();
         }
         let snap = runner.get_snapshot();
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+    }
+
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(stroke) = ctx.brush_stroke {
+            self.dispatch_brush_stroke(stroke, Some(&ctx.response.ctx));
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -326,6 +313,10 @@ impl InteractiveTool for MorphogenesisTool {
         }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
+        self.mask_rle
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.pending_initial_start.hash(&mut h);
         self.atlas.is_visible().hash(&mut h);
@@ -336,6 +327,11 @@ impl InteractiveTool for MorphogenesisTool {
     fn save_state(&self) -> Option<String> {
         let p = self
             .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let mask_rle = self
+            .mask_rle
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
@@ -355,6 +351,7 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
         })
@@ -382,32 +379,23 @@ impl InteractiveTool for MorphogenesisTool {
             p.dt = parsed.dt;
             p.auto_dt = parsed.auto_dt;
         }
+        let prev_had_mask = !self
+            .mask_rle
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_empty();
+        *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
         scientific_metadata::citation_registry::CitationRegistry::register(
             self.name().to_string(),
             self.theory.theory_citation(),
         );
-        if parsed.width != self.width || parsed.height != self.height {
-            self.width = parsed.width;
-            self.height = parsed.height;
-            let runner = Self::create_runner(&self.params, self.width, self.height);
-            self.worker = BackgroundWorker::new(runner);
-            self.stepped_pixels = None;
-            self.step_runner = None;
-            self.dirty = true;
-        } else {
-            self.reset();
-        }
-        if target_state == SimWorkerState::Running {
-            self.pending_initial_start = false;
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        } else {
-            self.pending_initial_start = next_pending;
-            if self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-        }
+        self.apply_loaded_dimensions_and_state(
+            parsed.width,
+            parsed.height,
+            prev_had_mask,
+            target_state,
+            next_pending,
+        );
         Ok(())
     }
 

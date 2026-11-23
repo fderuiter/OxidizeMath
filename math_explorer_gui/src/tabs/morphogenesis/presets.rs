@@ -370,6 +370,11 @@ impl MorphogenesisTool {
         };
         let pending_initial_start =
             target_state != SimWorkerState::Running && self.pending_initial_start;
+        let mask_rle = self
+            .mask_rle
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let (xk, yk) = self.atlas.axis_keys();
         let preset_state = MorphogenesisToolState {
             kinetics_mode: kinetics,
@@ -386,6 +391,7 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start,
+            mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
         };
