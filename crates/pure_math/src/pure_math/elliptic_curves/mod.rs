@@ -8,12 +8,31 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-#[derive(Error, Debug, PartialEq)]
+mod modular_fp;
+pub mod weierstrass;
+pub use weierstrass::{
+    AffinePointFp, ChordStepFp, HasseSweepEntry, MAX_WEIERSTRASS_PRIME, WeierstrassCurveFp,
+    mod_inv_fp, mod_pow_fp, sweep_hasse_bounds, tonelli_shanks_fp,
+};
+
+#[derive(Error, Clone, Debug, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum EllipticCurveError {
     #[error("The theorem applies only for i + j < psi(N).")]
     #[allow(missing_docs)]
     InvalidDegree,
+    #[error("Modulus p = {p} must be a prime in 5..=1000000000 for short Weierstrass curves.")]
+    #[allow(missing_docs)]
+    InvalidModulus { p: i64 },
+    #[error("Singular Weierstrass curve over F_{p}: 4*{a}^3 + 27*{b}^2 ≡ 0 (mod {p}).")]
+    #[allow(missing_docs)]
+    SingularCurve { p: i64, a: i64, b: i64 },
+    #[error("Point ({x}, {y}) does not satisfy y^2 ≡ x^3 + ax + b (mod {p}).")]
+    #[allow(missing_docs)]
+    PointNotOnCurve { x: i64, y: i64, p: i64 },
+    #[error("Caller buffer length {provided} is smaller than required {required} elements.")]
+    #[allow(missing_docs)]
+    BufferTooSmall { required: usize, provided: usize },
 }
 
 /// Calculates the prime factorization of a given number `n`.

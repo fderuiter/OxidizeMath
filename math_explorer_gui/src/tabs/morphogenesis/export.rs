@@ -6,9 +6,59 @@ use super::tool::{
     MorphogenesisBoundaryMode, MorphogenesisKineticsMode, MorphogenesisTool, MorphogenesisToolState,
 };
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
 use eframe::egui::ColorImage;
 use math_commons::math_kernel::marching_squares::ScalarField2D;
+
+impl FiniteStateGuard for MorphogenesisTool {
+    fn is_finite_state(&self) -> bool {
+        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        self.worker.diagnostic_report()
+    }
+
+    fn diverged(&self) -> bool {
+        !FiniteStateGuard::is_finite_state(self)
+    }
+
+    fn auto_scale_step_size(&mut self) {
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.dt = (p.dt * 0.5).max(1e-4);
+        drop(p);
+        self.reset_system();
+    }
+
+    fn clamp_parameters(&mut self) {
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.a = p.a.clamp(0.0, 1.0);
+        p.b = p.b.clamp(0.0, 2.0);
+        p.d_u = p.d_u.clamp(0.1, 5.0);
+        p.d_v = p.d_v.clamp(10.0, 200.0);
+        p.dt = p.dt.clamp(0.001, 0.1);
+        p.feed_rate = p.feed_rate.clamp(0.001, 0.12);
+        p.kill_rate = p.kill_rate.clamp(0.01, 0.12);
+        drop(p);
+        self.reset_system();
+    }
+
+    fn reset_parameters(&mut self) {
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.a = 0.1;
+        p.b = 0.9;
+        p.d_u = 1.0;
+        p.d_v = 100.0;
+        p.dt = 0.05;
+        p.kinetics = MorphogenesisKineticsMode::Schnakenberg;
+        p.boundary = MorphogenesisBoundaryMode::Neumann;
+        p.feed_rate = 0.037;
+        p.kill_rate = 0.060;
+        drop(p);
+        self.reset_system();
+    }
+}
 
 impl MorphogenesisTool {
     pub(super) fn build_export_raster_image(&self) -> Option<ColorImage> {
@@ -121,6 +171,7 @@ impl MorphogenesisTool {
                 p.kill_rate,
             )
         };
+        let (xk, yk) = self.atlas.axis_keys();
         MorphogenesisToolState {
             a,
             b,
@@ -136,13 +187,19 @@ impl MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         }
     }
 
     pub(super) fn apply_parsed_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let parsed: MorphogenesisToolState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
+        self.atlas
+            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.atlas.set_visible(parsed.atlas_visible);
         let target_state = if let Some(s) = parsed.state {
             s
         } else if parsed.paused.unwrap_or(false) {
@@ -199,6 +256,7 @@ impl MorphogenesisTool {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .boundary;
+        let (xk, yk) = self.atlas.axis_keys();
         let preset_state = MorphogenesisToolState {
             a,
             b,
@@ -214,6 +272,8 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);

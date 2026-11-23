@@ -19,6 +19,10 @@ pub(crate) enum ExportFormat {
     Heightmap16Png,
     /// Borderless power-of-two 16-bit tangent-space normal-map PNG (`.png`).
     NormalMapPng,
+    /// Standalone WebGL2 (`#version 300 es`) fragment shader (`.frag`).
+    GlslWebGl2,
+    /// Standalone Shadertoy (`mainImage`) fragment shader (`.frag`).
+    GlslShadertoy,
 }
 
 impl ExportFormat {
@@ -36,6 +40,26 @@ impl ExportFormat {
                 "heightmap16",
             ),
             Self::NormalMapPng => ("png", "Normal Map", "Normal Map PNG", "normal_map"),
+            Self::GlslWebGl2 => (
+                "frag",
+                "WebGL2 GLSL",
+                "WebGL2 GLSL Fragment Shader",
+                "webgl2",
+            ),
+            Self::GlslShadertoy => (
+                "frag",
+                "Shadertoy GLSL",
+                "Shadertoy Fragment Shader",
+                "shadertoy",
+            ),
+        }
+    }
+
+    const fn clipboard_item_noun(self) -> &'static str {
+        match self {
+            Self::Svg => "vector",
+            Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
+            _ => "dataset",
         }
     }
 
@@ -210,23 +234,6 @@ impl SimulationFramework {
         self.export_queue.push(format);
     }
 
-    /// Resolves export datasets for the active tool, falling back to `current_valid_plot_datasets`
-    /// when thread-local plot datasets were cleared prior to modal rendering or across panes.
-    pub(crate) fn export_datasets_with_fallback(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let Some(tool) = &self.active_tool else {
-            return Vec::new();
-        };
-        let datasets = tool.export_datasets();
-        if datasets.is_empty()
-            && self.sync_state.datasets_owner_tool == Some(tool.name())
-            && !self.current_valid_plot_datasets.is_empty()
-        {
-            self.current_valid_plot_datasets.clone()
-        } else {
-            datasets
-        }
-    }
-
     /// Queues a direct CSV dataset clipboard export for deferred end-of-frame dispatch.
     pub(crate) fn queue_clipboard_export(&mut self) {
         self.export_queue.queue_clipboard_export();
@@ -264,55 +271,9 @@ impl SimulationFramework {
             (ExportFormat::Gif, _) => self.dispatch_gif_export(),
             (ExportFormat::Heightmap16Png, _) => self.dispatch_heightmap16_export(),
             (ExportFormat::NormalMapPng, _) => self.dispatch_normal_map_export(),
-        }
-    }
-
-    fn dispatch_dataset_export(
-        &mut self,
-        format: ExportFormat,
-        target: ExportTarget,
-        ctx: Option<&egui::Context>,
-    ) {
-        let Some(tool) = &self.active_tool else {
-            return;
-        };
-        let caps = tool.export_capabilities();
-        if !caps.dataset {
-            self.set_export_status(ExportStatusSeverity::Warning, caps.dataset_disabled_reason);
-            return;
-        }
-        let tool_name = tool.name().to_string();
-        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
-            .export_datasets_with_fallback()
-            .into_iter()
-            .filter(|(_, pts)| pts.iter().any(|p| p[0].is_finite() && p[1].is_finite()))
-            .collect();
-        if !egui_plot::export_primitives::has_finite_dataset_points(&datasets) {
-            self.set_export_status(
-                ExportStatusSeverity::Error,
-                format!("No dataset points available to export from {tool_name}."),
-            );
-            return;
-        }
-        let content = match format {
-            ExportFormat::Csv => egui_plot::export::format_csv(&datasets),
-            ExportFormat::Json => egui_plot::export::format_json(&datasets),
-            _ => return,
-        };
-        match target {
-            ExportTarget::File => {
-                let filename = Self::build_export_filename(&tool_name, format);
-                let bytes = content.as_bytes().to_vec();
-                self.complete_file_export(
-                    format,
-                    &filename,
-                    &bytes,
-                    Some(content),
-                    format.filter_name(),
-                    "Export failed",
-                );
+            (ExportFormat::GlslWebGl2 | ExportFormat::GlslShadertoy, target) => {
+                self.dispatch_shader_export(req.format, target, ctx);
             }
-            ExportTarget::Clipboard => self.dispatch_clipboard_text_request(format, content, ctx),
         }
     }
 
@@ -323,15 +284,11 @@ impl SimulationFramework {
         ctx: Option<&egui::Context>,
     ) {
         let label = format.label();
-        let noun = if format == ExportFormat::Svg {
-            "vector"
-        } else {
-            "dataset"
-        };
+        let noun = format.clipboard_item_noun();
         let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
             writer(&content)
         } else {
-            self.write_system_text_clipboard(label, &content, ctx)
+            self.write_system_text_clipboard(label, noun, &content, ctx)
         };
         match res {
             Ok(()) => {
@@ -355,12 +312,13 @@ impl SimulationFramework {
     fn write_system_text_clipboard(
         &self,
         label: &'static str,
+        noun: &'static str,
         content: &str,
         ctx: Option<&egui::Context>,
     ) -> Result<(), String> {
         #[cfg(test)]
         {
-            let _ = (label, content, ctx);
+            let _ = (label, noun, content, ctx);
             Ok(())
         }
         #[cfg(not(test))]
@@ -372,7 +330,7 @@ impl SimulationFramework {
                     egui_ctx.data_mut(|d| {
                         let status = match cb {
                             Ok(()) => ActionBarExportStatus {
-                                message: format!("Copied {label} dataset to clipboard!"),
+                                message: format!("Copied {label} {noun} to clipboard!"),
                                 is_error: false,
                                 expires_at_time: None,
                             },

@@ -1,5 +1,9 @@
 # ADR 0008: `xtask lint-all` Command and Pre-commit Hook
 
+## Status
+
+Accepted
+
 ## Context
 To improve code quality enforcement and streamline local developer workflows, an `xtask lint-all` command was added alongside workspace formatting. Standardizing code formatting updated whitespace and line endings in core crates (`crates/`).
 

@@ -2,14 +2,17 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::preset::IsingInteractionMode;
 use super::{ising_spin_color, IsingModelTool, DEFAULT_ISING_SIZE};
 use eframe::egui;
 use egui_plot::export::ExportOptions;
 use egui_plot::export_primitives::{export_contour_layers_svg, SvgContourLayer, SvgContourPath};
 use math_commons::math_kernel::marching_squares::{MarchingSquares, ScalarField2D};
 use math_commons::math_kernel::types::flatten_2d_index;
+use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
+use nalgebra::DMatrix;
 
 impl IsingModelTool {
     fn resolve_spins(&self) -> Option<(usize, usize, Vec<i8>)> {
@@ -123,18 +126,24 @@ impl IsingModelTool {
 
     pub(super) fn step_ising_offscreen(&mut self) {
         let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
-        let j_scale = if self.j_coupling.abs() < 1e-6 {
-            1.0
-        } else {
-            self.j_coupling.abs()
-        };
-        let t_phys = self.temperature * j_scale / KB;
-        lattice.evolve(
-            self.steps_per_frame.clamp(100, 5000),
-            t_phys,
-            self.j_coupling,
-            self.h_field,
-        );
+        let steps = self.steps_per_frame.clamp(100, 5000);
+        match self.mode {
+            IsingInteractionMode::Ferromagnetic => {
+                let j_scale = if self.j_coupling.abs() < 1e-6 {
+                    1.0
+                } else {
+                    self.j_coupling.abs()
+                };
+                let t_phys = self.temperature.max(1e-3) * j_scale / KB;
+                lattice.evolve(steps, t_phys, self.j_coupling, self.h_field);
+            }
+            IsingInteractionMode::FermiGame => {
+                let mat = DMatrix::from_row_slice(2, 2, &self.game_payoffs);
+                if let Ok(payoff) = MatrixPayoff::new(mat) {
+                    lattice.evolve_fermi_game(steps, self.temperature, &payoff);
+                }
+            }
+        }
         let palette = self
             .params
             .read()

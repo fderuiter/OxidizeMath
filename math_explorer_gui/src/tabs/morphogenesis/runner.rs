@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
 use super::tool::{MorphogenesisBoundaryMode, MorphogenesisKineticsMode};
 use super::MorphogenesisTool;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
@@ -143,6 +144,19 @@ impl MorphogenesisRunner {
         self.system.diffusion_coeffs[1] = d_v;
         self.gray_scott_system.kinetics.f = feed_rate;
         self.gray_scott_system.kinetics.k = kill_rate;
+        self.reinit_on_kinetics_or_washout(kinetics, a, b, d_u, d_v, dt);
+        (dt.is_finite() && dt > 0.0).then_some(dt)
+    }
+
+    fn reinit_on_kinetics_or_washout(
+        &mut self,
+        kinetics: MorphogenesisKineticsMode,
+        a: f64,
+        b: f64,
+        d_u: f64,
+        d_v: f64,
+        dt: f64,
+    ) {
         if self.active_kinetics != kinetics {
             self.active_kinetics = kinetics;
             match kinetics {
@@ -157,8 +171,18 @@ impl MorphogenesisRunner {
                     );
                 }
             }
+            return;
         }
-        (dt.is_finite() && dt > 0.0).then_some(dt)
+        if kinetics == MorphogenesisKineticsMode::Schnakenberg
+            && dt.is_finite()
+            && dt > 0.0
+            && is_pattern_forming_regime(a, b, d_u, d_v, dt)
+        {
+            let var_u = grid_u_variance(self.system.u());
+            if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
+                MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+            }
+        }
     }
 
     pub(crate) fn active_concentration_slice(&self) -> &[f64] {

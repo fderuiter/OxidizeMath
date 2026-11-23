@@ -1,9 +1,11 @@
-# ADR 0035: Unified 2D Scalar-Field Contours and 16-Bit Texture Exports
+# ADR 0037: Unified 2D Scalar-Field Contours and 16-Bit Texture Exports
 
-- **Status:** Accepted
-- **Date:** 2026-11-22
+## Status
+
+Accepted — 2026-11-22
+
 - **Supersedes (partial):** [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md) (base64 raster `<image>` SVG fallback on 2D spatial tools)
-- **Relates to:** [ADR 0016](0016-delete-unreferenced-boundary-conditions.md) (`PeriodicBoundary` removal from `oxidize_core`)
+- **Relates to:** [ADR 0016](0016-delete-unreferenced-boundary-conditions.md) (`PeriodicBoundary` removal from `oxidize_core`), [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md) (`ExportCapabilities::with_shader` composition on `FractalViewer`)
 
 ## Context
 
@@ -27,7 +29,7 @@ Under [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), all seven 
    - Add `egui_plot/src/export_primitives/texture_maps.rs` reusing existing `png` `0.18` (zero new dependencies) to encode borderless power-of-two (`256`, `512`, `1024`, `2048`) 16-bit grayscale heightmaps (`png::ColorType::Grayscale`, `png::BitDepth::Sixteen`) and 16-bit RGB tangent-space normal maps (`encode_normal_map_png`) with periodic or clamped central differences and adjustable normal strength.
 5. **Unified Spatial Export Hooks (`math_explorer_gui`):**
    - Extend `InteractiveTool` with `export_scalar_field`, `export_scalar_field_at`, and `export_vector_svg`, extend `ExportCapabilities` with `scalar_field()`, `discrete_lattice()`, and `vector_grid()`, and add `ExportFormat::{Heightmap16Png, NormalMapPng}` plus `Copy SVG` clipboard dispatch in `SimulationFramework`.
-   - Wire continuous `ScalarField2D` contours and 16-bit textures on `MorphogenesisTool`, `FractalViewer`, `DoseCalculationTool`, and `LbmUnified`; discrete `<path>` geometry plus 16-bit textures on `IsingModelTool` and `PrimeSpiralWidget`; and crisp `<rect>` cell SVG plus scalar-field exports on `AttentionMapsTool`. This supersedes ADR 0024's base64 PNG-in-SVG fallback for all seven spatial tools while preserving the workspace audit invariant of `32` plot tools, `7` spatial figure tools, and `16` non-export tools.
+   - Wire continuous `ScalarField2D` contours and 16-bit textures on `MorphogenesisTool`, `FractalViewer` (composed with `.with_shader()`), `DoseCalculationTool`, and `LbmUnified`; discrete `<path>` geometry plus 16-bit textures on `IsingModelTool` and `PrimeSpiralWidget`; and crisp `<rect>` cell SVG plus scalar-field exports on `AttentionMapsTool`. This supersedes ADR 0024's base64 PNG-in-SVG fallback for all seven spatial tools while preserving the workspace audit invariant across all registered GUI tools (`37` plot tools, `7` spatial figure tools, and `16` non-export tools).
 
 ## Verification Commands
 
