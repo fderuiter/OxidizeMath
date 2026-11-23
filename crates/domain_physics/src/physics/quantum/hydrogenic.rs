@@ -1,11 +1,14 @@
 //! 3D Hydrogenic Eigenstates and Zero-Allocation Two-State Superposition Evolution.
 // [cite:quantum_mechanics]
 
-use crate::physics::quantum::hamiltonian::construct_two_state_eigen_hamiltonian;
-use crate::physics::quantum::schrodinger::{evolve_state_in_place, time_evolution_operator};
+use crate::physics::quantum::hamiltonian::construct_two_state_eigen_hamiltonian_into;
+use crate::physics::quantum::schrodinger::{
+    evolve_state_in_place, time_evolution_operator_2x2_into,
+};
 use crate::physics::quantum::types::{QuantumOperator, QuantumState};
+use core::f64::consts::FRAC_1_SQRT_2;
 use math_commons::math_kernel::types::flatten_3d_index;
-use nalgebra::DVector;
+use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
 use pure_math::pure_math::special_functions::legendre::real_spherical_harmonic;
 use pure_math::pure_math::special_functions::polynomials::associated_laguerre;
@@ -159,13 +162,9 @@ impl HydrogenicSuperposition3D {
         dt: f64,
     ) -> Self {
         let cap = max_grid_dim.max(grid_dim).pow(3);
-        let hamiltonian = construct_two_state_eigen_hamiltonian(
-            hydrogenic_energy_au(orbital_a.n),
-            hydrogenic_energy_au(orbital_b.n),
-            0.0,
-        );
-        let propagator = time_evolution_operator(&hamiltonian, dt, 1.0);
-        let inv_sqrt2 = std::f64::consts::FRAC_1_SQRT_2;
+        let hamiltonian = QuantumOperator::new(DMatrix::zeros(2, 2));
+        let propagator = QuantumOperator::new(DMatrix::zeros(2, 2));
+        let inv_sqrt2 = FRAC_1_SQRT_2;
         let state = QuantumState::new(DVector::from_vec(vec![
             Complex::new(inv_sqrt2, 0.0),
             Complex::new(inv_sqrt2, 0.0),
@@ -240,12 +239,13 @@ impl HydrogenicSuperposition3D {
     pub fn rebuild_propagator(&mut self, dt: f64, dipole_coupling: f64) {
         self.dt = dt;
         self.dipole_coupling = dipole_coupling;
-        self.hamiltonian = construct_two_state_eigen_hamiltonian(
+        construct_two_state_eigen_hamiltonian_into(
             hydrogenic_energy_au(self.orbital_a.n),
             hydrogenic_energy_au(self.orbital_b.n),
             dipole_coupling,
+            &mut self.hamiltonian,
         );
-        self.propagator = time_evolution_operator(&self.hamiltonian, dt, 1.0);
+        let _ = time_evolution_operator_2x2_into(&self.hamiltonian, dt, 1.0, &mut self.propagator);
     }
 
     /// Sets normalized superposition weights `mix` $\in [0, 1]$ (`0` = pure state 1, `1` = pure state 2) and phase.

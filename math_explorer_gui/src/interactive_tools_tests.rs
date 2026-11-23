@@ -466,8 +466,10 @@ mod tests {
     #[test]
     fn test_traceability_tab_state_roundtrip() {
         let _guard = crate::reflective_ui::tests::lock_test_mutex();
+        let manifest_dir_raw =
+            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
         let valid_repo_dir = oxidize_core::path_utils::normalize_path(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            std::path::Path::new(&manifest_dir_raw)
                 .canonicalize()
                 .expect("canonical manifest dir"),
         );

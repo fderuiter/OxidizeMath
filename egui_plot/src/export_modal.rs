@@ -312,7 +312,9 @@ fn render_modal_settings(
 
     ui.horizontal(|ui| {
         ui.label("GIF Frame Steps:");
-        ui.add(egui::Slider::new(bindings.gif_frames, 5..=60));
+        ui.add(
+            egui::Slider::new(bindings.gif_frames, 5..=60).clamping(egui::SliderClamping::Edits),
+        );
     });
 }
 
