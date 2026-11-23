@@ -1,4 +1,4 @@
-# ADR 0041: Checked Companion APIs, Typed Domain Errors, and Human-Readable Diagnostics
+# ADR 0042: Checked Companion APIs, Typed Domain Errors, and Human-Readable Diagnostics
 
 ## Status
 Accepted (extends [ADR 0027](0027-enforce-workspace-clippy-lints.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))

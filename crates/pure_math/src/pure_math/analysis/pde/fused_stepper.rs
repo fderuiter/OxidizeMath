@@ -1,5 +1,22 @@
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
+use math_commons::math_kernel::types::{StepSize, flatten_2d_index, flatten_3d_index};
+
+/// Six-neighbor 3D axial state values around a central grid cell.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StencilNeighbors3D<const N: usize> {
+    /// Neighbor at `(x - 1, y, z)` (clamped at `x == 0`).
+    pub xm: [f64; N],
+    /// Neighbor at `(x + 1, y, z)` (clamped at `x == width - 1`).
+    pub xp: [f64; N],
+    /// Neighbor at `(x, y - 1, z)` (clamped at `y == 0`).
+    pub ym: [f64; N],
+    /// Neighbor at `(x, y + 1, z)` (clamped at `y == height - 1`).
+    pub yp: [f64; N],
+    /// Neighbor at `(x, y, z - 1)` (clamped at `z == 0`).
+    pub zm: [f64; N],
+    /// Neighbor at `(x, y, z + 1)` (clamped at `z == depth - 1`).
+    pub zp: [f64; N],
+}
 
 /// Standard spatial numerical operators for fused stencil evaluations.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -9,6 +26,8 @@ pub struct StencilOperators {
     #[allow(missing_docs)]
     pub dy: StepSize,
     #[allow(missing_docs)]
+    pub dz: StepSize,
+    #[allow(missing_docs)]
     pub inv_dx: f64,
     #[allow(missing_docs)]
     pub inv_two_dx: f64,
@@ -16,6 +35,8 @@ pub struct StencilOperators {
     pub inv_dx_sq: f64,
     #[allow(missing_docs)]
     pub inv_dy_sq: f64,
+    #[allow(missing_docs)]
+    pub inv_dz_sq: f64,
 }
 
 impl StencilOperators {
@@ -26,7 +47,7 @@ impl StencilOperators {
     /// Returns [`MathError::StrictlyOutOfBounds`] when `dx <= 0.0` or non-finite.
     #[verified_engine::verified]
     pub fn try_new(dx: StepSize) -> Result<Self, MathError> {
-        Self::try_new_2d(dx, StepSize(1.0))
+        Self::try_new_3d(dx, StepSize(1.0), StepSize(1.0))
     }
 
     /// Creates 2D stencil operators after validating that `dx` and `dy` are finite and strictly positive.
@@ -36,31 +57,39 @@ impl StencilOperators {
     /// Returns [`MathError::StrictlyOutOfBounds`] when `dx <= 0.0`, `dy <= 0.0`, or either is non-finite.
     #[verified_engine::verified]
     pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, MathError> {
-        if !(*dx > 0.0 && dx.is_finite()) {
-            return Err(MathError::StrictlyOutOfBounds {
-                value: *dx,
-                min: 0.0,
-                max: f64::INFINITY,
-            });
-        }
-        if !(*dy > 0.0 && dy.is_finite()) {
-            return Err(MathError::StrictlyOutOfBounds {
-                value: *dy,
-                min: 0.0,
-                max: f64::INFINITY,
-            });
+        Self::try_new_3d(dx, dy, StepSize(1.0))
+    }
+
+    /// Creates 3D stencil operators after validating that `dx`, `dy`, and `dz` are finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when any step size is `<= 0.0` or non-finite.
+    #[verified_engine::verified]
+    pub fn try_new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Result<Self, MathError> {
+        for step in [*dx, *dy, *dz] {
+            if !(step > 0.0 && step.is_finite()) {
+                return Err(MathError::StrictlyOutOfBounds {
+                    value: step,
+                    min: 0.0,
+                    max: f64::INFINITY,
+                });
+            }
         }
         let inv_dx = 1.0 / *dx;
         let inv_two_dx = 1.0 / (2.0 * *dx);
         let inv_dx_sq = 1.0 / (*dx * *dx);
         let inv_dy_sq = 1.0 / (*dy * *dy);
+        let inv_dz_sq = 1.0 / (*dz * *dz);
         Ok(Self {
             dx,
             dy,
+            dz,
             inv_dx,
             inv_two_dx,
             inv_dx_sq,
             inv_dy_sq,
+            inv_dz_sq,
         })
     }
 
@@ -71,7 +100,7 @@ impl StencilOperators {
     /// Panics if `*dx <= 0.0` or non-finite. Prefer [`Self::try_new`].
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {
-        Self::new_2d(dx, StepSize(1.0))
+        Self::new_3d(dx, StepSize(1.0), StepSize(1.0))
     }
 
     /// Creates 2D stencil operators.
@@ -81,6 +110,16 @@ impl StencilOperators {
     /// Panics if `*dx <= 0.0`, `*dy <= 0.0`, or either is non-finite. Prefer [`Self::try_new_2d`].
     #[verified_engine::verified]
     pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
+        Self::new_3d(dx, dy, StepSize(1.0))
+    }
+
+    /// Precomputes 3D finite-difference reciprocal spacings for `(dx, dy, dz)`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any step size is `<= 0.0` or non-finite. Prefer [`Self::try_new_3d`].
+    #[verified_engine::verified]
+    pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
         assert!(
             *dx > 0.0 && dx.is_finite(),
             "Step size dx must be positive and non-zero"
@@ -89,7 +128,11 @@ impl StencilOperators {
             *dy > 0.0 && dy.is_finite(),
             "Step size dy must be positive and non-zero"
         );
-        Self::try_new_2d(dx, dy).expect("Step sizes validated positive")
+        assert!(
+            *dz > 0.0 && dz.is_finite(),
+            "Step size dz must be positive and non-zero"
+        );
+        Self::try_new_3d(dx, dy, dz).expect("Step sizes validated positive")
     }
 
     /// Central difference for 1st derivative (gradient): (u_{i+1} - u_{i-1}) / 2dx
@@ -113,6 +156,16 @@ impl StencilOperators {
         let d2x = (right - 2.0 * curr + left) * self.inv_dx_sq;
         let d2y = (down - 2.0 * curr + up) * self.inv_dy_sq;
         d2x + d2y
+    }
+
+    /// Central difference for 2nd derivative (7-point Laplacian) in 3D for `[xm, xp, ym, yp, zm, zp]`.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn central_diff_2nd_3d(&self, curr: f64, neighbors: [f64; 6]) -> f64 {
+        let d2x = (neighbors[1] - 2.0 * curr + neighbors[0]) * self.inv_dx_sq;
+        let d2y = (neighbors[3] - 2.0 * curr + neighbors[2]) * self.inv_dy_sq;
+        let d2z = (neighbors[5] - 2.0 * curr + neighbors[4]) * self.inv_dz_sq;
+        d2x + d2y + d2z
     }
 
     /// Upwind scheme for advection flux: evaluates d/dx (v * m) or similar upwind terms.
@@ -161,6 +214,18 @@ impl FusedStencilStepper {
         })
     }
 
+    /// Creates a 3D fused stencil stepper after validating `dx > 0.0`, `dy > 0.0`, and `dz > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when any step size is `<= 0.0` or non-finite.
+    #[verified_engine::verified]
+    pub fn try_new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new_3d(dx, dy, dz)?,
+        })
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {
@@ -174,6 +239,14 @@ impl FusedStencilStepper {
     pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
         Self {
             ops: StencilOperators::new_2d(dx, dy),
+        }
+    }
+
+    /// Constructs a 3D fused stencil stepper for `(dx, dy, dz)`.
+    #[verified_engine::verified]
+    pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
+        Self {
+            ops: StencilOperators::new_3d(dx, dy, dz),
         }
     }
 
@@ -330,64 +403,63 @@ impl FusedStencilStepper {
             }
         }
     }
+
+    /// Applies a 3D 7-point fused stencil pass over coupled species with zero-flux Neumann boundaries.
+    #[verified_engine::verified]
+    pub fn step_3d_coupled_neumann<const N: usize, F>(
+        &self,
+        dim: (usize, usize, usize),
+        src: [&[f64]; N],
+        dst: [&mut [f64]; N],
+        dt: f64,
+        dir: f64,
+        mut op: F,
+    ) where
+        F: FnMut(usize, [f64; N], StencilNeighbors3D<N>, &StencilOperators) -> [f64; N],
+    {
+        let (width, height, depth) = dim;
+        let slice_stride = width * height;
+        if slice_stride * depth == 0 {
+            return;
+        }
+        let get_state = |idx: usize| {
+            let mut val = [0.0; N];
+            for s in 0..N {
+                if idx < src[s].len() {
+                    val[s] = src[s][idx];
+                }
+            }
+            val
+        };
+        for z in 0..depth {
+            for y in 0..height {
+                for x in 0..width {
+                    let idx = flatten_3d_index(x, y, z, width, height);
+                    let neighbors = StencilNeighbors3D {
+                        xm: get_state(if x > 0 { idx - 1 } else { idx }),
+                        xp: get_state(if x + 1 < width { idx + 1 } else { idx }),
+                        ym: get_state(if y > 0 { idx - width } else { idx }),
+                        yp: get_state(if y + 1 < height { idx + width } else { idx }),
+                        zm: get_state(if z > 0 { idx - slice_stride } else { idx }),
+                        zp: get_state(if z + 1 < depth {
+                            idx + slice_stride
+                        } else {
+                            idx
+                        }),
+                    };
+                    let curr = get_state(idx);
+                    let rhs = op(idx, curr, neighbors, &self.ops);
+                    for s in 0..N {
+                        if idx < dst[s].len() {
+                            dst[s][idx] = curr[s] + dir * dt * rhs[s];
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_stencil_operators_precomputation() {
-        let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.25));
-        assert!((ops.inv_dx - 2.0).abs() < 1e-12);
-        assert!((ops.inv_two_dx - 1.0).abs() < 1e-12);
-        assert!((ops.inv_dx_sq - 4.0).abs() < 1e-12);
-        assert!((ops.inv_dy_sq - 16.0).abs() < 1e-12);
-
-        let ops_1d = StencilOperators::new(StepSize(2.0));
-        assert!((ops_1d.inv_dx - 0.5).abs() < 1e-12);
-        assert!((ops_1d.inv_two_dx - 0.25).abs() < 1e-12);
-        assert!((ops_1d.inv_dx_sq - 0.25).abs() < 1e-12);
-        assert!((ops_1d.inv_dy_sq - 1.0).abs() < 1e-12);
-    }
-
-    #[test]
-    #[should_panic(expected = "Step size dx must be positive and non-zero")]
-    fn test_stencil_operators_invalid_dx() {
-        StencilOperators::new(StepSize(0.0));
-    }
-
-    #[test]
-    #[should_panic(expected = "Step size dy must be positive and non-zero")]
-    fn test_stencil_operators_invalid_dy() {
-        StencilOperators::new_2d(StepSize(1.0), StepSize(-0.5));
-    }
-
-    #[test]
-    fn test_stencil_operator_evaluations() {
-        let dx = 0.2;
-        let dy = 0.4;
-        let ops = StencilOperators::new_2d(StepSize(dx), StepSize(dy));
-
-        let cd1 = ops.central_diff_1st(1.0, 3.0);
-        let cd1_expected = (3.0 - 1.0) / (2.0 * dx);
-        assert!((cd1 - cd1_expected).abs() < 1e-12);
-
-        let cd2 = ops.central_diff_2nd(1.0, 4.0, 9.0);
-        let cd2_expected = (9.0 - 2.0 * 4.0 + 1.0) / (dx * dx);
-        assert!((cd2 - cd2_expected).abs() < 1e-12);
-
-        let cd2_2d = ops.central_diff_2nd_2d(5.0, 2.0, 8.0, 3.0, 7.0);
-        let d2x_expected = (8.0 - 2.0 * 5.0 + 2.0) / (dx * dx);
-        let d2y_expected = (7.0 - 2.0 * 5.0 + 3.0) / (dy * dy);
-        assert!((cd2_2d - (d2x_expected + d2y_expected)).abs() < 1e-12);
-
-        let flux_pos = ops.upwind_flux(2.0, 1.0, 3.0, 5.0);
-        let flux_pos_expected = (3.0 * 2.0 - 1.0 * 2.0) / dx;
-        assert!((flux_pos - flux_pos_expected).abs() < 1e-12);
-
-        let flux_neg = ops.upwind_flux(-2.0, 1.0, 3.0, 5.0);
-        let flux_neg_expected = (5.0 * (-2.0) - 3.0 * (-2.0)) / dx;
-        assert!((flux_neg - flux_neg_expected).abs() < 1e-12);
-    }
-}
+#[path = "fused_stepper_tests.rs"]
+mod tests;
