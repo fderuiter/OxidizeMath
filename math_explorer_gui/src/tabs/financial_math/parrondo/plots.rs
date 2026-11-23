@@ -5,7 +5,7 @@ use crate::accessibility::{paint_canvas_focus_ring, register_canvas_accessibilit
 use crate::app::SemanticPalette;
 use eframe::egui;
 use eframe::egui::accesskit::Role;
-use egui_plot::{Bar, BarChart, Legend, Line, LineStyle, MarkerShape, Plot, PlotPoint, Points};
+use egui_plot::{Bar, BarChart, Legend, Line, LineStyle, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::markov::parrondo::{
     ParrondoPhaseGridConfig, ParrondoPhasePoint, ParrondoReport,
 };
@@ -66,13 +66,13 @@ pub(super) fn extract_phase_boundaries(
 }
 
 impl ParrondoParadoxTool {
-    pub(super) fn render_central_views(&self, ui: &mut egui::Ui) {
+    pub(super) fn render_central_views(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         if let Some(ref err) = self.error_msg {
             ui.colored_label(palette.error, err);
             return;
         }
-        let Some(ref report) = self.report else {
+        let Some(report) = self.report.clone() else {
             return;
         };
 
@@ -81,69 +81,53 @@ impl ParrondoParadoxTool {
             ParrondoViewMode::SplitOverview => {
                 let top_h = (avail_h * 0.48).max(160.0);
                 let bot_h = (avail_h - top_h - 16.0).max(150.0);
-                self.render_trajectories_card(ui, report, &palette, top_h);
+                self.render_trajectories_card(ui, &report, &palette, top_h);
                 ui.add_space(6.0);
                 ui.columns(2, |cols| {
-                    self.render_trap_occupancy_card(&mut cols[0], report, &palette, bot_h);
-                    self.render_phase_wedge_card(&mut cols[1], report, &palette, bot_h);
+                    self.render_trap_occupancy_card(&mut cols[0], &report, &palette, bot_h);
+                    self.render_phase_wedge_card(&mut cols[1], &report, &palette, bot_h);
                 });
             }
             ParrondoViewMode::WealthTrajectories => {
-                self.render_trajectories_card(ui, report, &palette, avail_h - 28.0);
+                self.render_trajectories_card(ui, &report, &palette, avail_h - 28.0);
             }
             ParrondoViewMode::TrapOccupancy => {
-                self.render_trap_occupancy_card(ui, report, &palette, avail_h - 28.0);
+                self.render_trap_occupancy_card(ui, &report, &palette, avail_h - 28.0);
             }
             ParrondoViewMode::PhaseWedge => {
-                self.render_phase_wedge_card(ui, report, &palette, avail_h - 28.0);
+                self.render_phase_wedge_card(ui, &report, &palette, avail_h - 28.0);
             }
         }
     }
 
+    fn render_kelly_badge_strip(&self, ui: &mut egui::Ui, sched: &str, palette: &SemanticPalette) {
+        ui.horizontal_wrapped(|ui| {
+            ui.strong("Wealth Trajectories & Markov Drift");
+            for (lbl, badge) in [
+                ("A", self.kelly_a),
+                ("B", self.kelly_b),
+                (sched, self.kelly_schedule),
+            ] {
+                let col = if badge.is_no_edge() {
+                    palette.error
+                } else {
+                    palette.success
+                };
+                ui.colored_label(col, format!("{lbl}: {}", badge.badge_text()));
+            }
+        });
+    }
+
     fn render_trajectories_card(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         report: &ParrondoReport,
         palette: &SemanticPalette,
         height: f32,
     ) {
         let sched = self.active_schedule.as_string();
-        ui.horizontal_wrapped(|ui| {
-            ui.strong("Wealth Trajectories & Markov Drift");
-            ui.colored_label(
-                if self.kelly_a.is_no_edge() {
-                    palette.error
-                } else {
-                    palette.success
-                },
-                format!("A: {}", self.kelly_a.badge_text()),
-            );
-            ui.colored_label(
-                if self.kelly_b.is_no_edge() {
-                    palette.error
-                } else {
-                    palette.success
-                },
-                format!("B: {}", self.kelly_b.badge_text()),
-            );
-            ui.colored_label(
-                if self.kelly_schedule.is_no_edge() {
-                    palette.error
-                } else {
-                    palette.success
-                },
-                format!("{sched}: {}", self.kelly_schedule.badge_text()),
-            );
-        });
+        self.render_kelly_badge_strip(ui, &sched, palette);
 
-        let plot_resp = Plot::new("parrondo_trajectories_plot")
-            .height(height.max(120.0))
-            .x_axis_label("Step t")
-            .y_axis_label("Expected / Mean Wealth W(t)")
-            .legend(Legend::default())
-            .show(ui, |plot_ui| {
-                self.draw_trajectory_series(plot_ui, palette, &sched);
-            });
         let summary = format!(
             "Step {} mean wealth: Game A {:.2}, Game B {:.2}, Mixture {:.2}, Schedule {} {:.2}; exact schedule drift {:+.4}",
             self.num_steps,
@@ -154,6 +138,33 @@ impl ParrondoParadoxTool {
             self.traj_schedule.last().map_or(0.0, |p| p.y),
             report.gain_schedule
         );
+        let Self {
+            traj_a,
+            traj_b,
+            traj_mix,
+            traj_schedule,
+            drift_a,
+            drift_b,
+            drift_mix,
+            drift_schedule,
+            callouts,
+            ..
+        } = self;
+        let plot_resp = Plot::new("parrondo_trajectories_plot")
+            .height(height.max(120.0))
+            .x_axis_label("Step t")
+            .y_axis_label("Expected / Mean Wealth W(t)")
+            .legend(Legend::default())
+            .show(ui, |plot_ui| {
+                draw_trajectory_lines(
+                    plot_ui,
+                    palette,
+                    &sched,
+                    [traj_a, traj_b, traj_mix, traj_schedule],
+                    [drift_a, drift_b, drift_mix, drift_schedule],
+                );
+                callouts.render_on_plot(plot_ui);
+            });
         register_canvas_accessibility(
             ui,
             &plot_resp.response,
@@ -162,55 +173,6 @@ impl ParrondoParadoxTool {
             Some(&summary),
         );
         paint_canvas_focus_ring(ui, &plot_resp.response);
-    }
-
-    fn draw_trajectory_series<'a>(
-        &'a self,
-        plot_ui: &mut egui_plot::PlotUi<'a>,
-        palette: &SemanticPalette,
-        sched: &str,
-    ) {
-        let dashed = LineStyle::Dashed { length: 8.0 };
-        let (col_a, col_b, col_mix, col_sched) = (
-            palette.series_color(0),
-            palette.series_color(1),
-            palette.series_color(2),
-            palette.series_color(3),
-        );
-        plot_ui.line(Line::new("Game A (Ensemble)", &self.traj_a[..]).color(col_a));
-        plot_ui.line(Line::new("Game B (Ensemble)", &self.traj_b[..]).color(col_b));
-        plot_ui.line(Line::new("50/50 Mix (Ensemble)", &self.traj_mix[..]).color(col_mix));
-        plot_ui.line(
-            Line::new(
-                format!("Schedule {sched} (Ensemble)"),
-                &self.traj_schedule[..],
-            )
-            .color(col_sched)
-            .width(2.2_f32),
-        );
-        plot_ui.line(
-            Line::new("Game A Markov Drift", &self.drift_a[..])
-                .color(col_a)
-                .style(dashed),
-        );
-        plot_ui.line(
-            Line::new("Game B Markov Drift", &self.drift_b[..])
-                .color(col_b)
-                .style(dashed),
-        );
-        plot_ui.line(
-            Line::new("50/50 Mix Markov Drift", &self.drift_mix[..])
-                .color(col_mix)
-                .style(dashed),
-        );
-        plot_ui.line(
-            Line::new(
-                format!("Schedule {sched} Markov Drift"),
-                &self.drift_schedule[..],
-            )
-            .color(col_sched)
-            .style(dashed),
-        );
     }
 
     fn render_trap_occupancy_card(
@@ -275,95 +237,50 @@ impl ParrondoParadoxTool {
         plot_ui
             .bar_chart(BarChart::new("Empirical Sched", bars_emp).color(palette.series_color(4)));
     }
+}
 
-    fn render_phase_wedge_card(
-        &self,
-        ui: &mut egui::Ui,
-        report: &ParrondoReport,
-        palette: &SemanticPalette,
-        height: f32,
-    ) {
-        ui.strong(format!(
-            "(p_A, ε) Paradox Phase Wedge ({})",
-            self.active_schedule.as_string()
-        ));
-        let active_pa = self.p_a_base - self.epsilon;
-        let active_pt = [PlotPoint::new(active_pa, self.epsilon)];
-        let plot_resp = Plot::new("parrondo_phase_wedge_plot")
-            .height(height.max(120.0))
-            .x_axis_label("Effective Game A Win Probability p_A = p_A,0 - ε")
-            .y_axis_label("Bias Perturbation ε")
-            .legend(Legend::default())
-            .show(ui, |plot_ui| {
-                self.draw_phase_wedge_series(plot_ui, palette, &active_pt);
-            });
-        let summary = format!(
-            "Active point p_A = {:.4}, epsilon = {:.4}, paradox = {}, wedge samples = {}",
-            active_pa,
-            self.epsilon,
-            report.is_paradox(),
-            self.paradox_scatter.len()
-        );
-        register_canvas_accessibility(
-            ui,
-            &plot_resp.response,
-            Role::GraphicsDocument,
-            "Parrondo Paradox p_A versus epsilon Phase Wedge",
-            Some(&summary),
-        );
-        paint_canvas_focus_ring(ui, &plot_resp.response);
-    }
-
-    fn draw_phase_wedge_series<'a>(
-        &'a self,
-        plot_ui: &mut egui_plot::PlotUi<'a>,
-        palette: &SemanticPalette,
-        active_pt: &'a [PlotPoint; 1],
-    ) {
-        plot_ui.points(
-            Points::new("Non-Paradox Grid", &self.non_paradox_scatter[..])
-                .color(palette.series_color(5))
-                .radius(2.2_f32),
-        );
-        plot_ui.points(
-            Points::new(
-                "Paradox Wedge (A<0, B<0, Sched>0)",
-                &self.paradox_scatter[..],
-            )
-            .color(palette.success)
-            .radius(4.0_f32),
-        );
-        for (name, pts, col, width) in [
-            (
-                "E[ΔW_A] = 0",
-                &self.boundary_game_a[..],
-                palette.series_color(0),
-                1.6_f32,
-            ),
-            (
-                "E[ΔW_B] = 0",
-                &self.boundary_game_b[..],
-                palette.series_color(1),
-                1.6_f32,
-            ),
-            (
-                "E[ΔW_sched] = 0",
-                &self.boundary_schedule[..],
-                palette.series_color(3),
-                2.0_f32,
-            ),
-        ] {
-            if !pts.is_empty() {
-                plot_ui.line(Line::new(name, pts).color(col).width(width));
-            }
-        }
-        plot_ui.points(
-            Points::new("Active (p_A, ε)", &active_pt[..])
-                .color(palette.accent)
-                .shape(MarkerShape::Diamond)
-                .radius(6.5_f32),
-        );
-    }
+fn draw_trajectory_lines<'a>(
+    plot_ui: &mut egui_plot::PlotUi<'a>,
+    palette: &SemanticPalette,
+    sched: &str,
+    trajs: [&'a [PlotPoint]; 4],
+    drifts: [&'a [PlotPoint]; 4],
+) {
+    let dashed = LineStyle::Dashed { length: 8.0 };
+    let cols = [
+        palette.series_color(0),
+        palette.series_color(1),
+        palette.series_color(2),
+        palette.series_color(3),
+    ];
+    plot_ui.line(Line::new("Game A (Ensemble)", trajs[0]).color(cols[0]));
+    plot_ui.line(Line::new("Game B (Ensemble)", trajs[1]).color(cols[1]));
+    plot_ui.line(Line::new("50/50 Mix (Ensemble)", trajs[2]).color(cols[2]));
+    plot_ui.line(
+        Line::new(format!("Schedule {sched} (Ensemble)"), trajs[3])
+            .color(cols[3])
+            .width(2.2_f32),
+    );
+    plot_ui.line(
+        Line::new("Game A Markov Drift", drifts[0])
+            .color(cols[0])
+            .style(dashed),
+    );
+    plot_ui.line(
+        Line::new("Game B Markov Drift", drifts[1])
+            .color(cols[1])
+            .style(dashed),
+    );
+    plot_ui.line(
+        Line::new("50/50 Mix Markov Drift", drifts[2])
+            .color(cols[2])
+            .style(dashed),
+    );
+    plot_ui.line(
+        Line::new(format!("Schedule {sched} Markov Drift"), drifts[3])
+            .color(cols[3])
+            .style(dashed),
+    );
 }
 
 // [cite:clinical_trials_statistics]

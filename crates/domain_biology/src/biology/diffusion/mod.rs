@@ -16,11 +16,13 @@ pub mod fd1d;
 #[allow(missing_docs)]
 pub mod fd2d;
 pub mod fd3d;
+pub mod laplace_beltrami;
 pub mod manifold;
 
 pub use fd1d::FiniteDifference1D;
 pub use fd2d::{CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole};
 pub use fd3d::FiniteDifference3D;
+pub use laplace_beltrami::LaplaceBeltramiDiffusion2D;
 pub use manifold::CotangentMeshDiffusion;
 use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 

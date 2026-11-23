@@ -7,8 +7,8 @@ use eframe::egui;
 /// Academic domains used for categorizing simulation modules in the persistent top navigation bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AcademicDomain {
-    PureMath,
     Physics,
+    PureMath,
     AppliedMath,
     Biology,
     Climate,
@@ -18,8 +18,8 @@ pub enum AcademicDomain {
 impl AcademicDomain {
     /// Ordered list of all academic domains.
     pub const ALL: &'static [AcademicDomain] = &[
-        AcademicDomain::PureMath,
         AcademicDomain::Physics,
+        AcademicDomain::PureMath,
         AcademicDomain::AppliedMath,
         AcademicDomain::Biology,
         AcademicDomain::Climate,
@@ -100,7 +100,7 @@ pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize
     }
 }
 
-/// Polls cross-domain handoff triggers (e.g., `AttractorPlotter -> VietorisRipsTool` and `RiemannianPdeStudio`).
+/// Polls cross-domain handoff triggers (e.g., `AttractorPlotter -> VietorisRipsTool`, `RiemannianPdeStudio`, and elliptic torus handoffs).
 pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Context) {
     #[cfg(feature = "pure_math")]
     {
@@ -142,9 +142,66 @@ pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Conte
                 }
             }
         }
+        if let Some(payload) =
+            crate::tabs::elliptic_curves::handoff::take_elliptic_torus_handoff(ctx)
+        {
+            apply_elliptic_torus_handoff(app, ctx, payload);
+        }
     }
     #[cfg(not(feature = "pure_math"))]
     let _ = (app, ctx);
+}
+
+#[cfg(feature = "pure_math")]
+fn apply_elliptic_torus_handoff(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    payload: crate::tabs::elliptic_curves::handoff::EllipticTorusHandoff,
+) {
+    use crate::tabs::elliptic_curves::chord_tangent_tool::WeierstrassPlaygroundTool;
+    use crate::tabs::elliptic_curves::handoff::{
+        apply_to_modular_invariants, apply_to_number_theory_torus, apply_to_weierstrass_playground,
+        EllipticHandoffTarget,
+    };
+    use crate::tabs::elliptic_curves::modular_invariants_tool::ModularInvariantsTool;
+    use crate::tabs::number_theory::elliptic_curve_playground::EllipticCurvePlayground;
+
+    let Some(tab_idx) = app
+        .tabs
+        .iter()
+        .position(|t| t.name() == payload.target.tab_name())
+    else {
+        return;
+    };
+    select_primary_tab(app, ctx, tab_idx);
+    let _ = app.tabs[tab_idx].select_tool_by_name(payload.target.tool_id());
+    if let Some(fw) = app.tabs[tab_idx].framework_mut() {
+        if let Some(any_tool) = fw.active_tool.as_mut().and_then(|t| t.as_any_mut()) {
+            match payload.target {
+                EllipticHandoffTarget::WeierstrassPlayground => {
+                    if let Some(t) = any_tool.downcast_mut::<WeierstrassPlaygroundTool>() {
+                        apply_to_weierstrass_playground(t, payload);
+                    }
+                }
+                EllipticHandoffTarget::ModularInvariants => {
+                    if let Some(t) = any_tool.downcast_mut::<ModularInvariantsTool>() {
+                        apply_to_modular_invariants(t, payload);
+                    }
+                }
+                EllipticHandoffTarget::NumberTheoryTorus => {
+                    if let Some(t) = any_tool.downcast_mut::<EllipticCurvePlayground>() {
+                        apply_to_number_theory_torus(t, payload);
+                    }
+                }
+            }
+        }
+        if let Some(active) = &fw.active_tool {
+            if let Some(saved) = active.save_state() {
+                fw.saved_tool_states
+                    .insert(active.name().to_string(), saved);
+            }
+        }
+    }
 }
 
 /// Explicitly updates Pane 0's primary simulation module (used by `View -> Primary Module`).

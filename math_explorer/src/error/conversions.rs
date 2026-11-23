@@ -62,6 +62,10 @@ impl_error_from!(@cfg "biology":
     ReactionDiffusionError => ReactionDiffusion,
 );
 
+impl_error_from!(@cfg "climate":
+    ClimateError => Climate,
+);
+
 impl_error_from!(@cfg "epidemiology":
     EpidemiologyDomainError => EpidemiologyDomain,
     EpidemiologyError => Epidemiology,
@@ -77,6 +81,7 @@ impl_error_from!(@cfg "physics":
     HighEnergyError => HighEnergy,
     NuclearError => Nuclear,
     RadarError => Radar,
+    SandpileError => Sandpile,
     SolidStateError => SolidState,
     StandardModelError => StandardModel,
     StatMechError => StatMech,
@@ -88,12 +93,16 @@ impl_error_from!(@cfg "pure_math":
     AnalysisError => Analysis,
     CopulaError => Copula,
     EllipticCurveError => EllipticCurve,
+    EloError => Elo,
     EvolutionError => Evolution,
     FractranError => Fractran,
     Glicko2Error => Glicko2,
+    HyperbolicError => Hyperbolic,
     KellyError => Kelly,
     LinearAlgebraError => LinearAlgebra,
+    MarketPricingError => MarketPricing,
     MarkovError => Markov,
+    MatchModelError => MatchModel,
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,
     OuError => Ou,

@@ -60,7 +60,7 @@ fn test_lenia_species_switching_and_gray_scott_modes_in_morphogenesis_tab() {
         spots_state.kinetics_mode,
         MorphogenesisKineticsMode::Schnakenberg
     );
-    assert_eq!(tab.export_config().a, 0.1);
+    assert_eq!(spots_state.a, 0.1);
 
     // Switch cleanly to LeniaTool and cycle Orbium, Geminium, Hydrogeminium, Scutium
     assert!(tab.select_tool_by_name("LeniaTool"));
@@ -188,6 +188,10 @@ fn test_lenia_exports_png_gif_csv_json() {
         )
         .expect("Geminium 64x64 starter");
 
+    framework.export_options.width = 320;
+    framework.export_options.height = 180;
+    framework.export_gif_frames = 4;
+
     for fmt in [
         ExportFormat::Png,
         ExportFormat::Gif,
@@ -199,6 +203,23 @@ fn test_lenia_exports_png_gif_csv_json() {
             framework.queue_export(fmt);
             framework.show(ctx, "biology");
         });
+        if fmt == ExportFormat::Gif {
+            for _ in 0..250 {
+                if framework.active_gif_progress().is_none() {
+                    break;
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                let _ = ctx.run(screen_input(Vec::new()), |ctx| {
+                    framework.show(ctx, "biology");
+                });
+            }
+            assert!(framework
+                .export_queue
+                .last_exported_bytes
+                .as_deref()
+                .is_some_and(|b| b.starts_with(b"GIF89a")));
+        }
         assert_eq!(
             framework.export_status_severity,
             ExportStatusSeverity::Success,

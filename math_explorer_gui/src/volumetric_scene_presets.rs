@@ -4,6 +4,11 @@
 // [cite:quantum_mechanics]
 // [cite:favorite_child]
 
+#[path = "volumetric_accretion_preset.rs"]
+mod accretion_preset;
+
+pub use accretion_preset::{build_relativistic_accretion_disk_scene, ACCRETION_WORLD_RS};
+
 use super::{extract_voxel_splats_into, VolumetricSplatWorkspace, MAX_DYNAMIC_SPLATS};
 use math_explorer::ai::gaussian_splatting::{Gaussian3D, Scene};
 use math_explorer::applied::isosurface::{Point3D, VoxelGrid};
@@ -16,13 +21,14 @@ use nalgebra::{Point3, UnitQuaternion, Vector3};
 use serde::{Deserialize, Serialize};
 
 /// Deterministic PCG-style PRNG used to seed reproducible initial perturbations across 2D/3D grids.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SimpleRng {
     state: u64,
 }
 
 impl SimpleRng {
     /// Creates a new deterministic PRNG seeded with `seed`.
-    pub fn new(seed: u64) -> Self {
+    pub const fn new(seed: u64) -> Self {
         Self { state: seed }
     }
 
@@ -124,6 +130,8 @@ pub enum VolumetricSplatPreset {
     HydrogenCone3dz2,
     /// Dynamic 3D Schnakenberg Turing reaction-diffusion gyroid cloud.
     TuringGyroid3d,
+    /// Relativistic Shakura-Sunyaev accretion disk & coronal funnel outside $3 R_s$.
+    RelativisticAccretionDisk,
 }
 
 impl VolumetricSplatPreset {
@@ -139,15 +147,17 @@ impl VolumetricSplatPreset {
             Self::HydrogenDipole1s2pz => "Quantum 1s + 2pz Dipole Cloud",
             Self::HydrogenCone3dz2 => "Quantum 3dz² Nodal Cloud",
             Self::TuringGyroid3d => "3D Turing Gyroid Morphogenesis",
+            Self::RelativisticAccretionDisk => "Relativistic Accretion Disk (3 R_s ISCO)",
         }
     }
 
     /// Ordered preset list for UI iteration.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Canonical,
         Self::HydrogenDipole1s2pz,
         Self::HydrogenCone3dz2,
         Self::TuringGyroid3d,
+        Self::RelativisticAccretionDisk,
     ];
 }
 
@@ -162,9 +172,13 @@ pub fn build_preset_scene_and_gradients(preset: VolumetricSplatPreset) -> (Scene
         }
         VolumetricSplatPreset::HydrogenCone3dz2 => {
             let a = OrbitalQuantumNumbers::clamped(3, 2, 0);
-            build_orbital_splat_scene(a, a, 0.0, 11.5, 1.75)
+            let b = OrbitalQuantumNumbers::clamped(3, 2, 0);
+            build_orbital_splat_scene(a, b, 0.0, 11.5, 1.75)
         }
         VolumetricSplatPreset::TuringGyroid3d => build_turing_gyroid_splat_scene(20, 1.75),
+        VolumetricSplatPreset::RelativisticAccretionDisk => {
+            build_relativistic_accretion_disk_scene()
+        }
     }
 }
 

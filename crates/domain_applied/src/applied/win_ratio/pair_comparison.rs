@@ -1,5 +1,36 @@
+use crate::applied::clinical_trials::types::ClinicalTrialError;
 use statrs::distribution::{ContinuousCDF, Normal};
 use std::marker::PhantomData;
+
+pub use super::censoring::{CensoredOutcome, RightCensoredComparator, TierCount};
+pub use super::u_statistic::{
+    SubjectMarginals, UnmatchedScratch, UnmatchedWinRatioSummary, compute_unmatched_u_statistics,
+};
+
+/// Per-tier win, loss, and unresolved tie counts in a hierarchical Win Ratio evaluation.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct TierOutcomeCounts {
+    /// Number of pairs won by the treatment group at this tier.
+    pub wins: usize,
+    /// Number of pairs lost by the treatment group at this tier.
+    pub losses: usize,
+    /// Number of pairs remaining tied after evaluating this tier.
+    pub ties: usize,
+}
+
+impl TierOutcomeCounts {
+    /// Constructs a new per-tier outcome count record.
+    #[verified_engine::verified]
+    pub fn new(wins: usize, losses: usize, ties: usize) -> Self {
+        Self { wins, losses, ties }
+    }
+
+    /// Returns the number of pairs decided (won or lost) at this tier.
+    #[verified_engine::verified]
+    pub fn decided(&self) -> usize {
+        self.wins + self.losses
+    }
+}
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[allow(missing_docs)]
@@ -55,12 +86,7 @@ impl<T: PartialOrd> OutcomeComparator<T> for LowerIsBetter {
     }
 }
 
-/// Strategy: Higher value is better, but only if the difference exceeds a threshold.
-///
-/// If `a - b > threshold`, outcome `a` is a Win.
-/// This is useful when small differences are considered clinically negligible (ties).
-///
-/// Note: This strategy requires `T` to be `f64` (or convertible).
+/// Strategy: Higher value is better, but only if the difference exceeds a threshold (`a - b > threshold`).
 pub struct ThresholdComparator {
     #[allow(missing_docs)]
     pub threshold: f64,
@@ -95,6 +121,32 @@ pub struct WinRatioAnalysis<T> {
     _marker: PhantomData<T>,
 }
 
+#[verified_engine::verified]
+fn validate_tier_inputs(
+    strategy_count: usize,
+    group1_len: usize,
+    group2_len: usize,
+    out_len: usize,
+) -> Result<(), ClinicalTrialError> {
+    if strategy_count == 0 {
+        return Err(ClinicalTrialError::InvalidData(
+            "At least one outcome comparator tier is required.".to_string(),
+        ));
+    }
+    if group1_len == 0 || group2_len == 0 {
+        return Err(ClinicalTrialError::InsufficientSampleSize {
+            required: 1,
+            actual: group1_len.min(group2_len),
+        });
+    }
+    if out_len < strategy_count {
+        return Err(ClinicalTrialError::InvalidData(
+            "Tier accumulator slice is smaller than configured tier count.".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// A strategy for pairing subjects between two groups for comparison.
 pub trait PairingStrategy<T> {
     #[verified_engine::verified]
@@ -105,6 +157,16 @@ pub trait PairingStrategy<T> {
         group1: &[Vec<T>],
         group2: &[Vec<T>],
     ) -> (i32, i32);
+
+    /// Evaluates hierarchical per-tier win, loss, and tie counts into a preallocated slice.
+    #[verified_engine::verified]
+    fn evaluate_tiers_into(
+        &self,
+        analysis: &WinRatioAnalysis<T>,
+        group1: &[Vec<T>],
+        group2: &[Vec<T>],
+        tier_counts: &mut [TierOutcomeCounts],
+    ) -> Result<(), ClinicalTrialError>;
 }
 
 /// Unmatched Pair comparison (All-Pairs).
@@ -130,6 +192,26 @@ impl<T> PairingStrategy<T> for UnmatchedPairing {
             }
         }
         (wins, losses)
+    }
+
+    #[verified_engine::verified]
+    fn evaluate_tiers_into(
+        &self,
+        analysis: &WinRatioAnalysis<T>,
+        group1: &[Vec<T>],
+        group2: &[Vec<T>],
+        tier_counts: &mut [TierOutcomeCounts],
+    ) -> Result<(), ClinicalTrialError> {
+        let n_tiers = analysis.tier_count();
+        validate_tier_inputs(n_tiers, group1.len(), group2.len(), tier_counts.len())?;
+        tier_counts[..n_tiers].fill(TierOutcomeCounts::default());
+        for subj1 in group1 {
+            for subj2 in group2 {
+                let _ =
+                    analysis.compare_subjects_into_tiers(subj1, subj2, &mut tier_counts[..n_tiers]);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -160,6 +242,30 @@ impl<T> PairingStrategy<T> for MatchedPairing {
         }
         (wins, losses)
     }
+
+    #[verified_engine::verified]
+    fn evaluate_tiers_into(
+        &self,
+        analysis: &WinRatioAnalysis<T>,
+        group1: &[Vec<T>],
+        group2: &[Vec<T>],
+        tier_counts: &mut [TierOutcomeCounts],
+    ) -> Result<(), ClinicalTrialError> {
+        let n_tiers = analysis.tier_count();
+        validate_tier_inputs(n_tiers, group1.len(), group2.len(), tier_counts.len())?;
+        if group1.len() != group2.len() {
+            return Err(ClinicalTrialError::InvalidData(format!(
+                "Groups must be of equal length for matched pairs, got {} and {}.",
+                group1.len(),
+                group2.len()
+            )));
+        }
+        tier_counts[..n_tiers].fill(TierOutcomeCounts::default());
+        for (subj1, subj2) in group1.iter().zip(group2.iter()) {
+            let _ = analysis.compare_subjects_into_tiers(subj1, subj2, &mut tier_counts[..n_tiers]);
+        }
+        Ok(())
+    }
 }
 
 impl<T> WinRatioAnalysis<T> {
@@ -172,6 +278,12 @@ impl<T> WinRatioAnalysis<T> {
         }
     }
 
+    /// Returns the number of configured hierarchical comparison tiers.
+    #[verified_engine::verified]
+    pub fn tier_count(&self) -> usize {
+        self.strategies.len()
+    }
+
     /// Adds a comparison strategy for the next outcome level.
     #[verified_engine::verified]
     pub fn add_strategy(mut self, strategy: Box<dyn OutcomeComparator<T>>) -> Self {
@@ -179,12 +291,20 @@ impl<T> WinRatioAnalysis<T> {
         self
     }
 
-    /// Compares two subjects outcome-by-outcome using the configured strategies.
+    /// Returns the number of configured priority tiers in this analysis.
     #[verified_engine::verified]
-    pub fn compare_subjects(&self, subject1: &[T], subject2: &[T]) -> ComparisonResult {
-        // Zip the outcomes with the strategies.
-        // If there are more outcomes than strategies, the extra outcomes are ignored (or we could panic/error).
-        // If there are fewer outcomes, we stop early.
+    #[must_use]
+    pub fn num_tiers(&self) -> usize {
+        self.tier_count()
+    }
+
+    /// Compares two subjects tier-by-tier, returning both the decision and the resolving tier index.
+    #[verified_engine::verified]
+    pub fn compare_subjects_with_tier(
+        &self,
+        subject1: &[T],
+        subject2: &[T],
+    ) -> (ComparisonResult, Option<usize>) {
         let limit = self
             .strategies
             .len()
@@ -194,13 +314,52 @@ impl<T> WinRatioAnalysis<T> {
         for i in 0..limit {
             let res = self.strategies[i].compare(&subject1[i], &subject2[i]);
             if res != ComparisonResult::Tie {
-                return res;
+                return (res, Some(i));
+            }
+        }
+        (ComparisonResult::Tie, None)
+    }
+
+    /// Compares two subjects outcome-by-outcome using the configured strategies.
+    #[verified_engine::verified]
+    pub fn compare_subjects(&self, subject1: &[T], subject2: &[T]) -> ComparisonResult {
+        self.compare_subjects_with_tier(subject1, subject2).0
+    }
+
+    /// Compares two subjects hierarchically while recording per-tier win, loss, and tie counts.
+    #[verified_engine::verified]
+    pub fn compare_subjects_into_tiers(
+        &self,
+        subject1: &[T],
+        subject2: &[T],
+        tier_counts: &mut [TierOutcomeCounts],
+    ) -> ComparisonResult {
+        let n_tiers = self.strategies.len().min(tier_counts.len());
+        for (i, counts) in tier_counts.iter_mut().enumerate().take(n_tiers) {
+            if i >= subject1.len() || i >= subject2.len() {
+                counts.ties += 1;
+                continue;
+            }
+            let res = self.strategies[i].compare(&subject1[i], &subject2[i]);
+            match res {
+                ComparisonResult::Win => {
+                    counts.wins += 1;
+                    return ComparisonResult::Win;
+                }
+                ComparisonResult::Loss => {
+                    counts.losses += 1;
+                    return ComparisonResult::Loss;
+                }
+                ComparisonResult::Tie => {
+                    counts.ties += 1;
+                }
             }
         }
         ComparisonResult::Tie
     }
 
     /// Evaluates pairs using the provided pairing strategy.
+    #[verified_engine::verified]
     pub fn evaluate_pairs<P: PairingStrategy<T>>(
         &self,
         group1: &[Vec<T>],
@@ -209,26 +368,41 @@ impl<T> WinRatioAnalysis<T> {
     ) -> (i32, i32) {
         strategy.evaluate(self, group1, group2)
     }
+
+    /// Evaluates per-tier win, loss, and tie counts into a caller-supplied preallocated slice.
+    #[verified_engine::verified]
+    pub fn evaluate_tiers_into<P: PairingStrategy<T>>(
+        &self,
+        group1: &[Vec<T>],
+        group2: &[Vec<T>],
+        strategy: &P,
+        tier_counts: &mut [TierOutcomeCounts],
+    ) -> Result<(), ClinicalTrialError> {
+        strategy.evaluate_tiers_into(self, group1, group2, tier_counts)
+    }
+
+    /// Evaluates fallible per-tier win, loss, and tie waterfall counts across two subject groups.
+    #[verified_engine::verified]
+    pub fn evaluate_tiers<P: PairingStrategy<T>>(
+        &self,
+        group1: &[Vec<T>],
+        group2: &[Vec<T>],
+        strategy: &P,
+    ) -> Result<Vec<TierOutcomeCounts>, ClinicalTrialError> {
+        let mut counts = vec![TierOutcomeCounts::default(); self.strategies.len()];
+        self.evaluate_tiers_into(group1, group2, strategy, &mut counts)?;
+        Ok(counts)
+    }
 }
 
 impl<T: PartialOrd + 'static> Default for WinRatioAnalysis<T> {
     #[verified_engine::verified]
     fn default() -> Self {
-        // Default behavior mimics the old `compare_outcomes`: HigherIsBetter for everything.
-        // However, since we don't know how many levels there are, we can't pre-populate.
-        // So the default behavior here is technically "No comparison".
-        // To truly mimic `compare_outcomes`, we need a strategy that applies to ALL levels dynamically,
-        // but our struct stores a `Vec` of strategies per level.
-        // So `Default` here is just an empty analysis.
         Self::new()
     }
 }
 
-/// Calculates the raw Win Ratio.
-///
-/// $$ WR = \frac{N_{wins}}{N_{losses}} $$
-///
-/// Returns `f64::INFINITY` if losses are zero.
+/// Calculates the raw Win Ratio `WR = N_wins / N_losses` (`f64::INFINITY` if `losses == 0`).
 #[verified_engine::verified]
 pub fn calculate_win_ratio(wins: i32, losses: i32) -> f64 {
     if losses == 0 {
@@ -251,19 +425,9 @@ pub struct WinRatioStats {
     pub p_value: f64,
 }
 
-/// Calculates 95% Confidence Intervals and P-values for the Win Ratio.
+/// Calculates 95% Confidence Intervals and P-values for the Win Ratio (`None` if total pairs is zero).
 ///
-/// Uses the normal approximation for the log-win-ratio.
-///
-/// # Returns
-///
-/// `None` if the total number of pairs is zero.
-///
-/// # Mathematical Details
-///
-/// The standard error is estimated as:
-/// $$ SE = \sqrt{\frac{p(1-p)}{N}} $$
-/// Where $p$ is the proportion of wins among untied pairs (simplified).
+/// Uses the normal approximation with standard error $SE = \sqrt{p(1-p)/N}$ where $p$ is the win proportion.
 #[verified_engine::verified]
 pub fn calculate_statistics(wins: i32, losses: i32) -> Option<WinRatioStats> {
     let total_pairs = wins + losses;

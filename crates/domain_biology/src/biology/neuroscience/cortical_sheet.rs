@@ -269,12 +269,8 @@ mod tests {
             tris.push([ring(i, nv - 2), 1, ring(i + 1, nv - 2)]);
         }
 
-        let white_surf = Surface {
-            vertices: white_verts.clone(),
-        };
-        let pial_surf = Surface {
-            vertices: pial_verts,
-        };
+        let white_surf = Surface::new(white_verts.clone(), tris.clone());
+        let pial_surf = Surface::new(pial_verts, tris.clone());
         let thickness_map = cortical_thickness_batch(&white_surf, &pial_surf);
         let lap = CotangentLaplacian::from_indexed(&white_verts, &tris);
         let mut runner = CorticalSheetRunner::new(lap, &thickness_map, 0.025, 0.25, -65.0);

@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::{ExportCapabilities, InteractiveTool};
+use crate::async_sim::atlas::ParameterAtlasController;
+use crate::framework::{CalloutManager, CalloutSpec, ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use math_explorer::applied::game_theory::equilibrium::{
     is_fixed_point, BestResponseCorrespondence, BoxSet, ConvexSet,
@@ -102,7 +103,6 @@ pub struct BraessNetworkParadoxTool {
     pub(super) state: BraessState,
     pub(super) metrics: BraessMetrics,
     pub(super) revision: u64,
-    pub(super) canvas_id: Option<egui::Id>,
     pub(super) dynamic_flow: [f64; 3],
     pub(super) curve_wardrop: Vec<[f64; 2]>,
     pub(super) curve_closed: Vec<[f64; 2]>,
@@ -111,6 +111,10 @@ pub struct BraessNetworkParadoxTool {
     pub(super) mfg_m0: Vec<[f64; 2]>,
     pub(super) mfg_m_mid: Vec<[f64; 2]>,
     pub(super) mfg_m_final: Vec<[f64; 2]>,
+    /// Progressive 2D parameter regime atlas controller.
+    pub atlas: ParameterAtlasController,
+    /// Plot callout overlay manager synchronized with stories, challenges, and atlas teleports.
+    pub callouts: CalloutManager,
 }
 
 fn route_costs(flow: [f64; 3], s: &BraessState, include_toll: bool) -> [f64; 3] {
@@ -123,12 +127,12 @@ fn route_costs(flow: [f64; 3], s: &BraessState, include_toll: bool) -> [f64; 3] 
     ]
 }
 
-fn avg_physical_latency(flow: [f64; 3], s: &BraessState) -> f64 {
+pub(super) fn avg_physical_latency(flow: [f64; 3], s: &BraessState) -> f64 {
     let c = route_costs(flow, s, false);
     (flow[0] * c[0] + flow[1] * c[1] + flow[2] * c[2]) / s.demand.max(1e-9)
 }
 
-fn solve_flows_for_demand(s: &BraessState, demand: f64) -> ([f64; 3], [f64; 3], f64) {
+pub(super) fn solve_flows_for_demand(s: &BraessState, demand: f64) -> ([f64; 3], [f64; 3], f64) {
     let closed_lat = 0.5 * s.congestion_slope * demand + s.bypass_latency;
     if !s.shortcut_open {
         let half = [0.5 * demand, 0.5 * demand, 0.0];
@@ -196,7 +200,6 @@ impl Default for BraessNetworkParadoxTool {
         let mut tool = Self {
             metrics: BraessMetrics::default(),
             revision: 1,
-            canvas_id: None,
             dynamic_flow: [0.5, 0.5, 0.0],
             curve_wardrop: Vec::new(),
             curve_closed: Vec::new(),
@@ -205,6 +208,11 @@ impl Default for BraessNetworkParadoxTool {
             mfg_m0: Vec::new(),
             mfg_m_mid: Vec::new(),
             mfg_m_final: Vec::new(),
+            atlas: ParameterAtlasController::new(vec![
+                ("demand", "shortcut_cost"),
+                ("demand", "shortcut_toll"),
+            ]),
+            callouts: CalloutManager::new(),
             state,
         };
         tool.recompute_all();
@@ -366,9 +374,6 @@ impl InteractiveTool for BraessNetworkParadoxTool {
     fn state_revision(&self) -> u64 {
         self.revision
     }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
-    }
     fn has_finite_parameters(&self) -> bool {
         self.state.validate().is_ok()
     }
@@ -417,6 +422,17 @@ impl InteractiveTool for BraessNetworkParadoxTool {
     fn step_simulation(&mut self) {
         self.state.demand = (self.state.demand + 0.05).min(2.0);
         self.recompute_all();
+    }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("wardrop_latency", self.metrics.wardrop_latency),
+            ("pigou_latency", self.metrics.pigou_latency),
+            ("closed_latency", self.metrics.closed_latency),
+            ("price_of_anarchy", self.metrics.price_of_anarchy),
+        ]
+    }
+    fn sync_callouts(&mut self, specs: &[CalloutSpec]) {
+        self.callouts.sync_specs(specs);
     }
 }
 

@@ -1,7 +1,8 @@
+use super::buckled_flow::{SurfaceTopology, detect_twisted_seam_map};
 use super::surface::{ParametricSurface, SurfaceAnalysis};
 
 /// Solves the Heat Equation $\frac{\partial u}{\partial t} = \alpha \Delta_S u$ on a parametric surface.
-/// Uses explicit Euler time-stepping with a discrete 5-point stencil for the Laplace-Beltrami operator.
+/// Uses explicit Euler time-stepping with a discrete divergence-form stencil for the Laplace-Beltrami operator.
 pub struct HeatEquationSolver<'a, S: ParametricSurface> {
     #[allow(missing_docs)]
     pub surface: &'a S,
@@ -17,6 +18,10 @@ pub struct HeatEquationSolver<'a, S: ParametricSurface> {
     pub range_u: (f64, f64),
     #[allow(missing_docs)]
     pub range_v: (f64, f64),
+    /// Boundary topology applied across parameter seams and polar caps.
+    pub topology: SurfaceTopology,
+    seam_fwd: Vec<usize>,
+    seam_rev: Vec<usize>,
 }
 
 impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
@@ -107,59 +112,114 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
             grid_res,
             range_u,
             range_v,
+            topology: SurfaceTopology::OpenNeumann,
+            seam_fwd: (0..nv).collect(),
+            seam_rev: (0..nv).collect(),
         }
     }
 
+    /// Configures intrinsic seam/polar boundary topology on this solver.
+    #[must_use]
     #[verified_engine::verified]
-    fn sample_clamped(&self, i: i32, j: i32) -> f64 {
+    pub fn with_topology(mut self, topology: SurfaceTopology) -> Self {
         let (nu, nv) = self.grid_res;
-        let i_idx = i.clamp(0, (nu - 1) as i32) as usize;
-        let j_idx = j.clamp(0, (nv - 1) as i32) as usize;
-        self.u_grid[i_idx][j_idx]
+        self.topology = topology;
+        if topology == SurfaceTopology::TwistedKlein {
+            let (fwd, rev) = detect_twisted_seam_map(self.surface, self.range_u, self.range_v, nv);
+            self.seam_fwd = fwd;
+            self.seam_rev = rev;
+        }
+        if topology == SurfaceTopology::PolarSphere && nu > 0 && nv >= 2 {
+            for pole_j in [0_usize, nv - 1] {
+                let cap_mean: f64 =
+                    (0..nu).map(|i| self.u_grid[i][pole_j]).sum::<f64>() / nu as f64;
+                for row in self.u_grid.iter_mut().take(nu) {
+                    row[pole_j] = cap_mean;
+                }
+            }
+        }
+        self
     }
 
     #[verified_engine::verified]
-    fn flux_u_at(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
+    fn grid_spacings(&self) -> (f64, f64) {
+        self.topology
+            .grid_spacings(self.range_u, self.range_v, self.grid_res.0, self.grid_res.1)
+    }
+
+    #[verified_engine::verified]
+    fn sample_cell(&self, i: i32, j: i32) -> f64 {
+        let (nu, nv) = (self.grid_res.0 as i32, self.grid_res.1 as i32);
+        let (wi, wj) = match self.topology {
+            SurfaceTopology::PeriodicTorus => {
+                (i.rem_euclid(nu) as usize, j.rem_euclid(nv) as usize)
+            }
+            SurfaceTopology::TwistedKlein => {
+                let base_j = j.rem_euclid(nv) as usize;
+                if i < 0 {
+                    ((i + nu) as usize, self.seam_rev[base_j])
+                } else if i >= nu {
+                    ((i - nu) as usize, self.seam_fwd[base_j])
+                } else {
+                    (i as usize, base_j)
+                }
+            }
+            SurfaceTopology::PolarSphere => {
+                (i.rem_euclid(nu) as usize, j.clamp(0, nv - 1) as usize)
+            }
+            SurfaceTopology::OpenNeumann => {
+                (i.clamp(0, nu - 1) as usize, j.clamp(0, nv - 1) as usize)
+            }
+        };
+        self.u_grid[wi][wj]
+    }
+
+    #[verified_engine::verified]
+    fn compute_flux_u(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
+        let nu = self.grid_res.0 as i32;
+        if self.topology == SurfaceTopology::OpenNeumann && (i_base < 0 || i_base + 1 >= nu) {
+            return 0.0;
+        }
         let u_half = self.range_u.0 + (i_base as f64 + 0.5) * du;
         let v_curr = self.range_v.0 + j_base as f64 * dv;
         let (e, f, g_metric) = self.surface.first_fundamental_form(u_half, v_curr);
-        let det_g = e * g_metric - f * f;
-        if det_g.abs() < 1e-12 {
-            return 0.0;
-        }
-        let sqrt_g = det_g.sqrt();
-        let f_u =
-            (self.sample_clamped(i_base + 1, j_base) - self.sample_clamped(i_base, j_base)) / du;
-        let f_v_i = (self.sample_clamped(i_base, j_base + 1)
-            - self.sample_clamped(i_base, j_base - 1))
+        let sqrt_g = (e * g_metric - f * f).max(1e-12).sqrt();
+        let f_u = (self.sample_cell(i_base + 1, j_base) - self.sample_cell(i_base, j_base)) / du;
+        let nv = self.grid_res.1;
+        let seam_reverses = nv >= 3 && (self.seam_fwd[1] + nv - self.seam_fwd[0]) % nv == nv - 1;
+        let v_sign = if self.topology == SurfaceTopology::TwistedKlein
+            && seam_reverses
+            && (i_base < 0 || i_base + 1 >= nu)
+        {
+            -1.0
+        } else {
+            1.0
+        };
+        let f_v_i = (self.sample_cell(i_base, j_base + 1) - self.sample_cell(i_base, j_base - 1))
             / (2.0 * dv);
-        let f_v_ip1 = (self.sample_clamped(i_base + 1, j_base + 1)
-            - self.sample_clamped(i_base + 1, j_base - 1))
+        let f_v_ip1 = v_sign
+            * (self.sample_cell(i_base + 1, j_base + 1) - self.sample_cell(i_base + 1, j_base - 1))
             / (2.0 * dv);
-        let f_v = 0.5 * (f_v_i + f_v_ip1);
-        (g_metric * f_u - f * f_v) / sqrt_g
+        (g_metric * f_u - f * 0.5 * (f_v_i + f_v_ip1)) / sqrt_g
     }
 
     #[verified_engine::verified]
-    fn flux_v_at(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
+    fn compute_flux_v(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
+        let nv = self.grid_res.1 as i32;
+        if self.topology == SurfaceTopology::OpenNeumann && (j_base < 0 || j_base + 1 >= nv) {
+            return 0.0;
+        }
         let u_curr = self.range_u.0 + i_base as f64 * du;
         let v_half = self.range_v.0 + (j_base as f64 + 0.5) * dv;
         let (e, f, g_metric) = self.surface.first_fundamental_form(u_curr, v_half);
-        let det_g = e * g_metric - f * f;
-        if det_g.abs() < 1e-12 {
-            return 0.0;
-        }
-        let sqrt_g = det_g.sqrt();
-        let f_v =
-            (self.sample_clamped(i_base, j_base + 1) - self.sample_clamped(i_base, j_base)) / dv;
-        let f_u_j = (self.sample_clamped(i_base + 1, j_base)
-            - self.sample_clamped(i_base - 1, j_base))
+        let sqrt_g = (e * g_metric - f * f).max(1e-12).sqrt();
+        let f_v = (self.sample_cell(i_base, j_base + 1) - self.sample_cell(i_base, j_base)) / dv;
+        let f_u_j = (self.sample_cell(i_base + 1, j_base) - self.sample_cell(i_base - 1, j_base))
             / (2.0 * du);
-        let f_u_jp1 = (self.sample_clamped(i_base + 1, j_base + 1)
-            - self.sample_clamped(i_base - 1, j_base + 1))
+        let f_u_jp1 = (self.sample_cell(i_base + 1, j_base + 1)
+            - self.sample_cell(i_base - 1, j_base + 1))
             / (2.0 * du);
-        let f_u = 0.5 * (f_u_j + f_u_jp1);
-        (e * f_v - f * f_u) / sqrt_g
+        (e * f_v - f * 0.5 * (f_u_j + f_u_jp1)) / sqrt_g
     }
 
     /// Advances the simulation by time step `dt`.
@@ -170,12 +230,16 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         if nu < 2 || nv < 2 {
             return;
         }
-        let du = (self.range_u.1 - self.range_u.0) / (nu as f64 - 1.0);
-        let dv = (self.range_v.1 - self.range_v.0) / (nv as f64 - 1.0);
+        let (du, dv) = self.grid_spacings();
+        let j_range = if self.topology == SurfaceTopology::PolarSphere {
+            1..nv.saturating_sub(1)
+        } else {
+            0..nv
+        };
 
         #[allow(clippy::needless_range_loop)]
         for i in 0..nu {
-            for j in 0..nv {
+            for j in j_range.clone() {
                 let u = self.range_u.0 + i as f64 * du;
                 let v = self.range_v.0 + j as f64 * dv;
                 let (e, f, g_metric) = self.surface.first_fundamental_form(u, v);
@@ -183,21 +247,39 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
                 let laplacian = if det_g.abs() < 1e-12 {
                     0.0
                 } else {
-                    let flux_u_plus = self.flux_u_at(i as i32, j as i32, du, dv);
-                    let flux_u_minus = self.flux_u_at(i as i32 - 1, j as i32, du, dv);
-                    let flux_v_plus = self.flux_v_at(i as i32, j as i32, du, dv);
-                    let flux_v_minus = self.flux_v_at(i as i32, j as i32 - 1, du, dv);
-                    let term1 = (flux_u_plus - flux_u_minus) / du;
-                    let term2 = (flux_v_plus - flux_v_minus) / dv;
+                    let flux_u_plus = self.compute_flux_u(i as i32, j as i32, du, dv);
+                    let flux_u_minus = self.compute_flux_u(i as i32 - 1, j as i32, du, dv);
+                    let flux_v_plus = self.compute_flux_v(i as i32, j as i32, du, dv);
+                    let flux_v_minus = self.compute_flux_v(i as i32, j as i32 - 1, du, dv);
                     let area = self.surface.area_element(u, v).max(1e-12);
-                    (term1 + term2) / area
+                    ((flux_u_plus - flux_u_minus) / du + (flux_v_plus - flux_v_minus) / dv) / area
                 };
-
                 self.next_grid[i][j] = self.u_grid[i][j] + dt * self.alpha * laplacian;
             }
         }
-
+        if self.topology == SurfaceTopology::PolarSphere && nv >= 3 {
+            self.step_polar_caps(dt, dv);
+        }
         std::mem::swap(&mut self.u_grid, &mut self.next_grid);
+    }
+
+    #[verified_engine::verified]
+    fn step_polar_caps(&mut self, dt: f64, dv: f64) {
+        let (nu, nv) = self.grid_res;
+        for (pole_j, ring_j, probe_v) in [
+            (0_usize, 1_usize, self.range_v.0 + 1e-4),
+            (nv - 1, nv - 2, self.range_v.1 - 1e-4),
+        ] {
+            let (_, _, g_mer) = self.surface.first_fundamental_form(self.range_u.0, probe_v);
+            let ring_mean: f64 =
+                (0..nu).map(|i| self.u_grid[i][ring_j]).sum::<f64>() / nu.max(1) as f64;
+            let pole_val = self.u_grid[0][pole_j];
+            let lap = 4.0 * (ring_mean - pole_val) / (g_mer.max(1e-6) * dv * dv);
+            let updated = pole_val + dt * self.alpha * lap;
+            for row in self.next_grid.iter_mut().take(nu) {
+                row[pole_j] = updated;
+            }
+        }
     }
 }
 

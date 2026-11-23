@@ -1,13 +1,17 @@
-// @explorer_feature = "pure_math"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod curvature_heatmap;
 pub mod custom_surface;
 pub mod export_utils;
+pub mod hyperbolic_geometry;
 pub mod riemannian_studio;
 pub mod surface_brush;
 pub mod surface_brush_kernel;
+#[cfg(feature = "biology")]
+pub mod surface_morphogenesis;
 pub mod surface_viewer;
 pub mod vietoris_rips;
 
@@ -54,6 +58,14 @@ impl ExplorerTab for GeometryTopologyTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "geometry_topology",
+        order: 22,
+        build: || Box::new(GeometryTopologyTab::default()),
     }
 }
 

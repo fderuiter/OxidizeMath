@@ -106,15 +106,85 @@ fn verify_shader_capability(
     true
 }
 
+fn verify_dataset_only_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
+    let mut framework = SimulationFramework::new("__audit_dataset_only__");
+    framework.active_tool = Some(tool);
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Csv, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Success,
+        "Deferred CSV failed for {meta_name}: {:?}",
+        framework.export_status_message
+    );
+    let csv = framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .unwrap_or_else(|| panic!("Missing CSV content for {meta_name}"));
+    assert!(
+        csv.starts_with("Dataset,X,Y\n") && csv.lines().count() >= 2,
+        "Invalid CSV content for {meta_name}: {csv}"
+    );
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Json, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Success,
+        "Deferred JSON failed for {meta_name}: {:?}",
+        framework.export_status_message
+    );
+    let json = framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .unwrap_or_else(|| panic!("Missing JSON content for {meta_name}"));
+    assert!(
+        json.contains("\"dataset\":") && !json.contains("NaN"),
+        "Invalid JSON content for {meta_name}: {json}"
+    );
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Png, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Warning,
+        "Expected Warning on PNG export for dataset_only tool {meta_name}"
+    );
+}
+
+fn verify_non_figure_tool(
+    meta_id: &str,
+    tool: Box<dyn InteractiveTool>,
+    caps: ExportCapabilities,
+    dataset_only_tool_count: &mut usize,
+    unsupported_tool_count: &mut usize,
+) {
+    assert!(
+        !caps.figure_disabled_reason.is_empty(),
+        "{meta_id} disables figure export without an explanatory reason"
+    );
+    if caps.dataset {
+        *dataset_only_tool_count += 1;
+        assert!(
+            caps.dataset_disabled_reason.is_empty(),
+            "{meta_id} advertises dataset export but has non-empty disabled reason"
+        );
+        verify_dataset_only_tool(meta_id, tool);
+    } else {
+        *unsupported_tool_count += 1;
+        assert!(
+            !caps.dataset_disabled_reason.is_empty(),
+            "{meta_id} disables dataset export without an explanatory reason"
+        );
+    }
+}
+
 #[test]
 fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
-    let mut plot_tool_count = 0usize;
-    let mut raster_tool_count = 0usize;
-    let mut unsupported_tool_count = 0usize;
-    let mut solid_3d_count = 0usize;
-    let mut splat_3d_count = 0usize;
-    let mut shader_tool_count = 0usize;
-    let mut non_shader_tool_count = 0usize;
+    let (mut plot_tool_count, mut raster_tool_count) = (0usize, 0usize);
+    let (mut dataset_only_tool_count, mut unsupported_tool_count) = (0usize, 0usize);
+    let (mut solid_3d_count, mut splat_3d_count) = (0usize, 0usize);
+    let (mut shader_tool_count, mut non_shader_tool_count) = (0usize, 0usize);
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         let tool = (meta.build)();
@@ -129,19 +199,16 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         } else {
             non_shader_tool_count += 1;
         }
-
         if !caps.figure {
-            unsupported_tool_count += 1;
-            assert!(
-                !caps.dataset,
-                "{} should disable dataset export when figure is unsupported",
-                meta.id
+            verify_non_figure_tool(
+                meta.id,
+                tool,
+                caps,
+                &mut dataset_only_tool_count,
+                &mut unsupported_tool_count,
             );
-            assert!(!caps.dataset_disabled_reason.is_empty());
-            assert!(!caps.figure_disabled_reason.is_empty());
             continue;
         }
-
         if caps.dataset {
             plot_tool_count += 1;
         } else {
@@ -150,16 +217,96 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 53, "Expected 53 Plot dataset+figure tools");
-    assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
-    assert_eq!(unsupported_tool_count, 16, "Expected 16 non-figure tools");
-    assert_eq!(solid_3d_count, 6, "Expected 6 solid 3D geometric tools");
-    assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
+    assert_expected_capability_counts([
+        plot_tool_count,
+        raster_tool_count,
+        dataset_only_tool_count,
+        unsupported_tool_count,
+        solid_3d_count,
+        splat_3d_count,
+        shader_tool_count,
+        non_shader_tool_count,
+    ]);
+}
+
+fn assert_expected_capability_counts(counts: [usize; 8]) {
+    let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
+    let has_riemannian = cfg!(feature = "pure_math");
+    let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
+    let extra = usize::from(has_riemannian) + usize::from(has_surface_morpho);
+    let expected_plot = 70 + extra;
+    let expected_solid = 7 + extra;
+    let expected_non_shader = 87 + extra;
     assert_eq!(
-        shader_tool_count, 3,
-        "Expected 3 analytical GLSL shader tools"
+        plot, expected_plot,
+        "Expected {expected_plot} Plot dataset+figure tools"
     );
-    assert_eq!(non_shader_tool_count, 73, "Expected 73 non-shader tools");
+    assert_eq!(raster, 8, "Expected 8 raster figure tools");
+    assert_eq!(dataset_only, 0, "Expected 0 dataset-only registered tools");
+    assert_eq!(unsupported, 12, "Expected 12 non-figure tools");
+    assert_eq!(
+        solid_3d, expected_solid,
+        "Expected {expected_solid} solid 3D geometric tools"
+    );
+    assert_eq!(splat_3d, 1, "Expected 1 3DGS splat PLY tool");
+    assert_eq!(shader, 3, "Expected 3 analytical GLSL shader tools");
+    assert_eq!(
+        non_shader, expected_non_shader,
+        "Expected {expected_non_shader} non-shader tools"
+    );
+}
+
+#[derive(Default)]
+struct DatasetOnlyFixtureTool;
+
+impl scientific_metadata::theory::TheoryDescribable for DatasetOnlyFixtureTool {
+    fn theory_description(&self) -> String {
+        "Dataset-only fixture".into()
+    }
+    fn phonetic_description(&self) -> String {
+        "Dataset-only fixture".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Fixture".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+impl InteractiveTool for DatasetOnlyFixtureTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+    fn name(&self) -> &'static str {
+        "DatasetOnlyFixture"
+    }
+    fn domain(&self) -> &'static str {
+        "financial_math"
+    }
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::dataset_only()
+    }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        vec![("FixtureSeries".into(), vec![[0.0, 1.0], [1.0, 2.0]])]
+    }
+    fn show_inside(&mut self, _ui: &mut egui::Ui) {}
+}
+
+#[test]
+fn test_dataset_only_capability_profile_exports_csv_json_and_warns_on_png() {
+    let tool: Box<dyn InteractiveTool> = Box::new(DatasetOnlyFixtureTool);
+    let caps = tool.export_capabilities();
+    let (mut dataset_only_count, mut unsupported_count) = (0usize, 0usize);
+    verify_non_figure_tool(
+        "DatasetOnlyFixtureTool",
+        tool,
+        caps,
+        &mut dataset_only_count,
+        &mut unsupported_count,
+    );
+    assert_eq!(dataset_only_count, 1);
+    assert_eq!(unsupported_count, 0);
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
@@ -224,14 +371,19 @@ fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
 }
 
 #[test]
-fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
+fn test_all_eight_3d_tools_deferred_stl_ply_payloads_and_live_region() {
     let solid_ids = [
         "SurfaceViewer",
         "CurvatureHeatmap",
+        #[cfg(feature = "pure_math")]
         "RiemannianPdeStudio",
+        #[cfg(all(feature = "pure_math", feature = "biology"))]
+        "SurfaceMorphogenesisTool",
         "AttractorPlotter",
         "CrystalViewer",
         "SpinVisualizer",
+        "CorticalMorphometryTool",
+        "VolumetricFieldStudioTool",
     ];
     for id in solid_ids {
         let meta = inventory::iter::<crate::framework::ToolMetadata>
@@ -245,15 +397,28 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         .into_iter()
         .find(|m| m.id == "Gaussian Splatting")
         .expect("Gaussian Splatting registered");
-    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
-    gs_fw.active_tool = Some((gs_meta.build)());
+    verify_splat_mode_ply_and_assertive_stl_obj_warnings((gs_meta.build)());
 
-    clear_test_announcements();
-    run_deferred_export_frame(&mut gs_fw, ExportFormat::Stl, false);
-    assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
-    assert!(all_announcements()
-        .iter()
-        .any(|(_, prio)| prio == "assertive"));
+    let mut vol_splat =
+        crate::tabs::quantum::volumetric_studio::VolumetricFieldStudioTool::default();
+    vol_splat.config.render_mode =
+        crate::tabs::quantum::volumetric_studio::state::VolumetricRenderMode::GaussianRadianceCloud;
+    vol_splat.refresh_zero_alloc();
+    verify_splat_mode_ply_and_assertive_stl_obj_warnings(Box::new(vol_splat));
+}
+
+fn verify_splat_mode_ply_and_assertive_stl_obj_warnings(tool: Box<dyn InteractiveTool>) {
+    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
+    gs_fw.active_tool = Some(tool);
+
+    for blocked_fmt in [ExportFormat::Stl, ExportFormat::Obj] {
+        clear_test_announcements();
+        run_deferred_export_frame(&mut gs_fw, blocked_fmt, false);
+        assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
+        assert!(all_announcements()
+            .iter()
+            .any(|(_, prio)| prio == "assertive"));
+    }
 
     clear_test_announcements();
     let slot_before = with_live_region(|r| r.active_slot);

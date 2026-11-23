@@ -11,15 +11,19 @@ pub mod camera;
 mod camera_3d_optout_tests;
 #[cfg(test)]
 mod canvas_accessibility_tests;
-#[allow(missing_docs)]
-pub mod command_palette;
+mod command_palette;
 #[allow(missing_docs)]
 pub mod framework;
 #[cfg(test)]
 mod framework_tests;
 #[cfg(test)]
 mod interactive_tools_tests;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "applied",
+    feature = "physics",
+    feature = "epidemiology"
+))]
 mod inverse_challenges_tests;
 #[cfg(all(test, feature = "physics", feature = "applied"))]
 mod inverse_solvers_tests;
@@ -29,6 +33,8 @@ mod main_wasm_tests;
 mod markup_tests;
 #[cfg(test)]
 mod modal_accessibility_tests;
+#[cfg(all(test, feature = "pure_math", feature = "applied"))]
+mod paradox_atlas_and_challenge_tests;
 pub mod plot3d_viewport;
 #[cfg(test)]
 mod plot_chrome_tests;
@@ -42,6 +48,8 @@ mod telemetry;
 pub mod url_state;
 #[cfg(any(feature = "ai", feature = "biology", feature = "physics"))]
 pub mod volumetric_scene;
+#[cfg(test)]
+mod walkthrough_tool_tests;
 pub mod web_io;
 #[cfg(target_arch = "wasm32")]
 mod webgl_recovery;
@@ -51,9 +59,12 @@ pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 use app::MathExplorerApp;
 
 #[cfg(test)]
+pub(crate) mod test_alloc;
+
+#[cfg(test)]
 #[global_allocator]
-static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
-    verified_engine::allocator::VerifiedAllocator;
+static TEST_ALLOCATOR: test_alloc::CountingVerifiedAllocator =
+    test_alloc::CountingVerifiedAllocator;
 
 #[cfg(test)]
 pub(crate) static VERIFIED_ALLOC_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());

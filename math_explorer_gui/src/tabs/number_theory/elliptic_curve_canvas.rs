@@ -21,8 +21,6 @@ pub struct TorusCanvasOutcome {
     pub arrow_delta: i32,
     /// Whether the user pressed `Q` while focused to toggle between selecting $P$ and $Q$.
     pub toggle_selector: bool,
-    /// Active canvas `Id` when this canvas currently holds keyboard focus.
-    pub focused_canvas_id: Option<egui::Id>,
 }
 
 /// View state borrowed by [`render_torus_canvas`].
@@ -185,10 +183,16 @@ pub fn render_torus_canvas(
     let palette = SemanticPalette::from_visuals(ui.visuals());
     let vp = TorusViewport::from_canvas(response.rect, model.p);
     paint_torus_backdrop(ui, &painter, &response, &vp, model, &palette);
+    paint_curve_elements(&painter, &vp, model, &palette, ui.visuals().text_color());
     if model.is_singular {
-        paint_singular_guardrail(&painter, &vp, model, &palette, ui.visuals().text_color());
-    } else {
-        paint_curve_elements(&painter, &vp, model, &palette, ui.visuals().text_color());
+        crate::tabs::elliptic_curves::singular_scene::paint_nt_torus_singular_overlay(
+            &painter,
+            |sx, sy| vp.to_screen(sx, sy),
+            vp.plot_rect,
+            (model.p, model.a, model.b),
+            &palette,
+            ui.visuals().text_color(),
+        );
     }
     paint_canvas_focus_ring(ui, &response);
     collect_torus_interactions(ui, &response, &vp, model.points)
@@ -229,13 +233,12 @@ fn paint_torus_backdrop(
         );
         idx += step;
     }
+    let mid_y = vp.p_f * 0.5_f32;
     painter.line_segment(
-        [
-            vp.to_screen(0.0_f32, vp.p_f * 0.5_f32),
-            vp.to_screen(vp.p_f, vp.p_f * 0.5_f32),
-        ],
+        [vp.to_screen(0.0_f32, mid_y), vp.to_screen(vp.p_f, mid_y)],
         Stroke::new(0.8_f32, palette.muted_text.gamma_multiply(0.35_f32)),
     );
+    let text_color = ui.visuals().text_color();
     painter.text(
         Pos2::new(
             response.rect.left() + 10.0_f32,
@@ -247,9 +250,9 @@ fn paint_torus_backdrop(
             model.p, model.a, model.b
         ),
         egui::FontId::proportional(13.0_f32),
-        ui.visuals().text_color(),
+        text_color,
     );
-    paint_infinity_badge(painter, vp, model, palette, ui.visuals().text_color());
+    paint_infinity_badge(painter, vp, model, palette, text_color);
 }
 
 fn paint_infinity_badge(
@@ -276,42 +279,6 @@ fn paint_infinity_badge(
         egui::Align2::CENTER_CENTER,
         "Identity O",
         egui::FontId::proportional(11.5_f32),
-        text_color,
-    );
-}
-
-fn paint_singular_guardrail(
-    painter: &egui::Painter,
-    vp: &TorusViewport,
-    model: &TorusCanvasModel<'_>,
-    palette: &SemanticPalette,
-    text_color: Color32,
-) {
-    let banner = vp
-        .plot_rect
-        .shrink2(Vec2::new(16.0_f32, vp.plot_rect.height() * 0.26_f32));
-    painter.rect_filled(banner, 6.0_f32, palette.error_banner_bg);
-    painter.rect_stroke(
-        banner,
-        6.0_f32,
-        Stroke::new(2.0_f32, palette.error_banner_stroke),
-        egui::StrokeKind::Inside,
-    );
-    painter.text(
-        Pos2::new(banner.center().x, banner.top() + 18.0_f32),
-        egui::Align2::CENTER_TOP,
-        format!("Singular Curve over F_{}", model.p),
-        egui::FontId::proportional(15.0_f32),
-        palette.error,
-    );
-    painter.text(
-        banner.center(),
-        egui::Align2::CENTER_CENTER,
-        format!(
-            "4a^3 + 27b^2 = 0 (mod {}) for a = {}, b = {}.\nChord/tangent slope division blocked; Hasse chart & exports stay active.",
-            model.p, model.a, model.b
-        ),
-        egui::FontId::proportional(12.0_f32),
         text_color,
     );
 }
@@ -357,12 +324,12 @@ fn paint_curve_elements(
     if let Some(step) = model.chord {
         paint_reflection_and_sum(painter, vp, &step, palette, text_color);
     }
-    for (pt, label, col, rad) in [
+    for (pt, label, color, radius) in [
         (model.point_p, "P", palette.accent, 6.2_f32),
         (model.point_q, "Q", palette.series[1], 5.6_f32),
         (model.scalar_kp, "[k]P", palette.series[4], 5.2_f32),
     ] {
-        paint_labeled_point(painter, vp, pt, label, col, text_color, rad);
+        paint_labeled_point(painter, vp, pt, label, color, text_color, radius);
     }
 }
 
@@ -449,7 +416,6 @@ fn collect_torus_interactions(
         }
     }
     if response.has_focus() {
-        outcome.focused_canvas_id = Some(response.id);
         ui.input(|i| {
             if i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::ArrowUp) {
                 outcome.arrow_delta = 1;

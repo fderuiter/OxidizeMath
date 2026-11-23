@@ -110,6 +110,8 @@ fn plot_3d_viewport_opts_out_of_2d_csv_import_and_paste() {
 fn all_six_plot_3d_viewport_tools_emit_zero_2d_pois_across_interactions() {
     let tool_ids = [
         "CurvatureHeatmap",
+        #[cfg(feature = "biology")]
+        "SurfaceMorphogenesisTool",
         "SurfaceViewer",
         "RiemannianPdeStudio",
         "CrystalViewer",

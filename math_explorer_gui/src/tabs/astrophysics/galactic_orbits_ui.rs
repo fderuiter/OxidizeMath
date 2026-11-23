@@ -27,6 +27,7 @@ impl GalacticOrbitSimulator {
                     self.cfg.is_playing = false;
                     self.advance_burst();
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.cfg.is_playing = false;
                     self.rebuild_system(0);
@@ -87,6 +88,7 @@ impl GalacticOrbitSimulator {
                     .text("Stream v_tan / v_circ"),
             )
             .changed();
+        rebuild |= self.render_bh_and_caustic_controls(ui);
         rebuild
     }
 
@@ -147,19 +149,24 @@ impl GalacticOrbitSimulator {
         rebuild
     }
 
-    pub(super) fn render_orbit_plot(&self, ui: &mut egui::Ui) {
+    pub(super) fn render_orbit_plot(&mut self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let (mut disk_pts, mut stream_pts) = (Vec::new(), Vec::new());
         for p in self.system.particles() {
+            if p.captured {
+                continue;
+            }
             match p.kind {
                 OrbitParticleKind::DiskTracer => disk_pts.push([p.x_kpc, p.y_kpc]),
                 OrbitParticleKind::TidalStream => stream_pts.push([p.x_kpc, p.y_kpc]),
             }
         }
+        let drag_lens = self.cfg.lens_overlay.enabled && self.cfg.lens_overlay.drag_on_canvas;
         let scale_ring = self.scale_ring_points(64);
-        Plot::new("galactic_orbits_midplane_plot")
+        let plot_resp = Plot::new("galactic_orbits_midplane_plot")
             .data_aspect(1.0)
             .view_aspect(1.35)
+            .allow_drag(!drag_lens)
             .x_axis_label("Galactocentric x (kpc)")
             .y_axis_label("Galactocentric y (kpc)")
             .legend(egui_plot::Legend::default())
@@ -169,40 +176,57 @@ impl GalacticOrbitSimulator {
                         .color(palette.info)
                         .style(LineStyle::Dashed { length: 6.0 }),
                 );
-                let mut trail_buf = [[0.0_f64; 2]; TRAIL_CAPACITY];
-                for (idx, p) in self.system.particles().iter().enumerate() {
-                    if idx % 2 != 0 && p.kind == OrbitParticleKind::DiskTracer {
-                        continue;
-                    }
-                    let n = self.system.copy_particle_trail(idx, &mut trail_buf);
-                    if n >= 2 {
-                        let col = if p.kind == OrbitParticleKind::DiskTracer {
-                            palette.axis_z
-                        } else {
-                            palette.axis_x
-                        };
-                        plot_ui.line(
-                            Line::new("", PlotPoints::new(trail_buf[..n].to_vec()))
-                                .color(col)
-                                .width(1.2_f32),
+                self.draw_orbit_trails(plot_ui, &palette);
+                if !self.cfg.central_bh.enabled {
+                    plot_ui.points(
+                        Points::new("Disk Tracer Stars", PlotPoints::new(disk_pts))
+                            .color(palette.accent)
+                            .radius(4.0_f32)
+                            .shape(MarkerShape::Circle),
+                    );
+                    if !stream_pts.is_empty() {
+                        plot_ui.points(
+                            Points::new("Tidal Stream Stars", PlotPoints::new(stream_pts))
+                                .color(palette.axis_x)
+                                .radius(4.5_f32)
+                                .shape(MarkerShape::Diamond),
                         );
                     }
                 }
-                plot_ui.points(
-                    Points::new("Disk Tracer Stars", PlotPoints::new(disk_pts))
-                        .color(palette.accent)
-                        .radius(4.0_f32)
-                        .shape(MarkerShape::Circle),
-                );
-                if !stream_pts.is_empty() {
-                    plot_ui.points(
-                        Points::new("Tidal Stream Stars", PlotPoints::new(stream_pts))
-                            .color(palette.axis_x)
-                            .radius(4.5_f32)
-                            .shape(MarkerShape::Diamond),
-                    );
-                }
+                self.draw_relativistic_orbit_overlays(plot_ui, &palette);
             });
+        if drag_lens && plot_resp.response.dragged() {
+            if let Some(pos) = plot_resp.response.interact_pointer_pos() {
+                let val = plot_resp.transform.value_from_position(pos);
+                self.drag_orbit_lens_to([val.x, val.y]);
+            }
+        }
+    }
+
+    fn draw_orbit_trails(
+        &self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        palette: &crate::app::SemanticPalette,
+    ) {
+        let mut trail_buf = [[0.0_f64; 2]; TRAIL_CAPACITY];
+        for (idx, p) in self.system.particles().iter().enumerate() {
+            if idx % 2 != 0 && p.kind == OrbitParticleKind::DiskTracer {
+                continue;
+            }
+            let n = self.system.copy_particle_trail(idx, &mut trail_buf);
+            if n >= 2 {
+                let col = if p.kind == OrbitParticleKind::DiskTracer {
+                    palette.axis_z
+                } else {
+                    palette.axis_x
+                };
+                plot_ui.line(
+                    Line::new("", PlotPoints::new(trail_buf[..n].to_vec()))
+                        .color(col)
+                        .width(1.2_f32),
+                );
+            }
+        }
     }
 }
 

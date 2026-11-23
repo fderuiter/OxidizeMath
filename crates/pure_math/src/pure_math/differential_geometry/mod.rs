@@ -1,3 +1,4 @@
+pub mod buckled_flow;
 pub mod cotangent_mesh;
 #[allow(missing_docs)]
 pub mod heat_equation;

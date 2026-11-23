@@ -109,7 +109,7 @@ fn unmodified_key_pressed(i: &egui::InputState, key: egui::Key, suppressed_mask:
 impl Camera3D {
     /// Handles canvas pointer, multi-touch, gizmo, and keyboard interactions for standalone rects.
     pub fn handle_interaction(&mut self, response: &egui::Response, ui: &egui::Ui) {
-        self.handle_interaction_with_plot(response, ui, None);
+        self.handle_interaction_with_plot(response, ui, None, true);
     }
 
     pub(crate) fn handle_interaction_with_plot(
@@ -117,8 +117,9 @@ impl Camera3D {
         response: &egui::Response,
         ui: &egui::Ui,
         plot_id: Option<egui::Id>,
+        allow_camera_drag: bool,
     ) {
-        self.handle_interaction_with_options(response, ui, plot_id, true);
+        self.handle_interaction_with_options(response, ui, plot_id, allow_camera_drag, true);
     }
 
     pub(crate) fn handle_interaction_with_options(
@@ -126,6 +127,7 @@ impl Camera3D {
         response: &egui::Response,
         ui: &egui::Ui,
         plot_id: Option<egui::Id>,
+        allow_camera_drag: bool,
         allow_primary_orbit: bool,
     ) {
         let prev = *self;
@@ -133,7 +135,7 @@ impl Camera3D {
         let is_dragging_callout = Self::is_callout_drag_active(response, ui, plot_id);
         let multi_touch = ui.input(|i| i.multi_touch());
 
-        if !gizmo_handled && !is_dragging_callout {
+        if allow_camera_drag && !gizmo_handled && !is_dragging_callout {
             self.apply_canvas_pointer(
                 response,
                 ui,
@@ -141,10 +143,13 @@ impl Camera3D {
                 plot_id.is_none(),
                 allow_primary_orbit,
             );
+        } else if !gizmo_handled && (response.clicked() || response.dragged()) {
+            response.request_focus();
         }
 
         self.apply_pointer_zoom(response, ui, multi_touch.is_some());
         self.register_camera_commands(ui);
+        self.apply_dispatched_camera_commands(ui.ctx());
         if response.has_focus() {
             self.handle_keyboard_interaction(ui, response.id);
         }
@@ -170,7 +175,7 @@ impl Camera3D {
         })
     }
 
-    fn pan_by_pixels(&mut self, delta: egui::Vec2) {
+    pub(super) fn pan_by_pixels(&mut self, delta: egui::Vec2) {
         let scale = if self.pan_units_per_px.is_finite() && self.pan_units_per_px > 0.0_f32 {
             self.pan_units_per_px
         } else {
@@ -331,80 +336,6 @@ impl Camera3D {
         self.yaw = (self.yaw - yaw_delta).clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
         self.pitch =
             (self.pitch - pitch_delta).clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
-    }
-
-    fn register_camera_commands(&self, ui: &egui::Ui) {
-        use egui_plot::commands::{CommandRegistryData, CommandTrigger};
-        let key_commands = [
-            (egui::Key::W, "Pitch Up", "Rotate camera pitch upwards"),
-            (egui::Key::S, "Pitch Down", "Rotate camera pitch downwards"),
-            (egui::Key::A, "Yaw Left", "Rotate camera yaw left"),
-            (egui::Key::D, "Yaw Right", "Rotate camera yaw right"),
-            (egui::Key::Q, "Zoom Out", "Zoom camera out"),
-            (egui::Key::E, "Zoom In", "Zoom camera in"),
-            (
-                egui::Key::Num1,
-                "Snap to X-Axis View",
-                "Orient camera along X-axis (YZ plane)",
-            ),
-            (
-                egui::Key::Num2,
-                "Snap to Y-Axis View",
-                "Orient camera along Y-axis (XZ plane)",
-            ),
-            (
-                egui::Key::Num3,
-                "Snap to Z-Axis View",
-                "Orient camera along Z-axis (XY plane)",
-            ),
-            (
-                egui::Key::Num4,
-                "Snap to Isometric View",
-                "Orient camera to isometric 3D pose",
-            ),
-            (
-                egui::Key::P,
-                "Toggle Projection",
-                "Switch between parallel and perspective 3D projection",
-            ),
-            (
-                egui::Key::R,
-                "Reset View",
-                "Reset camera orientation, pan, projection, and zoom",
-            ),
-        ];
-        let ctx = ui.ctx();
-        for (key, name, desc) in key_commands {
-            CommandRegistryData::register(
-                ctx,
-                name,
-                desc,
-                CommandTrigger::Key(key),
-                true,
-                "Camera 3D",
-            );
-        }
-        Self::register_pan_commands(ctx);
-    }
-
-    fn register_pan_commands(ctx: &egui::Context) {
-        use egui_plot::commands::{CommandRegistryData, CommandTrigger};
-        let pan_commands = [
-            (egui::Key::W, "Pan Up", "Pan 3D viewport upwards"),
-            (egui::Key::S, "Pan Down", "Pan 3D viewport downwards"),
-            (egui::Key::A, "Pan Left", "Pan 3D viewport left"),
-            (egui::Key::D, "Pan Right", "Pan 3D viewport right"),
-        ];
-        for (key, name, desc) in pan_commands {
-            CommandRegistryData::register(
-                ctx,
-                name,
-                desc,
-                CommandTrigger::Shortcut(egui::Modifiers::SHIFT, key),
-                true,
-                "Camera 3D",
-            );
-        }
     }
 
     /// Renders side-panel controls for yaw, pitch, zoom, projection mode, and view reset.

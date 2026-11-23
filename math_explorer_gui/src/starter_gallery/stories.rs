@@ -125,6 +125,27 @@ pub fn get_goal_challenges_for_domain(domain: &str) -> Vec<&'static GoalChalleng
     out
 }
 
+/// Returns all registered guided stories across every domain, sorted deterministically.
+#[must_use]
+pub fn get_all_stories() -> Vec<&'static PresetStoryMetadata> {
+    let mut out: Vec<&'static PresetStoryMetadata> = inventory::iter::<PresetStoryMetadata>
+        .into_iter()
+        .filter(|s| !s.steps.is_empty())
+        .collect();
+    out.sort_by_key(|s| (s.title, s.id));
+    out
+}
+
+/// Returns all registered playable AST goal challenges across every domain, sorted deterministically.
+#[must_use]
+pub fn get_all_goal_challenges() -> Vec<&'static GoalChallengeMetadata> {
+    let mut out: Vec<&'static GoalChallengeMetadata> = inventory::iter::<GoalChallengeMetadata>
+        .into_iter()
+        .collect();
+    out.sort_by_key(|c| (c.title, c.id));
+    out
+}
+
 /// Converts a [`PresetStoryMetadata`] entry into a [`StarterCard`].
 #[must_use]
 pub fn story_to_starter_card(s: &PresetStoryMetadata) -> StarterCard {

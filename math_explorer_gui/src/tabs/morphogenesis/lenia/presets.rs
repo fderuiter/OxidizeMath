@@ -2,13 +2,15 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::framework::MAX_SYNTHESIZED_PARAMS;
+use math_commons::ast::{parse_equation, CompiledExpr};
 use math_explorer::biology::lenia::{
     GrowthParams, LeniaSpecies, MAX_GRID_SIZE, MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MIN_GRID_SIZE,
     MIN_KERNEL_RADIUS,
 };
-use scientific_metadata::theory::TheoryDescribable;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub(crate) const fn default_brush_radius() -> f64 {
     4.0
@@ -45,6 +47,18 @@ pub struct LeniaToolState {
     /// Whether continuous stepping is actively running.
     #[serde(default)]
     pub playing: bool,
+    /// Optional custom 1D growth formula `G(u)` overriding Gaussian growth.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub growth_expr: Option<String>,
+    /// Synthesized free-parameter values for `growth_expr`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub growth_params: BTreeMap<String, f64>,
+    /// Optional custom 1D radial kernel formula `K(r)` overriding concentric bump shells.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kernel_expr: Option<String>,
+    /// Synthesized free-parameter values for `kernel_expr`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub kernel_params: BTreeMap<String, f64>,
 }
 
 impl LeniaToolState {
@@ -71,7 +85,8 @@ impl LeniaToolState {
                 self.grid_size, MIN_GRID_SIZE, MAX_GRID_SIZE
             ));
         }
-        self.validate_rings()
+        self.validate_rings()?;
+        self.validate_sandboxes()
     }
 
     fn validate_rings(&self) -> Result<(), String> {
@@ -96,6 +111,56 @@ impl LeniaToolState {
         }
         Ok(())
     }
+
+    fn validate_sandboxes(&self) -> Result<(), String> {
+        if let Some(expr) = &self.growth_expr {
+            validate_1d_formula("growth_expr", expr, "u")?;
+        }
+        if let Some(expr) = &self.kernel_expr {
+            validate_1d_formula("kernel_expr", expr, "r")?;
+        }
+        validate_param_map("growth_params", &self.growth_params)?;
+        validate_param_map("kernel_params", &self.kernel_params)
+    }
+}
+
+fn validate_1d_formula(field: &str, raw: &str, axis: &str) -> Result<(), String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.len() > 256 {
+        return Err(format!(
+            "Lenia {field} must be non-empty and at most 256 characters"
+        ));
+    }
+    let (_, ast) = parse_equation(trimmed).map_err(|e| {
+        format!(
+            "Invalid Lenia {field}: {}",
+            e.user_message_for_input(trimmed)
+        )
+    })?;
+    let compiled = CompiledExpr::compile_with_vars(&ast, &[axis])
+        .map_err(|e| format!("Invalid Lenia {field}: {e}"))?;
+    if compiled.param_names().len() > MAX_SYNTHESIZED_PARAMS {
+        return Err(format!(
+            "Lenia {field} defines too many parameters ({} > {MAX_SYNTHESIZED_PARAMS})",
+            compiled.param_names().len()
+        ));
+    }
+    Ok(())
+}
+
+fn validate_param_map(field: &str, map: &BTreeMap<String, f64>) -> Result<(), String> {
+    if map.len() > MAX_SYNTHESIZED_PARAMS {
+        return Err(format!(
+            "Lenia {field} exceeds maximum parameter count ({MAX_SYNTHESIZED_PARAMS})"
+        ));
+    }
+    for (key, &val) in map {
+        if key.is_empty() || key.len() > 32 || !val.is_finite() || !(-100.0..=100.0).contains(&val)
+        {
+            return Err(format!("Invalid Lenia {field} entry '{key}' = {val}"));
+        }
+    }
+    Ok(())
 }
 
 /// JSON preset envelope for canonical `Orbium` glider in Lenia Studio.
@@ -227,7 +292,7 @@ pub struct LeniaTheory {
 
 impl TheoryDescribable for LeniaTheory {
     fn theory_description(&self) -> String {
-        "Lenia generalizes Conway's Game of Life to continuous space, time, and states via FFT circular ring convolutions and Gaussian growth niches."
+        "Lenia generalizes Conway's Game of Life to continuous space, time, and states via FFT circular ring convolutions and Gaussian or polynomial growth niches."
             .to_string()
     }
 
@@ -245,6 +310,43 @@ impl TheoryDescribable for LeniaTheory {
             "kernel_shells".to_string(),
             "Concentric exponential bump shells K(r) normalized to unit L1 mass and convolved via 2D FFT."
                 .to_string(),
+        );
+        map
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        let mut map = self.growth.theory_parameters();
+        map.insert(
+            "radius".to_string(),
+            ParameterConstraint {
+                min: MIN_KERNEL_RADIUS,
+                max: MAX_KERNEL_RADIUS,
+                step: 0.5,
+            },
+        );
+        map.insert(
+            "dt".to_string(),
+            ParameterConstraint {
+                min: 0.005,
+                max: 0.50,
+                step: 0.005,
+            },
+        );
+        map.insert(
+            "perturbation".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 0.35,
+                step: 0.01,
+            },
+        );
+        map.insert(
+            "brush_radius".to_string(),
+            ParameterConstraint {
+                min: 1.0,
+                max: 24.0,
+                step: 0.5,
+            },
         );
         map
     }

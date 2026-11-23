@@ -53,11 +53,16 @@ impl RiemannianPdeStudio {
     }
 
     fn draw_transport_bar(&mut self, ui: &mut egui::Ui) {
+        let sculpt_canvas_focused = self.config.brush_mode == ViewportBrushMode::Sculpt
+            && self
+                .viewport_response_id
+                .is_some_and(|id| ui.ctx().memory(|m| m.has_focus(id)));
         if let Some(action) = PlaybackTransport::in_thread(
             "riemannian_pde_transport",
             "Riemannian PDE Studio",
             self.config.running,
         )
+        .allow_space_shortcut(!sculpt_canvas_focused)
         .show(ui)
         {
             match action {
@@ -72,6 +77,7 @@ impl RiemannianPdeStudio {
                     crate::audio::notify_playback_reset();
                     self.rebuild_all();
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
             }
         }
     }

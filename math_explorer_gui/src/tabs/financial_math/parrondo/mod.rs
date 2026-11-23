@@ -1,22 +1,27 @@
 //! Parrondo's Paradox interactive Markov ratchet laboratory for `FinancialMathTab`.
 
+pub mod atlas;
 mod plots;
 mod state;
 #[cfg(test)]
 mod tests;
 mod ui;
+pub mod wedge_interaction;
 
+#[cfg(test)]
+pub use atlas::solve_parrondo_ratchet_stack;
+pub use atlas::{ParrondoCartographer, PARRONDO_ATLAS_AXIS_PAIRS};
 use state::ParrondoToolState;
 pub use state::{KellyEdgeBadge, ParrondoViewMode};
 
-use crate::framework::{ExportCapabilities, InteractiveTool};
+use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
+use crate::framework::{CalloutManager, CalloutSpec, ExportCapabilities, InteractiveTool};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::markov::parrondo::{
-    scan_parrondo_phase_region, solve_parrondo_ratchet, ParrondoEnsemble, ParrondoGame,
-    ParrondoParams, ParrondoPhaseGridConfig, ParrondoPhasePoint, ParrondoReport, ParrondoSchedule,
-    ALLOWED_MODULI, MAX_MODULUS,
+    solve_parrondo_ratchet, ParrondoEnsemble, ParrondoGame, ParrondoParams, ParrondoPhasePoint,
+    ParrondoReport, ParrondoSchedule, ALLOWED_MODULI, MAX_MODULUS,
 };
 use oxidize_core::rng::OxidizeRng;
 use scientific_metadata::theory::TheoryDescribable;
@@ -76,6 +81,9 @@ pub struct ParrondoParadoxTool {
     pub(super) schedule_error: Option<String>,
     pub(super) error_msg: Option<String>,
     pub(super) last_compute_ms: f64,
+    pub(super) wedge_cursor: Option<[f64; 2]>,
+    /// Plot callout overlay manager synchronized with stories, challenges, and atlas teleports.
+    pub callouts: CalloutManager,
 }
 
 impl Default for ParrondoParadoxTool {
@@ -126,6 +134,8 @@ impl Default for ParrondoParadoxTool {
             schedule_error: None,
             error_msg: None,
             last_compute_ms: 0.0,
+            wedge_cursor: None,
+            callouts: CalloutManager::new(),
         };
         tool.recompute_all();
         tool
@@ -289,40 +299,6 @@ impl ParrondoParadoxTool {
             }
         }
     }
-
-    fn rebuild_phase_wedge(&mut self) {
-        let cfg = ParrondoPhaseGridConfig {
-            modulus: self.modulus,
-            p_b0_base: self.p_b0_base,
-            p_b1_base: self.p_b1_base,
-            p_a_min: 0.42,
-            p_a_max: 0.51,
-            epsilon_min: -0.02,
-            epsilon_max: 0.05,
-            p_a_steps: 29,
-            epsilon_steps: 25,
-        };
-        self.paradox_scatter.clear();
-        self.non_paradox_scatter.clear();
-        if let Ok(pts) = scan_parrondo_phase_region(&cfg, &self.active_schedule) {
-            for pt in &pts {
-                let plot_pt = PlotPoint::new(pt.p_a, pt.epsilon);
-                if pt.is_paradox {
-                    self.paradox_scatter.push(plot_pt);
-                } else {
-                    self.non_paradox_scatter.push(plot_pt);
-                }
-            }
-            plots::extract_phase_boundaries(
-                &cfg,
-                &pts,
-                &mut self.boundary_game_a,
-                &mut self.boundary_game_b,
-                &mut self.boundary_schedule,
-            );
-            self.phase_points = pts;
-        }
-    }
 }
 
 fn fill_plot_points(dst: &mut Vec<PlotPoint>, values: &[f64]) {
@@ -334,7 +310,7 @@ fn fill_plot_points(dst: &mut Vec<PlotPoint>, values: &[f64]) {
 
 impl InteractiveTool for ParrondoParadoxTool {
     fn name(&self) -> &'static str {
-        "Parrondo's Paradox"
+        "Parrondo's Kelly Ratchet"
     }
 
     fn domain(&self) -> &'static str {
@@ -389,6 +365,46 @@ impl InteractiveTool for ParrondoParadoxTool {
 
     fn state_bounds(&self) -> crate::framework::ToolStateBounds {
         crate::framework::ToolStateBounds::new(crate::url_state::MAX_DECODED_URL_STATE_BYTES, 8, 64)
+    }
+
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.p_a_base.to_bits().hash(&mut h);
+        self.p_b0_base.to_bits().hash(&mut h);
+        self.p_b1_base.to_bits().hash(&mut h);
+        self.epsilon.to_bits().hash(&mut h);
+        self.modulus.hash(&mut h);
+        self.schedule_input.hash(&mut h);
+        self.num_walkers.hash(&mut h);
+        self.num_steps.hash(&mut h);
+        self.seed.hash(&mut h);
+        (self.view_mode as u8).hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        PARRONDO_ATLAS_AXIS_PAIRS
+    }
+
+    fn active_atlas_coords(&self, axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        self.par_atlas_coords(axis_keys)
+    }
+
+    fn atlas_context_signature(&self, axis_keys: (&'static str, &'static str)) -> u64 {
+        self.par_atlas_signature(axis_keys)
+    }
+
+    fn build_atlas_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<std::sync::Arc<dyn RegimeCartographer>> {
+        ParrondoCartographer::new(self, axis_keys)
+            .map(|c| std::sync::Arc::new(c) as std::sync::Arc<dyn RegimeCartographer>)
+    }
+
+    fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
+        self.apply_parrondo_atlas_teleport(ev);
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
@@ -447,6 +463,22 @@ impl InteractiveTool for ParrondoParadoxTool {
     fn step_simulation(&mut self) {
         self.seed = self.seed.wrapping_add(1);
         self.recompute_ensembles_only();
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        let Some(ref r) = self.report else {
+            return Vec::new();
+        };
+        vec![
+            ("gain_a", r.gain_a),
+            ("gain_b", r.gain_b),
+            ("gain_mix", r.gain_mix),
+            ("gain_schedule", r.gain_schedule),
+        ]
+    }
+
+    fn sync_callouts(&mut self, specs: &[CalloutSpec]) {
+        self.callouts.sync_specs(specs);
     }
 
     #[cfg(test)]

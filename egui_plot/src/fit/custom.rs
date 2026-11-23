@@ -32,6 +32,21 @@ pub trait CustomFitEvaluator: Send + Sync + std::fmt::Debug {
             format!("y = {body} ({})", pairs.join(", "))
         }
     }
+
+    /// Formats an optional calibrated LaTeX RHS expression (`y(x) &= <rhs>`) for [`FitResult::to_latex`].
+    fn export_latex(&self, _params: &[f64]) -> Option<String> {
+        None
+    }
+
+    /// Formats an optional standalone Rust `f64` body over `x: f64` for [`FitResult::to_rust_fn`].
+    fn export_rust_body(&self, _params: &[f64]) -> Option<String> {
+        None
+    }
+
+    /// Formats an optional standalone Python `numpy` body over `x: float` for [`FitResult::to_python_fn`].
+    fn export_python_body(&self, _params: &[f64]) -> Option<String> {
+        None
+    }
 }
 
 /// Cloneable, pointer-comparable handle wrapping a [`CustomFitEvaluator`] inside [`FitResult`].
@@ -156,7 +171,7 @@ fn compute_custom_metrics(
     valid: &[[f64; 2]],
     evaluator: &dyn CustomFitEvaluator,
     coeffs: &[f64],
-) -> (f64, f64, Vec<[f64; 2]>) {
+) -> (f64, f64, crate::SharedPoints) {
     let y_mean = valid.iter().map(|p| p[1]).sum::<f64>() / (valid.len() as f64);
     let (mut ss_tot, mut ss_res) = (0.0, 0.0);
     let mut residuals = Vec::with_capacity(valid.len());
@@ -180,5 +195,5 @@ fn compute_custom_metrics(
     } else {
         (ss_res / residuals.len() as f64).sqrt()
     };
-    (r2, rmse, residuals)
+    (r2, rmse, crate::SharedPoints::from(residuals))
 }

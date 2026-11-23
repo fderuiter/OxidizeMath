@@ -139,12 +139,26 @@ impl TheoryDescribable for ParrondoParadoxTool {
         );
         map
     }
+
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        let c = |min, max, step| ParameterConstraint { min, max, step };
+        std::collections::HashMap::from([
+            ("p_a_base".to_string(), c(0.35, 0.65, 0.005)),
+            ("p_a".to_string(), c(0.42, 0.51, 0.002)),
+            ("p_b0_base".to_string(), c(0.03, 0.50, 0.005)),
+            ("p_b1_base".to_string(), c(0.50, 0.95, 0.005)),
+            ("epsilon".to_string(), c(-0.02, 0.045, 0.0005)),
+        ])
+    }
 }
 
 inventory::submit! {
     ToolMetadata {
         id: "ParrondoParadoxTool",
-        display_name: "Parrondo's Paradox",
+        display_name: "Parrondo's Kelly Ratchet",
         domain: "financial_math",
         tags: &["markov", "ratchet", "kelly", "paradox", "probability"],
         build: || Box::new(ParrondoParadoxTool::default()),
@@ -327,7 +341,7 @@ fn scatter_prim(
 ) -> ExportPrimitive {
     ExportPrimitive::Points {
         name: name.into(),
-        points,
+        points: points.into(),
         color,
         radius,
     }
@@ -336,7 +350,7 @@ fn scatter_prim(
 fn polyline(name: &str, pts: &[PlotPoint], color: egui::Color32, width: f32) -> ExportPrimitive {
     ExportPrimitive::Polyline {
         name: name.to_string(),
-        points: to_pairs(pts),
+        points: to_pairs(pts).into(),
         color,
         stroke_width: width,
         closed: false,

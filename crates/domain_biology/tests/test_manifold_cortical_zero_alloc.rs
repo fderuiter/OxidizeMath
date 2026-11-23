@@ -91,12 +91,8 @@ fn test_cotangent_diffusion_and_cortical_sheet_100_steps_verified_allocator() {
 
     let chem_in = ChemicalState::new(2, n);
     let mut chem_out = ChemicalState::new(2, n);
-    let white_surf = Surface {
-        vertices: fx.white_verts,
-    };
-    let pial_surf = Surface {
-        vertices: fx.pial_verts,
-    };
+    let white_surf = Surface::from_vertices(fx.white_verts);
+    let pial_surf = Surface::from_vertices(fx.pial_verts);
     let thickness = cortical_thickness_batch(&white_surf, &pial_surf);
     let mut sheet = CorticalSheetRunner::new(lap, &thickness, 0.025, 0.28, -65.0);
     sheet.depolarize_vertex(0, 15.0);

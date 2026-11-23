@@ -18,6 +18,10 @@ pub enum SimCommand {
     Pause,
     #[allow(missing_docs)]
     Step(usize),
+    /// Rewinds the simulation by the requested step count via bounded checkpoint replay.
+    StepBack(usize),
+    /// Seeks deterministically to an exact step index within the retained checkpoint window.
+    SeekStep(usize),
     #[allow(missing_docs)]
     Reset,
     #[allow(missing_docs)]
@@ -35,9 +39,9 @@ pub enum SimCommand {
         #[allow(missing_docs)]
         is_obstacle: bool,
     },
-    /// Applies an interpolated spatial brush stroke to the simulation field.
+    /// Applies an interpolated plot-space [`BrushStroke`] to the simulation field or obstacle mask.
     ApplyBrushStroke(BrushStroke),
-    /// Synchronizes persisted spatial sculpt state with the worker model.
+    /// Synchronizes persisted [`SculptStatePayload`] state with the simulation worker model.
     SyncSculptState(SculptStatePayload),
     #[allow(missing_docs)]
     ClearObstacles,
@@ -52,6 +56,8 @@ impl SimCommand {
             Self::Start => "Start",
             Self::Pause => "Pause",
             Self::Step(_) => "Step",
+            Self::StepBack(_) => "StepBack",
+            Self::SeekStep(_) => "SeekStep",
             Self::Reset => "Reset",
             Self::SetSpeed(_) => "SetSpeed",
             Self::TrainEpisodes(_) => "TrainEpisodes",
@@ -126,13 +132,17 @@ impl SimWorkerState {
             Self::Ready => !matches!(cmd, SimCommand::Pause),
             Self::Running => !matches!(
                 cmd,
-                SimCommand::Start | SimCommand::Step(_) | SimCommand::TrainEpisodes(_)
+                SimCommand::Start
+                    | SimCommand::Step(_)
+                    | SimCommand::StepBack(_)
+                    | SimCommand::TrainEpisodes(_)
             ),
             Self::Stepping => !matches!(
                 cmd,
                 SimCommand::Start
                     | SimCommand::Pause
                     | SimCommand::Step(_)
+                    | SimCommand::StepBack(_)
                     | SimCommand::TrainEpisodes(_)
             ),
             Self::Faulted => matches!(cmd, SimCommand::Reset),
@@ -154,19 +164,25 @@ impl std::fmt::Display for SimWorkerState {
     }
 }
 
-#[allow(missing_docs)]
+/// Lifecycle status event emitted by a background simulation worker thread.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkerStatusEvent {
+    /// Worker initialized and awaiting commands.
     Ready,
+    /// Worker actively advancing simulation frames.
     Running,
+    /// Worker executing a single requested step.
     Stepping,
+    /// Worker paused while retaining current simulation state.
     Paused,
+    /// Worker encountered an unrecoverable error message.
     Faulted(String),
+    /// Worker loop exited cleanly.
     Terminated,
 }
 
 impl WorkerStatusEvent {
-    #[allow(missing_docs)]
+    /// Projects this worker event onto the corresponding [`SimWorkerState`].
     pub fn to_state(&self) -> SimWorkerState {
         match self {
             Self::Ready | Self::Paused => SimWorkerState::Ready,

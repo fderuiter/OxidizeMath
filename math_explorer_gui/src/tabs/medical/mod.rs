@@ -1,10 +1,13 @@
-// @explorer_feature = "physics"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod beam_profiling;
 pub mod dose;
 pub mod imrt;
+pub mod link_bus;
+pub mod pharmacokinetic_regimen;
 pub mod radar_gating;
 
 pub struct MedicalTab {
@@ -40,10 +43,6 @@ impl ExplorerTab for MedicalTab {
         self.framework.load_state(state);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
-    }
-
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
     }
@@ -57,4 +56,13 @@ impl ExplorerTab for MedicalTab {
     }
 }
 
+inventory::submit! {
+    TabDescriptor {
+        id: "medical",
+        order: 15,
+        build: || Box::new(MedicalTab::default()),
+    }
+}
+
 // [cite:graph_parameters_rust]
+// [cite:pharmacokinetics]

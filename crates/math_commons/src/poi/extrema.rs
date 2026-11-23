@@ -133,7 +133,7 @@ impl PlateauTracker {
 fn fast_forward_plateau<P: PointSeries + ?Sized>(
     pts: &P,
     n: usize,
-    mut i: usize,
+    i: usize,
     want_y_intercepts: bool,
     p0: &mut [f64; 2],
     tracker: &mut PlateauTracker,
@@ -148,22 +148,15 @@ fn fast_forward_plateau<P: PointSeries + ?Sized>(
     } else {
         return i;
     };
-    let start_i = i;
-    while i < n {
-        let p = pts.point_at(i);
-        if p[1] != flat_y || p[0] < x_min || p[0] > x_max {
-            break;
-        }
-        i += 1;
-    }
-    if i > start_i {
-        let end_p = pts.point_at(i - 1);
+    let next_i = pts.advance_plateau_run(i, flat_y, x_min, x_max).min(n);
+    if next_i > i {
+        let end_p = pts.point_at(next_i - 1);
         if tracker.mode == 2 {
             tracker.last = end_p;
         }
         *p0 = end_p;
     }
-    i
+    next_i
 }
 
 /// Fused $O(N)$ single-pass scan extracting $y = 0$ roots, $x = 0$ intercepts, and local extrema.

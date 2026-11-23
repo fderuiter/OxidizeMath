@@ -70,12 +70,8 @@ impl FreeSurferMorphometryState {
             }
         }
 
-        let white_surface = Surface {
-            vertices: white_verts,
-        };
-        let pial_surface = Surface {
-            vertices: pial_verts,
-        };
+        let white_surface = Surface::new(white_verts, geom.triangles.clone());
+        let pial_surface = Surface::new(pial_verts, geom.triangles.clone());
 
         let mut state = Self {
             white_surface,

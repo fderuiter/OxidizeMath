@@ -3,6 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod canvas;
+pub mod challenge;
 pub mod pipeline;
 pub mod spectra;
 pub mod state;
@@ -10,12 +11,16 @@ pub mod state;
 mod tests;
 pub mod ui;
 
-use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
+use crate::framework::{
+    CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool, ToolStateBounds,
+};
+use crate::tabs::medical::link_bus::{publish_gating_telemetry, GatingTelemetry};
 use eframe::egui;
 use math_explorer::physics::medical::radar_gating::BeamState;
 use pipeline::RadarPipeline;
 use state::RadarGatingState;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 /// Interactive 60 GHz MIMO FMCW super-resolution and Kalman respiratory gating twin.
 pub struct RadarGatingTool {
@@ -33,6 +38,12 @@ pub struct RadarGatingTool {
     pub focused_canvas: Option<egui::Id>,
     /// Last rendered frame wall-clock duration in milliseconds.
     pub last_frame_ms: f64,
+    /// Tracks whether `notify_solver_diverged` was emitted for the current interlock latch.
+    pub interlock_notified: bool,
+    /// Active inverse challenge identifier, if any.
+    pub(crate) active_challenge: Option<&'static str>,
+    /// Plot callout overlay manager for `z_true` and clinical miss ceiling markers.
+    pub(crate) callout_manager: CalloutManager,
 }
 
 impl Default for RadarGatingTool {
@@ -47,21 +58,43 @@ impl Default for RadarGatingTool {
             dragging_target: None,
             focused_canvas: None,
             last_frame_ms: 0.0,
+            interlock_notified: false,
+            active_challenge: None,
+            callout_manager: CalloutManager::new(),
         }
     }
 }
 
 impl RadarGatingTool {
-    /// Steps the respiratory, phase, Kalman, and gating loop with zero heap allocations.
+    /// Steps the respiratory, phase, Kalman, and gating loop with zero heap allocations
+    /// and publishes a [`GatingTelemetry`] step snapshot onto the medical link bus.
     pub fn step_gating(&mut self) -> BeamState {
-        self.pipeline.step_zero_alloc(&self.state)
+        let state = self.pipeline.step_zero_alloc(&self.state);
+        let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(true));
+        state
+    }
+
+    /// Publishes the current non-step lifecycle status (`Standby`, `Armed`, `SafetyInterlock`)
+    /// onto the shared medical link bus and triggers `<= 30 ms` audio suspension on interlock.
+    pub fn publish_status_snapshot(&self, step_event: bool) -> GatingTelemetry {
+        let snap = publish_gating_telemetry(self.pipeline.latest_telemetry(step_event));
+        if snap.beam_state == BeamState::SafetyInterlock {
+            crate::audio::notify_solver_diverged();
+        }
+        snap
     }
 
     /// Resets playback, faults, and pipeline history using current parameters.
     pub fn reset_simulation(&mut self) {
         self.playing = false;
+        self.interlock_notified = false;
         self.pipeline.extra_clutter_active = false;
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut self.state);
+            self.pipeline.scheduled_cough_enabled = true;
+        }
         self.pipeline.rebuild_all(&self.state);
+        let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(false));
     }
 
     /// Injects a deterministic thoracic cough spike into the respiratory trajectory.
@@ -76,18 +109,45 @@ impl RadarGatingTool {
 
     /// Resets a latched `SafetyInterlock` back to `BeamState::Standby`.
     pub fn reset_interlock(&mut self) -> BeamState {
-        self.pipeline.reset_interlock_to_standby()
+        self.interlock_notified = false;
+        let st = self.pipeline.reset_interlock_to_standby();
+        let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(false));
+        st
     }
 
     /// Arms the LINAC gating controller from `Standby` to `BeamState::Armed`.
     pub fn arm_gating(&mut self) -> BeamState {
-        self.pipeline.arm_controller()
+        let st = self.pipeline.arm_controller();
+        let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(false));
+        st
+    }
+
+    /// Extracts a stack-allocated 60 GHz Doppler and MUSIC [`crate::audio::SonificationFrame`].
+    #[must_use]
+    pub fn sonification_frame(&self) -> crate::audio::SonificationFrame {
+        crate::audio::mappings::medical_radar_frame(
+            &crate::audio::mappings::RadarDopplerAudioInput {
+                velocity_m_s: self.pipeline.fast_kalman.state[1],
+                amplitude_m: self.pipeline.fast_kalman.state[0],
+                bandwidth_ghz: self.state.bandwidth_ghz,
+                coarse_peak_count: self.pipeline.spectra.coarse_peak_count,
+                music_peak_count: self.pipeline.spectra.music_peak_count,
+                primary_beam_gain: self.pipeline.spectra.primary_beam_gain,
+                secondary_beam_gain: self.pipeline.spectra.secondary_beam_gain,
+                cough_timer_s: self.pipeline.cough_timer_s,
+                beam_state: self.pipeline.gating.state(),
+            },
+        )
     }
 }
 
 impl InteractiveTool for RadarGatingTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 
     fn name(&self) -> &'static str {
@@ -108,12 +168,22 @@ impl InteractiveTool for RadarGatingTool {
         ui::show_tool_inside(self, ui);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     fn state_bounds(&self) -> ToolStateBounds {
         RadarGatingState::STATE_BOUNDS
+    }
+
+    fn state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.state.bandwidth_ghz.to_bits().hash(&mut h);
+        self.state.kalman_process_var.to_bits().hash(&mut h);
+        self.state.kalman_meas_var.to_bits().hash(&mut h);
+        self.state.gating_threshold_mm.to_bits().hash(&mut h);
+        self.state.gating_hysteresis_mm.to_bits().hash(&mut h);
+        self.state.system_latency_ms.to_bits().hash(&mut h);
+        self.state.rng_seed.hash(&mut h);
+        self.pipeline.total_frames.hash(&mut h);
+        self.active_challenge.hash(&mut h);
+        h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {
@@ -122,8 +192,12 @@ impl InteractiveTool for RadarGatingTool {
 
     fn try_load_state(&mut self, raw: &str) -> Result<(), String> {
         self.state_bounds().validate_json(raw)?;
-        let loaded: RadarGatingState =
+        let mut loaded: RadarGatingState =
             serde_json::from_str(raw).map_err(|e| format!("Invalid RadarGatingTool state: {e}"))?;
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut loaded);
+            self.pipeline.scheduled_cough_enabled = true;
+        }
         loaded.validate_bounds()?;
         self.state = loaded;
         self.pipeline.rebuild_all(&self.state);
@@ -143,8 +217,33 @@ impl InteractiveTool for RadarGatingTool {
             .state
             .sweep_bins
             .clamp(state::MIN_SWEEP_BINS, state::MAX_SWEEP_BINS);
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut self.state);
+        }
         self.pipeline.rebuild_all(&self.state);
         true
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_radar_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.eval_radar_challenge()
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
@@ -164,6 +263,10 @@ impl InteractiveTool for RadarGatingTool {
             (
                 "MUSIC Super-Resolution Pseudospectrum".to_string(),
                 self.pipeline.spectra.music_pseudospectrum.clone(),
+            ),
+            (
+                "Ground-Truth Chest Displacement z_true (mm)".to_string(),
+                self.pipeline.true_trace_mm.clone(),
             ),
             (
                 "Chest Unwrapped Displacement (mm)".to_string(),
@@ -192,7 +295,9 @@ impl InteractiveTool for RadarGatingTool {
     }
 
     fn step_simulation(&mut self) {
-        let _ = self.step_gating();
+        if self.step_gating() == BeamState::SafetyInterlock {
+            crate::audio::notify_solver_diverged();
+        }
     }
 }
 

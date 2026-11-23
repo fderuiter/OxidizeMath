@@ -1,38 +1,6 @@
 use super::*;
 use eframe::egui;
 
-pub(crate) fn format_theory_context_key(key: &str) -> String {
-    match key.trim() {
-        "g_na" => "Sodium Conductance".to_string(),
-        "g_k" => "Potassium Conductance".to_string(),
-        "g_l" => "Leak Conductance".to_string(),
-        "i_ext" => "External Stimulus Current".to_string(),
-        "potential_type" => "Potential Profile".to_string(),
-        "dt" => "Time Step".to_string(),
-        "params" => "Model Parameters".to_string(),
-        "viscosity" => "Kinematic Viscosity".to_string(),
-        other if other.contains('_') => other
-            .split('_')
-            .filter(|s| !s.is_empty())
-            .map(|w| {
-                let mut chars = w.chars();
-                match chars.next() {
-                    Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
-                    None => String::new(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-        other => {
-            let mut chars = other.chars();
-            match chars.next() {
-                Some(c) if c.is_lowercase() => format!("{}{}", c.to_uppercase(), chars.as_str()),
-                _ => other.to_string(),
-            }
-        }
-    }
-}
-
 fn has_interactive_ui_input(ctx: &egui::Context) -> bool {
     ctx.input(|i| {
         i.pointer.any_down()
@@ -54,71 +22,11 @@ fn has_interactive_ui_input(ctx: &egui::Context) -> bool {
 }
 
 impl SimulationFramework {
-    pub(super) fn show_theory_portal(&self, ui: &mut egui::Ui, id_source: &str) {
-        if !self.show_theory_portal {
-            return;
-        }
-        let panel_id = scoped_panel_id(ui, format!("{id_source}_theory_portal"));
-        PaneSidePanel::right(panel_id)
-            .resizable(true)
-            .show_inside(ui, |ui| {
-                if let Some(tool) = &self.active_tool {
-                    ui.heading(format!("Theory: {}", tool.name()));
-                    ui.separator();
-
-                    let theory = tool.theory();
-                    // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
-                    scientific_metadata::citation_registry::CitationRegistry::register(
-                        tool.name().to_string(),
-                        theory.theory_citation(),
-                    );
-                    // Requirement 5: Screen readers can successfully navigate the theory text and citations
-                    use crate::accessibility::AccessibleHoverText;
-                    use crate::reflective_ui::render_theory_summary_with_export;
-
-                    let theory_desc = theory.theory_description();
-                    let latex_eq = theory.theory_latex_equation();
-                    render_theory_summary_with_export(ui, &theory_desc, latex_eq.as_deref())
-                        .accessible_hover_text("Theoretical background description");
-
-                    ui.separator();
-                    ui.heading("Citations");
-                    let citation_text = theory.theory_citation();
-                    render_theory_summary_with_export(ui, &citation_text, None)
-                        .accessible_hover_text("Academic citations");
-                    super::theory_links::render_portal_links_for_framework(
-                        self,
-                        ui,
-                        tool.as_ref(),
-                        &citation_text,
-                    );
-
-                    let mut entries: Vec<(String, String)> = theory
-                        .available_descriptions()
-                        .into_iter()
-                        .filter(|(k, _)| !k.trim().eq_ignore_ascii_case("default"))
-                        .collect();
-                    entries.sort_by(|a, b| a.0.cmp(&b.0));
-                    if !entries.is_empty() {
-                        ui.separator();
-                        ui.heading("Additional Context");
-                        for (key, desc) in entries {
-                            let label = format_theory_context_key(&key);
-                            let context_entry = format!("{label}: {desc}");
-                            render_theory_summary_with_export(ui, &context_entry, None)
-                                .accessible_hover_text(format!("Additional context for {label}"));
-                        }
-                    }
-                }
-            });
-    }
-
     pub(super) fn render_search_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let text_edit =
                 egui::TextEdit::singleline(&mut self.search_query).hint_text("🔍 Filter tools...");
             let response = ui.add(text_edit);
-
             if !self.search_query.is_empty()
                 && ui
                     .button("❌")
@@ -127,8 +35,12 @@ impl SimulationFramework {
             {
                 self.search_query.clear();
             }
-
-            if ui.input(|i| i.key_pressed(egui::Key::Escape)) && response.has_focus() {
+            if !self.search_query.is_empty()
+                && response.has_focus()
+                && ui
+                    .ctx()
+                    .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+            {
                 self.search_query.clear();
             }
         });
@@ -137,23 +49,25 @@ impl SimulationFramework {
     #[allow(clippy::too_many_lines)]
     pub(super) fn render_filtered_tools(&mut self, ui: &mut egui::Ui) {
         let query = self.search_query.trim().to_lowercase();
-        let filtered_tools: Vec<(usize, &&'static ToolMetadata)> = self
-            .available_tools
-            .iter()
-            .enumerate()
-            .filter(|(_, meta)| {
-                if query.is_empty() {
-                    true
-                } else {
-                    meta.display_name.to_lowercase().contains(&query)
-                        || meta.id.to_lowercase().contains(&query)
-                        || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
-                }
-            })
-            .collect();
-
+        let filtered_tools: Vec<(usize, &&'static ToolMetadata)> = if query.is_empty() {
+            self.available_tools.iter().enumerate().collect()
+        } else {
+            let mut scored: Vec<(usize, usize, &&'static ToolMetadata)> = self
+                .available_tools
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, meta)| {
+                    crate::command_palette::score_tool_metadata(meta, &query)
+                        .map(|score| (score, idx, meta))
+                })
+                .collect();
+            scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+            scored
+                .into_iter()
+                .map(|(_, idx, meta)| (idx, meta))
+                .collect()
+        };
         let count = filtered_tools.len();
-
         if self.last_announced_count != Some(count) || self.last_announced_query != query {
             if !query.is_empty() {
                 let msg = if count == 1 {
@@ -166,7 +80,6 @@ impl SimulationFramework {
             self.last_announced_count = Some(count);
             self.last_announced_query = query;
         }
-
         if filtered_tools.is_empty() {
             ui.label(format!("No tools match '{}'", self.search_query));
             if ui.button("Clear search").clicked() {
@@ -191,16 +104,14 @@ impl SimulationFramework {
                             meta.display_name
                         ));
                     if tool_help_btn.clicked() {
-                        open_portal_for_tool = Some(i);
+                        open_portal_for_tool = Some((i, tool_help_btn.id));
                     }
                 });
             }
-            if let Some(idx) = open_portal_for_tool {
+            if let Some((idx, btn_id)) = open_portal_for_tool {
                 self.select_tool(idx);
                 self.show_theory_portal = true;
-                ui.ctx().data_mut(|d| {
-                    d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), true);
-                });
+                super::overlay_sync::record_theory_portal_toggle(ui.ctx(), btn_id, true);
             } else if let Some(idx) = tool_to_select {
                 self.select_tool(idx);
             }
@@ -223,85 +134,26 @@ impl SimulationFramework {
                         .accessible_hover_text("Toggle Theory Context Portal");
                     if help_btn.clicked() {
                         self.show_theory_portal = !self.show_theory_portal;
-                        ctx.data_mut(|d| {
-                            d.insert_temp(
-                                egui::Id::new("SHOW_THEORY_PORTAL"),
-                                self.show_theory_portal,
-                            )
-                        });
+                        super::overlay_sync::record_theory_portal_toggle(
+                            &ctx,
+                            help_btn.id,
+                            self.show_theory_portal,
+                        );
                     }
                 });
                 self.render_search_bar(ui);
                 ui.separator();
                 self.render_filtered_tools(ui);
                 ui.separator();
-                if ui
-                    .checkbox(&mut self.show_theory_portal, "Theory Context Portal")
-                    .changed()
-                {
-                    ctx.data_mut(|d| {
-                        d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), self.show_theory_portal)
-                    });
+                let cb = ui.checkbox(&mut self.show_theory_portal, "Theory Context Portal");
+                if cb.changed() {
+                    super::overlay_sync::record_theory_portal_toggle(
+                        &ctx,
+                        cb.id,
+                        self.show_theory_portal,
+                    );
                 }
             });
-    }
-
-    pub(super) fn show_quick_start_cards(&mut self, ui: &mut egui::Ui) {
-        if self.available_tools.is_empty() {
-            ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
-                ui.heading("No Tools Available");
-                ui.label("There are currently no interactive tools available for this domain.");
-            });
-            return;
-        }
-
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.vertical(|ui| {
-                ui.add_space(20.0);
-                ui.heading("Quick-Start Launchpad");
-                ui.label("Select a tool below to begin interactive simulation and analysis:");
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(15.0);
-
-                let mut tool_to_select = None;
-
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
-                    for (i, meta) in self.available_tools.iter().enumerate() {
-                        egui::Frame::group(ui.style())
-                            .inner_margin(12.0)
-                            .corner_radius(8.0)
-                            .show(ui, |ui| {
-                                ui.set_width(220.0);
-                                ui.vertical(|ui| {
-                                    ui.heading(meta.display_name);
-                                    ui.add_space(6.0);
-                                    if !meta.tags.is_empty() {
-                                        ui.horizontal_wrapped(|ui| {
-                                            for tag in meta.tags {
-                                                let text = egui::RichText::new(format!("#{}", tag))
-                                                    .small()
-                                                    .color(ui.visuals().weak_text_color());
-                                                ui.label(text);
-                                            }
-                                        });
-                                        ui.add_space(8.0);
-                                    }
-                                    if ui.button("Launch Tool").clicked() {
-                                        tool_to_select = Some(i);
-                                    }
-                                });
-                            });
-                    }
-                });
-
-                if let Some(idx) = tool_to_select {
-                    self.select_tool(idx);
-                }
-            });
-        });
     }
 
     pub(crate) fn apply_starter_gallery_outcome(
@@ -355,9 +207,21 @@ impl SimulationFramework {
         if !self.show_starter_gallery {
             return;
         }
-        let cards =
-            crate::starter_gallery::get_starter_cards_for_domain(id_source, &self.available_tools);
-        let challenges = crate::starter_gallery::get_challenge_cards_for_domain(id_source);
+        let (cards, challenges) =
+            if crate::starter_gallery::is_root_starter_gallery_scope_active(ctx) {
+                (
+                    crate::starter_gallery::get_all_starter_cards_with_tools(&self.available_tools),
+                    crate::starter_gallery::get_all_challenge_cards(),
+                )
+            } else {
+                (
+                    crate::starter_gallery::get_starter_cards_for_domain(
+                        id_source,
+                        &self.available_tools,
+                    ),
+                    crate::starter_gallery::get_challenge_cards_for_domain(id_source),
+                )
+            };
         let modal_source = format!("{id_source}_{}", self.instance_id);
         if crate::starter_gallery::try_defer_starter_gallery(
             ctx,
@@ -424,27 +288,31 @@ impl SimulationFramework {
             }
         });
         let inst_portal = egui::Id::new(("SHOW_THEORY_PORTAL_INST", id_source, self.instance_id));
+        let challenge_active = self.active_challenge.is_some()
+            || matches!(self.challenge_hud.mode, ChallengeHudMode::Challenge { .. });
+        let is_touch = self.input_mode == InputMode::Touch;
         ctx.data_mut(|d| {
             d.insert_temp(egui::Id::new("INPUT_MODE"), self.input_mode);
-            d.insert_temp(
-                egui::Id::new("INPUT_MODE_TOUCH"),
-                self.input_mode == InputMode::Touch,
-            );
+            d.insert_temp(egui::Id::new("INPUT_MODE_TOUCH"), is_touch);
             d.insert_temp(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"), inst_portal);
             d.insert_temp(
                 egui::Id::new("SCOPED_ANIMATED_SLIDER_OWNER"),
                 self.instance_id,
             );
+            d.insert_temp(
+                egui::Id::new("FRAMEWORK_CHALLENGE_ACTIVE"),
+                challenge_active,
+            );
         });
 
         self.sync_overlays_before_frame(&ctx, id_source);
-
+        self.poll_active_gif_export(&ctx);
         self.show_export_action_bar(ui, id_source);
         self.show_challenge_hud(ui, id_source);
         self.render_challenge_hud_panel(ui, &ctx, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
-
+        self.show_framework_atlas_panel(ui, id_source);
         self.begin_plot_scope(&ctx);
         if !self.is_diverged {
             self.cache_valid_snapshot();
@@ -463,32 +331,26 @@ impl SimulationFramework {
             if let Some(ref snapshot) = self.last_valid_snapshot {
                 egui_plot::clear_last_plot_datasets();
                 egui_plot::clear_last_plot_primitives();
-                egui_plot::append_last_plot_datasets(&snapshot.plot_datasets);
+                egui_plot::append_last_plot_shared_datasets(&snapshot.plot_datasets);
             }
             tool.show_inside(ui);
-        } else {
-            egui::CentralPanel::default().show_inside(ui, |ui| {
-                self.show_quick_start_cards(ui);
-            });
         }
         self.end_plot_scope(&ctx);
-
         if !interactive_input
             && crate::reflective_ui::slider::live_sweep_mutation_count(&ctx) > sweep_mut_before
         {
             self.rev_cache.untracked_tool_revision =
                 self.rev_cache.untracked_tool_revision.wrapping_add(1);
         }
-
         ctx.data_mut(|d| {
             d.remove::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"));
             d.remove::<u64>(egui::Id::new("SCOPED_ANIMATED_SLIDER_OWNER"));
+            d.remove::<bool>(egui::Id::new("FRAMEWORK_CHALLENGE_ACTIVE"));
         });
-
         self.show_export_modal_dialog(&ctx, id_source);
+        self.show_code_export_modal_dialog(&ctx, id_source);
         self.show_starter_gallery_if_open(&ctx, id_source);
         self.sync_overlays_after_frame(&ctx, id_source);
-
         self.dispatch_pending_exports_with_ctx(&ctx);
     }
 }

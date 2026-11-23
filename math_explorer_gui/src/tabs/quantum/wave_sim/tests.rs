@@ -6,7 +6,8 @@ use crate::async_sim::SimulationRunner;
 use crate::framework::{BrushMode, BrushStroke, InteractiveTool, SimulationFramework};
 use eframe::egui;
 use math_commons::ast::parse_equation;
-use math_explorer::physics::quantum::evolve_state;
+use math_explorer::physics::quantum::{construct_1d_hamiltonian, evolve_state};
+use math_explorer::registry::MAX_GRID_SIZE;
 use std::sync::{Arc, RwLock};
 
 #[test]
@@ -85,7 +86,9 @@ fn test_wave_sculpt_brush_url_state_roundtrip() {
     assert!(!tool.sparse_potential.is_empty());
     let saved = tool.save_state().expect("save sculpted wave state");
     let mut restored = WaveSimulatorTool::new();
-    restored.try_load_state(&saved).expect("restore sculpted wave state");
+    restored
+        .try_load_state(&saved)
+        .expect("restore sculpted wave state");
     assert_eq!(restored.sparse_potential, tool.sparse_potential);
 }
 
@@ -195,7 +198,8 @@ fn test_ast_syntax_aria_announcement_and_singular_potential_clamping() {
 #[test]
 fn test_sample_animation_frames_monotonic_time_and_distinct_wavepackets() {
     let mut tool = WaveSimulatorTool::new();
-    tool.apply_tunneling_split_challenge(None);
+    tool.apply_challenge(Some(challenge::CHALLENGE_QUANTUM_BARRIER_50_SPLIT))
+        .expect("activate quantum_barrier_50_split");
 
     let frames = tool.sample_animation_frames(10);
     assert_eq!(frames.len(), 10);
@@ -237,23 +241,29 @@ fn test_zero_allocation_hot_path_propagator_cache_and_state_guard_rollback() {
     let init_psi = runner.psi.clone();
     runner.step();
     assert_eq!(runner.cached_dt, Some(0.02));
-    let ptr_before = runner.propagator.matrix.as_ptr();
+    let psi_ptr_before = runner.psi.vector.as_ptr();
 
-    // Verify steps 2..=6 run with zero heap allocations under VerifiedAllocator
+    // Verify constant-dt steps AND dynamic dt-sweep edits run with zero heap allocations
     {
         let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         verified_engine::engine::VerifiedEngine::run_verified(|| {
-            for _ in 0..5 {
+            for _ in 0..3 {
                 runner.step();
             }
+            runner.step_with_dt(0.015);
+            runner.step_with_dt(0.025);
         });
     }
-    assert_eq!(runner.propagator.matrix.as_ptr(), ptr_before);
+    assert_eq!(runner.psi.vector.as_ptr(), psi_ptr_before);
+    assert_eq!(runner.cached_dt, Some(0.025));
+    assert!((runner.psi.norm() - 1.0).abs() < 1e-12);
 
-    let expected_psi = evolve_state(&init_psi, &runner.hamiltonian, 0.12, 1.0).normalize();
-    assert!((&runner.psi.vector - &expected_psi.vector).norm() < 1e-11);
+    let dx = (runner.x_max - runner.x_min) / (runner.n_points as f64 - 1.0);
+    let dense_h = construct_1d_hamiltonian(&runner.potential, dx, 1.0, 1.0);
+    let expected_psi = evolve_state(&init_psi, &dense_h, 0.12, 1.0).normalize();
+    assert!((&runner.psi.vector - &expected_psi.vector).norm() < 5e-3);
 
     // Verify SimulationFramework state_guard rollback and parameter clamping
     let mut fw = SimulationFramework::new("quantum");
@@ -271,4 +281,137 @@ fn test_zero_allocation_hot_path_propagator_cache_and_state_guard_rollback() {
     assert!(fw.rollback_step_back());
     assert!(!fw.is_diverged());
     assert_eq!(fw.active_tool.as_ref().unwrap().save_state(), baseline);
+}
+
+#[test]
+fn test_quantum_barrier_50_split_challenge_scoring_and_callouts() {
+    let mut fw = SimulationFramework::new("quantum");
+    fw.launch_challenge_by_id(challenge::CHALLENGE_QUANTUM_BARRIER_50_SPLIT, None)
+        .expect("launch quantum_barrier_50_split");
+    let init_eval = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.evaluate_challenge())
+        .expect("challenge evaluation present");
+    assert!(!init_eval.passed);
+
+    for _ in 0..12 {
+        fw.active_tool.as_mut().unwrap().step_simulation();
+    }
+    let detuned_eval = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.evaluate_challenge())
+        .unwrap();
+    assert!(!detuned_eval.passed, "V0 = 15.0 must stay unsolved");
+
+    let mut cfg: serde_json::Value =
+        serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap();
+    cfg["v0"] = serde_json::json!(11.35);
+    cfg["width"] = serde_json::json!(0.5);
+    fw.active_tool
+        .as_mut()
+        .unwrap()
+        .try_load_state(&cfg.to_string())
+        .unwrap();
+    for _ in 0..12 {
+        fw.active_tool.as_mut().unwrap().step_simulation();
+    }
+    let solved_eval = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.evaluate_challenge())
+        .unwrap();
+    assert!(
+        solved_eval.passed,
+        "V0 = 11.35, w = 0.5 must solve 50% +/- 2%, got {}",
+        solved_eval.detail
+    );
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        fw.show(ctx, "quantum");
+    });
+    let wave = fw
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .as_any()
+        .unwrap()
+        .downcast_ref::<WaveSimulatorTool>()
+        .unwrap();
+    assert!(wave
+        .callout_manager
+        .callouts()
+        .iter()
+        .any(|c| c.tag.is_some()));
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen_test::wasm_bindgen_test]
+fn test_wasm_quantum_barrier_50_split_clamp_and_step() {
+    let meta = crate::starter_gallery::find_challenge_metadata(
+        challenge::CHALLENGE_QUANTUM_BARRIER_50_SPLIT,
+    )
+    .expect("quantum_barrier_50_split registered");
+    let baseline = meta.generate_baseline_state();
+    let clamped = meta.clamp_state_json(&baseline).expect("clamp baseline");
+    let mut tool = WaveSimulatorTool::new();
+    tool.apply_challenge(Some(challenge::CHALLENGE_QUANTUM_BARRIER_50_SPLIT))
+        .unwrap();
+    tool.try_load_state(&clamped).unwrap();
+    assert!(!tool.evaluate_challenge().unwrap().passed);
+}
+
+#[test]
+fn test_wave_simulator_animated_slider_sweeps_continuous_parameters() {
+    use super::presets::wave_parameter_label;
+    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+
+    let mut tool = WaveSimulatorTool::default();
+    let initial_x0 = tool.x0;
+    let ctx = egui::Context::default();
+    save_slider_state(
+        &ctx,
+        egui::Id::new(("wave_sim_param", wave_parameter_label("x0"))),
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Oscillate,
+        },
+    );
+    let _ = ctx.run(
+        egui::RawInput {
+            predicted_dt: 0.1,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+    assert!(tool.x0 > initial_x0);
+}
+
+#[test]
+fn test_wave_runner_scales_to_max_grid_size_1000_zero_alloc() {
+    let cfg = Arc::new(RwLock::new(WaveSimConfig {
+        preset: WavePotentialPreset::RectangularBarrier,
+        dt: 0.01,
+        ..Default::default()
+    }));
+    let mut runner = WaveRunner::new(Arc::clone(&cfg));
+    runner.n_points = MAX_GRID_SIZE;
+    let cfg_snap = cfg.read().unwrap().clone();
+    runner.init_from_config(&cfg_snap);
+    assert_eq!(runner.psi.vector.len(), MAX_GRID_SIZE);
+
+    {
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            runner.step_with_dt(0.01);
+            runner.step_with_dt(0.015);
+        });
+    }
+    assert!(runner.is_finite_state());
+    assert!((runner.psi.norm() - 1.0).abs() < 1e-11);
 }

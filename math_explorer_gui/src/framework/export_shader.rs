@@ -94,6 +94,7 @@ impl ExportFormat {
     const fn clipboard_item_noun(self) -> &'static str {
         match self {
             Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
+            Self::Tex | Self::Rust | Self::Python => "model",
             _ => "dataset",
         }
     }
@@ -112,6 +113,44 @@ impl SimulationFramework {
     pub(crate) fn queue_shader_clipboard_export(&mut self, format: ExportFormat) {
         self.export_queue
             .push_target(format, ExportTarget::Clipboard);
+    }
+
+    /// Opens the high-resolution figure export modal from a global command action.
+    pub(crate) fn trigger_palette_figure_export(&mut self) {
+        self.open_export_modal_for_active_tool();
+    }
+
+    /// Exports the active tool's parameter preset JSON from a global command action.
+    pub(crate) fn trigger_palette_preset_export(&mut self) {
+        if let Some(tool) = &self.active_tool {
+            let slug = tool.name().to_lowercase().replace(' ', "_");
+            self.preset_dialog
+                .export_preset_result(tool.export_preset_json(), &slug);
+        }
+    }
+
+    /// Toggles the Theory Context Portal on this framework instance and syncs egui temp state.
+    pub(crate) fn toggle_theory_portal_with_ctx(&mut self, ctx: &egui::Context) {
+        self.show_theory_portal = !self.show_theory_portal;
+        let next = self.show_theory_portal;
+        let inst_portal = egui::Id::new((
+            "SHOW_THEORY_PORTAL_INST",
+            self.domain.as_str(),
+            self.instance_id,
+        ));
+        let dom_portal = egui::Id::new("SHOW_THEORY_PORTAL").with(self.domain.as_str());
+        let owner_id = egui::Id::new("FRAMEWORK_OVERLAY_OWNER");
+        ctx.data_mut(|d| {
+            d.insert_temp(inst_portal, next);
+            let is_owner_or_unset = d
+                .get_temp::<(String, u64)>(owner_id)
+                .is_none_or(|(src, id)| src == self.domain && id == self.instance_id);
+            if is_owner_or_unset {
+                d.insert_temp(dom_portal, next);
+                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
+            }
+        });
+        ctx.request_repaint();
     }
 
     /// Renders one-click WebGL2 (`#version 300 es`) and Shadertoy (`mainImage`) `.frag` and clipboard
@@ -253,7 +292,7 @@ impl SimulationFramework {
         }
     }
 
-    fn write_system_text_clipboard(
+    pub(super) fn write_system_text_clipboard(
         &self,
         label: &'static str,
         noun: &'static str,
@@ -274,7 +313,11 @@ impl SimulationFramework {
                     egui_ctx.data_mut(|d| {
                         let status = match cb {
                             Ok(()) => ActionBarExportStatus {
-                                message: format!("Copied {label} {noun} to clipboard!"),
+                                message: if noun.is_empty() {
+                                    format!("Copied {label} to clipboard!")
+                                } else {
+                                    format!("Copied {label} {noun} to clipboard!")
+                                },
                                 is_error: false,
                                 expires_at_time: None,
                             },

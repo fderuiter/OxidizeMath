@@ -72,6 +72,8 @@ fn test_all_6_plot_3d_viewport_tools_hide_2d_plot_chrome() {
         "SurfaceViewer",
         "CurvatureHeatmap",
         "RiemannianPdeStudio",
+        #[cfg(feature = "biology")]
+        "SurfaceMorphogenesisTool",
         "Gaussian Splatting",
     ];
     let mut verified = 0_usize;
@@ -84,7 +86,7 @@ fn test_all_6_plot_3d_viewport_tools_hide_2d_plot_chrome() {
         assert_no_2d_plot_chrome(&mut *tool, target_id);
         verified += 1;
     }
-    assert_eq!(verified, 7);
+    assert_eq!(verified, expected_3d_ids.len());
 }
 
 const PLOT_CHROME_BUTTON_LABELS: &[&str] = &[

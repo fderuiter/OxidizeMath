@@ -26,6 +26,21 @@ pub struct SpectralPeak2D {
     pub magnitude: f64,
 }
 
+/// Ranked non-DC 2D spatial Fourier mode with complex phase from a centered spectrum.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct SpectralMode2D {
+    /// Signed horizontal wavenumber index $k_x \in [-W/2, W/2)$.
+    pub kx: isize,
+    /// Signed vertical wavenumber index $k_y \in [-H/2, H/2)$.
+    pub ky: isize,
+    /// Radial wavenumber magnitude $\sqrt{k_x^2 + k_y^2}$.
+    pub k_radial: f64,
+    /// Normalized spectral magnitude $|F(k_x, k_y)| / (W \cdot H)$.
+    pub magnitude: f64,
+    /// Principal complex Fourier phase $\operatorname{atan2}(\Im F, \Re F) \in [-\pi, \pi]$.
+    pub phase: f64,
+}
+
 /// Pre-planned 2D FFT spectral analyzer with reusable transpose and scratch buffers.
 #[derive(Clone)]
 pub struct SpectralAnalyzer2D {
@@ -186,35 +201,189 @@ impl SpectralAnalyzer2D {
     /// Identifies the strongest non-DC peak in the centered 2D magnitude spectrum.
     #[verified_engine::verified]
     pub fn dominant_peak(&self) -> SpectralPeak2D {
+        let mut top = [SpectralPeak2D::default(); 1];
+        let _ = self.top_peaks(&mut top);
+        top[0]
+    }
+
+    /// Populates `out` with up to `out.len()` strongest distinct non-DC upper-half-plane local
+    /// maxima in descending `magnitude` order with zero heap allocations, returning the active count.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use std::f64::consts::TAU;
+    /// use math_explorer::pure_math::analysis::pde::wave_2d::{SpectralAnalyzer2D, SpectralPeak2D};
+    ///
+    /// let n = 32;
+    /// let mut field = vec![0.0; n * n];
+    /// for y in 0..n {
+    ///     for x in 0..n {
+    ///         let mode_a = (TAU * 3.0 * (x as f64) / (n as f64)).cos()
+    ///             * (TAU * 2.0 * (y as f64) / (n as f64)).cos();
+    ///         let mode_b = 0.5 * (TAU * 6.0 * (x as f64) / (n as f64)).cos()
+    ///             * (TAU * 5.0 * (y as f64) / (n as f64)).cos();
+    ///         field[y * n + x] = mode_a + mode_b;
+    ///     }
+    /// }
+    /// let mut fft = SpectralAnalyzer2D::new(n, n);
+    /// fft.compute_spectrum(&field);
+    /// let mut peaks = [SpectralPeak2D::default(); 4];
+    /// let found = fft.top_peaks(&mut peaks);
+    /// assert!(found >= 2);
+    /// assert!(peaks[0].magnitude >= peaks[1].magnitude);
+    /// ```
+    #[verified_engine::verified]
+    pub fn top_peaks(&self, out: &mut [SpectralPeak2D]) -> usize {
+        out.fill(SpectralPeak2D::default());
+        if out.is_empty() {
+            return 0;
+        }
         let w = self.width;
         let h = self.height;
         let cx = (w / 2) as isize;
         let cy = (h / 2) as isize;
-        let mut best = SpectralPeak2D::default();
+        let mut count = 0_usize;
 
         for y in 0..h {
             let ky = (y as isize) - cy;
             for x in 0..w {
                 let kx = (x as isize) - cx;
-                if kx * kx + ky * ky <= 4 {
-                    continue;
-                }
-                if ky < 0 || (ky == 0 && kx < 0) {
+                if kx * kx + ky * ky <= 4 || ky < 0 || (ky == 0 && kx < 0) {
                     continue;
                 }
                 let mag = self.magnitude_spectrum[flatten_2d_index(x, y, w)];
-                if mag > best.magnitude {
-                    let kr = ((kx * kx + ky * ky) as f64).sqrt();
-                    best = SpectralPeak2D {
-                        kx,
-                        ky,
-                        k_radial: kr,
-                        magnitude: mag,
-                    };
+                if mag <= 0.0 || !self.is_non_dc_local_max(x, y, mag) {
+                    continue;
+                }
+                let candidate = SpectralPeak2D {
+                    kx,
+                    ky,
+                    k_radial: ((kx * kx + ky * ky) as f64).sqrt(),
+                    magnitude: mag,
+                };
+                count = insert_sorted_peak(out, count, candidate);
+            }
+        }
+        count
+    }
+
+    #[verified_engine::verified]
+    fn is_non_dc_local_max(&self, x: usize, y: usize, mag: f64) -> bool {
+        let w = self.width;
+        let h = self.height;
+        let cx = (w / 2) as isize;
+        let cy = (h / 2) as isize;
+        let y_lo = y.saturating_sub(1);
+        let y_hi = (y + 1).min(h - 1);
+        let x_lo = x.saturating_sub(1);
+        let x_hi = (x + 1).min(w - 1);
+
+        for ny in y_lo..=y_hi {
+            let nky = (ny as isize) - cy;
+            for nx in x_lo..=x_hi {
+                if nx == x && ny == y {
+                    continue;
+                }
+                let nkx = (nx as isize) - cx;
+                if nkx * nkx + nky * nky <= 4 {
+                    continue;
+                }
+                let nmag = self.magnitude_spectrum[flatten_2d_index(nx, ny, w)];
+                if nmag > mag || (nmag == mag && (ny, nx) < (y, x)) {
+                    return false;
                 }
             }
         }
-        best
+        true
+    }
+
+    /// Extracts up to `out.len()` strongest upper-half-plane local-maximum 2D Fourier modes
+    /// (sorted by descending `magnitude`) with complex phases and zero heap allocations.
+    #[verified_engine::verified]
+    pub fn extract_top_modes(&self, out: &mut [SpectralMode2D]) -> usize {
+        out.fill(SpectralMode2D::default());
+        if out.is_empty() {
+            return 0;
+        }
+        let w = self.width;
+        let h = self.height;
+        let cx = (w / 2) as isize;
+        let cy = (h / 2) as isize;
+        let mut count = 0_usize;
+
+        for sy in 0..h {
+            let ky = (sy as isize) - cy;
+            for sx in 0..w {
+                let kx = (sx as isize) - cx;
+                if kx * kx + ky * ky <= 1 || ky < 0 || (ky == 0 && kx <= 0) {
+                    continue;
+                }
+                let mag = self.magnitude_spectrum[flatten_2d_index(sx, sy, w)];
+                if !mag.is_finite() || mag <= 1.0e-12 || !self.is_upper_local_maximum(sx, sy, mag) {
+                    continue;
+                }
+                let mode = SpectralMode2D {
+                    kx,
+                    ky,
+                    k_radial: ((kx * kx + ky * ky) as f64).sqrt(),
+                    magnitude: mag,
+                    phase: self.shifted_bin_phase(sx, sy),
+                };
+                insert_ranked_mode(out, &mut count, mode);
+            }
+        }
+        count
+    }
+
+    #[verified_engine::verified]
+    fn is_upper_local_maximum(&self, sx: usize, sy: usize, mag: f64) -> bool {
+        let w = self.width as isize;
+        let h = self.height as isize;
+        let cx = w / 2;
+        let cy = h / 2;
+        for dy in -1_isize..=1 {
+            let ny = (sy as isize) + dy;
+            if ny < 0 || ny >= h {
+                continue;
+            }
+            for dx in -1_isize..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let nx = (sx as isize) + dx;
+                if nx < 0 || nx >= w {
+                    continue;
+                }
+                let nkx = nx - cx;
+                let nky = ny - cy;
+                if nkx * nkx + nky * nky <= 1 {
+                    continue;
+                }
+                let n_mag =
+                    self.magnitude_spectrum[flatten_2d_index(nx as usize, ny as usize, self.width)];
+                let precedes = (ny, nx) < (sy as isize, sx as isize);
+                if (precedes && n_mag >= mag) || (!precedes && n_mag > mag) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    #[verified_engine::verified]
+    fn shifted_bin_phase(&self, sx: usize, sy: usize) -> f64 {
+        let w = self.width;
+        let h = self.height;
+        let fx = (sx + w - (w / 2)) % w;
+        let fy = (sy + h - (h / 2)) % h;
+        let coeff = self.transposed[flatten_2d_index(fy, fx, h)];
+        if coeff.re.is_finite() && coeff.im.is_finite() {
+            coeff.im.atan2(coeff.re)
+        } else {
+            0.0
+        }
     }
 
     /// Accumulates azimuthally averaged 1D radial spectrum $S(|k|)$ into pre-allocated `out_bins` and `counts`.
@@ -251,6 +420,26 @@ impl SpectralAnalyzer2D {
 }
 
 #[verified_engine::verified]
+fn insert_sorted_peak(
+    out: &mut [SpectralPeak2D],
+    current_count: usize,
+    candidate: SpectralPeak2D,
+) -> usize {
+    let cap = out.len();
+    if current_count == cap && candidate.magnitude <= out[cap - 1].magnitude {
+        return current_count;
+    }
+    let next_count = (current_count + 1).min(cap);
+    let mut pos = current_count.min(cap - 1);
+    while pos > 0 && candidate.magnitude > out[pos - 1].magnitude {
+        out[pos] = out[pos - 1];
+        pos -= 1;
+    }
+    out[pos] = candidate;
+    next_count
+}
+
+#[verified_engine::verified]
 fn compute_finite_mean(field: &[f64]) -> f64 {
     if field.is_empty() {
         return 0.0;
@@ -276,4 +465,25 @@ fn build_hann_weights(n: usize) -> Vec<f64> {
         weights.push(w);
     }
     weights
+}
+
+#[verified_engine::verified]
+fn insert_ranked_mode(out: &mut [SpectralMode2D], count: &mut usize, candidate: SpectralMode2D) {
+    let cap = out.len();
+    if *count == cap && candidate.magnitude <= out[cap - 1].magnitude {
+        return;
+    }
+    let mut pos = *count;
+    while pos > 0 && candidate.magnitude > out[pos - 1].magnitude {
+        if pos < cap {
+            out[pos] = out[pos - 1];
+        }
+        pos -= 1;
+    }
+    if pos < cap {
+        out[pos] = candidate;
+        if *count < cap {
+            *count += 1;
+        }
+    }
 }

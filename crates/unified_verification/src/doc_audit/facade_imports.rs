@@ -68,13 +68,32 @@ fn collect_active_guide_paths(workspace_root: &Path) -> Vec<PathBuf> {
     guides
 }
 
-/// Checks Markdown content for visible internal `domain_*::` or `pure_math::` imports/paths
-/// inside Rust code fences (ignoring hidden `# ` lines and comments).
-pub fn check_markdown_facade_imports(path: &Path, content: &str) -> Vec<String> {
-    let mut violations = Vec::new();
-    let forbidden_re =
-        Regex::new(r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math)::").expect("Valid regex");
+struct FacadeImportPatterns {
+    doc_re: Regex,
+    forbidden_re: Regex,
+    bypass_re: Regex,
+}
 
+impl FacadeImportPatterns {
+    fn new() -> Self {
+        Self {
+            doc_re: Regex::new(r"^\s*(?://!|///)\s?(.*)$").expect("Valid regex"),
+            forbidden_re: Regex::new(r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math)::")
+                .expect("Valid regex"),
+            bypass_re: Regex::new(
+                r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math|math_commons|oxidize_core|nalgebra|num_complex|petgraph|rand)::",
+            )
+            .expect("Valid regex"),
+        }
+    }
+}
+
+fn check_markdown_facade_imports_with_regex(
+    path: &Path,
+    content: &str,
+    forbidden_re: &Regex,
+) -> Vec<String> {
+    let mut violations = Vec::new();
     let mut in_fence = false;
     let mut is_rust = false;
 
@@ -109,14 +128,22 @@ pub fn check_markdown_facade_imports(path: &Path, content: &str) -> Vec<String> 
     violations
 }
 
-/// Checks Rust source doc-comment fences (`///` / `//!`) for visible internal
-/// `domain_*::` or `pure_math::` imports/paths.
-pub fn check_rustdoc_facade_imports(path: &Path, content: &str) -> Vec<String> {
-    let mut violations = Vec::new();
-    let doc_re = Regex::new(r"^\s*(?://!|///)\s?(.*)$").expect("Valid regex");
+/// Checks Markdown content for visible internal `domain_*::` or `pure_math::` imports/paths
+/// inside Rust code fences (ignoring hidden `# ` lines and comments).
+#[cfg(test)]
+pub fn check_markdown_facade_imports(path: &Path, content: &str) -> Vec<String> {
     let forbidden_re =
         Regex::new(r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math)::").expect("Valid regex");
+    check_markdown_facade_imports_with_regex(path, content, &forbidden_re)
+}
 
+fn check_rustdoc_facade_imports_with_regexes(
+    path: &Path,
+    content: &str,
+    doc_re: &Regex,
+    forbidden_re: &Regex,
+) -> Vec<String> {
+    let mut violations = Vec::new();
     let mut in_fence = false;
     let mut is_rust = false;
 
@@ -156,13 +183,25 @@ pub fn check_rustdoc_facade_imports(path: &Path, content: &str) -> Vec<String> {
     violations
 }
 
-/// Checks `math_explorer/examples/*.rs` and `math_explorer/benches/*.rs` for facade-bypassing imports.
-pub fn check_example_facade_imports(path: &Path, content: &str) -> Vec<String> {
-    let mut violations = Vec::new();
-    let bypass_re = Regex::new(
-        r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math|math_commons|oxidize_core|nalgebra|num_complex|petgraph|rand)::",
+/// Checks Rust source doc-comment fences (`///` / `//!`) for visible internal
+/// `domain_*::` or `pure_math::` imports/paths.
+#[cfg(test)]
+pub fn check_rustdoc_facade_imports(path: &Path, content: &str) -> Vec<String> {
+    let patterns = FacadeImportPatterns::new();
+    check_rustdoc_facade_imports_with_regexes(
+        path,
+        content,
+        &patterns.doc_re,
+        &patterns.forbidden_re,
     )
-    .expect("Valid regex");
+}
+
+fn check_example_facade_imports_with_regex(
+    path: &Path,
+    content: &str,
+    bypass_re: &Regex,
+) -> Vec<String> {
+    let mut violations = Vec::new();
 
     for (idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
@@ -187,13 +226,28 @@ pub fn check_example_facade_imports(path: &Path, content: &str) -> Vec<String> {
     violations
 }
 
+/// Checks `math_explorer/examples/*.rs` and `math_explorer/benches/*.rs` for facade-bypassing imports.
+#[cfg(test)]
+pub fn check_example_facade_imports(path: &Path, content: &str) -> Vec<String> {
+    let bypass_re = Regex::new(
+        r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math|math_commons|oxidize_core|nalgebra|num_complex|petgraph|rand)::",
+    )
+    .expect("Valid regex");
+    check_example_facade_imports_with_regex(path, content, &bypass_re)
+}
+
 /// Audits active Markdown guides, domain rustdoc blocks, and `math_explorer` examples/benchmarks.
 pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
+    let patterns = FacadeImportPatterns::new();
     let mut violations = Vec::new();
 
     for md_path in collect_active_guide_paths(workspace_root) {
         if let Ok(content) = fs::read_to_string(&md_path) {
-            violations.extend(check_markdown_facade_imports(&md_path, &content));
+            violations.extend(check_markdown_facade_imports_with_regex(
+                &md_path,
+                &content,
+                &patterns.forbidden_re,
+            ));
         }
     }
 
@@ -206,7 +260,12 @@ pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
         );
         for rs_path in rs_files {
             if let Ok(content) = fs::read_to_string(&rs_path) {
-                violations.extend(check_rustdoc_facade_imports(&rs_path, &content));
+                violations.extend(check_rustdoc_facade_imports_with_regexes(
+                    &rs_path,
+                    &content,
+                    &patterns.doc_re,
+                    &patterns.forbidden_re,
+                ));
             }
         }
     }
@@ -220,7 +279,11 @@ pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
         );
         for target_path in targets {
             if let Ok(content) = fs::read_to_string(&target_path) {
-                violations.extend(check_example_facade_imports(&target_path, &content));
+                violations.extend(check_example_facade_imports_with_regex(
+                    &target_path,
+                    &content,
+                    &patterns.bypass_re,
+                ));
             }
         }
     }
@@ -228,8 +291,41 @@ pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
     violations
 }
 
+fn audit_active_markdown_contracts(
+    workspace_root: &Path,
+    active_md: &[PathBuf],
+    model: &super::manifest_model::WorkspaceManifestModel,
+    violations: &mut Vec<String>,
+) {
+    let trait_registry = super::trait_contracts::TraitContractRegistry::load(workspace_root);
+    for md_path in active_md {
+        let Ok(content) = fs::read_to_string(md_path) else {
+            continue;
+        };
+        violations.extend(super::cargo_cli_checks::check_markdown_cargo_commands(
+            md_path,
+            workspace_root,
+            &content,
+            model,
+        ));
+        violations.extend(super::toml_dep_checks::check_markdown_toml_dependencies(
+            md_path,
+            workspace_root,
+            &content,
+            model,
+        ));
+        violations.extend(
+            super::trait_contracts::check_markdown_trait_and_gui_contracts(
+                md_path,
+                &content,
+                &trait_registry,
+            ),
+        );
+    }
+}
+
 /// Audits Cargo CLI commands, TOML `[dependencies]` blocks, examples catalog parity,
-/// paper/rustdoc gate instructions, and trait/GUI onboarding contracts across `workspace_root`.
+/// paper/rustdoc gate instructions, trait/GUI onboarding contracts, and static doc gates.
 pub fn audit_workspace_guides_and_manifests(workspace_root: &Path) -> Vec<String> {
     let mut violations = Vec::new();
     let model = match super::manifest_model::WorkspaceManifestModel::load(workspace_root) {
@@ -241,32 +337,7 @@ pub fn audit_workspace_guides_and_manifests(workspace_root: &Path) -> Vec<String
     };
 
     let active_md = super::cargo_cli_checks::collect_active_markdown_files(workspace_root);
-    let trait_registry = super::trait_contracts::TraitContractRegistry::load(workspace_root);
-
-    for md_path in &active_md {
-        let Ok(content) = fs::read_to_string(md_path) else {
-            continue;
-        };
-        violations.extend(super::cargo_cli_checks::check_markdown_cargo_commands(
-            md_path,
-            workspace_root,
-            &content,
-            &model,
-        ));
-        violations.extend(super::toml_dep_checks::check_markdown_toml_dependencies(
-            md_path,
-            workspace_root,
-            &content,
-            &model,
-        ));
-        violations.extend(
-            super::trait_contracts::check_markdown_trait_and_gui_contracts(
-                md_path,
-                &content,
-                &trait_registry,
-            ),
-        );
-    }
+    audit_active_markdown_contracts(workspace_root, &active_md, &model, &mut violations);
 
     let mut ex_files = Vec::new();
     collect_files_with_ext(
@@ -292,6 +363,11 @@ pub fn audit_workspace_guides_and_manifests(workspace_root: &Path) -> Vec<String
             &active_md,
         ),
     );
+    violations.extend(super::static_gates::audit_static_doc_gates(
+        workspace_root,
+        &active_md,
+        &model,
+    ));
     violations
 }
 
@@ -309,6 +385,16 @@ mod tests {
         let violations = check_markdown_facade_imports(Path::new("guide.md"), dirty);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].contains("domain_applied"));
+
+        let rustdoc_dirty = "//! ```rust\n//! use pure_math::pure_math::number_theory;\n//! ```\n";
+        assert_eq!(
+            check_rustdoc_facade_imports(Path::new("lib.rs"), rustdoc_dirty).len(),
+            1
+        );
+        assert_eq!(
+            check_example_facade_imports(Path::new("demo.rs"), "use nalgebra::DMatrix;\n").len(),
+            1
+        );
     }
 
     #[test]

@@ -1,19 +1,23 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::challenge::MYSTERY_DWARF_TARGETS;
 use super::rotation_curve_tool::RotationCurveExplorer;
 use super::HaloKindChoice;
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::TraceSeries;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{Line, LineStyle, Plot, PlotPoints};
+use egui_plot::{Line, LineStyle, Plot, PlotPoints, Points};
 use math_explorer::physics::astrophysics::{
     decompose_rotation_curve, BaryonicDiskConfig, DwarfMorphology, Mpc,
 };
 
 impl RotationCurveExplorer {
     pub(super) fn render_controls(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut ch = self.render_baryonic_controls(ui);
+        let locked = self.is_challenge_locked();
+        let mut ch = ui
+            .add_enabled_ui(!locked, |ui| self.render_baryonic_controls(ui))
+            .inner;
         let c = &mut self.cfg;
         ui.separator();
         ui.heading("Dark-Matter Halo");
@@ -49,11 +53,15 @@ impl RotationCurveExplorer {
             )
             .changed();
         ch |= ui
-            .add(egui::Slider::new(&mut c.max_radius_kpc, 2.0..=25.0).text("Max Plot Radius (kpc)"))
+            .add_enabled(
+                !locked,
+                egui::Slider::new(&mut c.max_radius_kpc, 2.0..=25.0).text("Max Plot Radius (kpc)"),
+            )
             .changed();
         ch |= ui
             .checkbox(&mut c.compare_counterpart, "Overlay Counterpart Halo Curve")
             .changed();
+        ch |= self.render_relativity_controls(ui);
         ch
     }
 
@@ -122,6 +130,19 @@ impl RotationCurveExplorer {
             ui,
             "Predicted Redshift (z)",
             &format!("{:.5}", baryons.scaling.redshift),
+        );
+        render_copyable_metric(
+            ui,
+            "RMSE (16 Dwarf Targets)",
+            &format!("{:.2} km/s", self.rmse_kms),
+        );
+        render_copyable_metric(
+            ui,
+            "Reduced χ²_ν (dof = 13)",
+            &format!(
+                "{:.2} (counterpart: {:.2})",
+                self.reduced_chi_sq, self.counterpart_reduced_chi_sq
+            ),
         );
 
         if let Some(m_b) = baryons.scaling.apparent_magnitude_b {
@@ -207,40 +228,28 @@ impl RotationCurveExplorer {
         }
     }
 
-    pub(super) fn render_curve_plot(&self, ui: &mut egui::Ui) {
+    pub(super) fn render_curve_plot(&mut self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let total_pts: Vec<[f64; 2]> = self
-            .samples
-            .iter()
-            .map(|s| [s.radius_kpc, s.v_circ_kms])
-            .collect();
-        let disk_pts: Vec<[f64; 2]> = self
-            .samples
-            .iter()
-            .map(|s| [s.radius_kpc, s.v_disk_kms])
-            .collect();
-        let gas_pts: Vec<[f64; 2]> = self
-            .samples
-            .iter()
-            .map(|s| [s.radius_kpc, s.v_gas_kms])
-            .collect();
-        let halo_pts: Vec<[f64; 2]> = self
-            .samples
-            .iter()
-            .map(|s| [s.radius_kpc, s.v_halo_kms])
-            .collect();
+        let [total_pts, disk_pts, gas_pts, halo_pts] = self.collect_curve_series();
         let alt_label = format!("Counterpart: {}", self.counterpart_halo_choice().label());
         let alt_pts: Vec<[f64; 2]> = self
             .counterpart_samples
             .iter()
             .map(|s| [s.radius_kpc, s.v_circ_kms])
             .collect();
+        let obs_pts: Vec<[f64; 2]> = MYSTERY_DWARF_TARGETS
+            .iter()
+            .map(|o| [o.radius_kpc, o.v_obs_kms])
+            .collect();
 
         Plot::new("astrophysics_rotation_curve_plot")
             .view_aspect(1.85)
             .x_axis_label("Galactocentric Radius r (kpc)")
             .y_axis_label("Circular Velocity v (km/s)")
+            .include_x(0.0)
+            .include_x(16.0)
             .include_y(0.0)
+            .include_y(80.0)
             .legend(egui_plot::Legend::default())
             .show(ui, |plot_ui| {
                 plot_ui.line(
@@ -265,8 +274,67 @@ impl RotationCurveExplorer {
                             .style(LineStyle::Dashed { length: 8.0 }),
                     );
                 }
+                Self::render_target_observations_on_plot(plot_ui, obs_pts, &palette);
                 self.cfg.snapshot_manager.render_on_plot(plot_ui);
+                let bounds = plot_ui.plot_bounds();
+                if bounds.width() > 0.0 && bounds.height() > 0.0 {
+                    self.callout_manager.render_on_plot(plot_ui);
+                }
             });
+    }
+
+    fn collect_curve_series(&self) -> [Vec<[f64; 2]>; 4] {
+        let total = self
+            .samples
+            .iter()
+            .map(|s| [s.radius_kpc, s.v_circ_kms])
+            .collect();
+        let disk = self
+            .samples
+            .iter()
+            .map(|s| [s.radius_kpc, s.v_disk_kms])
+            .collect();
+        let gas = self
+            .samples
+            .iter()
+            .map(|s| [s.radius_kpc, s.v_gas_kms])
+            .collect();
+        let halo = self
+            .samples
+            .iter()
+            .map(|s| [s.radius_kpc, s.v_halo_kms])
+            .collect();
+        [total, disk, gas, halo]
+    }
+
+    fn render_target_observations_on_plot(
+        plot_ui: &mut egui_plot::PlotUi,
+        obs_pts: Vec<[f64; 2]>,
+        palette: &crate::app::SemanticPalette,
+    ) {
+        for (idx, obs) in MYSTERY_DWARF_TARGETS.iter().enumerate() {
+            let err_name = if idx == 0 {
+                "Observed ±1σ Error Bars"
+            } else {
+                ""
+            };
+            plot_ui.line(
+                Line::new(
+                    err_name,
+                    PlotPoints::new(vec![
+                        [obs.radius_kpc, obs.v_obs_kms - obs.sigma_kms],
+                        [obs.radius_kpc, obs.v_obs_kms + obs.sigma_kms],
+                    ]),
+                )
+                .color(palette.warning)
+                .width(1.4_f32),
+            );
+        }
+        plot_ui.points(
+            Points::new("Observed Dwarf v_obs (km/s)", PlotPoints::new(obs_pts))
+                .color(palette.warning)
+                .radius(4.0_f32),
+        );
     }
 }
 

@@ -319,6 +319,10 @@ pub struct MriKSpaceSnapshot {
     pub recon_rgba: Vec<Color32>,
     /// Raw reconstructed voxel magnitude $|I(r, c)|$ for quantitative inspection and tests.
     pub recon_mag: Vec<f64>,
+    /// Normalized root-mean-square error (%) of `recon_mag` against ground-truth proton density `rho`.
+    pub nrmse_pct: f64,
+    /// Scan undersampling acceleration factor $R = N^2 / \max(\sum M(k_x, k_y), 1)$.
+    pub acceleration_r: f64,
     /// Sub-voxel isochromat magnetization vectors at `selected_voxel`.
     pub selected_spins: [Vector3<f64>; ISOCHROMAT_COUNT],
     /// Net macroscopic magnetization vector $\vec{M}$ at `selected_voxel`.

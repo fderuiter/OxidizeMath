@@ -34,12 +34,16 @@ impl Error {
             Self::Analysis(err) => Some(err),
             Self::Copula(err) => Some(err),
             Self::EllipticCurve(err) => Some(err),
+            Self::Elo(err) => Some(err),
             Self::Evolution(err) => Some(err),
             Self::Fractran(err) => Some(err),
             Self::Glicko2(err) => Some(err),
+            Self::Hyperbolic(err) => Some(err),
             Self::Kelly(err) => Some(err),
             Self::LinearAlgebra(err) => Some(err),
+            Self::MarketPricing(err) => Some(err),
             Self::Markov(err) => Some(err),
+            Self::MatchModel(err) => Some(err),
             Self::NumberTheory(err) => Some(err),
             Self::Optimization(err) => Some(err),
             Self::Ou(err) => Some(err),
@@ -82,6 +86,7 @@ impl Error {
             Self::HighEnergy(err) => Some(err),
             Self::Nuclear(err) => Some(err),
             Self::Radar(err) => Some(err),
+            Self::Sandpile(err) => Some(err),
             Self::SolidState(err) => Some(err),
             Self::StandardModel(err) => Some(err),
             Self::StatMech(err) => Some(err),
@@ -94,6 +99,7 @@ impl Error {
         feature = "ai",
         feature = "applied",
         feature = "biology",
+        feature = "climate",
         feature = "epidemiology",
         feature = "physics"
     ))]
@@ -110,6 +116,8 @@ impl Error {
             Self::Kinetics(err) => Some(err),
             #[cfg(feature = "biology")]
             Self::ReactionDiffusion(err) => Some(err),
+            #[cfg(feature = "climate")]
+            Self::Climate(err) => Some(err),
             #[cfg(feature = "epidemiology")]
             Self::EpidemiologyDomain(err) => Some(err),
             #[cfg(feature = "epidemiology")]
@@ -125,6 +133,7 @@ impl Error {
         feature = "ai",
         feature = "applied",
         feature = "biology",
+        feature = "climate",
         feature = "epidemiology",
         feature = "physics"
     ))]
@@ -156,6 +165,7 @@ impl Error {
                 feature = "ai",
                 feature = "applied",
                 feature = "biology",
+                feature = "climate",
                 feature = "epidemiology",
                 feature = "physics"
             ))]

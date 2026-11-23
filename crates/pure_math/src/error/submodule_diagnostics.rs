@@ -1,6 +1,6 @@
 use super::{
-    CopulaError, Glicko2Error, KellyError, MarkovError, NumberTheoryError, OuError, TdaError,
-    ZipError,
+    CopulaError, EloError, Glicko2Error, KellyError, MarketPricingError, MarkovError,
+    MatchModelError, NumberTheoryError, OuError, TdaError, ZipError,
 };
 use crate::pure_math::{
     algebra::linear_algebra::numerical::LinearAlgebraError,
@@ -9,6 +9,7 @@ use crate::pure_math::{
         stochastic::StochasticError, transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
+    hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };
@@ -47,6 +48,18 @@ impl Diagnostic for KellyError {
     }
 }
 
+impl Diagnostic for MarketPricingError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("MarketPricingError", self.to_string())
+    }
+}
+
 impl Diagnostic for MarkovError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
@@ -55,7 +68,13 @@ impl Diagnostic for MarkovError {
 
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("MarkovError", self.to_string())
+        let mut map = error_metadata("MarkovError", self.to_string());
+        if let Self::Math(math_err) = self {
+            for (k, v) in math_err.metadata() {
+                map.entry(k).or_insert(v);
+            }
+        }
+        map
     }
 }
 
@@ -103,7 +122,13 @@ impl Diagnostic for CopulaError {
 
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("CopulaError", self.to_string())
+        let mut map = error_metadata("CopulaError", self.to_string());
+        if let Self::Math(math_err) = self {
+            for (k, v) in math_err.metadata() {
+                map.entry(k).or_insert(v);
+            }
+        }
+        map
     }
 }
 
@@ -116,6 +141,30 @@ impl Diagnostic for Glicko2Error {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("Glicko2Error", self.to_string())
+    }
+}
+
+impl Diagnostic for EloError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("EloError", self.to_string())
+    }
+}
+
+impl Diagnostic for MatchModelError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("MatchModelError", self.to_string())
     }
 }
 
@@ -224,5 +273,17 @@ impl Diagnostic for TransformError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("TransformError", self.to_string())
+    }
+}
+
+impl Diagnostic for HyperbolicError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("HyperbolicError", self.to_string())
     }
 }

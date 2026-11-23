@@ -55,7 +55,26 @@ impl SimulationFramework {
             .and_then(|idx| self.available_tools.get(idx).map(|meta| meta.id))
     }
 
-    /// Computes an O(1) parameter-only revision token for live URL fragment synchronization.
+    fn cached_untracked_url_digest(&self, tool: &dyn super::InteractiveTool) -> u64 {
+        let current_rev = self.rev_cache.untracked_tool_revision;
+        let name = tool.name();
+        if let Some(cached) = self.rev_cache.untracked_url_digest.get() {
+            if cached.tool_name == name && cached.checked_untracked_rev == current_rev {
+                return cached.url_digest;
+            }
+        }
+        let digest = compute_untracked_tool_url_digest(tool);
+        self.rev_cache
+            .untracked_url_digest
+            .set(Some(super::UntrackedUrlDigestCache {
+                tool_name: name,
+                checked_untracked_rev: current_rev,
+                url_digest: digest,
+            }));
+        digest
+    }
+
+    /// Computes a parameter-only revision token for live URL fragment synchronization.
     #[must_use]
     pub fn url_state_revision(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -64,13 +83,14 @@ impl SimulationFramework {
         self.hash_hud_for_url(&mut hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(&mut hasher);
-            let tool_rev = tool.state_revision();
+            let tool_rev = tool.url_state_revision();
             if tool_rev > 0 {
                 1_u8.hash(&mut hasher);
                 tool_rev.hash(&mut hasher);
             } else {
                 0_u8.hash(&mut hasher);
-                self.rev_cache.untracked_tool_revision.hash(&mut hasher);
+                self.cached_untracked_url_digest(tool.as_ref())
+                    .hash(&mut hasher);
             }
         }
         hasher.finish().max(1)
@@ -81,13 +101,26 @@ impl SimulationFramework {
         let Some(tool) = &self.active_tool else {
             return Ok(None);
         };
-        let Some(state_str) = tool.save_state() else {
+        let Some(state_str) = tool.save_url_state() else {
             return Ok(None);
         };
-        let config: serde_json::Value = serde_json::from_str(&state_str)
+        let cleaned = egui_plot::export::strip_utf8_bom(&state_str).trim();
+        let cap = crate::url_state::MAX_DECODED_URL_STATE_BYTES;
+        if cleaned.len() > cap {
+            return Err(format!(
+                "URL state for '{}' ({} bytes) exceeds maximum allowed limit ({cap} bytes)",
+                tool.name(),
+                cleaned.len()
+            ));
+        }
+        let raw_config: &serde_json::value::RawValue = serde_json::from_str(cleaned)
             .map_err(|e| format!("Failed to serialize state for '{}': {e}", tool.name()))?;
-        let envelope_json =
-            crate::presets::serialize_compact_preset_envelope(tool.name(), tool.domain(), config)?;
+        let envelope_json = crate::presets::serialize_compact_preset_envelope(
+            tool.name(),
+            tool.domain(),
+            raw_config,
+        )?;
+        crate::url_state::validate_url_preset_json(&envelope_json)?;
         Ok(Some(envelope_json))
     }
 
@@ -102,7 +135,7 @@ impl SimulationFramework {
                 preset_json.as_deref(),
             );
         }
-        let current_tool_state = self.active_tool.as_ref().and_then(|t| t.save_state());
+        let current_tool_state = self.active_tool.as_ref().and_then(|t| t.save_url_state());
         match &self.challenge_hud.mode {
             super::ChallengeHudMode::Story {
                 story,
@@ -173,6 +206,7 @@ impl SimulationFramework {
                     meta.id.eq_ignore_ascii_case(requested)
                         || meta.display_name.eq_ignore_ascii_case(requested)
                         || crate::url_state::matches_tab_slug(requested, meta.id, meta.display_name)
+                        || tool_matches_legacy_alias(&self.domain, meta, requested)
                 })
                 .ok_or_else(|| {
                     format!(
@@ -238,6 +272,83 @@ impl SimulationFramework {
         self.preset_dialog.toast_error = None;
         self.reset_active_tool_manual_bounds();
     }
+}
+
+fn compute_untracked_tool_url_digest(tool: &dyn super::InteractiveTool) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    match tool.save_url_state() {
+        Some(state_str) => {
+            let cleaned = egui_plot::export::strip_utf8_bom(&state_str).trim();
+            if cleaned.len() <= crate::url_state::MAX_DECODED_URL_STATE_BYTES {
+                1_u8.hash(&mut hasher);
+                cleaned.hash(&mut hasher);
+            } else {
+                2_u8.hash(&mut hasher);
+            }
+        }
+        None => {
+            0_u8.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
+fn legacy_aliases_for_tool(domain: &str, tool_id: &str) -> &'static [&'static str] {
+    match (domain, tool_id) {
+        ("paradox_lab", "ParrondoJumpRatchetTool") => &[
+            "ParrondoParadoxTool",
+            "Parrondo's Paradox",
+            "parrondo_s_paradox",
+            "parrondo-s-paradox",
+            "parrondos_paradox",
+        ],
+        ("financial_math", "ParrondoParadoxTool") => &[
+            "Parrondo's Paradox",
+            "parrondo_s_paradox",
+            "parrondo-s-paradox",
+            "parrondos_paradox",
+        ],
+        _ => &[],
+    }
+}
+
+pub(super) fn tool_matches_legacy_alias(
+    domain: &str,
+    meta: &super::ToolMetadata,
+    requested: &str,
+) -> bool {
+    let trimmed = requested.trim();
+    legacy_aliases_for_tool(domain, meta.id)
+        .iter()
+        .any(|alias| alias.eq_ignore_ascii_case(trimmed))
+}
+
+pub(super) fn tool_matches_domain_query(
+    domain: &str,
+    meta: &super::ToolMetadata,
+    query: &str,
+    include_tags: bool,
+) -> bool {
+    meta.id.eq_ignore_ascii_case(query)
+        || meta.display_name.eq_ignore_ascii_case(query)
+        || tool_matches_legacy_alias(domain, meta, query)
+        || (include_tags && meta.tags.iter().any(|tag| tag.eq_ignore_ascii_case(query)))
+}
+
+pub(super) fn lookup_saved_tool_state<'a>(
+    saved: &'a std::collections::HashMap<String, String>,
+    domain: &str,
+    meta: &super::ToolMetadata,
+    runtime_name: &str,
+) -> Option<&'a String> {
+    saved
+        .get(runtime_name)
+        .or_else(|| saved.get(meta.id))
+        .or_else(|| {
+            legacy_aliases_for_tool(domain, meta.id)
+                .iter()
+                .find_map(|alias| saved.get(*alias))
+        })
 }
 
 #[path = "url_share/hydrate.rs"]

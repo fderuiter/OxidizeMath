@@ -269,18 +269,9 @@ fn test_contour_batch_shapes_hover_log_split_and_nan_free_extract_points() {
     };
     assert!(tool.ensure_cached_contours());
 
-    let z_batch = cache::ContourBatch::new(
-        "Re(z) grid",
-        &tool.cache.z_vertical,
-        egui::Color32::LIGHT_BLUE,
-        tool.cache.generation,
-    );
-    let w_batch = cache::ContourBatch::new(
-        "u-contours",
-        &tool.cache.w_vertical,
-        egui::Color32::LIGHT_BLUE,
-        tool.cache.generation,
-    );
+    let (blue, g) = (egui::Color32::LIGHT_BLUE, tool.cache.generation);
+    let z_batch = cache::ContourBatch::new("Re(z) grid", &tool.cache.z_vertical, blue, g);
+    let w_batch = cache::ContourBatch::new("u-contours", &tool.cache.w_vertical, blue, g);
     assert!(z_batch
         .extract_points()
         .into_iter()
@@ -289,28 +280,49 @@ fn test_contour_batch_shapes_hover_log_split_and_nan_free_extract_points() {
     assert!(w_batch.extract_export_primitives().is_empty());
 
     let frame = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 400.0));
-    let lin_tf = PlotTransform::new(frame, PlotBounds::from_min_max([-5.0, -5.0], [5.0, 5.0]), true);
+    let lin_tf = PlotTransform::new(
+        frame,
+        PlotBounds::from_min_max([-5.0, -5.0], [5.0, 5.0]),
+        true,
+    );
     let mid_pos = lin_tf.position_from_point(&egui_plot::PlotPoint::new(-1.02, 0.35));
     let (snap_pt, _) = z_batch.closest_continuous_point(mid_pos, &lin_tf).unwrap();
     assert!((snap_pt.x - (-1.0)).abs() < 1e-4 && (snap_pt.y - 0.35).abs() < 1e-3);
-
-    let mut log_tf =
-        PlotTransform::new(frame, PlotBounds::from_min_max([0.01, 0.01], [10.0, 10.0]), true);
+    let mut log_tf = PlotTransform::new(
+        frame,
+        PlotBounds::from_min_max([0.01, 0.01], [10.0, 10.0]),
+        true,
+    );
     log_tf.set_log_axis(egui::Vec2b::new(true, false));
+    assert_contour_batch_shapes(&z_batch, &w_batch, &lin_tf, &log_tf);
+}
+
+fn assert_contour_batch_shapes(
+    z_batch: &cache::ContourBatch<'_>,
+    w_batch: &cache::ContourBatch<'_>,
+    lin_tf: &egui_plot::PlotTransform,
+    log_tf: &egui_plot::PlotTransform,
+) {
+    use egui_plot::PlotItem as _;
     let ctx = egui::Context::default();
     let _ = ctx.run(egui::RawInput::default(), |c| {
         egui::CentralPanel::default().show(c, |ui| {
             let mut z_shapes = Vec::new();
-            z_batch.shapes(ui, &lin_tf, &mut z_shapes);
+            z_batch.shapes(ui, lin_tf, &mut z_shapes);
             assert_eq!(z_shapes.len(), 5);
-            assert!(z_shapes.iter().all(|s| matches!(s, egui::Shape::LineSegment { .. })));
+            assert!(z_shapes
+                .iter()
+                .all(|s| matches!(s, egui::Shape::LineSegment { .. })));
 
             let mut w_log_shapes = Vec::new();
-            w_batch.shapes(ui, &log_tf, &mut w_log_shapes);
+            w_batch.shapes(ui, log_tf, &mut w_log_shapes);
             assert!(!w_log_shapes.is_empty());
             for shape in &w_log_shapes {
                 if let egui::Shape::Path(path_shape) = shape {
-                    assert!(path_shape.points.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
+                    assert!(path_shape
+                        .points
+                        .iter()
+                        .all(|p| p.x.is_finite() && p.y.is_finite()));
                 }
             }
         });
@@ -360,12 +372,26 @@ fn dispatch_framework_export(
         )),
         ..Default::default()
     };
-    let _ = ctx.run(raw, |c| {
+    let _ = ctx.run(raw.clone(), |c| {
         egui_plot::clear_last_plot_datasets();
         fw.show_export_modal = fmt != crate::framework::ExportFormat::Csv;
         fw.queue_export(fmt);
         fw.show(c, "cm_export_fw");
     });
+    if fmt == crate::framework::ExportFormat::Gif {
+        assert!(
+            fw.active_gif_progress().is_some(),
+            "GIF export must return without encoding all frames inline"
+        );
+        for _ in 0..250 {
+            if fw.active_gif_progress().is_none() {
+                break;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            let _ = ctx.run(raw.clone(), |c| fw.show(c, "cm_export_fw"));
+        }
+    }
     assert!(
         !fw.is_diverged(),
         "FiniteStateGuard must not diverge on pole contours"

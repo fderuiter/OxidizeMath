@@ -3,7 +3,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::super::bankroll_ensemble::{
-    BankrollLabMode, VolatilityHypothesis, DEFAULT_CUSTOM_FRACTION, MAX_CUSTOM_FRACTION,
+    BankrollLabMode, VolatilityHypothesis, DEFAULT_BARRIER_FLOOR_RATIO, DEFAULT_CUSTOM_FRACTION,
+    MAX_BARRIER_FLOOR_RATIO, MAX_CUSTOM_FRACTION, MIN_BARRIER_FLOOR_RATIO,
 };
 use super::{is_default_stake_multiplier, BankrollGrowthTool};
 use math_explorer::pure_math::statistics::kelly::{kelly_fraction, variants, Odds, UnitInterval};
@@ -16,12 +17,20 @@ fn default_custom_fraction() -> f64 {
     DEFAULT_CUSTOM_FRACTION
 }
 
+fn default_barrier_floor_ratio() -> f64 {
+    DEFAULT_BARRIER_FLOOR_RATIO
+}
+
 fn is_default_mode(mode: &BankrollLabMode) -> bool {
     *mode == BankrollLabMode::KellyStrategies
 }
 
 fn is_default_fraction(val: &f64) -> bool {
     (*val - DEFAULT_CUSTOM_FRACTION).abs() < 1e-12
+}
+
+fn is_default_barrier_floor_ratio(val: &f64) -> bool {
+    (*val - DEFAULT_BARRIER_FLOOR_RATIO).abs() < 1e-12
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -43,8 +52,37 @@ struct BankrollState {
         skip_serializing_if = "is_default_fraction"
     )]
     custom_fraction: f64,
+    #[serde(
+        default = "default_barrier_floor_ratio",
+        skip_serializing_if = "is_default_barrier_floor_ratio"
+    )]
+    barrier_floor_ratio: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hypothesis: Option<VolatilityHypothesis>,
+}
+
+fn validate_bankroll_bounds(s: &BankrollState) -> Result<(), String> {
+    if ![
+        s.initial_bankroll,
+        s.probability,
+        s.odds,
+        s.stake_multiplier,
+        s.custom_fraction,
+        s.barrier_floor_ratio,
+    ]
+    .iter()
+    .all(|v| v.is_finite())
+        || !(100.0..=10_000.0).contains(&s.initial_bankroll)
+        || !(0.01..=0.99).contains(&s.probability)
+        || !(0.1..=10.0).contains(&s.odds)
+        || !(10..=1000).contains(&s.num_bets)
+        || !(0.0..=3.0).contains(&s.stake_multiplier)
+        || !(0.0..=MAX_CUSTOM_FRACTION).contains(&s.custom_fraction)
+        || !(MIN_BARRIER_FLOOR_RATIO..=MAX_BARRIER_FLOOR_RATIO).contains(&s.barrier_floor_ratio)
+    {
+        return Err("Bankroll simulation parameters out of bounds".into());
+    }
+    Ok(())
 }
 
 impl BankrollGrowthTool {
@@ -57,6 +95,7 @@ impl BankrollGrowthTool {
             stake_multiplier: self.stake_multiplier,
             mode: self.mode,
             custom_fraction: self.ensemble_lab.custom_fraction,
+            barrier_floor_ratio: self.ensemble_lab.barrier_floor_ratio,
             hypothesis: self.ensemble_lab.hypothesis,
         })
         .ok()
@@ -65,24 +104,7 @@ impl BankrollGrowthTool {
     pub(super) fn load_state_json(&mut self, state: &str) -> Result<(), String> {
         let s: BankrollState =
             serde_json::from_str(state).map_err(|e| format!("Invalid bankroll state: {e}"))?;
-        if ![
-            s.initial_bankroll,
-            s.probability,
-            s.odds,
-            s.stake_multiplier,
-            s.custom_fraction,
-        ]
-        .iter()
-        .all(|v| v.is_finite())
-            || !(100.0..=10_000.0).contains(&s.initial_bankroll)
-            || !(0.01..=0.99).contains(&s.probability)
-            || !(0.1..=10.0).contains(&s.odds)
-            || !(10..=1000).contains(&s.num_bets)
-            || !(0.0..=3.0).contains(&s.stake_multiplier)
-            || !(0.0..=MAX_CUSTOM_FRACTION).contains(&s.custom_fraction)
-        {
-            return Err("Bankroll simulation parameters out of bounds".into());
-        }
+        validate_bankroll_bounds(&s)?;
         let p = UnitInterval::new(s.probability).map_err(|e| format!("Error: {e}"))?;
         let o = Odds::from_net_odds(s.odds).map_err(|e| format!("Error: {e}"))?;
         if s.mode == BankrollLabMode::KellyStrategies {
@@ -98,6 +120,9 @@ impl BankrollGrowthTool {
         self.seed_counter = 0;
         self.mode = s.mode;
         self.ensemble_lab.custom_fraction = s.custom_fraction.clamp(0.0, MAX_CUSTOM_FRACTION);
+        self.ensemble_lab.barrier_floor_ratio = s
+            .barrier_floor_ratio
+            .clamp(MIN_BARRIER_FLOOR_RATIO, MAX_BARRIER_FLOOR_RATIO);
         self.ensemble_lab.hypothesis = s.hypothesis;
         self.recalculate();
         Ok(())
@@ -124,15 +149,15 @@ impl scientific_metadata::theory::TheoryDescribable for BankrollGrowthTool {
         let mut map = std::collections::HashMap::new();
         map.insert(
             "Full Kelly".into(),
-            "Maximizes expected logarithmic growth rate".into(),
+            "Maximizes expected logarithmic growth rate (50% asymptotic probability of a 50% drawdown)".into(),
         );
         map.insert(
             "Half Kelly".into(),
-            "Reduces variance and drawdowns by half while retaining 75% of growth rate".into(),
+            "Retains ~75% of growth rate while cutting 50%-drawdown risk to ~12.5%".into(),
         );
         map.insert(
             "Quarter Kelly".into(),
-            "Conservative wagering for high volatility protection".into(),
+            "Conservative wagering with <2% asymptotic 50%-drawdown risk".into(),
         );
         map
     }
@@ -148,7 +173,7 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "initial_bankroll": 5000.0,
     "probability": 0.6,
-    "odds": 2.5,
+    "odds": 1.5,
     "num_bets": 150
   }
 }"#;
