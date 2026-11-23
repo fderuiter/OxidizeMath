@@ -10,6 +10,7 @@ pub mod atlas;
 mod atlas_bridge;
 pub mod counterfactual;
 mod counterfactual_tool;
+mod dataflow;
 pub mod gray_scott_atlas;
 #[cfg(test)]
 mod legacy_runner;
