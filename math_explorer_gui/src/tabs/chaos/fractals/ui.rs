@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::accessibility::{
-    AccessibleHoverText, AccessibleTheoryHover, announce_live_status, lock_canvas_arrow_keys,
-    paint_canvas_focus_ring, register_canvas_accessibility,
+    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility, AccessibleHoverText, AccessibleTheoryHover,
 };
 use crate::framework::bounded_drag_value;
 use eframe::egui;
@@ -16,31 +16,22 @@ impl FractalViewer {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Settings");
             ui.separator();
-            ui.horizontal(|ui| {
-                let mut selected = self.mode;
-                if ui
-                    .radio_value(&mut selected, FractalMode::Mandelbrot, "Mandelbrot")
-                    .clicked()
-                {
-                    self.switch_mode(FractalMode::Mandelbrot);
+            self.draw_mode_selector(ui);
+
+            if self.mode.is_custom() {
+                ui.separator();
+                if self.math_input.ui(ui) {
+                    self.dirty = true;
                 }
-                if ui
-                    .radio_value(&mut selected, FractalMode::Julia, "Julia")
-                    .clicked()
-                {
-                    self.switch_mode(FractalMode::Julia);
-                }
-            });
+            }
 
             ui.separator();
-            if self.mode == FractalMode::Julia {
+            if self.mode.uses_julia_c() {
                 ui.label("Julia Constant (c):");
-                let re_drag =
-                    bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.005)
-                        .prefix("Re: ");
-                let im_drag =
-                    bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.005)
-                        .prefix("Im: ");
+                let re_drag = bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.01)
+                    .prefix("Re: ");
+                let im_drag = bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.01)
+                    .prefix("Im: ");
                 if ui.add(re_drag).changed() | ui.add(im_drag).changed() {
                     self.dirty = true;
                 }
@@ -55,6 +46,23 @@ impl FractalViewer {
                     );
             }
             self.draw_view_controls(ui);
+        });
+    }
+
+    fn draw_mode_selector(&mut self, ui: &mut egui::Ui) {
+        let options = [
+            (FractalMode::Mandelbrot, "Mandelbrot"),
+            (FractalMode::Julia, "Julia"),
+            (FractalMode::CustomMandelbrot, "Custom (c-plane)"),
+            (FractalMode::CustomJulia, "Custom (Julia)"),
+        ];
+        let mut selected = self.mode;
+        ui.horizontal_wrapped(|ui| {
+            for (mode, label) in options {
+                if ui.radio_value(&mut selected, mode, label).clicked() {
+                    self.switch_mode(mode);
+                }
+            }
         });
     }
 
@@ -97,7 +105,9 @@ impl FractalViewer {
         if ui.button("↻ Reset View").clicked() {
             self.center = match self.mode {
                 FractalMode::Mandelbrot => DEFAULT_MANDELBROT_CENTER,
-                FractalMode::Julia => DEFAULT_JULIA_CENTER,
+                FractalMode::Julia | FractalMode::CustomMandelbrot | FractalMode::CustomJulia => {
+                    DEFAULT_JULIA_CENTER
+                }
             };
             self.zoom = 1.0;
             self.sync_active_viewport();
@@ -200,25 +210,37 @@ impl FractalViewer {
         let step = (0.01 / self.zoom.clamp(ZOOM_MIN, ZOOM_MAX)).clamp(1e-6, 0.25);
         let mut c_changed = false;
         if left {
-            self.julia_c = Complex::new((self.julia_c.re - step).clamp(COORD_MIN, COORD_MAX), self.julia_c.im);
+            self.julia_c = Complex::new(
+                (self.julia_c.re - step).clamp(COORD_MIN, COORD_MAX),
+                self.julia_c.im,
+            );
             c_changed = true;
         }
         if right {
-            self.julia_c = Complex::new((self.julia_c.re + step).clamp(COORD_MIN, COORD_MAX), self.julia_c.im);
+            self.julia_c = Complex::new(
+                (self.julia_c.re + step).clamp(COORD_MIN, COORD_MAX),
+                self.julia_c.im,
+            );
             c_changed = true;
         }
         if up {
-            self.julia_c = Complex::new(self.julia_c.re, (self.julia_c.im + step).clamp(COORD_MIN, COORD_MAX));
+            self.julia_c = Complex::new(
+                self.julia_c.re,
+                (self.julia_c.im + step).clamp(COORD_MIN, COORD_MAX),
+            );
             c_changed = true;
         }
         if down {
-            self.julia_c = Complex::new(self.julia_c.re, (self.julia_c.im - step).clamp(COORD_MIN, COORD_MAX));
+            self.julia_c = Complex::new(
+                self.julia_c.re,
+                (self.julia_c.im - step).clamp(COORD_MIN, COORD_MAX),
+            );
             c_changed = true;
         }
         if enter {
             self.c_pinned = !self.c_pinned;
         }
-        if c_changed && self.mode == FractalMode::Julia {
+        if c_changed && self.mode.uses_julia_c() {
             self.dirty = true;
         }
         c_changed || enter

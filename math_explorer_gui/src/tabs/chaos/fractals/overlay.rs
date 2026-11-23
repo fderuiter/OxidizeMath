@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    COORD_MAX, COORD_MIN, FractalMode, FractalRenderRequest, FractalViewer, ZOOM_MAX, ZOOM_MIN,
-    render_fractal_color_image,
+    render_fractal_color_image, FractalMode, FractalRenderRequest, FractalViewer, COORD_MAX,
+    COORD_MIN, ZOOM_MAX, ZOOM_MIN,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -72,10 +72,7 @@ pub fn complex_to_screen(
     let scale_x = scale_y * (w / h);
     let u = (z.re - center.re) / scale_x + 0.5;
     let v = 0.5 - (z.im - center.im) / scale_y;
-    egui::pos2(
-        rect.left() + (u * w) as f32,
-        rect.top() + (v * h) as f32,
-    )
+    egui::pos2(rect.left() + (u * w) as f32, rect.top() + (v * h) as f32)
 }
 
 /// Computes up to `steps` iterates of the critical orbit `z_{n+1} = z_n^2 + c` from `z_0 = 0`.
@@ -230,9 +227,10 @@ impl FractalViewer {
         canvas_rect: egui::Rect,
         palette: &SemanticPalette,
     ) {
-        let (Some(inset_rect), Some(tex)) =
-            (Self::julia_inset_rect(canvas_rect), &self.julia_inset_texture)
-        else {
+        let (Some(inset_rect), Some(tex)) = (
+            Self::julia_inset_rect(canvas_rect),
+            &self.julia_inset_texture,
+        ) else {
             return;
         };
         let frame_rect = inset_rect.expand(2.0);
@@ -248,10 +246,7 @@ impl FractalViewer {
             ),
             egui::StrokeKind::Inside,
         );
-        let caption = format!(
-            "J_c ({:+.2}{:+.2}i)",
-            self.julia_c.re, self.julia_c.im
-        );
+        let caption = format!("J_c ({:+.2}{:+.2}i)", self.julia_c.re, self.julia_c.im);
         painter.text(
             egui::pos2(inset_rect.left() + 4.0, inset_rect.bottom() - 4.0),
             egui::Align2::LEFT_BOTTOM,

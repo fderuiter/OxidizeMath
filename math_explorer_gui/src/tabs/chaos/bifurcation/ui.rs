@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::BifurcationDiagram;
+use super::{BifurcationDiagram, BifurcationMapMode};
 use crate::accessibility::{
-    AccessibleHoverText, AccessibleTheoryHover, announce_live_status, lock_canvas_arrow_keys,
-    paint_canvas_focus_ring, register_canvas_accessibility,
+    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility, AccessibleHoverText, AccessibleTheoryHover,
 };
 use crate::app::SemanticPalette;
 use crate::reflective_ui::AnimatedSlider;
@@ -17,22 +17,31 @@ impl BifurcationDiagram {
             ui.heading("1D Chaos Explorer");
             ui.separator();
 
-            let mut sweep_changed = false;
+            let mut sweep_changed = self.draw_custom_map_controls(ui);
+            ui.separator();
+
+            let (lo_bound, hi_bound) = match self.map_mode {
+                BifurcationMapMode::Logistic => (0.0, 4.0),
+                BifurcationMapMode::Custom => (-6.0, 6.0),
+            };
             sweep_changed |= ui
                 .add(
-                    AnimatedSlider::new(&mut self.r_min, 0.0..=3.99)
+                    AnimatedSlider::new(&mut self.r_min, lo_bound..=(hi_bound - 0.01))
                         .text("Min r")
                         .id_salt("bifurcation_r_min"),
                 )
                 .changed();
             if self.r_max <= self.r_min {
-                self.r_max = (self.r_min + 0.01).min(4.0);
+                self.r_max = (self.r_min + 0.01).min(hi_bound);
             }
             sweep_changed |= ui
                 .add(
-                    AnimatedSlider::new(&mut self.r_max, (self.r_min + 0.01).min(4.0)..=4.0)
-                        .text("Max r")
-                        .id_salt("bifurcation_r_max"),
+                    AnimatedSlider::new(
+                        &mut self.r_max,
+                        (self.r_min + 0.01).min(hi_bound)..=hi_bound,
+                    )
+                    .text("Max r")
+                    .id_salt("bifurcation_r_max"),
                 )
                 .changed();
             sweep_changed |= ui
@@ -45,8 +54,6 @@ impl BifurcationDiagram {
 
             ui.separator();
             self.draw_parameter_controls(ui, sweep_changed);
-            ui.separator();
-            self.draw_custom_map_controls(ui);
 
             ui.separator();
             ui.label(format!(
@@ -62,13 +69,21 @@ impl BifurcationDiagram {
 
     fn draw_parameter_controls(&mut self, ui: &mut egui::Ui, mut full_recompute: bool) {
         let r_changed = ui
-            .add(egui::Slider::new(&mut self.selected_r, self.r_min..=self.r_max).text("Selected r"))
+            .add(
+                egui::Slider::new(&mut self.selected_r, self.r_min..=self.r_max).text("Selected r"),
+            )
             .changed();
+        let x0_range = match self.map_mode {
+            BifurcationMapMode::Logistic => 0.001..=0.999,
+            BifurcationMapMode::Custom => -2.0..=2.0,
+        };
         let x0_changed = ui
-            .add(egui::Slider::new(&mut self.x0, 0.001..=0.999).text("Initial x₀"))
+            .add(egui::Slider::new(&mut self.x0, x0_range).text("Initial x₀"))
             .changed();
         ui.checkbox(&mut self.r_pinned, "Pin r crosshair")
-            .accessible_hover_text("Freeze selected r against pointer hover; Enter toggles on plot");
+            .accessible_hover_text(
+                "Freeze selected r against pointer hover; Enter toggles on plot",
+            );
 
         full_recompute |= x0_changed;
         if ui
@@ -83,14 +98,33 @@ impl BifurcationDiagram {
         }
     }
 
-    fn draw_custom_map_controls(&mut self, ui: &mut egui::Ui) {
-        let toggled = ui
-            .checkbox(&mut self.use_custom_map, "Custom 1D Map f(x, r)")
-            .accessible_hover_text("Evaluate custom 1D recurrence x_{n+1} = f(x, r) via AST")
-            .changed();
-        let mut expr_changed = false;
-        if self.use_custom_map {
-            expr_changed = self.math_input.ui(ui);
+    fn draw_custom_map_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            if ui
+                .radio_value(&mut self.map_mode, BifurcationMapMode::Logistic, "Logistic")
+                .clicked()
+            {
+                self.r_min = self.r_min.clamp(0.0, 3.95);
+                self.r_max = self.r_max.clamp(self.r_min + 0.05, 4.0);
+                self.selected_r = self.selected_r.clamp(self.r_min, self.r_max);
+                self.x0 = self.x0.clamp(0.001, 0.999);
+                changed = true;
+            }
+            if ui
+                .radio_value(
+                    &mut self.map_mode,
+                    BifurcationMapMode::Custom,
+                    "Custom f(r, x)",
+                )
+                .clicked()
+            {
+                changed = true;
+            }
+        });
+        if self.map_mode.is_custom() {
+            ui.add_space(4.0);
+            changed |= self.math_input.ui(ui);
             if let Some(ref err_msg) = self.custom_eval_error {
                 let palette = SemanticPalette::from_visuals(ui.visuals());
                 ui.label(
@@ -100,9 +134,7 @@ impl BifurcationDiagram {
                 );
             }
         }
-        if toggled || expr_changed {
-            self.recompute();
-        }
+        changed
     }
 
     pub(super) fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
@@ -146,8 +178,9 @@ impl BifurcationDiagram {
         let mut announce = false;
         let resp = plot_ui.response();
 
-        let pointer_released =
-            plot_ui.ctx().input(|i| i.pointer.button_released(egui::PointerButton::Primary));
+        let pointer_released = plot_ui
+            .ctx()
+            .input(|i| i.pointer.button_released(egui::PointerButton::Primary));
 
         if resp.has_focus() {
             let (k_r, k_x0, k_ann) =
@@ -214,6 +247,10 @@ impl BifurcationDiagram {
             ctx.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
         }
         let step_r = ((self.r_max - self.r_min) * 0.01).clamp(1e-4, 0.05);
+        let (x_lo, x_hi) = match self.map_mode {
+            BifurcationMapMode::Logistic => (0.001, 0.999),
+            BifurcationMapMode::Custom => (-10.0, 10.0),
+        };
         let mut r_changed = false;
         let mut x0_changed = false;
         if left {
@@ -225,11 +262,11 @@ impl BifurcationDiagram {
             r_changed = true;
         }
         if up {
-            self.x0 = (self.x0 + 0.01).clamp(0.001, 0.999);
+            self.x0 = (self.x0 + 0.01).clamp(x_lo, x_hi);
             x0_changed = true;
         }
         if down {
-            self.x0 = (self.x0 - 0.01).clamp(0.001, 0.999);
+            self.x0 = (self.x0 - 0.01).clamp(x_lo, x_hi);
             x0_changed = true;
         }
         if enter {
@@ -329,9 +366,12 @@ impl BifurcationDiagram {
                         .width(if self.r_pinned { 2.0_f32 } else { 1.4_f32 }),
                 );
                 plot_ui.points(
-                    Points::new("Selected λ", vec![[self.selected_r, self.selected_lyapunov]])
-                        .radius(4.0_f32)
-                        .color(palette.accent),
+                    Points::new(
+                        "Selected λ",
+                        vec![[self.selected_r, self.selected_lyapunov]],
+                    )
+                    .radius(4.0_f32)
+                    .color(palette.accent),
                 );
             })
             .response;
@@ -347,6 +387,10 @@ impl BifurcationDiagram {
         height: f32,
     ) {
         let weak_color = ui.visuals().weak_text_color();
+        let (x_lo, x_hi) = match self.map_mode {
+            BifurcationMapMode::Logistic => (0.001, 0.999),
+            BifurcationMapMode::Custom => (-10.0, 10.0),
+        };
         let _ = Plot::new(ui.id().with("bifurcation_cobweb_plot"))
             .width(width)
             .height(height)
@@ -357,7 +401,7 @@ impl BifurcationDiagram {
                 if plot_ui.response().clicked() {
                     if let Some(coord) = plot_ui.pointer_coordinate() {
                         if coord.x.is_finite() {
-                            self.x0 = coord.x.clamp(0.001, 0.999);
+                            self.x0 = coord.x.clamp(x_lo, x_hi);
                             self.recompute();
                         }
                     }
