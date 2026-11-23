@@ -8,6 +8,7 @@ mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod counterfactual;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
@@ -85,6 +86,7 @@ pub use brush_codec::*;
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
+pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
@@ -113,7 +115,9 @@ pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
-use overlay_sync::{FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache};
+pub(super) use overlay_sync::{
+    FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache,
+};
 use scientific_metadata::theory::TheoryDescribable;
 
 pub struct ToolMetadata {
@@ -144,25 +148,9 @@ pub trait InteractiveTool {
 
     /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
     ///
-    /// # Accessibility Requirements for Custom `show_inside` Overrides
-    ///
-    /// The default implementation allocates its central canvas with [`egui::Sense::click_and_drag`]
-    /// (which includes [`egui::Sense::FOCUSABLE`]) and dispatches [`Self::on_keyboard`] when
-    /// `response.has_focus()` is true. When overriding `show_inside` directly:
-    ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`] (or
-    ///   [`egui::Sense::click`] / [`egui::Sense::click_and_drag`] for interactive canvases) instead
-    ///   of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))`
-    ///   instead of raw `ui.image(texture)` calls so `AccessKit` exposes `Role::Image` and non-empty
-    ///   alternative text.
-    /// - Populate `AccessKit` metadata (`Role`, non-empty `label`, and dynamic `value` summary) via
-    ///   `ctx.accesskit_node_builder(response.id, ...)` (or
-    ///   `crate::accessibility::register_canvas_accessibility`) and draw a high-contrast focus ring
-    ///   when `response.has_focus()`.
-    /// - If the canvas consumes arrow keys, call `Memory::set_focus_lock_filter` with
-    ///   `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
-    ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
+    /// Custom overrides must allocate focusable senses (`Sense::focusable_noninteractive` or
+    /// `Sense::click_and_drag`), expose `AccessKit` labels/values (or `Image::alt_text`), paint a
+    /// high-contrast focus ring when focused, and never lock `Tab`/`Shift+Tab` in `EventFilter`.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
@@ -412,6 +400,16 @@ pub trait InteractiveTool {
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 
+    /// Optional hook returning the active counterfactual divergence snapshot for `SimulationFramework`.
+    fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
+        None
+    }
+
+    /// Optional hook applying a `CounterfactualBranchEngine` action (`Fork`, `Swap`, `Clear`, `SetPerturbation`).
+    fn apply_counterfactual_action(&mut self, _action: BranchControlAction) -> bool {
+        false
+    }
+
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(
         &mut self,
@@ -445,8 +443,8 @@ pub struct SimulationFramework {
     pub saved_plot_states: plot_persistence::SavedPlotStatesMap,
     pub(super) plot_sync_generation: u64,
     pub search_query: String,
-    last_announced_count: Option<usize>,
-    last_announced_query: String,
+    pub(super) last_announced_count: Option<usize>,
+    pub(super) last_announced_query: String,
     pub show_export_modal: bool,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
@@ -472,6 +470,8 @@ pub struct SimulationFramework {
     pub diagnostic_report: Option<DiagnosticReport>,
     /// Simulation frame / step counter.
     pub step_counter: usize,
+    /// Counterfactual shadow twin engine state synchronized with the active tool.
+    pub branch_engine: CounterfactualBranchEngine,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
     /// Declarative guided story and AST challenge HUD state.

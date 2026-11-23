@@ -242,6 +242,8 @@ fn test_morphogenesis_divergence_and_recovery() {
         dt: 0.05,
         high_contrast: false,
         periodic_boundary: false,
+        theme_mode: crate::app::ThemeMode::Dark,
+        heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));
 
     let mut runner = MorphogenesisRunner {

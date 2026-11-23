@@ -165,6 +165,13 @@ impl Default for FractalViewer {
     }
 }
 
+impl FractalViewer {
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+}
+
 impl TheoryDescribable for FractalViewer {
     fn theory_description(&self) -> String {
         let name = match self.mode {
@@ -206,13 +213,6 @@ impl TheoryDescribable for FractalViewer {
 
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
         self.build_theory_parameters()
-    }
-}
-
-impl FractalViewer {
-    #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 }
 
