@@ -7,10 +7,12 @@ use serde::{Deserialize, Serialize};
 
 /// Progressive 2D parameter regime atlas and Schnakenberg dispersion cartographer.
 pub mod atlas;
+mod atlas_bridge;
 /// Evolutionary replicator and enzyme saturation kinetics tool.
 pub mod evolution_kinetics_tool;
 /// UI rendering for [`evolution_kinetics_tool::EvolutionKineticsTool`].
 pub mod evolution_kinetics_ui;
+pub mod gray_scott_atlas;
 #[cfg(test)]
 mod legacy_runner;
 /// Continuous 2D FFT Lenia Studio tool and canvas.
@@ -39,6 +41,10 @@ pub use atlas::{
 };
 #[cfg(test)]
 pub use evolution_kinetics_tool::EvolutionKineticsTool;
+#[cfg(test)]
+pub use gray_scott_atlas::{
+    classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
+};
 #[cfg(test)]
 pub use lenia::LeniaTool;
 #[cfg(test)]
