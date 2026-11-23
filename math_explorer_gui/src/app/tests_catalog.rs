@@ -87,7 +87,7 @@ fn test_cold_boot_opens_global_starter_gallery_and_session_or_url_dismisses_it()
     let _ = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
     assert!(find_node_by_label(&out, "Starter Template Gallery").is_some());
-    assert!(find_node_by_label(&out, "All Domains (97)").is_some());
+    assert!(find_node_by_label(&out, "All Domains (99)").is_some());
     assert!(find_node_by_label(&out, "Inverse Challenges (5)").is_some());
     for domain in AcademicDomain::ALL {
         assert!(
@@ -288,15 +288,15 @@ fn test_per_tab_starter_gallery_prefilters_active_domain_and_expands_to_all_doma
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
 
     // Pre-filtered to Biology (with Kermack-McKendrick SIR Model visible)
-    assert!(find_node_by_label(&out, "of 97)").is_some());
-    assert!(find_node_by_label(&out, "(97 of 97)").is_none());
+    assert!(find_node_by_label(&out, "of 99)").is_some());
+    assert!(find_node_by_label(&out, "(99 of 99)").is_none());
     assert!(find_node_by_label(&out, "Kermack-McKendrick SIR Model").is_some());
 
-    // One-click expansion to "All Domains (97)" without closing modal
-    let all_chip = find_node_by_label(&out, "All Domains (97)").expect("All Domains chip");
+    // One-click expansion to "All Domains (99)" without closing modal
+    let all_chip = find_node_by_label(&out, "All Domains (99)").expect("All Domains chip");
     let _ = click_accesskit_node(&ctx, &mut app, &mut frame, all_chip);
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
-    assert!(find_node_by_label(&out, "(97 of 97)").is_some());
+    assert!(find_node_by_label(&out, "(99 of 99)").is_some());
     assert!(
         app.tabs[epi_idx].framework().unwrap().show_starter_gallery,
         "Per-tab modal must stay open after expanding to All Domains"

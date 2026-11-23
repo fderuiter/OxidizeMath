@@ -25,6 +25,7 @@ pub fn academic_domain_for_slug(domain_slug: &str) -> AcademicDomain {
         | "clinical_trials"
         | "favoritism"
         | "game_theory"
+        | "paradox_lab"
         | "traceability" => AcademicDomain::AppliedMath,
         "biology" | "morphogenesis" | "neuroscience" | "epidemiology" => AcademicDomain::Biology,
         "climate" => AcademicDomain::Climate,
@@ -57,6 +58,7 @@ pub fn module_title_for_slug(domain_slug: &str) -> &'static str {
         "mri" => "MRI Physics",
         "neuroscience" => "Neuroscience",
         "number_theory" => "Number Theory",
+        "paradox_lab" => "Paradox Lab",
         "quantum" => "Quantum Mechanics",
         "solid_state" => "Solid State Physics",
         "traceability" => "Traceability Portal",
