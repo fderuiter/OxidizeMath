@@ -2,6 +2,7 @@ use super::SpatialDiffusion;
 
 #[allow(missing_docs)]
 pub mod boundary;
+mod fused_pair;
 #[allow(missing_docs)]
 pub mod geometry;
 #[allow(missing_docs)]
@@ -152,7 +153,7 @@ impl<const N: usize> SpatialDiffusion<N> for FiniteDifference2D {
     fn step_fused<K: crate::biology::morphogenesis::reaction::ReactionKinetics<N>>(
         &self,
         state: [&[f64]; N],
-        next_state: [&mut [f64]; N],
+        mut next_state: [&mut [f64]; N],
         dt: f64,
         coeffs: [f64; N],
         kinetics: &K,
@@ -163,22 +164,40 @@ impl<const N: usize> SpatialDiffusion<N> for FiniteDifference2D {
         let dim = (*self.geometry.width, *self.geometry.height);
         let stepper = SpatialDiffusion::<N>::stepper(self);
         match self.boundary_mode {
-            BoundaryMode::Neumann => stepper.step_2d_coupled_neumann(
-                dim,
-                state,
-                next_state,
-                dt,
-                1.0,
-                |_i, curr, left, right, up, down, ops| {
-                    eval_reaction_diffusion_rhs(
-                        curr,
-                        [left, right, up, down],
-                        coeffs,
-                        kinetics,
-                        ops,
-                    )
-                },
-            ),
+            BoundaryMode::Neumann => {
+                if N == 2 {
+                    if let [nu, nv] = &mut next_state[..] {
+                        fused_pair::step_fused_pair(
+                            dim,
+                            state[0],
+                            state[1],
+                            nu,
+                            nv,
+                            dt,
+                            [coeffs[0], coeffs[1]],
+                            &stepper.ops,
+                            kinetics,
+                        );
+                        return;
+                    }
+                }
+                stepper.step_2d_coupled_neumann(
+                    dim,
+                    state,
+                    next_state,
+                    dt,
+                    1.0,
+                    |_i, curr, left, right, up, down, ops| {
+                        eval_reaction_diffusion_rhs(
+                            curr,
+                            [left, right, up, down],
+                            coeffs,
+                            kinetics,
+                            ops,
+                        )
+                    },
+                );
+            }
             BoundaryMode::Periodic => stepper.step_2d_coupled_periodic(
                 dim,
                 state,

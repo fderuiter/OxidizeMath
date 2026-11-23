@@ -220,7 +220,18 @@ impl SimulationFramework {
             expires_at_time: None,
         });
     }
+}
 
+pub(super) fn materialize_shared_datasets(
+    datasets: &[(String, egui_plot::SharedPoints)],
+) -> Vec<(String, Vec<[f64; 2]>)> {
+    datasets
+        .iter()
+        .map(|(name, pts)| (name.clone(), pts.to_vec()))
+        .collect()
+}
+
+impl SimulationFramework {
     /// Queues a dataset or figure file export request for deferred end-of-frame dispatch.
     pub(crate) fn queue_export(&mut self, format: ExportFormat) {
         self.export_queue.push(format);
@@ -346,6 +357,22 @@ impl SimulationFramework {
 #[path = "deferred_export_tests.rs"]
 pub(crate) mod deferred_export_tests;
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "biology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[path = "deferred_export_audit_tests.rs"]
 mod deferred_export_audit_tests;
+
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "biology",
+    feature = "physics",
+    feature = "pure_math"
+))]
+#[path = "scalar_export_audit_tests.rs"]
+mod scalar_export_audit_tests;

@@ -243,6 +243,26 @@ pub(crate) fn rotate_airfoil_in_place(
     solver.set_inlet(0, 0, 2, h, u_in, 0.0);
 }
 
+pub(crate) fn sync_lbm_parameters(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    stamped_airfoil: &mut Option<(u16, f64)>,
+    display_vorticity: &mut bool,
+    params: &HashMap<String, f64>,
+) {
+    let viscosity = *params.get("viscosity").unwrap_or(&0.02);
+    if viscosity.is_finite() && viscosity > 0.0 {
+        solver.collision_model.tau = 3.0 * viscosity + 0.5;
+    }
+    if let Some((code, prev_aoa)) = *stamped_airfoil {
+        let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+        if aoa.is_finite() && (aoa - prev_aoa).abs() > 1e-6 {
+            rotate_airfoil_in_place(solver, code, prev_aoa, aoa);
+            *stamped_airfoil = Some((code, aoa));
+        }
+    }
+    *display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
+}
+
 fn sync_live_aoa_slider(
     ui: &egui::Ui,
     raw_code: f64,
@@ -398,6 +418,37 @@ fn parse_naca_action(action: &str, params: &HashMap<String, f64>) -> (u16, f64) 
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or_else(|| *params.get("angle_of_attack").unwrap_or(&0.0));
     (code, aoa)
+}
+
+pub(crate) fn apply_lbm_sculpt_payload(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    active_profile_param: &mut f64,
+    stamped_airfoil: &mut Option<(u16, f64)>,
+    payload: &SculptStatePayload,
+    params: &HashMap<String, f64>,
+) -> bool {
+    if payload.rle_mask.is_empty() {
+        return false;
+    }
+    let w = solver.width();
+    let h = solver.height();
+    let Ok(bytes) = crate::framework::decode_rle_mask(&payload.rle_mask, w * h) else {
+        return false;
+    };
+    for y in 0..h {
+        for x in 0..w {
+            solver.set_obstacle(
+                x,
+                y,
+                bytes[math_commons::math_kernel::types::flatten_2d_index(x, y, w)] != 0,
+            );
+        }
+    }
+    let profile = *params.get("naca_profile").unwrap_or(&0.0);
+    let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+    *active_profile_param = profile;
+    *stamped_airfoil = (profile >= 1.0).then_some((profile.round() as u16, aoa));
+    true
 }
 
 pub(crate) fn apply_lbm_custom_action(

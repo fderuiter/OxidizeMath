@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub mod atlas;
 mod canvas;
 pub mod presets;
 mod ui;
@@ -9,6 +10,8 @@ mod ui;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub use atlas::{LeniaCartographer, LeniaRegime, LENIA_ATLAS_AXIS_PAIRS};
 pub use presets::{LeniaBrushMode, LeniaSpeciesPreset, LeniaTheory, LeniaToolState};
 
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -112,6 +115,11 @@ impl Default for LeniaTool {
 }
 
 impl LeniaTool {
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     /// Loads a canonical [`LeniaSpeciesPreset`] genome and reseeds the periodic grid via `OxidizeRng`.
     pub fn apply_species_preset(&mut self, species: LeniaSpeciesPreset) {
         self.species = species;
@@ -275,26 +283,11 @@ impl FiniteStateGuard for LeniaTool {
     }
 
     fn clamp_parameters(&mut self) {
-        self.radius = if self.radius.is_finite() {
-            self.radius.clamp(MIN_KERNEL_RADIUS, MAX_KERNEL_RADIUS)
-        } else {
-            13.0
-        };
-        self.mu = if self.mu.is_finite() {
-            self.mu.clamp(0.01, 0.60)
-        } else {
-            0.15
-        };
-        self.sigma = if self.sigma.is_finite() {
-            self.sigma.abs().clamp(0.002, 0.15)
-        } else {
-            0.015
-        };
-        self.dt = if self.dt.is_finite() {
-            self.dt.clamp(0.005, 0.50)
-        } else {
-            0.1
-        };
+        let clamp_or = |v: f64, lo, hi, def| if v.is_finite() { v.clamp(lo, hi) } else { def };
+        self.radius = clamp_or(self.radius, MIN_KERNEL_RADIUS, MAX_KERNEL_RADIUS, 13.0);
+        self.mu = clamp_or(self.mu, 0.01, 0.60, 0.15);
+        self.sigma = clamp_or(self.sigma.abs(), 0.002, 0.15, 0.015);
+        self.dt = clamp_or(self.dt, 0.005, 0.50, 0.1);
         self.sanitize_rings_and_field();
         self.diagnostic = None;
         self.sync_engine_parameters();
@@ -306,35 +299,6 @@ impl FiniteStateGuard for LeniaTool {
         self.perturbation = 0.0;
         self.brush_radius = default_brush_radius();
         self.apply_species_preset(LeniaSpeciesPreset::Orbium);
-    }
-}
-
-impl LeniaTool {
-    fn sanitize_rings_and_field(&mut self) {
-        if self.ring_weights.is_empty() {
-            self.ring_weights.push(1.0);
-        }
-        self.ring_weights.truncate(MAX_KERNEL_RINGS);
-        for w in &mut self.ring_weights {
-            *w = if w.is_finite() {
-                w.clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-        }
-        if self.ring_weights.iter().copied().sum::<f64>() <= 1e-6 {
-            self.ring_weights[0] = 1.0;
-        }
-        if !self.engine.state().iter().all(|v| v.is_finite()) {
-            for cell in self.engine.state_mut() {
-                *cell = if cell.is_finite() {
-                    cell.clamp(0.0, 1.0)
-                } else {
-                    0.0
-                };
-            }
-            self.engine.refresh_telemetry();
-        }
     }
 }
 
@@ -398,10 +362,6 @@ impl InteractiveTool for LeniaTool {
         self.render_studio(ui);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }
@@ -409,6 +369,44 @@ impl InteractiveTool for LeniaTool {
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true
+    }
+
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        atlas::LENIA_ATLAS_AXIS_PAIRS
+    }
+
+    fn active_atlas_coords(&self, axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        let get = |k: &str| match k {
+            "mu" => self.mu,
+            "sigma" => self.sigma,
+            "radius" => self.radius,
+            _ => 0.0,
+        };
+        (get(axis_keys.0), get(axis_keys.1))
+    }
+
+    fn atlas_context_signature(&self, axis_keys: (&'static str, &'static str)) -> u64 {
+        self.lenia_atlas_context_sig(axis_keys)
+    }
+
+    fn build_atlas_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<std::sync::Arc<dyn crate::async_sim::atlas::RegimeCartographer>> {
+        let theory = self.theory.theory_parameters();
+        Some(std::sync::Arc::new(atlas::LeniaCartographer::new(
+            &theory,
+            axis_keys,
+            self.species,
+            self.radius,
+            &self.ring_weights,
+            GrowthParams::new(self.mu, self.sigma),
+            self.dt,
+        )))
+    }
+
+    fn apply_atlas_teleport(&mut self, ev: crate::async_sim::atlas::AtlasTeleportEvent) {
+        self.handle_lenia_atlas_teleport(ev);
     }
 
     fn state_bounds(&self) -> ToolStateBounds {
@@ -477,16 +475,7 @@ inventory::submit! {
         id: "LeniaTool",
         display_name: "Lenia Studio",
         domain: "biology",
-        tags: &[
-            "lenia",
-            "cellular-automata",
-            "soliton",
-            "orbium",
-            "geminium",
-            "hydrogeminium",
-            "scutium",
-            "fft",
-        ],
+        tags: &["lenia", "cellular-automata", "soliton", "orbium", "geminium", "hydrogeminium", "scutium", "fft"],
         build: || Box::new(LeniaTool::default()),
     }
 }

@@ -337,6 +337,7 @@ pub(super) fn interact_split_sash(
     let mut sash_resp = ui.interact(divider_rect, sash_id, egui::Sense::click_and_drag());
 
     let modal_open = app.command_palette.is_open
+        || app.show_starter_gallery
         || app.show_help_menu
         || egui::Popup::is_any_open(ctx)
         || ctx.memory(|m| m.top_modal_layer().is_some());

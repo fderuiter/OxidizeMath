@@ -46,7 +46,7 @@ fn collect_box_texts(b: &MathBox, out: &mut String) {
 fn assert_no_leaked_latex_words(latex: &str) {
     let font = audit_font();
     let parsed = parse_latex_to_box(latex, &font, Color32::WHITE)
-        .unwrap_or_else(|()| panic!("Failed to parse LaTeX: {latex}"));
+        .unwrap_or_else(|err| panic!("Failed to parse LaTeX ({err:?}): {latex}"));
     let mut box_text = String::new();
     collect_box_texts(&parsed, &mut box_text);
     let box_sanitized = box_text.replace("right-censored", "");

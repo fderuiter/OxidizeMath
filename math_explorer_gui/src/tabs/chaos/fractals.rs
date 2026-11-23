@@ -1,13 +1,20 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use num_complex::Complex;
-use scientific_metadata::theory::TheoryDescribable;
-use std::collections::{BTreeMap, HashMap};
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+
+#[path = "fractals/atlas.rs"]
+pub mod atlas;
+#[cfg(test)]
+pub use atlas::FractalCartographer;
+use atlas::FRACTAL_ATLAS_AXIS_PAIRS;
 
 #[path = "fractals/formula.rs"]
 pub mod formula;
@@ -16,6 +23,10 @@ pub use formula::{default_fractal_input_bar, CompiledFractalJob, DEFAULT_FRACTAL
 #[path = "fractals/runner.rs"]
 mod runner;
 pub use runner::*;
+
+#[path = "fractals/overlay.rs"]
+mod overlay;
+pub use overlay::*;
 
 #[path = "fractals/scalar_export.rs"]
 mod scalar_export;
@@ -26,16 +37,38 @@ mod shader;
 #[path = "fractals/ui.rs"]
 mod ui;
 
+#[path = "fractals/presets.rs"]
+mod presets;
+use presets::FractalState;
+#[cfg(test)]
+use presets::{STARTER_CUSP_CONNECTED_JSON, STARTER_CUSP_DUST_JSON, STARTER_PRESET_JSON};
+
+/// Default complex-plane center for `FractalMode::Mandelbrot`.
+pub const DEFAULT_MANDELBROT_CENTER: Complex<f64> = Complex::new(-0.75, 0.0);
+/// Default complex-plane center for `FractalMode::Julia` and custom modes.
+pub const DEFAULT_JULIA_CENTER: Complex<f64> = Complex::new(0.0, 0.0);
+
 /// Interactive Mandelbrot, Julia, and custom complex escape fractal viewer backed by progressive background passes.
 pub struct FractalViewer {
     pub(crate) center: Complex<f64>,
     pub(crate) zoom: f64,
+    pub(crate) c_plane_view: (Complex<f64>, f64),
+    pub(crate) z_plane_view: (Complex<f64>, f64),
     pub(crate) max_iter: u32,
     pub(crate) mode: FractalMode,
     pub(crate) julia_c: Complex<f64>,
+    /// Whether `julia_c` is pinned against Mandelbrot pointer hover updates.
+    pub c_pinned: bool,
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) quadratic_job: CompiledFractalJob,
+    pub(crate) atlas: ParameterAtlasController,
     pub(crate) high_contrast: bool,
     pub(crate) texture: Option<egui::TextureHandle>,
+    pub(crate) julia_inset_texture: Option<egui::TextureHandle>,
+    pub(crate) julia_inset_image: Option<egui::ColorImage>,
+    pub(crate) julia_inset_key: Option<(u64, u64, u32, bool)>,
+    #[cfg(test)]
+    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) dirty: bool,
     pub(crate) requested_size: (usize, usize),
     pub(crate) request_generation: u64,
@@ -47,15 +80,38 @@ pub struct FractalViewer {
     pub(crate) worker: BackgroundWorker<FractalRunner>,
 }
 
+type SharedFormulaSlot = Arc<RwLock<Option<Arc<CompiledFractalJob>>>>;
+
+fn build_initial_worker(
+    initial_req: FractalRenderRequest,
+    math_input: &MathExpressionInputBar,
+) -> (
+    Arc<RwLock<FractalRenderRequest>>,
+    SharedFormulaSlot,
+    Arc<AtomicU64>,
+    BackgroundWorker<FractalRunner>,
+) {
+    let initial_formula = Some(Arc::new(CompiledFractalJob::from_bar(math_input)));
+    let shared_request = Arc::new(RwLock::new(initial_req));
+    let shared_formula = Arc::new(RwLock::new(initial_formula));
+    let latest_generation = Arc::new(AtomicU64::new(0));
+    let worker = BackgroundWorker::new(FractalRunner::with_formula(
+        Arc::clone(&shared_request),
+        Arc::clone(&latest_generation),
+        Arc::clone(&shared_formula),
+    ));
+    (shared_request, shared_formula, latest_generation, worker)
+}
+
 impl Default for FractalViewer {
     fn default() -> Self {
-        let center = Complex::new(-0.75, 0.0);
+        let center = DEFAULT_MANDELBROT_CENTER;
         let zoom = 1.0;
         let max_iter = 100;
         let mode = FractalMode::Mandelbrot;
         let julia_c = Complex::new(-0.4, 0.6);
         let math_input = default_fractal_input_bar();
-        let initial_formula = Some(Arc::new(CompiledFractalJob::from_bar(&math_input)));
+        let quadratic_job = CompiledFractalJob::quadratic();
         let initial_req = FractalRenderRequest {
             generation: 0,
             width: INITIAL_PREVIEW_SIZE.0,
@@ -67,23 +123,35 @@ impl Default for FractalViewer {
             julia_c,
             high_contrast: false,
         };
-        let shared_request = Arc::new(RwLock::new(initial_req));
-        let shared_formula = Arc::new(RwLock::new(initial_formula));
-        let latest_generation = Arc::new(AtomicU64::new(0));
-        let worker = BackgroundWorker::new(FractalRunner::with_formula(
-            Arc::clone(&shared_request),
-            Arc::clone(&latest_generation),
-            Arc::clone(&shared_formula),
-        ));
+        let (shared_request, shared_formula, latest_generation, worker) =
+            build_initial_worker(initial_req, &math_input);
+        let inset_iter = max_iter.clamp(10, JULIA_INSET_MAX_ITER);
+        let inset_img = render_julia_inset_image(julia_c, inset_iter, false);
+        let inset_key = (
+            julia_c.re.to_bits(),
+            julia_c.im.to_bits(),
+            inset_iter,
+            false,
+        );
         Self {
             center,
             zoom,
+            c_plane_view: (DEFAULT_MANDELBROT_CENTER, zoom),
+            z_plane_view: (DEFAULT_JULIA_CENTER, 1.0),
             max_iter,
             mode,
             julia_c,
+            c_pinned: false,
             math_input,
+            quadratic_job,
+            atlas: ParameterAtlasController::new(FRACTAL_ATLAS_AXIS_PAIRS.to_vec()),
             high_contrast: false,
             texture: None,
+            julia_inset_texture: None,
+            julia_inset_image: Some(inset_img),
+            julia_inset_key: Some(inset_key),
+            #[cfg(test)]
+            focused_canvas: None,
             dirty: true,
             requested_size: INITIAL_PREVIEW_SIZE,
             request_generation: 0,
@@ -134,6 +202,17 @@ impl TheoryDescribable for FractalViewer {
         let mut map = HashMap::new();
         map.insert("default".to_string(), "Fractal viewer".to_string());
         map
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        self.build_theory_parameters()
+    }
+}
+
+impl FractalViewer {
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 }
 
@@ -190,46 +269,16 @@ impl InteractiveTool for FractalViewer {
 
     fn step_simulation(&mut self) {
         self.zoom = (self.zoom * 1.06).clamp(ZOOM_MIN, ZOOM_MAX);
+        self.sync_active_plane_view();
         self.dirty = true;
     }
 
     fn has_finite_parameters(&self) -> bool {
-        FractalState {
-            center_re: self.center.re,
-            center_im: self.center.im,
-            zoom: self.zoom,
-            max_iter: self.max_iter,
-            mode: self.mode,
-            julia_re: self.julia_c.re,
-            julia_im: self.julia_c.im,
-            custom_expr: None,
-            custom_params: self.math_input.params_map(),
-        }
-        .validate()
-        .is_ok()
+        self.build_state(false).validate().is_ok()
     }
 
     fn save_state(&self) -> Option<String> {
-        let is_custom = self.mode.is_custom();
-        let custom_expr = (is_custom || self.math_input.raw_text != DEFAULT_FRACTAL_EXPR)
-            .then(|| self.math_input.raw_text.clone());
-        let custom_params = if is_custom {
-            self.math_input.params_map()
-        } else {
-            BTreeMap::new()
-        };
-        serde_json::to_string(&FractalState {
-            center_re: self.center.re,
-            center_im: self.center.im,
-            zoom: self.zoom,
-            max_iter: self.max_iter,
-            mode: self.mode,
-            julia_re: self.julia_c.re,
-            julia_im: self.julia_c.im,
-            custom_expr,
-            custom_params,
-        })
-        .ok()
+        serde_json::to_string(&self.build_state(true)).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
@@ -241,9 +290,29 @@ impl InteractiveTool for FractalViewer {
         self.max_iter = s.max_iter;
         self.mode = s.mode;
         self.julia_c = Complex::new(s.julia_re, s.julia_im);
+        self.c_pinned = s.c_pinned;
+        self.c_plane_view = (
+            Complex::new(
+                s.mandelbrot_center_re
+                    .unwrap_or(DEFAULT_MANDELBROT_CENTER.re),
+                s.mandelbrot_center_im
+                    .unwrap_or(DEFAULT_MANDELBROT_CENTER.im),
+            ),
+            s.mandelbrot_zoom.unwrap_or(1.0),
+        );
+        self.z_plane_view = (
+            Complex::new(
+                s.julia_center_re.unwrap_or(DEFAULT_JULIA_CENTER.re),
+                s.julia_center_im.unwrap_or(DEFAULT_JULIA_CENTER.im),
+            ),
+            s.julia_zoom.unwrap_or(1.0),
+        );
+        self.sync_active_plane_view();
         self.math_input
             .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_FRACTAL_EXPR));
         self.math_input.set_params_map(&s.custom_params);
+        self.atlas.set_visible(s.atlas_visible);
+        let _ = self.atlas.set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1]);
         self.dirty = true;
         Ok(())
     }
@@ -381,51 +450,33 @@ impl FractalViewer {
 }
 
 // [cite:graph_parameters_rust]
+// [cite:chaos_theory]
 
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "FractalViewer",
         display_name: "Fractal Viewer",
         domain: "chaos",
-        tags: &[],
+        tags: &[
+            "mandelbrot",
+            "julia",
+            "escape time",
+            "complex dynamics",
+            "self-similarity",
+            "critical orbit",
+            "fractal",
+        ],
         build: || Box::new(FractalViewer::default()),
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Mandelbrot Explorer",
-    "domain": "chaos",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "center_re": -0.75,
-    "center_im": 0.0,
-    "zoom": 1.0,
-    "max_iter": 150,
-    "mode": "Mandelbrot",
-    "julia_re": -0.7,
-    "julia_im": 0.27015
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "fractal_viewer_starter",
-        title: "Mandelbrot Explorer",
-        description: "z_{n+1} = z_n^2 + c: Complex quadratic polynomial iteration and boundary fractal escape times.",
-        category: "Fractals",
-        icon: "❄️",
-        domain: "chaos",
-        tool_name: Some("FractalViewer"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }
 
 #[cfg(test)]
 #[path = "fractals/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "fractals/coupling_tests.rs"]
+mod coupling_tests;
 
 #[cfg(test)]
 #[path = "fractals/custom_tests.rs"]

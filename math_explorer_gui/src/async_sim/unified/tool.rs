@@ -305,10 +305,6 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         }
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_kit.focused_plot_id()
-    }
-
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());

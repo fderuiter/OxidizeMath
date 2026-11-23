@@ -4,7 +4,7 @@
 
 use super::lattice_boltzmann::{LbmSnapshotMetrics, LbmUnified};
 use super::lattice_boltzmann_sculpt::inspect_solver_solid_and_core;
-use super::lbm_fairing::{LBM_REF_DIAMETER, LBM_RHO_0, LBM_U_IN};
+use super::lbm_fairing::{LBM_REF_DIAMETER, LBM_RHO_0};
 use crate::async_sim::StateSnapshot;
 use crate::framework::ScalarField2D;
 use eframe::egui::Color32;
@@ -13,9 +13,14 @@ use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::compute_drag_coefficient;
 use std::sync::{Arc, RwLock};
 
-/// Builds a [`StateSnapshot`] for [`LbmUnified`] including top-down hydrodynamic scalar samples
-/// and an obstacle-aware active fluid mask for 2D vector contour / heightmap / normal-map export.
-pub(super) fn build_lbm_snapshot(model: &LbmUnified) -> StateSnapshot {
+struct SampledLbmGrid {
+    pixels: Vec<Color32>,
+    scalar_field: Vec<f64>,
+    active_mask: Vec<bool>,
+    max_vort: f64,
+}
+
+fn sample_lbm_grid(model: &LbmUnified) -> SampledLbmGrid {
     let width = model.solver.width();
     let height = model.solver.height();
     let cell_count = width * height;
@@ -51,21 +56,40 @@ pub(super) fn build_lbm_snapshot(model: &LbmUnified) -> StateSnapshot {
         }
     }
 
+    SampledLbmGrid {
+        pixels,
+        scalar_field,
+        active_mask,
+        max_vort,
+    }
+}
+
+/// Builds a [`StateSnapshot`] for [`LbmUnified`] including top-down hydrodynamic scalar samples
+/// and an obstacle-aware active fluid mask for 2D vector contour / heightmap / normal-map export.
+pub(super) fn build_lbm_snapshot(model: &LbmUnified) -> StateSnapshot {
+    let width = model.solver.width();
+    let height = model.solver.height();
+    let grid = sample_lbm_grid(model);
     let (f_drag, f_lift) = model.solver.hydrodynamic_forces();
-    let c_d = compute_drag_coefficient(f_drag, LBM_RHO_0, LBM_U_IN, LBM_REF_DIAMETER);
+    let c_d = compute_drag_coefficient(
+        f_drag,
+        LBM_RHO_0,
+        model.inlet_velocity.max(1e-4),
+        LBM_REF_DIAMETER,
+    );
     let (n_solid, core_intact) = inspect_solver_solid_and_core(&model.solver);
     let metrics = LbmSnapshotMetrics {
         lift_coeff: model.latest_aero.lift_coeff,
         drag_coeff: model.latest_aero.drag_coeff,
-        max_vorticity: max_vort,
-        scalar_field,
-        active_mask,
+        max_vorticity: grid.max_vort,
+        scalar_field: grid.scalar_field,
+        active_mask: grid.active_mask,
     };
 
     StateSnapshot {
         width,
         height,
-        pixels: Arc::new(RwLock::new(pixels)),
+        pixels: Arc::new(RwLock::new(grid.pixels)),
         custom_data: vec![
             f_drag,
             f_lift,

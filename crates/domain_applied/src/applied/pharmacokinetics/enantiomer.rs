@@ -11,6 +11,10 @@ use crate::error::PharmacokineticsError;
 /// Constructed via [`EnantiomerModel::new`] to ensure valid parameter states.
 #[derive(Debug, Clone, Copy)]
 pub struct EnantiomerModel {
+    d_base: PKParameters,
+    l_base: PKParameters,
+    f_d: f64,
+    f_l: f64,
     d_model: BatemanModel,
     l_model: BatemanModel,
 }
@@ -52,8 +56,57 @@ impl EnantiomerModel {
 
         let d_model = BatemanModel::new(d_params.with_dose(d_dose)?);
         let l_model = BatemanModel::new(l_params.with_dose(l_dose)?);
+        debug_assert!(d_model.params.d() >= 0.0);
+        debug_assert!(l_model.params.d() >= 0.0);
 
-        Ok(Self { d_model, l_model })
+        Ok(Self {
+            d_base: d_params,
+            l_base: l_params,
+            f_d,
+            f_l,
+            d_model,
+            l_model,
+        })
+    }
+
+    /// Returns a copy of this chiral mixture model scaled to `total_dose_mg` via [`PKParameters::with_dose`].
+    #[verified_engine::verified]
+    pub fn with_dose(&self, total_dose_mg: f64) -> Result<Self, PharmacokineticsError> {
+        let d_scaled = self.d_base.with_dose(total_dose_mg)?;
+        let l_scaled = self.l_base.with_dose(total_dose_mg)?;
+        debug_assert!(d_scaled.d() >= 0.0);
+        debug_assert!(l_scaled.d() >= 0.0);
+        Self::new(d_scaled, l_scaled, self.f_d, self.f_l)
+    }
+
+    /// Returns the plasma concentration of the d-enantiomer at time `t` (hours).
+    #[verified_engine::verified]
+    pub fn d_concentration(&self, t: f64) -> f64 {
+        let c = self.d_model.concentration(t);
+        debug_assert!(c >= 0.0 || c.is_nan());
+        c
+    }
+
+    /// Returns the plasma concentration of the l-enantiomer at time `t` (hours).
+    #[verified_engine::verified]
+    pub fn l_concentration(&self, t: f64) -> f64 {
+        let c = self.l_model.concentration(t);
+        debug_assert!(c >= 0.0 || c.is_nan());
+        c
+    }
+
+    /// Returns the configured d-enantiomer dose fraction `f_d`.
+    #[verified_engine::verified]
+    pub fn f_d(&self) -> f64 {
+        debug_assert!((0.0..=1.0).contains(&self.f_d));
+        self.f_d
+    }
+
+    /// Returns the configured l-enantiomer dose fraction `f_l`.
+    #[verified_engine::verified]
+    pub fn f_l(&self) -> f64 {
+        debug_assert!((0.0..=1.0).contains(&self.f_l));
+        self.f_l
     }
 }
 

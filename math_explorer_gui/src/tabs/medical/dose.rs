@@ -445,7 +445,7 @@ inventory::submit! {
         id: "DoseCalculationTool",
         display_name: "Dose Calculation",
         domain: "medical",
-        tags: &[],
+        tags: &["psf", "convolution", "radiation therapy", "isodose", "kernel", "imrt"],
         build: || Box::new(DoseCalculationTool::default()),
     }
 }

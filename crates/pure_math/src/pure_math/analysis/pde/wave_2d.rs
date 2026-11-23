@@ -56,7 +56,7 @@ pub use masks::{
 pub use particles_and_contours::{
     ChladniSandSystem, ContourChain, MarchingSquares2D, extract_stitched_contours,
 };
-pub use spectral::{SpectralAnalyzer2D, SpectralPeak2D};
+pub use spectral::{SpectralAnalyzer2D, SpectralMode2D, SpectralPeak2D};
 
 /// Zero-allocation 2D Verlet PDE solver with pre-allocated mask and stencil buffers.
 #[derive(Debug, Clone)]
@@ -215,13 +215,7 @@ impl Wave2DSolver {
         } else {
             1.0e-4
         };
-        let mut max_speed_scale = 1.0_f64;
-        for &s in &self.wave_speed_mask {
-            if s > max_speed_scale {
-                max_speed_scale = s;
-            }
-        }
-        let c_eff = params.wave_speed.abs() * max_speed_scale;
+        let c_eff = params.wave_speed.abs() * masks::max_wave_speed_scale(&self.wave_speed_mask);
         let dt_wave = if c_eff > 1.0e-12 {
             MAX_COURANT_NUMBER * min_h / c_eff
         } else {
@@ -245,12 +239,13 @@ impl Wave2DSolver {
         (substeps, dt_sub)
     }
 
-    /// Effective wave Courant number $c \Delta t_{\text{sub}} / \min(\Delta x, \Delta y)$.
+    /// Effective peak wave Courant number $c_{\max} \Delta t_{\text{sub}} / \min(\Delta x, \Delta y)$.
     #[verified_engine::verified]
     pub fn effective_courant(&self, params: &Wave2DParams, requested_dt: f64) -> f64 {
         let (_substeps, dt_sub) = self.safe_substep_plan(params, requested_dt);
         let min_h = self.dx().min(self.dy());
-        params.wave_speed.abs() * dt_sub / min_h
+        let c_eff = params.wave_speed.abs() * masks::max_wave_speed_scale(&self.wave_speed_mask);
+        c_eff * dt_sub / min_h
     }
 
     /// Advances the 2D solver without external forcing over `requested_dt`, returning executed substeps.

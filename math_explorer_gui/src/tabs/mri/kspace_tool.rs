@@ -6,7 +6,9 @@ use super::kspace_types::{
     MriKSpaceToolState, StudioBrushMode, MAX_STUDIO_STROKES,
 };
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
-use crate::framework::{ExportCapabilities, InteractionContext, InteractiveTool};
+use crate::framework::{
+    CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractionContext, InteractiveTool,
+};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -24,13 +26,17 @@ pub struct MriKSpaceTool {
     pub worker: BackgroundWorker<MriKSpaceRunner>,
     /// Most recent frame snapshot rendered across spatial, k-space, recon, and 3D Bloch views.
     pub latest: MriKSpaceSnapshot,
+    /// Latest stack-allocated 8-voice sonification frame for Web Audio and `.wav` export.
+    pub latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) fault_notified: bool,
     pub(crate) phantom_tex: Option<egui::TextureHandle>,
     pub(crate) kspace_tex: Option<egui::TextureHandle>,
     pub(crate) recon_tex: Option<egui::TextureHandle>,
     pub(crate) textures_dirty: bool,
     pub(crate) last_high_contrast: Option<bool>,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) theory: MriKSpaceTheory,
+    pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) callout_manager: CalloutManager,
 }
 
 impl Default for MriKSpaceTool {
@@ -42,6 +48,7 @@ impl Default for MriKSpaceTool {
         }));
         let runner = MriKSpaceRunner::new(Arc::clone(&params));
         let initial_snap = runner.get_snapshot();
+        let latest_sonification = initial_snap.sonification;
         let latest = initial_snap
             .structured_data
             .as_ref()
@@ -55,13 +62,16 @@ impl Default for MriKSpaceTool {
             params,
             worker,
             latest,
+            latest_sonification,
+            fault_notified: false,
             phantom_tex: None,
             kspace_tex: None,
             recon_tex: None,
             textures_dirty: true,
             last_high_contrast: None,
-            focused_canvas: None,
             theory: MriKSpaceTheory,
+            active_challenge: None,
+            callout_manager: CalloutManager::new(),
         }
     }
 }
@@ -69,6 +79,9 @@ impl Default for MriKSpaceTool {
 impl MriKSpaceTool {
     /// Synchronizes `self.config` into `self.params` and sends a custom worker command.
     pub fn sync_and_notify(&mut self, action: &'static str) {
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut self.config);
+        }
         self.params
             .write()
             .unwrap_or_else(|e| e.into_inner())
@@ -100,7 +113,10 @@ impl MriKSpaceTool {
 
     /// Restores factory defaults and resets the background worker cleanly.
     pub fn reset(&mut self) {
-        let target_state = MriKSpaceToolState::default();
+        let mut target_state = MriKSpaceToolState::default();
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut target_state);
+        }
         self.config = target_state.clone();
         self.params
             .write()
@@ -108,21 +124,53 @@ impl MriKSpaceTool {
             .config = target_state;
         let params = Arc::clone(&self.params);
         let fresh_runner = MriKSpaceRunner::new(Arc::clone(&params));
-        if let Some(snap) = fresh_runner
-            .get_snapshot()
+        let fresh_snap = fresh_runner.get_snapshot();
+        self.latest_sonification = fresh_snap.sonification;
+        if let Some(snap) = fresh_snap
             .structured_data
             .as_ref()
             .and_then(|d| d.downcast_ref::<MriKSpaceSnapshot>())
         {
             self.latest = snap.clone();
         }
+        self.fault_notified = false;
         self.worker
             .reset_or_respawn(move || MriKSpaceRunner::new(params));
         self.textures_dirty = true;
     }
 
+    pub(crate) fn poll_worker_snapshots(&mut self, high_contrast: bool) {
+        if self.last_high_contrast != Some(high_contrast) {
+            self.last_high_contrast = Some(high_contrast);
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .high_contrast = high_contrast;
+            self.sync_and_notify("sync_view");
+        }
+        while let Some(snap) = self.worker.update() {
+            self.latest_sonification = snap.sonification;
+            if let Some(data) = snap
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<MriKSpaceSnapshot>())
+            {
+                self.latest = data.clone();
+                self.textures_dirty = true;
+            }
+        }
+    }
+
     /// Applies a brush stroke at grid coordinates `(cx, cy)` and dispatches `SimCommand::ApplyBrush`.
     pub fn apply_brush_at_grid(&mut self, mode: StudioBrushMode, cx: i32, cy: i32) {
+        if self.is_challenge_locked()
+            && !matches!(
+                mode,
+                StudioBrushMode::KSpaceMaskErase | StudioBrushMode::KSpaceMaskPaint
+            )
+        {
+            return;
+        }
         let n = self.config.grid_size as i32;
         let clamped_x = cx.clamp(0, n - 1);
         let clamped_y = cy.clamp(0, n - 1);
@@ -285,10 +333,6 @@ impl InteractiveTool for MriKSpaceTool {
         }
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.config.flip_angle_deg.to_bits().hash(&mut h);
@@ -310,6 +354,7 @@ impl InteractiveTool for MriKSpaceTool {
         self.config.camera.yaw.to_bits().hash(&mut h);
         self.config.camera.zoom.to_bits().hash(&mut h);
         self.config.strokes.hash(&mut h);
+        self.active_challenge.hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         h.finish().max(1)
     }
@@ -326,6 +371,9 @@ impl InteractiveTool for MriKSpaceTool {
         parsed.validate()?;
         let target_worker = parsed.state.unwrap_or(SimWorkerState::Ready);
         parsed.state = Some(target_worker);
+        if self.is_challenge_locked() {
+            Self::enforce_challenge_locks_on_state(&mut parsed);
+        }
         self.config = parsed.clone();
         self.params
             .write()
@@ -333,14 +381,16 @@ impl InteractiveTool for MriKSpaceTool {
             .config = parsed;
 
         let fresh_runner = MriKSpaceRunner::new(Arc::clone(&self.params));
-        if let Some(snap) = fresh_runner
-            .get_snapshot()
+        let fresh_snap = fresh_runner.get_snapshot();
+        self.latest_sonification = fresh_snap.sonification;
+        if let Some(snap) = fresh_snap
             .structured_data
             .as_ref()
             .and_then(|d| d.downcast_ref::<MriKSpaceSnapshot>())
         {
             self.latest = snap.clone();
         }
+        self.fault_notified = false;
         let params = Arc::clone(&self.params);
         self.worker
             .reset_or_respawn(move || MriKSpaceRunner::new(params));
@@ -368,6 +418,18 @@ impl InteractiveTool for MriKSpaceTool {
         self.config.selected_voxel[1] = self.config.selected_voxel[1].min(max_v);
         self.sync_and_notify("sync_config");
         true
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_kspace_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.eval_kspace_challenge()
     }
 
     #[cfg(test)]

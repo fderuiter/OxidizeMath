@@ -1,15 +1,18 @@
-// @explorer_feature = "physics"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod lattice_boltzmann;
 pub mod lattice_boltzmann_sculpt;
+pub mod lbm_atlas;
 pub mod lbm_export;
 pub mod lbm_fairing;
 pub mod lbm_fairing_ui;
 pub mod potential_flow;
 mod potential_flow_brush;
 pub mod turbulence;
+pub mod turbulence_atlas;
 
 pub struct FluidDynamicsTab {
     framework: crate::framework::SimulationFramework,
@@ -54,6 +57,14 @@ impl ExplorerTab for FluidDynamicsTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "fluid_dynamics",
+        order: 12,
+        build: || Box::new(FluidDynamicsTab::default()),
     }
 }
 

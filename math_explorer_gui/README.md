@@ -42,7 +42,7 @@ classDiagram
 
 - **`MathExplorerApp`**: Root `eframe::App` shell managing navigation, starter gallery workflows, command palette search, accessibility announcements, and delegating each viewport pane's scoped `egui::Ui` to the active tab via `ExplorerTab::show_inside`.
 - **`ExplorerTab` & `framework`**: Standard visualization trait and interactive tool framework supporting single-pane and multi-pane layouts while delegating all mathematical computation to `math_explorer`.
-- **Procedural 2D Scalar-Field Exports (`framework::export_scalar_field`)**: Tools implementing `InteractiveTool::export_scalar_field_2d` export stitched Marching Squares `<path>` contour SVGs (or crisp `<rect>` discrete lattice SVGs), seamless 1:1 unpadded tile PNGs, 16-bit grayscale heightmap PNGs (`HeightmapPng`), and tangent-space PBR normal-map PNGs (`NormalMapPng`) via the deferred end-of-frame `ExportQueue` ([ADR 0047](../docs/adr/0047-scalar-field-procedural-export-pipeline.md)).
+- **Procedural 2D Scalar-Field Exports (`framework::export_scalar_field`)**: Tools implementing `InteractiveTool::export_scalar_field_2d` export stitched Marching Squares `<path>` contour SVGs (or crisp `<rect>` discrete lattice SVGs), seamless 1:1 unpadded tile PNGs, 16-bit grayscale heightmap PNGs (`HeightmapPng`), and tangent-space PBR normal-map PNGs (`NormalMapPng`) via the deferred end-of-frame `ExportQueue` ([ADR 20261123](../docs/adr/20261123-scalar-field-procedural-export-pipeline.md)).
 - **`async_sim`**: Off-thread and Web Worker simulation runners preventing frame-budget stalls during heavy PDE, FFT, or Monte Carlo sweeps.
 - **`presets` & `url_state`**: Versioned JSON preset import/export and deterministic URL state encoding.
 
@@ -67,14 +67,12 @@ trunk serve
 Follow these steps to add a new visualization tab or simulation tool to `math_explorer_gui`.
 
 #### 1. Create the Tab Module
-Create either a single file `src/tabs/<tab_name>.rs` or a directory `src/tabs/<tab_name>/mod.rs` implementing `ExplorerTab` and `Default`. Optional header directives configure Cargo feature gating (`// @explorer_feature = "<domain>"`) and navigation ordering (`// @explorer_order = <n>`):
+Create either a single file `src/tabs/<tab_name>.rs` or a directory `src/tabs/<tab_name>/mod.rs` implementing `ExplorerTab` and `Default`:
 
 ```rust,ignore
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-// @explorer_feature = "physics"
-// @explorer_order = 10
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 #[derive(Default)]
@@ -96,16 +94,31 @@ impl ExplorerTab for FluidDynamicsTab {
 }
 ```
 
-#### 2. Automated Plugin Discovery (`build.rs`)
-Do **not** manually edit `src/tabs/mod.rs` or `src/app/mod.rs` to register your new tab. At compile time, [`build.rs`](build.rs) automatically scans `src/tabs/` (and workspace path dependencies) for `impl ExplorerTab for <Struct>` definitions (requiring `Default`) and generates `$OUT_DIR/generated_tabs.rs` (`instantiate_tabs()` and `instantiate_tab()`), which [`src/tabs/mod.rs`](src/tabs/mod.rs) includes automatically:
+#### 2. Register the Module
+In [`src/tabs/mod.rs`](src/tabs/mod.rs), declare your feature-gated module:
 
-- `// @explorer_feature = "physics"`: Optional header comment gating the module behind a Cargo feature.
-- `// @explorer_order = 10`: Optional header comment controlling navigation bar sort order (lower numbers appear first).
+```rust,ignore
+#[cfg(feature = "physics")]
+pub mod fluid_dynamics;
+```
 
-#### 3. Adding Interactive Tools Within a Domain Tab
+#### 3. Submit to Inventory
+In `src/tabs/fluid_dynamics.rs` (or `mod.rs`), register a static [`TabDescriptor`](src/tabs/mod.rs) (lower `order` values appear earlier in the navigation bar):
+
+```rust,ignore
+inventory::submit! {
+    TabDescriptor {
+        id: "fluid_dynamics",
+        order: 100,
+        build: || Box::new(FluidDynamicsTab::default()),
+    }
+}
+```
+
+#### 4. Adding Interactive Tools Within a Domain Tab
 Most multi-tool domain tabs wrap `SimulationFramework::new("<domain>")` and discover individual tools via `inventory::submit!`. To add a new simulation tool (implementing `InteractiveTool` and `TheoryDescribable`) inside an existing domain folder (`src/tabs/<domain>/<tool>.rs`), declare `pub mod <tool>;` in `src/tabs/<domain>/mod.rs` and follow the step-by-step [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_walkthrough.md).
 
-#### 4. Design Principles
+#### 5. Design Principles
 - **Separation of Concerns**: Keep mathematical solvers and domain physics inside `math_explorer`; keep GUI code focused on visualization and input handling.
 - **Immediate Mode & Frame-Budget Safety**: `show_inside()` runs every frame. Avoid heavy synchronous PDE/FFT work in `Default::default()` or `show_inside()`; offload expensive sweeps via `async_sim`.
 - **Lightweight Dependencies**: Avoid adding heavy dependencies (such as direct `rand`) when `math_explorer` primitives suffice.
