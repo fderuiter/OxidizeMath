@@ -181,8 +181,7 @@ fn resonant_seed_sample(state: &ChladniWaveTankState, xn: f64, yn: f64) -> f64 {
             0.0
         }
     } else if state.medium == Wave2DMedium::BiharmonicPlate {
-        0.45 * ((3.0 * pi * xn).cos() * (pi * yn).cos()
-            - (pi * xn).cos() * (3.0 * pi * yn).cos())
+        0.45 * ((3.0 * pi * xn).cos() * (pi * yn).cos() - (pi * xn).cos() * (3.0 * pi * yn).cos())
     } else {
         0.0
     }
@@ -220,7 +219,8 @@ impl scientific_metadata::theory::TheoryDescribable for ChladniWaveTankTool {
     }
 
     fn phonetic_description(&self) -> String {
-        "Two dimensional Chladni plate biharmonic vibration and wave tank interference simulation".into()
+        "Two dimensional Chladni plate biharmonic vibration and wave tank interference simulation"
+            .into()
     }
 
     fn theory_citation(&self) -> String {
@@ -404,6 +404,16 @@ const ACOUSTIC_LENS_PRESET_JSON: &str = r#"{
     "rng_seed": 505802944
   }
 }"#;
+
+inventory::submit! {
+    crate::framework::ToolMetadata {
+        id: "ChladniWaveTankTool",
+        display_name: "Wave Tank & 2D Chladni Plate",
+        domain: "analysis",
+        tags: &["pde", "chladni", "waves", "diffraction", "fft"],
+        build: || Box::new(ChladniWaveTankTool::default()),
+    }
+}
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {

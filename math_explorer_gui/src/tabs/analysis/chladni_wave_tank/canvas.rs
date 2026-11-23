@@ -33,7 +33,10 @@ impl ChladniWaveTankTool {
 
     fn draw_interactive_tank_canvas(&mut self, ui: &mut egui::Ui) {
         self.upload_wave_texture(ui.ctx());
-        let side = ui.available_width().min(ui.available_height() - 28.0).clamp(180.0, 560.0);
+        let side = ui
+            .available_width()
+            .min(ui.available_height() - 28.0)
+            .clamp(180.0, 560.0);
         let (response, painter) = ui.allocate_painter(Vec2::splat(side), Sense::click_and_drag());
         let rect = response.rect;
 
@@ -133,12 +136,7 @@ impl ChladniWaveTankTool {
         }
     }
 
-    fn paint_canvas_overlays(
-        &self,
-        painter: &egui::Painter,
-        rect: Rect,
-        palette: SemanticPalette,
-    ) {
+    fn paint_canvas_overlays(&self, painter: &egui::Painter, rect: Rect, palette: SemanticPalette) {
         let to_screen = |nx: f64, ny: f64| -> Pos2 {
             Pos2::new(
                 rect.left() + (nx as f32) * rect.width(),
@@ -293,11 +291,8 @@ impl ChladniWaveTankTool {
         if let Some(tex) = &mut self.texture {
             tex.set(image, TextureOptions::LINEAR);
         } else {
-            self.texture = Some(ctx.load_texture(
-                "chladni_wave_tank_tex",
-                image,
-                TextureOptions::LINEAR,
-            ));
+            self.texture =
+                Some(ctx.load_texture("chladni_wave_tank_tex", image, TextureOptions::LINEAR));
         }
     }
 
@@ -431,9 +426,7 @@ fn populate_field_pixels(
                     let t = (energy[src_idx] / max_e).sqrt().clamp(0.0, 1.0);
                     heatmap_color(t)
                 }
-                WaveColormap::BipolarPhase => {
-                    mapped_gradient(disp[src_idx], -max_abs_u, max_abs_u)
-                }
+                WaveColormap::BipolarPhase => mapped_gradient(disp[src_idx], -max_abs_u, max_abs_u),
                 WaveColormap::WcagHighContrast => {
                     let t = (0.5 + 0.5 * (disp[src_idx] / max_abs_u)).clamp(0.0, 1.0);
                     ensure_dark_canvas_contrast(heatmap_color_high_contrast(t))

@@ -228,12 +228,14 @@ impl ChladniWaveTankTool {
     }
 
     pub(crate) fn rebuild_domain_and_warmup(&mut self, warmup_steps: usize) {
-        let cell_spacing =
-            if self.state.barrier_enabled || self.state.lens_enabled || self.state.boundary == BoundaryMode2D::Sponge {
-                1.0
-            } else {
-                1.0 / ((GRID_SIZE - 1) as f64)
-            };
+        let cell_spacing = if self.state.barrier_enabled
+            || self.state.lens_enabled
+            || self.state.boundary == BoundaryMode2D::Sponge
+        {
+            1.0
+        } else {
+            1.0 / ((GRID_SIZE - 1) as f64)
+        };
         if (self.solver.dx() - cell_spacing).abs() > 1.0e-12 {
             self.solver = Wave2DSolver::new(GRID_SIZE, GRID_SIZE, cell_spacing, cell_spacing);
         } else {
@@ -271,21 +273,49 @@ impl ChladniWaveTankTool {
         match self.state.clamp_layout {
             ClampLayout::None => {}
             ClampLayout::CenterPin => {
-                apply_point_clamp(&mut self.solver.wall_mask, GRID_SIZE, GRID_SIZE, 0.5, 0.5, 2.0);
+                apply_point_clamp(
+                    &mut self.solver.wall_mask,
+                    GRID_SIZE,
+                    GRID_SIZE,
+                    0.5,
+                    0.5,
+                    2.0,
+                );
             }
             ClampLayout::QuadSymmetry => {
                 for (cx, cy) in [(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)] {
-                    apply_point_clamp(&mut self.solver.wall_mask, GRID_SIZE, GRID_SIZE, cx, cy, 1.8);
+                    apply_point_clamp(
+                        &mut self.solver.wall_mask,
+                        GRID_SIZE,
+                        GRID_SIZE,
+                        cx,
+                        cy,
+                        1.8,
+                    );
                 }
             }
             ClampLayout::EdgeMidpoints => {
                 for (cx, cy) in [(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)] {
-                    apply_point_clamp(&mut self.solver.wall_mask, GRID_SIZE, GRID_SIZE, cx, cy, 2.2);
+                    apply_point_clamp(
+                        &mut self.solver.wall_mask,
+                        GRID_SIZE,
+                        GRID_SIZE,
+                        cx,
+                        cy,
+                        2.2,
+                    );
                 }
             }
         }
         for &[cx, cy] in &self.custom_clamps {
-            apply_point_clamp(&mut self.solver.wall_mask, GRID_SIZE, GRID_SIZE, cx, cy, 1.8);
+            apply_point_clamp(
+                &mut self.solver.wall_mask,
+                GRID_SIZE,
+                GRID_SIZE,
+                cx,
+                cy,
+                1.8,
+            );
         }
         if self.state.barrier_enabled {
             apply_multi_slit_barrier(
@@ -459,15 +489,5 @@ impl InteractiveTool for ChladniWaveTankTool {
             self.refresh_analysis_outputs();
         }
         self.draw_central_workspace(parent_ui);
-    }
-}
-
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "ChladniWaveTankTool",
-        display_name: "Wave Tank & 2D Chladni Plate",
-        domain: "analysis",
-        tags: &["pde", "chladni", "waves", "diffraction", "fft"],
-        build: || Box::new(ChladniWaveTankTool::default()),
     }
 }

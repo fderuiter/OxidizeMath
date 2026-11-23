@@ -241,10 +241,18 @@ impl ChladniWaveTankTool {
         ui.horizontal(|ui| {
             ui.label("Driver (x, y):");
             changed |= ui
-                .add(bounded_drag_value(&mut self.state.driver_x, 0.0..=1.0, 0.01))
+                .add(bounded_drag_value(
+                    &mut self.state.driver_x,
+                    0.0..=1.0,
+                    0.01,
+                ))
                 .changed();
             changed |= ui
-                .add(bounded_drag_value(&mut self.state.driver_y, 0.0..=1.0, 0.01))
+                .add(bounded_drag_value(
+                    &mut self.state.driver_y,
+                    0.0..=1.0,
+                    0.01,
+                ))
                 .changed();
         });
         if changed {

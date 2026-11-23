@@ -2,7 +2,7 @@
 
 // [cite:graph_parameters_rust]
 
-use egui_plot::export::{ExportOptions, color32_image_to_png, format_csv, format_json};
+use egui_plot::export::{color32_image_to_png, format_csv, format_json, ExportOptions};
 use egui_plot::export_primitives::export_primitives_svg;
 use wasm_bindgen_test::*;
 
