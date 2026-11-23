@@ -1,4 +1,4 @@
-# ADR 0038: Pre-Allocated 2D FDTD Wave Solver, Hamiltonian Ray Caustics, and Auto-Discovered Optics Playground
+# ADR 0039: Pre-Allocated 2D FDTD Wave Solver, Hamiltonian Ray Caustics, and Auto-Discovered Optics Playground
 
 ## Status
 Accepted (extends [ADR 0008](0008-finite-state-solver-guard.md), [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -27,4 +27,4 @@ Bridging physical wave diffraction and geometric-optics caustics across desktop 
 ## Consequences
 - **Positive**: Users and downstream `math_explorer` consumers gain verified 2D scalar/metamaterial FDTD wave propagation, RK4 Hamiltonian ray caustics, and calibrated optical detector readouts on both native desktop and `wasm32` with zero hot-loop heap allocations.
 - **Positive**: `OpticsWaveTab` integrates seamlessly into `SimulationFramework` preset, raster export, URL state, and accessibility contract suites without manual edits to `app.rs`.
-- **Neutral**: Adding `OpticsWaveTab`, `OpticsWaveTool`, and three starter presets increments workspace GUI inventory contract counts to `22` tabs, `62` tools, and `76` starter presets, reflected in `api_baseline.json` and contract tests.
+- **Neutral**: Adding `OpticsWaveTab`, `OpticsWaveTool`, and three starter presets increments workspace GUI inventory contract counts to `22` tabs, `63` tools, and `77` starter presets, reflected in `api_baseline.json` and contract tests.

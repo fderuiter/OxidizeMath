@@ -8,7 +8,6 @@ pub mod sample_size;
 pub mod simpson_paradox;
 pub mod survival;
 
-
 pub struct ClinicalTrialsTab {
     framework: crate::framework::SimulationFramework,
 }
