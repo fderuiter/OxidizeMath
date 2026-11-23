@@ -136,11 +136,7 @@ mod wasm_browser_tests {
         app.tabs[tab_idx]
             .framework_mut()
             .expect("framework present")
-            .apply_starter_card(
-                preset.title,
-                preset.tool_name,
-                Some(preset.generate_preset()),
-            )
+            .apply_starter_card(preset.title, preset.tool_name, Some(preset.generate_preset()))
             .expect("starter card applies cleanly");
 
         let share_url = app.encode_current_share_url().unwrap();

@@ -175,9 +175,7 @@ impl EllipticCurvePlayground {
             self.ray_segments.clear();
         }
 
-        let count = self
-            .primes_table
-            .partition_point(|&q| q <= self.hasse_p_max);
+        let count = self.primes_table.partition_point(|&q| q <= self.hasse_p_max);
         self.hasse_len = sweep_hasse_bounds(
             self.a,
             self.b,
@@ -207,12 +205,8 @@ impl EllipticCurvePlayground {
         self.frobenius_trace = self.p + 1 - (self.group_order as i64);
         self.p_order = curve.point_order(self.point_p).unwrap_or(1);
         self.scalar_k = self.scalar_k.clamp(1, MAX_SCALAR_K);
-        self.scalar_kp = curve
-            .scalar_mul(self.scalar_k, self.point_p)
-            .unwrap_or_default();
-        self.orbit_len = curve
-            .torsion_orbit(self.point_p, &mut self.orbit_buf)
-            .unwrap_or(0);
+        self.scalar_kp = curve.scalar_mul(self.scalar_k, self.point_p).unwrap_or_default();
+        self.orbit_len = curve.torsion_orbit(self.point_p, &mut self.orbit_buf).unwrap_or(0);
         self.chord = curve.chord_step(self.point_p, self.point_q).ok();
         self.rebuild_ray_segments();
     }
@@ -237,9 +231,7 @@ impl EllipticCurvePlayground {
             return;
         };
         self.scalar_k = (self.scalar_k % (self.p_order.max(1) as i64)) + 1;
-        self.scalar_kp = curve
-            .scalar_mul(self.scalar_k, self.point_p)
-            .unwrap_or_default();
+        self.scalar_kp = curve.scalar_mul(self.scalar_k, self.point_p).unwrap_or_default();
         self.ray_progress = 1.0_f32;
         self.rebuild_ray_segments();
     }
@@ -248,9 +240,7 @@ impl EllipticCurvePlayground {
         let c = candidate.clamp(MIN_PLAYGROUND_PRIME, MAX_PLAYGROUND_PRIME);
         let pos = self.primes_table.partition_point(|&q| q < c);
         let hi = self.primes_table.get(pos).copied();
-        let lo = pos
-            .checked_sub(1)
-            .and_then(|i| self.primes_table.get(i).copied());
+        let lo = pos.checked_sub(1).and_then(|i| self.primes_table.get(i).copied());
         match (lo, hi) {
             (Some(l), Some(h)) if (c - l).abs() <= (h - c).abs() => l,
             (_, Some(h)) => h,
@@ -404,11 +394,8 @@ impl InteractiveTool for EllipticCurvePlayground {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        self.plot_buffers.build_datasets(
-            self.p,
-            self.is_singular,
-            &self.points_buf[..self.points_len],
-        )
+        self.plot_buffers
+            .build_datasets(self.p, self.is_singular, &self.points_buf[..self.points_len])
     }
 
     fn export_plot_primitives(&self) -> Vec<ExportPrimitive> {

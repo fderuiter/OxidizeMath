@@ -335,10 +335,7 @@ impl PharmacokineticsTool {
             && self.mec >= 0.0
             && self.mtc > self.mec
             && self.metrics.is_finite()
-            && self
-                .total_points
-                .iter()
-                .all(|p| p.x.is_finite() && p.y.is_finite())
+            && self.total_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
             && self
                 .plot_total_points
                 .iter()
@@ -361,9 +358,7 @@ impl PharmacokineticsTool {
         self.missed_slots.dedup();
         self.horizon_hours =
             sanitize_bounded(self.horizon_hours, MIN_HORIZON_H, MAX_HORIZON_H, 72.0);
-        self.sample_points = self
-            .sample_points
-            .clamp(MIN_SAMPLE_POINTS, MAX_SAMPLE_POINTS);
+        self.sample_points = self.sample_points.clamp(MIN_SAMPLE_POINTS, MAX_SAMPLE_POINTS);
         self.lag_time_hours = sanitize_bounded(self.lag_time_hours, 0.0, MAX_LAG_H, 4.0);
         self.f1 = sanitize_bounded(self.f1, 0.0, 1.0, 0.5);
         self.f2 = sanitize_bounded(self.f2, 0.0, 1.0, 0.5);

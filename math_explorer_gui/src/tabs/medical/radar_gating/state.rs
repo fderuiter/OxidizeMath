@@ -152,12 +152,7 @@ impl RadarGatingState {
             MAX_SAMPLES_PER_CHIRP,
         )?;
         check_usize("snapshots", self.snapshots, MIN_SNAPSHOTS, MAX_SNAPSHOTS)?;
-        check_usize(
-            "sweep_bins",
-            self.sweep_bins,
-            MIN_SWEEP_BINS,
-            MAX_SWEEP_BINS,
-        )?;
+        check_usize("sweep_bins", self.sweep_bins, MIN_SWEEP_BINS, MAX_SWEEP_BINS)?;
         check_range("noise_sigma", self.noise_sigma, 0.0, 1.0)?;
         check_usize("clutter_window", self.clutter_window, 4, 64)?;
         check_range("static_clutter_gain", self.static_clutter_gain, 0.0, 5.0)
@@ -169,12 +164,7 @@ impl RadarGatingState {
         check_range("kalman_process_var", self.kalman_process_var, 1.0e-8, 1.0)?;
         check_range("kalman_meas_var", self.kalman_meas_var, 1.0e-9, 1.0)?;
         check_range("gating_threshold_mm", self.gating_threshold_mm, -20.0, 20.0)?;
-        check_range(
-            "gating_hysteresis_mm",
-            self.gating_hysteresis_mm,
-            0.05,
-            10.0,
-        )?;
+        check_range("gating_hysteresis_mm", self.gating_hysteresis_mm, 0.05, 10.0)?;
         check_range("system_latency_ms", self.system_latency_ms, 0.0, 500.0)
     }
 }
