@@ -1,4 +1,5 @@
 // @explorer_feature = "biology"
+// @explorer_order = 40
 use crate::async_sim::SimWorkerState;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
@@ -46,9 +47,7 @@ pub use overlay::render_morphogenesis_overlay;
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
-pub use runner::{
-    MorphogenesisKineticsRunner, MorphogenesisRunner, MorphogenesisSharedParams,
-};
+pub use runner::{MorphogenesisRunner, MorphogenesisSharedParams};
 pub use state::MorphogenesisToolState;
 pub use tool::MorphogenesisTool;
 #[cfg(test)]
