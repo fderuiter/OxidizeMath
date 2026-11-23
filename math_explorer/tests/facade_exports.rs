@@ -128,7 +128,7 @@ fn default_headless_curve_fitting_and_poi_solvers_work_without_gui_deps() {
 }
 
 #[cfg(feature = "pure_math")]
-fn assert_pure_math_twenty_two_errors() {
+fn assert_pure_math_twenty_three_errors() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error as e;
     use math_explorer::prelude::PureMathError as PreludePureMathError;
@@ -155,6 +155,7 @@ fn assert_pure_math_twenty_two_errors() {
         e::EllipticCurveError::InvalidDegree.severity(),
         e::EvolutionError::InvalidState.severity(),
         e::FractranError::InvalidFractionSyntax.severity(),
+        e::HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.severity(),
         e::OptimizationError::ConversionError.severity(),
         e::OptionPricingError::InvalidSpot { value: -1.0 }.severity(),
         e::StochasticError::InvalidReactionIndex(1).severity(),
@@ -211,7 +212,7 @@ fn assert_kelly_validation_and_ruin_exports() {
 
 #[cfg(feature = "pure_math")]
 #[test]
-fn pure_math_facade_exports_containers_third_party_types_and_all_twenty_two_errors() {
+fn pure_math_facade_exports_containers_third_party_types_and_all_twenty_three_errors() {
     use math_explorer::math_types::{Float, IBig, Integer, Rational};
     use math_explorer::mesh::{Mesh, Point3D};
     use math_explorer::nalgebra::{DMatrix, DVector};
@@ -254,7 +255,7 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_twenty_two_erro
     )
     .expect("valid Dixon-Coles params");
     assert!(dc.default_grid().expect("valid score grid").prob(0, 0) > 0.09);
-    assert_pure_math_twenty_two_errors();
+    assert_pure_math_twenty_three_errors();
 }
 
 #[cfg(feature = "ai")]
@@ -457,7 +458,7 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     feature = "physics"
 ))]
 #[test]
-fn all_fifty_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
+fn all_fifty_two_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
     umbrella_checks::verify_prelude_error_reexports();
     umbrella_checks::verify_bus_capture_and_zero_alloc_facade_result();
 }
