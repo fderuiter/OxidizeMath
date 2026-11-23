@@ -9,7 +9,16 @@ pub mod audio;
 pub mod camera;
 #[cfg(test)]
 mod camera_3d_optout_tests;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "ai",
+        feature = "biology",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    )
+))]
 mod canvas_accessibility_tests;
 #[allow(missing_docs)]
 pub mod command_palette;

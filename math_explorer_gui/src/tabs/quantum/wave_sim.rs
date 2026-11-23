@@ -13,7 +13,16 @@ mod tests;
 #[path = "wave_sim/ui.rs"]
 mod ui;
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 pub use presets::wave_parameter_label;
 pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};

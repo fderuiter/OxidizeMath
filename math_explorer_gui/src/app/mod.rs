@@ -45,7 +45,16 @@ mod tests_session_lifecycle;
 mod tests_shortcuts;
 #[cfg(test)]
 mod tests_split_view;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod tests_tab_cache_perf;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
@@ -304,7 +313,6 @@ impl eframe::App for MathExplorerApp {
             None,
             None,
         );
-
         if palette_triggered {
             self.command_palette.toggle();
             let status_msg = if self.command_palette.is_open {
@@ -314,7 +322,6 @@ impl eframe::App for MathExplorerApp {
             };
             crate::accessibility::announce_live_status(ctx, status_msg);
         }
-
         let slash_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
             "Keyboard Shortcuts",
@@ -325,7 +332,6 @@ impl eframe::App for MathExplorerApp {
             None,
             None,
         );
-
         egui_plot::commands::CommandRegistryData::register(
             ctx,
             "Keyboard Shortcuts",
@@ -334,13 +340,11 @@ impl eframe::App for MathExplorerApp {
             true,
             "Global",
         );
-
         let question_triggered = !ctx.wants_keyboard_input()
             && ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::NONE, egui::Key::Questionmark)
                     || i.consume_key(egui::Modifiers::SHIFT, egui::Key::Questionmark)
             });
-
         if slash_triggered || question_triggered {
             self.show_help_menu = !self.show_help_menu;
             let status_msg = if self.show_help_menu {
@@ -350,7 +354,6 @@ impl eframe::App for MathExplorerApp {
             };
             crate::accessibility::announce_live_status(ctx, status_msg);
         }
-
         let shift_modifiers = modifiers | egui::Modifiers::SHIFT;
         let toggle_diagnostics_triggered =
             egui_plot::commands::CommandRegistryData::register_and_check(
@@ -363,7 +366,6 @@ impl eframe::App for MathExplorerApp {
                 None,
                 None,
             );
-
         if toggle_diagnostics_triggered {
             self.show_diagnostics_panel = !self.show_diagnostics_panel;
             let status_msg = if self.show_diagnostics_panel {
@@ -373,7 +375,6 @@ impl eframe::App for MathExplorerApp {
             };
             crate::accessibility::announce_live_status(ctx, status_msg);
         }
-
         self.poll_share_shortcut_and_clipboard(ctx);
         self.poll_duplicate_pane_shortcut(ctx);
 

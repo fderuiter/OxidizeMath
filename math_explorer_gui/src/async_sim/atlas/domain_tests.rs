@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::wcag_contrast_on_black;
-use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer, DEFAULT_ATLAS_SIDE};
+use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::framework::state_bounds::ToolStateBounds;
 use crate::framework::InteractiveTool;
 use scientific_metadata::theory::TheoryDescribable;
@@ -227,6 +227,7 @@ fn test_hodgkin_huxley_teleport_and_state_bounds_roundtrip() {
 #[cfg(feature = "epidemiology")]
 #[test]
 fn test_sir_final_size_regimes_contour_and_zero_alloc_128x128() {
+    use crate::async_sim::atlas::DEFAULT_ATLAS_SIDE;
     use crate::tabs::epidemiology::sir::{SirCartographer, SirRegime, SirTool};
 
     let tool = SirTool::default();

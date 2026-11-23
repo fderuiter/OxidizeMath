@@ -224,6 +224,7 @@ fn test_preset_dialog_poll_pending_import_export_and_cancel_cleanup() {
     assert!(dialog.toast_error.is_none());
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_preset_dialog_poll_pending_import_with_interactive_tool_and_read_error() {
     let mut framework = crate::framework::SimulationFramework::new("chaos");
@@ -350,6 +351,7 @@ fn test_preset_filename_sanitization_matches_web_io_contract() {
     );
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_morphogenesis_tab_shares_poll_pending_import_lifecycle() {
     let mut tab = crate::tabs::morphogenesis::MorphogenesisTab::default();

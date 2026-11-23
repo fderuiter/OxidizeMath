@@ -85,7 +85,9 @@ fn test_wave_sculpt_brush_url_state_roundtrip() {
     assert!(!tool.sparse_potential.is_empty());
     let saved = tool.save_state().expect("save sculpted wave state");
     let mut restored = WaveSimulatorTool::new();
-    restored.try_load_state(&saved).expect("restore sculpted wave state");
+    restored
+        .try_load_state(&saved)
+        .expect("restore sculpted wave state");
     assert_eq!(restored.sparse_potential, tool.sparse_potential);
 }
 

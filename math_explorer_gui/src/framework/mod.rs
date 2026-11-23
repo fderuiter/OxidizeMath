@@ -5,7 +5,7 @@ mod challenge_hud;
 #[cfg(test)]
 mod challenge_hud_tests;
 pub mod clamp;
-#[cfg(test)]
+#[cfg(all(test, feature = "climate", feature = "physics", feature = "pure_math"))]
 mod clamp_tests;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
@@ -14,12 +14,17 @@ mod export_3d;
 mod export_dataset;
 mod export_figure;
 mod export_queue;
-#[cfg(test)]
+#[cfg(all(test, feature = "physics"))]
 pub(crate) use export_queue::deferred_export_tests;
 #[cfg(test)]
 mod export_queue_tests;
 pub(crate) mod export_shader;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod export_shader_tests;
 pub mod export_types;
 mod export_ui;
@@ -27,11 +32,29 @@ mod export_ui;
 mod export_ui_tests;
 pub mod fit_bridge;
 pub mod math_input;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod metadata_label_tests;
 mod overlay_sync;
 mod pane_scope;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod perf_guard_tests;
 mod persistence;
 pub mod playback;

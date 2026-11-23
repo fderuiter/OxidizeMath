@@ -240,6 +240,7 @@ fn test_animated_slider_manual_drag_pause() {
     assert!(state.direction == 1.0 || state.direction == -1.0);
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_ode_animated_slider_sweep() {
     use crate::framework::InteractiveTool;

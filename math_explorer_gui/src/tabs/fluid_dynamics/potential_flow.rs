@@ -17,7 +17,7 @@ mod cache;
 mod shader;
 #[path = "potential_flow/streamlines.rs"]
 mod streamlines;
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
 pub(crate) use shader::MAX_SHADER_SINGULARITIES;
 
 pub(crate) const FLOW_STRENGTH_MIN: f64 = -1_000.0;
@@ -244,9 +244,12 @@ impl InteractiveTool for PotentialFlowTool {
                 .legend(Legend::default())
                 .show(ui, |plot_ui| {
                     self.render_flow_plot_layers(plot_ui, &palette, origins, tips);
-                    strokes =
-                        self.brush_kit
-                            .sample_plot(plot_ui, [-vr, -vr], [vr, vr], Some(BrushMode::Erase));
+                    strokes = self.brush_kit.sample_plot(
+                        plot_ui,
+                        [-vr, -vr],
+                        [vr, vr],
+                        Some(BrushMode::Erase),
+                    );
                 });
             for stroke in strokes {
                 let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);

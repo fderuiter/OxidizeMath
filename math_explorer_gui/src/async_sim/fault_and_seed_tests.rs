@@ -1,17 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::async_sim::unified::UnifiedSimTool;
 use crate::framework::recovery::DiagnosticReport;
-use crate::framework::InteractiveTool;
-use crate::tabs::ai::q_table_inspector::QTableInspectorTool;
-use crate::tabs::ai::reward_plots::RewardPlotsTool;
-use crate::tabs::chaos::attractors::AttractorPlotter;
-use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
-use crate::tabs::mri::MriTool;
-use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
-use crate::tabs::solid_state::ising::IsingModelTool;
 use eframe::egui;
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
@@ -175,61 +165,79 @@ fn test_disconnected_faulted_worker_preserves_diagnostic_until_respawn() {
     assert!(controller.diagnostic_report().is_none());
 }
 
+#[cfg(any(feature = "biology", feature = "physics"))]
 #[test]
 fn test_unified_tools_render_non_empty_panels_on_frame_zero() {
+    use crate::framework::InteractiveTool;
     let ctx = egui::Context::default();
 
-    let mut wave = WaveSimulatorTool::new();
-    if let Some(snap) = wave.worker.latest_snapshot() {
-        if let Some(wdata) = snap
-            .structured_data
-            .as_ref()
-            .and_then(|d| d.downcast_ref::<crate::tabs::quantum::wave_sim::WaveData>())
-        {
-            let psi_pts: Vec<[f64; 2]> = wdata
-                .prob_density
-                .iter()
-                .enumerate()
-                .map(|(i, &p)| [i as f64, p])
-                .collect();
-            let pot_pts: Vec<[f64; 2]> = wdata
-                .potential
-                .iter()
-                .enumerate()
-                .map(|(i, &v)| [i as f64, v * 0.2])
-                .collect();
-            let datasets = vec![
-                ("Seeded |psi(x, 0)|^2".to_string(), psi_pts),
-                ("Scaled V(x)".to_string(), pot_pts),
-            ];
-            let opts = egui_plot::export::ExportOptions::default();
-            if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &opts) {
-                let _ = std::fs::write("/tmp/seeded_wavepacket_frame_zero.png", png);
+    #[cfg(feature = "physics")]
+    {
+        use crate::async_sim::unified::UnifiedSimTool;
+        use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+        use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
+
+        let mut wave = WaveSimulatorTool::new();
+        if let Some(snap) = wave.worker.latest_snapshot() {
+            if let Some(wdata) = snap
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<crate::tabs::quantum::wave_sim::WaveData>())
+            {
+                let psi_pts: Vec<[f64; 2]> = wdata
+                    .prob_density
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &p)| [i as f64, p])
+                    .collect();
+                let pot_pts: Vec<[f64; 2]> = wdata
+                    .potential
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &v)| [i as f64, v * 0.2])
+                    .collect();
+                let datasets = vec![
+                    ("Seeded |psi(x, 0)|^2".to_string(), psi_pts),
+                    ("Scaled V(x)".to_string(), pot_pts),
+                ];
+                let opts = egui_plot::export::ExportOptions::default();
+                if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &opts) {
+                    let _ = std::fs::write("/tmp/seeded_wavepacket_frame_zero.png", png);
+                }
             }
         }
+        let wave_out = ctx.run(egui::RawInput::default(), |ctx| {
+            wave.show(ctx);
+        });
+        assert!(!wave_out.shapes.is_empty());
+
+        let mut lbm = UnifiedSimTool::<LbmUnified>::new();
+        let lbm_out = ctx.run(egui::RawInput::default(), |ctx| {
+            lbm.show(ctx);
+        });
+        assert!(!lbm_out.shapes.is_empty());
+        assert!(!lbm_out.textures_delta.set.is_empty());
     }
-    let wave_out = ctx.run(egui::RawInput::default(), |ctx| {
-        wave.show(ctx);
-    });
-    assert!(!wave_out.shapes.is_empty());
 
-    let mut hh = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
-    let hh_out = ctx.run(egui::RawInput::default(), |ctx| {
-        hh.show(ctx);
-    });
-    assert!(!hh_out.shapes.is_empty());
+    #[cfg(feature = "biology")]
+    {
+        use crate::async_sim::unified::UnifiedSimTool;
+        use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 
-    let mut lbm = UnifiedSimTool::<LbmUnified>::new();
-    let lbm_out = ctx.run(egui::RawInput::default(), |ctx| {
-        lbm.show(ctx);
-    });
-    assert!(!lbm_out.shapes.is_empty());
-    assert!(!lbm_out.textures_delta.set.is_empty());
+        let mut hh = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
+        let hh_out = ctx.run(egui::RawInput::default(), |ctx| {
+            hh.show(ctx);
+        });
+        assert!(!hh_out.shapes.is_empty());
+    }
 }
 
 #[test]
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "physics"))]
 fn test_lbm_paused_apply_brush_emits_fresh_snapshot() {
+    use crate::async_sim::unified::UnifiedSimTool;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+
     let mut lbm = UnifiedSimTool::<LbmUnified>::new();
     let _ = lbm.controller.update();
     assert_eq!(lbm.state(), SimWorkerState::Ready);
@@ -265,66 +273,92 @@ fn test_lbm_paused_apply_brush_emits_fresh_snapshot() {
     }
 }
 
+#[cfg(any(feature = "ai", feature = "physics"))]
 #[test]
 fn test_mri_and_ising_and_qtable_seed_without_duplicate_models() {
+    use crate::framework::InteractiveTool;
     let ctx = egui::Context::default();
 
-    let mut mri = MriTool::default();
-    let mri_out = ctx.run(egui::RawInput::default(), |ctx| {
-        mri.show_ui(ctx);
-    });
-    assert_eq!(mri.worker.state(), SimWorkerState::Ready);
-    assert!(!mri.mx_points.is_empty());
-    assert!(!mri_out.shapes.is_empty());
+    #[cfg(feature = "physics")]
+    {
+        use crate::tabs::mri::MriTool;
+        use crate::tabs::solid_state::ising::IsingModelTool;
 
-    let mut ising = IsingModelTool::default();
-    let ising_out = ctx.run(egui::RawInput::default(), |ctx| {
-        ising.show(ctx);
-    });
-    assert!(!ising_out.textures_delta.set.is_empty());
+        let mut mri = MriTool::default();
+        let mri_out = ctx.run(egui::RawInput::default(), |ctx| {
+            mri.show_ui(ctx);
+        });
+        assert_eq!(mri.worker.state(), SimWorkerState::Ready);
+        assert!(!mri.mx_points.is_empty());
+        assert!(!mri_out.shapes.is_empty());
 
-    let mut qtable = QTableInspectorTool::default();
-    let qtable_out = ctx.run(egui::RawInput::default(), |ctx| {
-        qtable.show(ctx);
-    });
-    assert!(!qtable_out.shapes.is_empty());
+        let mut ising = IsingModelTool::default();
+        let ising_out = ctx.run(egui::RawInput::default(), |ctx| {
+            ising.show(ctx);
+        });
+        assert!(!ising_out.textures_delta.set.is_empty());
+    }
+
+    #[cfg(feature = "ai")]
+    {
+        use crate::tabs::ai::q_table_inspector::QTableInspectorTool;
+
+        let mut qtable = QTableInspectorTool::default();
+        let qtable_out = ctx.run(egui::RawInput::default(), |ctx| {
+            qtable.show(ctx);
+        });
+        assert!(!qtable_out.shapes.is_empty());
+    }
 }
 
+#[cfg(any(feature = "ai", feature = "physics"))]
 #[test]
 fn test_fault_banners_and_reset_across_rl_and_attractor_tools() {
+    use crate::framework::InteractiveTool;
     let ctx = egui::Context::default();
 
-    let mut reward = RewardPlotsTool::default();
-    let _ = reward.controller.update();
-    reward
-        .controller
-        .set_state_for_test(SimWorkerState::Faulted);
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        reward.show(ctx);
-    });
-    assert_eq!(reward.controller.state(), SimWorkerState::Faulted);
-    reward.reset();
-    assert_eq!(reward.controller.state(), SimWorkerState::Ready);
+    #[cfg(feature = "ai")]
+    {
+        use crate::tabs::ai::q_table_inspector::QTableInspectorTool;
+        use crate::tabs::ai::reward_plots::RewardPlotsTool;
 
-    let mut qtable = QTableInspectorTool::default();
-    let _ = qtable.worker.update();
-    qtable.worker.set_state_for_test(SimWorkerState::Faulted);
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        qtable.show(ctx);
-    });
-    assert_eq!(qtable.worker.state(), SimWorkerState::Faulted);
-    qtable.reset();
-    assert_eq!(qtable.worker.state(), SimWorkerState::Ready);
+        let mut reward = RewardPlotsTool::default();
+        let _ = reward.controller.update();
+        reward
+            .controller
+            .set_state_for_test(SimWorkerState::Faulted);
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            reward.show(ctx);
+        });
+        assert_eq!(reward.controller.state(), SimWorkerState::Faulted);
+        reward.reset();
+        assert_eq!(reward.controller.state(), SimWorkerState::Ready);
 
-    let mut attractor = AttractorPlotter::default();
-    let _ = attractor.worker.update();
-    attractor.worker.set_state_for_test(SimWorkerState::Faulted);
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        attractor.show(ctx);
-    });
-    assert_eq!(attractor.worker.state(), SimWorkerState::Faulted);
-    attractor.reset();
-    assert_eq!(attractor.worker.state(), SimWorkerState::Ready);
+        let mut qtable = QTableInspectorTool::default();
+        let _ = qtable.worker.update();
+        qtable.worker.set_state_for_test(SimWorkerState::Faulted);
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            qtable.show(ctx);
+        });
+        assert_eq!(qtable.worker.state(), SimWorkerState::Faulted);
+        qtable.reset();
+        assert_eq!(qtable.worker.state(), SimWorkerState::Ready);
+    }
+
+    #[cfg(feature = "physics")]
+    {
+        use crate::tabs::chaos::attractors::AttractorPlotter;
+
+        let mut attractor = AttractorPlotter::default();
+        let _ = attractor.worker.update();
+        attractor.worker.set_state_for_test(SimWorkerState::Faulted);
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            attractor.show(ctx);
+        });
+        assert_eq!(attractor.worker.state(), SimWorkerState::Faulted);
+        attractor.reset();
+        assert_eq!(attractor.worker.state(), SimWorkerState::Ready);
+    }
 }
 
 #[test]

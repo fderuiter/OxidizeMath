@@ -1,5 +1,7 @@
+#[cfg(any(feature = "ai", feature = "biology", feature = "physics"))]
 use super::*;
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_morphogenesis_runner_offload() {
     use crate::tabs::morphogenesis::{
@@ -74,6 +76,7 @@ fn test_morphogenesis_runner_offload() {
     }
 }
 
+#[cfg(feature = "ai")]
 #[test]
 fn test_reward_plots_runner_batch_training() {
     use crate::tabs::ai::reward_plots::{RewardPlotsRunner, RlSnapshotData};
@@ -126,6 +129,7 @@ fn test_reward_plots_runner_batch_training() {
     assert!(data_reset.rewards_per_episode.is_empty());
 }
 
+#[cfg(feature = "ai")]
 #[test]
 fn test_background_worker_generic_adapter() {
     use crate::tabs::ai::reward_plots::RewardPlotsRunner;
@@ -148,6 +152,7 @@ fn test_background_worker_generic_adapter() {
     assert_eq!(worker.state(), SimWorkerState::Ready);
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_ising_runner_offload() {
     use crate::tabs::solid_state::ising::{IsingRunner, IsingSharedParams};
@@ -190,6 +195,7 @@ fn test_ising_runner_offload() {
     }
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_mri_runner_offload() {
     use crate::tabs::mri::{MriRunner, MriSharedParams, MriSnapshot};
@@ -238,6 +244,7 @@ fn test_mri_runner_offload() {
     }
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_physics_and_chaos_runners_step_once() {
     use crate::tabs::chaos::attractors::{
@@ -305,6 +312,7 @@ fn test_physics_and_chaos_runners_step_once() {
     assert_eq!(attractor.execution_state, SolverExecutionState::Paused);
 }
 
+#[cfg(feature = "ai")]
 #[test]
 fn test_rl_runners_step_once() {
     use crate::tabs::ai::q_table_inspector::QTableRunner;
@@ -345,7 +353,7 @@ fn test_rl_runners_step_once() {
     assert!(reward_runner.is_complete());
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "physics"))]
 fn single_key_input(key: eframe::egui::Key) -> eframe::egui::RawInput {
     eframe::egui::RawInput {
         events: vec![eframe::egui::Event::Key {
@@ -360,7 +368,7 @@ fn single_key_input(key: eframe::egui::Key) -> eframe::egui::RawInput {
 }
 
 #[test]
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "physics"))]
 fn test_attractor_plotter_manual_step_keeps_paused() {
     use crate::framework::InteractiveTool;
     use crate::tabs::chaos::attractors::AttractorPlotter;

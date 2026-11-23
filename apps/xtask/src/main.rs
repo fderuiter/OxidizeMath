@@ -1,11 +1,12 @@
 #![doc = include_str!("../README.md")]
+mod features;
 mod gates;
 mod markdown_links;
 mod papers;
 mod setup;
 mod staged;
 
-use gates::{resolve_workspace_root, run_cmd, run_cmd_in_path};
+use gates::{resolve_workspace_root, run_cmd_in_path};
 use markdown_links::check_markdown_links;
 use std::env;
 #[cfg(any(unix, test))]
@@ -34,7 +35,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-cargo-docs" | "check-workspace-docs" => gates::check_cargo_docs(),
         "check-docs" => gates::check_docs(),
         "check-entropy" => gates::check_entropy(),
-        "test-features" => test_features(rest),
+        "test-features" => features::test_features(rest),
         "verify-suite" => gates::verify_suite(rest),
         "verify-records" => gates::verify_records(rest),
         "compile-papers" => papers::compile_papers(),
@@ -161,62 +162,6 @@ fn setup(args: &[String]) {
 
     configure_git_hooks_in_dir(&ws_root);
     println!("=== Setup Complete ===");
-}
-
-fn test_features(args: &[String]) {
-    if args.is_empty() {
-        let features = [
-            "pure_math",
-            "applied",
-            "ai",
-            "biology",
-            "climate",
-            "epidemiology",
-            "physics",
-        ];
-        println!("=== Running core-only (no features) ===");
-        run_cmd(
-            "cargo",
-            &["test", "-p", "math_explorer", "--no-default-features"],
-        );
-        for f in &features {
-            println!("=== Running tests for feature: {} ===", f);
-            run_cmd(
-                "cargo",
-                &[
-                    "test",
-                    "-p",
-                    "math_explorer",
-                    "--no-default-features",
-                    "--features",
-                    f,
-                ],
-            );
-        }
-        println!("=== Running all features ===");
-        run_cmd("cargo", &["test", "-p", "math_explorer", "--all-features"]);
-        println!("All feature combinations passed successfully!");
-    } else {
-        let feature = &args[0];
-        if feature == "core-only" || feature.is_empty() {
-            run_cmd(
-                "cargo",
-                &["test", "-p", "math_explorer", "--no-default-features"],
-            );
-        } else {
-            run_cmd(
-                "cargo",
-                &[
-                    "test",
-                    "-p",
-                    "math_explorer",
-                    "--no-default-features",
-                    "--features",
-                    feature,
-                ],
-            );
-        }
-    }
 }
 
 #[cfg(test)]
