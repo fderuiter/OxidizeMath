@@ -425,6 +425,7 @@ impl SimulationFramework {
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
 
+        self.begin_plot_scope(&ctx);
         if !self.is_diverged {
             self.cache_valid_snapshot();
             if let Some(tool) = &mut self.active_tool {
@@ -432,6 +433,7 @@ impl SimulationFramework {
             }
             let _ = self.inspect_runtime_state();
             if self.is_diverged {
+                crate::audio::notify_solver_diverged();
                 ctx.request_repaint();
             }
         } else if let Some(tool) = &mut self.active_tool {
@@ -447,6 +449,7 @@ impl SimulationFramework {
                 self.show_quick_start_cards(ui);
             });
         }
+        self.end_plot_scope(&ctx);
 
         if !interactive_input
             && crate::reflective_ui::slider::live_sweep_mutation_count(&ctx) > sweep_mut_before

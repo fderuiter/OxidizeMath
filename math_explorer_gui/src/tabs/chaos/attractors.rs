@@ -30,6 +30,8 @@ mod ui;
 #[path = "attractors/export.rs"]
 pub mod export;
 
+pub(crate) const DEFAULT_FIXED_CALLOUT_OFFSETS: [[f32; 2]; 2] = [[35.0, -25.0], [-35.0, 25.0]];
+
 pub struct AttractorPlotter {
     pub(crate) mode: AttractorMode,
     pub(crate) flow_bank: CoupledExpressionBank,
@@ -49,6 +51,7 @@ pub struct AttractorPlotter {
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
+    pub(super) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
 }
 
@@ -89,8 +92,13 @@ impl Default for AttractorPlotter {
             params,
             worker,
             show_annotations: true,
-            fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
+            fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
+            latest_sonification: crate::audio::mappings::attractor_frame(
+                [1.0, 1.0, 1.0],
+                [0.0, 26.0, -1.67],
+                false,
+            ),
             invariants_cache: invariants::CachedAttractorInvariants::default(),
         }
     }
@@ -210,6 +218,7 @@ impl AttractorPlotter {
         self.flow_bank = default_flow_bank();
         self.dt = 0.01;
         self.tube_radius = export::DEFAULT_TUBE_RADIUS;
+        self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
         self.reset();
     }
 
@@ -299,6 +308,20 @@ impl InteractiveTool for AttractorPlotter {
         self.is_paused().hash(&mut h);
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
+        for offset in &self.fixed_callout_offsets {
+            let x_bits = if offset.x == 0.0 {
+                0
+            } else {
+                offset.x.to_bits()
+            };
+            let y_bits = if offset.y == 0.0 {
+                0
+            } else {
+                offset.y.to_bits()
+            };
+            x_bits.hash(&mut h);
+            y_bits.hash(&mut h);
+        }
         self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
@@ -404,6 +427,7 @@ impl InteractiveTool for AttractorPlotter {
         let ui_diverged = self.diverged();
         let was_paused = self.is_paused();
         if let Some(snapshot) = self.worker.update() {
+            self.latest_sonification = snapshot.sonification;
             if !ui_diverged {
                 if let Some(data) = snapshot
                     .structured_data
@@ -423,6 +447,10 @@ impl InteractiveTool for AttractorPlotter {
         }
 
         let worker_faulted = self.worker.state().is_faulted();
+        if self.diverged() || worker_faulted {
+            self.latest_sonification = crate::audio::SonificationFrame::silent();
+            crate::audio::notify_solver_diverged();
+        }
         if !self.is_paused() && !worker_faulted {
             if !self.worker.is_running() {
                 let _ = self.worker.send_command(SimCommand::Start);

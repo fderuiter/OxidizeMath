@@ -1,4 +1,4 @@
-# ADR 0040: Right-Censored Win-Ratio U-Statistics, Bivariate Weibull Power Sweeps, and Interactive Stress Tester
+# ADR 0042: Right-Censored Win-Ratio U-Statistics, Bivariate Weibull Power Sweeps, and Interactive Stress Tester
 
 ## Status
 Accepted (2026-11-21)
