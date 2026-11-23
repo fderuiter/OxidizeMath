@@ -66,11 +66,14 @@ fn audit_staged_file_full(
         return true;
     };
     let mut ok = true;
-    dep_visitor.visit_file(ast);
-    doctests::audit_rs_doctests(ast, path, ctx.member_dir, visited_md, dep_visitor);
+    if !dep_visitor.all_deps_matched() {
+        dep_visitor.visit_file(ast);
+    }
+    if !dep_visitor.all_deps_matched() {
+        doctests::audit_rs_doctests(ast, path, ctx.member_dir, visited_md, dep_visitor);
+    }
 
-    let mut dc_visitor =
-        DeadCodeVisitor::new(file_path.to_string(), ctx.whitelist.dead_code.clone());
+    let mut dc_visitor = DeadCodeVisitor::new(file_path, &ctx.whitelist.dead_code);
     dc_visitor.visit_file(ast);
     if dc_visitor.has_unauthorized {
         ok = false;
@@ -209,7 +212,9 @@ fn audit_single_member_scoped(
         success = false;
     }
 
-    if doctests::is_markdown_tests_crate(member, package_name) {
+    if !required_deps.is_subset(&dep_visitor.used_deps)
+        && doctests::is_markdown_tests_crate(member, package_name)
+    {
         doctests::audit_workspace_markdown_files(&member_dir, &mut visited_md, &mut dep_visitor);
     }
 

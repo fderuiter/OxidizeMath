@@ -1,4 +1,4 @@
-# ADR 0047: Scope Pre-Commit Gates, Add Pre-Push Tiering, and Eliminate Build-Script `CARGO_MANIFEST_DIR` Drift
+# ADR 20261123: Scope Pre-Commit Gates, Add Pre-Push Tiering, and Eliminate Build-Script `CARGO_MANIFEST_DIR` Drift
 
 ## Status
 
@@ -18,7 +18,7 @@ We split local Git guardrails into two 100% offline version-controlled tiers und
 
 1. **Scoped Pre-Commit Static Gates (`unified_verification batch-staged`)**:
    - When `escalate` is `false`, `CloneDetectorVisitor` (`ast_visitor.rs`) inspects only staged `.rs` files; `check_profiles_with_cache` (`profile.rs`) and `doc_audit` (`doc_audit.rs`, `facade_imports.rs`, `staged_guides.rs`) check only touched member crates and staged Markdown/guide files; Markdown fence policy auditing (`policy_audit/doctests.rs`) scans only staged `.md` files; and staged citation verification (`staged_traceability.rs`) validates `@cite` keys in staged `.rs` files while deferring full 804-file `run_traceability_with_cache` unless `traceability.toml` or `papers/` changes.
-   - Staging root manifests (`Cargo.toml`, `Cargo.lock`), toolchain/lint configuration (`rust-toolchain*`, `.cargo/*`, `.clippy.toml`, `.rustfmt.toml`, `verification_whitelist.toml`), or shared policy tooling (`crates/unified_verification`, `crates/oxidize_core`) escalates `lint-staged` to workspace checks.
+   - Staging root manifests (`Cargo.toml`, `Cargo.lock`), toolchain configuration (`rust-toolchain*`, `.cargo/*`), or lint configuration (`.clippy.toml`, `.rustfmt.toml`, `verification_whitelist.toml`) escalates `lint-staged` to workspace checks.
 2. **Scoped Pre-Commit Clippy & `.githooks/pre-push` (`xtask lint-push`)**:
    - `xtask lint-staged` runs host Clippy only on `direct_crates` (directly modified workspace members) and runs `--target wasm32-unknown-unknown` Clippy only when `math_explorer_gui` or `wasm32`-specific sources change (unless escalated).
    - A new version-controlled `.githooks/pre-push` hook invokes `cargo run -p xtask -- lint-push`, resolving pushed commits against remote tracking refs (falling back to `origin/main` or `main`), running reverse-dependent host Clippy, conditional reverse-dependent `wasm32-unknown-unknown` Clippy across web-reachable crates, and full workspace `unified_verification traceability` offline.

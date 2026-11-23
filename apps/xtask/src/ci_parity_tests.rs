@@ -1,7 +1,26 @@
 use crate::gates::{CARGO_DOC_ARGS, HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, workspace_wasm};
 use crate::setup;
+use crate::smoke::CHECK_BENCHES_ARGS;
 use std::fs;
 use std::path::Path;
+
+#[test]
+fn test_native_bench_and_smoke_ci_parity() {
+    assert_eq!(
+        CHECK_BENCHES_ARGS,
+        &["test", "--workspace", "--benches", "--all-features"]
+    );
+    let ci_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml");
+    let ci_yaml = fs::read_to_string(&ci_path)
+        .expect("failed to read ci.yml")
+        .replace("\r\n", "\n");
+    assert!(ci_yaml.contains(
+        "- name: Check Workspace Benchmarks (Native)\n        if: matrix.target != 'wasm32-unknown-unknown'\n        run: cargo run -p xtask -- check-benches"
+    ));
+    assert!(ci_yaml.contains(
+        "- name: Smoke Test Registered Examples (Native)\n        if: matrix.target != 'wasm32-unknown-unknown'\n        run: cargo run -p xtask -- smoke-examples"
+    ));
+}
 
 #[test]
 fn test_wasm_clippy_args_and_ci_parity() {

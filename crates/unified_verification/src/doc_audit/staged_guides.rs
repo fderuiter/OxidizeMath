@@ -1,8 +1,8 @@
 //! Scoped documentation, facade import, and guide verification for `batch-staged`.
 
 use super::facade_imports::{
-    DOMAIN_CRATES, check_example_facade_imports, check_markdown_facade_imports,
-    check_rustdoc_facade_imports,
+    DOMAIN_CRATES, FacadeImportPatterns, check_example_facade_imports_with_regex,
+    check_markdown_facade_imports_with_regex, check_rustdoc_facade_imports_with_regexes,
 };
 use super::manifest_model::WorkspaceManifestModel;
 use super::trait_contracts::TraitContractRegistry;
@@ -71,6 +71,10 @@ pub fn audit_staged_facade_import_hygiene(
     workspace_root: &Path,
     existing_staged: &[String],
 ) -> Vec<String> {
+    if existing_staged.is_empty() {
+        return Vec::new();
+    }
+    let patterns = FacadeImportPatterns::new();
     let mut violations = Vec::new();
     for raw in existing_staged {
         let norm = raw.replace('\\', "/");
@@ -78,16 +82,29 @@ pub fn audit_staged_facade_import_hygiene(
         let full_path = workspace_root.join(rel);
         if is_active_facade_guide_rel(rel) {
             if let Ok(content) = fs::read_to_string(&full_path) {
-                violations.extend(check_markdown_facade_imports(&full_path, &content));
+                violations.extend(check_markdown_facade_imports_with_regex(
+                    &full_path,
+                    &content,
+                    &patterns.forbidden_re,
+                ));
             }
         } else if is_domain_src_rs_rel(rel) {
             if let Ok(content) = fs::read_to_string(&full_path) {
-                violations.extend(check_rustdoc_facade_imports(&full_path, &content));
+                violations.extend(check_rustdoc_facade_imports_with_regexes(
+                    &full_path,
+                    &content,
+                    &patterns.doc_re,
+                    &patterns.forbidden_re,
+                ));
             }
         } else if is_example_or_bench_rs_rel(rel)
             && let Ok(content) = fs::read_to_string(&full_path)
         {
-            violations.extend(check_example_facade_imports(&full_path, &content));
+            violations.extend(check_example_facade_imports_with_regex(
+                &full_path,
+                &content,
+                &patterns.bypass_re,
+            ));
         }
     }
     violations
