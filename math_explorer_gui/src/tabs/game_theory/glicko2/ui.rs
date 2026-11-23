@@ -49,7 +49,7 @@ fn edit_initial_player(ui: &mut egui::Ui, initial: &mut GlickoPlayer) -> bool {
 }
 
 impl Glicko2TournamentTool {
-    fn show_starter_scenarios(&mut self, ui: &mut egui::Ui) {
+    fn show_starter_scenario_buttons(&mut self, ui: &mut egui::Ui) {
         ui.label("Starter Scenarios:");
         ui.horizontal_wrapped(|ui| {
             if io_btn(
@@ -71,7 +71,7 @@ impl Glicko2TournamentTool {
     }
 
     fn show_preset_and_schedule_controls(&mut self, ui: &mut egui::Ui) {
-        self.show_starter_scenarios(ui);
+        self.show_starter_scenario_buttons(ui);
         ui.separator();
         ui.heading("System & Schedule");
         let rebuild = ui

@@ -2,15 +2,18 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[cfg(test)]
 use crate::framework::InteractiveTool;
 use crate::presets::{
     Glicko2MatchPreset, Glicko2PairingMode, Glicko2PeriodPreset, Glicko2TournamentPresetConfig,
     MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS,
 };
+#[cfg(test)]
 use eframe::egui;
 use math_explorer::pure_math::statistics::glicko2::{
     evaluate_rating_period, evaluate_sequential_period, round_robin_schedule,
-    simulate_period_matches, swiss_pairings, GlickoPlayer, Pairing, PeriodMatch, SystemConstant,
+    simulate_period_matches, swiss_pairings, GlickoPlayer, Pairing, PeriodMatch, Rating,
+    RatingDeviation, SystemConstant, Volatility,
 };
 use oxidize_core::rng::OxidizeRng;
 use std::collections::HashSet;
@@ -19,6 +22,8 @@ use std::collections::HashSet;
 pub(crate) mod io;
 #[path = "glicko2/plots.rs"]
 mod plots;
+#[path = "glicko2/state.rs"]
+mod state;
 #[path = "glicko2/ui.rs"]
 mod ui;
 
@@ -405,73 +410,35 @@ impl Glicko2TournamentTool {
         self.completed_periods.clear();
         self.rebuild_trajectory()
     }
-}
 
-impl InteractiveTool for Glicko2TournamentTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
-        self
-    }
-    fn name(&self) -> &'static str {
-        "Glicko-2 Tournament"
-    }
-    fn domain(&self) -> &'static str {
-        "game_theory"
-    }
-    fn state_revision(&self) -> u64 {
-        self.state_rev
-    }
-
-    fn has_finite_parameters(&self) -> bool {
-        self.tau.is_finite()
-            && self.draw_probability.is_finite()
-            && self.competitors.iter().all(|c| {
-                c.initial.rating.value().is_finite()
-                    && c.initial.rating_deviation.value().is_finite()
-                    && c.initial.volatility.value().is_finite()
-            })
-    }
-
-    fn clamp_parameters(&mut self) -> bool {
-        let tau = if self.tau.is_finite() {
-            self.tau.clamp(0.3, 1.2)
-        } else {
-            0.5
-        };
-        let draw = if self.draw_probability.is_finite() {
-            self.draw_probability.clamp(0.0, 1.0)
-        } else {
-            0.15
-        };
-        let changed = (tau - self.tau).abs() > f64::EPSILON
-            || (draw - self.draw_probability).abs() > f64::EPSILON;
-        (self.tau, self.draw_probability) = (tau, draw);
-        self.target_rounds = self.target_rounds.clamp(1, MAX_TOURNAMENT_PERIODS);
-        if changed {
-            let _ = self.rebuild_trajectory();
+    pub(crate) fn apply_config(
+        &mut self,
+        config: Glicko2TournamentPresetConfig,
+    ) -> Result<(), String> {
+        config.validate()?;
+        let mut competitors = Vec::with_capacity(config.players.len());
+        for p in &config.players {
+            let initial = GlickoPlayer::new(
+                Rating::new(p.rating).map_err(|e| e.to_string())?,
+                RatingDeviation::new(p.rd).map_err(|e| e.to_string())?,
+                Volatility::new(p.volatility).map_err(|e| e.to_string())?,
+            );
+            competitors.push(CompetitorEntry::new(
+                p.name.trim().to_string(),
+                initial,
+                p.inactive,
+            ));
         }
-        changed
-    }
-
-    fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&self.export_config()).ok()
-    }
-
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let cfg: Glicko2TournamentPresetConfig = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid Glicko2TournamentTool state: {e}"))?;
-        self.apply_config(cfg)
-    }
-
-    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        let ctx = parent_ui.ctx().clone();
-        self.poll_io(&ctx);
-        let side_id = crate::framework::scoped_panel_id(parent_ui, "glicko2_control_panel");
-        crate::framework::PaneSidePanel::left(side_id).show_inside(parent_ui, |ui| {
-            self.show_side_controls(ui);
-        });
-        self.show_bottom_dock(parent_ui);
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.show_central_plot(ui);
-        });
+        (self.tau, self.draw_probability, self.pairing_mode) =
+            (config.tau, config.draw_probability, config.pairing_mode);
+        (self.target_rounds, self.rng_seed) = (config.target_rounds, config.rng_seed);
+        (self.competitors, self.completed_periods) = (competitors, config.periods);
+        if self
+            .focus_player
+            .is_some_and(|i| i >= self.competitors.len())
+        {
+            self.focus_player = None;
+        }
+        self.rebuild_trajectory()
     }
 }

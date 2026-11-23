@@ -1,6 +1,8 @@
 pub mod callout_overlay;
 pub mod challenge;
 mod challenge_hud;
+#[cfg(test)]
+mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
@@ -12,6 +14,8 @@ mod export_3d;
 mod export_dataset;
 mod export_figure;
 mod export_queue;
+#[cfg(test)]
+pub(crate) use export_queue::deferred_export_tests;
 #[cfg(test)]
 mod export_queue_tests;
 mod export_shader;
@@ -48,6 +52,7 @@ mod state_bounds_tests;
 pub mod state_guard;
 #[cfg(test)]
 mod state_guard_tests;
+pub mod story_hud;
 pub(crate) mod theory_links;
 #[cfg(test)]
 mod theory_links_tests;
@@ -76,6 +81,7 @@ pub use side_panel::{
 };
 pub use state_bounds::*;
 pub use state_guard::*;
+pub use story_hud::*;
 pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
@@ -188,6 +194,14 @@ pub trait InteractiveTool {
     fn has_finite_parameters(&self) -> bool {
         true
     }
+
+    /// Named scalar observables exposed to the Challenge HUD and `math_commons::ast` evaluator.
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        Vec::new()
+    }
+
+    /// Synchronizes declarative guided story or challenge callout pins onto the tool's plot.
+    fn sync_callouts(&mut self, _callouts: &[CalloutSpec]) {}
 
     /// Optional hook to serialize tool-specific parameters into a String (e.g. JSON).
     fn save_state(&self) -> Option<String> {
@@ -441,6 +455,8 @@ pub struct SimulationFramework {
     pub branch_engine: CounterfactualBranchEngine,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    /// Declarative guided story and AST challenge HUD state.
+    pub challenge_hud: ChallengeHudState,
     /// Active inverse challenge contract displayed in the Challenge HUD, if any.
     pub active_challenge: Option<&'static ChallengeMetadata>,
     pub(super) challenge_was_passed: bool,

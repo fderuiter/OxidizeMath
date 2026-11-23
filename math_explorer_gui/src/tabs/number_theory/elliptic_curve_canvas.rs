@@ -249,15 +249,15 @@ fn paint_torus_backdrop(
         egui::FontId::proportional(13.0_f32),
         ui.visuals().text_color(),
     );
-    paint_infinity_badge(ui, painter, vp, model, palette);
+    paint_infinity_badge(painter, vp, model, palette, ui.visuals().text_color());
 }
 
 fn paint_infinity_badge(
-    ui: &egui::Ui,
     painter: &egui::Painter,
     vp: &TorusViewport,
     model: &TorusCanvasModel<'_>,
     palette: &SemanticPalette,
+    text_color: Color32,
 ) {
     let inf_stroke = if model.point_p.is_infinity() || model.point_q.is_infinity() {
         palette.accent
@@ -276,7 +276,7 @@ fn paint_infinity_badge(
         egui::Align2::CENTER_CENTER,
         "Identity O",
         egui::FontId::proportional(11.5_f32),
-        ui.visuals().text_color(),
+        text_color,
     );
 }
 
@@ -357,12 +357,12 @@ fn paint_curve_elements(
     if let Some(step) = model.chord {
         paint_reflection_and_sum(painter, vp, &step, palette, text_color);
     }
-    for (pt, lbl, col, rad) in [
+    for (pt, label, col, rad) in [
         (model.point_p, "P", palette.accent, 6.2_f32),
         (model.point_q, "Q", palette.series[1], 5.6_f32),
         (model.scalar_kp, "[k]P", palette.series[4], 5.2_f32),
     ] {
-        paint_labeled_point(painter, vp, pt, lbl, col, text_color, rad);
+        paint_labeled_point(painter, vp, pt, label, col, text_color, rad);
     }
 }
 

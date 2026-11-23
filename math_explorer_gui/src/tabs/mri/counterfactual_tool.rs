@@ -236,8 +236,8 @@ impl MriTool {
         }
     }
 
+    /// Restarts the background Bloch simulation worker with current shared parameters.
     #[cfg(test)]
-    #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
         let (t1, t2, b_field) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -249,8 +249,8 @@ impl MriTool {
         self.sync_mri_worker_with_local_state();
     }
 
+    /// Alias for [`Self::restart_worker`] used by worker fault recovery tests.
     #[cfg(test)]
-    #[allow(missing_docs)]
     pub fn retry(&mut self) {
         self.restart_worker();
     }

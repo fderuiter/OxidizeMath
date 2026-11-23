@@ -2,48 +2,17 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub(crate) use super::state::TournamentIoState;
 use super::Glicko2TournamentTool;
 use crate::framework::InteractiveTool;
 use crate::presets::{
     Glicko2MatchPreset, Glicko2PeriodPreset, Glicko2PlayerPreset, Glicko2TournamentPresetConfig,
     MAX_TOURNAMENT_PERIODS,
 };
-use crate::web_io::{
-    spawn_open_file_dialog, spawn_save_as_file_dialog, strip_utf8_bom, OpenDialogConfig,
-    SaveAsDialogConfig,
-};
+use crate::web_io::strip_utf8_bom;
 use math_explorer::pure_math::statistics::glicko2::head_to_head_win_probability;
 use serde::Deserialize;
 use std::collections::BTreeMap;
-use std::sync::mpsc::{channel, Receiver};
-
-const MATCH_LOG_OPEN_CONFIG: OpenDialogConfig = OpenDialogConfig {
-    filter_name: "Match Log or Preset (.csv, .json)",
-    extensions: &["csv", "json"],
-    accept: ".csv,.json,text/csv,application/json",
-    read_error_prefix: "Failed to read tournament file",
-};
-
-const CSV_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
-    filter_name: "CSV Spreadsheet (.csv)",
-    extensions: &["csv"],
-    fallback_filename: "glicko2_export.csv",
-    write_error_prefix: "Failed to write CSV export",
-};
-
-const JSON_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
-    filter_name: "JSON Document (.json)",
-    extensions: &["json"],
-    fallback_filename: "glicko2_export.json",
-    write_error_prefix: "Failed to write JSON export",
-};
-
-#[derive(Default)]
-pub(crate) struct TournamentIoState {
-    pub(super) open_rx: Option<Receiver<Result<(String, String), String>>>,
-    pub(super) save_rx: Option<Receiver<Result<String, String>>>,
-    pub status_message: Option<(bool, String)>,
-}
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -423,54 +392,32 @@ impl Glicko2TournamentTool {
         }
         out
     }
-}
 
-impl TournamentIoState {
-    pub(crate) fn trigger_import_dialog(&mut self) {
-        let (tx, rx) = channel();
-        self.open_rx = Some(rx);
-        spawn_open_file_dialog(tx, MATCH_LOG_OPEN_CONFIG, |p| {
-            p.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("match_log")
-                .to_string()
-        });
-    }
-
-    pub(crate) fn trigger_save_csv(&mut self, default_filename: &str, content: String) {
-        let (tx, rx) = channel();
-        self.save_rx = Some(rx);
-        spawn_save_as_file_dialog(tx, CSV_SAVE_CONFIG, default_filename, content, |p, fb| {
-            p.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(fb)
-                .to_string()
-        });
-    }
-
-    pub(crate) fn trigger_save_json(
-        &mut self,
-        default_filename: &str,
-        content: Result<String, String>,
-    ) {
-        match content {
-            Ok(payload) => {
-                let (tx, rx) = channel();
-                self.save_rx = Some(rx);
-                spawn_save_as_file_dialog(
-                    tx,
-                    JSON_SAVE_CONFIG,
-                    default_filename,
-                    payload,
-                    |p, fb| {
-                        p.file_name()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or(fb)
-                            .to_string()
-                    },
+    /// Formats upcoming round pairings as pretty-printed JSON.
+    pub fn format_pairings_json(&self) -> Result<String, String> {
+        let (next_period, mode) = (self.completed_periods.len() + 1, self.pairing_mode.label());
+        let rows: Vec<serde_json::Value> = self
+            .next_pairings
+            .iter()
+            .enumerate()
+            .map(|(b_idx, row)| {
+                let (ca, cb) = (
+                    &self.competitors[row.pairing.player_a],
+                    &self.competitors[row.pairing.player_b],
                 );
-            }
-            Err(err) => self.status_message = Some((true, err)),
-        }
+                serde_json::json!({
+                    "next_period": next_period,
+                    "pairing_mode": mode,
+                    "board": b_idx + 1,
+                    "player_a": ca.name,
+                    "rating_a": ca.current.rating.value(),
+                    "player_b": cb.name,
+                    "rating_b": cb.current.rating.value(),
+                    "expected_score_a": head_to_head_win_probability(&ca.current, &cb.current),
+                    "manual_score_a": row.manual_score_a,
+                })
+            })
+            .collect();
+        serde_json::to_string_pretty(&rows).map_err(|e| e.to_string())
     }
 }
