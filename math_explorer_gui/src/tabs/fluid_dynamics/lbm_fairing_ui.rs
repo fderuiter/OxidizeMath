@@ -180,7 +180,11 @@ impl LbmUiExtension {
             ];
             for stamp in stamps {
                 let tip = format!("Apply {} obstacle profile and reset LBM", stamp.label());
-                if ui.button(stamp.label()).accessible_hover_text(tip).clicked() {
+                if ui
+                    .button(stamp.label())
+                    .accessible_hover_text(tip)
+                    .clicked()
+                {
                     cmds = self.apply_stamp(stamp, CHALLENGE_LBM_VISCOSITY);
                     let m = &self.evaluator.latest;
                     let pct = 100.0 * m.c_d / m.c_d_cylinder.max(1e-9);
@@ -222,7 +226,9 @@ impl LbmUiExtension {
             "Fairing Readout: F_D = {:.4}, F_L = {:.4}, C_D = {:.3} (Cyl = {:.3})",
             m.f_drag, m.f_lift, m.c_d, m.c_d_cylinder
         ));
-        if let Some(s) = latest_snapshot.filter(|s| s.custom_data.len() >= 6 && s.custom_data[5] >= 20.0) {
+        if let Some(s) =
+            latest_snapshot.filter(|s| s.custom_data.len() >= 6 && s.custom_data[5] >= 20.0)
+        {
             ui.small(format!(
                 "Live Stream: F_D = {:.4}, F_L = {:.4}, C_D = {:.3}",
                 s.custom_data[0], s.custom_data[1], s.custom_data[2]
@@ -230,9 +236,16 @@ impl LbmUiExtension {
         }
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let geom_ok = m.n_solid >= LBM_MIN_SOLID_CELLS && m.core_intact;
-        let geom_color = if geom_ok { palette.success } else { palette.warning };
+        let geom_color = if geom_ok {
+            palette.success
+        } else {
+            palette.warning
+        };
         let core_txt = if m.core_intact { "Intact" } else { "Breached" };
-        let msg = format!("Solid Cells: {} (min {LBM_MIN_SOLID_CELLS}) | Core R=4: {core_txt}", m.n_solid);
+        let msg = format!(
+            "Solid Cells: {} (min {LBM_MIN_SOLID_CELLS}) | Core R=4: {core_txt}",
+            m.n_solid
+        );
         ui.colored_label(geom_color, msg);
         cmds
     }

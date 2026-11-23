@@ -9,9 +9,7 @@ use eframe::egui;
 use egui_plot::export::ExportOptions;
 use egui_plot::export_primitives::{export_primitives_svg, has_drawable_primitives};
 use egui_plot::ExportPrimitive;
-use math_commons::contours::{
-    extract_multi_contours, order_paths_nearest_neighbor, GridBounds2D,
-};
+use math_commons::contours::{extract_multi_contours, order_paths_nearest_neighbor, GridBounds2D};
 
 const CONTOUR_QUANTILES: [f64; 5] = [0.2, 0.35, 0.5, 0.65, 0.8];
 
@@ -71,15 +69,16 @@ impl MorphogenesisTool {
         let Some((w, h, u_grid)) = self.resolve_structured_u_grid() else {
             return Vec::new();
         };
-        let (min_u, max_u) = u_grid
-            .iter()
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &v| {
-                if v.is_finite() {
-                    (lo.min(v), hi.max(v))
-                } else {
-                    (lo, hi)
-                }
-            });
+        let (min_u, max_u) =
+            u_grid
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &v| {
+                    if v.is_finite() {
+                        (lo.min(v), hi.max(v))
+                    } else {
+                        (lo, hi)
+                    }
+                });
         if !min_u.is_finite() || !max_u.is_finite() || (max_u - min_u) <= 1e-9 {
             return Vec::new();
         }
@@ -116,7 +115,10 @@ impl MorphogenesisTool {
         primitives
     }
 
-    pub(crate) fn export_isoline_svg(&self, options: &ExportOptions) -> Option<Result<String, String>> {
+    pub(crate) fn export_isoline_svg(
+        &self,
+        options: &ExportOptions,
+    ) -> Option<Result<String, String>> {
         let prims = self.extract_isoline_primitives();
         has_drawable_primitives(&prims).then(|| export_primitives_svg(&prims, options))
     }

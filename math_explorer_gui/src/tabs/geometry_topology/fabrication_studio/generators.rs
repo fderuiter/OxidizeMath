@@ -40,7 +40,9 @@ pub struct FabricationArtifact {
 }
 
 /// Builds the complete millimeter [`FabricationArtifact`] for `state`.
-pub fn build_fabrication_artifact(state: &FabricationStudioState) -> Result<FabricationArtifact, String> {
+pub fn build_fabrication_artifact(
+    state: &FabricationStudioState,
+) -> Result<FabricationArtifact, String> {
     let (domain_bounds, raw_cut, raw_score) = match state.source {
         FabricationSourceKind::TuringField => generate_turing_domain_paths(state)?,
         FabricationSourceKind::PotentialFlow => generate_flow_domain_paths(state)?,
@@ -132,8 +134,8 @@ fn generate_tiling_domain_paths(state: &FabricationStudioState) -> DomainPathsRe
 fn generate_turing_domain_paths(state: &FabricationStudioState) -> DomainPathsResult {
     let n = state.turing_grid_size;
     let u_grid = simulate_deterministic_turing_grid(state);
-    let bounds = GridBounds2D::new(0.0, (n - 1) as f64, 0.0, (n - 1) as f64)
-        .map_err(|e| e.to_string())?;
+    let bounds =
+        GridBounds2D::new(0.0, (n - 1) as f64, 0.0, (n - 1) as f64).map_err(|e| e.to_string())?;
     let (min_u, max_u) = u_grid
         .iter()
         .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &v| {
@@ -146,8 +148,8 @@ fn generate_turing_domain_paths(state: &FabricationStudioState) -> DomainPathsRe
         let q = 0.22 + 0.56 * ((idx as f64) + 0.5) / (state.turing_score_levels as f64);
         score_levels.push(min_u + q * span);
     }
-    let multi = extract_multi_contours(&u_grid, n, n, &bounds, &score_levels)
-        .map_err(|e| e.to_string())?;
+    let multi =
+        extract_multi_contours(&u_grid, n, n, &bounds, &score_levels).map_err(|e| e.to_string())?;
     let mut score_paths: Vec<ContourPath> = multi.into_iter().flat_map(|(_, p)| p).collect();
 
     let mut cut_paths = Vec::new();
@@ -174,7 +176,10 @@ fn circular_coaster_loop(center: [f64; 2], radius: f64, segments: usize) -> Cont
     let mut pts = Vec::with_capacity(segments);
     for idx in 0..segments {
         let ang = TAU * (idx as f64) / (segments as f64);
-        pts.push([center[0] + radius * ang.cos(), center[1] + radius * ang.sin()]);
+        pts.push([
+            center[0] + radius * ang.cos(),
+            center[1] + radius * ang.sin(),
+        ]);
     }
     ContourPath::new(pts, true)
 }
@@ -220,7 +225,9 @@ fn cfl_substep_plan(state: &FabricationStudioState) -> (usize, f64) {
 #[cfg(feature = "biology")]
 fn simulate_deterministic_turing_grid(state: &FabricationStudioState) -> Vec<f64> {
     use math_explorer::biology::diffusion::FiniteDifference2D;
-    use math_explorer::biology::morphogenesis::{DiffusionCoeff, SchnakenbergKinetics, TuringSystem};
+    use math_explorer::biology::morphogenesis::{
+        DiffusionCoeff, SchnakenbergKinetics, TuringSystem,
+    };
     use math_explorer::math_kernel::types::{Dimension, StepSize};
 
     let n = state.turing_grid_size;

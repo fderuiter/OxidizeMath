@@ -175,7 +175,9 @@ impl FabricationStudioTool {
         ui.add(egui::Slider::new(&mut self.state.turing_d_v, 10.0..=150.0).text("Inhibitor D_v"));
         ui.add(egui::Slider::new(&mut self.state.turing_grid_size, 16..=max_g).text("Grid Size"));
         ui.add(egui::Slider::new(&mut self.state.turing_steps, 20..=300).text("RD Steps"));
-        ui.add(egui::Slider::new(&mut self.state.turing_score_levels, 1..=8).text("Score Isolines"));
+        ui.add(
+            egui::Slider::new(&mut self.state.turing_score_levels, 1..=8).text("Score Isolines"),
+        );
         ui.checkbox(
             &mut self.state.turing_coaster_border,
             "Circular Coaster Cut Perimeter",
@@ -269,7 +271,11 @@ impl FabricationStudioTool {
     fn draw_bed_and_travel_controls(&mut self, ui: &mut egui::Ui) {
         ui.label(egui::RichText::new("3. Physical Bed & Toolpaths").strong());
         ui.horizontal_wrapped(|ui| {
-            ui.radio_value(&mut self.state.bed_mode, StudioBedMode::A4, "A4 (210×297 mm)");
+            ui.radio_value(
+                &mut self.state.bed_mode,
+                StudioBedMode::A4,
+                "A4 (210×297 mm)",
+            );
             ui.radio_value(
                 &mut self.state.bed_mode,
                 StudioBedMode::UsLetter,
@@ -348,7 +354,11 @@ impl FabricationStudioTool {
         }
         if let Some((ref msg, is_err)) = self.status_banner {
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let color = if is_err { palette.error } else { palette.success };
+            let color = if is_err {
+                palette.error
+            } else {
+                palette.success
+            };
             ui.colored_label(color, msg);
         }
     }

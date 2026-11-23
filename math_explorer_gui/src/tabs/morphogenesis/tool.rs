@@ -272,8 +272,8 @@ impl InteractiveTool for MorphogenesisTool {
         let snap = runner.get_snapshot();
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
-        self.stepped_u_grid = super::contours::snapshot_u_slice(&snap)
-            .map(|u| (snap.width, snap.height, u.to_vec()));
+        self.stepped_u_grid =
+            super::contours::snapshot_u_slice(&snap).map(|u| (snap.width, snap.height, u.to_vec()));
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {

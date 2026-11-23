@@ -129,6 +129,14 @@ impl math_commons::series::PointSeries for SeriesCoords<'_> {
             Self::Shared(pts) => pts[index],
         }
     }
+
+    #[inline(always)]
+    fn advance_flat_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        match self {
+            Self::PlotPoints(pts) => pts.advance_flat_run(start, flat_y, x_min, x_max),
+            Self::Shared(pts) => pts.advance_flat_run(start, flat_y, x_min, x_max),
+        }
+    }
 }
 
 pub(crate) struct LineSeriesRef<'a> {
@@ -277,7 +285,10 @@ fn collect_single_line_pois(
         roots,
         y_intercepts,
         extrema,
-    } = scan_line_pois(&line.points, want_roots, want_y_ints);
+    } = match line.points {
+        SeriesCoords::PlotPoints(pts) => scan_line_pois(pts, want_roots, want_y_ints),
+        SeriesCoords::Shared(pts) => scan_line_pois(pts, want_roots, want_y_ints),
+    };
     for x_root in roots {
         push_if_visible(
             out,

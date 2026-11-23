@@ -260,9 +260,12 @@ impl InteractiveTool for PotentialFlowTool {
                 .legend(Legend::default())
                 .show(ui, |plot_ui| {
                     self.render_flow_plot_layers(plot_ui, &palette, origins, tips);
-                    strokes =
-                        self.brush_kit
-                            .sample_plot(plot_ui, [-vr, -vr], [vr, vr], Some(BrushMode::Erase));
+                    strokes = self.brush_kit.sample_plot(
+                        plot_ui,
+                        [-vr, -vr],
+                        [vr, vr],
+                        Some(BrushMode::Erase),
+                    );
                 });
             for stroke in strokes {
                 let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
@@ -399,7 +402,7 @@ inventory::submit! {
         id: "PotentialFlowTool",
         display_name: "Potential Flow",
         domain: "fluid_dynamics",
-        tags: &[],
+        tags: &["laplace", "irrotational", "incompressible", "streamlines", "vortex"],
         build: || Box::new(PotentialFlowTool::default()),
     }
 }

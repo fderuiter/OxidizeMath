@@ -22,8 +22,14 @@ fn assert_fabrication_svg_contract(svg: &str, expected_w_mm: &str, expected_h_mm
     assert!(svg.contains("<g id=\"layer-cut\""));
     assert!(svg.contains("<g id=\"layer-score\""));
     assert!(svg.contains("<path fill=\"none\""));
-    assert!(!svg.contains("<image"), "Fabrication SVG must contain zero <image> tags");
-    assert!(!svg.contains("<rect"), "Fabrication SVG must contain zero <rect> backgrounds");
+    assert!(
+        !svg.contains("<image"),
+        "Fabrication SVG must contain zero <image> tags"
+    );
+    assert!(
+        !svg.contains("<rect"),
+        "Fabrication SVG must contain zero <rect> backgrounds"
+    );
     assert!(svg.trim_end().ends_with("</svg>"));
 }
 
