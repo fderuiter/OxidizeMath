@@ -92,6 +92,16 @@ fn test_all_six_3d_tools_emit_camera_invariant_world_xyz() {
     let curv_b = run_tool_and_capture_3d(&mut curvature);
     assert_datasets_3d_invariant("CurvatureHeatmap", &curv_a, &curv_b);
 
+    #[cfg(feature = "biology")]
+    {
+        let mut morpho =
+            crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool::default();
+        let morpho_a = run_tool_and_capture_3d(&mut morpho);
+        morpho.camera = transformed_camera(morpho.camera);
+        let morpho_b = run_tool_and_capture_3d(&mut morpho);
+        assert_datasets_3d_invariant("SurfaceMorphogenesisTool", &morpho_a, &morpho_b);
+    }
+
     let mut spin = SpinVisualizer::default();
     spin.step_once();
     let spin_a = run_tool_and_capture_3d(&mut spin);
