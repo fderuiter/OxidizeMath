@@ -29,6 +29,7 @@ mod tests {
         check_tool!(crate::tabs::solid_state::ising::IsingModelTool);
         check_tool!(crate::tabs::quantum::clebsch::ClebschGordanTool);
         check_tool!(crate::tabs::graph_theory::network_metrics::NetworkMetricsTool);
+        check_tool!(crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool);
         check_tool!(crate::tabs::clinical_trials::survival::SurvivalAnalysisTool);
         check_tool!(crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool);
         check_tool!(crate::tabs::clinical_trials::randomization::RandomizationTool);
