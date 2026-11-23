@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 //! Desktop unit tests for [`RelativityTab`], [`GeodesicPlaygroundTool`], [`ChristoffelInspectorTool`],
-//! `Camera3D` gestures, `#tab=relativity` URL hydration, `FiniteStateGuard` rollback, and exports.
+//! photon-ring normalization, Kerr/ISCO geometry, custom AST metrics, 2D atlas, and stories/challenges.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use eframe::egui;
 
@@ -12,7 +12,7 @@ use crate::app::{MathExplorerApp, ThemeMode};
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
 use crate::tabs::ExplorerTab;
 
-fn test_raw_input(events: Vec<egui::Event>) -> egui::RawInput {
+pub(super) fn test_raw_input(events: Vec<egui::Event>) -> egui::RawInput {
     egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -21,6 +21,10 @@ fn test_raw_input(events: Vec<egui::Event>) -> egui::RawInput {
         events,
         ..Default::default()
     }
+}
+
+fn obs_map(tool: &dyn InteractiveTool) -> HashMap<&'static str, f64> {
+    tool.observables().into_iter().collect()
 }
 
 #[test]
@@ -153,4 +157,129 @@ fn relativity_tools_export_valid_png_svg_and_csv_artifacts() {
             }
         }
     }
+}
+
+#[test]
+fn photon_ring_preset_normalizes_energy_grazes_photon_sphere_and_captures_twin() {
+    let mut tool = GeodesicPlaygroundTool::default();
+    tool.import_preset_json(presets::PRESET_PHOTON_RING_LENSING)
+        .expect("photon ring preset must load");
+    assert!((tool.launch_energy - 1.0).abs() < 1e-12);
+    let obs = obs_map(&tool);
+    assert!((obs["launch_energy"] - 1.0).abs() < 1e-12);
+    assert!((obs["effective_energy"] - 0.5).abs() < 1e-12);
+    assert!(
+        (3.0..=3.3).contains(&obs["r_min"]),
+        "expected r_min in [3.0, 3.3], got {}",
+        obs["r_min"]
+    );
+    assert!(obs["captured"] < 0.5, "primary ray should escape");
+    assert!(
+        obs["twin_captured"] > 0.5,
+        "twin ray with negative delta_b must capture"
+    );
+    assert!(
+        obs["twin_r_min"] <= 2.05,
+        "captured twin must reach r <= 2.05, got {}",
+        obs["twin_r_min"]
+    );
+
+    let datasets = tool.export_datasets();
+    let e_line = datasets
+        .iter()
+        .find(|(n, _)| n == "0.5 * e^2")
+        .expect("0.5 * e^2 dataset");
+    assert!((e_line.1[0][1] - 0.5).abs() < 1e-12);
+}
+
+#[test]
+fn kerr_equatorial_spin_09_surfaces_exact_horizons_frame_dragging_and_isco() {
+    let mut tool = GeodesicPlaygroundTool::default();
+    tool.state.spacetime = SpacetimePreset::KerrEquatorial;
+    tool.state.scale_radius = 2.0;
+    tool.state.spin_chi = 0.9;
+    tool.state.initial_radius = 9.0;
+    tool.state.impact_or_momentum = 3.1;
+    tool.clamp_parameters();
+
+    let obs = obs_map(&tool);
+    assert!(
+        (obs["outer_horizon_radius"] - 1.43589).abs() < 1e-5,
+        "expected r_+ ≈ 1.43589, got {}",
+        obs["outer_horizon_radius"]
+    );
+    assert!((obs["ergosphere_radius"] - 2.0).abs() < 1e-12);
+    assert!(obs["frame_dragging_omega"] > 0.0 && obs["frame_dragging_omega"].is_finite());
+    assert!(obs["isco"] > 2.0 && obs["isco"] < 6.0);
+
+    tool.state.mode = playground::GeodesicMode::TimelikeParticle;
+    tool.state.initial_radius = 1.8; // Inside the ergosphere (r_+ = 1.436 < 1.8 < r_ergo = 2.0)
+    tool.state.impact_or_momentum = 3.6;
+    tool.rebuild_trajectory(120);
+    assert!((tool.samples[0].metric_norm + 1.0).abs() < 1e-9);
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(test_raw_input(Vec::new()), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
+    });
+}
+
+#[test]
+fn custom_ast_lapse_matches_schwarzschild_christoffel_and_steps_720_zero_alloc() {
+    let mut inspector = ChristoffelInspectorTool::default();
+    inspector.state.manifold = InspectorManifold::CustomRadialLapse4D;
+    inspector.state.scale_radius = 2.0;
+    inspector.state.radial_coord = 4.5;
+    inspector.set_custom_lapse_expression("1 - 2 / r");
+    let eval = inspector
+        .evaluate_current()
+        .expect("custom 1 - 2 / r Christoffel");
+    assert!(
+        eval.max_abs_diff < 1e-6,
+        "1 - 2/r central diff must match Schwarzschild within 1e-6, got {}",
+        eval.max_abs_diff
+    );
+
+    inspector.set_custom_lapse_expression("1 - Rs / r + q^2 / r^2");
+    assert_eq!(
+        inspector.sandbox.lapse_bar.active_param_names(),
+        &["q".to_string()]
+    );
+
+    let mut playground = GeodesicPlaygroundTool::default();
+    playground.state.spacetime = SpacetimePreset::CustomRadialLapse;
+    playground.state.scale_radius = 2.0;
+    playground.state.initial_radius = 12.0;
+    playground.state.impact_or_momentum = 5.25;
+    playground.state.step_size = 0.015;
+    playground.sandbox.lapse_bar.set_expression("1 - 2 / r");
+    playground.clamp_parameters();
+
+    {
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            playground.rebuild_trajectory(720);
+        });
+    }
+    assert_eq!(playground.samples.len(), 721);
+    assert!(playground
+        .samples
+        .iter()
+        .all(|s| s.radial_coord.is_finite() && s.metric_norm.is_finite()));
+
+    // Plunging custom Reissner-Nordstrom ray halts cleanly when f(r) <= 0.02 without NaNs
+    playground
+        .sandbox
+        .lapse_bar
+        .set_expression("1 - Rs / r + q^2 / r^2");
+    playground.state.impact_or_momentum = 0.5;
+    playground.state.step_size = 0.05;
+    playground.rebuild_trajectory(600);
+    assert!(playground.halted_near_singularity);
+    assert!(playground
+        .samples
+        .iter()
+        .all(|s| s.radial_coord.is_finite() && s.embed_xyz[2].is_finite()));
 }

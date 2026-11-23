@@ -218,7 +218,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     }
 
     assert_eq!(plot_tool_count, 66, "Expected 66 Plot dataset+figure tools");
-    assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
+    assert_eq!(raster_tool_count, 8, "Expected 8 raster figure tools");
     assert_eq!(
         dataset_only_tool_count, 0,
         "Expected 0 dataset-only registered tools"
@@ -230,7 +230,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
-    assert_eq!(non_shader_tool_count, 84, "Expected 84 non-shader tools");
+    assert_eq!(non_shader_tool_count, 85, "Expected 85 non-shader tools");
 }
 
 #[derive(Default)]
