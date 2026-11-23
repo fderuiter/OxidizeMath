@@ -172,7 +172,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 }
 
-/// Background simulation runner driving a [`UnifiedModel`] with shared parameter and sculpt state.
+/// Background worker runner driving a [`UnifiedModel`] with shared parameters, formulas, and sculpt state.
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,

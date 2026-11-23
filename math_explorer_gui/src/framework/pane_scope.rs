@@ -3,12 +3,12 @@
 use super::{AccessibleHoverText, BrushMode, BrushStroke, InteractiveTool, PaneSidePanel};
 use eframe::egui;
 
-/// Active pointer interaction modality for interactive simulation canvases.
+/// Active pointer/touch input modality for an interactive simulation pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
-    /// Standard desktop mouse / trackpad pointer mode.
+    /// Desktop mouse/trackpad pointer input.
     Mouse,
-    /// Direct multi-touch screen gesture mode.
+    /// Direct multi-touch gesture input.
     Touch,
 }
 
@@ -16,23 +16,23 @@ pub enum InputMode {
 pub struct InteractionContext<'a> {
     /// Current pointer position in screen coordinates, if hovering or interacting.
     pub pointer_pos: Option<egui::Pos2>,
-    /// Pointer drag delta for the current frame.
+    /// Pointer drag delta since the previous frame.
     pub delta: egui::Vec2,
-    /// Whether the primary or secondary pointer is actively dragging the canvas.
+    /// Whether the pointer is actively dragging on the canvas.
     pub is_dragging: bool,
-    /// Whether the canvas was clicked on this frame.
+    /// Whether the canvas was clicked during this frame.
     pub is_clicked: bool,
-    /// Underlying `egui::Response` for the allocated canvas widget.
+    /// Underlying `egui` widget response for the canvas region.
     pub response: &'a egui::Response,
-    /// Active pointer modality (`Mouse` or `Touch`).
+    /// Active pointer or touch input mode.
     pub input_mode: InputMode,
-    /// Multi-touch gesture state when two or more fingers are active.
+    /// Active multi-touch gesture state, when present.
     pub multi_touch: Option<egui::MultiTouchInfo>,
-    /// Keys currently held down within the active pane scope.
+    /// Set of keyboard keys currently held down.
     pub keys_down: std::collections::HashSet<egui::Key>,
-    /// Active keyboard modifiers (`Ctrl`, `Shift`, `Alt`, `Command`).
+    /// Active keyboard modifiers (`Ctrl`, `Shift`, `Alt`, `Cmd`).
     pub modifiers: egui::Modifiers,
-    /// Optional interpolated spatial brush stroke generated on this frame.
+    /// Optional spatial brush stroke synthesized from pointer drag events.
     pub brush_stroke: Option<BrushStroke>,
 }
 
