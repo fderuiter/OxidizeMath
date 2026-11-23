@@ -1,4 +1,5 @@
 //! Lexical analyzer / tokenizer for mathematical expressions.
+// [cite:math_commons]
 
 use std::fmt;
 
