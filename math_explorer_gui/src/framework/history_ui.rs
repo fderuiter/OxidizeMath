@@ -61,22 +61,13 @@ impl SimulationFramework {
     }
 
     pub(super) fn render_theory_portal_toggle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
+        let btn = ui
             .button("📖 Theory")
-            .accessible_hover_text("Toggle Theory Context Portal")
-            .clicked()
-        {
+            .accessible_hover_text("Toggle Theory Context Portal");
+        super::overlay_sync::record_default_theory_portal_toggle(ctx, btn.id);
+        if btn.clicked() {
             self.show_theory_portal = !self.show_theory_portal;
-            let next = self.show_theory_portal;
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
-                if let Some(inst_key) =
-                    d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
-                {
-                    d.insert_temp(inst_key, next);
-                }
-            });
-            ctx.request_repaint();
+            super::overlay_sync::record_theory_portal_toggle(ctx, btn.id, self.show_theory_portal);
         }
     }
 

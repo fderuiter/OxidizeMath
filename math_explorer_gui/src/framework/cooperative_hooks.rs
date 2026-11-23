@@ -33,38 +33,6 @@ pub(super) fn sample_tool_animation_frames<T: InteractiveTool + ?Sized>(
     frames
 }
 
-pub(crate) fn format_theory_context_key(key: &str) -> String {
-    match key.trim() {
-        "g_na" => "Sodium Conductance".to_string(),
-        "g_k" => "Potassium Conductance".to_string(),
-        "g_l" => "Leak Conductance".to_string(),
-        "i_ext" => "External Stimulus Current".to_string(),
-        "potential_type" => "Potential Profile".to_string(),
-        "dt" => "Time Step".to_string(),
-        "params" => "Model Parameters".to_string(),
-        "viscosity" => "Kinematic Viscosity".to_string(),
-        other if other.contains('_') => other
-            .split('_')
-            .filter(|s| !s.is_empty())
-            .map(|w| {
-                let mut chars = w.chars();
-                match chars.next() {
-                    Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
-                    None => String::new(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-        other => {
-            let mut chars = other.chars();
-            match chars.next() {
-                Some(c) if c.is_lowercase() => format!("{}{}", c.to_uppercase(), chars.as_str()),
-                _ => other.to_string(),
-            }
-        }
-    }
-}
-
 /// Metadata describing a single scalar parameter exposed to cooperative sensitivity analysis.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SensitivityParamSpec {

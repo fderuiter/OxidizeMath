@@ -12,6 +12,7 @@ mod clamp_tests;
 pub mod cooperative_hooks;
 #[cfg(all(test, feature = "applied", feature = "pure_math"))]
 mod cooperative_hooks_tests;
+pub mod counterfactual;
 pub mod cross_tool_bus;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
@@ -19,6 +20,8 @@ mod drag_bounds_and_rollback_tests;
 mod export_3d;
 mod export_dataset;
 mod export_figure;
+mod export_modal_host;
+mod export_persistence;
 mod export_queue;
 #[cfg(test)]
 pub(crate) use export_queue::deferred_export_tests;
@@ -72,6 +75,7 @@ pub mod story_hud;
 pub(crate) mod theory_links;
 #[cfg(test)]
 mod theory_links_tests;
+mod theory_portal;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
@@ -82,6 +86,7 @@ pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
 pub use cooperative_hooks::*;
+pub use counterfactual::*;
 pub use cross_tool_bus::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
@@ -90,6 +95,8 @@ pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use history_ui::render_workspace_history_buttons;
 pub use math_input::*;
+#[cfg(any(feature = "pure_math", feature = "applied"))]
+pub(crate) use overlay_sync::record_theory_portal_toggle;
 pub use pane_scope::{
     is_button_activation_focused, is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed,
     is_text_edit_focused, record_focused_widget_type_from_output, scoped_panel_id, InputMode,
@@ -424,6 +431,16 @@ pub trait InteractiveTool {
 
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
+
+    /// Optional hook returning the active counterfactual divergence snapshot for `SimulationFramework`.
+    fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
+        None
+    }
+
+    /// Optional hook applying a `CounterfactualBranchEngine` action (`Fork`, `Swap`, `Clear`, `SetPerturbation`).
+    fn apply_counterfactual_action(&mut self, _action: BranchControlAction) -> bool {
+        false
+    }
 
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(

@@ -19,7 +19,7 @@ use super::synth::OfflinePcmSynthesizer;
 use super::ui::{format_meter_readout, meter_fill_fraction, render_sonification_panel};
 use super::wav::{encode_wav_stereo_pcm16, synthesize_frames_to_wav};
 
-fn compute_mono_fft_magnitudes(interleaved_stereo: &[f32], fft_len: usize) -> Vec<f32> {
+pub(super) fn compute_mono_fft_magnitudes(interleaved_stereo: &[f32], fft_len: usize) -> Vec<f32> {
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(fft_len);
     let mut buf: Vec<Complex<f32>> = (0..fft_len)
@@ -34,7 +34,12 @@ fn compute_mono_fft_magnitudes(interleaved_stereo: &[f32], fft_len: usize) -> Ve
     buf[..fft_len / 2].iter().map(|c| c.norm()).collect()
 }
 
-fn peak_magnitude_around(mags: &[f32], sample_rate: u32, fft_len: usize, target_hz: f32) -> f32 {
+pub(super) fn peak_magnitude_around(
+    mags: &[f32],
+    sample_rate: u32,
+    fft_len: usize,
+    target_hz: f32,
+) -> f32 {
     let center = ((target_hz * (fft_len as f32)) / (sample_rate as f32)).round() as usize;
     let lo = center.saturating_sub(2);
     let hi = (center + 2).min(mags.len().saturating_sub(1));

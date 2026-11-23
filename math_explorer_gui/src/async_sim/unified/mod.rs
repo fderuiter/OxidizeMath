@@ -200,6 +200,39 @@ pub trait UnifiedModel:
     /// Extract a visual snapshot of the state.
     fn get_snapshot(&self) -> StateSnapshot;
 
+    /// Converts a [`StateSnapshot`] into exportable 2D `(series_name, points)` datasets.
+    fn snapshot_datasets(snapshot: &StateSnapshot) -> Vec<(String, Vec<[f64; 2]>)>
+    where
+        Self: Sized,
+    {
+        if Self::is_raster_model() {
+            return Vec::new();
+        }
+        #[cfg(feature = "physics")]
+        if let Some(wave) = snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<crate::tabs::quantum::wave_sim::WaveData>())
+        {
+            return crate::tabs::quantum::wave_sim::presets::build_wave_datasets(wave);
+        }
+        let pairs = snapshot.custom_data.as_chunks::<2>().0;
+        if pairs.is_empty() {
+            return Vec::new();
+        }
+        let mut points = Vec::with_capacity(pairs.len());
+        for &[x, y] in pairs {
+            if x.is_finite() && y.is_finite() {
+                points.push([x, y]);
+            }
+        }
+        if points.is_empty() {
+            Vec::new()
+        } else {
+            vec![(Self::name().to_string(), points)]
+        }
+    }
+
     /// Process any custom commands (e.g. ApplyBrush). Default is no-op.
     fn process_command(&mut self, _cmd: SimCommand, _params: &HashMap<String, f64>) {}
 

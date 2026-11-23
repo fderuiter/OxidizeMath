@@ -4,40 +4,64 @@ use crate::accessibility::AccessibleHoverText;
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, Points};
 use math_explorer::applied::clinical_trials::sample_size::{
     calculate_power_means, calculate_power_proportions, calculate_sample_size_means,
     calculate_sample_size_proportions,
 };
 
+use super::sample_size_cards::{
+    draw_analytical_power_plot, draw_required_n_curve_plot, evaluate_hypothesis_cards,
+    render_contingency_and_risk_card, render_t_test_card, HypothesisCardsEval,
+    HypothesisCardsState,
+};
+
 #[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum CalculationMode {
+pub(super) enum CalculationMode {
     Means,
     Proportions,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+enum PowerPlotView {
+    #[default]
+    PowerBySampleSize,
+    SampleSizeByPower,
+}
+
 pub struct SampleSizeCalculatorTool {
-    mode: CalculationMode,
-    alpha: f64,
-    power: f64,
-    delta: f64,
-    sigma: f64,
-    p1: f64,
-    p2: f64,
+    pub(super) mode: CalculationMode,
+    plot_view: PowerPlotView,
+    pub(super) alpha: f64,
+    pub(super) power: f64,
+    pub(super) delta: f64,
+    pub(super) sigma: f64,
+    pub(super) p1: f64,
+    pub(super) p2: f64,
+    cards: HypothesisCardsState,
     result: Result<usize, String>,
+    per_arm_curve: Vec<[f64; 2]>,
+    total_curve: Vec<[f64; 2]>,
+    cards_eval: HypothesisCardsEval,
 }
 
 impl Default for SampleSizeCalculatorTool {
     fn default() -> Self {
+        let cards = HypothesisCardsState::default();
+        let cards_eval = evaluate_hypothesis_cards(&cards, 0.05);
         let mut tool = Self {
             mode: CalculationMode::Means,
+            plot_view: PowerPlotView::PowerBySampleSize,
             alpha: 0.05,
             power: 0.80,
             delta: 0.5,
             sigma: 1.0,
             p1: 0.5,
             p2: 0.6,
+            cards,
             result: Ok(0),
+            per_arm_curve: Vec::new(),
+            total_curve: Vec::new(),
+            cards_eval,
         };
         tool.recalculate();
         tool
@@ -45,17 +69,85 @@ impl Default for SampleSizeCalculatorTool {
 }
 
 impl SampleSizeCalculatorTool {
-    fn recalculate(&mut self) {
-        self.result = match self.mode {
+    fn sample_size_at_power(&self, power_val: f64) -> Result<usize, String> {
+        match self.mode {
             CalculationMode::Means => {
-                calculate_sample_size_means(self.alpha, self.power, self.delta, self.sigma)
+                calculate_sample_size_means(self.alpha, power_val, self.delta, self.sigma)
                     .map_err(|e| e.to_string())
             }
             CalculationMode::Proportions => {
-                calculate_sample_size_proportions(self.alpha, self.power, self.p1, self.p2)
+                calculate_sample_size_proportions(self.alpha, power_val, self.p1, self.p2)
                     .map_err(|e| e.to_string())
             }
-        };
+        }
+    }
+
+    fn recalculate(&mut self) {
+        self.result = self.sample_size_at_power(self.power);
+        self.per_arm_curve.clear();
+        self.total_curve.clear();
+        let steps = 24usize;
+        for idx in 0..=steps {
+            let pwr = 0.50 + 0.48 * (idx as f64 / steps as f64);
+            if let Ok(n) = self.sample_size_at_power(pwr) {
+                self.per_arm_curve.push([pwr, n as f64]);
+                self.total_curve.push([pwr, (n * 2) as f64]);
+            }
+        }
+        self.cards_eval = evaluate_hypothesis_cards(&self.cards, self.alpha);
+    }
+
+    fn render_sizing_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        ui.heading("Sample Size & Hypothesis Suite");
+        ui.horizontal_wrapped(|ui| {
+            changed |= ui
+                .radio_value(&mut self.mode, CalculationMode::Means, "Means (t-test)")
+                .changed();
+            changed |= ui
+                .radio_value(
+                    &mut self.mode,
+                    CalculationMode::Proportions,
+                    "Proportions (χ²)",
+                )
+                .changed();
+        });
+        ui.group(|ui| {
+            ui.strong("Power & Significance");
+            changed |= ui
+                .add(egui::Slider::new(&mut self.alpha, 0.001..=0.20).text("α (Type I Error)"))
+                .accessible_hover_text("Two-sided significance level α")
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut self.power, 0.50..=0.999).text("1 - β (Power)"))
+                .accessible_hover_text("Target statistical power 1 - β")
+                .changed();
+        });
+        ui.group(|ui| match self.mode {
+            CalculationMode::Means => {
+                ui.strong("Continuous Endpoint Parameters");
+                changed |= ui
+                    .add(egui::Slider::new(&mut self.delta, 0.01..=5.0).text("Effect Size δ"))
+                    .accessible_hover_text("Minimum clinically important difference between arms")
+                    .changed();
+                changed |= ui
+                    .add(egui::Slider::new(&mut self.sigma, 0.1..=10.0).text("Std Dev σ"))
+                    .accessible_hover_text("Assumed within-group standard deviation")
+                    .changed();
+            }
+            CalculationMode::Proportions => {
+                ui.strong("Binary Proportion Parameters");
+                changed |= ui
+                    .add(egui::Slider::new(&mut self.p1, 0.01..=0.99).text("Control p₁"))
+                    .accessible_hover_text("Expected event proportion in Control arm")
+                    .changed();
+                changed |= ui
+                    .add(egui::Slider::new(&mut self.p2, 0.01..=0.99).text("Treatment p₂"))
+                    .accessible_hover_text("Expected event proportion in Treatment arm")
+                    .changed();
+            }
+        });
+        changed
     }
 
     fn evaluate_power_at(&self, n_per_group: usize) -> Option<f64> {
@@ -83,71 +175,13 @@ impl SampleSizeCalculatorTool {
         pts
     }
 
-    fn render_common_controls(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut changed = false;
-        ui.horizontal(|ui| {
-            ui.label("Mode:");
-            changed |= ui
-                .radio_value(&mut self.mode, CalculationMode::Means, "Means (t-test)")
-                .changed();
-            changed |= ui
-                .radio_value(
-                    &mut self.mode,
-                    CalculationMode::Proportions,
-                    "Proportions (Z-test)",
-                )
-                .changed();
-        });
-        ui.separator();
-        ui.group(|ui| {
-            ui.heading("Statistical Targets");
-            changed |= ui
-                .add(egui::Slider::new(&mut self.alpha, 0.001..=0.20).text("Alpha (α)"))
-                .accessible_hover_text("Two-sided Type I error rate (e.g., 0.05)")
-                .changed();
-            changed |= ui
-                .add(egui::Slider::new(&mut self.power, 0.5..=0.999).text("Target Power (1-β)"))
-                .accessible_hover_text("Target probability of detecting an effect (e.g., 0.80)")
-                .changed();
-        });
-        changed
-    }
-
-    fn render_mode_controls(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut changed = false;
-        ui.group(|ui| match self.mode {
-            CalculationMode::Means => {
-                ui.heading("Continuous Means");
-                changed |= ui
-                    .add(egui::Slider::new(&mut self.delta, 0.01..=5.0).text("Effect Size (δ)"))
-                    .accessible_hover_text("Minimum clinically important difference between arms")
-                    .changed();
-                changed |= ui
-                    .add(egui::Slider::new(&mut self.sigma, 0.1..=10.0).text("Std Dev (σ)"))
-                    .accessible_hover_text("Assumed within-group standard deviation")
-                    .changed();
-            }
-            CalculationMode::Proportions => {
-                ui.heading("Binary Proportions");
-                changed |= ui
-                    .add(egui::Slider::new(&mut self.p1, 0.01..=0.99).text("Control (p₁)"))
-                    .accessible_hover_text("Expected event proportion in Control arm")
-                    .changed();
-                changed |= ui
-                    .add(egui::Slider::new(&mut self.p2, 0.01..=0.99).text("Treatment (p₂)"))
-                    .accessible_hover_text("Expected event proportion in Treatment arm")
-                    .changed();
-            }
-        });
-        changed
-    }
-
-    fn render_summary_metrics(&self, ui: &mut egui::Ui) {
+    fn render_side_panel(&mut self, ui: &mut egui::Ui) {
+        let mut changed = self.render_sizing_controls(ui);
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         match &self.result {
             Ok(n) => {
                 render_copyable_metric(ui, "Required N / Arm", &n.to_string());
-                render_copyable_metric(ui, "Total Study N", &(n * 2).to_string());
+                render_copyable_metric(ui, "Total Participants (2N)", &(n * 2).to_string());
                 if let Some(achieved) = self.evaluate_power_at(*n) {
                     render_copyable_metric(
                         ui,
@@ -160,44 +194,42 @@ impl SampleSizeCalculatorTool {
                 ui.colored_label(palette.error, format!("Error: {e}"));
             }
         }
+        ui.separator();
+        changed |= render_t_test_card(ui, &mut self.cards, &self.cards_eval);
+        ui.add_space(4.0);
+        changed |= render_contingency_and_risk_card(ui, &mut self.cards, &self.cards_eval);
+        if changed {
+            self.recalculate();
+        }
     }
 
-    fn render_power_curve_plot(&self, ui: &mut egui::Ui) {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let curve = self.build_power_curve();
-        let req_marker = self
-            .result
-            .as_ref()
-            .ok()
-            .and_then(|&n| self.evaluate_power_at(n).map(|p| vec![[n as f64, p]]))
-            .unwrap_or_default();
-        let target_power = self.power;
-
-        Plot::new("sample_size_analytical_power_plot")
-            .legend(Legend::default())
-            .x_axis_label("Sample Size per Arm (N)")
-            .y_axis_label("Statistical Power (1 - β)")
-            .include_y(0.0)
-            .include_y(1.0)
-            .show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new("Analytical Power Curve", PlotPoints::new(curve))
-                        .color(palette.accent)
-                        .width(2.5_f32),
-                );
-                plot_ui.hline(
-                    HLine::new("Target Power (1 - β)", target_power)
-                        .color(palette.warning)
-                        .style(egui_plot::LineStyle::dashed_dense()),
-                );
-                if !req_marker.is_empty() {
-                    plot_ui.points(
-                        Points::new("Required N per Arm", PlotPoints::new(req_marker))
-                            .color(palette.success)
-                            .radius(6.0_f32),
-                    );
-                }
-            });
+    fn render_central_panel(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.heading("Statistical Power & Sample Size Curves");
+            ui.separator();
+            ui.selectable_value(
+                &mut self.plot_view,
+                PowerPlotView::PowerBySampleSize,
+                "Power (1 - β) vs N",
+            );
+            ui.selectable_value(
+                &mut self.plot_view,
+                PowerPlotView::SampleSizeByPower,
+                "Required N vs Power",
+            );
+        });
+        if self.plot_view == PowerPlotView::PowerBySampleSize {
+            let req_marker = self
+                .result
+                .as_ref()
+                .ok()
+                .and_then(|&n| self.evaluate_power_at(n).map(|p| vec![[n as f64, p]]))
+                .unwrap_or_default();
+            draw_analytical_power_plot(ui, self.build_power_curve(), req_marker, self.power);
+        } else {
+            let operating_pt = self.result.as_ref().ok().map(|&n| [self.power, n as f64]);
+            draw_required_n_curve_plot(ui, &self.per_arm_curve, &self.total_curve, operating_pt);
+        }
     }
 }
 
@@ -211,6 +243,8 @@ struct SampleSizeState {
     sigma: f64,
     p1: f64,
     p2: f64,
+    #[serde(default, skip_serializing_if = "HypothesisCardsState::is_default")]
+    cards: HypothesisCardsState,
 }
 
 impl InteractiveTool for SampleSizeCalculatorTool {
@@ -229,14 +263,16 @@ impl InteractiveTool for SampleSizeCalculatorTool {
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut out = Vec::new();
-        let curve = self.build_power_curve();
-        if !curve.is_empty() {
-            out.push(("Analytical Power Curve".to_string(), curve));
+        let power_curve = self.build_power_curve();
+        if !power_curve.is_empty() {
+            out.push(("Analytical Power Curve".to_string(), power_curve));
         }
-        if let Ok(req_n) = self.result {
-            if let Some(pwr) = self.evaluate_power_at(req_n) {
-                out.push(("Required N per Arm".to_string(), vec![[req_n as f64, pwr]]));
-            }
+        if !self.per_arm_curve.is_empty() {
+            out.push((
+                "Sample Size per Group (n)".into(),
+                self.per_arm_curve.clone(),
+            ));
+            out.push(("Total Study Size (2n)".into(), self.total_curve.clone()));
         }
         out
     }
@@ -250,56 +286,14 @@ impl InteractiveTool for SampleSizeCalculatorTool {
     }
 
     fn sensitivity_parameters(&self) -> Vec<crate::framework::SensitivityParamSpec> {
-        use crate::framework::SensitivityParamSpec;
-        match self.mode {
-            CalculationMode::Means => vec![
-                SensitivityParamSpec::new("alpha", "Type I Error (α)", self.alpha, 0.005, 0.20),
-                SensitivityParamSpec::new("power", "Statistical Power", self.power, 0.55, 0.99),
-                SensitivityParamSpec::new("delta", "Effect Size (δ)", self.delta, 0.05, 5.0),
-                SensitivityParamSpec::new("sigma", "Std Deviation (σ)", self.sigma, 0.1, 10.0),
-            ],
-            CalculationMode::Proportions => vec![
-                SensitivityParamSpec::new("alpha", "Type I Error (α)", self.alpha, 0.005, 0.20),
-                SensitivityParamSpec::new("power", "Statistical Power", self.power, 0.55, 0.99),
-                SensitivityParamSpec::new("p1", "Control Proportion (p1)", self.p1, 0.05, 0.95),
-                SensitivityParamSpec::new("p2", "Treatment Proportion (p2)", self.p2, 0.05, 0.95),
-            ],
-        }
+        self.build_sensitivity_specs()
     }
 
     fn evaluate_sensitivity_observable(
         &self,
         params: &[(&str, f64)],
     ) -> Option<(&'static str, f64)> {
-        let mut alpha = self.alpha;
-        let mut power = self.power;
-        let mut delta = self.delta;
-        let mut sigma = self.sigma;
-        let mut p1 = self.p1;
-        let mut p2 = self.p2;
-        for &(k, v) in params {
-            if !v.is_finite() {
-                return None;
-            }
-            match k {
-                "alpha" => alpha = v.clamp(0.001, 0.20),
-                "power" => power = v.clamp(0.50, 0.999),
-                "delta" => delta = v.clamp(0.01, 5.0),
-                "sigma" => sigma = v.clamp(0.1, 10.0),
-                "p1" => p1 = v.clamp(0.01, 0.99),
-                "p2" => p2 = v.clamp(0.01, 0.99),
-                _ => {}
-            }
-        }
-        let n = match self.mode {
-            CalculationMode::Means => {
-                calculate_sample_size_means(alpha, power, delta, sigma).ok()?
-            }
-            CalculationMode::Proportions => {
-                calculate_sample_size_proportions(alpha, power, p1, p2).ok()?
-            }
-        };
-        Some(("Required Sample Size per Arm", n as f64))
+        self.eval_sensitivity_from_pairs(params)
     }
 
     fn save_state(&self) -> Option<String> {
@@ -311,11 +305,13 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             sigma: self.sigma,
             p1: self.p1,
             p2: self.p2,
+            cards: self.cards.clone(),
         })
         .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let s: SampleSizeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid sample size state: {e}"))?;
         let valid = [s.alpha, s.power, s.delta, s.sigma, s.p1, s.p2]
@@ -330,6 +326,7 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         if !valid {
             return Err("Sample size parameters out of bounds".into());
         }
+        s.cards.validate()?;
         let result = match s.mode {
             CalculationMode::Means => {
                 calculate_sample_size_means(s.alpha, s.power, s.delta, s.sigma)
@@ -347,27 +344,23 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         self.sigma = s.sigma;
         self.p1 = s.p1;
         self.p2 = s.p2;
+        self.cards = s.cards;
+        self.recalculate();
         self.result = Ok(result);
         Ok(())
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(ui, "sample_size_controls_panel");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
-            ui.heading("Sample Size Sizing");
-            let mut changed = self.render_common_controls(ui);
-            ui.add_space(6.0);
-            changed |= self.render_mode_controls(ui);
-            if changed {
-                self.recalculate();
-            }
-            ui.separator();
-            self.render_summary_metrics(ui);
-        });
-
+        let panel_id = crate::framework::scoped_panel_id(ui, "sample_size_side_panel");
+        crate::framework::PaneSidePanel::left(panel_id)
+            .min_width(320.0)
+            .show_inside(ui, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    self.render_side_panel(ui);
+                });
+            });
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading("Analytical Statistical Power by Sample Size");
-            self.render_power_curve_plot(ui);
+            self.render_central_panel(ui);
         });
     }
 }
@@ -448,11 +441,46 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "sample_size_starter",
         title: "Statistical Power & Sample Size",
-        description: "N = 2(z_α + z_β)²σ² / δ²: Neyman-Pearson hypothesis test sizing for minimum detectable effect.",
+        description: "N = 2(z_α + z_β)²σ² / δ²: Neyman-Pearson hypothesis test sizing, power curves, and 2×2 risk metrics.",
         category: "Trial Design",
         icon: "👥",
         domain: "clinical_trials",
         tool_name: Some("SampleSizeCalculatorTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_legacy_roundtrip_power_curves_and_hypothesis_cards() {
+        let mut tool = SampleSizeCalculatorTool::default();
+        let legacy = r#"{"mode":"Proportions","alpha":0.01,"power":0.9,"delta":0.4,"sigma":1.2,"p1":0.3,"p2":0.5}"#;
+        tool.try_load_state(legacy)
+            .expect("legacy proportions state loads");
+        assert_eq!(tool.save_state().as_deref(), Some(legacy));
+
+        let datasets = tool.export_datasets();
+        assert_eq!(datasets.len(), 3);
+        assert!(datasets.iter().all(|(_, pts)| pts.len() >= 20));
+        let req_n = *tool.result.as_ref().expect("valid sample size");
+        assert!(tool.evaluate_power_at(req_n).is_some_and(|p| p >= 0.9));
+
+        let t_res = tool.cards_eval.t_test.as_ref().expect("t-test evaluated");
+        assert!(t_res.statistic > 0.0 && t_res.is_significant);
+        let chi_res = tool
+            .cards_eval
+            .chi_square
+            .as_ref()
+            .expect("chi-square evaluated");
+        assert!(chi_res.statistic > 0.0);
+        let rm = tool
+            .cards_eval
+            .risk_metrics
+            .as_ref()
+            .expect("risk metrics evaluated");
+        assert!(rm.relative_risk < 1.0 && rm.odds_ratio < 1.0);
     }
 }
