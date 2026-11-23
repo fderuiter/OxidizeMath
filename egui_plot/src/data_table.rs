@@ -14,11 +14,17 @@ pub(crate) use table_3d::show_data_table_modal_3d;
 
 use egui::{
     Align, Align2, Color32, Context, FontId, Id, Key, Modifiers, Rect, RichText, ScrollArea, Sense,
-    Stroke, TextStyle, Ui, pos2, vec2,
+    Stroke, TextStyle, Ui, UiBuilder, pos2, vec2,
 };
 
 use crate::{
-    ModalLifecycle, emit_plot_live_message,
+    ModalLifecycle,
+    a11y::{
+        AccessibleTooltipExt as _, accessible_marker_color, composite_over, focus_ring_stroke,
+        focusable_tab_button, modal_action_button, register_cell_node, register_table_node,
+        scope_table_row, set_accesskit_bounds, status_message_label, step_tablist_on_arrow_keys,
+    },
+    emit_plot_live_message,
     export::{copy_text_to_clipboard_with_callback, format_csv},
     poi::CriticalPoint,
 };
@@ -61,6 +67,7 @@ pub fn data_table_clipboard_status_id(plot_id: Id) -> Id {
 pub fn poll_data_table_clipboard_status(ctx: &Context, plot_id: Id, state: &mut DataTableState) {
     let id = data_table_clipboard_status_id(plot_id);
     if let Some(status) = ctx.data_mut(|d| d.remove_temp::<(String, bool)>(id)) {
+        emit_plot_live_message(ctx, status.0.clone(), status.1);
         state.status_message = Some(status);
     }
 }
@@ -85,11 +92,15 @@ pub(crate) fn copy_to_clipboard(
     }) {
         Ok(()) => {
             let fallback = (format!("Copying {label} to clipboard..."), false);
-            st.status_message = ctx.data_mut(|d| d.remove_temp(id)).or(Some(fallback));
+            let status = ctx.data_mut(|d| d.remove_temp(id)).unwrap_or(fallback);
+            emit_plot_live_message(ctx, status.0.clone(), status.1);
+            st.status_message = Some(status);
         }
         Err(e) => {
             let _ = ctx.data_mut(|d| d.remove_temp::<(String, bool)>(id));
-            st.status_message = Some((format!("Clipboard copy failed: {e}"), true));
+            let status = (format!("Clipboard copy failed: {e}"), true);
+            emit_plot_live_message(ctx, status.0.clone(), status.1);
+            st.status_message = Some(status);
         }
     }
 }
@@ -182,6 +193,42 @@ impl TableView<'_> {
         }
     }
 
+    fn format_row_summary(&self, row_idx: usize, rows: usize) -> Option<String> {
+        if self.shared_x {
+            let first = self.series.first()?;
+            let x_pt = first.points.get(row_idx)?;
+            let x = format_table_value(x_pt[0]);
+            let mut parts = Vec::with_capacity(self.series.len());
+            for (i, s) in self.series.iter().enumerate() {
+                let pt = s.points.get(row_idx)?;
+                parts.push(format!(
+                    "{} = {}",
+                    s.display_name(i),
+                    format_table_value(pt[1])
+                ));
+            }
+            Some(format!(
+                "Row {} of {rows}: X = {x}, {}",
+                row_idx + 1,
+                parts.join(", ")
+            ))
+        } else {
+            let idx = if self.series.len() == 1 {
+                0
+            } else {
+                self.state.selected_series
+            };
+            let s = self.series.get(idx)?;
+            let pt = s.points.get(row_idx)?;
+            let (x, y) = (format_table_value(pt[0]), format_table_value(pt[1]));
+            let name = s.display_name(idx);
+            Some(format!(
+                "Row {} of {rows}: X = {x}, {name} = {y}",
+                row_idx + 1
+            ))
+        }
+    }
+
     fn handle_keys(&mut self, ctx: &Context, rows: usize) {
         if rows == 0 {
             return;
@@ -194,24 +241,10 @@ impl TableView<'_> {
             self.state.selected_row = prev.saturating_sub(1);
             self.state.scroll_to_selected = true;
         }
-        if self.state.selected_row != prev {
-            let idx = if self.shared_x {
-                0
-            } else {
-                self.state.selected_series
-            };
-            if let Some(pt) = self
-                .series
-                .get(idx)
-                .and_then(|s| s.points.get(self.state.selected_row))
-            {
-                let (x, y) = (format_table_value(pt[0]), format_table_value(pt[1]));
-                let msg = format!(
-                    "Row {} of {rows}: X = {x}, Y = {y}",
-                    self.state.selected_row + 1
-                );
-                emit_plot_live_message(ctx, msg, false);
-            }
+        if self.state.selected_row != prev
+            && let Some(msg) = self.format_row_summary(self.state.selected_row, rows)
+        {
+            emit_plot_live_message(ctx, msg, false);
         }
         if ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)))
             && let Some(tsv) = self.selected_row_tsv()
@@ -220,10 +253,17 @@ impl TableView<'_> {
         }
     }
 
-    fn paint_row_bg(&mut self, ui: &Ui, rect: Rect, resp: &egui::Response, row_idx: usize) {
-        if row_idx == self.state.selected_row {
-            ui.painter()
-                .rect_filled(rect, 2.0_f32, ui.visuals().selection.bg_fill);
+    fn paint_row_bg(
+        &mut self,
+        ui: &Ui,
+        rect: Rect,
+        resp: &egui::Response,
+        row_idx: usize,
+    ) -> Color32 {
+        let win_bg = ui.visuals().window_fill;
+        let row_bg = if row_idx == self.state.selected_row {
+            let sel_bg = ui.visuals().selection.bg_fill;
+            ui.painter().rect_filled(rect, 2.0_f32, sel_bg);
             let stroke = Stroke::new(1.0_f32, ui.visuals().selection.stroke.color);
             ui.painter()
                 .rect_stroke(rect, 2.0_f32, stroke, egui::StrokeKind::Inside);
@@ -231,6 +271,7 @@ impl TableView<'_> {
                 resp.scroll_to_me(Some(Align::Center));
                 self.state.scroll_to_selected = false;
             }
+            composite_over(sel_bg, win_bg)
         } else if resp.hovered() {
             let bg = ui
                 .visuals()
@@ -239,51 +280,123 @@ impl TableView<'_> {
                 .bg_fill
                 .gamma_multiply(0.35_f32);
             ui.painter().rect_filled(rect, 2.0_f32, bg);
+            composite_over(bg, win_bg)
         } else if row_idx % 2 == 1 {
+            let faint = ui.visuals().faint_bg_color;
+            ui.painter().rect_filled(rect, 0.0_f32, faint);
+            composite_over(faint, win_bg)
+        } else {
+            win_bg
+        };
+        if resp.has_focus() {
+            let ring = focus_ring_stroke(ui.visuals(), row_bg);
             ui.painter()
-                .rect_filled(rect, 0.0_f32, ui.visuals().faint_bg_color);
+                .rect_stroke(rect, 2.0_f32, ring, egui::StrokeKind::Inside);
         }
+        row_bg
     }
 
     fn paint_row(
         &mut self,
         ui: &mut Ui,
+        table_id: Id,
         row_idx: usize,
+        rows: usize,
         active: &[TableSeriesRef<'_>],
+        cols: &[(String, Color32)],
         width: f32,
     ) {
-        let (rect, resp) = ui.allocate_exact_size(vec2(width, ROW_H), Sense::click());
-        if resp.clicked() {
-            self.state.selected_row = row_idx;
-        }
-        self.paint_row_bg(ui, rect, &resp, row_idx);
-        let cells = RowCells {
+        let _ = scope_table_row(
             ui,
-            rect,
-            height: ROW_H,
-            font: TextStyle::Monospace.resolve(ui.style()),
-        };
-        let sel = row_idx == self.state.selected_row;
-        let fg = if sel {
-            ui.visuals().selection.stroke.color
-        } else {
-            ui.visuals().text_color()
-        };
-        let _ = cells.paint(
-            0,
-            &(row_idx + 1).to_string(),
-            ui.visuals().weak_text_color(),
-            None,
+            table_id,
+            ("series_row", row_idx),
+            vec2(width, ROW_H),
+            Sense::click(),
+            row_idx + 1,
+            |row_ui, rect, pre_resp| {
+                if pre_resp.clicked() {
+                    self.state.selected_row = row_idx;
+                    if let Some(msg) = self.format_row_summary(row_idx, rows) {
+                        emit_plot_live_message(row_ui.ctx(), msg, false);
+                    }
+                }
+                let sel = row_idx == self.state.selected_row;
+                let row_label = self
+                    .format_row_summary(row_idx, rows)
+                    .unwrap_or_else(|| format!("Row {} of {rows}", row_idx + 1));
+                let row_bg = self.paint_row_bg(row_ui, rect, pre_resp, row_idx);
+                let x_txt = format_table_value(active[0].points[row_idx][0]);
+                let y_txts: Vec<String> = active
+                    .iter()
+                    .map(|s| format_table_value(s.points[row_idx][1]))
+                    .collect();
+                let (idx_rect, x_rect, y_rects) = {
+                    let cells = RowCells {
+                        ui: row_ui,
+                        rect,
+                        height: ROW_H,
+                        font: TextStyle::Monospace.resolve(row_ui.style()),
+                    };
+                    let fg = if sel {
+                        accessible_marker_color(
+                            row_ui.visuals(),
+                            row_ui.visuals().selection.stroke.color,
+                            row_bg,
+                        )
+                    } else {
+                        row_ui.visuals().text_color()
+                    };
+                    let idx_rect = cells.paint(
+                        0,
+                        &(row_idx + 1).to_string(),
+                        row_ui.visuals().weak_text_color(),
+                        None,
+                    );
+                    let x_rect = cells.paint(1, &x_txt, fg, None);
+                    let y_rects: Vec<Rect> = y_txts
+                        .iter()
+                        .enumerate()
+                        .map(|(i, y_txt)| cells.paint(i + 2, y_txt, fg, None))
+                        .collect();
+                    (idx_rect, x_rect, y_rects)
+                };
+                let row_id = row_ui.unique_id();
+                let _ = register_cell_node(
+                    row_ui,
+                    row_id.with("row_hdr"),
+                    idx_rect,
+                    egui::accesskit::Role::RowHeader,
+                    0,
+                    format!("Row {}", row_idx + 1),
+                    false,
+                    row_bg,
+                );
+                let _ = register_cell_node(
+                    row_ui,
+                    row_id.with("cell_x"),
+                    x_rect,
+                    egui::accesskit::Role::Cell,
+                    1,
+                    format!("X: {x_txt}"),
+                    false,
+                    row_bg,
+                );
+                for (i, y_rect) in y_rects.into_iter().enumerate() {
+                    let col_name = cols.get(i).map_or("Y", |(name, _)| name.as_str());
+                    let _ = register_cell_node(
+                        row_ui,
+                        row_id.with(("cell_y", i)),
+                        y_rect,
+                        egui::accesskit::Role::Cell,
+                        i + 2,
+                        format!("{col_name}: {}", y_txts[i]),
+                        false,
+                        row_bg,
+                    );
+                }
+                (row_label, Some(sel))
+            },
         );
-        let _ = cells.paint(
-            1,
-            &format_table_value(active[0].points[row_idx][0]),
-            fg,
-            None,
-        );
-        for (i, s) in active.iter().enumerate() {
-            let _ = cells.paint(i + 2, &format_table_value(s.points[row_idx][1]), fg, None);
-        }
     }
 
     fn render_grid(
@@ -294,62 +407,67 @@ impl TableView<'_> {
     ) {
         let rows = active[0].points.len();
         let width = IDX_W + COL_W * (cols.len() as f32 + 1.0);
-        ScrollArea::horizontal()
-            .id_salt(self.plot_id.with("data_table_hscroll"))
-            .max_width(ui.available_width().max(320.0))
-            .auto_shrink([false, true])
-            .show(ui, |ui| {
-                ui.set_min_width(width);
-                render_header_row(ui, cols, width);
-                ui.separator();
-                ui.style_mut().always_scroll_the_only_direction = false;
-                let mut vs = ScrollArea::vertical()
-                    .id_salt(self.plot_id.with("data_table_vscroll"))
-                    .max_height(MAX_H)
-                    .auto_shrink([false, false]);
-                if let Some(off) = self.state.pending_scroll_offset.take() {
-                    vs = vs.vertical_scroll_offset(off);
-                }
-                vs.show_rows(ui, ROW_H, rows, |ui, range| {
-                    ui.set_min_width(width);
-                    if self.state.scroll_to_selected && !range.contains(&self.state.selected_row) {
-                        let pitch = ROW_H + ui.spacing().item_spacing.y;
-                        let target =
-                            (self.state.selected_row as f32 * pitch - MAX_H * 0.4).max(0.0);
-                        self.state.pending_scroll_offset = Some(target);
-                        self.state.scroll_to_selected = false;
-                        ui.ctx().request_repaint();
-                    }
-                    for r in range {
-                        self.paint_row(ui, r, active, width);
-                    }
-                });
-            });
+        ui.scope_builder(
+            UiBuilder::new().id_salt(self.plot_id.with("series_table_a11y")),
+            |ui| {
+                let table_id = ui.unique_id();
+                register_table_node(
+                    ui.ctx(),
+                    table_id,
+                    "Series data table",
+                    rows + 1,
+                    cols.len() + 2,
+                );
+                ScrollArea::horizontal()
+                    .id_salt(self.plot_id.with("data_table_hscroll"))
+                    .max_width(ui.available_width().max(320.0))
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.set_min_width(width);
+                        render_header_row(ui, table_id, cols, width);
+                        ui.separator();
+                        ui.style_mut().always_scroll_the_only_direction = false;
+                        let mut vs = ScrollArea::vertical()
+                            .id_salt(self.plot_id.with("data_table_vscroll"))
+                            .max_height(MAX_H)
+                            .auto_shrink([false, false]);
+                        if let Some(off) = self.state.pending_scroll_offset.take() {
+                            vs = vs.vertical_scroll_offset(off);
+                        }
+                        vs.show_rows(ui, ROW_H, rows, |ui, range| {
+                            ui.set_min_width(width);
+                            if self.state.scroll_to_selected
+                                && !range.contains(&self.state.selected_row)
+                            {
+                                let pitch = ROW_H + ui.spacing().item_spacing.y;
+                                let target =
+                                    (self.state.selected_row as f32 * pitch - MAX_H * 0.4).max(0.0);
+                                self.state.pending_scroll_offset = Some(target);
+                                self.state.scroll_to_selected = false;
+                                ui.ctx().request_repaint();
+                            }
+                            for r in range {
+                                self.paint_row(ui, table_id, r, rows, active, cols, width);
+                            }
+                        });
+                    });
+                set_accesskit_bounds(ui.ctx(), table_id, ui.min_rect());
+            },
+        );
     }
 
     fn render_footer(&mut self, ui: &mut Ui, rows: usize) -> bool {
-        if let Some((ref msg, is_err)) = self.state.status_message {
-            let c = if is_err {
-                ui.visuals().error_fg_color
-            } else {
-                ui.visuals().selection.stroke.color
-            };
-            ui.colored_label(c, msg);
-        }
         ui.separator();
         let (mut close_clicked, has_data) = (false, !self.series.is_empty());
+        let disabled_reason = "No series data points available to copy";
         ui.horizontal(|ui| {
-            if ui
-                .add_enabled(has_data, egui::Button::new("Copy TSV"))
-                .clicked()
-            {
+            let copy_tsv = modal_action_button(ui, has_data, "Copy TSV", disabled_reason);
+            if has_data && copy_tsv.clicked() {
                 let tsv = format_tsv(self.series);
                 copy_to_clipboard(ui.ctx(), self.plot_id, self.state, "TSV table", tsv);
             }
-            if ui
-                .add_enabled(has_data, egui::Button::new("Copy CSV"))
-                .clicked()
-            {
+            let copy_csv = modal_action_button(ui, has_data, "Copy CSV", disabled_reason);
+            if has_data && copy_csv.clicked() {
                 let ds: Vec<_> = self
                     .series
                     .iter()
@@ -373,7 +491,65 @@ impl TableView<'_> {
                 ui.label(RichText::new(hint).small().weak());
             }
         });
+        if let Some((ref msg, is_err)) = self.state.status_message {
+            let _ = status_message_label(ui, msg, is_err);
+        }
         close_clicked
+    }
+
+    fn select_series_tab(&mut self, ctx: &Context, idx: usize, label: &str) {
+        if let Some(item) = self.series.get(idx) {
+            self.state.selected_series = idx;
+            self.state.selected_row = self.state.selected_row.min(item.points.len() - 1);
+            self.state.scroll_to_selected = true;
+            emit_plot_live_message(ctx, format!("Selected series tab: {label}"), false);
+        }
+    }
+
+    fn render_series_tabs(&mut self, ui: &mut Ui) {
+        ScrollArea::horizontal()
+            .id_salt(self.plot_id.with("data_table_series_tabs"))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Series:").small().weak());
+                    ui.scope_builder(
+                        UiBuilder::new()
+                            .id_salt(self.plot_id.with("series_tablist_a11y"))
+                            .layout(egui::Layout::left_to_right(Align::Center)),
+                        |ui| {
+                            let tablist_id = ui.unique_id();
+                            ui.ctx().accesskit_node_builder(tablist_id, |builder| {
+                                builder.set_role(egui::accesskit::Role::TabList);
+                                builder.set_label("Plot series");
+                                builder.set_orientation(egui::accesskit::Orientation::Horizontal);
+                            });
+                            let mut labels = Vec::with_capacity(self.series.len());
+                            let mut responses = Vec::with_capacity(self.series.len());
+                            let mut clicked_idx = None;
+                            for (idx, item) in self.series.iter().enumerate() {
+                                let lbl =
+                                    format!("{} ({})", item.display_name(idx), item.points.len());
+                                let resp = focusable_tab_button(
+                                    ui,
+                                    self.state.selected_series == idx,
+                                    &lbl,
+                                );
+                                if resp.clicked() {
+                                    clicked_idx = Some(idx);
+                                }
+                                labels.push(lbl);
+                                responses.push(resp);
+                            }
+                            if let Some(idx) = clicked_idx {
+                                self.select_series_tab(ui.ctx(), idx, &labels[idx]);
+                            } else if let Some(idx) = step_tablist_on_arrow_keys(ui, &responses) {
+                                self.select_series_tab(ui.ctx(), idx, &labels[idx]);
+                            }
+                            set_accesskit_bounds(ui.ctx(), tablist_id, ui.min_rect());
+                        },
+                    );
+                });
+            });
     }
 
     fn render_body(&mut self, ui: &mut Ui) -> bool {
@@ -387,25 +563,7 @@ impl TableView<'_> {
             return self.render_footer(ui, 0);
         }
         if self.series.len() > 1 && !self.shared_x {
-            ScrollArea::horizontal()
-                .id_salt(self.plot_id.with("data_table_series_tabs"))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Series:").small().weak());
-                        for (idx, item) in self.series.iter().enumerate() {
-                            let lbl = format!("{} ({})", item.display_name(idx), item.points.len());
-                            if ui
-                                .selectable_label(self.state.selected_series == idx, lbl)
-                                .clicked()
-                            {
-                                self.state.selected_series = idx;
-                                self.state.selected_row =
-                                    self.state.selected_row.min(item.points.len() - 1);
-                                self.state.scroll_to_selected = true;
-                            }
-                        }
-                    });
-                });
+            self.render_series_tabs(ui);
             ui.separator();
         }
         let multi = self.shared_x || self.series.len() == 1;
@@ -431,25 +589,75 @@ impl TableView<'_> {
     }
 }
 
-fn render_header_row(ui: &mut Ui, cols: &[(String, Color32)], width: f32) {
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, HDR_H), Sense::hover());
-    ui.painter()
-        .rect_filled(rect, 3.0_f32, ui.visuals().faint_bg_color);
-    let cells = RowCells {
+fn render_header_row(ui: &mut Ui, table_id: Id, cols: &[(String, Color32)], width: f32) {
+    let _ = scope_table_row(
         ui,
-        rect,
-        height: HDR_H,
-        font: TextStyle::Body.resolve(ui.style()),
-    };
-    let fg = ui.visuals().strong_text_color();
-    let _ = cells.paint(0, "#", fg, None);
-    let _ = cells.paint(1, "X", fg, None);
-    for (i, (name, c)) in cols.iter().enumerate() {
-        let cell = cells.paint(i + 2, name, fg, Some(*c));
-        if resp.hover_pos().is_some_and(|p| cell.contains(p)) {
-            resp.clone().on_hover_text(name);
-        }
-    }
+        table_id,
+        "series_hdr_row",
+        vec2(width, HDR_H),
+        Sense::hover(),
+        0,
+        |hdr_ui, rect, _| {
+            let faint = hdr_ui.visuals().faint_bg_color;
+            hdr_ui.painter().rect_filled(rect, 3.0_f32, faint);
+            let hdr_bg = composite_over(faint, hdr_ui.visuals().window_fill);
+            let (idx_rect, x_rect, col_rects) = {
+                let cells = RowCells {
+                    ui: hdr_ui,
+                    rect,
+                    height: HDR_H,
+                    font: TextStyle::Body.resolve(hdr_ui.style()),
+                };
+                let fg = hdr_ui.visuals().strong_text_color();
+                let idx_rect = cells.paint(0, "#", fg, None);
+                let x_rect = cells.paint(1, "X", fg, None);
+                let col_rects: Vec<Rect> = cols
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (name, c))| {
+                        let dot = accessible_marker_color(hdr_ui.visuals(), *c, hdr_bg);
+                        cells.paint(i + 2, name, fg, Some(dot))
+                    })
+                    .collect();
+                (idx_rect, x_rect, col_rects)
+            };
+            let row_id = hdr_ui.unique_id();
+            let _ = register_cell_node(
+                hdr_ui,
+                row_id.with("hdr_idx"),
+                idx_rect,
+                egui::accesskit::Role::ColumnHeader,
+                0,
+                "#".to_owned(),
+                false,
+                hdr_bg,
+            );
+            let _ = register_cell_node(
+                hdr_ui,
+                row_id.with("hdr_x"),
+                x_rect,
+                egui::accesskit::Role::ColumnHeader,
+                1,
+                "X".to_owned(),
+                false,
+                hdr_bg,
+            );
+            for (i, ((name, _), cell_rect)) in cols.iter().zip(col_rects).enumerate() {
+                let _ = register_cell_node(
+                    hdr_ui,
+                    row_id.with(("hdr_col", i)),
+                    cell_rect,
+                    egui::accesskit::Role::ColumnHeader,
+                    i + 2,
+                    name.clone(),
+                    true,
+                    hdr_bg,
+                )
+                .accessible_tooltip(name.as_str());
+            }
+            ("Column headers".to_owned(), None)
+        },
+    );
 }
 
 /// Render the Data Table modal with both `Series Data` and `Critical Points` views.
@@ -547,27 +755,50 @@ fn render_mode_selector(
 ) {
     ui.horizontal(|ui| {
         ui.label(RichText::new("View:").small().weak());
-        let series_lbl = format!("Series Data ({series_count})");
-        if ui
-            .selectable_label(state.view_mode == DataTableViewMode::SeriesData, series_lbl)
-            .clicked()
-            && state.view_mode != DataTableViewMode::SeriesData
-        {
-            state.view_mode = DataTableViewMode::SeriesData;
-            state.scroll_to_selected = true;
-        }
-        let poi_lbl = format!("Critical Points ({poi_count})");
-        if ui
-            .selectable_label(
-                state.view_mode == DataTableViewMode::CriticalPoints,
-                poi_lbl,
-            )
-            .clicked()
-            && state.view_mode != DataTableViewMode::CriticalPoints
-        {
-            state.view_mode = DataTableViewMode::CriticalPoints;
-            state.scroll_to_selected = true;
-        }
+        ui.scope_builder(
+            UiBuilder::new()
+                .id_salt("data_table_mode_tablist")
+                .layout(egui::Layout::left_to_right(Align::Center)),
+            |ui| {
+                let tablist_id = ui.unique_id();
+                ui.ctx().accesskit_node_builder(tablist_id, |builder| {
+                    builder.set_role(egui::accesskit::Role::TabList);
+                    builder.set_label("Data table views");
+                    builder.set_orientation(egui::accesskit::Orientation::Horizontal);
+                });
+                let modes = [
+                    (
+                        DataTableViewMode::SeriesData,
+                        format!("Series Data ({series_count})"),
+                    ),
+                    (
+                        DataTableViewMode::CriticalPoints,
+                        format!("Critical Points ({poi_count})"),
+                    ),
+                ];
+                let mut responses = Vec::with_capacity(modes.len());
+                let mut target_idx = None;
+                for (idx, (mode, lbl)) in modes.iter().enumerate() {
+                    let resp = focusable_tab_button(ui, state.view_mode == *mode, lbl);
+                    if resp.clicked() && state.view_mode != *mode {
+                        target_idx = Some(idx);
+                    }
+                    responses.push(resp);
+                }
+                if target_idx.is_none() {
+                    target_idx = step_tablist_on_arrow_keys(ui, &responses);
+                }
+                if let Some(idx) = target_idx {
+                    let (next_mode, ref lbl) = modes[idx];
+                    if state.view_mode != next_mode {
+                        state.view_mode = next_mode;
+                        state.scroll_to_selected = true;
+                    }
+                    emit_plot_live_message(ui.ctx(), format!("Selected {lbl} tab"), false);
+                }
+                set_accesskit_bounds(ui.ctx(), tablist_id, ui.min_rect());
+            },
+        );
     });
 }
 
