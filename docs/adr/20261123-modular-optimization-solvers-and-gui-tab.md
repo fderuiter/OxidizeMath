@@ -18,4 +18,4 @@ Accepted (extends [ADR 0001](0001-dynamic-workspace-discovery.md), [ADR 0008](00
 
 ## Consequences
 - **Positive**: Unifies first-order, proximal, linear, quadratic, nonlinear constrained, derivative-free, and multi-objective solvers under strict zero-heap-allocation hot loops across native and `wasm32-unknown-unknown` targets, with interactive visualization in `OptimizationTab`, `DoseCalculationTool`, and `LossLandscapeTool`.
-- **Neutral**: Workspace GUI inventory contracts advance to 27 `ExplorerTab` modules, 80 `InteractiveTool` entries, and 113 `StarterPresetMetadata` cards.
+- **Neutral**: Workspace GUI inventory contracts advance to 28 `ExplorerTab` modules, 81 `InteractiveTool` entries, and 116 `StarterPresetMetadata` cards.
