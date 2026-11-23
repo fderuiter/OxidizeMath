@@ -67,6 +67,7 @@ pub struct Scene3DBuilder {
     origin_offset: [f64; 3],
     primitives: Vec<Drawable3D>,
     order: Vec<usize>,
+    sorted: bool,
     labels: Vec<LabelPrimitive3D>,
     sidecar: Plot3DSeriesSidecar,
     proj_scratch: Vec<[f64; 2]>,
@@ -90,6 +91,7 @@ impl Scene3DBuilder {
         self.origin_offset = [0.0, 0.0, 0.0];
         self.primitives.clear();
         self.order.clear();
+        self.sorted = false;
         self.labels.clear();
         self.sidecar.clear();
     }
@@ -157,6 +159,7 @@ impl Scene3DBuilder {
                 stroke.color,
             );
         }
+        self.sorted = false;
         self.primitives
             .push(Drawable3D::Segment(SegmentPrimitive3D {
                 name,
@@ -209,6 +212,7 @@ impl Scene3DBuilder {
             self.vz_scratch.push(vz);
             self.world_scratch.push(world);
         }
+        self.sorted = false;
         for i in 0..points.len().saturating_sub(1) {
             self.primitives
                 .push(Drawable3D::Segment(SegmentPrimitive3D {
@@ -251,6 +255,7 @@ impl Scene3DBuilder {
         let mut proj_vec = Vec::with_capacity(points.len());
         let mut world_vec = Vec::with_capacity(points.len());
         let allow_hover = true;
+        self.sorted = false;
         for &pt in points {
             let (proj, viewer_z, world) = self.project_world(pt);
             proj_vec.push(proj);
@@ -373,18 +378,23 @@ impl Scene3DBuilder {
         }
     }
 
-    fn sort_back_to_front(&mut self) {
+    /// Sorts buffered primitives back-to-front by `viewer_z` if not already sorted.
+    pub fn ensure_sorted(&mut self) {
+        if self.sorted {
+            return;
+        }
         self.order.clear();
         self.order.extend(0..self.primitives.len());
         let prims = &self.primitives;
         self.order
             .sort_by(|&a, &b| prims[a].viewer_z().total_cmp(&prims[b].viewer_z()));
+        self.sorted = true;
     }
 
     /// Returns projected 2D segments `([x0, y0], [x1, y1], viewer_z)` in back-to-front draw order.
     #[must_use]
     pub fn sorted_projected_segments(&mut self) -> Vec<([f64; 2], [f64; 2], f64)> {
-        self.sort_back_to_front();
+        self.ensure_sorted();
         self.order
             .iter()
             .filter_map(|&idx| match &self.primitives[idx] {
@@ -397,7 +407,7 @@ impl Scene3DBuilder {
     /// Sorts all collected 3D primitives back-to-front by `viewer_z`, emits them into `plot_ui`,
     /// and attaches the populated [`Plot3DSeriesSidecar`].
     pub fn finish(&mut self, plot_ui: &mut PlotUi<'_>) {
-        self.sort_back_to_front();
+        self.ensure_sorted();
         let plot_id = plot_ui.plot_id();
         for (draw_rank, &idx) in self.order.iter().enumerate() {
             match &self.primitives[idx] {

@@ -180,7 +180,11 @@ impl<'a> PlotUi<'a> {
 
     /// Add a data line.
     pub fn line(&mut self, mut line: crate::Line<'a>) {
-        if line.series.is_empty() {
+        let has_segments = line
+            .segment_batch
+            .as_ref()
+            .is_some_and(|batch| batch.iter().any(|seg| !seg.is_empty()));
+        if line.series.is_empty() && !has_segments {
             return;
         }
 

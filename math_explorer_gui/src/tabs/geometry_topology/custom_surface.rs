@@ -45,6 +45,7 @@ pub struct CustomSurfaceSandbox {
     pub param_z_bar: MathExpressionInputBar,
     pub param_sliders: ParameterSliderBank,
     pub parametric_error: Option<String>,
+    cached_heightfield_zero: CompiledExpr,
     cached_parametric: (CompiledExpr, CompiledExpr, CompiledExpr),
 }
 
@@ -73,6 +74,9 @@ impl Default for CustomSurfaceSandbox {
             .with_inline_sliders(false);
 
         let fallback = fallback_compiled_triple();
+        let zero_hf =
+            CompiledExpr::compile_with_vars(&parse("0").expect("zero parses"), &["x", "y"])
+                .expect("zero compiles");
         let mut sandbox = Self {
             heightfield_bar,
             param_x_bar,
@@ -80,6 +84,7 @@ impl Default for CustomSurfaceSandbox {
             param_z_bar,
             param_sliders: ParameterSliderBank::new().with_range(-3.0..=3.0, 0.6),
             parametric_error: None,
+            cached_heightfield_zero: zero_hf,
             cached_parametric: fallback,
         };
         sandbox.recompile_parametric_triple();
@@ -88,6 +93,23 @@ impl Default for CustomSurfaceSandbox {
 }
 
 impl CustomSurfaceSandbox {
+    pub fn state_fingerprint(&self, surface_type: SurfaceType) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        match surface_type {
+            SurfaceType::CustomHeightfield => self.heightfield_bar.state_fingerprint(),
+            SurfaceType::CustomParametric => {
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                self.param_x_bar.raw_text.hash(&mut h);
+                self.param_y_bar.raw_text.hash(&mut h);
+                self.param_z_bar.raw_text.hash(&mut h);
+                self.parametric_error.is_some().hash(&mut h);
+                self.param_sliders.state_fingerprint().hash(&mut h);
+                h.finish().max(1)
+            }
+            _ => 0,
+        }
+    }
+
     pub fn ui_for_type(&mut self, ui: &mut egui::Ui, surface_type: SurfaceType) {
         match surface_type {
             SurfaceType::CustomHeightfield => {
@@ -115,11 +137,8 @@ impl CustomSurfaceSandbox {
         let compiled = self
             .heightfield_bar
             .active_compiled()
-            .cloned()
-            .unwrap_or_else(|| {
-                CompiledExpr::compile_with_vars(&parse("0").expect("zero parses"), &["x", "y"])
-                    .expect("zero compiles")
-            });
+            .unwrap_or(&self.cached_heightfield_zero)
+            .clone();
         CompiledHeightfieldSurface::new(compiled, self.heightfield_bar.param_slice())
     }
 
@@ -219,20 +238,6 @@ impl CustomSurfaceSandbox {
         self.param_z_bar.set_expression(pz);
         self.param_sliders.set_params_map(custom_params);
         self.recompile_parametric_triple();
-    }
-
-    pub fn hash_state(&self, h: &mut impl std::hash::Hasher) {
-        use std::hash::Hash;
-        self.heightfield_bar.raw_text.hash(h);
-        for &p in self.heightfield_bar.param_slice() {
-            p.to_bits().hash(h);
-        }
-        self.param_x_bar.raw_text.hash(h);
-        self.param_y_bar.raw_text.hash(h);
-        self.param_z_bar.raw_text.hash(h);
-        for &p in self.param_sliders.param_slice() {
-            p.to_bits().hash(h);
-        }
     }
 }
 

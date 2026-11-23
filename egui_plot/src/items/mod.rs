@@ -126,6 +126,79 @@ pub trait PlotItem {
         vec![]
     }
 
+    fn append_deferred_export(
+        &mut self,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        let pts = self.extract_points();
+        if !pts.is_empty() {
+            datasets.push(crate::DeferredDatasetEntry::Owned {
+                name: self.name().to_owned(),
+                points: pts,
+            });
+        }
+        let prims = self.extract_export_primitives();
+        if !prims.is_empty() {
+            primitives.push(crate::export_primitives::DeferredPlotPrimitive::Eager(
+                prims,
+            ));
+        }
+    }
+
+    fn has_any_points(&self) -> bool {
+        if let Some(segs) = self.line_segments() {
+            return segs.iter().any(|seg| !seg.is_empty());
+        }
+        match self.geometry() {
+            PlotGeometry::Points(pts) => !pts.is_empty(),
+            PlotGeometry::None | PlotGeometry::Rects => !self.extract_points().is_empty(),
+        }
+    }
+
+    fn item_content_hash(&self) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut hasher = ahash::AHasher::default();
+        self.id().hash(&mut hasher);
+        self.name().hash(&mut hasher);
+        self.color().to_array().hash(&mut hasher);
+        self.allow_hover().hash(&mut hasher);
+        if let Some(y) = self.hline_y() {
+            1u8.hash(&mut hasher);
+            y.to_bits().hash(&mut hasher);
+        } else if let Some(x) = self.vline_x() {
+            2u8.hash(&mut hasher);
+            x.to_bits().hash(&mut hasher);
+        } else if let Some(segs) = self.line_segments() {
+            3u8.hash(&mut hasher);
+            (Arc::as_ptr(segs) as usize).hash(&mut hasher);
+            segs.len().hash(&mut hasher);
+            if let Some(first) = segs.first().and_then(|s| s.first()) {
+                first.x.to_bits().hash(&mut hasher);
+                first.y.to_bits().hash(&mut hasher);
+            }
+            if let Some(last) = segs.last().and_then(|s| s.last()) {
+                last.x.to_bits().hash(&mut hasher);
+                last.y.to_bits().hash(&mut hasher);
+            }
+        } else if let PlotGeometry::Points(pts) = self.geometry() {
+            4u8.hash(&mut hasher);
+            hash_plot_point_slice(pts, None, &mut hasher);
+        } else {
+            5u8.hash(&mut hasher);
+            let b = self.bounds();
+            b.min[0].to_bits().hash(&mut hasher);
+            b.min[1].to_bits().hash(&mut hasher);
+            b.max[0].to_bits().hash(&mut hasher);
+            b.max[1].to_bits().hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    fn line_segments(&self) -> Option<&Arc<Vec<Vec<PlotPoint>>>> {
+        None
+    }
+
     fn highlight(&mut self) {
         self.base_mut().highlight = true;
     }
@@ -554,6 +627,8 @@ impl PlotItem for VLine {
 pub struct Line<'a> {
     base: PlotItemBase,
     pub(super) series: PlotPoints<'a>,
+    pub(super) segment_batch: Option<Arc<Vec<Vec<PlotPoint>>>>,
+    pub(super) cached_bounds: Option<PlotBounds>,
     pub(super) stroke: Stroke,
     pub(super) fill: Option<f32>,
     pub(super) fill_alpha: f32,
@@ -567,6 +642,8 @@ impl<'a> Line<'a> {
         Self {
             base: PlotItemBase::new(name.into()),
             series: series.into(),
+            segment_batch: None,
+            cached_bounds: None,
             stroke: Stroke::new(1.5_f32, Color32::TRANSPARENT), // Note: a stroke of 1.0 (or less) can look bad on low-dpi-screens
             fill: None,
             fill_alpha: DEFAULT_FILL_ALPHA,
@@ -574,6 +651,29 @@ impl<'a> Line<'a> {
             gradient_fill: false,
             style: LineStyle::Solid,
         }
+    }
+
+    /// Creates a batched multi-segment polyline item from shared disjoint segments without NaN separators.
+    pub fn from_segments(name: impl Into<String>, segments: Arc<Vec<Vec<PlotPoint>>>) -> Self {
+        Self {
+            base: PlotItemBase::new(name.into()),
+            series: PlotPoints::default(),
+            segment_batch: Some(segments),
+            cached_bounds: None,
+            stroke: Stroke::new(1.5_f32, Color32::TRANSPARENT),
+            fill: None,
+            fill_alpha: DEFAULT_FILL_ALPHA,
+            gradient_color: None,
+            gradient_fill: false,
+            style: LineStyle::Solid,
+        }
+    }
+
+    /// Attaches precomputed plot-space bounds to skip per-frame point-wise bounds scans.
+    #[inline]
+    pub fn with_bounds(mut self, bounds: PlotBounds) -> Self {
+        self.cached_bounds = Some(bounds);
+        self
     }
 
     /// Add a stroke.
@@ -647,10 +747,33 @@ fn y_intersection(p1: &Pos2, p2: &Pos2, y: f32) -> Option<f32> {
 
 impl PlotItem for Line<'_> {
     fn extract_points(&self) -> Vec<[f64; 2]> {
+        if let Some(batch) = &self.segment_batch {
+            let total: usize = batch.iter().map(Vec::len).sum();
+            let mut out = Vec::with_capacity(total);
+            for seg in batch.iter() {
+                out.extend(seg.iter().map(|p| [p.x, p.y]));
+            }
+            return out;
+        }
         self.series.points().iter().map(|p| [p.x, p.y]).collect()
     }
 
     fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        if let Some(batch) = &self.segment_batch {
+            let name = self.name().to_owned();
+            return batch
+                .iter()
+                .filter(|seg| !seg.is_empty())
+                .map(|seg| crate::export_primitives::ExportPrimitive::Polyline {
+                    name: name.clone(),
+                    points: seg.iter().map(|p| [p.x, p.y]).collect(),
+                    color: self.stroke.color,
+                    stroke_width: self.stroke.width,
+                    closed: false,
+                    fill: None,
+                })
+                .collect();
+        }
         let points = self.extract_points();
         if points.is_empty() {
             return vec![];
@@ -664,10 +787,87 @@ impl PlotItem for Line<'_> {
             fill: None,
         }]
     }
+
+    fn append_deferred_export(
+        &mut self,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        if let Some(batch) = &self.segment_batch {
+            if batch.iter().any(|seg| !seg.is_empty()) {
+                let name = self.base.name.clone();
+                datasets.push(crate::DeferredDatasetEntry::SharedSegments {
+                    name: name.clone(),
+                    segments: Arc::clone(batch),
+                });
+                primitives.push(
+                    crate::export_primitives::DeferredPlotPrimitive::PolylineBatch {
+                        name,
+                        segments: Arc::clone(batch),
+                        color: self.stroke.color,
+                        stroke_width: self.stroke.width,
+                    },
+                );
+            }
+            return;
+        }
+        let points = self.series.take_shared_points();
+        if !points.is_empty() {
+            let name = self.base.name.clone();
+            datasets.push(crate::DeferredDatasetEntry::SharedPoints {
+                name: name.clone(),
+                points: Arc::clone(&points),
+            });
+            primitives.push(crate::export_primitives::DeferredPlotPrimitive::Polyline {
+                name,
+                points,
+                color: self.stroke.color,
+                stroke_width: self.stroke.width,
+                closed: false,
+                fill: None,
+            });
+        }
+    }
+
+    fn item_content_hash(&self) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut hasher = ahash::AHasher::default();
+        self.id().hash(&mut hasher);
+        self.name().hash(&mut hasher);
+        self.stroke.color.to_array().hash(&mut hasher);
+        self.allow_hover().hash(&mut hasher);
+        if let Some(batch) = &self.segment_batch {
+            3u8.hash(&mut hasher);
+            (Arc::as_ptr(batch) as usize).hash(&mut hasher);
+            batch.len().hash(&mut hasher);
+            if let Some(first) = batch.first().and_then(|s| s.first()) {
+                first.x.to_bits().hash(&mut hasher);
+                first.y.to_bits().hash(&mut hasher);
+            }
+            if let Some(last) = batch.last().and_then(|s| s.last()) {
+                last.x.to_bits().hash(&mut hasher);
+                last.y.to_bits().hash(&mut hasher);
+            }
+        } else {
+            4u8.hash(&mut hasher);
+            hash_plot_point_slice(
+                self.series.points(),
+                self.series.shared_ptr_id(),
+                &mut hasher,
+            );
+        }
+        hasher.finish()
+    }
+
+    fn line_segments(&self) -> Option<&Arc<Vec<Vec<PlotPoint>>>> {
+        self.segment_batch.as_ref()
+    }
+
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
         let Self {
             base,
             series,
+            segment_batch,
             stroke,
             fill,
             gradient_fill,
@@ -689,16 +889,33 @@ impl PlotItem for Line<'_> {
         }
 
         let mut segments: Vec<Vec<Pos2>> = Vec::new();
-        let mut current: Vec<Pos2> = Vec::new();
-        for v in series.points() {
-            if transform.is_point_valid_for_scale(v) {
-                current.push(transform.position_from_point(v));
-            } else if !current.is_empty() {
-                segments.push(std::mem::take(&mut current));
+        if let Some(batch) = segment_batch {
+            segments.reserve(batch.len());
+            for raw_seg in batch.iter() {
+                let mut current: Vec<Pos2> = Vec::with_capacity(raw_seg.len());
+                for v in raw_seg {
+                    if transform.is_point_valid_for_scale(v) {
+                        current.push(transform.position_from_point(v));
+                    } else if !current.is_empty() {
+                        segments.push(std::mem::take(&mut current));
+                    }
+                }
+                if !current.is_empty() {
+                    segments.push(current);
+                }
             }
-        }
-        if !current.is_empty() {
-            segments.push(current);
+        } else {
+            let mut current: Vec<Pos2> = Vec::new();
+            for v in series.points() {
+                if transform.is_point_valid_for_scale(v) {
+                    current.push(transform.position_from_point(v));
+                } else if !current.is_empty() {
+                    segments.push(std::mem::take(&mut current));
+                }
+            }
+            if !current.is_empty() {
+                segments.push(current);
+            }
         }
 
         if let Some(y_reference) = fill {
@@ -786,15 +1003,35 @@ impl PlotItem for Line<'_> {
     }
 
     fn geometry(&self) -> PlotGeometry<'_> {
-        PlotGeometry::Points(self.series.points())
+        if self.segment_batch.is_some() {
+            PlotGeometry::None
+        } else {
+            PlotGeometry::Points(self.series.points())
+        }
     }
 
     fn bounds(&self) -> PlotBounds {
+        if let Some(cached) = self.cached_bounds {
+            return cached;
+        }
+        if let Some(batch) = &self.segment_batch {
+            let mut bounds = PlotBounds::NOTHING;
+            for seg in batch.iter() {
+                for pt in seg {
+                    bounds.extend_with(pt);
+                }
+            }
+            return bounds;
+        }
         self.series.bounds()
     }
 
     fn line_points(&self) -> Option<&[PlotPoint]> {
-        Some(self.series.points())
+        if self.segment_batch.is_some() {
+            None
+        } else {
+            Some(self.series.points())
+        }
     }
 
     fn closest_continuous_point(
@@ -802,7 +1039,43 @@ impl PlotItem for Line<'_> {
         pointer: Pos2,
         transform: &PlotTransform,
     ) -> Option<(PlotPoint, f32)> {
+        if let Some(batch) = &self.segment_batch {
+            return batch
+                .iter()
+                .filter_map(|seg| closest_point_on_polyline(seg, pointer, transform))
+                .min_by_key(|(_, d)| d.ord());
+        }
         closest_point_on_polyline(self.series.points(), pointer, transform)
+    }
+}
+
+fn hash_plot_point_slice<H: std::hash::Hasher>(
+    pts: &[PlotPoint],
+    shared_ptr: Option<usize>,
+    hasher: &mut H,
+) {
+    use std::hash::Hash as _;
+    pts.len().hash(hasher);
+    if let Some(ptr) = shared_ptr {
+        ptr.hash(hasher);
+    }
+    if pts.len() <= 512 {
+        for pt in pts {
+            pt.x.to_bits().hash(hasher);
+            pt.y.to_bits().hash(hasher);
+        }
+    } else {
+        let step = (pts.len() / 128).max(1);
+        let mut idx = 0;
+        while idx < pts.len() {
+            pts[idx].x.to_bits().hash(hasher);
+            pts[idx].y.to_bits().hash(hasher);
+            idx += step;
+        }
+        if let Some(last) = pts.last() {
+            last.x.to_bits().hash(hasher);
+            last.y.to_bits().hash(hasher);
+        }
     }
 }
 
@@ -933,6 +1206,29 @@ impl PlotItem for Polygon<'_> {
             closed: true,
             fill: self.fill_color,
         }]
+    }
+
+    fn append_deferred_export(
+        &mut self,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        let points = self.series.take_shared_points();
+        if !points.is_empty() {
+            let name = self.base.name.clone();
+            datasets.push(crate::DeferredDatasetEntry::SharedPoints {
+                name: name.clone(),
+                points: Arc::clone(&points),
+            });
+            primitives.push(crate::export_primitives::DeferredPlotPrimitive::Polyline {
+                name,
+                points,
+                color: self.stroke.color,
+                stroke_width: self.stroke.width,
+                closed: true,
+                fill: self.fill_color,
+            });
+        }
     }
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
         let Self {
@@ -1175,6 +1471,27 @@ impl PlotItem for Points<'_> {
             radius: self.radius,
         }]
     }
+
+    fn append_deferred_export(
+        &mut self,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        let points = self.series.take_shared_points();
+        if !points.is_empty() {
+            let name = self.base.name.clone();
+            datasets.push(crate::DeferredDatasetEntry::SharedPoints {
+                name: name.clone(),
+                points: Arc::clone(&points),
+            });
+            primitives.push(crate::export_primitives::DeferredPlotPrimitive::Points {
+                name,
+                points,
+                color: self.color,
+                radius: self.radius,
+            });
+        }
+    }
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
         let sqrt_3 = 3_f32.sqrt();
         let frac_sqrt_3_2 = 3_f32.sqrt() / 2.0;
@@ -1404,6 +1721,30 @@ impl PlotItem for Arrows<'_> {
                 },
             )
             .collect()
+    }
+
+    fn append_deferred_export(
+        &mut self,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        let origins = self.origins.take_shared_points();
+        let tips = self.tips.take_shared_points();
+        if !origins.is_empty() && !tips.is_empty() {
+            let name = self.base.name.clone();
+            datasets.push(crate::DeferredDatasetEntry::SharedArrows {
+                name: name.clone(),
+                origins: Arc::clone(&origins),
+                tips: Arc::clone(&tips),
+            });
+            primitives.push(crate::export_primitives::DeferredPlotPrimitive::Arrows {
+                name,
+                origins,
+                tips,
+                tip_length: self.tip_length,
+                color: self.color,
+            });
+        }
     }
 
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {

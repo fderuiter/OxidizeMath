@@ -40,9 +40,11 @@ impl SurfaceViewer {
                 .show(ui, |ui| self.camera.ui(ui));
 
             ui.collapsing("Resolution", |ui| {
-                let max_grid = math_commons::registry::MAX_GRID_SIZE;
-                ui.add(egui::Slider::new(&mut self.u_resolution, 10..=max_grid).text("Grid Size U"));
-                ui.add(egui::Slider::new(&mut self.v_resolution, 10..=max_grid).text("Grid Size V"));
+                let max_res = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION;
+                self.u_resolution = self.u_resolution.clamp(10, max_res);
+                self.v_resolution = self.v_resolution.clamp(10, max_res);
+                ui.add(egui::Slider::new(&mut self.u_resolution, 10..=max_res).text("Grid Size U"));
+                ui.add(egui::Slider::new(&mut self.v_resolution, 10..=max_res).text("Grid Size V"));
             });
 
             ui.separator();

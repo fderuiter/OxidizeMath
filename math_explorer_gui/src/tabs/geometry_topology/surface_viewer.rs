@@ -1,5 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "surface_viewer/cache.rs"]
+mod cache;
 #[path = "surface_viewer_ui.rs"]
 mod ui;
 
@@ -7,11 +9,9 @@ use super::custom_surface::{CustomSurfaceSandbox, SurfaceType};
 use crate::framework::{Camera3D, InteractiveTool, Scene3DBuilder};
 use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
 use eframe::egui;
-use egui_plot::LineStyle;
 use math_explorer::pure_math::differential_geometry::surface::{
     KleinBottle, ParametricSurface, Sphere, Torus,
 };
-use nalgebra::Point3;
 use std::collections::BTreeMap;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
@@ -78,10 +78,9 @@ pub struct SurfaceViewer {
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
     pub(super) custom_sandbox: CustomSurfaceSandbox,
-    line_scratch: Vec<Point3<f64>>,
-    surface_vertices: Vec<Point3<f64>>,
     pub(super) obj_export_rx: Option<Receiver<Result<String, String>>>,
     pub(super) obj_export_status: Option<(String, bool)>,
+    cache: cache::SurfaceGeometryCache,
 }
 
 impl Default for SurfaceViewer {
@@ -98,10 +97,9 @@ impl Default for SurfaceViewer {
             camera,
             scene_builder: Scene3DBuilder::new(camera),
             custom_sandbox: CustomSurfaceSandbox::default(),
-            line_scratch: Vec::new(),
-            surface_vertices: Vec::new(),
             obj_export_rx: None,
             obj_export_status: None,
+            cache: cache::SurfaceGeometryCache::default(),
         }
     }
 }
@@ -195,55 +193,9 @@ impl SurfaceViewer {
         }
     }
 
-    /// Populates `self.scene_builder` with world `Point3<f64>` wireframe grid polylines.
+    /// Populates `self.scene_builder` with cached world `Point3<f64>` wireframe grid polylines.
     pub fn populate_scene(&mut self, color: egui::Color32) {
-        let surface = self.create_surface();
-        let ((u_min, u_max), (v_min, v_max)) = self.surface_type.uv_domain();
-        self.scene_builder.begin(self.camera);
-        self.surface_vertices.clear();
-        self.surface_vertices
-            .reserve((self.u_resolution + 1) * (self.v_resolution + 1));
-
-        let stroke = egui::Stroke::new(1.25_f32, color);
-        let u_span = u_max - u_min;
-        let v_span = v_max - v_min;
-
-        for i in 0..=self.u_resolution {
-            let u = u_min + u_span * (i as f64 / self.u_resolution as f64);
-            self.line_scratch.clear();
-            for j in 0..=self.v_resolution {
-                let v = v_min + v_span * (j as f64 / self.v_resolution as f64);
-                let pt = surface.position(u, v);
-                self.line_scratch.push(pt);
-                self.surface_vertices.push(pt);
-            }
-            self.scene_builder.add_polyline(
-                "Surface",
-                &self.line_scratch,
-                stroke,
-                LineStyle::Solid,
-                false,
-            );
-        }
-
-        for j in 0..=self.v_resolution {
-            let v = v_min + v_span * (j as f64 / self.v_resolution as f64);
-            self.line_scratch.clear();
-            for i in 0..=self.u_resolution {
-                let u = u_min + u_span * (i as f64 / self.u_resolution as f64);
-                self.line_scratch.push(surface.position(u, v));
-            }
-            self.scene_builder.add_polyline(
-                "Surface",
-                &self.line_scratch,
-                stroke,
-                LineStyle::Solid,
-                false,
-            );
-        }
-
-        self.scene_builder
-            .record_series("Surface", &self.surface_vertices, color);
+        self.populate_cached_wireframe(color);
     }
 }
 
@@ -261,18 +213,26 @@ impl InteractiveTool for SurfaceViewer {
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
+        use std::hash::{Hash as _, Hasher as _};
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        self.surface_type.hash(&mut h);
-        self.sphere_radius.to_bits().hash(&mut h);
-        self.torus_major_radius.to_bits().hash(&mut h);
-        self.torus_minor_radius.to_bits().hash(&mut h);
-        self.klein_radius.to_bits().hash(&mut h);
-        self.u_resolution.hash(&mut h);
-        self.v_resolution.hash(&mut h);
+        self.surface_geometry_key().hash(&mut h);
         self.camera.hash_state(&mut h);
-        self.custom_sandbox.hash_state(&mut h);
         h.finish().max(1)
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        let max_res = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION;
+        self.sphere_radius.is_finite()
+            && (0.1..=5.0).contains(&self.sphere_radius)
+            && self.torus_major_radius.is_finite()
+            && (1.0..=5.0).contains(&self.torus_major_radius)
+            && self.torus_minor_radius.is_finite()
+            && (0.1..=2.0).contains(&self.torus_minor_radius)
+            && self.klein_radius.is_finite()
+            && (0.5..=5.0).contains(&self.klein_radius)
+            && (10..=max_res).contains(&self.u_resolution)
+            && (10..=max_res).contains(&self.v_resolution)
+            && self.camera.is_valid()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -309,9 +269,9 @@ impl InteractiveTool for SurfaceViewer {
         {
             return Err("Surface radii out of valid bounds".to_string());
         }
-        let max_res = math_commons::registry::MAX_GRID_SIZE;
-        if !(10..=max_res).contains(&loaded.u_resolution)
-            || !(10..=max_res).contains(&loaded.v_resolution)
+        let max_schema = math_commons::registry::MAX_GRID_SIZE;
+        if !(10..=max_schema).contains(&loaded.u_resolution)
+            || !(10..=max_schema).contains(&loaded.v_resolution)
         {
             return Err("Surface resolution out of valid bounds".to_string());
         }
@@ -322,13 +282,14 @@ impl InteractiveTool for SurfaceViewer {
             loaded.zoom,
             Some(Camera3D::default()),
         )?;
+        let cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION;
         self.surface_type = loaded.surface_type;
         self.sphere_radius = loaded.sphere_radius;
         self.torus_major_radius = loaded.torus_major_radius;
         self.torus_minor_radius = loaded.torus_minor_radius;
         self.klein_radius = loaded.klein_radius;
-        self.u_resolution = loaded.u_resolution;
-        self.v_resolution = loaded.v_resolution;
+        self.u_resolution = loaded.u_resolution.min(cap);
+        self.v_resolution = loaded.v_resolution.min(cap);
         self.camera.apply_pose(camera);
         self.custom_sandbox.load_fields(
             loaded.custom_expr.as_deref(),

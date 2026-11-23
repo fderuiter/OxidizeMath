@@ -209,6 +209,14 @@ impl Camera3D {
         self.projection.hash(hasher);
     }
 
+    /// Returns a deterministic 64-bit fingerprint of all camera pose and projection fields.
+    #[must_use]
+    pub fn pose_fingerprint(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.hash_state(&mut hasher);
+        hasher.finish()
+    }
+
     /// Resolves either a nested `camera` object or legacy `pitch`/`yaw`/`zoom` preset fields.
     pub fn from_preset_fields(
         camera: Option<Self>,
