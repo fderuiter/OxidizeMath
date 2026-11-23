@@ -2,6 +2,7 @@
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+pub mod cortical_morphometry;
 pub mod hodgkin_huxley;
 pub mod neural_network_viz;
 pub mod spike_analysis;
