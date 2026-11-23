@@ -5,6 +5,16 @@ use crate::async_sim::SimulationRunner;
 use crate::framework::{compute_matrix_stride, ExportCell, ExportTable};
 
 fn sample_morphogenesis_grid(tool: &MorphogenesisTool, width: usize, height: usize) -> Vec<f64> {
+    if let Some(ref runner) = tool.step_runner {
+        let snap = runner.get_snapshot();
+        if let Some(grid) = snap
+            .structured_data
+            .and_then(|d| d.downcast::<Vec<f64>>().ok())
+            .filter(|v| v.len() == width * height)
+        {
+            return *grid;
+        }
+    }
     tool.worker
         .latest_snapshot()
         .and_then(|snap| {
@@ -18,6 +28,7 @@ fn sample_morphogenesis_grid(tool: &MorphogenesisTool, width: usize, height: usi
             let runner = MorphogenesisTool::create_kinetics_runner(
                 &tool.params,
                 &tool.kinetics_state,
+                &tool.mask_rle,
                 width,
                 height,
             );
