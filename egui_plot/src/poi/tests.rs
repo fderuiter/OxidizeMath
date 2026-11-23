@@ -408,3 +408,51 @@ fn static_frames_reuse_cached_pois_and_defer_export_primitive_materialization() 
         1
     );
 }
+
+#[test]
+fn plateau_chunk_preserves_y_intercepts_negative_x_and_nan_breaks() {
+    let mut pts = Vec::new();
+    pts.push([-40.0, 1.0]);
+    for i in -39..=-20 {
+        pts.push([i as f64, -4.0]);
+    }
+    pts.push([-19.0, 1.0]);
+    for i in -18..=18 {
+        pts.push([i as f64, 6.0]);
+    }
+    pts.push([19.0, 1.0]);
+    for i in 20..=35 {
+        let x = if i == 27 { f64::NAN } else { i as f64 };
+        pts.push([x, 8.0]);
+    }
+    pts.push([36.0, 1.0]);
+
+    let items: Vec<Box<dyn PlotItem>> = vec![Box::new(Line::new("ChunkEdgeCases", pts))];
+    let pois = detect_critical_points(&items, &make_transform([-50.0, -10.0], [50.0, 10.0]));
+
+    let min_poi = pois
+        .iter()
+        .find(|p| p.kind == CriticalPointKind::LocalMin && p.point[1] < -3.5)
+        .expect("expected negative-x plateau LocalMin");
+    assert!((min_poi.point[0] + 29.5).abs() < 1e-9);
+
+    let max_poi = pois
+        .iter()
+        .find(|p| p.kind == CriticalPointKind::LocalMax && (p.point[1] - 6.0).abs() < 1e-9)
+        .expect("expected zero-crossing plateau LocalMax");
+    assert!(max_poi.point[0].abs() < 1e-9);
+
+    let y_int = pois
+        .iter()
+        .find(|p| p.kind == CriticalPointKind::YIntercept)
+        .expect("expected YIntercept at x = 0 inside plateau chunk");
+    assert!(y_int.point[0].abs() < 1e-9);
+    assert!((y_int.point[1] - 6.0).abs() < 1e-9);
+
+    assert!(
+        !pois
+            .iter()
+            .any(|p| p.kind == CriticalPointKind::LocalMax && p.point[1] > 7.5),
+        "NaN inside plateau chunk must abort plateau extremum"
+    );
+}

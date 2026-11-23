@@ -107,6 +107,149 @@ pub(crate) struct SingleLineScan {
     pub(crate) extrema: Vec<([f64; 2], bool)>,
 }
 
+struct ScanState {
+    p0: PlotPoint,
+    p0_fin: bool,
+    mode: u8,
+    prev: PlotPoint,
+    start: PlotPoint,
+    second: PlotPoint,
+    last: PlotPoint,
+}
+
+#[inline(always)]
+fn chunk_all_y_eq(c: &[PlotPoint; 8], sy: f64) -> bool {
+    (c[0].y == sy)
+        & (c[1].y == sy)
+        & (c[2].y == sy)
+        & (c[3].y == sy)
+        & (c[4].y == sy)
+        & (c[5].y == sy)
+        & (c[6].y == sy)
+        & (c[7].y == sy)
+}
+
+#[inline(always)]
+fn chunk_all_x_finite(c: &[PlotPoint; 8]) -> bool {
+    ((c[0].x * 0.0)
+        + (c[1].x * 0.0)
+        + (c[2].x * 0.0)
+        + (c[3].x * 0.0)
+        + (c[4].x * 0.0)
+        + (c[5].x * 0.0)
+        + (c[6].x * 0.0)
+        + (c[7].x * 0.0))
+        == 0.0
+}
+
+#[inline(always)]
+fn chunk_all_x_same_sign(c: &[PlotPoint; 8], sign: f64) -> bool {
+    (c[0].x * sign > 0.0)
+        & (c[1].x * sign > 0.0)
+        & (c[2].x * sign > 0.0)
+        & (c[3].x * sign > 0.0)
+        & (c[4].x * sign > 0.0)
+        & (c[5].x * sign > 0.0)
+        & (c[6].x * sign > 0.0)
+        & (c[7].x * sign > 0.0)
+}
+
+#[inline(always)]
+fn can_skip_plateau_chunk(c: &[PlotPoint; 8], p0_x: f64, sy: f64, want_y_ints: bool) -> bool {
+    if !chunk_all_y_eq(c, sy) || !chunk_all_x_finite(c) {
+        return false;
+    }
+    if !want_y_ints {
+        return true;
+    }
+    if p0_x > 0.0 {
+        chunk_all_x_same_sign(c, 1.0)
+    } else if p0_x < 0.0 {
+        chunk_all_x_same_sign(c, -1.0)
+    } else {
+        false
+    }
+}
+
+struct ScanContext<'a> {
+    pts: &'a [PlotPoint],
+    want_roots: bool,
+    want_y_ints: bool,
+}
+
+fn step_single_point(
+    ctx: &ScanContext<'_>,
+    idx: usize,
+    p1: PlotPoint,
+    st: &mut ScanState,
+    out: &mut SingleLineScan,
+) {
+    let n = ctx.pts.len();
+    let p0 = st.p0;
+    let p1_fin = (p1.x * 0.0 + p1.y * 0.0) == 0.0;
+    if st.p0_fin && p1_fin {
+        if ctx.want_roots && p0.y != p1.y {
+            if p0.y == 0.0 {
+                out.roots.push(p0.x);
+            } else if (p0.y > 0.0) != (p1.y > 0.0) && p1.y != 0.0 {
+                if let Some(x) = solve_segment_crossing(ctx.pts, idx, 0.0) {
+                    out.roots.push(x);
+                }
+            } else if idx + 2 == n && p1.y == 0.0 {
+                out.roots.push(p1.x);
+            }
+        }
+        if ctx.want_y_ints && p0.x != p1.x {
+            if p0.x == 0.0 {
+                out.y_ints.push(p0.y);
+            } else if (p0.x > 0.0) != (p1.x > 0.0) && p1.x != 0.0 {
+                if let Some(y) = eval_segment_at_x(ctx.pts, idx, 0.0) {
+                    out.y_ints.push(y);
+                }
+            } else if idx + 2 == n && p1.x == 0.0 {
+                out.y_ints.push(p1.y);
+            }
+        }
+        if st.mode != 0 && p1.y == st.start.y {
+            if st.mode == 2 {
+                st.last = p1;
+            } else if (st.prev.x < st.start.x && st.start.x < p1.x)
+                || (st.prev.x > st.start.x && st.start.x > p1.x)
+            {
+                st.second = p1;
+                st.last = p1;
+                st.mode = 2;
+            } else {
+                st.mode = 0;
+            }
+        } else {
+            if st.mode != 0 {
+                finish_plateau_extremum(
+                    st.mode,
+                    st.prev,
+                    st.start,
+                    st.second,
+                    st.last,
+                    p1,
+                    &mut out.extrema,
+                );
+            }
+            if p1.y != p0.y {
+                st.mode = 1;
+                st.prev = p0;
+                st.start = p1;
+                st.last = p1;
+            } else {
+                st.mode = 0;
+            }
+        }
+    } else {
+        st.mode = 0;
+    }
+    st.p0 = p1;
+    st.p0_fin = p1_fin;
+}
+
 /// Fused single-pass streaming scan for $y = 0$ roots, $x = 0$ intercepts, and local extrema.
 pub(crate) fn scan_single_line_all(
     pts: &[PlotPoint],
@@ -118,73 +261,43 @@ pub(crate) fn scan_single_line_all(
         y_ints: Vec::new(),
         extrema: Vec::new(),
     };
-    let n = pts.len();
-    if n < 2 {
+    if pts.len() < 2 {
         return out;
     }
+    let ctx = ScanContext {
+        pts,
+        want_roots,
+        want_y_ints,
+    };
     let dummy = PlotPoint { x: 0.0, y: 0.0 };
-    let mut p0 = pts[0];
-    let mut p0_fin = (p0.x * 0.0 + p0.y * 0.0) == 0.0;
-    let (mut mode, mut prev, mut start, mut second, mut last) = (0u8, dummy, dummy, dummy, dummy);
-    let mut i = 1;
-    while i < n {
-        let idx = i - 1;
-        let p1 = pts[i];
-        i += 1;
-        let p1_fin = (p1.x * 0.0 + p1.y * 0.0) == 0.0;
-        if p0_fin && p1_fin {
-            if want_roots && p0.y != p1.y {
-                if p0.y == 0.0 {
-                    out.roots.push(p0.x);
-                } else if (p0.y > 0.0) != (p1.y > 0.0) && p1.y != 0.0 {
-                    if let Some(x) = solve_segment_crossing(pts, idx, 0.0) {
-                        out.roots.push(x);
-                    }
-                } else if idx + 2 == n && p1.y == 0.0 {
-                    out.roots.push(p1.x);
-                }
-            }
-            if want_y_ints && p0.x != p1.x {
-                if p0.x == 0.0 {
-                    out.y_ints.push(p0.y);
-                } else if (p0.x > 0.0) != (p1.x > 0.0) && p1.x != 0.0 {
-                    if let Some(y) = eval_segment_at_x(pts, idx, 0.0) {
-                        out.y_ints.push(y);
-                    }
-                } else if idx + 2 == n && p1.x == 0.0 {
-                    out.y_ints.push(p1.y);
-                }
-            }
-            if mode != 0 && p1.y == start.y {
-                if mode == 2 {
-                    last = p1;
-                } else if (prev.x < start.x && start.x < p1.x)
-                    || (prev.x > start.x && start.x > p1.x)
-                {
-                    second = p1;
-                    last = p1;
-                    mode = 2;
-                } else {
-                    mode = 0;
-                }
-            } else {
-                if mode != 0 {
-                    finish_plateau_extremum(mode, prev, start, second, last, p1, &mut out.extrema);
-                }
-                if p1.y != p0.y {
-                    mode = 1;
-                    prev = p0;
-                    start = p1;
-                    last = p1;
-                } else {
-                    mode = 0;
-                }
-            }
-        } else {
-            mode = 0;
+    let p0 = pts[0];
+    let mut st = ScanState {
+        p0,
+        p0_fin: (p0.x * 0.0 + p0.y * 0.0) == 0.0,
+        mode: 0,
+        prev: dummy,
+        start: dummy,
+        second: dummy,
+        last: dummy,
+    };
+    let (chunks, rem) = pts[1..].as_chunks::<8>();
+    for (chunk_idx, chunk) in chunks.iter().enumerate() {
+        if st.mode == 2
+            && (chunk[0].y == st.start.y) & (chunk[7].y == st.start.y)
+            && can_skip_plateau_chunk(chunk, st.p0.x, st.start.y, want_y_ints)
+        {
+            st.last = chunk[7];
+            st.p0 = chunk[7];
+            continue;
         }
-        p0 = p1;
-        p0_fin = p1_fin;
+        let base_idx = chunk_idx * 8;
+        for (k, &p1) in chunk.iter().enumerate() {
+            step_single_point(&ctx, base_idx + k, p1, &mut st, &mut out);
+        }
+    }
+    let rem_base = chunks.len() * 8;
+    for (k, &p1) in rem.iter().enumerate() {
+        step_single_point(&ctx, rem_base + k, p1, &mut st, &mut out);
     }
     out
 }
