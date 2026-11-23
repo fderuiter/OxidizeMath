@@ -9,6 +9,7 @@ rand = { workspace = true }
 statrs = { workspace = true }
 thiserror = { workspace = true }
 oxidize_core = { path = "../oxidize_core" }
+scientific_metadata = { path = "../scientific_metadata" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
 math_commons = { path = "../math_commons" }

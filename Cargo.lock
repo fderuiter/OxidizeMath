@@ -1078,6 +1078,7 @@ dependencies = [
  "oxidize_core",
  "pure_math",
  "rand",
+ "scientific_metadata",
  "statrs",
  "thiserror 2.0.21",
  "verified_engine",
@@ -2427,6 +2428,7 @@ version = "0.4.0"
 dependencies = [
  "diagnostics",
  "num-complex",
+ "scientific_metadata",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -3154,6 +3156,7 @@ dependencies = [
  "quote",
  "rand",
  "rand_chacha",
+ "scientific_metadata",
  "serde",
  "syn 2.0.119",
  "toml",
@@ -3391,6 +3394,7 @@ dependencies = [
  "rand",
  "rand_distr",
  "rustfft",
+ "scientific_metadata",
  "serde",
  "serde_json",
  "statrs",

@@ -45,6 +45,9 @@ mod export_ui_tests;
 pub mod fit_bridge;
 mod history_ui;
 pub mod math_input;
+pub mod maturity_badge;
+#[cfg(test)]
+mod maturity_badge_tests;
 #[cfg(test)]
 mod metadata_label_tests;
 mod overlay_sync;

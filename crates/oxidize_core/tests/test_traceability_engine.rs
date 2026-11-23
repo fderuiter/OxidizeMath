@@ -304,4 +304,88 @@ mod ast_analysis_tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    fn workspace_root_from_prefix(prefix: &str) -> &std::path::Path {
+        let root_str = prefix.trim_end_matches('/');
+        if root_str.is_empty() {
+            std::path::Path::new(".")
+        } else {
+            std::path::Path::new(root_str)
+        }
+    }
+
+    #[test]
+    fn test_workspace_maturity_gates_pass_and_cache_reused() {
+        use oxidize_core::traceability::{
+            MaturityRegistry, MaturityTier, evaluate_maturity_with_registry_and_cache,
+        };
+
+        let prefix = workspace_prefix();
+        let root = workspace_root_from_prefix(&prefix);
+        let mut cache = AstCache::new();
+        let baseline_reg = MaturityRegistry::load_or_embedded(Some(root));
+        assert_eq!(
+            baseline_reg.module_tier("cera_framework"),
+            Some(MaturityTier::Experimental)
+        );
+        assert_eq!(
+            baseline_reg.module_tier("favoritism"),
+            Some(MaturityTier::Experimental)
+        );
+        assert_eq!(
+            baseline_reg.crate_tier("math_commons"),
+            Some(MaturityTier::Certified)
+        );
+
+        let gate_report =
+            evaluate_maturity_with_registry_and_cache(root, baseline_reg.clone(), &mut cache);
+        assert!(
+            gate_report.passed(),
+            "Workspace maturity qualification must pass cleanly, got violations:\n{}",
+            gate_report.violations.join("\n")
+        );
+        let warm_parse_calls = cache.parse_calls();
+        let second = evaluate_maturity_with_registry_and_cache(root, baseline_reg, &mut cache);
+        assert!(second.passed());
+        assert_eq!(cache.parse_calls(), warm_parse_calls);
+    }
+
+    #[test]
+    fn test_workspace_maturity_rejects_cera_and_favoritism_overclaims() {
+        use oxidize_core::traceability::{
+            MaturityRegistry, MaturityTier, evaluate_maturity_with_registry_and_cache,
+        };
+
+        let prefix = workspace_prefix();
+        let root = workspace_root_from_prefix(&prefix);
+        let mut cache = AstCache::new();
+        let baseline_reg = MaturityRegistry::load_or_embedded(Some(root));
+
+        let mut overclaim_cera = baseline_reg.clone();
+        overclaim_cera
+            .modules
+            .insert("cera_framework".to_string(), MaturityTier::Certified);
+        let cera_report =
+            evaluate_maturity_with_registry_and_cache(root, overclaim_cera, &mut cache);
+        assert!(!cera_report.passed());
+        assert!(
+            cera_report
+                .violations
+                .iter()
+                .any(|v| v.contains("cera_framework") && v.contains("Certified"))
+        );
+
+        let mut overclaim_fav = baseline_reg;
+        overclaim_fav
+            .modules
+            .insert("favoritism".to_string(), MaturityTier::Certified);
+        let fav_report = evaluate_maturity_with_registry_and_cache(root, overclaim_fav, &mut cache);
+        assert!(!fav_report.passed());
+        assert!(
+            fav_report
+                .violations
+                .iter()
+                .any(|v| v.contains("favoritism") && v.contains("Certified"))
+        );
+    }
 }

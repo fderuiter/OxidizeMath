@@ -62,4 +62,20 @@ pub use crate::error;
 
 // [cite:graph_parameters_rust]
 
-crate::theory_verification!(module = "pure_math", constants = {}, test = {});
+crate::theory_verification!(
+    module = "pure_math",
+    constants = {
+        MERSENNE_SEVEN = 127.0;
+        HARMONIC_OMEGA_SQ = 1.0;
+    },
+    test = {
+        use analysis::ode::OdeModel;
+        use scientific_metadata::theory::{MaturityTier, TheoryDescribable};
+
+        assert!(number_theory::is_prime(MERSENNE_SEVEN as u64));
+        assert!(!number_theory::is_prime(128));
+        let model = OdeModel::new(HARMONIC_OMEGA_SQ, (), ());
+        assert_eq!(model.maturity_tier(), MaturityTier::Certified);
+        assert!(!model.theory_description().is_empty());
+    }
+);

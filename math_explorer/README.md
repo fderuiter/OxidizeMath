@@ -3,6 +3,7 @@
 ![License](https://img.shields.io/badge/license-AGPL-blue.svg)
 ![Language](https://img.shields.io/badge/language-Rust-orange.svg)
 ![Crate](https://img.shields.io/crates/v/math_explorer.svg)
+![Maturity](https://img.shields.io/badge/maturity-Validated%20%2F%20Certified%20Kernels-2ea44f.svg)
 
 Unified public facade crate re-exporting verified mathematical kernels, runtime verification primitives, and domain simulation modules.
 
@@ -27,6 +28,20 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
   - **`physics`**: Physical simulations spanning **Quantum Mechanics**, **Fluid Dynamics**, **Solid State** (BCS Superconductivity, Ising), **Chaos Theory** (Lorenz System), and **MRI Physics**.
   - **`pure_math`**: Foundational mathematics covering **Abstract Algebra**, **Number Theory** (Partitions, Q-Series), **Graph Theory**, **Statistics** (Glicko-2, Markov, TDA), and **Differential Geometry**.
 
+### Maturity Tiers & Module Matrix
+
+| Facade Namespace | Default Tier | Promoted / Submodule Highlights | Verification & SemVer Contract |
+| :--- | :--- | :--- | :--- |
+| `fit`, `poi`, `ast`, `math_kernel`, `wigner` | `[CERT] Certified` | `FitModel`, Hermite/Lagrange `poi`, stack bytecode `CompiledExpr` | Non-vacuous `theory_verification!`, `VerifiedAllocator` zero-alloc proofs, SemVer-locked |
+| `scientific_metadata`, `verified_engine` | `[CERT] Certified` | `MaturityTier`, `TheoryDescribable`, `VerifiedEngine::run_verified` | Deterministic metadata & zero-allocation runtime harness, SemVer-locked |
+| `pure_math` | `[VAL] Validated` | `[CERT]` `analysis::ode` (`OdeModel`), `roots`, `wave_2d`, `algebra`, `number_theory`, `elliptic_curves`; `[EXP]` `algorithmic_info` | `Certified` solvers SemVer-locked; `Validated` modules seeded & golden-tested |
+| `physics` | `[VAL] Validated` | `[CERT]` `quantum`, `chaos`, `stat_mech::sandpile`; `[EXP]` `nuclear`, `solid_state` | Symplectic & conservation invariants verified |
+| `biology` | `[VAL] Validated` | `[CERT]` `neuroscience` (Hodgkin-Huxley), `kinetics`, `morphogenesis` | Deterministic ODE/PDE spike & pattern benchmarks |
+| `epidemiology` | `[VAL] Validated` | `[VAL]` `compartmental` (`SIRModel`, `SEIRModel`), `networks`, `stochastic` | Seeded `OxidizeRng` & conservation assertions |
+| `applied` | `[VAL] Validated` | `[CERT]` `clinical_trials`, `pharmacokinetics`; `[VAL]` `win_ratio`, `battery_degradation`; `[EXP]` `favoritism`, `lorahub`, `grpo` | Clinical & ADME solvers SemVer-locked; `favoritism` fluid `Experimental` |
+| `ai` | `[VAL] Validated` | `[VAL]` `transformer`, `activations`, `reinforcement_learning`; `[EXP]` `gaussian_splatting`, `sds` | Seeded matrix & Bellman convergence tests |
+| `climate` | `[EXP] Experimental` | `[EXP]` `cera` (`Cera` representation-alignment autoencoder) | Exploratory research prototype; fluid API evolution |
+
 ---
 
 ## 2. Developer Instructions
@@ -42,11 +57,14 @@ math_explorer = { path = "path/to/math_explorer", features = ["biology", "physic
 
 ### Example: Zero-Allocation Curve Fitting & Critical Points (Default Features)
 
-Fit polynomial or nonlinear models and locate sub-segment crossings without enabling any domain or GUI features:
+Fit polynomial or nonlinear models, query their `MaturityTier`, and locate sub-segment crossings without enabling any domain or GUI features:
 
 ```rust
 use math_explorer::fit::{FitModel, fit_model};
 use math_explorer::poi::{closest_threshold_crossing, intersect_polylines};
+use math_explorer::prelude::{MaturityTier, TheoryDescribable};
+
+assert_eq!(FitModel::Exponential.maturity_tier(), MaturityTier::Certified);
 
 let xs = [0.0, 1.0, 2.0, 3.0, 4.0];
 let ys = [1.0, 2.7182818, 7.3890561, 20.085537, 54.59815];

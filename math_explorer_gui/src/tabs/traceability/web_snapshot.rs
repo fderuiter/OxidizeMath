@@ -173,14 +173,97 @@ pub fn render_paper_links(
     });
 }
 
+/// Borrowed view of ready scan state rendered by [`render_ready_report`].
+pub(super) struct ReadyReportData<'a> {
+    pub papers_map: &'a HashMap<String, PaperStatus>,
+    pub orphaned_papers: &'a [String],
+    pub unlinked_code: &'a [String],
+    pub invalid_links: &'a [(String, String)],
+    pub crate_maturity_tiers:
+        &'a std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
+    pub module_maturity_tiers:
+        &'a std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
+    pub certificate: Option<&'a VerificationCertificate>,
+}
+
+fn count_tiers(
+    tiers: &std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
+) -> (usize, usize, usize) {
+    use scientific_metadata::theory::MaturityTier;
+    let mut cert = 0;
+    let mut val = 0;
+    let mut exp = 0;
+    for tier in tiers.values() {
+        match tier {
+            MaturityTier::Certified => cert += 1,
+            MaturityTier::Validated => val += 1,
+            MaturityTier::Experimental => exp += 1,
+        }
+    }
+    (cert, val, exp)
+}
+
+fn render_maturity_summary(ui: &mut egui::Ui, data: &ReadyReportData<'_>) {
+    use crate::framework::maturity_badge::render_maturity_badge;
+    use scientific_metadata::theory::MaturityTier;
+
+    if data.crate_maturity_tiers.is_empty() && data.module_maturity_tiers.is_empty() {
+        return;
+    }
+    ui.separator();
+    ui.strong("Maturity Qualification Tiers");
+    if !data.crate_maturity_tiers.is_empty() {
+        let (c_cert, c_val, c_exp) = count_tiers(data.crate_maturity_tiers);
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Crates:");
+            render_maturity_badge(ui, MaturityTier::Certified, true, "Certified crates");
+            ui.label(format!("{c_cert}"));
+            render_maturity_badge(ui, MaturityTier::Validated, true, "Validated crates");
+            ui.label(format!("{c_val}"));
+            render_maturity_badge(ui, MaturityTier::Experimental, true, "Experimental crates");
+            ui.label(format!("{c_exp}"));
+        });
+    }
+    if !data.module_maturity_tiers.is_empty() {
+        let (m_cert, m_val, m_exp) = count_tiers(data.module_maturity_tiers);
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Modules:");
+            render_maturity_badge(ui, MaturityTier::Certified, true, "Certified modules");
+            ui.label(format!("{m_cert}"));
+            render_maturity_badge(ui, MaturityTier::Validated, true, "Validated modules");
+            ui.label(format!("{m_val}"));
+            render_maturity_badge(ui, MaturityTier::Experimental, true, "Experimental modules");
+            ui.label(format!("{m_exp}"));
+        });
+    }
+}
+
+fn render_crate_maturity_section(
+    ui: &mut egui::Ui,
+    crate_tiers: &std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
+) {
+    if crate_tiers.is_empty() {
+        return;
+    }
+    ui.add_space(6.0);
+    egui::CollapsingHeader::new("Crate Maturity Registry")
+        .default_open(false)
+        .show(ui, |ui| {
+            for (crate_name, &tier) in crate_tiers {
+                ui.horizontal(|ui| {
+                    crate::framework::maturity_badge::render_maturity_badge(
+                        ui, tier, true, crate_name,
+                    );
+                    ui.monospace(crate_name);
+                });
+            }
+        });
+}
+
 /// Renders the scrollable `Ready` traceability summary, diagnostics, and paper matrix.
 pub(super) fn render_ready_report(
     ui: &mut egui::Ui,
-    papers_map: &HashMap<String, PaperStatus>,
-    orphaned_papers: &[String],
-    unlinked_code: &[String],
-    invalid_links: &[(String, String)],
-    certificate: Option<&VerificationCertificate>,
+    data: &ReadyReportData<'_>,
     paper_pdf_fn: fn(&str) -> Option<String>,
 ) {
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
@@ -188,28 +271,36 @@ pub(super) fn render_ready_report(
         egui::CollapsingHeader::new("System Health & Alignment")
             .default_open(true)
             .show(ui, |ui| {
-                let full_parity = !papers_map.is_empty()
-                    && orphaned_papers.is_empty()
-                    && unlinked_code.is_empty()
-                    && invalid_links.is_empty();
+                let full_parity = !data.papers_map.is_empty()
+                    && data.orphaned_papers.is_empty()
+                    && data.unlinked_code.is_empty()
+                    && data.invalid_links.is_empty();
                 if full_parity {
                     ui.label(egui::RichText::new("100% Parity Achieved").color(palette.success));
                 } else {
                     ui.label(egui::RichText::new("Partial Alignment").color(palette.warning));
                 }
-                ui.label(format!("Total Papers: {}", papers_map.len()));
-                render_certificate_metrics(ui, certificate, &palette);
+                ui.label(format!("Total Papers: {}", data.papers_map.len()));
+                render_maturity_summary(ui, data);
+                render_certificate_metrics(ui, data.certificate, &palette);
             });
 
+        render_crate_maturity_section(ui, data.crate_maturity_tiers);
         render_diagnostics(
             ui,
-            orphaned_papers,
-            unlinked_code,
-            invalid_links,
+            data.orphaned_papers,
+            data.unlinked_code,
+            data.invalid_links,
             &palette,
             paper_pdf_fn,
         );
-        render_matrix_section(ui, papers_map, &palette, paper_pdf_fn);
+        render_matrix_section(
+            ui,
+            data.papers_map,
+            data.module_maturity_tiers,
+            &palette,
+            paper_pdf_fn,
+        );
     });
 }
 
@@ -252,9 +343,12 @@ fn render_diagnostics(
 fn render_matrix_section(
     ui: &mut egui::Ui,
     papers_map: &HashMap<String, PaperStatus>,
+    module_tiers: &std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
     palette: &crate::app::SemanticPalette,
     paper_pdf_fn: fn(&str) -> Option<String>,
 ) {
+    use scientific_metadata::theory::MaturityTier;
+
     ui.add_space(10.0);
     ui.heading("Traceability Matrix");
 
@@ -262,17 +356,36 @@ fn render_matrix_section(
     papers.sort_by(|a, b| a.name.cmp(&b.name));
 
     for p in papers {
-        ui.collapsing(&p.name, |ui| {
-            let pdf = paper_pdf_fn(&p.name);
-            let tex = paper_tex_url(&p.name);
-            render_paper_links(ui, pdf.as_deref(), tex.as_deref(), "📄 View PDF Online");
-            if p.linked_code.is_empty() {
-                ui.label(egui::RichText::new("No implementation found").color(palette.error));
-            } else {
-                for code in &p.linked_code {
-                    ui.label(code);
-                }
+        let paper_tier = p
+            .linked_code
+            .iter()
+            .filter_map(|code| module_tiers.get(code).copied())
+            .min();
+        ui.horizontal(|ui| {
+            if let Some(tier) = paper_tier {
+                crate::framework::maturity_badge::render_maturity_badge(ui, tier, true, &p.name);
             }
+            ui.collapsing(&p.name, |ui| {
+                let pdf = paper_pdf_fn(&p.name);
+                let tex = paper_tex_url(&p.name);
+                render_paper_links(ui, pdf.as_deref(), tex.as_deref(), "📄 View PDF Online");
+                if p.linked_code.is_empty() {
+                    ui.label(egui::RichText::new("No implementation found").color(palette.error));
+                } else {
+                    for code in &p.linked_code {
+                        let tier = module_tiers
+                            .get(code)
+                            .copied()
+                            .unwrap_or(MaturityTier::Experimental);
+                        ui.horizontal(|ui| {
+                            crate::framework::maturity_badge::render_maturity_badge(
+                                ui, tier, true, code,
+                            );
+                            ui.label(code);
+                        });
+                    }
+                }
+            });
         });
     }
 }

@@ -116,6 +116,7 @@ fn test_verification_gates() {
         "check-api-drift",
         "check-benches",
         "check-duplicates",
+        "check-maturity",
         "check-profiles",
         "check-release-tag",
         "lint-workflows",
@@ -247,6 +248,71 @@ fn test_wasm_test_and_smoke_ci_parity() {
         .find("name: Upload Web Dist Artifact")
         .expect("ci.yml must upload wasm_web_dist artifact");
     assert!(smoke_pos > build_pos && smoke_pos < upload_pos);
+}
+
+#[test]
+fn test_xtask_check_maturity_rejects_unproven_certified_claims() {
+    let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let base_toml = fs::read_to_string(ws_root.join("traceability.toml"))
+        .expect("read workspace traceability.toml");
+
+    let temp_dir = env::temp_dir().join(format!("xtask_maturity_test_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let cera_bad = base_toml.replace(
+        "cera_framework = \"Experimental\"",
+        "cera_framework = \"Certified\"",
+    );
+    let cera_path = temp_dir.join("cera_certified.toml");
+    fs::write(&cera_path, cera_bad).unwrap();
+
+    let out_cera = Command::new("cargo")
+        .current_dir(&ws_root)
+        .args([
+            "run",
+            "-p",
+            "xtask",
+            "--",
+            "check-maturity",
+            "--ast-only",
+            "--registry",
+            cera_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run xtask check-maturity for cera");
+    assert!(
+        !out_cera.status.success(),
+        "xtask check-maturity must fail when cera claims Certified"
+    );
+
+    let fav_bad = base_toml.replace(
+        "favoritism = \"Experimental\"",
+        "favoritism = \"Certified\"",
+    );
+    let fav_path = temp_dir.join("favoritism_certified.toml");
+    fs::write(&fav_path, fav_bad).unwrap();
+
+    let out_fav = Command::new("cargo")
+        .current_dir(&ws_root)
+        .args([
+            "run",
+            "-p",
+            "xtask",
+            "--",
+            "check-maturity",
+            "--ast-only",
+            "--registry",
+            fav_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run xtask check-maturity for favoritism");
+    assert!(
+        !out_fav.status.success(),
+        "xtask check-maturity must fail when favoritism claims Certified"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]

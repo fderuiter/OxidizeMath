@@ -138,6 +138,40 @@ pub(super) fn apply_registry_table(
             report.invalid_links.push((module_name.clone(), paper_str));
         }
     }
+    apply_maturity_subtables(value, report);
+}
+
+#[cfg(feature = "ast-analysis")]
+fn apply_maturity_subtables(value: &toml::Table, report: &mut TraceabilityReport) {
+    use scientific_metadata::theory::MaturityTier;
+    if let Some(crates_tbl) = value.get("crates").and_then(|v| v.as_table()) {
+        for (crate_name, tier_val) in crates_tbl {
+            match tier_val.as_str().and_then(MaturityTier::parse_label) {
+                Some(tier) => {
+                    report
+                        .crate_maturity_tiers
+                        .insert(crate_name.clone(), tier.as_str().to_string());
+                }
+                None => report.maturity_violations.push(format!(
+                    "Invalid crate maturity tier for `{crate_name}` in `traceability.toml`"
+                )),
+            }
+        }
+    }
+    if let Some(mods_tbl) = value.get("modules").and_then(|v| v.as_table()) {
+        for (mod_name, tier_val) in mods_tbl {
+            match tier_val.as_str().and_then(MaturityTier::parse_label) {
+                Some(tier) => {
+                    report
+                        .module_maturity_tiers
+                        .insert(mod_name.clone(), tier.as_str().to_string());
+                }
+                None => report.maturity_violations.push(format!(
+                    "Invalid module maturity tier for `{mod_name}` in `traceability.toml`"
+                )),
+            }
+        }
+    }
 }
 
 #[cfg(feature = "ast-analysis")]
@@ -193,6 +227,12 @@ pub(super) fn finalize_report_orphans(report: &mut TraceabilityReport) {
     report.invalid_tiers.dedup();
     report.vacuous_bypasses.sort();
     report.vacuous_bypasses.dedup();
+    report.deterministic_contract_modules.sort();
+    report.deterministic_contract_modules.dedup();
+    report.zero_alloc_modules.sort();
+    report.zero_alloc_modules.dedup();
+    report.maturity_violations.sort();
+    report.maturity_violations.dedup();
 }
 
 #[cfg(feature = "ast-analysis")]
@@ -308,6 +348,16 @@ pub(super) fn analyze_parsed_ast(
             [visitor.verified_asserts, visitor.verified_funcs],
         );
     }
+    report
+        .deterministic_contract_modules
+        .extend(visitor.non_vacuous_deterministic_modules.iter().cloned());
+    if visitor.has_zero_alloc_proof {
+        for m in final_citations.iter().chain(&visitor.verified_modules) {
+            if registered_modules.contains(m) {
+                report.zero_alloc_modules.push(m.clone());
+            }
+        }
+    }
 
     record_visitor_semantic_status(&visitor, final_citations, report);
     record_visitor_violations(file, is_module, &visitor, registered_modules, report);
@@ -354,12 +404,33 @@ fn record_visitor_violations(
         }
     }
     for (module, tier) in &visitor.module_tiers {
-        if file.contains("pure_math") && tier != "Deterministic" {
+        let is_certified = report
+            .module_maturity_tiers
+            .get(module)
+            .is_some_and(|m| m == "Certified");
+        if (file.contains("pure_math") || is_certified) && tier != "Deterministic" {
             let line = visitor.module_spans.get(module).copied().unwrap_or(0);
             let loc = format_path_line(file, line);
             report
                 .invalid_tiers
                 .push(format!("{module} at {loc} used tier {tier}"));
+            if is_certified {
+                report.maturity_violations.push(format!(
+                    "Certified module `{module}` at {loc} must use deterministic `theory_verification!`"
+                ));
+            }
+        }
+    }
+    for (module, line) in &visitor.vacuous_deterministic_modules {
+        if report
+            .module_maturity_tiers
+            .get(module)
+            .is_some_and(|m| m == "Certified")
+        {
+            let loc = format_path_line(file, *line);
+            report.maturity_violations.push(format!(
+                "Certified module `{module}` at {loc} has vacuous `theory_verification!` (`test = {{}}`)"
+            ));
         }
     }
     if is_module {

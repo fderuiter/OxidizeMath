@@ -40,6 +40,9 @@ pub mod __doctest_facade {
         pub use nalgebra::{self, DMatrix, DVector};
         pub use oxidize_core::mesh::{Mesh, Point3D};
         pub use oxidize_core::rng::OxidizeRng;
+        pub use scientific_metadata::theory::{
+            MaturityTier, ParameterConstraint, TheoryDescribable,
+        };
     }
     pub use crate::{math_types, pure_math};
     pub use diagnostics;

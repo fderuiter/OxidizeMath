@@ -87,16 +87,26 @@ graph TD
     style Root fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-| Domain | Module | Description |
-| :--- | :--- | :--- |
-| ** AI** | `math_explorer::ai` | Transformers (Attention, Encoders), **Reinforcement Learning** (Q-Learning), NeRF-Diffusion (SDS), and Self-Calibration loops. |
-| ** Applied** | `math_explorer::applied` | **Favoritism** (Satirical modeling), **Clinical Trials** (Win Ratio), **Battery Degradation** (Li-ion), **Isosurface** (Marching Cubes), **LoraHub**, **Neuroimaging**, and **GRPO** (Policy Optimization). |
-| ** Biology** | `math_explorer::biology` | **Neuroscience** (Hodgkin-Huxley), **Morphogenesis** (Turing Patterns), **Generic Reaction-Diffusion**, and **Evolutionary Dynamics**. |
-| ** Climate** | `math_explorer::climate` | **CERA Framework** (Climate-invariant Encoding through Representation Alignment). |
-| ** Epidemiology** | `math_explorer::epidemiology` | **Compartmental Models** (SIR/SEIR), **Network Spread**, and **Stochastic Dynamics**. |
-| ** Physics** | `math_explorer::physics` | Quantum Mechanics (Clebsch-Gordan), Astrophysics, Chaos Theory (Lorenz System), and Fluid Dynamics. |
-| ** Pure Math** | `math_explorer::pure_math` | **FRACTRAN** (Algorithmic Info), **Statistics** (Glicko-2, Markov, TDA), **Tensors** (Christoffel Symbols), Number Theory, Graph Theory, and **Abstract Algebra**. |
-| ** GUI** | `math_explorer_gui` | Interactive **eframe/egui** desktop and WebAssembly workbench hosting multi-domain `ExplorerTab` modules and `SimulationFramework` tools across AI, Applied Math, Biology, Climate, Epidemiology, Physics, and Pure Math. |
+| Domain | Module | Maturity | Description |
+| :--- | :--- | :--- | :--- |
+| ** AI** | `math_explorer::ai` | `Validated` | Transformers (Attention, Encoders), **Reinforcement Learning** (Q-Learning), NeRF-Diffusion (SDS — `Experimental`), and Self-Calibration loops. |
+| ** Applied** | `math_explorer::applied` | `Validated` | **Clinical Trials** & **Pharmacokinetics** (`Certified`); **Win Ratio**, **Battery Degradation**, **Isosurface**, & **Neuroimaging** (`Validated`); **Favoritism**, **LoraHub**, & **GRPO** (`Experimental`). |
+| ** Biology** | `math_explorer::biology` | `Validated` | **Neuroscience** (Hodgkin-Huxley) & **Morphogenesis** (`Certified`); **Reaction-Diffusion** & **Evolutionary Dynamics** (`Validated`). |
+| ** Climate** | `math_explorer::climate` | `Experimental` | **CERA Framework** (Climate-invariant Encoding through Representation Alignment research prototype). |
+| ** Epidemiology** | `math_explorer::epidemiology` | `Validated` | **Compartmental Models** (SIR/SEIR), **Network Spread**, and **Stochastic Dynamics**. |
+| ** Physics** | `math_explorer::physics` | `Validated` | **Quantum Mechanics**, **Chaos Theory**, & **Abelian Sandpile** (`Certified`); **Astrophysics**, **Fluid Dynamics**, **MRI**, & **Optics** (`Validated`); **Nuclear** & **Solid State** (`Experimental`). |
+| ** Pure Math** | `math_explorer::pure_math` | `Certified` | **ODE / Root / Wave2D Solvers**, **Abstract Algebra**, **Number Theory**, & **Elliptic Curves** (`Certified`); **Statistics** & **Differential Geometry** (`Validated`). |
+| ** GUI** | `math_explorer_gui` | `Validated` | Interactive **eframe/egui** desktop and WebAssembly workbench surfacing per-tool `MaturityTier` badges across `SimulationFramework`, `Theory Context Portal`, and `TraceabilityTab`. |
+
+#### Maturity Tiers & Qualification Gates
+
+Every registered mathematical crate and `[links]` module in `traceability.toml` carries an explicit [`MaturityTier`](crates/scientific_metadata/src/theory.rs) (`Experimental`, `Validated`, or `Certified`) enforced by `cargo run -p xtask -- check-maturity` and `api_drift`:
+
+| Tier | Badge | Required Evidence | API & SemVer Policy |
+| :--- | :--- | :--- | :--- |
+| **Experimental** | `[EXP]` | Compiles cleanly with explicit `[crates]` / `[modules]` registration (safe default for `Cera` and `favoritism`). | Fluid research iteration permitted without baseline bumps. |
+| **Validated** | `[VAL]` | Non-stub functions, assertion density `>= 0.40` asserts/fn, seeded `OxidizeRng` / `ChaCha8Rng` determinism, and golden reference fixtures. | Tracked in `api_baseline.json`. |
+| **Certified** | `[CERT]` | All `Validated` gates plus non-vacuous deterministic `theory_verification!` contracts and `VerifiedAllocator` / `VerifiedEngine::run_verified` zero-allocation proofs. | SemVer-locked: removing public signatures requires bumping `[workspace.package].version`. |
 
 To maintain flexibility and testability across domains, Math Explorer relies heavily on the Strategy Pattern. This allows users to swap numerical solvers, diffusion models, or reaction kinetics without changing the core system logic.
 

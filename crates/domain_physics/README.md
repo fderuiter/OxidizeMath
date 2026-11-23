@@ -1,6 +1,10 @@
 # Domain Physics
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated%20(Certified%20Quantum%20%2F%20Chaos)-0969da.svg)
+
 Multi-scale physical simulation models from quantum states to astrophysical dynamics.
+
+> **Maturity Tier:** Crate `Validated` — `Certified` modules (`quantum`, `chaos`, `stat_mech::sandpile`), `Validated` solvers (`astrophysics`, `fluid_dynamics`, `mri`, `optics`), and `Experimental` prototypes (`nuclear`, `solid_state`).
 
 ## 1. Overview & Architecture
 

@@ -211,3 +211,37 @@ pub struct FavoritismInputs {
     /// Family context (siblings).
     pub family: FamilyParams,
 }
+
+impl scientific_metadata::theory::TheoryDescribable for FavoritismInputs {
+    #[verified_engine::verified(opt_out = "metadata")]
+    fn theory_description(&self) -> String {
+        "Satirical Unified Favoritism Theory (UFT) quadrature scoring model for educational exploration."
+            .to_string()
+    }
+
+    #[verified_engine::verified(opt_out = "metadata")]
+    fn phonetic_description(&self) -> String {
+        "Unified Favoritism Theory experimental scoring model".to_string()
+    }
+
+    #[verified_engine::verified(opt_out = "metadata")]
+    fn theory_citation(&self) -> String {
+        "Unified Favoritism Theory (UFT), OxidizeMath Applied Compendium (Educational Prototype)."
+            .to_string()
+    }
+
+    #[verified_engine::verified(opt_out = "metadata")]
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert(
+            "default".to_string(),
+            "Educational & satirical quadrature favoritism score".to_string(),
+        );
+        map
+    }
+
+    #[verified_engine::verified(opt_out = "metadata")]
+    fn maturity_tier(&self) -> scientific_metadata::theory::MaturityTier {
+        scientific_metadata::theory::MaturityTier::Experimental
+    }
+}

@@ -7,6 +7,7 @@ mod batch;
 mod doc_audit;
 mod entropy_guard;
 mod manifest_cache;
+mod maturity;
 mod policy_audit;
 mod profile;
 mod records;
@@ -89,8 +90,9 @@ fn main() {
         "batch-static" => exit_if_failed(batch::run_batch_static(&args[2..])),
         "batch-staged" | "lint-staged" => exit_if_failed(batch::run_batch_staged()),
         "verify-suite" => verify_suite(&args[2..]),
-        "regenerate-baseline" => api_drift::regenerate_baseline(),
+        "regenerate-baseline" => api_drift::regenerate_baseline_with_args(&args[2..]),
         "check-api-drift" => exit_if_failed(api_drift::check_api_drift()),
+        "check-maturity" => exit_if_failed(maturity::check_maturity(&args[2..])),
         "check-duplicates" => exit_if_failed(ast_visitor::run_clone_detector()),
         "check-profiles" => run_check_profiles_cli(),
         "check-release-tag" => exit_if_failed(release_tag::run_check_release_tag_cli(&args[2..])),

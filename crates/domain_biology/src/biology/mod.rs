@@ -90,4 +90,32 @@ pub use reaction_diffusion::ReactionDiffusionError;
 // [cite:favorite_child]
 
 use pure_math::theory_verification;
-theory_verification!(module = "biology", constants = {}, test = {});
+theory_verification!(
+    module = "biology",
+    constants = {
+        V_MAX = 10.0;
+        K_M = 5.0;
+        EXPECTED_HALF_MAX_RATE = 5.0;
+        RESTING_MV = -65.0;
+    },
+    test = {
+        use kinetics::{KineticsModel, MichaelisMenten};
+
+        let enzyme = MichaelisMenten::new(V_MAX, K_M).expect("valid kinetics parameters");
+        let rate = enzyme
+            .reaction_velocity(K_M)
+            .expect("valid substrate concentration");
+        assert!((rate - EXPECTED_HALF_MAX_RATE).abs() < 1e-12);
+        let zero_rate = enzyme.reaction_velocity(0.0).expect("zero substrate");
+        assert!(zero_rate.abs() < 1e-12);
+        let mut neuron = neuroscience::HodgkinHuxleyNeuron::new(RESTING_MV);
+        assert!((neuron.v() - RESTING_MV).abs() < 1e-12);
+        let mut peak_v = RESTING_MV;
+        for _ in 0..400 {
+            neuron.update(0.01, 20.0);
+            peak_v = peak_v.max(neuron.v());
+        }
+        assert!(neuron.v().is_finite());
+        assert!(peak_v > 0.0);
+    }
+);

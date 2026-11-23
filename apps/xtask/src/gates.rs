@@ -336,6 +336,25 @@ pub fn check_api_drift() {
     run_verification("check-api-drift");
 }
 
+pub fn check_maturity(args: &[String]) {
+    println!("=== Check Maturity Qualification Gates ===");
+    let ast_only = args.iter().any(|a| a == "--ast-only");
+    let forwarded: Vec<&str> = args
+        .iter()
+        .filter(|a| a.as_str() != "--ast-only")
+        .map(String::as_str)
+        .collect();
+    run_verification_with_args("check-maturity", &forwarded);
+    if !ast_only {
+        println!("\n--- Verifying Workspace Compile Health ---");
+        run_cmd_in_path(
+            "cargo",
+            &["check", "--workspace", "--lib", "--tests"],
+            &workspace_root(),
+        );
+    }
+}
+
 pub fn check_profiles() {
     println!("=== Check Cargo Profiles ===");
     run_verification("check-profiles");
@@ -366,9 +385,10 @@ pub fn check_staged_duplicates() {
     run_verification("check-staged-duplicates");
 }
 
-pub fn regenerate_baseline() {
+pub fn regenerate_baseline(args: &[String]) {
     println!("=== Regenerate Public API Baseline ===");
-    run_verification("regenerate-baseline");
+    let extra: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_verification_with_args("regenerate-baseline", &extra);
 }
 
 pub(crate) fn run_cmd_in_path(cmd: &str, args: &[&str], dir: &Path) {
