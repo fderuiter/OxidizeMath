@@ -214,3 +214,31 @@ fn test_sir_100k_steps_decimates_display_polylines_and_preserves_peak_and_export
     assert_eq!(exported[1].1.len(), 100_001);
     assert_eq!(exported[2].1.len(), 100_001);
 }
+
+#[test]
+fn test_sir_plot_uses_shared_import_csv_toolbar_without_duplicate_header_button() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 800.0),
+        )),
+        ..Default::default()
+    };
+    let mut tool = SirTool::default();
+    let out = ctx.run(input, |c| tool.show(c));
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .as_ref()
+        .expect("AccessKit update");
+    let labels: Vec<&str> = ak
+        .nodes
+        .iter()
+        .filter(|(_, n)| n.role() == egui::accesskit::Role::Button)
+        .filter_map(|(_, n)| n.label())
+        .collect();
+    assert!(labels.contains(&"Import CSV"));
+    assert!(!labels.contains(&"Import Dataset (CSV)"));
+}

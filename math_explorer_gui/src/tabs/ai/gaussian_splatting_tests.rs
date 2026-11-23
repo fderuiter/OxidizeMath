@@ -244,6 +244,37 @@ fn test_gaussian_splatting_animated_scale_sweep_updates_density_counts() {
 }
 
 #[test]
+fn test_gaussian_splatting_volumetric_presets_beyond_canonical_scene() {
+    let mut tool = GaussianSplattingTool::default();
+    let canonical_img = tool.render_splat_image();
+
+    for preset in [
+        VolumetricSplatPreset::HydrogenDipole1s2pz,
+        VolumetricSplatPreset::HydrogenCone3dz2,
+        VolumetricSplatPreset::TuringGyroid3d,
+    ] {
+        tool.set_scene_preset(preset);
+        assert!(
+            tool.scene.gaussians.len() > 8,
+            "Volumetric preset {preset:?} should generate rich multi-splat cloud"
+        );
+        let img = tool.render_splat_image();
+        assert_ne!(img.pixels, canonical_img.pixels);
+        let ply = tool
+            .export_splat_ply_3d()
+            .expect("3DGS PLY hook present")
+            .expect("volumetric preset PLY serializes");
+        assert!(ply.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
+        let saved = tool.save_state().expect("save volumetric preset state");
+        let mut reloaded = GaussianSplattingTool::default();
+        reloaded
+            .try_load_state(&saved)
+            .expect("reload volumetric preset state");
+        assert_eq!(reloaded.scene_preset, preset);
+    }
+}
+
+#[test]
 fn test_gaussian_splatting_exports_valid_inria_3dgs_ply_binary() {
     let tool = GaussianSplattingTool {
         scale: 1.5,

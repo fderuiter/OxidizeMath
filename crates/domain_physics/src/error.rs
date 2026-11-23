@@ -96,7 +96,7 @@ pub enum RadarError {
 
     /// Wrapped centralized mathematical error.
     #[error("Mathematical error: {0}")]
-    Math(math_commons::error::MathError),
+    Math(#[from] math_commons::error::MathError),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -281,7 +281,15 @@ impl std::fmt::Display for ChaosError {
     }
 }
 
-impl std::error::Error for ChaosError {}
+impl std::error::Error for ChaosError {
+    #[verified_engine::verified]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Math(err) => Some(err),
+            Self::InvalidParameter(_) => None,
+        }
+    }
+}
 
 impl std::fmt::Display for StandardModelError {
     #[verified_engine::verified]
@@ -305,7 +313,15 @@ impl From<math_commons::error::MathError> for HighEnergyError {
     }
 }
 
-impl std::error::Error for HighEnergyError {}
+impl std::error::Error for HighEnergyError {
+    #[verified_engine::verified]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Math(err) => Some(err),
+            _ => None,
+        }
+    }
+}
 
 impl std::fmt::Display for FluidError {
     #[verified_engine::verified]
@@ -329,7 +345,15 @@ impl From<math_commons::error::MathError> for ChaosError {
     }
 }
 
-impl std::error::Error for StatMechError {}
+impl std::error::Error for StatMechError {
+    #[verified_engine::verified]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Math(err) => Some(err),
+            _ => None,
+        }
+    }
+}
 
 impl From<math_commons::error::MathError> for StatMechError {
     fn from(err: math_commons::error::MathError) -> Self {
@@ -337,8 +361,10 @@ impl From<math_commons::error::MathError> for StatMechError {
     }
 }
 
-impl From<math_commons::error::MathError> for RadarError {
-    fn from(err: math_commons::error::MathError) -> Self {
-        RadarError::Math(err)
-    }
-}
+mod umbrella;
+
+pub use crate::physics::{medical::radar_gating::GatingError, nuclear::types::NuclearError};
+pub use umbrella::PhysicsError;
+
+#[cfg(test)]
+mod tests;

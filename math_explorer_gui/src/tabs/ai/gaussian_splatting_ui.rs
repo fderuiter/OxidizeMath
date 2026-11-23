@@ -14,6 +14,17 @@ impl GaussianSplattingTool {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Gaussian Splatting");
             ui.separator();
+            let mut selected_preset = self.scene_preset;
+            egui::ComboBox::from_label("Scene Preset")
+                .selected_text(selected_preset.label())
+                .show_ui(ui, |ui| {
+                    for preset in crate::volumetric_scene::presets::VolumetricSplatPreset::ALL {
+                        ui.selectable_value(&mut selected_preset, preset, preset.label());
+                    }
+                });
+            if selected_preset != self.scene_preset {
+                self.set_scene_preset(selected_preset);
+            }
             let prev_scale = self.scale;
             if ui
                 .add(
@@ -31,7 +42,11 @@ impl GaussianSplattingTool {
                 } else {
                     prev_scale
                 };
-                self.cached_counts = Self::compute_density_counts_for_scale(self.scale);
+                self.cached_counts = super::scene::evaluate_scene_density_counts(
+                    &self.scene,
+                    &self.grad_magnitudes,
+                    self.scale,
+                );
             }
 
             ui.separator();
@@ -39,27 +54,31 @@ impl GaussianSplattingTool {
                 .default_open(true)
                 .show(ui, |ui| self.camera.ui(ui));
 
-            ui.separator();
-            ui.heading("Adaptive Density Control");
-            ui.label(format!(
-                "Split (large grad & scale): {}",
-                self.cached_counts.split
-            ));
-            ui.label(format!(
-                "Clone (large grad, small scale): {}",
-                self.cached_counts.clone
-            ));
-            ui.label(format!("Keep (converged): {}", self.cached_counts.keep));
-            ui.label(format!(
-                "Prune (opacity < {OPACITY_THRESHOLD:.2}): {}",
-                self.cached_counts.prune
-            ));
-            ui.separator();
-            ui.small(format!(
-                "Raster grid: {SPLAT_GRID_SIZE}×{SPLAT_GRID_SIZE} px ({} Gaussians)",
-                self.scene.gaussians.len()
-            ));
+            self.draw_density_readouts(ui);
         });
+    }
+
+    fn draw_density_readouts(&self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.heading("Adaptive Density Control");
+        ui.label(format!(
+            "Split (large grad & scale): {}",
+            self.cached_counts.split
+        ));
+        ui.label(format!(
+            "Clone (large grad, small scale): {}",
+            self.cached_counts.clone
+        ));
+        ui.label(format!("Keep (converged): {}", self.cached_counts.keep));
+        ui.label(format!(
+            "Prune (opacity < {OPACITY_THRESHOLD:.2}): {}",
+            self.cached_counts.prune
+        ));
+        ui.separator();
+        ui.small(format!(
+            "Raster grid: {SPLAT_GRID_SIZE}×{SPLAT_GRID_SIZE} px ({} Gaussians)",
+            self.scene.gaussians.len()
+        ));
     }
 
     pub(super) fn draw_viewport(&mut self, parent_ui: &mut egui::Ui) {

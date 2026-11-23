@@ -40,7 +40,7 @@
 //!     kelly_fraction, UnitInterval, Odds
 //! };
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! fn main() -> math_explorer::error::Result<()> {
 //!     // Scenario: A coin toss that lands heads 55% of the time, paying 2.0 (even money).
 //!     let probability = UnitInterval::new(0.55)?;
 //!     let odds = Odds::new(2.0)?;
@@ -65,7 +65,7 @@
 //!     GlickoPlayer, Rating, RatingDeviation, Volatility, MatchResult, update_rating, SystemConstant
 //! };
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! fn main() -> math_explorer::error::Result<()> {
 //!     // Initialize a player (Rating=1500, RD=350, Vol=0.06)
 //!     let player = GlickoPlayer::new(
 //!         Rating::new(1500.0)?,
