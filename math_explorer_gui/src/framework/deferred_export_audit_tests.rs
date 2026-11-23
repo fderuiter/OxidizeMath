@@ -235,7 +235,7 @@ fn assert_expected_capability_counts(counts: [usize; 8]) {
     let extra_plot = usize::from(has_surface_morpho)
         + usize::from(cfg!(feature = "pure_math"))
         + usize::from(cfg!(all(feature = "pure_math", feature = "applied")));
-    let expected_plot = 70 + extra_plot;
+    let expected_plot = 73 + extra_plot;
     let expected_solid = if has_surface_morpho { 8 } else { 7 };
     let expected_non_shader = 87 + extra_plot;
     assert_eq!(
@@ -244,7 +244,7 @@ fn assert_expected_capability_counts(counts: [usize; 8]) {
     );
     assert_eq!(raster, 8, "Expected 8 raster figure tools");
     assert_eq!(dataset_only, 0, "Expected 0 dataset-only registered tools");
-    assert_eq!(unsupported, 12, "Expected 12 non-figure tools");
+    assert_eq!(unsupported, 9, "Expected 9 non-figure tools");
     assert_eq!(
         solid_3d, expected_solid,
         "Expected {expected_solid} solid 3D geometric tools"

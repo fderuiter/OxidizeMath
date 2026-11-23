@@ -193,6 +193,16 @@ fn lookup_file_cap<'a>(
         .map(|(key, &cap)| (key.as_str(), cap))
 }
 
+pub(crate) fn record_existing_file_cap(
+    file_path: &str,
+    whitelist: &VerificationWhitelist,
+    matched_keys: &mut HashSet<String>,
+) {
+    if let Some((key, _)) = lookup_file_cap(file_path, whitelist) {
+        matched_keys.insert(key.to_string());
+    }
+}
+
 pub(crate) fn audit_file_missing_docs(
     ast: &syn::File,
     file_path: &str,
