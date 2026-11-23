@@ -4,6 +4,11 @@ allowlist = [
     "egui_plot",
 ]
 
+[doc_verification.approved_ignore_fences]
+# Binary-only math_explorer_gui crate::, out-of-line tab mod, and egui widget snippets that cannot link into library doctests
+"docs/architecture/interactive_tool_walkthrough.md" = 6
+"math_explorer_gui/README.md" = 3
+
 [entropy_guard]
 scan_paths = [
     "crates",
@@ -348,12 +353,10 @@ vendored_crates = [
 "math_explorer_gui/src/framework/ui.rs" = 2
 "math_explorer_gui/src/main.rs" = 5
 "math_explorer_gui/src/tabs/ai/q_table_inspector/runner.rs" = 2
-"math_explorer_gui/src/tabs/ai/reward_plots.rs" = 4
 "math_explorer_gui/src/tabs/chaos/attractors/runner.rs" = 3
 "math_explorer_gui/src/tabs/epidemiology/sir.rs" = 2
 "math_explorer_gui/src/tabs/morphogenesis/tool.rs" = 2
 "math_explorer_gui/src/tabs/mri/runner.rs" = 3
-"math_explorer_gui/src/tabs/mri/tool.rs" = 2
 "math_explorer_gui/src/tabs/neuroscience/hodgkin_huxley.rs" = 1
 "math_explorer_gui/src/tabs/solid_state/ising.rs" = 2
 "math_explorer_gui/src/tabs/solid_state/ising/runner.rs" = 2

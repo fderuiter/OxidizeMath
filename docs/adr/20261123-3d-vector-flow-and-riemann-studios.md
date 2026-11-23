@@ -19,4 +19,4 @@ Accepted (extends [ADR 0003](0003-traceability-refactoring.md) and [ADR 0041](00
 
 ## Consequences
 - **Positive**: `MeanCurvatureFlow::step`, `HeatEquationSolver::step`, and `helmholtz_decompose` execute with `0` heap allocations inside `VerifiedEngine::run_verified`, and `100%` of public symbols across `vector_calculus`, `differential_geometry` flows, and `analysis::complex` are exercised interactively on desktop and `wasm32-unknown-unknown` with `< 4 KiB` stateless URL presets.
-- **Neutral**: Expands the `math_explorer_gui` catalog to `83` registered tools (`62` plot+dataset tools, `7` solid 3D tools) and `128` starter presets while leaving unstructured tetrahedral remeshing out of scope.
+- **Neutral**: Expands the `math_explorer_gui` catalog to `91` registered tools (`71` plot+dataset tools, `8` solid 3D tools) and `158` starter presets while leaving unstructured tetrahedral remeshing out of scope.

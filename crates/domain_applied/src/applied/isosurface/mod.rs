@@ -42,6 +42,7 @@
 //! cargo run --example isosurface_torus
 //! ```
 
+pub mod capped;
 mod edge_cache;
 #[allow(missing_docs)]
 pub mod gradients;
@@ -53,6 +54,9 @@ pub mod tables;
 pub mod types;
 pub mod workspace;
 
+pub use capped::{
+    CappedBoxBounds, CutPlaneCap, extract_capped_isosurface, extract_capped_isosurface_into,
+};
 pub use gradients::{CentralDifferenceEstimator, GradientEstimator};
 pub use marching_cubes::{MarchingCubes, extract_isosurface};
 pub use types::{Mesh, Point3D, VoxelGrid, VoxelGridError};

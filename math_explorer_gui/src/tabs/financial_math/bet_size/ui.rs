@@ -139,7 +139,7 @@ impl BetSizeCalculatorTool {
                 changed |= self.render_format_selector(ui);
                 ui.end_row();
 
-                ui.label("Odds:");
+                ui.label("Placed Odds:");
                 changed |= self.show_odds_value_editor(ui);
                 ui.end_row();
 
@@ -150,6 +150,15 @@ impl BetSizeCalculatorTool {
                             .prefix("$"),
                     )
                     .accessible_hover_text("Available bankroll capital in dollars")
+                    .changed();
+                ui.end_row();
+
+                ui.label("Drawdown Wealth Floor (% W₀):");
+                changed |= ui
+                    .add(egui::Slider::new(&mut self.drawdown_floor_pct, 5.0..=95.0).suffix("%"))
+                    .accessible_hover_text(
+                        "Wealth floor percentage used for proportional-Kelly barrier solvency bounds",
+                    )
                     .changed();
                 ui.end_row();
             });
@@ -180,6 +189,42 @@ impl BetSizeCalculatorTool {
         });
     }
 
+    fn show_closing_line_inputs(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        ui.horizontal_wrapped(|ui| {
+            changed |= ui
+                .checkbox(
+                    &mut self.closing_line_enabled,
+                    "Audit Closing Line Value (Two-Way Closing Market)",
+                )
+                .accessible_hover_text(
+                    "Remove bookmaker vigorish from closing decimal odds and compute CLV edge",
+                )
+                .changed();
+            if self.closing_line_enabled {
+                ui.label("Closing For:");
+                changed |= ui
+                    .add(bounded_drag_value(
+                        &mut self.closing_for_decimal,
+                        DECIMAL_ODDS_MIN..=DECIMAL_ODDS_MAX,
+                        0.01,
+                    ))
+                    .accessible_hover_text("Closing decimal odds on your selected outcome")
+                    .changed();
+                ui.label("Closing Against:");
+                changed |= ui
+                    .add(bounded_drag_value(
+                        &mut self.closing_against_decimal,
+                        DECIMAL_ODDS_MIN..=DECIMAL_ODDS_MAX,
+                        0.01,
+                    ))
+                    .accessible_hover_text("Closing decimal odds on the opposing outcome")
+                    .changed();
+            }
+        });
+        changed
+    }
+
     fn show_results_and_table(&mut self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         if let Some(ref err) = self.calc_error {
@@ -202,15 +247,26 @@ impl BetSizeCalculatorTool {
             }
         });
 
+        self.show_strategy_grid(ui);
+        ui.add_space(4.0);
+        self.show_table_export_bar(ui);
+        if ev > 0.0 {
+            self.show_solvency_and_sample_size(ui, ev);
+        }
+        self.show_clv_panel(ui);
+    }
+
+    fn show_strategy_grid(&self, ui: &mut egui::Ui) {
         egui::Grid::new("kelly_results")
-            .num_columns(4)
+            .num_columns(5)
             .striped(true)
-            .spacing([28.0, 6.0])
+            .spacing([24.0, 6.0])
             .show(ui, |ui| {
                 ui.strong("Strategy");
                 ui.strong("Fraction of Bankroll");
                 ui.strong("Bet Amount");
                 ui.strong("Growth Rate g(f)");
+                ui.strong(format!("Floor ≤ {:.0}% Bound", self.drawdown_floor_pct));
                 ui.end_row();
 
                 for row in &self.strategy_rows {
@@ -223,12 +279,73 @@ impl BetSizeCalculatorTool {
                         String::from("-inf")
                     };
                     ui.label(g_str);
+                    let bound_str = row
+                        .barrier_bound
+                        .map_or_else(|| String::from("N/A"), |b| format!("{:.1}%", b * 100.0));
+                    ui.label(bound_str);
                     ui.end_row();
                 }
             });
+    }
 
-        ui.add_space(4.0);
-        self.show_table_export_bar(ui);
+    fn show_solvency_and_sample_size(&self, ui: &mut egui::Ui, ev: f64) {
+        if self.lundberg_summary.is_none() && self.sample_size_95.is_none() {
+            return;
+        }
+        let unit_stake = (0.01 * self.bankroll).max(1e-6);
+        ui.add_space(6.0);
+        ui.group(|ui| {
+            ui.strong("Solvency & 95%-Significance Sample Size");
+            if let Some(lundberg) = self.lundberg_summary {
+                ui.label(format!(
+                    "1%-Fixed-Stake (${unit_stake:.2}) Cramér-Lundberg Ruin Bound: {:.3}% (r* = {:.4}, Diffusion: {:.3}%)",
+                    lundberg.cramer_lundberg_bound * 100.0,
+                    lundberg.adjustment_coefficient,
+                    lundberg.diffusion_approximation * 100.0
+                ));
+            }
+            if let Some(n95) = self.sample_size_95 {
+                ui.label(format!(
+                    "Bets Needed to Confirm {:+.2}% Yield at 95% Significance: {} (1-sided) | {} (2-sided)",
+                    ev * 100.0,
+                    n95.one_sided_bets,
+                    n95.two_sided_bets
+                ));
+            }
+        });
+    }
+
+    fn show_clv_panel(&self, ui: &mut egui::Ui) {
+        let Some(ref audit) = self.clv_audit else {
+            return;
+        };
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        ui.add_space(6.0);
+        ui.group(|ui| {
+            ui.strong("Closing Line Value (CLV) Audit");
+            match audit {
+                Ok((p_close, clv)) => {
+                    let color = if clv.ev_fraction > 0.0 {
+                        palette.success
+                    } else {
+                        palette.warning
+                    };
+                    ui.colored_label(
+                        color,
+                        format!(
+                            "Devigged Fair Close: {:.2}% | CLV EV: {:+.2}% | Prob Edge: {:+.2}% | Log-Odds Shift: {:+.4}",
+                            p_close * 100.0,
+                            clv.ev_pct,
+                            clv.implied_prob_edge * 100.0,
+                            clv.log_odds_shift
+                        ),
+                    );
+                }
+                Err(err) => {
+                    ui.colored_label(palette.error, *err);
+                }
+            }
+        });
     }
 
     fn show_table_export_bar(&mut self, ui: &mut egui::Ui) {
@@ -321,13 +438,15 @@ impl BetSizeCalculatorTool {
     pub(super) fn render_workbench_ui(&mut self, ui: &mut egui::Ui) {
         self.poll_save_channel(ui.ctx());
         egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.heading("Kelly Criterion Bet Size Calculator");
+            ui.heading("Kelly Criterion Bet Size, Solvency & CLV Calculator");
             ui.label(
-                "Calculate optimal wager sizing across synchronized odds formats and inspect logarithmic growth g(f).",
+                "Calculate optimal wager sizing across synchronized odds formats, growth g(f), drawdown bounds, and CLV.",
             );
             ui.separator();
 
-            if self.show_input_grid(ui) {
+            let mut changed = self.show_input_grid(ui);
+            changed |= self.show_closing_line_inputs(ui);
+            if changed {
                 self.recalculate();
             }
             ui.separator();
