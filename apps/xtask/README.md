@@ -16,7 +16,8 @@ These commands run automated checks in git hooks or CI.
 | `check-entropy` | Scans codebase for high entropy strings and secrets. | Active |
 | `check-file-lengths` | Verifies file-length constraints. | Active |
 | `check-markdown-links` | Check all internal relative markdown documentation links | Active |
-| `check-profiles` | Verifies Cargo `[profile.release]` `overflow-checks = true` and rejects member overrides. | Active |
+| `check-profiles` | Verifies Cargo `[profile.release]` `overflow-checks = true`, `[workspace.package].version` inheritance/bounds, absence of `[package.metadata.packager].version`, `README.md` parity, and member `[lints]` inheritance. | Active |
+| `check-release-tag` | Verifies `refs/tags/v*` / `RELEASE_TAG` parity against `[workspace.package].version` and emits WiX pre-release version mappings. | Active |
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking legacy helper). | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known vulnerabilities. | Active |
 | `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |

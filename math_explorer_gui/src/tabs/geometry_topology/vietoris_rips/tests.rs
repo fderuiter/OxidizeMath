@@ -11,8 +11,8 @@ use super::presets::{ShapePreset, DEFAULT_PRESET_POINTS};
 use super::*;
 use crate::framework::{InteractiveTool, SimulationFramework};
 use crate::url_state::{UrlStateSignature, UrlSyncController, MAX_DECODED_URL_STATE_BYTES};
-use egui_plot::export::ExportOptions;
-use egui_plot::export_primitives::{decode_png_rgba, export_primitives_png, export_primitives_svg};
+use egui_plot::export::{color32_image_to_png, ExportOptions};
+use egui_plot::export_primitives::{export_primitives_svg, render_primitives_image};
 use egui_plot::PlotPoints;
 use std::f64::consts::{E, PI};
 
@@ -223,9 +223,12 @@ fn test_interval_csv_json_exports_and_svg_png_figure_primitives() {
         let opts = ExportOptions::default();
         let svg = export_primitives_svg(&prims, &opts).unwrap();
         assert!(svg.contains("<svg") && svg.len() > 250);
-        let png = export_primitives_png(&prims, &opts).unwrap();
-        let (w, h, pixels) = decode_png_rgba(&png).unwrap();
-        assert!(w > 0 && h > 0 && pixels.len() == w * h);
+        let img = render_primitives_image(&prims, &opts).unwrap();
+        assert!(
+            img.size[0] > 0 && img.size[1] > 0 && img.pixels.len() == img.size[0] * img.size[1]
+        );
+        let png = color32_image_to_png(&img).unwrap();
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 }
 

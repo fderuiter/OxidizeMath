@@ -1,6 +1,6 @@
 [package]
 name = "math_explorer_gui"
-version = "0.4.0"
+version.workspace = true
 edition = "2021"
 authors = ["Frederick de Ruiter <127706008+fderuiter@users.noreply.github.com>"]
 description = "Interactive scientific simulation and mathematical visualization desktop and web GUI"
@@ -11,7 +11,6 @@ build = "build.rs"
 [package.metadata.packager]
 product-name = "Math Explorer"
 identifier = "com.jules.mathexplorer"
-version = "0.4.0"
 publisher = "OxidizeMath"
 homepage = "https://github.com/fderuiter/OxidizeMath"
 long-description = "Math Explorer provides an interactive desktop environment built on eframe and egui for exploring verified mathematical and scientific simulations across physics, biology, climate modeling, epidemiology, artificial intelligence, applied mathematics, and pure mathematics."

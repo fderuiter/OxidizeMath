@@ -43,6 +43,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-duplicates" => gates::check_duplicates(),
         "check-api-drift" => gates::check_api_drift(),
         "check-profiles" => gates::check_profiles(),
+        "check-release-tag" => gates::check_release_tag(rest),
         "check-staged-duplicates" => gates::check_staged_duplicates(),
         "check-markdown-links" => check_markdown_links(),
         "check-vulnerabilities" => gates::check_vulnerabilities(),
@@ -72,6 +73,9 @@ fn print_help() {
         "  check-markdown-links     - Check all internal relative markdown documentation links"
     );
     println!("  check-profiles           - Verify Cargo release profile invariants");
+    println!(
+        "  check-release-tag        - Verify git release tag parity and WiX pre-release mapping"
+    );
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
     println!(
@@ -333,6 +337,7 @@ mod tests {
             "check-api-drift",
             "check-duplicates",
             "check-profiles",
+            "check-release-tag",
             "lint-workflows",
             "check-docs",
             "check-cargo-docs",

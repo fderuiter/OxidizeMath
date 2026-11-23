@@ -23,6 +23,9 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+version = "0.4.0"
+
 [workspace.lints.rust]
 missing_docs = "warn"
 

@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{COORD_MAX, COORD_MIN, FractalMode, FractalViewer, ZOOM_MAX, ZOOM_MIN};
+use super::{FractalMode, FractalViewer, COORD_MAX, COORD_MIN, ZOOM_MAX, ZOOM_MIN};
 use crate::framework::{InteractiveTool, ShaderDialect};
 use math_commons::ast::format_glsl_float;
 use math_commons::math_kernel::glsl_colormap::{
@@ -10,6 +10,12 @@ use std::fmt::Write;
 
 impl FractalViewer {
     pub(super) fn build_glsl_shader(&self, dialect: ShaderDialect) -> Result<String, String> {
+        if self.mode.is_custom() {
+            return Err(
+                "Analytical GLSL shader export requires standard Mandelbrot or Julia mode"
+                    .to_string(),
+            );
+        }
         if !self.has_finite_parameters() {
             return Err("Fractal parameters are non-finite or out of bounds".to_string());
         }
@@ -17,8 +23,8 @@ impl FractalViewer {
             .map_err(|e| e.to_string())?;
         let cy = format_glsl_float(self.center.im.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
-        let zoom = format_glsl_float(self.zoom.clamp(ZOOM_MIN, ZOOM_MAX))
-            .map_err(|e| e.to_string())?;
+        let zoom =
+            format_glsl_float(self.zoom.clamp(ZOOM_MIN, ZOOM_MAX)).map_err(|e| e.to_string())?;
         let jx = format_glsl_float(self.julia_c.re.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
         let jy = format_glsl_float(self.julia_c.im.clamp(COORD_MIN, COORD_MAX))
@@ -26,7 +32,7 @@ impl FractalViewer {
         let max_iter = self
             .max_iter
             .clamp(10, math_commons::registry::MAX_ITERATIONS as u32);
-        let is_julia = self.mode == FractalMode::Julia;
+        let is_julia = self.mode.uses_julia_c();
 
         let mut out = String::with_capacity(2560);
         write_dialect_header(&mut out, dialect, self.mode);
@@ -52,8 +58,8 @@ fn write_dialect_header(out: &mut String, dialect: ShaderDialect, mode: FractalM
         out.push_str("uniform vec2 u_resolution;\nuniform float u_time;\nuniform vec4 u_mouse;\nout vec4 fragColor;\n\n");
     }
     let family = match mode {
-        FractalMode::Mandelbrot => "Mandelbrot",
-        FractalMode::Julia => "Julia",
+        FractalMode::Mandelbrot | FractalMode::CustomMandelbrot => "Mandelbrot",
+        FractalMode::Julia | FractalMode::CustomJulia => "Julia",
     };
     writeln!(
         out,

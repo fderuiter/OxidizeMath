@@ -253,6 +253,12 @@ pub fn check_profiles() {
     run_verification("check-profiles");
 }
 
+pub fn check_release_tag(args: &[String]) {
+    println!("=== Check Release Tag Parity ===");
+    let extra: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_verification_with_args("check-release-tag", &extra);
+}
+
 pub fn check_entropy() {
     println!("=== Check Entropy and Secrets ===");
     run_verification("check-entropy");

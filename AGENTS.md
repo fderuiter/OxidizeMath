@@ -54,9 +54,13 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
-# Check Cargo release profile invariants (overflow-checks = true, zero member [profile.release] overrides, and [lints] workspace = true inheritance)
+# Check Cargo release profile invariants (overflow-checks = true, zero member [profile.release] overrides, [lints] workspace = true, [workspace.package].version inheritance, zero [package.metadata.packager].version overrides, and README.md version parity)
 cargo run -p unified_verification --release -- check-profiles
 cargo run -p xtask -- check-profiles
+
+# Verify release tag SemVer/WiX bounds and refs/tags/v* parity against [workspace.package].version
+cargo run -p unified_verification --release -- check-release-tag
+cargo run -p xtask -- check-release-tag
 
 # Run AST-level code clone detection across first-party crates
 cargo run -p unified_verification --release -- check-duplicates
@@ -176,6 +180,31 @@ The `package` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) define
 
 - **Linux (`deb`)**: Runs on every `pull_request`, `merge_group`, `push`, and `workflow_dispatch` event.
 - **macOS (`dmg`) & Windows (`wix`)**: Run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `pre-flight` sets `installer_changed=true` (diffs touching `math_explorer_gui/**`, [Cargo.toml](Cargo.toml), `Cargo.lock`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when git diff falls back). On unrelated pull requests (`installer_changed=false`), the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` and skip build, manifest, and upload steps via `if:`.
+
+### Workspace Version Synchronization, Pre-Release Tags & WiX Mapping
+
+Release versioning is centralized in `[workspace.package].version` in root [Cargo.toml](Cargo.toml) per [ADR 0037](docs/adr/0037-workspace-release-version-guards-and-wix-mapping.md):
+
+- **11 Release Crates (`version.workspace = true`)**: [math_explorer/Cargo.toml](math_explorer/Cargo.toml), [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml), and the nine `crates/*` library/domain crates (`math_commons`, `scientific_metadata`, `pure_math`, `domain_ai`, `domain_physics`, `domain_biology`, `domain_applied`, `domain_climate`, and `domain_epidemiology`) inherit `[workspace.package].version`. [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) omits `version` under `[package.metadata.packager]` so `cargo-packager` inherits `[package].version` alongside `WorkspaceEnvelope` (`CARGO_PKG_VERSION`). Vendored `egui_plot/Cargo.toml` preserves `version = "0.34.1"` for `[patch.crates-io]`, and the eight internal foundation/tooling crates retain `version = "0.1.0"`.
+- **`README.md` & Manifest Guard (`check-profiles`)**: Updating `[workspace.package].version` requires updating the shields.io version badge and `math_explorer` dependency snippet in [README.md](README.md). `check-profiles` enforces SemVer and WiX numeric bounds (`major <= 255`, `minor <= 255`, `patch <= 65535`, `revision <= 65535`), rejects `+build` metadata, enforces `version.workspace = true`, and rejects duplicate `[package.metadata.packager].version` keys.
+- **Tag Parity, Named Pre-Releases & Ephemeral Windows WiX Mapping (`check-release-tag`)**: Both `pre-flight` and `publish-release` run `check-release-tag` (binding `github.ref` and `github.ref_name` through step `env:` blocks) to reject any `v*` tag that diverges from `[workspace.package].version` or carries `+build` metadata. Named SemVer pre-releases map `alpha.N` to `1000 + N`, `beta.N` to `10000 + N`, and `rc.N` to `20000 + N` (`<= 65535`), emitting `is_prerelease=true` and `wix_version=MAJOR.MINOR.PATCH-<revision>` (for example `0.5.0-rc.1` -> `0.5.0-20001` -> WiX `0.5.0.20001`). Linux `.deb` and macOS `.dmg` retain `0.5.0-rc.1`, while only the ephemeral Windows `wix` job transiently sets `[package.metadata.packager].version` during `cargo packager`.
+- **Staged & Idempotent GitHub Releases (`publish-release`)**: New releases stage assets with `gh release create --draft --verify-tag` (plus `--prerelease` when `is_prerelease=true`) before promoting with `gh release edit --draft=false --verify-tag`; re-runs detect existing draft or published releases with `gh release view` and overwrite assets safely via `gh release upload --clobber`.
+
+Verify version synchronization and tag parity locally before cutting a release tag:
+
+```bash
+# Verify [workspace.package].version bounds, member version.workspace = true inheritance, packager config, and README.md parity
+cargo run -p unified_verification --release -- check-profiles
+cargo run -p xtask -- check-profiles
+
+# Verify workspace version bounds without an active tag (local branch check)
+cargo run -p unified_verification --release -- check-release-tag
+cargo run -p xtask -- check-release-tag
+
+# Simulate release tag parity against [workspace.package].version (currently 0.4.0; exits non-zero on mismatch such as RELEASE_TAG=v0.5.0)
+RELEASE_TAG=v0.4.0 cargo run -p unified_verification --release -- check-release-tag
+RELEASE_TAG=v0.4.0 cargo run -p xtask -- check-release-tag
+```
 
 ### Prerequisites (Ubuntu / Debian)
 

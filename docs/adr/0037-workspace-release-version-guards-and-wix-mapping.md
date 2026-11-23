@@ -1,0 +1,27 @@
+# ADR 0037: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping
+
+## Status
+
+Accepted (extends [ADR 0008](0008-xtask-lint-all-pre-commit.md), [ADR 0027](0027-enforce-workspace-clippy-lints.md), and [ADR 0034](0034-scoped-pre-commit-and-single-parse-ast-verification.md))
+
+## Context
+
+1. **Fragmented Release Manifests & Packager Version Shadowing**: Root `Cargo.toml` previously omitted `[workspace.package]`, leaving `0.4.0` hardcoded separately across `math_explorer`, `math_explorer_gui`, and nine `crates/*` release crates, plus a duplicate `version = "0.4.0"` override under `[package.metadata.packager]` in `math_explorer_gui/Cargo.toml` and two static `0.4.0` references in `README.md`. Because `cargo-packager` only falls back to `[package].version` when `[package.metadata.packager].version` is unset while `WorkspaceEnvelope` embeds `env!("CARGO_PKG_VERSION")`, unsynchronized bumps risked version drift across crates, desktop installers, and saved session envelopes.
+2. **Missing Tag Parity Gates & Windows WiX Pre-Release Failures**: `.github/workflows/ci.yml` previously ran `pre-flight`, multi-OS `cargo-packager` `0.11.8` installer builds, and `publish-release` without verifying that `refs/tags/v*` matched `[workspace.package].version`. In addition, `cargo-packager`'s WiX `convert_version` requires numeric `major <= 255`, `minor <= 255`, `patch <= 65535`, and numeric 4th-field pre-release/build identifiers `<= 65535`, causing named SemVer pre-releases such as `0.5.0-rc.1` or `+build` metadata to fail on Windows with `NonNumericBuildMetadata`.
+3. **Non-Atomic Release Creation & Non-Idempotent Tag Re-Runs**: `publish-release` previously invoked `gh release create` directly without `--draft`, `--verify-tag`, conditional `--prerelease`, or existing-release detection, allowing pre-releases to claim GitHub's `Latest` badge and causing job re-runs on existing tags to fail with HTTP 422 `already_exists`.
+
+## Decision
+
+1. **Centralized `[workspace.package].version` Inheritance**: Define `[workspace.package] version = "0.4.0"` in root `Cargo.toml`, set `version.workspace = true` across `math_explorer`, `math_explorer_gui`, and all nine `0.4.0` library/domain crates (`math_commons`, `scientific_metadata`, `pure_math`, `domain_ai`, `domain_physics`, `domain_biology`, `domain_applied`, `domain_climate`, `domain_epidemiology`), and remove `version` from `[package.metadata.packager]` in `math_explorer_gui/Cargo.toml`. Preserve `version = "0.34.1"` in vendored `egui_plot/Cargo.toml` for `[patch.crates-io]` compatibility and retain `version = "0.1.0"` across the eight internal foundation and tooling crates (`federated_registry`, `diagnostics`, `oxidize_core`, `verified_engine`, `verified_engine_macros`, `markdown_tests`, `xtask`, `unified_verification`).
+2. **Extended `check-profiles` & `check-release-tag` Gates in `unified_verification` and `xtask`**:
+   - Extend `check-profiles` in `crates/unified_verification/src/profile.rs` to validate `[workspace.package].version` against SemVer and WiX bounds (`major <= 255`, `minor <= 255`, `patch <= 65535`, `revision <= 65535`, rejecting `+build` metadata), enforce `version.workspace = true` on all 11 release crates, forbid `[package.metadata.packager].version`, preserve internal `0.1.0` and `egui_plot` `0.34.1` versions, and verify `README.md` version badge and `math_explorer` dependency snippet parity.
+   - Add `check-release-tag` in `crates/unified_verification/src/release_tag.rs` and expose it in `apps/xtask/src/main.rs` to verify `refs/tags/v*` / `RELEASE_TAG` parity against `[workspace.package].version`, reject `+build` metadata, map `alpha.N` (`1000 + N`), `beta.N` (`10000 + N`), and `rc.N` (`20000 + N`) suffixes to numeric WiX revisions `<= 65535`, and emit `is_prerelease` and `wix_version` outputs.
+3. **Ephemeral Windows WiX Override & Staged Idempotent `publish-release` Workflow**:
+   - Bind `github.ref` and `github.ref_name` via step `env:` blocks in `.github/workflows/ci.yml` (`pre-flight` and `publish-release`) in compliance with `lint-workflows`, while keeping root permissions `read-all` and limiting `contents: write` to `publish-release`.
+   - Apply a transient `[package.metadata.packager].version = "MAJOR.MINOR.PATCH-<revision>"` override (restored via `EXIT` trap) exclusively on the ephemeral Windows `wix` job when `is_prerelease == "true"`, keeping `0.5.0-rc.1` intact on Linux `.deb`, macOS `.dmg`, and `CARGO_PKG_VERSION`.
+   - Harden `publish-release` to detect existing draft or published releases via `gh release view` (updating assets with `gh release upload --clobber`), stage new releases with `gh release create --draft --verify-tag` (plus `--prerelease` when `is_prerelease == "true"`), and promote atomically via `gh release edit --draft=false --verify-tag`.
+
+## Consequences
+
+- **Positive**: Updating `[workspace.package].version` (and `README.md`) synchronizes all 11 release crates, `WorkspaceEnvelope` session metadata, and desktop installers from a single source of truth, with `check-profiles` blocking hardcoded or packager overrides in CI and local pre-PR checks.
+- **Positive**: Mismatched `v*` tags fail fast in `pre-flight` (and defense-in-depth in `publish-release`), named pre-releases (`alpha.N`, `beta.N`, `rc.N`) build `.deb`, `.dmg`, and `.msi` installers cleanly while publishing as GitHub pre-releases, and re-running `publish-release` safely overwrites assets and clears draft status without error.

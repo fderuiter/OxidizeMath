@@ -27,6 +27,8 @@ jobs:
     outputs:
       papers_changed: ${{ steps.detect-changes.outputs.papers_changed }}
       installer_changed: ${{ steps.detect-changes.outputs.installer_changed }}
+      is_prerelease: ${{ steps.check-release-tag.outputs.is_prerelease }}
+      wix_version: ${{ steps.check-release-tag.outputs.wix_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -105,6 +107,13 @@ jobs:
 
       - name: Check Cargo Profiles
         run: cargo run -p unified_verification --release -- check-profiles
+
+      - name: Check Release Tag Parity
+        id: check-release-tag
+        env:
+          GIT_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: cargo run -p unified_verification --release -- check-release-tag --github-output "$GITHUB_OUTPUT"
 
       - name: Check AST Code Duplicates
         run: cargo run -p unified_verification --release -- check-duplicates
@@ -520,7 +529,36 @@ jobs:
       - name: Build and Package
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
         shell: bash
-        run: cargo packager --release -p math_explorer_gui -f ${{ matrix.target }}
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+          IS_PRERELEASE: ${{ needs.pre-flight.outputs.is_prerelease }}
+          WIX_VERSION: ${{ needs.pre-flight.outputs.wix_version }}
+        run: |
+          set -euo pipefail
+          restore_gui_manifest() {
+            git checkout -- math_explorer_gui/Cargo.toml
+          }
+          if [ "$MATRIX_TARGET" = "wix" ] && [ "${IS_PRERELEASE:-false}" = "true" ]; then
+            WIX_VER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(0|[1-9][0-9]{0,4})$'
+            if [[ ! "${WIX_VERSION:-}" =~ $WIX_VER_RE ]]; then
+              echo "Error: Invalid mapped WiX pre-release version: ${WIX_VERSION:-<empty>}" >&2
+              exit 1
+            fi
+            trap restore_gui_manifest EXIT
+            awk -v ver="$WIX_VERSION" '
+              { sub(/\r$/, "") }
+              $0 == "[package.metadata.packager]" && !inserted {
+                print
+                printf "version = \"%s\"\n", ver
+                inserted = 1
+                next
+              }
+              { print }
+              END { if (!inserted) exit 1 }
+            ' math_explorer_gui/Cargo.toml > math_explorer_gui/Cargo.toml.wix-tmp
+            mv math_explorer_gui/Cargo.toml.wix-tmp math_explorer_gui/Cargo.toml
+          fi
+          cargo packager --release -p math_explorer_gui -f "$MATRIX_TARGET"
 
       - name: Generate SHA-256 Manifest
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
@@ -732,7 +770,7 @@ jobs:
   publish-release:
     name: Publish Release
     if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && startsWith(github.ref, 'refs/tags/v')
-    needs: [build-and-test, package, compile-papers, feature-matrix]
+    needs: [pre-flight, build-and-test, package, compile-papers, feature-matrix]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -741,6 +779,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
+        with:
+          scope: preflight
+          profile: mixed
+          extra-files: |
+            apps/xtask/Cargo.toml
+            apps/xtask/README.md
+            apps/xtask/src/**
+
+      - name: Check Release Tag Parity
+        id: check-release-tag
+        env:
+          GIT_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: cargo run -p unified_verification --release -- check-release-tag --require-tag --github-output "$GITHUB_OUTPUT"
 
       - name: Download workflow artifacts
         uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
@@ -821,22 +879,55 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
+          IS_PRERELEASE: ${{ steps.check-release-tag.outputs.is_prerelease }}
         run: |
+          set -euo pipefail
+
           if [ -z "${RELEASE_TAG:-}" ]; then
             echo "Error: RELEASE_TAG must not be empty" >&2
             exit 1
           fi
 
-          SEMVER_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if [[ "$RELEASE_TAG" == *"+"* ]]; then
+            echo "Error: SemVer +build metadata is not allowed in RELEASE_TAG: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          SEMVER_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*)|-(0|[1-9][0-9]*))?$'
           if [[ ! "$RELEASE_TAG" =~ $SEMVER_RE ]]; then
             echo "Error: Invalid semantic version release tag: $RELEASE_TAG" >&2
             exit 1
           fi
 
-          gh release create \
-            --title "$RELEASE_TAG" \
-            --generate-notes \
-            -- \
-            "$RELEASE_TAG" \
-            release-assets/*
+          shopt -s nullglob
+          assets=(release-assets/*)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "Error: No staged assets found in release-assets/" >&2
+            exit 1
+          fi
+
+          edit_flags=(--draft=false --verify-tag)
+          if [ "${IS_PRERELEASE:-false}" = "true" ]; then
+            edit_flags+=(--prerelease)
+          else
+            edit_flags+=(--prerelease=false)
+          fi
+
+          if gh release view -- "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Existing release detected for $RELEASE_TAG; uploading assets with --clobber..."
+            gh release upload --clobber -- "$RELEASE_TAG" "${assets[@]}"
+            gh release edit "${edit_flags[@]}" -- "$RELEASE_TAG"
+          else
+            create_flags=(
+              --draft
+              --verify-tag
+              --title "$RELEASE_TAG"
+              --generate-notes
+            )
+            if [ "${IS_PRERELEASE:-false}" = "true" ]; then
+              create_flags+=(--prerelease)
+            fi
+            gh release create "${create_flags[@]}" -- "$RELEASE_TAG" "${assets[@]}"
+            gh release edit "${edit_flags[@]}" -- "$RELEASE_TAG"
+          fi
 
