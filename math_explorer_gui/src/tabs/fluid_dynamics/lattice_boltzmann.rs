@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::lattice_boltzmann_sculpt::{
-    apply_lbm_custom_action, apply_stroke_to_lbm, draw_lbm_brush_panel, export_solver_rle,
-    inspect_solver_solid_and_core, record_stroke_in_rle, reset_solver_preserving_obstacles,
-    rotate_airfoil_in_place, seed_initial_lbm_geometry,
+    apply_lbm_custom_action, apply_lbm_sculpt_payload, apply_stroke_to_lbm, draw_lbm_brush_panel,
+    export_solver_rle, inspect_solver_solid_and_core, record_stroke_in_rle,
+    reset_solver_preserving_obstacles, seed_initial_lbm_geometry, sync_lbm_parameters,
 };
 use super::lbm_atlas::{resolve_inlet_velocity, LbmCartographer, LBM_ATLAS_AXIS_PAIRS};
 use super::lbm_fairing::{
@@ -11,10 +11,10 @@ use super::lbm_fairing::{
 };
 use super::lbm_fairing_ui::LbmUiExtension;
 use crate::async_sim::atlas::RegimeCartographer;
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool, UnifiedUiExtension};
+use crate::async_sim::unified::{UnifiedModel, UnifiedUiExtension};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::framework::{decode_rle_mask, BrushMode, BrushStroke, SpatialBrushKit};
+use crate::framework::{BrushMode, BrushStroke, SpatialBrushKit};
 use eframe::egui::Color32;
 use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -218,17 +218,14 @@ impl UnifiedModel for LbmUnified {
             ));
             return;
         }
-        if let Some((code, prev_aoa)) = self.stamped_airfoil {
-            let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
-            if aoa.is_finite() && (aoa - prev_aoa).abs() > 1e-6 {
-                rotate_airfoil_in_place(&mut self.solver, code, prev_aoa, aoa);
-                self.stamped_airfoil = Some((code, aoa));
-            }
-        }
-        self.display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
+        sync_lbm_parameters(
+            &mut self.solver,
+            &mut self.stamped_airfoil,
+            &mut self.display_vorticity,
+            params,
+        );
         self.inlet_velocity = resolve_inlet_velocity(params);
         self.step_count += 1;
-        self.solver.collision_model.tau = 3.0 * viscosity + 0.5;
         advance_wind_tunnel_step(&mut self.solver, self.inlet_velocity);
         self.refresh_diagnostics();
 
@@ -241,6 +238,17 @@ impl UnifiedModel for LbmUnified {
                 "Non-finite velocity detected in Lattice Boltzmann grid cells.",
             ));
         }
+    }
+
+    fn sync_parameters(&mut self, params: &HashMap<String, f64>) {
+        sync_lbm_parameters(
+            &mut self.solver,
+            &mut self.stamped_airfoil,
+            &mut self.display_vorticity,
+            params,
+        );
+        self.inlet_velocity = resolve_inlet_velocity(params);
+        self.refresh_diagnostics();
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -395,22 +403,13 @@ impl UnifiedModel for LbmUnified {
         payload: &SculptStatePayload,
         params: &HashMap<String, f64>,
     ) {
-        if payload.rle_mask.is_empty() {
-            return;
-        }
-        let w = self.solver.width();
-        let h = self.solver.height();
-        if let Ok(bytes) = decode_rle_mask(&payload.rle_mask, w * h) {
-            for y in 0..h {
-                for x in 0..w {
-                    self.solver
-                        .set_obstacle(x, y, bytes[flatten_2d_index(x, y, w)] != 0);
-                }
-            }
-            let profile = *params.get("naca_profile").unwrap_or(&0.0);
-            let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
-            self.active_profile_param = profile;
-            self.stamped_airfoil = (profile >= 1.0).then_some((profile.round() as u16, aoa));
+        if apply_lbm_sculpt_payload(
+            &mut self.solver,
+            &mut self.active_profile_param,
+            &mut self.stamped_airfoil,
+            payload,
+            params,
+        ) {
             self.refresh_diagnostics();
         }
     }
@@ -474,12 +473,5 @@ impl UnifiedModel for LbmUnified {
     }
 }
 
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "LatticeBoltzmannTool",
-        display_name: "Lattice Boltzmann (Demo)",
-        domain: "fluid_dynamics",
-        tags: &[],
-        build: || Box::new(UnifiedSimTool::<LbmUnified>::new()),
-    }
-}
+#[path = "lattice_boltzmann/preset.rs"]
+mod preset;

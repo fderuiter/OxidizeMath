@@ -320,7 +320,7 @@ inventory::submit! {
         id: "TurbulenceTool",
         display_name: "Turbulence / Reynolds Analysis",
         domain: "fluid_dynamics",
-        tags: &[],
+        tags: &["reynolds", "laminar", "boundary layer", "pipe flow", "viscosity"],
         build: || Box::new(TurbulenceTool::default()),
     }
 }

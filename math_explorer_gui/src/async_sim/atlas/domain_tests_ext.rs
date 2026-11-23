@@ -2,7 +2,7 @@
 
 use super::wcag_contrast_on_black;
 use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
-use crate::framework::{InteractiveTool, SimulationFramework};
+use crate::framework::InteractiveTool;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 
@@ -223,6 +223,7 @@ fn test_lenia_cartographer_zero_alloc_and_contour() {
 #[cfg(feature = "biology")]
 #[test]
 fn test_lenia_url_bounds_and_extinct_auto_reseed() {
+    use crate::framework::SimulationFramework;
     use crate::tabs::morphogenesis::lenia::LeniaTool;
 
     let mut tool = LeniaTool::default();

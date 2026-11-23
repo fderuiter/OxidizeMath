@@ -129,12 +129,13 @@ fn solve_stationary_stack(mat: &StackMatrix, m: usize) -> StackVec {
         if pivot != col {
             aug.swap(col, pivot);
         }
-        let inv_diag = 1.0 / aug[col][col];
-        for r in (col + 1)..m {
-            let factor = aug[r][col] * inv_diag;
+        let pivot_row = aug[col];
+        let inv_diag = 1.0 / pivot_row[col];
+        for row in aug.iter_mut().take(m).skip(col + 1) {
+            let factor = row[col] * inv_diag;
             if factor != 0.0 {
-                for c in col..=m {
-                    aug[r][c] -= factor * aug[col][c];
+                for (dst, &piv) in row[col..=m].iter_mut().zip(&pivot_row[col..=m]) {
+                    *dst -= factor * piv;
                 }
             }
         }

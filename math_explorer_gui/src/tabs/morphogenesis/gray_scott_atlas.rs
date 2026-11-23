@@ -371,3 +371,32 @@ impl RegimeCartographer for GrayScottCartographer {
         (pts.len() >= 2).then_some(("Pearson Fold 4(f + k)² = f", pts))
     }
 }
+
+/// Returns `true` when `system` is spatially washed out while parameters enter a viable pattern regime.
+pub(crate) fn should_reseed_washed_out_system(
+    system: &math_explorer::biology::morphogenesis::TuringSystem<
+        2,
+        super::runner::MorphogenesisKineticsAdapter,
+        math_explorer::biology::diffusion::MaskedFiniteDifference2D,
+    >,
+    d_u: f64,
+    d_v: f64,
+    dt: f64,
+) -> bool {
+    if !dt.is_finite() || dt <= 0.0 {
+        return false;
+    }
+    let k = &system.kinetics;
+    match k.mode {
+        crate::presets::MorphogenesisKineticsMode::Schnakenberg => {
+            super::atlas::is_pattern_forming_regime(k.a, k.b, d_u, d_v, dt) && {
+                let var_u = grid_u_variance(system.u());
+                var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD
+            }
+        }
+        crate::presets::MorphogenesisKineticsMode::GrayScott => {
+            is_gray_scott_pattern_viable(k.f, k.k, d_u, d_v, dt)
+                && is_gray_scott_v_washed_out(system.v())
+        }
+    }
+}

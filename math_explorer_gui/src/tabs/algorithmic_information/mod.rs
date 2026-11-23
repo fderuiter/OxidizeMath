@@ -1,5 +1,6 @@
-// @explorer_feature = "pure_math"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod controls;
@@ -12,7 +13,7 @@ mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
-/// Top-level `Pure Math` tab auto-discovered by `math_explorer_gui/build.rs`.
+/// Top-level `Pure Math` tab registered via [`TabDescriptor`].
 pub struct AlgorithmicInfoTab {
     framework: crate::framework::SimulationFramework,
 }
@@ -68,6 +69,14 @@ impl ExplorerTab for AlgorithmicInfoTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "algorithmic_information",
+        order: 25,
+        build: || Box::new(AlgorithmicInfoTab::default()),
     }
 }
 

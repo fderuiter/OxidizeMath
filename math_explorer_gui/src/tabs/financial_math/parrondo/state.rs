@@ -341,7 +341,7 @@ fn scatter_prim(
 ) -> ExportPrimitive {
     ExportPrimitive::Points {
         name: name.into(),
-        points,
+        points: points.into(),
         color,
         radius,
     }
@@ -350,7 +350,7 @@ fn scatter_prim(
 fn polyline(name: &str, pts: &[PlotPoint], color: egui::Color32, width: f32) -> ExportPrimitive {
     ExportPrimitive::Polyline {
         name: name.to_string(),
-        points: to_pairs(pts),
+        points: to_pairs(pts).into(),
         color,
         stroke_width: width,
         closed: false,
