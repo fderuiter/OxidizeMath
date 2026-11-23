@@ -162,45 +162,44 @@ fn split_normalized_lines(raw: String) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn active_changed_files(repo_dir: &Path, source: &DiffSource) -> Vec<String> {
+fn diff_filtered_files(repo_dir: &Path, source: &DiffSource, filter_args: &[&str]) -> Vec<String> {
+    let mut args = Vec::with_capacity(8);
     let out = match source {
-        DiffSource::Staged => git_stdout(
-            repo_dir,
-            &["diff", "--cached", "--diff-filter=ACMR", "--name-only"],
-        ),
-        DiffSource::CachedBase(base) => git_stdout(
-            repo_dir,
-            &[
-                "diff",
-                "--cached",
-                "--diff-filter=ACMR",
-                "--name-only",
-                base,
-            ],
-        ),
-        DiffSource::Range { base, head } => git_stdout(
-            repo_dir,
-            &[
-                "diff",
-                "--diff-filter=ACMR",
-                "--name-only",
-                &format!("{base}...{head}"),
-            ],
-        ),
-        DiffSource::Head => git_stdout(
-            repo_dir,
-            &[
-                "diff-tree",
-                "--root",
-                "--no-commit-id",
-                "--diff-filter=ACMR",
-                "--name-only",
-                "-r",
-                "HEAD",
-            ],
-        ),
+        DiffSource::Staged => {
+            args.extend_from_slice(&["diff", "--cached"]);
+            args.extend_from_slice(filter_args);
+            args.push("--name-only");
+            git_stdout(repo_dir, &args)
+        }
+        DiffSource::CachedBase(base) => {
+            args.extend_from_slice(&["diff", "--cached"]);
+            args.extend_from_slice(filter_args);
+            args.extend_from_slice(&["--name-only", base]);
+            git_stdout(repo_dir, &args)
+        }
+        DiffSource::Range { base, head } => {
+            let range_spec = format!("{base}...{head}");
+            args.push("diff");
+            args.extend_from_slice(filter_args);
+            args.extend_from_slice(&["--name-only", &range_spec]);
+            git_stdout(repo_dir, &args)
+        }
+        DiffSource::Head => {
+            args.extend_from_slice(&["diff-tree", "--root", "--no-commit-id"]);
+            args.extend_from_slice(filter_args);
+            args.extend_from_slice(&["--name-only", "-r", "HEAD"]);
+            git_stdout(repo_dir, &args)
+        }
     };
     split_normalized_lines(out.unwrap_or_default())
+}
+
+pub(crate) fn active_changed_files(repo_dir: &Path, source: &DiffSource) -> Vec<String> {
+    diff_filtered_files(repo_dir, source, &["--diff-filter=ACMR"])
+}
+
+pub(crate) fn newly_added_files(repo_dir: &Path, source: &DiffSource) -> Vec<String> {
+    diff_filtered_files(repo_dir, source, &["--no-renames", "--diff-filter=AC"])
 }
 
 const ZERO_CTX_FLAGS: &[&str] = &["-U0", "--no-renames", "--src-prefix=a/", "--dst-prefix=b/"];

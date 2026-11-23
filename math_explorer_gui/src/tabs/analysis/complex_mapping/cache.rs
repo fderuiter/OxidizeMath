@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::ui::CONTOUR_RESOLUTION;
-use super::{COMPLEX_COORD_MAX, COMPLEX_COORD_MIN, ComplexMappingTool, MappingFunction};
+use super::{ComplexMappingTool, MappingFunction, COMPLEX_COORD_MAX, COMPLEX_COORD_MIN};
 use eframe::egui;
 use egui::emath::Float as _;
 use egui_plot::{PlotBounds, PlotGeometry, PlotItem, PlotItemBase, PlotPoint};
@@ -419,10 +419,18 @@ impl ComplexMappingTool {
         cache.z_horizontal.clear();
         cache.w_vertical.clear();
         cache.w_horizontal.clear();
-        cache.z_vertical.reserve(self.grid_density, self.grid_density * 2);
-        cache.z_horizontal.reserve(self.grid_density, self.grid_density * 2);
-        cache.w_vertical.reserve(self.grid_density, self.grid_density * CONTOUR_RESOLUTION);
-        cache.w_horizontal.reserve(self.grid_density, self.grid_density * CONTOUR_RESOLUTION);
+        cache
+            .z_vertical
+            .reserve(self.grid_density, self.grid_density * 2);
+        cache
+            .z_horizontal
+            .reserve(self.grid_density, self.grid_density * 2);
+        cache
+            .w_vertical
+            .reserve(self.grid_density, self.grid_density * CONTOUR_RESOLUTION);
+        cache
+            .w_horizontal
+            .reserve(self.grid_density, self.grid_density * CONTOUR_RESOLUTION);
 
         let span = self.grid_max - self.grid_min;
         let step = span / (self.grid_density as f64 - 1.0);
@@ -430,17 +438,25 @@ impl ComplexMappingTool {
 
         for i in 0..self.grid_density {
             let x = self.grid_min + (i as f64) * step;
-            cache.z_vertical.push_line_segment([x, self.grid_min], [x, self.grid_max]);
-            cache.w_vertical.append_sampled_contour(CONTOUR_RESOLUTION, span, |j| {
-                self.eval_z(Complex64::new(x, self.grid_min + span * (j as f64) / denom))
-            });
+            cache
+                .z_vertical
+                .push_line_segment([x, self.grid_min], [x, self.grid_max]);
+            cache
+                .w_vertical
+                .append_sampled_contour(CONTOUR_RESOLUTION, span, |j| {
+                    self.eval_z(Complex64::new(x, self.grid_min + span * (j as f64) / denom))
+                });
         }
         for i in 0..self.grid_density {
             let y = self.grid_min + (i as f64) * step;
-            cache.z_horizontal.push_line_segment([self.grid_min, y], [self.grid_max, y]);
-            cache.w_horizontal.append_sampled_contour(CONTOUR_RESOLUTION, span, |j| {
-                self.eval_z(Complex64::new(self.grid_min + span * (j as f64) / denom, y))
-            });
+            cache
+                .z_horizontal
+                .push_line_segment([self.grid_min, y], [self.grid_max, y]);
+            cache
+                .w_horizontal
+                .append_sampled_contour(CONTOUR_RESOLUTION, span, |j| {
+                    self.eval_z(Complex64::new(self.grid_min + span * (j as f64) / denom, y))
+                });
         }
         cache.key = Some(key);
         cache.generation = cache.generation.wrapping_add(1).max(1);

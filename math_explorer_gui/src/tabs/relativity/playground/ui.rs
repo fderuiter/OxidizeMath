@@ -173,6 +173,7 @@ impl GeodesicPlaygroundTool {
                     self.rebuild_trajectory(260);
                     self.state.scrub_index = self.samples.len().saturating_sub(1);
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
             }
             self.revision = self.revision.wrapping_add(1);
             ctx.request_repaint();

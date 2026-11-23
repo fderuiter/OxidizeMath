@@ -38,6 +38,8 @@ mod persistence;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
+#[cfg(test)]
+mod playback_time_travel_tests;
 pub mod plot_persistence;
 #[cfg(test)]
 mod plot_persistence_session_tests;
@@ -48,6 +50,8 @@ pub mod recovery;
 mod recovery_tests;
 pub mod shader_foundry;
 mod shader_params;
+#[cfg(test)]
+mod shared_points_perf_tests;
 pub mod side_panel;
 pub mod spatial_brush;
 #[cfg(all(test, feature = "physics", feature = "biology"))]
@@ -96,7 +100,7 @@ pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
-use overlay_sync::{FrameworkRevisionCache, FrameworkSyncState};
+use overlay_sync::{FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache};
 use scientific_metadata::theory::TheoryDescribable;
 
 pub struct ToolMetadata {
@@ -175,6 +179,11 @@ pub trait InteractiveTool {
         0
     }
 
+    /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
+    fn url_state_revision(&self) -> u64 {
+        self.state_revision()
+    }
+
     /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         None
@@ -201,6 +210,11 @@ pub trait InteractiveTool {
     /// Lightweight parameter-only snapshot hook used by `cache_valid_snapshot`.
     fn save_recovery_state(&self) -> Option<String> {
         self.save_state()
+    }
+
+    /// Parameter-only state serialization hook for URL sharing (omits trace histories).
+    fn save_url_state(&self) -> Option<String> {
+        self.save_recovery_state()
     }
 
     /// Fallibly restores parameter-only recovery state without clobbering pinned comparison overlays.
@@ -419,7 +433,7 @@ pub struct SimulationFramework {
     /// Baseline parameters snapshot on tool load.
     pub baseline_tool_state: Option<String>,
     /// Last validated finite plot datasets.
-    pub current_valid_plot_datasets: Vec<(String, Vec<[f64; 2]>)>,
+    pub current_valid_plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
     /// Last validated finite 3D world-coordinate plot datasets.
     pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
     /// Whether divergence has been detected in the active tool.
