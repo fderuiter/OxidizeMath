@@ -8,37 +8,81 @@ use std::sync::Arc;
 use super::SirTool;
 use crate::reflective_ui::render_copyable_metric;
 
-/// Evaluates peak-infection local sensitivities and renders the sensitivity panel.
-pub(super) fn evaluate_sensitivity(ui: &mut egui::Ui, tool: &mut SirTool) {
-    let params = [
-        ("N", tool.n),
-        ("I0", tool.i0),
-        ("beta", tool.beta),
-        ("gamma", tool.gamma),
-    ];
-    let duration_bits = crate::sensitivity::canonical_f64_bits(tool.duration);
+impl SirTool {
+    pub(super) fn current_series_key(&self) -> (usize, usize, usize, usize, usize, usize) {
+        (
+            self.s_points.as_ptr() as usize,
+            self.s_points.len(),
+            self.i_points.as_ptr() as usize,
+            self.i_points.len(),
+            self.r_points.as_ptr() as usize,
+            self.r_points.len(),
+        )
+    }
 
-    tool.sensitivity_engine
-        .compute_with_context(&params, &duration_bits, |p_map| {
-            let n = p_map.get("N").copied().unwrap_or(1000.0).max(1.0);
-            let i0 = p_map.get("I0").copied().unwrap_or(10.0).clamp(0.0, n);
-            let beta = p_map.get("beta").copied().unwrap_or(0.5).max(0.0);
-            let gamma = p_map.get("gamma").copied().unwrap_or(0.1).max(0.0001);
+    pub(crate) fn sync_series_cache(&mut self) {
+        let key = self.current_series_key();
+        if self.series_key != key {
+            self.series_finite = self
+                .s_points
+                .iter()
+                .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .i_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .r_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite());
+            self.cached_peak = compute_epidemic_peak(&self.i_points);
+            let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
+            self.display_s = crate::framework::decimate_plot_points_minmax(&self.s_points, cap);
+            self.display_i = crate::framework::decimate_plot_points_minmax(&self.i_points, cap);
+            self.display_r = crate::framework::decimate_plot_points_minmax(&self.r_points, cap);
+            self.series_key = key;
+        }
+    }
 
-            if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
-                let dt = 0.2;
-                let mut max_i: f64 = 0.0;
-                for _ in 0..250 {
-                    max_i = max_i.max(model.state().i);
-                    model.step(dt);
+    pub(super) fn epidemic_peak(&self) -> Option<(f64, f64)> {
+        if self.series_key == self.current_series_key() {
+            self.cached_peak
+        } else {
+            compute_epidemic_peak(&self.i_points)
+        }
+    }
+
+    pub(super) fn evaluate_sensitivity(&mut self, ui: &mut egui::Ui) {
+        let params = [
+            ("N", self.n),
+            ("I0", self.i0),
+            ("beta", self.beta),
+            ("gamma", self.gamma),
+        ];
+        let duration_bits = crate::sensitivity::canonical_f64_bits(self.duration);
+
+        self.sensitivity_engine
+            .compute_with_context(&params, &duration_bits, |p_map| {
+                let n = p_map.get("N").copied().unwrap_or(1000.0).max(1.0);
+                let i0 = p_map.get("I0").copied().unwrap_or(10.0).clamp(0.0, n);
+                let beta = p_map.get("beta").copied().unwrap_or(0.5).max(0.0);
+                let gamma = p_map.get("gamma").copied().unwrap_or(0.1).max(0.0001);
+
+                if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
+                    let dt = 0.2;
+                    let mut max_i: f64 = 0.0;
+                    for _ in 0..250 {
+                        max_i = max_i.max(model.state().i);
+                        model.step(dt);
+                    }
+                    max_i
+                } else {
+                    0.0
                 }
-                max_i
-            } else {
-                0.0
-            }
-        });
+            });
 
-    crate::sensitivity::render_sensitivity_panel_ui(ui, &tool.sensitivity_engine, "sir_tool");
+        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "sir_tool");
+    }
 }
 
 /// Computes interpolated `(peak_day, peak_infected)` from simulated `Infected` points.
@@ -54,7 +98,7 @@ pub(super) fn render_epidemic_metrics(ui: &mut egui::Ui, tool: &SirTool) {
         f64::INFINITY
     };
     render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{r0:.2}"));
-    if let Some((peak_day, peak_infected)) = compute_epidemic_peak(&tool.i_points) {
+    if let Some((peak_day, peak_infected)) = tool.epidemic_peak() {
         render_copyable_metric(ui, "Peak Infected", &format!("{peak_infected:.1}"));
         render_copyable_metric(ui, "Peak Day", &format!("Day {peak_day:.2}"));
     }
