@@ -4922,6 +4922,220 @@
       "signature": "pub struct HodgkinHuxleyState"
     }
   ],
+  "crates/domain_biology/src/biology/physarum/engine.rs": [
+    {
+      "signature": "impl PhysarumEngine { pub fn agent_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn agent_heading (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn agent_x (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn agent_y (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn clear_trails (& mut self) }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn from_preset (_ : usize , _ : usize , _ : usize , _ : PhysarumPresetKind , _ : OxidizeRng ,) -> Self }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn new (_ : usize , _ : usize , _ : usize , _ : PhysarumParams , _ : OxidizeRng ,) -> Self }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn obstacles (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn obstacles_mut (& mut self) -> & mut [u8] }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn paint_obstacle_disc (& mut self , _ : usize , _ : usize , _ : f64 , _ : bool) }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn params (& self) -> PhysarumParams }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn set_agent_count (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn set_params (& mut self , _ : PhysarumParams) }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn set_rng (& mut self , _ : OxidizeRng) }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn set_terminals (& mut self , _ : & [PhysarumTerminal]) }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn sever_trail_disc (& mut self , _ : usize , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn step (& mut self) }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn telemetry (& self) -> PhysarumTelemetry }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn terminal_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn terminals (& self) -> & [PhysarumTerminal] }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn toggle_terminal_at (& mut self , _ : f64 , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn trail (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn trail_mass_in_rect (& self , _ : usize , _ : usize , _ : usize , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn trail_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl PhysarumEngine { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct PhysarumEngine"
+    }
+  ],
+  "crates/domain_biology/src/biology/physarum/mod.rs": [
+    {
+      "signature": "pub const MAX_PHYSARUM_AGENTS : usize"
+    },
+    {
+      "signature": "pub const MAX_PHYSARUM_GRID : usize"
+    },
+    {
+      "signature": "pub const MAX_PHYSARUM_TERMINALS : usize"
+    },
+    {
+      "signature": "pub const MIN_PHYSARUM_AGENTS : usize"
+    },
+    {
+      "signature": "pub const MIN_PHYSARUM_GRID : usize"
+    },
+    {
+      "signature": "pub const MIN_PHYSARUM_TERMINALS : usize"
+    },
+    {
+      "signature": "pub use engine :: PhysarumEngine"
+    },
+    {
+      "signature": "pub use network :: PhysarumNetworkBenchmark"
+    },
+    {
+      "signature": "pub use network :: PhysarumSkeletonEdge"
+    },
+    {
+      "signature": "pub use network :: extract_physarum_benchmark"
+    },
+    {
+      "signature": "pub use params :: PhysarumParams"
+    },
+    {
+      "signature": "pub use params :: PhysarumTelemetry"
+    },
+    {
+      "signature": "pub use params :: PhysarumTerminal"
+    },
+    {
+      "signature": "pub use presets :: MazeCorridorRegions"
+    },
+    {
+      "signature": "pub use presets :: PhysarumPresetKind"
+    },
+    {
+      "signature": "pub use presets :: asymmetric_maze_corridors"
+    }
+  ],
+  "crates/domain_biology/src/biology/physarum/network.rs": [
+    {
+      "signature": "pub fn extract_physarum_benchmark (_ : & PhysarumEngine) -> PhysarumNetworkBenchmark"
+    },
+    {
+      "signature": "pub struct PhysarumNetworkBenchmark"
+    },
+    {
+      "signature": "pub struct PhysarumSkeletonEdge"
+    }
+  ],
+  "crates/domain_biology/src/biology/physarum/params.rs": [
+    {
+      "signature": "impl PhysarumParams { pub fn is_within_bounds (& self) -> bool }"
+    },
+    {
+      "signature": "impl PhysarumParams { pub fn sanitized (self) -> Self }"
+    },
+    {
+      "signature": "impl PhysarumTerminal { pub fn clamped (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_SENSOR_ANGLE : f64"
+    },
+    {
+      "signature": "pub const MAX_SENSOR_DISTANCE : f64"
+    },
+    {
+      "signature": "pub const MAX_STEP_SIZE : f64"
+    },
+    {
+      "signature": "pub const MAX_TURN_ANGLE : f64"
+    },
+    {
+      "signature": "pub const MIN_SENSOR_ANGLE : f64"
+    },
+    {
+      "signature": "pub const MIN_SENSOR_DISTANCE : f64"
+    },
+    {
+      "signature": "pub const MIN_STEP_SIZE : f64"
+    },
+    {
+      "signature": "pub const MIN_TURN_ANGLE : f64"
+    },
+    {
+      "signature": "pub struct PhysarumParams"
+    },
+    {
+      "signature": "pub struct PhysarumTelemetry"
+    },
+    {
+      "signature": "pub struct PhysarumTerminal"
+    }
+  ],
+  "crates/domain_biology/src/biology/physarum/presets.rs": [
+    {
+      "signature": "impl PhysarumPresetKind { pub const ALL : [PhysarumPresetKind ; 3] }"
+    },
+    {
+      "signature": "impl PhysarumPresetKind { pub fn default_params (& self) -> PhysarumParams }"
+    },
+    {
+      "signature": "impl PhysarumPresetKind { pub fn display_name (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl PhysarumPresetKind { pub fn normalized_terminals (& self) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "pub enum PhysarumPresetKind"
+    },
+    {
+      "signature": "pub fn asymmetric_maze_corridors (_ : usize , _ : usize) -> MazeCorridorRegions"
+    },
+    {
+      "signature": "pub fn write_preset_obstacles (_ : & mut PhysarumEngine , _ : PhysarumPresetKind)"
+    },
+    {
+      "signature": "pub struct MazeCorridorRegions"
+    }
+  ],
   "crates/domain_biology/src/biology/reaction_diffusion/mod.rs": [
     {
       "signature": "pub enum ReactionDiffusionError"

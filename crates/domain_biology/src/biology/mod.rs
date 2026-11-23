@@ -58,6 +58,7 @@
 //! - **Cellular**: [`neuroscience`] - Hodgkin-Huxley model for action potentials.
 //! - **Tissue**: [`morphogenesis`] - Turing and Gray-Scott reaction-diffusion systems for pattern formation.
 //! - **Artificial Life**: [`lenia`] - Spectral 2D Lenia continuous cellular automata and soliton lifeforms.
+//! - **Slime-Mold Networks**: [`physarum`] - Zero-allocation SoA *Physarum polycephalum* chemotaxis and Steiner network benchmarks.
 //! - **Population**: [`evolution`] - Evolutionary game theory (Hawk-Dove).
 //! - **Generic**: [`reaction_diffusion`] - Generic N-species reaction-diffusion framework.
 
@@ -72,6 +73,9 @@ pub mod morphogenesis;
 
 /// Continuous 2D Lenia spectral cellular automata.
 pub mod lenia;
+
+/// Zero-allocation Structure-of-Arrays *Physarum polycephalum* transport networks and Steiner benchmarks.
+pub mod physarum;
 
 /// Spatial diffusion strategies.
 pub mod diffusion;

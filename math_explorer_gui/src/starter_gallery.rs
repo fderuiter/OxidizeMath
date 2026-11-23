@@ -401,6 +401,10 @@ pub const PRESET_FAVORITISM_SIBLING_RIVALRY: &str = r#"{
 
 #[path = "starter_gallery/counterfactual_presets.rs"]
 mod counterfactual_presets;
+#[cfg(feature = "biology")]
+pub use crate::tabs::morphogenesis::physarum::presets::{
+    PRESET_PHYSARUM_MAZE, PRESET_PHYSARUM_STEINER, PRESET_PHYSARUM_TOKYO_RAIL,
+};
 pub use counterfactual_presets::*;
 
 #[path = "starter_gallery/challenges.rs"]

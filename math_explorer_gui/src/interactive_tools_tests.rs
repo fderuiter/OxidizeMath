@@ -131,6 +131,7 @@ mod tests {
             ctx,
         );
         exercise_interactive_tool::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::morphogenesis::physarum::PhysarumTool>(ctx);
         exercise_interactive_tool::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(
             ctx,
         );

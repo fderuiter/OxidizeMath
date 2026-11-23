@@ -15,6 +15,7 @@ By formalizing biological dynamics into clean, verified Rust algorithms, the cra
 - **`reaction_diffusion`**: Spatial pattern generation including `GrayScottKinetics` and Turing reaction-diffusion systems.
 - **`morphogenesis`**: Mathematical models of biological tissue growth, `SchnakenbergKinetics` / `GrayScottKinetics` morphogen gradients, and cellular patterning.
 - **`lenia`**: Spectral 2D Lenia continuous cellular automata (`LeniaEngine`, concentric-ring `KernelShells`, Gaussian growth curves, and `Orbium` / `Geminium` / `Hydrogeminium` / `Scutium` solitons).
+- **`physarum`**: Zero-allocation Structure-of-Arrays *Physarum polycephalum* chemotactic transport engine (`PhysarumEngine`), Zhang-Suen/Ramer-Douglas-Peucker `Graph` skeleton extraction, and Fermat-Torricelli Steiner/Dijkstra network benchmarks.
 - **`evolution`**: Replicator dynamics, selection equations, and evolutionary game theory.
 - **`diffusion`**: Molecular concentration gradient solvers and Fickian diffusion mechanics.
 
