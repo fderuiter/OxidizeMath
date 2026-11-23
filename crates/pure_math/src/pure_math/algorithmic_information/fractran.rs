@@ -1,210 +1,92 @@
-//! Prime-exponent FRACTRAN register virtual machine and Minsky counter-machine decoding.
+//! Zero-allocation prime-exponent FRACTRAN virtual machine, Minsky counter-machine decoding,
+//! and Floyd tortoise-and-hare cycle detection.
 //!
-//! Compiles exact [`Rational`] fractions into contiguous `u32` prime-exponent tables so
-//! runtime stepping executes with zero dynamic heap allocations.
+//! Supports both stack-inline 64-prime delta stepping ([`FractranProgram::step_exponents`],
+//! [`FractranProgram::detect_cycle`]) and dynamic smooth-prime matrix compilation
+//! ([`FractranProgram::compile`] -> [`FractranCompiledVm::step_registers`]).
 //!
 //! # Example
 //!
 //! ```rust
 //! # use pure_math::__doctest_facade as math_explorer;
-//! use math_explorer::pure_math::algorithmic_information::fractran::FractranPreset;
+//! use math_explorer::pure_math::algorithmic_information::fractran::{FractranPreset, FractranProgram};
 //!
 //! let (program, _state, initial) = FractranPreset::Add.build();
 //! let vm = program.compile().expect("valid FRACTRAN program");
 //! let mut regs = vm.encode_value(initial).expect("valid initial value");
 //! while vm.step_registers(&mut regs).expect("no overflow").is_some() {}
 //! assert_eq!(vm.power_of_two_exponent(&regs), Some(5));
+//!
+//! let adder = FractranProgram::adder();
+//! let mut inline_regs = FractranProgram::encode_u64(72).unwrap();
+//! while adder.step_exponents(&mut inline_regs).unwrap().is_some() {}
+//! assert_eq!(inline_regs[1], 5);
 //! ```
 
-#[path = "fractran_factor.rs"]
-mod factor;
-
-use crate::math_types::Rational;
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
-
-/// Upper bound on prime factors accepted during synchronous fraction compilation.
-pub const MAX_SMOOTH_PRIME: u64 = 10_000;
-
-/// Typed validation and execution errors for [`FractranProgram`] and [`FractranCompiledVm`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FractranError {
-    /// A fraction rule at `rule_index` is zero or negative.
-    NonPositiveFraction {
-        /// Zero-based index of the invalid rule.
-        rule_index: usize,
-    },
-    /// Prime factorization encountered a factor exceeding `max_prime` or overflowing `u32` exponents.
-    UnsmoothFactor {
-        /// Maximum supported smooth prime factor.
-        max_prime: u64,
-    },
-    /// Textual fraction list contained malformed `numerator/denominator` syntax.
-    InvalidFractionSyntax,
-    /// Initial machine integer must be strictly positive (`>= 1`).
-    InitialValueZero,
-    /// Initial integer contains a prime factor absent from the compiled VM basis.
-    UnrepresentedPrime {
-        /// Prime factor missing from the VM basis.
-        prime: u64,
-    },
-    /// Register slice length did not match the compiled VM prime basis length.
-    BasisLengthMismatch {
-        /// Expected register count (`vm.primes().len()`).
-        expected: usize,
-        /// Provided register slice length.
-        actual: usize,
-    },
-    /// Stepping `rule_index` would overflow `u32::MAX` in the register for `prime`.
-    RegisterOverflow {
-        /// Zero-based index of the firing rule.
-        rule_index: usize,
-        /// Prime register that reached `u32::MAX`.
-        prime: u64,
-    },
-}
-
-impl std::fmt::Display for FractranError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NonPositiveFraction { rule_index } => {
-                write!(
-                    f,
-                    "FRACTRAN rule {} must be strictly positive (> 0)",
-                    rule_index + 1
-                )
-            }
-            Self::UnsmoothFactor { max_prime } => write!(
-                f,
-                "number contains a prime factor exceeding smooth prime limit ({max_prime})"
-            ),
-            Self::InvalidFractionSyntax => {
-                write!(f, "invalid fraction syntax; expected positive N/D ratios")
-            }
-            Self::InitialValueZero => write!(f, "initial FRACTRAN integer must be at least 1"),
-            Self::UnrepresentedPrime { prime } => {
-                write!(f, "prime factor {prime} is not present in the VM basis")
-            }
-            Self::BasisLengthMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "register slice length mismatch: expected {expected}, got {actual}"
-                )
-            }
-            Self::RegisterOverflow { rule_index, prime } => write!(
-                f,
-                "register exponent overflow on prime {prime} at rule {}",
-                rule_index + 1
-            ),
-        }
-    }
-}
-
-impl std::error::Error for FractranError {}
-
-impl Diagnostic for FractranError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "FractranError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-/// Canonical FRACTRAN counter-machine programs from Conway (1987).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum FractranPreset {
-    /// Conway's 14-fraction prime-generating universal register program (`PRIMEGAME`).
-    PrimeGame,
-    /// Conway's 6-fraction multiplication machine (`2^a * 3^b -> 5^(a*b)`).
-    Mult,
-    /// Single-fraction addition machine (`2^a * 3^b -> 2^(a+b)`).
-    Add,
-    /// Nine-fraction Minsky Fibonacci pair machine (`3 * 5^n -> 2^F_n * 3^F_{n+1}`).
-    Fibonacci,
-}
-
-impl FractranPreset {
-    /// Ordered catalog of all built-in FRACTRAN presets.
-    pub const ALL: [Self; 4] = [Self::PrimeGame, Self::Mult, Self::Add, Self::Fibonacci];
-
-    /// Short human-readable uppercase identifier for UI selectors.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::PrimeGame => "PRIMEGAME",
-            Self::Mult => "MULT",
-            Self::Add => "ADD",
-            Self::Fibonacci => "FIBONACCI",
-        }
-    }
-
-    /// Default positive starting integer $N_0$ for this preset.
-    #[must_use]
-    pub const fn default_initial_value(self) -> u64 {
-        match self {
-            Self::PrimeGame => 2,
-            Self::Mult | Self::Add => 72, // 2^3 * 3^2
-            Self::Fibonacci => 9375,      // 3^1 * 5^5 -> 2^5 * 3^8
-        }
-    }
-
-    /// Constructs the exact [`FractranProgram`] fraction sequence for this preset.
-    #[must_use]
-    pub fn program(self) -> FractranProgram {
-        let fractions = factor::preset_pairs(self)
-            .iter()
-            .copied()
-            .map(Rational::from)
-            .collect();
-        FractranProgram::new(fractions)
-    }
-
-    /// Returns the Minsky control-state vs data-counter prime partition for this preset.
-    #[must_use]
-    pub fn minsky_state(self) -> FractranState {
-        match self {
-            Self::PrimeGame => FractranState::new(vec![11, 13, 17, 19, 23, 29], vec![2, 3, 5, 7]),
-            Self::Mult => FractranState::new(vec![11, 13], vec![2, 3, 5, 7]),
-            Self::Add => FractranState::new(Vec::new(), vec![2, 3]),
-            Self::Fibonacci => FractranState::new(vec![13, 17, 19, 23], vec![2, 3, 5, 7, 11]),
-        }
-    }
-
-    /// Returns `(program, minsky_state, default_initial_value)` for this preset.
-    #[must_use]
-    pub fn build(self) -> (FractranProgram, FractranState, u64) {
-        (
-            self.program(),
-            self.minsky_state(),
-            self.default_initial_value(),
-        )
-    }
-}
+use super::fractran_factor;
+use super::fractran_programs::{
+    ADDER_PAIRS, FIBONACCI_PAIRS, MULTIPLIER_PAIRS, PRIMEGAME_PAIRS, compile_rational_rule,
+    smallest_factor_above_311,
+};
+pub use super::fractran_programs::{
+    FIRST_64_PRIMES, FractranCycleInfo, FractranError, FractranRule, FractranTrajectoryOutcome,
+    MAX_FRACTRAN_PRIME, MAX_FRACTRAN_PRIMES, MAX_REGISTER_EXPONENT, MAX_SMOOTH_PRIME,
+};
+pub use super::fractran_vm::{
+    FractranCompiledVm, FractranPreset, FractranState, MinskyDecodedState, MinskyTransition,
+};
+use crate::math_types::{Integer, Rational};
+use dashu::integer::{IBig, UBig};
 
 /// Ordered list of rational multiplier rules defining a FRACTRAN program.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct FractranProgram {
     /// Ordered rational rules $f_1, f_2, \dots, f_k$.
     pub fractions: Vec<Rational>,
+    rules: Vec<FractranRule>,
+    validation_error: Option<FractranError>,
+}
+
+impl PartialEq for FractranProgram {
+    fn eq(&self, other: &Self) -> bool {
+        self.fractions == other.fractions
+    }
 }
 
 impl FractranProgram {
-    /// Wraps a sequence of [`Rational`] fractions into a [`FractranProgram`].
+    /// Wraps a sequence of [`Rational`] fractions into a [`FractranProgram`], pre-factoring
+    /// stack-inline rules over $p \le 311$ when applicable without panicking.
+    #[must_use]
     #[verified_engine::verified]
     pub fn new(fractions: Vec<Rational>) -> Self {
-        Self { fractions }
+        if fractions.is_empty() {
+            return Self {
+                fractions,
+                rules: Vec::new(),
+                validation_error: Some(FractranError::EmptyProgram),
+            };
+        }
+        let mut rules = Vec::with_capacity(fractions.len());
+        let mut validation_error = None;
+        for (idx, frac) in fractions.iter().enumerate() {
+            match compile_rational_rule(idx, frac) {
+                Ok(rule) => rules.push(rule),
+                Err(err) => {
+                    validation_error = Some(err);
+                    break;
+                }
+            }
+        }
+        Self {
+            fractions,
+            rules,
+            validation_error,
+        }
     }
 
-    /// Parses comma- or whitespace-separated positive `N/D` (or integer `N`) tokens.
+    /// Parses comma- or whitespace-separated positive `N/D` (or integer `N`) tokens using arbitrary-precision rationals.
     pub fn parse_fractions(input: &str) -> Result<Self, FractranError> {
-        factor::parse_fraction_tokens(input).map(|fractions| Self { fractions })
+        fractran_factor::parse_fraction_tokens(input).map(Self::new)
     }
 
     /// Formats the program's fractions as comma-separated `numerator/denominator` ratios.
@@ -226,7 +108,7 @@ impl FractranProgram {
             return Err(FractranError::InitialValueZero);
         }
         let mut init_factors = Vec::new();
-        factor::factor_u64_smooth(initial_value, &mut init_factors)?;
+        fractran_factor::factor_u64_smooth(initial_value, &mut init_factors)?;
         let extra: Vec<u64> = init_factors.iter().map(|&(p, _)| p).collect();
         let vm = self.compile_with_primes(&extra)?;
         let regs = vm.encode_value(initial_value)?;
@@ -243,7 +125,7 @@ impl FractranProgram {
         &self,
         extra_primes: &[u64],
     ) -> Result<FractranCompiledVm, FractranError> {
-        let tables = factor::compile_exponent_tables(&self.fractions, extra_primes)?;
+        let tables = fractran_factor::compile_exponent_tables(&self.fractions, extra_primes)?;
         Ok(FractranCompiledVm {
             primes: tables.primes,
             num_rules: tables.num_rules,
@@ -251,230 +133,304 @@ impl FractranProgram {
             denom_exponents: tables.denom_exponents,
         })
     }
-}
 
-/// Preallocated prime-exponent virtual machine for zero-allocation FRACTRAN execution.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FractranCompiledVm {
-    primes: Vec<u64>,
-    num_rules: usize,
-    numer_exponents: Vec<u32>,
-    denom_exponents: Vec<u32>,
-}
-
-impl FractranCompiledVm {
-    /// Sorted prime basis $p_0 < p_1 < \dots < p_{m-1}$ indexing register slices.
-    #[must_use]
-    pub fn primes(&self) -> &[u64] {
-        &self.primes
+    /// Validates and compiles `fractions` for the 64-prime stack VM, rejecting empty lists, non-positive fractions, or primes $> 311$.
+    #[verified_engine::verified]
+    pub fn try_new(fractions: Vec<Rational>) -> Result<Self, FractranError> {
+        let program = Self::new(fractions);
+        if let Some(err) = program.validation_error {
+            return Err(err);
+        }
+        Ok(program)
     }
 
-    /// Number of compiled fraction rules.
-    #[must_use]
-    pub const fn num_rules(&self) -> usize {
-        self.num_rules
+    /// Validates and compiles `(numerator, denominator)` pairs before constructing rationals.
+    #[verified_engine::verified]
+    pub fn try_from_pairs(pairs: &[(i128, i128)]) -> Result<Self, FractranError> {
+        if pairs.is_empty() {
+            return Err(FractranError::EmptyProgram);
+        }
+        let mut fractions = Vec::with_capacity(pairs.len());
+        for (idx, &(num, den)) in pairs.iter().enumerate() {
+            if den == 0 {
+                return Err(FractranError::ZeroDenominator { rule_index: idx });
+            }
+            if num < 0 || den < 0 {
+                return Err(FractranError::NegativeFraction { rule_index: idx });
+            }
+            if num == 0 {
+                return Err(FractranError::ZeroNumerator { rule_index: idx });
+            }
+            fractions.push(Rational::from((num, den)));
+        }
+        Self::try_new(fractions)
     }
 
-    /// Returns `(numerator_exponents, denominator_exponents)` for `rule_index`.
-    #[must_use]
-    pub fn rule_exponents(&self, rule_index: usize) -> Option<(&[u32], &[u32])> {
-        if rule_index >= self.num_rules {
-            return None;
+    /// Parses comma- or whitespace-separated fractions into a validated 64-prime stack program.
+    #[verified_engine::verified]
+    pub fn parse(input: &str) -> Result<Self, FractranError> {
+        let mut pairs = Vec::new();
+        for raw in input
+            .split(|c: char| c == ',' || c == ';' || c.is_whitespace())
+            .filter(|s| !s.is_empty())
+        {
+            if let Some((lhs, rhs)) = raw.split_once('/') {
+                if rhs.contains('/') {
+                    return Err(FractranError::InvalidFractionSyntax);
+                }
+                let num = lhs
+                    .trim()
+                    .parse::<i128>()
+                    .map_err(|_| FractranError::InvalidFractionSyntax)?;
+                let den = rhs
+                    .trim()
+                    .parse::<i128>()
+                    .map_err(|_| FractranError::InvalidFractionSyntax)?;
+                pairs.push((num, den));
+            } else {
+                let num = raw
+                    .trim()
+                    .parse::<i128>()
+                    .map_err(|_| FractranError::InvalidFractionSyntax)?;
+                pairs.push((num, 1));
+            }
         }
-        let width = self.primes.len();
-        let start = rule_index * width;
-        let end = start + width;
-        Some((
-            &self.numer_exponents[start..end],
-            &self.denom_exponents[start..end],
-        ))
+        Self::try_from_pairs(&pairs)
     }
 
-    /// Factors `value` (`>= 1`) into `out_registers` aligned with [`Self::primes`].
-    pub fn encode_u64(&self, value: u64, out_registers: &mut [u32]) -> Result<(), FractranError> {
-        if value == 0 {
-            return Err(FractranError::InitialValueZero);
+    /// Returns the pre-factored 64-prime stack rules for zero-allocation inspection.
+    #[must_use]
+    pub fn rules(&self) -> &[FractranRule] {
+        &self.rules
+    }
+
+    /// Constructs John Horton Conway's 14-fraction `PRIMEGAME` prime generator.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn primegame() -> Self {
+        Self::try_from_pairs(&PRIMEGAME_PAIRS).expect("canonical PRIMEGAME fractions are valid")
+    }
+
+    /// Constructs the canonical 1-fraction adder ($2^a 3^b \to 3^{a+b}$).
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn adder() -> Self {
+        Self::try_from_pairs(&ADDER_PAIRS).expect("canonical adder fraction is valid")
+    }
+
+    /// Constructs the canonical 6-fraction multiplier ($2^a 3^b \to 5^{a \cdot b}$).
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn multiplier() -> Self {
+        Self::try_from_pairs(&MULTIPLIER_PAIRS).expect("canonical multiplier fractions are valid")
+    }
+
+    /// Constructs the canonical 9-fraction Fibonacci register machine ($2^1 5^n \to 2^{F_{n+1}} 3^{F_n}$).
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn fibonacci() -> Self {
+        Self::try_from_pairs(&FIBONACCI_PAIRS).expect("canonical Fibonacci fractions are valid")
+    }
+
+    #[inline]
+    #[verified_engine::verified]
+    fn rule_matches(rule: &FractranRule, exponents: &[u32]) -> bool {
+        for (idx, &delta) in rule.deltas.iter().enumerate().take(rule.active_len) {
+            if delta < 0 && exponents.get(idx).copied().unwrap_or(0) < delta.unsigned_abs() {
+                return false;
+            }
         }
-        if out_registers.len() != self.primes.len() {
-            return Err(FractranError::BasisLengthMismatch {
-                expected: self.primes.len(),
-                actual: out_registers.len(),
-            });
+        true
+    }
+
+    #[inline]
+    #[verified_engine::verified]
+    fn apply_rule_in_place(
+        rule: &FractranRule,
+        exponents: &mut [u32],
+    ) -> Result<(), FractranError> {
+        for (idx, &delta) in rule.deltas.iter().enumerate().take(rule.active_len) {
+            if delta > 0 {
+                let add = delta as u32;
+                let prime = FIRST_64_PRIMES[idx];
+                let Some(slot) = exponents.get(idx).copied() else {
+                    return Err(FractranError::ExponentOverflow {
+                        prime,
+                        attempted: u64::from(add),
+                    });
+                };
+                let next = slot
+                    .checked_add(add)
+                    .ok_or(FractranError::ExponentOverflow {
+                        prime,
+                        attempted: u64::from(slot) + u64::from(add),
+                    })?;
+                if next > MAX_REGISTER_EXPONENT {
+                    return Err(FractranError::ExponentOverflow {
+                        prime,
+                        attempted: u64::from(next),
+                    });
+                }
+            }
         }
-        out_registers.fill(0);
-        let mut factors = Vec::new();
-        factor::factor_u64_smooth(value, &mut factors)?;
-        for (prime, exp) in factors {
-            let idx = self
-                .primes
-                .binary_search(&prime)
-                .map_err(|_| FractranError::UnrepresentedPrime { prime })?;
-            out_registers[idx] = exp;
+        for (slot, &delta) in exponents
+            .iter_mut()
+            .zip(rule.deltas.iter())
+            .take(rule.active_len)
+        {
+            if delta > 0 {
+                *slot += delta as u32;
+            } else if delta < 0 {
+                *slot -= delta.unsigned_abs();
+            }
         }
         Ok(())
     }
 
-    /// Allocates and populates a register vector encoding `value` (`>= 1`).
-    pub fn encode_value(&self, value: u64) -> Result<Vec<u32>, FractranError> {
-        let mut regs = vec![0_u32; self.primes.len()];
-        self.encode_u64(value, &mut regs)?;
-        Ok(regs)
+    /// Returns the zero-based index of the first applicable fraction rule for `exponents`, or `None` if halted.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn matching_rule(&self, exponents: &[u32]) -> Option<usize> {
+        if self.validation_error.is_some() {
+            return None;
+        }
+        self.rules
+            .iter()
+            .position(|rule| Self::rule_matches(rule, exponents))
     }
 
-    /// Executes one deterministic FRACTRAN step in-place with zero heap allocations.
-    ///
-    /// Returns `Ok(Some(rule_index))` when rule `rule_index` fires, `Ok(None)` when halted,
-    /// or `Err(FractranError::RegisterOverflow)` without mutating `registers` on `u32` overflow.
+    /// Returns `true` when no fraction rule in the program divides the state encoded by `exponents`.
+    #[must_use]
     #[verified_engine::verified]
-    pub fn step_registers(&self, registers: &mut [u32]) -> Result<Option<usize>, FractranError> {
-        let width = self.primes.len();
-        if registers.len() != width {
-            return Err(FractranError::BasisLengthMismatch {
-                expected: width,
-                actual: registers.len(),
-            });
-        }
-        assert_eq!(self.denom_exponents.len(), self.num_rules * width);
-        assert_eq!(self.numer_exponents.len(), self.num_rules * width);
+    pub fn is_halted(&self, exponents: &[u32]) -> bool {
+        self.matching_rule(exponents).is_none()
+    }
 
-        for rule_index in 0..self.num_rules {
-            let start = rule_index * width;
-            let end = start + width;
-            let den_row = &self.denom_exponents[start..end];
-            let num_row = &self.numer_exponents[start..end];
-            if registers.iter().zip(den_row).all(|(&reg, &den)| reg >= den) {
-                for ((&reg, &den), (&num, &prime)) in registers
-                    .iter()
-                    .zip(den_row)
-                    .zip(num_row.iter().zip(&self.primes))
-                {
-                    if (reg - den).checked_add(num).is_none() {
-                        return Err(FractranError::RegisterOverflow { rule_index, prime });
-                    }
-                }
-                for ((reg, &den), &num) in registers.iter_mut().zip(den_row).zip(num_row) {
-                    *reg = (*reg - den) + num;
-                }
-                return Ok(Some(rule_index));
+    /// Advances `exponents` in place by one FRACTRAN transition with zero dynamic heap allocation.
+    #[verified_engine::verified]
+    pub fn step_exponents(&self, exponents: &mut [u32]) -> Result<Option<usize>, FractranError> {
+        if let Some(err) = self.validation_error {
+            return Err(err);
+        }
+        for (rule_idx, rule) in self.rules.iter().enumerate() {
+            if Self::rule_matches(rule, exponents) {
+                Self::apply_rule_in_place(rule, exponents)?;
+                return Ok(Some(rule_idx));
             }
         }
         Ok(None)
     }
 
-    /// Returns `Some(k)` iff `registers` encodes a pure prime power of two $N = 2^k$ ($k \ge 1$).
-    #[must_use]
     #[verified_engine::verified]
-    pub fn power_of_two_exponent(&self, registers: &[u32]) -> Option<u32> {
-        let width = self.primes.len();
-        if registers.len() != width || width == 0 || self.primes[0] != 2 {
-            return None;
+    pub(super) fn locate_cycle_origin_and_period(
+        &self,
+        initial: &[u32; MAX_FRACTRAN_PRIMES],
+        meeting: &[u32; MAX_FRACTRAN_PRIMES],
+    ) -> Result<FractranCycleInfo, FractranError> {
+        let (mut p1, mut p2, mut start_step) = (*initial, *meeting, 0usize);
+        while p1 != p2 {
+            let _ = self.step_exponents(&mut p1)?;
+            let _ = self.step_exponents(&mut p2)?;
+            start_step += 1;
         }
-        assert_eq!(registers.len(), width);
-        let exp_two = registers[0];
-        if exp_two == 0 || registers[1..width].iter().any(|&other| other != 0) {
-            return None;
+        let mut runner = p1;
+        let _ = self.step_exponents(&mut runner)?;
+        let mut period = 1usize;
+        while runner != p1 {
+            let _ = self.step_exponents(&mut runner)?;
+            period += 1;
         }
-        Some(exp_two)
-    }
-}
-
-/// Decoded Minsky control-state flags and data-counter values at a FRACTRAN configuration.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MinskyDecodedState {
-    /// Active `(prime, exponent)` pairs among [`FractranState::state_primes`] with `exponent > 0`.
-    pub active_state_primes: Vec<(u64, u32)>,
-    /// Data register `(prime, exponent)` counter values ordered by [`FractranState::register_primes`].
-    pub counters: Vec<(u64, u32)>,
-}
-
-/// Directed Minsky counter-machine transition extracted from a compiled FRACTRAN rule.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MinskyTransition {
-    /// Zero-based index of the corresponding FRACTRAN fraction rule.
-    pub rule_index: usize,
-    /// Control-state prime required in the denominator (`None` for resting state $q_0$).
-    pub from_state: Option<u64>,
-    /// Control-state prime produced in the numerator (`None` for resting state $q_0$).
-    pub to_state: Option<u64>,
-    /// Data-counter `(prime, decrement)` guards consumed by the denominator.
-    pub guard_decrements: Vec<(u64, u32)>,
-    /// Data-counter `(prime, increment)` updates added by the numerator.
-    pub increments: Vec<(u64, u32)>,
-}
-
-/// Partition of FRACTRAN primes into Minsky control-state flags and integer data registers.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FractranState {
-    /// Primes acting as finite-state control indicators.
-    pub state_primes: Vec<u64>,
-    /// Primes whose exponents encode unbounded non-negative integer counters.
-    pub register_primes: Vec<u64>,
-}
-
-impl FractranState {
-    /// Creates a new Minsky prime partition from explicit `state_primes` and `register_primes`.
-    #[must_use]
-    pub fn new(state_primes: Vec<u64>, register_primes: Vec<u64>) -> Self {
-        Self {
-            state_primes,
-            register_primes,
-        }
+        Ok(FractranCycleInfo {
+            start_step,
+            period,
+            state: p1,
+        })
     }
 
-    /// Infers a Minsky prime partition for custom programs from a compiled VM prime basis.
-    #[must_use]
-    pub fn from_vm_heuristic(vm: &FractranCompiledVm) -> Self {
-        let (mut state_primes, mut register_primes) = (Vec::new(), Vec::new());
-        for (col, &p) in vm.primes().iter().enumerate() {
-            let is_unit_control = p >= 11
-                && (0..vm.num_rules()).all(|r| {
-                    let (num, den) = vm.rule_exponents(r).unwrap_or((&[], &[]));
-                    num.get(col).copied().unwrap_or(0) <= 1
-                        && den.get(col).copied().unwrap_or(0) <= 1
+    /// Executes Floyd's tortoise-and-hare cycle detector for up to `max_steps` transitions on stack buffers.
+    #[verified_engine::verified]
+    pub fn detect_cycle(
+        &self,
+        initial: &[u32; MAX_FRACTRAN_PRIMES],
+        max_steps: usize,
+    ) -> Result<FractranTrajectoryOutcome, FractranError> {
+        if let Some(err) = self.validation_error {
+            return Err(err);
+        }
+        let (mut tortoise, mut hare, mut hare_steps) = (*initial, *initial, 0usize);
+        for _ in 0..max_steps {
+            if self.step_exponents(&mut tortoise)?.is_none() {
+                return Ok(FractranTrajectoryOutcome::Halted {
+                    steps: hare_steps,
+                    final_exponents: tortoise,
                 });
-            if is_unit_control {
-                state_primes.push(p);
-            } else {
-                register_primes.push(p);
+            }
+            for _ in 0..2 {
+                if self.step_exponents(&mut hare)?.is_none() {
+                    return Ok(FractranTrajectoryOutcome::Halted {
+                        steps: hare_steps,
+                        final_exponents: hare,
+                    });
+                }
+                hare_steps += 1;
+            }
+            if tortoise == hare {
+                return Ok(FractranTrajectoryOutcome::CycleDetected(
+                    self.locate_cycle_origin_and_period(initial, &tortoise)?,
+                ));
             }
         }
-        Self {
-            state_primes,
-            register_primes,
-        }
+        Ok(FractranTrajectoryOutcome::StepLimitReached {
+            steps: max_steps,
+            state: tortoise,
+        })
     }
 
-    /// Decodes `registers` into active Minsky state flags and data register counters.
-    #[must_use]
-    pub fn decode(&self, vm: &FractranCompiledVm, registers: &[u32]) -> MinskyDecodedState {
-        let lookup = |p: u64| {
-            vm.primes()
-                .binary_search(&p)
-                .ok()
-                .and_then(|i| registers.get(i).copied())
-                .unwrap_or(0)
-        };
-        let active_state_primes = self
-            .state_primes
-            .iter()
-            .filter(|&&p| lookup(p) > 0)
-            .map(|&p| (p, lookup(p)))
-            .collect();
-        let counters = self
-            .register_primes
-            .iter()
-            .map(|&p| (p, lookup(p)))
-            .collect();
-        MinskyDecodedState {
-            active_state_primes,
-            counters,
+    /// Factors a positive 64-bit integer $n \ge 1$ into a 64-prime exponent array.
+    #[verified_engine::verified]
+    pub fn encode_u64(mut n: u64) -> Result<[u32; MAX_FRACTRAN_PRIMES], FractranError> {
+        if n == 0 {
+            return Err(FractranError::InvalidInitialValue);
         }
+        let mut exponents = [0u32; MAX_FRACTRAN_PRIMES];
+        for (idx, &prime) in FIRST_64_PRIMES.iter().enumerate() {
+            while n.is_multiple_of(prime) {
+                n /= prime;
+                exponents[idx] += 1;
+            }
+            if n == 1 {
+                return Ok(exponents);
+            }
+        }
+        Err(FractranError::UnsupportedPrimeFactor {
+            rule_index: usize::MAX,
+            factor: smallest_factor_above_311(&UBig::from(n)),
+        })
     }
 
-    /// Extracts directed Minsky state-machine transitions across all rules of `vm`.
+    /// Reconstructs the exact arbitrary-precision state integer $\prod_i p_i^{e_i}$ from `exponents`.
     #[must_use]
-    pub fn transitions(&self, vm: &FractranCompiledVm) -> Vec<MinskyTransition> {
-        factor::extract_minsky_transitions(vm, &self.state_primes)
+    #[verified_engine::verified]
+    pub fn decode_to_integer(exponents: &[u32]) -> Integer {
+        let mut acc = IBig::from(1u8);
+        for (idx, &exp) in exponents.iter().take(MAX_FRACTRAN_PRIMES).enumerate() {
+            if exp > 0 {
+                acc *= IBig::from(FIRST_64_PRIMES[idx]).pow(exp as usize);
+            }
+        }
+        Integer(acc)
+    }
+
+    /// Returns `Some(k)` if `exponents` encodes a pure power of two $2^k$ with $k \ge 2$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn power_of_two_exponent(exponents: &[u32]) -> Option<u32> {
+        let r2 = exponents.first().copied().unwrap_or(0);
+        if r2 >= 2 && exponents.iter().skip(1).all(|&e| e == 0) {
+            Some(r2)
+        } else {
+            None
+        }
     }
 }
 

@@ -221,9 +221,10 @@ pub fn audit_paper_and_gate_instructions(
         }
         let xtask_main = workspace_root.join("apps/xtask/src/main.rs");
         if let Ok(content) = fs::read_to_string(&xtask_main) {
+            let prod_content = content.split("#[cfg(test)]").next().unwrap_or(&content);
             scan_forbidden_pattern(
                 &xtask_main,
-                &content,
+                prod_content,
                 &tectonic_re,
                 "Stale `Tectonic` help text (paper compiler uses TeXLive `pdflatex` and `bibtex`)",
                 &mut violations,

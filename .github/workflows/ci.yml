@@ -317,58 +317,15 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: cargo run -p xtask -- test-wasm --skip-build
 
-      - name: Generate SHA-256 Manifest
-        if: matrix.target == 'wasm32-unknown-unknown'
-        shell: bash
-        run: |
-          if [ ! -d "math_explorer_gui/dist" ]; then
-            echo "Error: math_explorer_gui/dist directory does not exist" >&2
-            exit 1
-          fi
-
-          cd math_explorer_gui/dist
-
-          if command -v sha256sum >/dev/null 2>&1; then
-            SHACMD="sha256sum"
-            SHACHECK="sha256sum -c"
-          elif command -v shasum >/dev/null 2>&1; then
-            SHACMD="shasum -a 256"
-            SHACHECK="shasum -a 256 -c"
-          else
-            echo "Error: Neither sha256sum nor shasum is available" >&2
-            exit 1
-          fi
-
-          shopt -s nullglob
-          shopt -u dotglob
-          files=()
-          for f in *; do
-            if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
-              files+=("$f")
-            fi
-          done
-
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "Error: No build artifacts found in math_explorer_gui/dist" >&2
-            exit 1
-          fi
-
-          for f in "${files[@]}"; do
-            if [ ! -s "$f" ]; then
-              echo "Error: Build artifact $f is empty" >&2
-              exit 1
-            fi
-          done
-
-          $SHACMD "${files[@]}" > SHA256SUMS
-          $SHACHECK SHA256SUMS
-
       - name: Upload Web Dist Artifact
         if: matrix.target == 'wasm32-unknown-unknown' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: wasm_web_dist
-          path: math_explorer_gui/dist
+          path: |
+            math_explorer_gui/dist
+            !math_explorer_gui/dist/**/*.gz
+            !math_explorer_gui/dist/**/*.br
           if-no-files-found: error
           retention-days: 7
 
@@ -432,7 +389,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: compiled_papers
-          path: papers/output/*.pdf
+          path: |
+            papers/output/*.pdf
+            papers/output/pages-index.html
           if-no-files-found: error
           retention-days: 7
 
@@ -656,7 +615,13 @@ jobs:
           name: compiled_papers
           path: compiled_papers
 
-      - name: Stage Compiled PDFs and Refresh SHA-256 Manifest
+      - name: Download Verification Certificate
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        with:
+          name: verification-certificate-linux_artifact
+          path: verification_certificate
+
+      - name: Assemble Live Manifest, Stage Papers, and Generate SHA-256 Manifest
         shell: bash
         run: |
           set -euo pipefail
@@ -665,6 +630,50 @@ jobs:
             echo "Error: pages_dist directory does not exist" >&2
             exit 1
           fi
+
+          CERT_FILE="verification_certificate/Verification_Certificate.json"
+          if [ ! -s "$CERT_FILE" ]; then
+            echo "Error: Missing or empty live verification certificate at $CERT_FILE" >&2
+            exit 1
+          fi
+
+          if ! jq -e '
+            type == "object"
+            and (keys | sort) == [
+              "native_execution_coverage_pct",
+              "passed",
+              "total_assertion_density",
+              "unverified_modules_density",
+              "verified_modules_density",
+              "wasm_path_coverage_pct"
+            ]
+            and (.native_execution_coverage_pct | type == "number" and . >= 0 and . <= 100)
+            and (.wasm_path_coverage_pct | type == "number" and . >= 0 and . <= 100)
+            and (.total_assertion_density | type == "number" and . >= 0)
+            and (.verified_modules_density | type == "number" and . >= 0)
+            and (.unverified_modules_density | type == "number" and . >= 0)
+            and (.passed | type == "boolean")
+            and .passed == true
+          ' "$CERT_FILE" >/dev/null; then
+            echo "Error: Invalid or failing Verification_Certificate.json schema in $CERT_FILE" >&2
+            exit 1
+          fi
+
+          MANIFEST_FILE="pages_dist/traceability_manifest.json"
+          if [ ! -s "$MANIFEST_FILE" ]; then
+            echo "Error: Required static traceability file $MANIFEST_FILE is missing or empty" >&2
+            exit 1
+          fi
+
+          jq -c --slurpfile cert "$CERT_FILE" '
+            if type != "object" or (.paper_coverage | type) != "object" then
+              error("Invalid traceability_manifest.json structure")
+            else
+              .certificate = $cert[0]
+            end
+          ' "$MANIFEST_FILE" > "${MANIFEST_FILE}.tmp"
+          mv -f "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
+          find pages_dist -type f \( -name '*.gz' -o -name '*.br' -o -name 'Verification_Certificate.json' \) -delete
 
           pdfs=()
           while IFS= read -r -d '' pdf; do
@@ -681,33 +690,47 @@ jobs:
             fi
           done
 
-          mkdir -p pages_dist/papers
           cp -f -- "${pdfs[@]}" pages_dist/
-          cp -f -- "${pdfs[@]}" pages_dist/papers/
+
+          pages_index="$(find compiled_papers -type f -name "pages-index.html" -print -quit)"
+          if [ -z "$pages_index" ] || [ ! -s "$pages_index" ]; then
+            echo "Error: Missing or empty pages-index.html in compiled_papers artifact" >&2
+            exit 1
+          fi
+
+          mkdir -p pages_dist/papers
+          cp -f -- "$pages_index" pages_dist/papers/index.html
+          if [ ! -s "pages_dist/papers/index.html" ]; then
+            echo "Error: Missing or empty staged catalog at pages_dist/papers/index.html" >&2
+            exit 1
+          fi
 
           shopt -s nullglob
           tex_files=(papers/*.tex)
-          if [ ${#tex_files[@]} -eq 0 ]; then
-            echo "Error: Expected academic .tex manuscripts in papers/" >&2
+          if [ ${#tex_files[@]} -lt 28 ]; then
+            echo "Error: Expected at least 28 academic .tex manuscripts in papers/, found ${#tex_files[@]}" >&2
             exit 1
           fi
 
           for tex in "${tex_files[@]}"; do
             stem="$(basename "$tex" .tex)"
-            for pdf_path in "pages_dist/${stem}.pdf" "pages_dist/papers/${stem}.pdf"; do
-              if [ ! -s "$pdf_path" ]; then
-                echo "Error: Missing or empty staged PDF for ${tex} at ${pdf_path}" >&2
-                exit 1
-              fi
-            done
-          done
-
-          for req in traceability_manifest.json Verification_Certificate.json; do
-            if [ ! -s "pages_dist/$req" ]; then
-              echo "Error: Required static traceability file pages_dist/$req is missing or empty" >&2
+            pdf_path="pages_dist/${stem}.pdf"
+            if [ ! -s "$pdf_path" ]; then
+              echo "Error: Missing or empty staged PDF for ${tex} at ${pdf_path}" >&2
               exit 1
             fi
           done
+
+          duplicate_pdfs=(pages_dist/papers/*.pdf)
+          if [ ${#duplicate_pdfs[@]} -gt 0 ]; then
+            echo "Error: Unexpected duplicate PDFs in pages_dist/papers/: ${duplicate_pdfs[*]}" >&2
+            exit 1
+          fi
+
+          if [ -n "$(find pages_dist -type f \( -name '*.gz' -o -name '*.br' -o -name 'Verification_Certificate.json' \) -print -quit)" ]; then
+            echo "Error: Unexpected sidecar or standalone certificate file in pages_dist" >&2
+            exit 1
+          fi
 
           cd pages_dist
           if command -v sha256sum >/dev/null 2>&1; then
@@ -721,13 +744,10 @@ jobs:
             exit 1
           fi
 
-          shopt -u dotglob
           files=()
-          for f in * papers/*.pdf; do
-            if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
-              files+=("$f")
-            fi
-          done
+          while IFS= read -r f; do
+            [ -n "$f" ] && files+=("$f")
+          done < <(find . -mindepth 1 -not -path '*/.*' -type f ! -name 'SHA256SUMS' | sed 's|^\./||' | LC_ALL=C sort)
 
           if [ ${#files[@]} -eq 0 ]; then
             echo "Error: No Pages artifacts found in pages_dist" >&2
@@ -741,7 +761,7 @@ jobs:
             fi
           done
 
-          $SHACMD "${files[@]}" > SHA256SUMS
+          $SHACMD -- "${files[@]}" > SHA256SUMS
           $SHACHECK SHA256SUMS
 
       - name: Upload Pages artifact
