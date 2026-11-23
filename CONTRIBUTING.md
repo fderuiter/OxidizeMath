@@ -90,7 +90,7 @@ This command builds `unified_verification` once with Cargo's development profile
 1. **Formatting**: `cargo fmt --all -- --check`
 2. **Batched Static & Single-Pass AST Verification** (`unified_verification batch-static`):
    - **Cargo Profile & Lint Inheritance Verification** (`check-profiles`): enforces workspace `[profile.release]` `overflow-checks = true`, rejects member `[profile.release]` overrides, and requires `[lints] workspace = true` in first-party member manifests.
-   - **Architectural Decision Records** (`verify-records`): enforces `docs/adr/NNNN-slug.md` naming, `# ` and `## Status` headings outside code fences, unique 4-digit ADR prefixes (allowing legacy collisions listed under `[adr_verification]` in `verification_whitelist.toml`), and active (`--diff-filter=ACMR`) ADR updates whenever staged or branch edits modify code in `crates/` or `math_explorer/`.
+   - **Architectural Decision Records** (`verify-records`): enforces `docs/adr/YYYYMMDD-slug.md` naming with valid calendar dates and unique `<slug>` identifiers for new ADRs (rejecting newly added 4-digit `NNNN-slug.md` files while keeping legacy `NNNN-slug.md` prefixes frozen and checking historical collisions against `[adr_verification]` in `verification_whitelist.toml`), `# ` and `## Status` headings outside code fences, and active (`--diff-filter=ACMR`) ADR updates whenever staged or branch edits modify code in `crates/` or `math_explorer/`.
    - **File Length Constraints** (`check-file-lengths`): enforces the 500-line ceiling per source file.
    - **CI Workflows** (`lint-workflows`): validates GitHub Actions workflows, local reusable workflows, and `.github/actions` composite actions for read-only permissions, concurrency controls, job timeouts, commit-pinned actions, and safe `run` expressions.
    - **Crate Documentation Audit** (`check-docs`): verifies README files and entrypoint docs.
@@ -234,7 +234,7 @@ Thank you for helping us fight Knowledge Rot!
 
 ## Architectural Decision Records (ADRs)
 
-Before making significant structural changes, please review our existing architectural decisions. For example, our approach to workspace design is detailed in the [Dynamic Workspace Discovery](docs/adr/0001-dynamic-workspace-discovery.md) ADR.
+Before making significant structural changes, please review our existing architectural decisions. For example, our approach to workspace design is detailed in the [Dynamic Workspace Discovery](docs/adr/0001-dynamic-workspace-discovery.md) ADR. New ADRs under `docs/adr/` must use `YYYYMMDD-slug.md` filenames with a valid calendar date, a unique lowercase kebab-case `<slug>`, and top-level `# <Title>` plus `## Status` headings; historical 4-digit `NNNN-slug.md` prefixes are frozen so existing links remain stable.
 
 ## Critical Safety & Quality Standards (The NASA Power of 10)
 

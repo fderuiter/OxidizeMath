@@ -1,7 +1,7 @@
-# ADR 0047: Unify `verify-suite` onto `AstCache`, Item-Scoped Opt-Outs, and Read-Only `--check` Mode
+# ADR 20261123: Unify `verify-suite` onto `AstCache`, Item-Scoped Opt-Outs, and Read-Only `--check` Mode
 
 ## Status
-Accepted (extends [ADR 0011](0011-ast-citation-binding-and-cli-check-enforcement.md), [ADR 0018](0018-ci-coverage-gate-hardening.md), [ADR 0034](0034-scoped-pre-commit-and-single-parse-ast-verification.md), [ADR 0040](0040-ast-verification-spans-optout-scoping-and-api-normalization.md), and [ADR 0044](0044-unify-build-time-traceability-engine.md))
+Accepted (extends [ADR 0011](0011-ast-citation-binding-and-cli-check-enforcement.md), [ADR 0018](0018-ci-coverage-gate-hardening.md), [ADR 0034](0034-scoped-pre-commit-and-single-parse-ast-verification.md), [ADR 0040](0040-ast-verification-spans-optout-scoping-and-api-normalization.md), [ADR 0044](0044-unify-build-time-traceability-engine.md), and [ADR 0047](0047-feature-gate-core-ast-tools-and-unify-crates.md))
 
 ## Context
 1. **Regex Drift & Duplicate Parsing in `verify-suite`**: `crates/unified_verification/src/report.rs` relied on line/regex heuristics (`fn_re`, `assert_re`, `opt_out_re`, `legacy_re`, and `content.contains("theory_verification!")`) instead of `oxidize_core::traceability::AstCache` and `oxidize_core::ast_visitor::AstVisitor`. Comments and string literals such as `// theory_verification!` spoofed crate verification checks, inner `#![cfg_attr(any(), verified(opt_out = "..."))]` attributes went undetected by outer-only regexes, and `report.rs` / `wasm_coverage.rs` re-read and re-parsed Rust files independently of `AstCache`.

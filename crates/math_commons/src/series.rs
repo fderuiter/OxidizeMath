@@ -1,66 +1,70 @@
 //! Zero-copy 2D coordinate series views for curve fitting and critical-point solvers.
 // [cite:math_commons]
 
-/// Unrolled 8-wide branchless plateau scan over contiguous `(x, y)` sample slices.
+/// Unrolled 16-wide branchless plateau scan over contiguous `(x, y)` sample slices.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! advance_sample2d_plateau {
     ($slice:expr, $start:expr, $end:expr, $flat_y:expr, $x_min:expr, $x_max:expr, |$p:ident| ($x:expr, $y:expr)) => {{
+        let slice_ref = $slice;
         let start = $start;
-        let end = ($end).min($slice.len());
+        let end = ($end).min(slice_ref.len());
         if start >= end {
             start
         } else {
             let flat_y = $flat_y;
             let x_min = $x_min;
             let x_max = $x_max;
-            let (chunks, rem) = $slice[start..end].as_chunks::<8>();
-            let mut skipped = 0usize;
-            for &[a0, a1, a2, a3, a4, a5, a6, a7] in chunks {
-                let ok = {
-                    let $p = a0;
-                    ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
-                } & {
-                    let $p = a1;
-                    ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
-                } & {
-                    let $p = a2;
-                    ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
-                } & {
-                    let $p = a3;
-                    ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
-                } & {
-                    let $p = a4;
-                    ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
-                } & {
-                    let $p = a5;
-                    ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
-                } & {
-                    let $p = a6;
-                    ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
-                } & {
-                    let $p = a7;
-                    ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
-                };
+            let (chunks, rem) = slice_ref[start..end].as_chunks::<16>();
+            let n_chunks = chunks.len();
+            let mut ci = 0usize;
+            while ci < n_chunks {
+                let c = &chunks[ci];
+                macro_rules! ok_at {
+                    ($idx:literal) => {{
+                        let $p = &c[$idx];
+                        ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
+                    }};
+                }
+                let ok = ok_at!(0)
+                    & ok_at!(1)
+                    & ok_at!(2)
+                    & ok_at!(3)
+                    & ok_at!(4)
+                    & ok_at!(5)
+                    & ok_at!(6)
+                    & ok_at!(7)
+                    & ok_at!(8)
+                    & ok_at!(9)
+                    & ok_at!(10)
+                    & ok_at!(11)
+                    & ok_at!(12)
+                    & ok_at!(13)
+                    & ok_at!(14)
+                    & ok_at!(15);
                 if !ok {
-                    for item in [a0, a1, a2, a3, a4, a5, a6, a7] {
-                        let $p = item;
+                    let base = start + (ci << 4);
+                    let mut k = 0usize;
+                    while k < 16 {
+                        let $p = &c[k];
                         if !(($y == flat_y) & ($x >= x_min) & ($x <= x_max)) {
-                            return start + skipped;
+                            return base + k;
                         }
-                        skipped += 1;
+                        k += 1;
                     }
                 }
-                skipped += 8;
+                ci += 1;
             }
-            for &item in rem {
-                let $p = item;
+            let base = start + (n_chunks << 4);
+            let mut k = 0usize;
+            while k < rem.len() {
+                let $p = &rem[k];
                 if !(($y == flat_y) & ($x >= x_min) & ($x <= x_max)) {
                     break;
                 }
-                skipped += 1;
+                k += 1;
             }
-            start + skipped
+            base + k
         }
     }};
 }

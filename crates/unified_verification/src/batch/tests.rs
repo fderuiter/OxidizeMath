@@ -271,15 +271,15 @@ fn test_batch_staged_enforces_adr_for_staged_core_changes() {
 
     fs::create_dir_all(dir.join("docs/adr")).unwrap();
     fs::write(
-        dir.join("docs/adr/0001-core-edit.md"),
-        "# ADR 0001: Core Edit\n\n## Status\n\nAccepted\n",
+        dir.join("docs/adr/20261123-core-edit.md"),
+        "# ADR 20261123: Core Edit\n\n## Status\n\nAccepted\n",
     )
     .unwrap();
-    run_git(&["add", "docs/adr/0001-core-edit.md"]);
+    run_git(&["add", "docs/adr/20261123-core-edit.md"]);
 
     let staged_with_adr = vec![
         "crates/pure_math/src/lib.rs".to_string(),
-        "docs/adr/0001-core-edit.md".to_string(),
+        "docs/adr/20261123-core-edit.md".to_string(),
     ];
     assert!(run_batch_staged_for_paths_in_dir(
         &dir,
