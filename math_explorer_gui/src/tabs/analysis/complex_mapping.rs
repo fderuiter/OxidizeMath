@@ -5,9 +5,10 @@ use eframe::egui;
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 
+#[path = "complex_mapping/cache.rs"]
+mod cache;
 #[path = "complex_mapping/shader.rs"]
 mod shader;
-
 #[path = "complex_mapping/ui.rs"]
 mod ui;
 
@@ -111,6 +112,7 @@ pub struct ComplexMappingTool {
     pub(crate) inspection_point: [f64; 2],
     pub(crate) math_input: MathExpressionInputBar,
     pub(crate) high_contrast: bool,
+    pub(crate) cache: cache::ContourGridCache,
 }
 
 impl Default for ComplexMappingTool {
@@ -136,6 +138,7 @@ impl Default for ComplexMappingTool {
             .with_axes(&["z"])
             .with_complex_mode(true),
             high_contrast: false,
+            cache: cache::ContourGridCache::default(),
         }
     }
 }
@@ -196,6 +199,10 @@ impl InteractiveTool for ComplexMappingTool {
         "analysis"
     }
 
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
+    }
+
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::plot().with_shader()
     }
@@ -210,7 +217,7 @@ impl InteractiveTool for ComplexMappingTool {
             && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_min)
             && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_max)
             && self.grid_min < self.grid_max
-            && (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_density)
+            && (2..=crate::presets::MAX_INTERACTIVE_GRID_SIZE).contains(&self.grid_density)
             && self
                 .inspection_point
                 .iter()
@@ -257,7 +264,9 @@ impl InteractiveTool for ComplexMappingTool {
         self.function = s.function;
         self.grid_min = s.grid_min;
         self.grid_max = s.grid_max;
-        self.grid_density = s.grid_density;
+        self.grid_density = s
+            .grid_density
+            .min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
         self.inspection_point = s.inspection_point;
         self.math_input
             .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_CUSTOM_EXPR));
@@ -279,12 +288,13 @@ impl InteractiveTool for ComplexMappingTool {
         self.high_contrast = crate::app::ThemeMode::from_visuals(parent_ui.visuals())
             == crate::app::ThemeMode::HighContrast;
         self.draw_controls(parent_ui);
+        let grid_ok = self.ensure_cached_contours();
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Conformal Mapping Visualization");
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.columns(2, |columns| {
-                self.draw_z_plane(&mut columns[0], &palette);
-                self.draw_w_plane(&mut columns[1], &palette);
+                self.draw_z_plane(&mut columns[0], &palette, grid_ok);
+                self.draw_w_plane(&mut columns[1], &palette, grid_ok);
             });
         });
     }
