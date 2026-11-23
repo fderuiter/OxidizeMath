@@ -38,8 +38,9 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0044: Ratchet `missing_docs` Exemptions and Document Core API Entrypoints](adr/0044-ratchet-missing-docs-and-core-api-documentation.md)
 - [ADR 0044: Unify Build-Time Traceability Manifest Generation via `oxidize_core`](adr/0044-unify-build-time-traceability-engine.md)
 - [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](adr/0045-spatial-brush-kit-and-field-sculpting.md)
-- [ADR 0045: Zero-Allocation Weierstrass Elliptic Curves and Modular GUI Tab](adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md)
-- [ADR 0046: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/0046-workspace-release-version-guards-and-wix-mapping.md)
+- [ADR 0045: Short-Weierstrass Elliptic Curves and Modular GUI Tab](adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md)
+- [ADR 0046: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0046-symplectic-hamiltonian-solvers-and-poincare-lab.md)
+- [ADR 0047: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/0047-workspace-release-version-guards-and-wix-mapping.md)
 
 ## Contributing
 

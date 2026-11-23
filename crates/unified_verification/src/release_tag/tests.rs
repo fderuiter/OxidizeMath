@@ -1,6 +1,10 @@
 use super::*;
 use crate::utils::test_utils::TempTestDir;
 
+fn repo_root_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
 #[test]
 fn test_stable_and_named_prerelease_wix_mappings() {
     let stable = evaluate_release_tag("0.5.0", Some("v0.5.0")).unwrap();
@@ -108,7 +112,7 @@ fn test_resolve_effective_tag_handles_branches_prs_tags_and_require_tag() {
 
 #[test]
 fn test_transient_wix_packager_override_preserves_workspace_version() {
-    let root = crate::manifest_cache::workspace_root_dir();
+    let root = repo_root_dir();
     let gui_toml = fs::read_to_string(root.join("math_explorer_gui/Cargo.toml"))
         .expect("math_explorer_gui/Cargo.toml must be readable");
     let overridden =
@@ -135,7 +139,7 @@ fn test_transient_wix_packager_override_preserves_workspace_version() {
 
 #[cfg(unix)]
 fn extract_ci_job_step_script(job_id: &str, step_name: &str) -> String {
-    let root = crate::manifest_cache::workspace_root_dir();
+    let root = repo_root_dir();
     let ci_raw = fs::read_to_string(root.join(".github/workflows/ci.yml")).unwrap();
     let yaml: serde_json::Value = serde_saphyr::from_str(&ci_raw).unwrap();
     let steps = yaml["jobs"][job_id]["steps"]
@@ -238,7 +242,7 @@ fn setup_mock_package_repo() -> (TempTestDir, String, String) {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
 
-    let root = crate::manifest_cache::workspace_root_dir();
+    let root = repo_root_dir();
     let original_gui = fs::read_to_string(root.join("math_explorer_gui/Cargo.toml")).unwrap();
     let temp = TempTestDir::new("ci_package_wix_exec");
     fs::create_dir_all(temp.join("math_explorer_gui")).unwrap();
@@ -329,7 +333,7 @@ fn test_ci_package_step_transient_wix_override_and_restore() {
 
 #[test]
 fn test_cli_runner_parity_mismatch_and_rc_output_emission() {
-    let root = crate::manifest_cache::workspace_root_dir();
+    let root = repo_root_dir();
 
     // Mismatched tag v0.5.0 against workspace 0.4.0 fails in pre-flight & publish-release modes
     for args in [Vec::<String>::new(), vec!["--require-tag".to_string()]] {

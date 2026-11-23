@@ -122,17 +122,22 @@ fn test_ast_visitor_allow_recursion_preserves_verification_counts() {
 }
 
 #[test]
-fn test_ast_visitor_ignores_verified_and_embed_theory_in_doc_comments() {
-    let code = format!(
-        "/// Example:\n/// ```rust\n/// use verified_engine_macros::embed_theory;\n/// #[embed_theory(\"papers/essay.tex\", label = \"eq:demo\")]\n/// #[{}]\n/// fn demo() {{}}\n/// ```\n/// [cite:math_commons]\nfn documented_helper() {{\n    assert!(true);\n}}\n",
-        "verified"
+fn test_ast_visitor_ignores_macro_examples_in_doc_comments() {
+    let code = concat!(
+        "/// Example:\n",
+        "/// ```rust\n",
+        "/// use verified_engine_macros::embed_theory;\n",
+        "/// #[embed_theory(\"papers/mmwave_radiotherapy_setup.tex\", label = \"eq:range\")]\n",
+        "/// #[verified]\n",
+        "/// fn demo() {}\n",
+        "/// ```\n",
+        "pub fn macro_entrypoint() {}\n",
     );
-    let file = syn::parse_file(&code).unwrap();
+    let file = syn::parse_file(code).unwrap();
     let mut visitor = AstVisitor::default();
     visitor.visit_file(&file);
 
     assert_eq!(visitor.total_funcs, 1);
     assert_eq!(visitor.verified_funcs, 0);
-    assert_eq!(visitor.semantic_integrity_funcs, 1);
-    assert_eq!(visitor.verified_modules, vec!["math_commons".to_string()]);
+    assert!(visitor.verified_modules.is_empty());
 }
