@@ -93,6 +93,10 @@ fn test_tool_maturity_resolution_distinguishes_certified_and_experimental_models
         resolve_tool_maturity_tier("CalibrationWorkbenchTool", "ai", None),
         MaturityTier::Validated
     );
+    assert_eq!(
+        resolve_tool_maturity_tier("PhysarumTool", "biology", Some(MaturityTier::Validated)),
+        MaturityTier::Validated
+    );
 }
 
 #[test]

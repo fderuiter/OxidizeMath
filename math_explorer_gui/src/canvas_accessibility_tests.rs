@@ -156,6 +156,12 @@ fn test_neuroscience_canvas_receives_tab_focus_and_accesskit_label() {
         &mut botanical,
         "Botanical Phyllotaxis and L-System Morphogenesis Canvas",
     );
+
+    let mut physarum = crate::tabs::morphogenesis::PhysarumTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut physarum,
+        "Physarum Network Lab Chemotactic Canvas",
+    );
 }
 
 #[cfg(feature = "epidemiology")]

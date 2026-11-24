@@ -107,6 +107,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Closed-Form Schwarzschild 4D Connection, Geodesic Bundle, and Relativistic Jet Workbench](adr/20261123-schwarzschild-connection-and-jet-beaming-workbench.md)
 - [ADR 20261123: Scope Pre-Commit Gates, Add Pre-Push Tiering, and Eliminate Build-Script `CARGO_MANIFEST_DIR` Drift](adr/20261123-scope-pre-commit-gates-and-pre-push-tiering.md)
 - [ADR 20261123: Workspace-Scoped `SharedSimulationBus`, Copy-on-Write CSR Topologies, and Zero-Allocation Graph Kernels](adr/20261123-shared-simulation-topology-bus.md)
+- [ADR 20261123: Zero-Allocation SoA Physarum Engine, Steiner Network Benchmarks, and Interactive Lab](adr/20261123-soa-physarum-engine-and-steiner-benchmarks.md)
 - [ADR 20261123: Intrinsic `SU(1,1)` Hyperbolic Geometry Engine and Standalone Playground Tab](adr/20261123-su11-hyperbolic-geometry-engine-and-tab.md)
 - [ADR 20261123: Zero-Allocation Laplace-Beltrami Surface Morphogenesis and Mean-Curvature Buckling](adr/20261123-surface-morphogenesis-laplace-beltrami-buckling.md)
 - [ADR 20261123: Client-Side Symbolic WGSL/GLSL Shader Foundry, Analytical Palettes, and Smooth Escape / Domain Coloring](adr/20261123-symbolic-wgsl-glsl-shader-foundry-and-domain-coloring.md)

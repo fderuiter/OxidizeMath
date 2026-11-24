@@ -326,11 +326,16 @@ fn biology_facade_exports_all_four_errors_and_botanical_submodules() {
     use math_explorer::biology::error::HodgkinHuxleyError as InnerHhError;
     use math_explorer::biology::lsystem::BotanicalLSystemPreset;
     use math_explorer::biology::phyllotaxis::{GOLDEN_ANGLE_RAD, VogelPhyllotaxisEngine};
+    use math_explorer::biology::physarum::{
+        PhysarumEngine, PhysarumPresetKind, extract_physarum_benchmark,
+    };
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
         BiologyError, BotanicalError, Error, HodgkinHuxleyError, KineticsError,
         ReactionDiffusionError,
     };
+    use math_explorer::prelude::{MaturityTier, TheoryDescribable};
+    use math_explorer::rng::OxidizeRng;
 
     let e1 = HodgkinHuxleyError::InvalidGatingVariable(1.5);
     let e2 = InnerHhError::InvalidConductance(-0.2);
@@ -349,6 +354,16 @@ fn biology_facade_exports_all_four_errors_and_botanical_submodules() {
     let (_grammar, _cfg) = BotanicalLSystemPreset::HerbaceousShoot
         .build_grammar(25.0, 0.78, 0.68)
         .expect("valid L-system grammar");
+    let mut phys = PhysarumEngine::from_preset(
+        64,
+        64,
+        256,
+        PhysarumPresetKind::SteinerTriangle,
+        OxidizeRng::new(7),
+    );
+    phys.step();
+    assert_eq!(phys.params().maturity_tier(), MaturityTier::Validated);
+    assert!(extract_physarum_benchmark(&phys).mst_cost > 0.0);
 }
 
 #[cfg(feature = "climate")]

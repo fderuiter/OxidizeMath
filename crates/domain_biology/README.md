@@ -4,7 +4,7 @@
 
 Computational biology models from molecular kinetics and neural firing to morphogenesis and population evolution.
 
-> **Maturity Tier:** Crate `Validated` — `Certified` excitable-membrane, enzyme-kinetics, and Turing-morphogenesis kernels (`neuroscience`, `kinetics`, `morphogenesis`) alongside `Validated` reaction-diffusion, Lenia, and evolutionary dynamics modules.
+> **Maturity Tier:** Crate `Validated` — `Certified` excitable-membrane, enzyme-kinetics, and Turing-morphogenesis kernels (`neuroscience`, `kinetics`, `morphogenesis`) alongside `Validated` reaction-diffusion, Lenia, Physarum, and evolutionary dynamics modules.
 
 ## 1. Overview & Architecture
 
@@ -21,6 +21,7 @@ By formalizing biological dynamics into clean, verified Rust algorithms, the cra
 - **`lsystem`**: Zero-allocation deterministic D0L and parametric Lindenmayer vascular branching grammars (`LSystemEngine`, double-buffered $65{,}536$-symbol byte tape, and 2D bracketed turtle geometry).
 - **`phyllotaxis`**: Pre-allocated Vogel planar phyllotaxis (`VogelPhyllotaxisEngine`, $r_n = c\sqrt{n}, \theta_n = n\alpha$ up to $4{,}096$ primordia) and opposing Fibonacci $(F_k, F_{k+1})$ parastichy spiral analysis.
 - **`lenia`**: Spectral 2D Lenia continuous cellular automata (`LeniaEngine`, concentric-ring `KernelShells`, Gaussian growth curves, and `Orbium` / `Geminium` / `Hydrogeminium` / `Scutium` solitons).
+- **`physarum`**: Zero-allocation Structure-of-Arrays *Physarum polycephalum* chemotactic slime-mold engine (`PhysarumEngine`, `PhysarumParams`, `PhysarumPresetKind`) and Zhang-Suen / Dijkstra / MST Steiner network benchmarks (`extract_physarum_benchmark`).
 - **`evolution`**: Evolutionary game theory (`HawkDovePopulation`), replicator dynamics, and Evolutionarily Stable Strategy ($p^* = V / C$) equilibria.
 - **`diffusion`**: 1D, 2D, and 3D finite-difference Fickian diffusion operators (`FiniteDifference1D`, `FiniteDifference2D`, `FiniteDifference3D`) and curved-surface Riemannian diffusion (`LaplaceBeltramiDiffusion2D`).
 

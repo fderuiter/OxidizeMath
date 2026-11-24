@@ -71,30 +71,30 @@ mod tests {
     fn check_science_and_ai_tools(ctx: &eframe::egui::Context) {
         #[cfg(feature = "ai")]
         {
-            check_one::<crate::tabs::ai::q_table_inspector::QTableInspectorTool>(ctx);
-            check_one::<crate::tabs::ai::calibration_workbench::CalibrationWorkbenchTool>(ctx);
-            check_one::<crate::tabs::ai::attention_maps::AttentionMapsTool>(ctx);
-            check_one::<crate::tabs::ai::tokenization::TokenizationTool>(ctx);
-            check_one::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(ctx);
-            check_one::<crate::tabs::ai::gaussian_splatting::GaussianSplattingTool>(ctx);
-            check_one::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(ctx);
-            check_one::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(ctx);
-            check_one::<crate::tabs::ai::grid_world::GridWorldTool>(ctx);
-            check_one::<crate::tabs::ai::closed_loop_control::ClosedLoopControlTool>(ctx);
+            use crate::tabs::ai;
+            check_one::<ai::q_table_inspector::QTableInspectorTool>(ctx);
+            check_one::<ai::calibration_workbench::CalibrationWorkbenchTool>(ctx);
+            check_one::<ai::attention_maps::AttentionMapsTool>(ctx);
+            check_one::<ai::tokenization::TokenizationTool>(ctx);
+            check_one::<ai::activation_functions::ActivationFunctionsTool>(ctx);
+            check_one::<ai::gaussian_splatting::GaussianSplattingTool>(ctx);
+            check_one::<ai::training_monitor::TrainingMonitorTool>(ctx);
+            check_one::<ai::loss_landscape::LossLandscapeTool>(ctx);
+            check_one::<ai::grid_world::GridWorldTool>(ctx);
+            check_one::<ai::closed_loop_control::ClosedLoopControlTool>(ctx);
         }
         #[cfg(feature = "physics")]
         {
-            check_one::<crate::tabs::solid_state::band_structure::BandStructureTool>(ctx);
-            check_one::<crate::tabs::solid_state::ising::IsingModelTool>(ctx);
+            use crate::tabs::{fluid_dynamics as fd, medical, solid_state as ss};
+            check_one::<ss::band_structure::BandStructureTool>(ctx);
+            check_one::<ss::ising::IsingModelTool>(ctx);
             check_one::<crate::tabs::quantum::clebsch::ClebschGordanTool>(ctx);
-            check_one::<crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(ctx);
-            check_one::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(ctx);
-            check_one::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(ctx);
-            check_one::<crate::tabs::medical::dose::DoseCalculationTool>(ctx);
-            check_one::<crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool>(
-                ctx,
-            );
-            check_one::<crate::tabs::medical::radar_gating::RadarGatingTool>(ctx);
+            check_one::<fd::potential_flow::PotentialFlowTool>(ctx);
+            check_one::<fd::turbulence::TurbulenceTool>(ctx);
+            check_one::<medical::beam_profiling::BeamProfilingTool>(ctx);
+            check_one::<medical::dose::DoseCalculationTool>(ctx);
+            check_one::<medical::pharmacokinetic_regimen::PharmacokineticRegimenTool>(ctx);
+            check_one::<medical::radar_gating::RadarGatingTool>(ctx);
             check_one::<crate::tabs::chaos::hamiltonian::HamiltonianChaosLab>(ctx);
         }
         #[cfg(feature = "climate")]
@@ -107,12 +107,12 @@ mod tests {
         check_one::<crate::tabs::epidemiology::network_propagation::NetworkPropagationTool>(ctx);
         #[cfg(feature = "biology")]
         {
-            check_one::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
-            check_one::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(ctx);
-            check_one::<crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool>(ctx);
-            check_one::<crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool>(
-                ctx,
-            );
+            use crate::tabs::{morphogenesis as morph, neuroscience as neuro};
+            check_one::<morph::lenia::LeniaTool>(ctx);
+            check_one::<morph::physarum::PhysarumTool>(ctx);
+            check_one::<neuro::spike_analysis::SpikeAnalysisTool>(ctx);
+            check_one::<neuro::neural_network_viz::NeuralNetworkVizTool>(ctx);
+            check_one::<neuro::cortical_morphometry::CorticalMorphometryTool>(ctx);
             #[cfg(feature = "pure_math")]
             check_one::<
                 crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,

@@ -89,6 +89,7 @@ pub(crate) fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "PhyllotaxisLSystemTool" | "BiochemicalDynamicsTool" | "EvolutionaryBiologyTool" => {
             &["computational_biology", "biology"]
         }
+        "PhysarumTool" => &["computational_biology", "biology", "dijkstra"],
         _ => &[],
     };
     tokens.extend(explicit.iter().map(|s| (*s).to_string()));

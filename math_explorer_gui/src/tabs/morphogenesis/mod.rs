@@ -17,6 +17,7 @@ pub mod kinetics;
 mod legacy_runner;
 pub mod lenia;
 pub mod phyllotaxis_lsystem;
+pub mod physarum;
 pub mod presets;
 pub mod runner;
 mod runner_twin;
@@ -40,6 +41,8 @@ pub use gray_scott_atlas::{
 pub use lenia::LeniaTool;
 #[cfg(test)]
 pub use phyllotaxis_lsystem::PhyllotaxisLSystemTool;
+#[cfg(test)]
+pub use physarum::PhysarumTool;
 #[cfg(test)]
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
@@ -67,7 +70,7 @@ pub struct LegacyMorphoState {
     pub pending_initial_start: bool,
 }
 
-/// Biology tab hosting [`MorphogenesisTool`] and [`lenia::LeniaTool`] inside [`crate::framework::SimulationFramework`].
+/// Biology tab hosting [`MorphogenesisTool`], [`lenia::LeniaTool`], and [`physarum::PhysarumTool`] inside [`crate::framework::SimulationFramework`].
 pub struct MorphogenesisTab {
     /// Underlying simulation framework managing exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,

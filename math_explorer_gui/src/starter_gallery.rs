@@ -373,6 +373,10 @@ mod root_host;
 pub mod stories;
 #[path = "starter_gallery/story_packs.rs"]
 mod story_packs;
+#[cfg(feature = "biology")]
+pub use crate::tabs::morphogenesis::physarum::presets::{
+    PRESET_PHYSARUM_MAZE, PRESET_PHYSARUM_STEINER, PRESET_PHYSARUM_TOKYO_RAIL,
+};
 pub use challenges::{
     challenge_matches_domain, find_challenge_metadata, get_all_challenge_cards,
     get_challenge_cards_for_domain, ChallengeCard, ChallengeMetadata, GallerySelection,
