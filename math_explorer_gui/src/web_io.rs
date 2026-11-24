@@ -5,8 +5,6 @@
 //! file-picker helpers from [`egui_plot::export`], and centralizes `mpsc`-backed
 //! open, save-as, and direct-save file operations for native (`rfd`) and WebAssembly targets.
 
-// theory_verification!
-
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::time::Duration;

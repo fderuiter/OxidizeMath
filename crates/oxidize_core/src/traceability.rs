@@ -95,7 +95,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     #[allow(missing_docs)]
     pub fn verify_module_registered(module_name: &str) -> bool {
         const EMBEDDED_REGISTRY: &str = include_str!("../../../traceability.toml");
@@ -197,7 +196,7 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     }
 
     /// Discovers workspace code directories (`math_explorer/src`, `math_explorer_gui/src/tabs`,
-    /// and `crates/*/src`) and the `papers` directory relative to `base_dir`.
+    /// `crates/*/src`, and grouped `crates/*/*/src`) and the `papers` directory relative to `base_dir`.
     pub async fn discover_workspace_dirs(&self, base_dir: &str) -> (Vec<String>, String) {
         let prefix = if base_dir.is_empty() || base_dir.ends_with('/') {
             base_dir.to_string()
@@ -212,8 +211,21 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         if let Ok(mut crates) = self.vfs.list_dir(&crate_base).await {
             crates.sort();
             for crate_name in crates {
-                if !crate_name.starts_with('.') {
-                    code_dirs.push(format!("{crate_base}/{crate_name}/src"));
+                if crate_name.starts_with('.') {
+                    continue;
+                }
+                let crate_dir = format!("{crate_base}/{crate_name}");
+                if let Ok(mut sub_entries) = self.vfs.list_dir(&crate_dir).await
+                    && !sub_entries.iter().any(|e| e == "src" || e == "Cargo.toml")
+                {
+                    sub_entries.sort();
+                    for sub in sub_entries {
+                        if !sub.starts_with('.') {
+                            code_dirs.push(format!("{crate_dir}/{sub}/src"));
+                        }
+                    }
+                } else {
+                    code_dirs.push(format!("{crate_dir}/src"));
                 }
             }
         }

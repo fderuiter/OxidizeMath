@@ -127,6 +127,8 @@
 
 pub mod analysis;
 pub mod core;
+/// Exact discrete Gaussian transition solver for the Ornstein-Uhlenbeck SDE.
+pub mod exact_solver;
 pub mod solver;
 
 pub use analysis::{
@@ -134,6 +136,7 @@ pub use analysis::{
     summarize_terminal_values_with_workspace,
 };
 pub use core::{LongTermMean, OuParams};
+pub use exact_solver::ExactOuSolver;
 pub use solver::{EulerMaruyama, TimeStep};
 
 // [cite:clinical_trials_statistics]

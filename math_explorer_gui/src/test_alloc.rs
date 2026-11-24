@@ -96,6 +96,7 @@ impl Drop for TrackingResetGuard {
 }
 
 /// Executes `f` under `VERIFIED_ALLOC_TEST_MUTEX` while counting `f64`-aligned allocations `>= 64 KiB` on the calling thread.
+#[cfg(any(feature = "epidemiology", feature = "pure_math"))]
 pub(crate) fn measure_coord_series_allocs<R>(f: impl FnOnce() -> R) -> (R, usize, usize) {
     let _lock = crate::VERIFIED_ALLOC_TEST_MUTEX
         .lock()

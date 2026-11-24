@@ -2,10 +2,18 @@ use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 
 pub mod slider;
-#[cfg(test)]
+pub use slider::AnimatedSlider;
+#[cfg(all(test, feature = "physics"))]
 pub use slider::AnimatedSliderState;
-pub use slider::{AnimatedSlider, SweepMode};
+#[cfg(feature = "ai")]
+pub use slider::SweepMode;
 
+#[cfg(any(
+    feature = "applied",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 fn format_metric_label(label: &str, value: &str) -> String {
     if label.is_empty() {
         value.to_string()
@@ -17,6 +25,12 @@ fn format_metric_label(label: &str, value: &str) -> String {
 }
 
 /// Renders a formatted metric label and value alongside an inline copy button and context menu.
+#[cfg(any(
+    feature = "applied",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 pub fn render_copyable_metric(ui: &mut egui::Ui, label: &str, value: &str) -> egui::Response {
     let response = ui
         .horizontal(|ui| {
@@ -45,6 +59,7 @@ pub fn render_copyable_metric(ui: &mut egui::Ui, label: &str, value: &str) -> eg
     response
 }
 
+#[cfg(any(feature = "ai", feature = "physics", feature = "pure_math"))]
 fn copy_formula_text(ui: &egui::Ui, text: &str, status: &str) {
     ui.ctx().copy_text(text.to_string());
     #[cfg(not(test))]
@@ -52,6 +67,7 @@ fn copy_formula_text(ui: &egui::Ui, text: &str, status: &str) {
     crate::accessibility::announce_status(status);
 }
 
+#[cfg(any(feature = "ai", feature = "physics", feature = "pure_math"))]
 fn save_formula_tex(latex_str: &str) {
     #[cfg(test)]
     let _ = latex_str;
@@ -66,6 +82,7 @@ fn save_formula_tex(latex_str: &str) {
 }
 
 /// Renders a mathematical formula (LaTeX with optional plain text) alongside inline export buttons and a right-click context menu.
+#[cfg(any(feature = "ai", feature = "physics", feature = "pure_math"))]
 pub fn render_formula_with_export(
     ui: &mut egui::Ui,
     latex_str: &str,
@@ -110,6 +127,7 @@ pub fn render_formula_with_export(
     attach_formula_context_menu(response, latex_str, plain_text)
 }
 
+#[cfg(any(feature = "ai", feature = "physics", feature = "pure_math"))]
 fn attach_formula_context_menu(
     response: egui::Response,
     latex_str: &str,

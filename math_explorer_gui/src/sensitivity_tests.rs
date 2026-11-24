@@ -400,6 +400,7 @@ fn test_pane_scoped_sweep_isolation() {
     });
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_unified_sim_drag_deferral_and_release_convergence() {
     use crate::async_sim::unified::UnifiedSimTool;
