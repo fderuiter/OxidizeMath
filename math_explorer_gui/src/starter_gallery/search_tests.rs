@@ -129,7 +129,7 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
 }
 
 #[test]
-fn test_all_29_tab_slugs_map_to_matching_academic_domains_and_titles() {
+fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
     assert_eq!(
         card_academic_domain("optics_waves"),
         AcademicDomain::Physics
