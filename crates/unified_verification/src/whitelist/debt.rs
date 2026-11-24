@@ -195,11 +195,3 @@ pub(crate) fn evaluate_opt_out_caps(
 
     violations
 }
-
-/// Returns `true` when workspace member `member` is listed in `exempt_crates`.
-pub(crate) fn is_exempt_crate(member: &str, exempt_crates: &[String]) -> bool {
-    let member_path = Path::new(member.trim_end_matches('/'));
-    exempt_crates
-        .iter()
-        .any(|exempt| path_matches_lossy(member_path, exempt, DEBT_PATH_OPTS))
-}

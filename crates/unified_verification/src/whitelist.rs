@@ -1,3 +1,9 @@
+mod verify_suite;
+
+#[cfg(test)]
+pub use verify_suite::OptOutAllowEntry;
+pub use verify_suite::VerifySuiteConfig;
+
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
@@ -31,6 +37,8 @@ pub(crate) struct VerificationWhitelist {
     pub verification_debt: Option<VerificationDebtConfig>,
     #[serde(default)]
     pub workflow_linter: Option<WorkflowLinterConfig>,
+    #[serde(default)]
+    pub verify_suite: Option<VerifySuiteConfig>,
     #[serde(default)]
     pub dead_code: Vec<DeadCodeEntry>,
     #[serde(default)]

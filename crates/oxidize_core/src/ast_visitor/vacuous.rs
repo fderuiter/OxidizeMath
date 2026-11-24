@@ -1,8 +1,6 @@
-//! Zero-initialization bypass detector for `stochastic_signature_verification!` blocks.
-
+use syn::Macro;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
-use syn::{Block, Macro};
 
 pub(super) fn span_line(span: proc_macro2::Span) -> usize {
     span.start().line
@@ -67,6 +65,32 @@ fn vec_macro_is_zero_init(mac: &Macro) -> bool {
         Ok(all_zero)
     })
     .unwrap_or(false)
+}
+
+fn extract_stochastic_test_block(
+    input: syn::parse::ParseStream<'_>,
+) -> syn::Result<Option<syn::Block>> {
+    let mut found = None;
+    while !input.is_empty() {
+        if input.peek(syn::Ident) {
+            let ident: syn::Ident = input.parse()?;
+            if ident == "stochastic_test" && input.peek(syn::Token![=]) {
+                let _: syn::Token![=] = input.parse()?;
+                if input.peek(syn::token::Brace) {
+                    found = Some(input.parse::<syn::Block>()?);
+                    continue;
+                }
+            }
+            continue;
+        }
+        input.step(|cursor| {
+            cursor
+                .token_tree()
+                .map(|(_, next)| ((), next))
+                .ok_or_else(|| cursor.error("unexpected end of macro tokens"))
+        })?;
+    }
+    Ok(found)
 }
 
 struct StochasticZeroInitVisitor {
@@ -140,8 +164,12 @@ impl<'ast> Visit<'ast> for StochasticZeroInitVisitor {
     }
 }
 
-pub(super) fn find_stochastic_zero_init_line_in_block(block: &Block) -> Option<usize> {
+pub(super) fn find_stochastic_zero_init_line(mac: &Macro) -> Option<usize> {
+    let block = mac
+        .parse_body_with(extract_stochastic_test_block)
+        .ok()
+        .flatten()?;
     let mut visitor = StochasticZeroInitVisitor { bypass_line: None };
-    visitor.visit_block(block);
+    visitor.visit_block(&block);
     visitor.bypass_line
 }

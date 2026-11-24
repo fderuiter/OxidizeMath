@@ -71,6 +71,101 @@ fn run_check_file_lengths_cli(args: &[String]) {
     }
 }
 
+fn parse_check_certificate_mode(args: &[String]) -> Result<report::ReportMode, String> {
+    match args {
+        [] => Ok(report::ReportMode::Check),
+        [flag] if flag == "--check" => Ok(report::ReportMode::Check),
+        [flag] if flag == "--write" || flag == "--write-tracked" => Ok(report::ReportMode::Write),
+        _ => Err("Usage: unified_verification check-certificate [--check | --write]".to_string()),
+    }
+}
+
+fn run_check_certificate_cli(args: &[String]) -> bool {
+    let mode = match parse_check_certificate_mode(args) {
+        Ok(mode) => mode,
+        Err(err) => {
+            eprintln!("Error: {err}");
+            return false;
+        }
+    };
+    let _root_guard = manifest_cache::WorkspaceRootGuard::enter();
+    let (_, members) = manifest_cache::discover_workspace();
+    let mut cache = oxidize_core::traceability::AstCache::new();
+    report::certificate::sync_ast_certificate_with_cache(&members, mode, &mut cache)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VerifySuiteOptions {
+    pub mode: report::ReportMode,
+    pub auto_fix: bool,
+    pub coverage_only: bool,
+    pub output_cert: Option<std::path::PathBuf>,
+}
+
+fn parse_non_empty_cert_path(raw: &str) -> Result<std::path::PathBuf, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("--output-cert requires a non-empty file path".to_string());
+    }
+    Ok(std::path::PathBuf::from(trimmed))
+}
+
+pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOptions, String> {
+    let mut saw_check = false;
+    let mut saw_write = false;
+    let mut auto_fix = false;
+    let mut coverage_only = false;
+    let mut output_cert = None;
+
+    let mut idx = 0usize;
+    while idx < args.len() {
+        let arg = args[idx].as_str();
+        match arg {
+            "--check" => saw_check = true,
+            "--write" | "--write-tracked" => saw_write = true,
+            "--auto-fix" => auto_fix = true,
+            "--coverage-only" => coverage_only = true,
+            "--output-cert" => {
+                idx += 1;
+                let Some(next) = args.get(idx) else {
+                    return Err("Missing value for --output-cert <path>".to_string());
+                };
+                output_cert = Some(parse_non_empty_cert_path(next)?);
+            }
+            _ if arg.starts_with("--output-cert=") => {
+                let raw = &arg["--output-cert=".len()..];
+                output_cert = Some(parse_non_empty_cert_path(raw)?);
+            }
+            other => {
+                return Err(format!(
+                    "Unknown verify-suite flag `{other}` (expected `--check`, `--write`, `--write-tracked`, `--coverage-only`, `--output-cert <path>`, or `--write --auto-fix`)"
+                ));
+            }
+        }
+        idx += 1;
+    }
+    if saw_check && saw_write {
+        return Err("Cannot pass both `--check` and `--write` to `verify-suite`".to_string());
+    }
+    let mode = if saw_write {
+        report::ReportMode::Write
+    } else {
+        report::ReportMode::Check
+    };
+    if auto_fix && mode != report::ReportMode::Write {
+        return Err(
+            "`--auto-fix` requires `--write` so read-only `--check` mode never mutates files"
+                .to_string(),
+        );
+    }
+    Ok(VerifySuiteOptions {
+        mode,
+        auto_fix,
+        coverage_only,
+        output_cert,
+    })
+}
+
 fn exit_if_failed(passed: bool) {
     if !passed {
         std::process::exit(1);
@@ -90,6 +185,7 @@ fn main() {
         "batch-static" => exit_if_failed(batch::run_batch_static(&args[2..])),
         "batch-staged" | "lint-staged" => exit_if_failed(batch::run_batch_staged()),
         "verify-suite" => verify_suite(&args[2..]),
+        "check-certificate" => exit_if_failed(run_check_certificate_cli(&args[2..])),
         "regenerate-baseline" => api_drift::regenerate_baseline(),
         "check-api-drift" => exit_if_failed(api_drift::check_api_drift()),
         "check-duplicates" => exit_if_failed(ast_visitor::run_clone_detector()),
@@ -118,7 +214,7 @@ pub(crate) fn run_security_checks_with_hooks(
     check_osv: fn() -> bool,
     check_deps_ast: fn() -> bool,
 ) -> (bool, Vec<String>) {
-    println!("Running security checks...");
+    println!("Running security and traceability checks...");
     let mut passed_security = true;
 
     if !profile::check_profiles_with_cache(member_refs, auto_fix, manifest_cache) {
@@ -133,11 +229,17 @@ pub(crate) fn run_security_checks_with_hooks(
     if !ast_visitor::run_clone_detector_with_cache(cache) {
         passed_security = false;
     }
+    if !batch::run_traceability_with_cache(auto_fix, cache) {
+        passed_security = false;
+    }
     if !policy_audit::run_policy_audit_with_caches(member_refs, cache, manifest_cache) {
         passed_security = false;
     }
     let entropy_debt = entropy_guard::check_entropy_with_cache(&[], cache);
     if !entropy_debt.is_empty() {
+        for item in &entropy_debt {
+            println!("{item}");
+        }
         passed_security = false;
     }
     (passed_security, entropy_debt)
@@ -164,92 +266,28 @@ fn run_security_checks(
     entropy_debt
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct VerifySuiteOptions {
-    pub auto_fix: bool,
-    pub coverage_only: bool,
-    pub output_cert: Option<std::path::PathBuf>,
-    pub write_tracked: bool,
-}
-
-fn parse_non_empty_cert_path(raw: &str) -> Result<std::path::PathBuf, String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Err("--output-cert requires a non-empty file path".to_string());
-    }
-    Ok(std::path::PathBuf::from(trimmed))
-}
-
-pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOptions, String> {
-    let mut opts = VerifySuiteOptions::default();
-    let mut idx = 0;
-    while idx < args.len() {
-        let arg = args[idx].as_str();
-        match arg {
-            "--auto-fix" => opts.auto_fix = true,
-            "--coverage-only" => opts.coverage_only = true,
-            "--write-tracked" => opts.write_tracked = true,
-            "--output-cert" => {
-                idx += 1;
-                let Some(next) = args.get(idx) else {
-                    return Err("Missing value for --output-cert <path>".to_string());
-                };
-                opts.output_cert = Some(parse_non_empty_cert_path(next)?);
-            }
-            _ if arg.starts_with("--output-cert=") => {
-                let raw = &arg["--output-cert=".len()..];
-                opts.output_cert = Some(parse_non_empty_cert_path(raw)?);
-            }
-            other => return Err(format!("Unknown verify-suite argument: {other}")),
-        }
-        idx += 1;
-    }
-    Ok(opts)
-}
-
 pub(crate) fn evaluate_coverage_and_report_with<F>(
     members: &[String],
-    entropy_debt: Vec<String>,
+    entropy_debt: &[String],
     opts: &VerifySuiteOptions,
     cache: &mut oxidize_core::traceability::AstCache,
     collect_cov: F,
 ) -> Result<bool, String>
 where
-    F: FnOnce() -> Result<serde_json::Value, String>,
+    F: FnOnce(report::ReportMode) -> Result<serde_json::Value, String>,
 {
     println!("Gathering native execution coverage...");
 
-    let whitelist_path = whitelist::find_whitelist_path();
-    let loaded_whitelist = whitelist::load_whitelist_strict(
-        whitelist_path.as_deref(),
-        whitelist::WORKSPACE_WHITELIST_CANDIDATES,
-    )?;
-    if whitelist_path.is_some() && loaded_whitelist.verification_debt.is_none() {
-        return Err(
-            "Missing required [verification_debt] table in verification_whitelist.toml".to_string(),
-        );
-    }
-
-    let cov_json = collect_cov()?;
+    let cov_json = collect_cov(opts.mode)?;
     let rs_files = report::collect_rs_files();
     let (native_lines_total, native_lines_covered) = report::parse_coverage(&cov_json);
-    let m = report::analyze_workspace_with_cache(&rs_files, cache)?;
-    let default_exempt = ["egui_plot".to_string()];
-    let exempt_crates = loaded_whitelist
-        .verification_debt
-        .as_ref()
-        .map(|d| d.exempt_crates.as_slice())
-        .unwrap_or(&default_exempt);
-    let mut all_debt = Vec::new();
-    all_debt.extend(report::check_unverified_modules_with_cache(
-        members,
-        exempt_crates,
-        cache,
-    ));
-    if !opts.coverage_only {
-        all_debt.extend(check_file_lengths(members));
-    }
-    all_debt.extend(entropy_debt);
+    let m = report::analyze_files_with_cache(&rs_files, cache);
+    let unverified_crates = report::find_unverified_crates_with_cache(members, cache);
+    let file_len_debt = if opts.coverage_only {
+        Vec::new()
+    } else {
+        check_file_lengths(members)
+    };
 
     let native_cov_pct = if native_lines_total > 0.0 {
         native_lines_covered / native_lines_total * 100.0
@@ -262,18 +300,20 @@ where
         100.0
     };
 
-    let write_opts = report::ReportWriteOptions {
-        output_cert: opts.output_cert.clone(),
-        write_tracked: opts.write_tracked,
+    let debt = report::DebtSources {
+        unverified_crates: &unverified_crates,
+        file_length_debt: &file_len_debt,
+        entropy_debt,
+        extra_debt: &[],
     };
-    report::print_report_with_options(
+    Ok(report::run_report_with_options(
         native_cov_pct,
         wasm_cov_pct,
         &m,
-        &all_debt,
-        loaded_whitelist.verification_debt.as_ref(),
-        &write_opts,
-    )
+        &debt,
+        opts.mode,
+        opts.output_cert.as_deref(),
+    ))
 }
 
 fn run_default_verify_suite_static_gates(
@@ -298,37 +338,39 @@ fn run_default_verify_suite_static_gates(
 pub(crate) fn run_verify_suite_with<S, C>(
     opts: VerifySuiteOptions,
     members: &[String],
+    cache: &mut oxidize_core::traceability::AstCache,
     run_static_gates: S,
     collect_cov: C,
 ) -> Result<bool, String>
 where
     S: FnOnce(&[String], bool, &mut oxidize_core::traceability::AstCache) -> Vec<String>,
-    C: FnOnce() -> Result<serde_json::Value, String>,
+    C: FnOnce(report::ReportMode) -> Result<serde_json::Value, String>,
 {
-    let mut cache = oxidize_core::traceability::AstCache::new();
     let entropy_debt = if opts.coverage_only {
         Vec::new()
     } else {
-        run_static_gates(members, opts.auto_fix, &mut cache)
+        run_static_gates(members, opts.auto_fix, cache)
     };
-    evaluate_coverage_and_report_with(members, entropy_debt, &opts, &mut cache, collect_cov)
+    evaluate_coverage_and_report_with(members, &entropy_debt, &opts, cache, collect_cov)
 }
 
 fn verify_suite(args: &[String]) {
-    println!("=== High-Integrity Verified Suite ===");
     let opts = match parse_verify_suite_args(args) {
         Ok(opts) => opts,
         Err(err) => {
-            eprintln!("{err}");
+            eprintln!("Error: {err}");
             std::process::exit(1);
         }
     };
+    println!("=== High-Integrity Verified Suite ({:?}) ===", opts.mode);
 
     let _root_guard = manifest_cache::WorkspaceRootGuard::enter();
     let (_, members) = manifest_cache::discover_workspace();
+    let mut cache = oxidize_core::traceability::AstCache::new();
     let passed = match run_verify_suite_with(
         opts,
         &members,
+        &mut cache,
         run_default_verify_suite_static_gates,
         report::collect_llvm_cov_json,
     ) {
@@ -341,8 +383,12 @@ fn verify_suite(args: &[String]) {
     if !passed {
         std::process::exit(1);
     }
-    println!("\nAll integrity checks passed!");
+    println!(
+        "\nAll integrity checks passed! ({} unique Rust files parsed)",
+        cache.parse_calls()
+    );
 }
 
 #[cfg(test)]
+#[path = "main_tests.rs"]
 mod tests;

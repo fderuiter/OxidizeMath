@@ -182,6 +182,24 @@ fn test_ast_visitor_ignores_verified_and_embed_theory_in_rustdoc_while_keeping_c
 }
 
 #[test]
+fn test_ast_visitor_preserves_doc_citation_semantic_link_under_file_opt_out() {
+    let code = concat!(
+        "#![cfg_attr(any(), verified(opt_out = \"gui_tool\"))]\n",
+        "/// Interactive lab citing `[cite:essay]`.\n",
+        "pub fn render_panel() {}\n",
+    );
+    let file = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert!(visitor.opted_out);
+    assert_eq!(visitor.opted_out_funcs, 1);
+    assert_eq!(visitor.verified_funcs, 0);
+    assert_eq!(visitor.semantic_integrity_funcs, 1);
+    assert_eq!(visitor.verified_modules, vec!["essay".to_string()]);
+}
+
+#[test]
 fn test_ast_visitor_ignores_embed_theory_and_verified_tokens_inside_doc_comments() {
     let code = r#"
         /// Example macro usage:
@@ -259,7 +277,7 @@ fn test_ast_visitor_counts_exact_macro_assertions_without_max3_padding() {
 }
 
 #[test]
-fn test_ast_visitor_excludes_cfg_test_and_test_fns_while_keeping_wasm_or_test_items() {
+fn test_ast_visitor_separates_cfg_test_and_test_fns_while_keeping_wasm_or_test_in_prod() {
     let code = r#"
         #[cfg(any(target_arch = "wasm32", test))]
         #[verified]
@@ -298,10 +316,16 @@ fn test_ast_visitor_excludes_cfg_test_and_test_fns_while_keeping_wasm_or_test_it
     let ast = syn::parse_file(code).unwrap();
     let mut visitor = AstVisitor::default();
     visitor.visit_file(&ast);
-    assert_eq!(visitor.total_funcs, 1);
-    assert_eq!(visitor.verified_funcs, 1);
-    assert_eq!(visitor.total_asserts, 1);
-    assert_eq!(visitor.verified_asserts, 1);
+    assert_eq!(visitor.prod_funcs, 1);
+    assert_eq!(visitor.verified_prod_funcs, 1);
+    assert_eq!(visitor.prod_asserts, 1);
+    assert_eq!(visitor.verified_prod_asserts, 1);
+    assert_eq!(visitor.test_funcs, 4);
+    assert_eq!(visitor.verified_test_funcs, 3);
+    assert_eq!(visitor.test_asserts, 5);
+    assert_eq!(visitor.verified_test_asserts, 4);
+    assert_eq!(visitor.total_funcs, 5);
+    assert_eq!(visitor.total_asserts, 6);
     assert!(visitor.active_submodules.is_empty());
 }
 

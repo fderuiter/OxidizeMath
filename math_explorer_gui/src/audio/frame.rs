@@ -1,7 +1,5 @@
 //! Stack-allocated acoustic frame types carried across simulation snapshots.
 
-// theory_verification!
-
 use serde::{Deserialize, Serialize};
 
 pub use super::settings::{AcousticSettings, DEFAULT_AUDIO_GAIN, DEFAULT_PITCH_SCALE};

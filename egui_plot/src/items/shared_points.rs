@@ -105,6 +105,18 @@ impl math_commons::series::PointSeries for SharedPoints {
     fn point_at(&self, index: usize) -> [f64; 2] {
         self.0[index]
     }
+
+    #[inline(always)]
+    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        <[f64; 2] as math_commons::series::Sample2D>::advance_slice_plateau(
+            &self.0,
+            start,
+            self.0.len(),
+            flat_y,
+            x_min,
+            x_max,
+        )
+    }
 }
 
 impl From<Vec<[f64; 2]>> for SharedPoints {
