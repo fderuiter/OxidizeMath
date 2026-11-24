@@ -174,7 +174,10 @@ impl MathExplorerApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
         let restored = theme::init_startup_theme(&mut app, cc);
-        app.hydrate_from_browser_url(&cc.egui_ctx, restored);
+        let hydrated = app.hydrate_from_browser_url(&cc.egui_ctx, restored);
+        if !restored && !hydrated && crate::starter_gallery::has_any_starter_presets() {
+            app.show_starter_gallery = true;
+        }
 
         #[cfg(target_os = "macos")]
         macos_menu::setup_macos_menu(&app);

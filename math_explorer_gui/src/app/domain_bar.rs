@@ -331,8 +331,27 @@ pub fn render_domain_switcher_bar(
             render_domain_button(app, ctx, ui, *domain, active_domain);
         }
 
+        render_explore_catalog_button(app, ctx, ui);
         render_active_path_label(ui, active_domain, active_tab_name);
     });
+}
+
+fn render_explore_catalog_button(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+) {
+    let shortcut = if cfg!(target_os = "macos") {
+        "Cmd+Shift+G"
+    } else {
+        "Ctrl+Shift+G"
+    };
+    let resp = ui.button("🧭 Explore Catalog");
+    let clicked = resp.clicked();
+    attach_hover_hint(resp, || format!("Explore Catalog ({shortcut})"));
+    if clicked {
+        app.open_starter_gallery(ctx);
+    }
 }
 
 fn render_domain_button(
@@ -416,14 +435,13 @@ fn render_active_path_label(
     if let Some(active_dom) = active_domain {
         if ui.available_width() > 200.0 {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Active: {} › {}",
-                        active_dom.name(),
-                        active_tab_name
-                    ))
-                    .weak(),
-                );
+                let text = egui::RichText::new(format!(
+                    "Active: {} › {}",
+                    active_dom.name(),
+                    active_tab_name
+                ))
+                .weak();
+                ui.add(egui::Label::new(text).truncate());
             });
         }
     }
