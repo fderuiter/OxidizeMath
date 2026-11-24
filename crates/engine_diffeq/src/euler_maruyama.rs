@@ -7,6 +7,7 @@ use rand_core::RngCore;
 
 /// Multivariate Euler-Maruyama (Itô) and Euler-Heun (Stratonovich) stochastic integrator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EulerMaruyamaSolver {
     calculus: StochasticCalculus,
 }

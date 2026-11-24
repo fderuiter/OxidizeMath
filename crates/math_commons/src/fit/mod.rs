@@ -11,15 +11,14 @@ mod nonlinear;
 mod poly;
 mod seeds;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests;
 
 use crate::error::FitError;
 use crate::series::PointSeries;
 use alloc::string::String;
 use alloc::{vec, vec::Vec};
-#[cfg(not(feature = "std"))]
-use num_traits::Float as _;
+use num_traits::Float;
 
 pub use lm::{
     MAX_FIT_PARAMS, MAX_LM_ITERATIONS, levenberg_marquardt, levenberg_marquardt_filtered,
@@ -40,6 +39,7 @@ pub const MAX_POLYNOMIAL_DEGREE: usize = 4;
 
 /// Canonical parametric regression model presets without degree clamping or hash collisions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FitModel {
     /// Degree-1 polynomial regression ($y = c_0 + c_1 x$).
     Linear,
@@ -148,12 +148,29 @@ impl core::fmt::Display for FitModel {
     }
 }
 
+#[cfg(feature = "serde")]
+fn deserialize_coeff_len<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let len = <usize as serde::Deserialize>::deserialize(deserializer)?;
+    if len <= 5 {
+        Ok(len)
+    } else {
+        Err(serde::de::Error::custom(
+            "CurveFit coeff_len exceeds stack capacity 5",
+        ))
+    }
+}
+
 /// Stack-backed result of a polynomial or nonlinear least-squares fit.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CurveFit {
     /// Fitted canonical regression model.
     pub fit_model: FitModel,
     coeffs: [f64; 5],
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_coeff_len"))]
     coeff_len: usize,
     /// Coefficient of determination ($R^2$).
     pub r_squared: f64,
@@ -248,7 +265,7 @@ impl CurveFit {
                 if self.log_x && x <= 0.0 {
                     return f64::NAN;
                 }
-                let tx = if self.log_x { x.log10() } else { x };
+                let tx = if self.log_x { Float::log10(x) } else { x };
                 let ty = if let Some((u_mean, u_scale, ref centered)) = self.poly_center_scale {
                     let z = (tx - u_mean) / u_scale;
                     poly::eval_polynomial_horner_raw(&centered[..self.coeff_len], z)
@@ -256,7 +273,7 @@ impl CurveFit {
                     poly::eval_polynomial_horner_raw(&self.coeffs[..self.coeff_len], tx)
                 };
                 let out = if self.log_y {
-                    10.0_f64.powf(ty.clamp(-300.0, 300.0)).clamp(1e-300, 1e300)
+                    Float::powf(10.0_f64, ty.clamp(-300.0, 300.0)).clamp(1e-300, 1e300)
                 } else {
                     ty
                 };

@@ -9,7 +9,7 @@ mod extrema;
 mod interp;
 mod intersect;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests;
 
 pub use crate::series::{PointSeries, Sample2D};
@@ -28,6 +28,7 @@ pub use intersect::{
 
 /// Sub-segment interior local extremum (maximum or minimum) refined via parabolic interpolation.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LocalExtremum {
     /// Refined `[x, y]` coordinate of the local extremum.
     pub point: [f64; 2],

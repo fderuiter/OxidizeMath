@@ -3,6 +3,20 @@ name = "pure_math"
 version.workspace = true
 edition = "2024"
 
+[features]
+default = []
+serde = [
+    "dashu/serde",
+    "engine_diffeq/serde",
+    "engine_linalg/serde",
+    "engine_pde/serde",
+    "math_commons/serde",
+    "nalgebra/serde-serialize",
+    "num-complex/serde",
+    "petgraph/serde-1",
+    "rand/serde1",
+]
+
 [dependencies]
 rustfft = { workspace = true }
 nalgebra = { workspace = true }
@@ -14,14 +28,14 @@ rand_distr = { workspace = true }
 num-complex = { workspace = true }
 thiserror = { workspace = true }
 num-traits = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["std", "derive"] }
 oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
 math_commons = { path = "../math_commons" }
-engine_diffeq = { path = "../engine_diffeq" }
+engine_diffeq = { path = "../engine_diffeq", features = ["std"] }
 engine_linalg = { path = "../02_engines/engine_linalg" }
-engine_pde = { path = "../engine_pde" }
+engine_pde = { path = "../engine_pde", features = ["std"] }
 diagnostics = { path = "../diagnostics" }
 dashu = { workspace = true, features = ["num-traits_v02"] }
 

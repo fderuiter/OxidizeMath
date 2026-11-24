@@ -11,6 +11,7 @@ use num_complex::Complex64;
 
 /// Single postfix bytecode instruction executed by [`CompiledExpr`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Instruction {
     /// Push a literal real constant onto the evaluation stack.
     PushConst(f64),
@@ -32,6 +33,7 @@ pub enum Instruction {
 /// `0..axis_count` store explicit coordinate axes (matched case-insensitively), followed by
 /// discovered free parameters in left-to-right source order.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CompiledExpr {
     instructions: Vec<Instruction>,
     var_names: Vec<String>,

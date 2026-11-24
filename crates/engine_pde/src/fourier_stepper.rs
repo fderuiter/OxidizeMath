@@ -17,6 +17,7 @@ use rand_core::RngCore;
 /// `#![no_std]` radix-2 semi-implicit Fourier SPDE stepper with Orszag 2/3-rule dealiasing
 /// for periodic Cahn-Hilliard, Kardar-Parisi-Zhang (KPZ), and Edwards-Wilkinson fields.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SemiImplicitFourierStepper {
     /// Grid spacing $\Delta x > 0$.
     pub dx: f64,

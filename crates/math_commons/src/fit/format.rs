@@ -5,8 +5,7 @@ use super::FitModel;
 use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::{String, ToString};
-#[cfg(not(feature = "std"))]
-use num_traits::Float as _;
+use num_traits::Float;
 
 const SCI_LOWER: f64 = 1e-3;
 const SCI_UPPER: f64 = 1e5;
@@ -30,7 +29,7 @@ pub(super) fn fmt_param_sig4(val: f64) -> String {
     if !(SCI_LOWER..SCI_UPPER).contains(&abs_v) {
         return format!("{rounded:.3e}");
     }
-    let decimals = (3 - abs_v.log10().floor() as i32).max(0) as usize;
+    let decimals = (3 - Float::floor(Float::log10(abs_v)) as i32).max(0) as usize;
     format!("{rounded:.decimals$}")
 }
 
@@ -65,7 +64,7 @@ pub(super) fn format_polynomial_with_scale(
     log_y: bool,
 ) -> String {
     if log_x && log_y && coeffs.len() == 2 {
-        let a = 10.0_f64.powf(coeffs[0]);
+        let a = Float::powf(10.0_f64, coeffs[0]);
         return format!(
             "y = {}·x^({})",
             fmt_param_sig4(a),
@@ -83,14 +82,14 @@ pub(super) fn format_polynomial_with_scale(
     let max_contrib = coeffs
         .iter()
         .enumerate()
-        .map(|(p, &c)| c.abs() * scale.powi(p as i32))
+        .map(|(p, &c)| c.abs() * Float::powi(scale, p as i32))
         .fold(0.0_f64, f64::max);
 
     let mut out = format!("{lhs} = ");
     let mut emitted = 0usize;
     for power in (0..=degree).rev() {
         let coeff = coeffs[power];
-        let contrib = coeff.abs() * scale.powi(power as i32);
+        let contrib = coeff.abs() * Float::powi(scale, power as i32);
         if max_contrib > 0.0 && contrib <= 1e-12 * max_contrib && emitted < degree && power > 0 {
             continue;
         }

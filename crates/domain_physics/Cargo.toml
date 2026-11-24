@@ -8,15 +8,15 @@ rustfft = { workspace = true }
 nalgebra = { workspace = true }
 rand = { workspace = true }
 num-complex = { workspace = true }
-serde = { workspace = true }
+serde = { workspace = true, features = ["std"] }
 thiserror = { workspace = true }
 oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
 math_commons = { path = "../math_commons" }
-engine_diffeq = { path = "../engine_diffeq" }
+engine_diffeq = { path = "../engine_diffeq", features = ["std"] }
 engine_linalg = { path = "../02_engines/engine_linalg" }
-engine_pde = { path = "../engine_pde" }
+engine_pde = { path = "../engine_pde", features = ["std"] }
 rand_core = { workspace = true }
 scientific_metadata = { path = "../scientific_metadata" }
 diagnostics = { path = "../diagnostics" }

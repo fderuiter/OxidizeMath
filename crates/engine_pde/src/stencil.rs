@@ -2,25 +2,79 @@
 use crate::boundary::BoundaryCondition;
 use math_commons::math_kernel::types::StepSize;
 
+#[cfg(feature = "serde")]
+mod const_f64_array {
+    use serde::ser::SerializeTuple;
+    use serde::{Deserializer, Serializer};
+
+    pub(super) fn serialize<S: Serializer, const N: usize>(
+        arr: &[f64; N],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        let mut tup = serializer.serialize_tuple(N)?;
+        for &val in arr {
+            tup.serialize_element(&val)?;
+        }
+        tup.end()
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>, const N: usize>(
+        deserializer: D,
+    ) -> Result<[f64; N], D::Error> {
+        struct ArrayVisitor<const M: usize>;
+
+        impl<'de, const M: usize> serde::de::Visitor<'de> for ArrayVisitor<M> {
+            type Value = [f64; M];
+
+            fn expecting(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                write!(formatter, "an array of {M} f64 values")
+            }
+
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut out = [0.0_f64; M];
+                for (i, slot) in out.iter_mut().enumerate() {
+                    *slot = seq
+                        .next_element()?
+                        .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
+                }
+                Ok(out)
+            }
+        }
+
+        deserializer.deserialize_tuple(N, ArrayVisitor::<N>)
+    }
+}
+
 /// Six-neighbor 3D axial state values around a central grid cell.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StencilNeighbors3D<const N: usize> {
     /// Neighbor at `(x - 1, y, z)` (clamped at `x == 0`).
+    #[cfg_attr(feature = "serde", serde(with = "const_f64_array"))]
     pub xm: [f64; N],
     /// Neighbor at `(x + 1, y, z)` (clamped at `x == width - 1`).
+    #[cfg_attr(feature = "serde", serde(with = "const_f64_array"))]
     pub xp: [f64; N],
     /// Neighbor at `(x, y - 1, z)` (clamped at `y == 0`).
+    #[cfg_attr(feature = "serde", serde(with = "const_f64_array"))]
     pub ym: [f64; N],
     /// Neighbor at `(x, y + 1, z)` (clamped at `y == height - 1`).
+    #[cfg_attr(feature = "serde", serde(with = "const_f64_array"))]
     pub yp: [f64; N],
     /// Neighbor at `(x, y, z - 1)` (clamped at `z == 0`).
+    #[cfg_attr(feature = "serde", serde(with = "const_f64_array"))]
     pub zm: [f64; N],
     /// Neighbor at `(x, y, z + 1)` (clamped at `z == depth - 1`).
+    #[cfg_attr(feature = "serde", serde(with = "const_f64_array"))]
     pub zp: [f64; N],
 }
 
 /// Standard 1D, 2D, and 3D spatial finite-difference operators (Laplacian, gradient, upwind, and 2D Biharmonic).
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StencilOperators {
     /// Grid spacing $\Delta x$ along the primary axis.
     pub dx: StepSize,

@@ -8,6 +8,7 @@ use rand_core::RngCore;
 /// Explicit Euler-Maruyama finite-difference SPDE stepper supporting Periodic, Neumann, and Dirichlet
 /// boundaries plus additive or conserved-flux stochastic noise.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExplicitSpdeStencilStepper {
     /// Spatial finite-difference stencil operators.
     pub ops: StencilOperators,
@@ -208,6 +209,7 @@ impl ExplicitSpdeStencilStepper {
 
 /// Operator-splitting (Strang half-reaction / diffusion / half-reaction + noise) SPDE stencil stepper.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SplitStepSpdeStencilStepper {
     /// Spatial finite-difference stencil operators.
     pub ops: StencilOperators,

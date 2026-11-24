@@ -5,6 +5,7 @@ pub use dashu::integer::IBig;
 use dashu::rational::RBig;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, RemAssign, Sub, SubAssign};
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct Integer(pub IBig);
 impl From<Integer> for IBig {
@@ -209,6 +210,7 @@ impl SubAssign<&Integer> for Integer {
 type F = dashu::float::FBig;
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct Float(pub F);
 impl Float {
@@ -338,6 +340,7 @@ impl PartialOrd<f64> for Float {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct Rational(pub RBig);
 impl Default for Rational {

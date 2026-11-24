@@ -9,6 +9,7 @@ use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
 
 /// Convergence summary returned by [`cg_solve`] and [`gmres_solve`].
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KrylovReport<T> {
     /// Total inner Krylov iterations executed.
     pub iterations: usize,

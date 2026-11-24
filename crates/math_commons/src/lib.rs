@@ -21,3 +21,6 @@ pub mod series;
 pub mod stochastic;
 #[allow(missing_docs)]
 pub mod wigner;
+
+#[cfg(test)]
+mod serde_tests;

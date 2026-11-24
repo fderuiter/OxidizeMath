@@ -26,7 +26,7 @@ math_explorer = { path = "../../math_explorer", features = ["pure_math", "applie
 
 nalgebra = { workspace = true }
 rand = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 

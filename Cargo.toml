@@ -67,7 +67,7 @@ rand_distr = "0.4.3"
 regex = "1.10"
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 rustfft = "6.2.0"
-serde = { version = "1.0.228", features = ["derive"] }
+serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.150", features = ["raw_value"] }
 serde-saphyr = "2.1.1"
 statrs = { version = "0.18.0", default-features = false, features = ["rand"] }

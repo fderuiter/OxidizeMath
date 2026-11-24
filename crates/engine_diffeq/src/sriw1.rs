@@ -10,6 +10,7 @@ use rand_core::RngCore;
 /// Correlated Gaussian increments $(\Delta W_j, \Delta Z_j)$ for strong-order-1.5 Stochastic Runge-Kutta,
 /// where $\Delta W_j = \int_{t_n}^{t_{n+1}} dW_s^j$ and $\Delta Z_j = \int_{t_n}^{t_{n+1}} (W_s^j - W_{t_n}^j)\,ds$.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CorrelatedWienerIncrement<T: Scalar> {
     /// First-order Wiener increment $\Delta W_j \sim \mathcal{N}(0, \Delta t)$.
     pub dw: T,
@@ -36,6 +37,7 @@ impl<T: Scalar> CorrelatedWienerIncrement<T> {
 /// Derivative-free strong-order-1.5 Rössler-type Stochastic Runge-Kutta (`SRIW1`) solver for
 /// multivariate SDEs under Itô or Stratonovich calculus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Sriw1Solver {
     calculus: StochasticCalculus,
 }
