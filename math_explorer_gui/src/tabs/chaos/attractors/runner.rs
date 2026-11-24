@@ -306,6 +306,10 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn step(&mut self) {
+        self.step_sliced(None);
+    }
+
+    fn step_sliced(&mut self, max_slice: Option<std::time::Duration>) {
         if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
             return;
         }
@@ -313,12 +317,22 @@ impl SimulationRunner for AttractorRunner {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
-        for _ in 0..simulation_speed {
+        let slice_start = max_slice.map(|_| crate::web_io::PlatformInstant::now());
+        let mut advanced = 0_usize;
+        for tick_idx in 0..simulation_speed {
+            if tick_idx > 0 {
+                if let (Some(budget), Some(start)) = (max_slice, slice_start) {
+                    if start.elapsed() >= budget {
+                        break;
+                    }
+                }
+            }
             if !self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), true) {
                 break;
             }
+            advanced += 1;
         }
-        if self.history.len() >= 16 && self.step_count % 15 < simulation_speed {
+        if advanced > 0 && self.history.len() >= 16 && self.step_count % 15 < advanced {
             self.publish_live_landmarks(dt);
         }
     }

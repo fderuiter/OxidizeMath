@@ -4,10 +4,11 @@ mod atlas;
 mod canvas;
 mod controls;
 mod persistence;
+mod runner;
 pub mod sculpt;
 mod sonification;
 pub mod tool;
-pub use sculpt::UnifiedSimRunner;
+pub use runner::UnifiedSimRunner;
 pub use tool::*;
 
 use crate::async_sim::{
@@ -57,32 +58,24 @@ pub trait UnifiedUiExtension: Send {
     fn active_challenge_id(&self) -> Option<&'static str> {
         None
     }
-
     fn evaluate_challenge(
         &self,
         _latest_snapshot: Option<&StateSnapshot>,
     ) -> Option<ChallengeEvaluation> {
         None
     }
-
     fn is_parameter_locked(&self, _param_name: &str) -> bool {
         false
     }
-
     fn on_reset(&mut self, _params: &HashMap<String, f64>) {}
-
     fn on_brush(&mut self, _cx: i32, _cy: i32, _r: i32, _is_obstacle: bool) -> bool {
         true
     }
-
     fn on_brush_stroke(&mut self, _stroke: &BrushStroke) -> bool {
         true
     }
-
     fn sync_sculpt_payload(&self, _sculpt: &mut SculptStatePayload) {}
-
     fn on_custom_action(&mut self, _action: &str) {}
-
     fn on_obstacle_mask_loaded(&mut self, _mask: Option<&[bool]>, _params: &HashMap<String, f64>) {}
 
     fn draw_side_panel_controls(
@@ -437,6 +430,12 @@ pub trait UnifiedModel:
     fn capture_active_params(&self, params: &HashMap<String, f64>) -> Option<CheckpointParams> {
         self.checkpoint_stride()
             .map(|_| CheckpointParams::NamedMap(params.clone()))
+    }
+
+    /// Fast allocation-free check returning `true` when `params` match `last`.
+    fn active_params_match(&self, params: &HashMap<String, f64>, last: &CheckpointParams) -> bool {
+        self.checkpoint_stride()
+            .is_some_and(|_| last.as_named_map().is_some_and(|m| m == params))
     }
 
     /// Restores dynamical fields, active parameters, step index, and cloned `OxidizeRng`.

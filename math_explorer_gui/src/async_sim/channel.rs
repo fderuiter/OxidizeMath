@@ -74,6 +74,20 @@ impl SimStateSender {
         was_seeded
     }
 
+    /// Returns `true` when an unconsumed snapshot is waiting in the overwriteable slot.
+    #[must_use]
+    pub fn has_unread_snapshot(&self) -> bool {
+        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        guard.latest_snapshot.is_some()
+    }
+
+    /// Returns `true` when the paired [`SimStateReceiver`] has been dropped.
+    #[must_use]
+    pub fn is_closed(&self) -> bool {
+        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        !guard.receiver_alive
+    }
+
     /// Stores `snapshot` as the newest unread snapshot, overwriting any unconsumed snapshot.
     pub fn send_snapshot(&self, snapshot: StateSnapshot) -> Result<(), SimChannelClosed> {
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -240,7 +254,14 @@ mod tests {
         assert!(rx.drain().disconnected);
 
         let (tx2, rx2) = sim_state_channel();
+        assert!(!tx2.has_unread_snapshot());
+        assert!(!tx2.is_closed());
+        assert!(tx2.send_snapshot(sample_snapshot(2.0)).is_ok());
+        assert!(tx2.has_unread_snapshot());
+        assert_eq!(rx2.drain().latest_snapshot.unwrap().custom_data, vec![2.0]);
+        assert!(!tx2.has_unread_snapshot());
         drop(rx2);
+        assert!(tx2.is_closed());
         assert_eq!(
             tx2.send_snapshot(sample_snapshot(1.0)),
             Err(SimChannelClosed)

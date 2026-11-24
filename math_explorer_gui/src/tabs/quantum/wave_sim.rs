@@ -270,6 +270,11 @@ impl InteractiveTool for WaveSimulatorTool {
         "quantum"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+        self.atlas.set_suspended(suspended);
+    }
+
     fn theory(&self) -> &dyn TheoryDescribable {
         self
     }

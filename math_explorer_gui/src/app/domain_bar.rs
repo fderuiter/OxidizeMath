@@ -93,6 +93,7 @@ pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize
             if !app.pane_tabs.is_empty() {
                 app.pane_tabs[0] = tab_idx;
             }
+            app.sync_viewport_visibility();
         } else {
             app.set_pane_tab(target_pane, tab_idx);
         }
@@ -215,6 +216,7 @@ pub fn select_primary_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_id
         if !app.pane_tabs.is_empty() {
             app.pane_tabs[0] = tab_idx;
         }
+        app.sync_viewport_visibility();
         announce_tab_switch(ctx, app.tabs[tab_idx].name());
     }
 }

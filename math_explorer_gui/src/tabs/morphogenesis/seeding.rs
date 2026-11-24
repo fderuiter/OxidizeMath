@@ -9,7 +9,7 @@ use super::runner::{
     MorphogenesisSharedParams,
 };
 use super::{MorphogenesisTool, SimpleRng};
-use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
+use crate::async_sim::{SculptStatePayload, SimCommand, SimWorkerState};
 use crate::framework::InteractiveTool;
 use crate::presets::MorphogenesisKineticsMode;
 #[cfg(test)]
@@ -30,6 +30,11 @@ use math_explorer::rng::OxidizeRng;
 use std::sync::Arc;
 
 impl MorphogenesisTool {
+    pub(super) fn sync_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+        self.atlas.set_suspended(suspended);
+    }
+
     #[cfg(test)]
     pub(crate) fn create_runner(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
@@ -269,7 +274,7 @@ impl MorphogenesisTool {
                 self.width,
                 self.height,
             );
-            self.worker = BackgroundWorker::new(runner);
+            self.worker.replace_runner(runner);
             self.branch_engine.clear();
             self.stepped_pixels = None;
             self.step_runner = None;

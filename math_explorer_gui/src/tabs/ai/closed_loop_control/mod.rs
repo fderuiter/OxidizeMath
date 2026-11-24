@@ -36,6 +36,7 @@ pub struct ClosedLoopControlTool {
     pub focused_canvas: Option<egui::Id>,
     /// Last rendered UI frame wall-clock duration in milliseconds.
     pub last_frame_ms: f64,
+    suspended: bool,
 }
 
 impl Default for ClosedLoopControlTool {
@@ -49,6 +50,7 @@ impl Default for ClosedLoopControlTool {
             playing: false,
             focused_canvas: None,
             last_frame_ms: 0.0,
+            suspended: false,
         }
     }
 }
@@ -90,7 +92,7 @@ impl ClosedLoopControlTool {
     /// Launches cooperative asynchronous episodic training via `SimulationController` and `ClosedLoopRunner`.
     pub fn start_async_training(&mut self, episodes: usize) {
         let runner = ClosedLoopRunner::from_state_and_pipeline(self.state.clone(), &self.pipeline);
-        let mut controller = SimulationController::new(runner);
+        let mut controller = SimulationController::new_with_suspended(runner, self.suspended);
         let _ = controller.send_command(SimCommand::TrainEpisodes(episodes));
         self.worker = Some(controller);
     }
@@ -138,6 +140,13 @@ impl InteractiveTool for ClosedLoopControlTool {
 
     fn domain(&self) -> &'static str {
         "ai"
+    }
+
+    fn set_suspended(&mut self, suspended: bool) {
+        self.suspended = suspended;
+        if let Some(worker) = &mut self.worker {
+            worker.set_suspended(suspended);
+        }
     }
 
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {

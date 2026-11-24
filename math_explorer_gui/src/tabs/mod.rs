@@ -322,6 +322,13 @@ pub trait ExplorerTab {
         self.framework().and_then(|fw| fw.active_tool_id())
     }
 
+    /// Suspends or resumes background simulation workers when this tab leaves or enters visible panes.
+    fn set_suspended(&mut self, suspended: bool) {
+        if let Some(fw) = self.framework_mut() {
+            fw.set_suspended(suspended);
+        }
+    }
+
     /// Active inverse `ChallengeMetadata` identifier for `#challenge=<id>` share links.
     fn active_challenge_id(&self) -> Option<&'static str> {
         self.framework().and_then(|fw| fw.active_challenge_id())

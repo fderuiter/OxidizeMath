@@ -223,6 +223,10 @@ impl InteractiveTool for MriKSpaceTool {
         "mri"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+    }
+
     fn theory(&self) -> &dyn TheoryDescribable {
         &self.theory
     }
