@@ -62,6 +62,18 @@ impl NetworkPropagationTool {
     /// Re-initializes the unmitigated counterfactual twin on `self.seed` with preallocated buffers.
     pub(crate) fn rebuild_baseline_twin(&mut self) {
         self.baseline_rng = OxidizeRng::new(self.seed);
+        if !self.is_challenge_locked() {
+            if let Some(ref shared) = self.active_shared_graph {
+                if let Ok(built) = super::bus_sync::build_model_from_shared_graph(
+                    shared,
+                    self.model.beta(),
+                    self.model.gamma(),
+                ) {
+                    self.baseline_model = built;
+                    return;
+                }
+            }
+        }
         let _ = self.baseline_model.set_num_nodes(self.model.num_nodes());
         let _ = self.baseline_model.set_beta(self.model.beta());
         let _ = self.baseline_model.set_gamma(self.model.gamma());
@@ -118,12 +130,18 @@ impl NetworkPropagationTool {
         vax_only: bool,
     ) {
         let topology_changed = self.synced_bus_revision.is_some()
+            || self.active_shared_graph.is_some()
+            || self.seeded_graph.is_some()
             || self.model.num_nodes() != nodes
             || (self.model.beta() - beta).abs() > 1.0e-12
             || (self.model.gamma() - gamma).abs() > 1.0e-12
             || self.seed != seed;
         self.local_num_nodes = nodes;
         self.synced_bus_revision = None;
+        self.active_shared_graph = None;
+        self.seeded_graph = None;
+        self.clamped_source_nodes = None;
+        self.pending_seed_publish = false;
         self.budget = CHALLENGE_EPI_BUDGET;
         if vax_only {
             self.quarantined_edges.clear();
@@ -210,6 +228,9 @@ fn generate_epi_baseline(nodes: usize, beta: f64, gamma: f64, seed: u64) -> Stri
         quarantined_edges: Vec::new(),
         is_running: false,
         topology_source: crate::app::TopologySource::default(),
+        follow_workspace_graph: true,
+        seeded_graph: None,
+        frozen_graph: None,
     })
     .unwrap_or_default()
 }
@@ -291,6 +312,9 @@ fn clamp_epi_challenge_state(
         quarantined_edges,
         is_running,
         topology_source: crate::app::TopologySource::default(),
+        follow_workspace_graph: true,
+        seeded_graph: None,
+        frozen_graph: None,
     })
     .map_err(|e| e.to_string())?;
 

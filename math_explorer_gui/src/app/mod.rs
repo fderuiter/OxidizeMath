@@ -1,3 +1,4 @@
+pub mod data_bus;
 pub mod dataflow_bus;
 pub mod domain_bar;
 pub(crate) mod global_shortcuts;
@@ -33,6 +34,15 @@ mod tests_adaptive_chrome;
 mod tests_cold_start_and_palette;
 #[cfg(test)]
 mod tests_command_palette;
+#[cfg(all(
+    test,
+    feature = "biology",
+    feature = "applied",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
+mod tests_data_bus_coupling;
 #[cfg(test)]
 mod tests_dataflow_bus;
 #[cfg(all(
@@ -84,7 +94,19 @@ mod tests_split_view;
 mod tests_tab_cache_perf;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
+#[cfg(all(
+    test,
+    target_arch = "wasm32",
+    feature = "biology",
+    feature = "applied",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
+mod wasm_tests_data_bus;
 
+#[allow(unused_imports)]
+pub use data_bus::{EpidemicTraceSignal, SharedGraph, SharedNode, WorkspaceDataBus};
 pub use dataflow_bus::{DataflowStreamKind, PaneDataflowBus, PanePipelineDag};
 #[allow(unused_imports)]
 pub use domain_bar::AcademicDomain;
@@ -166,6 +188,7 @@ pub struct MathExplorerApp {
     pub dataflow_bus: PaneDataflowBus,
     pub pipeline_dag: PanePipelineDag,
     pub(super) url_sync: crate::url_state::UrlSyncController,
+    pub data_bus: data_bus::WorkspaceDataBus,
 }
 
 impl Default for MathExplorerApp {
@@ -207,6 +230,7 @@ impl Default for MathExplorerApp {
             dataflow_bus: PaneDataflowBus::default(),
             pipeline_dag: PanePipelineDag::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
+            data_bus: data_bus::WorkspaceDataBus::default(),
         }
     }
 }
@@ -332,6 +356,7 @@ impl MathExplorerApp {
         self.prune_inactive_pane_slots(active_layout.pane_count());
         domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
         self.sync_workspace_history_bridge(ctx);
+        data_bus::sync_app_bus_before_viewport(self, ctx);
 
         if active_layout != ViewportLayout::Single {
             viewport::render_multi_pane_manager(self, ctx, frame);
@@ -339,6 +364,7 @@ impl MathExplorerApp {
         } else {
             viewport::render_single_pane_viewport(self, ctx, frame);
         }
+        data_bus::commit_app_bus_after_viewport(self, ctx);
         self.drain_workspace_history_bridge(ctx);
     }
 }

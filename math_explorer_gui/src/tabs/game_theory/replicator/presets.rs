@@ -1,8 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{
-    build_static_symbolic_grid, compile_symbolic_exprs, ReplicatorDynamicsTool, SymbolicGrid,
+use super::symbolic::{
+    build_dynamic_symbolic_grid, build_static_symbolic_grid, compile_symbolic_exprs,
 };
+use super::ReplicatorDynamicsTool;
 use crate::framework::math_input::{MathExpressionInputBar, ParameterSliderBank};
 use crate::presets::ReplicatorPresetConfig;
 use math_commons::ast::Expr;
@@ -68,6 +69,7 @@ impl ReplicatorDynamicsTool {
     }
 
     pub(crate) fn load_preset_hawk_dove(&mut self) {
+        self.spatial.seeded_graph = None;
         self.payoff_matrix = DMatrix::from_row_slice(2, 2, &[-1.0, 2.0, 0.0, 1.0]);
         self.initial_population = DVector::from_vec(vec![0.1, 0.9]);
         self.strategy_names = vec!["Hawk".to_string(), "Dove".to_string()];
@@ -91,6 +93,7 @@ impl ReplicatorDynamicsTool {
     }
 
     pub(crate) fn load_preset_prisoners_dilemma(&mut self) {
+        self.spatial.seeded_graph = None;
         self.payoff_matrix = DMatrix::from_row_slice(2, 2, &[3.0, 0.0, 5.0, 1.0]);
         self.initial_population = DVector::from_vec(vec![0.9, 0.1]);
         self.strategy_names = vec!["Cooperate".to_string(), "Defect".to_string()];
@@ -100,6 +103,7 @@ impl ReplicatorDynamicsTool {
     }
 
     pub(crate) fn load_preset_stag_hunt(&mut self) {
+        self.spatial.seeded_graph = None;
         self.payoff_matrix = DMatrix::from_row_slice(2, 2, &[4.0, 0.0, 3.0, 2.0]);
         self.initial_population = DVector::from_vec(vec![0.55, 0.45]);
         self.strategy_names = vec!["Stag".to_string(), "Hare".to_string()];
@@ -109,6 +113,7 @@ impl ReplicatorDynamicsTool {
     }
 
     pub(crate) fn load_preset_rps(&mut self) {
+        self.spatial.seeded_graph = None;
         self.payoff_matrix =
             DMatrix::from_row_slice(3, 3, &[0.0, -1.0, 1.0, 1.0, 0.0, -1.0, -1.0, 1.0, 0.0]);
         self.initial_population = DVector::from_vec(vec![0.50, 0.30, 0.20]);
@@ -131,6 +136,7 @@ impl ReplicatorDynamicsTool {
     }
 
     pub(crate) fn load_preset_spiral_rps(&mut self) {
+        self.spatial.seeded_graph = None;
         self.payoff_matrix =
             DMatrix::from_row_slice(3, 3, &[0.0, -0.7, 1.0, 1.0, 0.0, -0.7, -0.7, 1.0, 0.0]);
         self.initial_population = DVector::from_vec(vec![0.55, 0.25, 0.20]);
@@ -225,31 +231,6 @@ impl ReplicatorDynamicsTool {
         self.run_simulation();
         Ok(())
     }
-}
-
-fn build_dynamic_symbolic_grid(formulas: &[Vec<String>]) -> Result<SymbolicGrid, String> {
-    let mut bars = Vec::with_capacity(formulas.len());
-    let mut exprs = Vec::with_capacity(formulas.len());
-    for (i, row) in formulas.iter().enumerate() {
-        let mut bar_row = Vec::with_capacity(row.len());
-        let mut expr_row = Vec::with_capacity(row.len());
-        for (j, cell) in row.iter().enumerate() {
-            let bar = MathExpressionInputBar::new("", cell, Vec::new())
-                .with_axes(&[])
-                .with_inline_sliders(false);
-            let Some(expr) = bar.expr().cloned() else {
-                let reason = bar
-                    .error_message()
-                    .unwrap_or_else(|| "invalid expression".to_string());
-                return Err(format!("Invalid symbolic payoff at ({i}, {j}): {reason}"));
-            };
-            bar_row.push(bar);
-            expr_row.push(expr);
-        }
-        bars.push(bar_row);
-        exprs.push(expr_row);
-    }
-    Ok((bars, exprs))
 }
 
 inventory::submit! {
