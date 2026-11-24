@@ -113,6 +113,7 @@ fn all_six_plot_3d_viewport_tools_emit_zero_2d_pois_across_interactions() {
         #[cfg(feature = "biology")]
         "SurfaceMorphogenesisTool",
         "SurfaceViewer",
+        "RiemannianPdeStudio",
         "CrystalViewer",
         "Gaussian Splatting",
         "SdsNeRfDistillationTool",

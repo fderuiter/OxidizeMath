@@ -1,7 +1,5 @@
 //! Deterministic RIFF `WAVE` (`PCM16` stereo) encoding and export helpers.
 
-// theory_verification!
-
 use super::backend::SonificationBackend;
 use super::frame::{SonificationFrame, LIMITER_CEILING_LINEAR};
 use super::settings::AcousticSettings;
