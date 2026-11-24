@@ -5,6 +5,7 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+pub mod advection;
 pub mod atlas;
 mod atlas_bridge;
 pub mod brush;
@@ -171,6 +172,8 @@ inventory::submit! {
     }
 }
 
+#[cfg(test)]
+mod advection_tests;
 #[cfg(test)]
 mod brush_tests;
 #[cfg(test)]

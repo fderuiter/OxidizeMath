@@ -1,5 +1,6 @@
 use super::SpatialDiffusion;
 
+pub mod advection;
 #[allow(missing_docs)]
 pub mod boundary;
 mod fused_pair;
@@ -9,6 +10,7 @@ pub mod geometry;
 pub mod iteration;
 pub mod mask;
 
+pub use advection::AdvectedSpatialDiffusion;
 pub use mask::{CellMask2D, MaskedFiniteDifference2D, ReactionCellRole};
 
 use boundary::NeumannBoundary;

@@ -40,6 +40,7 @@ fn test_1d_2d_3d_stencils_and_public_2d_biharmonic() {
     let n = 32_usize;
     let dx = core::f64::consts::TAU / (n as f64);
     let ops = StencilOperators::new_3d(StepSize(dx), StepSize(dx), StepSize(dx));
+    assert!((ops.inv_dy - 1.0 / dx).abs() < 1e-12);
 
     // 1D sin(x): grad = cos(x), lap = -sin(x)
     let u1: Vec<f64> = (0..n).map(|i| ((i as f64) * dx).sin()).collect();
