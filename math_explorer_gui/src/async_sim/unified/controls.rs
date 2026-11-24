@@ -5,7 +5,7 @@ use super::{UnifiedModel, UnifiedSimTool};
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{SimCommand, SimWorkerState};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
@@ -57,7 +57,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     };
                     p.insert(name.clone(), d);
                 }
+                let reset_params = p.clone();
                 drop(p);
+                *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
+                self.local_obstacles = M::default_obstacle_mask(&reset_params);
                 if let Some(spec) = M::formula_spec() {
                     self.custom_formula_enabled = false;
                     self.formula_bar = Some(build_formula_bar(&spec));
@@ -67,6 +70,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 let _ = self.controller.send_command(SimCommand::Start);
             }
         }
+    }
+
+    fn render_worker_status_badge(ui: &mut egui::Ui, state: SimWorkerState) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        ui.horizontal(|ui| {
+            ui.label("Status:");
+            let (status_text, color) = match state {
+                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
+                SimWorkerState::Ready => ("Ready", palette.success),
+                SimWorkerState::Running => ("Running", palette.info),
+                SimWorkerState::Stepping => ("Stepping", palette.warning),
+                SimWorkerState::Faulted => ("Faulted", palette.error),
+                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
+            };
+            ui.colored_label(color, status_text);
+        });
+        ui.separator();
     }
 
     fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -86,27 +106,17 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
 
         let state = self.controller.state();
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal(|ui| {
-            ui.label("Status:");
-            let (status_text, color) = match state {
-                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
-                SimWorkerState::Ready => ("Ready", palette.success),
-                SimWorkerState::Running => ("Running", palette.info),
-                SimWorkerState::Stepping => ("Stepping", palette.warning),
-                SimWorkerState::Faulted => ("Faulted", palette.error),
-                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
-            };
-            ui.colored_label(color, status_text);
-        });
-        ui.separator();
+        Self::render_worker_status_badge(ui, state);
 
-        let canvas_sculpt_focused = M::supports_spatial_brush()
-            && self.brush_kit.is_sculpting()
-            && self
-                .brush_kit
-                .focused_plot_id()
-                .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
+        let canvas_sculpt_focused = self
+            .brush_state
+            .focused_id
+            .or_else(|| {
+                (M::supports_spatial_brush() && self.brush_kit.is_sculpting())
+                    .then(|| self.brush_kit.focused_plot_id())
+                    .flatten()
+            })
+            .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         let mut transport =
             PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
                 .timeline(self.controller.timeline_metadata())
@@ -194,16 +204,34 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.separator();
         }
 
+        self.draw_custom_actions(ui, ctx);
+        if M::raster_brush_grid().is_some() {
+            ui.label("Obstacle Brush & Stencils");
+            crate::framework::draw_brush_palette_controls(ui, M::name(), &mut self.brush_state, 10);
+            ui.small("Drag / Space: Paint • Right-drag / Backspace: Erase");
+            ui.separator();
+        }
+        reset_needed
+    }
+
+    fn draw_custom_actions(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let custom_actions = M::custom_actions();
-        if !custom_actions.is_empty() {
-            ui.horizontal(|ui| {
-                ui.label("Actions:");
-                for action in custom_actions {
-                    if ui.button(action).clicked()
-                        && self
-                            .controller
-                            .send_command(SimCommand::Custom(action.to_string()))
-                            .is_ok()
+        if custom_actions.is_empty() {
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Actions:");
+            for action in custom_actions {
+                if ui.button(action).clicked() {
+                    if self.active_challenge_id().is_none() {
+                        self.handle_custom_obstacle_action(action, ctx);
+                    } else {
+                        *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
+                    }
+                    if self
+                        .controller
+                        .send_command(SimCommand::Custom(action.to_string()))
+                        .is_ok()
                     {
                         if action.contains("Clear") {
                             self.sculpt_state
@@ -219,10 +247,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                         ctx.request_repaint();
                     }
                 }
-            });
-            ui.separator();
-        }
-        reset_needed
+            }
+        });
+        ui.separator();
     }
 
     pub(super) fn draw_model_parameters(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -319,25 +346,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         (reset_needed, formula_changed)
     }
 
-    fn draw_spatial_brush_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if !M::supports_spatial_brush() {
-            return;
-        }
-        ui.separator();
-        let cmds = M::draw_brush_controls(
-            ui,
-            &mut self.brush_kit,
-            &self.params,
-            &self.sculpt_state,
-            self.controller.latest_snapshot(),
-        );
-        for cmd in cmds {
-            if self.controller.send_command(cmd).is_ok() {
-                self.dirty = true;
-                ctx.request_repaint();
-            }
-        }
-    }
     fn draw_single_parameter(
         ui: &mut egui::Ui,
         name: &str,
@@ -470,18 +478,5 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
 
         *cached_observable_label
-    }
-
-    fn refresh_paused_simulation(&mut self, ctx: Option<&egui::Context>) {
-        if self.controller.state().is_ready() {
-            self.clear_stepped_state();
-            let _ = self.controller.send_command(SimCommand::Custom(
-                super::SYNC_PARAMETERS_COMMAND.to_string(),
-            ));
-            self.dirty = true;
-            if let Some(c) = ctx {
-                c.request_repaint();
-            }
-        }
     }
 }

@@ -219,13 +219,13 @@ fn make_test_morphogenesis_runner() -> crate::tabs::morphogenesis::Morphogenesis
     };
     use math_explorer::biology::diffusion::FiniteDifference2D;
     use math_explorer::biology::morphogenesis::{
-        DiffusionCoeff, SchnakenbergKinetics, TuringSystem,
+        DiffusionCoeff, SpatialSchnakenbergKinetics, TuringSystem,
     };
     use math_explorer::math_kernel::types::{Dimension, StepSize};
     use std::sync::{Arc, RwLock};
 
     let (width, height) = (20, 20);
-    let kinetics = SchnakenbergKinetics { a: 0.1, b: 0.9 };
+    let kinetics = SpatialSchnakenbergKinetics::new(0.1, 0.9, width * height);
     let diffusion = FiniteDifference2D::new(
         Dimension(width),
         Dimension(height),
@@ -249,6 +249,7 @@ fn make_test_morphogenesis_runner() -> crate::tabs::morphogenesis::Morphogenesis
         high_contrast: false,
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
+        mask_rle: None,
     }));
     MorphogenesisRunner {
         system,

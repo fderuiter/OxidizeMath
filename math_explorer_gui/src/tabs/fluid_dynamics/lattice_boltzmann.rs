@@ -2,16 +2,19 @@
 
 use self::render::{inspect_solver_solid_and_core, render_lbm_snapshot_pixels};
 use super::lattice_boltzmann_sculpt::{
-    apply_lbm_custom_action, apply_lbm_sculpt_payload, apply_stroke_to_lbm, draw_lbm_brush_panel,
-    export_solver_rle, record_stroke_in_rle, reset_solver_preserving_obstacles,
-    seed_initial_lbm_geometry, sync_lbm_parameters,
+    apply_lbm_brush_cells, apply_lbm_custom_action, apply_lbm_sculpt_payload, apply_stroke_to_lbm,
+    draw_lbm_brush_panel, export_solver_rle, record_stroke_in_rle,
+    reset_solver_preserving_obstacles, seed_initial_lbm_geometry, sync_lbm_parameters,
 };
 use super::lbm_atlas::{resolve_inlet_velocity, LbmCartographer, LBM_ATLAS_AXIS_PAIRS};
 use super::lbm_fairing::{
     decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0,
 };
 use super::lbm_fairing_ui::LbmUiExtension;
+use super::lbm_presets::{apply_obstacle_rle_to_solver, default_lbm_obstacle_mask};
 use crate::async_sim::atlas::RegimeCartographer;
+#[cfg(test)]
+use crate::async_sim::unified::UnifiedSimTool;
 use crate::async_sim::unified::{UnifiedModel, UnifiedUiExtension};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -73,7 +76,12 @@ impl LbmUnified {
             .unwrap_or(0.02);
         let restore_core = self.stamped_airfoil.is_none();
         self.inlet_velocity = resolve_inlet_velocity(params);
-        reset_solver_preserving_obstacles(&mut self.solver, viscosity, restore_core);
+        reset_solver_preserving_obstacles(
+            &mut self.solver,
+            viscosity,
+            self.inlet_velocity,
+            restore_core,
+        );
         self.diverged = false;
         self.diagnostic_report = None;
         self.step_count = 0;
@@ -307,6 +315,10 @@ impl UnifiedModel for LbmUnified {
                 apply_stroke_to_lbm(&mut self.solver, stroke, self.challenge_core_locked);
                 self.refresh_diagnostics();
             }
+            SimCommand::ApplyBrushCells { ref cells, mode } => {
+                apply_lbm_brush_cells(&mut self.solver, cells, mode);
+                self.refresh_diagnostics();
+            }
             SimCommand::ClearObstacles => {
                 self.solver.clear_obstacles();
                 self.stamped_airfoil = None;
@@ -346,11 +358,30 @@ impl UnifiedModel for LbmUnified {
     }
 
     fn custom_actions() -> Vec<&'static str> {
-        vec!["Clear Obstacles"]
+        vec!["Clear Obstacles", "Default Obstacles"]
     }
 
     fn is_raster_model() -> bool {
         true
+    }
+
+    fn raster_brush_grid() -> Option<(usize, usize, bool)> {
+        Some((LBM_WIDTH, LBM_HEIGHT, true))
+    }
+
+    fn default_obstacle_mask(_params: &HashMap<String, f64>) -> Option<Vec<bool>> {
+        Some(default_lbm_obstacle_mask())
+    }
+
+    fn validate_obstacle_rle(encoded: &str) -> Result<Vec<bool>, String> {
+        crate::framework::decode_bool_grid(encoded, LBM_WIDTH, LBM_HEIGHT)
+    }
+
+    fn apply_obstacle_rle(&mut self, encoded: &str) {
+        if apply_obstacle_rle_to_solver(&mut self.solver, encoded, self.inlet_velocity) {
+            self.stamped_airfoil = None;
+            self.refresh_diagnostics();
+        }
     }
 
     fn supports_spatial_brush() -> bool {
@@ -406,38 +437,15 @@ impl UnifiedModel for LbmUnified {
     }
 
     fn parameters() -> HashMap<String, ParameterConstraint> {
-        let c = |min, max, step| ParameterConstraint { min, max, step };
-        HashMap::from([
-            ("viscosity".to_string(), c(0.00333, 0.5, 0.005)),
-            ("inlet_velocity".to_string(), c(0.015, 0.185, 0.005)),
-            ("angle_of_attack".to_string(), c(-25.0, 25.0, 1.0)),
-            ("naca_profile".to_string(), c(0.0, 4412.0, 1.0)),
-            ("field_view".to_string(), c(0.0, 1.0, 1.0)),
-        ])
+        super::lbm_presets::lbm_parameters()
     }
 
     fn parameter_label(name: &str) -> String {
-        match name {
-            "viscosity" => "Kinematic Viscosity (ν)".to_string(),
-            "inlet_velocity" => "Inlet Velocity (U)".to_string(),
-            "angle_of_attack" => "Angle of Attack α (°)".to_string(),
-            "naca_profile" => "Obstacle / Airfoil Profile".to_string(),
-            "field_view" => "Scalar Field View".to_string(),
-            other => other.to_string(),
-        }
+        super::lbm_presets::lbm_parameter_label(name)
     }
 
     fn parameter_choices(name: &str) -> &'static [(&'static str, f64)] {
-        match name {
-            "naca_profile" => &[
-                ("Cylinder (Default)", 0.0),
-                ("NACA 0012 (Symmetric)", 12.0),
-                ("NACA 2412 (Cambered)", 2412.0),
-                ("NACA 4412 (High Camber)", 4412.0),
-            ],
-            "field_view" => &[("Velocity |u|", 0.0), ("Vorticity ω_z", 1.0)],
-            _ => &[],
-        }
+        super::lbm_presets::lbm_parameter_choices(name)
     }
 
     fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)] {
@@ -457,7 +465,8 @@ impl UnifiedModel for LbmUnified {
     }
 }
 
-#[path = "lattice_boltzmann/preset.rs"]
-mod preset;
 #[path = "lattice_boltzmann/render.rs"]
 pub(crate) mod render;
+#[cfg(test)]
+#[path = "lbm_tests.rs"]
+mod tests;
