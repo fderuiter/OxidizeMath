@@ -1,8 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::run_app_frame;
 #[cfg(feature = "pure_math")]
-use super::{assign_pane_tool, pane_tool_mut, pane_tool_ref, seed_two_community_bridge_graph};
+use super::{
+    assign_pane_tool, pane_tool_mut, pane_tool_ref, run_app_frame, seed_two_community_bridge_graph,
+};
 use crate::accessibility::{all_announcements, clear_test_announcements, with_live_region};
 use crate::app::*;
 #[cfg(all(

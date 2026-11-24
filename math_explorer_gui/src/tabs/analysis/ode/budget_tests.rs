@@ -289,3 +289,52 @@ fn test_builtin_ode_presets_unscaled_and_replicator_symbolic_validation() {
         .expect_err("symbolic payoff formula exceeding compiled param cap must fail validation");
     assert!(rep_err.contains("Symbolic payoff") && rep_err.contains("(0, 0)"));
 }
+
+#[test]
+fn test_symplectic_solvers_respect_primary_and_comparison_instruction_budgets() {
+    let formula = multi_node_scalar_ode_expr();
+    for method in [
+        IntegrationMethod::ImplicitMidpoint,
+        IntegrationMethod::GaussLegendre4,
+    ] {
+        let mut tool = OdeSolverTool {
+            preset: OdePreset::Custom,
+            method,
+            dt: 0.0005,
+            total_time: 100.0,
+            ic_y0: 1.0,
+            comparison_mode: true,
+            ..Default::default()
+        };
+        tool.math_input.set_expression(&formula);
+        tool.recalculate();
+        let inst_cost = tool.rhs_instruction_cost();
+        let stages = super::budget::stages_for_method(method);
+        let primary_steps = tool.y_series.len().saturating_sub(1);
+        assert!(
+            primary_steps
+                .saturating_mul(stages)
+                .saturating_mul(inst_cost)
+                <= MAX_ODE_SYNC_INSTRUCTIONS
+        );
+
+        let snaps = tool.comparison_manager().snapshots();
+        assert_eq!(snaps.len(), 4);
+        let ref_len = snaps[0].series[0].points.len();
+        for snap in snaps {
+            assert_eq!(snap.series[0].points.len(), ref_len);
+        }
+        let comp_steps = ref_len.saturating_sub(1);
+        let executed_comp_stages = if comp_steps == primary_steps {
+            7
+        } else {
+            7 + stages
+        };
+        assert!(
+            comp_steps
+                .saturating_mul(executed_comp_stages)
+                .saturating_mul(inst_cost)
+                <= MAX_ODE_COMPARISON_SYNC_INSTRUCTIONS
+        );
+    }
+}

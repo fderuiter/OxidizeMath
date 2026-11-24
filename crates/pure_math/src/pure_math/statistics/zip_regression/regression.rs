@@ -214,8 +214,6 @@ pub fn simple_zip_fit(counts: &[Count]) -> Result<ZipParams, ZipError> {
 
 #[cfg(test)]
 mod tests {
-    #![cfg_attr(any(), verified_engine::verified(opt_out = "tests"))]
-
     use super::*;
     use approx::assert_relative_eq;
     use oxidize_core::rng::OxidizeRng;

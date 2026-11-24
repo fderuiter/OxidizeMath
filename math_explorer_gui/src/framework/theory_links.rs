@@ -75,7 +75,7 @@ fn explicit_tool_papers(tool_id: &str) -> &'static [&'static str] {
             "clinical_trials",
         ],
         "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
-        "CorticalMorphometryTool" => &["freesurfer"],
+        "CorticalMorphometryTool" | "RiemannianPdeStudio" => &["freesurfer"],
         "PhyllotaxisLSystemTool" | "BiochemicalDynamicsTool" | "EvolutionaryBiologyTool" => {
             &["computational_biology", "biology"]
         }

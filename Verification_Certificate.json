@@ -1,8 +1,11 @@
 {
-  "native_execution_coverage_pct": 84.78101808299363,
-  "wasm_path_coverage_pct": 71.64179104477611,
-  "total_assertion_density": 0.7618554327808471,
-  "verified_modules_density": 0.6123654046543939,
-  "unverified_modules_density": 0.8359442244792563,
+  "native_execution_coverage_pct": 84.44307966417406,
+  "wasm_path_coverage_pct": 80.41237113402062,
+  "total_assertion_density": 0.6994765791341376,
+  "verified_modules_density": 0.6760299625468165,
+  "unverified_modules_density": 0.706754243199256,
+  "total_production_assertion_density": 0.035432400204417694,
+  "verified_production_assertion_density": 0.11889400921658987,
+  "test_assertion_density": 3.0701398743158324,
   "passed": true
 }

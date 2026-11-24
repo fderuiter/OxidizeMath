@@ -206,8 +206,6 @@ fn sample_difference_summary<D: ContinuousDistribution>(
 
 #[cfg(test)]
 mod tests {
-    #![cfg_attr(any(), verified_engine::verified(opt_out = "tests"))]
-
     use super::*;
 
     #[test]

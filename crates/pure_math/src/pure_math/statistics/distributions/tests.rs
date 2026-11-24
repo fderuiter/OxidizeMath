@@ -1,9 +1,8 @@
-#![cfg_attr(any(), verified_engine::verified(opt_out = "tests"))]
-
 use super::*;
 use oxidize_core::rng::OxidizeRng;
 use verified_engine::engine::VerifiedEngine;
 
+#[verified_engine::verified]
 fn assert_continuous_invariants<D: ContinuousDistribution>(dist: &D, grid_lo: f64, grid_hi: f64) {
     let steps = 4000;
     let dx = (grid_hi - grid_lo) / (steps as f64);
@@ -35,6 +34,7 @@ fn assert_continuous_invariants<D: ContinuousDistribution>(dist: &D, grid_lo: f6
     assert!(dist.quantile(f64::NAN).is_err());
 }
 
+#[verified_engine::verified]
 fn assert_discrete_invariants<D: DiscreteDistribution>(dist: &D, max_k: u64) {
     let mut mass = 0.0;
     let mut prev_cdf = 0.0;
@@ -65,6 +65,7 @@ fn assert_discrete_invariants<D: DiscreteDistribution>(dist: &D, max_k: u64) {
 }
 
 #[test]
+#[verified_engine::verified]
 fn test_all_nine_continuous_distributions_and_fitters() {
     let normal = NormalDist::new(2.5, 1.4).expect("normal");
     assert_continuous_invariants(&normal, -8.0, 13.0);
@@ -98,6 +99,7 @@ fn test_all_nine_continuous_distributions_and_fitters() {
 }
 
 #[test]
+#[verified_engine::verified]
 fn test_continuous_mle_and_mom_recovery() {
     let mut rng = OxidizeRng::from_seed(2026);
     let n = 1500;
@@ -148,6 +150,7 @@ fn test_continuous_mle_and_mom_recovery() {
 }
 
 #[test]
+#[verified_engine::verified]
 fn test_all_five_discrete_distributions_and_fitters() {
     let bern = BernoulliDist::new(0.35).expect("bern");
     assert_discrete_invariants(&bern, 4);
@@ -205,3 +208,5 @@ fn test_distributions_zero_allocation_under_verified_engine() {
     });
     assert!(acc.is_finite());
 }
+
+// [cite:clinical_trials_statistics]

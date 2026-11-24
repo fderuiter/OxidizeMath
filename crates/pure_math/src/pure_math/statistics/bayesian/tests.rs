@@ -1,11 +1,10 @@
-#![cfg_attr(any(), verified_engine::verified(opt_out = "tests"))]
-
 use super::*;
 use crate::pure_math::statistics::distributions::{ContinuousDistribution, DiscreteDistribution};
 use oxidize_core::rng::OxidizeRng;
 use verified_engine::engine::VerifiedEngine;
 
 #[test]
+#[verified_engine::verified]
 fn test_all_five_conjugate_models_intervals_and_bayes_factors() {
     // 1. Beta-Binomial
     let bb = BetaBinomial::new(2.0, 2.0).unwrap().update(18, 20).unwrap();
@@ -116,3 +115,5 @@ fn test_metropolis_hastings_matches_conjugate_posterior_zero_alloc() {
     assert!((nd_mean[0] - 1.5).abs() < 0.25);
     assert!((nd_mean[1] + 2.0).abs() < 0.25);
 }
+
+// [cite:clinical_trials_statistics]

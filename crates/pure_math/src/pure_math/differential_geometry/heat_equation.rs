@@ -141,11 +141,13 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         self
     }
 
+    #[verified_engine::verified]
     fn grid_spacings(&self) -> (f64, f64) {
         self.topology
             .grid_spacings(self.range_u, self.range_v, self.grid_res.0, self.grid_res.1)
     }
 
+    #[verified_engine::verified]
     fn sample_cell(&self, i: i32, j: i32) -> f64 {
         let (nu, nv) = (self.grid_res.0 as i32, self.grid_res.1 as i32);
         let (wi, wj) = match self.topology {
@@ -172,6 +174,7 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         self.u_grid[wi][wj]
     }
 
+    #[verified_engine::verified]
     fn compute_flux_u(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
         let nu = self.grid_res.0 as i32;
         if self.topology == SurfaceTopology::OpenNeumann && (i_base < 0 || i_base + 1 >= nu) {
@@ -200,6 +203,7 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         (g_metric * f_u - f * 0.5 * (f_v_i + f_v_ip1)) / sqrt_g
     }
 
+    #[verified_engine::verified]
     fn compute_flux_v(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
         let nv = self.grid_res.1 as i32;
         if self.topology == SurfaceTopology::OpenNeumann && (j_base < 0 || j_base + 1 >= nv) {
@@ -223,6 +227,9 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
         let (nu, nv) = self.grid_res;
+        if nu < 2 || nv < 2 {
+            return;
+        }
         let (du, dv) = self.grid_spacings();
         let j_range = if self.topology == SurfaceTopology::PolarSphere {
             1..nv.saturating_sub(1)
@@ -235,13 +242,18 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
             for j in j_range.clone() {
                 let u = self.range_u.0 + i as f64 * du;
                 let v = self.range_v.0 + j as f64 * dv;
-                let flux_u_plus = self.compute_flux_u(i as i32, j as i32, du, dv);
-                let flux_u_minus = self.compute_flux_u(i as i32 - 1, j as i32, du, dv);
-                let flux_v_plus = self.compute_flux_v(i as i32, j as i32, du, dv);
-                let flux_v_minus = self.compute_flux_v(i as i32, j as i32 - 1, du, dv);
-                let area = self.surface.area_element(u, v).max(1e-12);
-                let laplacian =
-                    ((flux_u_plus - flux_u_minus) / du + (flux_v_plus - flux_v_minus) / dv) / area;
+                let (e, f, g_metric) = self.surface.first_fundamental_form(u, v);
+                let det_g = e * g_metric - f * f;
+                let laplacian = if det_g.abs() < 1e-12 {
+                    0.0
+                } else {
+                    let flux_u_plus = self.compute_flux_u(i as i32, j as i32, du, dv);
+                    let flux_u_minus = self.compute_flux_u(i as i32 - 1, j as i32, du, dv);
+                    let flux_v_plus = self.compute_flux_v(i as i32, j as i32, du, dv);
+                    let flux_v_minus = self.compute_flux_v(i as i32, j as i32 - 1, du, dv);
+                    let area = self.surface.area_element(u, v).max(1e-12);
+                    ((flux_u_plus - flux_u_minus) / du + (flux_v_plus - flux_v_minus) / dv) / area
+                };
                 self.next_grid[i][j] = self.u_grid[i][j] + dt * self.alpha * laplacian;
             }
         }
@@ -251,6 +263,7 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         std::mem::swap(&mut self.u_grid, &mut self.next_grid);
     }
 
+    #[verified_engine::verified]
     fn step_polar_caps(&mut self, dt: f64, dv: f64) {
         let (nu, nv) = self.grid_res;
         for (pole_j, ring_j, probe_v) in [
@@ -265,6 +278,44 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
             let updated = pole_val + dt * self.alpha * lap;
             for row in self.next_grid.iter_mut().take(nu) {
                 row[pole_j] = updated;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
+    use super::*;
+    use crate::pure_math::differential_geometry::surface::Sphere;
+    use std::f64::consts::PI;
+    use verified_engine::engine::VerifiedEngine;
+
+    #[test]
+    fn test_heat_equation_solver_polar_domain_no_nan_and_zero_alloc() {
+        let sphere = Sphere { radius: 1.0 };
+        let mut solver = HeatEquationSolver::new(
+            &sphere,
+            0.01,
+            (0.0, 2.0 * PI),
+            (0.0, PI),
+            (16, 16),
+            |u, v| v.cos() + 0.25 * u.sin() * v.sin(),
+        );
+
+        let ((), _metrics) = VerifiedEngine::run_verified(|| {
+            for _ in 0..25 {
+                solver.step(1e-4);
+            }
+        });
+
+        for row in &solver.u_grid {
+            for &val in row {
+                assert!(
+                    val.is_finite(),
+                    "Pole-inclusive grid produced non-finite value {val}"
+                );
             }
         }
     }

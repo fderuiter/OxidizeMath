@@ -103,9 +103,10 @@ pub use surface::{
     external_energy_volume, internal_energy,
 };
 pub use thickness::{
-    FlatSpatialGrid, SpatialGrid, ThicknessWorkspace, cortical_thickness,
-    cortical_thickness_indexed, cortical_thickness_into, cortical_thickness_map,
-    cortical_thickness_map_into, cortical_thickness_mesh, cortical_thickness_with_grid,
+    FlatSpatialGrid, SpatialGrid, ThicknessWorkspace, cortical_thickness, cortical_thickness_batch,
+    cortical_thickness_batch_into, cortical_thickness_indexed, cortical_thickness_into,
+    cortical_thickness_map, cortical_thickness_map_into, cortical_thickness_mesh,
+    cortical_thickness_with_grid,
 };
 
 // [cite:freesurfer]

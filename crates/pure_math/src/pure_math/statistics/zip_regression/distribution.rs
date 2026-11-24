@@ -229,8 +229,6 @@ impl DiscreteDistribution for ZipDistribution {
 
 #[cfg(test)]
 mod tests {
-    #![cfg_attr(any(), verified_engine::verified(opt_out = "tests"))]
-
     use super::*;
     use verified_engine::engine::VerifiedEngine;
 

@@ -3,31 +3,40 @@
 use super::*;
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::recovery::FiniteStateGuard;
-use crate::framework::{InteractiveTool, SimulationFramework};
+use crate::framework::InteractiveTool;
+#[cfg(feature = "physics")]
+use crate::framework::SimulationFramework;
+#[cfg(feature = "physics")]
 use crate::presets::{serialize_compact_preset_envelope, PresetDialogState};
+#[cfg(feature = "physics")]
 use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+#[cfg(feature = "physics")]
 use federated_registry::Severity;
+#[cfg(feature = "physics")]
 use std::sync::mpsc::channel;
 
 #[test]
 fn test_unified_sim_tool_enforces_parameter_constraints_on_flat_and_extended_json() {
-    let mut lbm = UnifiedSimTool::<LbmUnified>::new();
-    assert!(lbm.active_challenge_id().is_none());
-    let lbm_baseline = lbm.save_state().expect("lbm save_state");
+    #[cfg(feature = "physics")]
+    {
+        let mut lbm = UnifiedSimTool::<LbmUnified>::new();
+        assert!(lbm.active_challenge_id().is_none());
+        let lbm_baseline = lbm.save_state().expect("lbm save_state");
 
-    for bad_lbm in [
-        r#"{"viscosity": -0.1}"#,
-        r#"{"viscosity": 0.001}"#,
-        r#"{"viscosity": 0.9}"#,
-        r#"{"params": {"viscosity": 0.001}, "atlas_visible": false}"#,
-    ] {
-        assert!(
-            lbm.try_load_state(bad_lbm).is_err(),
-            "expected out-of-range LBM payload {bad_lbm} to fail"
-        );
-        assert_eq!(lbm.save_state().as_deref(), Some(lbm_baseline.as_str()));
+        for bad_lbm in [
+            r#"{"viscosity": -0.1}"#,
+            r#"{"viscosity": 0.001}"#,
+            r#"{"viscosity": 0.9}"#,
+            r#"{"params": {"viscosity": 0.001}, "atlas_visible": false}"#,
+        ] {
+            assert!(
+                lbm.try_load_state(bad_lbm).is_err(),
+                "expected out-of-range LBM payload {bad_lbm} to fail"
+            );
+            assert_eq!(lbm.save_state().as_deref(), Some(lbm_baseline.as_str()));
+        }
+        assert!(lbm.try_load_state(r#"{"viscosity": 0.02}"#).is_ok());
     }
-    assert!(lbm.try_load_state(r#"{"viscosity": 0.02}"#).is_ok());
 
     let mut hh = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
     let hh_baseline = hh.save_state().expect("hh save_state");
@@ -48,6 +57,7 @@ fn test_unified_sim_tool_enforces_parameter_constraints_on_flat_and_extended_jso
         .is_ok());
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_unified_preset_and_url_import_fail_fast_with_telemetry() {
     let _ = crate::telemetry::poll_app_telemetry();
