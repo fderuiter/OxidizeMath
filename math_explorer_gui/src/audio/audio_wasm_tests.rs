@@ -2,7 +2,8 @@ use wasm_bindgen_test::wasm_bindgen_test;
 
 use super::{
     export_current_tool_wav, notify_playback_paused, notify_solver_diverged, on_webgl_context_lost,
-    snapshot_ui_state, submit_tool_frame, toggle_mute_from_user_gesture, WaveformPreset,
+    silence_all_audio_on_webgl_loss, snapshot_ui_state, submit_tool_frame,
+    toggle_mute_from_user_gesture, AudioEngineController, AutoSilenceReason, WaveformPreset,
 };
 use crate::audio::mappings::{
     attractor_frame, elliptic_torsion_frame, fractran_register_frame, ulam_spiral_frame,
@@ -93,6 +94,23 @@ fn wasm_audio_offline_export_settings_and_mime_types() {
     super::set_waveform_override(None);
     super::set_offline_duration_secs(crate::audio::wav::DEFAULT_OFFLINE_DURATION_SECS);
     super::set_offline_sample_rate(crate::audio::wav::WAV_EXPORT_SAMPLE_RATE);
+}
+
+#[wasm_bindgen_test]
+fn wasm_scoped_controller_divergence_and_webgl_epoch_guard() {
+    let mut ctrl = AudioEngineController::new();
+    assert!(ctrl.is_muted());
+    ctrl.unmute_from_user_gesture("Attractor Plotter");
+    assert!(!ctrl.is_muted());
+
+    silence_all_audio_on_webgl_loss();
+    let frame = attractor_frame([8.5, -6.0, 27.0], [15.0, 22.0, -10.0], false);
+    ctrl.update_frame(Some(frame));
+    assert!(ctrl.is_muted());
+    assert_eq!(
+        ctrl.last_silence_reason(),
+        AutoSilenceReason::WebGlContextLost
+    );
 }
 
 #[cfg(feature = "physics")]

@@ -34,7 +34,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         sample_rate: u32,
         duration_secs: f32,
     ) -> Result<Vec<u8>, String> {
-        if M::sonification_tool_id().is_none() {
+        if !M::supports_sonification() {
             return Err(format!(
                 "WAV audio export is not supported for {}",
                 M::name()
@@ -42,6 +42,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
         let (mut model, params) = self.build_deterministic_export_model()?;
         let substeps = self.steps_per_frame.max(1);
+        let pitch_scale = self.audio_settings.pitch_scale;
         Ok(crate::audio::render_frames_wav(
             sample_rate,
             duration_secs,
@@ -49,13 +50,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 for _ in 0..substeps {
                     model.step(&params);
                 }
-                model.get_snapshot().sonification
+                model
+                    .sonification_frame()
+                    .unwrap_or_else(|| model.get_snapshot().sonification)
+                    .with_pitch_scale(pitch_scale)
             },
         ))
     }
 
     pub(super) fn render_unified_midi(&self, duration_secs: f32) -> Result<Vec<u8>, String> {
-        if M::sonification_tool_id().is_none() {
+        if !M::supports_sonification() {
             return Err(format!(
                 "MIDI score export is not supported for {}",
                 M::name()
@@ -63,6 +67,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
         let (mut model, params) = self.build_deterministic_export_model()?;
         let substeps = self.steps_per_frame.max(1);
+        let pitch_scale = self.audio_settings.pitch_scale;
         Ok(crate::audio::render_frames_midi(
             M::name(),
             duration_secs,
@@ -70,7 +75,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 for _ in 0..substeps {
                     model.step(&params);
                 }
-                model.get_snapshot().sonification
+                model
+                    .sonification_frame()
+                    .unwrap_or_else(|| model.get_snapshot().sonification)
+                    .with_pitch_scale(pitch_scale)
             },
         ))
     }

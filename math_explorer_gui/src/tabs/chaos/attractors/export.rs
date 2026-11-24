@@ -139,6 +139,7 @@ impl AttractorPlotter {
             .build(LorenzState::new(start.x, start.y, start.z));
         let custom =
             (mode == AttractorMode::Custom).then(|| CompiledFlowJob::from_bank(&self.flow_bank));
+        let pitch_scale = self.audio_settings.sanitized().pitch_scale;
         let mut curr = start;
         let mut diverged = false;
 
@@ -171,6 +172,7 @@ impl AttractorPlotter {
                 [rhs.x, rhs.y, rhs.z],
                 diverged,
             )
+            .with_pitch_scale(pitch_scale)
         })
     }
 

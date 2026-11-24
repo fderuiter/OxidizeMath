@@ -3,29 +3,42 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::export_ui::export_action_button;
-use super::*;
+use super::{
+    ExportCapabilities, ExportFormat, ExportStatusSeverity, ExportTarget, SimulationFramework,
+};
+use crate::audio::{
+    synthesize_wav_16bit, DEFAULT_WAV_DURATION_SECS, DEFAULT_WAV_FRAME_COUNT,
+    DEFAULT_WAV_SAMPLE_RATE, WAV_HEADER_BYTES,
+};
 use eframe::egui;
+use std::hash::{Hash, Hasher};
+
+fn deterministic_tool_seed(tool_name: &str, state_json: Option<&str>) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    tool_name.hash(&mut hasher);
+    if let Some(json) = state_json {
+        json.hash(&mut hasher);
+    }
+    hasher.finish() ^ 0x534F_4E49_4659_3136
+}
 
 impl SimulationFramework {
-    /// Renders `.wav`, `.mid`, `.scl`, and `.kbm` toolbar/menu buttons for acoustic-capable tools.
+    /// Renders `.wav`, `.mid`, `.scl`, and `.kbm` toolbar/menu buttons for simulation tools.
     pub(super) fn render_audio_export_items(
         &mut self,
         ui: &mut egui::Ui,
         caps: ExportCapabilities,
         close_on_click: bool,
     ) {
-        if !caps.has_audio_export() {
-            return;
-        }
-        if caps.wav
-            && export_action_button(
-                ui,
-                true,
-                "Export WAV (.wav)",
-                "Synthesize and download stereo 16-bit PCM WAV audio or impulse response",
-                close_on_click,
-            )
-        {
+        let wav_enabled = caps.audio || caps.wav;
+        let wav_tip = if wav_enabled {
+            "Synthesize and export stereo 16-bit PCM WAV audio or impulse response"
+        } else if !caps.audio_disabled_reason.is_empty() {
+            caps.audio_disabled_reason
+        } else {
+            caps.wav_disabled_reason
+        };
+        if export_action_button(ui, wav_enabled, "Export WAV", wav_tip, close_on_click) {
             self.queue_export(ExportFormat::Wav);
         }
         if caps.midi
@@ -87,37 +100,96 @@ impl SimulationFramework {
             );
             return;
         }
-        let Some(tool) = &self.active_tool else {
-            return;
+        let (tool_name, caps) = {
+            let Some(tool) = self.active_tool.as_ref() else {
+                return;
+            };
+            (tool.name().to_string(), tool.export_capabilities())
         };
-        let caps = tool.export_capabilities();
-        if !caps.wav {
-            self.set_export_status(ExportStatusSeverity::Warning, caps.wav_disabled_reason);
+        if !caps.wav && !caps.audio {
+            let reason = if !caps.audio_disabled_reason.is_empty() {
+                caps.audio_disabled_reason
+            } else {
+                caps.wav_disabled_reason
+            };
+            self.set_export_status(ExportStatusSeverity::Warning, reason);
+            return;
+        }
+        if self.is_diverged {
+            self.set_export_status(
+                ExportStatusSeverity::Error,
+                format!("Cannot export WAV audio while {tool_name} is in a diverged state."),
+            );
             return;
         }
         let cfg = crate::audio::current_offline_config();
-        let tool_name = tool.name().to_string();
-        match tool.export_wav_audio(cfg.sample_rate, cfg.duration_secs) {
-            Ok(bytes) if bytes.len() > 44 => {
-                let filename = Self::build_export_filename(&tool_name, ExportFormat::Wav);
-                self.complete_file_export(
-                    ExportFormat::Wav,
-                    &filename,
-                    &bytes,
-                    None,
-                    ExportFormat::Wav.filter_name(),
-                    "WAV export failed",
-                );
+        let custom_res = self
+            .active_tool
+            .as_ref()
+            .map(|t| t.export_wav_audio(cfg.sample_rate, cfg.duration_secs));
+        match custom_res {
+            Some(Ok(bytes)) if bytes.len() > WAV_HEADER_BYTES => {
+                self.finish_wav_file(&tool_name, &bytes);
             }
-            Ok(_) => self.set_export_status(
+            Some(Ok(_)) => self.set_export_status(
                 ExportStatusSeverity::Error,
                 format!("WAV export failed: {tool_name} produced an empty PCM payload."),
             ),
-            Err(err) => self.set_export_status(
+            Some(Err(err)) if err.starts_with("WAV audio export is not supported for ") => {
+                self.dispatch_sampled_wav_fallback(&tool_name);
+            }
+            Some(Err(err)) => self.set_export_status(
                 ExportStatusSeverity::Error,
                 format!("WAV export failed: {err}"),
             ),
+            None => {}
         }
+    }
+
+    fn dispatch_sampled_wav_fallback(&mut self, tool_name: &str) {
+        let (settings, saved_state) = {
+            let Some(tool) = self.active_tool.as_ref() else {
+                return;
+            };
+            (tool.acoustic_settings(), tool.save_state())
+        };
+        let frames = if let Some(tool) = self.active_tool.as_mut() {
+            let sampled = tool.sample_sonification_frames(DEFAULT_WAV_FRAME_COUNT);
+            if let Some(ref state_str) = saved_state {
+                let _ = tool.try_load_recovery_state(state_str);
+            }
+            sampled
+        } else {
+            Vec::new()
+        };
+        if frames.is_empty() {
+            self.set_export_status(
+                ExportStatusSeverity::Error,
+                format!("No sonification frames available to export from {tool_name}."),
+            );
+            return;
+        }
+        let seed = deterministic_tool_seed(tool_name, saved_state.as_deref());
+        let wav_bytes = synthesize_wav_16bit(
+            &frames,
+            settings,
+            DEFAULT_WAV_SAMPLE_RATE,
+            DEFAULT_WAV_DURATION_SECS,
+            seed,
+        );
+        self.finish_wav_file(tool_name, &wav_bytes);
+    }
+
+    fn finish_wav_file(&mut self, tool_name: &str, wav_bytes: &[u8]) {
+        let filename = Self::build_export_filename(tool_name, ExportFormat::Wav);
+        self.complete_file_export(
+            ExportFormat::Wav,
+            &filename,
+            wav_bytes,
+            None,
+            ExportFormat::Wav.filter_name(),
+            "WAV export failed",
+        );
     }
 
     fn dispatch_midi_request(&mut self, target: ExportTarget) {

@@ -6,6 +6,7 @@ mod canvas;
 mod controls;
 mod persistence;
 pub mod sculpt;
+mod sonification;
 pub mod tool;
 pub use sculpt::UnifiedSimRunner;
 pub use tool::*;
@@ -432,6 +433,20 @@ pub trait UnifiedModel:
     {
         None
     }
+
+    /// Whether this model emits live [`crate::audio::SonificationFrame`] descriptors and `.wav` exports.
+    fn supports_sonification() -> bool
+    where
+        Self: Sized,
+    {
+        Self::sonification_tool_id().is_some()
+    }
+
+    /// Emits a zero-allocation [`crate::audio::SonificationFrame`] directly from live model state.
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        None
+    }
+
     /// Optional `(x_key, y_key)` parameter pairs exposed in a 2D [`crate::async_sim::ParameterAtlasController`].
     fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)]
     where

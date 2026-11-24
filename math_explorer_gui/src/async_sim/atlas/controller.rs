@@ -177,7 +177,7 @@ impl ParameterAtlasController {
         self.request_generation > 0 && self.completed_generation == self.request_generation
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, target_arch = "wasm32"))]
     pub(crate) fn set_raster_size_for_test(&mut self, width: usize, height: usize) {
         self.raster_size = (width.max(8), height.max(8));
         self.dirty = true;

@@ -1,4 +1,5 @@
 pub mod atlas_host;
+mod audio_sync;
 pub mod brush_codec;
 pub mod brush_dispatch;
 #[cfg(all(test, feature = "physics", feature = "biology"))]
@@ -127,23 +128,13 @@ pub use story_hud::*;
 pub use tool::InteractiveTool;
 pub use trace_overlay::*;
 
-use eframe::egui;
-
 pub(super) use crate::accessibility::AccessibleHoverText;
+pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
+use eframe::egui;
+pub use overlay_sync::ToolMetadata;
 pub(super) use overlay_sync::{
     FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache,
 };
-
-pub struct ToolMetadata {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub domain: &'static str,
-    pub tags: &'static [&'static str],
-    pub build: fn() -> Box<dyn InteractiveTool>,
-}
-
-inventory::collect!(ToolMetadata);
-pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 
 #[allow(missing_docs)]
 pub struct SimulationFramework {
@@ -190,6 +181,8 @@ pub struct SimulationFramework {
     pub branch_engine: CounterfactualBranchEngine,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    /// Scoped Web Audio / gain-ramp / divergence-silence controller for this framework pane.
+    pub audio_controller: crate::audio::AudioEngineController,
     /// Declarative guided story and AST challenge HUD state.
     pub challenge_hud: ChallengeHudState,
     /// Active inverse challenge contract displayed in the Challenge HUD, if any.

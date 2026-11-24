@@ -3,11 +3,14 @@
 // theory_verification!
 
 pub mod backend;
+pub mod controller;
 pub mod fourier;
 pub mod frame;
+pub mod limiter;
 pub mod mappings;
 pub mod midi;
 pub mod scala;
+pub mod settings;
 pub mod synth;
 pub mod ui;
 pub mod wav;
@@ -19,10 +22,19 @@ use std::cell::RefCell;
 use std::sync::mpsc::channel;
 
 pub use backend::{MuteReason, SonificationBackend};
+pub use controller::{silence_all_audio_on_webgl_loss, AudioEngineController, AutoSilenceReason};
 pub use frame::{MeterReading, SonificationFrame, VoiceSpec, WaveformPreset};
+pub use limiter::{
+    equal_power_pan_gains, soft_clip_sample, soft_clip_stereo, GainRampEnvelope,
+    MAX_SILENCE_RAMP_MS, SILENCE_RAMP_DURATION_SECS,
+};
+pub use settings::{AcousticSettings, DEFAULT_AUDIO_GAIN, DEFAULT_PITCH_SCALE};
 pub use synth::OfflinePcmSynthesizer;
 pub use ui::render_sonification_panel;
-pub use wav::OfflineRenderConfig;
+pub use wav::{
+    synthesize_wav_16bit, write_wav_header, OfflineRenderConfig, DEFAULT_WAV_DURATION_SECS,
+    DEFAULT_WAV_FRAME_COUNT, DEFAULT_WAV_SAMPLE_RATE, WAV_HEADER_BYTES,
+};
 
 use crate::accessibility::announce_status;
 #[cfg(not(all(test, not(target_arch = "wasm32"))))]
@@ -138,6 +150,29 @@ thread_local! {
     static AUDIO_CONTROLLER: RefCell<AudioController> = RefCell::new(AudioController::new());
 }
 
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn set_controller_muted_from_gesture(muted: bool) {
+    AUDIO_CONTROLLER.with(|cell| {
+        let _ = cell.borrow_mut().backend.set_muted_from_user_gesture(muted);
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn suspend_controller_backend(reason: MuteReason) {
+    AUDIO_CONTROLLER.with(|cell| {
+        cell.borrow_mut().backend.mute_and_suspend(reason);
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn apply_controller_frame(frame: SonificationFrame) {
+    AUDIO_CONTROLLER.with(|cell| {
+        let mut ctrl = cell.borrow_mut();
+        ctrl.record_frame(frame);
+        ctrl.backend.apply_frame(&frame);
+    });
+}
+
 /// Routes a simulation tool's latest [`SonificationFrame`] to the active backend.
 pub fn submit_tool_frame(tool_id: &'static str, mut frame: SonificationFrame, is_paused: bool) {
     AUDIO_CONTROLLER.with(|cell| {
@@ -165,9 +200,13 @@ pub fn submit_tool_frame(tool_id: &'static str, mut frame: SonificationFrame, is
 
 /// Unlocks or mutes audio strictly inside an explicit user button click or keyboard gesture.
 pub fn toggle_mute_from_user_gesture() {
+    let target_muted = AUDIO_CONTROLLER.with(|cell| !cell.borrow().backend.is_muted());
+    set_muted_from_user_gesture_target(target_muted);
+}
+
+pub(crate) fn set_muted_from_user_gesture_target(target_muted: bool) {
     AUDIO_CONTROLLER.with(|cell| {
         let mut ctrl = cell.borrow_mut();
-        let target_muted = !ctrl.backend.is_muted();
         match ctrl.backend.set_muted_from_user_gesture(target_muted) {
             Ok(()) => {
                 if target_muted {
@@ -391,8 +430,9 @@ pub fn notify_solver_diverged() {
     });
 }
 
-/// Suspends audio within `<= 30 ms` and announces politely on `webglcontextlost`.
+/// Suspends audio within `<= 30 ms`, bumps the WebGL mute epoch, and announces politely on `webglcontextlost`.
 pub fn on_webgl_context_lost() {
+    controller::bump_force_mute_epoch();
     AUDIO_CONTROLLER.with(|cell| {
         cell.borrow_mut()
             .suspend_with_reason(MuteReason::WebGlContextLost, true);
@@ -435,6 +475,10 @@ mod tests;
 
 #[cfg(all(test, feature = "pure_math"))]
 mod acoustics_tests;
+#[cfg(all(test, feature = "pure_math"))]
+mod chladni_tests;
+#[cfg(all(test, feature = "biology", feature = "physics", feature = "pure_math"))]
+mod integration_tests;
 #[cfg(all(test, feature = "physics"))]
 mod mri_radar_tests;
 

@@ -17,11 +17,7 @@ pub trait InteractiveTool {
 
     /// Show the tool at the root `egui::Context` level by delegating to [`Self::show_inside`].
     fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| {
-                self.show_inside(ui);
-            });
+        pane_scope::render_default_tool_root(self, ctx);
     }
 
     /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
@@ -305,6 +301,27 @@ pub trait InteractiveTool {
         num_frames: usize,
     ) -> Vec<egui_plot::export::DatasetFrame> {
         export_figure::sample_tool_animation_frames(self, num_frames)
+    }
+
+    /// Optional hook emitting a zero-allocation [`crate::audio::SonificationFrame`] for live Web Audio and `.wav` export.
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        None
+    }
+
+    /// Returns persisted non-mute [`crate::audio::AcousticSettings`] for presets and share URLs.
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        crate::audio::AcousticSettings::default()
+    }
+
+    /// Applies persisted non-mute [`crate::audio::AcousticSettings`] without unmuting playback.
+    fn set_acoustic_settings(&mut self, _settings: crate::audio::AcousticSettings) {}
+
+    /// Samples deterministic multi-step [`crate::audio::SonificationFrame`] trajectories for 16-bit `.wav` export.
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        super::audio_sync::sample_tool_sonification_frames(self, num_frames)
     }
 
     /// Returns a type-erased reference for concrete tool state inspection.

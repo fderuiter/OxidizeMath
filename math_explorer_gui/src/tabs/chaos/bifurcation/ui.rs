@@ -14,14 +14,14 @@ impl BifurcationDiagram {
             ui.separator();
             let _ = self.atlas.show_toggle_button(ui);
 
-            let mut sweep_changed = self.draw_custom_map_controls(ui);
+            let custom_changed = self.draw_custom_map_controls(ui);
             ui.separator();
 
             let (lo_bound, hi_bound) = match self.map_mode {
                 BifurcationMapMode::Logistic => (0.0, 4.0),
                 BifurcationMapMode::Custom => (-6.0, 6.0),
             };
-            sweep_changed |= ui
+            let mut sweep_changed = ui
                 .add(
                     AnimatedSlider::new(&mut self.r_min, lo_bound..=(hi_bound - 0.01))
                         .text("Min r")
@@ -45,13 +45,13 @@ impl BifurcationDiagram {
                 .add(egui::Slider::new(&mut self.steps, 100..=2000).text("Resolution (steps)"))
                 .changed();
 
-            if sweep_changed && !self.r_pinned {
+            if (custom_changed || sweep_changed) && !self.r_pinned {
                 self.selected_r = self.selected_r.clamp(self.r_min, self.r_max);
                 self.probe_r = self.selected_r;
             }
 
             ui.separator();
-            self.draw_parameter_controls(ui, sweep_changed);
+            self.draw_parameter_controls(ui, custom_changed, sweep_changed);
 
             ui.separator();
             ui.label(format!(
@@ -69,7 +69,12 @@ impl BifurcationDiagram {
         });
     }
 
-    fn draw_parameter_controls(&mut self, ui: &mut egui::Ui, mut full_recompute: bool) {
+    fn draw_parameter_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        custom_changed: bool,
+        sweep_changed: bool,
+    ) {
         let ctx = ui.ctx().clone();
         self.selected_r = self.selected_r.clamp(self.r_min, self.r_max);
         let r_changed = ui
@@ -97,16 +102,16 @@ impl BifurcationDiagram {
             self.r_from_hover = false;
         }
 
-        full_recompute |= x0_changed;
         let recompute_clicked = ui
             .button("▶ Recompute")
             .accessible_hover_text("Regenerate bifurcation, Lyapunov, cobweb, and orbit plots")
             .clicked();
-        if recompute_clicked || full_recompute {
+        if recompute_clicked || custom_changed {
             self.recompute();
-            if recompute_clicked {
-                self.dispatch_sweep_request(&ctx);
-            }
+            self.dispatch_sweep_request(&ctx);
+        } else if sweep_changed || x0_changed {
+            self.recompute_coupled_views();
+            self.dispatch_sweep_request(&ctx);
         } else if r_changed {
             self.recompute_coupled_views();
         }
