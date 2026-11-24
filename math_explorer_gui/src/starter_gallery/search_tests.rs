@@ -88,6 +88,9 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
 
     let turing = filter_starter_cards(&all_cards, "turing", Some(AcademicDomain::Biology));
     assert!(turing.iter().any(|c| c.title.contains("Turing")));
+    assert_eq!(card_academic_domain("biochemical"), AcademicDomain::Biology);
+    let hill = filter_starter_cards(&all_cards, "hill", Some(AcademicDomain::Biology));
+    assert!(hill.iter().any(|c| c.domain == "biochemical"));
 
     let disjoint = filter_starter_cards(&all_cards, "turing", Some(AcademicDomain::Climate));
     assert!(disjoint.is_empty());
