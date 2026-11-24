@@ -1041,6 +1041,9 @@
       "signature": "impl SculptedGridMdp { pub fn set_cell_role (& mut self , _ : GridState , _ : GridCellRole) }"
     },
     {
+      "signature": "impl SculptedGridMdp { pub fn set_start (& mut self , _ : GridState) }"
+    },
+    {
       "signature": "impl SculptedGridMdp { pub fn step_deterministic (& self , _ : GridState , _ : Move) -> GridState }"
     },
     {
@@ -5563,6 +5566,9 @@
       "signature": "pub use solvers :: TuringSolverStrategy"
     },
     {
+      "signature": "pub use spatial_reaction :: SpatialSchnakenbergKinetics"
+    },
+    {
       "signature": "pub use state :: TuringState"
     }
   ],
@@ -5590,6 +5596,9 @@
     },
     {
       "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction (& self , _ : [f64 ; N]) -> [f64 ; N] }"
+    },
+    {
+      "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction_at (& self , _ : usize , _ : [f64 ; N]) -> [f64 ; N] }"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/solvers.rs": [
@@ -5622,6 +5631,35 @@
     },
     {
       "signature": "pub trait TuringSolverStrategy < const N : usize = 2 > { fn step < K : ReactionKinetics < N > , D : SpatialDiffusion < N > > (& mut self , _ : & TuringState < N > , _ : & mut TuringState < N > , _ : & TuringDynamics < N , K , D > , _ : f64 ,) }"
+    }
+  ],
+  "crates/domain_biology/src/biology/morphogenesis/spatial_reaction.rs": [
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn clear_cell_override (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn clear_mask (& mut self) }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn grid_size (& self) -> usize }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn has_spatial_mask (& self) -> bool }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn is_overridden (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn new (_ : f64 , _ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn rates_at (& self , _ : usize) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn set_cell_rates (& mut self , _ : usize , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "pub struct SpatialSchnakenbergKinetics"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/state.rs": [
@@ -10241,6 +10279,9 @@
   ],
   "crates/domain_physics/src/physics/stat_mech/ising.rs": [
     {
+      "signature": "impl SpinLattice { pub fn clear_pinned (& mut self) }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn evolve (& mut self , _ : usize , _ : f64 , _ : f64 , _ : f64) }"
     },
     {
@@ -10259,6 +10300,9 @@
       "signature": "impl SpinLattice { pub fn height (& self) -> usize }"
     },
     {
+      "signature": "impl SpinLattice { pub fn is_pinned (& self , _ : usize , _ : usize) -> bool }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn magnetization (& self) -> i64 }"
     },
     {
@@ -10271,6 +10315,9 @@
       "signature": "impl SpinLattice { pub fn new_with_rng (_ : usize , _ : usize , _ : oxidize_core :: rng :: OxidizeRng ,) -> Self }"
     },
     {
+      "signature": "impl SpinLattice { pub fn pinned (& self) -> & [bool] }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn reseed (& mut self , _ : u64) }"
     },
     {
@@ -10278,6 +10325,9 @@
     },
     {
       "signature": "impl SpinLattice { pub fn set (& mut self , _ : usize , _ : usize , _ : i8) }"
+    },
+    {
+      "signature": "impl SpinLattice { pub fn set_pinned (& mut self , _ : usize , _ : usize , _ : bool) }"
     },
     {
       "signature": "impl SpinLattice { pub fn spins (& self) -> & [i8] }"

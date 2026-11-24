@@ -1,13 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::brush::{apply_mask_rle_to_kinetics, apply_morpho_cells_to_system, MorphoBrushMode};
 pub use super::counterfactual::MorphogenesisSnapshotData as MorphoSnapshotData;
 use super::counterfactual::{
     active_morphogen_slice, render_morphogenesis_heatmap, MorphogenesisHeatmapMode,
     MorphogenesisTwinState,
 };
+pub(crate) use super::kinetics::apply_uniform_noise;
+pub use super::kinetics::{
+    MorphogenesisKineticsAdapter, MorphogenesisKineticsState, MorphogenesisSharedParams,
+};
 #[cfg(test)]
 pub use super::legacy_runner::MorphogenesisRunner;
-pub(crate) use super::runner_twin::apply_uniform_noise;
 use super::sculpt::{apply_sculpt_sim_command, enforce_system_mask, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
 use crate::app::ThemeMode;
@@ -18,88 +22,14 @@ use crate::async_sim::{
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
 use math_explorer::biology::diffusion::MaskedFiniteDifference2D;
-use math_explorer::biology::morphogenesis::{
-    GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, TuringSystem,
-};
+use math_explorer::biology::morphogenesis::TuringSystem;
 use oxidize_core::rng::OxidizeRng;
 use std::sync::Arc;
 
 /// Default PRNG seed for deterministic morphogenesis perturbation streams.
 pub const DEFAULT_MORPHOGENESIS_SEED: u64 = 0x4D4F_5250_484F_3244;
 
-/// Zero-allocation kinetics adapter switching cleanly between [`SchnakenbergKinetics`]
-/// and [`GrayScottKinetics`] inside [`TuringSystem`].
-#[derive(Clone, Copy, Debug)]
-pub struct MorphogenesisKineticsAdapter {
-    /// Active reaction kinetics family.
-    pub mode: MorphogenesisKineticsMode,
-    /// Schnakenberg activator feed `a`.
-    pub a: f64,
-    /// Schnakenberg inhibitor feed `b`.
-    pub b: f64,
-    /// Gray-Scott substrate feed rate `f`.
-    pub f: f64,
-    /// Gray-Scott catalyst kill rate `k`.
-    pub k: f64,
-}
-
-impl ReactionKinetics<2> for MorphogenesisKineticsAdapter {
-    #[inline(always)]
-    fn reaction(&self, concentrations: [f64; 2]) -> [f64; 2] {
-        match self.mode {
-            MorphogenesisKineticsMode::Schnakenberg => {
-                SchnakenbergKinetics::new(self.a, self.b).reaction(concentrations)
-            }
-            MorphogenesisKineticsMode::GrayScott => {
-                GrayScottKinetics::new(self.f, self.k).reaction(concentrations)
-            }
-        }
-    }
-}
-
-/// Shared Gray-Scott mode and `(f, k)` parameters paired with [`MorphogenesisSharedParams`].
-#[derive(Clone, Copy, Debug)]
-pub struct MorphogenesisKineticsState {
-    /// Selected kinetics regime.
-    pub mode: MorphogenesisKineticsMode,
-    /// Gray-Scott substrate feed rate `f`.
-    pub f: f64,
-    /// Gray-Scott autocatalyst kill rate `k`.
-    pub k: f64,
-}
-
-impl Default for MorphogenesisKineticsState {
-    fn default() -> Self {
-        let gs = GrayScottKinetics::mitosis();
-        Self {
-            mode: MorphogenesisKineticsMode::Schnakenberg,
-            f: gs.f,
-            k: gs.k,
-        }
-    }
-}
-
-/// Shared reaction-diffusion parameters synchronized between the UI thread and worker runner.
-pub struct MorphogenesisSharedParams {
-    /// Schnakenberg activator feed rate `a`.
-    pub a: f64,
-    /// Schnakenberg inhibitor feed rate `b`.
-    pub b: f64,
-    /// Primary species diffusion coefficient `D_u`.
-    pub d_u: f64,
-    /// Secondary species diffusion coefficient `D_v`.
-    pub d_v: f64,
-    /// Integration step size `dt`.
-    pub dt: f64,
-    /// Whether high-contrast palette rendering is active.
-    pub high_contrast: bool,
-    /// Active visual theme mode (`Dark`, `Light`, or `HighContrast`).
-    pub theme_mode: ThemeMode,
-    /// Active counterfactual spatial heatmap mode (`ActiveUb`, `SplitUaUb`, or `DifferenceAbs`).
-    pub heatmap_mode: MorphogenesisHeatmapMode,
-}
-
-/// Multi-kinetics worker runner supporting [`SchnakenbergKinetics`], [`GrayScottKinetics`],
+/// Multi-kinetics worker runner supporting [`super::kinetics::MorphogenesisKineticsAdapter`],
 /// [`MaskedFiniteDifference2D`] microfluidic field sculpting, `K = 16` zero-allocation
 /// time-travel checkpoint replay, and counterfactual shadow twins.
 pub struct MorphogenesisKineticsRunner {
@@ -194,6 +124,8 @@ impl MorphogenesisKineticsRunner {
         self.system.kinetics.mode = mode;
         self.system.kinetics.a = a;
         self.system.kinetics.b = b;
+        self.system.kinetics.spatial.a = a;
+        self.system.kinetics.spatial.b = b;
         self.system.kinetics.f = f;
         self.system.kinetics.k = k;
         self.system.diffusion_coeffs[0] = d_u;
@@ -205,6 +137,29 @@ impl MorphogenesisKineticsRunner {
             self.enforce_mask_concentrations();
         }
         (dt.is_finite() && dt > 0.0).then_some(dt)
+    }
+
+    fn reset_with_optional_kinetics_mask(&mut self, reload_kinetics_mask: bool) {
+        let _ = self.sync_system_params();
+        if reload_kinetics_mask {
+            let mask_rle = self
+                .params
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .mask_rle
+                .clone();
+            apply_mask_rle_to_kinetics(
+                &mut self.system.kinetics,
+                self.width,
+                self.height,
+                mask_rle.as_deref(),
+            );
+        }
+        MorphogenesisTool::initialize_adapter_system(&mut self.system, self.width, self.height);
+        self.enforce_mask_concentrations();
+        self.step_count = 0;
+        self.rng = OxidizeRng::new(DEFAULT_MORPHOGENESIS_SEED);
+        self.twin = None;
     }
 
     fn apply_scalar_params(&mut self, p: &[f64]) -> Option<f64> {
@@ -229,21 +184,25 @@ impl MorphogenesisKineticsRunner {
         self.step_count += 1;
     }
 
-    fn reset_grid_and_counters(&mut self) {
-        let _ = self.sync_system_params();
-        MorphogenesisTool::initialize_adapter_system(&mut self.system, self.width, self.height);
-        self.enforce_mask_concentrations();
-        self.step_count = 0;
-        self.rng = OxidizeRng::new(DEFAULT_MORPHOGENESIS_SEED);
-        self.twin = None;
-    }
-
     fn apply_sculpt_command(&mut self, cmd: &SimCommand) {
         if apply_sculpt_sim_command(&mut self.system, self.width, self.height, cmd) {
             return;
         }
         match cmd {
+            SimCommand::ApplyBrushCells { ref cells, mode } => {
+                apply_morpho_cells_to_system(
+                    &mut self.system,
+                    self.width,
+                    self.height,
+                    cells,
+                    MorphoBrushMode::from_code(*mode),
+                );
+                self.enforce_mask_concentrations();
+            }
             SimCommand::Custom(s) if s == "clear_mask" => self.system.diffusion.mask.clear(),
+            SimCommand::Custom(s) if s == "clear_kinetics_mask" => {
+                self.system.kinetics.clear_mask();
+            }
             SimCommand::Custom(s) if s == "stamp_maze" => {
                 self.system.diffusion.mask.stamp_microfluidic_maze();
                 self.enforce_mask_concentrations();
@@ -256,8 +215,10 @@ impl MorphogenesisKineticsRunner {
 impl SimulationRunner for MorphogenesisKineticsRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         match cmd {
-            SimCommand::Reset => self.reset_grid_and_counters(),
-            SimCommand::Custom(ref s) if s == "reinit" => self.reset_grid_and_counters(),
+            SimCommand::Reset => self.reset_with_optional_kinetics_mask(true),
+            SimCommand::Custom(ref s) if s == "reinit" => {
+                self.reset_with_optional_kinetics_mask(false);
+            }
             SimCommand::Custom(ref s) if self.process_twin_custom_command(s) => {}
             _ => self.apply_sculpt_command(&cmd),
         }
