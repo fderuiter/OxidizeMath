@@ -9,14 +9,12 @@ use super::presets::{
     DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS,
     GRID_X_MAX, GRID_X_MIN, SIGMA_MAX, SIGMA_MIN,
 };
-use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::DiagnosticReport;
 use math_commons::ast::Expr;
 use math_explorer::physics::quantum::{gaussian_wavepacket_into, CrankNicolson1D, QuantumState};
 use math_explorer::registry::MAX_GRID_SIZE;
 use nalgebra::DVector;
 use num_complex::Complex;
-use std::any::Any;
 use std::sync::{Arc, RwLock};
 
 /// Number of unitary Crank-Nicolson substeps executed per `WaveRunner` step.
@@ -190,17 +188,29 @@ impl WaveRunner {
         runner
     }
 
+    pub(crate) fn record_divergence(&mut self, param: &'static str, message: impl Into<String>) {
+        self.diverged = true;
+        self.sonification = crate::audio::SonificationFrame::silent();
+        self.diagnostic_report = Some(DiagnosticReport::new(
+            self.time,
+            self.step_count,
+            param,
+            message.into(),
+        ));
+    }
+
     /// Rebuilds the spatial grid, clamped potential, Hamiltonian, and initial Gaussian wavepacket.
     pub fn init_from_config(&mut self, cfg: &WaveSimConfig) {
         let n = self.n_points;
-        let Some(dx) = self.checked_dx() else {
-            let span = self.x_max - self.x_min;
+        let span = self.x_max - self.x_min;
+        if n < 2 || !span.is_finite() || span <= 0.0 {
             self.record_divergence(
                 "dx",
                 format!("Invalid spatial grid (n={n}, span={span}): requires n >= 2 and dx > 0."),
             );
             return;
-        };
+        }
+        let dx = span / (n as f64 - 1.0);
         self.x_axis.resize(n, 0.0);
         for (i, slot) in self.x_axis.iter_mut().enumerate() {
             *slot = self.x_min + i as f64 * dx;
@@ -308,92 +318,5 @@ impl WaveRunner {
         }
         self.update_observables_in_place();
         self.refresh_sonification(dt);
-    }
-
-    pub(crate) fn record_divergence(&mut self, param: &'static str, message: impl Into<String>) {
-        self.diverged = true;
-        self.sonification = crate::audio::SonificationFrame::silent();
-        self.diagnostic_report = Some(DiagnosticReport::new(
-            self.time,
-            self.step_count,
-            param,
-            message.into(),
-        ));
-    }
-}
-
-impl FiniteStateGuard for WaveRunner {
-    fn is_finite_state(&self) -> bool {
-        if self.diverged {
-            return false;
-        }
-        self.psi
-            .vector
-            .iter()
-            .all(|c| c.re.is_finite() && c.im.is_finite())
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.diagnostic_report.as_ref()
-    }
-
-    fn diverged(&self) -> bool {
-        self.diverged || !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn reset_parameters(&mut self) {
-        self.diverged = false;
-        self.diagnostic_report = None;
-        self.step_count = 0;
-    }
-}
-
-impl SimulationRunner for WaveRunner {
-    fn process_command(&mut self, cmd: SimCommand) {
-        match cmd {
-            SimCommand::Reset => {
-                self.reset_parameters();
-                let cfg = self
-                    .config
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
-                self.init_from_config(&cfg);
-            }
-            SimCommand::SetSpeed(speed) => {
-                self.steps_per_frame = speed.max(1);
-            }
-            other => self.handle_sculpt_command(other),
-        }
-    }
-
-    fn step(&mut self) {
-        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
-        self.step_with_dt(dt);
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        let sonification = self.active_sonification_frame();
-        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
-        StateSnapshot {
-            width: 0,
-            height: 0,
-            pixels: Arc::new(RwLock::new(Vec::new())),
-            custom_data: Vec::new(),
-            structured_data: Some(structured_data),
-            sonification,
-        }
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        self.steps_per_frame
-    }
-
-    fn is_finite_state(&self) -> bool {
-        FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        self.diagnostic_report.clone()
     }
 }

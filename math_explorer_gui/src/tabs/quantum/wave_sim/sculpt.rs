@@ -8,13 +8,16 @@ use super::presets::{
     GRID_POINTS, GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE,
 };
 use super::{WaveRunner, WaveSimulatorTool};
-use crate::async_sim::SimCommand;
+use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{
     apply_sparse_potential, encode_sparse_potential, interpolate_1d_span, BrushInteractionMode,
     BrushMode, BrushStroke, InteractionContext, SpatialBrushKit,
 };
 use eframe::egui;
 use math_explorer::physics::quantum::gaussian_wavepacket_into;
+use std::any::Any;
+use std::sync::{Arc, RwLock};
 
 /// Default `SpatialBrushKit` configured for 1D potential barrier/well/step sculpting on `[-5, 5]`.
 #[must_use]
@@ -151,6 +154,82 @@ fn detect_sculpted_interval(
     }
     let (lo, hi) = (first?, last?);
     Some((x_axis[lo], x_axis[hi]))
+}
+
+impl FiniteStateGuard for WaveRunner {
+    fn is_finite_state(&self) -> bool {
+        if self.diverged {
+            return false;
+        }
+        self.psi
+            .vector
+            .iter()
+            .all(|c| c.re.is_finite() && c.im.is_finite())
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        self.diagnostic_report.as_ref()
+    }
+
+    fn diverged(&self) -> bool {
+        self.diverged || !FiniteStateGuard::is_finite_state(self)
+    }
+
+    fn reset_parameters(&mut self) {
+        self.diverged = false;
+        self.diagnostic_report = None;
+        self.step_count = 0;
+    }
+}
+
+impl SimulationRunner for WaveRunner {
+    fn process_command(&mut self, cmd: SimCommand) {
+        match cmd {
+            SimCommand::Reset => {
+                self.reset_parameters();
+                let cfg = self
+                    .config
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                self.init_from_config(&cfg);
+            }
+            SimCommand::SetSpeed(speed) => {
+                self.steps_per_frame = speed.max(1);
+            }
+            other => self.handle_sculpt_command(other),
+        }
+    }
+
+    fn step(&mut self) {
+        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
+        self.step_with_dt(dt);
+    }
+
+    fn get_snapshot(&self) -> StateSnapshot {
+        let sonification = self.active_sonification_frame();
+        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
+        StateSnapshot {
+            width: 0,
+            height: 0,
+            pixels: Arc::new(RwLock::new(Vec::new())),
+            custom_data: Vec::new(),
+            structured_data: Some(structured_data),
+            sonification,
+        }
+    }
+
+    fn get_steps_per_frame(&self) -> usize {
+        self.steps_per_frame
+    }
+
+    fn is_finite_state(&self) -> bool {
+        FiniteStateGuard::is_finite_state(self)
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.diagnostic_report.clone()
+    }
 }
 
 impl WaveRunner {

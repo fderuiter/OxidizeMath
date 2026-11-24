@@ -285,6 +285,12 @@ pub fn evaluate_perturbation_bar(
             err.user_message_for_input(bar.raw_text.trim())
         )
     })?;
+    if !bar.is_valid() {
+        let verr = bar
+            .error_message()
+            .unwrap_or_else(|| "invalid expression".to_string());
+        return Err(format!("Validation Error: {verr}"));
+    }
     let mut vars = HashMap::with_capacity(5);
     vars.insert("x0".to_string(), initial_state[0]);
     vars.insert("y0".to_string(), initial_state[1]);
