@@ -10,7 +10,7 @@ use super::sculpt::overlay_cell_mask_colors;
 use super::MorphogenesisTool;
 use crate::accessibility::{announce_status, AccessibleHoverText};
 use crate::app::ThemeMode;
-use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner};
+use crate::async_sim::{SimCommand, SimulationRunner};
 use crate::framework::BranchControlAction;
 use eframe::egui::{self, ColorImage};
 
@@ -169,7 +169,7 @@ impl MorphogenesisTool {
 
     pub(crate) fn respawn_worker_from_local(&mut self) {
         let cloned = self.local_runner.clone_outside_step();
-        self.worker = BackgroundWorker::new(cloned);
+        self.worker.replace_runner(cloned);
     }
 
     fn stage_baseline_fork_params(

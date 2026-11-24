@@ -76,9 +76,9 @@ pub struct MorphogenesisTab {
 
 impl Default for MorphogenesisTab {
     fn default() -> Self {
-        let mut framework = crate::framework::SimulationFramework::new("biology");
-        let _ = framework.select_tool_by_name("MorphogenesisTool");
-        Self { framework }
+        Self {
+            framework: crate::framework::SimulationFramework::new("biology"),
+        }
     }
 }
 

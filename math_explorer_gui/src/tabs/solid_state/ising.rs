@@ -109,7 +109,7 @@ impl IsingModelTool {
             .total_trials
             .store(0, Ordering::Relaxed);
         let runner = Self::build_runner(&self.params);
-        self.worker = BackgroundWorker::new(runner);
+        self.worker.replace_runner(runner);
         self.stepped_pixels = None;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
@@ -219,6 +219,11 @@ impl InteractiveTool for IsingModelTool {
         "solid_state"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+        self.atlas.set_suspended(suspended);
+    }
+
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         (!self.is_graph_mode())
             .then_some(self.brush_state.focused_id)
@@ -301,6 +306,7 @@ impl InteractiveTool for IsingModelTool {
             ),
         ]
     }
+
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::raster_only()
     }

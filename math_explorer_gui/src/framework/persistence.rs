@@ -300,8 +300,10 @@ impl SimulationFramework {
         let Some(idx) = tool_idx.filter(|&i| i < self.available_tools.len()) else {
             if tool_idx.is_none() {
                 self.cancel_active_gif_export(false);
+                if let Some(mut old) = self.active_tool.take() {
+                    old.set_suspended(true);
+                }
                 self.selected_tool_index = None;
-                self.active_tool = None;
             }
             return;
         };
@@ -319,6 +321,7 @@ impl SimulationFramework {
         self.is_diverged = false;
         self.diagnostic_report = None;
         if let Some(tool) = &mut self.active_tool {
+            tool.set_suspended(self.suspended);
             if let Some(saved) = super::url_share::lookup_saved_tool_state(
                 &self.saved_tool_states,
                 &self.domain,
@@ -332,29 +335,39 @@ impl SimulationFramework {
                     let _ = tool.try_load_recovery_state(base);
                 }
                 if !tool.has_finite_parameters() {
-                    let fresh = (meta.build)();
+                    tool.set_suspended(true);
+                    let mut fresh = (meta.build)();
+                    fresh.set_suspended(self.suspended);
                     self.baseline_tool_state = fresh.save_state();
                     *tool = fresh;
                 }
             }
-            let refreshed = capture_isolated_tool_datasets(tool.as_ref());
-            let refreshed_3d = capture_isolated_tool_datasets_3d(tool.as_ref());
-            let recovery = tool.save_recovery_state();
-            let rev = tool.state_revision();
-            self.sync_state.datasets_owner_tool = Some(tool.name());
-            self.current_valid_plot_datasets = refreshed.clone();
-            self.current_valid_plot_datasets_3d = refreshed_3d;
-            self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
-            self.rev_cache.last_snapshot_source_datasets = refreshed.clone();
-            let mut snap = StateSnapshot {
-                tool_state: recovery,
-                plot_datasets: refreshed,
-                step_index: self.step_counter,
-                timestamp: crate::web_io::PlatformInstant::now(),
-            };
-            snap.enforce_memory_budget();
-            self.last_valid_snapshot = Some(snap);
+            tool.set_suspended(self.suspended);
         }
+        if let Some(tool) = self.active_tool.take() {
+            self.record_tool_initial_snapshot(tool.as_ref(), self.step_counter);
+            self.active_tool = Some(tool);
+        }
+    }
+
+    fn record_tool_initial_snapshot(&mut self, tool: &dyn InteractiveTool, step_index: usize) {
+        let recovery = tool.save_recovery_state();
+        let rev = tool.state_revision();
+        let refreshed = capture_isolated_tool_datasets(tool);
+        let refreshed_3d = capture_isolated_tool_datasets_3d(tool);
+        self.sync_state.datasets_owner_tool = Some(tool.name());
+        self.current_valid_plot_datasets = refreshed.clone();
+        self.current_valid_plot_datasets_3d = refreshed_3d;
+        self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
+        self.rev_cache.last_snapshot_source_datasets = refreshed.clone();
+        let mut snap = StateSnapshot {
+            tool_state: recovery,
+            plot_datasets: refreshed,
+            step_index,
+            timestamp: crate::web_io::PlatformInstant::now(),
+        };
+        snap.enforce_memory_budget();
+        self.last_valid_snapshot = Some(snap);
     }
 
     /// Selects and activates a tool by index in `available_tools`.
@@ -369,6 +382,12 @@ impl SimulationFramework {
                 .insert(old_name.to_string(), old_json.to_string());
         }
         self.cancel_active_gif_export(false);
+        if let Some(mut old_tool) = self.active_tool.take() {
+            old_tool.set_suspended(true);
+            if !self.audio_controller.is_muted() {
+                self.audio_controller.silence_on_pause();
+            }
+        }
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
         self.clear_challenge_hud();
@@ -378,6 +397,7 @@ impl SimulationFramework {
         self.selected_tool_index = Some(index);
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();
+        new_tool.set_suspended(self.suspended);
         let factory_baseline_state = new_tool.save_state();
         if let Some(state) = super::url_share::lookup_saved_tool_state(
             &self.saved_tool_states,
@@ -386,6 +406,7 @@ impl SimulationFramework {
             new_tool.name(),
         ) {
             new_tool.load_state(state);
+            new_tool.set_suspended(self.suspended);
         }
         self.is_diverged = false;
         self.diagnostic_report = None;
@@ -393,23 +414,7 @@ impl SimulationFramework {
         self.export_queue.status = None;
         self.step_counter = 0;
         self.baseline_tool_state = factory_baseline_state;
-        let recovery_state = new_tool.save_recovery_state();
-        let rev = new_tool.state_revision();
-        let initial_datasets = capture_isolated_tool_datasets(new_tool.as_ref());
-        let initial_datasets_3d = capture_isolated_tool_datasets_3d(new_tool.as_ref());
-        self.sync_state.datasets_owner_tool = Some(new_tool.name());
-        self.current_valid_plot_datasets = initial_datasets.clone();
-        self.current_valid_plot_datasets_3d = initial_datasets_3d;
-        self.rev_cache.last_snapshot_rev = (rev > 0).then_some((new_tool.name(), rev));
-        self.rev_cache.last_snapshot_source_datasets = initial_datasets.clone();
-        let mut snap = StateSnapshot {
-            tool_state: recovery_state,
-            plot_datasets: initial_datasets,
-            step_index: 0,
-            timestamp: crate::web_io::PlatformInstant::now(),
-        };
-        snap.enforce_memory_budget();
-        self.last_valid_snapshot = Some(snap);
+        self.record_tool_initial_snapshot(new_tool.as_ref(), 0);
         scientific_metadata::citation_registry::CitationRegistry::register(
             new_tool.name().to_string(),
             new_tool.theory().theory_citation(),

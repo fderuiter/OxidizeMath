@@ -285,6 +285,7 @@ impl MathExplorerApp {
             if self.pane_tabs.len() > 1 {
                 self.pane_tabs[1] = self.secondary_tab;
             }
+            self.sync_viewport_visibility();
             layout
         } else {
             ViewportLayout::Single

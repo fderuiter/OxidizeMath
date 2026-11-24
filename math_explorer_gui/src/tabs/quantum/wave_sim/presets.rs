@@ -448,3 +448,30 @@ pub fn compute_tunneling_observables_slice(
     }
     obs
 }
+
+/// Default serialized starter preset JSON for the Schrödinger Wave Packet gallery entry.
+pub(super) const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Schr\u00f6dinger Wave Packet",
+    "domain": "quantum",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "potential_type": 1.0,
+    "dt": 0.02
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "wave_sim_starter",
+        title: "Schrödinger Wave Packet",
+        description: "iℏ·∂ψ/∂t = -ℏ²/(2m)∇²ψ + V·ψ: 1D Gaussian wave packet evolution in infinite-well, harmonic, and tunneling barrier potentials.",
+        category: "Wave Mechanics",
+        icon: "🌊",
+        domain: "quantum",
+        tool_name: Some("WaveSimulator"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

@@ -112,3 +112,24 @@ fn test_lorenz_regime_cartographer_and_atlas_teleport() {
     assert!((plotter.system.sigma - 10.0).abs() < 1e-9);
     assert!(plotter.current_lyapunov_exponent().expect("stable lyap") < 0.0);
 }
+
+#[test]
+fn test_partial_history_under_landmark_budget_seeds_full_64_landmarks() {
+    let mut plotter = AttractorPlotter::default();
+    for _ in 0..10 {
+        plotter.step_simulation();
+    }
+    assert_eq!(plotter.history.len(), 50);
+
+    let handoff = plotter
+        .send_landmarks_to_vietoris_rips(None)
+        .expect("partial finite history should seed full landmark cloud");
+    assert_eq!(
+        handoff.points.len(),
+        crate::tabs::geometry_topology::vietoris_rips::MAX_CHAOS_LANDMARKS
+    );
+
+    let seeded_for_bus = plotter.collect_or_seed_trajectory(900);
+    assert_eq!(seeded_for_bus.len(), 900);
+    assert!(plotter.current_correlation_invariants().is_some());
+}
