@@ -1,10 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 //! Unit, zero-allocation (`VerifiedAllocator`), cutting-plane, millimeter-scaled manifold 3D
-//! solid export, custom 3D implicit CAD, and 3DGS `.ply` tests for `VolumetricFieldStudioTool`.
+//! solid export, custom 3D implicit CAD/AST, and 3DGS `.ply` tests for `VolumetricFieldStudioTool`.
+
+#[path = "tests_ast.rs"]
+mod tests_ast;
 
 use super::presets::{
-    PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3DZ2_CONE_JSON, PRESET_3D_TURING_GYROID_JSON,
-    PRESET_CSG_BOOLEAN_SOLID_JSON, PRESET_GYROID_TPMS_JSON, PRESET_SCHWARZ_P_SHELL_JSON,
+    PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3DZ2_CONE_JSON, PRESET_3D_IMPLICIT_GYROID_AST_JSON,
+    PRESET_3D_TURING_GYROID_JSON, PRESET_CSG_BOOLEAN_SOLID_JSON, PRESET_GYROID_TPMS_JSON,
+    PRESET_SCHWARZ_P_SHELL_JSON,
 };
 use super::state::{
     FieldSourceMode, ImplicitClosureMode, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig,
@@ -131,7 +135,7 @@ fn compute_mesh_max_span(mesh: &Mesh) -> f32 {
         .max(max_v[2] - min_v[2])
 }
 
-fn assert_watertight_outward_solid_stl_ply_and_obj(
+pub(super) fn assert_watertight_outward_solid_stl_ply_and_obj(
     tool: &VolumetricFieldStudioTool,
     expected_span_mm: f32,
     label: &str,
@@ -184,6 +188,11 @@ fn test_watertight_manifold_topology_and_mm_stl_across_implicit_orbital_and_turi
         ("CSG Cube-Sphere", PRESET_CSG_BOOLEAN_SOLID_JSON, 45.0_f32),
         ("3dz2 Orbital", PRESET_3DZ2_CONE_JSON, 85.0_f32),
         ("Cut-Plane Turing", PRESET_3D_TURING_GYROID_JSON, 120.0_f32),
+        (
+            "Schoen Gyroid AST",
+            PRESET_3D_IMPLICIT_GYROID_AST_JSON,
+            55.0_f32,
+        ),
     ];
     for (label, preset, span_mm) in cases {
         tool.import_preset_json(preset).expect("valid preset");
@@ -353,6 +362,7 @@ fn test_state_bounds_validation_starter_presets_and_finite_state_guard() {
         PRESET_GYROID_TPMS_JSON,
         PRESET_SCHWARZ_P_SHELL_JSON,
         PRESET_CSG_BOOLEAN_SOLID_JSON,
+        PRESET_3D_IMPLICIT_GYROID_AST_JSON,
     ] {
         tool.import_preset_json(preset)
             .expect("starter preset must load cleanly");
