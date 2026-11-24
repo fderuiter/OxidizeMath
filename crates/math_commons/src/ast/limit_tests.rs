@@ -124,7 +124,7 @@ fn test_compiled_expr_and_formatters_reject_oversized_programmatic_trees() {
     // Infallible Expr::to_latex() must remain bounded and elide excess subtrees with \dots.
     let bounded_latex = wide_tree.to_latex();
     assert!(bounded_latex.contains(r"\dots"));
-    assert!(bounded_latex.len() <= MAX_LATEX_OUTPUT_BYTES * 2);
+    assert!(bounded_latex.len() <= MAX_LATEX_OUTPUT_BYTES);
 }
 
 #[test]

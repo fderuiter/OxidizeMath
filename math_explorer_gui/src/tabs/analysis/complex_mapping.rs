@@ -137,6 +137,24 @@ pub struct ComplexMappingTool {
     pub(crate) cache: cache::ConformalGridCache,
 }
 
+pub(super) fn default_complex_math_input() -> MathExpressionInputBar {
+    MathExpressionInputBar::new(
+        "w",
+        DEFAULT_CUSTOM_MAPPING_EXPR,
+        vec![
+            ("w = z + a^2 / z (Parameterized Joukowsky)", "z + a^2 / z"),
+            ("w = z^3 - 1/z", "z^3 - 1/z"),
+            ("w = z^2", "z^2"),
+            ("w = exp(z)", "exp(z)"),
+            ("w = sin(z)", "sin(z)"),
+            ("w = 1/z", "1/z"),
+        ],
+    )
+    .with_axes(&["z"])
+    .with_complex_mode(true)
+    .with_allowed_vars(&["z", "a"])
+}
+
 impl Default for ComplexMappingTool {
     fn default() -> Self {
         Self {
@@ -145,21 +163,7 @@ impl Default for ComplexMappingTool {
             grid_max: 2.0,
             grid_density: 10,
             inspection_point: [1.0, 1.0],
-            math_input: MathExpressionInputBar::new(
-                "w",
-                DEFAULT_CUSTOM_MAPPING_EXPR,
-                vec![
-                    ("w = z + a^2 / z (Parameterized Joukowsky)", "z + a^2 / z"),
-                    ("w = z^3 - 1/z", "z^3 - 1/z"),
-                    ("w = z^2", "z^2"),
-                    ("w = exp(z)", "exp(z)"),
-                    ("w = sin(z)", "sin(z)"),
-                    ("w = 1/z", "1/z"),
-                ],
-            )
-            .with_axes(&["z"])
-            .with_complex_mode(true)
-            .with_allowed_vars(&["z", "a"]),
+            math_input: default_complex_math_input(),
             domain_coloring: true,
             palette: ShaderPalette::PhaseWheel,
             high_contrast: false,
@@ -365,7 +369,7 @@ impl InteractiveTool for ComplexMappingTool {
         self.grid_max = s.grid_max;
         self.grid_density = s
             .grid_density
-            .min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
+            .clamp(2, crate::presets::MAX_INTERACTIVE_GRID_SIZE);
         self.inspection_point = s.inspection_point;
         self.domain_coloring = s.domain_coloring;
         self.palette = palette;
@@ -375,11 +379,6 @@ impl InteractiveTool for ComplexMappingTool {
                 .unwrap_or(DEFAULT_CUSTOM_MAPPING_EXPR),
         );
         self.math_input.set_params_map(&s.custom_params);
-        if self.function == MappingFunction::Custom {
-            if let Some(err) = self.math_input.error_message() {
-                return Err(state::reject_invalid_formula(&err));
-            }
-        }
         self.domain_texture_key = None;
         self.shader_preview.invalidate();
         let _ = self.ensure_cached_contours();
