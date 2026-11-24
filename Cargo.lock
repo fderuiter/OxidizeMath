@@ -1096,6 +1096,7 @@ dependencies = [
  "pure_math",
  "rand",
  "rustfft",
+ "scientific_metadata",
  "thiserror 2.0.21",
  "verified_engine",
 ]

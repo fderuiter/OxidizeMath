@@ -353,22 +353,33 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
 
 #[cfg(feature = "biology")]
 #[test]
-fn biology_facade_exports_all_three_errors_and_umbrella() {
+fn biology_facade_exports_all_four_errors_and_botanical_submodules() {
     use math_explorer::biology::error::HodgkinHuxleyError as InnerHhError;
+    use math_explorer::biology::lsystem::BotanicalLSystemPreset;
+    use math_explorer::biology::phyllotaxis::{GOLDEN_ANGLE_RAD, VogelPhyllotaxisEngine};
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
-        BiologyError, Error, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
+        BiologyError, BotanicalError, Error, HodgkinHuxleyError, KineticsError,
+        ReactionDiffusionError,
     };
 
     let e1 = HodgkinHuxleyError::InvalidGatingVariable(1.5);
     let e2 = InnerHhError::InvalidConductance(-0.2);
     let e3 = KineticsError::NegativeSubstrateConcentration;
     let e4 = ReactionDiffusionError::ZeroGridSize;
+    let e5 = BotanicalError::EmptyAxiom;
     assert_eq!(e1.severity(), Severity::Error);
     assert_eq!(e2.severity(), Severity::Error);
     assert_eq!(e3.severity(), Severity::Error);
     assert_eq!(e4.severity(), Severity::Error);
-    let _facade: Error = BiologyError::from(e3).into();
+    assert_eq!(e5.severity(), Severity::Error);
+    let _facade: Error = BiologyError::from(e5).into();
+
+    let vogel = VogelPhyllotaxisEngine::new(89, GOLDEN_ANGLE_RAD, 1.0).expect("valid Vogel");
+    assert!(vogel.analysis().is_fibonacci_pair);
+    let (_grammar, _cfg) = BotanicalLSystemPreset::HerbaceousShoot
+        .build_grammar(25.0, 0.78, 0.68)
+        .expect("valid L-system grammar");
 }
 
 #[cfg(feature = "climate")]

@@ -113,6 +113,8 @@ impl Error {
             #[cfg(feature = "biology")]
             Self::Biology(err) => Some(err),
             #[cfg(feature = "biology")]
+            Self::Botanical(err) => Some(err),
+            #[cfg(feature = "biology")]
             Self::HodgkinHuxley(err) => Some(err),
             #[cfg(feature = "biology")]
             Self::Kinetics(err) => Some(err),

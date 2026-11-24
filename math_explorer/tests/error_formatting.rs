@@ -1,4 +1,4 @@
-//! Verifies that all 34 public error enums tested from `math_explorer::error`
+//! Verifies that all 35 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -13,12 +13,12 @@
 
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
-    AIError, BatteryError, ChaosError, ClimateError, CopulaError, DoseFluenceError, EloError,
-    EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
-    GraphTheoryError, HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError,
-    MarketPricingError, MarkovError, MatchModelError, MathError, MonteCarloError,
-    NumberTheoryError, OuError, PharmacokineticsError, RadarError, SandpileError, SolidStateError,
-    StandardModelError, StatMechError, TdaError, ZipError,
+    AIError, BatteryError, BotanicalError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
+    EloError, EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError,
+    Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError, IsosurfaceError,
+    KellyError, LoraError, MarketPricingError, MarkovError, MatchModelError, MathError,
+    MonteCarloError, NumberTheoryError, OuError, PharmacokineticsError, RadarError, SandpileError,
+    SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -131,6 +131,13 @@ fn applied_ai_bio_climate_epi_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "PharmacokineticsError",
         &PharmacokineticsError::InvalidParameter("volume".to_string()),
+    );
+    assert_readable_diagnostic(
+        "BotanicalError",
+        &BotanicalError::InvalidPrimordiaCount {
+            count: 0,
+            max: 4096,
+        },
     );
     assert_readable_diagnostic(
         "HodgkinHuxleyError",
