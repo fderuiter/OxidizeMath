@@ -29,7 +29,7 @@ pub struct EGraph {
 impl EGraph {
     /// Creates an empty bounded [`EGraph`].
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -37,7 +37,7 @@ impl EGraph {
     /// Returns total canonical e-nodes currently stored (`<= MAX_EGRAPH_NODES`).
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn node_count(&self) -> usize {
         self.node_count
     }
@@ -45,7 +45,7 @@ impl EGraph {
     /// Returns the number of equivalence classes allocated.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn class_count(&self) -> usize {
         self.classes.len()
     }
@@ -53,13 +53,13 @@ impl EGraph {
     /// Returns the interned symbol slice.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn symbols(&self) -> &[String] {
         &self.symbols
     }
 
     /// Interns a variable or constant name and returns its `SymOp::Symbol` e-class ID.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn add_symbol(&mut self, name: &str) -> Option<u32> {
         let mut idx = 0;
         while idx < self.symbols.len() {
@@ -79,7 +79,7 @@ impl EGraph {
     /// Iteratively resolves the canonical representative e-class ID (with path halving).
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn find(&self, mut id: u32) -> u32 {
         while (id as usize) < self.parents.len() && self.parents[id as usize] != id {
             id = self.parents[id as usize];
@@ -88,7 +88,7 @@ impl EGraph {
     }
 
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn find_mut(&mut self, mut id: u32) -> u32 {
         while self.parents[id as usize] != id {
             let p = self.parents[id as usize];
@@ -100,7 +100,7 @@ impl EGraph {
     }
 
     /// Canonicalizes `enode`'s child IDs and inserts it if below [`MAX_EGRAPH_NODES`].
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn add(&mut self, enode: SymOp) -> Option<u32> {
         let canon = enode.map_children(|c| self.find(c));
         if let Some(&existing) = self.memo.get(&canon) {
@@ -118,7 +118,7 @@ impl EGraph {
     }
 
     /// Merges two e-classes (`a` and `b`) and queues congruence repair.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn union(&mut self, a: u32, b: u32) -> bool {
         let ra = self.find_mut(a);
         let rb = self.find_mut(b);
@@ -138,7 +138,7 @@ impl EGraph {
     }
 
     /// Iteratively restores e-graph congruence invariants after [`Self::union`] calls.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn rebuild(&mut self) {
         while !self.dirty.is_empty() {
             self.dirty.clear();
@@ -176,7 +176,7 @@ impl EGraph {
 
     /// Runs iterative equality saturation up to `min(max_passes, MAX_REWRITE_PASSES)` passes
     /// and `MAX_EGRAPH_NODES` total nodes.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn saturate(&mut self, max_passes: usize) -> usize {
         let cap = if max_passes < MAX_REWRITE_PASSES {
             max_passes
@@ -198,7 +198,7 @@ impl EGraph {
     /// Computes minimal AST node cost per e-class iteratively and extracts the best [`SymExpr`]
     /// rooted at `root` without recursion.
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn extract(&self, root: u32) -> SymExpr {
         let n_classes = self.classes.len();
         let mut best_cost = vec![u64::MAX; n_classes];
@@ -230,7 +230,7 @@ impl EGraph {
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn node_total_cost(node: &SymOp, best_cost: &[u64], egraph: &EGraph) -> Option<u64> {
     let mut kids = [0u32; 3];
     let n = node.children_into(&mut kids);
@@ -248,7 +248,7 @@ fn node_total_cost(node: &SymOp, best_cost: &[u64], egraph: &EGraph) -> Option<u
     Some(sum)
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn extract_dag_iterative(egraph: &EGraph, root_class: u32, best_node: &[Option<SymOp>]) -> SymExpr {
     let mut emitted: BTreeMap<u32, u32> = BTreeMap::new();
     let mut nodes: Vec<SymOp> = Vec::new();

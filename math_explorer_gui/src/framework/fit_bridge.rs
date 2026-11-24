@@ -1,15 +1,36 @@
 //! Bridges `egui_plot` custom regression callbacks to `math_commons::ast::CompiledExpr`
 //! using zero-allocation single-pass reverse-mode autodiff (`CompiledExpr::eval_grad_into`).
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use egui_plot::{CustomFitEvaluator, MAX_FIT_PARAMS};
-use math_commons::ast::{is_universal_constant, parse_equation, CompiledExpr, SolverWorkspace};
+use math_commons::ast::{
+    is_universal_constant, parse_equation, CompiledExpr, Expr, SolverWorkspace,
+};
 
 #[derive(Debug)]
 struct CompiledCustomFitEvaluator {
+    expr: Expr,
+    axis: String,
     compiled: CompiledExpr,
     param_names: Vec<String>,
+}
+
+impl CompiledCustomFitEvaluator {
+    fn build_param_map(&self, params: &[f64]) -> Option<HashMap<String, f64>> {
+        if params.len() < self.param_names.len() {
+            return None;
+        }
+        let mut map = HashMap::with_capacity(self.param_names.len());
+        for (name, &val) in self.param_names.iter().zip(params.iter()) {
+            if !val.is_finite() {
+                return None;
+            }
+            map.insert(name.clone(), val);
+        }
+        Some(map)
+    }
 }
 
 impl CustomFitEvaluator for CompiledCustomFitEvaluator {
@@ -52,6 +73,41 @@ impl CustomFitEvaluator for CompiledCustomFitEvaluator {
         grad_out[..k].copy_from_slice(&grads[1..=k]);
         Some(y)
     }
+
+    fn export_latex(&self, params: &[f64]) -> Option<String> {
+        let map = self.build_param_map(params)?;
+        let _ = self
+            .expr
+            .to_rust_expr_with_vars(&[self.axis.as_str()], &map)
+            .ok()?;
+        self.expr.to_latex_with_params(&map).ok()
+    }
+
+    fn export_rust_body(&self, params: &[f64]) -> Option<String> {
+        let map = self.build_param_map(params)?;
+        let expr_rs = self
+            .expr
+            .to_rust_expr_with_vars(&[self.axis.as_str()], &map)
+            .ok()?;
+        if self.axis == "t" {
+            Some(format!("    let t = x;\n    let _ = t;\n    {expr_rs}"))
+        } else {
+            Some(format!("    let _ = x;\n    {expr_rs}"))
+        }
+    }
+
+    fn export_python_body(&self, params: &[f64]) -> Option<String> {
+        let map = self.build_param_map(params)?;
+        let expr_py = self
+            .expr
+            .to_python_expr_with_vars(&[self.axis.as_str()], &map)
+            .ok()?;
+        if self.axis == "t" {
+            Some(format!("    t = float(x)\n    return float({expr_py})"))
+        } else {
+            Some(format!("    x = float(x)\n    return float({expr_py})"))
+        }
+    }
 }
 
 /// Compiles a raw user formula (e.g. `"a * exp(-b * x) + c"`) into a zero-allocation
@@ -83,6 +139,8 @@ pub fn compile_custom_fit_expr(raw_formula: &str) -> Result<Arc<dyn CustomFitEva
         .map_err(|e| e.to_string())?;
 
     Ok(Arc::new(CompiledCustomFitEvaluator {
+        expr,
+        axis: axis.to_string(),
         compiled,
         param_names: params,
     }))
@@ -120,6 +178,10 @@ mod tests {
         assert_eq!(fit.coefficients.len(), 6);
         assert!(fit.r_squared >= 0.9999, "R² = {}", fit.r_squared);
         assert!(fit.rmse < 1e-4, "RMSE = {}", fit.rmse);
+        assert!(fit.has_finite_coefficients());
+        assert!(fit.to_latex().is_ok());
+        assert!(fit.to_rust_fn().is_ok());
+        assert!(fit.to_python_fn().is_ok());
 
         // Evaluating the fitted curve at 100 points performs zero heap allocations
         let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX

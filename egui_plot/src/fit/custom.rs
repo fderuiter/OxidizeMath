@@ -53,6 +53,21 @@ pub trait CustomFitEvaluator: Send + Sync + std::fmt::Debug {
             format!("y = {body} ({})", pairs.join(", "))
         }
     }
+
+    /// Formats an optional calibrated LaTeX RHS expression (`y(x) &= <rhs>`) for [`FitResult::to_latex`].
+    fn export_latex(&self, _params: &[f64]) -> Option<String> {
+        None
+    }
+
+    /// Formats an optional standalone Rust `f64` body over `x: f64` for [`FitResult::to_rust_fn`].
+    fn export_rust_body(&self, _params: &[f64]) -> Option<String> {
+        None
+    }
+
+    /// Formats an optional standalone Python `numpy` body over `x: float` for [`FitResult::to_python_fn`].
+    fn export_python_body(&self, _params: &[f64]) -> Option<String> {
+        None
+    }
 }
 
 /// Cloneable, pointer-comparable handle wrapping a [`CustomFitEvaluator`] inside [`FitResult`].

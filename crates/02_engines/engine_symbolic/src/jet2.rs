@@ -26,7 +26,7 @@ pub type Jet2_3D = Jet2<3>;
 
 impl<const N: usize> Default for Jet2<N> {
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn default() -> Self {
         Self::constant(0.0)
     }
@@ -45,7 +45,7 @@ impl<const N: usize> Jet2<N> {
     /// Constructs a constant [`Jet2`] with zero gradient and Hessian.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn constant(val: f64) -> Self {
         Self {
             val,
@@ -56,7 +56,7 @@ impl<const N: usize> Jet2<N> {
 
     /// Returns `true` if `val`, `grad`, and `hess` entries are all finite.
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn is_finite(&self) -> bool {
         if !self.val.is_finite() {
             return false;
@@ -81,7 +81,7 @@ impl<const N: usize> Jet2<N> {
     /// Constructs an independent coordinate variable $x_{\text{axis}}$ with unit gradient along `axis`.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn var(val: f64, axis: usize) -> Self {
         let mut grad = [0.0; N];
         if axis < N {
@@ -96,7 +96,7 @@ impl<const N: usize> Jet2<N> {
 
     /// Returns `true` if `grad` and `hess` are identically zero.
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn is_constant_jet(&self) -> bool {
         let mut i = 0;
         while i < N {
@@ -118,7 +118,7 @@ impl<const N: usize> Jet2<N> {
     /// Propagates univariate derivatives $(g(u), g'(u), g''(u))$ through `self`.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn chain_unary(self, f: f64, df: f64, d2f: f64) -> Self {
         let mut grad = [0.0; N];
         let mut hess = [[0.0; N]; N];
@@ -138,7 +138,7 @@ impl<const N: usize> Jet2<N> {
     /// Multiplicative reciprocal $1 / u$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn recip(self) -> Self {
         let inv = 1.0 / self.val;
         let inv2 = inv * inv;
@@ -147,7 +147,7 @@ impl<const N: usize> Jet2<N> {
 
     /// Integer power $u^n$ via binary exponentiation.
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn powi(self, n: i32) -> Self {
         if n == 0 {
             return Self::constant(1.0);
@@ -169,7 +169,7 @@ impl<const N: usize> Jet2<N> {
 
     /// Real power $u^p$ handling integer/constant exponents at $u = 0$ without spurious `NaN`s.
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn powf(self, p: Self) -> Self {
         if p.is_constant_jet() {
             let c = p.val;
@@ -201,7 +201,7 @@ impl<const N: usize> Jet2<N> {
     /// Square root $\sqrt{u}$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn sqrt(self) -> Self {
         let s = Float::sqrt(self.val);
         if s == 0.0 {
@@ -216,7 +216,7 @@ impl<const N: usize> Jet2<N> {
     /// Sine $\sin(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn sin(self) -> Self {
         let (s, c) = Float::sin_cos(self.val);
         self.chain_unary(s, c, -s)
@@ -225,7 +225,7 @@ impl<const N: usize> Jet2<N> {
     /// Cosine $\cos(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn cos(self) -> Self {
         let (s, c) = Float::sin_cos(self.val);
         self.chain_unary(c, -s, -c)
@@ -234,7 +234,7 @@ impl<const N: usize> Jet2<N> {
     /// Simultaneous $(\sin(u), \cos(u))$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn sin_cos(self) -> (Self, Self) {
         let (s, c) = Float::sin_cos(self.val);
         (self.chain_unary(s, c, -s), self.chain_unary(c, -s, -c))
@@ -243,7 +243,7 @@ impl<const N: usize> Jet2<N> {
     /// Tangent $\tan(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn tan(self) -> Self {
         let t = Float::tan(self.val);
         let sec2 = 1.0 + t * t;
@@ -253,7 +253,7 @@ impl<const N: usize> Jet2<N> {
     /// Natural exponential $e^u$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn exp(self) -> Self {
         let e = Float::exp(self.val);
         self.chain_unary(e, e, e)
@@ -262,7 +262,7 @@ impl<const N: usize> Jet2<N> {
     /// Natural logarithm $\ln(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn ln(self) -> Self {
         let inv = 1.0 / self.val;
         self.chain_unary(Float::ln(self.val), inv, -inv * inv)
@@ -271,7 +271,7 @@ impl<const N: usize> Jet2<N> {
     /// Base-10 logarithm $\log_{10}(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn log10(self) -> Self {
         let inv = 1.0 / self.val;
         let scale = 1.0 / core::f64::consts::LN_10;
@@ -281,7 +281,7 @@ impl<const N: usize> Jet2<N> {
     /// Hyperbolic sine $\sinh(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn sinh(self) -> Self {
         let sh = Float::sinh(self.val);
         let ch = Float::cosh(self.val);
@@ -291,7 +291,7 @@ impl<const N: usize> Jet2<N> {
     /// Hyperbolic cosine $\cosh(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn cosh(self) -> Self {
         let sh = Float::sinh(self.val);
         let ch = Float::cosh(self.val);
@@ -301,7 +301,7 @@ impl<const N: usize> Jet2<N> {
     /// Hyperbolic tangent $\tanh(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn tanh(self) -> Self {
         let t = Float::tanh(self.val);
         let sech2 = 1.0 - t * t;
@@ -311,7 +311,7 @@ impl<const N: usize> Jet2<N> {
     /// Inverse sine $\arcsin(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn asin(self) -> Self {
         let q = 1.0 - self.val * self.val;
         let sq = Float::sqrt(q);
@@ -321,7 +321,7 @@ impl<const N: usize> Jet2<N> {
     /// Inverse cosine $\arccos(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn acos(self) -> Self {
         let q = 1.0 - self.val * self.val;
         let sq = Float::sqrt(q);
@@ -331,7 +331,7 @@ impl<const N: usize> Jet2<N> {
     /// Inverse tangent $\arctan(u)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn atan(self) -> Self {
         let q = 1.0 + self.val * self.val;
         self.chain_unary(Float::atan(self.val), 1.0 / q, -2.0 * self.val / (q * q))
@@ -339,7 +339,7 @@ impl<const N: usize> Jet2<N> {
 
     /// Four-quadrant inverse tangent $\operatorname{atan2}(y, x)$ without branch-cut derivative jumps.
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn atan2(self, x: Self) -> Self {
         let val = Float::atan2(self.val, x.val);
         if self.val == 0.0 && x.val == 0.0 {
@@ -360,7 +360,7 @@ impl<const N: usize> Jet2<N> {
     /// Absolute value $|u|$ with centered Clarke subgradient ($0$ at $u = 0$).
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn abs(self) -> Self {
         if self.val.is_nan() {
             Self::constant(f64::NAN)
@@ -376,7 +376,7 @@ impl<const N: usize> Jet2<N> {
     /// Unit Heaviside step with Clarke subgradient $0$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn step(self) -> Self {
         if self.val.is_nan() {
             Self::constant(f64::NAN)
@@ -388,7 +388,7 @@ impl<const N: usize> Jet2<N> {
     /// Unit rectangular boxcar pulse with Clarke subgradient $0$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn rect(self) -> Self {
         if self.val.is_nan() {
             Self::constant(f64::NAN)
@@ -404,7 +404,7 @@ impl<const N: usize> Jet2<N> {
     /// Minimum $\min(a, b)$ with midpoint Clarke subgradient at $a = b$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn min(self, other: Self) -> Self {
         if self.val.is_nan() || other.val.is_nan() {
             Self::constant(f64::NAN)
@@ -420,7 +420,7 @@ impl<const N: usize> Jet2<N> {
     /// Maximum $\max(a, b)$ with midpoint Clarke subgradient at $a = b$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn max(self, other: Self) -> Self {
         if self.val.is_nan() || other.val.is_nan() {
             Self::constant(f64::NAN)
@@ -436,7 +436,7 @@ impl<const N: usize> Jet2<N> {
     /// Clamping $\operatorname{clamp}(x, \text{lo}, \text{hi})$ with Clarke subgradients.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn clamp(self, lo: Self, hi: Self) -> Self {
         if self.val.is_nan() || lo.val.is_nan() || hi.val.is_nan() || lo.val > hi.val {
             Self::constant(f64::NAN)
@@ -450,7 +450,7 @@ impl Jet2<2> {
     /// First partial derivative $\partial f / \partial u$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn du(&self) -> f64 {
         self.grad[0]
     }
@@ -458,7 +458,7 @@ impl Jet2<2> {
     /// First partial derivative $\partial f / \partial v$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn dv(&self) -> f64 {
         self.grad[1]
     }
@@ -466,7 +466,7 @@ impl Jet2<2> {
     /// Second partial derivative $\partial^2 f / \partial u^2$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn duu(&self) -> f64 {
         self.hess[0][0]
     }
@@ -474,7 +474,7 @@ impl Jet2<2> {
     /// Mixed second partial derivative $\partial^2 f / (\partial u \partial v)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn duv(&self) -> f64 {
         self.hess[0][1]
     }
@@ -482,7 +482,7 @@ impl Jet2<2> {
     /// Second partial derivative $\partial^2 f / \partial v^2$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn dvv(&self) -> f64 {
         self.hess[1][1]
     }

@@ -9,7 +9,7 @@ impl<const N: usize> Neg for Jet2<N> {
     type Output = Self;
 
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn neg(self) -> Self {
         let mut grad = [0.0; N];
         let mut hess = [[0.0; N]; N];
@@ -35,7 +35,7 @@ impl<const N: usize> Add for Jet2<N> {
     type Output = Self;
 
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn add(self, rhs: Self) -> Self {
         let mut grad = [0.0; N];
         let mut hess = [[0.0; N]; N];
@@ -61,7 +61,7 @@ impl<const N: usize> Sub for Jet2<N> {
     type Output = Self;
 
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn sub(self, rhs: Self) -> Self {
         let mut grad = [0.0; N];
         let mut hess = [[0.0; N]; N];
@@ -87,7 +87,7 @@ impl<const N: usize> Mul for Jet2<N> {
     type Output = Self;
 
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn mul(self, rhs: Self) -> Self {
         let mut grad = [0.0; N];
         let mut hess = [[0.0; N]; N];
@@ -116,7 +116,7 @@ impl<const N: usize> Div for Jet2<N> {
     type Output = Self;
 
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn div(self, rhs: Self) -> Self {
         let val = self.val / rhs.val;
         let mut grad = [0.0; N];
@@ -147,7 +147,7 @@ impl<const N: usize> Add<f64> for Jet2<N> {
     type Output = Self;
 
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn add(self, rhs: f64) -> Self {
         Self {
             val: self.val + rhs,
@@ -161,7 +161,7 @@ impl<const N: usize> Sub<f64> for Jet2<N> {
     type Output = Self;
 
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn sub(self, rhs: f64) -> Self {
         Self {
             val: self.val - rhs,
@@ -175,7 +175,7 @@ impl<const N: usize> Mul<f64> for Jet2<N> {
     type Output = Self;
 
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn mul(self, rhs: f64) -> Self {
         let mut grad = [0.0; N];
         let mut hess = [[0.0; N]; N];
@@ -201,7 +201,7 @@ impl<const N: usize> Div<f64> for Jet2<N> {
     type Output = Self;
 
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn div(self, rhs: f64) -> Self {
         self * (1.0 / rhs)
     }
@@ -209,7 +209,7 @@ impl<const N: usize> Div<f64> for Jet2<N> {
 
 impl<const N: usize> AddAssign for Jet2<N> {
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
@@ -217,7 +217,7 @@ impl<const N: usize> AddAssign for Jet2<N> {
 
 impl<const N: usize> SubAssign for Jet2<N> {
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
     }
@@ -225,7 +225,7 @@ impl<const N: usize> SubAssign for Jet2<N> {
 
 impl<const N: usize> MulAssign for Jet2<N> {
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn mul_assign(&mut self, rhs: Self) {
         *self = *self * rhs;
     }
@@ -233,7 +233,7 @@ impl<const N: usize> MulAssign for Jet2<N> {
 
 impl<const N: usize> DivAssign for Jet2<N> {
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn div_assign(&mut self, rhs: Self) {
         *self = *self / rhs;
     }

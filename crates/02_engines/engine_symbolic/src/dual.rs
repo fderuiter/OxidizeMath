@@ -115,7 +115,7 @@ impl<T: DualScalar> Dual<T> {
     /// Constructs a [`Dual`] number from primal `re` and tangent `eps`.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn new(re: T, eps: T) -> Self {
         Self { re, eps }
     }
@@ -123,7 +123,7 @@ impl<T: DualScalar> Dual<T> {
     /// Constructs a constant [`Dual`] number with zero tangent ($\dot{x} = 0$).
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn constant(re: T) -> Self {
         Self { re, eps: T::ZERO }
     }
@@ -131,7 +131,7 @@ impl<T: DualScalar> Dual<T> {
     /// Constructs an active differentiation variable with unit tangent ($\dot{x} = 1$).
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn variable(re: T) -> Self {
         Self { re, eps: T::ONE }
     }
@@ -139,7 +139,7 @@ impl<T: DualScalar> Dual<T> {
     /// Applies univariate chain rule $(f(x), f'(x) \cdot \dot{x})$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn chain(self, val_and_deriv: (T, T)) -> Self {
         Self {
             re: val_and_deriv.0,
@@ -150,7 +150,7 @@ impl<T: DualScalar> Dual<T> {
     /// Multiplicative reciprocal $1 / x$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn recip(self) -> Self {
         let inv = T::ONE / self.re;
         Self {
@@ -161,7 +161,7 @@ impl<T: DualScalar> Dual<T> {
 
     /// Integer power $x^n$ computed via binary exponentiation.
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn powi(self, n: i32) -> Self {
         if n == 0 {
             return Self::constant(T::ONE);
@@ -184,7 +184,7 @@ impl<T: DualScalar> Dual<T> {
     /// General power $x^p$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn powf(self, p: Self) -> Self {
         T::pow_dual(self, p)
     }
@@ -192,7 +192,7 @@ impl<T: DualScalar> Dual<T> {
     /// Sine $\sin(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn sin(self) -> Self {
         self.chain(self.re.sin_with_deriv())
     }
@@ -200,7 +200,7 @@ impl<T: DualScalar> Dual<T> {
     /// Cosine $\cos(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn cos(self) -> Self {
         self.chain(self.re.cos_with_deriv())
     }
@@ -208,7 +208,7 @@ impl<T: DualScalar> Dual<T> {
     /// Simultaneous $(\sin(x), \cos(x))$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn sin_cos(self) -> (Self, Self) {
         (self.sin(), self.cos())
     }
@@ -216,7 +216,7 @@ impl<T: DualScalar> Dual<T> {
     /// Tangent $\tan(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn tan(self) -> Self {
         self.chain(self.re.tan_with_deriv())
     }
@@ -224,7 +224,7 @@ impl<T: DualScalar> Dual<T> {
     /// Natural exponential $e^x$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn exp(self) -> Self {
         self.chain(self.re.exp_with_deriv())
     }
@@ -232,7 +232,7 @@ impl<T: DualScalar> Dual<T> {
     /// Natural logarithm $\ln(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn ln(self) -> Self {
         self.chain(self.re.ln_with_deriv())
     }
@@ -240,7 +240,7 @@ impl<T: DualScalar> Dual<T> {
     /// Base-10 logarithm $\log_{10}(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn log10(self) -> Self {
         self.chain(self.re.log10_with_deriv())
     }
@@ -248,7 +248,7 @@ impl<T: DualScalar> Dual<T> {
     /// Square root $\sqrt{x}$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn sqrt(self) -> Self {
         self.chain(self.re.sqrt_with_deriv())
     }
@@ -256,7 +256,7 @@ impl<T: DualScalar> Dual<T> {
     /// Hyperbolic sine $\sinh(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn sinh(self) -> Self {
         self.chain(self.re.sinh_with_deriv())
     }
@@ -264,7 +264,7 @@ impl<T: DualScalar> Dual<T> {
     /// Hyperbolic cosine $\cosh(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn cosh(self) -> Self {
         self.chain(self.re.cosh_with_deriv())
     }
@@ -272,7 +272,7 @@ impl<T: DualScalar> Dual<T> {
     /// Hyperbolic tangent $\tanh(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn tanh(self) -> Self {
         self.chain(self.re.tanh_with_deriv())
     }
@@ -280,7 +280,7 @@ impl<T: DualScalar> Dual<T> {
     /// Inverse sine $\arcsin(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn asin(self) -> Self {
         self.chain(self.re.asin_with_deriv())
     }
@@ -288,7 +288,7 @@ impl<T: DualScalar> Dual<T> {
     /// Inverse cosine $\arccos(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn acos(self) -> Self {
         self.chain(self.re.acos_with_deriv())
     }
@@ -296,7 +296,7 @@ impl<T: DualScalar> Dual<T> {
     /// Inverse tangent $\arctan(x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn atan(self) -> Self {
         self.chain(self.re.atan_with_deriv())
     }
@@ -304,7 +304,7 @@ impl<T: DualScalar> Dual<T> {
     /// Four-quadrant inverse tangent $\operatorname{atan2}(y, x)$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn atan2(self, other: Self) -> Self {
         T::atan2_dual(self, other)
     }
@@ -312,7 +312,7 @@ impl<T: DualScalar> Dual<T> {
     /// Absolute value $|x|$ with centered Clarke subgradient ($0$ at $x = 0$).
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn abs(self) -> Self {
         T::abs_dual(self)
     }
@@ -320,7 +320,7 @@ impl<T: DualScalar> Dual<T> {
     /// Unit Heaviside step with Clarke subgradient $0$ everywhere.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn step(self) -> Self {
         T::step_dual(self)
     }
@@ -328,7 +328,7 @@ impl<T: DualScalar> Dual<T> {
     /// Unit rectangular boxcar pulse with Clarke subgradient $0$ everywhere.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn rect(self) -> Self {
         T::rect_dual(self)
     }
@@ -336,7 +336,7 @@ impl<T: DualScalar> Dual<T> {
     /// Minimum $\min(a, b)$ with midpoint Clarke subgradient at $a = b$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn min(self, other: Self) -> Self {
         T::min_dual(self, other)
     }
@@ -344,7 +344,7 @@ impl<T: DualScalar> Dual<T> {
     /// Maximum $\max(a, b)$ with midpoint Clarke subgradient at $a = b$.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn max(self, other: Self) -> Self {
         T::max_dual(self, other)
     }
@@ -352,13 +352,13 @@ impl<T: DualScalar> Dual<T> {
     /// Clamping $\operatorname{clamp}(x, \text{lo}, \text{hi})$ with Clarke subgradient at active bounds.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn clamp(self, lo: Self, hi: Self) -> Self {
         T::clamp_dual(self, lo, hi)
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub(crate) fn pow_f64_dual(a: Dual<f64>, b: Dual<f64>) -> Dual<f64> {
     let val = Float::powf(a.re, b.re);
     if a.re == 0.0 {

@@ -13,7 +13,7 @@ enum RewriteAction {
     AddAndMerge(u32, SymOp),
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn class_const(egraph: &EGraph, cid: u32) -> Option<f64> {
     let r = egraph.find(cid) as usize;
     for node in &egraph.classes[r] {
@@ -24,12 +24,12 @@ fn class_const(egraph: &EGraph, cid: u32) -> Option<f64> {
     None
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn is_approx_int(v: f64, target: f64) -> bool {
     v == target
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub(crate) fn collect_rewrites_step(egraph: &mut EGraph) -> bool {
     let mut actions: Vec<RewriteAction> = Vec::new();
     let n_classes = egraph.classes.len();
@@ -68,7 +68,7 @@ pub(crate) fn collect_rewrites_step(egraph: &mut EGraph) -> bool {
     changed
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn collect_node_rewrites(
     egraph: &EGraph,
     cid: u32,
@@ -97,7 +97,7 @@ fn collect_node_rewrites(
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn try_constant_fold(egraph: &EGraph, node: &SymOp) -> Option<f64> {
     match *node {
         SymOp::Const(_) | SymOp::Symbol(_) => None,
@@ -133,7 +133,7 @@ fn try_constant_fold(egraph: &EGraph, node: &SymOp) -> Option<f64> {
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn fold_func1(f: SymFunc1, x: f64) -> f64 {
     match f {
         SymFunc1::Sin => Float::sin(x),
@@ -167,7 +167,7 @@ fn fold_func1(f: SymFunc1, x: f64) -> f64 {
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn rewrite_neg(egraph: &EGraph, cid: u32, a: u32, actions: &mut Vec<RewriteAction>) {
     let ra = egraph.find(a) as usize;
     for sub in &egraph.classes[ra] {
@@ -177,7 +177,7 @@ fn rewrite_neg(egraph: &EGraph, cid: u32, a: u32, actions: &mut Vec<RewriteActio
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn rewrite_add(egraph: &EGraph, cid: u32, a: u32, b: u32, actions: &mut Vec<RewriteAction>) {
     let ca = class_const(egraph, a);
     let cb = class_const(egraph, b);
@@ -214,7 +214,7 @@ fn rewrite_add(egraph: &EGraph, cid: u32, a: u32, b: u32, actions: &mut Vec<Rewr
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn check_pythagorean_trig(egraph: &EGraph, ra: u32, rb: u32) -> bool {
     let sin_arg_a = extract_trig_sq_arg(egraph, ra, SymFunc1::Sin);
     let cos_arg_b = extract_trig_sq_arg(egraph, rb, SymFunc1::Cos);
@@ -228,7 +228,7 @@ fn check_pythagorean_trig(egraph: &EGraph, ra: u32, rb: u32) -> bool {
     matches!((cos_arg_a, sin_arg_b), (Some(u), Some(v)) if u == v)
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn extract_trig_sq_arg(egraph: &EGraph, cid: u32, trig: SymFunc1) -> Option<u32> {
     let r = egraph.find(cid) as usize;
     for node in &egraph.classes[r] {
@@ -259,7 +259,7 @@ fn extract_trig_sq_arg(egraph: &EGraph, cid: u32, trig: SymFunc1) -> Option<u32>
     None
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn rewrite_sub(egraph: &EGraph, cid: u32, a: u32, b: u32, actions: &mut Vec<RewriteAction>) {
     if egraph.find(a) == egraph.find(b) {
         actions.push(RewriteAction::AddAndMerge(cid, SymOp::num(0.0)));
@@ -274,7 +274,7 @@ fn rewrite_sub(egraph: &EGraph, cid: u32, a: u32, b: u32, actions: &mut Vec<Rewr
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn rewrite_mul(egraph: &EGraph, cid: u32, a: u32, b: u32, actions: &mut Vec<RewriteAction>) {
     let ca = class_const(egraph, a);
     let cb = class_const(egraph, b);
@@ -299,7 +299,7 @@ fn rewrite_mul(egraph: &EGraph, cid: u32, a: u32, b: u32, actions: &mut Vec<Rewr
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn rewrite_div(egraph: &EGraph, cid: u32, a: u32, b: u32, actions: &mut Vec<RewriteAction>) {
     let ca = class_const(egraph, a);
     let cb = class_const(egraph, b);
@@ -312,7 +312,7 @@ fn rewrite_div(egraph: &EGraph, cid: u32, a: u32, b: u32, actions: &mut Vec<Rewr
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn rewrite_pow(egraph: &EGraph, cid: u32, a: u32, b: u32, actions: &mut Vec<RewriteAction>) {
     let ca = class_const(egraph, a);
     let cb = class_const(egraph, b);
@@ -325,7 +325,7 @@ fn rewrite_pow(egraph: &EGraph, cid: u32, a: u32, b: u32, actions: &mut Vec<Rewr
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn rewrite_func1(egraph: &EGraph, cid: u32, f: SymFunc1, a: u32, actions: &mut Vec<RewriteAction>) {
     if f == SymFunc1::Ln {
         let ra = egraph.find(a) as usize;

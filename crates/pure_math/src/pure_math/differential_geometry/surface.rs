@@ -152,7 +152,7 @@ pub trait SurfaceAnalysis {
     fn area_element(&self, u: f64, v: f64) -> f64;
 }
 
-impl<T: ParametricSurface> SurfaceAnalysis for T {
+impl<T: ?Sized + ParametricSurface> SurfaceAnalysis for T {
     #[verified_engine::verified]
     fn unit_normal(&self, u: f64, v: f64) -> Vector3<f64> {
         let p = eval_surface_jets(self, u, v);

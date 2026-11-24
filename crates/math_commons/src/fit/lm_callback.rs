@@ -2,14 +2,16 @@
 // [cite:math_commons]
 
 use super::lm::{MAX_FIT_PARAMS, numeric_central_jacobian};
-use crate::ast::{CompiledExpr, SolverWorkspace};
+#[cfg(feature = "std")]
+use crate::ast::CompiledExpr;
+use engine_symbolic::SolverWorkspace;
 
 /// Scalar value and parameter-Jacobian callback for [`super::levenberg_marquardt_numeric`].
 ///
 /// Implemented for:
-/// - Pre-compiled [`CompiledExpr`] / `&CompiledExpr` (`slot 0 = x`, `slots 1..=k = params`),
-///   evaluating $\hat{f}(x; \theta)$ and all $k \le 6$ parameter partials in **1** reverse pass
-///   per observation via [`CompiledExpr::eval_grad_into`].
+/// - Pre-compiled `CompiledExpr` / `&CompiledExpr` (`slot 0 = x`, `slots 1..=k = params`,
+///   when `feature = "std"` is enabled), evaluating $\hat{f}(x; \theta)$ and all $k \le 6$
+///   parameter partials in **1** reverse pass per observation via `CompiledExpr::eval_grad_into`.
 /// - [`ReverseGradFit`] pairing value and reverse-gradient closures over a shared
 ///   [`SolverWorkspace`].
 /// - Plain scalar closures `Fn(f64, &[f64]) -> Option<f64>` as a backward-compatible fallback.
@@ -48,6 +50,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 #[verified_engine::verified]
 fn eval_compiled_point_and_jac(
     compiled: &CompiledExpr,
@@ -70,6 +73,7 @@ fn eval_compiled_point_and_jac(
     (y, jac)
 }
 
+#[cfg(feature = "std")]
 impl NumericFitCallback for CompiledExpr {
     #[inline]
     #[verified_engine::verified]
@@ -91,6 +95,7 @@ impl NumericFitCallback for CompiledExpr {
     }
 }
 
+#[cfg(feature = "std")]
 impl NumericFitCallback for &CompiledExpr {
     #[inline]
     #[verified_engine::verified]

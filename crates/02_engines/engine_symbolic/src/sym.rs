@@ -82,7 +82,7 @@ pub enum SymOp {
 /// Canonicalizes `f64` bit patterns so `-0.0` and `+0.0` share a single hashcons key.
 #[inline]
 #[must_use]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn canonical_f64_bits(val: f64) -> u64 {
     if val == 0.0 {
         0.0_f64.to_bits()
@@ -97,7 +97,7 @@ impl SymOp {
     /// Constructs a canonical numeric literal node.
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn num(val: f64) -> Self {
         Self::Const(canonical_f64_bits(val))
     }
@@ -105,7 +105,7 @@ impl SymOp {
     /// Extracts the `f64` literal value if `self` is [`SymOp::Const`].
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn as_f64(&self) -> Option<f64> {
         match *self {
             Self::Const(bits) => Some(f64::from_bits(bits)),
@@ -116,7 +116,7 @@ impl SymOp {
     /// Writes child IDs into `out` and returns the number of children (`0..=3`).
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn children_into(&self, out: &mut [u32; 3]) -> usize {
         match *self {
             Self::Const(_) | Self::Symbol(_) => 0,
@@ -146,7 +146,7 @@ impl SymOp {
     /// Maps each child ID via `f` and normalizes commutative argument order (`Add`, `Mul`, `Min`, `Max`).
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn map_children<F: Fn(u32) -> u32>(self, f: F) -> Self {
         match self {
             Self::Const(_) | Self::Symbol(_) => self,
@@ -178,7 +178,7 @@ impl SymOp {
     /// Local AST extraction cost of a single operator node (`1` for leaves, `2..=4` for operators).
     #[inline]
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn local_cost(&self) -> u64 {
         match *self {
             Self::Const(_) | Self::Symbol(_) => 1,

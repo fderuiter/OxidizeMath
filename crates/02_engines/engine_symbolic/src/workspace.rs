@@ -29,7 +29,7 @@ pub struct SolverWorkspace {
 }
 
 impl Default for SolverWorkspace {
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn default() -> Self {
         Self::new()
     }
@@ -38,7 +38,7 @@ impl Default for SolverWorkspace {
 impl SolverWorkspace {
     /// Constructs a zeroed inline [`SolverWorkspace`] on the stack or inside a solver struct.
     #[must_use]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn new() -> Self {
         Self {
             values: [0.0; MAX_WORKSPACE_TAPE],
@@ -52,7 +52,7 @@ impl SolverWorkspace {
 
     /// Clears `adjoints[..tape_len]` to `0.0` prior to a reverse sweep.
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub const fn clear_adjoints(&mut self, tape_len: usize) {
         let cap = if tape_len < MAX_WORKSPACE_TAPE {
             tape_len

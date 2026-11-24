@@ -5,7 +5,7 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 extern crate std;
 
 /// Forward-mode `Dual` scalar numbers over real and complex tangents.
@@ -26,7 +26,7 @@ mod egraph_rules;
 #[cfg(feature = "alloc")]
 pub mod sym;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests;
 
 pub use dual::{Dual, Dual64, DualComplex64, DualScalar};

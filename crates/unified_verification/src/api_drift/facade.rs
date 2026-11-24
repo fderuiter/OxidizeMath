@@ -52,6 +52,7 @@ const REQUIRED_ROOT_EXPORTS: &[&str] = &[
     "registry",
     "rng",
     "series",
+    "stochastic",
     "wigner",
 ];
 

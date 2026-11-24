@@ -252,10 +252,12 @@ impl CoupledExpressionBank {
                 changed = true;
             }
 
+            let shared_params: std::collections::HashMap<String, f64> =
+                self.slider_bank.export_active_map().into_iter().collect();
             let mut bar_edited = false;
             for (idx, bar) in self.bars.iter_mut().enumerate() {
                 ui.push_id(("coupled_expr_slot", idx), |ui| {
-                    if bar.ui(ui) {
+                    if bar.ui_with_params(ui, &shared_params) {
                         bar_edited = true;
                     }
                 });

@@ -3,9 +3,11 @@
 
 use super::lm_callback::NumericFitCallback;
 use super::poly::{solve_dense_n_raw, symmetrize_upper};
-use crate::ast::SolverWorkspace;
 use crate::error::FitError;
 use crate::series::PointSeries;
+use engine_symbolic::SolverWorkspace;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 /// Maximum outer Levenberg-Marquardt iterations before returning [`FitError::NonConvergence`].
 pub const MAX_LM_ITERATIONS: usize = 80;
@@ -16,7 +18,7 @@ pub const MAX_FIT_PARAMS: usize = 6;
 const MAX_DAMPING_SUBSTEPS: usize = 12;
 
 /// Minimizes $\sum_i (y_i - \hat{f}(x_i; \theta))^2$ over finite points in `points` on the stack.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn levenberg_marquardt<P, F>(
     points: &P,
     initial_params: &[f64],
@@ -37,7 +39,7 @@ where
 }
 
 /// Minimizes nonlinear least squares over observations satisfying `domain_ok(x, y)`.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn levenberg_marquardt_filtered<P, F>(
     points: &P,
     initial_params: &[f64],
@@ -59,9 +61,9 @@ where
 }
 
 /// Minimizes nonlinear least squares ($1 \le k \le 6$) for [`NumericFitCallback`] `eval_fn`
-/// (single reverse-mode pass per point for [`crate::ast::CompiledExpr`] / [`super::ReverseGradFit`])
+/// (single reverse-mode pass per point for `CompiledExpr` / [`super::ReverseGradFit`])
 /// on stack buffers with zero heap allocations.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn levenberg_marquardt_numeric<P, F>(
     points: &P,
     initial_params: &[f64],
@@ -91,7 +93,7 @@ where
 
 /// Evaluates $\sum_i (y_i - \hat{f}(x_i; \theta))^2$ over finite points in `points`, returning
 /// `None` if no finite points exist or any evaluation produces a non-finite residual.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn sum_squared_errors_numeric<P, F>(points: &P, params: &[f64], eval_fn: F) -> Option<f64>
 where
     P: PointSeries + ?Sized,
