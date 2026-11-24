@@ -95,7 +95,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     #[allow(missing_docs)]
     pub fn verify_module_registered(module_name: &str) -> bool {
         const EMBEDDED_REGISTRY: &str = include_str!("../../../traceability.toml");
@@ -197,7 +196,7 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     }
 
     /// Discovers workspace code directories (`math_explorer/src`, `math_explorer_gui/src/tabs`,
-    /// and `crates/*/src`) and the `papers` directory relative to `base_dir`.
+    /// `crates/*/src`, and grouped `crates/*/*/src`) and the `papers` directory relative to `base_dir`.
     pub async fn discover_workspace_dirs(&self, base_dir: &str) -> (Vec<String>, String) {
         let prefix = if base_dir.is_empty() || base_dir.ends_with('/') {
             base_dir.to_string()
@@ -215,21 +214,19 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
                 if crate_name.starts_with('.') {
                     continue;
                 }
-                if let Ok(mut nested) = self
-                    .vfs
-                    .list_dir(&format!("{crate_base}/{crate_name}"))
-                    .await
-                    && !nested.is_empty()
-                    && !nested.iter().any(|e| e == "src" || e == "Cargo.toml")
+                let crate_dir = format!("{crate_base}/{crate_name}");
+                if let Ok(mut sub_entries) = self.vfs.list_dir(&crate_dir).await
+                    && !sub_entries.is_empty()
+                    && !sub_entries.iter().any(|e| e == "src" || e == "Cargo.toml")
                 {
-                    nested.sort();
-                    for sub in nested {
+                    sub_entries.sort();
+                    for sub in sub_entries {
                         if !sub.starts_with('.') {
-                            code_dirs.push(format!("{crate_base}/{crate_name}/{sub}/src"));
+                            code_dirs.push(format!("{crate_dir}/{sub}/src"));
                         }
                     }
                 } else {
-                    code_dirs.push(format!("{crate_base}/{crate_name}/src"));
+                    code_dirs.push(format!("{crate_dir}/src"));
                 }
             }
         }

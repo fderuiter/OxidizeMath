@@ -106,6 +106,7 @@ This command builds `unified_verification` once with Cargo's development profile
    - **CI Workflows** (`lint-workflows`): validates GitHub Actions workflows, local reusable workflows, and `.github/actions` composite actions for read-only permissions, concurrency controls, job timeouts, commit-pinned actions, and safe `run` expressions.
    - **Crate Documentation Audit** (`check-docs`): verifies README files and entrypoint docs.
    - **Single-Pass AST Verification** (`batch-ast`): parses each unique workspace `.rs` file at most once with `syn::parse_file` and runs AST clone detection (`check-duplicates`), public API drift against `crates/unified_verification/api_baseline.json` (`check-api-drift`), in-process literature/test traceability (`traceability`), entropy/secret scanning (`check-entropy`), and lint-bypass/unused-dependency policy auditing (`test-policy-audit`).
+   - **Verification Certificate AST Parity** (`check-certificate`): verifies `Verification_Certificate.json` and the `README.md` coverage badge against workspace AST metrics, ratcheted production assertion density floors, and `[verify_suite]` whitelist rules without invoking `cargo llvm-cov`.
 3. **Clippy Lints (Host & WebAssembly)**:
    ```bash
    cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -128,9 +129,13 @@ cargo run -p xtask -- check-api-drift
 cargo run -p xtask -- regenerate-baseline
 cargo run -p unified_verification --release -- regenerate-baseline
 
-# Execute the full high-integrity verification suite (static gates + cargo llvm-cov coverage report)
-cargo run -p xtask -- verify-suite
-cargo run -p unified_verification --release -- verify-suite
+# Execute the full high-integrity verification suite in read-only --check mode (default)
+cargo run -p xtask -- verify-suite --check
+cargo run -p unified_verification --release -- verify-suite --check
+
+# Refresh Verification_Certificate.json and README.md locally after intentional coverage or assertion density shifts
+cargo run -p xtask -- verify-suite --write
+cargo run -p unified_verification --release -- verify-suite --write
 ```
 
 ### Troubleshooting
