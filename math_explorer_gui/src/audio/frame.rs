@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use super::settings::{AcousticSettings, DEFAULT_AUDIO_GAIN, DEFAULT_PITCH_SCALE};
+
 /// Maximum simultaneous polyphonic voices per [`SonificationFrame`].
 pub const MAX_VOICES: usize = 8;
 
@@ -247,6 +249,22 @@ impl SonificationFrame {
         self.noise_cutoff_hz = clamp_freq_hz(self.noise_cutoff_hz);
         self.master_gain = sanitize_f32(self.master_gain, 0.0, 0.0, 1.0);
         self
+    }
+
+    /// Applies a bounded pitch transposition multiplier (`0.25..=4.0`) across active voices.
+    #[must_use]
+    pub fn with_pitch_scale(self, pitch_scale: f32) -> Self {
+        let scale = sanitize_f32(pitch_scale, 1.0, 0.25, 4.0);
+        let mut clean = self.sanitize();
+        if (scale - 1.0).abs() <= 1e-6 {
+            return clean;
+        }
+        let count = clean.active_voices as usize;
+        for voice in &mut clean.voices[..count] {
+            voice.freq_hz = clamp_freq_hz(voice.freq_hz * scale);
+            voice.fm_mod_hz = sanitize_f32(voice.fm_mod_hz * scale, 0.0, 0.0, 4000.0);
+        }
+        clean
     }
 
     /// Returns `true` when at least one voice or noise source carries audible gain.

@@ -116,6 +116,26 @@ impl HodgkinHuxleyUnified {
         self.history.push_back([self.time, self.state.v]);
     }
 
+    fn current_hh_sonification(&self, spiked: bool) -> crate::audio::SonificationFrame {
+        if self.diverged_variable().is_some() {
+            return crate::audio::SonificationFrame::silent();
+        }
+        let ref_prev_v = if spiked { -5.0 } else { self.prev_v };
+        let ref_cur_v = if spiked {
+            self.state.v.max(10.0)
+        } else {
+            self.state.v
+        };
+        crate::audio::mappings::hodgkin_huxley_frame(
+            ref_cur_v,
+            ref_prev_v,
+            self.state.m,
+            self.state.h,
+            self.state.n,
+            self.i_ext,
+        )
+    }
+
     fn record_divergence(&mut self, var: &'static str) {
         let t_div = if self.time.is_finite() {
             self.time
@@ -185,6 +205,11 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         self.apply_scalar_step(new_g_na, new_g_k, new_g_l, new_i_ext, self.dt);
     }
 
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        let spiked = self.spiked_since_snapshot.load(Ordering::Relaxed);
+        Some(self.current_hh_sonification(spiked))
+    }
+
     fn process_command(
         &mut self,
         cmd: crate::async_sim::SimCommand,
@@ -216,24 +241,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             custom_data.push(self.state.v);
         }
         let spiked = self.spiked_since_snapshot.swap(false, Ordering::Relaxed);
-        let sonification = if self.diverged_variable().is_some() {
-            crate::audio::SonificationFrame::silent()
-        } else {
-            let ref_prev_v = if spiked { -5.0 } else { self.prev_v };
-            let ref_cur_v = if spiked {
-                self.state.v.max(10.0)
-            } else {
-                self.state.v
-            };
-            crate::audio::mappings::hodgkin_huxley_frame(
-                ref_cur_v,
-                ref_prev_v,
-                self.state.m,
-                self.state.h,
-                self.state.n,
-                self.i_ext,
-            )
-        };
+        let sonification = self.current_hh_sonification(spiked);
         StateSnapshot {
             width: 0,
             height: 0,

@@ -39,6 +39,40 @@ pub fn escape_time_julia(z: Complex<f64>, c: Complex<f64>, max_iter: u32) -> u32
     max_iter
 }
 
+/// Calculates the Grassberger-Procaccia Correlation Sum $C(\epsilon)$ in place without heap allocation.
+///
+/// Sorts `trajectory` in place by $x$-coordinate so pair searches terminate as soon as
+/// $\Delta x > \epsilon$, making it safe to execute inside [`verified_engine::engine::VerifiedEngine`]
+/// zero-allocation regions.
+///
+/// # Example
+/// ```
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::nalgebra::Vector3;
+/// use math_explorer::physics::chaos::fractals::correlation_dimension_in_place;
+///
+/// let mut scratch = [
+///     Vector3::new(2.0, 0.0, 0.0),
+///     Vector3::new(0.0, 0.0, 0.0),
+///     Vector3::new(1.0, 0.0, 0.0),
+/// ];
+/// let c = correlation_dimension_in_place(&mut scratch, 1.1);
+/// assert!((c - 2.0 / 3.0).abs() < 1e-12);
+/// ```
+#[verified_engine::verified]
+pub fn correlation_dimension_in_place(trajectory: &mut [Vector3<f64>], epsilon: f64) -> f64 {
+    let n = trajectory.len();
+    if n < 2 || !epsilon.is_finite() || epsilon <= 0.0 {
+        return 0.0;
+    }
+
+    // Sort in place by X-coordinate using stack-only unstable sort to prune search space.
+    trajectory.sort_unstable_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
+    let count = count_close_pairs_sorted(trajectory, epsilon);
+
+    (2.0 * count as f64) / ((n * (n - 1)) as f64)
+}
+
 /// Calculates the Correlation Sum $C(\epsilon)$ for the Grassberger-Procaccia algorithm.
 ///
 /// The Correlation Dimension is a measure of the dimensionality of the space occupied by a set of random points,
@@ -51,23 +85,24 @@ pub fn escape_time_julia(z: Complex<f64>, c: Complex<f64>, max_iter: u32) -> u32
 /// The actual dimension would be the slope of $\ln(C(\epsilon))$ vs $\ln(\epsilon)$.
 #[verified_engine::verified]
 pub fn correlation_dimension(trajectory: &[Vector3<f64>], epsilon: f64) -> f64 {
-    let n = trajectory.len();
-    if n < 2 {
+    if trajectory.len() < 2 || !epsilon.is_finite() || epsilon <= 0.0 {
         return 0.0;
     }
-
     let mut sorted_traj = trajectory.to_vec();
-    sorted_traj.sort_unstable_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
-    let count = count_close_pairs_sorted(&sorted_traj, epsilon);
-
-    (2.0 * count as f64) / ((n * (n - 1)) as f64)
+    correlation_dimension_in_place(&mut sorted_traj, epsilon)
 }
 
 fn count_close_pairs_sorted(sorted_traj: &[Vector3<f64>], epsilon: f64) -> usize {
     let epsilon_sq = epsilon * epsilon;
-    let mut count = 0;
+    let mut count = 0_usize;
     for (i, p1) in sorted_traj.iter().enumerate() {
+        if !p1.x.is_finite() || !p1.y.is_finite() || !p1.z.is_finite() {
+            continue;
+        }
         for p2 in &sorted_traj[i + 1..] {
+            if !p2.x.is_finite() || !p2.y.is_finite() || !p2.z.is_finite() {
+                continue;
+            }
             let dx = p2.x - p1.x;
             if dx > epsilon {
                 break;
