@@ -1,46 +1,86 @@
-use crate::accessibility::AccessibleHoverText;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::shared_topology::CompactTopologyState;
+use crate::app::TopologySource;
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use eframe::egui::Pos2;
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::pure_math::graph_theory::dijkstra::dijkstra;
 use math_explorer::pure_math::graph_theory::graph::Graph;
 use petgraph::graph::NodeIndex;
-use petgraph::visit::{Bfs, Dfs};
 use std::collections::HashMap;
 
-#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum Algorithm {
+#[path = "algorithm_visualizer/canvas.rs"]
+mod canvas;
+#[path = "algorithm_visualizer/controls.rs"]
+mod controls;
+#[path = "algorithm_visualizer/io_export.rs"]
+mod io_export;
+#[path = "algorithm_visualizer/solvers.rs"]
+mod solvers;
+
+pub use io_export::visualizer_state_json_from_shared;
+pub(crate) use solvers::FlowVisualizationData;
+
+/// Stepped graph traversal, shortest-path, network-flow, and spanning-tree modes.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub enum Algorithm {
+    /// Priority-queue single-source shortest-path relaxation (`DijkstraResult::predecessors`).
     Dijkstra,
+    /// Level-order Breadth-First Search discovery tree.
     Bfs,
+    /// Stack-based Depth-First Search discovery tree.
     Dfs,
+    /// Stepped Edmonds-Karp `s-t` maximum flow and terminal minimum-cut partition `(S, T)`.
+    MaxFlowMinCut,
+    /// Stepped Kruskal union-find minimum spanning tree/forest.
+    MinimumSpanningTree,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct AlgorithmVisualizerState {
-    selected_algorithm: Algorithm,
-    start_node: Option<usize>,
-    playback_speed: f32,
+pub(crate) struct AlgorithmVisualizerState {
+    pub(crate) selected_algorithm: Algorithm,
+    pub(crate) start_node: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) sink_node: Option<usize>,
+    pub(crate) playback_speed: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) custom_topology: Option<CompactTopologyState>,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    pub(crate) topology_source: TopologySource,
 }
 
+/// Interactive stepped visualizer for shortest-path predecessor trees, `s-t` min-cuts, and MSTs.
 pub struct AlgorithmVisualizerTool {
     graph: Graph<Pos2, f64>,
     node_indices: HashMap<usize, NodeIndex>,
     node_positions: HashMap<usize, Pos2>,
     edges: Vec<(usize, usize, f64)>,
+    directed: bool,
+    is_custom_topology: bool,
 
     selected_algorithm: Algorithm,
+    pub topology_source: TopologySource,
+    synced_bus_revision: Option<u64>,
     start_node: Option<usize>,
+    local_start_node: Option<usize>,
+    sink_node: Option<usize>,
     focused_node: usize,
 
-    // Animation state
     animation_step: usize,
-    visit_order: Vec<usize>, // List of node IDs in the order they are visited
-    distances: HashMap<usize, f64>, // For Dijkstra
+    visit_order: Vec<usize>,
+    distances: HashMap<usize, f64>,
+    predecessors: HashMap<usize, usize>,
+    tree_edge_steps: HashMap<usize, usize>,
+    flow_data: Option<FlowVisualizationData>,
+    mst_data: Option<solvers::StoredMstData>,
+
     is_playing: bool,
     playback_speed: f32,
     step_timer: f32,
+    revision: u64,
+    file_io: super::io_helpers::GraphFileIoState,
 }
 
 impl Default for AlgorithmVisualizerTool {
@@ -50,15 +90,27 @@ impl Default for AlgorithmVisualizerTool {
             node_indices: HashMap::new(),
             node_positions: HashMap::new(),
             edges: Vec::new(),
+            directed: false,
+            is_custom_topology: false,
             selected_algorithm: Algorithm::Dijkstra,
+            topology_source: TopologySource::SharedBus,
+            synced_bus_revision: None,
             start_node: None,
+            local_start_node: Some(0),
+            sink_node: None,
             focused_node: 0,
             animation_step: 0,
             visit_order: Vec::new(),
             distances: HashMap::new(),
+            predecessors: HashMap::new(),
+            tree_edge_steps: HashMap::new(),
+            flow_data: None,
+            mst_data: None,
             is_playing: false,
             playback_speed: 2.0,
             step_timer: 0.0,
+            revision: 1,
+            file_io: super::io_helpers::GraphFileIoState::default(),
         };
         tool.build_sample_graph();
         tool
@@ -66,118 +118,213 @@ impl Default for AlgorithmVisualizerTool {
 }
 
 impl AlgorithmVisualizerTool {
+    pub(crate) fn bump_revision(&mut self) {
+        self.revision = self.revision.wrapping_add(1).max(1);
+    }
+
+    pub(crate) fn effective_sink_node(&self, source: Option<usize>) -> Option<usize> {
+        if let Some(t) = self.sink_node {
+            if self.node_positions.contains_key(&t) && Some(t) != source {
+                return Some(t);
+            }
+        }
+        self.node_positions
+            .keys()
+            .copied()
+            .filter(|&id| Some(id) != source)
+            .max()
+    }
+
+    /// Total discrete stepper frames available for the active algorithm.
+    #[must_use]
+    pub fn total_steps(&self) -> usize {
+        match self.selected_algorithm {
+            Algorithm::Dijkstra | Algorithm::Bfs | Algorithm::Dfs => self.visit_order.len(),
+            Algorithm::MaxFlowMinCut => self.flow_data.as_ref().map_or(0, |f| f.steps.len() + 1),
+            Algorithm::MinimumSpanningTree => self.mst_data.as_ref().map_or(0, |m| m.steps.len()),
+        }
+    }
+
+    /// Switches the active algorithm mode and recomputes the stepper trace.
+    #[cfg(test)]
+    pub fn set_algorithm(&mut self, algorithm: Algorithm) {
+        self.selected_algorithm = algorithm;
+        self.bump_revision();
+        self.run_algorithm();
+    }
+
+    /// Sets the current animation step (`0..=total_steps()`).
+    #[cfg(test)]
+    pub fn set_animation_step(&mut self, step: usize) {
+        self.animation_step = step.min(self.total_steps());
+    }
+
+    /// Returns true if `edge_idx` belongs to the reconstructed predecessor/spanning tree.
+    #[cfg(test)]
+    #[must_use]
+    pub fn is_tree_edge(&self, edge_idx: usize) -> bool {
+        match self.selected_algorithm {
+            Algorithm::Dijkstra | Algorithm::Bfs | Algorithm::Dfs => {
+                self.tree_edge_steps.contains_key(&edge_idx)
+            }
+            Algorithm::MinimumSpanningTree => self
+                .mst_data
+                .as_ref()
+                .is_some_and(|m| m.tree_edge_indices.contains(&edge_idx)),
+            Algorithm::MaxFlowMinCut => self
+                .flow_data
+                .as_ref()
+                .is_some_and(|f| f.cut_edge_indices.contains(&edge_idx)),
+        }
+    }
+
+    /// Returns true if `edge_idx` is highlighted as a settled tree edge at the current `animation_step`.
+    #[must_use]
+    pub fn is_edge_highlighted_at_step(&self, edge_idx: usize) -> bool {
+        match self.selected_algorithm {
+            Algorithm::Dijkstra | Algorithm::Bfs | Algorithm::Dfs => self
+                .tree_edge_steps
+                .get(&edge_idx)
+                .is_some_and(|&step| step <= self.animation_step),
+            Algorithm::MinimumSpanningTree => self.mst_data.as_ref().is_some_and(|m| {
+                let shown = self.animation_step.min(m.steps.len());
+                m.steps[..shown]
+                    .iter()
+                    .any(|s| s.edge_index == edge_idx && s.accepted)
+            }),
+            Algorithm::MaxFlowMinCut => self.flow_data.as_ref().is_some_and(|f| {
+                self.animation_step > f.steps.len() && f.cut_edge_indices.contains(&edge_idx)
+            }),
+        }
+    }
+
+    /// Counts how many predecessor/MST tree edges are highlighted at `animation_step`.
+    #[cfg(test)]
+    #[must_use]
+    pub fn highlighted_tree_edge_count(&self) -> usize {
+        (0..self.edges.len())
+            .filter(|&i| self.is_tree_edge(i) && self.is_edge_highlighted_at_step(i))
+            .count()
+    }
+
+    /// Counts how many non-tree edges are falsely highlighted at `animation_step` (always `0`).
+    #[cfg(test)]
+    #[must_use]
+    pub fn highlighted_non_tree_edge_count(&self) -> usize {
+        (0..self.edges.len())
+            .filter(|&i| !self.is_tree_edge(i) && self.is_edge_highlighted_at_step(i))
+            .count()
+    }
+
+    /// Returns computed max-flow visualization data when in `MaxFlowMinCut` mode.
+    #[cfg(test)]
+    #[must_use]
+    pub fn flow_visualization(&self) -> Option<&FlowVisualizationData> {
+        self.flow_data.as_ref()
+    }
+
     fn build_sample_graph(&mut self) {
-        // Create a 4x4 grid graph for visualization
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
+        self.directed = false;
+        self.is_custom_topology = false;
         let rows = 4;
         let cols = 4;
         let spacing = 80.0;
         let offset = Pos2::new(100.0, 100.0);
-
-        // We store relative positions from (0,0) and offset them during rendering
         for r in 0..rows {
             for c in 0..cols {
                 let id = flatten_2d_index(c, r, cols);
-                let pos = offset + eframe::egui::vec2(c as f32 * spacing, r as f32 * spacing);
+                let pos = offset + egui::vec2(c as f32 * spacing, r as f32 * spacing);
                 let idx = self.graph.add_node(pos);
                 self.node_indices.insert(id, idx);
                 self.node_positions.insert(id, pos);
             }
         }
-
-        let mut add_edge = |u: usize, v: usize, w: f64| {
-            self.edges.push((u, v, w));
-            if let (Some(&u_idx), Some(&v_idx)) =
-                (self.node_indices.get(&u), self.node_indices.get(&v))
-            {
-                self.graph.add_edge(u_idx, v_idx, w);
-            }
-        };
-
-        // Add grid edges with arbitrary weights
         for r in 0..rows {
             for c in 0..cols {
                 let u = flatten_2d_index(c, r, cols);
                 if c < cols - 1 {
                     let v = u + 1;
-                    add_edge(u, v, 1.0 + ((u + v) % 5) as f64);
+                    let w = 1.0 + ((u + v) % 5) as f64;
+                    self.edges.push((u, v, w));
+                    self.graph
+                        .add_edge(self.node_indices[&u], self.node_indices[&v], w);
                 }
                 if r < rows - 1 {
                     let v = u + cols;
-                    add_edge(u, v, 1.0 + ((u * v) % 5) as f64);
+                    let w = 1.0 + ((u * v) % 5) as f64;
+                    self.edges.push((u, v, w));
+                    self.graph
+                        .add_edge(self.node_indices[&u], self.node_indices[&v], w);
                 }
             }
         }
-
-        // Set default start node
-        self.start_node = Some(0);
+        if self.synced_bus_revision.is_none() {
+            self.start_node = self.local_start_node;
+        }
+        if self
+            .start_node
+            .is_none_or(|id| !self.node_indices.contains_key(&id))
+        {
+            self.start_node = Some(0);
+            self.local_start_node = Some(0);
+            self.focused_node = 0;
+        } else if let Some(id) = self.start_node {
+            self.focused_node = id;
+        }
+        self.sink_node = Some(15);
+        if self.sink_node == self.start_node {
+            self.sink_node = self.effective_sink_node(self.start_node);
+        }
         self.run_algorithm();
     }
 
     fn run_algorithm(&mut self) {
         self.visit_order.clear();
         self.distances.clear();
+        self.predecessors.clear();
+        self.tree_edge_steps.clear();
+        self.flow_data = None;
+        self.mst_data = None;
         self.animation_step = 0;
         self.is_playing = false;
         self.step_timer = 0.0;
 
-        let start_id = match self.start_node {
-            Some(id) => id,
-            None => return,
+        if self.selected_algorithm == Algorithm::MinimumSpanningTree {
+            self.run_mst_solver();
+            return;
+        }
+        let Some(start_id) = self.start_node else {
+            return;
         };
-
-        let start_idx = match self.node_indices.get(&start_id) {
-            Some(&idx) => idx,
-            None => return,
+        let Some(&start_idx) = self.node_indices.get(&start_id) else {
+            return;
         };
-
         match self.selected_algorithm {
-            Algorithm::Dijkstra => {
-                // Dijkstra's algorithm from math_explorer
-                let result = dijkstra(&self.graph.graph, start_idx);
-
-                // Map node indices back to our IDs and store distances
-                let mut dist_vec = Vec::new();
-                for (&id, &idx) in &self.node_indices {
-                    if let Some(&dist) = result.distances.get(&idx) {
-                        self.distances.insert(id, dist);
-                        dist_vec.push((id, dist));
-                    }
-                }
-
-                // Sort by distance to simulate the visit order
-                dist_vec.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-                self.visit_order = dist_vec.into_iter().map(|(id, _)| id).collect();
-            }
-            Algorithm::Bfs => {
-                let mut bfs = Bfs::new(&self.graph.graph, start_idx);
-                while let Some(nx) = bfs.next(&self.graph.graph) {
-                    if let Some((&id, _)) = self.node_indices.iter().find(|(_, &idx)| idx == nx) {
-                        self.visit_order.push(id);
-                    }
-                }
-            }
-            Algorithm::Dfs => {
-                let mut dfs = Dfs::new(&self.graph.graph, start_idx);
-                while let Some(nx) = dfs.next(&self.graph.graph) {
-                    if let Some((&id, _)) = self.node_indices.iter().find(|(_, &idx)| idx == nx) {
-                        self.visit_order.push(id);
-                    }
-                }
-            }
+            Algorithm::Dijkstra => self.run_dijkstra_solver(start_id, start_idx),
+            Algorithm::Bfs => self.run_bfs_solver(start_id),
+            Algorithm::Dfs => self.run_dfs_solver(start_id),
+            Algorithm::MaxFlowMinCut => self.run_max_flow_solver(start_id),
+            Algorithm::MinimumSpanningTree => {}
         }
     }
+
     fn update_animation(&mut self, ctx: &egui::Context) {
-        if self.is_playing && !self.visit_order.is_empty() {
+        let total = self.total_steps();
+        if self.is_playing && total > 0 {
             let dt = ctx.input(|i| i.stable_dt);
             self.step_timer += dt;
             let step_interval = 1.0 / self.playback_speed;
             while self.step_timer >= step_interval && self.is_playing {
                 self.step_timer -= step_interval;
-                if self.animation_step < self.visit_order.len() {
+                if self.animation_step < total {
                     self.animation_step += 1;
                 }
-                if self.animation_step >= self.visit_order.len() {
-                    self.animation_step = self.visit_order.len();
+                if self.animation_step >= total {
+                    self.animation_step = total;
                     self.is_playing = false;
                     self.step_timer = 0.0;
                     break;
@@ -188,134 +335,7 @@ impl AlgorithmVisualizerTool {
             }
         }
     }
-
-    fn render_algorithm_selector(&mut self, ui: &mut egui::Ui) {
-        ui.label("Select Algorithm:");
-        let mut changed = false;
-        for (alg, label) in [
-            (Algorithm::Dijkstra, "Dijkstra"),
-            (Algorithm::Bfs, "BFS"),
-            (Algorithm::Dfs, "DFS"),
-        ] {
-            changed |= ui
-                .radio_value(&mut self.selected_algorithm, alg, label)
-                .clicked();
-        }
-        if changed {
-            self.run_algorithm();
-        }
-    }
-
-    fn render_controls(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id =
-            crate::framework::scoped_panel_id(parent_ui, "algorithm_visualizer_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Algorithm Visualizer");
-            ui.separator();
-            self.render_algorithm_selector(ui);
-            ui.separator();
-            self.render_start_node_selector(ui);
-            ui.separator();
-
-            if !self.visit_order.is_empty() {
-                self.render_playback_controls(ui);
-            }
-            ui.separator();
-            ui.label("Click a node or use Arrow keys + Enter on the canvas to set the start node.");
-        });
-    }
-
-    fn stop_at_step(&mut self, step: usize) {
-        self.animation_step = step;
-        self.is_playing = false;
-        self.step_timer = 0.0;
-    }
-
-    fn render_playback_controls(&mut self, ui: &mut egui::Ui) {
-        let total = self.visit_order.len();
-        ui.label(format!("Animation Step: {} / {total}", self.animation_step));
-        ui.horizontal(|ui| {
-            if ui
-                .button("↻ Reset")
-                .accessible_hover_text("Restart the algorithm visualization")
-                .clicked()
-            {
-                self.stop_at_step(0);
-            }
-            let (label, hover) = if self.is_playing {
-                ("⏸ Pause", "Pause the algorithm visualization")
-            } else {
-                ("▶ Play", "Start or resume continuous visualization")
-            };
-            if ui.button(label).accessible_hover_text(hover).clicked() {
-                if !self.is_playing && self.animation_step >= total {
-                    self.animation_step = 0;
-                }
-                self.is_playing = !self.is_playing;
-                self.step_timer = 0.0;
-            }
-            let can_step = self.animation_step < total;
-            if ui
-                .add_enabled(can_step, eframe::egui::Button::new("▶ Step"))
-                .accessible_hover_text("Advance visualization by one step")
-                .clicked()
-            {
-                self.stop_at_step(self.animation_step + 1);
-            }
-            if ui
-                .add_enabled(can_step, eframe::egui::Button::new("⏹ Finish"))
-                .accessible_hover_text("Skip to the end of the visualization")
-                .clicked()
-            {
-                self.stop_at_step(total);
-            }
-        });
-        if ui
-            .add(egui::Slider::new(&mut self.animation_step, 0..=total).text("Step"))
-            .changed()
-        {
-            self.step_timer = 0.0;
-        }
-        ui.add(
-            egui::Slider::new(&mut self.playback_speed, 0.5..=5.0)
-                .text("Speed")
-                .suffix("x"),
-        );
-    }
-
-    fn render_start_node_selector(&mut self, ui: &mut egui::Ui) {
-        let mut node_ids: Vec<usize> = self.node_positions.keys().copied().collect();
-        node_ids.sort_unstable();
-        let selected_text = self
-            .start_node
-            .map_or_else(|| "None".to_string(), |id| format!("Node {id}"));
-        ui.horizontal(|ui| {
-            ui.label("Start Node:");
-            egui::ComboBox::from_id_salt("algorithm_visualizer_start_node")
-                .selected_text(selected_text)
-                .show_ui(ui, |ui| {
-                    for id in node_ids {
-                        let is_selected = self.start_node == Some(id);
-                        if ui
-                            .selectable_label(is_selected, format!("Node {id}"))
-                            .clicked()
-                        {
-                            self.start_node = Some(id);
-                            self.focused_node = id;
-                            self.run_algorithm();
-                            crate::accessibility::announce_live_status(
-                                ui.ctx(),
-                                format!("Start node set to Node {id}"),
-                            );
-                        }
-                    }
-                });
-        });
-    }
 }
-
-#[path = "algorithm_visualizer/canvas.rs"]
-mod canvas;
 
 impl InteractiveTool for AlgorithmVisualizerTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
@@ -324,19 +344,64 @@ impl InteractiveTool for AlgorithmVisualizerTool {
     fn name(&self) -> &'static str {
         "Algorithm Visualizer"
     }
-
     fn domain(&self) -> &'static str {
         "graph_theory"
     }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("node_count", self.node_positions.len() as f64),
+            ("edge_count", self.edges.len() as f64),
+            ("visited_count", self.visit_order.len() as f64),
+            (
+                "synced_bus_revision",
+                self.synced_bus_revision.unwrap_or(0) as f64,
+            ),
+        ]
+    }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_visualizer_plot_primitives()
+    }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.build_visualizer_datasets()
+    }
+    fn step_simulation(&mut self) {
+        let total = self.total_steps();
+        if total > 0 {
+            self.animation_step = (self.animation_step + 1) % (total + 1);
+        }
+    }
+    fn state_revision(&self) -> u64 {
+        self.revision.max(1)
+    }
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn save_state(&self) -> Option<String> {
+        let on_bus = self.synced_bus_revision.is_some();
+        let include_sink = !on_bus
+            && (self.selected_algorithm == Algorithm::MaxFlowMinCut || self.is_custom_topology);
+        let custom_topology = (!on_bus && self.is_custom_topology)
+            .then(|| self.export_shared_topology().to_compact_state());
         serde_json::to_string(&AlgorithmVisualizerState {
             selected_algorithm: self.selected_algorithm,
-            start_node: self.start_node,
+            start_node: if on_bus {
+                self.local_start_node
+            } else {
+                self.start_node
+            },
+            sink_node: include_sink
+                .then(|| self.effective_sink_node(self.start_node))
+                .flatten(),
             playback_speed: self.playback_speed,
+            custom_topology,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -350,23 +415,42 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                 loaded.playback_speed
             ));
         }
+        if let Some(compact) = &loaded.custom_topology {
+            compact.validate()?;
+            self.synced_bus_revision = None;
+            self.load_compact_topology(compact);
+        } else if self.is_custom_topology || self.synced_bus_revision.take().is_some() {
+            self.build_sample_graph();
+        }
         if let Some(id) = loaded.start_node {
             if !self.node_indices.contains_key(&id) {
                 return Err(format!("Unknown start_node id: {id}"));
             }
         }
+        if let Some(sink) = loaded.sink_node {
+            if !self.node_indices.contains_key(&sink) || Some(sink) == loaded.start_node {
+                return Err(format!("Invalid sink_node id: {sink}"));
+            }
+        }
         self.selected_algorithm = loaded.selected_algorithm;
+        self.topology_source = loaded.topology_source;
         self.start_node = loaded.start_node;
+        self.local_start_node = loaded.start_node;
         if let Some(id) = loaded.start_node {
             self.focused_node = id;
         }
+        self.sink_node = loaded
+            .sink_node
+            .or_else(|| self.effective_sink_node(self.start_node));
         self.playback_speed = loaded.playback_speed;
+        self.bump_revision();
         self.run_algorithm();
         Ok(())
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.sync_shared_topology(&ctx);
         self.update_animation(&ctx);
         self.render_controls(ui);
         self.render_canvas(ui);
@@ -380,74 +464,11 @@ inventory::submit! {
         id: "AlgorithmVisualizerTool",
         display_name: "Algorithm Visualizer",
         domain: "graph_theory",
-        tags: &["dijkstra", "bfs", "dfs", "algorithm"],
+        tags: &["dijkstra", "bfs", "dfs", "max-flow", "min-cut", "mst", "kruskal", "algorithm"],
         build: || Box::new(AlgorithmVisualizerTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool {
-    fn theory_description(&self) -> String {
-        let algo_str = match self.selected_algorithm {
-            Algorithm::Dijkstra => "Dijkstra shortest path algorithm via priority relaxation $d(v) = \\min(d(v), d(u) + w(u, v))$",
-            Algorithm::Bfs => "Breadth-First Search level-order queue traversal computing unweighted shortest path distances",
-            Algorithm::Dfs => "Depth-First Search recursive stack traversal exploring graph connectivity and cycles",
-        };
-        format!(
-            "Graph traversal and pathfinding analysis executing {} across $|V| = {}$ nodes and $|E| = {}$ edges.",
-            algo_str, self.node_positions.len(), self.edges.len()
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Graph search and shortest path algorithm theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "A Note on Two Problems in Connexion with Graphs (Dijkstra, 1959); Introduction to Algorithms (Cormen et al., 2022)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "Dijkstra".into(),
-            "Greedy shortest path in non-negatively weighted graphs".into(),
-        );
-        map.insert(
-            "BFS".into(),
-            "Queue-based breadth traversal finding minimum hop counts".into(),
-        );
-        map.insert(
-            "DFS".into(),
-            "Stack-based depth exploration identifying connected components".into(),
-        );
-        map
     }
 }
 
 #[cfg(test)]
 #[path = "algorithm_visualizer_tests.rs"]
 mod algorithm_visualizer_tests;
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Dijkstra Shortest Path",
-    "domain": "graph_theory",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "selected_algorithm": "Dijkstra",
-    "start_node": 5,
-    "playback_speed": 3.0
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "algorithm_visualizer_starter",
-        title: "Dijkstra Shortest Path",
-        description: "Priority-queue shortest path relaxation across weighted undirected graph topologies.",
-        category: "Graph Algorithms",
-        icon: "🛤️",
-        domain: "graph_theory",
-        tool_name: Some("AlgorithmVisualizerTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}

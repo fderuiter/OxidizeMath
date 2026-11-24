@@ -54,6 +54,8 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         EllipticCurveError::InvalidDegree.into(),
         EvolutionError::InvalidState.into(),
         FractranError::InvalidFractionSyntax.into(),
+        GraphTheoryError::UnknownEndpoint { node: 9 }.into(),
+        HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.into(),
         LinearAlgebraError::SingularMatrix.into(),
         OptimizationError::from(EvolutionError::ConversionError).into(),
         StochasticError::InvalidReactionIndex(3).into(),
@@ -152,6 +154,18 @@ fn test_kelly_validation_and_solvency_variants_umbrella_and_diagnostics() {
         },
         KellyError::ConvergenceFailed {
             reason: "bracket failed",
+        },
+        KellyError::InvalidProbabilityDistribution { sum: 0.95 },
+        KellyError::InvalidMarketProbabilitySum { sum: 1.05 },
+        KellyError::EmptyPortfolio,
+        KellyError::PortfolioTooLarge { count: 65, max: 64 },
+        KellyError::InvalidDrawdownBounds {
+            alpha: 1.1,
+            beta: 0.1,
+        },
+        KellyError::SolverConvergenceFailed {
+            iterations: 512,
+            residual: 1e-3,
         },
     ];
     let bus = DiagnosticBus::new();

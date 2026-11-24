@@ -2,7 +2,7 @@ use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DOMAIN_CRATES: &[&str] = &[
+pub(super) const DOMAIN_CRATES: &[&str] = &[
     "pure_math",
     "domain_ai",
     "domain_applied",
@@ -68,7 +68,7 @@ fn collect_active_guide_paths(workspace_root: &Path) -> Vec<PathBuf> {
     guides
 }
 
-struct FacadeImportPatterns {
+pub(super) struct FacadeImportPatterns {
     doc_re: Regex,
     forbidden_re: Regex,
     bypass_re: Regex,
@@ -77,7 +77,7 @@ struct FacadeImportPatterns {
 }
 
 impl FacadeImportPatterns {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             doc_re: Regex::new(r"^\s*(?://!|///)\s?(.*)$").expect("Valid regex"),
             forbidden_re: Regex::new(r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math)::")
@@ -123,7 +123,7 @@ fn check_rng_snippet_line(
     }
 }
 
-fn check_markdown_facade_imports_with_patterns(
+pub(super) fn check_markdown_facade_imports_with_patterns(
     path: &Path,
     content: &str,
     patterns: &FacadeImportPatterns,
@@ -180,7 +180,7 @@ pub fn check_markdown_facade_imports(path: &Path, content: &str) -> Vec<String> 
     check_markdown_facade_imports_with_patterns(path, content, &patterns)
 }
 
-fn check_rustdoc_facade_imports_with_patterns(
+pub(super) fn check_rustdoc_facade_imports_with_patterns(
     path: &Path,
     content: &str,
     patterns: &FacadeImportPatterns,
@@ -244,7 +244,7 @@ pub fn check_rustdoc_facade_imports(path: &Path, content: &str) -> Vec<String> {
     check_rustdoc_facade_imports_with_patterns(path, content, &patterns, true, false)
 }
 
-fn check_example_facade_imports_with_patterns(
+pub(super) fn check_example_facade_imports_with_patterns(
     path: &Path,
     content: &str,
     patterns: &FacadeImportPatterns,
@@ -290,11 +290,26 @@ pub fn check_example_facade_imports(path: &Path, content: &str) -> Vec<String> {
     check_example_facade_imports_with_patterns(path, content, &patterns)
 }
 
-fn is_default_rng_allowlisted(workspace_root: &Path, path: &Path, allowlist: &[String]) -> bool {
+pub(super) fn is_default_rng_allowlisted(
+    workspace_root: &Path,
+    path: &Path,
+    allowlist: &[String],
+) -> bool {
     let rel = path.strip_prefix(workspace_root).unwrap_or(path);
     let norm = rel.to_string_lossy().replace('\\', "/");
     let norm = norm.strip_prefix("./").unwrap_or(&norm);
     allowlist.iter().any(|entry| entry == norm)
+}
+
+pub(super) fn load_default_rng_allowlist(workspace_root: &Path) -> Vec<String> {
+    let wl_candidate = workspace_root.join(crate::whitelist::WHITELIST_FILE_NAME);
+    crate::whitelist::load_whitelist_or_default(
+        wl_candidate.is_file().then_some(wl_candidate.as_path()),
+        crate::whitelist::WORKSPACE_WHITELIST_CANDIDATES,
+    )
+    .entropy_guard
+    .and_then(|cfg| cfg.default_rng_allowlist)
+    .unwrap_or_default()
 }
 
 /// Audits active Markdown guides, domain/core rustdoc blocks, and `math_explorer` examples/benchmarks.
@@ -306,6 +321,7 @@ fn audit_non_domain_and_example_hygiene(
 ) {
     for extra_src in [
         workspace_root.join("crates/oxidize_core/src"),
+        workspace_root.join("crates/02_engines/engine_linalg/src"),
         workspace_root.join("crates/math_commons/src"),
         workspace_root.join("math_explorer/src"),
         workspace_root.join("math_explorer_gui/src"),
@@ -343,14 +359,7 @@ fn audit_non_domain_and_example_hygiene(
 
 pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
     let patterns = FacadeImportPatterns::new();
-    let wl_candidate = workspace_root.join(crate::whitelist::WHITELIST_FILE_NAME);
-    let default_allow = crate::whitelist::load_whitelist_or_default(
-        wl_candidate.is_file().then_some(wl_candidate.as_path()),
-        crate::whitelist::WORKSPACE_WHITELIST_CANDIDATES,
-    )
-    .entropy_guard
-    .and_then(|cfg| cfg.default_rng_allowlist)
-    .unwrap_or_default();
+    let default_allow = load_default_rng_allowlist(workspace_root);
     let mut violations = Vec::new();
 
     for md_path in collect_active_guide_paths(workspace_root) {

@@ -261,9 +261,7 @@ fn test_physics_and_chaos_runners_step_once() {
         params: Arc::new(std::sync::RwLock::new(IsingSharedParams {
             temperature: 2.269,
             j_coupling: 1.0,
-            h_field: 0.0,
             steps_per_frame: 5000,
-            theme: crate::app::ThemeMode::Dark,
             ..Default::default()
         })),
     };
@@ -271,15 +269,16 @@ fn test_physics_and_chaos_runners_step_once() {
     assert!(ising.is_finite_state());
 
     let initial_m = Vector3::new(1.0, 0.0, 0.0);
+    let mri_params = MriSharedParams {
+        t1: 1.0,
+        t2: 0.1,
+        b_field: Vector3::new(0.0, 0.0, 1.0),
+        time_scale: 5.0,
+    };
     let mut mri = MriRunner {
         simulator: BlochSimulator::new(initial_m, 1.0),
         solver: RungeKutta4::new(&initial_m),
-        params: Arc::new(std::sync::RwLock::new(MriSharedParams {
-            t1: 1.0,
-            t2: 0.1,
-            b_field: Vector3::new(0.0, 0.0, 1.0),
-            time_scale: 5.0,
-        })),
+        params: Arc::new(std::sync::RwLock::new(mri_params)),
         current_time: 0.0,
         history: VecDeque::new(),
         max_history: 100,
@@ -288,8 +287,7 @@ fn test_physics_and_chaos_runners_step_once() {
         rng: oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED),
     };
     mri.step_once();
-    assert!((mri.current_time - 0.001).abs() < 1e-12);
-    assert_eq!(mri.history.len(), 1);
+    assert!((mri.current_time - 0.001).abs() < 1e-12 && mri.history.len() == 1);
 
     let mut attractor =
         AttractorRunner::from_params(Arc::new(std::sync::RwLock::new(AttractorSharedParams {
@@ -301,6 +299,7 @@ fn test_physics_and_chaos_runners_step_once() {
             max_points: 500,
             mode: AttractorMode::Lorenz,
             custom_flow: None,
+            sim_bus: None,
         })));
     attractor.execution_state = SolverExecutionState::Paused;
     attractor.step_once();

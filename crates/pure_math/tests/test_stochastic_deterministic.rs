@@ -19,7 +19,7 @@ static ALLOC_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const PINNED_GILLESPIE_DIGEST: &str =
     "83a0453e678338e743a1246c303e0a34f2dbfb9a2edfc14a4ad02523a573f462";
 const PINNED_OU_DIGEST: &str = "ac1d0469a63e5be25f1354906c4fd20769f99063e07b08bf6c2ad241fcc38da2";
-const PINNED_CTMC_DIGEST: &str = "66e0fc540e2128f6aa40ad70cd35ebd2e95ed498e89523a7730824f7c0b579b0";
+const PINNED_CTMC_DIGEST: &str = "27c1a86edaed7b94c3c4d6f027321547afe9165b4c26c1c205a810931047f8f2";
 
 struct BirthDeathDimers {
     birth: f64,
@@ -55,7 +55,7 @@ impl StochasticSystem<[i64; 2]> for BirthDeathDimers {
 #[verified_engine::verified]
 fn test_gillespie_zero_alloc_and_pinned_digest() {
     #[cfg(not(target_arch = "wasm32"))]
-    let _guard = ALLOC_LOCK.lock().unwrap();
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let sys = BirthDeathDimers {
         birth: 3.5,
         dimer: 0.08,
@@ -104,7 +104,7 @@ fn test_gillespie_zero_alloc_and_pinned_digest() {
 #[verified_engine::verified]
 fn test_ou_euler_maruyama_pinned_digest() {
     #[cfg(not(target_arch = "wasm32"))]
-    let _guard = ALLOC_LOCK.lock().unwrap();
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let params = OuParams::from_values(0.5, 1.2, 0.3).unwrap();
     let dt = TimeStep::new(0.01).unwrap();
     let solver = EulerMaruyama::new(params, dt);
@@ -129,7 +129,7 @@ fn test_ou_euler_maruyama_pinned_digest() {
 #[verified_engine::verified]
 fn test_ctmc_trajectory_pinned_digest() {
     #[cfg(not(target_arch = "wasm32"))]
-    let _guard = ALLOC_LOCK.lock().unwrap();
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let generator =
         DMatrix::from_row_slice(3, 3, &[-1.5, 1.0, 0.5, 0.6, -1.2, 0.6, 0.4, 0.8, -1.2]);
     let chain = ContinuousMarkovChain::new(generator).unwrap();

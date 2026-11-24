@@ -183,6 +183,15 @@ impl SpinLattice {
         &self.spins
     }
 
+    /// Resets all spins in place to `spin` (`+1` or `-1`) and reseeds the internal RNG with zero heap allocations.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn reset_uniform_with_seed(&mut self, spin: i8, seed: u64) {
+        let val = if spin >= 0 { 1 } else { -1 };
+        self.spins.fill(val);
+        self.rng = oxidize_core::rng::OxidizeRng::new(seed);
+    }
+
     /// Calculates the total energy (Hamiltonian) of the lattice.
     ///
     /// Formula: H = -J * sum_<i,j> s_i s_j - h * sum_i s_i
@@ -209,6 +218,38 @@ impl SpinLattice {
     #[verified_engine::verified]
     pub fn magnetization(&self) -> i64 {
         self.spins.iter().map(|&s| s as i64).sum()
+    }
+
+    /// Calculates the checkerboard staggered magnetization for antiferromagnetic order ($J < 0$).
+    ///
+    /// Formula: $M_{\text{stag}} = \sum_{x, y} (-1)^{x + y} s_{x, y}$
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use domain_physics::__doctest_facade as math_explorer;
+    /// use math_explorer::physics::stat_mech::ising::SpinLattice;
+    ///
+    /// let mut lattice = SpinLattice::new(8, 8, Some(1));
+    /// for y in 0..8 {
+    ///     for x in 0..8 {
+    ///         lattice.set(x, y, if (x + y) % 2 == 0 { 1 } else { -1 });
+    ///     }
+    /// }
+    /// assert_eq!(lattice.magnetization(), 0);
+    /// assert_eq!(lattice.staggered_magnetization(), 64);
+    /// ```
+    #[verified_engine::verified]
+    pub fn staggered_magnetization(&self) -> i64 {
+        let mut total = 0_i64;
+        for y in 0..self.height {
+            let row_offset = y * self.width;
+            for x in 0..self.width {
+                let sign = if (x + y) & 1 == 0 { 1_i64 } else { -1_i64 };
+                total += sign * i64::from(self.spins[row_offset + x]);
+            }
+        }
+        total
     }
 
     /// Performs one Metropolis algorithm step (one attempt).
@@ -334,6 +375,42 @@ impl SpinLattice {
     /// ```
     #[verified_engine::verified]
     pub fn evolve_fermi_game(&mut self, steps: usize, temperature: f64, payoff: &MatrixPayoff) {
+        self.evolve_fermi_game_with_mutation(steps, temperature, payoff, 0.0);
+    }
+
+    /// Evolves a spatial 2x2 evolutionary game via pairwise Fermi imitation with spontaneous
+    /// strategy mutation (`mutation_prob` clamped to `[0.0, 0.05]`).
+    ///
+    /// When `mutation_prob > 0.0`, each trial flips the focal spin spontaneously with probability
+    /// `mutation_prob` before attempting neighbor imitation, allowing absorbed all-`-1` or all-`+1`
+    /// lattices to recover via rare mutant nucleation with zero heap allocations.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use domain_physics::__doctest_facade as math_explorer;
+    /// use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
+    /// use math_explorer::nalgebra::DMatrix;
+    /// use math_explorer::physics::stat_mech::ising::SpinLattice;
+    ///
+    /// let harmony = MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.5, 0.5, 0.5, 0.0])).unwrap();
+    /// let mut lattice = SpinLattice::new(16, 16, Some(9));
+    /// for y in 0..16 {
+    ///     for x in 0..16 {
+    ///         lattice.set(x, y, -1);
+    ///     }
+    /// }
+    /// lattice.evolve_fermi_game_with_mutation(4_000, 0.1, &harmony, 0.02);
+    /// assert!(lattice.magnetization() > -256);
+    /// ```
+    #[verified_engine::verified]
+    pub fn evolve_fermi_game_with_mutation(
+        &mut self,
+        steps: usize,
+        temperature: f64,
+        payoff: &MatrixPayoff,
+        mutation_prob: f64,
+    ) {
         let mat = payoff.payoff_matrix();
         if steps == 0
             || self.spins.is_empty()
@@ -347,11 +424,20 @@ impl SpinLattice {
         if !r.is_finite() || !s.is_finite() || !t.is_finite() || !p.is_finite() {
             return;
         }
+        let mu = if mutation_prob.is_finite() {
+            mutation_prob.clamp(0.0, 0.05)
+        } else {
+            0.0
+        };
         let lut = build_fermi_lut(r, s, t, p, 1.0 / temperature.max(1e-3));
         let count = self.width * self.height;
 
         for _ in 0..steps {
             let idx = self.rng.gen_range(0_u64..(count as u64)) as usize;
+            if mu > 0.0 && self.rng.r#gen::<f64>() < mu {
+                self.spins[idx] = -self.spins[idx];
+                continue;
+            }
             let s_i = self.spins[idx];
             let j_idx = self.neighbors[idx][self.rng.gen_range(0_u64..4) as usize];
             let s_j = self.spins[j_idx];
@@ -367,120 +453,5 @@ impl SpinLattice {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::physics::stat_mech::KB;
-    use domain_applied::applied::game_theory::evolutionary::ReplicatorDynamics;
-    use nalgebra::{DMatrix, DVector};
-    use verified_engine::engine::VerifiedEngine;
-
-    static VERIFIED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn seeded_droplet(r: i32, seed: u64) -> SpinLattice {
-        let mut lat = SpinLattice::new(30, 30, Some(seed));
-        for y in 0..30 {
-            for x in 0..30 {
-                let (dx, dy) = (x as i32 - 15, y as i32 - 15);
-                lat.set(x, y, if dx * dx + dy * dy <= r * r { 1 } else { -1 });
-            }
-        }
-        lat
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_ising_disordered() {
-        // High temperature limit. T >> J/k_B.
-        // Magnetization should be near 0 on average.
-        // J = 1.0 Joules (normalized).
-        // T = very high. e.g. KB*T = 1000 * J.
-        // T = 1000 * J / KB.
-        let j_val = 1.0; // effectively unitless if we scale T
-        let h_val = 0.0;
-        let t_high = 100.0 * j_val / KB; // High Temp
-
-        let width = 20;
-        let height = 20;
-        let mut lattice = SpinLattice::new(width, height, None);
-
-        // Run many steps to equilibrate
-        let steps = 10_000;
-        for _ in 0..steps {
-            lattice.metropolis_step(t_high, j_val, h_val);
-        }
-
-        let m = lattice.magnetization();
-        let max_m = (width * height) as f64;
-        let avg_m_per_spin = m as f64 / max_m;
-
-        // In disordered phase, magnetization should be small (random fluctuations).
-        // It won't be exactly 0, but should be close to 0 compared to 1.
-        // <M> ~ 0.
-        assert!(
-            avg_m_per_spin.abs() < 0.3,
-            "High T Ising should be disordered (M ~ 0). Got {}",
-            avg_m_per_spin
-        );
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_fermi_game_zero_allocations_under_verified_allocator() {
-        let mut lattice = SpinLattice::new(100, 100, Some(7));
-        let payoff =
-            MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.0, -0.1, 1.35, 0.0])).unwrap();
-
-        let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let ((), metrics) = VerifiedEngine::run_verified(|| {
-            lattice.evolve_fermi_game(10_000, 0.0, &payoff);
-        });
-        assert!(metrics.function_calls >= 2);
-        assert!(lattice.magnetization().abs() <= 10_000);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_prisoners_dilemma_droplet_survival_vs_replicator_collapse() {
-        let pd_mat = DMatrix::from_row_slice(2, 2, &[1.0, -0.1, 1.25, 0.0]);
-        let payoff = MatrixPayoff::new(pd_mat.clone()).unwrap();
-
-        let mut isolated_lat = seeded_droplet(0, 1234);
-        isolated_lat.evolve_fermi_game(30 * 30 * 20, 0.08, &payoff);
-        assert_eq!(isolated_lat.magnetization(), -900);
-
-        let mut droplet_lat = seeded_droplet(5, 1234);
-        let init_coop = (droplet_lat.magnetization() as f64 / 900.0 + 1.0) * 0.5;
-        droplet_lat.evolve_fermi_game(30 * 30 * 50, 0.08, &payoff);
-        let final_coop = (droplet_lat.magnetization() as f64 / 900.0 + 1.0) * 0.5;
-        assert!(
-            final_coop > 0.7,
-            "Droplet must expand ({init_coop:.3} -> {final_coop:.3})"
-        );
-
-        let ode = ReplicatorDynamics::new(pd_mat).unwrap();
-        let traj = ode.simulate(
-            DVector::from_vec(vec![init_coop, 1.0 - init_coop]),
-            40.0,
-            0.1,
-        );
-        assert!(traj.last().unwrap().1[0] < 1e-2);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_fermi_game_temperature_phase_transition() {
-        let payoff =
-            MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.0, -0.1, 1.25, 0.0])).unwrap();
-        let mut cold = seeded_droplet(5, 99);
-        cold.evolve_fermi_game(30 * 30 * 60, 0.08, &payoff);
-        let cold_coop = (cold.magnetization() as f64 / 900.0 + 1.0) * 0.5;
-
-        let mut hot = seeded_droplet(5, 99);
-        hot.evolve_fermi_game(30 * 30 * 60, 0.9, &payoff);
-        let hot_coop = (hot.magnetization() as f64 / 900.0 + 1.0) * 0.5;
-        assert!(
-            cold_coop > hot_coop + 0.3,
-            "Expected phase transition: {cold_coop:.3} vs {hot_coop:.3}"
-        );
-    }
-}
+#[path = "ising_tests.rs"]
+mod tests;
