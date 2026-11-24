@@ -357,6 +357,7 @@ fn default_tool_priority(domain: &str, id: &str) -> u8 {
         | ("elliptic_curves", "WeierstrassPlaygroundTool")
         | ("clinical_trials", "PharmacokineticsTool")
         | ("epidemiology", "SirTool")
+        | ("biochemical", "BiochemicalDynamicsTool")
         | ("ai", "LossLandscapeTool") => 0,
         ("analysis", "CurvilinearVectorStudio")
         | ("analysis", "RiemannSurfaceStudio")

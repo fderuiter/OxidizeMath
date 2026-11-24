@@ -398,13 +398,6 @@ impl WaveRunner {
         self.update_observables_in_place();
         self.refresh_sonification(dt);
     }
-
-    /// Current latched pre-wall transmission readout $T_{\text{scatter}}$, if latched.
-    #[cfg(test)]
-    #[must_use]
-    pub fn latched_transmission(&self) -> Option<f64> {
-        self.latched_transmission
-    }
 }
 
 impl SimulationRunner for WaveRunner {

@@ -4189,7 +4189,22 @@
   ],
   "crates/domain_biology/src/biology/evolution.rs": [
     {
+      "signature": "impl HawkDovePopulation { pub fn cooperator_defector_payoffs (& self) -> [f64 ; 4] }"
+    },
+    {
+      "signature": "impl HawkDovePopulation { pub fn ess_hawk_frequency (& self) -> f64 }"
+    },
+    {
+      "signature": "impl HawkDovePopulation { pub fn expected_fitness (& self , _ : f64) -> (f64 , f64) }"
+    },
+    {
       "signature": "impl HawkDovePopulation { pub fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl HawkDovePopulation { pub fn payoff_matrix (& self) -> [[f64 ; 2] ; 2] }"
+    },
+    {
+      "signature": "impl HawkDovePopulation { pub fn replicator_velocity (& self , _ : f64) -> f64 }"
     },
     {
       "signature": "impl HawkDovePopulation { pub fn to_replicator_dynamics (& self) -> Result < ReplicatorDynamics , GameTheoryError > }"
@@ -4588,9 +4603,191 @@
       "signature": "pub struct LeniaGenome"
     }
   ],
+  "crates/domain_biology/src/biology/lsystem/grammar.rs": [
+    {
+      "signature": "impl ExpansionToken { pub fn d0l (_ : u8) -> Self }"
+    },
+    {
+      "signature": "impl ExpansionToken { pub fn parametric (_ : u8 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn bounds (& self) -> TurtleBounds }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn derive_bounded (& mut self , _ : usize) -> Result < usize , BotanicalError > }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn generation (& self) -> usize }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn grammar (& self) -> & LSystemGrammar }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn new (_ : LSystemGrammar , _ : TurtleConfig , _ : usize ,) -> Result < Self , BotanicalError > }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn params (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn reconfigure (& mut self , _ : LSystemGrammar , _ : TurtleConfig ,) -> Result < () , BotanicalError > }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn reset_to_axiom (& mut self) -> Result < () , BotanicalError > }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn segments (& self) -> & [TurtleSegment] }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn step (& mut self) -> Result < usize , BotanicalError > }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn symbols (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn turtle_config (& self) -> TurtleConfig }"
+    },
+    {
+      "signature": "impl LSystemGrammar { pub fn add_rule (& mut self , _ : ProductionRule) -> Result < () , BotanicalError > }"
+    },
+    {
+      "signature": "impl LSystemGrammar { pub fn match_rule (& self , _ : u8 , _ : f64) -> Option < & ProductionRule > }"
+    },
+    {
+      "signature": "impl LSystemGrammar { pub fn new_ascii (_ : & [u8]) -> Result < Self , BotanicalError > }"
+    },
+    {
+      "signature": "impl ProductionRule { pub fn from_ascii (_ : u8 , _ : & [u8]) -> Result < Self , BotanicalError > }"
+    },
+    {
+      "signature": "impl ProductionRule { pub fn from_tokens (_ : u8 , _ : f64 , _ : & [ExpansionToken] ,) -> Result < Self , BotanicalError > }"
+    },
+    {
+      "signature": "pub const MAX_LSYSTEM_RULES : usize"
+    },
+    {
+      "signature": "pub const MAX_LSYSTEM_SYMBOLS : usize"
+    },
+    {
+      "signature": "pub const MAX_RULE_EXPANSION : usize"
+    },
+    {
+      "signature": "pub const MAX_TURTLE_STACK_DEPTH : usize"
+    },
+    {
+      "signature": "pub struct ExpansionToken"
+    },
+    {
+      "signature": "pub struct LSystemEngine"
+    },
+    {
+      "signature": "pub struct LSystemGrammar"
+    },
+    {
+      "signature": "pub struct ProductionRule"
+    }
+  ],
+  "crates/domain_biology/src/biology/lsystem/mod.rs": [
+    {
+      "signature": "pub use grammar :: ExpansionToken"
+    },
+    {
+      "signature": "pub use grammar :: LSystemEngine"
+    },
+    {
+      "signature": "pub use grammar :: LSystemGrammar"
+    },
+    {
+      "signature": "pub use grammar :: MAX_LSYSTEM_RULES"
+    },
+    {
+      "signature": "pub use grammar :: MAX_LSYSTEM_SYMBOLS"
+    },
+    {
+      "signature": "pub use grammar :: MAX_RULE_EXPANSION"
+    },
+    {
+      "signature": "pub use grammar :: MAX_TURTLE_STACK_DEPTH"
+    },
+    {
+      "signature": "pub use grammar :: ProductionRule"
+    },
+    {
+      "signature": "pub use presets :: BotanicalLSystemPreset"
+    },
+    {
+      "signature": "pub use turtle :: TurtleBounds"
+    },
+    {
+      "signature": "pub use turtle :: TurtleConfig"
+    },
+    {
+      "signature": "pub use turtle :: TurtleSegment"
+    },
+    {
+      "signature": "pub use turtle :: TurtleState"
+    }
+  ],
+  "crates/domain_biology/src/biology/lsystem/presets.rs": [
+    {
+      "signature": "impl BotanicalLSystemPreset { pub const ALL : [Self ; 5] }"
+    },
+    {
+      "signature": "impl BotanicalLSystemPreset { pub fn build_engine (self) -> Result < LSystemEngine , BotanicalError > }"
+    },
+    {
+      "signature": "impl BotanicalLSystemPreset { pub fn build_grammar (self , _ : f64 , _ : f64 , _ : f64 ,) -> Result < (LSystemGrammar , TurtleConfig) , BotanicalError > }"
+    },
+    {
+      "signature": "impl BotanicalLSystemPreset { pub fn default_angle_deg (self) -> f64 }"
+    },
+    {
+      "signature": "impl BotanicalLSystemPreset { pub fn default_contraction_lateral (self) -> f64 }"
+    },
+    {
+      "signature": "impl BotanicalLSystemPreset { pub fn default_contraction_primary (self) -> f64 }"
+    },
+    {
+      "signature": "impl BotanicalLSystemPreset { pub fn default_generations (self) -> usize }"
+    },
+    {
+      "signature": "impl BotanicalLSystemPreset { pub fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum BotanicalLSystemPreset"
+    }
+  ],
+  "crates/domain_biology/src/biology/lsystem/turtle.rs": [
+    {
+      "signature": "impl LSystemEngine { pub fn interpret_turtle (& mut self) -> Result < () , BotanicalError > }"
+    },
+    {
+      "signature": "impl TurtleBounds { pub fn height (& self) -> f64 }"
+    },
+    {
+      "signature": "impl TurtleBounds { pub fn width (& self) -> f64 }"
+    },
+    {
+      "signature": "impl TurtleConfig { pub fn validate (& self) -> Result < () , BotanicalError > }"
+    },
+    {
+      "signature": "pub struct TurtleBounds"
+    },
+    {
+      "signature": "pub struct TurtleConfig"
+    },
+    {
+      "signature": "pub struct TurtleSegment"
+    },
+    {
+      "signature": "pub struct TurtleState"
+    }
+  ],
   "crates/domain_biology/src/biology/mod.rs": [
     {
       "signature": "pub use crate :: error"
+    },
+    {
+      "signature": "pub use crate :: error :: BotanicalError"
     },
     {
       "signature": "pub use kinetics :: KineticsError"
@@ -4922,6 +5119,114 @@
       "signature": "pub struct HodgkinHuxleyState"
     }
   ],
+  "crates/domain_biology/src/biology/phyllotaxis/mod.rs": [
+    {
+      "signature": "pub use parastichy :: ParastichyAnalysis"
+    },
+    {
+      "signature": "pub use parastichy :: is_consecutive_fibonacci_pair"
+    },
+    {
+      "signature": "pub use vogel :: DivergenceAnglePreset"
+    },
+    {
+      "signature": "pub use vogel :: GOLDEN_ANGLE_DEG"
+    },
+    {
+      "signature": "pub use vogel :: GOLDEN_ANGLE_RAD"
+    },
+    {
+      "signature": "pub use vogel :: GOLDEN_RATIO"
+    },
+    {
+      "signature": "pub use vogel :: MAX_PRIMORDIA"
+    },
+    {
+      "signature": "pub use vogel :: PrimordiumPoint"
+    },
+    {
+      "signature": "pub use vogel :: VogelPhyllotaxisEngine"
+    }
+  ],
+  "crates/domain_biology/src/biology/phyllotaxis/parastichy.rs": [
+    {
+      "signature": "pub fn analyze_parastichies (_ : & [PrimordiumPoint] , _ : f64 , _ : f64 ,) -> ParastichyAnalysis"
+    },
+    {
+      "signature": "pub fn fill_parastichy_chain (_ : usize , _ : usize , _ : usize , _ : & mut Vec < usize > ,)"
+    },
+    {
+      "signature": "pub fn is_consecutive_fibonacci_pair (_ : usize , _ : usize) -> bool"
+    },
+    {
+      "signature": "pub struct ParastichyAnalysis"
+    }
+  ],
+  "crates/domain_biology/src/biology/phyllotaxis/vogel.rs": [
+    {
+      "signature": "impl DivergenceAnglePreset { pub const ALL : [Self ; 6] }"
+    },
+    {
+      "signature": "impl DivergenceAnglePreset { pub fn angle_deg (self) -> f64 }"
+    },
+    {
+      "signature": "impl DivergenceAnglePreset { pub fn angle_rad (self) -> f64 }"
+    },
+    {
+      "signature": "impl DivergenceAnglePreset { pub fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl VogelPhyllotaxisEngine { pub fn analysis (& self) -> ParastichyAnalysis }"
+    },
+    {
+      "signature": "impl VogelPhyllotaxisEngine { pub fn count (& self) -> usize }"
+    },
+    {
+      "signature": "impl VogelPhyllotaxisEngine { pub fn divergence_rad (& self) -> f64 }"
+    },
+    {
+      "signature": "impl VogelPhyllotaxisEngine { pub fn golden (_ : usize , _ : f64) -> Result < Self , BotanicalError > }"
+    },
+    {
+      "signature": "impl VogelPhyllotaxisEngine { pub fn new (_ : usize , _ : f64 , _ : f64) -> Result < Self , BotanicalError > }"
+    },
+    {
+      "signature": "impl VogelPhyllotaxisEngine { pub fn points (& self) -> & [PrimordiumPoint] }"
+    },
+    {
+      "signature": "impl VogelPhyllotaxisEngine { pub fn recompute (& mut self) }"
+    },
+    {
+      "signature": "impl VogelPhyllotaxisEngine { pub fn scale (& self) -> f64 }"
+    },
+    {
+      "signature": "impl VogelPhyllotaxisEngine { pub fn set_parameters (& mut self , _ : usize , _ : f64 , _ : f64 ,) -> Result < () , BotanicalError > }"
+    },
+    {
+      "signature": "impl VogelPhyllotaxisEngine { pub fn trace_parastichy_arm (& mut self , _ : usize , _ : usize) -> & [usize] }"
+    },
+    {
+      "signature": "pub const GOLDEN_ANGLE_DEG : f64"
+    },
+    {
+      "signature": "pub const GOLDEN_ANGLE_RAD : f64"
+    },
+    {
+      "signature": "pub const GOLDEN_RATIO : f64"
+    },
+    {
+      "signature": "pub const MAX_PRIMORDIA : usize"
+    },
+    {
+      "signature": "pub enum DivergenceAnglePreset"
+    },
+    {
+      "signature": "pub struct PrimordiumPoint"
+    },
+    {
+      "signature": "pub struct VogelPhyllotaxisEngine"
+    }
+  ],
   "crates/domain_biology/src/biology/reaction_diffusion/mod.rs": [
     {
       "signature": "pub enum ReactionDiffusionError"
@@ -4936,6 +5241,9 @@
       "signature": "pub use model :: ReactionDiffusionSystemBuilder"
     },
     {
+      "signature": "pub use models :: HillSubstrateReaction"
+    },
+    {
       "signature": "pub use state :: ChemicalState"
     },
     {
@@ -4943,6 +5251,9 @@
     },
     {
       "signature": "pub use traits :: ReactionModel"
+    },
+    {
+      "signature": "pub use traits :: STACK_REACTION_SPECIES_CAP"
     }
   ],
   "crates/domain_biology/src/biology/reaction_diffusion/model.rs": [
@@ -4995,6 +5306,17 @@
       "signature": "pub struct ReactionDiffusionSystemBuilder < R , D , S >"
     }
   ],
+  "crates/domain_biology/src/biology/reaction_diffusion/models.rs": [
+    {
+      "signature": "impl HillSubstrateReaction { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , KineticsError > }"
+    },
+    {
+      "signature": "impl HillSubstrateReaction { pub fn turnover_flux (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub struct HillSubstrateReaction"
+    }
+  ],
   "crates/domain_biology/src/biology/reaction_diffusion/state.rs": [
     {
       "signature": "impl ChemicalState { pub fn grid_size (& self) -> usize }"
@@ -5017,6 +5339,9 @@
   ],
   "crates/domain_biology/src/biology/reaction_diffusion/traits.rs": [
     {
+      "signature": "pub const STACK_REACTION_SPECIES_CAP : usize"
+    },
+    {
       "signature": "pub trait DiffusionModel"
     },
     {
@@ -5033,6 +5358,9 @@
     }
   ],
   "crates/domain_biology/src/error.rs": [
+    {
+      "signature": "pub enum BotanicalError"
+    },
     {
       "signature": "pub enum HodgkinHuxleyError"
     },
@@ -5059,6 +5387,9 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: BiologyError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: BotanicalError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: HodgkinHuxleyError } }"
     },
     {
@@ -5075,6 +5406,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: BiologyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: BotanicalError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: HodgkinHuxleyError } }"
@@ -17199,6 +17533,9 @@
     },
     {
       "signature": "pub use domain_biology :: error :: BiologyError"
+    },
+    {
+      "signature": "pub use domain_biology :: error :: BotanicalError"
     },
     {
       "signature": "pub use domain_biology :: error :: HodgkinHuxleyError"
