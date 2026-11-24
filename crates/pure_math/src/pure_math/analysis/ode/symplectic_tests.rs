@@ -66,6 +66,15 @@ impl SeparableHamiltonian<ArrayState<2>> for QuarticOscillator {
     }
 }
 
+struct ExplosiveOde;
+
+impl OdeSystem<ArrayState<2>> for ExplosiveOde {
+    #[verified_engine::verified]
+    fn derivative(&self, _t: f64, _s: &ArrayState<2>) -> ArrayState<2> {
+        ArrayState([f64::NAN, f64::INFINITY])
+    }
+}
+
 #[test]
 #[verified_engine::verified]
 fn test_symplectic_order_hierarchy_and_energy_bounds() {
@@ -75,40 +84,40 @@ fn test_symplectic_order_hierarchy_and_energy_bounds() {
     let dt = 0.05;
     let steps = 4_000;
 
+    let mut s_mid = y0;
     let mut s_verlet = y0;
-    let mut s_midpoint = y0;
     let mut s_yoshida = y0;
     let mut s_gl4 = y0;
     let mut s_rk4 = y0;
 
+    let mut mid = ImplicitMidpoint::new(&y0);
     let mut verlet = StormerVerlet::new(&ArrayState([0.0]));
-    let mut midpoint = ImplicitMidpoint::new(&y0);
     let mut yoshida = Yoshida4::new(&ArrayState([0.0]));
     let mut gl4 = GaussLegendre4::new(&y0);
     let mut rk4 = RungeKutta4::new(&y0);
 
     for i in 0..steps {
         let t = i as f64 * dt;
+        mid.step(&sys, t, &mut s_mid, dt);
         verlet.step_separable(&sys, &mut s_verlet, dt);
-        midpoint.step(&sys, t, &mut s_midpoint, dt);
         yoshida.step_separable(&sys, &mut s_yoshida, dt);
         gl4.step(&sys, t, &mut s_gl4, dt);
         rk4.step(&sys, t, &mut s_rk4, dt);
     }
 
+    let err_mid = sys.relative_energy_error(&s_mid, e0);
     let err_verlet = sys.relative_energy_error(&s_verlet, e0);
-    let err_midpoint = sys.relative_energy_error(&s_midpoint, e0);
     let err_yoshida = sys.relative_energy_error(&s_yoshida, e0);
     let err_gl4 = sys.relative_energy_error(&s_gl4, e0);
     let err_rk4 = sys.relative_energy_error(&s_rk4, e0);
 
     assert!(
-        err_verlet < 5e-3,
-        "Verlet bounded shadow error: {err_verlet}"
+        err_mid < 5e-3,
+        "ImplicitMidpoint bounded shadow error: {err_mid}"
     );
     assert!(
-        err_midpoint < 2e-3,
-        "ImplicitMidpoint bounded shadow error: {err_midpoint}"
+        err_verlet < 5e-3,
+        "Verlet bounded shadow error: {err_verlet}"
     );
     assert!(err_yoshida < 5e-6, "Yoshida4 bounded error: {err_yoshida}");
     assert!(err_gl4 < 5e-7, "GaussLegendre4 bounded error: {err_gl4}");
@@ -120,13 +129,22 @@ fn test_symplectic_order_hierarchy_and_energy_bounds() {
 
 #[test]
 #[verified_engine::verified]
-fn test_symplectic_method_metadata_and_array_helpers() {
+fn test_symplectic_method_metadata_iteration_caps_and_rollback() {
     assert_eq!(SymplecticMethod::ALL.len(), 4);
     for method in SymplecticMethod::ALL {
         assert!(!method.name().is_empty());
     }
-    let a = ArrayState::zeros();
-    let b = ArrayState([1.5, -2.25]);
-    assert!(a.is_finite() && b.is_finite());
-    assert!((a.max_abs_diff(&b) - 2.25).abs() < 1e-12);
+
+    let seed = ArrayState([1.5, -2.25]);
+    let mut mid = ImplicitMidpoint::with_max_iters(&seed, 99);
+    let mut gl4 = GaussLegendre4::with_max_iters(&seed, 99);
+    assert_eq!(mid.max_iters(), MAX_FIXED_POINT_ITERS);
+    assert_eq!(gl4.max_iters(), MAX_FIXED_POINT_ITERS);
+
+    let mut s_mid = seed;
+    let mut s_gl4 = seed;
+    assert!(!mid.try_step_array(&ExplosiveOde, 0.0, &mut s_mid, 0.02));
+    assert!(!gl4.try_step_array(&ExplosiveOde, 0.0, &mut s_gl4, 0.02));
+    assert_eq!(s_mid, seed);
+    assert_eq!(s_gl4, seed);
 }

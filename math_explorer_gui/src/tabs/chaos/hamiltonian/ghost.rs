@@ -23,7 +23,8 @@ impl HamiltonianChaosTool {
             deriv4: slot.deriv4,
             prev_deriv4: slot.prev_deriv4,
             state12: slot.state12,
-            section_points: Vec::with_capacity(128),
+            prev12: slot.prev12,
+            section_points: Vec::with_capacity(MAX_GHOST_SECTION_POINTS),
             section_write_idx: 0,
             trail: Vec::with_capacity(MAX_TRAIL_POINTS),
             symplectic_drift: Vec::with_capacity(MAX_DRIFT_SAMPLES),
@@ -83,6 +84,10 @@ impl HamiltonianChaosTool {
         self.ghost.prev_deriv4.copy_from(&self.ghost.deriv4);
         self.rk4_4
             .step(&self.pendulum, t, &mut self.ghost.state4, dt);
+        if !self.ghost.state4.is_finite() {
+            self.ghost.state4.copy_from(&self.ghost.prev4);
+            return;
+        }
         self.pendulum
             .derivative_in_place(t + dt, &self.ghost.state4, &mut self.ghost.deriv4);
         if let Some(hit) = self.poincare4.detect_crossing(
@@ -115,8 +120,13 @@ impl HamiltonianChaosTool {
         if !self.ghost.active {
             return;
         }
+        self.ghost.prev12.copy_from(&self.ghost.state12);
         self.rk4_12
             .step(&self.three_body, t, &mut self.ghost.state12, dt);
+        if !self.ghost.state12.is_finite() {
+            self.ghost.state12.copy_from(&self.ghost.prev12);
+            return;
+        }
         let rk4_err = self
             .three_body
             .relative_energy_error(&self.ghost.state12, self.ghost.initial_energy)

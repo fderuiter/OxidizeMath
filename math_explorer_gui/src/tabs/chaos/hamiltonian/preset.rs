@@ -47,6 +47,13 @@ pub struct HamiltonianLabState {
     pub is_playing: bool,
     /// Crosshair cursor `(q, p)` on the Poincaré plane.
     pub cursor_qp: [f64; 2],
+    /// Optional zero-momentum 3-body Figure-8 perturbation amplitude $\delta \in [-0.20, 0.20]$.
+    #[serde(
+        default,
+        alias = "figure_eight_perturbation",
+        skip_serializing_if = "is_zero_f64"
+    )]
+    pub three_body_perturbation: f64,
     /// Canonical `(q, p)` Poincaré seeds (`len() <= 16`).
     pub seeds: Vec<[f64; 2]>,
     /// Chirikov standard map kick strength $K \in [0, 5]$.
@@ -55,9 +62,6 @@ pub struct HamiltonianLabState {
         skip_serializing_if = "is_default_chirikov_k"
     )]
     pub chirikov_k: f64,
-    /// Figure-8 zero-momentum perturbation $\delta p \in [-0.20, 0.20]$.
-    #[serde(default, skip_serializing_if = "is_zero_f64")]
-    pub figure_eight_perturbation: f64,
 }
 
 const fn model_energy_limits(model: HamiltonianModelKind) -> (f64, f64) {
@@ -87,6 +91,7 @@ impl HamiltonianChaosTool {
             let _ = self.seed_orbit_no_warmup(qp);
         }
         if !self.orbits.is_empty() {
+            self.refresh_lyapunov_estimate();
             self.step_batch(240);
         }
         self.state_rev = self.state_rev.wrapping_add(1);
@@ -103,9 +108,9 @@ impl HamiltonianChaosTool {
             show_rk4_ghost: self.show_rk4_ghost,
             is_playing: self.is_playing,
             cursor_qp: self.cursor_qp,
+            three_body_perturbation: self.three_body_perturbation,
             seeds: self.orbits.iter().map(|s| s.seed_qp).collect(),
             chirikov_k: self.chirikov_k,
-            figure_eight_perturbation: self.figure_eight_perturbation,
         };
         serde_json::to_string(&snapshot).ok()
     }
@@ -143,7 +148,7 @@ impl HamiltonianChaosTool {
         self.show_rk4_ghost = parsed.show_rk4_ghost;
         self.is_playing = parsed.is_playing;
         self.cursor_qp = parsed.cursor_qp;
-        self.figure_eight_perturbation = parsed.figure_eight_perturbation;
+        self.three_body_perturbation = parsed.three_body_perturbation;
         self.last_status_note = None;
 
         self.clear_orbits();
@@ -151,6 +156,7 @@ impl HamiltonianChaosTool {
             let _ = self.seed_orbit_no_warmup(qp);
         }
         if !self.orbits.is_empty() {
+            self.refresh_lyapunov_estimate();
             self.step_batch(320);
         }
         self.state_rev = self.state_rev.wrapping_add(1);
@@ -197,18 +203,18 @@ fn validate_lab_state(parsed: &HamiltonianLabState) -> Result<(), String> {
             parsed.chirikov_k
         ));
     }
-    if !parsed.figure_eight_perturbation.is_finite()
-        || !(-0.20..=0.20).contains(&parsed.figure_eight_perturbation)
-    {
-        return Err("figure_eight_perturbation out of [-0.20, 0.20]".to_string());
-    }
-    if parsed.model == HamiltonianModelKind::DoublePendulum
-        && !parsed.solver.supports_nonseparable()
-    {
+    if parsed.model == HamiltonianModelKind::DoublePendulum && !parsed.solver.is_implicit() {
         return Err(
-            "DoublePendulum requires ImplicitMidpoint or GaussLegendre4 implicit symplectic solver"
-                .to_string(),
+            "DoublePendulum requires an implicit symplectic solver (ImplicitMidpoint or GaussLegendre4)".to_string(),
         );
+    }
+    if !parsed.three_body_perturbation.is_finite()
+        || !(-0.20..=0.20).contains(&parsed.three_body_perturbation)
+    {
+        return Err(format!(
+            "three_body_perturbation out of [-0.20, 0.20]: {}",
+            parsed.three_body_perturbation
+        ));
     }
     if !(1..=128).contains(&parsed.steps_per_frame) {
         return Err(format!(

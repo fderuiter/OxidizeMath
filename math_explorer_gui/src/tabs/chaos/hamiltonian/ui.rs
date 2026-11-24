@@ -93,7 +93,7 @@ impl HamiltonianChaosTool {
                     SymplecticSolverChoice::GaussLegendre4,
                 ] {
                     let enabled = self.model != HamiltonianModelKind::DoublePendulum
-                        || candidate.supports_nonseparable();
+                        || candidate.is_implicit();
                     ui.add_enabled_ui(enabled, |ui| {
                         ui.selectable_value(&mut self.solver, candidate, candidate.label());
                     });
@@ -103,7 +103,7 @@ impl HamiltonianChaosTool {
             self.state_rev = self.state_rev.wrapping_add(1);
         }
         if self.model == HamiltonianModelKind::DoublePendulum {
-            ui.small("Non-separable H(q,p): Implicit Midpoint or Gauss-Legendre 4th order.");
+            ui.small("Non-separable H(q,p): Implicit Midpoint & Gauss-Legendre active.");
         }
     }
 
@@ -146,8 +146,8 @@ impl HamiltonianChaosTool {
             HamiltonianModelKind::FigureEightThreeBody => {
                 if ui
                     .add(
-                        egui::Slider::new(&mut self.figure_eight_perturbation, -0.20..=0.20)
-                            .text("Momentum δp")
+                        egui::Slider::new(&mut self.three_body_perturbation, -0.20..=0.20)
+                            .text("Perturbation δ")
                             .max_decimals(4),
                     )
                     .accessible_hover_text(
@@ -296,6 +296,23 @@ impl HamiltonianChaosTool {
                 );
             }
         }
+        let lyap_color = if self.lyapunov_estimate > 0.05 {
+            palette.warning
+        } else {
+            palette.info
+        };
+        ui.colored_label(
+            lyap_color,
+            format!("Max Lyapunov λ: {:+.4}", self.lyapunov_estimate),
+        );
+        if self.model == HamiltonianModelKind::FigureEightThreeBody {
+            if let Some(lead) = self.orbits.last() {
+                let p_tot = self.three_body.total_linear_momentum(&lead.state12);
+                let p_norm = p_tot[0].hypot(p_tot[1]);
+                let lz = self.three_body.angular_momentum_z(&lead.state12);
+                ui.small(format!("3-Body |P_tot|: {p_norm:.2e}   L_z: {lz:+.5}"));
+            }
+        }
     }
 
     pub(super) fn render_central_workspace(&mut self, parent_ui: &mut egui::Ui) {
@@ -325,6 +342,7 @@ impl HamiltonianChaosTool {
     fn render_comparator_pane(&mut self, ui: &mut egui::Ui, size: egui::Vec2) {
         ui.horizontal_wrapped(|ui| {
             for mode in [
+                ComparatorView::SynchronizedSplit,
                 ComparatorView::EnergyDrift,
                 ComparatorView::ConfigurationSpace,
             ] {
@@ -340,6 +358,13 @@ impl HamiltonianChaosTool {
         let plot_h = (size.y - 30.0).max(120.0);
         let palette = SemanticPalette::from_visuals(ui.visuals());
         match self.comparator_view {
+            ComparatorView::SynchronizedSplit => {
+                let top_h = (plot_h * 0.50 - 4.0).max(90.0);
+                let bot_h = (plot_h - top_h - 8.0).max(90.0);
+                self.render_configuration_plot(ui, top_h, &palette);
+                ui.add_space(4.0);
+                self.render_energy_drift_plot(ui, bot_h, &palette);
+            }
             ComparatorView::EnergyDrift => self.render_energy_drift_plot(ui, plot_h, &palette),
             ComparatorView::ConfigurationSpace => {
                 self.render_configuration_plot(ui, plot_h, &palette);
@@ -400,7 +425,9 @@ impl HamiltonianChaosTool {
                         .width(1.8_f32),
                     );
                 }
-                if self.model == HamiltonianModelKind::FigureEightThreeBody {
+                if self.model == HamiltonianModelKind::DoublePendulum {
+                    self.draw_pendulum_linkage(plot_ui, palette);
+                } else if self.model == HamiltonianModelKind::FigureEightThreeBody {
                     if let Some(lead) = self.orbits.last() {
                         let bodies = FigureEightThreeBody::body_positions(&lead.state12).to_vec();
                         plot_ui.points(
@@ -422,5 +449,37 @@ impl HamiltonianChaosTool {
                     );
                 }
             });
+    }
+
+    fn draw_pendulum_linkage(
+        &self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        palette: &SemanticPalette,
+    ) {
+        if let Some(lead) = self.orbits.last() {
+            let (b1, b2) = self.pendulum.cartesian_positions(&lead.state4);
+            plot_ui.line(
+                Line::new(
+                    "Symplectic Rods",
+                    PlotPoints::from(vec![[0.0, 0.0], b1, b2]),
+                )
+                .color(palette.success)
+                .width(2.6_f32),
+            );
+            plot_ui.points(
+                Points::new("Pendulum Bobs", PlotPoints::from(vec![b1, b2]))
+                    .color(palette.accent)
+                    .radius(5.0_f32),
+            );
+        }
+        if self.show_rk4_ghost && self.ghost.active {
+            let (g1, g2) = self.pendulum.cartesian_positions(&self.ghost.state4);
+            plot_ui.line(
+                Line::new("RK4 Ghost Rods", PlotPoints::from(vec![[0.0, 0.0], g1, g2]))
+                    .color(palette.error)
+                    .style(LineStyle::dashed_dense())
+                    .width(1.8_f32),
+            );
+        }
     }
 }

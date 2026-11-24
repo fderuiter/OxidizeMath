@@ -1,14 +1,16 @@
 //! Zero-allocation symplectic numerical integrators for conservative Hamiltonian ODEs.
 //!
 //! Provides explicit splitting solvers ([`StormerVerlet`] and [`Yoshida4`]) for
-//! [`SeparableHamiltonian`] systems alongside implicit fixed-point symplectic Runge-Kutta
-//! solvers ([`ImplicitMidpoint`] and [`GaussLegendre4`]) for general (including non-separable)
+//! [`SeparableHamiltonian`] systems alongside implicit Gauss-Legendre collocation solvers
+//! ([`ImplicitMidpoint`] and [`GaussLegendre4`]) for general (including non-separable)
 //! [`OdeSystem`] and [`super::traits::HamiltonianSystem`] dynamics.
 
 // [cite:advanced_linear_algebra]
 
 use serde::{Deserialize, Serialize};
 
+pub use super::implicit_midpoint::{ImplicitMidpoint, MAX_FIXED_POINT_ITERS};
+use super::state::ArrayState;
 use super::traits::{OdeSystem, SeparableHamiltonian, Solver, VectorOperations};
 
 /// Symplectic numerical integration schemes for conservative Hamiltonian systems.
@@ -19,7 +21,7 @@ pub enum SymplecticMethod {
     /// 4th-order explicit Yoshida (1990) symmetric triple-Verlet composition for separable Hamiltonians.
     #[default]
     Yoshida4,
-    /// 2nd-order 1-stage implicit midpoint (Gauss-Legendre $s=1$) symplectic solver for general Hamiltonians.
+    /// 2nd-order 1-stage implicit Gauss-Legendre midpoint rule for general Hamiltonians.
     ImplicitMidpoint,
     /// 4th-order 2-stage implicit Gauss-Legendre Runge-Kutta for general Hamiltonians.
     GaussLegendre4,
@@ -216,98 +218,6 @@ impl<Coord: VectorOperations> Yoshida4<Coord> {
     }
 }
 
-/// Second-order 1-stage implicit midpoint symplectic integrator ($s = 1$ Gauss-Legendre).
-///
-/// Preserves the canonical symplectic 2-form $dp \wedge dq$ on arbitrary (including non-separable)
-/// Hamiltonian systems via bounded fixed-point iteration $k^{(m+1)} = f(t + h/2, y_n + \frac{h}{2} k^{(m)})$
-/// with zero dynamic heap allocations.
-#[derive(Debug, Clone)]
-pub struct ImplicitMidpoint<State> {
-    k: State,
-    k_next: State,
-    mid: State,
-    max_iters: usize,
-    substeps: usize,
-}
-
-impl<State: Clone> ImplicitMidpoint<State> {
-    /// Default fixed-point iteration budget per substep.
-    pub const DEFAULT_MAX_ITERS: usize = 10;
-
-    /// Default symmetric symplectic substep count per `step` call.
-    pub const DEFAULT_SUBSTEPS: usize = 2;
-
-    /// Upper cap on fixed-point iterations to guarantee bounded loop execution.
-    pub const MAX_ALLOWED_ITERS: usize = 64;
-
-    /// Upper cap on symmetric substeps per `step` call.
-    pub const MAX_ALLOWED_SUBSTEPS: usize = 8;
-
-    /// Constructs a new `ImplicitMidpoint` solver with default iteration and substep budgets.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn new(example_state: &State) -> Self {
-        Self::with_config(
-            example_state,
-            Self::DEFAULT_MAX_ITERS,
-            Self::DEFAULT_SUBSTEPS,
-        )
-    }
-
-    /// Constructs a new `ImplicitMidpoint` solver with an explicit fixed-point iteration cap.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn with_max_iters(example_state: &State, max_iters: usize) -> Self {
-        Self::with_config(example_state, max_iters, Self::DEFAULT_SUBSTEPS)
-    }
-
-    /// Constructs a new `ImplicitMidpoint` solver with explicit iteration and substep bounds.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn with_config(example_state: &State, max_iters: usize, substeps: usize) -> Self {
-        Self {
-            k: example_state.clone(),
-            k_next: example_state.clone(),
-            mid: example_state.clone(),
-            max_iters: max_iters.clamp(1, Self::MAX_ALLOWED_ITERS),
-            substeps: substeps.clamp(1, Self::MAX_ALLOWED_SUBSTEPS),
-        }
-    }
-}
-
-impl<State: VectorOperations> ImplicitMidpoint<State> {
-    #[verified_engine::verified]
-    fn step_single<S>(&mut self, system: &S, t: f64, state: &mut State, dt: f64)
-    where
-        S: OdeSystem<State> + ?Sized,
-    {
-        let half_dt = 0.5 * dt;
-        let t_mid = t + half_dt;
-        system.derivative_in_place(t, state, &mut self.k);
-        let iters = self.max_iters.clamp(1, Self::MAX_ALLOWED_ITERS);
-        for _ in 0..iters {
-            self.mid.copy_from_scaled(state, &self.k, half_dt);
-            system.derivative_in_place(t_mid, &self.mid, &mut self.k_next);
-            self.k.copy_from(&self.k_next);
-        }
-        state.scale_add(&self.k, dt);
-    }
-}
-
-impl<State: VectorOperations> Solver<State> for ImplicitMidpoint<State> {
-    #[verified_engine::verified]
-    fn step<S>(&mut self, system: &S, t: f64, state: &mut State, dt: f64)
-    where
-        S: OdeSystem<State> + ?Sized,
-    {
-        let n_sub = self.substeps.clamp(1, Self::MAX_ALLOWED_SUBSTEPS);
-        let sub_dt = dt / (n_sub as f64);
-        for sub in 0..n_sub {
-            self.step_single(system, t + (sub as f64) * sub_dt, state, sub_dt);
-        }
-    }
-}
-
 const SQRT_3_OVER_6: f64 = 0.288_675_134_594_812_87;
 const GL4_C1: f64 = 0.5 - SQRT_3_OVER_6;
 const GL4_C2: f64 = 0.5 + SQRT_3_OVER_6;
@@ -323,6 +233,7 @@ const GL4_A22: f64 = 0.25;
 /// equations via bounded fixed-point iteration in pre-allocated stack/state buffers.
 #[derive(Debug, Clone)]
 pub struct GaussLegendre4<State> {
+    initial_state: State,
     k1: State,
     k2: State,
     k1_next: State,
@@ -339,8 +250,8 @@ impl<State: Clone> GaussLegendre4<State> {
     /// Default symmetric symplectic substep count (`2` reduces the $O(h^4)$ shadow error constant $16\times$).
     pub const DEFAULT_SUBSTEPS: usize = 2;
 
-    /// Upper cap on fixed-point stage iterations to enforce bounded loop execution.
-    pub const MAX_ALLOWED_ITERS: usize = 64;
+    /// Upper cap on fixed-point stage iterations (`12`) to enforce bounded loop execution.
+    pub const MAX_ALLOWED_ITERS: usize = MAX_FIXED_POINT_ITERS;
 
     /// Upper cap on internal symplectic substeps per `step` call.
     pub const MAX_ALLOWED_SUBSTEPS: usize = 8;
@@ -356,7 +267,7 @@ impl<State: Clone> GaussLegendre4<State> {
         )
     }
 
-    /// Constructs a new `GaussLegendre4` solver with an explicit fixed-point iteration bound.
+    /// Constructs a new `GaussLegendre4` solver with an explicit fixed-point iteration bound (`1..=12`).
     #[must_use]
     #[verified_engine::verified]
     pub fn with_max_iters(example_state: &State, max_iters: usize) -> Self {
@@ -368,6 +279,7 @@ impl<State: Clone> GaussLegendre4<State> {
     #[verified_engine::verified]
     pub fn with_config(example_state: &State, max_iters: usize, substeps: usize) -> Self {
         Self {
+            initial_state: example_state.clone(),
             k1: example_state.clone(),
             k2: example_state.clone(),
             k1_next: example_state.clone(),
@@ -375,6 +287,40 @@ impl<State: Clone> GaussLegendre4<State> {
             stage: example_state.clone(),
             max_iters: max_iters.clamp(1, Self::MAX_ALLOWED_ITERS),
             substeps: substeps.clamp(1, Self::MAX_ALLOWED_SUBSTEPS),
+        }
+    }
+
+    /// Returns the configured fixed-point iteration cap (`1..=12`).
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn max_iters(&self) -> usize {
+        self.max_iters
+    }
+}
+
+impl<const N: usize> GaussLegendre4<ArrayState<N>> {
+    /// Advances `state` by `dt`, rolling back to `y_n` and returning `false` if any component becomes non-finite.
+    #[verified_engine::verified]
+    pub fn try_step_array<S>(
+        &mut self,
+        system: &S,
+        t: f64,
+        state: &mut ArrayState<N>,
+        dt: f64,
+    ) -> bool
+    where
+        S: OdeSystem<ArrayState<N>> + ?Sized,
+    {
+        if !dt.is_finite() || !state.is_finite() {
+            return false;
+        }
+        self.initial_state.copy_from(state);
+        self.step(system, t, state, dt);
+        if state.is_finite() {
+            true
+        } else {
+            state.copy_from(&self.initial_state);
+            false
         }
     }
 }
@@ -426,5 +372,5 @@ impl<State: VectorOperations> Solver<State> for GaussLegendre4<State> {
 }
 
 #[cfg(test)]
-#[path = "symplectic/tests.rs"]
+#[path = "symplectic_tests.rs"]
 mod tests;

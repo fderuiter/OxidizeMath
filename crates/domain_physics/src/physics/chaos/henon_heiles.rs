@@ -41,6 +41,9 @@ pub struct HenonHeiles {
     pub lambda: f64,
 }
 
+/// Type alias exposing the canonical Hénon-Heiles system as [`HenonHeilesSystem`].
+pub type HenonHeilesSystem = HenonHeiles;
+
 impl Default for HenonHeiles {
     #[verified_engine::verified]
     fn default() -> Self {

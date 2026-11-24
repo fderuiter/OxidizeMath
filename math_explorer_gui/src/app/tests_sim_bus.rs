@@ -3,11 +3,16 @@
 #[path = "tests_sim_bus/isolation_and_bounds.rs"]
 mod isolation_and_bounds;
 
+#[cfg(feature = "pure_math")]
 use super::*;
+#[cfg(feature = "pure_math")]
 use crate::framework::InteractiveTool;
+#[cfg(feature = "pure_math")]
 use eframe::egui::{self, Pos2};
+#[cfg(feature = "pure_math")]
 use eframe::App;
 
+#[cfg(feature = "pure_math")]
 pub(super) fn run_app_frame(ctx: &egui::Context, app: &mut MathExplorerApp) {
     let mut frame = eframe::Frame::_new_kittest();
     let screen = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(1440.0, 900.0));
@@ -20,6 +25,7 @@ pub(super) fn run_app_frame(ctx: &egui::Context, app: &mut MathExplorerApp) {
     );
 }
 
+#[cfg(feature = "pure_math")]
 pub(super) fn assign_pane_tool(
     app: &mut MathExplorerApp,
     pane: usize,
@@ -39,6 +45,7 @@ pub(super) fn assign_pane_tool(
     );
 }
 
+#[cfg(feature = "pure_math")]
 pub(super) fn pane_tool_ref<T: 'static>(app: &mut MathExplorerApp, pane: usize) -> &T {
     app.pane_tab_mut(pane)
         .and_then(|t| t.framework())
@@ -48,6 +55,7 @@ pub(super) fn pane_tool_ref<T: 'static>(app: &mut MathExplorerApp, pane: usize) 
         .expect("downcast pane tool ref")
 }
 
+#[cfg(feature = "pure_math")]
 pub(super) fn pane_tool_mut<T: 'static>(app: &mut MathExplorerApp, pane: usize) -> &mut T {
     app.pane_tab_mut(pane)
         .and_then(|t| t.framework_mut())
@@ -183,7 +191,7 @@ fn test_live_graph_edit_propagates_across_layouts_and_interventions() {
     export_r0_intervention_plot(r0_bridged, r0_spokes, r0_severed);
 }
 
-#[cfg(feature = "pure_math")]
+#[cfg(all(feature = "pure_math", feature = "physics", feature = "applied"))]
 fn seed_k6_and_sparsify_to_cycle(
     ed: &mut crate::tabs::graph_theory::graph_editor::GraphEditorTool,
     sparsify: bool,

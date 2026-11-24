@@ -1,11 +1,15 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+#[cfg(feature = "pure_math")]
 use crate::presets::OdePreset;
+#[cfg(feature = "pure_math")]
 use crate::tabs::analysis::ode::OdeSolverTool;
+#[cfg(feature = "epidemiology")]
 use crate::tabs::epidemiology::sir::SirTool;
 use crate::web_io::PlatformInstant;
 use eframe::egui;
+#[cfg(feature = "epidemiology")]
 use egui_plot::PlotPoint;
 
 fn frame_input() -> egui::RawInput {
@@ -32,6 +36,7 @@ fn maybe_write_perf_screenshot(output_path: &str) {
     }
 }
 
+#[cfg(feature = "epidemiology")]
 fn build_400k_borrowed_sir_tool() -> SirTool {
     let mut tool = SirTool::default();
     tool.s_points = (0..400_002)
@@ -44,6 +49,7 @@ fn build_400k_borrowed_sir_tool() -> SirTool {
     tool
 }
 
+#[cfg(feature = "epidemiology")]
 #[test]
 fn test_idle_frames_zero_series_clones_400k_borrowed_points() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX
@@ -109,6 +115,7 @@ fn test_idle_frames_zero_series_clones_400k_borrowed_points() {
     maybe_write_perf_screenshot("/tmp/sir_shared_series_verification.png");
 }
 
+#[cfg(feature = "pure_math")]
 fn build_three_200k_ode_comparison_tool() -> OdeSolverTool {
     let mut tool = OdeSolverTool {
         preset: OdePreset::HarmonicOscillator,
@@ -136,6 +143,7 @@ fn build_three_200k_ode_comparison_tool() -> OdeSolverTool {
     tool
 }
 
+#[cfg(feature = "pure_math")]
 fn assert_ode_3x200k_snapshot(framework: &SimulationFramework) {
     let snap = framework
         .last_valid_snapshot()
@@ -160,6 +168,7 @@ fn assert_ode_3x200k_snapshot(framework: &SimulationFramework) {
     );
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_idle_frames_zero_series_clones_three_200k_ode_comparison_series() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX
@@ -212,6 +221,7 @@ fn test_idle_frames_zero_series_clones_three_200k_ode_comparison_series() {
     maybe_write_perf_screenshot("/tmp/ode_shared_comparison_verification.png");
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_shared_datasets_preserve_csv_json_and_divergence_rollback() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX
