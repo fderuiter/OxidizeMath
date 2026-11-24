@@ -7,6 +7,7 @@
 
 use crate::framework::CalloutManager;
 use egui_plot::PlotPoint;
+use math_explorer::pure_math::statistics::bootstrap::{sample_median_in_place, BootstrapWorkspace};
 use math_explorer::pure_math::statistics::kelly::{
     drawdown_constrained_kelly, drawdown_constrained_push_kelly, expected_growth_rate,
     expected_value, kelly_fraction, push_expected_growth_rate, push_expected_value,
@@ -27,6 +28,8 @@ mod ui;
 pub const MAX_ENSEMBLE_BETS: usize = 1000;
 /// Number of Monte Carlo ensemble trajectories simulated per rerun.
 pub const ENSEMBLE_PATH_COUNT: usize = 1000;
+/// Number of nonparametric bootstrap resamples for terminal median confidence bounds.
+pub const BOOTSTRAP_REPLICATES: usize = 256;
 /// Number of preallocated trajectories used for push/drawdown median overlays.
 const PUSH_PREVIEW_PATH_COUNT: usize = 128;
 /// Upper bound on custom wager fraction `f` so `ln(1 - f)` remains finite.
@@ -80,6 +83,7 @@ pub struct BankrollEnsembleLab {
     /// Horizontal drawdown floor line `[0, B_floor] .. [T, B_floor]`.
     pub barrier_points: Vec<PlotPoint>,
     workspace: BankrollEnsembleWorkspace,
+    bootstrap_ws: BootstrapWorkspace,
     path_wealths: Vec<f64>,
     peak_wealths: Vec<f64>,
     max_drawdowns: Vec<f64>,
@@ -96,6 +100,10 @@ pub struct BankrollEnsembleLab {
     pub last_expected_terminal: f64,
     /// Latest terminal median wealth $W_{\text{median}}(T)$.
     pub last_median_terminal: f64,
+    /// Lower 95% BCa bootstrap confidence bound on terminal empirical median wealth.
+    pub last_empirical_median_ci_lower: f64,
+    /// Upper 95% BCa bootstrap confidence bound on terminal empirical median wealth.
+    pub last_empirical_median_ci_upper: f64,
     /// Latest terminal empirical median wealth for the drawdown-constrained strategy.
     pub last_drawdown_terminal: f64,
     /// Whether `f > 2 * f*` (or `g(f) < 0` despite positive edge), flagging asymptotic decay.
@@ -129,6 +137,8 @@ impl BankrollEnsembleLab {
             drawdown_median_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
             barrier_points: Vec::with_capacity(2),
             workspace,
+            bootstrap_ws: BootstrapWorkspace::new(ENSEMBLE_PATH_COUNT, BOOTSTRAP_REPLICATES)
+                .expect("valid preallocated bootstrap capacity"),
             path_wealths: vec![0.0; PUSH_PREVIEW_PATH_COUNT],
             peak_wealths: vec![0.0; PUSH_PREVIEW_PATH_COUNT],
             max_drawdowns: vec![0.0; PUSH_PREVIEW_PATH_COUNT],
@@ -140,6 +150,8 @@ impl BankrollEnsembleLab {
             last_drawdown_f: None,
             last_expected_terminal: 0.0,
             last_median_terminal: 0.0,
+            last_empirical_median_ci_lower: 0.0,
+            last_empirical_median_ci_upper: 0.0,
             last_drawdown_terminal: 0.0,
             is_ruin_zone: false,
             last_barrier_risk: None,
@@ -224,6 +236,7 @@ impl BankrollEnsembleLab {
             .and_then(|fr| BankrollFraction::new(fr).ok())
             .map(|bf| expected_growth_rate(p, o, &bf));
         self.populate_binary_series(w0, ev, g_rc, steps);
+        self.update_terminal_median_bca(false, &mut rng);
     }
 
     fn populate_binary_series(&mut self, w0: f64, ev: f64, g_rc: Option<f64>, steps: usize) {
@@ -342,12 +355,34 @@ impl BankrollEnsembleLab {
         }
         self.last_solvency_report = self.build_push_solvency_report(steps);
         self.update_terminal_readouts(w0);
+        self.update_terminal_median_bca(true, &mut rng);
     }
 
     fn update_terminal_readouts(&mut self, w0: f64) {
         self.last_expected_terminal = self.expected_points.last().map_or(w0, |pt| pt.y);
         self.last_median_terminal = self.median_points.last().map_or(w0, |pt| pt.y);
         self.last_drawdown_terminal = self.drawdown_median_points.last().map_or(w0, |pt| pt.y);
+    }
+
+    fn update_terminal_median_bca(&mut self, push_mode: bool, rng: &mut OxidizeRng) {
+        let samples = if push_mode {
+            &self.path_wealths[..]
+        } else {
+            self.workspace.terminal_wealths()
+        };
+        if let Ok(ci) = self.bootstrap_ws.bca_ci_with_scratch(
+            samples,
+            BOOTSTRAP_REPLICATES,
+            0.95,
+            rng,
+            sample_median_in_place,
+        ) {
+            self.last_empirical_median_ci_lower = ci.ci_lower;
+            self.last_empirical_median_ci_upper = ci.ci_upper;
+        } else {
+            self.last_empirical_median_ci_lower = self.last_median_terminal;
+            self.last_empirical_median_ci_upper = self.last_median_terminal;
+        }
     }
 
     fn reset_push_buffers(&mut self, w0: f64, barrier_floor: f64, steps: usize) {

@@ -406,6 +406,9 @@ mod tests {
         let payoff =
             MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.0, -0.15, 1.2, 0.0])).unwrap();
 
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let ((mag, coop), metrics) = VerifiedEngine::run_verified(|| {
             sys.evolve(1_000, 1.2 / KB, 1.0, 0.0);
             sys.evolve_fermi_game(1_000, 0.1, &payoff);

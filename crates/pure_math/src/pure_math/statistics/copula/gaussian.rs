@@ -1,10 +1,15 @@
-//! Gaussian copula implementation with stack-buffered and caller-scratch evaluation.
+//! Gaussian copula implementation with stack-buffered, caller-scratch, and randomized Genz-Sobol evaluation.
 
+use super::bivariate::bivariate_copula_cdf;
 use super::core::{Correlation, CorrelationMatrix, Probability};
 use super::multivariate::{evaluate_copula_cdf_with_scratch, required_scratch_len};
 use crate::error::CopulaError;
+use crate::pure_math::analysis::integration::MultivariateIntegrator;
+use crate::pure_math::statistics::monte_carlo::{normal_cdf_fast, normal_inv_cdf_fast};
+use crate::pure_math::statistics::qmc::MAX_SOBOL_DIM;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
+use nalgebra::DMatrix;
 
 /// Maximum number of parlay legs evaluated entirely on the stack by [`GaussianCopula::cdf`]
 /// and [`sgp_joint_probability`].
@@ -12,6 +17,12 @@ pub const MAX_STACK_LEGS: usize = 16;
 
 /// Stack scratch length corresponding to [`MAX_STACK_LEGS`].
 const MAX_STACK_SCRATCH: usize = required_scratch_len(MAX_STACK_LEGS);
+
+/// Default sample budget for multivariate Genz-Sobol Gaussian copula integration.
+const DEFAULT_GENZ_SOBOL_SAMPLES: usize = 2048;
+
+/// Default deterministic Cranley-Patterson seed for multivariate copula evaluation.
+const DEFAULT_GENZ_SEED: u64 = 0x4745_4E5A_534F_424F;
 
 /// Evaluates `C(u; corr)` using stack scratch up to [`MAX_STACK_LEGS`] and heap fallback above.
 #[verified_engine::verified]
@@ -42,7 +53,9 @@ pub(crate) fn evaluate_copula_cdf(
 ///
 /// Uses exact copula boundary reduction, 20-point Genz (2004) Gauss-Legendre quadrature for two
 /// active legs, and Genz (1992) separation-of-variables over a deterministic Richtmyer QMC
-/// sequence for three or more active legs.
+/// sequence for three or more active legs in [`Self::cdf`], plus replicated Cranley-Patterson
+/// Joe-Kuo [`SobolSequence`](crate::pure_math::statistics::qmc::SobolSequence) error estimation
+/// in [`Self::multivariate_cdf_with_error`].
 ///
 /// # Example
 ///
@@ -114,11 +127,140 @@ impl GaussianCopula {
         evaluate_copula_cdf_with_scratch(u, &self.correlation, scratch)
     }
 
+    /// Evaluates the multivariate Gaussian copula CDF via Cholesky factorization and Genz
+    /// separation of variables over a Joe-Kuo [`SobolSequence`](crate::pure_math::statistics::qmc::SobolSequence).
+    #[verified_engine::verified]
+    pub fn multivariate_cdf(&self, u: &[Probability]) -> Result<Probability, CopulaError> {
+        let (prob, _) =
+            self.multivariate_cdf_with_error(u, DEFAULT_GENZ_SOBOL_SAMPLES, DEFAULT_GENZ_SEED)?;
+        Ok(prob)
+    }
+
+    /// Evaluates the multivariate Gaussian copula CDF and returns `(probability, cranley_patterson_se)`.
+    #[verified_engine::verified]
+    pub fn multivariate_cdf_with_error(
+        &self,
+        u: &[Probability],
+        n_samples: usize,
+        seed: u64,
+    ) -> Result<(Probability, f64), CopulaError> {
+        let dim = self.correlation.dimension();
+        if u.len() != dim {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(dim),
+                actual: Dimension(u.len()),
+            }));
+        }
+        if u.iter().any(|p| p.value() == 0.0) {
+            return Ok((Probability::new(0.0)?, 0.0));
+        }
+
+        // Filter out marginals equal to 1.0 (upper bound +inf) via marginal consistency.
+        let active: Vec<usize> = (0..dim).filter(|&i| u[i].value() < 1.0).collect();
+        if active.is_empty() {
+            return Ok((Probability::new(1.0)?, 0.0));
+        }
+        if active.len() == 1 {
+            return Ok((u[active[0]], 0.0));
+        }
+
+        let full_cov = self.correlation.matrix();
+        if active.len() == 2 {
+            let rho_raw = full_cov[(active[0], active[1])].clamp(-1.0, 1.0);
+            if (rho_raw.abs() - 1.0).abs() <= 1e-12 {
+                let prob =
+                    bivariate_copula_cdf(u[active[0]], u[active[1]], Correlation::new(rho_raw)?)?;
+                return Ok((prob, 0.0));
+            }
+        }
+
+        let (chol_l, ordered_bounds) = build_ordered_cholesky(full_cov, u, &active)?;
+        integrate_genz_sobol(&chol_l, &ordered_bounds, n_samples, seed)
+    }
+
     /// Returns the underlying correlation matrix.
     #[verified_engine::verified]
     pub fn correlation(&self) -> &CorrelationMatrix {
         &self.correlation
     }
+}
+
+/// Orders active variables by ascending upper normal quantile $b_i$ and computes Cholesky factor $L$.
+#[verified_engine::verified]
+fn build_ordered_cholesky(
+    cov: &DMatrix<f64>,
+    u: &[Probability],
+    active: &[usize],
+) -> Result<(DMatrix<f64>, Vec<f64>), CopulaError> {
+    let mut pairs: Vec<(usize, f64)> = Vec::with_capacity(active.len());
+    for &idx in active {
+        pairs.push((idx, normal_inv_cdf_fast(u[idx].value())));
+    }
+    pairs.sort_unstable_by(|a, b| a.1.total_cmp(&b.1));
+
+    let m = pairs.len();
+    let mut sub_cov = DMatrix::zeros(m, m);
+    let mut bounds = Vec::with_capacity(m);
+    for (r, &(orig_r, b_val)) in pairs.iter().enumerate() {
+        bounds.push(b_val);
+        for (c, &(orig_c, _)) in pairs.iter().enumerate() {
+            sub_cov[(r, c)] = cov[(orig_r, orig_c)];
+        }
+    }
+    let chol = sub_cov.cholesky().ok_or(CopulaError::NotPositiveDefinite)?;
+    Ok((chol.l(), bounds))
+}
+
+/// Executes Genz's $(m - 1)$-dimensional separation-of-variables integrand on `MultivariateIntegrator`.
+#[verified_engine::verified]
+fn integrate_genz_sobol(
+    chol_l: &DMatrix<f64>,
+    bounds: &[f64],
+    n_samples: usize,
+    seed: u64,
+) -> Result<(Probability, f64), CopulaError> {
+    let m = bounds.len();
+    let qmc_dim = m - 1;
+    let budget = n_samples.max(32);
+    let mut integrator = if qmc_dim <= MAX_SOBOL_DIM {
+        MultivariateIntegrator::new_sobol(qmc_dim, budget)
+    } else {
+        MultivariateIntegrator::new_halton(qmc_dim, budget)
+    }
+    .map_err(|e| {
+        CopulaError::Math(MathError::NumericalError {
+            reason: e.to_string(),
+        })
+    })?
+    .with_seed(seed);
+
+    let e0 = normal_cdf_fast(bounds[0] / chol_l[(0, 0)]);
+    let mut y_buf = vec![0.0_f64; qmc_dim];
+    let res = integrator
+        .integrate_unit_cube(|w| {
+            let mut prod = e0;
+            let mut e_prev = e0;
+            for k in 1..m {
+                let u_star = (w[k - 1] * e_prev).clamp(1e-15, 1.0 - 1e-15);
+                y_buf[k - 1] = normal_inv_cdf_fast(u_star);
+                let mut dot = 0.0;
+                for (j, &yj) in y_buf[..k].iter().enumerate() {
+                    dot += chol_l[(k, j)] * yj;
+                }
+                let e_k = normal_cdf_fast((bounds[k] - dot) / chol_l[(k, k)]);
+                prod *= e_k;
+                e_prev = e_k;
+            }
+            prod
+        })
+        .map_err(|e| {
+            CopulaError::Math(MathError::NumericalError {
+                reason: e.to_string(),
+            })
+        })?;
+
+    let clamped = res.value.clamp(0.0, 1.0);
+    Ok((Probability::new(clamped)?, res.error))
 }
 
 /// Computes the correlated joint win probability for a Same Game Parlay (SGP) without cloning
@@ -158,117 +300,6 @@ pub fn sgp_joint_probability_with_scratch(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use approx::assert_relative_eq;
-    use math_commons::registry::TOLERANCE_HIGH;
-    use nalgebra::DMatrix;
+mod tests;
 
-    #[test]
-    #[verified_engine::verified]
-    fn test_gaussian_copula_creation() {
-        let rho = Correlation::new(0.5).unwrap();
-        let copula = GaussianCopula::bivariate(rho).unwrap();
-        assert_eq!(copula.correlation().dimension(), 2);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_gaussian_copula_independence() {
-        let rho = Correlation::new(0.0).unwrap();
-        let copula = GaussianCopula::bivariate(rho).unwrap();
-
-        let u1 = Probability::new(0.7).unwrap();
-        let u2 = Probability::new(0.8).unwrap();
-        let joint = copula.cdf(&[u1, u2]).unwrap();
-
-        let expected = u1.value() * u2.value();
-        assert_relative_eq!(joint.value(), expected, epsilon = TOLERANCE_HIGH);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_gaussian_copula_positive_and_negative_correlation() {
-        let copula_indep = GaussianCopula::bivariate(Correlation::new(0.0).unwrap()).unwrap();
-        let copula_pos = GaussianCopula::bivariate(Correlation::new(0.7).unwrap()).unwrap();
-        let copula_neg = GaussianCopula::bivariate(Correlation::new(-0.5).unwrap()).unwrap();
-
-        let u1 = Probability::new(0.8).unwrap();
-        let u2 = Probability::new(0.8).unwrap();
-        let joint_indep = copula_indep.cdf(&[u1, u2]).unwrap().value();
-        assert!(copula_pos.cdf(&[u1, u2]).unwrap().value() > joint_indep);
-        assert!(copula_neg.cdf(&[u1, u2]).unwrap().value() < joint_indep);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_boundary_axioms_and_single_leg_identity() {
-        let one_d = GaussianCopula::new(CorrelationMatrix::new(DMatrix::identity(1, 1)).unwrap());
-        let u = Probability::new(0.37).unwrap();
-        assert_eq!(one_d.cdf(&[u]).unwrap().value(), 0.37);
-
-        let copula = GaussianCopula::bivariate(Correlation::new(-0.42).unwrap()).unwrap();
-        let p0 = Probability::new(0.0).unwrap();
-        let p1 = Probability::new(1.0).unwrap();
-        assert_eq!(copula.cdf(&[p0, p0]).unwrap().value(), 0.0);
-        assert_eq!(copula.cdf(&[p0, u]).unwrap().value(), 0.0);
-        assert_eq!(copula.cdf(&[u, p0]).unwrap().value(), 0.0);
-        assert_eq!(copula.cdf(&[p1, u]).unwrap().value(), 0.37);
-        assert_eq!(copula.cdf(&[u, p1]).unwrap().value(), 0.37);
-        assert_eq!(copula.cdf(&[p1, p1]).unwrap().value(), 1.0);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_comonotonic_and_countermonotonic_frechet_bounds() {
-        let pos = GaussianCopula::bivariate(Correlation::new(1.0).unwrap()).unwrap();
-        let neg = GaussianCopula::bivariate(Correlation::new(-1.0).unwrap()).unwrap();
-        let u1 = Probability::new(0.35).unwrap();
-        let u2 = Probability::new(0.80).unwrap();
-
-        assert_relative_eq!(pos.cdf(&[u1, u2]).unwrap().value(), 0.35, epsilon = 1e-15);
-        assert_relative_eq!(neg.cdf(&[u1, u2]).unwrap().value(), 0.15, epsilon = 1e-15);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_sgp_joint_probability_and_multileg_reduction() {
-        let p_a = Probability::new(0.01).unwrap();
-        let p_b = Probability::new(0.60).unwrap();
-        let corr2 = CorrelationMatrix::bivariate(Correlation::new(-0.15).unwrap()).unwrap();
-        let joint2 = sgp_joint_probability(&[p_a, p_b], &corr2).unwrap();
-        assert!(joint2.value() < p_a.value() * p_b.value());
-
-        let corr3 = CorrelationMatrix::new(DMatrix::from_row_slice(
-            3,
-            3,
-            &[1.0, -0.15, 0.25, -0.15, 1.0, 0.30, 0.25, 0.30, 1.0],
-        ))
-        .unwrap();
-        let reduced =
-            sgp_joint_probability(&[p_a, p_b, Probability::new(1.0).unwrap()], &corr3).unwrap();
-        assert_relative_eq!(reduced.value(), joint2.value(), epsilon = 1e-15);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_multivariate_cholesky_validation() {
-        let mat = DMatrix::from_row_slice(3, 3, &[1.0, 0.2, 0.1, 0.2, 1.0, 0.3, 0.1, 0.3, 1.0]);
-        let corr = CorrelationMatrix::new(mat).unwrap();
-        let copula = GaussianCopula::new(corr);
-        let u = [
-            Probability::new(0.4).unwrap(),
-            Probability::new(0.5).unwrap(),
-            Probability::new(0.6).unwrap(),
-        ];
-        let joint = copula.cdf(&u).unwrap().value();
-        assert!(joint > 0.4 * 0.5 * 0.6 && joint <= 0.4);
-
-        let invalid =
-            DMatrix::from_row_slice(3, 3, &[1.0, 0.9, 0.9, 0.9, 1.0, -0.9, 0.9, -0.9, 1.0]);
-        assert!(matches!(
-            CorrelationMatrix::new(invalid),
-            Err(CopulaError::NotPositiveDefinite)
-        ));
-    }
-}
+// [cite:clinical_trials_statistics]

@@ -38,3 +38,6 @@ pub mod __doctest_facade {
 #[global_allocator]
 static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
     verified_engine::allocator::VerifiedAllocator;
+
+#[cfg(test)]
+pub(crate) static VERIFIED_ALLOC_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
