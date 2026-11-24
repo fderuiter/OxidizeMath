@@ -5,7 +5,7 @@
 
 use super::{gyral_and_atrophy_pattern, MRI_DIMS, MRI_ORIGIN_MM, MRI_VOXEL_MM, SEMI_AXES_MM};
 use math_explorer::applied::freesurfer::{
-    estimate_beta, mrf_voxel_posteriors, t_statistic, MriVolume, Surface, TissueClass,
+    mrf_voxel_posteriors, GlmDesignQr, MriVolume, Surface, TissueClass,
 };
 use nalgebra::{DMatrix, DVector, Vector3};
 use std::f64::consts::TAU;
@@ -153,15 +153,8 @@ pub(super) fn sample_gm_posteriors_on_cortex(
         .collect()
 }
 
-pub(super) fn evaluate_cohort_glm(
-    thickness_mm: &[f64],
-    atrophy_weights: &[f64],
-    atrophy_effect_mm: f64,
-    collinear_design: bool,
-) -> (Vec<f64>, f64, Option<String>) {
-    let n_subj = 8_usize;
-    let ages = [-1.2, -0.4, 0.3, 1.1, -0.9, -0.2, 0.5, 1.0];
-    let mut x_rows = Vec::with_capacity(n_subj * 3);
+fn build_cohort_design_matrix(ages: &[f64], collinear_design: bool) -> DMatrix<f64> {
+    let mut x_rows = Vec::with_capacity(ages.len() * 3);
     for (s, &age) in ages.iter().enumerate() {
         let is_patient = if s >= 4 { 1.0 } else { 0.0 };
         let third_col = if collinear_design {
@@ -171,7 +164,27 @@ pub(super) fn evaluate_cohort_glm(
         };
         x_rows.extend_from_slice(&[1.0, is_patient, third_col]);
     }
-    let x = DMatrix::from_row_slice(n_subj, 3, &x_rows);
+    DMatrix::from_row_slice(ages.len(), 3, &x_rows)
+}
+
+pub(crate) fn evaluate_cohort_glm(
+    thickness_mm: &[f64],
+    atrophy_weights: &[f64],
+    atrophy_effect_mm: f64,
+    collinear_design: bool,
+) -> (Vec<f64>, f64, Option<String>) {
+    let ages = [-1.2, -0.4, 0.3, 1.1, -0.9, -0.2, 0.5, 1.0];
+    let n_subj = ages.len();
+    let x = build_cohort_design_matrix(&ages, collinear_design);
+    let singular_msg =
+        "GLM design matrix XᵀX is singular (collinear predictors): t-statistic contrast cannot be estimated.";
+    let Ok(design_qr) = GlmDesignQr::try_new(&x) else {
+        return (
+            vec![0.0; thickness_mm.len()],
+            0.0,
+            Some(singular_msg.to_string()),
+        );
+    };
     let contrast = DVector::from_vec(vec![0.0, -1.0, 0.0]);
     let subj_jitter = [-0.09, 0.06, -0.04, 0.07, -0.08, 0.05, 0.09, -0.06];
     let dof = (n_subj - 3) as f64;
@@ -185,26 +198,20 @@ pub(super) fn evaluate_cohort_glm(
             (base_t - group_loss - 0.06 * ages[s] + subj_jitter[s] + phase * (s as f64 - 3.5))
                 .max(0.5)
         });
-        let Ok(beta) = estimate_beta(&x, &y) else {
+        let Ok(beta) = design_qr.estimate_beta(&y) else {
             return (
                 vec![0.0; thickness_mm.len()],
                 0.0,
-                Some(
-                    "GLM design matrix XᵀX is singular (collinear predictors): t-statistic contrast cannot be estimated."
-                        .to_string(),
-                ),
+                Some(singular_msg.to_string()),
             );
         };
         let resid = &y - &x * &beta;
         let sigma2 = (resid.norm_squared() / dof).max(1e-12);
-        let Ok(t_val) = t_statistic(&contrast, &beta, &x, sigma2) else {
+        let Ok(t_val) = design_qr.t_statistic(&contrast, &beta, sigma2) else {
             return (
                 vec![0.0; thickness_mm.len()],
                 0.0,
-                Some(
-                    "GLM design matrix XᵀX is singular (collinear predictors): t-statistic contrast undefined."
-                        .to_string(),
-                ),
+                Some(singular_msg.to_string()),
             );
         };
         peak_abs = peak_abs.max(t_val.abs());

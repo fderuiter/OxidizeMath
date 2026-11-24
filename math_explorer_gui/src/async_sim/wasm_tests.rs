@@ -81,6 +81,7 @@ async fn wasm_attractor_running_slice_and_seek_pauses_cleanly() {
         max_points: 200,
         mode: AttractorMode::Lorenz,
         custom_flow: None,
+        sim_bus: None,
     }));
     let mut controller = SimulationController::new(AttractorRunner::from_params(params));
     controller.send_command(SimCommand::Start).unwrap();

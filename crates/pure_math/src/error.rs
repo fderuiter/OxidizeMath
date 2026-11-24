@@ -66,34 +66,20 @@ pub enum KellyError {
     InvalidOdds { value: f64 },
     /// Invalid net profit multiplier (must be finite and strictly positive).
     #[error("Invalid net odds: {value} (must be finite and > 0.0)")]
-    InvalidNetOdds {
-        /// Rejected net profit multiplier `b`.
-        value: f64,
-    },
+    InvalidNetOdds { value: f64 },
     /// Invalid American odds (must be finite with magnitude at least 100).
     #[error("Invalid American odds: {value} (must be finite with |odds| >= 100.0)")]
-    InvalidAmericanOdds {
-        /// Rejected American odds input.
-        value: f64,
-    },
+    InvalidAmericanOdds { value: f64 },
     /// Invalid fractional odds (numerator and denominator must both be finite and strictly positive).
     #[error(
         "Invalid fractional odds: {numerator}/{denominator} (numerator and denominator must be finite and > 0.0)"
     )]
-    InvalidFractionalOdds {
-        /// Rejected fractional profit numerator.
-        numerator: f64,
-        /// Rejected fractional stake denominator.
-        denominator: f64,
-    },
+    InvalidFractionalOdds { numerator: f64, denominator: f64 },
     /// Invalid implied probability (must be finite and strictly inside `(0.0, 1.0)`).
     #[error(
         "Invalid implied probability: {value} (must be finite and strictly between 0.0 and 1.0)"
     )]
-    InvalidImpliedProbability {
-        /// Rejected implied probability input.
-        value: f64,
-    },
+    InvalidImpliedProbability { value: f64 },
     /// Invalid fraction (must be between 0 and 1).
     #[error("Invalid fraction: {value} (must be between 0 and 1)")]
     #[allow(missing_docs)]
@@ -108,40 +94,39 @@ pub enum KellyError {
     InvalidBankroll { value: f64 },
     /// Invalid stake or portfolio weight (must be finite and strictly positive).
     #[error("Invalid stake or weight: {value} (must be finite and > 0)")]
-    InvalidStake {
-        /// The invalid stake or weight value.
-        value: f64,
-    },
+    InvalidStake { value: f64 },
     /// Invalid drawdown floor, target barrier, or confidence level.
     #[error("Invalid barrier configuration: floor={floor}, initial_wealth={initial_wealth}")]
-    InvalidBarrier {
-        /// The requested floor, target barrier, or confidence bound.
-        floor: f64,
-        /// Reference initial wealth or upper bound.
-        initial_wealth: f64,
-    },
+    InvalidBarrier { floor: f64, initial_wealth: f64 },
     /// Empty or insufficient bet ledger for statistical estimation.
     #[error("Insufficient bets: required at least {required}, got {actual}")]
-    InsufficientBets {
-        /// Minimum required number of bets.
-        required: usize,
-        /// Actual number of bets provided.
-        actual: usize,
-    },
+    InsufficientBets { required: usize, actual: usize },
     /// Mismatched slice lengths across probabilities, odds, stakes, or outcomes.
     #[error("Slice length mismatch: expected {expected}, got {actual}")]
-    DimensionMismatch {
-        /// Expected slice length.
-        expected: usize,
-        /// Actual slice length provided.
-        actual: usize,
-    },
+    DimensionMismatch { expected: usize, actual: usize },
     /// Root-finding or adjustment-coefficient solver failed to bracket or converge.
     #[error("Solvency root solver failed to converge: {reason}")]
-    ConvergenceFailed {
-        /// Static description of the bracketing or convergence failure.
-        reason: &'static str,
-    },
+    ConvergenceFailed { reason: &'static str },
+    /// Outcome probabilities for a complete multi-state wager do not sum to 1.0.
+    #[error("Invalid probability distribution: sum={sum} (must equal 1.0)")]
+    InvalidProbabilityDistribution { sum: f64 },
+    /// Mutually exclusive market outcome probabilities exceed 1.0.
+    #[error("Invalid mutually exclusive market probabilities: sum={sum} (must be <= 1.0)")]
+    InvalidMarketProbabilitySum { sum: f64 },
+    /// Empty market or simultaneous slate provided.
+    #[error("Portfolio or market must contain at least one wager")]
+    EmptyPortfolio,
+    /// Market or simultaneous slate exceeds preallocated scratch capacity.
+    #[error("Portfolio size {count} exceeds maximum supported capacity {max}")]
+    PortfolioTooLarge { count: usize, max: usize },
+    /// Invalid Busseti-Ryu-Boyd drawdown floor `alpha` or risk tolerance `beta`.
+    #[error(
+        "Invalid drawdown bounds: alpha={alpha}, beta={beta} (both must lie strictly in (0, 1))"
+    )]
+    InvalidDrawdownBounds { alpha: f64, beta: f64 },
+    /// Numerical root or convex Kelly solver failed to reach target residual within iteration cap.
+    #[error("Kelly solver failed to converge after {iterations} iterations (residual={residual})")]
+    SolverConvergenceFailed { iterations: usize, residual: f64 },
 }
 
 /// Errors returned by bookmaker devigging, `+EV`, arbitrage, Dutching, middle, and hedge calculators.
@@ -478,6 +463,7 @@ pub use crate::pure_math::{
     graph_theory::GraphTheoryError,
     hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
+    statistics::monte_carlo::MonteCarloError,
     tensor::types::TensorError,
 };
 pub use sports::{EloError, MatchModelError};

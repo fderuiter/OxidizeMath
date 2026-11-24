@@ -16,6 +16,7 @@ pub mod kinetics;
 #[cfg(test)]
 mod legacy_runner;
 pub mod lenia;
+pub mod phyllotaxis_lsystem;
 pub mod presets;
 pub mod runner;
 mod runner_twin;
@@ -37,6 +38,8 @@ pub use gray_scott_atlas::{
 };
 #[cfg(test)]
 pub use lenia::LeniaTool;
+#[cfg(test)]
+pub use phyllotaxis_lsystem::PhyllotaxisLSystemTool;
 #[cfg(test)]
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
@@ -175,4 +178,4 @@ mod counterfactual_tests;
 #[cfg(test)]
 mod tests;
 
-// [cite:favorite_child]
+// [cite:biology]

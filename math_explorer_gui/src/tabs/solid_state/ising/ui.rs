@@ -272,7 +272,9 @@ impl IsingModelTool {
             .brush_state
             .focused_id
             .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
-        if let Some(action) = PlaybackTransport::from_worker_state(
+        if self.is_graph_mode() {
+            self.draw_graph_transport(ui, ctx);
+        } else if let Some(action) = PlaybackTransport::from_worker_state(
             "ising_transport",
             "Ising Model",
             self.worker.state(),
@@ -327,6 +329,7 @@ impl IsingModelTool {
             .show_inside(parent_ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.heading("Ising Model Controls");
+                    self.draw_topology_source_controls(ui, ctx);
                     ui.separator();
 
                     if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
@@ -421,22 +424,32 @@ impl IsingModelTool {
         });
     }
 
+    fn draw_active_spin_canvas(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, side: f32) {
+        if self.is_graph_mode() {
+            self.draw_graph_spin_canvas(ui, side);
+        } else {
+            self.draw_lattice_canvas(ui, ctx, side);
+        }
+    }
+
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.sync_lattice_texture(ctx);
-            if self.texture.is_none() {
-                render_empty_plot_guidance(
-                    ui,
-                    "Spin lattice ready — click ▶ Play or ⏭ Step to run spin flips.",
-                );
-                return;
+            if !self.is_graph_mode() {
+                self.sync_lattice_texture(ctx);
+                if self.texture.is_none() {
+                    render_empty_plot_guidance(
+                        ui,
+                        "Spin lattice ready — click ▶ Play or ⏭ Step to run spin flips.",
+                    );
+                    return;
+                }
             }
 
             let avail = ui.available_size();
             match self.mode {
                 IsingInteractionMode::Ferromagnetic => {
                     let side = avail.x.min((avail.y - 28.0).max(100.0)).clamp(100.0, 620.0);
-                    self.draw_lattice_canvas(ui, ctx, side);
+                    self.draw_active_spin_canvas(ui, ctx, side);
                 }
                 IsingInteractionMode::FermiGame if avail.x >= 520.0 => {
                     let side = (avail.x * 0.46)
@@ -444,7 +457,7 @@ impl IsingModelTool {
                         .clamp(120.0, 520.0);
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
-                            self.draw_lattice_canvas(ui, ctx, side);
+                            self.draw_active_spin_canvas(ui, ctx, side);
                         });
                         ui.separator();
                         ui.vertical(|ui| {
@@ -455,7 +468,7 @@ impl IsingModelTool {
                 }
                 IsingInteractionMode::FermiGame => {
                     let side = avail.x.min((avail.y * 0.5).max(100.0)).clamp(100.0, 360.0);
-                    self.draw_lattice_canvas(ui, ctx, side);
+                    self.draw_active_spin_canvas(ui, ctx, side);
                     ui.separator();
                     let plot_h = (ui.available_height() - 24.0).max(140.0);
                     self.draw_replicator_overlay_plot(ui, plot_h);

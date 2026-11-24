@@ -7,19 +7,24 @@ edition = "2024"
 default = ["std"]
 std = [
     "dep:diagnostics",
-    "dep:verified_engine",
     "num-complex/std",
     "num-traits/std",
     "thiserror/std",
+    "verified_engine/std",
 ]
 
 [dependencies]
-thiserror = { workspace = true, default-features = false }
-verified_engine = { version = "0.1.0", path = "../verified_engine", optional = true }
 diagnostics = { path = "../diagnostics", optional = true }
+engine_linalg = { path = "../02_engines/engine_linalg" }
+libm = { workspace = true }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
-libm = "0.2.16"
+rand_core = { workspace = true }
+thiserror = { workspace = true, default-features = false }
+verified_engine = { version = "0.1.0", path = "../verified_engine", default-features = false }
+
+[dev-dependencies]
+oxidize_core = { path = "../oxidize_core" }
 
 
 

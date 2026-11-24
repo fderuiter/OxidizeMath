@@ -6,7 +6,7 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 20 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 23 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
@@ -47,6 +47,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Acoustic Luthiery Sonification, RLE Soundboard Sculpting, and Phononic Metamaterials](adr/20261123-acoustic-luthiery-sonification-and-phononic-metamaterials.md)
 - [ADR 20261123: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/20261123-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 - [ADR 20261123: Bidirectional Zero-Allocation Odds Conversions, Format-Aware Kelly Errors, and Bet Size Calculator Synchronization](adr/20261123-bidirectional-odds-conversions-and-bet-calculator-sync.md)
+- [ADR 20261123: Verified Zero-Allocation Botanical Morphogenesis Kernels and Multi-Scale Biology Studios](adr/20261123-botanical-kernels-and-biology-studios.md)
 - [ADR 20261123: Calibrated 2D Score Grids and Venue-Adjusted Sports Elo Engine](adr/20261123-calibrated-2d-score-grids-and-sports-elo.md)
 - [ADR 20261123: Right-Censored Win-Ratio U-Statistics, Bivariate Weibull Power Sweeps, and Interactive Stress Tester](adr/20261123-censored-win-ratio-u-statistics-and-weibull-power-sweeps.md)
 - [ADR 20261123: Checked Companion APIs, Typed Domain Errors, and Human-Readable Diagnostics](adr/20261123-checked-apis-and-typed-domain-errors.md)
@@ -72,16 +73,20 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Static Inventory Tab Registration and Scoped Build Scripts](adr/20261123-inventory-tabs-and-scoped-build-scripts.md)
 - [ADR 20261123: Downsampled 2D FFT Lenia Soliton Viability Atlas, Potential Histograms, and AST Rule Sandboxes](adr/20261123-lenia-viability-atlas-and-sandboxes.md)
 - [ADR 20261123: Modularize Setup and Enforce Static Documentation Gates](adr/20261123-modularize-setup-and-enforce-doc-gates.md)
+- [ADR 20261123: Multi-State, Portfolio, and Drawdown-Constrained Kelly Convex Solvers](adr/20261123-multi-state-kelly-convex-solvers.md)
 - [ADR 20261123: Myerson Mechanism-Design Auction Lab and Analytical Ising / Fermi Spatial Parameter Atlas](adr/20261123-myerson-auction-lab-and-ising-parameter-atlas.md)
 - [ADR 20261123: Root-Owned Pane Dataflow Bus and Cycle-Checked Cross-Domain Pipelines](adr/20261123-pane-dataflow-bus-and-cross-domain-pipelines.md)
 - [ADR 20261123: Variable-Dose Pharmacokinetic Regimen Superposition and Interactive Planner](adr/20261123-pharmacokinetic-regimen-superposition-and-analytics.md)
 - [ADR 20261123: Planar ODE AST Evaluation, Poincaré Stability Maps, AST Caching, and Recovery-Based URL Sharing](adr/20261123-planar-ode-ast-poincare-and-url-recovery.md)
+- [ADR 20261123: Preallocated Monte Carlo, Randomized QMC, and Nonparametric Bootstrap Suite](adr/20261123-preallocated-monte-carlo-qmc-and-bootstrap-suite.md)
 - [ADR 20261123: Precompiled Verification Patterns, AST Source Prefetch, and Zero-Allocation Scans](adr/20261123-precompiled-verification-patterns-and-ast-prefetch.md)
 - [ADR 20261123: `core`-Slice Thomas Solver, `CrankNicolson1D` Workspace, and Closed-Form $2\times 2$ Quantum Helpers](adr/20261123-pure-math-thomas-solver-and-closed-form-quantum-workspaces.md)
 - [ADR 20261123: Live 4D Radar-Gated IMRT Contouring Workbench](adr/20261123-radar-gated-4d-imrt-contouring-workbench.md)
 - [ADR 20261123: Shared `RasterBrushCanvas`, Pre-Allocation RLE `base64url` Spatial Masks, and Live 2D Field Sculpting](adr/20261123-raster-brush-canvas-and-spatial-masks.md)
 - [ADR 20261123: Zero-Allocation Fixed-Size Christoffel Symbols, Relativistic Thin-Lens Splat Jacobians, and Paczyński-Wiita Galactic Orbits](adr/20261123-relativistic-lensed-splats-and-orbits.md)
+- [ADR 20261123: Reusable Flat CSR Spatial Grid for Cortical Thickness](adr/20261123-reusable-flat-spatial-grid-cortical-thickness.md)
 - [ADR 20261123: Scope Pre-Commit Gates, Add Pre-Push Tiering, and Eliminate Build-Script `CARGO_MANIFEST_DIR` Drift](adr/20261123-scope-pre-commit-gates-and-pre-push-tiering.md)
+- [ADR 20261123: Workspace-Scoped `SharedSimulationBus`, Copy-on-Write CSR Topologies, and Zero-Allocation Graph Kernels](adr/20261123-shared-simulation-topology-bus.md)
 - [ADR 20261123: Zero-Allocation Laplace-Beltrami Surface Morphogenesis and Mean-Curvature Buckling](adr/20261123-surface-morphogenesis-laplace-beltrami-buckling.md)
 - [ADR 20261123: Tridiagonal Crank-Nicolson 1D Quantum Propagation and Persistent Unified GIF Stepping](adr/20261123-tridiagonal-crank-nicolson-quantum-propagation.md)
 - [ADR 20261123: Unified RL Maze Sculpting, Exact Bellman Solvers, and TD Surprise Sonification](adr/20261123-unified-rl-maze-sculpting-bellman-and-sonification.md)
@@ -90,6 +95,8 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/20261123-workspace-release-version-guards-and-wix-mapping.md)
 - [ADR 20261123: Add xtask Smoke Gates and Zero-Allocation Benchmark Checks](adr/20261123-xtask-smoke-gates-and-zero-allocation-bench-checks.md)
 - [ADR 20261123: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators](adr/20261123-market-pricing-brent-and-execution-calculators.md)
+- [ADR 20261123: `#![no_std]` Linear Algebra Engine (`engine_linalg`), Solver Unification, and Cached Cohort GLM QR](adr/20261123-no-std-engine-linalg-and-solver-unification.md)
+- [ADR 20261123: `#![no_std]` Tier 2 `engine_diffeq` & `engine_pde` Solvers and Continuum Stat-Mech SPDEs](adr/20261123-nostd-diffeq-and-pde-engines.md)
 - [ADR 20261123: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export](adr/20261123-parameter-substituted-latex-and-code-artifact-export.md)
 
 ## Contributing
