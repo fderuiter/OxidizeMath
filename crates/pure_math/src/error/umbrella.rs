@@ -5,11 +5,11 @@ use super::{
     OptimizationError, OptionPricingError, OuError, PoissonError, QueueingError, StochasticError,
     Su11HyperbolicError, TdaError, TensorError, TransformError, ZipError,
 };
-use diagnostics::{Diagnostic, Severity};
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{
-    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
+    ShaderEmitError,
 };
-use std::collections::HashMap;
 use thiserror::Error;
 
 /// Extensible crate-level umbrella error for `pure_math` algorithms and foundational math errors.
@@ -136,6 +136,27 @@ impl From<ParseError> for PureMathError {
     }
 }
 
+impl From<FitError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: FitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LinalgError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ShaderEmitError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: ShaderEmitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<String> for PureMathError {
     #[verified_engine::verified]
     fn from(reason: String) -> Self {
@@ -188,9 +209,8 @@ impl Diagnostic for PureMathError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = self.as_diagnostic().metadata();
-        map.insert("umbrella_type".to_string(), "PureMathError".to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        self.as_diagnostic().visit_fields(visitor);
+        visitor.record_str("umbrella_type", "PureMathError");
     }
 }

@@ -22,38 +22,37 @@ pub(super) fn format_user_message_for_input(err: &ParseError, input: &str) -> St
     err.user_message()
 }
 
-impl diagnostics::Diagnostic for ParseError {
-    fn severity(&self) -> diagnostics::Severity {
-        diagnostics::Severity::Error
+impl math_diagnostics::Diagnostic for ParseError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
     }
 
-    fn metadata(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
         if let Self::Lex(lex_err) = self {
-            map.extend(lex_err.metadata());
-            map.insert("cause_error_type".to_string(), "LexError".to_string());
+            lex_err.visit_fields(visitor);
+            visitor.record_str("cause_error_type", "LexError");
         }
-        map.insert("error_type".to_string(), "ParseError".to_string());
-        map.insert("description".to_string(), self.to_string());
+        visitor.record_str("error_type", "ParseError");
+        visitor.record_display("description", self);
         match self {
             Self::UnexpectedToken {
                 expected,
                 found,
                 span,
             } => {
-                map.insert("expected".to_string(), expected.clone());
-                map.insert("found".to_string(), found.clone());
-                map.insert("start".to_string(), span.start.to_string());
+                visitor.record_str("expected", expected);
+                visitor.record_str("found", found);
+                visitor.record_usize("start", span.start);
             }
             Self::RecursionLimitExceeded(max_depth) => {
-                map.insert("max_depth".to_string(), max_depth.to_string());
+                visitor.record_usize("max_depth", *max_depth);
             }
             Self::NodeLimitExceeded(max_nodes) => {
-                map.insert("max_nodes".to_string(), max_nodes.to_string());
+                visitor.record_usize("max_nodes", *max_nodes);
             }
             Self::UnknownFunction { name, span } => {
-                map.insert("function".to_string(), name.clone());
-                map.insert("start".to_string(), span.start.to_string());
+                visitor.record_str("function", name);
+                visitor.record_usize("start", span.start);
             }
             Self::WrongArgumentCount {
                 func,
@@ -61,13 +60,12 @@ impl diagnostics::Diagnostic for ParseError {
                 found,
                 span,
             } => {
-                map.insert("function".to_string(), func.as_str().to_string());
-                map.insert("expected".to_string(), expected.to_string());
-                map.insert("found".to_string(), found.to_string());
-                map.insert("start".to_string(), span.start.to_string());
+                visitor.record_str("function", func.as_str());
+                visitor.record_usize("expected", *expected);
+                visitor.record_usize("found", *found);
+                visitor.record_usize("start", span.start);
             }
             Self::Lex(_) | Self::UnexpectedEof | Self::EmptyExpression => {}
         }
-        map
     }
 }

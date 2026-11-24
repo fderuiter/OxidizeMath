@@ -63,21 +63,18 @@ impl StencilOperators {
     }
 
     /// Creates 1D stencil operators after validating that `dx` is finite and strictly positive.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new(dx: StepSize) -> Result<Self, math_commons::error::MathError> {
         Self::try_new_3d(dx, StepSize(1.0), StepSize(1.0))
     }
 
     /// Creates 2D stencil operators after validating that `dx` and `dy` are finite and strictly positive.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, math_commons::error::MathError> {
         Self::try_new_3d(dx, dy, StepSize(1.0))
     }
 
     /// Creates 3D stencil operators after validating that `dx`, `dy`, and `dz` are finite and strictly positive.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new_3d(
         dx: StepSize,

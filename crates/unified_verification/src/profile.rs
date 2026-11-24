@@ -24,6 +24,7 @@ const RELEASE_WORKSPACE_MEMBERS: &[&str] = &[
 ];
 
 const INTERNAL_FOUNDATION_MEMBERS: &[&str] = &[
+    "crates/00_foundation/math_diagnostics",
     "crates/federated_registry",
     "crates/diagnostics",
     "crates/oxidize_core",

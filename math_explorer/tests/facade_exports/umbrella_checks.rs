@@ -38,6 +38,7 @@ fn verify_core_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     vec![
         check_leaf(sample_math(), bus),
         check_leaf(error::FitError::SingularMatrix, bus),
+        check_leaf(error::LinalgError::SingularMatrix, bus),
         check_leaf(error::EvalError::UnknownVariable("x".to_string()), bus),
         check_leaf(error::GlslError::DepthLimitExceeded(64), bus),
         check_leaf(
@@ -230,11 +231,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 62);
-    assert_eq!(*events.lock().unwrap(), 62);
+    assert_eq!(converted.len(), 63);
+    assert_eq!(*events.lock().unwrap(), 63);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 68);
+    assert_eq!(*events.lock().unwrap(), 69);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -253,7 +254,15 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 fn verify_prelude_domain_leaves() {
     use math_explorer::prelude as p;
 
-    let _applied_and_phys = core::mem::size_of::<(
+    let _domain_leaves = core::mem::size_of::<(
+        p::AIError,
+        p::ClimateError,
+        p::BotanicalError,
+        p::HodgkinHuxleyError,
+        p::KineticsError,
+        p::ReactionDiffusionError,
+        p::EpidemiologyError,
+        p::NetworkModelError,
         p::BatteryError,
         p::ClinicalTrialError,
         p::EngineeringError,
@@ -295,17 +304,10 @@ pub fn verify_prelude_error_reexports() {
         p::FitError,
         p::GlslError,
         p::LexError,
+        p::LinalgError,
         p::MathError,
         p::ParseError,
         p::ShaderEmitError,
-        p::AIError,
-        p::ClimateError,
-        p::BotanicalError,
-        p::HodgkinHuxleyError,
-        p::KineticsError,
-        p::ReactionDiffusionError,
-        p::EpidemiologyError,
-        p::NetworkModelError,
     )>();
     let _pure = core::mem::size_of::<(
         p::AmbsError,

@@ -361,8 +361,7 @@ fn solve_lm_damped_step<const M: usize>(
         &mut delta[..k],
         &mut pivots[..k],
         &mut engine_linalg::SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(|_| FitError::SingularMatrix)?;
+    )?;
     Ok(delta)
 }
 

@@ -23,6 +23,11 @@ pub mod stochastic;
 pub mod wigner;
 
 #[cfg(all(test, feature = "std"))]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
+#[cfg(all(test, feature = "std"))]
 macro_rules! theory_verification {
     (
         module = $module_name:expr,

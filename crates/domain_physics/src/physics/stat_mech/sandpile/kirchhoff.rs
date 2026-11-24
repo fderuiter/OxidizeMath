@@ -5,9 +5,8 @@
 //! grids via fraction-free Bareiss Gaussian elimination, alongside stack-resident
 //! toppling, Creutz identity, and Dhar burning kernels for [`super::SandpileElement`].
 
-use diagnostics::{Diagnostic, Severity};
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::math_kernel::types::flatten_2d_index;
-use std::collections::HashMap;
 use thiserror::Error;
 
 use super::{CRITICAL_HEIGHT, MAX_STABLE_HEIGHT};
@@ -59,20 +58,27 @@ pub enum SandpileError {
     /// Exact integer determinant overflowed `i128` arithmetic.
     #[error("exact Bareiss determinant overflowed 128-bit integer precision")]
     ArithmeticOverflow,
+    /// Wrapped curve-fitting solver error.
+    #[error("{0}")]
+    Fit(#[from] math_commons::error::FitError),
 }
 
 impl Diagnostic for SandpileError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        Severity::Error
+        match self {
+            Self::Fit(err) => err.severity(),
+            _ => Severity::Error,
+        }
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "SandpileError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        if let Self::Fit(fit_err) = self {
+            fit_err.visit_fields(visitor);
+        }
+        visitor.record_str("error_type", "SandpileError");
+        visitor.record_display("description", self);
     }
 }
 

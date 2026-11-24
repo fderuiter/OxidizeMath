@@ -20,6 +20,7 @@ pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
     "engine_pde",
     "federated_registry",
     "math_commons",
+    "math_diagnostics",
     "math_explorer",
     "oxidize_core",
     "pure_math",
@@ -82,6 +83,17 @@ fn unquote(raw: &str) -> Option<&str> {
 fn clean_key(raw: &str) -> &str {
     unquote(raw).unwrap_or_else(|| raw.trim())
 }
+
+const IGNORED_PATH_SEGMENTS: &[&str] = &[
+    "crates",
+    "00_foundation",
+    "02_engines",
+    "src",
+    "tests",
+    "tabs",
+    "applied",
+    "physics",
+];
 
 impl MaturityRegistry {
     /// Parses `traceability.toml` text into a [`MaturityRegistry`] without requiring `toml` on `wasm32`.
@@ -192,7 +204,7 @@ impl MaturityRegistry {
         if let Some(rest) = norm.strip_prefix("crates/") {
             let mut parts = rest.split('/').filter(|s| !s.is_empty());
             let first = parts.next()?;
-            if first == "02_engines" {
+            if matches!(first, "00_foundation" | "02_engines") {
                 return parts.next();
             }
             return Some(first);
@@ -218,13 +230,10 @@ impl MaturityRegistry {
             out.push("cera_framework".to_string());
         }
         for seg in segments.iter().rev().skip(1) {
-            if matches!(
-                *seg,
-                "crates" | "02_engines" | "src" | "tests" | "tabs" | "applied" | "physics"
-            ) {
-                continue;
-            }
-            if self.modules.contains_key(*seg) && !out.iter().any(|m| m == seg) {
+            if !IGNORED_PATH_SEGMENTS.contains(seg)
+                && self.modules.contains_key(*seg)
+                && !out.iter().any(|m| m == seg)
+            {
                 out.push((*seg).to_string());
             }
         }

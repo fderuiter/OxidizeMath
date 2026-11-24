@@ -26,7 +26,7 @@ pub fn check_all_finite<T: Scalar>(slice: &[T]) -> Result<(), LinalgError> {
 }
 
 /// Typed `#![no_std]` error returned by [`crate`] factorizations and iterative solvers.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LinalgError {
     /// Matrix or vector dimensions do not conform to the requested operation.
     DimensionMismatch,
@@ -73,6 +73,42 @@ impl fmt::Display for LinalgError {
 }
 
 impl core::error::Error for LinalgError {}
+
+impl math_diagnostics::Diagnostic for LinalgError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
+    }
+
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", "LinalgError");
+        visitor.record_display("description", self);
+        match self {
+            Self::DimensionMismatch => {
+                visitor.record_str("code", "LINALG-001");
+            }
+            Self::WorkspaceTooSmall {
+                required,
+                available,
+            } => {
+                visitor.record_str("code", "LINALG-002");
+                visitor.record_usize("required", *required);
+                visitor.record_usize("available", *available);
+            }
+            Self::InvalidInput => {
+                visitor.record_str("code", "LINALG-003");
+            }
+            Self::SingularMatrix => {
+                visitor.record_str("code", "LINALG-004");
+            }
+            Self::NotPositiveDefinite => {
+                visitor.record_str("code", "LINALG-005");
+            }
+            Self::NonConvergence => {
+                visitor.record_str("code", "LINALG-006");
+            }
+        }
+    }
+}
 
 /// Caller-owned mutable scratch slice used by `#![no_std]` solvers without heap allocation.
 pub struct SolverWorkspace<'a, T> {

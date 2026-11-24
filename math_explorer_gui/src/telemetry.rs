@@ -7,7 +7,35 @@
 use federated_registry::{global_registry, Severity, TelemetryEvent};
 use std::collections::HashMap;
 
+#[derive(Debug)]
+struct GuiTelemetryDiagnostic {
+    severity: Severity,
+    message: String,
+    metadata: HashMap<String, String>,
+}
+
+impl std::fmt::Display for GuiTelemetryDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for GuiTelemetryDiagnostic {}
+
+impl diagnostics::Diagnostic for GuiTelemetryDiagnostic {
+    fn severity(&self) -> Severity {
+        self.severity
+    }
+
+    fn visit_fields(&self, visitor: &mut dyn diagnostics::DiagnosticVisitor) {
+        for (key, value) in &self.metadata {
+            visitor.record_str(key, value);
+        }
+    }
+}
+
 /// Returns a non-empty label identifying the calling thread by name or `ThreadId`.
+#[cfg(test)]
 pub(crate) fn current_thread_label() -> Option<String> {
     let current = std::thread::current();
     Some(
@@ -18,20 +46,27 @@ pub(crate) fn current_thread_label() -> Option<String> {
     )
 }
 
-/// Emits a structured [`TelemetryEvent`] tagged with the calling thread's identity.
+/// Dispatches any domain or engine [`diagnostics::Diagnostic`] through
+/// [`diagnostics::DiagnosticBus::emit_diagnostic_with_source`], forwarding the
+/// structured event to [`federated_registry::global_registry`] with thread isolation intact.
+pub(crate) fn emit_diagnostic<D: diagnostics::Diagnostic + ?Sized>(source: &str, diagnostic: &D) {
+    let _ = global_registry();
+    diagnostics::global_bus().emit_diagnostic_with_source(source, diagnostic);
+}
+
+/// Emits a structured [`TelemetryEvent`] tagged with the calling thread's identity via [`DiagnosticBus`](diagnostics::DiagnosticBus).
 pub(crate) fn emit_telemetry(
     source: &str,
     severity: Severity,
     message: String,
     metadata: HashMap<String, String>,
 ) {
-    global_registry().emit(TelemetryEvent {
-        source: source.to_string(),
+    let diag = GuiTelemetryDiagnostic {
         severity,
         message,
         metadata,
-        thread_name: current_thread_label(),
-    });
+    };
+    emit_diagnostic(source, &diag);
 }
 
 /// Polls pending [`TelemetryEvent`] records destined for `MathExplorerApp::update`.
@@ -104,5 +139,62 @@ mod tests {
         assert!(events.iter().any(|e| e.source == "DirectUntaggedTest"));
         let requeued = global_registry().try_recv_all();
         assert!(requeued.iter().any(|e| e.source == "OdeSolverTool"));
+    }
+
+    #[test]
+    fn test_emit_diagnostic_bridges_domain_errors_with_thread_isolation() {
+        let _guard = crate::reflective_ui::tests::lock_test_mutex();
+        let _ = global_registry().try_recv_all();
+
+        std::thread::Builder::new()
+            .name("foreign_domain_diag_thread".to_string())
+            .spawn(|| {
+                let foreign_err = math_commons::error::LinalgError::WorkspaceTooSmall {
+                    required: 16,
+                    available: 4,
+                };
+                emit_diagnostic("ForeignLinalgSolver", &foreign_err);
+            })
+            .expect("spawn foreign diagnostic thread")
+            .join()
+            .expect("join foreign diagnostic thread");
+
+        let local_err =
+            math_commons::error::FitError::from(math_commons::error::LinalgError::SingularMatrix);
+        emit_diagnostic("LocalDomainSolver", &local_err);
+
+        let events = poll_app_telemetry();
+        assert!(
+            !events.iter().any(|e| e.source == "ForeignLinalgSolver"),
+            "Foreign thread domain diagnostic must remain isolated from local poll_app_telemetry"
+        );
+        let local_ev = events
+            .iter()
+            .find(|e| e.source == "LocalDomainSolver")
+            .expect("local domain diagnostic forwarded to federated_registry");
+        assert_eq!(local_ev.severity, Severity::Error);
+        assert_eq!(
+            local_ev.metadata.get("code").map(String::as_str),
+            Some("MATH-FIT-006")
+        );
+        assert_eq!(
+            local_ev.metadata.get("error_type").map(String::as_str),
+            Some("FitError")
+        );
+        assert_eq!(local_ev.thread_name, current_thread_label());
+
+        let requeued = global_registry().try_recv_all();
+        let foreign_ev = requeued
+            .iter()
+            .find(|e| e.source == "ForeignLinalgSolver")
+            .expect("foreign domain diagnostic preserved in shared registry");
+        assert_eq!(
+            foreign_ev.metadata.get("code").map(String::as_str),
+            Some("LINALG-002")
+        );
+        assert_eq!(
+            foreign_ev.metadata.get("required").map(String::as_str),
+            Some("16")
+        );
     }
 }

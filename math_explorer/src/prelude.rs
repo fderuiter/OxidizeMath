@@ -1,7 +1,7 @@
 //! Ergonomic prelude of shared mathematical primitives, core containers, and active domain errors.
 
 pub use crate::error::*;
-pub use diagnostics::{Diagnostic, Severity};
+pub use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 pub use math_commons::fit::FitModel;
 pub use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
 pub use math_commons::series::{PointSeries, Sample2D};

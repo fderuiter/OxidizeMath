@@ -1001,6 +1001,7 @@ dependencies = [
 name = "diagnostics"
 version = "0.1.0"
 dependencies = [
+ "math_diagnostics",
  "thiserror 2.0.21",
 ]
 
@@ -1373,6 +1374,7 @@ dependencies = [
 name = "engine_linalg"
 version = "0.4.0"
 dependencies = [
+ "math_diagnostics",
  "verified_engine",
 ]
 
@@ -2464,12 +2466,20 @@ dependencies = [
  "diagnostics",
  "engine_linalg",
  "libm",
+ "math_diagnostics",
  "num-complex",
  "num-traits",
  "oxidize_core",
  "rand_core",
  "scientific_metadata",
  "thiserror 2.0.21",
+ "verified_engine",
+]
+
+[[package]]
+name = "math_diagnostics"
+version = "0.1.0"
+dependencies = [
  "verified_engine",
 ]
 
