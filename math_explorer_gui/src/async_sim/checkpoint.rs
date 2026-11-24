@@ -301,6 +301,13 @@ impl CheckpointRing {
 
     /// Records a parameter epoch at `current_step` if `runner`'s active parameters changed.
     pub fn record_active_params<R: SimulationRunner + ?Sized>(&mut self, runner: &R) {
+        if self
+            .epochs
+            .back()
+            .is_some_and(|last| runner.active_params_match(&last.params))
+        {
+            return;
+        }
         let Some(params) = runner.capture_active_params() else {
             return;
         };

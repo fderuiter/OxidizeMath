@@ -1,12 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    apply_pinned_rle_to_lattice, ising_spin_color, DropletSeed, IsingBrushMode,
-    IsingInteractionMode, IsingModelTool, DEFAULT_ISING_SIZE,
+    ising_spin_color, DropletSeed, IsingBrushMode, IsingInteractionMode, IsingModelTool,
+    DEFAULT_ISING_SIZE,
 };
 use crate::async_sim::SimCommand;
 use crate::framework::{
-    encode_u8_grid, BrushStencil, InteractionContext, RasterBrushStroke, SymmetryMode,
+    decode_u8_grid, encode_u8_grid, BrushStencil, InteractionContext, RasterBrushStroke,
+    SymmetryMode,
 };
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -14,6 +15,102 @@ use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
 use nalgebra::DMatrix;
+
+/// Applies an RLE-encoded pin mask (`0`=unpinned, `1`=pinned `+1`, `2`=pinned `-1`) to `lattice`.
+pub fn apply_pinned_rle_to_lattice(lattice: &mut SpinLattice, pinned_rle: Option<&str>) {
+    lattice.clear_pinned();
+    let Some(rle) = pinned_rle else {
+        return;
+    };
+    let w = lattice.width();
+    let h = lattice.height();
+    let Ok(decoded) = decode_u8_grid(rle, w, h, 2) else {
+        return;
+    };
+    for y in 0..h {
+        for x in 0..w {
+            match decoded[flatten_2d_index(x, y, w)] {
+                1 => {
+                    lattice.set(x, y, 1);
+                    lattice.set_pinned(x, y, true);
+                }
+                2 => {
+                    lattice.set(x, y, -1);
+                    lattice.set_pinned(x, y, true);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Applies a batch of discrete brush cells onto `lattice`.
+pub fn apply_ising_brush_cells(
+    lattice: &mut SpinLattice,
+    cells: &[(usize, usize)],
+    mode: IsingBrushMode,
+) {
+    let w = lattice.width();
+    let h = lattice.height();
+    for &(x, y) in cells {
+        if x >= w || y >= h {
+            continue;
+        }
+        match mode {
+            IsingBrushMode::SpinUp => {
+                if !lattice.is_pinned(x, y) {
+                    lattice.set(x, y, 1);
+                }
+            }
+            IsingBrushMode::SpinDown => {
+                if !lattice.is_pinned(x, y) {
+                    lattice.set(x, y, -1);
+                }
+            }
+            IsingBrushMode::PinUp => {
+                lattice.set(x, y, 1);
+                lattice.set_pinned(x, y, true);
+            }
+            IsingBrushMode::PinDown => {
+                lattice.set(x, y, -1);
+                lattice.set_pinned(x, y, true);
+            }
+            IsingBrushMode::Unpin => {
+                lattice.set_pinned(x, y, false);
+            }
+        }
+    }
+}
+
+/// Paints a clamped circular droplet onto unpinned sites of `lattice` using `SpinLattice::set`.
+pub fn apply_circular_droplet(lattice: &mut SpinLattice, cx: i32, cy: i32, r: i32, spin_val: i8) {
+    let width = lattice.width();
+    let height = lattice.height();
+    if width == 0 || height == 0 {
+        return;
+    }
+    let max_x = (width as i32) - 1;
+    let max_y = (height as i32) - 1;
+    let cx = cx.clamp(0, max_x);
+    let cy = cy.clamp(0, max_y);
+    let r = r.clamp(0, max_x.max(max_y));
+    let r_sq = i64::from(r) * i64::from(r);
+
+    let y_min = (cy - r).max(0);
+    let y_max = (cy + r).min(max_y);
+    let x_min = (cx - r).max(0);
+    let x_max = (cx + r).min(max_x);
+
+    for y in y_min..=y_max {
+        let dy = i64::from(y - cy);
+        for x in x_min..=x_max {
+            let dx = i64::from(x - cx);
+            if dx * dx + dy * dy <= r_sq && !lattice.is_pinned(x as usize, y as usize) {
+                lattice.set(x as usize, y as usize, spin_val);
+            }
+        }
+    }
+}
 
 impl IsingModelTool {
     pub(crate) fn sync_brush_fields_before_frame(&mut self) {

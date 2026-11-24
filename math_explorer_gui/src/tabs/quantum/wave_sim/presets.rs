@@ -449,6 +449,7 @@ pub fn compute_tunneling_observables_slice(
     obs
 }
 
+/// Default serialized starter preset JSON for the Schrödinger Wave Packet gallery entry.
 pub(super) const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",

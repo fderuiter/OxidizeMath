@@ -19,6 +19,7 @@ impl MathExplorerApp {
                 self.secondary_tab = tab_idx;
             }
             self.on_pane_tab_assigned(pane_idx, tab_idx);
+            self.sync_viewport_visibility();
         }
     }
 
@@ -34,6 +35,7 @@ impl MathExplorerApp {
             self.pane_tabs[1] = self.secondary_tab;
         }
         self.prune_inactive_pane_slots(layout.pane_count());
+        self.sync_viewport_visibility();
     }
 
     /// Synchronizes legacy `split_layout_mode` with current `viewport_layout`.
@@ -77,6 +79,7 @@ impl MathExplorerApp {
         }
         self.pipeline_dag.swap_panes(lo, hi);
         self.dataflow_bus.swap_panes(lo, hi);
+        self.sync_viewport_visibility();
     }
 
     /// Queries the active `InteractiveTool` ID of `pane_idx` without mutating lazy secondary slots.
@@ -282,8 +285,9 @@ impl MathExplorerApp {
             return;
         }
         if new_p0 == new_sec {
+            let sec_suspended = sec_pane >= self.effective_viewport_layout().pane_count();
             if let Some(slot) = self.pane_slots.slot_mut(sec_pane) {
-                if let Some(sec_tab) = slot.ensure_tab(new_p0) {
+                if let Some(sec_tab) = slot.ensure_tab(new_p0, sec_suspended) {
                     std::mem::swap(&mut self.tabs[new_p0], sec_tab);
                 }
                 slot.snapshot_active();
@@ -319,23 +323,27 @@ impl MathExplorerApp {
             .pane_slots
             .slot_mut(sec_pane)
             .and_then(|s| s.active.take());
-        let Some((idx, box_sec)) = old_slot else {
+        let Some((idx, mut box_sec)) = old_slot else {
             self.swap_serialized_slot_state(sec_pane, new_p0, new_sec);
             return;
         };
         if idx == new_p0 {
             self.tabs[new_p0] = box_sec;
-        } else if let Some(slot) = self.pane_slots.slot_mut(sec_pane) {
-            if let Some(st) = box_sec.save_state() {
-                slot.saved_states
-                    .insert(box_sec.name().to_string(), st.into());
+        } else {
+            if let Some(slot) = self.pane_slots.slot_mut(sec_pane) {
+                if let Some(st) = box_sec.save_state() {
+                    slot.saved_states
+                        .insert(box_sec.name().to_string(), st.into());
+                }
+                let p0_name = self.tabs[new_p0].name().to_string();
+                if let Some(saved) = slot.saved_states.get(&p0_name).cloned() {
+                    self.tabs[new_p0].load_state(&saved);
+                }
             }
-            let p0_name = self.tabs[new_p0].name().to_string();
-            if let Some(saved) = slot.saved_states.get(&p0_name).cloned() {
-                self.tabs[new_p0].load_state(&saved);
-            }
+            box_sec.set_suspended(true);
         }
         if let Some(mut fresh_primary) = crate::tabs::instantiate_tab(new_sec) {
+            fresh_primary.set_suspended(new_sec != new_p0);
             if let Some(s) = self.tabs[new_sec].save_state() {
                 fresh_primary.load_state(&s);
             }
