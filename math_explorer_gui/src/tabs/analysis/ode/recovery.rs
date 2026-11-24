@@ -62,6 +62,7 @@ impl OdeSolverTool {
             &mut self.seeded_ic,
         );
         clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
+        clamp_finite(&mut self.t_slice, 0.0, self.total_time, 0.0);
         self.recalculate();
     }
 
@@ -107,6 +108,8 @@ impl OdeSolverTool {
         self.seeded_ic.clear();
         self.dt = 0.05;
         self.total_time = 10.0;
+        self.t_slice = 0.0;
+        self.phase_cursor = None;
         self.pending_sweep_run = None;
         self.recalculate();
     }
@@ -154,6 +157,7 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
         || !tool.dt.is_finite()
         || !tool.total_time.is_finite()
         || !tool.ic_y0.is_finite()
+        || !tool.t_slice.is_finite()
         || !params_finite
         || !are_seeded_orbits_finite(tool)
     {
