@@ -17,9 +17,8 @@ use std::pin::Pin;
 const MANIFEST_FILENAME: &str = "traceability_manifest.json";
 
 const CORE_DEP_CRATES: &[&str] = &[
+    "02_engines/engine_linalg",
     "diagnostics",
-    "engine_diffeq",
-    "engine_pde",
     "federated_registry",
     "math_commons",
     "oxidize_core",
@@ -37,6 +36,8 @@ const FEATURE_DEP_CRATES: &[(&str, &str)] = &[
     ),
     ("CARGO_FEATURE_MATH_EXPLORER", "math_explorer/src"),
     ("CARGO_FEATURE_PHYSICS", "crates/domain_physics/src"),
+    ("CARGO_FEATURE_PURE_MATH", "crates/engine_diffeq/src"),
+    ("CARGO_FEATURE_PURE_MATH", "crates/engine_pde/src"),
     ("CARGO_FEATURE_PURE_MATH", "crates/pure_math/src"),
 ];
 

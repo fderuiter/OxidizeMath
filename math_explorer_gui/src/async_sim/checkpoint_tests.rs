@@ -1,31 +1,41 @@
 use super::*;
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimRunner};
-use crate::framework::{BrushMode, BrushStroke};
-use crate::presets::MorphogenesisKineticsMode;
-use crate::tabs::chaos::attractors::{
-    default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
+#[cfg(feature = "physics")]
+use crate::tabs::{
+    chaos::attractors::{
+        default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
+    },
+    mri::{MriRunner, MriSharedParams},
 };
-use crate::tabs::morphogenesis::runner::{
-    MorphoSnapshotData, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
+#[cfg(feature = "biology")]
+use crate::{
+    async_sim::unified::{UnifiedModel, UnifiedSimRunner},
+    framework::{BrushMode, BrushStroke},
+    presets::MorphogenesisKineticsMode,
+    tabs::morphogenesis::{
+        runner::{MorphoSnapshotData, MorphogenesisKineticsRunner, MorphogenesisKineticsState},
+        MorphogenesisSharedParams, MorphogenesisTool,
+    },
+    tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified,
 };
-use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTool};
-use crate::tabs::mri::{MriRunner, MriSharedParams};
-use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+#[cfg(feature = "physics")]
 use nalgebra::Vector3;
+#[cfg(feature = "biology")]
 use std::collections::HashMap;
 use std::sync::RwLock;
+#[cfg(feature = "biology")]
 use verified_engine::engine::VerifiedEngine;
 
+#[cfg(feature = "biology")]
+type MorphoPair<T> = (MorphogenesisKineticsRunner, Arc<RwLock<T>>);
+
+#[cfg(feature = "biology")]
 fn make_morpho_runner(
-    width: usize,
-    height: usize,
+    w: usize,
+    h: usize,
     dt: f64,
     d_v: f64,
-    noise_amplitude: f64,
-) -> (
-    MorphogenesisKineticsRunner,
-    Arc<RwLock<MorphogenesisSharedParams>>,
-) {
+    noise: f64,
+) -> MorphoPair<MorphogenesisSharedParams> {
     let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
         a: 0.14,
         b: 0.86,
@@ -37,18 +47,13 @@ fn make_morpho_runner(
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));
-    let mut runner = MorphogenesisTool::create_runner(&params, width, height);
-    runner.noise_amplitude = noise_amplitude;
+    let mut runner = MorphogenesisTool::create_runner(&params, w, h);
+    runner.noise_amplitude = noise;
     (runner, params)
 }
 
-fn make_gray_scott_runner(
-    width: usize,
-    height: usize,
-) -> (
-    MorphogenesisKineticsRunner,
-    Arc<RwLock<MorphogenesisKineticsState>>,
-) {
+#[cfg(feature = "biology")]
+fn make_gray_scott_runner(w: usize, h: usize) -> MorphoPair<MorphogenesisKineticsState> {
     let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
         a: 0.14,
         b: 0.86,
@@ -66,7 +71,7 @@ fn make_gray_scott_runner(
         k: 0.0649,
     }));
     let mask_rle = Arc::new(RwLock::new(Vec::new()));
-    let runner = MorphogenesisTool::create_kinetics_runner(&params, &ks, &mask_rle, width, height);
+    let runner = MorphogenesisTool::create_kinetics_runner(&params, &ks, &mask_rle, w, h);
     (runner, ks)
 }
 
@@ -79,17 +84,15 @@ fn step_with_ring<R: SimulationRunner>(runner: &mut R, ring: &mut CheckpointRing
     }
 }
 
+#[cfg(feature = "biology")]
 fn assert_slice_bits_eq(actual: &[f64], expected: &[f64], label: &str) {
     assert_eq!(actual.len(), expected.len(), "{label}: length mismatch");
     for (idx, (&a, &e)) in actual.iter().zip(expected.iter()).enumerate() {
-        assert_eq!(
-            a.to_bits(),
-            e.to_bits(),
-            "{label}: bit mismatch at index {idx}: {a} vs {e}"
-        );
+        assert_eq!(a.to_bits(), e.to_bits(), "{label}@{idx}: {a} vs {e}");
     }
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_attractor_k1_bit_exact_backward_and_forward_scrub() {
     let params = Arc::new(RwLock::new(AttractorSharedParams {
@@ -141,6 +144,7 @@ fn test_attractor_k1_bit_exact_backward_and_forward_scrub() {
     }
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_attractor_custom_flow_checkpoint_and_substep_replay() {
     let bank = default_flow_bank();
@@ -167,46 +171,32 @@ fn test_attractor_custom_flow_checkpoint_and_substep_replay() {
     }
     ring.seek_to_step(&mut runner, 11);
     assert_eq!(runner.step_count, 11);
-    assert_eq!(
-        runner.system.state.vec.x.to_bits(),
-        direct_11.system.state.vec.x.to_bits()
-    );
-    assert_eq!(
-        runner.system.state.vec.y.to_bits(),
-        direct_11.system.state.vec.y.to_bits()
-    );
-    assert_eq!(
-        runner.system.state.vec.z.to_bits(),
-        direct_11.system.state.vec.z.to_bits()
-    );
+    let (actual_v, expected_v) = (runner.system.state.vec, direct_11.system.state.vec);
+    assert_eq!(actual_v.x.to_bits(), expected_v.x.to_bits());
+    assert_eq!(actual_v.y.to_bits(), expected_v.y.to_bits());
+    assert_eq!(actual_v.z.to_bits(), expected_v.z.to_bits());
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_mri_k1_bit_exact_replay_with_param_edits() {
-    let mri_params = Arc::new(RwLock::new(MriSharedParams {
+    let init_mri = || MriSharedParams {
         t1: 1.0,
         t2: 0.2,
         b_field: Vector3::new(0.0, 0.0, 1.0e-7),
         time_scale: 1.0,
-    }));
-    let mut mri = MriRunner::new(Arc::clone(&mri_params), Vector3::new(1.0, 0.0, 0.0), 1.0);
+    };
+    let m0 = Vector3::new(1.0, 0.0, 0.0);
+    let mri_params = Arc::new(RwLock::new(init_mri()));
+    let mut mri = MriRunner::new(Arc::clone(&mri_params), m0, 1.0);
     let mut mri_ring = CheckpointRing::new(1);
     mri_ring.reset_and_seed(&mri);
     step_with_ring(&mut mri, &mut mri_ring, 30);
     mri_params.write().unwrap().b_field.x = 0.25e-7;
     step_with_ring(&mut mri, &mut mri_ring, 40);
 
-    let mri_direct_params = Arc::new(RwLock::new(MriSharedParams {
-        t1: 1.0,
-        t2: 0.2,
-        b_field: Vector3::new(0.0, 0.0, 1.0e-7),
-        time_scale: 1.0,
-    }));
-    let mut mri_direct = MriRunner::new(
-        Arc::clone(&mri_direct_params),
-        Vector3::new(1.0, 0.0, 0.0),
-        1.0,
-    );
+    let mri_direct_params = Arc::new(RwLock::new(init_mri()));
+    let mut mri_direct = MriRunner::new(Arc::clone(&mri_direct_params), m0, 1.0);
     for _ in 0..30 {
         mri_direct.step_once();
     }
@@ -226,6 +216,7 @@ fn test_mri_k1_bit_exact_replay_with_param_edits() {
     assert_eq!(mri.history.len(), mri_direct.history.len());
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_hodgkin_huxley_k1_bit_exact_replay_with_param_edits() {
     let hh_map = HashMap::from([
@@ -259,6 +250,7 @@ fn test_hodgkin_huxley_k1_bit_exact_replay_with_param_edits() {
     );
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_morphogenesis_k16_mid_stride_param_edit_and_stochastic_rng_replay() {
     let (mut runner, params) = make_morpho_runner(24, 24, 0.002, 50.0, 5e-4);
@@ -299,6 +291,7 @@ fn test_morphogenesis_k16_mid_stride_param_edit_and_stochastic_rng_replay() {
     );
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_future_keyframes_preserved_on_scrub_and_truncated_only_on_forward_resume() {
     let (mut runner, _) = make_morpho_runner(16, 16, 0.002, 50.0, 0.0);
@@ -324,6 +317,7 @@ fn test_future_keyframes_preserved_on_scrub_and_truncated_only_on_forward_resume
     assert_eq!(ring.keyframe_count(), 2);
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_ring_enforces_2mib_cap_over_10000_steps_and_clears_on_reset() {
     let (mut runner, _) = make_morpho_runner(100, 100, 0.002, 50.0, 0.0);
@@ -359,18 +353,17 @@ fn test_ring_enforces_2mib_cap_over_10000_steps_and_clears_on_reset() {
     runner.process_command(SimCommand::Reset);
     ring.reset_and_seed(&runner);
     assert_eq!(ring.keyframe_count(), 1);
-    assert_eq!(
-        ring.metadata(),
-        TimelineMetadata {
-            current_step: 0,
-            min_step: 0,
-            max_step: 0,
-            stride: 16,
-        }
-    );
+    let zero_meta = TimelineMetadata {
+        current_step: 0,
+        min_step: 0,
+        max_step: 0,
+        stride: 16,
+    };
+    assert_eq!(ring.metadata(), zero_meta);
     assert!(ring.total_bytes() < 200_000);
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_zero_allocation_substep_replay_under_verified_engine() {
     let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
@@ -383,10 +376,10 @@ fn test_zero_allocation_substep_replay_under_verified_engine() {
     step_with_ring(&mut morpho, &mut morpho_ring, 32);
 
     let hh_params = Arc::new(RwLock::new(HashMap::from([
-        ("g_na".to_string(), 120.0),
-        ("g_k".to_string(), 36.0),
-        ("g_l".to_string(), 0.3),
-        ("i_ext".to_string(), 10.0),
+        ("g_na".into(), 120.0),
+        ("g_k".into(), 36.0),
+        ("g_l".into(), 0.3),
+        ("i_ext".into(), 10.0),
     ])));
     let mut hh = UnifiedSimRunner::<HodgkinHuxleyUnified>::new(hh_params);
     let mut hh_ring = CheckpointRing::new(1);
@@ -401,6 +394,7 @@ fn test_zero_allocation_substep_replay_under_verified_engine() {
     assert_eq!(hh.current_step(), 5);
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_worst_case_k16_substep_replay_completes_within_slice_budget() {
     let (mut morpho, _) = make_morpho_runner(100, 100, 0.002, 50.0, 0.0);
@@ -424,6 +418,7 @@ fn test_worst_case_k16_substep_replay_completes_within_slice_budget() {
     );
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_morphogenesis_gray_scott_k16_replay_substeps_and_zero_alloc() {
     let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
@@ -469,6 +464,7 @@ fn test_morphogenesis_gray_scott_k16_replay_substeps_and_zero_alloc() {
     assert_slice_bits_eq(&v_snap.u_data, direct_27.system.v(), "GrayScott snap v(27)");
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_morphogenesis_masked_sculpt_k16_replay_and_zero_alloc() {
     let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX

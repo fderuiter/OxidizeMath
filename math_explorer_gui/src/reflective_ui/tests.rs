@@ -7,6 +7,12 @@ pub(crate) fn lock_test_mutex() -> std::sync::MutexGuard<'static, ()> {
     TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+#[cfg(any(
+    feature = "applied",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[test]
 fn test_render_copyable_metric() {
     let ctx = egui::Context::default();
@@ -24,6 +30,7 @@ fn test_render_copyable_metric() {
     });
 }
 
+#[cfg(any(feature = "ai", feature = "physics", feature = "pure_math"))]
 #[test]
 fn test_render_formula_with_export() {
     let ctx = egui::Context::default();
@@ -214,6 +221,12 @@ fn test_reflective_copy_controls_announce_and_dismiss_on_escape() {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
 
+    #[cfg(any(
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     verify_reflective_hover_and_escape(
         &ctx,
         |ui| {
@@ -223,6 +236,7 @@ fn test_reflective_copy_controls_announce_and_dismiss_on_escape() {
         "Copy value",
     );
 
+    #[cfg(any(feature = "ai", feature = "physics", feature = "pure_math"))]
     for (btn, tooltip) in [
         ("📋 LaTeX", "Copy LaTeX formula"),
         ("📋 Text", "Copy plain text formula"),

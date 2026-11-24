@@ -315,7 +315,10 @@ pub(crate) mod deferred_export_tests;
 #[cfg(all(
     test,
     feature = "ai",
+    feature = "applied",
     feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
     feature = "physics",
     feature = "pure_math"
 ))]
@@ -325,7 +328,10 @@ mod deferred_export_audit_tests;
 #[cfg(all(
     test,
     feature = "ai",
+    feature = "applied",
     feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
     feature = "physics",
     feature = "pure_math"
 ))]

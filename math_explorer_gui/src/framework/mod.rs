@@ -10,7 +10,7 @@ mod challenge_hud;
 #[cfg(test)]
 mod challenge_hud_tests;
 pub mod clamp;
-#[cfg(test)]
+#[cfg(all(test, feature = "climate", feature = "physics", feature = "pure_math"))]
 mod clamp_tests;
 pub mod code_export;
 pub mod code_export_modal;
@@ -34,13 +34,18 @@ mod export_gif_job;
 mod export_modal_host;
 mod export_persistence;
 mod export_queue;
-#[cfg(test)]
+#[cfg(all(test, feature = "physics"))]
 pub(crate) use export_queue::deferred_export_tests;
 #[cfg(test)]
 mod export_queue_tests;
 pub mod export_scalar_field;
 pub(crate) mod export_shader;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod export_shader_tests;
 pub mod export_types;
 mod export_ui;
@@ -49,11 +54,29 @@ mod export_ui_tests;
 pub mod fit_bridge;
 mod history_ui;
 pub mod math_input;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod metadata_label_tests;
 mod overlay_sync;
 mod pane_scope;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod perf_guard_tests;
 mod persistence;
 pub mod playback;
@@ -69,7 +92,7 @@ mod plot_persistence_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
-#[cfg(test)]
+#[cfg(all(test, any(feature = "epidemiology", feature = "pure_math")))]
 mod shared_points_perf_tests;
 pub mod side_panel;
 pub mod spatial_brush;
@@ -175,40 +198,32 @@ pub trait InteractiveTool {
     fn state_revision(&self) -> u64 {
         0
     }
-
     /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
     fn url_state_revision(&self) -> u64 {
         self.state_revision()
     }
-
     /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         None
     }
-
     /// Direct numeric parameter finiteness hook without JSON serialization.
     fn has_finite_parameters(&self) -> bool {
         true
     }
-
     /// Named scalar observables exposed to the Challenge HUD and `math_commons::ast` evaluator.
     fn observables(&self) -> Vec<(&'static str, f64)> {
         Vec::new()
     }
-
     /// Synchronizes declarative guided story or challenge callout pins onto the tool's plot.
     fn sync_callouts(&mut self, _callouts: &[CalloutSpec]) {}
-
     /// Candidate `(x_key, y_key)` parameter pairs for the framework-hosted 2D parameter atlas.
     fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
         &[]
     }
-
     /// Current `(x_val, y_val)` coordinates of the tool on the selected `axis_keys` plane.
     fn active_atlas_coords(&self, _axis_keys: (&'static str, &'static str)) -> (f64, f64) {
         (0.0, 0.0)
     }
-
     /// Hashable signature of non-axis context parameters that invalidate cached atlas slices.
     fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
         self.state_revision()
@@ -454,29 +469,17 @@ pub struct SimulationFramework {
     pub preset_dialog: crate::presets::PresetDialogState,
     pub(crate) export_queue: ExportQueue,
     gif_job: Option<export_gif_job::FrameworkGifJob>,
-    /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
-    /// Baseline parameters snapshot on tool load.
     pub baseline_tool_state: Option<String>,
-    /// Last validated finite plot datasets.
     pub current_valid_plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
-    /// Last validated finite 3D world-coordinate plot datasets.
     pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
-    /// Whether divergence has been detected in the active tool.
     pub is_diverged: bool,
-    /// Diagnostic report for divergence.
     pub diagnostic_report: Option<DiagnosticReport>,
-    /// Simulation frame / step counter.
     pub step_counter: usize,
-    /// Counterfactual shadow twin engine state synchronized with the active tool.
     pub branch_engine: CounterfactualBranchEngine,
-    /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
-    /// Scoped Web Audio / gain-ramp / divergence-silence controller for this framework pane.
     pub audio_controller: crate::audio::AudioEngineController,
-    /// Declarative guided story and AST challenge HUD state.
     pub challenge_hud: ChallengeHudState,
-    /// Active inverse challenge contract displayed in the Challenge HUD, if any.
     pub active_challenge: Option<&'static ChallengeMetadata>,
     pub(super) challenge_was_passed: bool,
     pub(super) instance_id: u64,
