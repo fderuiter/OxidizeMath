@@ -1,8 +1,11 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 #![doc = include_str!("../README.md")]
 
 /// Zero-allocation global allocator guard enforcing NASA Power of 10 Rule 3.
+#[cfg(feature = "std")]
 pub mod allocator;
 /// Verified execution harness coordinating allocation locks and complexity metrics.
+#[cfg(feature = "std")]
 pub mod engine;
 /// Thread-local runtime counters tracking calls, arithmetic operations, and memory loads.
 pub mod metrics;
@@ -28,6 +31,7 @@ pub mod metrics;
 pub use verified_engine_macros::verified;
 
 // Re-export the macros and hidden runtime support crate for macro expansion
+#[cfg(feature = "std")]
 #[doc(hidden)]
 pub use scientific_metadata;
 

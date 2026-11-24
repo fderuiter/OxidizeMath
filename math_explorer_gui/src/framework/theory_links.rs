@@ -76,6 +76,9 @@ fn explicit_tool_papers(tool_id: &str) -> &'static [&'static str] {
         ],
         "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" => &["freesurfer"],
+        "PhyllotaxisLSystemTool" | "BiochemicalDynamicsTool" | "EvolutionaryBiologyTool" => {
+            &["computational_biology", "biology"]
+        }
         _ => &[],
     }
 }
@@ -120,7 +123,8 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
             "pure_math",
         ],
         "financial_math" => &["clinical_trials_statistics"],
-        "neuroscience" => &["biology", "graph_parameters_rust"],
+        "biology" | "biochemical" => &["biology", "computational_biology"],
+        "neuroscience" => &["biology", "computational_biology", "graph_parameters_rust"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
         "solid_state" => &["stat_mech", "pure_math"],
         "ai" => &["graph_parameters_rust"],

@@ -11,6 +11,7 @@ pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
         "analysis" => Cow::Borrowed("Analysis & Calculus"),
         "astrophysics" => Cow::Borrowed("Astrophysics"),
         "battery_degradation" => Cow::Borrowed("Battery Degradation"),
+        "biochemical" => Cow::Borrowed("Biochemical Dynamics"),
         "biology" => Cow::Borrowed("Biology"),
         "cannibalism" => Cow::Borrowed("Population Structure"),
         "chaos" => Cow::Borrowed("Chaos Theory"),

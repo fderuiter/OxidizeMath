@@ -108,6 +108,42 @@ impl NetworkEpidemicModelBuilder {
         self
     }
 
+    /// Populates the contact network adjacency list from CSR `(row_ptr, col_idx)` slices.
+    ///
+    /// # Errors
+    /// Returns [`NetworkModelError::AdjacencyMismatch`] if CSR indices or row bounds are invalid.
+    #[verified_engine::verified]
+    pub fn csr_adjacency(
+        self,
+        row_ptr: &[usize],
+        col_idx: &[usize],
+    ) -> Result<Self, NetworkModelError> {
+        let num_nodes = self.num_nodes.ok_or(NetworkModelError::InvalidNodeCount)?;
+        if row_ptr.len() != num_nodes + 1
+            || row_ptr.first().copied() != Some(0)
+            || row_ptr[num_nodes] != col_idx.len()
+        {
+            return Err(NetworkModelError::AdjacencyMismatch);
+        }
+        let mut adj = vec![Vec::new(); num_nodes];
+        for (u, row) in adj.iter_mut().enumerate() {
+            let start = row_ptr[u];
+            let end = row_ptr[u + 1];
+            if start > end {
+                return Err(NetworkModelError::AdjacencyMismatch);
+            }
+            for &v in &col_idx[start..end] {
+                if v >= num_nodes {
+                    return Err(NetworkModelError::AdjacencyMismatch);
+                }
+                if u != v && !row.contains(&v) {
+                    row.push(v);
+                }
+            }
+        }
+        Ok(self.adjacency(adj))
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn build(self) -> Result<NetworkEpidemicModel, NetworkModelError> {
