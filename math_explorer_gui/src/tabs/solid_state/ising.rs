@@ -1,11 +1,10 @@
 use crate::async_sim::atlas::ParameterAtlasController;
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::{ChallengeEvaluation, InteractionContext, InteractiveTool};
+use crate::async_sim::{BackgroundWorker, SimWorkerState};
+use crate::framework::{
+    ChallengeEvaluation, InteractionContext, InteractiveTool, RasterBrushState,
+};
 use eframe::egui;
-use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
-use math_explorer::physics::stat_mech::KB;
-use nalgebra::DMatrix;
 use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::Ordering;
@@ -13,6 +12,8 @@ use std::sync::Arc;
 
 #[path = "ising/atlas.rs"]
 pub mod atlas;
+#[path = "ising/brush.rs"]
+mod brush;
 #[path = "ising/challenge.rs"]
 pub mod challenge;
 #[path = "ising/graph_mode.rs"]
@@ -32,37 +33,39 @@ pub(crate) use preset::IsingState;
 pub use preset::{FermiGamePreset, IsingInteractionMode};
 pub use runner::*;
 
-const DEFAULT_ISING_SIZE: usize = 100;
+pub(crate) const DEFAULT_ISING_SIZE: usize = 100;
 const MAX_SPATIAL_HISTORY: usize = 512;
 
 pub struct IsingModelTool {
-    temperature: f64,
-    j_coupling: f64,
-    h_field: f64,
-    mutation_rate: f64,
-    mode: IsingInteractionMode,
-    game_preset: FermiGamePreset,
-    game_payoffs: [f64; 4],
-    brush_radius: i32,
-    brush_cooperator: bool,
-    defector_sea: bool,
-    droplet_seeds: Vec<DropletSeed>,
-    steps_per_frame: usize,
-    magnetization: f64,
-    uniform_magnetization: f64,
-    staggered_magnetization: f64,
-    energy: f64,
-    spatial_history: VecDeque<[f64; 2]>,
-    replicator_curve: Vec<[f64; 2]>,
-    ode_anchor_sweep: f64,
-    ode_initial_cooperator: f64,
-    pending_ode_resync: bool,
-    last_canvas_rect: Option<egui::Rect>,
-    texture: Option<egui::TextureHandle>,
-    pixels: Vec<egui::Color32>,
-    stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
-    last_theme: Option<crate::app::ThemeMode>,
-    dirty: bool,
+    pub(crate) temperature: f64,
+    pub(crate) j_coupling: f64,
+    pub(crate) h_field: f64,
+    pub(crate) mutation_rate: f64,
+    pub(crate) mode: IsingInteractionMode,
+    pub(crate) game_preset: FermiGamePreset,
+    pub(crate) game_payoffs: [f64; 4],
+    pub(crate) brush_radius: i32,
+    pub(crate) brush_cooperator: bool,
+    pub(crate) last_synced_brush_radius: i32,
+    pub(crate) last_synced_brush_cooperator: bool,
+    pub(crate) defector_sea: bool,
+    pub(crate) droplet_seeds: Vec<DropletSeed>,
+    pub(crate) steps_per_frame: usize,
+    pub(crate) magnetization: f64,
+    pub(crate) uniform_magnetization: f64,
+    pub(crate) staggered_magnetization: f64,
+    pub(crate) energy: f64,
+    pub(crate) spatial_history: VecDeque<[f64; 2]>,
+    pub(crate) replicator_curve: Vec<[f64; 2]>,
+    pub(crate) ode_anchor_sweep: f64,
+    pub(crate) ode_initial_cooperator: f64,
+    pub(crate) pending_ode_resync: bool,
+    pub(crate) last_canvas_rect: Option<egui::Rect>,
+    pub(crate) texture: Option<egui::TextureHandle>,
+    pub(crate) pixels: Vec<egui::Color32>,
+    pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    pub(crate) last_theme: Option<crate::app::ThemeMode>,
+    pub(crate) dirty: bool,
     pub topology_source: crate::app::TopologySource,
     pub(super) graph_system: Option<math_explorer::physics::stat_mech::GraphSpinSystem>,
     pub(super) shared_topology: Option<Arc<crate::app::SharedGraphTopology>>,
@@ -72,11 +75,28 @@ pub struct IsingModelTool {
     pub(crate) atlas: ParameterAtlasController,
     pub(crate) active_challenge: Option<&'static str>,
     pub(crate) challenge_workspace: IsingChallengeWorkspace,
-    params: Arc<std::sync::RwLock<IsingSharedParams>>,
+    pub(crate) brush_state: RasterBrushState,
+    pub(crate) brush_mode: IsingBrushMode,
+    pub(crate) pin_cells: Vec<u8>,
+    pub(crate) params: Arc<std::sync::RwLock<IsingSharedParams>>,
     pub worker: BackgroundWorker<IsingRunner>,
 }
 
 impl IsingModelTool {
+    fn build_runner(params: &Arc<std::sync::RwLock<IsingSharedParams>>) -> IsingRunner {
+        let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
+        let pinned_rle = params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle
+            .clone();
+        apply_pinned_rle_to_lattice(&mut lattice, pinned_rle.as_deref());
+        IsingRunner {
+            lattice,
+            params: Arc::clone(params),
+        }
+    }
+
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
@@ -85,10 +105,7 @@ impl IsingModelTool {
             .unwrap_or_else(|e| e.into_inner())
             .total_trials
             .store(0, Ordering::Relaxed);
-        let runner = IsingRunner {
-            lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
-            params: Arc::clone(&self.params),
-        };
+        let runner = Self::build_runner(&self.params);
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
         self.sync_metrics_from_latest();
@@ -115,10 +132,7 @@ impl IsingModelTool {
             .total_trials
             .store(0, Ordering::Relaxed);
         let params = Arc::clone(&self.params);
-        self.worker.reset_or_respawn(|| IsingRunner {
-            lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
-            params,
-        });
+        self.worker.reset_or_respawn(|| Self::build_runner(&params));
         if self.active_challenge.is_some() {
             self.push_seed_layout_to_worker();
         }
@@ -133,10 +147,9 @@ impl IsingModelTool {
 impl Default for IsingModelTool {
     fn default() -> Self {
         let params = Arc::new(std::sync::RwLock::new(IsingSharedParams::default()));
-        let worker = BackgroundWorker::new(IsingRunner {
-            lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
-            params: Arc::clone(&params),
-        });
+        let worker = BackgroundWorker::new(Self::build_runner(&params));
+        let brush_radius = preset::default_brush_radius();
+        let brush_cooperator = preset::default_brush_cooperator();
         let mut tool = Self {
             temperature: 2.269,
             j_coupling: 1.0,
@@ -145,8 +158,10 @@ impl Default for IsingModelTool {
             mode: IsingInteractionMode::Ferromagnetic,
             game_preset: FermiGamePreset::default(),
             game_payoffs: preset::default_game_payoffs(),
-            brush_radius: preset::default_brush_radius(),
-            brush_cooperator: preset::default_brush_cooperator(),
+            brush_radius,
+            brush_cooperator,
+            last_synced_brush_radius: brush_radius,
+            last_synced_brush_cooperator: brush_cooperator,
             defector_sea: false,
             droplet_seeds: Vec::new(),
             steps_per_frame: 5000,
@@ -174,6 +189,9 @@ impl Default for IsingModelTool {
             atlas: ParameterAtlasController::new(ISING_ATLAS_AXIS_PAIRS.to_vec()),
             active_challenge: None,
             challenge_workspace: IsingChallengeWorkspace::default(),
+            brush_state: RasterBrushState::with_radius(brush_radius as usize),
+            brush_mode: IsingBrushMode::default(),
+            pin_cells: vec![0; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE],
             params,
             worker,
         };
@@ -194,12 +212,23 @@ impl InteractiveTool for IsingModelTool {
         "solid_state"
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        (!self.is_graph_mode())
+            .then_some(self.brush_state.focused_id)
+            .flatten()
+    }
+
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.temperature.to_bits().hash(&mut h);
         self.j_coupling.to_bits().hash(&mut h);
         self.h_field.to_bits().hash(&mut h);
         self.mutation_rate.to_bits().hash(&mut h);
+        self.mode.hash(&mut h);
+        self.game_preset.hash(&mut h);
+        for v in self.game_payoffs {
+            v.to_bits().hash(&mut h);
+        }
         self.brush_radius.hash(&mut h);
         self.brush_cooperator.hash(&mut h);
         self.defector_sea.hash(&mut h);
@@ -208,6 +237,12 @@ impl InteractiveTool for IsingModelTool {
         self.topology_source.hash(&mut h);
         self.atlas.is_visible().hash(&mut h);
         self.atlas.axis_keys().hash(&mut h);
+        self.params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle
+            .hash(&mut h);
+        std::mem::discriminant(&self.worker.state()).hash(&mut h);
         h.finish().max(1)
     }
 
@@ -276,67 +311,7 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
-        let Some(pos) = ctx.pointer_pos else {
-            return;
-        };
-        let rect = ctx.response.rect;
-        if rect.width() <= 0.0 || rect.height() <= 0.0 {
-            return;
-        }
-        let (w, h) = self
-            .worker
-            .latest_snapshot()
-            .map_or((DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE), |s| {
-                (s.width.max(1), s.height.max(1))
-            });
-        let (max_x, max_y) = ((w as i32) - 1, (h as i32) - 1);
-        let rel_x = ((pos.x - rect.min.x) / rect.width()).clamp(0.0, 1.0);
-        let rel_y = ((pos.y - rect.min.y) / rect.height()).clamp(0.0, 1.0);
-        let cx = ((rel_x * (max_x as f32)).round() as i32).clamp(0, max_x);
-        let cy = ((rel_y * (max_y as f32)).round() as i32).clamp(0, max_y);
-        let max_r = if self.active_challenge.is_some() {
-            10
-        } else {
-            max_x.max(max_y)
-        };
-        let r = self.brush_radius.clamp(0, max_r);
-        let invert = ctx.modifiers.shift
-            || ctx.response.secondary_clicked()
-            || ctx.response.dragged_by(egui::PointerButton::Secondary);
-        let is_obstacle = if invert {
-            !self.brush_cooperator
-        } else {
-            self.brush_cooperator
-        };
-        self.record_droplet_seed(DropletSeed {
-            cx,
-            cy,
-            r,
-            spin: if is_obstacle { 1 } else { -1 },
-        });
-        self.sync_shared_params();
-
-        if self.active_challenge.is_some() {
-            self.push_seed_layout_to_worker();
-            self.refresh_challenge_workspace();
-            ctx.response.ctx.request_repaint();
-            return;
-        }
-        if self
-            .worker
-            .send_command(SimCommand::ApplyBrush {
-                cx,
-                cy,
-                r,
-                is_obstacle,
-            })
-            .is_ok()
-        {
-            if !self.worker.is_running() {
-                self.pending_ode_resync = true;
-            }
-            ctx.response.ctx.request_repaint();
-        }
+        self.handle_plot_brush(ctx);
     }
 
     fn step_simulation(&mut self) {
@@ -345,38 +320,7 @@ impl InteractiveTool for IsingModelTool {
             self.step_graph_trials(trials);
             return;
         }
-        let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
-        let steps = self.steps_per_frame.clamp(100, 5000);
-        match self.mode {
-            IsingInteractionMode::Ferromagnetic => {
-                let t_phys = self.temperature.max(1e-3) / KB;
-                lattice.evolve(steps, t_phys, self.j_coupling, self.h_field);
-            }
-            IsingInteractionMode::FermiGame => {
-                let mat = DMatrix::from_row_slice(2, 2, &self.game_payoffs);
-                if let Ok(payoff) = MatrixPayoff::new(mat) {
-                    lattice.evolve_fermi_game_with_mutation(
-                        steps,
-                        self.temperature,
-                        &payoff,
-                        self.mutation_rate,
-                    );
-                }
-            }
-        }
-        let palette = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .theme
-            .palette();
-        let pixels: Vec<egui::Color32> = lattice
-            .spins()
-            .iter()
-            .map(|&s| ising_spin_color(s, &palette))
-            .collect();
-        self.stepped_pixels = Some((lattice.width(), lattice.height(), pixels));
-        self.dirty = true;
+        self.step_ising_simulation();
     }
 
     fn save_state(&self) -> Option<String> {
@@ -410,6 +354,7 @@ impl InteractiveTool for IsingModelTool {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.sync_shared_topology(&ctx);
+        self.sync_brush_fields_before_frame();
         let theme = crate::app::ThemeMode::from_visuals(ui.visuals());
         if self.last_theme != Some(theme) {
             self.last_theme = Some(theme);
@@ -453,7 +398,7 @@ impl InteractiveTool for IsingModelTool {
 }
 
 #[cfg(test)]
-use crate::async_sim::SimulationRunner;
+use crate::async_sim::{SimCommand, SimulationRunner};
 #[cfg(test)]
 #[path = "ising/atlas_challenge_tests.rs"]
 mod atlas_challenge_tests;

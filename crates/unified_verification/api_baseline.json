@@ -1041,6 +1041,9 @@
       "signature": "impl SculptedGridMdp { pub fn set_cell_role (& mut self , _ : GridState , _ : GridCellRole) }"
     },
     {
+      "signature": "impl SculptedGridMdp { pub fn set_start (& mut self , _ : GridState) }"
+    },
+    {
       "signature": "impl SculptedGridMdp { pub fn step_deterministic (& self , _ : GridState , _ : Move) -> GridState }"
     },
     {
@@ -5563,6 +5566,9 @@
       "signature": "pub use solvers :: TuringSolverStrategy"
     },
     {
+      "signature": "pub use spatial_reaction :: SpatialSchnakenbergKinetics"
+    },
+    {
       "signature": "pub use state :: TuringState"
     }
   ],
@@ -5590,6 +5596,9 @@
     },
     {
       "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction (& self , _ : [f64 ; N]) -> [f64 ; N] }"
+    },
+    {
+      "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction_at (& self , _ : usize , _ : [f64 ; N]) -> [f64 ; N] }"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/solvers.rs": [
@@ -5622,6 +5631,35 @@
     },
     {
       "signature": "pub trait TuringSolverStrategy < const N : usize = 2 > { fn step < K : ReactionKinetics < N > , D : SpatialDiffusion < N > > (& mut self , _ : & TuringState < N > , _ : & mut TuringState < N > , _ : & TuringDynamics < N , K , D > , _ : f64 ,) }"
+    }
+  ],
+  "crates/domain_biology/src/biology/morphogenesis/spatial_reaction.rs": [
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn clear_cell_override (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn clear_mask (& mut self) }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn grid_size (& self) -> usize }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn has_spatial_mask (& self) -> bool }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn is_overridden (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn new (_ : f64 , _ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn rates_at (& self , _ : usize) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn set_cell_rates (& mut self , _ : usize , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "pub struct SpatialSchnakenbergKinetics"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/state.rs": [
@@ -8207,6 +8245,62 @@
       "signature": "pub fn specific_enthalpy (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
     }
   ],
+  "crates/domain_physics/src/physics/high_energy/general_relativity/geodesic_bundle.rs": [
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn copy_newtonian_trail (& self , _ : & mut [[f64 ; 2]]) -> usize }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn copy_trajectory_trail (& self , _ : usize , _ : & mut [[f64 ; 2]]) -> usize }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn max_killing_drift (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn new (_ : f64 , _ : usize , _ : usize) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn newtonian_state (& self) -> & NewtonianOrbitState }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn probe_photon_deflection_rad (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn seed_mixed_ensemble (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn seed_photon_lensing_fan (& mut self , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn seed_timelike_isco_comparison (& mut self , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn step_n (& mut self , _ : f64 , _ : usize) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn step_n_verified (& mut self , _ : f64 , _ : usize) -> (u64 , u64) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn step_once (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn trajectories (& self) -> & [GeodesicTrajectoryState] }"
+    },
+    {
+      "signature": "pub const MAX_GEODESIC_TRAJECTORIES : usize"
+    },
+    {
+      "signature": "pub fn newtonian_periapsis_radius (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct GeodesicTrajectoryState"
+    },
+    {
+      "signature": "pub struct NewtonianOrbitState"
+    },
+    {
+      "signature": "pub struct SchwarzschildGeodesicBundle"
+    }
+  ],
   "crates/domain_physics/src/physics/high_energy/general_relativity/kerr.rs": [
     {
       "signature": "impl KerrEquatorialMetric { pub fn ergosphere_radius (& self) -> f64 }"
@@ -8229,6 +8323,21 @@
   ],
   "crates/domain_physics/src/physics/high_energy/general_relativity/mod.rs": [
     {
+      "signature": "pub use geodesic_bundle :: GeodesicTrajectoryState"
+    },
+    {
+      "signature": "pub use geodesic_bundle :: MAX_GEODESIC_TRAJECTORIES"
+    },
+    {
+      "signature": "pub use geodesic_bundle :: NewtonianOrbitState"
+    },
+    {
+      "signature": "pub use geodesic_bundle :: SchwarzschildGeodesicBundle"
+    },
+    {
+      "signature": "pub use geodesic_bundle :: newtonian_periapsis_radius"
+    },
+    {
       "signature": "pub use kerr :: KerrEquatorialMetric"
     },
     {
@@ -8239,6 +8348,9 @@
     },
     {
       "signature": "pub use schwarzschild :: combined_clock_rate"
+    },
+    {
+      "signature": "pub use schwarzschild :: critical_impact_parameter"
     },
     {
       "signature": "pub use schwarzschild :: effective_potential"
@@ -8258,7 +8370,16 @@
       "signature": "impl GeodesicKind { pub fn kappa (self) -> f64 }"
     },
     {
+      "signature": "impl SchwarzschildBlackHole { pub fn circular_shell_beta (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
+    },
+    {
       "signature": "impl SchwarzschildBlackHole { pub fn combined_clock_rate (& self , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildBlackHole { pub fn connection_4d (& self) -> Result < SchwarzschildConnection4D , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildBlackHole { pub fn critical_impact_parameter (& self) -> Result < f64 , HighEnergyError > }"
     },
     {
       "signature": "impl SchwarzschildBlackHole { pub fn effective_potential (& self , _ : f64 , _ : f64 , _ : GeodesicKind ,) -> Result < f64 , HighEnergyError > }"
@@ -8276,6 +8397,12 @@
       "signature": "impl SchwarzschildBlackHole { pub fn isco (& self) -> Result < f64 , HighEnergyError > }"
     },
     {
+      "signature": "impl SchwarzschildBlackHole { pub fn isco_specific_angular_momentum (& self) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildBlackHole { pub fn killing_invariants (& self , _ : & Vector4 < f64 > , _ : & Vector4 < f64 >) -> (f64 , f64) }"
+    },
+    {
       "signature": "impl SchwarzschildBlackHole { pub fn new (_ : f64) -> Result < Self , HighEnergyError > }"
     },
     {
@@ -8285,10 +8412,16 @@
       "signature": "impl SchwarzschildBlackHole { pub fn schwarzschild_radius (& self) -> Result < f64 , HighEnergyError > }"
     },
     {
+      "signature": "impl SchwarzschildBlackHole { pub fn step_geodesic_rk4 (& self , _ : & mut Vector4 < f64 > , _ : & mut Vector4 < f64 > , _ : f64 ,) -> GeodesicStepStatus }"
+    },
+    {
       "signature": "pub enum GeodesicKind"
     },
     {
       "signature": "pub fn combined_clock_rate (_ : & SchwarzschildBlackHole , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn critical_impact_parameter (_ : f64) -> Result < f64 , HighEnergyError >"
     },
     {
       "signature": "pub fn effective_potential (_ : f64 , _ : f64 , _ : f64 , _ : GeodesicKind ,) -> Result < f64 , HighEnergyError >"
@@ -8328,22 +8461,40 @@
       "signature": "pub use general_relativity :: GeodesicKind"
     },
     {
+      "signature": "pub use general_relativity :: GeodesicTrajectoryState"
+    },
+    {
       "signature": "pub use general_relativity :: KerrEquatorialMetric"
+    },
+    {
+      "signature": "pub use general_relativity :: MAX_GEODESIC_TRAJECTORIES"
     },
     {
       "signature": "pub use general_relativity :: MorrisThorneWormhole"
     },
     {
+      "signature": "pub use general_relativity :: NewtonianOrbitState"
+    },
+    {
       "signature": "pub use general_relativity :: SchwarzschildBlackHole"
     },
     {
+      "signature": "pub use general_relativity :: SchwarzschildGeodesicBundle"
+    },
+    {
       "signature": "pub use general_relativity :: combined_clock_rate"
+    },
+    {
+      "signature": "pub use general_relativity :: critical_impact_parameter"
     },
     {
       "signature": "pub use general_relativity :: effective_potential"
     },
     {
       "signature": "pub use general_relativity :: flamm_paraboloid_z"
+    },
+    {
+      "signature": "pub use general_relativity :: newtonian_periapsis_radius"
     },
     {
       "signature": "pub use general_relativity :: photon_sphere_radius"
@@ -8359,6 +8510,36 @@
     },
     {
       "signature": "pub use math_commons :: constants :: SOLAR_MASS"
+    },
+    {
+      "signature": "pub use observer :: apparent_superluminal_beta"
+    },
+    {
+      "signature": "pub use observer :: calculate_lorentz_factor_from_beta"
+    },
+    {
+      "signature": "pub use observer :: relativistic_doppler_factor"
+    },
+    {
+      "signature": "pub use radiation :: JetKnotConfig"
+    },
+    {
+      "signature": "pub use radiation :: JetKnotObservables"
+    },
+    {
+      "signature": "pub use radiation :: accretion_ring_beaming_factor"
+    },
+    {
+      "signature": "pub use radiation :: accretion_ring_flux_asymmetry"
+    },
+    {
+      "signature": "pub use radiation :: beamed_synchrotron_flux_factor"
+    },
+    {
+      "signature": "pub use radiation :: evaluate_jet_knot_observables"
+    },
+    {
+      "signature": "pub use radiation :: twin_jet_flux_asymmetry"
     }
   ],
   "crates/domain_physics/src/physics/high_energy/observer.rs": [
@@ -8369,10 +8550,25 @@
       "signature": "impl FourVector { pub fn is_valid_momentum (& self , _ : f64) -> Result < bool , HighEnergyError > }"
     },
     {
+      "signature": "impl FourVector { pub fn lorentz_boost (& self , _ : [f64 ; 3]) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl FourVector { pub fn lorentz_boost_z (& self , _ : f64) -> Result < Self , HighEnergyError > }"
+    },
+    {
       "signature": "impl FourVector { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
     },
     {
+      "signature": "pub fn apparent_superluminal_beta (_ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
       "signature": "pub fn calculate_lorentz_factor (_ : f64) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn calculate_lorentz_factor_from_beta (_ : f64) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn relativistic_doppler_factor (_ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
     },
     {
       "signature": "pub struct FourVector"
@@ -8380,10 +8576,31 @@
   ],
   "crates/domain_physics/src/physics/high_energy/radiation.rs": [
     {
+      "signature": "pub fn accretion_ring_beaming_factor (_ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn accretion_ring_flux_asymmetry (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn beamed_synchrotron_flux_factor (_ : f64 , _ : f64 , _ : bool ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn evaluate_jet_knot_observables (_ : & JetKnotConfig ,) -> Result < JetKnotObservables , HighEnergyError >"
+    },
+    {
       "signature": "pub fn inverse_compton_spectral_index (_ : f64) -> Result < f64 , HighEnergyError >"
     },
     {
       "signature": "pub fn synchrotron_power (_ : f64 , _ : f64 , _ : f64) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn twin_jet_flux_asymmetry (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub struct JetKnotConfig"
+    },
+    {
+      "signature": "pub struct JetKnotObservables"
     }
   ],
   "crates/domain_physics/src/physics/high_energy/statistics.rs": [
@@ -10062,6 +10279,9 @@
   ],
   "crates/domain_physics/src/physics/stat_mech/ising.rs": [
     {
+      "signature": "impl SpinLattice { pub fn clear_pinned (& mut self) }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn evolve (& mut self , _ : usize , _ : f64 , _ : f64 , _ : f64) }"
     },
     {
@@ -10080,6 +10300,9 @@
       "signature": "impl SpinLattice { pub fn height (& self) -> usize }"
     },
     {
+      "signature": "impl SpinLattice { pub fn is_pinned (& self , _ : usize , _ : usize) -> bool }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn magnetization (& self) -> i64 }"
     },
     {
@@ -10092,6 +10315,9 @@
       "signature": "impl SpinLattice { pub fn new_with_rng (_ : usize , _ : usize , _ : oxidize_core :: rng :: OxidizeRng ,) -> Self }"
     },
     {
+      "signature": "impl SpinLattice { pub fn pinned (& self) -> & [bool] }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn reseed (& mut self , _ : u64) }"
     },
     {
@@ -10099,6 +10325,9 @@
     },
     {
       "signature": "impl SpinLattice { pub fn set (& mut self , _ : usize , _ : usize , _ : i8) }"
+    },
+    {
+      "signature": "impl SpinLattice { pub fn set_pinned (& mut self , _ : usize , _ : usize , _ : bool) }"
     },
     {
       "signature": "impl SpinLattice { pub fn spins (& self) -> & [i8] }"
@@ -20476,6 +20705,35 @@
       "signature": "pub trait GeodesicState < const N : usize > { fn zero_all (& mut self) }"
     }
   ],
+  "crates/pure_math/src/pure_math/tensor/lorentzian.rs": [
+    {
+      "signature": "impl SchwarzschildConnection4D { pub fn new (_ : f64) -> Result < Self , TensorError > }"
+    },
+    {
+      "signature": "pub struct SchwarzschildConnection4D"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn christoffel_tensors (& self , _ : & Vector4 < f64 >) -> Result < [Matrix4 < f64 > ; 4] , TensorError > }"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn geodesic_acceleration (& self , _ : & Vector4 < f64 > , _ : & Vector4 < f64 > ,) -> Result < Vector4 < f64 > , TensorError > }"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn interval_norm (& self , _ : & Vector4 < f64 > , _ : & Vector4 < f64 > ,) -> Result < f64 , TensorError > }"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn inverse_metric_tensor (& self , _ : & Vector4 < f64 >) -> Result < Matrix4 < f64 > , TensorError > }"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn is_outside_horizon (& self , _ : & Vector4 < f64 >) -> bool }"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn metric_tensor (& self , _ : & Vector4 < f64 >) -> Result < Matrix4 < f64 > , TensorError > }"
+    }
+  ],
   "crates/pure_math/src/pure_math/tensor/metric.rs": [
     {
       "signature": "impl < F > RiemannianMetric < F > where F : Fn (& DVector < f64 >) -> DMatrix < f64 > , { pub fn new (_ : F) -> Self }"
@@ -20514,6 +20772,12 @@
     },
     {
       "signature": "pub use geodesic :: GeodesicSystem"
+    },
+    {
+      "signature": "pub use lorentzian :: LorentzianConnection4D"
+    },
+    {
+      "signature": "pub use lorentzian :: SchwarzschildConnection4D"
     },
     {
       "signature": "pub use metric :: Metric"

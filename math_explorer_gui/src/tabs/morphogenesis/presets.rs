@@ -79,33 +79,20 @@ impl FiniteStateGuard for MorphogenesisTool {
             p.d_u = 1.0;
             p.d_v = 100.0;
             p.dt = 0.05;
+            p.mask_rle = None;
         }
+        self.mask_cells.fill(0);
+        self.mask_rle
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         self.theory.mode = MorphogenesisKineticsMode::Schnakenberg;
         self.reset_system();
     }
 }
 
-/// JSON preset envelope for Gray-Scott Mitosis reaction-diffusion.
-pub const PRESET_GRAY_SCOTT_MITOSIS: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Turing Morphogenesis - Gray-Scott Mitosis",
-    "domain": "biology",
-    "timestamp": "2026-11-14T00:00:00Z"
-  },
-  "config": {
-    "a": 0.1,
-    "b": 0.9,
-    "d_u": 0.16,
-    "d_v": 0.08,
-    "dt": 1.0,
-    "width": 100,
-    "height": 100,
-    "kinetics_mode": "GrayScott",
-    "f": 0.0367,
-    "k": 0.0649
-  }
-}"#;
+#[cfg(test)]
+pub use super::starter_presets::PRESET_GRAY_SCOTT_MITOSIS;
 
 fn default_grid_dim() -> usize {
     100
@@ -174,6 +161,9 @@ pub struct MorphogenesisToolState {
     /// Optional RLE-encoded `ReactionCellRole` mask (`[role, run_len]` pairs).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mask_rle: Vec<[u32; 2]>,
+    /// Optional RLE-encoded spatial `(a, b)` reaction mask (`0`=base, `1`=stripe, `2`=spot).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kinetics_mask_rle: Option<String>,
     /// Persisted visibility of the progressive 2D parameter atlas (never raster pixels).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub atlas_visible: bool,
@@ -231,6 +221,9 @@ impl MorphogenesisToolState {
         }
         if !self.mask_rle.is_empty() {
             decode_rle_mask(&self.mask_rle, self.width * self.height)?;
+        }
+        if let Some(ref rle) = self.kinetics_mask_rle {
+            let _ = crate::framework::decode_u8_grid(rle, self.width, self.height, 2)?;
         }
         let valid_axes = super::atlas::MORPHO_ATLAS_AXIS_PAIRS
             .iter()
@@ -402,57 +395,5 @@ impl TheoryDescribable for MorphogenesisTheory {
                 })
             }
         }
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "turing_spots",
-        title: "Turing Spots",
-        description: "∂u/∂t = D_u∇²u + a - u + u²v: Activator-inhibitor reaction-diffusion generating spot morphology.",
-        category: "Reaction-Diffusion",
-        icon: "🐆",
-        domain: "biology",
-        tool_name: Some("MorphogenesisTool"),
-        preset_generator: || crate::starter_gallery::PRESET_TURING_SPOTS,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "turing_stripes",
-        title: "Turing Stripes",
-        description: "∂v/∂t = D_v∇²v + b - u²v: Differential diffusion instability yielding labyrinthine stripe patterns.",
-        category: "Morphogenesis",
-        icon: "🦓",
-        domain: "biology",
-        tool_name: Some("MorphogenesisTool"),
-        preset_generator: || crate::starter_gallery::PRESET_TURING_STRIPES,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "morphogenesis_inhibitor_fork",
-        title: "Morphogenesis Inhibitor Fork",
-        description: "Counterfactual Schnakenberg twin forked at step 60 lowering D_v from 40 to 18 with |u_B - u_A| difference heatmap.",
-        category: "Counterfactual Biology",
-        icon: "⑂",
-        domain: "biology",
-        tool_name: Some("MorphogenesisTool"),
-        preset_generator: || crate::starter_gallery::PRESET_MORPHOGENESIS_INHIBITOR_FORK,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "gray_scott_mitosis",
-        title: "Gray-Scott Mitosis",
-        description: "∂v/∂t = D_v∇²v + uv² - (f+k)v: Autocatalytic spot division and self-replicating wavefronts.",
-        category: "Reaction-Diffusion",
-        icon: "🦠",
-        domain: "biology",
-        tool_name: Some("MorphogenesisTool"),
-        preset_generator: || PRESET_GRAY_SCOTT_MITOSIS,
     }
 }

@@ -368,4 +368,77 @@ impl MorphogenesisTool {
             }
         });
     }
+
+    fn render_snapshot_image(
+        &self,
+        theme: ThemeMode,
+        mode: MorphogenesisHeatmapMode,
+    ) -> Option<ColorImage> {
+        let num_pixels = self.width * self.height;
+        if let Some(snapshot) = self.worker.latest_snapshot() {
+            if let Some(data) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<MorphogenesisSnapshotData>())
+                .filter(|d| {
+                    d.u_data.len() == num_pixels && d.step_count >= self.local_runner.step_count
+                })
+            {
+                let mut img = render_morphogenesis_heatmap(
+                    &data.u_data,
+                    data.u_a.as_deref(),
+                    self.width,
+                    self.height,
+                    mode,
+                    theme,
+                );
+                if mode == MorphogenesisHeatmapMode::ActiveUb && !data.mask_roles.is_empty() {
+                    overlay_cell_mask_colors(
+                        &mut img,
+                        &data.mask_roles,
+                        theme == ThemeMode::HighContrast,
+                    );
+                }
+                return Some(img);
+            }
+            if let Ok(px) = snapshot.pixels.try_read() {
+                if px.len() == num_pixels && !self.is_forked() {
+                    return Some(ColorImage {
+                        size: [self.width, self.height],
+                        pixels: px.clone(),
+                        ..Default::default()
+                    });
+                }
+            }
+            return None;
+        }
+        self.is_forked()
+            .then(|| self.render_current_heatmap_image())
+    }
+
+    pub(super) fn sync_texture_from_snapshot(&mut self, ctx: &egui::Context) {
+        if !self.dirty && self.texture.is_some() {
+            return;
+        }
+        let theme = self
+            .last_theme_mode
+            .unwrap_or_else(|| ThemeMode::from_visuals(&ctx.style().visuals));
+        let mode = self.heatmap_mode();
+        let num_pixels = self.width * self.height;
+        let Some(image) = self.render_snapshot_image(theme, mode) else {
+            return;
+        };
+        if self.pixels.len() != num_pixels {
+            self.pixels.resize(num_pixels, egui::Color32::BLACK);
+        }
+        self.pixels.copy_from_slice(&image.pixels);
+
+        let texture_opts = egui::TextureOptions::NEAREST;
+        if let Some(texture) = &mut self.texture {
+            texture.set(image, texture_opts);
+        } else {
+            self.texture = Some(ctx.load_texture("morphogenesis_tex", image, texture_opts));
+        }
+        self.dirty = false;
+    }
 }

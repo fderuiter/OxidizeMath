@@ -358,7 +358,7 @@ impl<const N: usize> SpatialDiffusion<N> for MaskedFiniteDifference2D {
                         for s in 0..N {
                             curr[s] = state[s][idx];
                         }
-                        let rates = kinetics.reaction(curr);
+                        let rates = kinetics.reaction_at(idx, curr);
                         for s in 0..N {
                             let u_c = curr[s];
                             let u_l = self.neighbor_val(state[s], u_c, y * w + x.saturating_sub(1));
