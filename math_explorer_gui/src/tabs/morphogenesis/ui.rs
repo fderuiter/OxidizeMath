@@ -1,6 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::counterfactual::MorphogenesisSnapshotData;
 use super::sculpt::draw_morpho_sculpt_controls;
 use super::MorphogenesisTool;
 use crate::accessibility::AccessibleTheoryHover;
@@ -190,24 +189,7 @@ impl MorphogenesisTool {
                 self.apply_gray_scott_preset(c.f, c.k);
             }
         });
-        if let Some(snapshot) = self.worker.latest_snapshot() {
-            if let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
-                d.downcast_ref::<MorphogenesisSnapshotData>()
-                    .map(|s| s.u_data.as_slice())
-                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
-            }) {
-                let splat_count =
-                    crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
-                        u_data,
-                        snapshot.width,
-                        snapshot.height,
-                    )
-                    .gaussians
-                    .len();
-                ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
-            }
-        }
-        ui.separator();
+        super::sculpt::draw_morpho_3d_bridges(self, ui);
         let _ = self.atlas.show_toggle_button(ui);
     }
 

@@ -223,6 +223,43 @@ pub(crate) fn draw_morpho_sculpt_controls(
     custom_cmd
 }
 
+pub(crate) fn draw_morpho_3d_bridges(tool: &super::MorphogenesisTool, ui: &mut egui::Ui) {
+    if let Some(snapshot) = tool.worker.latest_snapshot() {
+        if let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
+            d.downcast_ref::<super::counterfactual::MorphogenesisSnapshotData>()
+                .map(|s| s.u_data.as_slice())
+                .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+        }) {
+            let splat_count =
+                crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
+                    u_data,
+                    snapshot.width,
+                    snapshot.height,
+                )
+                .gaussians
+                .len();
+            ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
+        }
+    }
+    ui.separator();
+    #[cfg(feature = "pure_math")]
+    {
+        use crate::accessibility::AccessibleHoverText;
+        if ui
+            .button("🌐 Open on 3D Manifold (Riemannian Studio)")
+            .accessible_hover_text(
+                "Launch Gray-Scott Turing mitosis on a welded 3D sphere in Riemannian PDE Studio",
+            )
+            .clicked()
+        {
+            crate::tabs::geometry_topology::riemannian_studio::handoff::request_open_riemannian_preset(
+                ui.ctx(),
+                crate::tabs::geometry_topology::riemannian_studio::handoff::RiemannianPresetTarget::SphericalTuringMitosis,
+            );
+        }
+    }
+}
+
 impl super::MorphogenesisTool {
     pub(crate) fn apply_microfluidic_raster_stroke(
         &mut self,

@@ -9,7 +9,8 @@ use super::systems::{
 use crate::presets::OdePreset;
 use math_commons::ast::Expr;
 use math_explorer::pure_math::analysis::ode::{
-    ArrayState, Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver,
+    ArrayState, Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeSystem,
+    RungeKutta4, Solver,
 };
 use serde::{Deserialize, Serialize};
 
@@ -273,6 +274,26 @@ fn run_loop_1d<D: OdeSystem<ArrayState<1>>>(
         IntegrationMethod::Heun => {
             execute_steps_1d(traj, init, dynamics, &mut Heun::new(&init), dt, num_steps);
         }
+        IntegrationMethod::ImplicitMidpoint => {
+            execute_steps_1d(
+                traj,
+                init,
+                dynamics,
+                &mut ImplicitMidpoint::new(&init),
+                dt,
+                num_steps,
+            );
+        }
+        IntegrationMethod::GaussLegendre4 => {
+            execute_steps_1d(
+                traj,
+                init,
+                dynamics,
+                &mut GaussLegendre4::new(&init),
+                dt,
+                num_steps,
+            );
+        }
     }
 }
 
@@ -336,6 +357,28 @@ fn run_loop_2d<D: OdeSystem<ArrayState<2>>>(
                 init,
                 dynamics,
                 &mut Heun::new(&init),
+                dt,
+                num_steps,
+                names,
+            );
+        }
+        IntegrationMethod::ImplicitMidpoint => {
+            execute_steps_2d(
+                traj,
+                init,
+                dynamics,
+                &mut ImplicitMidpoint::new(&init),
+                dt,
+                num_steps,
+                names,
+            );
+        }
+        IntegrationMethod::GaussLegendre4 => {
+            execute_steps_2d(
+                traj,
+                init,
+                dynamics,
+                &mut GaussLegendre4::new(&init),
                 dt,
                 num_steps,
                 names,
@@ -427,49 +470,4 @@ fn accumulate_series_discrepancy(
             *count += 1;
         }
     }
-}
-pub(super) struct TrajectoryView<'a> {
-    pub(super) method: IntegrationMethod,
-    pub(super) time_series: &'a [f64],
-    pub(super) y_series: &'a [f64],
-    pub(super) v_series: &'a [f64],
-    pub(super) diverged: bool,
-    pub(super) is_active_reused: bool,
-}
-
-pub(super) fn build_view_trace_series(
-    view: &TrajectoryView<'_>,
-    labels: (&'static str, &'static str, &'static str, &'static str),
-    has_v: bool,
-    phase_active: bool,
-) -> Vec<crate::framework::TraceSeries> {
-    use crate::framework::TraceSeries;
-
-    let (t1_lbl, t2_lbl, px_lbl, py_lbl) = labels;
-    if phase_active {
-        let pts_phase: Vec<[f64; 2]> = view
-            .y_series
-            .iter()
-            .zip(view.v_series)
-            .map(|(&x, &y)| [x, y])
-            .collect();
-        return vec![TraceSeries::new(format!("({px_lbl}, {py_lbl})"), pts_phase)];
-    }
-    let pts_y: Vec<[f64; 2]> = view
-        .time_series
-        .iter()
-        .zip(view.y_series)
-        .map(|(&t, &y)| [t, y])
-        .collect();
-    let mut series = vec![TraceSeries::new(t1_lbl, pts_y)];
-    if has_v && !view.v_series.is_empty() {
-        let pts_v: Vec<[f64; 2]> = view
-            .time_series
-            .iter()
-            .zip(view.v_series)
-            .map(|(&t, &v)| [t, v])
-            .collect();
-        series.push(TraceSeries::new(t2_lbl, pts_v));
-    }
-    series
 }

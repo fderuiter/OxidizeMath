@@ -67,7 +67,7 @@ impl PotentialFlowTool {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
     pub(crate) fn compute_arrow_field(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
         let mut origins = Vec::new();
         let mut tips = Vec::new();
