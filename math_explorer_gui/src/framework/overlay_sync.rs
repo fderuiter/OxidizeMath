@@ -358,6 +358,9 @@ impl SimulationFramework {
     /// Suspends or resumes background workers on the active tool and hosted atlas while preserving logical `Running` state.
     pub fn set_suspended(&mut self, suspended: bool) {
         self.suspended = suspended;
+        if suspended && !self.audio_controller.is_muted() {
+            self.audio_controller.silence_on_pause();
+        }
         if let Some(tool) = &mut self.active_tool {
             tool.set_suspended(suspended);
         }

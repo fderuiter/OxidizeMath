@@ -384,6 +384,9 @@ impl SimulationFramework {
         self.cancel_active_gif_export(false);
         if let Some(mut old_tool) = self.active_tool.take() {
             old_tool.set_suspended(true);
+            if !self.audio_controller.is_muted() {
+                self.audio_controller.silence_on_pause();
+            }
         }
         self.bump_plot_sync_generation();
         self.bump_framework_revision();

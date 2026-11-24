@@ -196,3 +196,62 @@ fn multi_pane_layouts_and_swap_panes_keep_only_visible_panes_active() {
     assert!(!app.tabs[morph_idx].framework().unwrap().is_suspended());
     assert!(app.tabs[mri_idx].framework().unwrap().is_suspended());
 }
+
+fn render_tab_frame(ctx: &egui::Context, tab: &mut dyn ExplorerTab, domain: &str) {
+    let _ = ctx.run(egui::RawInput::default(), |c| {
+        egui::CentralPanel::default().show(c, |ui| {
+            tab.framework_mut().unwrap().show_inside(ui, domain);
+        });
+    });
+}
+
+#[test]
+fn suspending_unmuted_framework_silences_audio_within_20ms_and_preserves_unmuted_state() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let chaos_idx = find_tab_index(&app, "Chaos Theory");
+    domain_bar::select_tab(&mut app, &ctx, chaos_idx);
+    assert!(app.tabs[chaos_idx].select_tool_by_name("AttractorPlotter"));
+
+    app.tabs[chaos_idx]
+        .framework_mut()
+        .unwrap()
+        .unmute_audio_with_gesture();
+    render_tab_frame(&ctx, app.tabs[chaos_idx].as_mut(), "chaos");
+    let twenty_ms = std::time::Duration::from_millis(20);
+    assert!(
+        app.tabs[chaos_idx]
+            .framework()
+            .unwrap()
+            .audio_controller
+            .current_gain_after_elapsed(twenty_ms)
+            > 0.0
+    );
+
+    // Switching away suspends the framework and ramps audio gain to 0.0 within 20 ms without muting user state.
+    domain_bar::select_tab(&mut app, &ctx, 0);
+    let suspended_fw = app.tabs[chaos_idx].framework().unwrap();
+    assert!(suspended_fw.is_suspended() && !suspended_fw.is_audio_muted());
+    assert_eq!(
+        suspended_fw.audio_controller.last_silence_reason(),
+        crate::audio::AutoSilenceReason::Paused
+    );
+    assert_eq!(
+        suspended_fw
+            .audio_controller
+            .current_gain_after_elapsed(twenty_ms),
+        0.0
+    );
+
+    // Returning to Chaos Theory unsuspends and resumes audible gain on the next rendered frame.
+    domain_bar::select_tab(&mut app, &ctx, chaos_idx);
+    render_tab_frame(&ctx, app.tabs[chaos_idx].as_mut(), "chaos");
+    assert!(
+        app.tabs[chaos_idx]
+            .framework()
+            .unwrap()
+            .audio_controller
+            .current_gain_after_elapsed(twenty_ms)
+            > 0.0
+    );
+}
