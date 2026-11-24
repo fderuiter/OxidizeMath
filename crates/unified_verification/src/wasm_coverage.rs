@@ -294,7 +294,7 @@ fn outline_tree_has_wasm_tests(
             .unwrap_or_else(|_| child_path.clone());
         if !visited.insert(canonical) {
             continue;
-        };
+        }
         let Some(ast) = cache
             .get_or_load_fs(&child_path)
             .and_then(|e| e.ast.as_ref())

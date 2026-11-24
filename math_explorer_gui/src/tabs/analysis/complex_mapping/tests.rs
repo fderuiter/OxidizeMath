@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use crate::framework::ShaderExportFormat;
+use std::collections::BTreeMap;
 
 #[test]
 fn test_custom_complex_mapping_evaluation() {
@@ -69,6 +71,10 @@ fn test_custom_expr_and_params_state_roundtrip_and_legacy_compat() {
     assert_eq!(restored.math_input.params_map().get("a"), Some(&0.85));
     let w = restored.eval_z(Complex64::new(1.0, 0.0));
     assert!((w.re - (1.0 + 0.85 * 0.85)).abs() < 1e-12);
+    let wgsl = restored
+        .export_shader_source(ShaderExportFormat::Wgsl)
+        .expect("export WGSL for parameterized Joukowsky map");
+    assert!(wgsl.contains("vec2<f32>(0.85, 0.0)"));
     assert!(restored.import_preset_json(STARTER_PRESET_JSON).is_ok());
 }
 
@@ -355,9 +361,21 @@ fn test_state_revision_updates_across_all_tracked_inputs() {
     let r5 = tool.state_revision();
     assert_ne!(r5, r4);
 
-    tool.math_input.set_expression("sin(z) + 1/z");
+    tool.math_input.set_expression("sin(z) + a/z");
     let r6 = tool.state_revision();
     assert_ne!(r6, r5);
+
+    tool.math_input.set_param("a", 0.5);
+    let r7 = tool.state_revision();
+    assert_ne!(r7, r6);
+
+    tool.domain_coloring = !tool.domain_coloring;
+    let r8 = tool.state_revision();
+    assert_ne!(r8, r7);
+
+    tool.palette = ShaderPalette::Heatmap;
+    let r9 = tool.state_revision();
+    assert_ne!(r9, r8);
 }
 
 fn dispatch_framework_export(

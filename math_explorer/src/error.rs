@@ -2,6 +2,7 @@
 
 pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
+    ShaderEmitError,
 };
 
 #[cfg(feature = "ai")]
@@ -62,6 +63,8 @@ pub enum Error {
     MathCommons(MathCommonsError),
     /// AST parser error.
     Parse(ParseError),
+    /// AST-to-WGSL/GLSL shader emission error.
+    ShaderEmit(ShaderEmitError),
     /// Standard I/O error (e.g., mesh export or file serialization).
     Io(std::io::Error),
 

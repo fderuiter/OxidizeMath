@@ -1,9 +1,13 @@
 mod attrs;
+mod debt;
 mod vacuous;
 
+pub use attrs::{attrs_mark_test_fn, attrs_require_cfg_test, extract_opt_out_reasons_from_attr};
+pub use debt::collect_ast_file_debt;
+
 use attrs::{
-    attrs_mark_test_fn, attrs_mention_cfg_test_filtered, count_block_assertions,
-    extract_opt_outs_filtered, parse_verification_macro_tokens, scan_attributes,
+    attrs_require_cfg_test_filtered, count_block_assertions, extract_opt_outs_filtered,
+    parse_verification_macro_tokens, scan_attributes,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -76,7 +80,7 @@ pub struct AstVisitor {
     pub opted_out: bool,
     /// Ordered list of `opt_out` reason strings encountered across file and item attributes.
     pub opt_outs: Vec<String>,
-    /// Function identifiers ending with `_legacy` discovered in the AST.
+    /// Non-test function identifiers ending with `_legacy` discovered in the AST.
     pub legacy_funcs: Vec<String>,
     in_opt_out_scope: bool,
     in_test_scope: bool,
@@ -178,7 +182,8 @@ impl AstVisitor {
         assert_count: usize,
     ) -> (bool, bool) {
         let fn_name = fn_ident.to_string();
-        if fn_name.ends_with("_legacy") {
+        let fn_in_test = self.in_test_scope || attrs_mark_test_fn(attrs);
+        if !fn_in_test && fn_name.ends_with("_legacy") {
             self.legacy_funcs.push(fn_name.clone());
         }
 
@@ -189,10 +194,9 @@ impl AstVisitor {
             self.record_module(module_name, line);
         }
 
-        let fn_in_test = self.in_test_scope || attrs_mark_test_fn(attrs);
         let effective_opt_out = self.in_opt_out_scope || fn_has_opt_out;
         let is_verified = scanned.is_verified && !effective_opt_out;
-        if !effective_opt_out && !is_verified && self.first_unverified_fn.is_none() {
+        if !fn_in_test && !effective_opt_out && !is_verified && self.first_unverified_fn.is_none() {
             self.first_unverified_fn = Some((fn_name, span_line(fn_ident.span())));
         }
 
@@ -236,7 +240,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
             self.in_opt_out_scope = true;
             self.opt_outs.extend(reasons);
         }
-        if attrs_mention_cfg_test_filtered(&node.attrs, true, false) {
+        if attrs_require_cfg_test_filtered(&node.attrs, true, false) {
             self.in_test_scope = true;
         }
         visit::visit_file(self, node);
@@ -255,7 +259,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
             self.in_opt_out_scope = true;
             self.opt_outs.extend(reasons);
         }
-        if attrs_mention_cfg_test_filtered(attrs, allow_inner, true) {
+        if attrs_require_cfg_test_filtered(attrs, allow_inner, true) {
             self.in_test_scope = true;
         }
         visit::visit_item(self, node);
@@ -282,7 +286,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
             self.in_opt_out_scope = true;
             self.opt_outs.extend(reasons);
         }
-        if attrs_mention_cfg_test_filtered(attrs, false, true) {
+        if attrs_require_cfg_test_filtered(attrs, false, true) {
             self.in_test_scope = true;
         }
         visit::visit_impl_item(self, node);
@@ -309,7 +313,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
             self.in_opt_out_scope = true;
             self.opt_outs.extend(reasons);
         }
-        if attrs_mention_cfg_test_filtered(attrs, false, true) {
+        if attrs_require_cfg_test_filtered(attrs, false, true) {
             self.in_test_scope = true;
         }
         visit::visit_trait_item(self, node);
@@ -318,7 +322,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
     }
 
     fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
-        if node.content.is_none() {
+        if !self.in_test_scope && !attrs_require_cfg_test(&node.attrs) && node.content.is_none() {
             self.active_submodules.push(node.ident.to_string());
         }
         visit::visit_item_mod(self, node);
@@ -393,7 +397,8 @@ impl<'ast> Visit<'ast> for AstVisitor {
     fn visit_trait_item_fn(&mut self, node: &'ast TraitItemFn) {
         let name = node.sig.ident.to_string();
         let Some(ref block) = node.default else {
-            if name.ends_with("_legacy") {
+            let fn_in_test = self.in_test_scope || attrs_mark_test_fn(&node.attrs);
+            if !fn_in_test && name.ends_with("_legacy") {
                 self.legacy_funcs.push(name);
             }
             self.opt_outs

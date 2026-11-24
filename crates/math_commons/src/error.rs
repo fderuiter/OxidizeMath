@@ -1,6 +1,6 @@
 // [cite:math_commons]
 #[cfg(feature = "std")]
-pub use crate::ast::{EvalError, GlslError, LexError, ParseError};
+pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use crate::math_kernel::types::Dimension;
 use alloc::string::String;
 #[cfg(feature = "std")]
@@ -244,6 +244,7 @@ mod tests {
             MathCommonsError::from(wrong_arity),
             MathCommonsError::from(EvalError::UnknownVariable("x".to_string())),
             MathCommonsError::from(GlslError::DepthLimitExceeded(64)),
+            MathCommonsError::from(ShaderEmitError::RecursionLimitExceeded(64)),
         ];
 
         for err in &variants {

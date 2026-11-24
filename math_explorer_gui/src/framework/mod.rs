@@ -33,6 +33,7 @@ mod export_figure;
 mod export_gif_job;
 mod export_modal_host;
 mod export_persistence;
+mod export_preset_ui;
 mod export_queue;
 #[cfg(all(test, feature = "physics"))]
 pub(crate) use export_queue::deferred_export_tests;
@@ -92,6 +93,10 @@ pub mod raster_brush;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
+#[cfg(any(feature = "physics", feature = "pure_math"))]
+pub mod shader_foundry;
+#[cfg(any(feature = "physics", feature = "pure_math"))]
+mod shader_params;
 #[cfg(all(test, any(feature = "epidemiology", feature = "pure_math")))]
 mod shared_points_perf_tests;
 pub mod side_panel;
@@ -175,14 +180,12 @@ pub trait InteractiveTool {
     ///
     /// # Accessibility Requirements for Custom `show_inside` Overrides
     ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`],
-    ///   or [`egui::Sense::click_and_drag`] instead of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` so `AccessKit`
-    ///   exposes `Role::Image` and non-empty alternative text.
-    /// - Populate `AccessKit` metadata via `crate::accessibility::register_canvas_accessibility` and draw a
-    ///   high-contrast focus ring when `response.has_focus()`.
-    /// - When consuming arrow keys, set `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
-    ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
+    /// Default canvases use [`egui::Sense::click_and_drag`] and dispatch [`Self::on_keyboard`] when focused.
+    /// Custom overrides must:
+    /// - Allocate regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`], or [`egui::Sense::click_and_drag`].
+    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` for `AccessKit` `Role::Image`.
+    /// - Populate `AccessKit` metadata (`Role`, `label`, `value`) via `crate::accessibility::register_canvas_accessibility` and draw a focus ring.
+    /// - Guard arrow-key `Memory::set_focus_lock_filter` (`tab: false`, `escape: false`) strictly while `response.has_focus()`.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
@@ -207,45 +210,36 @@ pub trait InteractiveTool {
     fn state_revision(&self) -> u64 {
         0
     }
-
     /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
     fn url_state_revision(&self) -> u64 {
         self.state_revision()
     }
-
     /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         None
     }
-
     /// Direct numeric parameter finiteness hook without JSON serialization.
     fn has_finite_parameters(&self) -> bool {
         true
     }
-
     /// Named scalar observables exposed to the Challenge HUD and `math_commons::ast` evaluator.
     fn observables(&self) -> Vec<(&'static str, f64)> {
         Vec::new()
     }
-
     /// Synchronizes declarative guided story or challenge callout pins onto the tool's plot.
     fn sync_callouts(&mut self, _callouts: &[CalloutSpec]) {}
-
     /// Candidate `(x_key, y_key)` parameter pairs for the framework-hosted 2D parameter atlas.
     fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
         &[]
     }
-
     /// Current `(x_val, y_val)` coordinates of the tool on the selected `axis_keys` plane.
     fn active_atlas_coords(&self, _axis_keys: (&'static str, &'static str)) -> (f64, f64) {
         (0.0, 0.0)
     }
-
     /// Hashable signature of non-axis context parameters that invalidate cached atlas slices.
     fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
         self.state_revision()
     }
-
     /// Builds a zero-allocation [`crate::async_sim::atlas::RegimeCartographer`] for `axis_keys`.
     fn build_atlas_cartographer(
         &self,
@@ -253,41 +247,33 @@ pub trait InteractiveTool {
     ) -> Option<std::sync::Arc<dyn crate::async_sim::atlas::RegimeCartographer>> {
         None
     }
-
     /// Applies an interactive click or keyboard teleport event from the framework-hosted 2D atlas.
     fn apply_atlas_teleport(&mut self, _ev: crate::async_sim::atlas::AtlasTeleportEvent) {}
-
     /// Optional hook to serialize tool-specific parameters into a String (e.g. JSON).
     fn save_state(&self) -> Option<String> {
         None
     }
-
     /// Lightweight parameter-only snapshot hook used by `cache_valid_snapshot`.
     fn save_recovery_state(&self) -> Option<String> {
         self.save_state()
     }
-
     /// Parameter-only state serialization hook for URL sharing (omits trace histories).
     fn save_url_state(&self) -> Option<String> {
         self.save_recovery_state()
     }
-
     /// Fallibly restores parameter-only recovery state without clobbering pinned comparison overlays.
     fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
         self.try_load_state(state)
     }
-
     /// Restores parameter-only recovery state without clobbering pinned comparison overlays.
     fn load_recovery_state(&mut self, state: &str) {
         let _ = self.try_load_recovery_state(state);
     }
-
     /// Structural and byte-size budget enforced before JSON state deserialization.
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds::DEFAULT
     }
-
     /// Fallibly deserializes and restores tool-specific parameters from a JSON state string.
     fn try_load_state(&mut self, _state: &str) -> Result<(), String> {
         Err(format!(
@@ -295,7 +281,6 @@ pub trait InteractiveTool {
             self.name()
         ))
     }
-
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, state: &str) {
         if self.state_bounds().validate_json(state).is_err() {
@@ -303,27 +288,22 @@ pub trait InteractiveTool {
         }
         let _ = self.try_load_state(state);
     }
-
     /// Optional hook to clamp unstable parameters to safe bounds, returning true if handled.
     fn clamp_parameters(&mut self) -> bool {
         false
     }
-
     /// Domain category of the tool (e.g. "analysis", "biology", "game_theory").
     fn domain(&self) -> &'static str {
         ""
     }
-
     /// Activates or clears an inverse challenge contract (`None` exits challenge mode).
     fn apply_challenge(&mut self, _challenge_id: Option<&str>) -> Result<(), String> {
         Ok(())
     }
-
     /// Returns the canonical ID of the active challenge on this tool, if any.
     fn active_challenge_id(&self) -> Option<&'static str> {
         None
     }
-
     /// Evaluates live `0..=100` score and pass/residual status for the active inverse challenge.
     fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
         None
@@ -347,6 +327,14 @@ pub trait InteractiveTool {
     /// Optional cold-path hook returning calibrated LaTeX, Rust, and Python code artifacts.
     fn export_code_artifact(&self) -> Option<CodeArtifact> {
         None
+    }
+
+    /// Optional hook to generate standalone `.wgsl` or `.glsl` fragment shader source code.
+    fn export_shader_source(&self, _format: ShaderExportFormat) -> Result<String, String> {
+        Err(format!(
+            "Standalone shader export is not supported for {}",
+            self.name()
+        ))
     }
 
     /// Optional hook to export tool datasets.

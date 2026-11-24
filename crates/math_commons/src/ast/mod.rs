@@ -1,4 +1,5 @@
 //! Native Abstract Syntax Tree (AST) expression parser and dynamic evaluator.
+// [cite:math_commons]
 
 pub mod codegen;
 pub mod compiled;
@@ -11,6 +12,8 @@ pub mod lexer;
 pub mod limits;
 pub mod parser;
 mod parser_diagnostics;
+pub mod shader;
+pub mod shader_preludes;
 
 #[cfg(test)]
 mod arity_tests;
@@ -27,6 +30,8 @@ mod limit_tests;
 #[cfg(test)]
 mod planar_tests;
 #[cfg(test)]
+mod shader_tests;
+#[cfg(test)]
 mod tests;
 
 pub use codegen::{format_latex_scalar, format_python_float, format_rust_f64};
@@ -41,3 +46,8 @@ pub use limits::{
 };
 pub use num_complex::Complex64;
 pub use parser::{MAX_PARSE_DEPTH, ParseError, parse, parse_equation};
+pub use shader::{ShaderEmitError, format_shader_f32};
+pub use shader_preludes::{
+    ShaderTarget, complex_prelude_for, glsl_complex_prelude, glsl_real_prelude, real_prelude_for,
+    wgsl_complex_prelude, wgsl_real_prelude,
+};
