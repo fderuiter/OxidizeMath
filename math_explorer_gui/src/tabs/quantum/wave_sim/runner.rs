@@ -9,9 +9,7 @@ use super::presets::{
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_commons::ast::Expr;
-use math_explorer::physics::quantum::{
-    gaussian_wavepacket_into, state_norm_squared, CrankNicolson1D, QuantumState,
-};
+use math_explorer::physics::quantum::{gaussian_wavepacket_into, CrankNicolson1D, QuantumState};
 use math_explorer::registry::MAX_GRID_SIZE;
 use nalgebra::DVector;
 use num_complex::Complex;
@@ -377,7 +375,12 @@ impl WaveRunner {
             .solver
             .step_substeps_in_place(&mut self.psi, CN_SUBSTEPS);
         self.time += dt;
-        if !stepped || !FiniteStateGuard::is_finite_state(self) {
+        let psi_finite = |s: &QuantumState| {
+            s.vector
+                .iter()
+                .all(|c| c.re.is_finite() && c.im.is_finite())
+        };
+        if !stepped || !psi_finite(&self.psi) {
             self.record_divergence(
                 "psi",
                 "Non-finite wave packet amplitude detected during time evolution.",
@@ -385,7 +388,7 @@ impl WaveRunner {
             return;
         }
         self.psi.normalize_in_place();
-        if !FiniteStateGuard::is_finite_state(self) {
+        if !psi_finite(&self.psi) {
             self.record_divergence(
                 "psi_norm",
                 "Wave function normalization diverged: non-finite norm encountered.",
@@ -394,53 +397,6 @@ impl WaveRunner {
         }
         self.update_observables_in_place();
         self.refresh_sonification(dt);
-    }
-
-    /// Builds a structured [`WaveData`] snapshot integrating [`QuantumState::probability_density_in_place`].
-    #[must_use]
-    pub fn build_wave_data(&self) -> WaveData {
-        let mut safe_prob = vec![0.0; self.psi.vector.len()];
-        self.psi.probability_density_in_place(&mut safe_prob);
-        let obs = compute_tunneling_observables_slice(
-            &self.x_axis,
-            &safe_prob,
-            self.x_left,
-            self.x_right,
-        );
-        for p in &mut safe_prob {
-            *p = if p.is_finite() { *p } else { 0.0 };
-        }
-        let safe_potential: Vec<f64> = self
-            .potential
-            .iter()
-            .map(|&v| if v.is_finite() { v } else { 0.0 })
-            .collect();
-
-        WaveData {
-            time: self.time,
-            x_axis: self.x_axis.clone(),
-            prob_density: safe_prob,
-            potential: safe_potential,
-            reflection: obs.reflection,
-            barrier_prob: obs.barrier_prob,
-            transmission: obs.transmission,
-            #[cfg(test)]
-            right_wall_prob: obs.right_wall_prob,
-            latched_transmission: self.latched_transmission,
-            wall_arrived: self.wall_arrived,
-            quasi_bound_latched: self.quasi_bound_latched,
-            x_left: self.x_left,
-            x_right: self.x_right,
-            kinetic_energy: self.kinetic_energy,
-            norm_sq: state_norm_squared(&self.psi),
-        }
-    }
-
-    /// Current latched pre-wall transmission readout $T_{\text{scatter}}$, if latched.
-    #[cfg(test)]
-    #[must_use]
-    pub fn latched_transmission(&self) -> Option<f64> {
-        self.latched_transmission
     }
 }
 
@@ -456,7 +412,9 @@ impl SimulationRunner for WaveRunner {
                     .clone();
                 self.init_from_config(&cfg);
             }
-            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed.max(1),
+            SimCommand::SetSpeed(speed) => {
+                self.steps_per_frame = speed.max(1);
+            }
             other => self.handle_sculpt_command(other),
         }
     }
@@ -467,18 +425,19 @@ impl SimulationRunner for WaveRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let silent = crate::audio::SonificationFrame::silent();
+        let sonification = if self.diverged {
+            crate::audio::SonificationFrame::silent()
+        } else {
+            self.sonification
+        };
+        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
         StateSnapshot {
             width: 0,
             height: 0,
             pixels: Arc::new(RwLock::new(Vec::new())),
             custom_data: Vec::new(),
-            structured_data: Some(Box::new(self.build_wave_data()) as Box<dyn Any + Send>),
-            sonification: if self.diverged {
-                silent
-            } else {
-                self.sonification
-            },
+            structured_data: Some(structured_data),
+            sonification,
         }
     }
 
