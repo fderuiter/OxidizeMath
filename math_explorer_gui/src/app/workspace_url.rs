@@ -360,6 +360,7 @@ impl MathExplorerApp {
         ctx: Option<&egui::Context>,
         record_undo_from: Option<super::AppState>,
     ) {
+        self.show_starter_gallery = false;
         self.clear_active_pane_caches();
         self.session_manager.clear_toast();
 

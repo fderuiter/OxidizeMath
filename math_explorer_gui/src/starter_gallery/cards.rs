@@ -249,19 +249,34 @@ impl FilteredGalleryItems {
         use crate::starter_gallery::filter_ui::{
             filter_challenge_cards, filter_goal_challenges, filter_starter_cards, filter_stories,
         };
+        let mut filtered_starters =
+            filter_starter_cards(cards, &filter_state.query, filter_state.selected_domain);
+        let mut filtered_stories =
+            filter_stories(stories, &filter_state.query, filter_state.selected_domain);
+        let mut filtered_challenges = filter_challenge_cards(
+            challenges,
+            &filter_state.query,
+            filter_state.selected_domain,
+        );
+        let mut filtered_goals =
+            filter_goal_challenges(goals, &filter_state.query, filter_state.selected_domain);
+        if filter_state.query.trim().is_empty() {
+            if let Some(slug) = filter_state.preferred_slug.as_deref() {
+                filtered_starters
+                    .sort_by_key(|c| !super::super::domain_matches_gallery(c.domain, slug));
+                filtered_stories
+                    .sort_by_key(|s| !super::super::domain_matches_gallery(s.domain, slug));
+                filtered_challenges
+                    .sort_by_key(|c| !super::super::domain_matches_gallery(c.domain, slug));
+                filtered_goals
+                    .sort_by_key(|g| !super::super::domain_matches_gallery(g.domain, slug));
+            }
+        }
         Self {
-            starters: filter_starter_cards(
-                cards,
-                &filter_state.query,
-                filter_state.selected_domain,
-            ),
-            stories: filter_stories(stories, &filter_state.query, filter_state.selected_domain),
-            challenges: filter_challenge_cards(
-                challenges,
-                &filter_state.query,
-                filter_state.selected_domain,
-            ),
-            goals: filter_goal_challenges(goals, &filter_state.query, filter_state.selected_domain),
+            starters: filtered_starters,
+            stories: filtered_stories,
+            challenges: filtered_challenges,
+            goals: filtered_goals,
             has_starters: !cards.is_empty(),
             has_stories: !stories.is_empty(),
             has_challenges: !challenges.is_empty() || !goals.is_empty(),
@@ -274,6 +289,56 @@ impl FilteredGalleryItems {
             self.stories.len(),
             self.challenges.len() + self.goals.len(),
         )
+    }
+
+    pub(super) fn announce_filter_update(
+        &self,
+        ctx: &egui::Context,
+        active_tab: super::StarterGalleryTab,
+        selected_domain: Option<crate::app::AcademicDomain>,
+    ) {
+        let counts = self.counts();
+        let (count, singular, plural) = match active_tab {
+            super::StarterGalleryTab::Starters => {
+                (counts.0, "starter template", "starter templates")
+            }
+            super::StarterGalleryTab::GuidedStories => (counts.1, "guided story", "guided stories"),
+            super::StarterGalleryTab::Challenges => (counts.2, "challenge", "challenges"),
+        };
+        let noun = if count == 1 { singular } else { plural };
+        let msg = match selected_domain {
+            Some(dom) => format!("{count} {noun} shown in {}", dom.name()),
+            None => format!("{count} {noun} shown across all domains"),
+        };
+        crate::accessibility::announce_live_status(ctx, msg);
+    }
+
+    pub(super) fn render_scroll_results(
+        &self,
+        ui: &mut egui::Ui,
+        frame_ctx: &mut crate::ModalFrameContext,
+        top_y: f32,
+        m: &GalleryOverlayMetrics,
+        active_tab: super::StarterGalleryTab,
+        filter_state: &mut crate::starter_gallery::filter_ui::GalleryFilterState,
+    ) -> Option<GallerySelection> {
+        ui.add_space(4.0);
+        ui.separator();
+        ui.add_space(6.0);
+        let header_used = (ui.cursor().top() - top_y).max(0.0);
+        let scroll_h = (m.max_h - 32.0 - header_used)
+            .max(88.0)
+            .min(m.scroll_h.max(220.0));
+        let mut selected = None;
+        egui::ScrollArea::vertical()
+            .max_height(scroll_h)
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.set_max_width(m.inner_w);
+                ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
+                selected = self.render_tab(ui, frame_ctx, active_tab, filter_state, m);
+            });
+        selected
     }
 
     pub(super) fn render_tab(
