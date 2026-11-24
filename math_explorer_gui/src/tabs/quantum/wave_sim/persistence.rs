@@ -1,58 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{
-    default_compiled_expr, WavePotentialPreset, DEFAULT_CUSTOM_EXPR, DEFAULT_DT, DEFAULT_K0,
-    DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, DT_MAX, DT_MIN,
-    DT_RECOVERY_MIN, GRID_POINTS, K0_MAX, K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME,
-    POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN, SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX,
-    WIDTH_MIN, X0_MAX, X0_MIN,
+    compute_tunneling_observables_slice, WavePotentialPreset, DEFAULT_CUSTOM_EXPR, DEFAULT_DT,
+    DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0,
+    DT_MAX, DT_MIN, DT_RECOVERY_MIN, GRID_POINTS, K0_MAX, K0_MIN, MAX_CUSTOM_EXPR_BYTES,
+    MAX_STEPS_PER_FRAME, POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN, SIGMA_MAX, SIGMA_MIN, V0_MAX,
+    V0_MIN, WIDTH_MAX, WIDTH_MIN, X0_MAX, X0_MIN,
 };
-use super::WaveSimulatorTool;
+use super::runner::WaveData;
+use super::{WaveRunner, WaveSimulatorTool};
 use crate::async_sim::SimWorkerState;
-use math_commons::ast::Expr;
+use math_explorer::physics::quantum::state_norm_squared;
 use std::hash::{Hash, Hasher};
-
-/// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`super::WaveRunner`].
-#[derive(Clone, Debug)]
-pub struct WaveSimConfig {
-    /// Selected potential profile or custom AST mode.
-    pub preset: WavePotentialPreset,
-    /// Initial Gaussian packet center $x_0$.
-    pub x0: f64,
-    /// Initial wave number $k_0$ ($E_0 = k_0^2 / 2$).
-    pub k0: f64,
-    /// Initial Gaussian spatial width $\sigma$.
-    pub sigma: f64,
-    /// Potential barrier scale $V_0$.
-    pub v0: f64,
-    /// Potential barrier width $w$.
-    pub width: f64,
-    /// Unitary propagation time step $\Delta t$.
-    pub dt: f64,
-    /// Worker steps executed per visual frame.
-    pub steps_per_frame: usize,
-    /// Last valid compiled AST expression for `V(x)`.
-    pub custom_expr: Expr,
-    /// Optional sparse `(index, value)` sculpted potential overrides.
-    pub sparse_potential: Vec<(u16, f64)>,
-}
-
-impl Default for WaveSimConfig {
-    fn default() -> Self {
-        Self {
-            preset: WavePotentialPreset::InfiniteWell,
-            x0: DEFAULT_X0,
-            k0: DEFAULT_K0,
-            sigma: DEFAULT_SIGMA,
-            v0: DEFAULT_V0,
-            width: DEFAULT_WIDTH,
-            dt: DEFAULT_DT,
-            steps_per_frame: DEFAULT_STEPS_PER_FRAME,
-            custom_expr: default_compiled_expr(),
-            sparse_potential: Vec::new(),
-        }
-    }
-}
 
 fn default_x0() -> f64 {
     DEFAULT_X0
@@ -334,5 +293,56 @@ impl WaveSimulatorTool {
         }
         self.enforce_challenge_locks();
         self.sync_config_and_reset(None);
+    }
+}
+
+impl WaveRunner {
+    /// Builds a structured [`WaveData`] snapshot integrating [`math_explorer::physics::quantum::QuantumState::probability_density_in_place`].
+    #[must_use]
+    pub fn build_wave_data(&self) -> WaveData {
+        let mut safe_prob = vec![0.0; self.psi.vector.len()];
+        self.psi.probability_density_in_place(&mut safe_prob);
+        let obs = compute_tunneling_observables_slice(
+            &self.x_axis,
+            &safe_prob,
+            self.x_left,
+            self.x_right,
+        );
+        for p in &mut safe_prob {
+            if !p.is_finite() {
+                *p = 0.0;
+            }
+        }
+        let safe_potential: Vec<f64> = self
+            .potential
+            .iter()
+            .map(|&v| if v.is_finite() { v } else { 0.0 })
+            .collect();
+
+        WaveData {
+            time: self.time,
+            x_axis: self.x_axis.clone(),
+            prob_density: safe_prob,
+            potential: safe_potential,
+            reflection: obs.reflection,
+            barrier_prob: obs.barrier_prob,
+            transmission: obs.transmission,
+            #[cfg(test)]
+            right_wall_prob: obs.right_wall_prob,
+            latched_transmission: self.latched_transmission,
+            wall_arrived: self.wall_arrived,
+            quasi_bound_latched: self.quasi_bound_latched,
+            x_left: self.x_left,
+            x_right: self.x_right,
+            kinetic_energy: self.kinetic_energy,
+            norm_sq: state_norm_squared(&self.psi),
+        }
+    }
+
+    /// Current latched pre-wall transmission readout $T_{\text{scatter}}$, if latched.
+    #[cfg(test)]
+    #[must_use]
+    pub fn latched_transmission(&self) -> Option<f64> {
+        self.latched_transmission
     }
 }

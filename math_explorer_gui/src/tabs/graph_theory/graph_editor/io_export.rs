@@ -52,7 +52,7 @@ impl GraphEditorTool {
     /// Exports the current editor graph (and optional Braess terminals/latencies) as a [`SharedGraphTopology`].
     #[must_use]
     pub fn export_shared_topology(&self) -> SharedGraphTopology {
-        let directed = self.braess.config.enabled;
+        let directed = self.directed_edges || self.braess.config.enabled;
         let source_node = if directed
             && self
                 .node_positions
@@ -115,6 +115,7 @@ impl GraphEditorTool {
             .map(|l| AffineLatency::clamped(l.a, l.b))
             .collect();
         self.braess.sync_with_edges(&self.edges);
+        self.directed_edges = topo.directed;
         self.braess.config.enabled = topo.directed;
         if let Some(s) = topo.source_node {
             self.braess.config.source_node = s;
