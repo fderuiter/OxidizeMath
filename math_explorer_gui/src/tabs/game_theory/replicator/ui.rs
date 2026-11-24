@@ -147,6 +147,9 @@ impl ReplicatorDynamicsTool {
             None,
         ) {
             self.sync_shared_topology(&ctx);
+            if !crate::app::SharedSimulationBus::is_link_topology_enabled(&ctx) {
+                self.sync_spatial_from_bus(&ctx);
+            }
         }
         if let Some(k) = self.shared_mean_degree {
             ui.small(format!(
@@ -155,32 +158,7 @@ impl ReplicatorDynamicsTool {
         }
     }
 
-    pub(super) fn show_settings_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Settings");
-        self.render_topology_sync_header(ui);
-        ui.separator();
-        self.show_preset_buttons(ui);
-
-        ui.separator();
-        ui.heading("Payoff Matrix");
-        if ui
-            .checkbox(&mut self.symbolic_mode, "Symbolic Formula Payoffs")
-            .accessible_hover_text(
-                "Evaluate payoff matrix cells from custom mathematical formulas and parameter sliders",
-            )
-            .changed()
-            && self.symbolic_mode
-        {
-            self.sync_and_eval_symbolic_payoffs();
-            self.recompute_trajectory_preserving_playback();
-        }
-        self.show_payoff_grid(ui);
-        if self.symbolic_mode {
-            ui.add_space(4.0);
-            self.show_symbolic_payoff_controls(ui);
-        }
-
-        ui.separator();
+    fn show_population_and_sim_controls(&mut self, ui: &mut egui::Ui) {
         ui.heading("Initial Population");
         for i in 0..self.initial_population.len() {
             ui.horizontal(|ui| {
@@ -212,6 +190,36 @@ impl ReplicatorDynamicsTool {
         }
     }
 
+    pub(super) fn show_settings_panel(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Settings");
+        self.render_topology_sync_header(ui);
+        self.render_spatial_controls(ui);
+        ui.separator();
+        self.show_preset_buttons(ui);
+
+        ui.separator();
+        ui.heading("Payoff Matrix");
+        if ui
+            .checkbox(&mut self.symbolic_mode, "Symbolic Formula Payoffs")
+            .accessible_hover_text(
+                "Evaluate payoff matrix cells from custom mathematical formulas and parameter sliders",
+            )
+            .changed()
+            && self.symbolic_mode
+        {
+            self.sync_and_eval_symbolic_payoffs();
+            self.recompute_trajectory_preserving_playback();
+        }
+        self.show_payoff_grid(ui);
+        if self.symbolic_mode {
+            ui.add_space(4.0);
+            self.show_symbolic_payoff_controls(ui);
+        }
+
+        ui.separator();
+        self.show_population_and_sim_controls(ui);
+    }
+
     pub(super) fn show_trajectory_plot(&mut self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let text_color = ui.visuals().text_color();
@@ -235,7 +243,21 @@ impl ReplicatorDynamicsTool {
                         .get(i)
                         .cloned()
                         .unwrap_or_else(|| format!("Strategy {i}"));
-                    plot_ui.line(Line::new(name, points).color(palette.series_color(i)));
+                    let color = palette.series_color(i);
+                    plot_ui.line(Line::new(name.clone(), points).color(color));
+                    if !self.spatial.trajectory.is_empty() {
+                        let sp_pts: PlotPoints = self
+                            .spatial
+                            .trajectory
+                            .iter()
+                            .filter_map(|(t, st)| st.get(i).map(|&v| [*t, v]))
+                            .collect();
+                        plot_ui.line(
+                            Line::new(format!("{name} (Spatial Graph)"), sp_pts)
+                                .color(color)
+                                .style(LineStyle::dashed_dense()),
+                        );
+                    }
                 }
                 if !self.mean_fitness_series.is_empty() {
                     let fit_pts: PlotPoints = self.mean_fitness_series.iter().copied().collect();

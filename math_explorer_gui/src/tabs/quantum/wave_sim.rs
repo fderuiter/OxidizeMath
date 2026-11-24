@@ -8,6 +8,10 @@ pub mod atlas;
 mod atlas_tests;
 #[path = "wave_sim/challenge.rs"]
 pub mod challenge;
+#[path = "wave_sim/challenges.rs"]
+pub mod challenges;
+#[path = "wave_sim/lattice_atlas.rs"]
+pub mod lattice_atlas;
 #[path = "wave_sim/persistence.rs"]
 mod persistence;
 #[path = "wave_sim/plot_ui.rs"]
@@ -45,6 +49,8 @@ pub use challenge::CHALLENGE_FABRY_PEROT_RESONANCE;
     feature = "pure_math"
 ))]
 pub use presets::wave_parameter_label;
+#[cfg(test)]
+use presets::STARTER_PRESET_JSON;
 pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
@@ -55,6 +61,7 @@ use crate::framework::{
     CalloutManager, CalloutSpec, ChallengeEvaluation, ExportCapabilities, InteractionContext,
     InteractiveTool, MathExpressionInputBar, SpatialBrushKit,
 };
+use challenges::{ActiveWaveChallenge, PreWallLatchCache};
 use eframe::egui;
 use math_commons::ast::Expr;
 use presets::{
@@ -90,7 +97,8 @@ pub struct WaveSimulatorTool {
     pub(crate) atlas: ParameterAtlasController,
     pub(crate) pending_slider_reset: bool,
     pub(crate) propagator_rebuilds: Arc<std::sync::atomic::AtomicUsize>,
-    pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) active_challenge: Option<ActiveWaveChallenge>,
+    pub(crate) latch_cache: PreWallLatchCache,
     pub(crate) callout_manager: CalloutManager,
     pub(crate) revision: u64,
 }
@@ -156,6 +164,7 @@ impl WaveSimulatorTool {
             pending_slider_reset: false,
             propagator_rebuilds,
             active_challenge: None,
+            latch_cache: PreWallLatchCache::default(),
             callout_manager: CalloutManager::new(),
             revision: 1,
         }
@@ -298,15 +307,7 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        if let Some(ref stepped) = self.export_data {
-            return build_wave_datasets(stepped);
-        }
-        if let Some(wave_data) = self
-            .worker
-            .latest_snapshot()
-            .and_then(|s| s.structured_data.as_ref())
-            .and_then(|d| d.downcast_ref::<WaveData>())
-        {
+        if let Some(wave_data) = self.active_wave_data() {
             return build_wave_datasets(wave_data);
         }
         egui_plot::get_last_plot_datasets()
@@ -343,15 +344,19 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
-        self.set_wave_challenge(challenge_id)
+        self.apply_wave_challenge(challenge_id)
     }
 
     fn active_challenge_id(&self) -> Option<&'static str> {
-        self.active_challenge
+        self.active_challenge.map(ActiveWaveChallenge::id)
     }
 
     fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
-        self.eval_wave_challenge()
+        self.evaluate_wave_challenge()
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.collect_wave_observables()
     }
 
     fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
@@ -469,31 +474,5 @@ inventory::submit! {
         domain: "quantum",
         tags: &["tunneling", "schrodinger", "wavepacket", "sculpt"],
         build: || Box::new(WaveSimulatorTool::new()),
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Schr\u00f6dinger Wave Packet",
-    "domain": "quantum",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "potential_type": 1.0,
-    "dt": 0.02
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "wave_sim_starter",
-        title: "Schrödinger Wave Packet",
-        description: "iℏ·∂ψ/∂t = -ℏ²/(2m)∇²ψ + V·ψ: 1D Gaussian wave packet evolution in infinite-well, harmonic, and tunneling barrier potentials.",
-        category: "Wave Mechanics",
-        icon: "🌊",
-        domain: "quantum",
-        tool_name: Some("WaveSimulator"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }

@@ -241,6 +241,14 @@ pub(super) fn render_pane_header(
 
     if let Some(new_idx) = tab_to_switch {
         app.select_pane_tab(ctx, pane_idx, new_idx);
+    } else {
+        crate::app::data_bus::ui::render_pane_header_graph_sync(
+            &mut header_ui,
+            ctx,
+            pane_idx,
+            assigned_tab_idx,
+            header_rect.width(),
+        );
     }
     render_pipeline_source_menu(
         app,
@@ -402,9 +410,14 @@ pub(super) fn render_pane_content(
     content_ui.expand_to_include_rect(content_rect);
     content_ui.set_clip_rect(content_rect);
 
+    let assigned_tab_idx = app.pane_tabs.get(pane_idx).copied().unwrap_or(0);
     ctx.data_mut(|d| {
         d.insert_temp(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY), pane_idx);
         d.insert_temp(egui::Id::new(CURRENT_PANE_RECT_KEY), content_rect);
+        d.insert_temp(
+            egui::Id::new(("pane_assigned_tab_idx", pane_idx)),
+            assigned_tab_idx,
+        );
     });
     stage_pane_inputs(ctx, pane_idx, &app.pipeline_dag, &app.dataflow_bus);
     crate::reflective_ui::slider::begin_pane_sweep_scope(ctx, pane_idx);
@@ -424,5 +437,6 @@ pub(super) fn render_pane_content(
     ctx.data_mut(|d| {
         d.remove::<usize>(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY));
         d.remove::<egui::Rect>(egui::Id::new(CURRENT_PANE_RECT_KEY));
+        d.remove::<usize>(egui::Id::new(("pane_assigned_tab_idx", pane_idx)));
     });
 }

@@ -1,33 +1,124 @@
-//! Shared CSR [`GraphSpinSystem`] simulation and interactive canvas for [`IsingModelTool`].
+//! Shared CSR and `WorkspaceDataBus` [`GraphSpinSystem`] synchronization for [`IsingModelTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::preset::IsingInteractionMode;
-use super::{ising_spin_color, IsingModelTool, MAX_SPATIAL_HISTORY};
-use crate::accessibility::{
-    announce_live_status, paint_canvas_focus_ring, register_canvas_accessibility,
-    AccessibleHoverText,
+use super::{IsingModelTool, MAX_SPATIAL_HISTORY};
+use crate::app::data_bus::ui::sync_consumer_follow_flag;
+use crate::app::data_bus::{
+    read_shared_graph, seed_shared_graph_if_empty, SharedGraph, MAX_SPIN_NODE_BUDGET,
 };
-use crate::app::{
-    contrasting_text_color, render_topology_source_bar, SemanticPalette, SharedGraphTopology,
-    SharedSimulationBus,
-};
-use crate::framework::{PlaybackAction, PlaybackTransport};
-use eframe::egui::{self, Pos2};
+use crate::app::{SharedGraphTopology, SharedSimulationBus, TopologySource};
+use eframe::egui;
 use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
-use math_explorer::physics::stat_mech::GraphSpinSystem;
-use math_explorer::physics::stat_mech::KB;
+use math_explorer::physics::stat_mech::{GraphSpinSystem, KB};
 use nalgebra::DMatrix;
 use std::sync::Arc;
 
+pub(super) struct GraphSpinMode {
+    pub(super) follow_workspace_graph: bool,
+    pub(super) applied_bus_revision: u64,
+    pub(super) clamped_source_nodes: Option<usize>,
+    pub(super) active_graph: Option<Arc<SharedGraph>>,
+    pub(super) seeded_graph: Option<SharedGraph>,
+    pub(super) pending_seed_publish: bool,
+    pub(super) frustrated_edges: usize,
+}
+
+impl Default for GraphSpinMode {
+    fn default() -> Self {
+        Self {
+            follow_workspace_graph: true,
+            applied_bus_revision: 0,
+            clamped_source_nodes: None,
+            active_graph: None,
+            seeded_graph: None,
+            pending_seed_publish: false,
+            frustrated_edges: 0,
+        }
+    }
+}
+
 impl IsingModelTool {
+    pub(super) fn sync_worker_target_state(
+        &mut self,
+        state: Option<crate::async_sim::SimWorkerState>,
+        running: Option<bool>,
+    ) {
+        use crate::async_sim::{SimCommand, SimWorkerState};
+        let target_state = state.unwrap_or_else(|| {
+            if running.unwrap_or(false) {
+                SimWorkerState::Running
+            } else {
+                SimWorkerState::Ready
+            }
+        });
+        if target_state == SimWorkerState::Running {
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+        } else if self.worker.is_running() {
+            let _ = self.worker.send_command(SimCommand::Pause);
+        }
+    }
+
     /// Returns `true` when `IsingModelTool` is currently driving a shared CSR [`GraphSpinSystem`].
     #[must_use]
     pub fn is_graph_mode(&self) -> bool {
-        self.graph_system.is_some() && self.shared_topology.is_some()
+        self.active_challenge.is_none()
+            && self.graph_system.is_some()
+            && (self.shared_topology.is_some() || self.graph_mode.active_graph.is_some())
     }
 
-    /// Returns the currently synced shared bus revision, if active.
+    /// Alias for [`Self::is_graph_mode`] used by cross-domain `WorkspaceDataBus` coupling checks.
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
+    #[must_use]
+    pub fn is_graph_spin_mode(&self) -> bool {
+        self.is_graph_mode()
+    }
+
+    /// Returns the number of frustrated undirected bonds ($J w_{ij} s_i s_j < 0$) in the active spin graph.
+    #[must_use]
+    pub fn frustrated_edge_count(&self) -> usize {
+        self.graph_mode.frustrated_edges
+    }
+
+    /// Returns whether `IsingModelTool` follows `WorkspaceDataBus` topology updates.
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
+    #[must_use]
+    pub fn follow_workspace_graph(&self) -> bool {
+        self.graph_mode.follow_workspace_graph
+    }
+
+    /// Returns the active spin node count when in graph mode.
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
+    #[must_use]
+    pub fn graph_spin_count(&self) -> Option<usize> {
+        self.active_graph_node_count()
+    }
+
+    /// Returns the currently synced `SharedSimulationBus` revision, if active.
     #[cfg(test)]
     #[must_use]
     pub fn synced_bus_revision(&self) -> Option<u64> {
@@ -41,14 +132,16 @@ impl IsingModelTool {
     }
 
     pub(super) fn detach_shared_csr_graph(&mut self, refresh_lattice_overlays: bool) {
-        if self.synced_bus_revision.take().is_some()
-            || self.graph_system.is_some()
-            || self.shared_topology.is_some()
-        {
-            self.graph_system = None;
-            self.shared_topology = None;
-            self.graph_running = false;
-            self.graph_sweeps = 0.0;
+        let had_any = self.synced_bus_revision.take().is_some()
+            || self.shared_topology.take().is_some()
+            || self.graph_mode.active_graph.take().is_some()
+            || self.graph_system.take().is_some();
+        self.graph_mode.applied_bus_revision = 0;
+        self.graph_mode.clamped_source_nodes = None;
+        self.graph_mode.frustrated_edges = 0;
+        self.graph_running = false;
+        self.graph_sweeps = 0.0;
+        if had_any {
             if refresh_lattice_overlays {
                 self.sync_metrics_from_latest();
                 self.reset_trajectory_overlays();
@@ -71,7 +164,11 @@ impl IsingModelTool {
                     self.synced_bus_revision = Some(snap.revision);
                 }
             }
-            None => self.detach_shared_csr_graph(true),
+            None => {
+                if self.synced_bus_revision.is_some() || self.shared_topology.is_some() {
+                    self.detach_shared_csr_graph(true);
+                }
+            }
         }
     }
 
@@ -89,12 +186,82 @@ impl IsingModelTool {
         ) else {
             return false;
         };
+        self.graph_mode.active_graph = None;
+        self.graph_mode.applied_bus_revision = 0;
+        self.graph_mode.clamped_source_nodes = None;
         self.graph_system = Some(sys);
         self.shared_topology = Some(snap);
         self.graph_sweeps = 0.0;
         self.refresh_graph_observables();
         self.reset_trajectory_overlays();
         self.dirty = true;
+        true
+    }
+
+    pub(crate) fn apply_shared_spin_graph(&mut self, shared: &Arc<SharedGraph>) {
+        let (clamped, orig_count) = shared.clamped_to_budget(MAX_SPIN_NODE_BUDGET);
+        self.graph_mode.clamped_source_nodes = orig_count;
+        self.graph_mode.applied_bus_revision = shared.revision;
+        if clamped.nodes.is_empty() {
+            self.graph_system = None;
+            self.graph_mode.active_graph = None;
+            self.graph_mode.frustrated_edges = 0;
+            return;
+        }
+        let sys = GraphSpinSystem::new(clamped.nodes.len(), &clamped.edges, Some(42));
+        self.shared_topology = None;
+        self.synced_bus_revision = None;
+        self.graph_mode.active_graph = Some(clamped);
+        self.graph_system = Some(sys);
+        self.graph_sweeps = 0.0;
+        self.refresh_graph_observables();
+        self.reset_trajectory_overlays();
+        self.dirty = true;
+    }
+
+    pub(super) fn sync_graph_from_bus(&mut self, ctx: &egui::Context) {
+        if self.active_challenge.is_some() {
+            self.detach_shared_csr_graph(true);
+            return;
+        }
+        if self.topology_source == TopologySource::LocalPreset {
+            if self.graph_mode.active_graph.is_some() && self.graph_mode.seeded_graph.is_none() {
+                self.detach_shared_csr_graph(true);
+            }
+            return;
+        }
+        if sync_consumer_follow_flag(
+            ctx,
+            &mut self.graph_mode.follow_workspace_graph,
+            "Ising Model",
+        ) && self.graph_mode.follow_workspace_graph
+        {
+            self.graph_mode.applied_bus_revision = 0;
+        }
+        if self.graph_mode.pending_seed_publish {
+            self.graph_mode.pending_seed_publish = false;
+            if let Some(ref seeded) = self.graph_mode.seeded_graph {
+                let arc = seed_shared_graph_if_empty(ctx, seeded);
+                if self.graph_mode.follow_workspace_graph {
+                    self.apply_shared_spin_graph(&arc);
+                }
+            }
+        }
+        if !self.graph_mode.follow_workspace_graph {
+            return;
+        }
+        if let Some(shared) = read_shared_graph(ctx) {
+            if shared.revision != self.graph_mode.applied_bus_revision {
+                self.apply_shared_spin_graph(&shared);
+            }
+        }
+    }
+
+    pub(super) fn refresh_graph_metrics(&mut self) -> bool {
+        if !self.is_graph_mode() {
+            return false;
+        }
+        self.refresh_graph_observables();
         true
     }
 
@@ -107,6 +274,7 @@ impl IsingModelTool {
         self.magnetization = norm_m;
         self.uniform_magnetization = norm_m;
         self.staggered_magnetization = norm_m;
+        self.graph_mode.frustrated_edges = sys.frustrated_edge_count(self.j_coupling);
         self.energy = match self.mode {
             IsingInteractionMode::Ferromagnetic => {
                 sys.total_energy(self.j_coupling, self.h_field) / n
@@ -150,148 +318,65 @@ impl IsingModelTool {
             .push_back([self.graph_sweeps, self.cooperator_fraction()]);
     }
 
-    pub(super) fn draw_topology_source_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let mut changed = false;
-        ui.add_enabled_ui(self.active_challenge.is_none(), |ui| {
-            changed = render_topology_source_bar(
-                ui,
-                "ising_model",
-                &mut self.topology_source,
-                self.synced_bus_revision,
-                None,
-            );
-        });
-        if changed {
-            self.sync_shared_topology(ctx);
-        }
-        if let Some(ref snap) = self.shared_topology {
-            ui.small(format!(
-                "Shared CSR Graph: |V| = {}, |E| = {}",
-                snap.node_count(),
-                snap.undirected_edges.len()
-            ));
-        }
+    pub(super) fn reset_graph_spins(&mut self) -> bool {
+        let Some(ref mut sys) = self.graph_system else {
+            return false;
+        };
+        sys.randomize();
+        self.graph_sweeps = 0.0;
+        self.refresh_graph_observables();
+        self.reset_trajectory_overlays();
+        true
     }
+}
 
-    pub(super) fn draw_graph_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if let Some(action) = PlaybackTransport::in_thread(
-            "ising_graph_transport",
-            "Ising CSR Graph",
-            self.graph_running,
-        )
-        .show(ui)
-        {
-            match action {
-                PlaybackAction::Play => self.graph_running = true,
-                PlaybackAction::Pause => self.graph_running = false,
-                PlaybackAction::Step => {
-                    self.graph_running = false;
-                    let trials = self.active_graph_node_count().unwrap_or(16).max(16);
-                    self.step_graph_trials(trials);
-                }
-                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
-                PlaybackAction::Reset => {
-                    if let Some(ref mut sys) = self.graph_system {
-                        sys.randomize();
-                    }
-                    self.graph_sweeps = 0.0;
-                    self.refresh_graph_observables();
-                    self.reset_trajectory_overlays();
-                }
-            }
-            ctx.request_repaint();
-        }
+const FRUSTRATED_TRIANGULAR_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Frustrated Triangular Spins",
+    "domain": "solid_state",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "temperature": 0.45,
+    "j_coupling": 1.0,
+    "h_field": 0.0,
+    "steps_per_frame": 2000,
+    "seeded_graph": {
+      "revision": 1,
+      "nodes": [
+        { "id": 0, "norm_pos": [0.50, 0.50] },
+        { "id": 1, "norm_pos": [0.50, 0.14] },
+        { "id": 2, "norm_pos": [0.84, 0.36] },
+        { "id": 3, "norm_pos": [0.72, 0.78] },
+        { "id": 4, "norm_pos": [0.28, 0.78] },
+        { "id": 5, "norm_pos": [0.16, 0.36] }
+      ],
+      "edges": [
+        [0, 1, -1.0],
+        [0, 2, -1.0],
+        [0, 3, -1.0],
+        [0, 4, -1.0],
+        [0, 5, -1.0],
+        [1, 2, -1.0],
+        [2, 3, -1.0],
+        [3, 4, -1.0],
+        [4, 5, -1.0],
+        [5, 1, -1.0]
+      ]
     }
+  }
+}"#;
 
-    pub(super) fn draw_graph_spin_canvas(&mut self, ui: &mut egui::Ui, side: f32) {
-        let (response, painter) = ui.allocate_painter(egui::vec2(side, side), egui::Sense::click());
-        let n = self.active_graph_node_count().unwrap_or(0);
-        let label = "CSR Graph Ising Spin & Fermi Strategy Visualization";
-        let _ = response.clone().accessible_hover_text(label);
-        let summary = format!(
-            "{n} CSR nodes, M = {:.3}, E = {:.3}, C = {:.1}%",
-            self.magnetization,
-            self.energy,
-            self.cooperator_fraction() * 100.0
-        );
-        register_canvas_accessibility(
-            ui,
-            &response,
-            egui::accesskit::Role::GraphicsDocument,
-            label,
-            Some(&summary),
-        );
-        paint_canvas_focus_ring(ui, &response);
-
-        let palette = SemanticPalette::from_visuals(ui.visuals());
-        painter.rect_filled(response.rect, 4.0, ui.visuals().extreme_bg_color);
-        painter.rect_stroke(
-            response.rect,
-            4.0,
-            ui.visuals().widgets.noninteractive.bg_stroke,
-            egui::StrokeKind::Inside,
-        );
-        if let Some(idx) = self.paint_graph_spin_elements(&response, &painter, side, &palette) {
-            if let Some(ref mut sys) = self.graph_system {
-                sys.flip_spin(idx);
-            }
-            self.refresh_graph_observables();
-            announce_live_status(ui.ctx(), format!("Flipped spin on CSR node {idx}"));
-        }
-        ui.horizontal(|ui| {
-            ui.colored_label(ising_spin_color(1, &palette), "● +1 (C / ↑)");
-            ui.colored_label(ising_spin_color(-1, &palette), "● -1 (D / ↓)");
-            ui.small("Click a node to flip its spin");
-        });
-    }
-
-    fn paint_graph_spin_elements(
-        &self,
-        response: &egui::Response,
-        painter: &egui::Painter,
-        side: f32,
-        palette: &SemanticPalette,
-    ) -> Option<usize> {
-        let snap = self.shared_topology.as_ref()?;
-        let sys_spins = self.graph_system.as_ref()?.spins();
-        let pad = 22.0_f32.min(side * 0.15);
-        let mapped = snap.map_positions_to_bounds(
-            response.rect.min.x + pad,
-            response.rect.min.y + pad,
-            response.rect.max.x - pad,
-            response.rect.max.y - pad,
-        );
-        for &(u, v, _) in &snap.undirected_edges {
-            if u < mapped.len() && v < mapped.len() {
-                let pu = Pos2::new(mapped[u][0], mapped[u][1]);
-                let pv = Pos2::new(mapped[v][0], mapped[v][1]);
-                painter.line_segment([pu, pv], (1.6, palette.graph_edge));
-            }
-        }
-        let node_r = if mapped.len() > 64 { 6.0 } else { 11.0 };
-        let click_pos = response
-            .clicked()
-            .then(|| response.interact_pointer_pos())
-            .flatten();
-        let mut clicked_idx = None;
-        for (i, &[x, y]) in mapped.iter().enumerate() {
-            let center = Pos2::new(x, y);
-            if click_pos.is_some_and(|cp| (cp - center).length() <= node_r + 4.0) {
-                clicked_idx = Some(i);
-            }
-            let spin = sys_spins.get(i).copied().unwrap_or(1);
-            let fill = ising_spin_color(spin, palette);
-            painter.circle(center, node_r, fill, (1.0, palette.node_stroke));
-            if node_r >= 10.0 {
-                painter.text(
-                    center,
-                    egui::Align2::CENTER_CENTER,
-                    if spin > 0 { "+" } else { "-" },
-                    egui::FontId::proportional(10.0),
-                    contrasting_text_color(fill),
-                );
-            }
-        }
-        clicked_idx
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "frustrated_triangular_spins",
+        title: "Frustrated Triangular Spins",
+        description: "Odd-cycle antiferromagnetic (-w) wheel graph exhibiting geometric spin frustration with no zero-frustration ground state.",
+        category: "Statistical Mechanics",
+        icon: "🔺",
+        domain: "solid_state",
+        tool_name: Some("IsingModelTool"),
+        preset_generator: || FRUSTRATED_TRIANGULAR_PRESET_JSON,
     }
 }

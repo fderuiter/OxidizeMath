@@ -287,6 +287,9 @@ impl super::MorphogenesisTool {
             rle.clone()
         };
         self.local_runner.enforce_mask_concentrations();
+        self.local_runner
+            .wind_tunnel
+            .sync_from_cell_mask(&self.local_runner.system.diffusion.mask);
         if let Some(ref mut twin) = self.local_runner.twin {
             let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
             let ub = super::counterfactual::active_morphogen_slice(&self.local_runner.system);
@@ -322,6 +325,9 @@ impl super::MorphogenesisTool {
             self.height,
             &stroke,
         );
+        self.local_runner
+            .wind_tunnel
+            .sync_from_cell_mask(&self.local_runner.system.diffusion.mask);
         if let Some(ref mut twin) = self.local_runner.twin {
             let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
             let ub = super::counterfactual::active_morphogen_slice(&self.local_runner.system);
@@ -351,6 +357,9 @@ impl super::MorphogenesisTool {
                     .mask
                     .stamp_microfluidic_maze();
                 self.local_runner.enforce_mask_concentrations();
+                self.local_runner
+                    .wind_tunnel
+                    .sync_from_cell_mask(&self.local_runner.system.diffusion.mask);
                 self.sync_branch_engine_from_local();
                 let _ = self
                     .worker
@@ -366,6 +375,9 @@ impl super::MorphogenesisTool {
                     .unwrap_or_else(|e| e.into_inner())
                     .clear();
                 self.local_runner.system.diffusion.mask.clear();
+                self.local_runner
+                    .wind_tunnel
+                    .sync_from_cell_mask(&self.local_runner.system.diffusion.mask);
                 let _ = self
                     .worker
                     .send_command(crate::async_sim::SimCommand::ClearObstacles);
@@ -376,5 +388,11 @@ impl super::MorphogenesisTool {
             }
             _ => {}
         }
+    }
+}
+
+impl super::runner::MorphogenesisKineticsRunner {
+    pub(crate) fn enforce_mask_concentrations(&mut self) {
+        enforce_system_mask(&mut self.system, self.width, self.height);
     }
 }

@@ -4,11 +4,54 @@
 
 use super::{NeuralDynamicsMode, NeuralNetworkVizTool};
 use crate::accessibility::AccessibleHoverText;
-use crate::app::{contrasting_text_color, render_topology_source_bar, SemanticPalette};
+use crate::app::data_bus::ui::{render_follow_workspace_toggle, render_node_budget_banner};
+use crate::app::data_bus::MAX_HH_NEURON_BUDGET;
+use crate::app::{
+    contrasting_text_color, render_topology_source_bar, SemanticPalette, SharedSimulationBus,
+};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui::{self, Color32};
 
 impl NeuralNetworkVizTool {
+    fn render_bus_coupling_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let badge = self
+            .synced_bus_revision
+            .and_then(|_| self.clamp_badge_text());
+        if render_topology_source_bar(
+            ui,
+            "neural_network_viz",
+            &mut self.topology_source,
+            self.synced_bus_revision,
+            badge.as_deref(),
+        ) {
+            self.sync_shared_topology(ctx);
+            if !SharedSimulationBus::is_link_topology_enabled(ctx) {
+                self.sync_from_bus(ctx);
+            }
+        }
+        let rev_opt = (self.applied_bus_revision > 0).then_some(self.applied_bus_revision);
+        if render_follow_workspace_toggle(
+            ui,
+            &mut self.follow_workspace_graph,
+            "Neural Network Viz",
+            rev_opt,
+        ) && self.follow_workspace_graph
+        {
+            self.applied_bus_revision = 0;
+            if !SharedSimulationBus::is_link_topology_enabled(ctx) {
+                self.sync_from_bus(ctx);
+            }
+        }
+        if self.synced_bus_revision.is_none() {
+            render_node_budget_banner(
+                ui,
+                self.clamped_source_nodes,
+                MAX_HH_NEURON_BUDGET,
+                "Hodgkin-Huxley neurons",
+            );
+        }
+    }
+
     pub(super) fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
         let ctx = parent_ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "nn_viz_controls");
@@ -16,16 +59,7 @@ impl NeuralNetworkVizTool {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading("Controls");
                 if !self.upstream_linked {
-                    let badge = self.clamp_badge_text();
-                    if render_topology_source_bar(
-                        ui,
-                        "neural_network_viz",
-                        &mut self.topology_source,
-                        self.synced_bus_revision,
-                        badge.as_deref(),
-                    ) {
-                        self.sync_shared_topology(&ctx);
-                    }
+                    self.render_bus_coupling_controls(ui, &ctx);
                 }
                 ui.separator();
                 self.render_nn_transport(ui, &ctx);
@@ -51,7 +85,7 @@ impl NeuralNetworkVizTool {
         let max_sliders = if self.upstream_linked {
             self.external_input.len().min(12)
         } else {
-            self.external_input.len()
+            self.external_input.len().min(32)
         };
         for i in 0..max_sliders {
             ui.horizontal(|ui| {
@@ -68,7 +102,7 @@ impl NeuralNetworkVizTool {
         }
         ui.separator();
         ui.label(
-            "Synaptic activity is modeled via CSR conductance pulses: when presynaptic V > 0 mV, scaled synaptic current drives postsynaptic targets.",
+            "Signed CSR synapses: +w excitatory pulses depolarize postsynaptic neurons; -w inhibitory edges hyperpolarize and quench spike loops.",
         );
     }
 
@@ -86,6 +120,9 @@ impl NeuralNetworkVizTool {
                     self.reset();
                     if !self.upstream_linked {
                         self.sync_shared_topology(ctx);
+                        if !SharedSimulationBus::is_link_topology_enabled(ctx) {
+                            self.sync_from_bus(ctx);
+                        }
                     }
                 }
             }
