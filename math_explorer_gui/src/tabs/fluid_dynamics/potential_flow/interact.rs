@@ -31,14 +31,16 @@ pub(super) fn render_flow_layers<'a>(
             );
         }
     }
-    plot_ui.arrows(
-        Arrows::new(
-            "Vector Field",
-            PlotPoints::Borrowed(arrows.0),
-            PlotPoints::Borrowed(arrows.1),
-        )
-        .color(palette.series_color(0)),
-    );
+    if !arrows.0.is_empty() {
+        plot_ui.arrows(
+            Arrows::new(
+                "Vector Field",
+                PlotPoints::Borrowed(arrows.0),
+                PlotPoints::Borrowed(arrows.1),
+            )
+            .color(palette.series_color(0)),
+        );
+    }
     if let Some(stag) = stagnation.filter(|pts| !pts.is_empty()) {
         plot_ui.points(
             Points::new("Stagnation (|V|=0)", stag.to_vec())
@@ -160,6 +162,8 @@ impl PotentialFlowTool {
         self.new_element_strength = el.strength;
         self.new_element_x = el.x;
         self.new_element_y = el.y;
+        self.selected_element = Some(idx);
+        self.focused_reticle = [el.x, el.y];
     }
 
     fn resolve_brush_element_type(&self, mode: BrushMode) -> ElementType {
@@ -222,6 +226,7 @@ impl PotentialFlowTool {
             self.elements[idx].y = py;
             self.sync_sidebar_from_element(idx);
             self.rebuild_field();
+            self.reseed_dye_emitters();
         }
     }
 
@@ -235,6 +240,13 @@ impl PotentialFlowTool {
     }
 
     pub(crate) fn apply_flow_stroke_with_drag(&mut self, stroke: &BrushStroke, is_dragging: bool) {
+        if !stroke.start[0].is_finite()
+            || !stroke.start[1].is_finite()
+            || !stroke.end[0].is_finite()
+            || !stroke.end[1].is_finite()
+        {
+            return;
+        }
         let px = stroke.end[0].clamp(FLOW_POS_MIN, FLOW_POS_MAX);
         let py = stroke.end[1].clamp(FLOW_POS_MIN, FLOW_POS_MAX);
         let r_sq = stroke.radius.max(0.5).powi(2);
@@ -247,7 +259,9 @@ impl PotentialFlowTool {
                     || point_to_segment_dist_sq([el.x, el.y], stroke.start, [px, py]) > r_sq
             });
             if self.elements.len() != before {
+                self.selected_element = None;
                 self.rebuild_field();
+                self.reseed_dye_emitters();
             }
             return;
         }
@@ -263,10 +277,9 @@ impl PotentialFlowTool {
             self.elements[idx].x = px;
             self.elements[idx].y = py;
             self.sync_sidebar_from_element(idx);
-            if is_dragging {
-                self.active_drag_element = Some(idx);
-            }
+            self.active_drag_element = is_dragging.then_some(idx);
             self.rebuild_field();
+            self.reseed_dye_emitters();
             return;
         }
 
@@ -286,10 +299,9 @@ impl PotentialFlowTool {
             });
             let new_idx = self.elements.len() - 1;
             self.sync_sidebar_from_element(new_idx);
-            if is_dragging {
-                self.active_drag_element = Some(new_idx);
-            }
+            self.active_drag_element = is_dragging.then_some(new_idx);
             self.rebuild_field();
+            self.reseed_dye_emitters();
         }
     }
 }

@@ -167,6 +167,7 @@ fn assert_pure_math_twenty_one_errors() {
         e::EvolutionError::InvalidState.severity(),
         e::FractranError::InvalidFractionSyntax.severity(),
         e::HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.severity(),
+        e::Su11HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.severity(),
         e::OptimizationError::ConversionError.severity(),
         e::StochasticError::InvalidReactionIndex(1).severity(),
         e::TensorError::IndexOutOfBounds.severity(),

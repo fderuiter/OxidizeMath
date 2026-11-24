@@ -1,4 +1,4 @@
-//! Verifies that all 42 public error enums tested from `math_explorer::error`
+//! Verifies that all 43 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -19,8 +19,8 @@ use math_explorer::error::{
     HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError, MarketPricingError,
     MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError,
     OptionPricingError, OuError, PharmacokineticsError, PoissonError, QueueingError, RadarError,
-    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError, TdaError,
-    ZipError,
+    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
+    Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -95,6 +95,10 @@ fn topology_graph_and_pricing_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "GraphTheoryError",
         &GraphTheoryError::SourceEqualsSink { node: 2 },
+    );
+    assert_readable_diagnostic(
+        "Su11HyperbolicError",
+        &Su11HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
     );
     assert_readable_diagnostic(
         "MatchModelError",

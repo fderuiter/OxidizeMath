@@ -146,3 +146,76 @@ fn test_complex_mapping_rejects_oversized_url_and_state_custom_formulas() {
         .iter()
         .any(|(m, p)| p == "assertive" && m.contains("Invalid complex mapping formula")));
 }
+
+#[test]
+fn test_complex_mapping_rejects_balanced_custom_expr_atomically_and_bounds_255_node_preset() {
+    let h5_prod = crate::tabs::analysis::ode::budget::build_test_balanced_expr("z z", 5);
+    let over_383 = format!("{h5_prod}+{h5_prod}+{h5_prod}");
+    let h10 = crate::tabs::analysis::ode::budget::build_test_balanced_expr("z", 10);
+
+    let mut tool = ComplexMappingTool {
+        function: MappingFunction::ZSquared,
+        palette: ShaderPalette::Heatmap,
+        domain_coloring: false,
+        ..Default::default()
+    };
+    let bad_custom = format!(
+        r#"{{"function":"Custom","grid_min":-2.0,"grid_max":2.0,"grid_density":20,"inspection_point":[1.0,0.5],"custom_expr":"{over_383}","palette":"phase_wheel"}}"#
+    );
+    assert!(tool.try_load_state(&bad_custom).is_err());
+    assert_eq!(tool.function, MappingFunction::ZSquared);
+    assert_eq!(tool.palette, ShaderPalette::Heatmap);
+    assert!(!tool.domain_coloring && tool.math_input.is_valid());
+
+    // Dormant > 2,048-byte custom_expr fails O(1), while short dormant draft roundtrips on ZSquared.
+    let bad_dormant = format!(
+        r#"{{"function":"ZSquared","grid_min":-2.0,"grid_max":2.0,"grid_density":10,"inspection_point":[1.0,0.5],"custom_expr":"{h10}"}}"#
+    );
+    assert!(tool.try_load_state(&bad_dormant).is_err());
+    let ok_dormant_draft = r#"{"function":"ZSquared","grid_min":-2.0,"grid_max":2.0,"grid_density":10,"inspection_point":[1.0,0.5],"custom_expr":"z +"}"#;
+    tool.try_load_state(ok_dormant_draft)
+        .expect("short dormant draft on ZSquared should load");
+
+    assert_255_node_complex_url_shader_and_png();
+}
+
+fn assert_255_node_complex_url_shader_and_png() {
+    use crate::url_state::{encode_share_fragment, parse_share_location};
+
+    let sum_247 = [6, 5, 4, 3, 2]
+        .map(|h| crate::tabs::analysis::ode::budget::build_test_balanced_expr("z", h))
+        .join("+");
+    let bounded_255 = format!("0.01*({sum_247})+a*sin(-z)");
+    let preset_255 = format!(
+        r#"{{"metadata":{{"schema_version":"1.0","title":"Bounded255","domain":"analysis","timestamp":"2026-11-24T00:00:00Z"}},"config":{{"function":"Custom","grid_min":-2.0,"grid_max":2.0,"grid_density":80,"inspection_point":[0.8,0.4],"custom_expr":"{bounded_255}"}}}}"#
+    );
+    let frag = encode_share_fragment("analysis", Some("ComplexMappingTool"), Some(&preset_255))
+        .expect("encode 255-node #state= fragment");
+    let decoded = parse_share_location(&frag, "")
+        .expect("parse #state=")
+        .expect("share params");
+    let mut cm = ComplexMappingTool::default();
+    cm.import_preset_json(decoded.state_json.as_deref().unwrap())
+        .expect("import 255-node custom preset");
+    assert_eq!(cm.math_input.instruction_count(), 255);
+    assert!(cm.export_shader_source(ShaderExportFormat::Wgsl).is_ok());
+
+    let ctx = egui::Context::default();
+    let mut fw = SimulationFramework::new("__cm_255_png__");
+    fw.active_tool = Some(Box::new(cm));
+    let raw = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::Vec2::new(960.0, 540.0),
+        )),
+        ..Default::default()
+    };
+    let _ = ctx.run(raw, |c| {
+        fw.show_export_modal = true;
+        fw.queue_export(crate::framework::ExportFormat::Png);
+        fw.show(c, "cm_255_fw");
+    });
+    let png = fw.export_queue.last_exported_bytes.as_deref().unwrap();
+    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+    let _ = std::fs::write("/tmp/complex_mapping_bounded_ast_budget.png", png);
+}

@@ -39,8 +39,8 @@ pub use pure_math::error::{
     EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
     KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
     MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
-    PoissonError, PureMathError, QueueingError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    PoissonError, PureMathError, QueueingError, StochasticError, Su11HyperbolicError, TdaError,
+    TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -210,6 +210,9 @@ pub enum Error {
     /// Hyperbolic geometry and geodesic billiard error.
     #[cfg(feature = "pure_math")]
     Hyperbolic(HyperbolicError),
+    /// Intrinsic `SU(1,1)` hyperbolic geometry error.
+    #[cfg(feature = "pure_math")]
+    Su11Hyperbolic(Su11HyperbolicError),
     /// Kelly criterion error.
     #[cfg(feature = "pure_math")]
     Kelly(KellyError),
