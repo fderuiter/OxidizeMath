@@ -189,6 +189,35 @@ fn test_lorenz_bloch_and_fluid_particle_step_zero_alloc() {
     assert!((fluid.time() - 0.16).abs() < 1e-12);
 }
 
+#[cfg(feature = "physics")]
+#[test]
+fn test_potential_tracer_and_probe_zero_alloc() {
+    use math_explorer::nalgebra::Vector2;
+    use math_explorer::physics::fluid_dynamics::potential_flow::{
+        Doublet, PotentialFlowField, UniformFlow,
+    };
+    use math_explorer::physics::fluid_dynamics::solver::PotentialTracerSystem;
+    use math_explorer::physics::fluid_dynamics::types::FluidProperties;
+    use math_explorer::pure_math::analysis::ode::TimeStepper;
+    use math_explorer::verified_engine::engine::VerifiedEngine;
+
+    let _guard = ALLOC_LOCK.lock().unwrap();
+    let mut field = PotentialFlowField::new();
+    field.add(Box::new(UniformFlow::new(10.0, 0.0)));
+    field.add(Box::new(Doublet::new(200.0, 0.0, 0.0)));
+    let air = FluidProperties::air();
+    let mut tracer = PotentialTracerSystem::new(&field, Vector2::new(-5.0, 1.5), 80.0);
+
+    let (readout, _) = VerifiedEngine::run_verified(|| {
+        for _ in 0..16 {
+            tracer.step(0.02);
+        }
+        tracer.evaluate_probe(&air, 10.0, 101_325.0, 0.01)
+    });
+    assert!(readout.bernoulli_pressure.is_finite());
+    assert!(tracer.position.x > -5.0);
+}
+
 #[cfg(feature = "biology")]
 mod biology_fixtures {
     use math_explorer::biology::reaction_diffusion::{
