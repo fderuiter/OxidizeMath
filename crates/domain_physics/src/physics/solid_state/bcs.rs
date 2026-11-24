@@ -178,6 +178,45 @@ impl IsotropicBCSModel {
             debye_cutoff: ElectronVolts::new(debye_cutoff),
         })
     }
+
+    /// Preallocates a uniform symmetric energy mesh $[-\text{half\_bandwidth}, +\text{half\_bandwidth}]$
+    /// bounded within [`math_commons::registry::MAX_GRID_SIZE`].
+    #[must_use]
+    pub fn with_uniform_window(
+        num_levels: usize,
+        half_bandwidth: f64,
+        potential: f64,
+        debye_cutoff: f64,
+    ) -> Self {
+        let count = num_levels.clamp(4, math_commons::registry::MAX_GRID_SIZE);
+        let mut model = Self {
+            energies: vec![ElectronVolts::new(0.0); count],
+            potential: ElectronVolts::new(potential),
+            debye_cutoff: ElectronVolts::new(debye_cutoff),
+        };
+        model.update_uniform_window(half_bandwidth, potential, debye_cutoff);
+        model
+    }
+
+    /// Updates energy levels, pairing `potential`, and `debye_cutoff` in place with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn update_uniform_window(
+        &mut self,
+        half_bandwidth: f64,
+        potential: f64,
+        debye_cutoff: f64,
+    ) {
+        let bw = half_bandwidth.abs().max(0.1);
+        let n = self.energies.len();
+        if n >= 2 {
+            let step = (2.0 * bw) / ((n - 1) as f64);
+            for (i, slot) in self.energies.iter_mut().enumerate() {
+                *slot = ElectronVolts::new(-bw + (i as f64) * step);
+            }
+        }
+        self.potential = ElectronVolts::new(potential.max(0.0));
+        self.debye_cutoff = ElectronVolts::new(debye_cutoff.max(0.0));
+    }
 }
 
 impl GapEquation for IsotropicBCSModel {

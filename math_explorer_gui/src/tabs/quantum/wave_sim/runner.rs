@@ -412,16 +412,11 @@ impl WaveRunner {
             self.x_left,
             self.x_right,
         );
+        let sanitize = |v: f64| if v.is_finite() { v } else { 0.0 };
         for p in &mut safe_prob {
-            if !p.is_finite() {
-                *p = 0.0;
-            }
+            *p = sanitize(*p);
         }
-        let safe_potential: Vec<f64> = self
-            .potential
-            .iter()
-            .map(|&v| if v.is_finite() { v } else { 0.0 })
-            .collect();
+        let safe_potential: Vec<f64> = self.potential.iter().copied().map(sanitize).collect();
 
         WaveData {
             time: self.time,
@@ -463,43 +458,34 @@ impl SimulationRunner for WaveRunner {
                     .clone();
                 self.init_from_config(&cfg);
             }
-            SimCommand::SetSpeed(speed) => {
-                self.steps_per_frame = speed.max(1);
-            }
+            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed.max(1),
             other => self.handle_sculpt_command(other),
         }
     }
-
     fn step(&mut self) {
         let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
         self.step_with_dt(dt);
     }
-
     fn get_snapshot(&self) -> StateSnapshot {
-        let sonification = if self.diverged {
-            crate::audio::SonificationFrame::silent()
-        } else {
-            self.sonification
-        };
-        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
+        let mut sonification = self.sonification;
+        if self.diverged {
+            sonification = crate::audio::SonificationFrame::silent();
+        }
         StateSnapshot {
             width: 0,
             height: 0,
             pixels: Arc::new(RwLock::new(Vec::new())),
             custom_data: Vec::new(),
-            structured_data: Some(structured_data),
+            structured_data: Some(Box::new(self.build_wave_data()) as Box<dyn Any + Send>),
             sonification,
         }
     }
-
     fn get_steps_per_frame(&self) -> usize {
         self.steps_per_frame
     }
-
     fn is_finite_state(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }
-
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
         self.diagnostic_report.clone()
     }

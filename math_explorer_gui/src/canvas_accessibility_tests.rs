@@ -181,6 +181,13 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
         "60 GHz MIMO Radar Room Visualization",
     );
 
+    let mut qc =
+        crate::tabs::solid_state::quasicrystal_diffraction::QuasicrystalDiffractionTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut qc,
+        "Reciprocal-Space Bragg Diffraction Map",
+    );
+
     let mut sandpile = crate::tabs::solid_state::sandpile::AbelianSandpileStudio::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(
         &mut sandpile,

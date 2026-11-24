@@ -4,9 +4,14 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod band_structure;
+pub mod bcs_superconductivity;
 pub mod crystal_viewer;
 pub mod ising;
+pub mod quasicrystal_diffraction;
 pub mod sandpile;
+
+#[cfg(test)]
+mod tests;
 
 pub struct SolidStateTab {
     framework: crate::framework::SimulationFramework,
@@ -62,4 +67,4 @@ inventory::submit! {
     }
 }
 
-// [cite:graph_parameters_rust]
+// [cite:solid_state]
