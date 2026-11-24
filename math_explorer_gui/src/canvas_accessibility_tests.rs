@@ -138,6 +138,12 @@ fn test_neuroscience_canvas_receives_tab_focus_and_accesskit_label() {
         "Lenia Studio Continuous Automaton Canvas",
     );
 
+    let mut botanical = crate::tabs::morphogenesis::PhyllotaxisLSystemTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut botanical,
+        "Botanical Phyllotaxis and L-System Morphogenesis Canvas",
+    );
+
     let mut advective =
         crate::tabs::morphogenesis::advective::AdvectiveMorphogenesisTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(

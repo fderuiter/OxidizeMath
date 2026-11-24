@@ -88,6 +88,9 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
 
     let turing = filter_starter_cards(&all_cards, "turing", Some(AcademicDomain::Biology));
     assert!(turing.iter().any(|c| c.title.contains("Turing")));
+    assert_eq!(card_academic_domain("biochemical"), AcademicDomain::Biology);
+    let hill = filter_starter_cards(&all_cards, "hill", Some(AcademicDomain::Biology));
+    assert!(hill.iter().any(|c| c.domain == "biochemical"));
 
     let disjoint = filter_starter_cards(&all_cards, "turing", Some(AcademicDomain::Climate));
     assert!(disjoint.is_empty());
@@ -123,4 +126,41 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
     assert!(filtered_goals
         .iter()
         .all(|g| card_academic_domain(g.domain) == AcademicDomain::AppliedMath));
+}
+
+#[test]
+fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
+    assert_eq!(
+        card_academic_domain("optics_waves"),
+        AcademicDomain::Physics
+    );
+    assert_eq!(
+        crate::command_palette::format_domain_title("optics_waves").as_ref(),
+        "Optics & Waves"
+    );
+
+    let tabs = crate::tabs::instantiate_tabs();
+    assert!(!tabs.is_empty());
+    #[cfg(all(
+        feature = "pure_math",
+        feature = "applied",
+        feature = "ai",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics"
+    ))]
+    assert_eq!(tabs.len(), 29);
+    for tab in &tabs {
+        let slug = tab.url_slug();
+        let expected = AcademicDomain::from_str(tab.academic_domain())
+            .unwrap_or_else(|| panic!("Tab '{}' has invalid academic_domain", tab.name()));
+        assert_eq!(
+            card_academic_domain(slug),
+            expected,
+            "card_academic_domain('{slug}') did not match tab '{}' domain {:?}",
+            tab.name(),
+            expected
+        );
+    }
 }

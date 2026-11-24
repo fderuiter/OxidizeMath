@@ -1073,6 +1073,7 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "diagnostics",
+ "engine_linalg",
  "math_commons",
  "nalgebra 0.34.2",
  "oxidize_core",
@@ -1096,6 +1097,7 @@ dependencies = [
  "pure_math",
  "rand",
  "rustfft",
+ "scientific_metadata",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -1135,6 +1137,7 @@ dependencies = [
  "approx",
  "diagnostics",
  "domain_applied",
+ "engine_linalg",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",
@@ -1350,6 +1353,13 @@ name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
+
+[[package]]
+name = "engine_linalg"
+version = "0.4.0"
+dependencies = [
+ "verified_engine",
+]
 
 [[package]]
 name = "enumflags2"
@@ -2406,6 +2416,7 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
+ "engine_linalg",
  "federated_registry",
  "math_commons",
  "math_explorer",
@@ -2426,6 +2437,7 @@ name = "math_commons"
 version = "0.4.0"
 dependencies = [
  "diagnostics",
+ "engine_linalg",
  "libm",
  "num-complex",
  "num-traits",
@@ -2466,6 +2478,7 @@ dependencies = [
  "diagnostics",
  "eframe",
  "egui_plot",
+ "engine_linalg",
  "federated_registry",
  "flate2",
  "futures",
@@ -3384,6 +3397,7 @@ dependencies = [
  "approx",
  "dashu",
  "diagnostics",
+ "engine_linalg",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",
