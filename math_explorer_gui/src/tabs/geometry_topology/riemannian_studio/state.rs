@@ -325,6 +325,12 @@ pub struct RiemannianStudioConfig {
     /// 3D viewport camera pose.
     #[serde(default)]
     pub camera: Camera3D,
+    /// Non-mute acoustic gain and pitch scale settings persisted across presets and share URLs.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
+    pub audio: crate::audio::AcousticSettings,
     /// Optional custom heightfield formula `z(x, y)`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_expr: Option<String>,
@@ -368,6 +374,7 @@ impl Default for RiemannianStudioConfig {
             brush_strength: default_brush_strength(),
             running: false,
             camera: Camera3D::default(),
+            audio: crate::audio::AcousticSettings::default(),
             custom_expr: None,
             parametric_exprs: None,
             custom_params: BTreeMap::new(),
@@ -413,6 +420,7 @@ impl RiemannianStudioConfig {
         if !self.camera.is_valid() {
             return Err("Camera3D parameters are out of valid bounds".to_string());
         }
+        self.audio.validate()?;
         Ok(())
     }
 
@@ -459,5 +467,6 @@ impl RiemannianStudioConfig {
         if !self.camera.is_valid() {
             self.camera = Camera3D::default();
         }
+        self.audio = self.audio.sanitized();
     }
 }

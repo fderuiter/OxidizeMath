@@ -148,6 +148,7 @@ fn assert_pure_math_twenty_one_errors() {
         }
         .severity(),
         e::MarkovError::InvalidProbability { value: -0.1 }.severity(),
+        e::MonteCarloError::ZeroReplicates.severity(),
         e::OuError::InvalidTimeStep { value: 0.0 }.severity(),
         e::ZipError::InvalidCount { value: -1.0 }.severity(),
         e::TdaError::EmptyPointCloud.severity(),

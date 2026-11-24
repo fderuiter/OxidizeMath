@@ -429,6 +429,32 @@ fn test_presets_under_4kib_roundtrip_and_sonification_frame_is_finite() {
     );
 }
 
+#[test]
+fn test_framework_acoustic_settings_roundtrip_and_wav_export() {
+    let mut fw = crate::framework::SimulationFramework::new("geometry_topology");
+    assert!(fw.select_tool_by_name("RiemannianPdeStudio"));
+    assert!(fw.is_audio_muted());
+    let custom = crate::audio::AcousticSettings {
+        gain: 0.72,
+        pitch_scale: 1.35,
+    };
+    fw.set_acoustic_settings(custom);
+    let preset_json = fw
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .export_preset_json()
+        .unwrap();
+    let mut restored = RiemannianPdeStudio::default();
+    restored.import_preset_json(&preset_json).unwrap();
+    assert!((restored.acoustic_settings().gain - custom.gain).abs() < 1e-5);
+    assert!((restored.acoustic_settings().pitch_scale - custom.pitch_scale).abs() < 1e-5);
+
+    let frames = restored.sample_sonification_frames(12);
+    assert_eq!(frames.len(), 12);
+    assert!(frames.iter().all(|f| f.is_audible()));
+}
+
 #[cfg(all(feature = "applied", feature = "biology"))]
 #[test]
 fn test_freesurfer_glm_and_cortical_hodgkin_huxley_regimes_produce_finite_maps() {

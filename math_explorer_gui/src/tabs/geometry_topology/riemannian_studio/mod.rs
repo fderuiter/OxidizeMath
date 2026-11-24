@@ -123,6 +123,15 @@ impl RiemannianPdeStudio {
         let eng = RiemannianSimulationEngine::new(&geom, &self.config, 0);
         build_studio_colored_mesh(&geom, &self.config, &self.custom_sandbox, &eng.scalar_field)
     }
+
+    fn current_sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        let (geom, eng) = (self.geometry.as_ref()?, self.engine.as_ref()?);
+        Some(audio::synthesize_manifold_frame(
+            geom,
+            eng,
+            self.config.regime.coerce_to_enabled_features(),
+        ))
+    }
 }
 
 impl InteractiveTool for RiemannianPdeStudio {
@@ -139,7 +148,35 @@ impl InteractiveTool for RiemannianPdeStudio {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot().with_3d_solid()
+        ExportCapabilities::plot().with_audio().with_3d_solid()
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        self.current_sonification_frame()
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.config.audio
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.config.audio = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.ensure_initialized();
+        let count = num_frames.max(1);
+        let mut frames = Vec::with_capacity(count);
+        for _ in 0..count {
+            self.step_once();
+            if let Some(frame) = self.current_sonification_frame() {
+                frames.push(frame.sanitize());
+            }
+        }
+        frames
     }
 
     fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
@@ -164,6 +201,8 @@ impl InteractiveTool for RiemannianPdeStudio {
         self.config.v_res.hash(&mut h);
         self.config.dt.to_bits().hash(&mut h);
         self.config.camera.hash_state(&mut h);
+        self.config.audio.gain.to_bits().hash(&mut h);
+        self.config.audio.pitch_scale.to_bits().hash(&mut h);
         if let Some(st) = self.config.manifold.as_custom_surface_type() {
             self.custom_sandbox.state_fingerprint(st).hash(&mut h);
         }
