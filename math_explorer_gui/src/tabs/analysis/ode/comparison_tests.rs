@@ -136,6 +136,56 @@ fn test_ode_discrepancy_metrics_calculation() {
     );
 }
 
+#[test]
+fn test_symplectic_solvers_preserve_harmonic_oscillator_amplitude() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::HarmonicOscillator,
+        param_k: 1.0,
+        ic_y0: 1.0,
+        ic_v0: 0.0,
+        dt: 0.25,
+        total_time: 100.0,
+        ..Default::default()
+    };
+
+    tool.set_method(IntegrationMethod::RungeKutta4);
+    let rk4_amp = tool
+        .y_series
+        .last()
+        .unwrap()
+        .hypot(*tool.v_series.last().unwrap());
+
+    tool.set_comparison_mode(true);
+    tool.set_method(IntegrationMethod::ImplicitMidpoint);
+    let mid_amp = tool
+        .y_series
+        .last()
+        .unwrap()
+        .hypot(*tool.v_series.last().unwrap());
+    assert_eq!(tool.comparison_manager().len(), 4);
+
+    tool.set_method(IntegrationMethod::GaussLegendre4);
+    let gl4_amp = tool
+        .y_series
+        .last()
+        .unwrap()
+        .hypot(*tool.v_series.last().unwrap());
+    assert_eq!(tool.comparison_manager().len(), 4);
+
+    assert!(
+        (mid_amp - 1.0).abs() < 1e-7,
+        "ImplicitMidpoint must preserve unit amplitude (<1e-7 drift), got {mid_amp}"
+    );
+    assert!(
+        (gl4_amp - 1.0).abs() < 1e-7,
+        "GaussLegendre4 must preserve unit amplitude (<1e-7 drift), got {gl4_amp}"
+    );
+    assert!(
+        (1.0 - rk4_amp) > 5e-4,
+        "Explicit RK4 at dt=0.25 over t=100 should damp amplitude (>5e-4 loss), got {rk4_amp}"
+    );
+}
+
 fn reference_oscillator_trajectory(method: IntegrationMethod) -> comparison::SolverTrajectory {
     comparison::simulate_preset(
         OdePreset::HarmonicOscillator,
@@ -149,6 +199,17 @@ fn reference_oscillator_trajectory(method: IntegrationMethod) -> comparison::Sol
         -0.4,
         None,
     )
+}
+
+fn assert_snapshot_matches_reference(
+    snap: &crate::framework::TraceSnapshot,
+    expected: &comparison::SolverTrajectory,
+) {
+    assert_eq!(snap.series[0].points.len(), expected.y_series.len());
+    assert_eq!(snap.series[1].points.len(), expected.v_series.len());
+    let last_pt = snap.series[0].points.last().expect("last y point");
+    let last_ref = *expected.y_series.last().expect("expected final y");
+    assert_eq!(last_pt[1].to_bits(), last_ref.to_bits());
 }
 
 #[test]
@@ -186,7 +247,11 @@ fn test_ode_comparison_reuses_active_trajectory_with_exact_parity_across_methods
 
         let snaps = tool.comparison_manager().snapshots();
         let labels: Vec<&str> = snaps.iter().map(|s| s.label.as_str()).collect();
-        assert_eq!(labels, vec!["Runge-Kutta 4", "Euler", "Heun (RK2)"]);
+        let mut expected_labels = vec!["Runge-Kutta 4", "Euler", "Heun (RK2)"];
+        if active_method.is_symplectic() {
+            expected_labels.push(active_method.name());
+        }
+        assert_eq!(labels, expected_labels);
         assert_eq!(
             tool.discrepancy_euler_rk4(),
             compute_discrepancy(&euler_ref, &rk4_ref)
@@ -201,11 +266,11 @@ fn test_ode_comparison_reuses_active_trajectory_with_exact_parity_across_methods
         );
 
         for (snap, expected) in snaps.iter().zip([&rk4_ref, &euler_ref, &heun_ref]) {
-            assert_eq!(snap.series[0].points.len(), expected.y_series.len());
-            assert_eq!(snap.series[1].points.len(), expected.v_series.len());
-            let last_pt = snap.series[0].points.last().expect("last y point");
-            let last_ref = *expected.y_series.last().expect("expected final y");
-            assert_eq!(last_pt[1].to_bits(), last_ref.to_bits());
+            assert_snapshot_matches_reference(snap, expected);
+        }
+        if active_method.is_symplectic() {
+            let symp_ref = reference_oscillator_trajectory(active_method);
+            assert_snapshot_matches_reference(&snaps[3], &symp_ref);
         }
     }
     assert!(start.elapsed().as_secs_f64() >= 0.0);

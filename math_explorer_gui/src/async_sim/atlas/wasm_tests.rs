@@ -5,8 +5,6 @@ use super::{
     AtlasRenderRequest, AtlasRunner, ParameterAtlasController, RegimeCartographer, ATLAS_STRIDES,
 };
 use crate::async_sim::SimulationRunner;
-use crate::framework::state_bounds::ToolStateBounds;
-use crate::framework::InteractiveTool;
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -168,6 +166,8 @@ fn wasm_atlas_high_contrast_wcag_and_aria_live_teleport() {
 #[wasm_bindgen_test]
 fn wasm_flagship_state_bounds_and_washout_reseed() {
     use crate::async_sim::SimulationRunner;
+    use crate::framework::state_bounds::ToolStateBounds;
+    use crate::framework::InteractiveTool;
     use crate::tabs::epidemiology::sir::SirTool;
     use crate::tabs::morphogenesis::{grid_u_variance, MorphogenesisTool};
 
@@ -203,7 +203,7 @@ fn wasm_flagship_state_bounds_and_washout_reseed() {
 #[cfg(all(feature = "biology", feature = "pure_math"))]
 #[wasm_bindgen_test]
 fn wasm_framework_hosted_atlases_gray_scott_lenia_and_parrondo() {
-    use crate::framework::SimulationFramework;
+    use crate::framework::{InteractiveTool, SimulationFramework};
     use crate::tabs::financial_math::parrondo::ParrondoParadoxTool;
     use crate::tabs::morphogenesis::lenia::LeniaTool;
     use crate::tabs::morphogenesis::{GrayScottCartographer, MorphogenesisTheory};

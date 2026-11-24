@@ -6,18 +6,18 @@ Multi-scale physical simulation models from quantum states to astrophysical dyna
 
 The `domain_physics` crate provides computational physics simulation kernels spanning multiple spatial and temporal scales. It translates theoretical formulations—from quantum mechanics and electrodynamics to non-linear chaos and galactic kinematics—into verified numerical algorithms.
 
-Simulation models implement standardized time-stepping interfaces and energy conservation checks, ensuring that numerical approximations maintain physical fidelity throughout simulation runs.
+Simulation models implement standardized time-stepping interfaces—including symplectic integrators (`ImplicitMidpoint`, `GaussLegendre4`, `StormerVerlet`, `Yoshida4`)—and energy/momentum conservation checks, ensuring that numerical approximations maintain physical fidelity throughout long-horizon simulation runs.
 
 ### Module Structure
 
-- **`chaos`**: Deterministic chaotic systems, including conservative Hamiltonian models (`DoublePendulum`, `HenonHeiles`), cubic-Hermite `PoincareSection` detectors, the Lorenz attractor, and Lyapunov exponent analyzers.
+- **`chaos`**: Deterministic chaotic systems, including conservative Hamiltonian models (`DoublePendulum`, `HenonHeilesSystem`, `ThreeBodyChoreography`), cubic-Hermite `PoincareSection` and `PoincareRingBuffer` detectors, the Lorenz attractor, and 3D/4D/6D+ Lyapunov exponent analyzers.
 - **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, and Schrödinger wave equation solvers.
 - **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`), and planar 3-body gravitational choreographies (`FigureEightThreeBody`).
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
-- **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, and zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`).
+- **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`), and zero-allocation continuum SPDE engines for Edwards-Wilkinson (`EdwardsWilkinson1D`, `EdwardsWilkinson2D`), Kardar-Parisi-Zhang (`KpzModel1D`, `KpzModel2D`), Allen-Cahn (`AllenCahn2D`), and conserved Cahn-Hilliard (`CahnHilliard2D`) phase-field dynamics.
 - **`optics`**: Graded-index and negative-index refractive media (`refraction`), RK4 Hamiltonian ray tracing and caustic envelope detection (`caustics`), and calibrated optical detector models (`sensing`), complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`.
 
 ---
@@ -47,6 +47,42 @@ lorenz.step(0.01);
 
 let updated_vec = lorenz.state.vec;
 assert!(updated_vec.x != 10.0 || updated_vec.y != 10.0);
+```
+
+### Symplectic Integration of Conservative Hamiltonian Chaos
+
+Integrate non-separable (`DoublePendulum`) and separable (`HenonHeilesSystem`, `ThreeBodyChoreography`) Hamiltonians with bounded shadow-energy drift:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::chaos::{DoublePendulum, HenonHeilesSystem, ThreeBodyChoreography};
+use math_explorer::pure_math::analysis::ode::{
+    ArrayState, GaussLegendre4, HamiltonianSystem, RungeKutta4, Solver, Yoshida4,
+};
+
+let pendulum = DoublePendulum::default();
+let mut s_gl4 = DoublePendulum::default_chaotic_state();
+let mut s_rk4 = s_gl4;
+let e0 = pendulum.hamiltonian(&s_gl4);
+let mut gl4 = GaussLegendre4::new(&s_gl4);
+let mut rk4 = RungeKutta4::new(&s_rk4);
+for step in 0..400 {
+    let t = step as f64 * 0.02;
+    gl4.step(&pendulum, t, &mut s_gl4, 0.02);
+    rk4.step(&pendulum, t, &mut s_rk4, 0.02);
+}
+assert!(pendulum.relative_energy_error(&s_gl4, e0) < pendulum.relative_energy_error(&s_rk4, e0));
+
+let hh = HenonHeilesSystem::default();
+let mut hh_state = hh.seed_on_poincare_section(0.125, 0.1, 0.0).unwrap();
+let hh_e0 = hh.hamiltonian(&hh_state);
+let mut yoshida = Yoshida4::new(&ArrayState::<2>::zeros());
+yoshida.step_separable(&hh, &mut hh_state, 0.02);
+assert!(hh.relative_energy_error(&hh_state, hh_e0) < 1e-8);
+
+let choreo = ThreeBodyChoreography::default();
+let nb_state = ThreeBodyChoreography::figure_eight_initial_state();
+assert!(choreo.angular_momentum_z(&nb_state).abs() < 1e-12);
 ```
 
 ### Decomposing Dwarf-Galaxy Rotation Curves and Symplectic Disk Orbits

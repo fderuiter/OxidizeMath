@@ -4,6 +4,7 @@
 
 use super::{MetricType, NetworkMetricsState, NetworkMetricsTool};
 use crate::accessibility::AccessibleHoverText;
+use crate::app::{SharedGraphTopology as BusGraphTopology, SharedSimulationBus, TopologySource};
 use crate::tabs::graph_theory::{
     io_helpers::{color32_to_hex, render_handoff_buttons},
     plot_export::{
@@ -30,11 +31,76 @@ pub fn metrics_state_json_from_shared(topo: &SharedGraphTopology) -> Option<Stri
         selected_metric: MetricType::DegreeCentrality,
         highlight_vertex_cover: true,
         custom_topology: Some(topo.to_compact_state()),
+        topology_source: TopologySource::LocalPreset,
     };
     serde_json::to_string(&state).ok()
 }
 
 impl NetworkMetricsTool {
+    /// Synchronizes this tool's graph with `SharedSimulationBus` or restores the sample wheel graph.
+    pub fn sync_shared_topology(&mut self, ctx: &egui::Context) {
+        match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
+            Some(snap) => {
+                if self.synced_bus_revision != Some(snap.revision) {
+                    self.apply_shared_graph(&snap);
+                    self.synced_bus_revision = Some(snap.revision);
+                }
+            }
+            None => {
+                if self.synced_bus_revision.take().is_some() {
+                    self.build_sample_graph();
+                    self.bump_revision();
+                }
+            }
+        }
+    }
+
+    fn apply_shared_graph(&mut self, snap: &BusGraphTopology) {
+        if snap.node_count() == 0 {
+            return;
+        }
+        self.graph = math_explorer::pure_math::graph_theory::graph::Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
+        self.directed = snap.directed;
+        self.is_custom_topology = false;
+
+        let mapped = snap.map_positions_to_bounds(70.0, 70.0, 380.0, 340.0);
+        for (idx_in_snap, &orig_id) in snap.node_ids.iter().enumerate() {
+            let [x, y] = mapped[idx_in_snap];
+            let pos = Pos2::new(x, y);
+            let g_idx = self.graph.add_node(pos);
+            self.node_indices.insert(orig_id, g_idx);
+            self.node_positions.insert(orig_id, pos);
+        }
+        for &(u, v, w) in &snap.undirected_edges {
+            let u_id = snap.node_ids[u];
+            let v_id = snap.node_ids[v];
+            if let (Some(&u_idx), Some(&v_idx)) =
+                (self.node_indices.get(&u_id), self.node_indices.get(&v_id))
+            {
+                self.edges.push((u_id, v_id, w));
+                self.graph.add_edge(u_idx, v_idx, w);
+            }
+        }
+        self.bump_revision();
+        self.compute_metrics();
+    }
+
+    /// Returns the currently synced shared bus revision, if active.
+    #[cfg(all(test, feature = "epidemiology"))]
+    #[must_use]
+    pub fn synced_bus_revision(&self) -> Option<u64> {
+        self.synced_bus_revision
+    }
+
+    /// Returns the number of nodes currently analyzed.
+    #[cfg(all(test, feature = "epidemiology"))]
+    #[must_use]
+    pub fn active_node_count(&self) -> usize {
+        self.node_positions.len()
+    }
     /// Exports the active network topology as a [`SharedGraphTopology`].
     #[must_use]
     pub fn export_shared_topology(&self) -> SharedGraphTopology {
@@ -64,6 +130,8 @@ impl NetworkMetricsTool {
         if topo.is_empty() {
             return;
         }
+        self.synced_bus_revision = None;
+        self.topology_source = TopologySource::LocalPreset;
         self.load_compact_topology(&topo.to_compact_state());
         self.bump_revision();
         self.compute_metrics();
@@ -93,6 +161,7 @@ impl NetworkMetricsTool {
 
     /// Restores the default 7-node wheel graph (`W_7`) and recomputes invariants.
     pub fn reset_to_sample_wheel(&mut self) {
+        self.synced_bus_revision = None;
         self.build_sample_graph();
         self.bump_revision();
     }

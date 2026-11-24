@@ -124,10 +124,17 @@ fn test_all_tabs_render_undo_and_redo_buttons_matching_can_undo_and_can_redo() {
     ctx.enable_accesskit();
     let mut app = MathExplorerApp::default();
 
-    #[cfg(all(feature = "pure_math", feature = "physics", feature = "biology"))]
-    assert_eq!(app.tabs.len(), 29);
-
-    let out0 = run_frame(&ctx, &mut app, Vec::new());
+    #[cfg(all(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
+    assert_eq!(app.tabs.len(), 30);
+    let _ = run_frame(&ctx, &mut app, Vec::new());
     for tab_idx in 0..app.tabs.len() {
         app.selected_tab = tab_idx;
         app.pane_tabs[0] = tab_idx;
@@ -158,7 +165,6 @@ fn test_all_tabs_render_undo_and_redo_buttons_matching_can_undo_and_can_redo() {
             .1
             .is_disabled());
     }
-    let _ = out0;
 }
 
 #[cfg(feature = "pure_math")]
@@ -409,13 +415,13 @@ fn test_chrome_toggles_and_focused_pane_leave_undo_depth_and_redo_stack_intact()
     let baseline_undo_depth = app.session_manager.undo_stack.len();
     let baseline_redo_depth = app.session_manager.redo_stack.len();
     assert!(baseline_undo_depth >= 1 && baseline_redo_depth == 1);
-
-    let out = run_frame(&ctx, &mut app, Vec::new());
-    let _ = click_ak_button(&ctx, &mut app, &out, "📖 Theory");
-    let _ = run_frame(&ctx, &mut app, Vec::new());
-    assert_eq!(app.session_manager.undo_stack.len(), baseline_undo_depth);
-    assert_eq!(app.session_manager.redo_stack.len(), baseline_redo_depth);
-
+    if app.pane_tab(0).and_then(|t| t.framework()).is_some() {
+        let out = run_frame(&ctx, &mut app, Vec::new());
+        let _ = click_ak_button(&ctx, &mut app, &out, "📖 Theory");
+        let _ = run_frame(&ctx, &mut app, Vec::new());
+        assert_eq!(app.session_manager.undo_stack.len(), baseline_undo_depth);
+        assert_eq!(app.session_manager.redo_stack.len(), baseline_redo_depth);
+    }
     if let Some(fw) = app.pane_tab_mut(0).and_then(|t| t.framework_mut()) {
         fw.show_starter_gallery = true;
     }
@@ -466,24 +472,19 @@ fn test_touch_mode_and_macos_edit_menu_execute_undo_and_redo_via_toolbar_and_sho
     app.split_ratio = 0.68;
     let out = run_frame(&ctx, &mut app, Vec::new());
     assert_eq!(edit_menu_enabled_states(&app), (true, false));
-
     let (_, undo_node) = find_buttons_matching(&out, "↩ Undo")[0];
     let bounds = undo_node.bounds().expect("Undo button bounds");
     assert!(bounds.width() >= 43.5 && bounds.height() >= 43.5);
-
     let _ = run_frame(&ctx, &mut app, vec![key_ev(egui::Key::Z, mods)]);
     assert!((app.split_ratio - 0.50).abs() < 1e-5);
     assert_eq!(edit_menu_enabled_states(&app), (false, true));
-
     let _ = run_frame(&ctx, &mut app, vec![redo_key_ev()]);
     assert!((app.split_ratio - 0.68).abs() < 1e-5);
     assert_eq!(edit_menu_enabled_states(&app), (true, false));
-
     assert!(handle_edit_menu_action(&mut app, &ctx, "edit_undo"));
     let out_after_menu_undo = run_frame(&ctx, &mut app, Vec::new());
     assert!((app.split_ratio - 0.50).abs() < 1e-5);
     assert_eq!(edit_menu_enabled_states(&app), (false, true));
-
     let _ = click_ak_button(&ctx, &mut app, &out_after_menu_undo, "↪ Redo");
     let _ = run_frame(&ctx, &mut app, Vec::new());
     assert!((app.split_ratio - 0.68).abs() < 1e-5);

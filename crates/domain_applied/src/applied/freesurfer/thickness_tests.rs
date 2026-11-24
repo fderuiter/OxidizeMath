@@ -98,8 +98,51 @@ fn test_exact_distance_equivalence_random_and_sparse() {
     let mut sp_off = vec![0_usize; FlatSpatialGrid::required_offsets_len(2)];
     let mut sp_sort = vec![[0.0_f64; 3]; 2];
     let sp_grid = FlatSpatialGrid::from_surface(&sparse, &mut sp_off, &mut sp_sort).unwrap();
-    for query in [[0.0, 0.0, 0.0], [250.0, -300.0, 15.0]] {
+    let owned_sparse = SpatialGrid::from_surface(&sparse);
+    let owned_surface = SpatialGrid::from_surface(&surface);
+    for query in [
+        [0.0, 0.0, 0.0],
+        [250.0, -300.0, 15.0],
+        [f64::INFINITY, 0.0, 0.0],
+    ] {
         let expected = naive_point_to_surface_distance(&query, &sparse);
         assert_eq!(expected, sp_grid.shortest_distance(&query));
+        assert_eq!(expected, owned_sparse.shortest_distance(&query));
+    }
+    assert_eq!(
+        owned_surface.shortest_distance(&[0.5, 0.5, 0.5]),
+        grid.shortest_distance(&[0.5, 0.5, 0.5])
+    );
+    assert_eq!(
+        cortical_thickness_map(&surface, &sparse),
+        cortical_thickness_mesh(&surface, &sparse)
+    );
+}
+
+#[test]
+fn test_cortical_thickness_batch_matches_scalar_queries() {
+    let mut white = Vec::new();
+    let mut pial = Vec::new();
+    for i in 0..32 {
+        let theta = (i as f64) * 0.2;
+        let r_w = 10.0;
+        let r_p = 12.2 + 0.6 * (3.0 * theta).sin();
+        white.push([r_w * theta.cos(), r_w * theta.sin(), (i as f64) * 0.1]);
+        pial.push([r_p * theta.cos(), r_p * theta.sin(), (i as f64) * 0.1]);
+    }
+    let white_surf = Surface::from_vertices(white);
+    let pial_surf = Surface::from_vertices(pial);
+    let batch = cortical_thickness_batch(&white_surf, &pial_surf);
+    let mut into_buf = vec![0.0; 32];
+    cortical_thickness_batch_into(&white_surf, &pial_surf, &mut into_buf);
+    assert_eq!(batch, into_buf);
+    for (idx, &val) in batch.iter().enumerate() {
+        let scalar = cortical_thickness(
+            &white_surf.vertices[idx],
+            &pial_surf.vertices[idx],
+            &white_surf,
+            &pial_surf,
+        );
+        assert!((val - scalar).abs() < 1e-12);
     }
 }

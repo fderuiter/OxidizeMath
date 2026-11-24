@@ -3,6 +3,74 @@
 
 use alloc::vec::Vec;
 
+/// Unrolled 16-wide branchless plateau scan over contiguous `(x, y)` sample slices.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! advance_sample2d_plateau {
+    ($slice:expr, $start:expr, $end:expr, $flat_y:expr, $x_min:expr, $x_max:expr, |$p:ident| ($x:expr, $y:expr)) => {{
+        let slice_ref = $slice;
+        let start = $start;
+        let end = ($end).min(slice_ref.len());
+        if start >= end {
+            start
+        } else {
+            let flat_y = $flat_y;
+            let x_min = $x_min;
+            let x_max = $x_max;
+            let (chunks, rem) = slice_ref[start..end].as_chunks::<16>();
+            let n_chunks = chunks.len();
+            let mut ci = 0usize;
+            while ci < n_chunks {
+                let c = &chunks[ci];
+                macro_rules! ok_at {
+                    ($idx:literal) => {{
+                        let $p = &c[$idx];
+                        ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
+                    }};
+                }
+                let ok = ok_at!(0)
+                    & ok_at!(1)
+                    & ok_at!(2)
+                    & ok_at!(3)
+                    & ok_at!(4)
+                    & ok_at!(5)
+                    & ok_at!(6)
+                    & ok_at!(7)
+                    & ok_at!(8)
+                    & ok_at!(9)
+                    & ok_at!(10)
+                    & ok_at!(11)
+                    & ok_at!(12)
+                    & ok_at!(13)
+                    & ok_at!(14)
+                    & ok_at!(15);
+                if !ok {
+                    let base = start + (ci << 4);
+                    let mut k = 0usize;
+                    while k < 16 {
+                        let $p = &c[k];
+                        if !(($y == flat_y) & ($x >= x_min) & ($x <= x_max)) {
+                            return base + k;
+                        }
+                        k += 1;
+                    }
+                }
+                ci += 1;
+            }
+            let base = start + (n_chunks << 4);
+            let mut k = 0usize;
+            while k < rem.len() {
+                let $p = &rem[k];
+                if !(($y == flat_y) & ($x >= x_min) & ($x <= x_max)) {
+                    break;
+                }
+                k += 1;
+            }
+            base + k
+        }
+    }};
+}
+
 /// Single 2D Cartesian sample $(x, y) \in \mathbb{R}^2$ enabling blanket [`PointSeries`] views (`@goldberg1991every`, `spec:math_commons_v1`).
 ///
 /// - **Numerical stability**: Exact IEEE-754 `f64` coordinate projection with zero rounding error.
@@ -13,6 +81,32 @@ pub trait Sample2D {
 
     /// Projects vertical coordinate $\pi_y(x, y) = y$ (`@goldberg1991every`, `spec:math_commons_v1`). Numerical stability: exact bitwise `f64` copy. Domain of validity: all `f64` values.
     fn sample_y(&self) -> f64;
+
+    /// Returns maximal slice index $m \in [s, \min(e, n)]$ satisfying $\forall k \in [s, m): y_k = y_{\text{flat}} \land x_k \in [x_{\min}, x_{\max}]$ (`@goldberg1991every`, `spec:math_commons_v1`).
+    /// Numerical stability: exact IEEE-754 comparison (`NaN` terminates scan immediately). Domain of validity: $0 \le \text{start} \le \text{end}$ and $x_{\min} \le x_{\max}$.
+    #[inline(always)]
+    fn advance_slice_plateau(
+        slice: &[Self],
+        mut start: usize,
+        end: usize,
+        flat_y: f64,
+        x_min: f64,
+        x_max: f64,
+    ) -> usize
+    where
+        Self: Sized,
+    {
+        let end = end.min(slice.len());
+        while start < end {
+            let s = &slice[start];
+            let (x, y) = (s.sample_x(), s.sample_y());
+            if !((y == flat_y) & (x >= x_min) & (x <= x_max)) {
+                break;
+            }
+            start += 1;
+        }
+        start
+    }
 }
 
 impl Sample2D for [f64; 2] {
@@ -25,6 +119,18 @@ impl Sample2D for [f64; 2] {
     fn sample_y(&self) -> f64 {
         self[1]
     }
+
+    #[inline(always)]
+    fn advance_slice_plateau(
+        slice: &[Self],
+        start: usize,
+        end: usize,
+        flat_y: f64,
+        x_min: f64,
+        x_max: f64,
+    ) -> usize {
+        advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |p| (p[0], p[1]))
+    }
 }
 
 impl Sample2D for (f64, f64) {
@@ -36,6 +142,18 @@ impl Sample2D for (f64, f64) {
     #[inline(always)]
     fn sample_y(&self) -> f64 {
         self.1
+    }
+
+    #[inline(always)]
+    fn advance_slice_plateau(
+        slice: &[Self],
+        start: usize,
+        end: usize,
+        flat_y: f64,
+        x_min: f64,
+        x_max: f64,
+    ) -> usize {
+        advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |p| (p.0, p.1))
     }
 }
 
@@ -81,47 +199,6 @@ pub trait PointSeries {
     }
 }
 
-#[inline(always)]
-fn advance_sample_slice_plateau<S: Sample2D>(
-    slice: &[S],
-    mut i: usize,
-    flat_y: f64,
-    x_min: f64,
-    x_max: f64,
-) -> usize {
-    let (chunks, _) = slice[i..].as_chunks::<4>();
-    for [s0, s1, s2, s3] in chunks {
-        let (x0, y0) = (s0.sample_x(), s0.sample_y());
-        let (x1, y1) = (s1.sample_x(), s1.sample_y());
-        let (x2, y2) = (s2.sample_x(), s2.sample_y());
-        let (x3, y3) = (s3.sample_x(), s3.sample_y());
-        let ok = (y0 == flat_y)
-            & (y1 == flat_y)
-            & (y2 == flat_y)
-            & (y3 == flat_y)
-            & (x0 >= x_min)
-            & (x0 <= x_max)
-            & (x1 >= x_min)
-            & (x1 <= x_max)
-            & (x2 >= x_min)
-            & (x2 <= x_max)
-            & (x3 >= x_min)
-            & (x3 <= x_max);
-        if !ok {
-            break;
-        }
-        i += 4;
-    }
-    for s in &slice[i..] {
-        let (x, y) = (s.sample_x(), s.sample_y());
-        if !((y == flat_y) & (x >= x_min) & (x <= x_max)) {
-            break;
-        }
-        i += 1;
-    }
-    i
-}
-
 impl<S: Sample2D> PointSeries for [S] {
     #[inline(always)]
     fn len(&self) -> usize {
@@ -146,7 +223,7 @@ impl<S: Sample2D> PointSeries for [S] {
 
     #[inline(always)]
     fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
-        advance_sample_slice_plateau(self, start, flat_y, x_min, x_max)
+        S::advance_slice_plateau(self, start, <[S]>::len(self), flat_y, x_min, x_max)
     }
 }
 
@@ -174,7 +251,7 @@ impl<S: Sample2D, const N: usize> PointSeries for [S; N] {
 
     #[inline(always)]
     fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
-        advance_sample_slice_plateau(self, start, flat_y, x_min, x_max)
+        S::advance_slice_plateau(self, start, N, flat_y, x_min, x_max)
     }
 }
 
@@ -202,7 +279,7 @@ impl<S: Sample2D> PointSeries for Vec<S> {
 
     #[inline(always)]
     fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
-        advance_sample_slice_plateau(self, start, flat_y, x_min, x_max)
+        S::advance_slice_plateau(self, start, Vec::len(self), flat_y, x_min, x_max)
     }
 }
 

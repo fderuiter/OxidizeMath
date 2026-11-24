@@ -1,7 +1,5 @@
 //! Cooperative WebAssembly simulation scheduler and handle-keyed wake registry.
 
-// theory_verification!
-
 use super::worker::{
     advance_running_frame, drain_worker_commands, make_worker_ring, sync_worker_timeline,
     FrameTickOutcome,

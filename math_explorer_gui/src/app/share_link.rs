@@ -82,11 +82,17 @@ impl MathExplorerApp {
         &mut self,
         ctx: &egui::Context,
         restored_from_storage: bool,
-    ) {
+    ) -> bool {
         install_browser_history_listeners(ctx);
         if let Some((hash, search)) = read_browser_location_parts() {
-            self.hydrate_startup_location_strings(&hash, &search, Some(ctx), restored_from_storage);
+            return self.hydrate_startup_location_strings(
+                &hash,
+                &search,
+                Some(ctx),
+                restored_from_storage,
+            );
         }
+        false
     }
 
     pub(crate) fn hydrate_startup_location_strings(
@@ -95,22 +101,23 @@ impl MathExplorerApp {
         search: &str,
         ctx: Option<&egui::Context>,
         restored_from_storage: bool,
-    ) {
+    ) -> bool {
         if restored_from_storage && is_browser_location_self_synced(hash, search) {
             self.url_sync
                 .mark_synced(self.current_url_signature(), Some(hash.to_string()));
-            return;
+            return true;
         }
         let prev_state = restored_from_storage.then(|| self.get_app_state());
         let parsed = match parse_workspace_or_share_location(hash, search) {
             Ok(Some(p)) => p,
-            Ok(None) => return,
+            Ok(None) => return false,
             Err(err) => {
                 self.record_invalid_share_url(err, ctx);
-                return;
+                return false;
             }
         };
-        let _ = self.hydrate_parsed_location(parsed, ctx, prev_state);
+        self.hydrate_parsed_location(parsed, ctx, prev_state)
+            .unwrap_or(false)
     }
 
     /// Parses and applies `hash` (with `search` query-parameter fallback) to the workspace,
@@ -241,5 +248,3 @@ pub(super) fn render_file_share_menu_item(
         ui.close();
     }
 }
-
-// theory_verification!

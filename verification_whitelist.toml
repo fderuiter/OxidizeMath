@@ -43,6 +43,145 @@ job = "deploy-pages"
 allow_write = ["pages", "id-token"]
 reason = "Deploying to GitHub Pages requires pages: write and id-token: write"
 
+[verify_suite]
+min_verified_assertion_density = 0.40
+min_total_production_density = 0.0160
+min_verified_production_density = 0.0490
+coverage_tolerance_pct = 1.5
+unverified_modules = [
+    "apps/xtask",
+    "crates/02_engines/engine_linalg",
+    "crates/diagnostics",
+    "crates/engine_diffeq",
+    "crates/engine_pde",
+    "crates/federated_registry",
+    "crates/markdown_tests",
+    "crates/math_commons",
+    "crates/oxidize_core",
+    "crates/scientific_metadata",
+    "crates/unified_verification",
+    "crates/verified_engine",
+    "crates/verified_engine_macros",
+    "math_explorer",
+    "math_explorer_gui",
+]
+
+[[verify_suite.opt_outs]]
+path = "crates/02_engines/engine_linalg/src/"
+reason = "no_std_engine"
+
+[[verify_suite.opt_outs]]
+path = "crates/02_engines/engine_linalg/src/"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_applied/src/applied/freesurfer/thickness_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_biology/tests/test_kuramoto_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_epidemiology/tests/test_network_step_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_physics/src/physics/stat_mech/sandpile/tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_physics/tests/test_sandpile.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/math_commons/src/ast/arity_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/math_commons/src/ast/limit_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/analysis/evolution.rs"
+reason = "infrastructure"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/analysis/pde/fused_stepper_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/analysis/pde/wave_fdtd_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/analysis/stochastic.rs"
+reason = "Legacy missing assertions"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/differential_geometry/buckled_flow_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/elliptic_curves/singular_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/hyperbolic/tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/statistics/kelly/core_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/tests/algorithmic_information.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/tests/test_hyperbolic_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/tests/test_markov_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/tests/test_tda_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/scientific_metadata/src/citation_registry.rs"
+reason = "metadata"
+
+[[verify_suite.opt_outs]]
+path = "crates/scientific_metadata/src/theory.rs"
+reason = "metadata"
+
+[[verify_suite.opt_outs]]
+path = "egui_plot/src/sidecar_3d_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/build_snapshot.rs"
+reason = "gui_tool"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/build_stage.rs"
+reason = "gui_tool"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/src/"
+reason = "gui_tool"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/src/"
+reason = "infrastructure"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/src/"
+reason = "tests"
+
 [adr_verification]
 # Legacy ADR filenames sharing historical 4-digit prefixes preserved to keep internal Markdown links and PR URLs intact
 allowlist = [
@@ -236,7 +375,7 @@ vendored_crates = [
 "crates/domain_biology/src/biology/evolution.rs" = 1
 "crates/domain_biology/src/biology/kinetics.rs" = 3
 "crates/domain_biology/src/biology/morphogenesis/mod.rs" = 3
-"crates/domain_biology/src/biology/morphogenesis/solvers.rs" = 7
+"crates/domain_biology/src/biology/morphogenesis/solvers.rs" = 5
 "crates/domain_biology/src/biology/reaction_diffusion/mod.rs" = 7
 "crates/domain_biology/src/biology/reaction_diffusion/model.rs" = 6
 "crates/domain_biology/src/biology/reaction_diffusion/state.rs" = 1
@@ -304,7 +443,6 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/analysis/mod.rs" = 3
 "crates/pure_math/src/pure_math/analysis/ode/mod.rs" = 6
 "crates/pure_math/src/pure_math/analysis/optimization.rs" = 23
-"crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs" = 11
 "crates/pure_math/src/pure_math/analysis/pde/greens.rs" = 2
 "crates/pure_math/src/pure_math/analysis/pde/heat.rs" = 6
 "crates/pure_math/src/pure_math/analysis/pde/laplace.rs" = 4
@@ -349,7 +487,7 @@ vendored_crates = [
 "math_explorer_gui/src/accessibility.rs" = 7
 "math_explorer_gui/src/async_sim/mod.rs" = 22
 "math_explorer_gui/src/async_sim/registry.rs" = 7
-"math_explorer_gui/src/async_sim/state.rs" = 30
+"math_explorer_gui/src/async_sim/state.rs" = 29
 "math_explorer_gui/src/async_sim/unified/mod.rs" = 2
 "math_explorer_gui/src/async_sim/unified/tool.rs" = 3
 "math_explorer_gui/src/camera/mod.rs" = 1
@@ -389,7 +527,7 @@ vendored_crates = [
 "crates/domain_ai/src/ai/reinforcement_learning/strategies.rs" = 4
 "crates/domain_ai/src/ai/reinforcement_learning/types.rs" = 14
 "crates/domain_ai/src/ai/reinforcement_learning/workspace.rs" = 15
-"crates/domain_ai/src/ai/sds/diffusion.rs" = 8
+"crates/domain_ai/src/ai/sds/diffusion.rs" = 9
 "crates/domain_ai/src/ai/sds/gradient.rs" = 4
 "crates/domain_ai/src/ai/sds/rendering.rs" = 14
 "crates/domain_ai/src/ai/sds/score.rs" = 5
@@ -429,6 +567,7 @@ vendored_crates = [
 "crates/domain_applied/src/applied/clinical_trials/hypothesis_testing.rs" = 9
 "crates/domain_applied/src/applied/clinical_trials/sample_size.rs" = 4
 "crates/domain_applied/src/applied/clinical_trials/survival_analysis.rs" = 7
+"crates/domain_applied/src/applied/clinical_trials/survival_analysis/bootstrap.rs" = 2
 "crates/domain_applied/src/applied/clinical_trials/types.rs" = 18
 "crates/domain_applied/src/applied/engineering/cnc.rs" = 13
 "crates/domain_applied/src/applied/engineering/uart.rs" = 10
@@ -436,10 +575,11 @@ vendored_crates = [
 "crates/domain_applied/src/applied/favoritism/scoring.rs" = 3
 "crates/domain_applied/src/applied/favoritism/strategies.rs" = 16
 "crates/domain_applied/src/applied/favoritism/types.rs" = 8
-"crates/domain_applied/src/applied/freesurfer/glm.rs" = 2
+"crates/domain_applied/src/applied/freesurfer/glm.rs" = 9
 "crates/domain_applied/src/applied/freesurfer/segmentation.rs" = 8
 "crates/domain_applied/src/applied/freesurfer/surface.rs" = 14
-"crates/domain_applied/src/applied/freesurfer/thickness.rs" = 15
+"crates/domain_applied/src/applied/freesurfer/thickness.rs" = 9
+"crates/domain_applied/src/applied/freesurfer/thickness_grid.rs" = 15
 "crates/domain_applied/src/applied/game_theory/equilibrium.rs" = 13
 "crates/domain_applied/src/applied/game_theory/evolutionary/replicator.rs" = 7
 "crates/domain_applied/src/applied/game_theory/evolutionary/strategies.rs" = 3
@@ -447,7 +587,7 @@ vendored_crates = [
 "crates/domain_applied/src/applied/game_theory/mean_field/physics.rs" = 5
 "crates/domain_applied/src/applied/game_theory/mean_field/solver.rs" = 5
 "crates/domain_applied/src/applied/game_theory/mean_field/types.rs" = 21
-"crates/domain_applied/src/applied/game_theory/mechanism_design.rs" = 6
+"crates/domain_applied/src/applied/game_theory/mechanism_design.rs" = 8
 "crates/domain_applied/src/applied/grpo/formulas.rs" = 7
 "crates/domain_applied/src/applied/grpo/metrics.rs" = 1
 "crates/domain_applied/src/applied/grpo/rewards.rs" = 4
@@ -488,6 +628,7 @@ vendored_crates = [
 "crates/domain_biology/src/biology/diffusion/fd2d/mod.rs" = 3
 "crates/domain_biology/src/biology/diffusion/fd3d.rs" = 4
 "crates/domain_biology/src/biology/diffusion/laplace_beltrami/mod.rs" = 14
+"crates/domain_biology/src/biology/diffusion/manifold.rs" = 6
 "crates/domain_biology/src/biology/diffusion/mod.rs" = 5
 "crates/domain_biology/src/biology/evolution.rs" = 10
 "crates/domain_biology/src/biology/kinetics.rs" = 8
@@ -499,11 +640,13 @@ vendored_crates = [
 "crates/domain_biology/src/biology/lsystem/presets.rs" = 8
 "crates/domain_biology/src/biology/lsystem/turtle.rs" = 8
 "crates/domain_biology/src/biology/morphogenesis/mod.rs" = 12
-"crates/domain_biology/src/biology/morphogenesis/solvers.rs" = 8
+"crates/domain_biology/src/biology/morphogenesis/solvers.rs" = 10
 "crates/domain_biology/src/biology/morphogenesis/state.rs" = 9
+"crates/domain_biology/src/biology/neuroscience/cortical_sheet.rs" = 16
 "crates/domain_biology/src/biology/neuroscience/kinetics.rs" = 8
 "crates/domain_biology/src/biology/neuroscience/kuramoto.rs" = 15
-"crates/domain_biology/src/biology/neuroscience/neuron.rs" = 22
+"crates/domain_biology/src/biology/neuroscience/neuron.rs" = 23
+"crates/domain_biology/src/biology/neuroscience/synaptic_csr.rs" = 1
 "crates/domain_biology/src/biology/neuroscience/types.rs" = 2
 "crates/domain_biology/src/biology/phyllotaxis/parastichy.rs" = 4
 "crates/domain_biology/src/biology/phyllotaxis/vogel.rs" = 16
@@ -524,7 +667,7 @@ vendored_crates = [
 "crates/domain_epidemiology/src/epidemiology/compartmental/common.rs" = 4
 "crates/domain_epidemiology/src/epidemiology/matrix_dynamics.rs" = 1
 "crates/domain_epidemiology/src/epidemiology/networks.rs" = 28
-"crates/domain_epidemiology/src/epidemiology/networks/builder.rs" = 9
+"crates/domain_epidemiology/src/epidemiology/networks/builder.rs" = 10
 "crates/domain_epidemiology/src/epidemiology/stochastic.rs" = 1
 "crates/domain_epidemiology/src/error.rs" = 1
 "crates/domain_epidemiology/src/error/umbrella.rs" = 1
@@ -533,17 +676,17 @@ vendored_crates = [
 "crates/domain_physics/src/physics/astrophysics/galaxies.rs" = 16
 "crates/domain_physics/src/physics/astrophysics/halo_lensing.rs" = 4
 "crates/domain_physics/src/physics/astrophysics/lensing.rs" = 7
-"crates/domain_physics/src/physics/astrophysics/nbody.rs" = 6
+"crates/domain_physics/src/physics/astrophysics/nbody.rs" = 7
 "crates/domain_physics/src/physics/astrophysics/orbits.rs" = 17
 "crates/domain_physics/src/physics/astrophysics/paczynski_wiita.rs" = 21
 "crates/domain_physics/src/physics/astrophysics/rotation_curves.rs" = 19
 "crates/domain_physics/src/physics/chaos/double_pendulum.rs" = 7
-"crates/domain_physics/src/physics/chaos/fractals.rs" = 3
+"crates/domain_physics/src/physics/chaos/fractals.rs" = 4
 "crates/domain_physics/src/physics/chaos/henon_heiles.rs" = 6
 "crates/domain_physics/src/physics/chaos/logistic.rs" = 3
 "crates/domain_physics/src/physics/chaos/lorenz.rs" = 12
-"crates/domain_physics/src/physics/chaos/metrics.rs" = 2
-"crates/domain_physics/src/physics/chaos/poincare.rs" = 7
+"crates/domain_physics/src/physics/chaos/metrics.rs" = 5
+"crates/domain_physics/src/physics/chaos/poincare.rs" = 16
 "crates/domain_physics/src/physics/fluid_dynamics/analysis.rs" = 3
 "crates/domain_physics/src/physics/fluid_dynamics/conservation.rs" = 7
 "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/aerodynamics.rs" = 11
@@ -622,9 +765,13 @@ vendored_crates = [
 "crates/domain_physics/src/physics/standard_model/higgs.rs" = 3
 "crates/domain_physics/src/physics/standard_model/neutrinos.rs" = 1
 "crates/domain_physics/src/physics/standard_model/qcd.rs" = 1
-"crates/domain_physics/src/physics/stat_mech/dynamics.rs" = 4
+"crates/domain_physics/src/physics/stat_mech/allen_cahn.rs" = 10
+"crates/domain_physics/src/physics/stat_mech/cahn_hilliard.rs" = 10
+"crates/domain_physics/src/physics/stat_mech/dynamics.rs" = 6
+"crates/domain_physics/src/physics/stat_mech/edwards_wilkinson.rs" = 18
 "crates/domain_physics/src/physics/stat_mech/ensembles.rs" = 5
 "crates/domain_physics/src/physics/stat_mech/ising.rs" = 17
+"crates/domain_physics/src/physics/stat_mech/kpz.rs" = 18
 "crates/domain_physics/src/physics/stat_mech/quantum_stats.rs" = 6
 "crates/domain_physics/src/physics/stat_mech/sandpile/algebra.rs" = 10
 "crates/domain_physics/src/physics/stat_mech/sandpile/kirchhoff.rs" = 2
@@ -632,12 +779,12 @@ vendored_crates = [
 "crates/domain_physics/src/physics/stat_mech/sandpile/telemetry.rs" = 12
 "crates/domain_physics/src/physics/stat_mech/sandpile/wavefront.rs" = 6
 "crates/math_commons/src/ast/codegen.rs" = 10
-"crates/math_commons/src/ast/compiled.rs" = 19
+"crates/math_commons/src/ast/compiled.rs" = 20
 "crates/math_commons/src/ast/eval.rs" = 6
 "crates/math_commons/src/ast/expr.rs" = 14
 "crates/math_commons/src/ast/glsl.rs" = 6
-"crates/math_commons/src/ast/latex.rs" = 1
-"crates/math_commons/src/ast/lexer.rs" = 7
+"crates/math_commons/src/ast/latex.rs" = 2
+"crates/math_commons/src/ast/lexer.rs" = 9
 "crates/math_commons/src/ast/parser.rs" = 5
 "crates/math_commons/src/error.rs" = 2
 "crates/math_commons/src/error/umbrella.rs" = 1
@@ -649,7 +796,7 @@ vendored_crates = [
 "crates/math_commons/src/fit/seeds.rs" = 10
 "crates/math_commons/src/math_kernel/colormap.rs" = 6
 "crates/math_commons/src/math_kernel/glsl_colormap.rs" = 4
-"crates/math_commons/src/math_kernel/types.rs" = 5
+"crates/math_commons/src/math_kernel/types.rs" = 31
 "crates/math_commons/src/poi/extrema.rs" = 6
 "crates/math_commons/src/poi/interp.rs" = 5
 "crates/math_commons/src/poi/intersect.rs" = 4
@@ -665,9 +812,9 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/algebra/fields.rs" = 3
 "crates/pure_math/src/pure_math/algebra/group.rs" = 16
 "crates/pure_math/src/pure_math/algebra/linear_algebra/canonical.rs" = 6
-"crates/pure_math/src/pure_math/algebra/linear_algebra/decomposition.rs" = 2
+"crates/pure_math/src/pure_math/algebra/linear_algebra/decomposition.rs" = 3
 "crates/pure_math/src/pure_math/algebra/linear_algebra/eigen.rs" = 2
-"crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs" = 4
+"crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs" = 9
 "crates/pure_math/src/pure_math/algebra/polynomial.rs" = 5
 "crates/pure_math/src/pure_math/algebra/traits.rs" = 14
 "crates/pure_math/src/pure_math/algorithmic_information/combinatorics.rs" = 1
@@ -681,16 +828,16 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/analysis/complex/mapping.rs" = 7
 "crates/pure_math/src/pure_math/analysis/complex/surfaces.rs" = 8
 "crates/pure_math/src/pure_math/analysis/evolution.rs" = 9
-"crates/pure_math/src/pure_math/analysis/integration.rs" = 6
+"crates/pure_math/src/pure_math/analysis/integration.rs" = 18
 "crates/pure_math/src/pure_math/analysis/momentum_dynamics.rs" = 17
-"crates/pure_math/src/pure_math/analysis/ode/mod.rs" = 2
+"crates/pure_math/src/pure_math/analysis/ode/implicit_midpoint.rs" = 5
+"crates/pure_math/src/pure_math/analysis/ode/mod.rs" = 3
 "crates/pure_math/src/pure_math/analysis/ode/solvers.rs" = 6
 "crates/pure_math/src/pure_math/analysis/ode/state.rs" = 5
 "crates/pure_math/src/pure_math/analysis/ode/stepper.rs" = 5
-"crates/pure_math/src/pure_math/analysis/ode/symplectic.rs" = 14
+"crates/pure_math/src/pure_math/analysis/ode/symplectic.rs" = 16
 "crates/pure_math/src/pure_math/analysis/ode/traits.rs" = 21
 "crates/pure_math/src/pure_math/analysis/optimization.rs" = 20
-"crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs" = 24
 "crates/pure_math/src/pure_math/analysis/pde/greens.rs" = 6
 "crates/pure_math/src/pure_math/analysis/pde/heat.rs" = 5
 "crates/pure_math/src/pure_math/analysis/pde/laplace.rs" = 5
@@ -713,6 +860,7 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/analysis/transforms/fourier/traits.rs" = 4
 "crates/pure_math/src/pure_math/analysis/transforms/laplace.rs" = 1
 "crates/pure_math/src/pure_math/differential_geometry/buckled_flow.rs" = 19
+"crates/pure_math/src/pure_math/differential_geometry/cotangent_mesh.rs" = 15
 "crates/pure_math/src/pure_math/differential_geometry/heat_equation.rs" = 4
 "crates/pure_math/src/pure_math/differential_geometry/mean_curvature_flow.rs" = 6
 "crates/pure_math/src/pure_math/differential_geometry/operators.rs" = 1
@@ -758,9 +906,10 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/special_functions/gamma_beta.rs" = 3
 "crates/pure_math/src/pure_math/special_functions/legendre.rs" = 4
 "crates/pure_math/src/pure_math/special_functions/polynomials.rs" = 3
+"crates/pure_math/src/pure_math/statistics/bootstrap/mod.rs" = 16
 "crates/pure_math/src/pure_math/statistics/copula/bivariate.rs" = 2
 "crates/pure_math/src/pure_math/statistics/copula/core.rs" = 13
-"crates/pure_math/src/pure_math/statistics/copula/gaussian.rs" = 9
+"crates/pure_math/src/pure_math/statistics/copula/gaussian.rs" = 11
 "crates/pure_math/src/pure_math/statistics/copula/parlay.rs" = 6
 "crates/pure_math/src/pure_math/statistics/copula/transforms.rs" = 8
 "crates/pure_math/src/pure_math/statistics/elo/batch.rs" = 8
@@ -770,24 +919,37 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/statistics/glicko2/core.rs" = 23
 "crates/pure_math/src/pure_math/statistics/glicko2/rating.rs" = 2
 "crates/pure_math/src/pure_math/statistics/glicko2/tournament.rs" = 14
-"crates/pure_math/src/pure_math/statistics/kelly/core.rs" = 15
+"crates/pure_math/src/pure_math/statistics/kelly/core.rs" = 21
 "crates/pure_math/src/pure_math/statistics/kelly/criterion.rs" = 6
+"crates/pure_math/src/pure_math/statistics/kelly/drawdown.rs" = 5
+"crates/pure_math/src/pure_math/statistics/kelly/market.rs" = 15
+"crates/pure_math/src/pure_math/statistics/kelly/push.rs" = 13
+"crates/pure_math/src/pure_math/statistics/kelly/quarter_line.rs" = 15
+"crates/pure_math/src/pure_math/statistics/kelly/slate.rs" = 10
+"crates/pure_math/src/pure_math/statistics/kelly/slate_eval.rs" = 10
 "crates/pure_math/src/pure_math/statistics/market_pricing/devig.rs" = 11
 "crates/pure_math/src/pure_math/statistics/market_pricing/dutching.rs" = 8
 "crates/pure_math/src/pure_math/statistics/market_pricing/ev.rs" = 7
 "crates/pure_math/src/pure_math/statistics/market_pricing/execution.rs" = 6
 "crates/pure_math/src/pure_math/statistics/market_pricing/overround.rs" = 6
-"crates/pure_math/src/pure_math/statistics/markov/ctmc/mod.rs" = 9
+"crates/pure_math/src/pure_math/statistics/markov/ctmc/mod.rs" = 6
+"crates/pure_math/src/pure_math/statistics/markov/ctmc/simulation.rs" = 2
+"crates/pure_math/src/pure_math/statistics/markov/ctmc/steady_state.rs" = 4
+"crates/pure_math/src/pure_math/statistics/markov/dtmc/hitting.rs" = 2
 "crates/pure_math/src/pure_math/statistics/markov/dtmc/mod.rs" = 14
-"crates/pure_math/src/pure_math/statistics/markov/dtmc/stationary.rs" = 3
+"crates/pure_math/src/pure_math/statistics/markov/dtmc/period.rs" = 3
+"crates/pure_math/src/pure_math/statistics/markov/dtmc/scc.rs" = 4
+"crates/pure_math/src/pure_math/statistics/markov/dtmc/simulation.rs" = 2
+"crates/pure_math/src/pure_math/statistics/markov/dtmc/stationary.rs" = 4
 "crates/pure_math/src/pure_math/statistics/markov/dtmc/types.rs" = 1
 "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch.rs" = 2
-"crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch_types.rs" = 6
-"crates/pure_math/src/pure_math/statistics/markov/hmm/forward_backward.rs" = 4
+"crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch_floor.rs" = 1
+"crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch_types.rs" = 7
+"crates/pure_math/src/pure_math/statistics/markov/hmm/forward_backward.rs" = 5
 "crates/pure_math/src/pure_math/statistics/markov/hmm/generation.rs" = 1
 "crates/pure_math/src/pure_math/statistics/markov/hmm/viterbi.rs" = 8
 "crates/pure_math/src/pure_math/statistics/markov/parrondo.rs" = 28
-"crates/pure_math/src/pure_math/statistics/markov/parrondo/ensemble.rs" = 14
+"crates/pure_math/src/pure_math/statistics/markov/parrondo/ensemble.rs" = 17
 "crates/pure_math/src/pure_math/statistics/markov/tensor.rs" = 8
 "crates/pure_math/src/pure_math/statistics/markov/time_index.rs" = 3
 "crates/pure_math/src/pure_math/statistics/markov/validation.rs" = 3
@@ -797,9 +959,18 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/statistics/match_models/grid.rs" = 13
 "crates/pure_math/src/pure_math/statistics/match_models/markets.rs" = 15
 "crates/pure_math/src/pure_math/statistics/match_models/poisson.rs" = 9
-"crates/pure_math/src/pure_math/statistics/ou_process/analysis.rs" = 12
+"crates/pure_math/src/pure_math/statistics/monte_carlo/error.rs" = 1
+"crates/pure_math/src/pure_math/statistics/monte_carlo/qmc_estimators.rs" = 2
+"crates/pure_math/src/pure_math/statistics/monte_carlo/stats.rs" = 7
+"crates/pure_math/src/pure_math/statistics/monte_carlo/workspace.rs" = 13
+"crates/pure_math/src/pure_math/statistics/ou_process/analysis.rs" = 13
 "crates/pure_math/src/pure_math/statistics/ou_process/core.rs" = 6
-"crates/pure_math/src/pure_math/statistics/ou_process/solver.rs" = 10
+"crates/pure_math/src/pure_math/statistics/ou_process/exact_solver.rs" = 10
+"crates/pure_math/src/pure_math/statistics/ou_process/solver.rs" = 11
+"crates/pure_math/src/pure_math/statistics/poisson.rs" = 21
+"crates/pure_math/src/pure_math/statistics/qmc/halton.rs" = 11
+"crates/pure_math/src/pure_math/statistics/qmc/sobol.rs" = 9
+"crates/pure_math/src/pure_math/statistics/queueing.rs" = 23
 "crates/pure_math/src/pure_math/statistics/regression.rs" = 1
 "crates/pure_math/src/pure_math/statistics/ruin/analytical.rs" = 9
 "crates/pure_math/src/pure_math/statistics/ruin/barrier.rs" = 6

@@ -171,7 +171,11 @@ fn test_migrated_bibtex_keys_and_portal_spec_links_resolve() {
 
 #[test]
 fn test_win_ratio_workbench_portal_paper_links() {
-    for tool_id in ["WinRatioWorkbenchTool", "WinRatioStressTesterTool"] {
+    for tool_id in [
+        "WinRatioWorkbenchTool",
+        "WinRatioStressTesterTool",
+        "WinRatioTool",
+    ] {
         let win_ratio_links = resolve_portal_paper_links(tool_id, "clinical_trials");
         assert!(!win_ratio_links.is_empty());
         assert_eq!(win_ratio_links[0].paper_name, "win_ratio.tex");

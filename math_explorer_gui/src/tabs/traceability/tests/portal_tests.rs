@@ -50,12 +50,12 @@ fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
     super::wait_for_scan_completion(&mut tab);
     assert_eq!(tab.state, TraceabilityScanState::Ready);
     assert_eq!(tab.papers.len(), 30);
-    assert_eq!(tab.specs.len(), 20);
+    assert_eq!(tab.specs.len(), 22);
     assert!(tab.orphaned_papers.is_empty());
     assert!(tab.certificate.as_ref().is_some_and(|c| c.passed));
     assert!(render_tab_text_hit(&mut tab, "100% Parity Achieved"));
     assert!(render_tab_text_hit(&mut tab, "Total Papers: 30"));
-    assert!(render_tab_text_hit(&mut tab, "Verified Math Specs: 20"));
+    assert!(render_tab_text_hit(&mut tab, "Verified Math Specs: 22"));
     assert!(render_tab_text_hit(
         &mut tab,
         "Domain Math Specifications (docs/math_specs/)"

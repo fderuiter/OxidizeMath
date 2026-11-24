@@ -13,6 +13,7 @@ oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
 math_commons = { path = "../math_commons" }
+engine_pde = { path = "../engine_pde" }
 diagnostics = { path = "../diagnostics" }
 scientific_metadata = { path = "../scientific_metadata" }
 pure_math = { path = "../pure_math" }

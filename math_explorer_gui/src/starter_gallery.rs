@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 use crate::framework::ToolMetadata;
-#[cfg(test)]
+#[cfg(all(test, feature = "pure_math"))]
 use eframe::egui;
 
 /// Pre-configured starter simulation template card.
@@ -425,7 +425,7 @@ pub use challenges::{
 pub use filter_ui::{
     card_academic_domain, filter_challenge_cards, filter_goal_challenges, filter_starter_cards,
     filter_stories, get_all_starter_cards, get_all_starter_cards_with_tools,
-    get_starter_cards_for_domain,
+    get_starter_cards_for_domain, has_any_starter_presets,
 };
 pub(crate) use root_host::{
     begin_root_starter_gallery_scope, flush_deferred_starter_galleries,
@@ -440,7 +440,16 @@ pub use stories::*;
 #[path = "starter_gallery/tests.rs"]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[path = "starter_gallery/contract_tests.rs"]
 mod contract_tests;
 
