@@ -171,6 +171,24 @@ fn test_ast_visitor_ignores_verified_and_embed_theory_in_rustdoc_while_keeping_c
 }
 
 #[test]
+fn test_ast_visitor_preserves_doc_citation_semantic_link_under_file_opt_out() {
+    let code = concat!(
+        "#![cfg_attr(any(), verified(opt_out = \"gui_tool\"))]\n",
+        "/// Interactive lab citing `[cite:essay]`.\n",
+        "pub fn render_panel() {}\n",
+    );
+    let file = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert!(visitor.opted_out);
+    assert_eq!(visitor.opted_out_funcs, 1);
+    assert_eq!(visitor.verified_funcs, 0);
+    assert_eq!(visitor.semantic_integrity_funcs, 1);
+    assert_eq!(visitor.verified_modules, vec!["essay".to_string()]);
+}
+
+#[test]
 fn test_ast_visitor_ignores_embed_theory_and_verified_tokens_inside_doc_comments() {
     let code = r#"
         /// Example macro usage:

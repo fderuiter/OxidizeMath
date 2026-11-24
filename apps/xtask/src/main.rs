@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+mod features;
 mod gates;
 mod markdown_links;
 mod papers;
@@ -7,7 +8,7 @@ mod setup;
 mod smoke;
 mod staged;
 
-use gates::{resolve_workspace_root, run_cmd};
+use gates::resolve_workspace_root;
 use markdown_links::check_markdown_links;
 #[cfg(test)]
 pub(crate) use setup::configure_git_hooks_in_dir;
@@ -42,8 +43,9 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-docs" => gates::check_docs(),
         "check-entropy" => gates::check_entropy(),
         "smoke-examples" => smoke::smoke_examples(),
-        "test-features" => test_features(rest),
+        "test-features" => features::test_features(rest),
         "verify-suite" => gates::verify_suite(rest),
+        "check-certificate" => gates::check_certificate(),
         "verify-records" => gates::verify_records(rest),
         "compile-papers" => papers::compile_papers(),
         "traceability" => gates::traceability(),
@@ -78,6 +80,7 @@ fn print_help() {
     println!(
         "  check-cargo-docs         - Verify workspace documentation builds with --all-features and zero warnings"
     );
+    println!("  check-certificate        - Verify Verification_Certificate.json AST parity");
     println!("  check-docs               - Run crate documentation audit");
     println!("  check-duplicates         - Run AST-level code clone detector across crates");
     println!("  check-entropy            - Scan codebase for high entropy strings and secrets");
@@ -136,46 +139,6 @@ fn print_help() {
 fn setup(args: &[String]) {
     let ws_root = resolve_workspace_root();
     setup::run_setup(args, &ws_root);
-}
-
-fn run_math_explorer_feature_leg(feature_flags: &[&str]) {
-    let mut test_args = vec!["test", "-p", "math_explorer"];
-    test_args.extend_from_slice(feature_flags);
-    run_cmd("cargo", &test_args);
-
-    let mut bench_args = vec!["test", "-p", "math_explorer", "--benches"];
-    bench_args.extend_from_slice(feature_flags);
-    run_cmd("cargo", &bench_args);
-}
-
-fn test_features(args: &[String]) {
-    if args.is_empty() {
-        let features = [
-            "pure_math",
-            "applied",
-            "ai",
-            "biology",
-            "climate",
-            "epidemiology",
-            "physics",
-        ];
-        println!("=== Running core-only (no features) ===");
-        run_math_explorer_feature_leg(&["--no-default-features"]);
-        for f in &features {
-            println!("=== Running tests for feature: {} ===", f);
-            run_math_explorer_feature_leg(&["--no-default-features", "--features", f]);
-        }
-        println!("=== Running all features ===");
-        run_math_explorer_feature_leg(&["--all-features"]);
-        println!("All feature combinations passed successfully!");
-    } else {
-        let feature = &args[0];
-        if feature == "core-only" || feature.is_empty() {
-            run_math_explorer_feature_leg(&["--no-default-features"]);
-        } else {
-            run_math_explorer_feature_leg(&["--no-default-features", "--features", feature]);
-        }
-    }
 }
 
 #[cfg(test)]

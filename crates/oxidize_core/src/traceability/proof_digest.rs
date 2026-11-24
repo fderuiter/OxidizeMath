@@ -15,7 +15,7 @@ pub const CANONICAL_PYRAMID_TIERS: [&str; 6] = [
 ];
 
 /// Canonical count of mathematical solvers certified by the Method of Manufactured Solutions (Tier 1).
-pub const CERTIFIED_SOLVER_COUNT: usize = 47;
+pub const CERTIFIED_SOLVER_COUNT: usize = 48;
 
 const SHA256_K: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,

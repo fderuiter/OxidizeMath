@@ -151,7 +151,7 @@ fn collect_visitor_traceability_errors(
         ));
     }
     for (module, tier) in &visitor.module_tiers {
-        if rel.contains("pure_math") && tier != "Deterministic" {
+        if rel.contains("pure_math") && (tier == "Tier4_Stochastic" || tier == "Stochastic") {
             let line = visitor.module_spans.get(module).copied().unwrap_or(1);
             errors.push(format!(
                 "[!] Invalid verification tier `{tier}` for `{module}` at {rel}:{line}"
@@ -169,7 +169,8 @@ fn collect_visitor_traceability_errors(
             }
         }
     }
-    if visitor.total_funcs > 0
+    let unopted_funcs = visitor.total_funcs.saturating_sub(visitor.opted_out_funcs);
+    if unopted_funcs > 0
         && visitor.verified_funcs == 0
         && visitor.verified_modules.is_empty()
         && !visitor.opted_out

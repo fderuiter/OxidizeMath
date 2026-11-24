@@ -109,7 +109,6 @@ pub fn install_browser_history_listeners(ctx: &egui::Context) {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn install_wasm_window_listeners() {
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::JsCast;

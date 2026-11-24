@@ -296,7 +296,9 @@ jobs:
 
       - name: Run Integrity Verified Suite
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
-        run: cargo run -p unified_verification -- verify-suite --coverage-only
+        run: |
+          cargo run -p unified_verification -- verify-suite --coverage-only --check
+          git diff --exit-code -- Verification_Certificate.json README.md
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
@@ -481,6 +483,7 @@ jobs:
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: "1.99.1"
+          components: clippy
 
       - name: Cache Cargo dependencies
         uses: ./.github/actions/cargo-cache
@@ -724,10 +727,13 @@ jobs:
               "max_interval_width",
               "native_execution_coverage_pct",
               "passed",
+              "test_assertion_density",
               "tier_counts",
               "total_assertion_density",
+              "total_production_assertion_density",
               "unverified_modules_density",
               "verified_modules_density",
+              "verified_production_assertion_density",
               "wasm_path_coverage_pct"
             ]
             and (.native_execution_coverage_pct | type == "number" and . >= 0 and . <= 100)
@@ -735,7 +741,10 @@ jobs:
             and (.total_assertion_density | type == "number" and . >= 0)
             and (.verified_modules_density | type == "number" and . >= 0)
             and (.unverified_modules_density | type == "number" and . >= 0)
-            and (.certified_solvers | type == "number" and . >= 47)
+            and (.total_production_assertion_density | type == "number" and . >= 0)
+            and (.verified_production_assertion_density | type == "number" and . >= 0)
+            and (.test_assertion_density | type == "number" and . >= 0)
+            and (.certified_solvers | type == "number" and . >= 48)
             and (.max_interval_width | type == "number" and . >= 0 and . < 1e-9)
             and (.tier_counts | type == "object" and (keys | sort) == [
               "Tier1_Convergence",

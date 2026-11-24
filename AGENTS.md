@@ -44,7 +44,7 @@ cargo run -p xtask -- lint-push
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
 # & single-parse AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift,
-# in-process traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, links, and OSV)
+# in-process traceability, entropy, policy audit, and Verification_Certificate.json parity, plus host & WASM clippy, rustdoc, doctests, links, and OSV)
 cargo run -p xtask -- lint-all
 ```
 
@@ -104,9 +104,17 @@ cargo run -p unified_verification --release -- traceability
 cargo run -p unified_verification --release -- verify-records --staged
 BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 
-# Run the full high-integrity verified suite (including cargo llvm-cov coverage and Verification_Certificate.json)
-cargo run -p unified_verification --release -- verify-suite
-cargo run -p xtask -- verify-suite
+# Verify Verification_Certificate.json and README.md badge parity against AST metrics without llvm-cov
+cargo run -p unified_verification --release -- check-certificate
+cargo run -p xtask -- check-certificate
+
+# Run the full high-integrity verified suite in read-only --check mode (default; used in CI)
+cargo run -p unified_verification --release -- verify-suite --check
+cargo run -p xtask -- verify-suite --check
+
+# Explicitly refresh Verification_Certificate.json and README.md coverage badge after intentional metric changes
+cargo run -p unified_verification --release -- verify-suite --write
+cargo run -p xtask -- verify-suite --write
 
 # Native unit/integration tests, benchmark targets, example smoke suite, and WebAssembly target checks
 cargo test --workspace --lib --tests --all-features

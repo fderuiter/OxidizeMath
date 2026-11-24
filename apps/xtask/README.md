@@ -13,6 +13,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `check-api-drift` | Validates public API surface against `api_baseline.json`. | Active |
 | `check-benches` | Builds and runs all workspace benchmark targets in test mode (`cargo test --workspace --benches --all-features`). | Active |
 | `check-cargo-docs` | Verifies workspace documentation builds with `--all-features` and zero warnings. | Active |
+| `check-certificate` | Verifies `Verification_Certificate.json` and `README.md` parity against workspace AST metrics and `[verify_suite]` floors. | Active |
 | `check-docs` | Runs crate documentation audit across all workspace crates. | Active |
 | `check-duplicates` | Runs AST-level code clone detector across first-party crates. | Active |
 | `check-entropy` | Scans codebase for high entropy strings and unseeded RNG usage. | Active |
@@ -28,14 +29,14 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `lint-staged` | Syncs the staged Git index into `<target_dir>/lint-staged-snapshot` and runs offline pre-commit gates (`.githooks/pre-commit`) scoped to staged files and directly touched crates: staged `rustfmt`, scoped `batch-staged` (staged ADRs, touched-crate profiles/docs, staged `.rs` clones/citations/entropy, staged `.md` fences, touched-crate policy audit), single `.github/` workflow linting, `.md` or deletion/rename link scans, and `direct_crates` host Clippy (plus `wasm32` Clippy when `math_explorer_gui` or `wasm32` sources change) with root config escalation. | Active |
 | `lint-workflows` | Validates GitHub Actions workflow definitions and permissions. | Active |
 | `smoke-examples` | Discovers every `[[example]]` target in `math_explorer/Cargo.toml` via `unified_verification list-examples`, builds all examples once, and runs each binary in an isolated temporary directory with `MATH_EXPLORER_SMOKE=1` and bounded timeout enforcement. | Active |
-| `test-features` | Exercises isolated Cargo domain feature flags (`pure_math`, `physics`, `core-only`, etc.), running unit/integration tests, doctests, and `--benches` per feature leg. | Active |
+| `test-features` | Exercises isolated Cargo domain feature flags (`pure_math`, `physics`, `core-only`, etc.), running `math_explorer` unit/integration tests, doctests, and `--benches` plus `math_explorer_gui` `--bins --tests` type-checks and `-D warnings` Clippy per feature leg. | Active |
 | `test-policy-audit` | Audits workspace crates for unauthorized lint/dead-code/`missing_docs` bypasses and unused dependencies. | Active |
 | `test-wasm` | Discovers and executes `wasm32-unknown-unknown` unit and browser tests across all compatible workspace crates (anchored to the workspace root), builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 4 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
 | `traceability` | Verifies academic paper citation bindings and `#[verified]` coverage. | Active |
 | `verify-records` | Verifies architectural decision records (`--staged` supported), enforcing `YYYYMMDD-slug.md` naming with valid dates and unique slugs for new ADRs, freezing legacy `NNNN-slug.md` prefixes, requiring `# ` and `## Status` headings, and checking ACMR updates on core changes. | Active |
 | `verify-suite` | Runs the full coverage-instrumented high-integrity verification suite. | Active |
 | `verify-tier1`..`verify-tier6` | Runs an individual tier of the 6-tier scientific verification pyramid (MMS convergence, property sweeps, golden fixtures, stochastic moments, interval enclosures, or Lean 4 proof certificates). | Active |
-| `verify-pyramid` | Executes all 6 tiers of the scientific verification pyramid across all 47 numerical solvers, interval enclosures, and Lean 4 proof digests. | Active |
+| `verify-pyramid` | Executes all 6 tiers of the scientific verification pyramid across all 48 numerical solvers, interval enclosures, and Lean 4 proof digests. | Active |
 
 ### Maintenance & Onboarding Tasks
 

@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+#[cfg(feature = "epidemiology")]
 use crate::async_sim::SimulationRunner;
 use crate::framework::{
     BranchControlAction, ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework,

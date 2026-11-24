@@ -17,6 +17,15 @@ pub struct VerificationCertificate {
     pub verified_modules_density: f64,
     /// Assertion-to-function ratio across unverified modules.
     pub unverified_modules_density: f64,
+    /// Overall assertion-to-function ratio across non-test production functions.
+    #[serde(default)]
+    pub total_production_assertion_density: f64,
+    /// Assertion-to-function ratio across `#[verified]` non-test production functions.
+    #[serde(default)]
+    pub verified_production_assertion_density: f64,
+    /// Assertion-to-function ratio across test-scoped functions and verification macros.
+    #[serde(default)]
+    pub test_assertion_density: f64,
     /// Whether all workspace verification thresholds passed.
     pub passed: bool,
     /// Count of numerical solvers certified by Method of Manufactured Solutions (Tier 1).
@@ -66,8 +75,11 @@ mod core_tests {
                 total_assertion_density: 0.65,
                 verified_modules_density: 0.55,
                 unverified_modules_density: 0.70,
+                total_production_assertion_density: 0.04,
+                verified_production_assertion_density: 0.12,
+                test_assertion_density: 3.05,
                 passed: true,
-                certified_solvers: 47,
+                certified_solvers: 48,
                 max_interval_width: 1e-14,
                 tier_counts: Default::default(),
                 interval_bounds: Default::default(),
@@ -152,7 +164,7 @@ mod tests {
         assert_eq!(decoded_bare, bare);
 
         let mut tier_counts = std::collections::BTreeMap::new();
-        tier_counts.insert("Tier1_Convergence".to_string(), 47);
+        tier_counts.insert("Tier1_Convergence".to_string(), 48);
         let mut interval_bounds = std::collections::BTreeMap::new();
         interval_bounds.insert(
             "bessel_j0_unit".to_string(),
@@ -171,8 +183,11 @@ mod tests {
                 total_assertion_density: 0.76,
                 verified_modules_density: 0.61,
                 unverified_modules_density: 0.83,
+                total_production_assertion_density: 0.04,
+                verified_production_assertion_density: 0.13,
+                test_assertion_density: 3.10,
                 passed: true,
-                certified_solvers: 47,
+                certified_solvers: 48,
                 max_interval_width: 4.44e-16,
                 tier_counts,
                 interval_bounds,
@@ -204,7 +219,15 @@ mod tests {
         dirs.insert("papers".to_string(), vec!["demo.tex".to_string()]);
         dirs.insert(
             "crates".to_string(),
-            vec!["zeta".to_string(), "demo".to_string()],
+            vec![
+                "zeta".to_string(),
+                "02_engines".to_string(),
+                "demo".to_string(),
+            ],
+        );
+        dirs.insert(
+            "crates/02_engines".to_string(),
+            vec!["engine_linalg".to_string()],
         );
 
         let engine = TraceabilityEngine::new(MemoryVfs { files, dirs });
@@ -216,6 +239,7 @@ mod tests {
             vec![
                 "math_explorer/src",
                 "math_explorer_gui/src/tabs",
+                "crates/02_engines/engine_linalg/src",
                 "crates/demo/src",
                 "crates/zeta/src",
             ]

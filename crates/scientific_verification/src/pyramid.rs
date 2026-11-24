@@ -4,7 +4,7 @@ use crate::golden::verify_golden_fixtures;
 use crate::intervals::compute_certified_interval_enclosures;
 use crate::lean_proofs::verify_and_digest_lean_proofs;
 use crate::proptest_sweeps::verify_property_sweeps;
-use crate::solvers::verify_all_47_solvers;
+use crate::solvers::verify_all_solvers;
 use crate::stochastic::verify_stochastic_moments;
 use oxidize_core::traceability::CERTIFIED_SOLVER_COUNT;
 use std::collections::BTreeMap;
@@ -23,7 +23,7 @@ pub struct TierReport {
 pub struct PyramidSummary {
     /// Per-tier certified check counts keyed by canonical tier name.
     pub tier_counts: BTreeMap<String, usize>,
-    /// Number of certified numerical solvers (`47`).
+    /// Number of certified numerical solvers (`48`).
     pub certified_solvers: usize,
     /// Maximum IEEE-754 outward-rounded interval enclosure width across certified kernels.
     pub max_interval_width: f64,
@@ -33,9 +33,9 @@ pub struct PyramidSummary {
     pub lean4_proof_digests: BTreeMap<String, String>,
 }
 
-/// Executes Tier 1: Manufactured-Solution & Grid-Refinement Convergence across all 47 solvers.
+/// Executes Tier 1: Manufactured-Solution & Grid-Refinement Convergence across all 48 solvers.
 pub fn run_tier1() -> Result<TierReport, String> {
-    let certs = verify_all_47_solvers()?;
+    let certs = verify_all_solvers()?;
     if certs.len() != CERTIFIED_SOLVER_COUNT {
         return Err(format!(
             "Expected {CERTIFIED_SOLVER_COUNT} solver certificates, got {}",
@@ -124,9 +124,9 @@ mod tests {
     use super::run_full_pyramid;
 
     #[test]
-    fn full_six_tier_pyramid_certifies_all_47_solvers_intervals_and_lean_proofs() {
+    fn full_six_tier_pyramid_certifies_all_48_solvers_intervals_and_lean_proofs() {
         let summary = run_full_pyramid().expect("full 6-tier pyramid must pass");
-        assert_eq!(summary.certified_solvers, 47);
+        assert_eq!(summary.certified_solvers, 48);
         assert_eq!(summary.tier_counts.len(), 6);
         assert!(summary.tier_counts.values().all(|&c| c > 0));
         assert!(summary.max_interval_width > 0.0 && summary.max_interval_width < 1e-11);

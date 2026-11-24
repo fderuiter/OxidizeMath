@@ -24,6 +24,7 @@ pub(super) fn record_verification_macro(visitor: &mut AstVisitor, node: &ItemMac
         return;
     };
 
+    visitor.has_verification_macro = true;
     let macro_line = span_line(node.span());
     if name == "stochastic_signature_verification"
         && let Some(zero_line) = find_stochastic_zero_init_line(&node.mac)
@@ -35,25 +36,24 @@ pub(super) fn record_verification_macro(visitor: &mut AstVisitor, node: &ItemMac
         }
     }
 
-    let tokens = node.mac.tokens.to_string();
-    if let Some(idx) = tokens.find("module = \"") {
-        let start = idx + 10;
-        if let Some(end) = tokens[start..].find('"') {
-            let module_name = &tokens[start..start + end];
-            visitor.record_module(module_name.to_string(), macro_line);
-            visitor
-                .module_tiers
-                .insert(module_name.to_string(), tier_name.to_string());
-            *visitor
-                .tier_counts
-                .entry(tier_name.to_string())
-                .or_insert(0) += 1;
-            visitor.semantic_integrity_funcs += 1;
-            visitor.total_funcs += 1;
-            visitor.verified_funcs += 1;
-            let assert_count = tokens.matches("assert").count().max(3);
-            visitor.total_asserts += assert_count;
-            visitor.verified_asserts += assert_count;
-        }
+    let parsed = super::attrs::parse_verification_macro_tokens(&node.mac.tokens);
+    if let Some(module_name) = parsed.module_name {
+        visitor.record_module(module_name.clone(), macro_line);
+        visitor
+            .module_tiers
+            .insert(module_name, tier_name.to_string());
+        *visitor
+            .tier_counts
+            .entry(tier_name.to_string())
+            .or_insert(0) += 1;
+        visitor.semantic_integrity_funcs += 1;
+        visitor.total_funcs += 1;
+        visitor.verified_funcs += 1;
+        visitor.test_funcs += 1;
+        visitor.verified_test_funcs += 1;
+        visitor.total_asserts += parsed.assert_count;
+        visitor.verified_asserts += parsed.assert_count;
+        visitor.test_asserts += parsed.assert_count;
+        visitor.verified_test_asserts += parsed.assert_count;
     }
 }

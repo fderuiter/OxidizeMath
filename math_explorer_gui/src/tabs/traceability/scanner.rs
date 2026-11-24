@@ -1,5 +1,4 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-// theory_verification!
 
 #[cfg(not(target_arch = "wasm32"))]
 use oxidize_core::vfs::VirtualFileSystem;

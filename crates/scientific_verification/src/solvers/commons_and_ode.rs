@@ -8,8 +8,8 @@ use pure_math::pure_math::analysis::momentum_dynamics::{
     HamiltonianLeapfrog2D, LangevinBaoab2D, PhasePoint2D,
 };
 use pure_math::pure_math::analysis::ode::{
-    ArrayState, Euler, GaussLegendre4, HamiltonianSystem, Heun, OdeModel, OdeSystem, RungeKutta4,
-    SeparableHamiltonian, Solver, StormerVerlet, TimeStepper, Yoshida4,
+    ArrayState, Euler, GaussLegendre4, HamiltonianSystem, Heun, ImplicitMidpoint, OdeModel,
+    OdeSystem, RungeKutta4, SeparableHamiltonian, Solver, StormerVerlet, TimeStepper, Yoshida4,
 };
 
 struct NonAutonomousMmsOde;
@@ -169,24 +169,29 @@ fn certify_symplectic_1d_solvers() -> Vec<SolverCertificate> {
         ref_gl.step(&sys, s as f64 * 0.0005, &mut exact, 0.0005);
     }
     let mut hs = [0.0; 3];
-    let (mut e_sv, mut e_yo, mut e_gl) = ([0.0; 3], [0.0; 3], [0.0; 3]);
+    let (mut e_im, mut e_sv, mut e_yo, mut e_gl) = ([0.0; 3], [0.0; 3], [0.0; 3], [0.0; 3]);
     for (k, &n) in [20usize, 40, 80].iter().enumerate() {
         let dt = 1.0 / n as f64;
         hs[k] = dt;
-        let (mut s_sv, mut s_yo, mut s_gl) = (y0, y0, y0);
+        let (mut s_im, mut s_sv, mut s_yo, mut s_gl) = (y0, y0, y0, y0);
+        let mut im = ImplicitMidpoint::new(&y0);
         let mut sv = StormerVerlet::new(&ArrayState([0.0]));
         let mut yo = Yoshida4::new(&ArrayState([0.0]));
         let mut gl = GaussLegendre4::new(&y0);
         for i in 0..n {
+            let t = i as f64 * dt;
+            im.step(&sys, t, &mut s_im, dt);
             sv.step_separable(&sys, &mut s_sv, dt);
             yo.step_separable(&sys, &mut s_yo, dt);
-            gl.step(&sys, i as f64 * dt, &mut s_gl, dt);
+            gl.step(&sys, t, &mut s_gl, dt);
         }
+        e_im[k] = s_im.max_abs_diff(&exact);
         e_sv[k] = s_sv.max_abs_diff(&exact);
         e_yo[k] = s_yo.max_abs_diff(&exact);
         e_gl[k] = s_gl.max_abs_diff(&exact);
     }
     vec![
+        pm_cert("ImplicitMidpoint", 1.95, &hs, &e_im, 5e-4),
         pm_cert("StormerVerlet", 1.95, &hs, &e_sv, 5e-4),
         pm_cert("Yoshida4", 3.90, &hs, &e_yo, 1e-6),
         pm_cert("GaussLegendre4", 3.95, &hs, &e_gl, 1e-7),
@@ -221,7 +226,7 @@ fn certify_momentum_2d_solvers() -> Result<Vec<SolverCertificate>, String> {
     ])
 }
 
-/// Certifies all 11 linear-algebra, ODE, symplectic, and phase-space solvers in `math_commons` and `pure_math`.
+/// Certifies all 12 linear-algebra, ODE, symplectic, and phase-space solvers in `math_commons` and `pure_math`.
 pub fn certify_commons_and_ode() -> Result<Vec<SolverCertificate>, String> {
     let mut out = certify_algebraic_fit_solvers()?;
     out.extend(certify_scalar_ode_solvers());

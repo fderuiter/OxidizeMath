@@ -8,7 +8,7 @@ The `scientific_verification` crate provides shared numerical certification harn
 
 ### Verification Pyramid Tiers
 
-- **Tier 1 — Manufactured-Solution & Grid-Refinement Convergence (`mms`, `solvers`)**: Certifies all 47 differential, quadrature, optimization, and linear solvers using log-log ordinary least-squares convergence slopes and zero-heap-allocation hot-loop assertions.
+- **Tier 1 — Manufactured-Solution & Grid-Refinement Convergence (`mms`, `solvers`)**: Certifies all 48 differential, quadrature, optimization, and linear solvers using log-log ordinary least-squares convergence slopes and zero-heap-allocation hot-loop assertions.
 - **Tier 2 — Deterministic Property & Conservation Sweeps (`proptest_sweeps`)**: Executes ChaCha-seeded deterministic `proptest` suites across copula monotonicity/bounds, unitary Crank-Nicolson quantum propagation, `LatticeBoltzmann` mass/momentum conservation, Kaplan-Meier survival probabilities, and Bessel Wronskians/recurrences.
 - **Tier 3 — Offline High-Precision Golden Fixtures (`golden`)**: Validates special functions (`bessel_j`, `bessel_y`, `spherical_bessel_j` including asymptotic arguments $x = 40, 50, 100$, `legendre_p`, `hermite`, `associated_laguerre`, `gamma_function`, `beta_function`) and `GaussianCopula` against 150-digit offline fixtures within `< 1e-12`.
 - **Tier 4 — Seeded Stochastic Moment & Confidence Bounds (`stochastic`)**: Verifies deterministic ChaCha-seeded Ornstein-Uhlenbeck stationary moments and Monte Carlo parlay pricing confidence intervals.

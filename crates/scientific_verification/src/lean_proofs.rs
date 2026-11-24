@@ -6,7 +6,20 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn resolve_workspace_root() -> PathBuf {
-    oxidize_core::workspace::find_workspace_root().unwrap_or_else(|| PathBuf::from("."))
+    if let Some(root) = oxidize_core::workspace::find_workspace_root()
+        && root.join("proofs").join("lakefile.lean").is_file()
+    {
+        return root;
+    }
+    let manifest_fallback = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    if manifest_fallback
+        .join("proofs")
+        .join("lakefile.lean")
+        .is_file()
+    {
+        return manifest_fallback;
+    }
+    PathBuf::from(".")
 }
 
 fn try_invoke_lake_build_if_installed(proofs_dir: &Path) -> Result<bool, String> {

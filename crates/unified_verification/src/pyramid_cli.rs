@@ -88,23 +88,9 @@ mod imp {
         TierReport, run_full_pyramid, run_tier1, run_tier2, run_tier3, run_tier4, run_tier5,
         run_tier6,
     };
-    use std::path::Path;
     use std::sync::OnceLock;
 
     static CACHED_PYRAMID: OnceLock<Result<PyramidTelemetry, String>> = OnceLock::new();
-
-    fn enter_workspace_root_if_needed() -> Option<std::path::PathBuf> {
-        if Path::new("proofs").exists() {
-            return None;
-        }
-        let prev = std::env::current_dir().ok()?;
-        let root = crate::manifest_cache::workspace_root_dir();
-        if root != Path::new(".") {
-            std::env::set_current_dir(root).ok()?;
-            return Some(prev);
-        }
-        None
-    }
 
     fn map_tier(res: Result<TierReport, String>) -> Result<(String, usize), String> {
         res.map(|r| (r.tier_name.to_string(), r.passed_checks))
@@ -113,18 +99,13 @@ mod imp {
     pub fn cached_telemetry() -> Result<PyramidTelemetry, String> {
         CACHED_PYRAMID
             .get_or_init(|| {
-                let prev = enter_workspace_root_if_needed();
-                let res = run_full_pyramid().map(|s| PyramidTelemetry {
+                run_full_pyramid().map(|s| PyramidTelemetry {
                     certified_solvers: s.certified_solvers,
                     max_interval_width: s.max_interval_width,
                     tier_counts: s.tier_counts,
                     interval_bounds: s.interval_bounds,
                     lean4_proof_digests: s.lean4_proof_digests,
-                });
-                if let Some(dir) = prev {
-                    let _ = std::env::set_current_dir(dir);
-                }
-                res
+                })
             })
             .clone()
     }
