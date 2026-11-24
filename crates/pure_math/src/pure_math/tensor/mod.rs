@@ -35,13 +35,13 @@
 //! assert!((gamma_theta_phi_phi + 0.5).abs() < 1e-4);
 //! ```
 
-#[allow(missing_docs)]
+/// Submodule providing `christoffel` types, traits, and algorithms.
 pub mod christoffel;
-#[allow(missing_docs)]
+/// Submodule providing `differentiation` types, traits, and algorithms.
 pub mod differentiation;
 pub mod geodesic;
 pub mod lorentzian;
-#[allow(missing_docs)]
+/// Submodule providing `metric` types, traits, and algorithms.
 pub mod metric;
 pub mod static_metric;
 pub mod types;

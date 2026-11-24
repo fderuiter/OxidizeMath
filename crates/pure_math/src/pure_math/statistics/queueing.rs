@@ -59,7 +59,7 @@ pub struct QueueMetrics {
     pub mean_waiting_time: f64,
 }
 
-/// Single-server Markovian birth-death queue ($M/M/1$).
+#[doc = include_str!("../../../../../docs/math_specs/snippets/mm1_queue.md")]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Mm1Queue {
     arrival_rate: f64,
@@ -171,7 +171,7 @@ impl Mm1Queue {
     }
 }
 
-/// Multi-server Markovian birth-death queue ($M/M/c$ Erlang-C model).
+#[doc = include_str!("../../../../../docs/math_specs/snippets/mmc_queue.md")]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MmcQueue {
     arrival_rate: f64,

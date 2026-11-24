@@ -180,10 +180,21 @@ impl Default for FamilyParams {
     }
 }
 
-/// Input parameters for the favoritism calculation.
+/// Parameter bundle (`Experimental` prototype tier) driving the satirical Unified Favoritism Theory (`UFT`)
+/// quadrature functional:
+/// $$F(t) = \frac{\mathcal{N}(t)\,\mathcal{E}(t)\,\det(\mathbf{G})\,(\mathbf{c}^\top \mathbf{w}_c)\,\ln(1 + f_0)\,\mathcal{P}\,\mathcal{S}\,e^{-\lambda \Delta t}\,\xi}{\int_0^t \sum_{s \in \text{siblings}} d_s(\tau)^{-1}\,\mathrm{d}\tau}.$$
 ///
-/// This struct aggregates all factors required to compute the
-/// satirical favoritism score.
+/// Reference: Clenshaw & Curtis (1960), *Numer. Math.* 2, DOI: 10.1007/BF01386223;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Downstream evaluation via [`super::strategies::ScoringContext`] clamps near-zero distances
+/// $|x_0|, |d_s| < 10^{-10}$, negative horizons $t < 0$, and degenerate sibling denominators so
+/// quadrature and quotient normalization remain finite.
+///
+/// # Domain of Validity
+/// Requires finite scalar fields across all sub-parameter structs, non-negative horizon $t \ge 0$,
+/// contact frequency $1 + f_0 > 0$, and matching `compliments` / `compliment_weights` vector lengths.
 ///
 /// # Example
 ///

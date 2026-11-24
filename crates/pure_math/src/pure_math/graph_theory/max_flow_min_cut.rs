@@ -324,7 +324,15 @@ fn validate_in_place_buffers(
     Ok(())
 }
 
-/// Solves `s-t` max-flow and min-cut in-place using preallocated `scratch` with zero heap allocations.
+/// Solves `s-t` max-flow and min-cut $\max_f |f| = \min_{(S,T)} \sum_{u \in S,\, v \in T} c(u, v)$ in-place using preallocated `scratch` with zero heap allocations.
+///
+/// Reference: Edmonds & Karp (1972), DOI: 10.1145/321694.321699; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Shortest-hop BFS residual augmentation terminates in at most $O(|V||E|)$ augmentations ($O(|V||E|^2)$ time) even on irrational real capacities without pathological Ford-Fulkerson cycling.
+///
+/// # Domain of Validity
+/// Requires distinct `source != sink` with `source, sink < |V|`, finite non-negative edge capacities $c(e) \ge 0$, `out_edge_flows.len() == |E|`, and `out_source_side.len() == |V|`.
 ///
 /// # Examples
 /// ```rust

@@ -12,7 +12,20 @@ use math_commons::error::MathError;
 use math_commons::math_kernel::types::{Dimension, SolverWorkspace, StepSize};
 use rand_core::RngCore;
 
-/// 1D Kardar-Parisi-Zhang (KPZ) nonlinear interface growth solver.
+/// 1D Kardar-Parisi-Zhang (KPZ) nonlinear interface growth solver evolving
+/// $\partial_t h = \nu \partial_{xx} h + \frac{\lambda}{2}(\partial_x h)^2 + \eta(x, t)$.
+///
+/// Reference: Kardar, Parisi, & Zhang (1986), *Phys. Rev. Lett.* 56(9), DOI: 10.1103/PhysRevLett.56.889;
+/// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// [`Self::step_fourier_dealiased`] treats $+\nu k^2$ implicitly and applies Orszag 2/3-rule dealiasing
+/// to $(\partial_x h)^2$; explicit [`Self::step_stencil`] requires $\nu \Delta t / \Delta x^2 \le \frac{1}{2}$
+/// and sufficiently small $|\lambda| \Delta t / \Delta x^2$ to avoid Cole-Hopf gradient blow-up.
+///
+/// # Domain of Validity
+/// Requires `n >= 4` (power-of-two with `BoundaryCondition::Periodic` for [`Self::step_fourier_dealiased`]),
+/// `dx > 0`, `nu > 0`, finite `lambda`, `noise_intensity >= 0`, and `dt >= 0`.
 #[derive(Debug, Clone)]
 pub struct KpzModel1D {
     h: Vec<f64>,
@@ -175,7 +188,20 @@ impl KpzModel1D {
     }
 }
 
-/// 2D Kardar-Parisi-Zhang nonlinear surface growth solver.
+/// 2D Kardar-Parisi-Zhang nonlinear surface growth solver evolving
+/// $\partial_t h = \nu \nabla^2 h + \frac{\lambda}{2}|\nabla h|^2 + \eta(x, y, t)$.
+///
+/// Reference: Kardar, Parisi, & Zhang (1986), *Phys. Rev. Lett.* 56(9), DOI: 10.1103/PhysRevLett.56.889;
+/// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// [`Self::step_fourier_dealiased`] treats $+\nu |\mathbf{k}|^2$ implicitly with Orszag 2/3-rule dealiasing
+/// on $|\nabla h|^2$, while explicit [`Self::step_stencil`] requires $\nu \Delta t(\Delta x^{-2} + \Delta y^{-2}) \le \frac{1}{2}$
+/// and bounded nonlinear slope Courant numbers.
+///
+/// # Domain of Validity
+/// Requires `width >= 4`, `height >= 4` (power-of-two with `BoundaryCondition::Periodic` for
+/// [`Self::step_fourier_dealiased`]), `dx, dy > 0`, `nu > 0`, finite `lambda`, `noise_intensity >= 0`, and `dt >= 0`.
 #[derive(Debug, Clone)]
 pub struct KpzModel2D {
     h: Vec<f64>,

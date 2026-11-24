@@ -260,6 +260,10 @@ impl InteractiveTool for MyersonAuctionTool {
         "game_theory"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
+    }
+
     fn theory(&self) -> &dyn TheoryDescribable {
         self
     }

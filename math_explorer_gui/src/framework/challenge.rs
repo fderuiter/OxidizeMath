@@ -143,6 +143,7 @@ impl SimulationFramework {
     ) -> Result<(), String> {
         let tool_meta = self.available_tools[target_idx];
         let mut candidate = (tool_meta.build)();
+        candidate.set_suspended(self.suspended);
         candidate.apply_challenge(Some(meta.id))?;
         candidate
             .state_bounds()
@@ -171,6 +172,10 @@ impl SimulationFramework {
         self.challenge_was_passed = candidate
             .evaluate_challenge()
             .is_some_and(|eval| eval.passed);
+        if let Some(mut old_tool) = self.active_tool.take() {
+            old_tool.set_suspended(true);
+        }
+        candidate.set_suspended(self.suspended);
         self.active_challenge = Some(meta);
         self.selected_tool_index = Some(target_idx);
         self.active_tool = Some(candidate);

@@ -5,7 +5,16 @@ use crate::climate::tensor_ops::conv1d;
 use nalgebra::{DMatrix, DVector, Dyn, Matrix, Storage};
 use pure_math::pure_math::analysis::optimization::{ModelOptimizer as Optimizer, ParamType};
 
-/// A trait representing the Autoencoder model interface.
+/// Autoencoder interface mapping vertical column states $x$ to latent codes $z = E_\phi(x)$ and reconstructions $\hat{x} = D_\theta(z)$.
+///
+/// Reference: Rasp, Pritchard, & Gentine (2018), DOI: 10.1073/pnas.1810286115;
+/// [domain_climate specification](../../../../docs/math_specs/domain_climate.md).
+///
+/// # Stability
+/// Glorot-initialized 1D convolutions and leaky-ReLU activations avoid dead-neuron saturation during reconstruction training.
+///
+/// # Domain of Validity
+/// Finite `f32` atmospheric profile matrices compatible with the configured channel and vertical-level dimensions.
 pub trait AutoencoderModel {
     /// Encodes the input data into a latent representation.
     #[verified_engine::verified]

@@ -15,7 +15,16 @@ pub const MAX_FIT_PARAMS: usize = 6;
 
 const MAX_DAMPING_SUBSTEPS: usize = 12;
 
-/// Minimizes $\sum_i (y_i - \hat{f}(x_i; \theta))^2$ over finite points in `points` on the stack.
+/// Minimizes $\sum_i (y_i - \hat{f}(x_i; \theta))^2$ via damped normal equations $(J^\top J + \lambda \operatorname{diag}(J^\top J))\delta = J^\top r$.
+///
+/// Reference: Levenberg (1944), DOI: 10.1090/qam/10666; Marquardt (1963), DOI: 10.1137/0111030;
+/// [math_commons specification](../../../../docs/math_specs/math_commons.md).
+///
+/// # Stability
+/// Diagonal Marquardt damping $\lambda > 0$ regularizes rank-deficient Jacobians up to [`MAX_LM_ITERATIONS`] outer steps.
+///
+/// # Domain of Validity
+/// Requires `1 <= initial_params.len() <= 4`, at least `initial_params.len()` finite `(x, y)` pairs, and finite `eval_jac` outputs.
 #[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn levenberg_marquardt<P, F>(
     points: &P,
@@ -36,7 +45,15 @@ where
     )
 }
 
-/// Minimizes nonlinear least squares over observations satisfying `domain_ok(x, y)`.
+/// Minimizes $\sum_{i:\,\mathrm{domain\_ok}(x_i,y_i)} (y_i - \hat{f}(x_i; \theta))^2$ via damped Levenberg-Marquardt updates.
+///
+/// Reference: Marquardt (1963), DOI: 10.1137/0111030; [math_commons specification](../../../../docs/math_specs/math_commons.md).
+///
+/// # Stability
+/// Rejects steps producing non-finite residuals and increases damping $\lambda$ across up to `12` substeps per outer iteration.
+///
+/// # Domain of Validity
+/// Requires `1 <= initial_params.len() <= 4` and at least `initial_params.len()` observations satisfying `domain_ok(x, y)`.
 #[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn levenberg_marquardt_filtered<P, F>(
     points: &P,
@@ -58,8 +75,15 @@ where
     )
 }
 
-/// Minimizes nonlinear least squares ($1 \le k \le 6$) for an arbitrary scalar callback `eval_fn`
-/// using central finite-difference Jacobians on stack buffers with zero heap allocations.
+/// Minimizes $\sum_i (y_i - \hat{f}(x_i; \theta))^2$ ($1 \le k \le 6$) using central finite-difference Jacobians $\partial_j \hat{f} \approx (\hat{f}(\theta + h_j e_j) - \hat{f}(\theta - h_j e_j)) / (2 h_j)$.
+///
+/// Reference: Moré (1978), DOI: 10.1007/BFb0067700; [math_commons specification](../../../../docs/math_specs/math_commons.md).
+///
+/// # Stability
+/// Step sizes scale with parameter magnitude $h_j = \epsilon^{1/3}\max(1, |\theta_j|)$ to balance truncation and cancellation error.
+///
+/// # Domain of Validity
+/// Requires `1 <= initial_params.len() <= 6`, at least `initial_params.len()` finite points, and smooth finite `eval_fn` values near $\theta$.
 #[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn levenberg_marquardt_numeric<P, F>(
     points: &P,

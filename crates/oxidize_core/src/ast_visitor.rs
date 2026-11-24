@@ -36,13 +36,13 @@ pub fn is_dedicated_test_path(filepath: &Path) -> bool {
     })
 }
 
-#[allow(missing_docs)]
+/// Single-pass `syn` visitor collecting verification attributes, citations, and stochastic integrity metrics.
 pub struct AstVisitor {
-    #[allow(missing_docs)]
+    /// Registered module keys verified via macros, `#[embed_theory]`, or `[cite:...]` annotations.
     pub verified_modules: Vec<String>,
-    #[allow(missing_docs)]
+    /// Verification tier (`Deterministic` or `Stochastic`) recorded per module key.
     pub module_tiers: HashMap<String, String>,
-    #[allow(missing_docs)]
+    /// First 1-indexed source line recorded for each verified module key.
     pub module_spans: HashMap<String, usize>,
     /// Modules with a non-vacuous `theory_verification!` deterministic contract (`test = { ... }`).
     pub non_vacuous_deterministic_modules: Vec<String>,
@@ -64,21 +64,21 @@ pub struct AstVisitor {
     pub maturity_asserts: usize,
     /// Total non-opted-out functions counted for maturity density qualification.
     pub active_funcs: usize,
-    #[allow(missing_docs)]
+    /// Whether a stochastic verification block contained a vacuous zero-initialized buffer.
     pub has_vacuous_bypass: bool,
-    #[allow(missing_docs)]
+    /// First 1-indexed source line where a vacuous zero-initialized bypass occurred.
     pub vacuous_bypass_line: Option<usize>,
     /// Whether the file invokes `theory_verification!` or `stochastic_signature_verification!`.
     pub has_verification_macro: bool,
-    #[allow(missing_docs)]
+    /// Name and 1-indexed line of the first function missing `#[verified]` when not opted out.
     pub first_unverified_fn: Option<(String, usize)>,
-    #[allow(missing_docs)]
+    /// Total function items visited in the file.
     pub total_funcs: usize,
-    #[allow(missing_docs)]
+    /// Total assertion macro invocations visited across functions and verification macros.
     pub total_asserts: usize,
-    #[allow(missing_docs)]
+    /// Count of functions carrying `#[verified]` or `#[embed_theory]`.
     pub verified_funcs: usize,
-    #[allow(missing_docs)]
+    /// Count of assertions occurring inside verified functions and verification macros.
     pub verified_asserts: usize,
     /// Total non-test production functions visited in the file.
     pub prod_funcs: usize,
@@ -96,13 +96,13 @@ pub struct AstVisitor {
     pub verified_test_funcs: usize,
     /// Assertions recorded inside `#[verified]` test-scoped functions and verification macro blocks.
     pub verified_test_asserts: usize,
-    #[allow(missing_docs)]
+    /// Count of functions or macros carrying semantic theory links or citations.
     pub semantic_integrity_funcs: usize,
     /// Count of functions explicitly exempted via `opt_out = "..."`.
     pub opted_out_funcs: usize,
-    #[allow(missing_docs)]
+    /// Out-of-line child module identifiers (`mod foo;`) discovered in the file.
     pub active_submodules: Vec<String>,
-    #[allow(missing_docs)]
+    /// Whether the active scope is opted out of verification tracking (`opt_out`).
     pub opted_out: bool,
     /// Ordered list of `opt_out` reason strings encountered across file and item attributes.
     pub opt_outs: Vec<String>,
@@ -119,7 +119,7 @@ impl Default for AstVisitor {
 }
 
 impl AstVisitor {
-    #[allow(missing_docs)]
+    /// Constructs a zeroed [`AstVisitor`] ready to inspect a parsed `syn::File`.
     pub fn new() -> Self {
         Self::with_test_scope(false)
     }

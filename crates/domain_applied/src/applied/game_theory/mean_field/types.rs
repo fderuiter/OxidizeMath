@@ -17,48 +17,47 @@ pub struct Density(pub f64);
 /// - `dt`, `dx`: Discretization steps.
 #[derive(Clone, Debug)]
 pub struct MFGConfig {
-    #[allow(missing_docs)]
-    pub viscosity: f64, // nu
-    #[allow(missing_docs)]
-    pub time_horizon: f64, // T
-    #[allow(missing_docs)]
-    pub time_steps: NonZeroUsize, // Nt
-    #[allow(missing_docs)]
-    pub grid_points: NonZeroUsize, // Nx
-    #[allow(missing_docs)]
+    /// Diffusion viscosity coefficient $\nu \ge 0$.
+    pub viscosity: f64,
+    /// Terminal game horizon $T > 0$.
+    pub time_horizon: f64,
+    /// Number of uniform temporal subintervals $N_t$.
+    pub time_steps: NonZeroUsize,
+    /// Number of uniform spatial grid nodes $N_x$.
+    pub grid_points: NonZeroUsize,
+    /// Uniform time step $\Delta t = T / N_t$.
     pub dt: f64,
-    #[allow(missing_docs)]
+    /// Uniform spatial step $\Delta x = (x_{\max} - x_{\min}) / (N_x - 1)$.
     pub dx: f64,
-    #[allow(missing_docs)]
+    /// Lower spatial domain boundary $x_{\min}$.
     pub space_min: f64,
-    #[allow(missing_docs)]
+    /// Upper spatial domain boundary $x_{\max}$.
     pub space_max: f64,
 }
 
-// Type states
-#[allow(missing_docs)]
+/// Builder type-state indicating viscosity has not yet been configured.
 pub struct WithoutViscosity;
-#[allow(missing_docs)]
+/// Builder type-state storing a configured viscosity coefficient.
 pub struct WithViscosity(f64);
 
-#[allow(missing_docs)]
+/// Builder type-state indicating the time horizon has not yet been configured.
 pub struct WithoutTimeHorizon;
-#[allow(missing_docs)]
+/// Builder type-state storing a configured time horizon.
 pub struct WithTimeHorizon(f64);
 
-#[allow(missing_docs)]
+/// Builder type-state indicating spatial grid resolution has not yet been configured.
 pub struct WithoutGridPoints;
-#[allow(missing_docs)]
+/// Builder type-state storing a configured spatial grid node count.
 pub struct WithGridPoints(NonZeroUsize);
 
-#[allow(missing_docs)]
+/// Builder type-state indicating temporal step count has not yet been configured.
 pub struct WithoutTimeSteps;
-#[allow(missing_docs)]
+/// Builder type-state storing a configured temporal step count.
 pub struct WithTimeSteps(NonZeroUsize);
 
-#[allow(missing_docs)]
+/// Builder type-state indicating spatial domain bounds have not yet been configured.
 pub struct WithoutSpaceBounds;
-#[allow(missing_docs)]
+/// Builder type-state storing validated spatial domain bounds.
 pub struct WithSpaceBounds {
     min: f64,
     max: f64,

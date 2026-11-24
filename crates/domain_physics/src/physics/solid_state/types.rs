@@ -24,22 +24,22 @@ impl ElectronVolts {
         self.0
     }
 
-    #[allow(missing_docs)]
+    /// Raises the numerical energy magnitude to power `n`.
     pub fn powf(&self, n: f64) -> Self {
         Self::new(self.0.powf(n))
     }
 
-    #[allow(missing_docs)]
+    /// Computes the square root of the numerical energy magnitude.
     pub fn sqrt(&self) -> Self {
         Self::new(self.0.sqrt())
     }
 
-    #[allow(missing_docs)]
+    /// Computes the natural logarithm of the numerical energy magnitude.
     pub fn ln(&self) -> Self {
         Self::new(self.0.ln())
     }
 
-    #[allow(missing_docs)]
+    /// Computes the exponential of the numerical energy magnitude.
     pub fn exp(&self) -> Self {
         Self::new(self.0.exp())
     }
@@ -125,27 +125,27 @@ impl Kelvin {
         self.0
     }
 
-    #[allow(missing_docs)]
+    /// Raises the numerical Kelvin magnitude to power `n`.
     pub fn powf(&self, n: f64) -> Self {
         Self::new(self.0.powf(n))
     }
 
-    #[allow(missing_docs)]
+    /// Computes the square root of the numerical Kelvin magnitude.
     pub fn sqrt(&self) -> Self {
         Self::new(self.0.sqrt())
     }
 
-    #[allow(missing_docs)]
+    /// Computes the natural logarithm of the numerical Kelvin magnitude.
     pub fn ln(&self) -> Self {
         Self::new(self.0.ln())
     }
 
-    #[allow(missing_docs)]
+    /// Computes the exponential of the numerical Kelvin magnitude.
     pub fn exp(&self) -> Self {
         Self::new(self.0.exp())
     }
 
-    #[allow(missing_docs)]
+    /// Returns the absolute Kelvin magnitude.
     pub fn abs(&self) -> Self {
         Self::new(self.0.abs())
     }

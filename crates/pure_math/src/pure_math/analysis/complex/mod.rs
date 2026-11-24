@@ -1,10 +1,10 @@
-#[allow(missing_docs)]
+/// Submodule providing `continuation` types, traits, and algorithms.
 pub mod continuation;
-#[allow(missing_docs)]
+/// Submodule providing `integration` types, traits, and algorithms.
 pub mod integration;
-#[allow(missing_docs)]
+/// Submodule providing `mapping` types, traits, and algorithms.
 pub mod mapping;
-#[allow(missing_docs)]
+/// Submodule providing `surfaces` types, traits, and algorithms.
 pub mod surfaces;
 
 // [cite:graph_parameters_rust]

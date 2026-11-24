@@ -4,8 +4,8 @@ use rand::Rng;
 
 /// Strategy for selecting an action based on Q-values.
 pub trait ExplorationStrategy<S, A>: Send {
+    /// Chooses an action from `available_actions` given aligned `q_values` and `rng`.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn select_action(
         &self,
         state: &S,
@@ -25,7 +25,7 @@ pub struct EpsilonGreedy {
 }
 
 impl EpsilonGreedy {
-    #[allow(missing_docs)]
+    /// Creates an $\epsilon$-greedy policy with exploration probability `epsilon` $\in [0, 1]$.
     #[verified_engine::verified]
     pub fn new(epsilon: UnitInterval) -> Self {
         Self { epsilon }

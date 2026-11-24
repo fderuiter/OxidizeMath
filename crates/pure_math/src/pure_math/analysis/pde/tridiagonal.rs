@@ -187,10 +187,15 @@ fn backward_sweep(
     all_finite_complex(&out[..n])
 }
 
-/// Solves $A \mathbf{x} = \mathbf{b}$ in $O(N)$ time using precomputed Thomas factors from [`factor_tridiagonal`].
+/// Solves the tridiagonal system $a_{i-1} x_{i-1} + b_i x_i + c_i x_{i+1} = d_i$ ($A \mathbf{x} = \mathbf{d}$) in $O(N)$ time using precomputed Thomas factors from [`factor_tridiagonal`].
 ///
-/// Writes forward-sweep intermediates into `scratch[..n]` and the final solution into `solution[..n]`
-/// without heap allocations. Returns `false` if slice lengths are insufficient or inputs are non-finite.
+/// Reference: Higham (2002), DOI: 10.1137/1.9780898718027; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Unpivoted Thomas forward/backward sweeps are unconditionally stable on diagonally dominant and unitary Cayley $(I + i\alpha H)$ operators; non-finite intermediates fail closed returning `false`.
+///
+/// # Domain of Validity
+/// Requires finite complex slices with `solution.len() >= rhs.len()`, `scratch.len() >= rhs.len()`, `inv_denom.len() >= rhs.len()`, and off-diagonal factor slices of length $\ge \max(0, N - 1)$.
 #[verified_engine::verified]
 pub fn solve_tridiagonal_factored(
     lower: &[Complex<f64>],
@@ -210,7 +215,15 @@ pub fn solve_tridiagonal_factored(
     backward_sweep(c_prime, &scratch[..n], &mut solution[..n])
 }
 
-/// Solves $A \mathbf{x} = \mathbf{b}$ in place over `rhs_and_sol` using precomputed Thomas factors and `scratch`.
+/// Solves $a_{i-1} x_{i-1} + b_i x_i + c_i x_{i+1} = d_i$ ($A \mathbf{x} = \mathbf{d}$) in place over `rhs_and_sol` using precomputed Thomas factors and `scratch`.
+///
+/// Reference: Higham (2002), DOI: 10.1137/1.9780898718027; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Preserves $O(N)$ backward error for diagonally dominant and Crank-Nicolson tridiagonal operators with zero heap allocations, returning `false` on non-finite sweep values.
+///
+/// # Domain of Validity
+/// Requires finite complex slices with `scratch.len() >= rhs_and_sol.len()`, `inv_denom.len() >= rhs_and_sol.len()`, and `lower.len(), c_prime.len() >= rhs_and_sol.len().saturating_sub(1)`.
 #[verified_engine::verified]
 pub fn solve_tridiagonal_factored_in_place(
     lower: &[Complex<f64>],
@@ -229,7 +242,15 @@ pub fn solve_tridiagonal_factored_in_place(
     backward_sweep(c_prime, &scratch[..n], rhs_and_sol)
 }
 
-/// Factors `(lower, main, upper)` into `(c_prime, inv_denom)` and solves $A \mathbf{x} = \mathbf{b}$ in place.
+/// Factors `(lower, main, upper)` via $w_i = b_i - a_{i-1} c'_{i-1}$ and solves $A \mathbf{x} = \mathbf{b}$ in place over `rhs_and_sol`.
+///
+/// Reference: Higham (2002), DOI: 10.1137/1.9780898718027; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Rejects singular or ill-conditioned Schur pivots ($|w_i|^2 \le 10^{-300}$) and non-finite entries in [`factor_tridiagonal`], returning `false` without panicking or allocating.
+///
+/// # Domain of Validity
+/// Requires `rhs_and_sol.len() == main.len()`, `inv_denom.len() >= N`, `scratch.len() >= N`, off-diagonal buffers of length $\ge \max(0, N - 1)$, and non-vanishing leading principal minors.
 #[verified_engine::verified]
 pub fn solve_tridiagonal_in_place(
     lower: &[Complex<f64>],

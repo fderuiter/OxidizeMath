@@ -305,13 +305,15 @@ impl AppState {
             app.sync_layout();
         }
 
-        for tab in &mut app.tabs {
+        Self::apply_pane_indices_and_focus(&self, app);
+        let active_primary = app.active_primary_tab_index();
+        for (idx, tab) in app.tabs.iter_mut().enumerate() {
+            tab.set_suspended(idx != active_primary);
             if let Some(tab_str) = self.tab_states.get(tab.name()) {
                 tab.load_state(tab_str);
             }
         }
         app.tab_state_cache.clear();
-        Self::apply_pane_indices_and_focus(&self, app);
         app.restore_pane_tab_states(self.pane_tab_states, &self.tab_states);
         let active_panes = app.viewport_layout.pane_count();
         if active_panes <= 1
@@ -324,6 +326,7 @@ impl AppState {
             app.pipeline_dag.clear();
         }
         app.prune_incompatible_pipeline_links();
+        app.sync_viewport_visibility();
     }
 
     fn resolve_saved_pane_tab(

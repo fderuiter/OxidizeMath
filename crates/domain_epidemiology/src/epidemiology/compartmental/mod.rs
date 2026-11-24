@@ -1,10 +1,12 @@
-#[allow(missing_docs)]
+//! Deterministic SIR and SEIR compartmental ODE dynamics and builders.
+
+/// Shared parameter validators and scalar basic reproduction number $R_0 = \beta / \gamma$.
 pub mod common;
-#[allow(missing_docs)]
+/// Vector-space arithmetic macros for fixed-compartment state structs.
 pub mod macros;
-#[allow(missing_docs)]
+/// Four-compartment Susceptible-Exposed-Infectious-Recovered (SEIR) ODE model.
 pub mod seir;
-#[allow(missing_docs)]
+/// Three-compartment Susceptible-Infectious-Recovered (SIR) ODE model.
 pub mod sir;
 
 pub use common::basic_reproduction_number;

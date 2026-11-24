@@ -62,7 +62,15 @@ pub(crate) fn dmatrix_to_row_major(a: &DMatrix<f64>) -> Vec<f64> {
     out
 }
 
-/// Solves a square linear system $A x = b$ via partial-pivoted LU in [`engine_linalg`].
+/// Solves the square dense linear system $A\mathbf{x} = \mathbf{b}$ via partial-pivoted LU factorization $PA = LU$ in [`engine_linalg`].
+///
+/// Reference: Golub & Van Loan (2013), *Matrix Computations*, DOI: 10.56021/9781421407944; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Partial pivoting bounds element growth in practice with backward error $O(\varepsilon_{\text{mach}})$ and forward error $O(\kappa_2(A)\varepsilon_{\text{mach}})$.
+///
+/// # Domain of Validity
+/// Requires square non-singular matrix $A \in \mathbb{R}^{n \times n}$ with finite entries and right-hand side $\mathbf{b} \in \mathbb{R}^n$ of matching dimension.
 #[verified_engine::verified]
 pub fn solve_linear_system(
     a: &DMatrix<f64>,
@@ -94,10 +102,15 @@ pub fn solve_linear_system(
     Ok(DVector::from_vec(x))
 }
 
-/// Solves linear least squares $\min_c \|A c - b\|_2$ via Householder QR with column pivoting and SVD fallback.
+/// Solves linear least squares $\min_{\mathbf{x}} \|A\mathbf{x} - \mathbf{b}\|_2$ via column-pivoted Householder QR with SVD fallback.
 ///
-/// Avoids squaring the condition number $\kappa(A)$ in explicit normal equations $A^T A c = A^T b$,
-/// recovering near-collinear parameters accurately at $\varepsilon = 10^{-8}$.
+/// Reference: Golub & Van Loan (2013), *Matrix Computations*, DOI: 10.56021/9781421407944; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Orthogonal Householder reflections avoid squaring $\kappa_2(A)$ in explicit normal equations $A^\top A\mathbf{x} = A^\top\mathbf{b}$, falling back to truncated SVD on rank-deficient designs.
+///
+/// # Domain of Validity
+/// Requires non-empty matrix $A \in \mathbb{R}^{m \times n}$ with finite entries, positive numerical rank, and compatible target vector $\mathbf{b} \in \mathbb{R}^m$.
 #[verified_engine::verified]
 pub fn solve_normal_equation(
     a: &DMatrix<f64>,
@@ -164,7 +177,15 @@ pub fn moore_penrose_pseudoinverse(matrix: &DMatrix<f64>, epsilon: f64) -> DMatr
         .unwrap_or_else(|_| DMatrix::zeros(matrix.ncols(), matrix.nrows()))
 }
 
-/// Solves a symmetric positive-definite linear system $A x = b$ via strict Cholesky factorization.
+/// Solves a symmetric positive-definite linear system $A\mathbf{x} = \mathbf{b}$ via Cholesky factorization $A = LL^\top$.
+///
+/// Reference: Golub & Van Loan (2013), *Matrix Computations*, DOI: 10.56021/9781421407944; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Unconditionally backward-stable without pivoting on SPD matrices, satisfying $\|LL^\top - A\|_2 = O(\varepsilon_{\text{mach}}\|A\|_2)$ and failing closed on non-positive pivots.
+///
+/// # Domain of Validity
+/// Requires symmetric positive-definite matrix $A = A^\top \succ 0$ in $\mathbb{R}^{n \times n}$ and finite $\mathbf{b} \in \mathbb{R}^n$.
 #[verified_engine::verified]
 pub fn solve_cholesky_system(
     a: &DMatrix<f64>,
@@ -188,7 +209,15 @@ pub fn solve_cholesky_system(
     Ok(DVector::from_vec(x))
 }
 
-/// Solves Tikhonov ridge regression $\min_x \|A x - b\|_2^2 + \lambda^2 \|x\|_2^2$ via SVD filter factors.
+/// Solves Tikhonov ridge regression $\min_{\mathbf{x}} \|A\mathbf{x} - \mathbf{b}\|_2^2 + \lambda^2 \|\mathbf{x}\|_2^2$ via SVD filter factors $\sigma_i / (\sigma_i^2 + \lambda^2)$.
+///
+/// Reference: Hansen (1998), *Rank-Deficient and Discrete Ill-Posed Problems*, DOI: 10.1137/1.9780898719697; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Spectral Tikhonov damping caps the effective condition number at $\max_i \sigma_i / \lambda$ for $\lambda > 0$, suppressing noise amplification along small singular values.
+///
+/// # Domain of Validity
+/// Requires finite matrix $A \in \mathbb{R}^{m \times n}$, compatible vector $\mathbf{b} \in \mathbb{R}^m$, and finite regularization parameter $\lambda \ge 0$.
 #[verified_engine::verified]
 pub fn solve_tikhonov_system(
     a: &DMatrix<f64>,
@@ -241,7 +270,15 @@ fn dense_to_csr_parts(a: &DMatrix<f64>) -> Result<CsrOwnedParts, LinearAlgebraEr
     Ok((row_ptr, col_ind, values))
 }
 
-/// Solves an SPD linear system $A x = b$ using [`engine_linalg`]'s preallocated Conjugate Gradient solver.
+/// Solves an SPD linear system $A\mathbf{x} = \mathbf{b}$ via preallocated Conjugate Gradient minimization of $\frac{1}{2}\mathbf{x}^\top A\mathbf{x} - \mathbf{b}^\top \mathbf{x}$.
+///
+/// Reference: Hestenes & Stiefel (1952), *J. Res. Nat. Bur. Stand.* 49(6), 409–436, DOI: 10.6028/jres.049.044; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// $A$-norm error contracts at rate $2((\sqrt{\kappa}-1)/(\sqrt{\kappa}+1))^k$ for condition number $\kappa = \kappa_2(A)$; non-positive curvature $\mathbf{p}^\top A\mathbf{p} \le 0$ fails closed.
+///
+/// # Domain of Validity
+/// Requires symmetric positive-definite $A \in \mathbb{R}^{n \times n}$, finite $\mathbf{b} \in \mathbb{R}^n$, tolerance `tol > 0`, and positive iteration cap `max_iter`.
 #[verified_engine::verified]
 pub fn solve_conjugate_gradient(
     a: &DMatrix<f64>,
@@ -269,7 +306,15 @@ pub fn solve_conjugate_gradient(
     Ok(DVector::from_vec(x))
 }
 
-/// Solves a general square linear system $A x = b$ using [`engine_linalg`]'s restarted GMRES solver.
+/// Solves a general square linear system $A\mathbf{x} = \mathbf{b}$ via Arnoldi-Givens restarted $\text{GMRES}(m)$ minimizing $\|\mathbf{b} - A\mathbf{x}_k\|_2$.
+///
+/// Reference: Saad & Schultz (1986), *SIAM J. Sci. Stat. Comput.* 7(3), 856–869, DOI: 10.1137/0907058; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Modified Gram-Schmidt Arnoldi orthogonalization with progressive Givens rotations monotonically decreases residual norm $\|\mathbf{r}_k\|_2$ within each Krylov cycle.
+///
+/// # Domain of Validity
+/// Requires non-singular square $A \in \mathbb{R}^{n \times n}$, finite $\mathbf{b} \in \mathbb{R}^n$, Krylov subspace dimension `restart >= 1`, `tol > 0`, and `max_restarts >= 1`.
 #[verified_engine::verified]
 pub fn solve_gmres_restarted(
     a: &DMatrix<f64>,

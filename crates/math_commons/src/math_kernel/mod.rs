@@ -1,8 +1,9 @@
+/// Scalar-to-RGB heatmap, diverging, and cyclic palette mappings.
 #[cfg(feature = "std")]
-#[allow(missing_docs)]
 pub mod colormap;
+/// GLSL shader source snippets for GPU colormap evaluation.
 #[cfg(feature = "std")]
 pub mod glsl_colormap;
-#[allow(missing_docs)]
+/// Strongly typed step-size, grid-index, and flattened index primitives.
 pub mod types;
 // [cite:essay]

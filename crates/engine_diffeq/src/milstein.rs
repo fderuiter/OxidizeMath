@@ -5,12 +5,23 @@ use math_commons::math_kernel::types::{
 };
 use rand_core::RngCore;
 
-/// Multivariate strong-order-1.0 Milstein SDE solver supporting both Itô and Stratonovich calculi.
+/// Multivariate strong-order-1.0 Milstein SDE solver supporting both Itô and Stratonovich calculi:
+/// $X_{n+1} = X_n + f_n \Delta t + G_n \Delta W_n + \sum_{j_1, j_2} (D g_{j_2}) g_{j_1} I_{(j_1, j_2)}$.
 ///
 /// For diagonal or commutative diffusion matrices ($D g_{j_1} g_{j_2} = D g_{j_2} g_{j_1}$), set
 /// `levy_truncation = 0` for exact zero-area overhead. For general non-commutative multi-dimensional
 /// noise, `levy_truncation > 0` approximates the Lévy area $A_{j_1, j_2}$ via a `p`-mode Karhunen-Loève
 /// Fourier expansion.
+/// Reference: Milstein (1975), DOI: 10.1137/1119062; Kloeden & Platen (1992), DOI: 10.1007/978-3-662-12616-5;
+/// [`docs/math_specs/engine_diffeq.md`](../../../docs/math_specs/engine_diffeq.md).
+///
+/// # Stability
+/// Achieves strong order $1.0$ when commutative or when `levy_truncation` scales as $p \gtrsim \Delta t^{-1}$,
+/// subject to explicit mean-square step-size bounds on stiff drift/diffusion modes.
+///
+/// # Domain of Validity
+/// Requires $C^1$ drift and $C^2$ diffusion fields, `dt >= 0`, `state.len() >= state_dim`, and
+/// `SolverWorkspace` capacity at least [`Self::scratch_len`]`(state_dim, wiener_dim)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MilsteinSolver {
     calculus: StochasticCalculus,

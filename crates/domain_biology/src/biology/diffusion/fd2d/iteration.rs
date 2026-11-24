@@ -3,10 +3,10 @@ use super::geometry::GeometryStrategy;
 use math_commons::math_kernel::types::{GridIndex, flatten_2d_index};
 use oxidize_core::iteration::IterationPattern;
 
-#[allow(missing_docs)]
+/// Strategy traversing 2D grid cells and supplying 5-point stencil indices `(center, left, right, up, down)`.
 pub trait IterationStrategy {
+    /// Invokes `op(idx, idx_l, idx_r, idx_u, idx_d)` across every cell in `geom`.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn iterate<G, B, F>(&self, geom: &G, boundary: &B, op: F)
     where
         G: GeometryStrategy,
@@ -14,8 +14,8 @@ pub trait IterationStrategy {
         F: FnMut(GridIndex, GridIndex, GridIndex, GridIndex, GridIndex);
 }
 
+/// Loop-splitting 2D traversal separating perimeter boundary resolution from branchless interior sweeps.
 #[derive(Debug, Clone, Copy, Default)]
-#[allow(missing_docs)]
 pub struct LoopSplittingIteration;
 
 impl IterationStrategy for LoopSplittingIteration {

@@ -260,6 +260,9 @@ impl InteractiveTool for ParrondoParadoxTool {
     fn domain(&self) -> &'static str {
         "paradox_lab"
     }
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
+    }
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }

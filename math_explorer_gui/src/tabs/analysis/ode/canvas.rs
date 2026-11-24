@@ -79,6 +79,10 @@ impl InteractiveTool for OdeSolverTool {
         true
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
+    }
+
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let mut changed = false;
         self.sync_series_cache();

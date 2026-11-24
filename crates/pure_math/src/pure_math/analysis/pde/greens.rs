@@ -1,7 +1,14 @@
 use crate::pure_math::analysis::integration::{ClenshawCurtis, Integrator};
 
-/// Represents a 1D Green's Function Solver for inhomogeneous problems.
-/// $Ly = f(x)$ => $y(x) = \int G(x, \xi) f(\xi) d\xi$
+/// 1D homogeneous Dirichlet Poisson boundary-value solver $u(x) = \int_0^L G(x, \xi) f(\xi)\,d\xi$ for $-u''(x) = f(x)$ with $G(x, \xi) = \frac{1}{L}\min(x, \xi)(L - \max(x, \xi))$.
+///
+/// Reference: Evans (2010), *Partial Differential Equations*, DOI: 10.1090/gsm/019; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Non-negative symmetric kernel $G(x, \xi) \ge 0$ guarantees discrete maximum-principle preservation without matrix inversion conditioning loss.
+///
+/// # Domain of Validity
+/// Valid on bounded intervals $(0, L)$ with $L > 0$, homogeneous boundary conditions $u(0) = u(L) = 0$, and integrable forcing $f$.
 pub struct GreenFunctionSolver1D<I: Integrator> {
     integrator: I,
 }
@@ -16,7 +23,7 @@ impl Default for GreenFunctionSolver1D<ClenshawCurtis> {
 }
 
 impl GreenFunctionSolver1D<ClenshawCurtis> {
-    #[allow(missing_docs)]
+    /// Creates a 1D Green's function solver backed by [`ClenshawCurtis`] quadrature.
     #[verified_engine::verified]
     pub fn new() -> Self {
         Self::default()
@@ -24,7 +31,7 @@ impl GreenFunctionSolver1D<ClenshawCurtis> {
 }
 
 impl<I: Integrator> GreenFunctionSolver1D<I> {
-    #[allow(missing_docs)]
+    /// Creates a 1D Green's function solver with a custom numerical [`Integrator`].
     #[verified_engine::verified]
     pub fn with_integrator(integrator: I) -> Self {
         Self { integrator }

@@ -1,6 +1,6 @@
 #![doc = include_str!("README.md")]
 
-#[allow(missing_docs)]
+/// Galactic rotation curves, dark-matter halo profiles, and scaling relations.
 pub mod astrophysics;
 pub mod chaos;
 pub mod fluid_dynamics;

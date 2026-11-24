@@ -305,9 +305,15 @@ fn compute_fixed_portfolio_moments(
     })
 }
 
-/// Solves $E[\exp(-r X)] = 1$ across a heterogeneous fixed-stake bet portfolio.
+/// Solves the Cramér-Lundberg adjustment equation $\mathbb{E}\!\left[e^{-R \Delta X}\right] = 1$ for the ruin exponent $R > 0$ and ultimate ruin bound $\psi(u) \le e^{-R u}$.
 ///
-/// Uses [`Bisection`] bracketing and safeguarded [`NewtonRaphson`] polishing with zero heap allocations.
+/// Reference: Asmussen & Albrecher (2010), *Ruin Probabilities*, DOI: 10.1142/7431; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Exploits strict convexity of the moment-generating function $M(r) = \mathbb{E}[e^{-r \Delta X}]$ via bracketed root-finding away from the trivial root $r = 0$.
+///
+/// # Domain of Validity
+/// Requires strictly positive expected net drift $\mathbb{E}[\Delta X] > 0$, negative-outcome risk $\mathbb{P}(\Delta X < 0) > 0$, and finite exponential moments.
 #[verified_engine::verified]
 pub fn solve_lundberg_ruin(
     portfolio: &[PortfolioBet],
@@ -359,7 +365,15 @@ pub fn solve_lundberg_ruin(
     })
 }
 
-/// Convenience wrapper solving $E[\exp(-r X)] = 1$ for a single fixed-stake wager.
+/// Solves $p\,e^{-R b s} + (1 - p)\,e^{R s} = 1$ for the single-bet Cramér-Lundberg adjustment coefficient $R > 0$.
+///
+/// Reference: Asmussen & Albrecher (2010), *Ruin Probabilities*, DOI: 10.1142/7431; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Monotone bracketed root solve on $(0, R_{\max})$ guarantees unique convergence without catastrophic cancellation near small edges.
+///
+/// # Domain of Validity
+/// Valid for win probability $p \in (0, 1)$, net odds $b > 0$, positive edge $p b - (1 - p) > 0$, and fractional stake $s \in (0, 1)$.
 #[verified_engine::verified]
 pub fn solve_single_bet_lundberg(
     win_prob: &UnitInterval,

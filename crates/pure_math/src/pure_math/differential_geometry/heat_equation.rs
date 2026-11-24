@@ -1,22 +1,29 @@
 use super::buckled_flow::{SurfaceTopology, detect_twisted_seam_map};
 use super::surface::{ParametricSurface, SurfaceAnalysis};
 
-/// Solves the Heat Equation $\frac{\partial u}{\partial t} = \alpha \Delta_S u$ on a parametric surface.
-/// Uses explicit Euler time-stepping with a discrete divergence-form stencil for the Laplace-Beltrami operator.
+/// Parametric surface heat diffusion solver integrating $\frac{\partial u}{\partial t} = \alpha \Delta_S u$ over a structured $(u, v)$ grid via a divergence-form Laplace-Beltrami stencil.
+///
+/// Reference: Crane, Weischedel & Wardetzky (2013), DOI: 10.1145/2516971.2516977; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Explicit forward-Euler time stepping requires parabolic CFL compliance $\alpha \Delta t \max_{(u,v)} \left(\frac{g_{vv}}{(\det g)\,\Delta u^2} + \frac{g_{uu}}{(\det g)\,\Delta v^2}\right) \le \frac{1}{2}$ away from metric singularities; degenerate polar caps fall back safely when $\det g < 10^{-12}$.
+///
+/// # Domain of Validity
+/// Valid on smooth parametric surfaces $S(u, v)$ with non-negative diffusivity $\alpha \ge 0$, grid resolutions $\ge 3 \times 3$, and finite initial temperature fields.
 pub struct HeatEquationSolver<'a, S: ParametricSurface> {
-    #[allow(missing_docs)]
+    /// Underlying parametric surface $S(u, v)$ supplying metric tensors.
     pub surface: &'a S,
-    #[allow(missing_docs)]
+    /// Thermal diffusivity $\alpha \ge 0$.
     pub alpha: f64, // Thermal diffusivity
-    #[allow(missing_docs)]
+    /// Active 2D temperature field $u(u_i, v_j)$ on the parameter grid.
     pub u_grid: Vec<Vec<f64>>, // Current temperature state
-    #[allow(missing_docs)]
+    /// Pre-allocated scratch grid avoiding heap allocations during `step`.
     pub next_grid: Vec<Vec<f64>>, // Bolt Optimization: Buffer to avoid allocations in step
-    #[allow(missing_docs)]
+    /// Parameter grid dimensions `(n_u, n_v)`.
     pub grid_res: (usize, usize), // (n_u, n_v)
-    #[allow(missing_docs)]
+    /// Inclusive parameter interval `(u_min, u_max)`.
     pub range_u: (f64, f64),
-    #[allow(missing_docs)]
+    /// Inclusive parameter interval `(v_min, v_max)`.
     pub range_v: (f64, f64),
     /// Boundary topology applied across parameter seams and polar caps.
     pub topology: SurfaceTopology,

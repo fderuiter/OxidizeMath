@@ -1,6 +1,6 @@
 // Edge connection table
 // Lists the index of the endpoint vertices for each of the 12 edges of the cube
-#[allow(missing_docs)]
+/// Endpoint corner indices `(v0, v1)` for each of the 12 edges of a unit Marching Cubes cell.
 pub const EDGE_CONNECTION: [[usize; 2]; 12] = [
     [0, 1],
     [1, 2],
@@ -19,7 +19,7 @@ pub const EDGE_CONNECTION: [[usize; 2]; 12] = [
 // Vertex offsets from the origin of the cube (0,0,0)
 // 0: (0,0,0), 1: (1,0,0), 2: (1,1,0), 3: (0,1,0)
 // 4: (0,0,1), 5: (1,0,1), 6: (1,1,1), 7: (0,1,1)
-#[allow(missing_docs)]
+/// Integer `(dx, dy, dz)` corner offsets from cell origin `(0, 0, 0)` for the 8 cube vertices.
 pub const VERTEX_OFFSET: [[usize; 3]; 8] = [
     [0, 0, 0],
     [1, 0, 0],
@@ -37,7 +37,7 @@ pub const VERTEX_OFFSET: [[usize; 3]; 8] = [
 // Cube Edge Flags Table
 // For each of the 256 cases, this table lists which edges are intersected.
 // 12 bits, bit N corresponds to edge N.
-#[allow(missing_docs)]
+/// 12-bit intersected-edge bitmask indexed by the 8-bit corner sign configuration (`0..256`).
 pub const CUBE_EDGE_FLAGS: [u16; 256] = [
     0x000, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a,
     0xd03, 0xe09, 0xf00, 0x190, 0x099, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c, 0x99c, 0x895,
@@ -64,7 +64,7 @@ pub const CUBE_EDGE_FLAGS: [u16; 256] = [
 // Triangle Connection Table
 // For each of the 256 cases, lists the triangles (groups of 3 edges)
 // -1 indicates end of list.
-#[allow(missing_docs)]
+/// Triangle edge-index triples (`-1`-terminated) for each of the 256 Marching Cubes cell configurations.
 pub const TRIANGLE_CONNECTION_TABLE: [[i8; 16]; 256] = [
     [
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,

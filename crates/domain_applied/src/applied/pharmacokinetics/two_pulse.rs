@@ -3,8 +3,20 @@ use super::regimen::RegimenModel;
 use super::traits::PharmacokineticModel;
 use crate::error::PharmacokineticsError;
 
-/// A model representing an Extended Release (XR) formulation using a two-pulse approach.
-/// C_XR(t) = f1 * C_IR(t) + f2 * C_IR(t - lag_time)
+/// Extended-release (XR) biphasic pharmacokinetic wrapper model.
+///
+/// $$
+/// C_{\text{XR}}(t) = f_1 C_{\text{IR}}(t) + f_2 C_{\text{IR}}(t - t_{\text{lag}})\mathbf{1}_{t \ge t_{\text{lag}}}
+/// $$
+///
+/// Reference: Bateman (1910), DOI: 10.1017/S0305004100019988;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Evaluates the delayed pulse strictly for $t \ge t_{\text{lag}}$, avoiding negative-time exponential growth.
+///
+/// # Domain of Validity
+/// Valid for $t_{\text{lag}} \ge 0$ and non-negative pulse fractions $f_1, f_2 \ge 0$ (typically $f_1 + f_2 = 1$).
 #[derive(Debug, Clone, Copy)]
 pub struct TwoPulseModel<M> {
     /// The base (Immediate Release) model.

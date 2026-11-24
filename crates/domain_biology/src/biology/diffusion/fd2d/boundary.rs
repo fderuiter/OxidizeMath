@@ -2,10 +2,10 @@ use super::geometry::GeometryStrategy;
 use math_commons::math_kernel::types::GridIndex;
 use oxidize_core::boundary::{BoundaryCondition, NeumannBoundary as CoreNeumann};
 
-#[allow(missing_docs)]
+/// Strategy resolving cardinal 2D neighbor grid indices at domain boundaries.
 pub trait BoundaryStrategy {
+    /// Resolves `(left, right, up, down)` flattened neighbor indices for cell `(x, y)`.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn neighbors<G: GeometryStrategy>(
         &self,
         x: usize,
@@ -14,8 +14,8 @@ pub trait BoundaryStrategy {
     ) -> (GridIndex, GridIndex, GridIndex, GridIndex);
 }
 
+/// Zero-flux homogeneous Neumann boundary condition ($\partial_n u = 0$) on 2D grids.
 #[derive(Debug, Clone, Copy, Default)]
-#[allow(missing_docs)]
 pub struct NeumannBoundary;
 
 impl BoundaryStrategy for NeumannBoundary {

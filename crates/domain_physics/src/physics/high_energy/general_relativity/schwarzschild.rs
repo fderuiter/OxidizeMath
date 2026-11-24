@@ -36,6 +36,18 @@ impl GeodesicKind {
 /// $$ds^2 = -\left(1 - \frac{R_s}{r}\right) d(ct)^2
 ///        + \left(1 - \frac{R_s}{r}\right)^{-1} dr^2
 ///        + r^2 d\theta^2 + r^2 \sin^2\theta\,d\varphi^2$$
+///
+/// Reference: Schwarzschild (1916), [`schwarzschild1916`](../../../../../../papers/references.bib#schwarzschild1916);
+/// Misner, Thorne, & Wheeler (1973), [`misner1973gravitation`](../../../../../../papers/references.bib#misner1973gravitation);
+/// [`docs/math_specs/domain_physics.md`](../../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Closed-form orbital potentials and RK4 geodesic stepping via [`SchwarzschildConnection4D`] avoid finite-difference metric differentiation,
+/// guarding horizon capture at $r \le R_s(1 + \epsilon)$ and polar coordinate singularities.
+///
+/// # Domain of Validity
+/// Valid for finite black hole mass $M > 0$ (or $R_s = 2GM/c^2 > 0$), exterior radial coordinates $r > R_s$ ($r > 1.5\,R_s$ for circular shell boosts),
+/// and non-polar angles $\sin\theta > 0$.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SchwarzschildBlackHole {
     /// Black hole mass $M > 0$ in kilograms.

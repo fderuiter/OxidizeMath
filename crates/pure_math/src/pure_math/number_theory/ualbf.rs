@@ -1,23 +1,23 @@
 // [cite:ualbf_quasiperfect]
 pub use crate::error::NumberTheoryError;
 
-#[allow(missing_docs)]
+/// Data structure `UalbfSearchResult` representing UalbfSearchResult state.
 pub struct UalbfSearchResult {
-    #[allow(missing_docs)]
+    /// Value for `message` (message).
     pub message: String,
-    #[allow(missing_docs)]
+    /// Value for `valid_components` (valid components).
     pub valid_components: usize,
-    #[allow(missing_docs)]
+    /// Value for `pruned_components` (pruned components).
     pub pruned_components: usize,
-    #[allow(missing_docs)]
+    /// Value for `prefix_count` (prefix count).
     pub prefix_count: usize,
-    #[allow(missing_docs)]
+    /// Value for `rejected_by_lattice` (rejected by lattice).
     pub rejected_by_lattice: usize,
-    #[allow(missing_docs)]
+    /// Value for `candidates_checked` (candidates checked).
     pub candidates_checked: usize,
 }
 
-#[allow(missing_docs)]
+/// Runs the UALBF lattice-pruned quasiperfect search stub on portable targets.
 #[verified_engine::verified]
 pub fn ualbf_search(
     _limit_p: u64,

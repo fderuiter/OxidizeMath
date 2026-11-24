@@ -7,13 +7,13 @@ use verified_engine::Theory;
 /// State for the SEIR Model.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SEIRState {
-    #[allow(missing_docs)]
+    /// Number of susceptible individuals $S(t)$.
     pub s: f64,
-    #[allow(missing_docs)]
+    /// Number of exposed (latent, non-infectious) individuals $E(t)$.
     pub e: f64,
-    #[allow(missing_docs)]
+    /// Number of actively infectious individuals $I(t)$.
     pub i: f64,
-    #[allow(missing_docs)]
+    /// Number of recovered or removed individuals $R(t)$.
     pub r: f64,
 }
 
@@ -25,13 +25,13 @@ impl_compartmental_ops!(SEIRState, s, e, i, r);
 /// but does not hold the simulation state.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SEIRDynamics {
-    #[allow(missing_docs)]
+    /// Constant closed population size $N = S + E + I + R > 0$.
     pub n: f64,
-    #[allow(missing_docs)]
+    /// Effective transmission rate $\beta \ge 0$.
     pub beta: f64,
-    #[allow(missing_docs)]
+    /// Latent progression rate $\sigma \ge 0$ (mean incubation period $1/\sigma$).
     pub sigma: f64,
-    #[allow(missing_docs)]
+    /// Per-capita recovery rate $\gamma \ge 0$.
     pub gamma: f64,
 }
 
@@ -60,8 +60,18 @@ impl OdeSystem<SEIRState> for SEIRDynamics {
 /// SEIR Model: Susceptible, Exposed, Infectious, Recovered.
 ///
 /// Equations:
-/// $$dE/dt = \beta S I / N - \sigma E$$
-/// $$dI/dt = \sigma E - \gamma I$$
+/// $$dS/dt = -\beta S I / N, \quad dE/dt = \beta S I / N - \sigma E, \quad dI/dt = \sigma E - \gamma I, \quad dR/dt = \gamma I$$
+///
+/// Reference: Kermack & McKendrick (1927), DOI: `10.1098/rspa.1927.0118`; Diekmann & Heesterbeek
+/// (2000), [`docs/math_specs/domain_epidemiology.md`](../../../../../docs/math_specs/domain_epidemiology.md#diekmann2000mathematical).
+///
+/// # Stability
+/// Conserves $S(t) + E(t) + I(t) + R(t) = N$ to floating-point precision; explicit RK4 remains
+/// stable and positivity-preserving when $\Delta t \cdot \max(\beta, \sigma, \gamma) \lesssim 1$.
+///
+/// # Domain of Validity
+/// Closed homogeneous populations with $N > 0$, $0 \le I_0 \le N$, and finite rates
+/// $\beta, \sigma, \gamma \ge 0$.
 ///
 /// Use `SEIRModel::builder()` or `SEIRModel::new()` to construct.
 #[derive(Debug, Clone, Theory)]

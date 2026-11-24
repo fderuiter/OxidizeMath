@@ -3,7 +3,18 @@ use super::state::ChemicalState;
 /// Maximum species count handled on the stack without heap allocation in `add_reaction_batch`.
 pub const STACK_REACTION_SPECIES_CAP: usize = 16;
 
-/// Defines the local reaction kinetics for N species.
+/// Defines the local pointwise reaction source term $\mathbf{R}(\mathbf{C})$ for $N$ species:
+/// $$\left(\frac{\partial C_s}{\partial t}\right)_{\text{react}} = R_s(C_0, \dots, C_{N-1})$$
+///
+/// Reference: Turing (1952), DOI: `10.1098/rstb.1952.0012`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Local Lipschitz stiffness $\|\partial \mathbf{R}/\partial \mathbf{C}\|$ bounds explicit time steps
+/// $\Delta t$ alongside the spatial diffusion CFL condition.
+///
+/// # Domain of Validity
+/// Finite species concentrations $C_s \in \mathbb{R}$ (typically $C_s \ge 0$) with slice length $N$.
 pub trait ReactionModel {
     /// Computes the reaction rates for a single spatial point.
     ///
@@ -64,7 +75,18 @@ pub trait ReactionModel {
     }
 }
 
-/// Defines the spatial diffusion strategy for N species.
+/// Defines the spatial diffusion operator $D_s \nabla^2 C_s$ for $N$ species:
+/// $$\left(\frac{\partial C_s}{\partial t}\right)_{\text{diff}} = D_s \nabla^2 C_s$$
+///
+/// Reference: Turing (1952), DOI: `10.1098/rstb.1952.0012`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Second-order central difference stencils yield negative-semidefinite discrete Laplacians requiring
+/// $\Delta t \le h^2 / (2 d \max_s D_s)$ under explicit forward-Euler integration.
+///
+/// # Domain of Validity
+/// Non-negative diffusivities $D_s \ge 0$ (`coeffs.len() == state.num_species()`) on matching spatial grids.
 pub trait DiffusionModel {
     /// Applies the diffusion operator (Laplacian) to the full state.
     ///

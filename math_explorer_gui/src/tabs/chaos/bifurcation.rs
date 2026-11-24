@@ -367,6 +367,11 @@ impl InteractiveTool for BifurcationDiagram {
         self.build_state_json(true)
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+        self.atlas.set_suspended(suspended);
+    }
+
     fn save_url_state(&self) -> Option<String> {
         self.build_state_json(false)
     }
@@ -375,6 +380,7 @@ impl InteractiveTool for BifurcationDiagram {
         let s: BifurcationState =
             serde_json::from_str(state).map_err(|e| format!("Invalid bifurcation state: {e}"))?;
         let (mode, sel_r, x0, expr_str) = s.validate()?;
+        let was_suspended = self.worker.is_suspended();
         let mut candidate = Self {
             map_mode: mode,
             r_min: s.r_min,
@@ -386,6 +392,7 @@ impl InteractiveTool for BifurcationDiagram {
             r_pinned: s.r_pinned,
             ..Self::default()
         };
+        candidate.set_suspended(was_suspended);
         candidate.math_input.set_expression(&expr_str);
         candidate.math_input.set_params_map(&s.custom_params);
         candidate.atlas.set_visible(s.atlas_visible);

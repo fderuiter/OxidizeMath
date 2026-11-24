@@ -2,7 +2,7 @@
 use crate::stencil::{StencilNeighbors3D, StencilOperators};
 use math_commons::math_kernel::types::{StepSize, flatten_2d_index, flatten_3d_index};
 
-/// Generic fused finite-difference stencil stepper evaluating spatial derivatives in a single grid pass.
+#[doc = include_str!("../../../docs/math_specs/snippets/pde_stepper.md")]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FusedStencilStepper {
     /// Precomputed spatial finite-difference operators.

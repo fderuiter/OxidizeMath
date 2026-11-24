@@ -306,10 +306,18 @@ pub(super) fn maximize_penalized_slate(
     (eval_f, kkt)
 }
 
-/// Maximizes joint expected log-wealth across `K` simultaneous independent wagers (`SlateEvalMode::Auto`).
+/// Maximizes joint expected log-wealth $\max_{\mathbf{f} \in \Delta_K} \mathbb{E}[\ln(1 + \sum_{i=1}^K f_i r_i)]$ across `K` simultaneous independent wagers (`SlateEvalMode::Auto`).
 ///
 /// Uses exact state convolution for `K <= 10` binary wagers and `O(Q * K)` 1D Laplace quadrature
 /// for `K > 10` wagers, with zero heap allocations inside `scratch`.
+///
+/// Reference: Kelly (1956), *Bell Syst. Tech. J.* 35(4), DOI: 10.1002/j.1538-7305.1956.tb03809.x; Busseti, Ryu & Boyd (2016), arXiv:1603.06183; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Projected Barzilai-Borwein / FISTA iterates enforce the simplex ruin cap $\sum_i f_i \le 1 - \varepsilon_{\text{ruin}}$ and terminate at KKT residual $\le 10^{-6}$.
+///
+/// # Domain of Validity
+/// Requires $1 \le K \le$ [`MAX_SLATE_WAGERS`] valid [`SlateWager`] entries with finite probabilities and net odds.
 #[verified_engine::verified]
 pub fn solve_simultaneous_slate(
     wagers: &[SlateWager],
@@ -318,7 +326,15 @@ pub fn solve_simultaneous_slate(
     solve_simultaneous_slate_with_mode(wagers, SlateEvalMode::Auto, scratch)
 }
 
-/// Maximizes joint expected log-wealth across `K` simultaneous independent wagers with explicit `mode`.
+/// Maximizes joint expected log-wealth $\max_{\mathbf{f} \in \Delta_K} \mathbb{E}[\ln(1 + \sum_{i=1}^K f_i r_i)]$ across `K` simultaneous independent wagers with explicit `mode`.
+///
+/// Reference: Kelly (1956), DOI: 10.1002/j.1538-7305.1956.tb03809.x; Busseti, Ryu & Boyd (2016), arXiv:1603.06183; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Concave log-utility projection onto the capped simplex prevents $1 + \mathbf{f}^\top \mathbf{r} \le 0$ singularities and fails closed if KKT residual exceeds $10^{-6}$.
+///
+/// # Domain of Validity
+/// Requires $1 \le K \le$ [`MAX_SLATE_WAGERS`] valid wagers compatible with `mode` (`ExactConvolution` requires binary outcomes and $K \le 10$).
 #[verified_engine::verified]
 pub fn solve_simultaneous_slate_with_mode(
     wagers: &[SlateWager],

@@ -5,16 +5,16 @@ use nalgebra::{Point3, Vector3};
 /// Used for evolutions where the surface geometry itself changes.
 #[derive(Clone)]
 pub struct DiscreteSurface {
-    #[allow(missing_docs)]
+    /// 2D parameter grid of 3D surface positions $\mathbf{r}(u_i, v_j)$.
     pub points: Vec<Vec<Point3<f64>>>,
-    #[allow(missing_docs)]
+    /// Whether the $u$-parameter boundary wraps periodically.
     pub closed_u: bool,
-    #[allow(missing_docs)]
+    /// Whether the $v$-parameter boundary wraps periodically.
     pub closed_v: bool,
 }
 
 impl DiscreteSurface {
-    #[allow(missing_docs)]
+    /// Constructs a structured parametric surface grid with optional periodic `u`/`v` wrapping.
     #[verified_engine::verified]
     pub fn new(points: Vec<Vec<Point3<f64>>>, closed_u: bool, closed_v: bool) -> Self {
         Self {
@@ -108,16 +108,24 @@ impl DiscreteSurface {
     }
 }
 
-#[allow(missing_docs)]
+/// Explicit parametric mean-curvature flow solver evolving $\frac{\partial \mathbf{r}}{\partial t} = H \mathbf{n} = \frac{1}{2} \Delta_S \mathbf{r}$ on a double-buffered surface grid.
+///
+/// Reference: Meyer, Desbrun, Schröder & Barr (2003), DOI: 10.1007/978-3-662-05105-4_2; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Explicit parabolic geometric evolution requires $\Delta t \lesssim \frac{1}{4} h_{\min}^2$, where $h_{\min}$ is the shortest Euclidean grid spacing; degenerate poles with $|\det g| < 10^{-12}$ or $\|\mathbf{r}_u \times \mathbf{r}_v\| < 10^{-12}$ safely clamp to zero velocity.
+///
+/// # Domain of Validity
+/// Valid on non-empty structured 2D surface grids prior to neckpinch or finite-time curvature singularities, with zero heap allocations during `step`.
 pub struct MeanCurvatureFlow {
-    #[allow(missing_docs)]
+    /// Active evolving discrete surface grid.
     pub surface: DiscreteSurface,
     /// Bolt Optimization: Buffer to avoid allocations in step
     pub next_points: Vec<Vec<Point3<f64>>>,
 }
 
 impl MeanCurvatureFlow {
-    #[allow(missing_docs)]
+    /// Initializes a double-buffered mean-curvature flow stepper over `surface`.
     #[verified_engine::verified]
     pub fn new(surface: DiscreteSurface) -> Self {
         let next_points = surface.points.clone();
@@ -127,7 +135,7 @@ impl MeanCurvatureFlow {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Advances every grid vertex by one explicit Euler step `dt` along its mean-curvature vector.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
         let nu = self.surface.points.len();

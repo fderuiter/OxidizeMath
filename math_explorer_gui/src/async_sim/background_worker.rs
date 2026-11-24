@@ -15,10 +15,32 @@ pub struct BackgroundWorker<T: SimulationRunner> {
 impl<T: SimulationRunner> BackgroundWorker<T> {
     /// Spawns a background worker executing the given simulation runner.
     pub fn new(runner: T) -> Self {
+        Self::new_with_suspended(runner, false)
+    }
+
+    /// Spawns a background worker with an explicit initial visibility suspension state.
+    pub fn new_with_suspended(runner: T, suspended: bool) -> Self {
         Self {
-            controller: SimulationController::new(runner),
+            controller: SimulationController::new_with_suspended(runner, suspended),
             _marker: std::marker::PhantomData,
         }
+    }
+
+    /// Replaces the background runner while preserving the current visibility suspension flag.
+    pub fn replace_runner(&mut self, runner: T) {
+        let was_suspended = self.controller.is_suspended();
+        *self = Self::new_with_suspended(runner, was_suspended);
+    }
+
+    /// Suspends or resumes worker execution while preserving logical [`SimWorkerState::Running`].
+    pub fn set_suspended(&mut self, suspended: bool) {
+        self.controller.set_suspended(suspended);
+    }
+
+    /// Returns `true` when visibility suspension is currently active on this worker.
+    #[must_use]
+    pub fn is_suspended(&self) -> bool {
+        self.controller.is_suspended()
     }
 
     /// Returns the current lifecycle state of the background simulation worker.

@@ -2,20 +2,26 @@ use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
 use thiserror::Error;
 
+/// Domain error variants for compartmental ODE, next-generation matrix, and final-size solvers.
 #[derive(Debug, Clone, PartialEq, Error)]
-#[allow(missing_docs)]
 pub enum EpidemiologyError {
     /// Matrix V (Transition Matrix) is singular and cannot be inverted.
     #[error("Transition matrix V is singular and cannot be inverted")]
     SingularTransitionMatrix,
     /// Invalid Parameter (e.g., negative rate).
     #[error("Invalid epidemiological parameter {name}: {value}")]
-    #[allow(missing_docs)]
-    InvalidParameter { name: String, value: f64 },
+    InvalidParameter {
+        /// Identifier of the rejected epidemiological parameter.
+        name: String,
+        /// Rejected numerical parameter value.
+        value: f64,
+    },
     /// Missing Parameter (e.g., required field not set in builder).
     #[error("Missing required epidemiological parameter: {name}")]
-    #[allow(missing_docs)]
-    MissingParameter { name: String },
+    MissingParameter {
+        /// Name of the omitted required builder parameter.
+        name: String,
+    },
     /// Basic reproduction number `R0` was non-positive or non-finite.
     #[error("Basic reproduction number R0 must be finite and positive, got {r0}")]
     InvalidReproductionNumber {

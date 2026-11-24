@@ -10,11 +10,22 @@ use verified_engine::Theory;
 
 const LOCAL_SELECTION_GAIN: f64 = 0.05;
 
-/// Spatial evolutionary game system over a weighted graph using CSR adjacency buffers.
+/// Spatial evolutionary game system over a weighted graph using CSR adjacency buffers, coupling
+/// proportional neighbor imitation with local payoff replicator drift on per-node simplexes $\mathbf{x}_i \in \Delta^{S-1}$:
+/// $$\dot{x}_{i,r} = \sum_{j \in \mathcal{N}^+(i)} \frac{w_{ij}}{W_i}\frac{\max(0, \pi_j - \pi_i)}{\Delta\pi_i}(x_{j,r} - x_{i,r}) + \alpha\,x_{i,r}(f_{i,r} - \pi_i).$$
 ///
-/// Each node $i \in \{0, \dots, N-1\}$ carries a strategy distribution $\mathbf{x}_i \in \Delta^{S-1}$
-/// and accumulates payoffs across its CSR neighborhood while imitating higher-earning
-/// positively coupled neighbors without heap allocations during [`Self::step`] or [`Self::evolve`].
+/// Reference: Nowak & May (1992), *Nature* 359, 826–829, DOI: 10.1038/359826a0;
+/// Ohtsuki, Hauert, Lieberman, & Nowak (2006), *Nature* 441, 502–505, DOI: 10.1038/nature04605;
+/// [`docs/math_specs/domain_applied.md`](../../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Normalizes neighbor imitation weights by $W_i = \max(10^{-9}, \sum_j |w_{ij}|)$ and payoff span
+/// $\Delta\pi_i = \max(1, \pi_{\max} - \pi_{\min})$, then projects every updated node state back onto
+/// the probability simplex $\Delta^{S-1}$ with zero post-initialization heap allocations.
+///
+/// # Domain of Validity
+/// Requires `num_nodes >= 1`, a non-empty square $S \times S$ finite `payoff_matrix`, finite edge weights,
+/// `initial_states.len() == num_nodes * S` (or `mean_state.len() == S`), and positive step size `dt > 0`.
 ///
 /// # Examples
 ///

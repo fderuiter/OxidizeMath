@@ -38,6 +38,71 @@ fn test_missing_docs_rejects_inner_allow_and_nested_cfg_attr() {
 }
 
 #[test]
+fn test_missing_docs_rejects_item_level_suppressions_in_library_crates() {
+    let dir = TempTestDir::new("policy_audit_missing_docs_items");
+    let whitelist_file = dir.join("verification_whitelist.toml");
+
+    for (name, snippet) in [
+        ("item_struct", "#[allow(missing_docs)]\npub struct S;\n"),
+        ("item_enum", "#[allow(missing_docs)]\npub enum E { A }\n"),
+        (
+            "item_variant",
+            "/// Doc.\npub enum E { #[allow(missing_docs)] A }\n",
+        ),
+        ("item_trait", "#[expect(missing_docs)]\npub trait T {}\n"),
+        (
+            "item_field",
+            "/// Doc.\npub struct S { #[allow(missing_docs)] pub x: f64 }\n",
+        ),
+        ("item_fn", "#[allow(rust::missing_docs)]\npub fn f() {}\n"),
+        (
+            "impl_fn",
+            "/// Doc.\npub struct S;\nimpl S { #[allow(missing_docs)] pub fn m(&self) {} }\n",
+        ),
+        (
+            "macro_fn",
+            "macro_rules! gen_fn { () => { #[allow(missing_docs)] pub fn f() {} }; }\n",
+        ),
+    ] {
+        let rel = format!("crates/{name}");
+        let member = write_member_crate(&dir, &rel, snippet);
+        fs::write(
+            &whitelist_file,
+            format!("[missing_docs.files]\n\"{rel}/src/lib.rs\" = 1\n"),
+        )
+        .unwrap();
+        assert!(
+            !run_policy_audit_with_whitelist(&[member.as_str()], &whitelist_file),
+            "Library crate item-level missing_docs bypass `{name}` must fail even when capped"
+        );
+    }
+
+    // Binary-only crate (src/main.rs without src/lib.rs) remains governed by exact cap
+    let bin_dir = dir.join("math_explorer_gui/src");
+    fs::create_dir_all(&bin_dir).unwrap();
+    fs::write(
+        dir.join("math_explorer_gui/Cargo.toml"),
+        "[package]\nname = \"math_explorer_gui\"\nversion = \"0.1.0\"\n\n[lints]\nworkspace = true\n",
+    )
+    .unwrap();
+    fs::write(
+        bin_dir.join("main.rs"),
+        "#[allow(missing_docs)]\npub struct GuiState;\nfn main() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        &whitelist_file,
+        "[missing_docs.files]\n\"math_explorer_gui/src/main.rs\" = 1\n",
+    )
+    .unwrap();
+    let bin_member = crate::whitelist::lossy_slash_path(&dir.join("math_explorer_gui"));
+    assert!(run_policy_audit_with_whitelist(
+        &[bin_member.as_str()],
+        &whitelist_file
+    ));
+}
+
+#[test]
 fn test_missing_docs_rejects_outer_and_expect_above_cap() {
     let dir = TempTestDir::new("policy_audit_missing_docs_caps");
     let whitelist_file = dir.join("verification_whitelist.toml");
@@ -47,7 +112,7 @@ fn test_missing_docs_rejects_outer_and_expect_above_cap() {
     let outer_allow = write_member_crate(
         &dir,
         "crates/outer_allow",
-        "#[allow(missing_docs)]\npub struct Item;\n",
+        "#[allow(missing_docs)]\npub mod a {}\n",
     );
     assert!(!run_policy_audit_with_whitelist(
         &[outer_allow.as_str()],
@@ -57,18 +122,18 @@ fn test_missing_docs_rejects_outer_and_expect_above_cap() {
     let outer_expect = write_member_crate(
         &dir,
         "crates/outer_expect",
-        "#[expect(missing_docs, reason = \"legacy\")]\npub struct Item;\n",
+        "#[expect(missing_docs, reason = \"legacy\")]\npub mod a {}\n",
     );
     assert!(!run_policy_audit_with_whitelist(
         &[outer_expect.as_str()],
         &whitelist_file
     ));
 
-    // Exact cap passes, adding one more attribute above cap fails
+    // Exact cap on module-level attributes passes; adding one more above cap fails
     let capped = write_member_crate(
         &dir,
         "crates/capped",
-        "#[allow(missing_docs)]\npub struct A;\n#[allow(rust::missing_docs)]\npub struct B;\n",
+        "#[allow(missing_docs)]\npub mod a {}\n#[allow(rust::missing_docs)]\npub mod b {}\n",
     );
     fs::write(
         &whitelist_file,
@@ -82,7 +147,7 @@ fn test_missing_docs_rejects_outer_and_expect_above_cap() {
 
     fs::write(
         dir.join("crates/capped/src/lib.rs"),
-        "#[allow(missing_docs)]\npub struct A;\n#[allow(missing_docs)]\npub struct B;\n#[expect(missing_docs)]\npub struct C;\n",
+        "#[allow(missing_docs)]\npub mod a {}\n#[allow(missing_docs)]\npub mod b {}\n#[expect(missing_docs)]\npub mod c {}\n",
     )
     .unwrap();
     assert!(!run_policy_audit_with_whitelist(
@@ -99,7 +164,7 @@ fn test_missing_docs_requires_downward_ratchet_and_rejects_stale_files() {
     let member = write_member_crate(
         &dir,
         "crates/ratchet",
-        "#[allow(missing_docs)]\npub struct A;\n#[allow(missing_docs)]\npub struct B;\n",
+        "#[allow(missing_docs)]\npub mod a {}\n#[allow(missing_docs)]\npub mod b {}\n",
     );
     fs::write(
         &whitelist_file,
@@ -114,7 +179,7 @@ fn test_missing_docs_requires_downward_ratchet_and_rejects_stale_files() {
     // Reducing actual count from 2 to 1 without lowering cap fails downward ratchet
     fs::write(
         dir.join("crates/ratchet/src/lib.rs"),
-        "/// Documented A.\npub struct A;\n#[allow(missing_docs)]\npub struct B;\n",
+        "/// Documented a.\npub mod a {}\n#[allow(missing_docs)]\npub mod b {}\n",
     )
     .unwrap();
     assert!(!run_policy_audit_with_whitelist(
@@ -136,7 +201,7 @@ fn test_missing_docs_requires_downward_ratchet_and_rejects_stale_files() {
     // Reducing actual count to 0 without removing entry fails downward ratchet
     fs::write(
         dir.join("crates/ratchet/src/lib.rs"),
-        "/// Documented A.\npub struct A;\n/// Documented B.\npub struct B;\n",
+        "/// Documented a.\npub mod a {}\n/// Documented b.\npub mod b {}\n",
     )
     .unwrap();
     assert!(!run_policy_audit_with_whitelist(
@@ -168,11 +233,11 @@ fn test_missing_docs_macro_rules_and_vendored_egui_plot_exemption() {
     let dir = TempTestDir::new("policy_audit_missing_docs_vendored");
     let whitelist_file = dir.join("verification_whitelist.toml");
 
-    // macro_rules! outer and inner missing_docs attributes are counted/blocked
+    // macro_rules! module-level missing_docs attributes are counted/blocked
     let mac_member = write_member_crate(
         &dir,
         "crates/mac_demo",
-        "macro_rules! gen_fn { () => { #[allow(missing_docs)] pub fn f() {} }; }\n",
+        "macro_rules! gen_mod { () => { #[allow(missing_docs)] pub mod m {} }; }\n",
     );
     fs::write(&whitelist_file, "").unwrap();
     assert!(!run_policy_audit_with_whitelist(

@@ -2,7 +2,7 @@ use crate::math_types::{Integer, ops::Pow, ops::RemRounding};
 use crate::pure_math::number_theory::primes::is_prime;
 use thiserror::Error;
 
-#[allow(missing_docs)]
+/// Computes the sum-of-divisors arithmetic function $\sigma(n) = \sum_{d \mid n} d$.
 #[verified_engine::verified]
 pub fn sigma(n: u64) -> u64 {
     let mut sum = 0;
@@ -17,21 +17,21 @@ pub fn sigma(n: u64) -> u64 {
     sum
 }
 
+/// Enumeration `AmbsError` classifying AmbsError variants.
 #[derive(Debug, Error)]
-#[allow(missing_docs)]
 pub enum AmbsError {
+    /// Variant `ParseError` (ParseError).
     #[error("Failed to parse integer from string: {0}")]
-    #[allow(missing_docs)]
     ParseError(String),
+    /// Variant `ModuloError` (ModuloError).
     #[error("Modulo operation failed")]
-    #[allow(missing_docs)]
     ModuloError,
+    /// Variant `ConversionError` (ConversionError).
     #[error("Conversion to usize failed")]
-    #[allow(missing_docs)]
     ConversionError,
 }
 
-#[allow(missing_docs)]
+/// Computes the modular multiplicative inverse $a^{-1} \bmod m$ when $\gcd(a, m) = 1$.
 #[verified_engine::verified]
 pub fn modular_inverse(a: &Integer, m: &Integer) -> Option<Integer> {
     let mut a_copy = a.clone();
@@ -42,7 +42,7 @@ pub fn modular_inverse(a: &Integer, m: &Integer) -> Option<Integer> {
     a_copy.invert(m).ok()
 }
 
-#[allow(missing_docs)]
+/// Factors $n$ into sorted `(prime, multiplicity)` pairs via trial division.
 #[verified_engine::verified]
 pub fn prime_factors(mut n: u64) -> Vec<(u64, u32)> {
     let mut factors = Vec::new();
@@ -73,7 +73,7 @@ pub fn prime_factors(mut n: u64) -> Vec<(u64, u32)> {
     factors
 }
 
-#[allow(missing_docs)]
+/// Precomputes odd prime squares $p^{2e}$ whose divisor sums satisfy the Euler-congruence filter.
 #[verified_engine::verified]
 pub fn precompute_valid_prime_powers(limit_p: u64, max_e: u32) -> Vec<(u64, u32, u64)> {
     let mut valid = Vec::new();
@@ -105,18 +105,18 @@ pub fn precompute_valid_prime_powers(limit_p: u64, max_e: u32) -> Vec<(u64, u32,
     valid
 }
 
-#[allow(missing_docs)]
+/// Data structure `AmbsDsp` representing AmbsDsp state.
 pub struct AmbsDsp {
-    #[allow(missing_docs)]
+    /// Value for `valid_powers` (valid powers).
     pub valid_powers: Vec<(u64, u32, u64)>,
-    #[allow(missing_docs)]
+    /// Value for `b_stop` (b stop).
     pub b_stop: f64,
-    #[allow(missing_docs)]
+    /// Value for `prefix_pool` (prefix pool).
     pub prefix_pool: Vec<u64>,
 }
 
 impl AmbsDsp {
-    #[allow(missing_docs)]
+    /// Initializes an AMBS divisor-sum prefix searcher up to prime bound `limit_p`.
     #[verified_engine::verified]
     pub fn new(limit_p: u64, max_e: u32, b_stop: f64) -> Self {
         Self {
@@ -126,7 +126,7 @@ impl AmbsDsp {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Expands admissible prime-power prefixes under the abundancy upper bound `h_max_remaining`.
     #[verified_engine::verified]
     pub fn build_prefix(&mut self, current_p: u64, last_p_index: usize, h_max_remaining: f64) {
         let mut stack = vec![(current_p, last_p_index, h_max_remaining)];
@@ -238,7 +238,7 @@ impl AmbsDsp {
         Ok(Self::pair_modular_roots(r, p))
     }
 
-    #[allow(missing_docs)]
+    /// Computes square roots of `n` modulo prime `p` via the Tonelli-Shanks algorithm.
     #[verified_engine::verified]
     pub fn tonelli_shanks(n: &Integer, p: &Integer) -> Result<Vec<Integer>, AmbsError> {
         if *p < 2 {
@@ -362,7 +362,7 @@ impl AmbsDsp {
         res
     }
 
-    #[allow(missing_docs)]
+    /// Lifts prime-power square roots of `x_l` modulo `s_l` via Hensel lifting and CRT.
     #[verified_engine::verified]
     pub fn compute_modular_square_roots(
         x_l: &Integer,
@@ -439,7 +439,7 @@ impl AmbsDsp {
         Ok(())
     }
 
-    #[allow(missing_docs)]
+    /// Searches for odd-square quasiperfect candidates up to decimal bound `n_max_str`.
     #[verified_engine::verified]
     pub fn search(&mut self, n_max_str: &str) -> Result<Option<Integer>, AmbsError> {
         let n_max = Integer::from_str_radix(n_max_str, 10)
@@ -471,7 +471,7 @@ impl AmbsDsp {
     }
 }
 
-#[allow(missing_docs)]
+#[doc = include_str!("../../../../../docs/math_specs/snippets/ambs_qp.md")]
 #[verified_engine::verified]
 pub fn solve_quasiperfect_modularity(
     _s_l_str: &str,

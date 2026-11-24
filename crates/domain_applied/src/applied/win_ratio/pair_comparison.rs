@@ -32,21 +32,21 @@ impl TierOutcomeCounts {
     }
 }
 
+/// Outcome of comparing a treated subject against a control subject at a single endpoint tier.
 #[derive(Debug, PartialEq, Clone, Copy)]
-#[allow(missing_docs)]
 pub enum ComparisonResult {
-    #[allow(missing_docs)]
+    /// Treated subject achieved a strictly better outcome than the control subject.
     Win,
-    #[allow(missing_docs)]
+    /// Treated subject achieved a strictly worse outcome than the control subject.
     Loss,
-    #[allow(missing_docs)]
+    /// Pair could not be distinguished at this tier and advances to the next tier.
     Tie,
 }
 
 /// Defines how to compare two outcomes of type T.
 pub trait OutcomeComparator<T: ?Sized> {
+    /// Compares treated outcome `a` against control outcome `b` at a single tier.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn compare(&self, a: &T, b: &T) -> ComparisonResult;
 }
 
@@ -88,12 +88,12 @@ impl<T: PartialOrd> OutcomeComparator<T> for LowerIsBetter {
 
 /// Strategy: Higher value is better, but only if the difference exceeds a threshold (`a - b > threshold`).
 pub struct ThresholdComparator {
-    #[allow(missing_docs)]
+    /// Minimum indifference margin $\tau \ge 0$ required to declare a win or loss.
     pub threshold: f64,
 }
 
 impl ThresholdComparator {
-    #[allow(missing_docs)]
+    /// Creates a [`ThresholdComparator`] with indifference margin `threshold`.
     #[verified_engine::verified]
     pub fn new(threshold: f64) -> Self {
         Self { threshold }
@@ -149,8 +149,8 @@ fn validate_tier_inputs(
 
 /// A strategy for pairing subjects between two groups for comparison.
 pub trait PairingStrategy<T> {
+    /// Evaluates total `(wins, losses)` across pairs formed between `group1` and `group2`.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn evaluate(
         &self,
         analysis: &WinRatioAnalysis<T>,

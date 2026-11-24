@@ -5,7 +5,7 @@
 
 pub mod continuous;
 pub mod discrete;
-#[allow(missing_docs)]
+/// Submodule providing `traits` types, traits, and algorithms.
 pub mod traits;
 
 // Re-export continuous functions for backward compatibility.

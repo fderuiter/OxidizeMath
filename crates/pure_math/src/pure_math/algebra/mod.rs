@@ -76,10 +76,10 @@
 
 pub mod fields;
 pub mod group;
-#[allow(missing_docs)]
+/// Submodule providing `linear_algebra` types, traits, and algorithms.
 pub mod linear_algebra;
 pub mod polynomial;
-#[allow(missing_docs)]
+/// Submodule providing `traits` types, traits, and algorithms.
 pub mod traits;
 
 pub use fields::Fp;

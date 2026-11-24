@@ -131,7 +131,7 @@ impl GrinMedium {
     }
 }
 
-/// Canonical 2D eikonal ODE system $\dot{\mathbf{r}} = \mathbf{p}$, $\dot{\mathbf{p}} = \frac{1}{2}\nabla(n^2)$.
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/eikonal_ray_system.md")]
 #[derive(Debug, Clone, Copy)]
 pub struct EikonalRaySystem {
     /// Underlying continuous graded-index profile.

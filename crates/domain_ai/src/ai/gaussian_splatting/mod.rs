@@ -89,13 +89,13 @@
 //! *   **[rendering]**: Alpha blending and opacity evaluation logic.
 //! *   **[optimization]**: Adaptive density control strategies (Split vs Clone).
 
-#[allow(missing_docs)]
+/// Adaptive density control heuristics (clone, split, prune) for 3D Gaussians.
 pub mod optimization;
-#[allow(missing_docs)]
+/// EWA camera-space and gravitational-lensing covariance projection routines.
 pub mod projection;
-#[allow(missing_docs)]
+/// Front-to-back alpha compositing and 2D Gaussian evaluation kernels.
 pub mod rendering;
-#[allow(missing_docs)]
+/// Core `Gaussian3D`, `Gaussian2D`, and `Scene` data structures.
 pub mod structs;
 
 pub use projection::{

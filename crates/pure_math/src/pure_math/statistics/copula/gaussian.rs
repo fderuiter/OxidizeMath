@@ -50,13 +50,29 @@ pub(crate) fn evaluate_copula_cdf(
     evaluate_copula_cdf_with_scratch(u, corr, &mut heap_scratch)
 }
 
-/// Multivariate Gaussian copula `C(u_1, ..., u_d; Sigma) = Phi_Sigma(Phi^-1(u_1), ..., Phi^-1(u_d))`.
+/// Multivariate Gaussian copula
+/// $$C_\Sigma(u_1, \dots, u_d) = \Phi_\Sigma\bigl(\Phi^{-1}(u_1), \dots, \Phi^{-1}(u_d)\bigr),$$
+/// coupling arbitrary marginal uniform probabilities $u_i \in \[0, 1\]$ via latent multivariate
+/// normal correlation matrix $\Sigma = L L^\top$.
 ///
 /// Uses exact copula boundary reduction, 20-point Genz (2004) Gauss-Legendre quadrature for two
-/// active legs, and Genz (1992) separation-of-variables over a deterministic Richtmyer QMC
-/// sequence for three or more active legs in [`Self::cdf`], plus replicated Cranley-Patterson
-/// Joe-Kuo [`SobolSequence`](crate::pure_math::statistics::qmc::SobolSequence) error estimation
-/// in [`Self::multivariate_cdf_with_error`].
+/// active legs, and Genz (1992) Cholesky separation-of-variables over deterministic Richtmyer QMC
+/// ([`Self::cdf`]), seeded antithetic Cranley-Patterson Halton QMC ([`Self::cdf_with_seed`],
+/// [`Self::cdf_with_workspace`]), and Joe-Kuo [`SobolSequence`](crate::pure_math::statistics::qmc::SobolSequence)
+/// error estimation ([`Self::multivariate_cdf_with_error`]).
+///
+/// Reference: Genz (1992), *J. Comput. Graph. Stat.* 1(2), DOI: 10.1080/10618600.1992.10477010;
+/// Genz (2004), *Stat. Comput.* 14(3), DOI: 10.1023/B:STCO.0000035304.20635.31;
+/// [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Short-circuits zero and unit marginals exactly before quantile inversion, clamps intermediate
+/// uniform draws to $\[10^{-15}, 1 - 10^{-15}\]$ to prevent $\Phi^{-1}$ overflow, and enforces
+/// Fréchet-Hoeffding and `[0, 1]` probability bounds across semidefinite Cholesky factors.
+///
+/// # Domain of Validity
+/// Requires a validated $d \times d$ symmetric positive-semidefinite [`CorrelationMatrix`] with
+/// unit diagonal and matching marginal slice length `u.len() == d` with $u_i \in \[0, 1\]$.
 ///
 /// # Example
 ///

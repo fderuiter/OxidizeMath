@@ -102,8 +102,25 @@ impl MriRunner {
     }
 
     fn advance_bloch_ticks(&mut self, ticks: usize, step_twin_too: bool) {
+        self.advance_bloch_ticks_sliced(ticks, step_twin_too, None);
+    }
+
+    fn advance_bloch_ticks_sliced(
+        &mut self,
+        ticks: usize,
+        step_twin_too: bool,
+        max_slice: Option<std::time::Duration>,
+    ) {
         let dt = 0.001;
-        for _ in 0..ticks {
+        let slice_start = max_slice.map(|_| crate::web_io::PlatformInstant::now());
+        for tick_idx in 0..ticks {
+            if tick_idx > 0 {
+                if let (Some(budget), Some(start)) = (max_slice, slice_start) {
+                    if start.elapsed() >= budget {
+                        break;
+                    }
+                }
+            }
             let next_time = self.current_time + dt;
             if step_twin_too {
                 if let Some(ref mut twin) = self.twin {
@@ -187,13 +204,17 @@ impl SimulationRunner for MriRunner {
     }
 
     fn step(&mut self) {
+        self.step_sliced(None);
+    }
+
+    fn step_sliced(&mut self, max_slice: Option<std::time::Duration>) {
         let time_scale = self.sync_params_and_get_scale();
         let steps = if time_scale.is_finite() && time_scale > 0.0 {
             (time_scale.ceil().min(MAX_MRI_STEPS_PER_FRAME as f64) as usize).max(1)
         } else {
             1
         };
-        self.advance_bloch_ticks(steps, true);
+        self.advance_bloch_ticks_sliced(steps, true, max_slice);
     }
 
     fn step_once(&mut self) {
