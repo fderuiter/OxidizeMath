@@ -234,9 +234,9 @@ fn assert_expected_capability_counts(counts: [usize; 8]) {
     let has_pure_math = cfg!(feature = "pure_math");
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
     let expected_plot = if has_surface_morpho {
-        74
+        77
     } else if has_pure_math {
-        73
+        76
     } else {
         69
     };
@@ -260,7 +260,7 @@ fn assert_expected_capability_counts(counts: [usize; 8]) {
     );
     assert_eq!(raster, 8, "Expected 8 raster figure tools");
     assert_eq!(dataset_only, 0, "Expected 0 dataset-only registered tools");
-    assert_eq!(unsupported, 12, "Expected 12 non-figure tools");
+    assert_eq!(unsupported, 9, "Expected 9 non-figure tools");
     assert_eq!(
         solid_3d, expected_solid,
         "Expected {expected_solid} solid 3D geometric tools"

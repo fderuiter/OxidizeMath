@@ -15,6 +15,7 @@ use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;
 
 mod serde_impl;
+mod stationary;
 mod types;
 pub use types::StateType;
 
@@ -361,87 +362,6 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
         }
 
         result
-    }
-
-    /// Computes the stationary distribution (if it exists).
-    ///
-    /// # Mathematical Background
-    ///
-    /// A stationary distribution π satisfies π·P = π and Σᵢ πᵢ = 1.
-    /// For irreducible, aperiodic chains, the stationary distribution exists
-    /// and is unique. It can be found as the limit of P^n as n → ∞.
-    ///
-    /// # Returns
-    ///
-    /// The stationary distribution as a probability vector, or None if it
-    /// doesn't exist or convergence fails.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the generic real field `T` fails to instantiate from a `usize` (number of absorbing states or number of total states) or an `f64` (`1e-12`).
-    ///
-    /// # Examples
-    /// ```rust
-    /// # use pure_math::__doctest_facade as math_explorer;
-    /// use math_explorer::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
-    /// use math_explorer::nalgebra::DMatrix;
-    ///
-    /// // A simple 2-state ergodic chain
-    /// let transition_matrix = DMatrix::from_row_slice(2, 2, &[
-    ///     0.8, 0.2,
-    ///     0.4, 0.6,
-    /// ]);
-    /// let state_types = vec![StateType::Transient, StateType::Transient];
-    /// let chain = MarkovChain::<f64>::new(transition_matrix, state_types).unwrap();
-    ///
-    /// let pi = chain.stationary_distribution().unwrap();
-    /// // The stationary distribution solves πP = π.
-    /// // Solving the system: 0.8*π0 + 0.4*π1 = π0 => 0.4*π1 = 0.2*π0 => π0 = 2*π1.
-    /// // Since π0 + π1 = 1, we get π0 ≈ 0.666... and π1 ≈ 0.333...
-    /// assert!((pi[0] - 2.0 / 3.0).abs() < math_explorer::registry::TOLERANCE_HIGH);
-    /// assert!((pi[1] - 1.0 / 3.0).abs() < math_explorer::registry::TOLERANCE_HIGH);
-    /// ```
-    #[verified_engine::verified]
-    pub fn stationary_distribution(&self) -> Option<DVector<T>> {
-        // For chains with absorbing states, only absorbing states have non-zero
-        // stationary probability
-        if !self.absorbing_indices.is_empty() {
-            let mut pi = DVector::zeros(self.num_states());
-            let n_absorbing = self.absorbing_indices.len();
-
-            // Each absorbing state gets equal probability
-            for &idx in &self.absorbing_indices {
-                pi[idx] = T::one() / T::from_usize(n_absorbing).unwrap();
-            }
-
-            return Some(pi);
-        }
-
-        // For ergodic chains, use power method
-        let max_iters: usize = math_commons::registry::MAX_ITERATIONS;
-        let tolerance = T::from_f64(1e-12).unwrap();
-
-        let mut pi = DVector::from_element(
-            self.num_states(),
-            T::one() / T::from_usize(self.num_states()).unwrap(),
-        );
-
-        // OPTIMIZATION: Cache transpose outside the loop to avoid O(N^2) allocations per iteration
-        let transition_matrix_t = self.transition_matrix.transpose();
-
-        for _ in 0..max_iters {
-            let pi_next = &transition_matrix_t * &pi;
-
-            // Check convergence
-            let diff = (&pi_next - &pi).norm();
-            if diff < tolerance {
-                return Some(pi_next);
-            }
-
-            pi = pi_next;
-        }
-
-        None
     }
 
     /// Computes the Expected Possession Value (EPV) for each transient state.
