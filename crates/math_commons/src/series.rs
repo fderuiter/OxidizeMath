@@ -1,6 +1,8 @@
 //! Zero-copy 2D coordinate series views for curve fitting and critical-point solvers.
 // [cite:math_commons]
 
+use alloc::vec::Vec;
+
 /// Single 2D Cartesian sample $(x, y) \in \mathbb{R}^2$ enabling blanket [`PointSeries`] views (`@goldberg1991every`, `spec:math_commons_v1`).
 ///
 /// - **Numerical stability**: Exact IEEE-754 `f64` coordinate projection with zero rounding error.

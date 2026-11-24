@@ -215,6 +215,54 @@ pub fn run_clone_detector() -> bool {
     run_clone_detector_with_cache(&mut cache)
 }
 
+fn is_clone_detector_candidate(path_str: &str) -> bool {
+    let norm = path_str.replace('\\', "/");
+    let rel = norm.trim_start_matches("./");
+    if !rel.ends_with(".rs") {
+        return false;
+    }
+    let in_first_party = rel.starts_with("crates/")
+        || rel.starts_with("apps/")
+        || rel.starts_with("math_explorer/")
+        || rel.starts_with("math_explorer_gui/");
+    in_first_party
+        && !rel.contains("/target/")
+        && !rel.contains("/egui_plot/")
+        && !rel.contains("unified_verification")
+        && !rel.contains("colormap.rs")
+        && !rel.contains("types.rs")
+}
+
+pub(crate) fn run_clone_detector_for_files_with_cache(
+    files: &[String],
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
+    let candidates: Vec<&Path> = files
+        .iter()
+        .filter(|p| is_clone_detector_candidate(p))
+        .map(Path::new)
+        .filter(|p| p.is_file())
+        .collect();
+    if candidates.is_empty() {
+        return true;
+    }
+    println!(
+        "Running Clone Detector on {} staged Rust file(s)...",
+        candidates.len()
+    );
+    let mut flags_found = 0;
+    for path in candidates {
+        if let Some(ast) = cache.get_or_load_fs(path).and_then(|e| e.ast.as_ref()) {
+            let findings = detect_clones_in_ast(path, ast);
+            for msg in &findings {
+                println!("{msg}");
+            }
+            flags_found += findings.len();
+        }
+    }
+    flags_found == 0
+}
+
 pub fn run_clone_detector_with_cache(cache: &mut oxidize_core::traceability::AstCache) -> bool {
     println!("Running Clone Detector on first-party repository...");
     let mut flags_found = 0;

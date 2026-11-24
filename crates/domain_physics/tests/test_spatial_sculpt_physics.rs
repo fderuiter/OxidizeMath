@@ -8,16 +8,22 @@ use domain_physics::physics::fluid_dynamics::lattice_boltzmann::{
     stamp_naca4_airfoil, stamp_venturi_nozzle,
 };
 use domain_physics::physics::quantum::{
-    construct_1d_hamiltonian, construct_1d_hamiltonian_into, evolve_state_in_place,
-    gaussian_wavepacket, state_norm_squared, time_evolution_operator, transmission_probability,
+    CrankNicolson1D, HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable,
+    QuantumOperator, QuantumState, construct_1d_hamiltonian, construct_1d_hamiltonian_into,
+    evolve_state, evolve_state_in_place, gaussian_wavepacket, gaussian_wavepacket_into, sigma_x,
+    sigma_y, sigma_z, state_norm_squared, time_evolution_operator,
+    time_evolution_operator_2x2_into, transmission_probability,
 };
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
+use std::sync::Mutex;
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
 
 #[global_allocator]
 static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
+
+static VERIFIED_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_naca4_airfoil_stall_vorticity_and_aerodynamic_coefficients() {
@@ -196,4 +202,163 @@ fn test_double_barrier_quantum_sculpt_unitarity_transmission_and_zero_allocation
         "Double-barrier partial tunneling transmission T must lie in (0, 1), got {trans_prob}"
     );
     assert!(aero.drag_coeff.is_finite() && aero.lift_coeff.is_finite());
+}
+
+#[test]
+fn test_crank_nicolson_1d_tunneling_parity_sculpt_and_zero_allocations() {
+    let (n, x_min, x_max, dt) = (100, -5.0, 5.0, 0.005);
+    let dx = (x_max - x_min) / (n as f64 - 1.0);
+    let x_axis: Vec<f64> = (0..n).map(|i| x_min + i as f64 * dx).collect();
+    let potential: Vec<f64> = x_axis
+        .iter()
+        .map(|&x| {
+            if (-0.65..=-0.30).contains(&x) || (0.30..=0.65).contains(&x) {
+                6.0
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    let split_idx = x_axis.partition_point(|&x| x <= 0.70);
+
+    let pot_vec = DVector::from_vec(potential.clone());
+    let dense_h = construct_1d_hamiltonian(&pot_vec, dx, 1.0, 1.0);
+    let psi0_dense = gaussian_wavepacket(&x_axis, -2.2, 4.2, 0.45);
+    let psi_dense = evolve_state(&psi0_dense, &dense_h, 80.0 * dt, 1.0);
+
+    let mut solver = CrankNicolson1D::new(&potential, dx, dt, 1.0, 1.0);
+    assert!(solver.is_valid());
+    let mut psi_cn = QuantumState::new(DVector::from_element(n, Complex::new(0.0, 0.0)));
+    let mut density = vec![0.0; n];
+    let sculpted: Vec<f64> = potential
+        .iter()
+        .enumerate()
+        .map(|(i, &v)| if i == 50 { 25.0 } else { v })
+        .collect();
+
+    let ((norm_cn, trans_cn, parity_err, norm_sculpt), metrics) = {
+        let _guard = VERIFIED_LOCK.lock().expect("verified lock");
+        VerifiedEngine::run_verified(|| {
+            gaussian_wavepacket_into(&x_axis, -2.2, 4.2, 0.45, &mut psi_cn);
+            for _ in 0..80 {
+                assert!(solver.step_in_place(&mut psi_cn));
+            }
+            let norm = state_norm_squared(&psi_cn);
+            let trans = transmission_probability(&psi_cn, split_idx);
+            let l2_err = psi_cn
+                .vector
+                .as_slice()
+                .iter()
+                .zip(psi_dense.vector.as_slice().iter())
+                .map(|(a, b)| (*a - *b).norm_sqr())
+                .sum::<f64>()
+                .sqrt();
+            psi_cn.probability_density_in_place(&mut density);
+            assert!(solver.update_potential(&sculpted, dx, 1.0, 1.0));
+            assert!(solver.update_dt(0.008, 1.0));
+            assert!(solver.step_in_place(&mut psi_cn));
+            (norm, trans, l2_err, state_norm_squared(&psi_cn))
+        })
+    };
+
+    assert!(metrics.function_calls > 0);
+    assert!((norm_cn - 1.0).abs() < 1e-11 && (norm_sculpt - 1.0).abs() < 1e-11);
+    let trans_dense = transmission_probability(&psi_dense, split_idx);
+    assert!(
+        (trans_cn - trans_dense).abs() < 5e-3,
+        "CN vs spectral T: {trans_cn} vs {trans_dense}"
+    );
+    assert!(parity_err < 2e-2, "CN vs spectral L2 error: {parity_err}");
+    assert!((density.iter().sum::<f64>() - 1.0).abs() < 1e-11);
+}
+
+#[test]
+fn test_crank_nicolson_1d_max_grid_latency_and_zero_allocations() {
+    let n = math_commons::registry::MAX_GRID_SIZE;
+    let dx = 20.0 / (n as f64 - 1.0);
+    let x_axis: Vec<f64> = (0..n).map(|i| -10.0 + i as f64 * dx).collect();
+    let mut potential: Vec<f64> = x_axis.iter().map(|&x| 0.25 * x * x).collect();
+    let mut solver = CrankNicolson1D::new(&potential, dx, 0.01, 1.0, 1.0);
+    assert!(solver.is_valid());
+    let mut psi = gaussian_wavepacket(&x_axis, -2.5, 5.0, 0.6);
+    potential[n / 2] = 120.0;
+
+    let (final_norm, metrics) = {
+        let _guard = VERIFIED_LOCK.lock().expect("verified lock");
+        VerifiedEngine::run_verified(|| {
+            assert!(solver.update_potential(&potential, dx, 1.0, 1.0));
+            assert!(solver.update_dt(0.012, 1.0));
+            for _ in 0..50 {
+                assert!(solver.step_in_place(&mut psi));
+            }
+            state_norm_squared(&psi)
+        })
+    };
+
+    assert!(metrics.function_calls > 0);
+    assert!((final_norm - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_closed_form_2x2_and_hydrogenic_superposition_zero_allocations() {
+    let custom_h = QuantumOperator::new(DMatrix::from_row_slice(
+        2,
+        2,
+        &[
+            Complex::new(1.4, 0.0),
+            Complex::new(0.6, -0.8),
+            Complex::new(0.6, 0.8),
+            Complex::new(-0.9, 0.0),
+        ],
+    ));
+    let operators = [sigma_x(), sigma_y(), sigma_z(), custom_h];
+    let refs: Vec<QuantumOperator> = operators
+        .iter()
+        .map(|op| time_evolution_operator(op, 0.37, 1.1))
+        .collect();
+    let mut out = QuantumOperator::new(DMatrix::zeros(2, 2));
+
+    let mut studio = HydrogenicSuperposition3D::new(
+        OrbitalQuantumNumbers::new(1, 0, 0).expect("1s"),
+        OrbitalQuantumNumbers::new(2, 1, 0).expect("2pz"),
+        8,
+        8,
+        12.0,
+        0.05,
+    );
+    let mut grid = vec![0.0_f32; 8 * 8 * 8];
+
+    let n2s = OrbitalQuantumNumbers::new(2, 0, 0).expect("2s");
+    let n3d = OrbitalQuantumNumbers::new(3, 2, 1).expect("3d");
+
+    let (max_err, metrics) = {
+        let _guard = VERIFIED_LOCK.lock().expect("verified lock");
+        VerifiedEngine::run_verified(|| {
+            let mut worst = 0.0_f64;
+            for (op, expected) in operators.iter().zip(refs.iter()) {
+                assert!(time_evolution_operator_2x2_into(op, 0.37, 1.1, &mut out));
+                let err_sq: f64 = out
+                    .matrix
+                    .as_slice()
+                    .iter()
+                    .zip(expected.matrix.as_slice().iter())
+                    .map(|(a, b)| (*a - *b).norm_sqr())
+                    .sum();
+                worst = worst.max(err_sq.sqrt());
+            }
+            studio.reconfigure_basis(n2s, n3d, 8, 12.0, 1.0);
+            studio.set_superposition(0.35, 0.8);
+            studio.rebuild_propagator(0.08, 0.02);
+            studio.step_in_place();
+            studio.write_field_into(QuantumFieldObservable::ProbabilityDensity, &mut grid);
+            worst
+        })
+    };
+
+    assert!(metrics.function_calls > 0);
+    assert!(
+        max_err < 1e-13,
+        "Closed-form 2x2 propagator mismatch: {max_err}"
+    );
+    assert!(grid.iter().any(|&v| v > 0.0) && grid.iter().all(|v| v.is_finite()));
 }

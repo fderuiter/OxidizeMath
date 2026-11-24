@@ -313,6 +313,7 @@ impl SimulationFramework {
             domain: domain.to_string(),
             preset_dialog: crate::presets::PresetDialogState::default(),
             export_queue: super::ExportQueue::default(),
+            gif_job: None,
             last_valid_snapshot: None,
             baseline_tool_state: None,
             current_valid_plot_datasets: Vec::new(),
@@ -356,6 +357,7 @@ fn default_tool_priority(domain: &str, id: &str) -> u8 {
         | ("elliptic_curves", "WeierstrassPlaygroundTool")
         | ("clinical_trials", "PharmacokineticsTool")
         | ("epidemiology", "SirTool")
+        | ("biochemical", "BiochemicalDynamicsTool")
         | ("ai", "LossLandscapeTool") => 0,
         _ => 1,
     }

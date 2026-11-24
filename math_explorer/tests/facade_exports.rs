@@ -150,11 +150,13 @@ fn assert_pure_math_twenty_one_errors() {
         e::CopulaError::NotSymmetric.severity(),
         e::EloError::InvalidScale { value: 0.0 }.severity(),
         e::Glicko2Error::EmptyMatchResults.severity(),
+        e::GraphTheoryError::UnknownEndpoint { node: 7 }.severity(),
         e::MatchModelError::InvalidGoalRate { value: 0.0 }.severity(),
         e::AnalysisError::ConvergenceError(0.0).severity(),
         e::EllipticCurveError::InvalidDegree.severity(),
         e::EvolutionError::InvalidState.severity(),
         e::FractranError::InvalidFractionSyntax.severity(),
+        e::HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.severity(),
         e::OptimizationError::ConversionError.severity(),
         e::StochasticError::InvalidReactionIndex(1).severity(),
         e::TensorError::IndexOutOfBounds.severity(),
@@ -254,6 +256,10 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_twenty_one_erro
     .expect("valid Dixon-Coles params");
     assert!(dc.default_grid().expect("valid score grid").prob(0, 0) > 0.09);
     assert_pure_math_twenty_one_errors();
+
+    let graph_err = math_explorer::prelude::GraphTheoryError::UnknownEndpoint { node: 7 };
+    let facade_graph_err: math_explorer::prelude::Error = graph_err.clone().into();
+    assert_eq!(facade_graph_err.to_string(), graph_err.to_string());
 }
 
 #[cfg(feature = "ai")]
@@ -346,22 +352,33 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
 
 #[cfg(feature = "biology")]
 #[test]
-fn biology_facade_exports_all_three_errors_and_umbrella() {
+fn biology_facade_exports_all_four_errors_and_botanical_submodules() {
     use math_explorer::biology::error::HodgkinHuxleyError as InnerHhError;
+    use math_explorer::biology::lsystem::BotanicalLSystemPreset;
+    use math_explorer::biology::phyllotaxis::{GOLDEN_ANGLE_RAD, VogelPhyllotaxisEngine};
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
-        BiologyError, Error, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
+        BiologyError, BotanicalError, Error, HodgkinHuxleyError, KineticsError,
+        ReactionDiffusionError,
     };
 
     let e1 = HodgkinHuxleyError::InvalidGatingVariable(1.5);
     let e2 = InnerHhError::InvalidConductance(-0.2);
     let e3 = KineticsError::NegativeSubstrateConcentration;
     let e4 = ReactionDiffusionError::ZeroGridSize;
+    let e5 = BotanicalError::EmptyAxiom;
     assert_eq!(e1.severity(), Severity::Error);
     assert_eq!(e2.severity(), Severity::Error);
     assert_eq!(e3.severity(), Severity::Error);
     assert_eq!(e4.severity(), Severity::Error);
-    let _facade: Error = BiologyError::from(e3).into();
+    assert_eq!(e5.severity(), Severity::Error);
+    let _facade: Error = BiologyError::from(e5).into();
+
+    let vogel = VogelPhyllotaxisEngine::new(89, GOLDEN_ANGLE_RAD, 1.0).expect("valid Vogel");
+    assert!(vogel.analysis().is_fibonacci_pair);
+    let (_grammar, _cfg) = BotanicalLSystemPreset::HerbaceousShoot
+        .build_grammar(25.0, 0.78, 0.68)
+        .expect("valid L-system grammar");
 }
 
 #[cfg(feature = "climate")]
@@ -456,7 +473,7 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     feature = "physics"
 ))]
 #[test]
-fn all_fifty_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
+fn all_fifty_one_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
     umbrella_checks::verify_prelude_error_reexports();
     umbrella_checks::verify_bus_capture_and_zero_alloc_facade_result();
 }

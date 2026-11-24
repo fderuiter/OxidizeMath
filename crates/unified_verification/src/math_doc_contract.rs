@@ -188,6 +188,93 @@ pub(crate) fn audit_members_with_whitelist_and_cache(
     audit_members_in_root(&workspace_root, members, whitelist, cache)
 }
 
+struct StagedMathAuditCtx<'a> {
+    staged_rs_set: &'a HashSet<String>,
+    workspace_root: &'a Path,
+    bib_db: &'a BibtexDatabase,
+    whitelist: &'a VerificationWhitelist,
+}
+
+fn audit_single_staged_or_untouched_math_file(
+    path: &Path,
+    ctx: &StagedMathAuditCtx<'_>,
+    matched_keys: &mut HashSet<String>,
+    cache: &mut AstCache,
+) -> bool {
+    let file_str = lossy_slash_path(path);
+    if is_test_source_file(&file_str) {
+        return true;
+    }
+    let norm = file_str.trim_start_matches("./");
+    if ctx.staged_rs_set.contains(norm) {
+        let Some(ast) = cache.get_or_load_fs(path).and_then(|e| e.ast.as_ref()) else {
+            eprintln!("[!] Failed to parse Rust AST for {file_str}");
+            return false;
+        };
+        let violations = collect_file_violations(ast, ctx.workspace_root, ctx.bib_db);
+        evaluate_file_against_cap(&file_str, &violations, ctx.whitelist, matched_keys)
+    } else {
+        if let Some((key, _)) = lookup_file_cap(&file_str, ctx.whitelist) {
+            matched_keys.insert(key.to_string());
+        }
+        true
+    }
+}
+
+pub(crate) fn audit_staged_members_with_whitelist_and_cache(
+    members: &[&str],
+    staged_rs_set: &HashSet<String>,
+    audit_all_math_files: bool,
+    whitelist_path: &Path,
+    whitelist: &VerificationWhitelist,
+    cache: &mut AstCache,
+) -> bool {
+    if audit_all_math_files {
+        return audit_members_with_whitelist_and_cache(members, whitelist_path, whitelist, cache);
+    }
+    let workspace_root = resolve_workspace_root_for_whitelist(whitelist_path);
+    let math_members: Vec<&str> = members
+        .iter()
+        .copied()
+        .filter(|m| is_math_contract_member(m))
+        .collect();
+    if math_members.is_empty() {
+        return check_stale_or_non_math_caps(&[], whitelist, &HashSet::new());
+    }
+    let bib_db = match load_workspace_bib(&workspace_root) {
+        Ok(db) => db,
+        Err(err) => {
+            eprintln!("[!] {err}");
+            return false;
+        }
+    };
+
+    let ctx = StagedMathAuditCtx {
+        staged_rs_set,
+        workspace_root: &workspace_root,
+        bib_db: &bib_db,
+        whitelist,
+    };
+    let mut success = true;
+    let mut matched_keys = HashSet::new();
+    let mut audited_dirs = Vec::with_capacity(math_members.len());
+    for member in math_members {
+        let member_dir =
+            crate::manifest_cache::resolve_workspace_path_from(&workspace_root, member);
+        let src_dir = member_dir.join("src");
+        for path in crate::utils::collect_rs_files_filtered(&[&src_dir], &["target"]) {
+            if !audit_single_staged_or_untouched_math_file(&path, &ctx, &mut matched_keys, cache) {
+                success = false;
+            }
+        }
+        audited_dirs.push(member_dir);
+    }
+    if !check_stale_or_non_math_caps(&audited_dirs, whitelist, &matched_keys) {
+        success = false;
+    }
+    success
+}
+
 pub(crate) fn audit_members_in_root(
     workspace_root: &Path,
     members: &[&str],
