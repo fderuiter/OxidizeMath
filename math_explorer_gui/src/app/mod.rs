@@ -79,6 +79,8 @@ mod wasm_tests;
 pub use dataflow_bus::{DataflowStreamKind, PaneDataflowBus, PanePipelineDag};
 #[allow(unused_imports)]
 pub use domain_bar::AcademicDomain;
+#[cfg(all(feature = "physics", feature = "biology"))]
+pub use pane_ops::request_cross_tab_navigation;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use shared_json::SharedTabJson;
@@ -325,6 +327,7 @@ impl eframe::App for MathExplorerApp {
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
         self.render_global_starter_gallery(ctx);
         self.apply_command_palette_selection(ctx);
+        self.apply_cross_tab_navigation(ctx);
         crate::accessibility::sync_context_live_messages(ctx, false);
 
         self.last_frame_had_input =

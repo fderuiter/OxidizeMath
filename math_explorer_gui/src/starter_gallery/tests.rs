@@ -65,15 +65,22 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 94, "Expected 94 registered tools");
+    let has_vortex_morpho = cfg!(all(feature = "physics", feature = "biology"));
+    let expected_tools = 94 + usize::from(has_vortex_morpho);
+    assert_eq!(
+        tools.len(),
+        expected_tools,
+        "Expected {expected_tools} registered tools"
+    );
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
+    let expected_presets = 163 + 4 * usize::from(has_vortex_morpho);
     assert_eq!(
         presets.len(),
-        163,
-        "Expected 163 registered starter presets"
+        expected_presets,
+        "Expected {expected_presets} registered starter presets"
     );
 
     for tool in &tools {
@@ -232,10 +239,12 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
+    let expected_presets =
+        163 + 4 * usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(
         presets.len(),
-        163,
-        "Expected 163 StarterPresetMetadata entries"
+        expected_presets,
+        "Expected {expected_presets} StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -257,7 +266,12 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(tools.len(), 94, "Expected 94 InteractiveTool registrations");
+    let expected_tools = 94 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
+    assert_eq!(
+        tools.len(),
+        expected_tools,
+        "Expected {expected_tools} InteractiveTool registrations"
+    );
 
     for tool_meta in tools {
         let default_tool = (tool_meta.build)();

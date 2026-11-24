@@ -89,6 +89,27 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
         self.macroscopic_and_collision();
     }
 
+    /// Applies a zero-gradient convective outlet on the right boundary (`x = width - 1`)
+    /// so channel wakes exit smoothly without periodic wrap-around reflections.
+    #[verified_engine::verified]
+    pub fn apply_open_outlet(&mut self) {
+        let w = self.state.width;
+        let h = self.state.height;
+        if w < 2 {
+            return;
+        }
+        let last = w - 1;
+        let prev = w - 2;
+        for y in 0..h {
+            if !self.state.obstacles[(y, last)] && !self.state.obstacles[(y, prev)] {
+                self.state.f[(y, last)] = self.state.f[(y, prev)];
+                self.state.rho[(y, last)] = self.state.rho[(y, prev)];
+                self.state.ux[(y, last)] = self.state.ux[(y, prev)];
+                self.state.uy[(y, last)] = self.state.uy[(y, prev)];
+            }
+        }
+    }
+
     /// Fused Macroscopic + Collision step.
     ///
     /// # Performance

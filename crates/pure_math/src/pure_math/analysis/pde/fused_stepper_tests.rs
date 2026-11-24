@@ -6,6 +6,7 @@ use super::*;
 fn test_stencil_operators_precomputation() {
     let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.25));
     assert!((ops.inv_dx - 2.0).abs() < 1e-12);
+    assert!((ops.inv_dy - 4.0).abs() < 1e-12);
     assert!((ops.inv_two_dx - 1.0).abs() < 1e-12);
     assert!((ops.inv_dx_sq - 4.0).abs() < 1e-12);
     assert!((ops.inv_dy_sq - 16.0).abs() < 1e-12);
@@ -18,6 +19,7 @@ fn test_stencil_operators_precomputation() {
 
     let ops_1d = StencilOperators::new(StepSize(2.0));
     assert!((ops_1d.inv_dx - 0.5).abs() < 1e-12);
+    assert!((ops_1d.inv_dy - 1.0).abs() < 1e-12);
     assert!((ops_1d.inv_two_dx - 0.25).abs() < 1e-12);
     assert!((ops_1d.inv_dx_sq - 0.25).abs() < 1e-12);
     assert!((ops_1d.inv_dy_sq - 1.0).abs() < 1e-12);
@@ -61,4 +63,16 @@ fn test_stencil_operator_evaluations() {
     let flux_neg = ops.upwind_flux(-2.0, 1.0, 3.0, 5.0);
     let flux_neg_expected = (5.0 * (-2.0) - 3.0 * (-2.0)) / dx;
     assert!((flux_neg - flux_neg_expected).abs() < 1e-12);
+
+    let up2d_pos = ops.upwind_2d((0.5, 0.25), 4.0, 1.0, 9.0, 2.0, 8.0);
+    let expected_pos = 0.5 * (4.0 - 1.0) / dx + 0.25 * (4.0 - 2.0) / dy;
+    assert!((up2d_pos - expected_pos).abs() < 1e-12);
+
+    let up2d_neg = ops.upwind_2d((-0.5, -0.25), 4.0, 1.0, 9.0, 2.0, 8.0);
+    let expected_neg = -0.5 * (9.0 - 4.0) / dx + (-0.25) * (8.0 - 4.0) / dy;
+    assert!((up2d_neg - expected_neg).abs() < 1e-12);
+
+    let dt = 0.08;
+    let next_spike = 1.0 - dt * ops.upwind_2d((0.5, -0.25), 1.0, 0.0, 0.0, 0.0, 0.0);
+    assert!(next_spike >= 0.0 && (next_spike - 0.75).abs() < 1e-12);
 }

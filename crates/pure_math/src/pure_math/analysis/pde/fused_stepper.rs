@@ -29,6 +29,8 @@ pub struct StencilOperators {
     pub dz: StepSize,
     #[allow(missing_docs)]
     pub inv_dx: f64,
+    /// Precomputed reciprocal vertical grid spacing $1 / \Delta y$.
+    pub inv_dy: f64,
     #[allow(missing_docs)]
     pub inv_two_dx: f64,
     #[allow(missing_docs)]
@@ -77,6 +79,7 @@ impl StencilOperators {
             }
         }
         let inv_dx = 1.0 / *dx;
+        let inv_dy = 1.0 / *dy;
         let inv_two_dx = 1.0 / (2.0 * *dx);
         let inv_dx_sq = 1.0 / (*dx * *dx);
         let inv_dy_sq = 1.0 / (*dy * *dy);
@@ -86,6 +89,7 @@ impl StencilOperators {
             dy,
             dz,
             inv_dx,
+            inv_dy,
             inv_two_dx,
             inv_dx_sq,
             inv_dy_sq,
@@ -178,6 +182,35 @@ impl StencilOperators {
         } else {
             (next * v - curr * v) * self.inv_dx
         }
+    }
+
+    /// Positivity-preserving 2D first-order upwind advective operator (`u_x * dc/dx + u_y * dc/dy`).
+    ///
+    /// Subtracting `dt * ops.upwind_2d((ux, uy), curr, left, right, up, down)` in forward-Euler
+    /// transport preserves non-negativity whenever `|ux| * dt * inv_dx + |uy| * dt * inv_dy <= 1.0`.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn upwind_2d(
+        &self,
+        velocity: (f64, f64),
+        curr: f64,
+        left: f64,
+        right: f64,
+        up: f64,
+        down: f64,
+    ) -> f64 {
+        let (ux, uy) = velocity;
+        let adv_x = if ux >= 0.0 {
+            ux * (curr - left) * self.inv_dx
+        } else {
+            ux * (right - curr) * self.inv_dx
+        };
+        let adv_y = if uy >= 0.0 {
+            uy * (curr - up) * self.inv_dy
+        } else {
+            uy * (down - curr) * self.inv_dy
+        };
+        adv_x + adv_y
     }
 }
 

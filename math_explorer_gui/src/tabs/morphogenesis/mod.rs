@@ -22,6 +22,8 @@ pub mod sculpt;
 mod seeding;
 pub mod tool;
 pub mod ui;
+#[cfg(all(feature = "physics", feature = "biology"))]
+pub mod vortex;
 
 #[cfg(test)]
 pub use atlas::{
@@ -64,7 +66,7 @@ pub struct LegacyMorphoState {
     pub pending_initial_start: bool,
 }
 
-/// Biology tab hosting [`MorphogenesisTool`] and [`lenia::LeniaTool`] inside [`crate::framework::SimulationFramework`].
+/// Biology tab hosting [`MorphogenesisTool`], [`lenia::LeniaTool`], [`phyllotaxis_lsystem::PhyllotaxisLSystemTool`], and (when `physics` + `biology` are enabled) [`vortex::VortexMorphogenesisTool`] inside [`crate::framework::SimulationFramework`].
 pub struct MorphogenesisTab {
     /// Underlying simulation framework managing exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,

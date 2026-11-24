@@ -27,7 +27,7 @@ pub trait ReactionKinetics<const N: usize = 2> {
 /// - $a$: Production rate of the activator.
 /// - $b$: Production rate of the inhibitor.
 /// - $u^2 v$: Non-linear autocatalysis term (Activator requires Inhibitor to grow, but consumes it).
-#[derive(Debug, Clone, Copy, Theory)]
+#[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "Schnakenberg kinetics (often used for Turing patterns).",
     citation = "Schnakenberg, J. (1979). Simple chemical reaction systems with limit cycle behaviour. Journal of theoretical biology, 81(3), 389-400."
@@ -122,6 +122,17 @@ impl ReactionModel for SchnakenbergKinetics {
 /// Where:
 /// - $f$: Dimensionless feed rate replenishing substrate $u$.
 /// - $k$: Dimensionless kill rate removing autocatalyst $v$.
+///
+/// # Examples
+///
+/// ```rust
+/// # use domain_biology::__doctest_facade as math_explorer;
+/// use math_explorer::biology::morphogenesis::{GrayScottKinetics, ReactionKinetics};
+///
+/// let gs = GrayScottKinetics::new(0.037, 0.060);
+/// let [du, dv] = gs.reaction([0.5, 0.25]);
+/// assert!(du.is_finite() && dv.is_finite());
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "Gray-Scott autocatalytic reaction kinetics generating spot mitosis and coral morphologies.",

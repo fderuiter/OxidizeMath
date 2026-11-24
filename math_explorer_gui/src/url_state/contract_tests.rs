@@ -151,10 +151,11 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
 fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
+    let expected_tools = 94 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(
         tools.len(),
-        94,
-        "Expected all 94 registered InteractiveTools"
+        expected_tools,
+        "Expected all {expected_tools} registered InteractiveTools"
     );
 
     let mut source_app = MathExplorerApp::default();
@@ -214,10 +215,12 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
+    let expected_presets =
+        163 + 4 * usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(
         presets.len(),
-        163,
-        "Expected all 163 StarterPresetMetadata entries"
+        expected_presets,
+        "Expected all {expected_presets} StarterPresetMetadata entries"
     );
 
     for preset in presets {

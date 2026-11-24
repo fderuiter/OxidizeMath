@@ -207,20 +207,8 @@ pub fn inject_velocity_jet<C: CollisionModel<9, D2Q9>>(
 pub fn apply_outflow_right_boundary<C: CollisionModel<9, D2Q9>>(
     solver: &mut LatticeBoltzmannD2Q9<C>,
 ) {
-    let width = solver.width();
-    let height = solver.height();
-    if width < 3 {
-        return;
-    }
-    let src_x = width - 2;
-    let dst_x = width - 1;
-    for y in 0..height {
-        if !solver.state.obstacles[(y, dst_x)] && !solver.state.obstacles[(y, src_x)] {
-            solver.state.f[(y, dst_x)] = solver.state.f[(y, src_x)];
-            solver.state.rho[(y, dst_x)] = solver.state.rho[(y, src_x)];
-            solver.state.ux[(y, dst_x)] = solver.state.ux[(y, src_x)];
-            solver.state.uy[(y, dst_x)] = solver.state.uy[(y, src_x)];
-        }
+    if solver.width() >= 3 {
+        solver.apply_open_outlet();
     }
 }
 

@@ -18,7 +18,7 @@ By formalizing biological dynamics into clean, verified Rust algorithms, the cra
 - **`phyllotaxis`**: Pre-allocated Vogel planar phyllotaxis (`VogelPhyllotaxisEngine`, $r_n = c\sqrt{n}, \theta_n = n\alpha$ up to $4{,}096$ primordia) and opposing Fibonacci $(F_k, F_{k+1})$ parastichy spiral analysis.
 - **`lenia`**: Spectral 2D Lenia continuous cellular automata (`LeniaEngine`, concentric-ring `KernelShells`, Gaussian growth curves, and `Orbium` / `Geminium` / `Hydrogeminium` / `Scutium` solitons).
 - **`evolution`**: Evolutionary game theory (`HawkDovePopulation`), replicator dynamics, and Evolutionarily Stable Strategy ($p^* = V / C$) equilibria.
-- **`diffusion`**: 1D, 2D, and 3D finite-difference Fickian diffusion operators (`FiniteDifference1D`, `FiniteDifference2D`, `FiniteDifference3D`) and curved-surface Riemannian diffusion (`LaplaceBeltramiDiffusion2D`).
+- **`diffusion`**: 1D, 2D, and 3D finite-difference Fickian diffusion operators (`FiniteDifference1D`, `FiniteDifference2D`, `FiniteDifference3D`), obstacle-masked upwind advective-diffusive transport (`AdvectionField2D`), and curved-surface Riemannian diffusion (`LaplaceBeltramiDiffusion2D`).
 
 ---
 
