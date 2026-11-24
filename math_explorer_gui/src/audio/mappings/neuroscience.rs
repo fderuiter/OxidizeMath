@@ -1,7 +1,5 @@
 //! Neuroscience sonification mappings: Hodgkin-Huxley, Spike Analysis, and 5-Neuron Ring.
 
-// theory_verification!
-
 use std::f64::consts::TAU;
 
 use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};

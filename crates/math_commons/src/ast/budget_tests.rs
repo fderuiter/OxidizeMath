@@ -1,4 +1,4 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
+// [cite:math_commons]
 
 use super::{
     BinaryOp, EvalError, Expr, Func, MAX_AST_NODES, MAX_EXPR_BYTES, MAX_EXPR_TOKENS,

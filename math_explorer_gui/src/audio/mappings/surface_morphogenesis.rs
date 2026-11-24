@@ -1,7 +1,5 @@
 //! Surface morphogenesis sonification mapping morphogen spatial variance and mean-curvature buckling shifts.
 
-// theory_verification!
-
 use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};
 
 /// Maps surface morphogen spatial variance, activator mean, mean-curvature shift, and buckling RMS

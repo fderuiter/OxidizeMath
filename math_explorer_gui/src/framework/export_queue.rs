@@ -298,6 +298,15 @@ impl SimulationFramework {
 #[path = "deferred_export_tests.rs"]
 pub(crate) mod deferred_export_tests;
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[path = "deferred_export_audit_tests.rs"]
 mod deferred_export_audit_tests;

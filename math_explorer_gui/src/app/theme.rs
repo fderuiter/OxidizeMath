@@ -157,7 +157,6 @@ pub const fn resolve_startup_theme(
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn media_query_matches(window: &web_sys::Window, query: &str) -> bool {
     window
         .match_media(query)
@@ -167,7 +166,6 @@ fn media_query_matches(window: &web_sys::Window, query: &str) -> bool {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn query_browser_media_flags() -> (bool, bool, bool) {
     if let Some(window) = web_sys::window() {
         (
@@ -199,7 +197,6 @@ pub fn detect_startup_theme(cc: &eframe::CreationContext<'_>) -> ThemeMode {
 
 /// Synchronizes `html[data-theme]`, `color-scheme`, and `<meta name="theme-color">` on `wasm32`.
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 pub fn sync_document_theme(theme: ThemeMode) {
     use wasm_bindgen::JsCast;
 
