@@ -1,5 +1,7 @@
 //! # Favoritism
 //!
+//! **Maturity Tier:** `[EXP] Experimental` — satirical socio-mathematical model; fluid API evolution permitted.
+//!
 //! A **satirical** yet mathematically rigorous framework for quantifying parental affection.
 //!
 //! This module implements the "Unified Favoritism Theory" (UFT), which postulates that

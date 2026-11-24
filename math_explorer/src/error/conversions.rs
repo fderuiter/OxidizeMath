@@ -114,6 +114,7 @@ impl_error_from!(@cfg "pure_math":
     PoissonError => Poisson,
     QueueingError => Queueing,
     StochasticError => Stochastic,
+    Su11HyperbolicError => Su11Hyperbolic,
     TdaError => Tda,
     TensorError => Tensor,
     TransformError => Transform,

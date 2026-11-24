@@ -2468,6 +2468,7 @@ dependencies = [
  "num-traits",
  "oxidize_core",
  "rand_core",
+ "scientific_metadata",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -3196,6 +3197,7 @@ dependencies = [
  "proc-macro2",
  "rand",
  "rand_chacha",
+ "scientific_metadata",
  "serde",
  "syn 2.0.119",
  "toml",
@@ -3436,6 +3438,7 @@ dependencies = [
  "rand",
  "rand_distr",
  "rustfft",
+ "scientific_metadata",
  "serde",
  "serde_json",
  "statrs",

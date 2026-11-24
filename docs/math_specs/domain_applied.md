@@ -50,7 +50,7 @@ $$
 C(t) = \frac{F D k_a}{V_d (k_a - k_e)}\bigl(e^{-k_e t} - e^{-k_a t}\bigr), \qquad \frac{\partial n}{\partial t} + \frac{\partial n}{\partial a} = -\bigl(\mu_0 + c\,C(t)\bigr) n(a, t)
 $$
 
-Hierarchical clinical pair comparisons (`BivariateWeibullModel`) estimate the Pocock win ratio $W_R = N_{\text{win}} / N_{\text{loss}}$, `UnifiedFavoritismModel` evaluates asymmetric resource allocation, and Marching Cubes extracts watertight level sets $\{x \in \Omega : \phi(x) = \phi_0\}$.
+Hierarchical clinical pair comparisons (`BivariateWeibullModel`) estimate the Pocock win ratio $W_R = N_{\text{win}} / N_{\text{loss}}$, `UnifiedFavoritismModel` and `FavoritismInputs` evaluate quadrature-normalized asymmetric resource allocation, and Marching Cubes extracts watertight level sets $\{x \in \Omega : \phi(x) = \phi_0\}$.
 
 ### Citations
 

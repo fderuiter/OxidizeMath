@@ -1,3 +1,7 @@
+//! Generic state-dynamics-solver ODE facade (`OdeModel`).
+//!
+//! **Maturity Tier:** `[CERT] Certified` — verified zero-allocation time-stepping contract and SemVer signature lock.
+
 use super::stepper::TimeStepper;
 use super::traits::{OdeSystem, Solver, VectorOperations};
 use verified_engine::Theory;
@@ -24,7 +28,8 @@ use verified_engine::Theory;
 #[derive(Debug, Clone, Theory)]
 #[theory(
     description = "An Ordinary Differential Equation (ODE) model encapsulates a dynamical system's state, its governing differential equations, and a numerical solver to simulate its evolution over time.",
-    citation = "Numerical Recipes: The Art of Scientific Computing (Press et al., 2007)"
+    citation = "Numerical Recipes: The Art of Scientific Computing (Press et al., 2007)",
+    maturity = "Certified"
 )]
 pub struct OdeModel<State, Dynamics, S> {
     /// The current state of the system.

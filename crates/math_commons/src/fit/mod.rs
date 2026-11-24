@@ -1,5 +1,8 @@
 //! Zero-allocation polynomial and nonlinear least-squares curve-fitting solvers (`fit`).
 //!
+//! **Maturity Tier:** `[CERT] Certified` — stack-allocated solver buffers, deterministic
+//! `theory_verification!` contracts, `VerifiedAllocator` zero-heap-allocation proofs, and SemVer lock.
+//!
 //! Exposes canonical [`crate::fit::FitModel`] presets (degrees 1–4 polynomial OLS plus Exponential,
 //! Power-Law, Logarithmic, Logistic, and Sinusoidal damped Levenberg-Marquardt regression)
 //! backed by fixed stack buffers and typed [`crate::error::FitError`] diagnostics.
@@ -154,6 +157,35 @@ impl FitModel {
 impl core::fmt::Display for FitModel {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.label())
+    }
+}
+
+#[cfg(feature = "std")]
+impl scientific_metadata::theory::TheoryDescribable for FitModel {
+    fn theory_description(&self) -> String {
+        format!(
+            "Zero-allocation least-squares curve solver preset: {}",
+            self.label()
+        )
+    }
+
+    fn phonetic_description(&self) -> String {
+        format!("Zero allocation curve solver {}", self.short_label())
+    }
+
+    fn theory_citation(&self) -> String {
+        "Levenberg (1944); Marquardt (1963); Press et al. (2007), Numerical Recipes, Ch. 15."
+            .to_string()
+    }
+
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("default".to_string(), self.label().to_string());
+        map
+    }
+
+    fn maturity_tier(&self) -> scientific_metadata::theory::MaturityTier {
+        scientific_metadata::theory::MaturityTier::Certified
     }
 }
 

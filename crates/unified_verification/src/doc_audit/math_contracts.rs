@@ -77,6 +77,12 @@ const EXPLICIT_MATH_TYPES: &[&str] = &[
     "HamiltonianRayTracer",
     "EikonalRaySystem",
     "GaussianCopula",
+    "PotentialTracerSystem",
+    "Su11Matrix",
+    "HyperbolicBilliardSystem",
+    "IsotonicCalibrator",
+    "PlattScaler",
+    "TemperatureScaler",
 ];
 
 /// Audits all `11` mathematical and solver crates present in `members` using the shared single-pass `AstCache`.

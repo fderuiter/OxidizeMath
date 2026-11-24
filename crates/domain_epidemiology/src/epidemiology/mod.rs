@@ -88,4 +88,25 @@ pub use crate::error;
 // [cite:graph_parameters_rust]
 
 use pure_math::theory_verification;
-theory_verification!(module = "epidemiology", constants = {}, test = {});
+theory_verification!(
+    module = "epidemiology",
+    constants = {
+        POPULATION_N = 1000.0;
+        INITIAL_I0 = 10.0;
+        BETA = 0.5;
+        GAMMA = 0.1;
+    },
+    test = {
+        let mut model =
+            SIRModel::new(POPULATION_N, INITIAL_I0, BETA, GAMMA).expect("valid SIR parameters");
+        let r0 = compartmental::basic_reproduction_number(BETA, GAMMA);
+        assert!((r0 - 5.0).abs() < 1e-12);
+        for _ in 0..100 {
+            model.step(0.05);
+        }
+        let st = model.state();
+        assert!((st.s + st.i + st.r - POPULATION_N).abs() < 1e-9);
+        assert!(st.i > INITIAL_I0);
+        assert!(st.r > 0.0);
+    }
+);

@@ -393,6 +393,7 @@ pub use crate::pure_math::{
         evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
         stochastic::StochasticError, transforms::TransformError,
     },
+    differential_geometry::hyperbolic::Su11HyperbolicError,
     elliptic_curves::EllipticCurveError,
     graph_theory::GraphTheoryError,
     hyperbolic::HyperbolicError,

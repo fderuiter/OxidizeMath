@@ -1,10 +1,15 @@
-//! Self-calibration module for AI models.
+//! Label-free LLM self-consistency and self-distillation module (`self_calibration_paper.tex`).
 //!
-//! This module contains functionality for:
-//! - Defining response types.
-//! - Calculating soft self-consistency scores.
-//! - Temperature scaling based on answer entropy.
-//! - Training via KL divergence loss.
+//! This module implements unlabeled answer-cluster aggregation:
+//! - Defining sampled response types ([`types`]).
+//! - Calculating soft self-consistency cluster scores ([`scoring`]).
+//! - Entropy-based label-free temperature heuristics alongside re-exported supervised
+//!   [`temperature::TemperatureScaler`] ([`temperature`]).
+//! - Self-distillation training via KL divergence loss ([`training`]).
+//!
+//! For supervised proper scoring rules (`brier_score`, Murphy decomposition, `log_loss`, `CRPS`),
+//! `ECE`/`MCE` reliability curves, `ROC`/`PR-AUC`, and Platt or `PAVA` isotonic recalibrators,
+//! see [`crate::ai::calibration`].
 
 /// Soft self-consistency agreement scoring across sampled responses.
 pub mod scoring;

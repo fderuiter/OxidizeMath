@@ -49,6 +49,9 @@ pub(crate) fn run_batch_ast_with_caches(
     if !run_traceability_with_cache(false, cache) {
         passed = false;
     }
+    if !crate::maturity::check_maturity_with_cache(cache) {
+        passed = false;
+    }
     if !print_debt_items(crate::entropy_guard::check_entropy_with_cache(&[], cache)) {
         passed = false;
     }
@@ -163,6 +166,7 @@ pub(crate) fn is_root_escalation_path(path: &str) -> bool {
         path,
         "Cargo.toml"
             | "Cargo.lock"
+            | "traceability.toml"
             | "rust-toolchain.toml"
             | "rust-toolchain"
             | ".clippy.toml"

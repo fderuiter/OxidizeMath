@@ -149,8 +149,8 @@ fn test_math_contract_audits_extracted_engine_crates_steppers_and_dimension_suff
     let dir = TempTestDir::new("math_contract_extracted_engines");
     let linalg_src = "/// Missing contract.\npub fn lu_solve() {}\n";
     let pde_src = "/// Missing contract.\npub struct SemiImplicitFourierStepper;\n";
-    let phys_src = "/// Missing contract.\npub struct KpzModel1D;\n";
-    let fin_src = "/// Missing contract.\npub struct GaussianCopula;\n/// Missing contract.\npub fn black_scholes_merton() {}\n/// Missing contract.\npub fn parametric_lognormal_tail_risk() {}\n";
+    let phys_src = "/// Missing contract.\npub struct KpzModel1D;\n/// Missing contract.\npub struct PotentialTracerSystem;\n";
+    let fin_src = "/// Missing contract.\npub struct GaussianCopula;\n/// Missing contract.\npub struct Su11Matrix;\n/// Missing contract.\npub struct HyperbolicBilliardSystem;\n/// Missing contract.\npub struct IsotonicCalibrator;\n/// Missing contract.\npub struct PlattScaler;\n/// Missing contract.\npub struct TemperatureScaler;\n/// Missing contract.\npub fn black_scholes_merton() {}\n/// Missing contract.\npub fn parametric_lognormal_tail_risk() {}\n";
 
     let mut members = Vec::new();
     members.extend(setup_math_crate(
@@ -164,27 +164,24 @@ fn test_math_contract_audits_extracted_engine_crates_steppers_and_dimension_suff
 
     let mut cache = AstCache::new();
     let violations = audit_math_contracts_with_cache(&dir, &members, &mut cache);
-    assert_eq!(violations.len(), 6, "Got: {violations:?}");
-    assert!(violations.iter().any(|v| v.contains("fn lu_solve")));
-    assert!(
-        violations
-            .iter()
-            .any(|v| v.contains("struct SemiImplicitFourierStepper"))
-    );
-    assert!(violations.iter().any(|v| v.contains("struct KpzModel1D")));
-    assert!(
-        violations
-            .iter()
-            .any(|v| v.contains("struct GaussianCopula"))
-    );
-    assert!(
-        violations
-            .iter()
-            .any(|v| v.contains("fn black_scholes_merton"))
-    );
-    assert!(
-        violations
-            .iter()
-            .any(|v| v.contains("fn parametric_lognormal_tail_risk"))
-    );
+    assert_eq!(violations.len(), 12, "Got: {violations:?}");
+    for expected in [
+        "fn lu_solve",
+        "struct SemiImplicitFourierStepper",
+        "struct KpzModel1D",
+        "struct PotentialTracerSystem",
+        "struct GaussianCopula",
+        "struct Su11Matrix",
+        "struct HyperbolicBilliardSystem",
+        "struct IsotonicCalibrator",
+        "struct PlattScaler",
+        "struct TemperatureScaler",
+        "fn black_scholes_merton",
+        "fn parametric_lognormal_tail_risk",
+    ] {
+        assert!(
+            violations.iter().any(|v| v.contains(expected)),
+            "Missing {expected} in {violations:?}"
+        );
+    }
 }

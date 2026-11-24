@@ -263,17 +263,25 @@ fn test_ast_visitor_counts_exact_macro_assertions_without_max3_padding() {
     assert_eq!(real_visitor.verified_asserts, 3);
     assert_eq!(real_visitor.total_asserts, 3);
 
-    // Live workspace regression: crates/pure_math/src/pure_math/mod.rs empty test = {} contributes 0 assertions
+    // Live workspace regressions: Experimental climate/mod.rs empty test = {} -> 0; Certified pure_math/mod.rs -> 4
     let ws_root = crate::workspace::find_workspace_root().expect("workspace root");
+    let climate_mod =
+        std::fs::read_to_string(ws_root.join("crates/domain_climate/src/climate/mod.rs"))
+            .expect("read climate/mod.rs");
+    let mut climate_visitor = AstVisitor::default();
+    climate_visitor.visit_file(&syn::parse_file(&climate_mod).unwrap());
+    assert_eq!(climate_visitor.verified_funcs, 1);
+    assert_eq!(climate_visitor.verified_asserts, 0);
+    assert_eq!(climate_visitor.total_asserts, 0);
+
     let pure_math_mod =
         std::fs::read_to_string(ws_root.join("crates/pure_math/src/pure_math/mod.rs"))
             .expect("read pure_math/mod.rs");
-    let pure_math_ast = syn::parse_file(&pure_math_mod).unwrap();
     let mut pure_math_visitor = AstVisitor::default();
-    pure_math_visitor.visit_file(&pure_math_ast);
+    pure_math_visitor.visit_file(&syn::parse_file(&pure_math_mod).unwrap());
     assert_eq!(pure_math_visitor.verified_funcs, 1);
-    assert_eq!(pure_math_visitor.verified_asserts, 0);
-    assert_eq!(pure_math_visitor.total_asserts, 0);
+    assert_eq!(pure_math_visitor.verified_asserts, 4);
+    assert_eq!(pure_math_visitor.total_asserts, 4);
 }
 
 #[test]
