@@ -1,0 +1,111 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath, amssymb}
+\usepackage{geometry}
+\usepackage{accessibility}
+
+\geometry{margin=1in}
+
+\title{Multi-Scale Zero-Allocation Computational Biology Kernels in Rust: Botanical Morphogenesis, Enzyme Kinetics, Reaction--Diffusion, Excitable Media, and Evolutionary Dynamics}
+\author{OxidizeMath Project}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present the mathematical foundations and zero-heap-allocation software architecture of the \texttt{domain\_biology} crate in OxidizeMath. Spanning molecular catalysis, tissue-scale chemical morphogenesis, botanical organogenesis, excitable neural membranes, and population-level evolutionary game theory, every hot simulation step executes inside pre-allocated arenas or stack buffers audited under \texttt{VerifiedAllocator} (NASA Power of 10 Rule 3). Specifically, we formulate (i) Michaelis--Menten and cooperative Hill enzyme kinetics coupled to multi-species Fickian reaction--diffusion with stack-allocated batch evaluation; (ii) Gray--Scott activator--substrate morphogenesis and spectral Lenia continuous cellular automata; (iii) Vogel spiral phyllotaxis with Fibonacci $(F_k, F_{k+1})$ parastichy topology alongside double-buffered D0L and parametric Lindenmayer systems; (iv) Hodgkin--Huxley four-variable conductances; and (v) Maynard Smith--Price Hawk--Dove replicator dynamics with closed-form Evolutionarily Stable Strategies (ESS).
+\end{abstract}
+
+\section{Molecular Enzyme Kinetics and Allosteric Cooperativity}
+
+Under the Briggs--Haldane quasi-steady-state approximation for $E + S \rightleftharpoons ES \rightarrow E + P$, the reaction velocity $v = d[P]/dt$ as a function of non-negative substrate concentration $[S] \ge 0$ follows the Michaelis--Menten law \cite{michaelis1913kinetik}:
+\begin{equation}
+v([S]) = \frac{V_{\max} [S]}{K_m + [S]},
+\label{eq:michaelis_menten}
+\end{equation}
+where $V_{\max} > 0$ denotes maximal catalytic turnover at saturating substrate and $K_m > 0$ is the substrate concentration at half-maximal velocity $v(K_m) = V_{\max}/2$.
+
+Multimeric allosteric enzymes and oxygen-binding proteins such as hemoglobin exhibit cooperative ligand binding modeled by the Hill equation \cite{hill1910possible}:
+\begin{equation}
+v([S]) = \frac{V_{\max} [S]^n}{K_m^n + [S]^n},
+\label{eq:hill}
+\end{equation}
+with Hill coefficient $n > 0$. For $n = 1$, Eq.~\eqref{eq:hill} reduces identically to Eq.~\eqref{eq:michaelis_menten}; for $n > 1$ (positive cooperativity), $v([S])$ acquires an inflection point and sigmoidal ultrasensitivity around $[S] = K_m$; for $0 < n < 1$ (negative cooperativity), saturation broadens across concentration decades. Both \texttt{MichaelisMenten} and \texttt{HillKinetics} implement \texttt{KineticsModel} with strict positivity and non-negativity guards returning typed \texttt{KineticsError} diagnostics.
+
+\section{Zero-Allocation Multi-Species Reaction--Diffusion}
+
+Let $\mathbf{u}(x, t) = (u_1(x, t), \dots, u_S(x, t))^\top \in \mathbb{R}^S$ denote $S$ interacting chemical concentrations on a discrete 1D or 3D spatial domain with diffusivities $D_s \ge 0$ and local reaction vector $\mathbf{R}(\mathbf{u})$:
+\begin{equation}
+\frac{\partial u_s}{\partial t} = D_s \nabla^2 u_s + R_s(\mathbf{u}), \qquad s \in \{1, \dots, S\}.
+\label{eq:reaction_diffusion}
+\end{equation}
+In \texttt{domain\_biology::biology::diffusion} and \texttt{reaction\_diffusion}, second-order central finite-difference stencils evaluate $\nabla^2 u_s$ with periodic or Neumann boundary conditions under explicit forward-Euler stability bounds $\Delta t \le \Delta x^2 / (2 d \max_s D_s)$ in dimension $d \in \{1, 2, 3\}$.
+
+To guarantee zero dynamic heap allocations during \texttt{ReactionDiffusionSystem::step}, \texttt{ReactionModel::add\_reaction\_batch} stages per-node concentrations and local reaction increments into stack-allocated fixed arrays \texttt{[f64; 16]} whenever $S \le 16$, eliminating per-node \texttt{Vec<f64>} allocations across arbitrary custom \texttt{ReactionModel} implementations such as \texttt{HillSubstrateReaction}:
+\begin{equation}
+R_a(a, s) = s \frac{V_{\max} a^n}{K_m^n + a^n} - k_{\text{deg}} a, \qquad
+R_s(a, s) = f (1 - s) - s \frac{V_{\max} a^n}{K_m^n + a^n}.
+\end{equation}
+
+\section{Turing--Gray--Scott Morphogenesis and Spectral Lenia}
+
+Self-organized biological pattern formation \cite{turing1952chemical, pearson1993complex} is realized in two complementary 2D studios. First, the Gray--Scott reaction--diffusion system evolves an inhibitor/substrate $U$ and autocatalytic activator $V$ via $U + 2V \rightarrow 3V$ and $V \rightarrow P$:
+\begin{equation}
+\frac{\partial U}{\partial t} = D_u \nabla^2 U - U V^2 + F(1 - U), \qquad
+\frac{\partial V}{\partial t} = D_v \nabla^2 V + U V^2 - (F + k) V,
+\end{equation}
+generating mitosis spots, coral labyrinths, and solitons across $(F, k)$ parameter space. Second, \texttt{LeniaEngine} \cite{chan2019lenia} advances a continuous state field $A(\mathbf{x}, t) \in [0, 1]$ on a periodic $N \times N$ torus via FFT-accelerated radially symmetric ring convolution $U = K * A$ and Gaussian growth mapping $G(U) = 2 \exp\!\left(-(U - \mu)^2 / (2\sigma^2)\right) - 1$:
+\begin{equation}
+A(\mathbf{x}, t + \Delta t) = \operatorname{clamp}_{[0, 1]}\!\left(A(\mathbf{x}, t) + \Delta t \, G\big(\mathcal{F}^{-1}[\hat{K} \odot \hat{A}](\mathbf{x})\big)\right),
+\end{equation}
+using pre-allocated scratch buffers so each spectral step performs zero heap allocations.
+
+\section{Botanical Morphogenesis: Phyllotaxis and Lindenmayer Systems}
+
+\subsection{Vogel Spiral Phyllotaxis and Fibonacci Parastichies}
+
+Primordia emerging sequentially at a shoot apical meristem are modeled in polar coordinates by Vogel's disk packing law \cite{vogel1979better} for index $n \in \{0, 1, \dots, N-1\}$ ($N \le 4{,}096$):
+\begin{equation}
+r_n = c \sqrt{n}, \qquad \theta_n = n \alpha \pmod{2\pi}, \qquad (x_n, y_n) = (r_n \cos\theta_n, r_n \sin\theta_n),
+\label{eq:vogel}
+\end{equation}
+where $c > 0$ sets the plastochrone radial scale so each primordium occupies uniform area $\pi c^2$, and $\alpha$ is the divergence angle. When $\alpha$ equals the golden angle
+\begin{equation}
+\alpha_{\varphi} = 2\pi \left(1 - \frac{1}{\varphi}\right) = \frac{2\pi}{\varphi^2} \approx 137.507764^\circ, \qquad \varphi = \frac{1 + \sqrt{5}}{2},
+\end{equation}
+the continued-fraction convergents $F_{k-2}/F_k$ of $\alpha_{\varphi}/(2\pi)$ are ratios of Fibonacci numbers, preventing radial spoke alignment ($Q(\alpha) \to 1$) and organizing nearest neighbors along opposing $(F_k, F_{k+1})$ parastichy spiral families such as $(5, 8)$, $(8, 13)$, $(13, 21)$, and $(21, 34)$. Conversely, rational approximations $\alpha = 2\pi p / q$ collapse packing into $q$ discrete radial spokes. \texttt{VogelPhyllotaxisEngine} computes coordinates, parastichy index shifts $(m, n)$ minimizing Euclidean chord distances in an outer meristem annulus, and spiral polyline index chains inside fixed pre-allocated buffers.
+
+\subsection{Double-Buffered D0L and Parametric Lindenmayer Grammars}
+
+Vascular branching and apical elongation are modeled by deterministic context-free (D0L) and single-parameter Lindenmayer grammars \cite{lindenmayer1968mathematical, prusinkiewicz1990algorithmic} $G = (\Sigma, \omega, P)$. Each symbol $s_i \in \Sigma$ carries an accompanying floating-point parameter $p_i$ (e.g., internode length scale or turn angle). During parallel derivation step $t \to t + 1$, \texttt{LSystemEngine} reads active symbol and parameter tapes of capacity $M_{\max} = 65{,}536$ and writes successor expansions $a(p) \to b_1(\alpha_1 p + \beta_1) \cdots b_k(\alpha_k p + \beta_k)$ into a secondary tape before swapping active indices in $O(1)$ without heap allocation.
+
+Geometric interpretation drives a stack-bounded 2D turtle $(x, y, \theta)$ with explicit push/pop branch stack \texttt{[TurtleState2D; 256]}: symbols \texttt{F} and \texttt{G} advance by $L \cdot p_i$ while recording a \texttt{LineSegment2D} tagged by branch depth, \texttt{+} and \texttt{-} rotate by $\pm \delta$, and \texttt{[} / \texttt{]} save and restore meristem pose to synthesize self-similar canopies, sympodial trees, and space-filling curves.
+
+\section{Excitable Neural Membranes and Evolutionary Replicator Games}
+
+At the cellular electrophysiology scale, \texttt{HodgkinHuxleyNeuron} integrates the squid giant axon membrane capacitance equation \cite{hodgkin1952quantitative} for transmembrane potential $V$ and gating probabilities $(m, h, n) \in [0, 1]^3$:
+\begin{equation}
+C_m \frac{dV}{dt} = I_{\text{ext}} - \bar{g}_{\text{Na}} m^3 h (V - E_{\text{Na}}) - \bar{g}_{\text{K}} n^4 (V - E_{\text{K}}) - \bar{g}_L (V - E_L),
+\end{equation}
+coupled to voltage-dependent opening/closing kinetics $\dot{x} = \alpha_x(V)(1 - x) - \beta_x(V)x$ for $x \in \{m, h, n\}$.
+
+At the population scale, \texttt{HawkDovePopulation} models pairwise contests over resource value $V > 0$ with injury cost $C > 0$ \cite{maynardsmith1973logic}. With payoff matrix
+\begin{equation}
+A = \begin{pmatrix}
+\dfrac{V - C}{2} & V \\[8pt]
+0 & \dfrac{V}{2}
+\end{pmatrix}
+\end{equation}
+for strategies $(\text{Hawk}, \text{Dove})$ and Hawk frequency $p \in [0, 1]$, expected fitnesses are $W_H(p) = p\frac{V-C}{2} + (1-p)V$ and $W_D(p) = (1-p)\frac{V}{2}$, yielding the cubic continuous-time replicator ODE on \texttt{ArrayState<1>}:
+\begin{equation}
+\frac{dp}{dt} = p(1 - p)\big(W_H(p) - W_D(p)\big) = \frac{1}{2} p(1 - p)(V - C p).
+\label{eq:replicator}
+\end{equation}
+When $C > V$, Eq.~\eqref{eq:replicator} admits a globally attracting interior Evolutionarily Stable Strategy $p^* = V / C \in (0, 1)$; when $V \ge C$, pure Hawk ($p^* = 1$) dominates. Both the standalone \texttt{EvolutionaryBiologyTool} replicator studio and the spatial \texttt{FermiGamePreset::HawkDove} lattice game share this single canonical payoff source.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

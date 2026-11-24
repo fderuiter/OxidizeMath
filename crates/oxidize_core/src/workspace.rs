@@ -404,8 +404,14 @@ members = ["sub_crate", "other_crate"]
             .filter(|c| c.execution_runtime() == WasmExecutionRuntime::NodeJs)
             .map(|c| c.package_name.as_str())
             .collect();
-        assert_eq!(node_crates.len(), 13);
+        assert_eq!(node_crates.len(), 16);
         assert!(node_crates.contains(&"math_explorer"));
+        for new_engine in ["engine_linalg", "engine_diffeq", "engine_pde"] {
+            assert!(
+                node_crates.contains(&new_engine),
+                "missing Node.js wasm engine crate {new_engine}"
+            );
+        }
         assert_eq!(
             build_wasm_no_run_json_invocations(&crates, WasmExecutionRuntime::BrowserChromium)
                 .len(),

@@ -9,7 +9,7 @@ Accepted
 `OxidizeMath` compiles and tests two distinct categories of `wasm32-unknown-unknown` targets:
 
 1. **Browser-bound crates** (`oxidize_core`, `egui_plot`, and `math_explorer_gui`) that link `web-sys` / `js-sys` DOM APIs and register `#[wasm_bindgen_test]` suites executed through `WasmBindgenTestContext` under the production Content Security Policy (`PRODUCTION_CSP`).
-2. **Pure-Rust scientific and engine libraries** (the 12 non-proc-macro crates under `crates/*` plus the `math_explorer` facade) whose `#[test]` functions use standard `libtest` (`exports.main(0, 0)`) without browser DOM bindings.
+2. **Pure-Rust scientific and engine libraries** (the 15 non-proc-macro crates under `crates/` plus the `math_explorer` facade) whose `#[test]` functions use standard `libtest` (`exports.main(0, 0)`) without browser DOM bindings.
 
 Previously:
 
@@ -27,11 +27,11 @@ Previously:
    - Converted `test_spawn_save_direct_file_wasm_typecheck_and_channel_delivery` in [math_explorer_gui/src/web_io.rs](../../math_explorer_gui/src/web_io.rs) to `#[wasm_bindgen_test]`.
    - Extended [crates/unified_verification/src/wasm_coverage.rs](../../crates/unified_verification/src/wasm_coverage.rs), [crates/unified_verification/src/report.rs](../../crates/unified_verification/src/report.rs), and [crates/unified_verification/src/policy_audit.rs](../../crates/unified_verification/src/policy_audit.rs) to audit `egui_plot` and reject any `#[cfg(target_arch = "wasm32")]` `#[test]` function across the workspace.
 3. **JSON Artifact Extraction & Hybrid `xtask test-wasm` Pipeline**:
-   - Extended [crates/oxidize_core/src/workspace_wasm.rs](../../crates/oxidize_core/src/workspace_wasm.rs), [crates/oxidize_core/src/workspace_wasm_json.rs](../../crates/oxidize_core/src/workspace_wasm_json.rs), and [apps/xtask/src/wasm_gate.rs](../../apps/xtask/src/wasm_gate.rs) to classify `BrowserChromium` (`oxidize_core`, `egui_plot`, `math_explorer_gui`) and `NodeJs` (12 pure-Rust `crates/*` libraries + `math_explorer`) targets, compile test artifacts with `--no-run --message-format=json`, parse `.wasm` executable paths from Cargo JSON output with structured `WorkspaceError::NoWasmTestArtifacts` diagnostics, and execute each artifact via `Command` `OsStr` argv without space-splitting.
+   - Extended [crates/oxidize_core/src/workspace_wasm.rs](../../crates/oxidize_core/src/workspace_wasm.rs), [crates/oxidize_core/src/workspace_wasm_json.rs](../../crates/oxidize_core/src/workspace_wasm_json.rs), and [apps/xtask/src/wasm_gate.rs](../../apps/xtask/src/wasm_gate.rs) to classify `BrowserChromium` (`oxidize_core`, `egui_plot`, `math_explorer_gui`) and `NodeJs` (15 pure-Rust `crates/` libraries + `math_explorer`) targets, compile test artifacts with `--no-run --message-format=json`, parse `.wasm` executable paths from Cargo JSON output with structured `WorkspaceError::NoWasmTestArtifacts` diagnostics, and execute each artifact via `Command` `OsStr` argv without space-splitting.
    - Removed duplicate `wasm32` `cargo check` steps from [.github/workflows/ci.yml](../../.github/workflows/ci.yml) and [AGENTS.md](../../AGENTS.md), added `node` probing to `xtask setup`, and updated the default compressed WebAssembly ceiling in [scripts/verify_wasm_budget.sh](../../scripts/verify_wasm_budget.sh) to `4,194,304` bytes (4 MB) after upstream workbench expansion pushed Gzip above 3 MB while Brotli remains ~2.79 MB.
 
 ## Consequences
 
-- Browser `#[wasm_bindgen_test]` suites continue to run under real Chromium DOM/WebGL2 + `PRODUCTION_CSP` enforcement while all 13 pure-Rust workspace libraries execute fast deterministic `wasm32` `libtest` runs in Node.js.
+- Browser `#[wasm_bindgen_test]` suites continue to run under real Chromium DOM/WebGL2 + `PRODUCTION_CSP` enforcement while all 16 pure-Rust workspace libraries execute fast deterministic `wasm32` `libtest` runs in Node.js.
 - Misconfigured `wasm-bindgen` binaries without `WasmBindgenTestContext` and orphaned `#[cfg(target_arch = "wasm32")]` `#[test]` attributes fail closed in both runtime and static gates.
 - `cargo test --target wasm32-unknown-unknown` from crate subdirectories and workspace paths containing spaces works seamlessly via `.cargo/config.toml` (`CARGO_MANIFEST_DIR`) and `xtask`'s JSON artifact runner.
