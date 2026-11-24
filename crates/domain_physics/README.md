@@ -13,12 +13,13 @@ Simulation models implement standardized time-stepping interfaces—including sy
 - **`chaos`**: Deterministic chaotic systems, including conservative Hamiltonian models (`DoublePendulum`, `HenonHeilesSystem`, `ThreeBodyChoreography`), cubic-Hermite `PoincareSection` and `PoincareRingBuffer` detectors, the Lorenz attractor, and 3D/4D/6D+ Lyapunov exponent analyzers.
 - **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, and Schrödinger wave equation solvers.
 - **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`), and planar 3-body gravitational choreographies (`FigureEightThreeBody`).
+- **`high_energy`**: Schwarzschild, equatorial Kerr, and Morris-Thorne spacetime metrics, zero-allocation stack-based geodesic ray/plunge bundles (`SchwarzschildGeodesicBundle`), Lorentz boosts, relativistic twin-jet Doppler beaming, shock compression, and Li & Ma gamma-ray detection significance (`evaluate_jet_knot_observables`).
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
 - **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`), and zero-allocation continuum SPDE engines for Edwards-Wilkinson (`EdwardsWilkinson1D`, `EdwardsWilkinson2D`), Kardar-Parisi-Zhang (`KpzModel1D`, `KpzModel2D`), Allen-Cahn (`AllenCahn2D`), and conserved Cahn-Hilliard (`CahnHilliard2D`) phase-field dynamics.
-- **`optics`**: Graded-index and negative-index refractive media (`refraction`), RK4 Hamiltonian ray tracing and caustic envelope detection (`caustics`), and calibrated optical detector models (`sensing`), complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`.
+- **`optics`**: Zero-allocation geometric & physical optics (`refraction`, `ray_tracing`, `caustics`, `diffraction`, `sensing`), covering Snell/Fresnel polarization, Cauchy dispersion, negative-index Veselago metamaterials, RK4 Hamiltonian & eikonal GRIN lenses (Luneburg, Maxwell fish-eye, Eaton, parabolic waveguide), coffee-cup nephroid & spherical-aberration caustics, Fraunhofer single-slit, grating, and circular Airy diffraction, and calibrated optical detector models (complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`).
 
 ---
 
@@ -117,6 +118,75 @@ let mut disk = GalacticDiskSystem::from_galaxy_model(
 disk.step_n_leapfrog(2.0, 20);
 assert!(disk.relative_energy_drift() < 1.0e-3);
 assert!(disk.relative_angular_momentum_drift() < 1.0e-11);
+```
+
+### Tracing Schwarzschild Geodesics and Relativistic Jet Doppler Beaming
+
+Advance pre-allocated null lensing fans and sub-ISCO plunges alongside coupled shock-compressed jet beaming and Li & Ma significance:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::high_energy::{
+    JetKnotConfig, SchwarzschildGeodesicBundle, evaluate_jet_knot_observables,
+};
+
+let mut bundle = SchwarzschildGeodesicBundle::new(1.0, 8, 128)?;
+bundle.seed_photon_lensing_fan(8, 2.60, 17.45, 0.8);
+let _ = bundle.step_n_verified(0.01, 4_000);
+assert!(bundle.max_killing_drift() < 1.0e-6);
+
+let obs = evaluate_jet_knot_observables(&JetKnotConfig {
+    bulk_beta: 0.9,
+    viewing_angle_rad: 15.0_f64.to_radians(),
+    disk_r_over_rs: 3.0,
+    disk_inclination_rad: 90.0_f64.to_radians(),
+    electron_index_p: 2.4,
+    electron_gamma: 1.0e3,
+    upstream_u_b: 1.0e-3,
+    adiabatic_index: 4.0 / 3.0,
+    intrinsic_signal_counts: 1.0,
+    background_counts_off: 40.0,
+    exposure_ratio: 1.0,
+})?;
+assert!((obs.jet_flux_asymmetry - 18_855.15).abs() < 0.1);
+# Ok::<(), math_explorer::error::HighEnergyError>(())
+```
+
+### Tracing Caustic Envelopes and Fraunhofer Diffraction Profiles
+
+Evaluate Brewster polarization extinction, extract coffee-cup nephroid caustics, and sample circular Airy diffraction into pre-allocated buffers:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::optics::{
+    AIRY_FIRST_ZERO_J1, CausticEnvelopeBuffer, OpticalBenchScene, PolarizationMode, RayFanConfig,
+    RayFanWorkspace, airy_normalized_intensity, brewster_angle, coffee_cup_cusp_x,
+    extract_caustic_envelope, fresnel_polarized, trace_ray_fan,
+};
+
+let theta_b = brewster_angle(1.0, 1.5168);
+let fresnel = fresnel_polarized(1.0, 1.5168, theta_b);
+assert!(fresnel.reflectance_p < 1.0e-24);
+assert!((fresnel.reflectance_s + fresnel.transmittance_s - 1.0).abs() < 1.0e-12);
+assert!(airy_normalized_intensity(AIRY_FIRST_ZERO_J1) < 1.0e-12);
+
+let mut ws = RayFanWorkspace::new(64, 8);
+let cfg = RayFanConfig {
+    scene: OpticalBenchScene::CoffeeCupMirror { radius: 2.0 },
+    ray_count: 51,
+    beam_half_width: 1.9,
+    source_x: -2.5,
+    source_y: 0.0,
+    launch_angle_rad: 0.0,
+    wavelength_nm: 550.0,
+    polychromatic: false,
+    polarization: PolarizationMode::Unpolarized,
+    bench_half_extent: 3.0,
+};
+trace_ray_fan(&cfg, &mut ws);
+let mut caustics = CausticEnvelopeBuffer::new(64, 32, -2.0, 2.0);
+assert!(extract_caustic_envelope(&ws, 1.0, 3.0, &mut caustics) > 30);
+assert_eq!(coffee_cup_cusp_x(2.0), 1.0);
 ```
 
 ---

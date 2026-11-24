@@ -1109,3 +1109,29 @@ fn test_plot_scene_3d_mode_clears_log_axes_hides_2d_settings_and_keeps_exports()
     assert!(find_text_center(&menu, "🔧 Plot Settings").is_none());
     assert!(find_text_center(&menu, "Fit Curve").is_none());
 }
+
+#[test]
+fn test_copy_to_clipboard_emits_platform_copy_command_and_polite_status() {
+    let (ctx, id) = (Context::default(), Id::new("headless_copy_test"));
+    let mut st = DataTableState::default();
+    let payload = "X,Y\n0,1\n".to_owned();
+    let out = ctx.run(screen_input(), |c| {
+        crate::data_table::copy_to_clipboard(c, id, &mut st, "CSV dataset", payload.clone());
+    });
+    assert!(
+        out.platform_output
+            .commands
+            .iter()
+            .any(|cmd| matches!(cmd, egui::OutputCommand::CopyText(t) if t == &payload)),
+        "Expected PlatformOutput CopyText command"
+    );
+    assert_eq!(
+        st.status_message,
+        Some(("Copied CSV dataset to clipboard.".to_owned(), false))
+    );
+    assert_eq!(
+        polite_live(&ctx).as_deref(),
+        Some("Copied CSV dataset to clipboard.")
+    );
+    assert_eq!(assertive_live(&ctx), None);
+}

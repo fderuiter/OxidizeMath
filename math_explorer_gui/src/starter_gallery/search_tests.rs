@@ -118,6 +118,7 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
     let no_ai_challenges = filter_challenge_cards(&all_challenges, "", Some(AcademicDomain::Ai));
     assert!(no_ai_challenges.is_empty());
 
+    assert_eq!(card_academic_domain("optics"), AcademicDomain::Physics);
     assert_eq!(card_academic_domain("relativity"), AcademicDomain::Physics);
     assert_eq!(
         card_academic_domain("elliptic_curves"),
@@ -141,6 +142,11 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
 #[test]
 fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
     use crate::app::AcademicDomain;
+    assert_eq!(card_academic_domain("optics"), AcademicDomain::Physics);
+    assert_eq!(
+        crate::command_palette::format_domain_title("optics").as_ref(),
+        "Optics & Caustics"
+    );
     assert_eq!(
         card_academic_domain("optics_waves"),
         AcademicDomain::Physics
@@ -162,7 +168,7 @@ fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
         + usize::from(cfg!(feature = "biology")) * 3
         + usize::from(cfg!(feature = "climate"))
         + usize::from(cfg!(feature = "epidemiology"))
-        + usize::from(cfg!(feature = "physics")) * 9
+        + usize::from(cfg!(feature = "physics")) * 10
         + usize::from(cfg!(feature = "pure_math")) * 8;
     assert_eq!(tabs.len(), expected_tabs);
     for tab in &tabs {

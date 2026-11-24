@@ -75,7 +75,7 @@ fn parse_check_certificate_mode(args: &[String]) -> Result<report::ReportMode, S
     match args {
         [] => Ok(report::ReportMode::Check),
         [flag] if flag == "--check" => Ok(report::ReportMode::Check),
-        [flag] if flag == "--write" => Ok(report::ReportMode::Write),
+        [flag] if flag == "--write" || flag == "--write-tracked" => Ok(report::ReportMode::Write),
         _ => Err("Usage: unified_verification check-certificate [--check | --write]".to_string()),
     }
 }
@@ -94,11 +94,20 @@ fn run_check_certificate_cli(args: &[String]) -> bool {
     report::certificate::sync_ast_certificate_with_cache(&members, mode, &mut cache)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct VerifySuiteOptions {
     pub mode: report::ReportMode,
     pub auto_fix: bool,
     pub coverage_only: bool,
+    pub output_cert: Option<std::path::PathBuf>,
+}
+
+fn parse_non_empty_cert_path(raw: &str) -> Result<std::path::PathBuf, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("--output-cert requires a non-empty file path".to_string());
+    }
+    Ok(std::path::PathBuf::from(trimmed))
 }
 
 pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOptions, String> {
@@ -106,19 +115,34 @@ pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOpti
     let mut saw_write = false;
     let mut auto_fix = false;
     let mut coverage_only = false;
+    let mut output_cert = None;
 
-    for arg in args {
-        match arg.as_str() {
+    let mut idx = 0usize;
+    while idx < args.len() {
+        let arg = args[idx].as_str();
+        match arg {
             "--check" => saw_check = true,
-            "--write" => saw_write = true,
+            "--write" | "--write-tracked" => saw_write = true,
             "--auto-fix" => auto_fix = true,
             "--coverage-only" => coverage_only = true,
+            "--output-cert" => {
+                idx += 1;
+                let Some(next) = args.get(idx) else {
+                    return Err("Missing value for --output-cert <path>".to_string());
+                };
+                output_cert = Some(parse_non_empty_cert_path(next)?);
+            }
+            _ if arg.starts_with("--output-cert=") => {
+                let raw = &arg["--output-cert=".len()..];
+                output_cert = Some(parse_non_empty_cert_path(raw)?);
+            }
             other => {
                 return Err(format!(
-                    "Unknown verify-suite flag `{other}` (expected `--check`, `--write`, `--coverage-only`, or `--write --auto-fix`)"
+                    "Unknown verify-suite flag `{other}` (expected `--check`, `--write`, `--write-tracked`, `--coverage-only`, `--output-cert <path>`, or `--write --auto-fix`)"
                 ));
             }
         }
+        idx += 1;
     }
     if saw_check && saw_write {
         return Err("Cannot pass both `--check` and `--write` to `verify-suite`".to_string());
@@ -138,6 +162,7 @@ pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOpti
         mode,
         auto_fix,
         coverage_only,
+        output_cert,
     })
 }
 
@@ -244,7 +269,7 @@ fn run_security_checks(
 pub(crate) fn evaluate_coverage_and_report_with<F>(
     members: &[String],
     entropy_debt: &[String],
-    opts: VerifySuiteOptions,
+    opts: &VerifySuiteOptions,
     cache: &mut oxidize_core::traceability::AstCache,
     collect_cov: F,
 ) -> Result<bool, String>
@@ -281,12 +306,13 @@ where
         entropy_debt,
         extra_debt: &[],
     };
-    Ok(report::run_report_with_mode(
+    Ok(report::run_report_with_options(
         native_cov_pct,
         wasm_cov_pct,
         &m,
         &debt,
         opts.mode,
+        opts.output_cert.as_deref(),
     ))
 }
 
@@ -325,7 +351,7 @@ where
     } else {
         run_static_gates(members, opts.auto_fix, cache)
     };
-    evaluate_coverage_and_report_with(members, &entropy_debt, opts, cache, collect_cov)
+    evaluate_coverage_and_report_with(members, &entropy_debt, &opts, cache, collect_cov)
 }
 
 fn verify_suite(args: &[String]) {

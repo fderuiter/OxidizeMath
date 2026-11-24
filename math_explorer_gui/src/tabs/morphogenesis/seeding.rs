@@ -19,7 +19,7 @@ use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::biology::diffusion::FiniteDifference2D;
 use math_explorer::biology::diffusion::SpatialDiffusion;
 #[cfg(test)]
-use math_explorer::biology::morphogenesis::SchnakenbergKinetics;
+use math_explorer::biology::morphogenesis::ReactionKinetics;
 use math_explorer::biology::morphogenesis::TuringSystem;
 use math_explorer::rand::Rng;
 use math_explorer::rng::OxidizeRng;
@@ -111,6 +111,7 @@ impl MorphogenesisTool {
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .clone(),
+            kinetics_mask_rle: None,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes,
         };
@@ -176,34 +177,24 @@ impl MorphogenesisTool {
     }
 
     #[cfg(test)]
-    pub(crate) fn initialize_schnakenberg(
-        system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    pub(crate) fn initialize_system<K: ReactionKinetics<2>>(
+        system: &mut TuringSystem<2, K, FiniteDifference2D>,
         width: usize,
         height: usize,
     ) {
         let n = width * height;
         let mut rng = SimpleRng::new(12345);
-        let a = system.kinetics.a;
-        let b = system.kinetics.b;
-        let u_eq = a + b;
-        let v_eq = if u_eq.abs() > 1e-9 {
-            b / (u_eq * u_eq)
-        } else {
-            0.0
-        };
         for i in 0..n {
+            let [a, b] = system.kinetics.reaction_at(i, [0.0, 0.0]);
+            let u_eq = a + b;
+            let v_eq = if u_eq.abs() > 1e-9 {
+                b / (u_eq * u_eq)
+            } else {
+                0.0
+            };
             system.u_mut()[i] = u_eq + rng.range(-0.1, 0.1);
             system.v_mut()[i] = v_eq + rng.range(-0.1, 0.1);
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn initialize_system(
-        system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
-        width: usize,
-        height: usize,
-    ) {
-        Self::initialize_schnakenberg(system, width, height);
     }
 
     pub(crate) fn initialize_adapter_system<D: SpatialDiffusion<2>>(
@@ -224,13 +215,14 @@ impl MorphogenesisTool {
         match system.kinetics.mode {
             MorphogenesisKineticsMode::Schnakenberg => {
                 let n = width * height;
-                let u_eq = system.kinetics.a + system.kinetics.b;
-                let v_eq = if u_eq.abs() > 1e-9 {
-                    system.kinetics.b / (u_eq * u_eq)
-                } else {
-                    0.0
-                };
                 for i in 0..n {
+                    let (a, b) = system.kinetics.rates_at(i);
+                    let u_eq = a + b;
+                    let v_eq = if u_eq.abs() > 1e-9 {
+                        b / (u_eq * u_eq)
+                    } else {
+                        0.0
+                    };
                     system.u_mut()[i] = u_eq + rng.range(-0.1, 0.1);
                     system.v_mut()[i] = v_eq + rng.range(-0.1, 0.1);
                 }

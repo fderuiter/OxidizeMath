@@ -10,32 +10,11 @@ use super::runner::{
 use super::MorphogenesisTool;
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::FiniteStateGuard;
-use math_explorer::biology::diffusion::{
-    FiniteDifference2D, MaskedFiniteDifference2D, SpatialDiffusion,
-};
-use math_explorer::biology::morphogenesis::{DiffusionCoeff, ReactionKinetics, TuringSystem};
+use math_explorer::biology::diffusion::{FiniteDifference2D, MaskedFiniteDifference2D};
+use math_explorer::biology::morphogenesis::{DiffusionCoeff, TuringSystem};
 use math_explorer::math_kernel::types::{Dimension, StepSize};
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 use std::sync::Arc;
-
-pub(crate) fn apply_uniform_noise<K: ReactionKinetics<2>, D: SpatialDiffusion<2>>(
-    system: &mut TuringSystem<2, K, D>,
-    count: usize,
-    rng: &mut OxidizeRng,
-    amp: f64,
-) {
-    if !amp.is_finite() || amp <= 0.0 {
-        return;
-    }
-    const INV_2_POW_53: f64 = 1.0 / ((1u64 << 53) as f64);
-    for idx in 0..count {
-        let u_unit = ((rng.next_u64() >> 11) as f64) * INV_2_POW_53;
-        let v_unit = ((rng.next_u64() >> 11) as f64) * INV_2_POW_53;
-        system.u_mut()[idx] += (2.0 * u_unit - 1.0) * amp;
-        system.v_mut()[idx] += (2.0 * v_unit - 1.0) * amp;
-    }
-}
 
 /// Clones a 2D masked `TuringSystem` (pre-allocating `state`, `next_state`, and `CellMask2D`).
 pub(super) fn clone_turing_system(
@@ -47,7 +26,7 @@ pub(super) fn clone_turing_system(
         Dimension(width * height),
         DiffusionCoeff(src.diffusion_coeffs[0]),
         DiffusionCoeff(src.diffusion_coeffs[1]),
-        src.kinetics,
+        src.kinetics.clone(),
         src.diffusion.clone(),
     );
     dst.u_mut().copy_from_slice(src.u());
@@ -64,14 +43,21 @@ impl MorphogenesisKineticsRunner {
         width: usize,
         height: usize,
     ) -> Self {
-        let (a, b, d_u, d_v) = {
+        let (a, b, d_u, d_v, kinetics_rle) = {
             let p = params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v)
+            (p.a, p.b, p.d_u, p.d_v, p.mask_rle.clone())
         };
         let (mode, f, k) = {
             let ks = kinetics_state.read().unwrap_or_else(|e| e.into_inner());
             (ks.mode, ks.f, ks.k)
         };
+        let mut kinetics = MorphogenesisKineticsAdapter::new(mode, a, b, f, k, width * height);
+        super::brush::apply_mask_rle_to_kinetics(
+            &mut kinetics,
+            width,
+            height,
+            kinetics_rle.as_deref(),
+        );
         let diffusion = FiniteDifference2D::new(
             Dimension(width),
             Dimension(height),
@@ -83,7 +69,7 @@ impl MorphogenesisKineticsRunner {
             Dimension(width * height),
             DiffusionCoeff(d_u),
             DiffusionCoeff(d_v),
-            MorphogenesisKineticsAdapter { mode, a, b, f, k },
+            kinetics,
             diffusion,
         );
         MorphogenesisTool::initialize_adapter_system(&mut system, width, height);

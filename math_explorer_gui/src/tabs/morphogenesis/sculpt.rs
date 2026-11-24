@@ -176,6 +176,7 @@ pub(crate) fn overlay_cell_mask_colors(
 pub(crate) fn draw_morpho_sculpt_controls(
     ui: &mut egui::Ui,
     brush_kit: &mut SpatialBrushKit,
+    sculpt_microfluidic_layer: &mut bool,
 ) -> Option<&'static str> {
     let mut custom_cmd = None;
     ui.separator();
@@ -192,7 +193,12 @@ pub(crate) fn draw_morpho_sculpt_controls(
             "✋ Pan",
         );
     });
+    ui.horizontal(|ui| {
+        ui.selectable_value(sculpt_microfluidic_layer, false, "🧪 Kinetics");
+        ui.selectable_value(sculpt_microfluidic_layer, true, "🧱 Microfluidics");
+    });
 
+    let prev_mode = brush_kit.mode;
     ui.horizontal_wrapped(|ui| {
         ui.selectable_value(&mut brush_kit.mode, BrushMode::ZeroFluxWall, "Wall");
         ui.selectable_value(&mut brush_kit.mode, BrushMode::EmitterU, "u Emitter");
@@ -200,6 +206,9 @@ pub(crate) fn draw_morpho_sculpt_controls(
         ui.selectable_value(&mut brush_kit.mode, BrushMode::Sink, "Sink");
         ui.selectable_value(&mut brush_kit.mode, BrushMode::Erase, "Erase");
     });
+    if brush_kit.mode != prev_mode {
+        *sculpt_microfluidic_layer = true;
+    }
 
     ui.add(egui::Slider::new(&mut brush_kit.radius, 1.0..=10.0).text("Brush Radius"));
 
@@ -252,6 +261,55 @@ pub(crate) fn draw_morpho_3d_bridges(tool: &super::MorphogenesisTool, ui: &mut e
 }
 
 impl super::MorphogenesisTool {
+    pub(crate) fn apply_microfluidic_raster_stroke(
+        &mut self,
+        stroke: crate::framework::RasterBrushStroke,
+        ctx: Option<&egui::Context>,
+    ) {
+        let mode = if stroke.secondary {
+            BrushMode::Erase
+        } else {
+            self.brush_kit.mode
+        };
+        let role = mode_to_cell_role(mode);
+        let code = role as u8;
+        let total = self.width * self.height;
+        let rle_mask = {
+            let mut rle = self.mask_rle.write().unwrap_or_else(|e| e.into_inner());
+            let mut bytes = decode_rle_mask(&rle, total).unwrap_or_else(|_| vec![0_u8; total]);
+            for &(x, y) in &stroke.cells {
+                if x < self.width && y < self.height {
+                    bytes[flatten_2d_index(x, y, self.width)] = code;
+                    self.local_runner.system.diffusion.mask.set(x, y, role);
+                }
+            }
+            *rle = encode_rle_mask(&bytes);
+            rle.clone()
+        };
+        self.local_runner.enforce_mask_concentrations();
+        if let Some(ref mut twin) = self.local_runner.twin {
+            let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+            let ub = super::counterfactual::active_morphogen_slice(&self.local_runner.system);
+            twin.observe_lockstep(self.local_runner.step_count, dt, ub);
+        }
+        self.sync_branch_engine_from_local();
+        let _ = self
+            .worker
+            .send_command(crate::async_sim::SimCommand::SyncSculptState(
+                crate::async_sim::SculptStatePayload {
+                    rle_mask,
+                    sparse_potential: Vec::new(),
+                },
+            ));
+        self.stepped_pixels = None;
+        self.step_runner = None;
+        self.dirty = true;
+        self.invalidate_scalar_field_cache();
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
+    }
+
     /// Dispatches a [`BrushStroke`] to UI-side RLE state, local twin runner, and background worker.
     pub fn dispatch_brush_stroke(&mut self, stroke: BrushStroke, ctx: Option<&egui::Context>) {
         {
@@ -276,6 +334,7 @@ impl super::MorphogenesisTool {
         self.stepped_pixels = None;
         self.step_runner = None;
         self.dirty = true;
+        self.invalidate_scalar_field_cache();
         if let Some(c) = ctx {
             c.request_repaint();
         }
