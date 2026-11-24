@@ -253,7 +253,7 @@ pub fn simulate_correlated_parlay_into(
 }
 
 /// Simulates a correlated Same Game Parlay using antithetic Cholesky Monte Carlo and [`OxidizeRng`].
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn simulate_correlated_parlay(
     marginals: &[Probability],
     correlation_matrix: &CorrelationMatrix,

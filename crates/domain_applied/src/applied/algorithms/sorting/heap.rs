@@ -6,7 +6,7 @@ use super::strategy::Sorter;
 pub struct HeapSorter;
 
 impl<T: Ord + Clone> Sorter<T> for HeapSorter {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn sort(&self, data: &[T]) -> SortingResult<T> {
         let mut sorted_data = data.to_vec();
         let mut stats = SortingStats::default();

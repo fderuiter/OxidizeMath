@@ -69,7 +69,7 @@ impl SurfaceTopology {
 
 /// Detects the $v$-index bijection across $u_{\min} \leftrightarrow u_{\max}$ on a twisted seam.
 #[must_use]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates twisted seam index bijection vectors")]
 pub fn detect_twisted_seam_map<S: ParametricSurface + ?Sized>(
     surface: &S,
     range_u: (f64, f64),
@@ -130,9 +130,66 @@ pub struct BuckledSurfaceFlow {
 }
 
 impl BuckledSurfaceFlow {
+    /// Fallible constructor validating non-zero grid dimensions, finite ranges, and `nu * nv` capacity.
+    #[verified_engine::verified(alloc_ok = "pre-allocates flat 2D surface flow workspace")]
+    pub fn try_from_parametric<S: ParametricSurface + ?Sized>(
+        surface: &S,
+        topology: SurfaceTopology,
+        range_u: (f64, f64),
+        range_v: (f64, f64),
+        nu: usize,
+        nv: usize,
+    ) -> Result<Self, math_commons::error::MathError> {
+        if nu < 4 || nv < 4 {
+            return Err(math_commons::error::MathError::OutOfBounds {
+                value: nu.min(nv) as f64,
+                min: 4.0,
+                max: usize::MAX as f64,
+            });
+        }
+        if !range_u.0.is_finite()
+            || !range_u.1.is_finite()
+            || range_u.0 >= range_u.1
+            || !range_v.0.is_finite()
+            || !range_v.1.is_finite()
+            || range_v.0 >= range_v.1
+        {
+            return Err(math_commons::error::MathError::NumericalError {
+                reason: "BuckledSurfaceFlow parameter ranges must be finite and strictly ordered"
+                    .to_string(),
+            });
+        }
+        let len = nu
+            .checked_mul(nv)
+            .ok_or(math_commons::error::MathError::CapacityOverflow {
+                context: "BuckledSurfaceFlow::try_from_parametric nu * nv",
+            })?;
+        let (du, dv) = topology.grid_spacings(range_u, range_v, nu, nv);
+        let sampled =
+            geometry::try_build_sampled_geometry(surface, topology, range_u, range_v, nu, nv)?;
+        Ok(Self {
+            nu,
+            nv,
+            topology,
+            du,
+            dv,
+            min_area_element: sampled.min_area_element,
+            north_meridional_g: sampled.north_meridional_g,
+            south_meridional_g: sampled.south_meridional_g,
+            seam_fwd: sampled.seam_fwd,
+            neighbors: sampled.neighbors,
+            points: sampled.ref_points.clone(),
+            next_points: sampled.ref_points.clone(),
+            ref_points: sampled.ref_points,
+            buckling_normals: sampled.buckling_normals,
+            mean_curvature: vec![0.0; len],
+            displacements: vec![0.0; len],
+        })
+    }
+
     /// Samples `surface` onto a pre-allocated flat `nu * nv` grid with topology-aware normals and stencils.
     #[must_use]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "pre-allocates flat 2D surface flow workspace")]
     pub fn from_parametric<S: ParametricSurface + ?Sized>(
         surface: &S,
         topology: SurfaceTopology,
@@ -143,9 +200,11 @@ impl BuckledSurfaceFlow {
     ) -> Self {
         let nu = nu.max(4);
         let nv = nv.max(4);
+        let len = nu
+            .checked_mul(nv)
+            .expect("BuckledSurfaceFlow nu * nv overflowed usize");
         let (du, dv) = topology.grid_spacings(range_u, range_v, nu, nv);
         let sampled = build_sampled_geometry(surface, topology, range_u, range_v, nu, nv);
-        let len = nu * nv;
 
         Self {
             nu,

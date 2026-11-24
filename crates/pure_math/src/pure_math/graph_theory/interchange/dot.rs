@@ -8,7 +8,7 @@ mod dot_emit;
 pub use dot_emit::{to_dot, to_styled_dot};
 
 /// Parses a Graphviz `.dot` (`graph` or `digraph`) specification into a validated [`InterchangeGraph`].
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates parsed InterchangeGraph and symbol table")]
 pub fn parse_dot(input: &str) -> Result<InterchangeGraph, GraphTheoryError> {
     let cleaned = strip_dot_comments(input);
     let Some(open_brace) = cleaned.find('{') else {
@@ -41,7 +41,7 @@ pub fn parse_dot(input: &str) -> Result<InterchangeGraph, GraphTheoryError> {
     Ok(graph)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates comment-stripped DOT buffer")]
 fn strip_dot_comments(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut out = String::with_capacity(input.len());
@@ -75,7 +75,7 @@ fn strip_dot_comments(input: &str) -> String {
     out
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats DOT header parse error")]
 fn parse_dot_header(prefix: &str) -> Result<bool, GraphTheoryError> {
     let mut words = prefix.split_whitespace();
     let first = words.next().ok_or_else(|| GraphTheoryError::ParseError {
@@ -102,7 +102,7 @@ fn parse_dot_header(prefix: &str) -> Result<bool, GraphTheoryError> {
     }
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "splits DOT body into statement strings")]
 fn split_dot_statements(body: &str) -> Vec<String> {
     let mut stmts = Vec::new();
     let mut cur = String::new();
@@ -135,7 +135,7 @@ fn split_dot_statements(body: &str) -> Vec<String> {
     stmts
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "parses DOT statement attributes and diagnostics")]
 fn parse_dot_statement(
     stmt: &str,
     graph: &mut InterchangeGraph,
@@ -197,7 +197,7 @@ fn split_head_and_attrs(stmt: &str) -> (&str, Option<&str>) {
     (stmt, None)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "builds DOT attribute map")]
 fn parse_dot_attrs(raw: &str) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     let mut parts = Vec::new();
@@ -226,7 +226,7 @@ fn parse_dot_attrs(raw: &str) -> BTreeMap<String, String> {
     map
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates unquoted DOT token")]
 fn unquote_dot(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
@@ -262,7 +262,7 @@ fn apply_dot_node(
     graph.insert_node(InterchangeNode { id, pos, label })
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats DOT coordinate parse error")]
 fn parse_dot_pos(node: usize, raw: &str) -> Result<(f64, f64), GraphTheoryError> {
     let stripped = raw.trim().trim_end_matches('!');
     let Some((xs, ys)) = stripped.split_once(',') else {
@@ -291,7 +291,7 @@ fn parse_dot_pos(node: usize, raw: &str) -> Result<(f64, f64), GraphTheoryError>
     Ok((x, y))
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "collects DOT edge endpoint chain")]
 fn apply_dot_edge_chain(
     head: &str,
     edge_op: &str,
@@ -327,7 +327,7 @@ fn apply_dot_edge_chain(
     Ok(())
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats DOT edge weight parse error")]
 fn extract_dot_edge_weight(attrs: &BTreeMap<String, String>) -> Result<f64, GraphTheoryError> {
     if let Some(w_str) = attrs.get("weight") {
         let w = w_str

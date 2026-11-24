@@ -79,7 +79,7 @@ impl ZeroInflation {
     /// let rho = ZeroInflation::new(0.3).unwrap();
     /// assert_eq!(rho.value(), 0.3);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(value: f64) -> Result<Self, ZipError> {
         if !(0.0..=1.0).contains(&value) || !value.is_finite() {
             return Err(ZipError::InvalidProbability {

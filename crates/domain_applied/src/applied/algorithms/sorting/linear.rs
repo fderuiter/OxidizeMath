@@ -6,7 +6,7 @@ use super::strategy::Sorter;
 pub struct RadixSorter;
 
 impl Sorter<u64> for RadixSorter {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn sort(&self, data: &[u64]) -> SortingResult<u64> {
         let mut sorted_data = data.to_vec();
         let mut stats = SortingStats::default();

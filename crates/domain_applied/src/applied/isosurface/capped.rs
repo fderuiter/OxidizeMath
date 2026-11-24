@@ -62,7 +62,7 @@ fn set_axis_comp(pt: &mut Point3D, axis: usize, val: f32) {
     }
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats validation error message")]
 fn validate_source_grid(grid: &VoxelGrid) -> Result<(usize, usize, usize), IsosurfaceError> {
     let (nx, ny, nz) = (grid.width(), grid.height(), grid.depth());
     if nx < 2 || ny < 2 || nz < 2 {
@@ -260,7 +260,7 @@ fn resolve_outward_vertex_normal(raw_n: Point3D, cap_n: Point3D, vs: Point3D) ->
 ///
 /// When `inside_below` is `true`, regions with `value <= threshold` form the solid interior;
 /// when `false`, regions with `value >= threshold` form the solid interior.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
 pub fn extract_capped_isosurface_into(
     source_grid: &VoxelGrid,
     threshold: f32,
@@ -311,7 +311,9 @@ pub fn extract_capped_isosurface_into(
 }
 
 /// Allocates a temporary 1-voxel apron grid and workspace to extract a closed, outward-wound solid [`Mesh`].
-#[verified_engine::verified]
+#[verified_engine::verified(
+    alloc_ok = "allocates temporary 1-voxel apron VoxelGrid, workspace, and output Mesh"
+)]
 pub fn extract_capped_isosurface(
     source_grid: &VoxelGrid,
     threshold: f32,
@@ -319,15 +321,35 @@ pub fn extract_capped_isosurface(
     cut_plane: Option<CutPlaneCap>,
 ) -> Result<Mesh, IsosurfaceError> {
     let (nx, ny, nz) = validate_source_grid(source_grid)?;
+    let px = nx
+        .checked_add(2)
+        .ok_or(math_commons::error::MathError::CapacityOverflow {
+            context: "extract_capped_isosurface nx + 2",
+        })?;
+    let py = ny
+        .checked_add(2)
+        .ok_or(math_commons::error::MathError::CapacityOverflow {
+            context: "extract_capped_isosurface ny + 2",
+        })?;
+    let pz = nz
+        .checked_add(2)
+        .ok_or(math_commons::error::MathError::CapacityOverflow {
+            context: "extract_capped_isosurface nz + 2",
+        })?;
+    let padded_len = px.checked_mul(py).and_then(|xy| xy.checked_mul(pz)).ok_or(
+        math_commons::error::MathError::CapacityOverflow {
+            context: "extract_capped_isosurface (nx + 2) * (ny + 2) * (nz + 2)",
+        },
+    )?;
     let vs = *source_grid.voxel_size();
     let mut padded_grid = VoxelGrid::builder()
-        .dimensions(nx + 2, ny + 2, nz + 2)
-        .data(vec![DEADBAND; (nx + 2) * (ny + 2) * (nz + 2)])
+        .dimensions(px, py, pz)
+        .data(vec![DEADBAND; padded_len])
         .voxel_size(vs)
         .origin(*source_grid.origin() - vs)
         .build()
         .map_err(|e| IsosurfaceError::InvalidGrid(e.to_string()))?;
-    let mut ws = IsosurfaceWorkspace::new_lazy(nx + 2, ny + 2);
+    let mut ws = IsosurfaceWorkspace::new_lazy(px, py);
     let mut mesh = Mesh::new();
     extract_capped_isosurface_into(
         source_grid,

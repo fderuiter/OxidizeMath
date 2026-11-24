@@ -13,7 +13,11 @@ use pure_math::pure_math::analysis::complex::mapping::SchwarzChristoffel;
 use pure_math::pure_math::analysis::complex::surfaces::NthRootSurface;
 use pure_math::pure_math::analysis::pde::fused_stepper::{FusedStencilStepper, StencilOperators};
 use pure_math::pure_math::number_theory::q_series::QSeries;
+use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static TEST_ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
 fn integer_modular_and_parsing_apis_return_stack_allocated_errors() {

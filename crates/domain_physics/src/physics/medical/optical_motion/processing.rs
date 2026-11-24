@@ -136,7 +136,7 @@ impl LockInAmplifier {
 /// # Returns
 ///
 /// * `f64` - The estimated time delay in seconds (positive means signal_2 lags signal_1).
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calculate_time_delay(signal_1: &[f64], signal_2: &[f64], sample_rate: f64) -> f64 {
     let n = signal_1.len().min(signal_2.len());
     let mut planner = FftPlanner::new();

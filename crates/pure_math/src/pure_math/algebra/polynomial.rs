@@ -65,7 +65,7 @@ impl<T: Ring> Polynomial<T> {
     }
 
     /// Scale polynomial by a scalar.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn scale(&self, scalar: &T) -> Self {
         if self.coeffs.is_empty() || scalar.is_zero() {
             return Polynomial::new(vec![]);
@@ -117,7 +117,7 @@ impl<T: Ring> Add<Polynomial<T>> for &Polynomial<T> {
 
 impl<T: Ring> Mul for Polynomial<T> {
     type Output = Self;
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn mul(self, other: Self) -> Self {
         if self.coeffs.is_empty() || other.coeffs.is_empty() {
             return Polynomial::new(vec![]);
@@ -141,7 +141,7 @@ impl<T: Ring> Mul for Polynomial<T> {
 
 impl<'b, T: Ring> Mul<&'b Polynomial<T>> for &Polynomial<T> {
     type Output = Polynomial<T>;
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn mul(self, other: &'b Polynomial<T>) -> Polynomial<T> {
         if self.coeffs.is_empty() || other.coeffs.is_empty() {
             return Polynomial::new(vec![]);
@@ -161,7 +161,7 @@ impl<'b, T: Ring> Mul<&'b Polynomial<T>> for &Polynomial<T> {
 
 impl<'b, T: Ring> Mul<&'b Polynomial<T>> for Polynomial<T> {
     type Output = Polynomial<T>;
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn mul(self, other: &'b Polynomial<T>) -> Polynomial<T> {
         if self.coeffs.is_empty() || other.coeffs.is_empty() {
             return Polynomial::new(vec![]);
@@ -193,7 +193,7 @@ impl<T: Ring> Mul<Polynomial<T>> for &Polynomial<T> {
 
 impl<T: Ring> Mul<T> for Polynomial<T> {
     type Output = Self;
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn mul(mut self, scalar: T) -> Self {
         if self.coeffs.is_empty() || scalar.is_zero() {
             return Polynomial::new(vec![]);
@@ -246,7 +246,7 @@ impl<T: Ring> Ring for Polynomial<T> {
     fn zero() -> Self {
         Polynomial::new(vec![])
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn one() -> Self {
         Polynomial::new(vec![T::one()])
     }
@@ -367,7 +367,7 @@ impl<T: Ring> Neg for Polynomial<T> {
 
 impl<T: Ring> Neg for &Polynomial<T> {
     type Output = Polynomial<T>;
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn neg(self) -> Polynomial<T> {
         Polynomial::new(self.coeffs.iter().map(|c| -c.clone()).collect())
     }

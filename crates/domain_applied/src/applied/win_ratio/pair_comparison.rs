@@ -121,7 +121,7 @@ pub struct WinRatioAnalysis<T> {
     _marker: PhantomData<T>,
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats validation error message")]
 fn validate_tier_inputs(
     strategy_count: usize,
     group1_len: usize,
@@ -243,7 +243,7 @@ impl<T> PairingStrategy<T> for MatchedPairing {
         (wins, losses)
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
     fn evaluate_tiers_into(
         &self,
         analysis: &WinRatioAnalysis<T>,
@@ -270,7 +270,7 @@ impl<T> PairingStrategy<T> for MatchedPairing {
 
 impl<T> WinRatioAnalysis<T> {
     /// Creates a new analysis with no strategies.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new() -> Self {
         Self {
             strategies: Vec::new(),
@@ -382,7 +382,7 @@ impl<T> WinRatioAnalysis<T> {
     }
 
     /// Evaluates fallible per-tier win, loss, and tie waterfall counts across two subject groups.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn evaluate_tiers<P: PairingStrategy<T>>(
         &self,
         group1: &[Vec<T>],

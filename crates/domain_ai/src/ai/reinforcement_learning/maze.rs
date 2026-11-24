@@ -143,15 +143,40 @@ impl From<&GridWorldEnv> for SculptedGridMdp {
 }
 
 impl SculptedGridMdp {
+    /// Fallible constructor rejecting non-positive dimensions or `width * height` capacity overflow.
+    #[verified_engine::verified(alloc_ok = "allocates RL grid cell vector")]
+    pub fn try_new(
+        width: i32,
+        height: i32,
+        gamma: f64,
+        wind_slip_prob: f64,
+    ) -> Result<Self, crate::error::AIError> {
+        if width <= 0 || height <= 0 {
+            return Err(crate::error::AIError::InvalidParameter {
+                name: "grid_dimension".to_string(),
+                value: width.min(height) as f64,
+            });
+        }
+        let _ = (width as usize).checked_mul(height as usize).ok_or(
+            math_commons::error::MathError::CapacityOverflow {
+                context: "SculptedGridMdp width * height",
+            },
+        )?;
+        Ok(Self::new(width, height, gamma, wind_slip_prob))
+    }
+
     /// Creates an empty `width x height` sculpted grid with `start = (0, 0)` and `goal = (width - 1, height - 1)`.
     #[must_use]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates RL grid cell vector")]
     pub fn new(width: i32, height: i32, gamma: f64, wind_slip_prob: f64) -> Self {
         let w = width.clamp(MIN_RL_GRID_DIM, MAX_RL_GRID_DIM);
         let h = height.clamp(MIN_RL_GRID_DIM, MAX_RL_GRID_DIM);
         let start = GridState { x: 0, y: 0 };
         let goal = GridState { x: w - 1, y: h - 1 };
-        let mut cells = vec![GridCellRole::Free; (w as usize) * (h as usize)];
+        let total = (w as usize)
+            .checked_mul(h as usize)
+            .expect("clamped RL grid dimensions fit in usize");
+        let mut cells = vec![GridCellRole::Free; total];
         cells[flatten_2d_index(goal.x as usize, goal.y as usize, w as usize)] = GridCellRole::Goal;
         let clean_gamma = if gamma.is_finite() {
             gamma.clamp(0.0, 1.0)
@@ -417,63 +442,5 @@ impl SculptedGridMdp {
     }
 }
 
-impl MarkovDecisionProcess for SculptedGridMdp {
-    type S = GridState;
-    type A = Move;
-
-    #[verified_engine::verified]
-    fn transition_probability(
-        &self,
-        next_state: &Self::S,
-        current_state: &Self::S,
-        action: &Self::A,
-    ) -> f64 {
-        let outcomes = self.transition_outcomes(*current_state, *action);
-        let mut prob = 0.0;
-        for (cand, p) in outcomes {
-            if p > 0.0 && cand == *next_state {
-                prob += p;
-            }
-        }
-        prob
-    }
-
-    #[verified_engine::verified]
-    fn reward(&self, current_state: &Self::S, _action: &Self::A, next_state: &Self::S) -> f64 {
-        if self.is_terminal(current_state)
-            || self.cell_role(*current_state) == GridCellRole::SolidWall
-        {
-            return 0.0;
-        }
-        match self.cell_role(*next_state) {
-            GridCellRole::Goal => 10.0,
-            GridCellRole::Trap => -10.0,
-            _ => -0.1,
-        }
-    }
-
-    #[verified_engine::verified]
-    fn actions(&self, state: &Self::S) -> Vec<Self::A> {
-        if !self.in_bounds(*state)
-            || self.is_terminal(state)
-            || self.cell_role(*state) == GridCellRole::SolidWall
-        {
-            Vec::new()
-        } else {
-            ALL_MOVES.to_vec()
-        }
-    }
-
-    #[verified_engine::verified]
-    fn discount_factor(&self) -> f64 {
-        self.gamma
-    }
-
-    #[verified_engine::verified]
-    fn is_terminal(&self, state: &Self::S) -> bool {
-        matches!(
-            self.cell_role(*state),
-            GridCellRole::Goal | GridCellRole::Trap
-        )
-    }
-}
+#[path = "maze_mdp.rs"]
+mod maze_mdp;

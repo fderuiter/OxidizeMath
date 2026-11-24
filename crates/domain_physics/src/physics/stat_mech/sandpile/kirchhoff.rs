@@ -67,7 +67,7 @@ impl Diagnostic for SandpileError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "SandpileError".to_string());

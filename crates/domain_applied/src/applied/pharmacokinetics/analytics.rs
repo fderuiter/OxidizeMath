@@ -17,7 +17,7 @@ pub struct TherapeuticWindow {
 
 impl TherapeuticWindow {
     /// Constructs and validates a [`TherapeuticWindow`] with `0 <= mec_mg_l < mtc_mg_l`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(mec_mg_l: f64, mtc_mg_l: f64) -> Result<Self, PharmacokineticsError> {
         if !mec_mg_l.is_finite() || mec_mg_l < 0.0 {
             return Err(PharmacokineticsError::InvalidParameter(
@@ -67,7 +67,7 @@ pub struct ExposureSummary {
 }
 
 /// Validates that `times` is strictly increasing and matches finite non-negative `concentrations`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats validation error message")]
 fn validate_profile(times: &[f64], concentrations: &[f64]) -> Result<(), PharmacokineticsError> {
     if times.len() < 2 || times.len() != concentrations.len() {
         return Err(PharmacokineticsError::InvalidParameter(
@@ -146,7 +146,7 @@ fn interpolate_clamped(times: &[f64], concentrations: &[f64], query_t: f64) -> f
 }
 
 /// Computes the minimum concentration `C_min` over `[start_h, end_h]` using boundary interpolation.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn trough_concentration(
     times: &[f64],
     concentrations: &[f64],
@@ -202,7 +202,7 @@ pub fn trapezoidal_auc(
 }
 
 /// Computes piecewise-linear trapezoidal AUC restricted to `[start_h, end_h]`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn auc_interval(
     times: &[f64],
     concentrations: &[f64],
@@ -238,7 +238,7 @@ pub fn auc_interval(
 }
 
 /// Computes theoretical one-compartment steady-state accumulation $R_{\text{ac}} = 1 / (1 - e^{-k_e \tau})$.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn accumulation_ratio(ke: f64, tau_h: f64) -> Result<f64, PharmacokineticsError> {
     if !ke.is_finite() || ke <= 0.0 || !tau_h.is_finite() || tau_h <= 0.0 {
         return Err(PharmacokineticsError::InvalidParameter(

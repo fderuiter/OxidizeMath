@@ -36,7 +36,7 @@ impl TTestIndependent {
 }
 
 impl<'a> HypothesisTest<(&'a GroupData, &'a GroupData)> for TTestIndependent {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn test(&self, data: (&'a GroupData, &'a GroupData)) -> Result<TestResult, ClinicalTrialError> {
         let (group1, group2) = data;
         let n1 = group1.n();
@@ -103,7 +103,7 @@ impl ChiSquare2x2 {
 }
 
 impl<'a> HypothesisTest<&'a ContingencyTable> for ChiSquare2x2 {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn test(&self, table: &'a ContingencyTable) -> Result<TestResult, ClinicalTrialError> {
         let total = table.total();
         // total == 0 check is done in ContingencyTable constructor.

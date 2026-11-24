@@ -56,7 +56,7 @@ use nalgebra::{DMatrix, DVector};
 /// assert!((deriv.0[(1, 0)] - 3.0).abs() < 1e-4);
 /// assert!((deriv.0[(1, 1)] - 2.0).abs() < 1e-4);
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn covariant_derivative_contravariant<F>(
     field: F,
     metric: &impl Metric,
@@ -160,7 +160,7 @@ where
 /// assert!((deriv.0[(1, 0)] - 3.0).abs() < 1e-4);
 /// assert!((deriv.0[(1, 1)] - 2.0).abs() < 1e-4);
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn covariant_derivative_covariant<F>(
     field: F,
     metric: &impl Metric,

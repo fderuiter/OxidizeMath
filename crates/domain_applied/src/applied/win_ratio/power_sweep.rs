@@ -56,7 +56,7 @@ impl Default for PowerSweepConfig {
 
 impl PowerSweepConfig {
     /// Validates all sample-size, replicate, censoring, and significance bounds.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn validate(&self) -> Result<(), ClinicalTrialError> {
         if self.n_min < 2 || self.n_max < self.n_min || self.n_max > MAX_ARM_SIZE {
             return Err(ClinicalTrialError::InvalidData(format!(
@@ -354,7 +354,7 @@ fn sweep_single_arm_size(
 
 /// Executes a deterministic Monte Carlo power sweep into preallocated `workspace` buffers
 /// with zero dynamic heap allocations, returning the populated step count and representative trial.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
 pub fn run_power_sweep_into(
     params: &SimulationParams,
     cfg: &PowerSweepConfig,

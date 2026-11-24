@@ -19,7 +19,7 @@ pub struct QuantumState {
 }
 
 impl TheoryDescribable for QuantumState {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn theory_description(&self) -> String {
         // Use a heuristic to detect the |0> spin state
         if self.vector.len() == 2
@@ -34,7 +34,7 @@ impl TheoryDescribable for QuantumState {
         }
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn phonetic_description(&self) -> String {
         if self.vector.len() == 2
             && self.vector[0].re == 1.0
@@ -48,12 +48,12 @@ impl TheoryDescribable for QuantumState {
         }
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn theory_citation(&self) -> String {
         "Griffiths, D. J., & Schroeter, D. F. (2018). Introduction to Quantum Mechanics (3rd ed.). Cambridge University Press.".to_string()
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn available_descriptions(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("|0>".to_string(), "|0> spin state".to_string());
@@ -64,7 +64,7 @@ impl TheoryDescribable for QuantumState {
 
 impl QuantumState {
     /// Returns the |0> spin state (spin up along Z)
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn spin_zero() -> Self {
         let zero = Complex::new(0.0, 0.0);
         let one = Complex::new(1.0, 0.0);

@@ -28,7 +28,7 @@ pub struct HodgkinHuxleyParameters {
 }
 
 impl Default for HodgkinHuxleyParameters {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     fn default() -> Self {
         let v_rest = -65.0;
         Self {

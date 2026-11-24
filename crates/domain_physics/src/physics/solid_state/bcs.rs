@@ -166,7 +166,7 @@ impl IsotropicBCSModel {
     /// # Errors
     ///
     /// Returns [`SolidStateError`] if model parameters violate solid-state invariants.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(
         energies: Vec<f64>,
         potential: f64,

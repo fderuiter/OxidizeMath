@@ -37,7 +37,7 @@ pub struct SolverWorkspace {
 
 impl SolverWorkspace {
     /// Preallocates all complex tridiagonal bands and Thomas scratch buffers for up to `max_points`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates tridiagonal workspace")]
     #[must_use]
     pub fn with_capacity(max_points: usize) -> Self {
         let zero = Complex::new(0.0, 0.0);
@@ -183,7 +183,7 @@ pub struct TridiagonalHamiltonian1D {
 
 impl TridiagonalHamiltonian1D {
     /// Preallocates tridiagonal storage for grids up to `max_points` with initial length `0`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     #[must_use]
     pub fn with_capacity(max_points: usize) -> Self {
         Self {
@@ -341,7 +341,7 @@ pub struct CrankNicolsonPropagator1D {
 
 impl CrankNicolsonPropagator1D {
     /// Preallocates Thomas sweep workspace buffers for grids up to `max_points`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     #[must_use]
     pub fn with_capacity(max_points: usize) -> Self {
         Self {

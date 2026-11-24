@@ -120,7 +120,7 @@ where
 
     /// Selects an action using the injected strategy.
     /// This method uses the internal owned RNG.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn select_action(&mut self, state: &S, available_actions: &[A]) -> Option<A> {
         let q_values: Vec<f64> = available_actions
             .iter()
@@ -178,7 +178,7 @@ where
     A: Action + Hash + Eq,
 {
     /// Creates a new Tabular Q-Agent. Optionally provide a seed.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(
         learning_rate: UnitInterval,
         discount_factor: UnitInterval,
@@ -218,7 +218,7 @@ where
 /// This function calculates the gradient component for a single step.
 /// * `return_gt`: The cumulative return $G_t$.
 /// * `grad_log_pi`: The gradient of the log probability of the action taken.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn policy_gradient_step(
     return_gt: f64,
     grad_log_pi: &[f64],

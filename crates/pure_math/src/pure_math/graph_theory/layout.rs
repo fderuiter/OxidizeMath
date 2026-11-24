@@ -9,7 +9,7 @@ pub type LayoutBounds = (f32, f32, f32, f32);
 /// Computes a circular layout for the nodes in the graph inside the given bounds.
 ///
 /// Nodes are placed evenly along the perimeter of a circle centered within the bounds.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn circular_layout<N, E>(
     graph: &Graph<N, E>,
     bounds: LayoutBounds,
@@ -49,7 +49,7 @@ pub fn circular_layout<N, E>(
 /// Computes a grid layout for the nodes in the graph inside the given bounds.
 ///
 /// Nodes are arranged in a 2D rectangular grid.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn grid_layout<N, E>(
     graph: &Graph<N, E>,
     bounds: LayoutBounds,
@@ -195,7 +195,7 @@ fn apply_displacements(
 /// Computes a force-directed layout (Fruchterman-Reingold) for the nodes in the graph inside the given bounds.
 ///
 /// Simulates repulsive forces between nodes and attractive spring forces along edges over `iterations` steps.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn force_directed_layout<N, E>(
     graph: &Graph<N, E>,
     bounds: LayoutBounds,

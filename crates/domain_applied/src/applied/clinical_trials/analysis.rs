@@ -21,7 +21,7 @@ pub struct RiskMetrics {
 /// # Arguments
 /// * `table` - The 2x2 contingency table.
 /// * `alpha` - Significance level (e.g., 0.05 for 95% CI).
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calculate_risk_metrics(
     table: &ContingencyTable,
     alpha: f64,

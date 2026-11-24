@@ -66,7 +66,7 @@ pub struct FockState {
 
 impl FockState {
     /// Creates a new vacuum state |0, 0, ...> with given size.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(size: usize) -> Self {
         Self {
             occupations: vec![0; size],

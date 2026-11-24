@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 /// assert!((round_trip.edges[1].weight - 3.25).abs() < 1e-9);
 /// # Ok::<(), math_explorer::error::Error>(())
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "serializes CSV text output")]
 pub fn to_edge_csv(graph: &InterchangeGraph) -> Result<String, GraphTheoryError> {
     graph.validate()?;
     let mut out = String::new();
@@ -50,7 +50,7 @@ pub fn to_edge_csv(graph: &InterchangeGraph) -> Result<String, GraphTheoryError>
 }
 
 /// Parses a `source,target[,weight]` `.csv` edge list into a validated [`InterchangeGraph`].
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates parsed InterchangeGraph and symbol table")]
 pub fn parse_edge_csv(input: &str) -> Result<InterchangeGraph, GraphTheoryError> {
     let mut graph = InterchangeGraph::new(false);
     let mut sym_table = BTreeMap::new();
@@ -88,7 +88,7 @@ pub fn parse_edge_csv(input: &str) -> Result<InterchangeGraph, GraphTheoryError>
     Ok(graph)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "parses CSV metadata tokens")]
 fn apply_csv_metadata_comment(
     comment: &str,
     graph: &mut InterchangeGraph,
@@ -132,7 +132,7 @@ fn is_csv_header(line: &str) -> bool {
         || first.eq_ignore_ascii_case("from")
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "parses CSV edge columns")]
 fn parse_csv_edge_row(
     line_num: usize,
     line: &str,

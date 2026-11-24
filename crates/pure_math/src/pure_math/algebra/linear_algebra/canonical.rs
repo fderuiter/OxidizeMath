@@ -48,7 +48,7 @@ impl JordanBlock {
     /// assert_eq!(mat[(0, 1)], Complex::new(1.0, 0.0)); // Super-diagonal
     /// assert_eq!(mat[(1, 0)], Complex::new(0.0, 0.0));
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn to_matrix(&self) -> DMatrix<Complex<f64>> {
         let mut matrix = DMatrix::from_element(self.size, self.size, Complex::new(0.0, 0.0));
         for i in 0..self.size {
@@ -100,7 +100,7 @@ impl CompanionMatrix {
     /// assert_eq!(mat[(1, 1)], -3.0);
     /// assert_eq!(mat[(1, 0)], 1.0);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn to_matrix(&self) -> DMatrix<f64> {
         let n = self.coeffs.len();
         let mut matrix = DMatrix::zeros(n, n);

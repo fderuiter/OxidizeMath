@@ -100,7 +100,7 @@ pub struct GroupData {
 
 impl GroupData {
     /// Creates a new `GroupData` instance.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(data: Vec<f64>) -> Result<Self, ClinicalTrialError> {
         if data.len() < 2 {
             return Err(ClinicalTrialError::InsufficientSampleSize {
@@ -163,7 +163,7 @@ impl SurvivalTime {
     ///
     /// # Errors
     /// Returns `ClinicalTrialError::InvalidData` if `t` is non-finite (`NaN` or `±Infinity`) or negative.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(t: f64) -> Result<Self, ClinicalTrialError> {
         if !t.is_finite() || t < 0.0 {
             return Err(ClinicalTrialError::InvalidData(format!(

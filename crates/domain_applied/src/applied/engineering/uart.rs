@@ -45,7 +45,7 @@ impl TotalBits {
     ///
     /// # Errors
     /// Returns `EngineeringError` if `value` is 0, since a frame cannot have 0 bits.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(value: u32) -> Result<Self, EngineeringError> {
         if value == 0 {
             return Err(EngineeringError::InvalidParameter {

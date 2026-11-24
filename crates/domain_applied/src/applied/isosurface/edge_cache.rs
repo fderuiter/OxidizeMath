@@ -40,7 +40,7 @@ fn clear_if_dirty(buf: &mut [u32], dirty: &mut bool) {
 impl SliceEdgeCache {
     /// Creates an unallocated rolling cache for a grid of `width x height` XY dimensions.
     #[inline]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub(super) fn new(width: usize, height: usize) -> Self {
         debug_assert!(width >= 2 && height >= 2);
         let xy_len = width * height * 2;
@@ -74,7 +74,7 @@ impl SliceEdgeCache {
     }
 
     /// Pre-allocates rolling slice edge buffers up to `max_width x max_height` for zero-allocation reuse.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub(super) fn with_capacity(max_width: usize, max_height: usize) -> Self {
         let w = max_width.max(2);
         let h = max_height.max(2);

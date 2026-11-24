@@ -30,7 +30,7 @@ impl Default for BaumWelchConfig<f64> {
 
 impl<T: RealField + Copy + ToPrimitive> BaumWelchConfig<T> {
     /// Validates and constructs a [`BaumWelchConfig`].
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(
         max_iterations: usize,
         tolerance: T,
@@ -97,7 +97,7 @@ pub struct BaumWelchWorkspace<T> {
 
 impl<T: RealField + Copy> BaumWelchWorkspace<T> {
     /// Allocates scratch buffers sized for `(num_states, num_observations, max_len)`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(num_states: usize, num_observations: usize, max_len: usize) -> Self {
         let z = T::zero();
         let nn = num_states.saturating_mul(num_states);

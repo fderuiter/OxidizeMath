@@ -74,7 +74,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     /// # Errors
     ///
     /// - `InvalidGenerator`: If the matrix is not a valid generator
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(generator: DMatrix<T>) -> Result<Self> {
         let n = generator.nrows();
         if n == 0 {
@@ -130,7 +130,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     /// # Implementation
     ///
     /// Uses the scaling and squaring method with Padé approximation.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn transition_probabilities(&self, t: T) -> Result<DMatrix<T>> {
         if !t.is_finite() || t < T::zero() {
             return Err(MarkovError::InvalidState {
@@ -154,7 +154,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     ///
     /// This is a simplified implementation. For production use, consider using
     /// a specialized library like `nalgebra::linalg::Exp`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn matrix_exponential(&self, a: &DMatrix<T>) -> Result<DMatrix<T>> {
         let n = a.nrows();
 
@@ -225,7 +225,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     /// $\sum_i \pi_i = 1$ via Tarjan SCC sink isolation and scale-normalized Householder QR.
     ///
     /// Returns `None` when multiple closed sink classes exist (non-unique steady state).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates workspace and output vector")]
     pub fn steady_state(&self) -> Option<DVector<T>> {
         assert!(self.num_states > 0);
         let mut ws = math_commons::stochastic::SolverWorkspace::new(self.num_states, 0);
@@ -288,7 +288,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     ///
     /// The expected time satisfies: Q·t = -1, where Q is the transient
     /// submatrix of the generator.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn expected_absorption_times(&self, transient_states: &[usize]) -> Result<DVector<T>> {
         let n_t = transient_states.len();
         if n_t == 0 {
@@ -359,7 +359,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     /// assert!(!trajectory.is_empty());
     /// assert_eq!(trajectory[0], (0.0, 0));
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn simulate_trajectory<R: rand::Rng>(
         &self,
         initial_state: usize,

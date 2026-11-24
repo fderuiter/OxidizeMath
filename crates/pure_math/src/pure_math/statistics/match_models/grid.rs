@@ -236,8 +236,14 @@ struct ScoreGridWire {
 
 impl Serialize for ScoreGrid {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let side = self.max_goals + 1;
-        let mut cells = Vec::with_capacity(side * side);
+        let side = self
+            .max_goals
+            .checked_add(1)
+            .ok_or_else(|| serde::ser::Error::custom("ScoreGrid max_goals + 1 overflowed usize"))?;
+        let total_cells = side
+            .checked_mul(side)
+            .ok_or_else(|| serde::ser::Error::custom("ScoreGrid side * side overflowed usize"))?;
+        let mut cells = Vec::with_capacity(total_cells);
         for home in 0..=self.max_goals {
             for away in 0..=self.max_goals {
                 cells.push(self.prob_unchecked(home, away));

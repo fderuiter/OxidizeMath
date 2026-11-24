@@ -175,7 +175,7 @@ impl<V, T, G, S> MFGConfigBuilder<V, T, G, WithoutTimeSteps, S> {
 
 impl<V, T, G, TS> MFGConfigBuilder<V, T, G, TS, WithoutSpaceBounds> {
     /// Sets the space bounds.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn space_bounds(
         self,
         space_min: f64,
@@ -205,7 +205,7 @@ impl
 {
     /// Builds the `MFGConfig` struct.
     /// This method is only available when all required fields have been set.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn build(self) -> Result<MFGConfig, GameTheoryError> {
         let viscosity = self.viscosity.0;
         let time_horizon = self.time_horizon.0;

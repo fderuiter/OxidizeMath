@@ -43,7 +43,7 @@ pub fn modular_inverse(a: &Integer, m: &Integer) -> Option<Integer> {
 }
 
 #[allow(missing_docs)]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn prime_factors(mut n: u64) -> Vec<(u64, u32)> {
     let mut factors = Vec::new();
     let mut count = 0;
@@ -74,7 +74,7 @@ pub fn prime_factors(mut n: u64) -> Vec<(u64, u32)> {
 }
 
 #[allow(missing_docs)]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
 pub fn precompute_valid_prime_powers(limit_p: u64, max_e: u32) -> Vec<(u64, u32, u64)> {
     let mut valid = Vec::new();
     for p in 3..=limit_p {
@@ -117,7 +117,7 @@ pub struct AmbsDsp {
 
 impl AmbsDsp {
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(limit_p: u64, max_e: u32, b_stop: f64) -> Self {
         Self {
             valid_powers: precompute_valid_prime_powers(limit_p, max_e),
@@ -127,7 +127,7 @@ impl AmbsDsp {
     }
 
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn build_prefix(&mut self, current_p: u64, last_p_index: usize, h_max_remaining: f64) {
         let mut stack = vec![(current_p, last_p_index, h_max_remaining)];
 
@@ -159,7 +159,7 @@ impl AmbsDsp {
         }
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn pair_modular_roots(root: Integer, p: &Integer) -> Vec<Integer> {
         debug_assert!(*p > 1, "modulus p must exceed 1");
         debug_assert!(root >= 0 && root < *p, "root must be reduced modulo p");
@@ -196,7 +196,7 @@ impl AmbsDsp {
         Ok((q, s, z))
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn tonelli_refine_root(
         mut m: u32,
         mut c: Integer,
@@ -239,7 +239,7 @@ impl AmbsDsp {
     }
 
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn tonelli_shanks(n: &Integer, p: &Integer) -> Result<Vec<Integer>, AmbsError> {
         if *p < 2 {
             return Err(AmbsError::ModuloError);
@@ -282,7 +282,7 @@ impl AmbsDsp {
         Self::tonelli_refine_root(s, c, t, r, p)
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn hensels_lifting(a: &Integer, p: &Integer, k: u32) -> Result<Vec<Integer>, AmbsError> {
         let roots_mod_p = Self::tonelli_shanks(a, p)?;
         let mut final_roots = Vec::new();
@@ -345,7 +345,7 @@ impl AmbsDsp {
         Some(result.rem_euc(&total_modulus))
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn cartesian_product(lists: &[Vec<Integer>]) -> Vec<Vec<Integer>> {
         let mut res = vec![vec![]];
         for list in lists {
@@ -363,7 +363,7 @@ impl AmbsDsp {
     }
 
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn compute_modular_square_roots(
         x_l: &Integer,
         s_l: &Integer,
@@ -399,7 +399,7 @@ impl AmbsDsp {
         Ok(final_roots)
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn sieve_candidate_offsets(
         &self,
         n_l: u64,
@@ -440,7 +440,7 @@ impl AmbsDsp {
     }
 
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn search(&mut self, n_max_str: &str) -> Result<Option<Integer>, AmbsError> {
         let n_max = Integer::from_str_radix(n_max_str, 10)
             .map_err(|_| AmbsError::ParseError("err".to_string()))?;
@@ -472,7 +472,7 @@ impl AmbsDsp {
 }
 
 #[allow(missing_docs)]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn solve_quasiperfect_modularity(
     _s_l_str: &str,
     _n_l_str: &str,

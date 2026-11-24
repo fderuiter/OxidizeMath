@@ -13,7 +13,9 @@ mod records;
 mod release_tag;
 mod report;
 mod staged_traceability;
+mod supply_chain;
 mod utils;
+mod verified_alloc_audit;
 mod vulnerabilities;
 mod wasm_coverage;
 mod whitelist;
@@ -98,6 +100,7 @@ fn main() {
         "check-staged-duplicates" => check_staged_duplicates(),
         "test-policy-audit" => run_policy_audit_cli(&args[2..]),
         "check-entropy" => run_check_entropy_cli(&args[2..]),
+        "check-security" => exit_if_failed(vulnerabilities::run_check_security(&args[2..])),
         "check-vulnerabilities" => exit_if_failed(vulnerabilities::check_osv_vulnerabilities()),
         "check-file-lengths" => run_check_file_lengths_cli(&args[2..]),
         "lint-workflows" => exit_if_failed(workflow_linter::lint_workflows()),

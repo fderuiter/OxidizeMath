@@ -196,7 +196,7 @@ pub fn evaluate_elo_batch_into(
 }
 
 /// Evaluates a frozen Elo rating period simultaneously across `roster`, returning an updated `Vec<EloRating>`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn evaluate_elo_batch(
     roster: &[EloRating],
     matches: &[EloBatchMatch],
@@ -235,7 +235,7 @@ pub fn evaluate_elo_sequential_into(
 }
 
 /// Applies Elo matches sequentially one fixture at a time, mutating intermediate ratings across the schedule.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn evaluate_elo_sequential(
     roster: &[EloRating],
     matches: &[EloBatchMatch],

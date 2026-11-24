@@ -88,7 +88,7 @@ pub fn is_stable(matrix: &DMatrix<f64>) -> bool {
 /// // Frequencies should be 2.0 and 3.0
 /// assert!((freqs[0] - 2.0).abs() < 1e-5 || (freqs[0] - 3.0).abs() < 1e-5);
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn natural_frequencies(matrix: &DMatrix<f64>) -> Vec<f64> {
     let eigens = matrix.complex_eigenvalues();
     eigens

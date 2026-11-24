@@ -79,7 +79,7 @@ impl PointCloud {
     /// let cloud = PointCloud::new(points).unwrap();
     /// assert_eq!(cloud.size(), 3);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(points: Vec<Point2D>) -> Result<Self, TdaError> {
         if points.is_empty() {
             return Err(TdaError::EmptyPointCloud);
@@ -110,7 +110,7 @@ impl PointCloud {
     ///
     /// Returns a symmetric matrix where element `(i, j)` is the Euclidean distance
     /// between points `i` and `j`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn distance_matrix(&self) -> Vec<Vec<f64>> {
         let n = self.points.len();
         let mut dist = vec![vec![0.0; n]; n];
@@ -164,7 +164,7 @@ impl NdPointCloud {
     /// assert_eq!(cloud.dimension(), 3);
     /// assert!((cloud.distance_matrix()[0][1] - 5.0).abs() < 1e-12);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(points: Vec<Vec<f64>>) -> Result<Self, TdaError> {
         if points.is_empty() {
             return Err(TdaError::EmptyPointCloud);
@@ -204,7 +204,7 @@ impl NdPointCloud {
     /// # Errors
     ///
     /// Propagates validation errors from [`Self::new`].
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn from_point_cloud_2d(cloud: &PointCloud) -> Result<Self, TdaError> {
         let rows = cloud.points.iter().map(|p| vec![p.x, p.y]).collect();
         Self::new(rows)
@@ -229,7 +229,7 @@ impl NdPointCloud {
     }
 
     /// Computes the symmetric pairwise Euclidean distance matrix in $\mathbb{R}^d$.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn distance_matrix(&self) -> Vec<Vec<f64>> {
         let n = self.points.len();
         let mut dist = vec![vec![0.0; n]; n];
@@ -256,7 +256,7 @@ impl NdPointCloud {
     /// # Errors
     ///
     /// Returns [`TdaError::InvalidDimension`] if `axis_x >= self.dimension` or `axis_y >= self.dimension`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn project_2d(&self, axis_x: usize, axis_y: usize) -> Result<PointCloud, TdaError> {
         if axis_x >= self.dimension {
             return Err(TdaError::InvalidDimension { dimension: axis_x });
@@ -314,7 +314,7 @@ impl Simplex {
     /// let simplex = Simplex::new(vec![0, 1, 2]).unwrap();
     /// assert_eq!(simplex.dimension(), 2); // Triangle
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(mut vertices: Vec<usize>) -> Result<Self, TdaError> {
         if vertices.is_empty() {
             return Err(TdaError::InvalidSimplex {
@@ -369,7 +369,7 @@ impl Simplex {
     /// assert!(faces.contains(&Simplex::new(vec![0, 2]).unwrap()));
     /// assert!(faces.contains(&Simplex::new(vec![1, 2]).unwrap()));
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn faces(&self) -> Result<Vec<Simplex>, TdaError> {
         if self.vertices.len() == 1 {
             return Ok(vec![]); // 0-simplex has no faces

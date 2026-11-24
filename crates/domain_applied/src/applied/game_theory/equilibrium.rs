@@ -37,7 +37,7 @@ impl BoxSet {
     /// Returns [`GameTheoryError::BoundsDimensionMismatch`] if `min_vals` and `max_vals` differ in
     /// length, or [`GameTheoryError::InvalidBoxBounds`] if any coordinate has non-finite bounds or
     /// `min_vals[i] > max_vals[i]`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn try_new(min_vals: Vec<f64>, max_vals: Vec<f64>) -> Result<Self, GameTheoryError> {
         if min_vals.len() != max_vals.len() {
             return Err(GameTheoryError::BoundsDimensionMismatch {

@@ -35,7 +35,7 @@ impl Default for FastFourierTransform {
 }
 
 impl SpectralTransform for FastFourierTransform {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn forward(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, TransformError> {
         let len = input.len();
         if len == 0 {
@@ -51,7 +51,7 @@ impl SpectralTransform for FastFourierTransform {
         Ok(buffer)
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn inverse(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, TransformError> {
         let len = input.len();
         if len == 0 {

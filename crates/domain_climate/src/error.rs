@@ -55,6 +55,17 @@ pub enum ClimateError {
         actual: (usize, usize),
     },
 
+    /// Integer dimension product overflowed `usize::MAX`.
+    #[error("Dimension product overflow in {context}")]
+    DimensionOverflow {
+        /// Human-readable operation or tensor stage where integer overflow occurred.
+        context: &'static str,
+    },
+
+    /// Optimization update error forwarded from `pure_math`.
+    #[error("{0}")]
+    Optimization(#[from] pure_math::pure_math::analysis::optimization::OptimizationError),
+
     /// Shared mathematical error forwarded from `math_commons`.
     #[error("{0}")]
     Math(#[from] MathError),
@@ -69,7 +80,7 @@ impl Diagnostic for ClimateError {
         }
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "diagnostic metadata constructs owned key-value map")]
     fn metadata(&self) -> HashMap<String, String> {
         match self {
             Self::Math(err) => err.metadata(),

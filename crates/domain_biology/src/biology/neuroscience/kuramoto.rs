@@ -43,10 +43,44 @@ impl Default for KuramotoNetwork {
 }
 
 impl KuramotoNetwork {
+    /// Fallible constructor rejecting zero oscillators, negative/non-finite coupling, or `num_nodes * 2` overflow.
+    #[verified_engine::verified(
+        alloc_ok = "pre-allocates oscillator phase, scratch, and coupling vectors"
+    )]
+    pub fn try_new(
+        num_nodes: usize,
+        coupling: f64,
+    ) -> Result<Self, math_commons::error::MathError> {
+        if num_nodes == 0 {
+            return Err(math_commons::error::MathError::StrictlyOutOfBounds {
+                value: 0.0,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        if !coupling.is_finite() || coupling < 0.0 {
+            return Err(math_commons::error::MathError::OutOfBounds {
+                value: coupling,
+                min: 0.0,
+                max: f64::MAX,
+            });
+        }
+        let _ =
+            num_nodes
+                .checked_mul(2)
+                .ok_or(math_commons::error::MathError::CapacityOverflow {
+                    context: "KuramotoNetwork::try_new num_nodes * 2",
+                })?;
+        Ok(Self::new(num_nodes, coupling))
+    }
+
     /// Creates an `N`-oscillator Kuramoto network initialized on a bidirectional ring.
-    #[verified_engine::verified]
+    #[verified_engine::verified(
+        alloc_ok = "pre-allocates oscillator phase, scratch, and coupling vectors"
+    )]
     pub fn new(num_nodes: usize, coupling: f64) -> Self {
         let n = num_nodes.max(1);
+        let arc_cap = n.checked_mul(2).unwrap_or(n);
         let mut ring_edges = Vec::with_capacity(n);
         if n > 1 {
             for i in 0..n {
@@ -59,7 +93,7 @@ impl KuramotoNetwork {
             scratch_state: Vec::with_capacity(n),
             scratch_deriv: Vec::with_capacity(n),
             scratch_accum: Vec::with_capacity(n),
-            couplings: Vec::with_capacity(n * 2),
+            couplings: Vec::with_capacity(arc_cap),
             coupling: if coupling.is_finite() {
                 coupling.max(0.0)
             } else {

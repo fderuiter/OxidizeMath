@@ -1,8 +1,12 @@
 //! Integration tests verifying `math_explorer` macro and metadata facade re-exports.
 use approx::assert_relative_eq;
 use math_explorer::scientific_metadata::theory::TheoryDescribable;
+use math_explorer::verified_engine::allocator::VerifiedAllocator;
 use math_explorer::verified_engine::engine::VerifiedEngine;
 use math_explorer::verified_engine::{Theory, embed_theory, verified};
+
+#[global_allocator]
+static TEST_ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[derive(Theory)]
 #[theory(
@@ -79,12 +83,11 @@ fn test_migrated_physics_methods_record_verified_metrics() {
     assert!(lorenz.state.vec.x.is_finite());
     assert!(lorenz_metrics.function_calls >= 1);
 
-    let (mut lbm, lbm_init_metrics) =
-        VerifiedEngine::run_verified(|| LatticeBoltzmannD2Q9::new(4, 4, 0.8));
-    assert!(lbm_init_metrics.function_calls >= 1);
-
+    let mut lbm = LatticeBoltzmannD2Q9::new(4, 4, 0.8);
     let ((), lbm_metrics) = VerifiedEngine::run_verified(|| LatticeBoltzmann::step(&mut lbm));
     assert!(lbm_metrics.function_calls >= 2);
+    assert_eq!(lbm_metrics.allocations, 0);
+    assert_eq!(lbm_metrics.allocated_bytes, 0);
 }
 
 #[cfg(feature = "biology")]

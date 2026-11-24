@@ -142,7 +142,7 @@ pub fn concentration_bateman(params: &PKParameters, t: f64) -> f64 {
 /// * `params` - The pharmacokinetic parameters for a single dose.
 /// * `dose_times` - A slice of times at which doses were administered.
 /// * `t` - The time at which to calculate the total concentration.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn concentration_superposition(params: &PKParameters, dose_times: &[f64], t: f64) -> f64 {
     let base_model = BatemanModel::new(*params);
     let model = SuperpositionModel::new(base_model, dose_times.to_vec());

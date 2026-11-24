@@ -13,7 +13,7 @@ pub trait Tokenizer {
 pub struct WordTokenizer;
 
 impl Tokenizer for WordTokenizer {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn tokenize(&self, text: &str) -> Vec<String> {
         let mut tokens = Vec::new();
         let mut current_token = String::new();
@@ -43,7 +43,7 @@ impl Tokenizer for WordTokenizer {
 pub struct CharTokenizer;
 
 impl Tokenizer for CharTokenizer {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn tokenize(&self, text: &str) -> Vec<String> {
         text.chars()
             .filter(|c| !c.is_whitespace())
@@ -62,7 +62,7 @@ pub struct PseudoEmbedding {
 
 impl PseudoEmbedding {
     /// Generates a pseudo-embedding vector for a single token.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn embed_token(&self, token: &str) -> Vec<f64> {
         let mut hasher = DefaultHasher::new();
         token.hash(&mut hasher);
@@ -78,7 +78,7 @@ impl PseudoEmbedding {
     }
 
     /// Embeds a sequence of tokens into a `DMatrix<f64>` of shape `(seq_len, d_model)`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn embed_sequence(&self, tokens: &[String]) -> DMatrix<f64> {
         let seq_len = tokens.len();
         if seq_len == 0 {

@@ -128,7 +128,7 @@ pub(super) struct FixedRing<T: Copy> {
 }
 
 impl<T: Copy> FixedRing<T> {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub(super) fn with_default(fill: T) -> Self {
         let buf = vec![fill; MAX_BILLIARD_SEGMENTS];
         assert_eq!(buf.len(), MAX_BILLIARD_SEGMENTS);

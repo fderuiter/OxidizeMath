@@ -64,7 +64,7 @@ impl ZipRegression {
     ///
     /// Returns `ZipError::InsufficientData` if there are fewer than 2 counts.
     /// Returns `ZipError::InvalidDimensions` if the number of rows in `x_matrix` or `z_matrix` does not match the number of counts.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(
         counts: Vec<Count>,
         x_matrix: DMatrix<f64>,

@@ -26,7 +26,7 @@ impl PKParameters {
     /// * `ka` - Absorption rate constant (> 0).
     /// * `ke` - Elimination rate constant (> 0).
     /// * `v` - Volume of distribution (> 0).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(f: f64, d: f64, ka: f64, ke: f64, v: f64) -> Result<Self, PharmacokineticsError> {
         if !(0.0..=1.0).contains(&f) {
             return Err(PharmacokineticsError::InvalidParameter(format!(
@@ -152,7 +152,7 @@ impl PKParametersBuilder {
     }
 
     /// Builds the `PKParameters` struct, validating all fields.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn build(self) -> Result<PKParameters, PharmacokineticsError> {
         let f = self.f.ok_or_else(|| {
             PharmacokineticsError::InvalidParameter("Bioavailability (f) is required".to_string())

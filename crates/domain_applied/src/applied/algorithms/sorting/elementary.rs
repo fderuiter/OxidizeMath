@@ -6,7 +6,7 @@ use super::strategy::Sorter;
 pub struct BubbleSorter;
 
 impl<T: Ord + Clone> Sorter<T> for BubbleSorter {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn sort(&self, data: &[T]) -> SortingResult<T> {
         let mut sorted_data = data.to_vec();
         let mut stats = SortingStats::default();
@@ -56,7 +56,7 @@ pub fn bubble_sort<T: Ord + Clone>(data: &[T]) -> SortingResult<T> {
 pub struct InsertionSorter;
 
 impl<T: Ord + Clone> Sorter<T> for InsertionSorter {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn sort(&self, data: &[T]) -> SortingResult<T> {
         let mut sorted_data = data.to_vec();
         let mut stats = SortingStats::default();

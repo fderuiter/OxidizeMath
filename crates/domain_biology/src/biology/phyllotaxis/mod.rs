@@ -21,7 +21,7 @@ use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 impl TheoryDescribable for VogelPhyllotaxisEngine {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats theory metadata description")]
     fn theory_description(&self) -> String {
         let analysis = self.analysis();
         format!(
@@ -35,21 +35,21 @@ impl TheoryDescribable for VogelPhyllotaxisEngine {
         )
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats phonetic metadata description")]
     fn phonetic_description(&self) -> String {
         "Vogel Fermat spiral where radius r sub n equals c times square root of n and polar angle \
          theta sub n equals n times divergence angle alpha, forming opposing Fibonacci parastichies."
             .to_string()
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats theory citation string")]
     fn theory_citation(&self) -> String {
         "Vogel, H. (1979). A better way to construct the sunflower head. Mathematical Biosciences, \
          44(3-4), 179-189."
             .to_string()
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates theory descriptions map")]
     fn available_descriptions(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert(

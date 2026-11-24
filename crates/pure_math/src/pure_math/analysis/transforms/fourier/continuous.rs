@@ -23,7 +23,7 @@ use std::f64::consts::PI;
 /// * `l` - Half-period $L$. The function is assumed periodic over $[-L, L]$.
 /// * `n_terms` - Number of terms $N$ to calculate (for $n=1$ to $N$).
 /// * `integrator` - The integration strategy.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calculate_fourier_coefficients_real<F, I>(
     f: F,
     l: f64,
@@ -75,6 +75,57 @@ pub fn evaluate_fourier_series_real(x: f64, l: f64, a0: f64, an: &[f64], bn: &[f
     sum
 }
 
+/// Checked variant of [`calculate_fourier_coefficients_complex`] returning [`math_commons::error::MathError`]
+/// on non-positive or non-finite half-period `l` or capacity overflow in `2 * n_terms + 1`.
+#[verified_engine::verified(alloc_ok = "allocates complex Fourier coefficient vector")]
+pub fn try_calculate_fourier_coefficients_complex<F, I>(
+    f: F,
+    l: f64,
+    n_terms: usize,
+    integrator: &I,
+) -> Result<Vec<Complex64>, math_commons::error::MathError>
+where
+    F: Fn(f64) -> f64 + Copy,
+    I: Integrator,
+{
+    if !l.is_finite() || l <= 0.0 {
+        return Err(math_commons::error::MathError::StrictlyOutOfBounds {
+            value: l,
+            min: 0.0,
+            max: f64::INFINITY,
+        });
+    }
+    let total_terms = 2usize
+        .checked_mul(n_terms)
+        .and_then(|v| v.checked_add(1))
+        .ok_or(math_commons::error::MathError::CapacityOverflow {
+            context: "calculate_fourier_coefficients_complex 2 * n_terms + 1",
+        })?;
+    let range =
+        isize::try_from(n_terms).map_err(|_| math_commons::error::MathError::CapacityOverflow {
+            context: "calculate_fourier_coefficients_complex n_terms as isize",
+        })?;
+
+    let min = -l;
+    let max = l;
+    let eps = math_commons::registry::TOLERANCE_FAST;
+    let inv_two_l = 1.0 / (2.0 * l);
+    let mut coeffs = Vec::with_capacity(total_terms);
+
+    for n in -range..=range {
+        let factor = (n as f64) * PI / l;
+        let func_re = |x: f64| f(x) * (factor * x).cos();
+        let func_im = |x: f64| f(x) * -(factor * x).sin();
+        let res_re = integrator.integrate(func_re, min, max, eps);
+        let res_im = integrator.integrate(func_im, min, max, eps);
+        coeffs.push(Complex64::new(
+            inv_two_l * res_re.value,
+            inv_two_l * res_im.value,
+        ));
+    }
+    Ok(coeffs)
+}
+
 /// Calculates complex Fourier coefficients $c_n$ for a function $f(x)$ with period $2L$.
 ///
 /// $$c_n = \frac{1}{2L} \int_{-L}^{L} f(x) e^{-in\pi x/L} \, dx$$
@@ -84,7 +135,7 @@ pub fn evaluate_fourier_series_real(x: f64, l: f64, a0: f64, an: &[f64], bn: &[f
 /// * `l` - Half-period $L$.
 /// * `n_terms` - Number of terms to calculate (from $-N$ to $N$).
 /// * `integrator` - The integration strategy.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates complex Fourier coefficient vector")]
 pub fn calculate_fourier_coefficients_complex<F, I>(
     f: F,
     l: f64,
@@ -95,40 +146,7 @@ where
     F: Fn(f64) -> f64 + Copy,
     I: Integrator,
 {
-    let min = -l;
-    let max = l;
-    let eps = math_commons::registry::TOLERANCE_FAST;
-    let range = n_terms as isize;
-    let mut coeffs = Vec::with_capacity(2 * n_terms + 1);
-
-    for n in -range..=range {
-        let n_f = n as f64;
-        let factor = n_f * PI / l;
-
-        // e^{-i theta} = cos(theta) - i sin(theta)
-        // integrand = f(x) * (cos(n pi x / L) - i sin(n pi x / L))
-        // real part = f(x) cos(...)
-        // imag part = -f(x) sin(...)
-
-        // Note: argument is n * pi * x / L.
-        // We use -n in the exponent formula, but here n runs from -N to N so we just use n directly
-        // in the exponent e^{-i * n ...}?
-        // Formula: c_n = ... e^{-i n pi x / L}
-        // So argument to trig functions is (n pi x / L), and we take cos - i sin.
-
-        let func_re = |x: f64| f(x) * (factor * x).cos();
-        let func_im = |x: f64| f(x) * -(factor * x).sin();
-
-        let res_re = integrator.integrate(func_re, min, max, eps);
-        let res_im = integrator.integrate(func_im, min, max, eps);
-
-        let c_n = Complex64::new(
-            (1.0 / (2.0 * l)) * res_re.value,
-            (1.0 / (2.0 * l)) * res_im.value,
-        );
-        coeffs.push(c_n);
-    }
-    coeffs
+    try_calculate_fourier_coefficients_complex(f, l, n_terms, integrator).unwrap_or_default()
 }
 
 /// Computes the Fourier Transform $\tilde{f}(\omega)$ of a real-valued function $f(t)$.

@@ -9,7 +9,7 @@ impl CuttingSpeed {
     ///
     /// # Errors
     /// Returns `EngineeringError` if `value` is negative or zero.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(value: f64) -> Result<Self, EngineeringError> {
         if value <= 0.0 {
             return Err(EngineeringError::InvalidParameter {
@@ -36,7 +36,7 @@ impl MaterialConstant {
     ///
     /// # Errors
     /// Returns `EngineeringError` if `value` is negative.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(value: f64) -> Result<Self, EngineeringError> {
         if value < 0.0 {
             return Err(EngineeringError::InvalidParameter {
@@ -63,7 +63,7 @@ impl ToolExponent {
     ///
     /// # Errors
     /// Returns `EngineeringError` if `value` is zero, to prevent division by zero in the exponent.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(value: f64) -> Result<Self, EngineeringError> {
         if value == 0.0 {
             return Err(EngineeringError::InvalidParameter {

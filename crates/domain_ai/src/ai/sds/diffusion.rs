@@ -56,7 +56,7 @@ pub struct NoiseSchedule {
 
 impl NoiseSchedule {
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(timesteps: usize) -> Self {
         // Linear schedule for betas as an example (e.g. 1e-4 to 0.02)
         let beta_start = DEFAULT_BETA_START;
@@ -122,7 +122,7 @@ pub fn generate_noise(rows: usize, cols: usize) -> Result<DMatrix<f64>, crate::e
 }
 
 /// Helper to generate Gaussian noise matching image dimensions using Tier 0 Box-Muller over `RngCore`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn generate_noise_with_rng<R: Rng + ?Sized>(
     rows: usize,
     cols: usize,

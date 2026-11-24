@@ -18,7 +18,7 @@ pub struct UalbfSearchResult {
 }
 
 #[allow(missing_docs)]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn ualbf_search(
     _limit_p: u64,
     _max_exponent: u32,

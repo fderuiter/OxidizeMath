@@ -31,7 +31,7 @@ impl EnantiomerModel {
     /// # Returns
     /// - `Ok(EnantiomerModel)` if fractions and resulting doses are valid.
     /// - `Err(PharmacokineticsError)` if any parameter or fraction is invalid.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(
         d_params: PKParameters,
         l_params: PKParameters,
@@ -125,7 +125,7 @@ impl EnantiomerModel {
     }
 
     /// Calculates the total concentration for multiple IR doses using superposition.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn concentration_ir_multiple_doses(&self, dose_times: &[f64], t: f64) -> f64 {
         let model = SuperpositionModel::new(*self, dose_times.to_vec());
         model.concentration(t)
@@ -139,7 +139,7 @@ impl EnantiomerModel {
     }
 
     /// Calculates the total concentration for multiple XR doses using superposition.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn concentration_xr_multiple_doses(
         &self,
         dose_times: &[f64],

@@ -104,7 +104,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     ///
     /// Panics if the generic real field `T` fails to instantiate from the `f64` value `math_commons::registry::TOLERANCE_HIGH`.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(transition_matrix: DMatrix<T>, state_types: Vec<StateType>) -> Result<Self> {
         let n = transition_matrix.nrows();
         if n == 0 {
@@ -215,7 +215,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// # Returns
     ///
     /// The Q submatrix of size (n_transient × n_transient).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn q_matrix(&self) -> DMatrix<T> {
         let n_t = self.transient_indices.len();
         let mut q = DMatrix::zeros(n_t, n_t);
@@ -234,7 +234,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// # Returns
     ///
     /// The R submatrix of size (n_transient × n_absorbing).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn r_matrix(&self) -> DMatrix<T> {
         let n_t = self.transient_indices.len();
         let n_a = self.absorbing_indices.len();
@@ -264,7 +264,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// # Errors
     ///
     /// Returns `SingularMatrix` if (I - Q) is not invertible.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn fundamental_matrix(&self) -> Result<DMatrix<T>> {
         let q = self.q_matrix();
         let n_t = q.nrows();
@@ -291,7 +291,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// # Errors
     ///
     /// Returns an error if the fundamental matrix cannot be computed.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn absorption_probabilities(&self) -> Result<DMatrix<T>> {
         if self.absorbing_indices.is_empty() {
             return Err(MarkovError::InvalidState {
@@ -317,7 +317,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// # Errors
     ///
     /// Returns an error if the fundamental matrix cannot be computed.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn expected_absorption_times(&self) -> Result<DVector<T>> {
         let n = self.fundamental_matrix()?;
         let n_t = n.nrows();
@@ -339,7 +339,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// # Returns
     ///
     /// The n-step transition matrix P^n.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn n_step_transition(&self, n: usize) -> DMatrix<T> {
         if n == 0 {
             return DMatrix::identity(self.num_states(), self.num_states());

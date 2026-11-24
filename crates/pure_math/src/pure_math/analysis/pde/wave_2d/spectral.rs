@@ -455,7 +455,7 @@ fn compute_finite_mean(field: &[f64]) -> f64 {
     if count > 0 { sum / (count as f64) } else { 0.0 }
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
 fn build_hann_weights(n: usize) -> Vec<f64> {
     assert!(n >= 2, "Window length must be >= 2");
     let denom = (n - 1) as f64;

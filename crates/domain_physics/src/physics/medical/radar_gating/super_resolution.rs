@@ -34,7 +34,7 @@ impl MusicEstimator {
     ///
     /// # Errors
     /// Returns `RadarError::InvalidConfiguration` if parameters are invalid.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(
         samples_per_chirp: usize,
         smoothing_factor: usize,
@@ -69,7 +69,7 @@ impl MusicEstimator {
     ///
     /// Once enough snapshots are collected, the covariance matrix is robust.
     /// Ideally, call `compute_spectrum` after filling the buffer.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn add_snapshot(&mut self, chirp: &[Complex<f64>]) -> Result<(), RadarError> {
         if chirp.len() != self.samples_per_chirp {
             return Err(RadarError::Math(
@@ -175,7 +175,7 @@ impl MusicEstimator {
     }
 
     /// Estimates the sample covariance matrix $R_{xx} = \frac{1}{K} \sum_{k=1}^K x_k x_k^H$.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn estimate_covariance(&self) -> DMatrix<Complex<f64>> {
         let n = self.samples_per_chirp;
         debug_assert!(n > 0);
@@ -191,7 +191,7 @@ impl MusicEstimator {
     }
 
     /// Extracts a compact $N \times \min(P, N - P)$ orthonormal eigenvector basis.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn extract_compact_subspace(
         &self,
         r_xx: DMatrix<Complex<f64>>,
@@ -264,7 +264,7 @@ struct RangeSweepParams {
 
 impl CompactSubspace {
     /// Evaluates $P(R) = (d(R) + 10^{-12})^{-1}$ across the range grid using low-rank projection.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn evaluate_range_sweep(&self, params: &RangeSweepParams) -> Vec<(f64, f64)> {
         let n = self.basis.nrows();
         debug_assert!(n > 0);

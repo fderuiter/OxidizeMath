@@ -2,7 +2,7 @@
 
 use super::EdmondsKarpScratch;
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates augmenting path trace vectors")]
 pub(super) fn reconstruct_augmenting_path(
     scratch: &EdmondsKarpScratch,
     source: usize,
@@ -26,7 +26,7 @@ pub(super) fn reconstruct_augmenting_path(
     (rev_nodes, rev_edges)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates minimum-cut edge index vector")]
 pub(super) fn collect_cut_edges(scratch: &EdmondsKarpScratch, source_side: &[bool]) -> Vec<usize> {
     let mut cut_edges = Vec::new();
     let mut e = 0usize;

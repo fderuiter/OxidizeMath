@@ -1,5 +1,9 @@
 //! Integration tests for security overflow.
 use domain_physics::physics::fluid_dynamics::lattice_boltzmann::state::LatticeState;
+use verified_engine::allocator::VerifiedAllocator;
+
+#[global_allocator]
+static TEST_ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
 #[should_panic(expected = "Grid dimensions too large")]

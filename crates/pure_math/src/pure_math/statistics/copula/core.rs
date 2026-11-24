@@ -77,7 +77,7 @@ pub struct CorrelationMatrix {
     cholesky: DMatrix<f64>,
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn validate_entries_and_symmetry(matrix: &DMatrix<f64>) -> Result<DMatrix<f64>, CopulaError> {
     let n = matrix.nrows();
     if n != matrix.ncols() {
@@ -161,7 +161,7 @@ impl CorrelationMatrix {
     /// let matrix = CorrelationMatrix::bivariate(rho).unwrap();
     /// assert_eq!(matrix.dimension(), 2);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn bivariate(rho: Correlation) -> Result<Self, CopulaError> {
         let r = rho.value();
         let matrix = DMatrix::from_row_slice(2, 2, &[1.0, r, r, 1.0]);

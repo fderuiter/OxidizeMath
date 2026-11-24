@@ -88,7 +88,7 @@ pub fn normalize_group_advantages(rewards: &[f64], out: &mut [f64]) {
 /// # Returns
 ///
 /// A `Vec<f64>` containing response-level advantages for the group.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn batch_response_level_advantages(rewards: &[f64]) -> Vec<f64> {
     let mut out = vec![0.0; rewards.len()];
     normalize_group_advantages(rewards, &mut out);

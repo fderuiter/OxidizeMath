@@ -34,7 +34,7 @@ impl LongTermMean {
     /// let mu = LongTermMean::new(0.45).unwrap();
     /// assert_eq!(mu.value(), 0.45);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(value: f64) -> Result<Self, OuError> {
         if !value.is_finite() {
             return Err(OuError::InvalidSimulationParams {

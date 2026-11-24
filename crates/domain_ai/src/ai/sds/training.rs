@@ -94,7 +94,7 @@ impl AdamOptimizer {
 }
 
 impl Optimizer for AdamOptimizer {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn step(
         &mut self,
         params: &DMatrix<f64>,
@@ -178,7 +178,7 @@ impl SgdOptimizer {
 }
 
 impl Optimizer for SgdOptimizer {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn step(
         &mut self,
         params: &DMatrix<f64>,

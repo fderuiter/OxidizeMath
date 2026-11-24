@@ -20,6 +20,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `check-markdown-links` | Checks all internal relative Markdown documentation links. | Active |
 | `check-profiles` | Verifies Cargo `[profile.release]` `overflow-checks = true`, `[workspace.package].version` inheritance/bounds, absence of `[package.metadata.packager].version`, `README.md` parity, and member `[lints]` inheritance. | Active |
 | `check-release-tag` | Verifies `refs/tags/v*` / `RELEASE_TAG` parity against `[workspace.package].version` and emits WiX pre-release version mappings. | Active |
+| `check-security` | Verifies `Cargo.lock` allowed registries, third-party SPDX licenses, duplicate crate family ceiling (`<= 34`), OSV advisories (with audited `verification_whitelist.toml` entries), and executes all Tier 5 `tests/security_*.rs` suites across all eight math crates. | Active |
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking helper). | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known OSV vulnerabilities. | Active |
 | `compile-papers` | Compiles all 30 academic papers with multi-pass TeXLive `pdflatex` and `bibtex`, emits archive and GitHub Pages HTML catalogs (`index.html` and `pages-index.html`), and packages `papers-bundle.tar.gz` with `SHA256SUMS`. | Active |

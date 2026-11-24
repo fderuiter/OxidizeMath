@@ -108,7 +108,7 @@ pub struct VogelPhyllotaxisEngine {
 impl VogelPhyllotaxisEngine {
     /// Constructs a [`VogelPhyllotaxisEngine`] with pre-allocated buffers for up to
     /// [`MAX_PRIMORDIA`] ($4{,}096$) primordia and computes the initial primordia layout.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates primordia buffers")]
     pub fn new(count: usize, divergence_rad: f64, scale: f64) -> Result<Self, BotanicalError> {
         validate_phyllotaxis_params(count, divergence_rad, scale)?;
         let mut engine = Self {

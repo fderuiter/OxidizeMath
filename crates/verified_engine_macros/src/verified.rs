@@ -8,6 +8,7 @@ use syn::visit_mut::VisitMut;
 pub(crate) struct VerifiedArgs {
     pub(crate) opt_out: bool,
     pub(crate) allow_recursion: bool,
+    pub(crate) alloc_ok: bool,
 }
 
 fn parse_reason_value(meta: &syn::meta::ParseNestedMeta<'_>, key: &str) -> syn::Result<()> {
@@ -47,10 +48,17 @@ pub(crate) fn parse_verified_args(attr: TokenStream) -> syn::Result<VerifiedArgs
             parse_reason_value(&meta, "allow_recursion")?;
             args.allow_recursion = true;
             Ok(())
+        } else if meta.path.is_ident("alloc_ok") {
+            if args.alloc_ok {
+                return Err(meta.error("duplicate `alloc_ok` key in `#[verified]`"));
+            }
+            parse_reason_value(&meta, "alloc_ok")?;
+            args.alloc_ok = true;
+            Ok(())
         } else {
             let key = meta.path.to_token_stream().to_string();
             Err(meta.error(format!(
-                "unknown `#[verified]` attribute key `{key}`; valid keys are `opt_out = \"reason\"` and `allow_recursion = \"reason\"`"
+                "unknown `#[verified]` attribute key `{key}`; valid keys are `opt_out = \"reason\"`, `allow_recursion = \"reason\"`, and `alloc_ok = \"reason\"`"
             )))
         }
     });
@@ -363,10 +371,22 @@ mod tests {
                 .unwrap()
                 .allow_recursion
         );
+        assert!(
+            parse_verified_args(quote! { alloc_ok = "constructor pre-allocation" })
+                .unwrap()
+                .alloc_ok
+        );
+        let combined = parse_verified_args(
+            quote! { alloc_ok = "builder", allow_recursion = "trait delegation" },
+        )
+        .unwrap();
+        assert!(combined.alloc_ok && combined.allow_recursion);
         assert!(parse_verified_args(quote! { "opt_out" }).is_err());
         assert!(parse_verified_args(quote! { not_opt_out = "x" }).is_err());
         assert!(parse_verified_args(quote! { opt_out = "" }).is_err());
         assert!(parse_verified_args(quote! { allow_recursion = "   " }).is_err());
+        assert!(parse_verified_args(quote! { alloc_ok = "" }).is_err());
+        assert!(parse_verified_args(quote! { alloc_ok = "a", alloc_ok = "b" }).is_err());
     }
 
     #[test]

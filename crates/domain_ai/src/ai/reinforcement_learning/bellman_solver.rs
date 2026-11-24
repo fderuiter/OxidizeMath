@@ -137,7 +137,7 @@ impl BellmanSolution {
     /// Solves $V^*(s)$ and $Q^*(s, a)$ via value iteration calling [`bellman_optimality_value`]
     /// and [`action_value_bellman_equation`], plus uniform baseline $V_\pi(s)$ via [`state_value_bellman_equation`].
     #[must_use]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn solve(mdp: &SculptedGridMdp, tolerance: f64, max_sweeps: usize) -> Self {
         let w = mdp.width as usize;
         let h = mdp.height as usize;
@@ -195,7 +195,7 @@ impl BellmanSolution {
     }
 
     /// Evaluates $V_\pi(s)$ in place for `policy` by iterating [`state_value_bellman_equation`].
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn evaluate_policy(
         &mut self,
         mdp: &SculptedGridMdp,

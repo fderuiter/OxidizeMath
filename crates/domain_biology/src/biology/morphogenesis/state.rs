@@ -12,7 +12,7 @@ pub struct TuringState<const N: usize = 2> {
 
 impl<const N: usize> TuringState<N> {
     /// Creates a new zero-initialized state of a given size.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(size: usize) -> Self {
         // specific initialization for N=0 case handled by array::from_fn gracefully
         // (produces empty array)

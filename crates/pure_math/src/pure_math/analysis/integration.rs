@@ -149,7 +149,7 @@ pub struct MultivariateIntegrator {
 
 impl MultivariateIntegrator {
     /// Constructs a preallocated hyperrectangle integrator with the specified [`MultivariateRule`].
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates workspace buffers")]
     pub fn with_rule(
         rule: MultivariateRule,
         dimension: usize,

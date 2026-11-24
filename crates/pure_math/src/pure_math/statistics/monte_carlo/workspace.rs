@@ -78,7 +78,7 @@ pub struct MonteCarloWorkspace {
 
 impl MonteCarloWorkspace {
     /// Preallocates all sample, weight, permutation, and QMC buffers for `max_samples` and `dimension`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates Monte Carlo workspace")]
     pub fn new(max_samples: usize, dimension: usize) -> Result<Self, MonteCarloError> {
         if max_samples == 0 {
             return Err(MonteCarloError::InvalidSampleCount { samples: 0 });

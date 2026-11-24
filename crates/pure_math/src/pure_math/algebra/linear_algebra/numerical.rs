@@ -50,7 +50,7 @@ pub(crate) fn map_linalg_error(err: LinalgError) -> LinearAlgebraError {
     }
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates row-major staging buffer")]
 pub(crate) fn dmatrix_to_row_major(a: &DMatrix<f64>) -> Vec<f64> {
     let (m, n) = a.shape();
     let mut out = Vec::with_capacity(m * n);
@@ -63,7 +63,7 @@ pub(crate) fn dmatrix_to_row_major(a: &DMatrix<f64>) -> Vec<f64> {
 }
 
 /// Solves a square linear system $A x = b$ via partial-pivoted LU in [`engine_linalg`].
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates LU workspace and output vector")]
 pub fn solve_linear_system(
     a: &DMatrix<f64>,
     b: &DVector<f64>,
@@ -98,7 +98,7 @@ pub fn solve_linear_system(
 ///
 /// Avoids squaring the condition number $\kappa(A)$ in explicit normal equations $A^T A c = A^T b$,
 /// recovering near-collinear parameters accurately at $\varepsilon = 10^{-8}$.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates QR/SVD workspace and output vector")]
 pub fn solve_normal_equation(
     a: &DMatrix<f64>,
     b: &DVector<f64>,
@@ -131,7 +131,7 @@ pub fn solve_normal_equation(
 }
 
 /// Checked Moore-Penrose pseudoinverse $A^+ = V \Sigma^+ U^T$ returning [`LinearAlgebraError`] on `NaN` or non-convergence.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates SVD workspace and output matrix")]
 pub fn try_moore_penrose_pseudoinverse(
     matrix: &DMatrix<f64>,
     epsilon: f64,
@@ -158,14 +158,14 @@ pub fn try_moore_penrose_pseudoinverse(
 }
 
 /// Calculates the Moore-Penrose Pseudoinverse ($J^{\dagger}$); prefer [`try_moore_penrose_pseudoinverse`] for checked error handling.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates fallback output matrix")]
 pub fn moore_penrose_pseudoinverse(matrix: &DMatrix<f64>, epsilon: f64) -> DMatrix<f64> {
     try_moore_penrose_pseudoinverse(matrix, epsilon)
         .unwrap_or_else(|_| DMatrix::zeros(matrix.ncols(), matrix.nrows()))
 }
 
 /// Solves a symmetric positive-definite linear system $A x = b$ via strict Cholesky factorization.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates Cholesky workspace and output vector")]
 pub fn solve_cholesky_system(
     a: &DMatrix<f64>,
     b: &DVector<f64>,
@@ -189,7 +189,7 @@ pub fn solve_cholesky_system(
 }
 
 /// Solves Tikhonov ridge regression $\min_x \|A x - b\|_2^2 + \lambda^2 \|x\|_2^2$ via SVD filter factors.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates Tikhonov workspace and output vector")]
 pub fn solve_tikhonov_system(
     a: &DMatrix<f64>,
     b: &DVector<f64>,
@@ -242,7 +242,7 @@ fn dense_to_csr_parts(a: &DMatrix<f64>) -> Result<CsrOwnedParts, LinearAlgebraEr
 }
 
 /// Solves an SPD linear system $A x = b$ using [`engine_linalg`]'s preallocated Conjugate Gradient solver.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates Krylov workspace and output vector")]
 pub fn solve_conjugate_gradient(
     a: &DMatrix<f64>,
     b: &DVector<f64>,
@@ -270,7 +270,7 @@ pub fn solve_conjugate_gradient(
 }
 
 /// Solves a general square linear system $A x = b$ using [`engine_linalg`]'s restarted GMRES solver.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates GMRES workspace and output vector")]
 pub fn solve_gmres_restarted(
     a: &DMatrix<f64>,
     b: &DVector<f64>,

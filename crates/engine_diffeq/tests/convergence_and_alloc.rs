@@ -10,6 +10,10 @@ use math_commons::math_kernel::types::SolverWorkspace;
 use oxidize_core::rng::OxidizeRng;
 use verified_engine::engine::VerifiedEngine;
 
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
 /// Nonlinear hyperbolic-sine SDE whose exact solution is $X_t = \sinh(\operatorname{arsinh}(X_0) + \mu t + \sigma W_t)$.
 ///
 /// - Stratonovich: $dX_t = \mu \sqrt{1 + X_t^2}\,dt + \sigma \sqrt{1 + X_t^2} \circ dW_t$.

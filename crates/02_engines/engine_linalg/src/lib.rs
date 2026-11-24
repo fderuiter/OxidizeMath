@@ -61,6 +61,11 @@ pub use types::{
 };
 
 #[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_conditioning;

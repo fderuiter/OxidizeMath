@@ -50,7 +50,7 @@ pub type QSeries = crate::pure_math::number_theory::q_series::QSeries<i64>;
 ///
 /// * `k` - The scaling factor for the power of q.
 /// * `precision` - The number of terms to compute (i.e., maximum power of q + 1).
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn f_k(k: usize, precision: usize) -> QSeries {
     if k == 0 {
         return QSeries::from_vec(vec![0i64; precision]);

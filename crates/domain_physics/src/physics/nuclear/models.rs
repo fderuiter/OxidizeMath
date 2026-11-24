@@ -72,7 +72,7 @@ impl LiquidDropModel {
 }
 
 impl BindingEnergyModel for LiquidDropModel {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn binding_energy(
         &self,
         atomic_number: AtomicNumber,

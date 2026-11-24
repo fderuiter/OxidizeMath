@@ -65,7 +65,7 @@ pub struct EdmondsKarpScratch {
 impl EdmondsKarpScratch {
     /// Preallocates workspace buffers for graphs up to `max_nodes` vertices and `max_edges` edges.
     #[must_use]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates scratch buffers")]
     pub fn with_capacity(max_nodes: usize, max_edges: usize) -> Self {
         Self {
             num_nodes: 0,
@@ -412,7 +412,7 @@ fn extract_flows_and_cut_capacity(
 /// assert!((result.min_cut_capacity - 15.0).abs() < 1e-9);
 /// # Ok::<(), math_explorer::error::Error>(())
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates scratch and owned trace output")]
 pub fn max_flow_min_cut(
     vertex_count: usize,
     edges: &[(usize, usize, f64)],

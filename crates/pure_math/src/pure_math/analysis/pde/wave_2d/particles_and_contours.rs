@@ -209,7 +209,7 @@ pub struct MarchingSquares2D {
 
 impl MarchingSquares2D {
     /// Pre-allocates storage for up to `max_segments` contour line segments.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(max_segments: usize) -> Self {
         let cap = max_segments.max(64);
         Self {

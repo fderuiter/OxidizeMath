@@ -155,7 +155,7 @@ pub struct PersistenceBarcode {
 
 impl PersistenceBarcode {
     /// Creates a new empty barcode.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new() -> Self {
         Self {
             intervals: Vec::new(),
@@ -192,7 +192,7 @@ impl PersistenceBarcode {
     /// barcode.add_interval(PersistenceInterval::new(0.5, 2.0, 1).unwrap());
     /// assert_eq!(barcode.filter_by_dimension(1).len(), 1);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn filter_by_dimension(&self, dimension: usize) -> Vec<&PersistenceInterval> {
         self.intervals
             .iter()
@@ -201,7 +201,7 @@ impl PersistenceBarcode {
     }
 
     /// Filters intervals by minimum persistence (`persistence > threshold`).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn filter_by_persistence(&self, threshold: f64) -> Vec<&PersistenceInterval> {
         self.intervals
             .iter()
@@ -344,7 +344,7 @@ pub fn compute_persistence(
 /// let barcode = compute_persistence_from_distances(&cloud.distance_matrix(), &radii).unwrap();
 /// assert!(!barcode.filter_by_dimension(1).is_empty());
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn compute_persistence_from_distances(
     dist: &[Vec<f64>],
     radii: &[f64],

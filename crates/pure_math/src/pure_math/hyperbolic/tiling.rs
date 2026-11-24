@@ -98,7 +98,7 @@ pub fn central_polygon_radius(p: u32, q: u32) -> Result<f64, HyperbolicError> {
 }
 
 /// Generates the $p$ counterclockwise vertices of the central regular `{p, q}` polygon in $\mathbb{D}$.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn regular_polygon_vertices(p: u32, q: u32) -> Result<Vec<Complex64>, HyperbolicError> {
     let r0 = central_polygon_radius(p, q)?;
     let n = p as usize;
@@ -112,7 +112,7 @@ pub fn regular_polygon_vertices(p: u32, q: u32) -> Result<Vec<Complex64>, Hyperb
 }
 
 /// Generates the $n$ counterclockwise ideal vertices $\xi_k = e^{2\pi i k / n} \in \partial\mathbb{D}$ of a regular ideal $n$-gon.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn ideal_polygon_vertices(sides: u32) -> Result<Vec<Complex64>, HyperbolicError> {
     if sides < 3 || (sides as usize) > MAX_POLYGON_VERTICES {
         return Err(HyperbolicError::InvalidPolygon {
@@ -236,7 +236,7 @@ pub struct HyperbolicTilingBuffer {
 
 impl HyperbolicTilingBuffer {
     /// Allocates a new [`HyperbolicTilingBuffer`] with capacity [`MAX_TILING_POLYGONS`] and populates `kind`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(kind: TilingKind, depth: usize) -> Result<Self, HyperbolicError> {
         let mut buf = Self {
             kind,

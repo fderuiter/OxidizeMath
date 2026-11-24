@@ -112,7 +112,7 @@ impl NetworkEpidemicModelBuilder {
     ///
     /// # Errors
     /// Returns [`NetworkModelError::AdjacencyMismatch`] if CSR indices or row bounds are invalid.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "builder constructs owned adjacency lists")]
     pub fn csr_adjacency(
         self,
         row_ptr: &[usize],
@@ -145,7 +145,7 @@ impl NetworkEpidemicModelBuilder {
     }
 
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn build(self) -> Result<NetworkEpidemicModel, NetworkModelError> {
         let num_nodes = self.num_nodes.ok_or(NetworkModelError::InvalidNodeCount)?;
         let beta = self.beta.unwrap_or(0.0);
@@ -154,7 +154,7 @@ impl NetworkEpidemicModelBuilder {
         if num_nodes == 0 {
             return Err(NetworkModelError::InvalidNodeCount);
         }
-        if beta < 0.0 || gamma < 0.0 {
+        if !beta.is_finite() || beta < 0.0 || !gamma.is_finite() || gamma < 0.0 {
             return Err(NetworkModelError::InvalidParameters);
         }
 

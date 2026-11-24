@@ -81,7 +81,7 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
     /// // Heat should have diffused, lowering the peak temperature
     /// assert!(final_max < initial_max);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(
         surface: &'a S,
         alpha: f64,

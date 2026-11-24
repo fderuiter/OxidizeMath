@@ -130,7 +130,7 @@ pub fn solve_ka(
 /// Calibrates `(ka, ke)` in $\text{h}^{-1}$ from target $T_{\max}$ (hours) and elimination half-life $t_{1/2}$ (hours).
 ///
 /// Selects a convex monotone starting point so [`solve_ka`] converges strictly inside $k_a > 0$.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calibrate_ka_from_half_life(
     t_max_target: f64,
     half_life_h: f64,

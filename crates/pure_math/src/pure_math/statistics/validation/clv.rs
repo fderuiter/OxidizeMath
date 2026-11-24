@@ -168,7 +168,7 @@ pub fn devig_multi_way_into(
 }
 
 /// Removes bookmaker vigorish from an $N$-way closing market, returning normalized probabilities.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn devig_multi_way(market_odds: &[Odds]) -> Result<Vec<UnitInterval>, KellyError> {
     if market_odds.len() < 2 {
         return Err(KellyError::InsufficientBets {

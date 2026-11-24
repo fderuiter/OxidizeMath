@@ -18,7 +18,7 @@ use crate::pure_math::{
 use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
 fn error_metadata(error_type: &str, description: String) -> HashMap<String, String> {
     let mut map = HashMap::new();
     map.insert("error_type".to_string(), error_type.to_string());
@@ -32,7 +32,7 @@ impl Diagnostic for NumberTheoryError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("NumberTheoryError", self.to_string())
     }
@@ -44,7 +44,7 @@ impl Diagnostic for KellyError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("KellyError", self.to_string())
     }
@@ -56,7 +56,7 @@ impl Diagnostic for MarketPricingError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("MarketPricingError", self.to_string())
     }
@@ -68,7 +68,7 @@ impl Diagnostic for MarkovError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = error_metadata("MarkovError", self.to_string());
         if let Self::Math(math_err) = self {
@@ -86,7 +86,7 @@ impl Diagnostic for OuError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("OuError", self.to_string())
     }
@@ -98,7 +98,7 @@ impl Diagnostic for ZipError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("ZipError", self.to_string())
     }
@@ -110,7 +110,7 @@ impl Diagnostic for TdaError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("TdaError", self.to_string())
     }
@@ -122,7 +122,7 @@ impl Diagnostic for CopulaError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = error_metadata("CopulaError", self.to_string());
         if let Self::Math(math_err) = self {
@@ -140,7 +140,7 @@ impl Diagnostic for Glicko2Error {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("Glicko2Error", self.to_string())
     }
@@ -152,7 +152,7 @@ impl Diagnostic for EloError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("EloError", self.to_string())
     }
@@ -164,7 +164,7 @@ impl Diagnostic for MatchModelError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("MatchModelError", self.to_string())
     }
@@ -176,7 +176,7 @@ impl Diagnostic for AmbsError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("AmbsError", self.to_string())
     }
@@ -188,7 +188,7 @@ impl Diagnostic for AnalysisError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("AnalysisError", self.to_string())
     }
@@ -200,7 +200,7 @@ impl Diagnostic for EllipticCurveError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("EllipticCurveError", self.to_string())
     }
@@ -212,7 +212,7 @@ impl Diagnostic for GraphTheoryError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("GraphTheoryError", self.to_string())
     }
@@ -224,7 +224,7 @@ impl Diagnostic for EvolutionError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("EvolutionError", self.to_string())
     }
@@ -236,7 +236,7 @@ impl Diagnostic for LinearAlgebraError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("LinearAlgebraError", self.to_string())
     }
@@ -248,7 +248,7 @@ impl Diagnostic for OptimizationError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("OptimizationError", self.to_string())
     }
@@ -260,7 +260,7 @@ impl Diagnostic for StochasticError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("StochasticError", self.to_string())
     }
@@ -272,7 +272,7 @@ impl Diagnostic for TensorError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("TensorError", self.to_string())
     }
@@ -284,7 +284,7 @@ impl Diagnostic for TransformError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("TransformError", self.to_string())
     }
@@ -296,7 +296,7 @@ impl Diagnostic for HyperbolicError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("HyperbolicError", self.to_string())
     }
@@ -308,7 +308,7 @@ impl Diagnostic for MonteCarloError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("MonteCarloError", self.to_string())
     }

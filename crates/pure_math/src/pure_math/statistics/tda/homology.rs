@@ -15,7 +15,7 @@ pub(crate) struct UnionFind {
 }
 
 impl UnionFind {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub(crate) fn new(n: usize) -> Self {
         Self {
             parent: (0..n).collect(),
@@ -125,7 +125,7 @@ pub fn betti_number_0(complex: &SimplicialComplex) -> Result<usize, TdaError> {
     betti_0_sparse(vertices, edges)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn betti_0_dense(n: usize, edges: Option<&HashSet<Simplex>>) -> Result<usize, TdaError> {
     let mut uf = UnionFind::new(n);
     if let Some(edge_set) = edges {
@@ -141,7 +141,7 @@ fn betti_0_dense(n: usize, edges: Option<&HashSet<Simplex>>) -> Result<usize, Td
     Ok(uf.count_components())
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn betti_0_sparse(
     vertices: &HashSet<Simplex>,
     edges: Option<&HashSet<Simplex>>,
@@ -251,7 +251,7 @@ fn betti_number_1_with_beta0(complex: &SimplicialComplex, beta0: usize) -> Resul
     Ok(betti_1_from_counts(v, e, beta0, rank_partial_2))
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn collect_sorted_edge_pairs(edge_set: &HashSet<Simplex>) -> Result<Vec<[usize; 2]>, TdaError> {
     let mut edges = Vec::with_capacity(edge_set.len());
     for edge in edge_set {
@@ -269,7 +269,7 @@ fn collect_sorted_edge_pairs(edge_set: &HashSet<Simplex>) -> Result<Vec<[usize; 
     Ok(edges)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn collect_sorted_tri_triples(tri_set: &HashSet<Simplex>) -> Result<Vec<[usize; 3]>, TdaError> {
     let mut triangles = Vec::with_capacity(tri_set.len());
     for tri in tri_set {
@@ -303,7 +303,7 @@ fn compute_partial_2_rank(
     Ok(workspace.reduce_with_max_rank(max_rank))
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn find_edge_row(edges: &[[usize; 2]], u: usize, v: usize) -> Result<usize, TdaError> {
     let pair = if u <= v { [u, v] } else { [v, u] };
     edges

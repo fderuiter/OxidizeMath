@@ -18,12 +18,14 @@ pub(super) struct FilteredSimplexSet {
     pub(super) final_beta0: usize,
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(
+    alloc_ok = "allocates filtration bitsets, edges, lookup, and triangles"
+)]
 pub(super) fn collect_filtered_simplices_up_to(
     dist: &[Vec<f64>],
     cutoff: f64,
     max_triangles: usize,
-) -> FilteredSimplexSet {
+) -> Result<FilteredSimplexSet, TdaError> {
     let n = dist.len();
     let words = n.div_ceil(64).max(1);
     let mut adj_bits = vec![vec![0_u64; words]; n];
@@ -52,7 +54,7 @@ pub(super) fn collect_filtered_simplices_up_to(
     }
 
     edges.sort_unstable_by(FilteredEdge::cmp_filtration);
-    let edge_lookup = build_edge_lookup(n, &edges);
+    let edge_lookup = build_edge_lookup(n, &edges)?;
     let (mut triangles, truncated_triangles) = if edges.len() >= 3 {
         collect_triangles_from_bitsets(dist, &adj_bits, max_triangles)
     } else {
@@ -60,31 +62,39 @@ pub(super) fn collect_filtered_simplices_up_to(
     };
     triangles.retain(|tri| !is_tetrahedron_dominated(dist, &sym_bits, words, tri));
 
-    FilteredSimplexSet {
+    Ok(FilteredSimplexSet {
         edges,
         edge_lookup,
         triangles,
         truncated_triangles,
         max_radius,
         final_beta0: uf.count_components(),
-    }
+    })
 }
 
-#[verified_engine::verified]
-fn build_edge_lookup(n: usize, edges: &[FilteredEdge]) -> Vec<u32> {
-    let mut lookup = vec![u32::MAX; n * n];
+#[verified_engine::verified(alloc_ok = "allocates dense n*n edge index lookup table")]
+pub(crate) fn build_edge_lookup(n: usize, edges: &[FilteredEdge]) -> Result<Vec<u32>, TdaError> {
+    let total = n.checked_mul(n).ok_or_else(|| TdaError::MatrixError {
+        reason: "build_edge_lookup n * n overflowed usize".to_string(),
+    })?;
+    let mut lookup = vec![u32::MAX; total];
     for (idx, edge) in edges.iter().enumerate() {
         let u = edge.u as usize;
         let v = edge.v as usize;
-        let row_u = u * n;
-        let row_v = v * n;
-        lookup[row_u + v] = idx as u32;
-        lookup[row_v + u] = idx as u32;
+        if u >= n || v >= n {
+            return Err(TdaError::MatrixError {
+                reason: format!("FilteredEdge ({u}, {v}) out of bounds for n = {n}"),
+            });
+        }
+        let idx_uv = math_commons::math_kernel::types::flatten_2d_index(v, u, n);
+        let idx_vu = math_commons::math_kernel::types::flatten_2d_index(u, v, n);
+        lookup[idx_uv] = idx as u32;
+        lookup[idx_vu] = idx as u32;
     }
-    lookup
+    Ok(lookup)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn collect_triangles_from_bitsets(
     dist: &[Vec<f64>],
     adj_bits: &[Vec<u64>],
@@ -330,7 +340,7 @@ pub(super) fn compute_rips_persistence_up_to(
 ) -> Result<RipsPersistenceResult, TdaError> {
     validate_distance_matrix(dist)?;
     let n = dist.len();
-    let filtered = collect_filtered_simplices_up_to(dist, cutoff, max_triangles);
+    let filtered = collect_filtered_simplices_up_to(dist, cutoff, max_triangles)?;
     let max_tree_rank = n.saturating_sub(filtered.final_beta0);
     let max_cycle_rank = filtered.edges.len().saturating_sub(max_tree_rank);
 
@@ -360,7 +370,7 @@ pub(super) fn compute_rips_persistence_up_to(
     })
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates sorted persistence interval vector")]
 fn assemble_rips_intervals(
     n: usize,
     edges: &[FilteredEdge],
@@ -369,7 +379,8 @@ fn assemble_rips_intervals(
     partial_2: &Z2BoundaryWorkspace,
     max_radius: f64,
 ) -> Vec<RipsInterval> {
-    let mut intervals = Vec::with_capacity(n + edges.len().min(n * 4));
+    let cap = n.saturating_add(edges.len().min(n.saturating_mul(4)));
+    let mut intervals = Vec::with_capacity(cap);
     push_h0_intervals(n, edges, partial_1, max_radius, &mut intervals);
     push_h1_intervals(
         edges,

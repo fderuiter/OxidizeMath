@@ -369,7 +369,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
 
     /// Convenience wrapper around [`HiddenMarkovModel::fit_baum_welch_into`] that allocates a
     /// [`BaumWelchWorkspace`] and returns the convergence report plus per-iteration log-likelihoods.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn fit_baum_welch(
         &mut self,
         observations: &[usize],

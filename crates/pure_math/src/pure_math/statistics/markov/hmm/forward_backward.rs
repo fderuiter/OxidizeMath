@@ -189,7 +189,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
     /// # Returns
     ///
     /// A matrix where column t contains γ(t, ·).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn posterior_probabilities(&self, observations: &[usize]) -> Result<DMatrix<T>> {
         let (alpha, scaling_factors) = self.forward_probabilities(observations)?;
         let beta = self.backward_probabilities(observations, &scaling_factors)?;

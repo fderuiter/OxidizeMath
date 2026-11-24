@@ -72,7 +72,7 @@ pub struct MassNumber(u32);
 
 impl MassNumber {
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(value: u32) -> Result<Self, NuclearError> {
         if value == 0 {
             return Err(NuclearError::InvalidMassNumber(

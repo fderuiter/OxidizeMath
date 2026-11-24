@@ -202,7 +202,7 @@ pub fn ramanujan_delta_shifted_q_series(precision: usize) -> QSeries<i64> {
 
 /// Computes Ramanujan's modular discriminant $\Delta(q) = \sum_{n \ge 1} \tau(n) q^n$ up to $O(q^{\text{precision}})$.
 #[must_use]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn ramanujan_delta_q_series(precision: usize) -> QSeries<i64> {
     if precision == 0 {
         return QSeries::new();
@@ -238,7 +238,7 @@ fn divisor_sigma_3(n: usize) -> i64 {
 
 /// Computes the normalized weight-4 Eisenstein series $E_4(q) = 1 + 240 \sum_{n \ge 1} \sigma_3(n) q^n$.
 #[must_use]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn eisenstein_e4_q_series(precision: usize) -> QSeries<i64> {
     if precision == 0 {
         return QSeries::new();

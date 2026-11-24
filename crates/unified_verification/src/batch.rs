@@ -53,6 +53,9 @@ pub(crate) fn run_batch_ast_with_caches(
         passed = false;
     }
     let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
+    if !crate::verified_alloc_audit::run_verified_alloc_audit_with_cache(&member_refs, cache) {
+        passed = false;
+    }
     if !crate::policy_audit::run_policy_audit_with_caches(&member_refs, cache, manifest_cache) {
         passed = false;
     }
@@ -216,6 +219,15 @@ fn run_staged_policy_and_md_fences(
     let touched_members = select_touched_policy_members(all_staged, workspace_members);
     if !touched_members.is_empty() {
         let member_refs: Vec<&str> = touched_members.iter().map(String::as_str).collect();
+        let has_rs_staged = escalate || existing_staged.iter().any(|p| p.ends_with(".rs"));
+        if has_rs_staged
+            && !crate::verified_alloc_audit::run_verified_alloc_audit_with_cache(
+                &member_refs,
+                cache,
+            )
+        {
+            passed = false;
+        }
         let policy_ok = if escalate {
             crate::policy_audit::run_policy_audit_with_caches(&member_refs, cache, manifest_cache)
         } else {

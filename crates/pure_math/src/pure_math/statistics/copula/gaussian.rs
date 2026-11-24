@@ -25,7 +25,7 @@ const DEFAULT_GENZ_SOBOL_SAMPLES: usize = 2048;
 const DEFAULT_GENZ_SEED: u64 = 0x4745_4E5A_534F_424F;
 
 /// Evaluates `C(u; corr)` using stack scratch up to [`MAX_STACK_LEGS`] and heap fallback above.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub(crate) fn evaluate_copula_cdf(
     u: &[Probability],
     corr: &CorrelationMatrix,
@@ -137,7 +137,7 @@ impl GaussianCopula {
     }
 
     /// Evaluates the multivariate Gaussian copula CDF and returns `(probability, cranley_patterson_se)`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates active index filter and QMC workspace")]
     pub fn multivariate_cdf_with_error(
         &self,
         u: &[Probability],
@@ -186,7 +186,7 @@ impl GaussianCopula {
 }
 
 /// Orders active variables by ascending upper normal quantile $b_i$ and computes Cholesky factor $L$.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates ordered sub-covariance and Cholesky factor")]
 fn build_ordered_cholesky(
     cov: &DMatrix<f64>,
     u: &[Probability],
@@ -212,7 +212,7 @@ fn build_ordered_cholesky(
 }
 
 /// Executes Genz's $(m - 1)$-dimensional separation-of-variables integrand on `MultivariateIntegrator`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates QMC integrator workspace")]
 fn integrate_genz_sobol(
     chol_l: &DMatrix<f64>,
     bounds: &[f64],

@@ -75,7 +75,7 @@ pub struct AllenCahn2D {
 impl AllenCahn2D {
     /// Creates a validated 2D Allen-Cahn solver with pre-allocated zero-allocation workspace.
     #[allow(clippy::too_many_arguments)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates field and SPDE scratch")]
     pub fn try_new(
         width: usize,
         height: usize,

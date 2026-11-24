@@ -1,5 +1,9 @@
 //! Integration tests for security voxelgrid get.
 use domain_applied::applied::isosurface::{Point3D, VoxelGrid};
+use verified_engine::allocator::VerifiedAllocator;
+
+#[global_allocator]
+static TEST_ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
 #[verified_engine::verified]

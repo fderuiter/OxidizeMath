@@ -64,7 +64,7 @@ pub enum EllipticCurveError {
 /// assert_eq!(factors.get(&7), Some(&1));
 /// assert_eq!(factors.get(&5), None);
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn prime_factors(mut n: u64) -> HashMap<u64, u32> {
     let mut factors = HashMap::new();
     if n == 0 {

@@ -37,7 +37,7 @@ pub struct BootstrapSurvivalPoint {
 /// # Errors
 /// Returns [`ClinicalTrialError`] if fewer than 2 observations are supplied, `n_replicates == 0`,
 /// or `confidence_level` lies outside `(0.0, 1.0)`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates bootstrap confidence interval curve")]
 pub fn kaplan_meier_bootstrap(
     observations: &[Observation],
     n_replicates: usize,
@@ -100,7 +100,7 @@ pub fn kaplan_meier_bootstrap(
     Ok(out)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates survival replicate grid")]
 fn simulate_survival_replicates(
     observations: &[Observation],
     base_curve: &[TimePoint],
@@ -171,7 +171,7 @@ fn evaluate_sorted_km_at_times(
     }
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates leave-one-out jackknife workspace")]
 fn compute_survival_jackknife_accels(
     observations: &[Observation],
     anchors: &[TimePoint],

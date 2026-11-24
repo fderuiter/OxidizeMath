@@ -41,7 +41,7 @@ impl<const Q: usize> LatticeState<Q> {
     ///
     /// Returns [`FluidError::GridDimensionsOverflow`] if `width * height` or the byte footprint of
     /// a distribution buffer overflows addressable memory (`isize::MAX`).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn try_new(width: usize, height: usize) -> Result<Self, FluidError> {
         let cell_bytes = std::mem::size_of::<[f64; Q]>().max(1);
         let valid_capacity = width

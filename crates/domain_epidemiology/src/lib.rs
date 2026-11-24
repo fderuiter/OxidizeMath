@@ -1,4 +1,10 @@
 #![doc = include_str!("../README.md")]
+
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
 pub mod epidemiology;
 #[allow(missing_docs)]
 pub mod error;

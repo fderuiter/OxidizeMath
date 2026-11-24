@@ -126,6 +126,7 @@ fn test_verification_gates() {
         "check-duplicates",
         "check-profiles",
         "check-release-tag",
+        "check-security",
         "lint-workflows",
         "check-docs",
         "check-cargo-docs",
@@ -291,4 +292,14 @@ fn test_ci_scoped_change_path_filters() {
     crate::ci_filter_tests::assert_detect_changes_invariants(&ci_yaml, &step);
     crate::ci_filter_tests::assert_workspace_members_parity(&blocks, &root_toml);
     crate::ci_filter_tests::assert_scoped_triggers_and_skips(&blocks);
+
+    let sec_args = crate::security::collect_tier5_cargo_test_args(&ws_root)
+        .expect("all 8 math crates must expose security_* targets");
+    for (pkg, _) in crate::security::MATH_CRATES {
+        assert!(
+            sec_args.iter().any(|a| a == pkg),
+            "missing math crate {pkg}"
+        );
+    }
+    assert!(ci_yaml.contains("cargo run -p xtask -- check-security"));
 }

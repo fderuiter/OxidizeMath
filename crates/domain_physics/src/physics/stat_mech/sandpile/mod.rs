@@ -96,7 +96,7 @@ pub struct SandpileGrid {
 
 impl SandpileGrid {
     /// Allocates a new `width x height` open-boundary sandpile grid (`1..=MAX_SANDPILE_DIM`).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(width: usize, height: usize, seed: Option<u64>) -> Result<Self, SandpileError> {
         if width == 0 || height == 0 || width > MAX_SANDPILE_DIM || height > MAX_SANDPILE_DIM {
             return Err(SandpileError::InvalidDimensions {

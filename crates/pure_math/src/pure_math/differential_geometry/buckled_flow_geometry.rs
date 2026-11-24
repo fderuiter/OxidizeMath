@@ -29,6 +29,51 @@ pub(super) struct SampledSurfaceGeometry {
     pub south_meridional_g: f64,
 }
 
+pub(super) fn try_build_sampled_geometry<S: ParametricSurface + ?Sized>(
+    surface: &S,
+    topology: SurfaceTopology,
+    range_u: (f64, f64),
+    range_v: (f64, f64),
+    nu: usize,
+    nv: usize,
+) -> Result<SampledSurfaceGeometry, math_commons::error::MathError> {
+    if nu == 0 || nv == 0 {
+        return Err(math_commons::error::MathError::StrictlyOutOfBounds {
+            value: nu.min(nv) as f64,
+            min: 0.0,
+            max: f64::INFINITY,
+        });
+    }
+    let total = nu
+        .checked_mul(nv)
+        .ok_or(math_commons::error::MathError::CapacityOverflow {
+            context: "BuckledSurfaceFlow nu * nv",
+        })?;
+    let (seam_fwd, seam_rev) = if topology == SurfaceTopology::TwistedKlein {
+        detect_twisted_seam_map(surface, range_u, range_v, nv)
+    } else {
+        ((0..nv).collect(), (0..nv).collect())
+    };
+    let normal_flips = topology == SurfaceTopology::TwistedKlein
+        && seam_normal_reverses(surface, range_u, range_v, nv, &seam_fwd);
+    let neighbors = build_neighbor_table(topology, nu, nv, total, &seam_fwd, &seam_rev);
+    let (ref_points, mut buckling_normals, min_area_element) =
+        sample_reference_geometry(surface, topology, normal_flips, range_u, range_v, nu, nv);
+    orient_normals_outward(topology, nu, nv, &ref_points, &mut buckling_normals);
+    let (north_meridional_g, south_meridional_g) =
+        polar_meridional_metrics(surface, topology, range_u, range_v);
+
+    Ok(SampledSurfaceGeometry {
+        seam_fwd,
+        neighbors,
+        ref_points,
+        buckling_normals,
+        min_area_element,
+        north_meridional_g,
+        south_meridional_g,
+    })
+}
+
 pub(super) fn build_sampled_geometry<S: ParametricSurface + ?Sized>(
     surface: &S,
     topology: SurfaceTopology,
@@ -37,29 +82,8 @@ pub(super) fn build_sampled_geometry<S: ParametricSurface + ?Sized>(
     nu: usize,
     nv: usize,
 ) -> SampledSurfaceGeometry {
-    let (seam_fwd, seam_rev) = if topology == SurfaceTopology::TwistedKlein {
-        detect_twisted_seam_map(surface, range_u, range_v, nv)
-    } else {
-        ((0..nv).collect(), (0..nv).collect())
-    };
-    let normal_flips = topology == SurfaceTopology::TwistedKlein
-        && seam_normal_reverses(surface, range_u, range_v, nv, &seam_fwd);
-    let neighbors = build_neighbor_table(topology, nu, nv, &seam_fwd, &seam_rev);
-    let (ref_points, mut buckling_normals, min_area_element) =
-        sample_reference_geometry(surface, topology, normal_flips, range_u, range_v, nu, nv);
-    orient_normals_outward(topology, nu, nv, &ref_points, &mut buckling_normals);
-    let (north_meridional_g, south_meridional_g) =
-        polar_meridional_metrics(surface, topology, range_u, range_v);
-
-    SampledSurfaceGeometry {
-        seam_fwd,
-        neighbors,
-        ref_points,
-        buckling_normals,
-        min_area_element,
-        north_meridional_g,
-        south_meridional_g,
-    }
+    try_build_sampled_geometry(surface, topology, range_u, range_v, nu.max(1), nv.max(1))
+        .expect("BuckledSurfaceFlow grid nu * nv overflowed usize")
 }
 
 fn wrap_neighbor(
@@ -71,6 +95,9 @@ fn wrap_neighbor(
     i: isize,
     j: isize,
 ) -> usize {
+    if nu == 0 || nv == 0 {
+        return 0;
+    }
     match topology {
         SurfaceTopology::PeriodicTorus => {
             let wi = i.rem_euclid(nu as isize) as usize;
@@ -105,10 +132,11 @@ fn build_neighbor_table(
     topology: SurfaceTopology,
     nu: usize,
     nv: usize,
+    total: usize,
     seam_fwd: &[usize],
     seam_rev: &[usize],
 ) -> Vec<StencilNeighbors> {
-    let mut out = Vec::with_capacity(nu * nv);
+    let mut out = Vec::with_capacity(total);
     for i in 0..nu {
         let ii = i as isize;
         for j in 0..nv {
@@ -154,8 +182,9 @@ fn sample_reference_geometry<S: ParametricSurface + ?Sized>(
     nu: usize,
     nv: usize,
 ) -> (Vec<Point3<f64>>, Vec<Vector3<f64>>, f64) {
-    let mut pts = Vec::with_capacity(nu * nv);
-    let mut normals = Vec::with_capacity(nu * nv);
+    let total = nu * nv;
+    let mut pts = Vec::with_capacity(total);
+    let mut normals = Vec::with_capacity(total);
     let mut min_area = f64::INFINITY;
     let u_span = (range_u.1 - range_u.0).max(1e-9);
     let (du, dv) = topology.grid_spacings(range_u, range_v, nu, nv);

@@ -69,7 +69,7 @@ pub type SimilarityFn<U> = Box<dyn Fn(&U, &U) -> bool>;
 /// let result = combinatorial_lemma(&x_set, &v_set, &n_v, &sim, 0.9);
 /// assert!(result.is_some());
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn combinatorial_lemma<T, U>(
     x_set: &HashSet<T>,
     v_set: &HashSet<U>,

@@ -153,7 +153,7 @@ pub struct ComplimentParams {
 }
 
 impl Default for ComplimentParams {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     fn default() -> Self {
         Self {
             compliments: DVector::from_vec(vec![10.0, 5.0, 8.0]),
@@ -172,7 +172,7 @@ pub struct FamilyParams {
 }
 
 impl Default for FamilyParams {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     fn default() -> Self {
         Self {
             sibling_distances: vec![100.0, 50.0, 10.0],

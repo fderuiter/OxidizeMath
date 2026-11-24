@@ -60,7 +60,7 @@ pub struct KruskalScratch {
 impl KruskalScratch {
     /// Preallocates disjoint-set and edge-sorting buffers for up to `max_nodes` and `max_edges`.
     #[must_use]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates scratch buffers")]
     pub fn with_capacity(max_nodes: usize, max_edges: usize) -> Self {
         Self {
             sorted_edges: Vec::with_capacity(max_edges),
@@ -289,7 +289,7 @@ pub fn solve_minimum_spanning_tree_in_place(
 /// assert_eq!(mst.tree_edge_indices, vec![1, 2, 4]);
 /// # Ok::<(), math_explorer::error::Error>(())
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates scratch and owned MST trace")]
 pub fn minimum_spanning_tree(
     vertex_count: usize,
     edges: &[(usize, usize, f64)],

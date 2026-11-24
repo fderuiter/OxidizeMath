@@ -268,7 +268,7 @@ where
     Key: Eq + std::hash::Hash + Clone,
 {
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(lr: T) -> Result<Self, OptimizationError> {
         Ok(Self {
             learning_rate: lr,
@@ -280,7 +280,7 @@ where
     }
 
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn get_state(&mut self, key: Key, shape: (usize, usize)) -> &mut AdamState<T> {
         self.states.entry(key).or_insert_with(|| AdamState {
             m: DMatrix::zeros(shape.0, shape.1),
@@ -375,7 +375,7 @@ impl<T: RealField + Copy, Key> Optimizer<T, Key> for Adam<T, Key>
 where
     Key: Eq + std::hash::Hash + Clone,
 {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "lazily allocates first-step moment state")]
     fn update_matrix(
         &mut self,
         key: Key,
@@ -394,7 +394,7 @@ where
             .map_err(Into::into)
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "lazily allocates first-step moment state")]
     fn update_vector(
         &mut self,
         key: Key,

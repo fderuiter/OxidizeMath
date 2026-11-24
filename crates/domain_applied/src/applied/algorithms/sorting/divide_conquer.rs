@@ -6,7 +6,7 @@ use super::strategy::Sorter;
 pub struct MergeSorter;
 
 impl<T: Ord + Clone> Sorter<T> for MergeSorter {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn sort(&self, data: &[T]) -> SortingResult<T> {
         let mut stats = SortingStats::default();
         let mut sorted_data = data.to_vec();
@@ -112,7 +112,7 @@ fn merge<T: Ord + Clone>(
 pub struct QuickSorter;
 
 impl<T: Ord + Clone> Sorter<T> for QuickSorter {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn sort(&self, data: &[T]) -> SortingResult<T> {
         let mut sorted_data = data.to_vec();
         let mut stats = SortingStats::default();

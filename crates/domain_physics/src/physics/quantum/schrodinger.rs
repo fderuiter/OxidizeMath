@@ -61,7 +61,7 @@ fn write_closed_form_2x2_hermitian(
 ///
 /// Returns `false` if `hamiltonian.matrix` is not $2 \times 2$ Hermitian or if `t` / `h_bar` is
 /// non-finite or `h_bar == 0.0` (filling `out.matrix` with `NaN` on non-finite inputs).
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "resizes output matrix when dimensions differ from 2x2")]
 pub fn time_evolution_operator_2x2_into(
     hamiltonian: &QuantumOperator,
     t: f64,
@@ -91,7 +91,7 @@ pub fn time_evolution_operator_2x2_into(
     write_closed_form_2x2_hermitian(&hamiltonian.matrix, omega, &mut out.matrix)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn try_extract_real_symmetric(matrix: &DMatrix<Complex<f64>>) -> Option<DMatrix<f64>> {
     let n = matrix.nrows();
     if n == 0 || matrix.ncols() != n {
@@ -133,7 +133,7 @@ fn accumulate_eigenmode_upper(
     }
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn real_symmetric_propagator(real_h: DMatrix<f64>, omega: f64) -> Option<QuantumOperator> {
     let n = real_h.nrows();
     let eig = nalgebra::SymmetricEigen::new(real_h);
@@ -206,7 +206,7 @@ fn real_symmetric_propagator(real_h: DMatrix<f64>, omega: f64) -> Option<Quantum
 /// assert!(u_matrix[(0, 1)].norm() < math_explorer::registry::TOLERANCE_STANDARD, "U(0,1) should be 0");
 /// assert!(u_matrix[(1, 0)].norm() < math_explorer::registry::TOLERANCE_STANDARD, "U(1,0) should be 0");
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn time_evolution_operator(
     hamiltonian: &QuantumOperator,
     t: f64,

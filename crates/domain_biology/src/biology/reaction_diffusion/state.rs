@@ -15,7 +15,7 @@ pub struct ChemicalState {
 
 impl ChemicalState {
     /// Creates a new zero-initialized chemical state.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(num_species: usize, grid_size: usize) -> Self {
         Self {
             grid: DMatrix::from_element(grid_size, num_species, 0.0),
@@ -131,7 +131,7 @@ impl VectorOperations for ChemicalState {
             .copy_from_slice(other.grid.as_slice());
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn copy_from_scaled(&mut self, source: &Self, other: &Self, scale: f64) {
         if self.grid.nrows() != source.grid.nrows() || self.grid.ncols() != source.grid.ncols() {
             self.grid = DMatrix::from_element(source.grid.nrows(), source.grid.ncols(), 0.0);

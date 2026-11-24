@@ -6,7 +6,7 @@ use std::f64::consts::{PI, TAU};
 /// Returns the Pauli matrix \sigma_x.
 ///
 /// \sigma_x = [[0, 1], [1, 0]]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn sigma_x() -> QuantumOperator {
     let zero = Complex::new(0.0, 0.0);
     let one = Complex::new(1.0, 0.0);
@@ -17,7 +17,7 @@ pub fn sigma_x() -> QuantumOperator {
 /// Returns the Pauli matrix \sigma_y.
 ///
 /// \sigma_y = [[0, -i], [i, 0]]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn sigma_y() -> QuantumOperator {
     let zero = Complex::new(0.0, 0.0);
     let i = Complex::new(0.0, 1.0);
@@ -32,7 +32,7 @@ pub fn sigma_y() -> QuantumOperator {
 /// Returns the Pauli matrix \sigma_z.
 ///
 /// \sigma_z = [[1, 0], [0, -1]]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn sigma_z() -> QuantumOperator {
     let zero = Complex::new(0.0, 0.0);
     let one = Complex::new(1.0, 0.0);
@@ -49,7 +49,7 @@ pub fn sigma_z() -> QuantumOperator {
 ///
 /// Polar angle `theta` is clamped to $[0, \pi]$ (defaulting non-finite inputs to $0$) and
 /// azimuthal angle `phi` is wrapped to $[-\pi, \pi)$.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates 2-element spinor on resize")]
 pub fn set_spin_bloch_angles_in_place(state: &mut QuantumState, theta: f64, phi: f64) {
     let safe_theta = if theta.is_finite() {
         theta.clamp(0.0, PI)

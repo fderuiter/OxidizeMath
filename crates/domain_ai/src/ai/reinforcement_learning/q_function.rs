@@ -32,7 +32,7 @@ where
     A: Action + Hash + Eq,
 {
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new() -> Self {
         Self {
             table: HashMap::new(),

@@ -1,67 +1,144 @@
 //! This module defines the predictor model for the CERA framework.
 
-use crate::climate::autoencoder::{ConvLayer, leaky_relu};
-use nalgebra::{DMatrix, Dyn, Matrix, Storage};
-use pure_math::pure_math::analysis::optimization::{ModelOptimizer as Optimizer, ParamType};
+use crate::climate::autoencoder::{ConvLayer, dense_vec_into, leaky_relu, outer_grad_and_backprop};
+use crate::climate::scratch::PredictorScratch;
+use crate::climate::tensor_ops::try_conv1d_into;
+use crate::error::ClimateError;
+use nalgebra::{DMatrix, DVector, Dyn, Matrix, Storage};
+use pure_math::pure_math::analysis::optimization::{
+    ModelOptimizer as Optimizer, OptimizationError, ParamType,
+};
 
 /// A trait representing the predictor model interface.
-/// This allows for different predictor architectures and decouples the training loop.
 pub trait PredictorModel {
     /// Performs a forward pass through the predictor.
-    #[verified_engine::verified]
+    #[verified_engine::verified(
+        alloc_ok = "trait convenience method returns owned prediction matrix"
+    )]
     fn forward<S: Storage<f32, Dyn, Dyn>>(&self, input: &Matrix<f32, Dyn, Dyn, S>) -> DMatrix<f32>;
 }
 
 /// A multi-layer perceptron (MLP) used as the predictor in the CERA framework.
-///
-/// The predictor takes the flattened, aligned latent representation from the
-/// autoencoder's encoder and maps it to the target output variables.
 pub struct Predictor {
     /// The stack of layers (using `ConvLayer` for simplicity as dense layers).
     pub layers: [ConvLayer; 5],
 }
 
 impl Predictor {
-    /// Creates a new predictor model with a hardcoded architecture.
-    /// Input (60) -> 128 -> 128 -> 128 -> 128 -> Output (148)
-    ///
-    /// # Arguments
-    ///
-    /// * `input_size` - The dimension of the input vector.
-    /// * `output_size` - The dimension of the output vector.
-    ///
-    /// # Returns
-    ///
-    /// A new `Predictor` instance.
-    #[verified_engine::verified]
+    /// Creates a new predictor model with architecture: `input_size -> 128 -> 128 -> 128 -> 128 -> output_size`.
+    #[verified_engine::verified(alloc_ok = "initializes 5-layer Predictor weights")]
     pub fn new(input_size: usize, output_size: usize) -> Self {
         let layers = [
             ConvLayer::new(input_size, 128),
             ConvLayer::new(128, 128),
             ConvLayer::new(128, 128),
             ConvLayer::new(128, 128),
-            ConvLayer::new(128, output_size), // No activation on the final layer
+            ConvLayer::new(128, output_size),
         ];
         Self::new_from_layers(layers)
     }
 
     /// Creates a new predictor model with custom layers.
-    ///
-    /// # Arguments
-    ///
-    /// * `layers` - A fixed-size array of convolutional layers.
-    ///
-    /// # Returns
-    ///
-    /// A new `Predictor` instance.
     #[verified_engine::verified]
     pub fn new_from_layers(layers: [ConvLayer; 5]) -> Self {
         Self { layers }
     }
+
+    /// Zero-allocation forward pass writing predictions into `output` using [`PredictorScratch`].
+    #[verified_engine::verified]
+    pub fn forward_into<S: Storage<f32, Dyn, Dyn>>(
+        &self,
+        input: &Matrix<f32, Dyn, Dyn, S>,
+        scratch: &mut PredictorScratch,
+        output: &mut DMatrix<f32>,
+    ) -> Result<(), ClimateError> {
+        try_conv1d_into(
+            input,
+            &self.layers[0].kernel,
+            &self.layers[0].bias,
+            &mut scratch.h[0],
+        )?;
+        leaky_relu(&mut scratch.h[0], 0.01);
+        for idx in 1..4 {
+            let (left, right) = scratch.h.split_at_mut(idx);
+            try_conv1d_into(
+                &left[idx - 1],
+                &self.layers[idx].kernel,
+                &self.layers[idx].bias,
+                &mut right[0],
+            )?;
+            leaky_relu(&mut right[0], 0.01);
+        }
+        try_conv1d_into(
+            &scratch.h[3],
+            &self.layers[4].kernel,
+            &self.layers[4].bias,
+            output,
+        )
+    }
+
+    /// Zero-allocation 5-layer analytical backpropagation and parameter update using [`PredictorScratch`].
+    #[verified_engine::verified]
+    pub fn backward_update_into(
+        &mut self,
+        x: &DVector<f32>,
+        loss_grad: &DVector<f32>,
+        optimizer: &mut dyn Optimizer<f32>,
+        scratch: &mut PredictorScratch,
+    ) -> Result<(), OptimizationError> {
+        scratch.activations[0].copy_from(x);
+        for i in 0..5 {
+            let (prev_slice, rest_slice) = scratch.activations.split_at_mut(i + 1);
+            dense_vec_into(
+                &self.layers[i].kernel,
+                &self.layers[i].bias,
+                &prev_slice[i],
+                &mut scratch.zs[i],
+                &mut rest_slice[0],
+                i < 4,
+            );
+        }
+
+        let out_len = loss_grad.len();
+        scratch.d_z.rows_mut(0, out_len).copy_from(loss_grad);
+        for i in (0..5).rev() {
+            let layer = &mut self.layers[i];
+            let cur_out = layer.kernel.nrows();
+            let cur_in = layer.kernel.ncols();
+            let z_prev = if i > 0 {
+                Some(&scratch.zs[i - 1])
+            } else {
+                None
+            };
+            let next_slice = if i > 0 {
+                &mut scratch.d_next.as_mut_slice()[..cur_in]
+            } else {
+                &mut [][..]
+            };
+            outer_grad_and_backprop(
+                &layer.kernel,
+                &scratch.d_z.as_slice()[..cur_out],
+                &scratch.activations[i],
+                z_prev,
+                &mut scratch.d_w[i],
+                next_slice,
+            );
+            optimizer.update_matrix((i, ParamType::Weight), &mut layer.kernel, &scratch.d_w[i])?;
+            scratch.zs[i].copy_from(&scratch.d_z.rows(0, cur_out));
+            optimizer.update_vector((i, ParamType::Bias), &mut layer.bias, &scratch.zs[i])?;
+            if i > 0 {
+                scratch.d_z.as_mut_slice()[..cur_in]
+                    .copy_from_slice(&scratch.d_next.as_slice()[..cur_in]);
+            }
+        }
+        Ok(())
+    }
 }
 
 impl PredictorModel for Predictor {
-    #[verified_engine::verified]
+    #[verified_engine::verified(
+        alloc_ok = "convenience forward allocates hidden and output matrices"
+    )]
     fn forward<S: Storage<f32, Dyn, Dyn>>(&self, input: &Matrix<f32, Dyn, Dyn, S>) -> DMatrix<f32> {
         let mut x = input.clone_owned();
         for (i, layer) in self.layers.iter().enumerate() {

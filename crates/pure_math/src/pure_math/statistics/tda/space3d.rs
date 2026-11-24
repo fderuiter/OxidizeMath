@@ -79,7 +79,7 @@ impl PointCloud3D {
     /// ]).unwrap();
     /// assert_eq!(cloud.size(), 2);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(points: Vec<Point3D>) -> Result<Self, TdaError> {
         if points.is_empty() {
             return Err(TdaError::EmptyPointCloud);
@@ -99,7 +99,7 @@ impl PointCloud3D {
     }
 
     /// Computes the symmetric pairwise Euclidean distance matrix.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn distance_matrix(&self) -> Vec<Vec<f64>> {
         let n = self.points.len();
         let mut dist = vec![vec![0.0; n]; n];
@@ -112,7 +112,7 @@ impl PointCloud3D {
     /// # Errors
     ///
     /// Returns [`TdaError::MatrixError`] if `dist` does not have dimensions `n x n`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn fill_distance_matrix(&self, dist: &mut [Vec<f64>]) -> Result<(), TdaError> {
         let n = self.points.len();
         if dist.len() != n || dist.iter().any(|row| row.len() != n) {
@@ -159,7 +159,7 @@ impl PointCloud3D {
 /// assert_eq!(landmarks.len(), 2);
 /// assert_eq!(landmarks[1], Point3D::new(10.0, 0.0, 0.0));
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn farthest_point_landmarks(
     points: &[Point3D],
     max_landmarks: usize,
@@ -187,7 +187,7 @@ pub fn farthest_point_landmarks(
 ///
 /// Returns [`TdaError`] if `points` is empty, `max_landmarks == 0`, any point is non-finite,
 /// or scratch buffers are smaller than required.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
 pub fn farthest_point_landmarks_into(
     points: &[Point3D],
     max_landmarks: usize,
@@ -263,12 +263,17 @@ pub fn farthest_point_landmarks_into(
 /// assert_eq!(cloud.points[0].y, 2.0);
 /// assert_eq!(cloud.points[0].z, 1.0);
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates embedded 3D point cloud vector")]
 pub fn takens_delay_embedding_3d(series: &[f64], lag: usize) -> Result<PointCloud3D, TdaError> {
     if lag == 0 {
         return Err(TdaError::InvalidDimension { dimension: 0 });
     }
-    let required = 2usize.saturating_mul(lag).saturating_add(1);
+    let offset = 2usize
+        .checked_mul(lag)
+        .ok_or(TdaError::InvalidDimension { dimension: lag })?;
+    let required = offset
+        .checked_add(1)
+        .ok_or(TdaError::InvalidDimension { dimension: lag })?;
     if series.len() < required {
         return Err(TdaError::InsufficientPoints {
             required,
@@ -280,13 +285,9 @@ pub fn takens_delay_embedding_3d(series: &[f64], lag: usize) -> Result<PointClou
             reason: "Takens time series contains non-finite observations".to_string(),
         });
     }
-    let mut embedded = Vec::with_capacity(series.len() - 2 * lag);
-    for t in (2 * lag)..series.len() {
-        embedded.push(Point3D::new(
-            series[t],
-            series[t - lag],
-            series[t - 2 * lag],
-        ));
+    let mut embedded = Vec::with_capacity(series.len() - offset);
+    for t in offset..series.len() {
+        embedded.push(Point3D::new(series[t], series[t - lag], series[t - offset]));
     }
     PointCloud3D::new(embedded)
 }

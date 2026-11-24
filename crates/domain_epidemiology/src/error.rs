@@ -49,7 +49,7 @@ impl Diagnostic for EpidemiologyError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "EpidemiologyError".to_string());
@@ -68,7 +68,7 @@ impl Diagnostic for NetworkModelError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "NetworkModelError".to_string());

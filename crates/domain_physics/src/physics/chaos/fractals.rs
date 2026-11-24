@@ -109,7 +109,7 @@ pub fn correlation_dimension_in_place(trajectory: &mut [Vector3<f64>], epsilon: 
 ///
 /// Note: This implementation returns the normalized count (proportion of pairs closer than $\epsilon$).
 /// The actual dimension would be the slope of $\ln(C(\epsilon))$ vs $\ln(\epsilon)$.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn correlation_dimension(trajectory: &[Vector3<f64>], epsilon: f64) -> f64 {
     if trajectory.len() < 2 || !epsilon.is_finite() || epsilon <= 0.0 {
         return 0.0;

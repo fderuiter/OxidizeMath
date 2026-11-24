@@ -111,7 +111,7 @@ impl SpinLattice {
     }
 
     /// Creates a new random spin lattice using the provided RNG.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new_with_rng(
         width: usize,
         height: usize,

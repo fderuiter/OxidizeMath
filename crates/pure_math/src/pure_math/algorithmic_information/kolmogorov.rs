@@ -131,7 +131,7 @@ pub fn k_floor_r(point: &Point2D, r: u32) -> f64 {
 
 /// Extracts the big-endian binary digits (`0` or `1`) of $|n|$.
 #[must_use]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn integer_to_bits(n: &Integer) -> Vec<u8> {
     let mag = n.0.clone().abs();
     let bit_len = mag.bit_len();
@@ -146,9 +146,41 @@ pub fn integer_to_bits(n: &Integer) -> Vec<u8> {
     bits
 }
 
+/// Checked variant of [`exponents_to_bits`] returning [`math_commons::error::MathError::CapacityOverflow`]
+/// when `active_len * 4` overflows `usize`.
+#[verified_engine::verified(alloc_ok = "allocates self-delimiting bitstring output vector")]
+pub fn try_exponents_to_bits(exponents: &[u32]) -> Result<Vec<u8>, math_commons::error::MathError> {
+    let active_len = exponents
+        .iter()
+        .rposition(|&e| e > 0)
+        .map_or(0, |idx| idx + 1);
+    if active_len == 0 {
+        return Ok(vec![0]);
+    }
+    let cap =
+        active_len
+            .checked_mul(4)
+            .ok_or(math_commons::error::MathError::CapacityOverflow {
+                context: "exponents_to_bits active_len * 4",
+            })?;
+    let mut bits = Vec::with_capacity(cap);
+    for &exp in &exponents[..active_len] {
+        if exp == 0 {
+            bits.push(0);
+        } else {
+            let width = u32::BITS - exp.leading_zeros();
+            bits.push(1);
+            for shift in (0..width).rev() {
+                bits.push(((exp >> shift) & 1) as u8);
+            }
+        }
+    }
+    Ok(bits)
+}
+
 /// Encodes active prime-exponent registers into a self-delimiting binary bitstring.
 #[must_use]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates self-delimiting bitstring output vector")]
 pub fn exponents_to_bits(exponents: &[u32]) -> Vec<u8> {
     let active_len = exponents
         .iter()
@@ -157,7 +189,7 @@ pub fn exponents_to_bits(exponents: &[u32]) -> Vec<u8> {
     if active_len == 0 {
         return vec![0];
     }
-    let mut bits = Vec::with_capacity(active_len * 4);
+    let mut bits = Vec::with_capacity(active_len.checked_mul(4).unwrap_or(active_len));
     for &exp in &exponents[..active_len] {
         if exp == 0 {
             bits.push(0);
@@ -173,7 +205,7 @@ pub fn exponents_to_bits(exponents: &[u32]) -> Vec<u8> {
 }
 
 /// Normalizes raw byte/bit slices (accepting both `{0, 1}` and ASCII `{b'0', b'1'}`) into `{0, 1}`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn normalize_bits(bits: &[u8]) -> Vec<u8> {
     bits.iter()
         .map(|&b| u8::from(b != 0 && b != b'0'))
@@ -331,7 +363,7 @@ fn ctm_block_complexity(word: u16, len: usize) -> f64 {
 /// assert!(bdm_complexity(periodic) < bdm_complexity(complex));
 /// ```
 #[must_use]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn bdm_complexity(bits: &[u8]) -> f64 {
     let norm = normalize_bits(bits);
     if norm.is_empty() {

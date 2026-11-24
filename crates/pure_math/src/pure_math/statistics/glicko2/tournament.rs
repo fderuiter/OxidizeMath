@@ -203,7 +203,7 @@ pub fn evaluate_rating_period_into(
 /// let updated = evaluate_rating_period(&roster, &[PeriodMatch::new(0, 1, 1.0).unwrap()], &SystemConstant::default()).unwrap();
 /// assert!(updated[0].rating.value() > updated[1].rating.value());
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn evaluate_rating_period(
     roster: &[GlickoPlayer],
     matches: &[PeriodMatch],
@@ -218,7 +218,7 @@ pub fn evaluate_rating_period(
 
 /// Applies matches sequentially one game at a time (mutating ratings mid-period) to measure
 /// order-dependent sequential drift relative to [`evaluate_rating_period`].
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn evaluate_sequential_period(
     roster: &[GlickoPlayer],
     matches: &[PeriodMatch],
@@ -263,7 +263,7 @@ pub fn head_to_head_win_probability(player_i: &GlickoPlayer, player_j: &GlickoPl
 /// let matrix = pairwise_win_matrix(&roster);
 /// assert!((matrix[(0, 1)] - 0.5).abs() < 1e-12);
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn pairwise_win_matrix(roster: &[GlickoPlayer]) -> DMatrix<f64> {
     let n = roster.len();
     let mut matrix = DMatrix::from_element(n, n, 0.5);
@@ -278,7 +278,7 @@ pub fn pairwise_win_matrix(roster: &[GlickoPlayer]) -> DMatrix<f64> {
 }
 
 /// Generates a deterministic single round-robin tournament schedule using the circle method.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn round_robin_schedule(num_players: usize) -> Result<Vec<Vec<Pairing>>, Glicko2Error> {
     if num_players < 2 {
         return Err(Glicko2Error::InsufficientPlayers { count: num_players });
@@ -406,7 +406,7 @@ fn repair_swiss_rematches(pairings: &mut [Pairing], played: &DMatrix<bool>) {
 }
 
 /// Computes deterministic Swiss-system pairings from current standings and prior match history.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn swiss_pairings(
     roster: &[GlickoPlayer],
     scores: &[f64],
@@ -451,7 +451,7 @@ pub fn swiss_pairings(
 
 /// Simulates stochastic match outcomes for `pairings` using [`OxidizeRng`] while preserving exact
 /// Glicko-2 expected scores across `draw_probability` in `[0.0, 1.0]`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn simulate_period_matches(
     skill_roster: &[GlickoPlayer],
     pairings: &[Pairing],

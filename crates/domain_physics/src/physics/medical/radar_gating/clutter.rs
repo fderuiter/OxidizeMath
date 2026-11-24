@@ -50,7 +50,7 @@ impl EllipticalFilter {
     /// # Arguments
     ///
     /// * `alpha` - Window size parameter (as f64, cast to usize).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(alpha: f64) -> Self {
         Self {
             history: VecDeque::new(),

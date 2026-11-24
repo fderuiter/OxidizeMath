@@ -58,7 +58,7 @@ impl StatisticalDistribution for FermiDirac {
 pub struct BoseEinstein;
 
 impl StatisticalDistribution for BoseEinstein {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn occupancy(
         &self,
         energy: f64,

@@ -44,7 +44,7 @@ pub struct TreewidthScratch {
 impl TreewidthScratch {
     /// Preallocates bitset buffers sufficient to evaluate graphs up to `max_vertices` with zero reallocations.
     #[must_use]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates bitset scratch")]
     pub fn with_capacity(max_vertices: usize) -> Self {
         let words = max_vertices.div_ceil(64);
         Self {

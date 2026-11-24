@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 /// assert!((round_trip.edges[0].weight - 4.25).abs() < 1e-9);
 /// # Ok::<(), math_explorer::error::Error>(())
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "serializes GraphML XML output")]
 pub fn to_graphml(graph: &InterchangeGraph) -> Result<String, GraphTheoryError> {
     graph.validate()?;
     let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -52,7 +52,7 @@ pub fn to_graphml(graph: &InterchangeGraph) -> Result<String, GraphTheoryError> 
     Ok(out)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats GraphML node XML element")]
 fn append_graphml_node(out: &mut String, id: usize, node: &InterchangeNode) {
     if node.label.is_none() && node.pos.is_none() {
         out.push_str(&format!("    <node id=\"n{id}\"/>\n"));
@@ -103,7 +103,7 @@ struct GraphMlKeyMap {
 }
 
 /// Parses a `.graphml` XML document into a validated [`InterchangeGraph`].
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates parsed InterchangeGraph and symbol table")]
 pub fn parse_graphml(input: &str) -> Result<InterchangeGraph, GraphTheoryError> {
     if !input.contains("<graph") {
         return Err(GraphTheoryError::ParseError {
@@ -167,7 +167,7 @@ fn detect_graphml_direction(input: &str) -> bool {
     false
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "parses GraphML node tags and diagnostics")]
 fn parse_all_graphml_nodes(
     input: &str,
     keys: &GraphMlKeyMap,
@@ -211,7 +211,7 @@ fn parse_all_graphml_nodes(
     Ok(())
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "parses GraphML node data entries")]
 fn build_graphml_node(
     id: usize,
     inner: &str,
@@ -246,7 +246,7 @@ fn build_graphml_node(
     Ok(InterchangeNode { id, pos, label })
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "parses GraphML edge tags and diagnostics")]
 fn parse_all_graphml_edges(
     input: &str,
     keys: &GraphMlKeyMap,
@@ -297,7 +297,7 @@ fn parse_all_graphml_edges(
     Ok(())
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats GraphML edge weight parse error")]
 fn extract_graphml_weight(
     attrs: &BTreeMap<String, String>,
     inner: &str,
@@ -322,7 +322,7 @@ fn extract_graphml_weight(
     Ok(w)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats GraphML XML closing-tag error")]
 fn extract_element_body<'a>(
     after_open: &'a str,
     close_tag: &str,
@@ -343,7 +343,7 @@ fn extract_element_body<'a>(
     ))
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "builds GraphML data key-value map")]
 fn parse_data_entries(inner: &str) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     let mut rest = inner;
@@ -384,7 +384,7 @@ fn lookup_data<'a>(
     None
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "builds XML attribute map")]
 fn parse_xml_attrs(raw: &str) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     let bytes = raw.as_bytes();

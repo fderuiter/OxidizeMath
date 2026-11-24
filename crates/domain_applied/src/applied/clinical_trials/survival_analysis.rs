@@ -59,7 +59,7 @@ pub struct TimePoint {
 /// assert_eq!(curve[1].survival_probability, 0.5);
 /// assert_eq!(curve[2].survival_probability, 0.0);
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn kaplan_meier(observations: &[Observation]) -> Vec<TimePoint> {
     let mut obs = observations.to_vec();
     obs.sort_unstable_by(|a, b| a.time.as_f64().total_cmp(&b.time.as_f64()));
@@ -105,7 +105,12 @@ pub fn kaplan_meier(observations: &[Observation]) -> Vec<TimePoint> {
 
 /// Calculates a simple Hazard Ratio estimate based on incidence density.
 /// HR = (Events1 / TotalTime1) / (Events2 / TotalTime2)
-#[verified_engine::verified]
+/// Note: This assumes constant hazard (exponential distribution), which is a simplification.
+///
+/// # Returns
+/// * `Ok(f64)` - The hazard ratio.
+/// * `Err(ClinicalTrialError)` - If calculation is impossible (e.g. zero total time).
+#[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
 pub fn try_estimate_hazard_ratio(
     group1: &[Observation],
     group2: &[Observation],
@@ -191,7 +196,7 @@ fn step_arm_at_time(obs: &[Observation], cursor: &mut usize, anchor_t: f64) -> (
 ///
 /// When `scratch1` and `scratch2` are preallocated with at least `group1.len()` and `group2.len()`
 /// capacity, sorting and event-time accumulation perform zero dynamic heap allocations.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
 pub fn log_rank_test_into(
     group1: &[Observation],
     group2: &[Observation],
@@ -268,7 +273,7 @@ pub fn log_rank_test_into(
 ///
 /// Preallocates sorted observation buffers outside the time-step scan before delegating to
 /// [`log_rank_test_into`].
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn log_rank_test(
     group1: &[Observation],
     group2: &[Observation],

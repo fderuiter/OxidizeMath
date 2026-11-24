@@ -53,7 +53,7 @@ pub fn to_dot(graph: &InterchangeGraph) -> Result<String, GraphTheoryError> {
 /// assert!(dot.contains("xlabel=\"f=5.0\""));
 /// # Ok::<(), math_explorer::error::Error>(())
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "serializes styled DOT string")]
 pub fn to_styled_dot(
     graph: &InterchangeGraph,
     overlay: &DotStyleOverlay,
@@ -109,7 +109,7 @@ fn validate_overlay_numbers(overlay: &DotStyleOverlay) -> Result<(), GraphTheory
     Ok(())
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates escaped DOT string")]
 fn escape_dot(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     for ch in raw.chars() {
@@ -123,7 +123,7 @@ fn escape_dot(raw: &str) -> String {
     out
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats DOT node attributes")]
 fn append_dot_node(
     out: &mut String,
     id: usize,
@@ -159,7 +159,7 @@ fn append_dot_node(
     }
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats DOT edge attributes")]
 fn append_dot_edge(
     out: &mut String,
     op: &str,

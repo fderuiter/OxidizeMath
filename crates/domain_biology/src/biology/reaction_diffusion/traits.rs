@@ -21,7 +21,7 @@ pub trait ReactionModel {
     /// # Arguments
     /// * `state`: Current chemical state (concentrations).
     /// * `out_rates`: Chemical state buffer to accumulate reaction rates into.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn add_reaction_batch(&self, state: &ChemicalState, out_rates: &mut ChemicalState) {
         let n_species = state.num_species();
         if n_species == 0 {

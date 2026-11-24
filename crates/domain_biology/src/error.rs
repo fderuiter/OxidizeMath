@@ -18,7 +18,7 @@ impl Diagnostic for HodgkinHuxleyError {
     fn severity(&self) -> Severity {
         Severity::Error
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "HodgkinHuxleyError".to_string());
@@ -88,7 +88,7 @@ impl Diagnostic for BotanicalError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "BotanicalError".to_string());
@@ -103,7 +103,7 @@ impl Diagnostic for KineticsError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "KineticsError".to_string());
@@ -118,7 +118,7 @@ impl Diagnostic for ReactionDiffusionError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert(

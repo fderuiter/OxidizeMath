@@ -63,6 +63,13 @@ pub enum MathError {
     #[error("Conversion error: {reason}")]
     #[allow(missing_docs)]
     ConversionError { reason: String },
+
+    /// Integer multiplication or addition overflow while computing buffer capacity or grid size.
+    #[error("Capacity overflow while computing {context}")]
+    CapacityOverflow {
+        /// Human-readable operation or buffer context where integer overflow occurred.
+        context: &'static str,
+    },
 }
 
 #[cfg(feature = "std")]
@@ -93,6 +100,9 @@ impl Diagnostic for MathError {
             }
             Self::NumericalError { reason } | Self::ConversionError { reason } => {
                 map.insert("reason".to_string(), reason.clone());
+            }
+            Self::CapacityOverflow { context } => {
+                map.insert("context".to_string(), (*context).to_string());
             }
         }
         map

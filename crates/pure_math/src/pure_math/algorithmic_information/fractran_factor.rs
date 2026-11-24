@@ -166,18 +166,31 @@ pub(super) fn compile_exponent_tables(
     let primes: Vec<u64> = basis_set.into_iter().collect();
     let width = primes.len();
     let num_rules = factored_rules.len();
-    let mut numer_exponents = vec![0_u32; num_rules * width];
-    let mut denom_exponents = vec![0_u32; num_rules * width];
+    let table_len = num_rules
+        .checked_mul(width)
+        .ok_or(FractranError::TableCapacityOverflow)?;
+    let mut numer_exponents = vec![0_u32; table_len];
+    let mut denom_exponents = vec![0_u32; table_len];
     for (r, (nf, df)) in factored_rules.into_iter().enumerate() {
-        let row = r * width;
+        let row = r
+            .checked_mul(width)
+            .ok_or(FractranError::TableCapacityOverflow)?;
         for (p, exp) in nf {
-            if let Ok(col) = primes.binary_search(&p) {
-                numer_exponents[row + col] = exp;
+            if let Ok(col) = primes.binary_search(&p)
+                && let Some(slot) = row
+                    .checked_add(col)
+                    .and_then(|i| numer_exponents.get_mut(i))
+            {
+                *slot = exp;
             }
         }
         for (p, exp) in df {
-            if let Ok(col) = primes.binary_search(&p) {
-                denom_exponents[row + col] = exp;
+            if let Ok(col) = primes.binary_search(&p)
+                && let Some(slot) = row
+                    .checked_add(col)
+                    .and_then(|i| denom_exponents.get_mut(i))
+            {
+                *slot = exp;
             }
         }
     }

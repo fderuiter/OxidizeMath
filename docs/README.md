@@ -46,6 +46,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Zero-Allocation 2D Abelian Sandpile Engine, Recurrent Group Algebra, and Solid-State Studio](adr/20261123-abelian-sandpile-engine-and-studio.md)
 - [ADR 20261123: Acoustic Luthiery Sonification, RLE Soundboard Sculpting, and Phononic Metamaterials](adr/20261123-acoustic-luthiery-sonification-and-phononic-metamaterials.md)
 - [ADR 20261123: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/20261123-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
+- [ADR 20261123: Runtime Allocator Probes, Climate Scratch Workspaces, Checked Kernel Bounds, and Native Supply-Chain Security Gates](adr/20261123-allocator-probes-scratch-buffers-and-security-gates.md)
 - [ADR 20261123: Bidirectional Zero-Allocation Odds Conversions, Format-Aware Kelly Errors, and Bet Size Calculator Synchronization](adr/20261123-bidirectional-odds-conversions-and-bet-calculator-sync.md)
 - [ADR 20261123: Verified Zero-Allocation Botanical Morphogenesis Kernels and Multi-Scale Biology Studios](adr/20261123-botanical-kernels-and-biology-studios.md)
 - [ADR 20261123: Calibrated 2D Score Grids and Venue-Adjusted Sports Elo Engine](adr/20261123-calibrated-2d-score-grids-and-sports-elo.md)

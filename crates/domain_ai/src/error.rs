@@ -105,7 +105,7 @@ impl Diagnostic for AIError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         match self {
             Self::Math(e) => diagnostics::Diagnostic::metadata(e),

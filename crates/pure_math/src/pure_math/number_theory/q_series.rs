@@ -32,7 +32,7 @@ impl<T: EuclideanDomain> QSeries<T> {
     }
 
     /// Creates a QSeries with a given capacity.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn with_capacity(capacity: usize) -> Self {
         QSeries {
             coeffs: Vec::with_capacity(capacity),
@@ -58,7 +58,7 @@ impl<T: EuclideanDomain> QSeries<T> {
     }
 
     /// Computes the power of a QSeries using exponentiation by squaring.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn pow(&self, exp: u32) -> QSeries<T> {
         let precision = self.coeffs.len();
         if exp == 0 {
@@ -94,7 +94,7 @@ impl<T: EuclideanDomain> QSeries<T> {
     ///
     /// Returns [`NumberTheoryError::DivisionByZeroQSeries`] when `other` has no coefficients,
     /// or [`NumberTheoryError::DivisionByZeroConstantTerm`] when `other`'s constant term is zero.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn checked_div(&self, other: &Self) -> Result<QSeries<T>, NumberTheoryError> {
         if other.coeffs.is_empty() {
             return Err(NumberTheoryError::DivisionByZeroQSeries);
@@ -124,7 +124,7 @@ impl<T: EuclideanDomain> QSeries<T> {
 impl<T: EuclideanDomain> Add for &QSeries<T> {
     type Output = QSeries<T>;
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn add(self, other: Self) -> QSeries<T> {
         let len1 = self.coeffs.len();
         let len2 = other.coeffs.len();
@@ -142,7 +142,7 @@ impl<T: EuclideanDomain> Add for &QSeries<T> {
 impl<T: EuclideanDomain> Mul for &QSeries<T> {
     type Output = QSeries<T>;
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn mul(self, other: Self) -> QSeries<T> {
         let len1 = self.coeffs.len();
         let len2 = other.coeffs.len();

@@ -1,10 +1,6 @@
 use super::*;
 use std::sync::Mutex;
-use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
-
-#[global_allocator]
-static TEST_ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 static ALLOC_LOCK: Mutex<()> = Mutex::new(());
 

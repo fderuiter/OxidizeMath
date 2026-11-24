@@ -27,7 +27,7 @@ impl Beamformer {
     /// * `num_antennas` - Number of RX antennas ($M$).
     /// * `spacing` - Spacing between antennas (usually $\lambda/2$).
     /// * `wavelength` - Signal wavelength ($\lambda$).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new_ula(num_antennas: usize, spacing: f64, wavelength: f64) -> Self {
         let mut antenna_positions = Vec::with_capacity(num_antennas);
         // Center the array around 0 for symmetry, or start at 0.
@@ -47,7 +47,7 @@ impl Beamformer {
     }
 
     /// Sets custom weights for the antennas (e.g., Hamming window to reduce sidelobes).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn set_weights(&mut self, weights: &[f64]) -> Result<(), RadarError> {
         if weights.len() != self.antenna_positions.len() {
             return Err(RadarError::AntennaWeightCountMismatch {

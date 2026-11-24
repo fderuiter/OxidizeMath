@@ -59,7 +59,7 @@ impl DenseLayer {
     }
 
     /// Creates a new dense layer with random initialization using the provided RNG.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new_with_rng<R: rand::Rng + ?Sized>(
         input_dim: usize,
         output_dim: usize,

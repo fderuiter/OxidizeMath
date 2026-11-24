@@ -18,7 +18,7 @@ use crate::error::StandardModelError;
 /// # Returns
 /// * `Ok(f64)`: The value of $\alpha_s(Q^2)$.
 /// * `Err(StandardModelError)`: If an invalid parameter (e.g., negative energy) is provided.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn running_coupling(
     mu: f64,
     alpha_mu: f64,

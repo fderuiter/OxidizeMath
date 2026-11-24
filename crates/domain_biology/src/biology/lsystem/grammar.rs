@@ -213,7 +213,9 @@ pub struct LSystemEngine {
 impl LSystemEngine {
     /// Pre-allocates double-buffered byte/parameter tapes, turtle state stack, and 2D segment
     /// buffers up to `tape_capacity` (clamped at `1..=MAX_LSYSTEM_SYMBOLS`).
-    #[verified_engine::verified]
+    #[verified_engine::verified(
+        alloc_ok = "constructor pre-allocates double-buffered symbol tapes"
+    )]
     pub fn new(
         grammar: LSystemGrammar,
         turtle_config: TurtleConfig,

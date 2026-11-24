@@ -63,7 +63,7 @@ impl<H: Hamiltonian> FixedPointSolver<H> {
 }
 
 impl<H: Hamiltonian> MFGSolver for FixedPointSolver<H> {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn solve(
         &self,
         config: &MFGConfig,

@@ -90,7 +90,7 @@ impl Diagnostic for BiologyError {
         self.as_diagnostic().severity()
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = self.as_diagnostic().metadata();
         map.insert("umbrella_type".to_string(), "BiologyError".to_string());

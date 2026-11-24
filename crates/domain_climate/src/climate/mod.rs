@@ -108,6 +108,7 @@ pub mod config;
 pub mod dataset;
 pub mod loss;
 pub mod predictor;
+pub mod scratch;
 pub mod tensor_ops;
 pub mod training;
 

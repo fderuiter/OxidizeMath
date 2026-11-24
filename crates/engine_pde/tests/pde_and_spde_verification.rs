@@ -13,6 +13,10 @@ use math_commons::registry::TOLERANCE_STANDARD;
 use oxidize_core::rng::OxidizeRng;
 use verified_engine::engine::VerifiedEngine;
 
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
 fn ginzburg_landau_energy_2d(
     phi: &[f64],
     width: usize,

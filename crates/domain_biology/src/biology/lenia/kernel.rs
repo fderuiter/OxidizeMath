@@ -126,7 +126,7 @@ fn copy_inline_params(src: &[f64]) -> ([f64; MAX_LENIA_RULE_PARAMS], usize) {
     (buf, count)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn sample_unit_interval<F>(samples: usize, eval: F) -> Vec<[f64; 2]>
 where
     F: Fn(f64) -> f64,

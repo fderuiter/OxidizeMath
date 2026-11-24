@@ -16,7 +16,7 @@ use nalgebra::DMatrix;
 /// # Returns
 ///
 /// A `DMatrix<f64>` of shape `(sequence_length, d_model)` containing the positional encodings.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn generate_positional_encoding(sequence_length: usize, d_model: usize) -> DMatrix<f64> {
     let mut pe_matrix = DMatrix::zeros(sequence_length, d_model);
     let d_model_f64 = d_model as f64;

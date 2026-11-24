@@ -57,7 +57,7 @@ impl FractranProgram {
     /// Wraps a sequence of [`Rational`] fractions into a [`FractranProgram`], pre-factoring
     /// stack-inline rules over $p \le 311$ when applicable without panicking.
     #[must_use]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(fractions: Vec<Rational>) -> Self {
         if fractions.is_empty() {
             return Self {
@@ -145,7 +145,7 @@ impl FractranProgram {
     }
 
     /// Validates and compiles `(numerator, denominator)` pairs before constructing rationals.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn try_from_pairs(pairs: &[(i128, i128)]) -> Result<Self, FractranError> {
         if pairs.is_empty() {
             return Err(FractranError::EmptyProgram);
@@ -167,7 +167,7 @@ impl FractranProgram {
     }
 
     /// Parses comma- or whitespace-separated fractions into a validated 64-prime stack program.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn parse(input: &str) -> Result<Self, FractranError> {
         let mut pairs = Vec::new();
         for raw in input

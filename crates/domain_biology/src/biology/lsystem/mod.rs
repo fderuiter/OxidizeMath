@@ -28,7 +28,7 @@ use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 impl TheoryDescribable for LSystemEngine {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats theory metadata description")]
     fn theory_description(&self) -> String {
         format!(
             "Lindenmayer systems (L-systems) model apical meristem elongation and vascular branching \
@@ -42,7 +42,7 @@ impl TheoryDescribable for LSystemEngine {
         )
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats phonetic metadata description")]
     fn phonetic_description(&self) -> String {
         "Lindenmayer parallel string rewriting grammar where symbols F move and draw vascular \
          internodes, plus and minus rotate by branching angle delta, and square brackets push and \
@@ -50,7 +50,7 @@ impl TheoryDescribable for LSystemEngine {
             .to_string()
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats theory citation string")]
     fn theory_citation(&self) -> String {
         "Lindenmayer, A. (1968). Mathematical models for cellular interactions in development. \
          J. Theor. Biol., 18(3), 280-315; Prusinkiewicz, P. & Lindenmayer, A. (1990). \
@@ -58,7 +58,7 @@ impl TheoryDescribable for LSystemEngine {
             .to_string()
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates theory descriptions map")]
     fn available_descriptions(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert(

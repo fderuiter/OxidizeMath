@@ -12,7 +12,7 @@ pub fn relu(matrix: &mut DMatrix<f64>) {
 
 /// Applies the softmax function to each row of a matrix for numerical stability.
 /// Softmax(x_i) = exp(x_i - max(x)) / sum(exp(x_j - max(x)))
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn softmax_row_wise(matrix: &DMatrix<f64>) -> DMatrix<f64> {
     let nrows = matrix.nrows();
     let ncols = matrix.ncols();

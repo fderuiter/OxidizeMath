@@ -72,7 +72,7 @@ impl<T: RealField + Copy + ToPrimitive> TransitionTensor<T> {
     /// # Returns
     ///
     /// A new `TransitionTensor`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(num_states: usize, min_time: TimeIndex<T>, max_time: TimeIndex<T>) -> Self {
         TransitionTensor {
             num_states,
@@ -166,7 +166,7 @@ impl<T: RealField + Copy + ToPrimitive> TransitionTensor<T> {
     /// # Panics
     ///
     /// Panics if `time.value()` or any slice's time value is NaN during binary search (`partial_cmp().unwrap()`).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn transition_matrix_at(&self, time: TimeIndex<T>) -> Result<DMatrix<T>> {
         if self.time_slices.is_empty() {
             return Err(MarkovError::InvalidState {
@@ -254,7 +254,7 @@ impl<T: RealField + Copy + ToPrimitive> TransitionTensor<T> {
     /// # Panics
     ///
     /// Panics if `T::from_usize()` fails and returns `None` for the number of samples or indices.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn average_transition(
         &self,
         start_time: TimeIndex<T>,

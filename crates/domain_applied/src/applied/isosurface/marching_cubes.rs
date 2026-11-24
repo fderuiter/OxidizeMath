@@ -112,7 +112,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
         Ok(mesh)
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats validation error message")]
     pub(super) fn validate_grid(&self) -> Result<(), IsosurfaceError> {
         if self.grid.width() < 2 || self.grid.height() < 2 || self.grid.depth() < 2 {
             return Err(IsosurfaceError::InvalidGrid(

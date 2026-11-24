@@ -12,7 +12,7 @@ use std::f64::consts::PI;
 ///
 /// # Arguments
 /// * `n` - The dimension of the Hilbert space.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn dft_operator(n: usize) -> QuantumOperator {
     let dim = n as f64;
     let normalization = 1.0 / dim.sqrt();

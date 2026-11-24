@@ -2,6 +2,10 @@
 use domain_physics::physics::fluid_dynamics::lattice_boltzmann::{
     CollisionModel, Lattice2D, LatticeBoltzmann,
 };
+use verified_engine::allocator::VerifiedAllocator;
+
+#[global_allocator]
+static TEST_ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[derive(Clone, Copy)]
 struct BadLattice;

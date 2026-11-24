@@ -11,7 +11,7 @@ use statrs::distribution::{ContinuousCDF, Normal};
 /// * `sigma` - Standard deviation in the population.
 ///
 /// Returns the number of patients required *per group*.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calculate_sample_size_means(
     alpha: f64,
     power: f64,
@@ -59,7 +59,7 @@ pub fn calculate_sample_size_means(
 /// * `power` - Statistical power.
 /// * `p1` - Expected proportion in group 1 (e.g., control).
 /// * `p2` - Expected proportion in group 2 (e.g., treatment).
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calculate_sample_size_proportions(
     alpha: f64,
     power: f64,
@@ -103,7 +103,7 @@ pub fn calculate_sample_size_proportions(
 
 /// Calculates the achieved two-sided statistical power for a two-sample t-test (comparing means)
 /// at a given per-group sample size `n_per_group`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calculate_power_means(
     alpha: f64,
     n_per_group: usize,
@@ -135,7 +135,7 @@ pub fn calculate_power_means(
 
 /// Calculates the achieved two-sided statistical power for comparing two proportions
 /// at a given per-group sample size `n_per_group`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calculate_power_proportions(
     alpha: f64,
     n_per_group: usize,

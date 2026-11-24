@@ -3,11 +3,34 @@
 
 use crate::climate::autoencoder::{Autoencoder, AutoencoderModel};
 use crate::climate::predictor::{Predictor, PredictorModel};
+use crate::climate::scratch::CeraScratch;
 use crate::error::ClimateError;
 use nalgebra::{DMatrix, Dyn, Matrix, Storage};
 // Re-export CeraConfig for backward compatibility (or convenience)
 pub use crate::climate::config::CeraConfig;
 use verified_engine::Theory;
+
+#[verified_engine::verified]
+pub(crate) fn validate_cera_config(config: &CeraConfig) -> Result<usize, ClimateError> {
+    if config.aligned_channels > config.latent_channels {
+        return Err(ClimateError::ChannelAlignmentExceeded {
+            aligned_channels: config.aligned_channels,
+            latent_channels: config.latent_channels,
+        });
+    }
+    if config.aligned_channels == 0 {
+        return Err(ClimateError::ZeroAlignedChannels);
+    }
+    if config.num_levels == 0 {
+        return Err(ClimateError::ZeroLevels);
+    }
+    config
+        .num_levels
+        .checked_mul(config.aligned_channels)
+        .ok_or(ClimateError::DimensionOverflow {
+            context: "CeraConfig num_levels * aligned_channels",
+        })
+}
 
 /// The main CERA model.
 #[derive(Theory)]
@@ -26,14 +49,6 @@ pub struct Cera<A: AutoencoderModel, P: PredictorModel> {
 
 impl Cera<Autoencoder, Predictor> {
     /// Creates a new CERA model with the given configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The configuration struct.
-    ///
-    /// # Returns
-    ///
-    /// A result containing the new `Cera` instance or a [`ClimateError`].
     ///
     /// # Examples
     ///
@@ -65,30 +80,54 @@ impl Cera<Autoencoder, Predictor> {
     /// invalid.aligned_channels = 5;
     /// assert!(Cera::new(invalid).is_err());
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "initializes Autoencoder and Predictor weights")]
     pub fn new(config: CeraConfig) -> Result<Self, ClimateError> {
-        // Validation logic delegated to new_with_models
+        let predictor_input_size = validate_cera_config(&config)?;
         let autoencoder = Autoencoder::new(config.in_channels, config.latent_channels);
-        let predictor_input_size = config.num_levels * config.aligned_channels;
         let predictor = Predictor::new(predictor_input_size, config.output_size);
-
         Self::new_with_models(config, autoencoder, predictor)
+    }
+
+    /// Zero-allocation inference writing predictions into `output` using [`CeraScratch`].
+    #[verified_engine::verified]
+    pub fn predict_into<S: Storage<f32, Dyn, Dyn>>(
+        &self,
+        inputs: &Matrix<f32, Dyn, Dyn, S>,
+        scratch: &mut CeraScratch,
+        output: &mut DMatrix<f32>,
+    ) -> Result<(), ClimateError> {
+        let num_levels = self.config.num_levels;
+        if num_levels == 0 {
+            return Err(ClimateError::ZeroLevels);
+        }
+        if inputs.ncols() != self.config.in_channels {
+            return Err(ClimateError::ChannelMismatch {
+                context: "Cera::predict_into input channel mismatch.",
+                expected: self.config.in_channels,
+                actual: inputs.ncols(),
+            });
+        }
+        if !inputs.nrows().is_multiple_of(num_levels) {
+            return Err(ClimateError::ShapeMismatch {
+                context: "Cera::predict_into input rows must be a multiple of num_levels.",
+                expected: (num_levels, self.config.in_channels),
+                actual: inputs.shape(),
+            });
+        }
+        let batch_size = inputs.nrows() / num_levels;
+        self.autoencoder
+            .encode_into(inputs, &mut scratch.ae_scratch, &mut scratch.latent)?;
+        self.reshape_for_predictor_into(&scratch.latent, batch_size, &mut scratch.predictor_input)?;
+        self.predictor
+            .forward_into(&scratch.predictor_input, &mut scratch.pred_scratch, output)
     }
 }
 
 impl<P: PredictorModel> Cera<Autoencoder, P> {
     /// Creates a new CERA model with a custom predictor.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The configuration struct.
-    /// * `predictor` - A custom predictor implementation.
-    ///
-    /// # Returns
-    ///
-    /// A result containing the new `Cera` instance or a [`ClimateError`].
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "initializes Autoencoder weights")]
     pub fn new_with_predictor(config: CeraConfig, predictor: P) -> Result<Self, ClimateError> {
+        validate_cera_config(&config)?;
         let autoencoder = Autoencoder::new(config.in_channels, config.latent_channels);
         Self::new_with_models(config, autoencoder, predictor)
     }
@@ -96,35 +135,13 @@ impl<P: PredictorModel> Cera<Autoencoder, P> {
 
 impl<A: AutoencoderModel, P: PredictorModel> Cera<A, P> {
     /// Creates a new CERA model with injected dependencies.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The configuration struct.
-    /// * `autoencoder` - The autoencoder model.
-    /// * `predictor` - The predictor model.
-    ///
-    /// # Returns
-    ///
-    /// A result containing the new `Cera` instance or a [`ClimateError`].
     #[verified_engine::verified]
     pub fn new_with_models(
         config: CeraConfig,
         autoencoder: A,
         predictor: P,
     ) -> Result<Self, ClimateError> {
-        if config.aligned_channels > config.latent_channels {
-            return Err(ClimateError::ChannelAlignmentExceeded {
-                aligned_channels: config.aligned_channels,
-                latent_channels: config.latent_channels,
-            });
-        }
-        if config.aligned_channels == 0 {
-            return Err(ClimateError::ZeroAlignedChannels);
-        }
-        if config.num_levels == 0 {
-            return Err(ClimateError::ZeroLevels);
-        }
-
+        validate_cera_config(&config)?;
         Ok(Self {
             autoencoder,
             predictor,
@@ -132,60 +149,155 @@ impl<A: AutoencoderModel, P: PredictorModel> Cera<A, P> {
         })
     }
 
-    /// Reshapes a batch of latent vectors for the predictor.
-    /// From (batch_size * num_levels, channels) to (batch_size, num_levels * channels).
-    ///
-    /// # Arguments
-    ///
-    /// * `latent_matrix` - The matrix of latent vectors.
-    /// * `batch_size` - The number of samples in the batch.
-    ///
-    /// # Returns
-    ///
-    /// The reshaped matrix ready for the predictor.
+    /// Reshapes the leading `aligned_channels` columns of `latent_matrix` from
+    /// `(batch_size * num_levels, >= aligned_channels)` into pre-allocated `output` of shape
+    /// `(batch_size, num_levels * aligned_channels)` without heap allocations.
     #[verified_engine::verified]
+    pub fn reshape_for_predictor_into<S: Storage<f32, Dyn, Dyn>>(
+        &self,
+        latent_matrix: &Matrix<f32, Dyn, Dyn, S>,
+        batch_size: usize,
+        output: &mut DMatrix<f32>,
+    ) -> Result<(), ClimateError> {
+        let num_levels = self.config.num_levels;
+        let aligned_channels = self.config.aligned_channels;
+        let required_rows =
+            batch_size
+                .checked_mul(num_levels)
+                .ok_or(ClimateError::DimensionOverflow {
+                    context: "reshape_for_predictor batch_size * num_levels",
+                })?;
+        let pred_cols =
+            num_levels
+                .checked_mul(aligned_channels)
+                .ok_or(ClimateError::DimensionOverflow {
+                    context: "reshape_for_predictor num_levels * aligned_channels",
+                })?;
+        let _ = batch_size
+            .checked_mul(pred_cols)
+            .ok_or(ClimateError::DimensionOverflow {
+                context: "reshape_for_predictor total elements",
+            })?;
+        if latent_matrix.nrows() < required_rows || latent_matrix.ncols() < aligned_channels {
+            return Err(ClimateError::ShapeMismatch {
+                context: "Latent matrix too small for batch_size * num_levels or aligned_channels.",
+                expected: (required_rows, aligned_channels),
+                actual: latent_matrix.shape(),
+            });
+        }
+        if output.shape() != (batch_size, pred_cols) {
+            return Err(ClimateError::ShapeMismatch {
+                context: "Pre-allocated predictor_input matrix shape mismatch.",
+                expected: (batch_size, pred_cols),
+                actual: output.shape(),
+            });
+        }
+
+        for b in 0..batch_size {
+            let start_row = b * num_levels;
+            for lvl in 0..num_levels {
+                let col_base = lvl * aligned_channels;
+                for ch in 0..aligned_channels {
+                    output[(b, col_base + ch)] = latent_matrix[(start_row + lvl, ch)];
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Fallible reshape of a batch of latent vectors for the predictor with checked dimensions.
+    #[verified_engine::verified(alloc_ok = "allocates reshaped predictor input matrix")]
+    pub fn try_reshape_for_predictor<S: Storage<f32, Dyn, Dyn>>(
+        &self,
+        latent_matrix: &Matrix<f32, Dyn, Dyn, S>,
+        batch_size: usize,
+    ) -> Result<DMatrix<f32>, ClimateError> {
+        let required_rows = batch_size.checked_mul(self.config.num_levels).ok_or(
+            ClimateError::DimensionOverflow {
+                context: "reshape_for_predictor batch_size * num_levels",
+            },
+        )?;
+        let pred_cols = self
+            .config
+            .num_levels
+            .checked_mul(self.config.aligned_channels)
+            .ok_or(ClimateError::DimensionOverflow {
+                context: "reshape_for_predictor num_levels * aligned_channels",
+            })?;
+        let _ = batch_size
+            .checked_mul(pred_cols)
+            .ok_or(ClimateError::DimensionOverflow {
+                context: "reshape_for_predictor total elements",
+            })?;
+        if latent_matrix.nrows() < required_rows
+            || latent_matrix.ncols() < self.config.aligned_channels
+        {
+            return Err(ClimateError::ShapeMismatch {
+                context: "Latent matrix too small for batch_size * num_levels or aligned_channels.",
+                expected: (required_rows, self.config.aligned_channels),
+                actual: latent_matrix.shape(),
+            });
+        }
+        let mut out = DMatrix::zeros(batch_size, pred_cols);
+        self.reshape_for_predictor_into(latent_matrix, batch_size, &mut out)?;
+        Ok(out)
+    }
+
+    /// Reshapes a batch of latent vectors for the predictor.
+    /// From `(batch_size * num_levels, channels)` to `(batch_size, num_levels * channels)`.
+    #[verified_engine::verified(
+        alloc_ok = "convenience reshape wrapper allocates predictor input matrix"
+    )]
     pub fn reshape_for_predictor<S: Storage<f32, Dyn, Dyn>>(
         &self,
         latent_matrix: &Matrix<f32, Dyn, Dyn, S>,
         batch_size: usize,
     ) -> DMatrix<f32> {
+        self.try_reshape_for_predictor(latent_matrix, batch_size)
+            .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// Fallible CERA prediction validating input row divisibility and channel dimensions.
+    #[verified_engine::verified(
+        alloc_ok = "convenience try_predict allocates intermediate and output matrices"
+    )]
+    pub fn try_predict<S: Storage<f32, Dyn, Dyn>>(
+        &self,
+        inputs: &Matrix<f32, Dyn, Dyn, S>,
+    ) -> Result<DMatrix<f32>, ClimateError> {
         let num_levels = self.config.num_levels;
-        let aligned_channels = self.config.aligned_channels;
-        let mut reshaped_data = Vec::with_capacity(batch_size * num_levels * aligned_channels);
-        for i in 0..batch_size {
-            let start_row = i * num_levels;
-            let sample_latent = latent_matrix.rows(start_row, num_levels);
-            for r in sample_latent.row_iter() {
-                for element in r.iter() {
-                    reshaped_data.push(*element);
-                }
-            }
+        if num_levels == 0 {
+            return Err(ClimateError::ZeroLevels);
         }
-        DMatrix::from_row_slice(batch_size, num_levels * aligned_channels, &reshaped_data)
+        if inputs.ncols() != self.config.in_channels {
+            return Err(ClimateError::ChannelMismatch {
+                context: "Cera::try_predict input channel mismatch.",
+                expected: self.config.in_channels,
+                actual: inputs.ncols(),
+            });
+        }
+        if !inputs.nrows().is_multiple_of(num_levels) {
+            return Err(ClimateError::ShapeMismatch {
+                context: "Cera::try_predict input rows must be a multiple of num_levels.",
+                expected: (num_levels, self.config.in_channels),
+                actual: inputs.shape(),
+            });
+        }
+        let batch_size = inputs.nrows() / num_levels;
+        let latent = self.autoencoder.encode(inputs);
+        let predictor_input = self.try_reshape_for_predictor(&latent, batch_size)?;
+        Ok(self.predictor.forward(&predictor_input))
     }
 
     /// Makes a prediction using the trained CERA model.
-    ///
-    /// # Arguments
-    ///
-    /// * `inputs` - Input data matrix.
-    ///
-    /// # Returns
-    ///
-    /// The predicted output matrix.
-    #[verified_engine::verified]
+    #[verified_engine::verified(
+        alloc_ok = "convenience predict wrapper allocates intermediate and output matrices"
+    )]
     pub fn predict<S: Storage<f32, Dyn, Dyn>>(
         &self,
         inputs: &Matrix<f32, Dyn, Dyn, S>,
     ) -> DMatrix<f32> {
-        let num_levels = self.config.num_levels;
-        let aligned_channels = self.config.aligned_channels;
-        let batch_size = inputs.nrows() / num_levels;
-
-        let latent = self.autoencoder.encode(inputs);
-        let aligned_latent = latent.columns(0, aligned_channels).clone_owned();
-        let predictor_input = self.reshape_for_predictor(&aligned_latent, batch_size);
-        self.predictor.forward(&predictor_input)
+        self.try_predict(inputs).unwrap_or_else(|e| panic!("{e}"))
     }
 }
 

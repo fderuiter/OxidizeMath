@@ -64,7 +64,7 @@ fn solve_conditional_weibull_increment(w0: f64, v: f64, beta: f64) -> f64 {
 impl BivariateWeibullModel {
     /// Validates that scale parameters `lambda1`, `lambda2` are positive finite and
     /// association shape `alpha` lies in `(0.0, 1.0]`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn validate(&self) -> Result<(), ClinicalTrialError> {
         if !self.lambda1.is_finite() || self.lambda1 <= 0.0 {
             return Err(ClinicalTrialError::InvalidData(format!(
@@ -118,7 +118,7 @@ impl BivariateWeibullModel {
     ///
     /// # Errors
     /// Returns [`ClinicalTrialError::InvalidData`] if model or censoring parameters are invalid.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn try_sample_censored_subject(
         &self,
         rng: &mut OxidizeRng,
@@ -157,7 +157,7 @@ impl BivariateWeibullModel {
 impl SimulationParams {
     /// Validates all four [`SimulationParams`] scalars (`lambda1 > 0`, `lambda2 > 0`,
     /// `0 < alpha <= 1`, and `theta > 0`).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn validate(&self) -> Result<(), ClinicalTrialError> {
         self.control_model().validate()?;
         if !self.theta.is_finite() || self.theta <= 0.0 {

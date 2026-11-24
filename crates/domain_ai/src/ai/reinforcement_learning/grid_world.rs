@@ -93,7 +93,7 @@ impl MarkovDecisionProcess for GridWorldEnv {
         }
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn actions(&self, state: &Self::S) -> Vec<Self::A> {
         if self.is_terminal(state) {
             vec![]

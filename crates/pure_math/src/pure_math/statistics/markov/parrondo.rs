@@ -75,7 +75,7 @@ impl ParrondoSchedule {
     ///
     /// # Errors
     /// Returns [`MarkovError::InvalidState`] if `spec` is empty, exceeds `16`, or has non-`A`/`B` chars.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn parse(spec: &str) -> Result<Self> {
         if spec.is_empty() || spec.len() > MAX_SCHEDULE_LEN {
             return Err(MarkovError::InvalidState {
@@ -160,7 +160,7 @@ impl ParrondoParams {
     /// # Errors
     /// Returns [`MarkovError::InvalidState`] if `modulus` is not in `{3, 5, 7, 9}`, or
     /// [`MarkovError::InvalidProbability`] if any effective win probability falls outside `(0.0, 1.0)`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(
         modulus: usize,
         p_a_base: f64,
@@ -327,7 +327,7 @@ impl ParrondoReport {
 
 /// Builds the $M \times M$ modulo-$M$ transition matrix $P_A$ for Game A.
 #[must_use]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
 pub fn build_game_a_matrix(params: &ParrondoParams) -> DMatrix<f64> {
     let (m, p) = (params.modulus(), params.p_a());
     let mut mat = DMatrix::zeros(m, m);
@@ -340,7 +340,7 @@ pub fn build_game_a_matrix(params: &ParrondoParams) -> DMatrix<f64> {
 
 /// Builds the $M \times M$ modulo-$M$ transition matrix $P_B$ for Game B.
 #[must_use]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
 pub fn build_game_b_matrix(params: &ParrondoParams) -> DMatrix<f64> {
     let m = params.modulus();
     let mut mat = DMatrix::zeros(m, m);
@@ -366,7 +366,7 @@ pub fn build_mixture_matrix(p_a: &DMatrix<f64>, p_b: &DMatrix<f64>) -> Result<DM
 }
 
 /// Multiplies elementary transition matrices in schedule order (e.g. $P_{ABB} = P_A P_B P_B$).
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
 pub fn build_schedule_matrix(
     p_a: &DMatrix<f64>,
     p_b: &DMatrix<f64>,
@@ -384,7 +384,7 @@ pub fn build_schedule_matrix(
     Ok(product)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output vector")]
 fn solve_stationary_exact(
     ws: &mut SolverWorkspace,
     transition: &DMatrix<f64>,
@@ -421,7 +421,7 @@ pub fn detailed_balance_violation(transition: &DMatrix<f64>, pi: &DVector<f64>) 
     max_violation
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn evaluate_schedule_cycle(
     p_a: &DMatrix<f64>,
     p_b: &DMatrix<f64>,
@@ -446,7 +446,7 @@ fn evaluate_schedule_cycle(
 }
 
 /// Solves exact stationary distributions, asymptotic drifts, and broken detailed-balance metrics.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn solve_parrondo_ratchet(
     params: &ParrondoParams,
     schedule: &ParrondoSchedule,

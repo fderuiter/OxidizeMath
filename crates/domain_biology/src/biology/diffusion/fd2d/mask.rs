@@ -53,7 +53,7 @@ pub struct CellMask2D {
 
 impl CellMask2D {
     /// Allocates an all-`Free` 2D cell mask for a `width x height` grid.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(width: usize, height: usize) -> Self {
         let len = width.checked_mul(height).expect("Mask grid size overflow");
         Self {

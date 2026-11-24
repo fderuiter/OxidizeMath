@@ -132,7 +132,7 @@ impl Decoder<MultiHeadAttention, FeedForward, LayerNorm> {
     /// # Returns
     ///
     /// A new `Decoder` instance.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(num_layers: usize, d_model: usize, h: usize, d_ff: usize) -> Self {
         Self {
             layers: (0..num_layers)

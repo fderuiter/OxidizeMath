@@ -25,6 +25,8 @@ pub(crate) struct VerificationWhitelist {
     #[serde(default)]
     pub missing_docs: Option<MissingDocsConfig>,
     #[serde(default)]
+    pub supply_chain: Option<SupplyChainConfig>,
+    #[serde(default)]
     pub workflow_linter: Option<WorkflowLinterConfig>,
     #[serde(default)]
     pub dead_code: Vec<DeadCodeEntry>,
@@ -110,6 +112,29 @@ pub struct DeadCodeEntry {
     pub(crate) identifier: Option<String>,
 }
 
+/// Supply-chain and advisory audit policy loaded from `[supply_chain]`.
+#[derive(Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SupplyChainConfig {
+    #[serde(default)]
+    pub max_duplicate_families: Option<usize>,
+    #[serde(default)]
+    pub allowed_registries: Vec<String>,
+    #[serde(default)]
+    pub allowed_licenses: Vec<String>,
+    #[serde(default)]
+    pub ignored_advisories: Vec<IgnoredAdvisoryEntry>,
+}
+
+/// Audited informational/unmaintained OSV advisory entry loaded from `[[supply_chain.ignored_advisories]]`.
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct IgnoredAdvisoryEntry {
+    pub id: String,
+    pub package: String,
+    pub reason: String,
+}
+
 /// Authorized unused dependency entry loaded from `[[unused_dependencies]]`.
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -156,6 +181,29 @@ fn validate_missing_docs_config(cfg: &MissingDocsConfig, path: &Path) -> Result<
     Ok(())
 }
 
+fn validate_supply_chain_config(cfg: &SupplyChainConfig, path: &Path) -> Result<(), String> {
+    if cfg.allowed_registries.iter().any(|r| r.trim().is_empty())
+        || cfg.allowed_licenses.iter().any(|l| l.trim().is_empty())
+    {
+        return Err(format!(
+            "Invalid [supply_chain] in {}: allowed_registries and allowed_licenses entries must be non-empty",
+            path.display()
+        ));
+    }
+    for entry in &cfg.ignored_advisories {
+        if entry.id.trim().is_empty()
+            || entry.package.trim().is_empty()
+            || entry.reason.trim().is_empty()
+        {
+            return Err(format!(
+                "Invalid [[supply_chain.ignored_advisories]] entry in {}: id, package, and reason must be non-empty",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String> {
     let content = fs::read_to_string(path)
         .map_err(|err| format!("Failed to read {}: {}", path.display(), err))?;
@@ -174,6 +222,9 @@ fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String
     }
     if let Some(cfg) = &parsed.missing_docs {
         validate_missing_docs_config(cfg, path)?;
+    }
+    if let Some(cfg) = &parsed.supply_chain {
+        validate_supply_chain_config(cfg, path)?;
     }
     if let Some(fences) = parsed
         .doc_verification

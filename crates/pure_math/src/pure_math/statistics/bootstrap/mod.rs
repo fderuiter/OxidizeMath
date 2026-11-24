@@ -117,7 +117,7 @@ pub struct BootstrapWorkspace {
 
 impl BootstrapWorkspace {
     /// Preallocates resample, replicate, scratch, and jackknife buffers.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates bootstrap buffers")]
     pub fn new(max_data_len: usize, max_replicates: usize) -> Result<Self, MonteCarloError> {
         if max_data_len < 2 {
             return Err(MonteCarloError::InsufficientData {

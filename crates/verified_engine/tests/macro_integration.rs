@@ -1,8 +1,17 @@
 //! Integration tests for `verified_engine` macro re-exports and runtime complexity metrics.
 use approx::assert_relative_eq;
+use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
 use verified_engine::scientific_metadata::theory::TheoryDescribable;
 use verified_engine::{Theory, embed_theory, verified};
+
+#[global_allocator]
+static TEST_ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
+
+#[verified(alloc_ok = "constructor allocates fixed state vector during initialization")]
+fn build_initialized_state(len: usize, seed: f64) -> Vec<f64> {
+    vec![seed; len]
+}
 
 trait StepTrait {
     fn advance(&mut self, delta: f64) -> f64;
@@ -71,12 +80,17 @@ fn shared_range_helper_b(b: f64, r: f64, c: f64, t: f64) -> f64 {
 
 #[test]
 fn test_allow_recursion_records_runtime_complexity_metrics() {
-    let mut acc = Accumulator { total: 1.0 };
+    let init = build_initialized_state(4, 0.25);
+    let mut acc = Accumulator {
+        total: init.iter().sum(),
+    };
     let (value, metrics) =
         VerifiedEngine::run_verified(|| <Accumulator as StepTrait>::advance(&mut acc, 3.0));
     assert_relative_eq!(value, 7.0);
     assert_eq!(metrics.function_calls, 2);
     assert_eq!(metrics.arithmetic_ops, 1);
+    assert_eq!(metrics.allocations, 0);
+    assert_eq!(metrics.allocated_bytes, 0);
 }
 
 #[derive(Theory)]

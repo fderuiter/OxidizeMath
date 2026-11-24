@@ -1,11 +1,13 @@
 //! This module implements the loss functions for the CERA framework.
 
+pub use crate::climate::scratch::EmdScratch;
 use crate::error::ClimateError;
 use nalgebra::{Dyn, Matrix, Storage};
 
-/// Fallible Mean Squared Error (MSE) between two matrices of identical shape.
+/// Fallible Mean Squared Error (MSE) between two matrices of identical shape without heap allocation.
 ///
-/// Returns [`ClimateError::ShapeMismatch`] if `y_true` and `y_pred` differ in dimensions.
+/// Returns [`ClimateError::ShapeMismatch`] if `y_true` and `y_pred` differ in dimensions or
+/// [`ClimateError::DimensionOverflow`] if `nrows * ncols` overflows `usize`.
 #[verified_engine::verified]
 pub fn try_mse_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
     y_true: &Matrix<f32, Dyn, Dyn, S1>,
@@ -18,24 +20,27 @@ pub fn try_mse_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
             actual: y_pred.shape(),
         });
     }
-    let count = y_true.nrows() * y_true.ncols();
+    let count =
+        y_true
+            .nrows()
+            .checked_mul(y_true.ncols())
+            .ok_or(ClimateError::DimensionOverflow {
+                context: "MSE element count nrows * ncols",
+            })?;
     if count == 0 {
         return Ok(0.0);
     }
-    let diff = y_true - y_pred;
-    Ok(diff.norm_squared() / count as f32)
+    let mut sq_sum = 0.0_f32;
+    for c in 0..y_true.ncols() {
+        for r in 0..y_true.nrows() {
+            let diff = y_true[(r, c)] - y_pred[(r, c)];
+            sq_sum += diff * diff;
+        }
+    }
+    Ok(sq_sum / count as f32)
 }
 
-/// Computes the Mean Squared Error (MSE) between two matrices.
-///
-/// # Arguments
-///
-/// * `y_true` - The ground truth values.
-/// * `y_pred` - The predicted values.
-///
-/// # Returns
-///
-/// The mean squared error.
+/// Computes the Mean Squared Error (MSE) between two matrices without heap allocation.
 #[verified_engine::verified]
 pub fn mse_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
     y_true: &Matrix<f32, Dyn, Dyn, S1>,
@@ -44,10 +49,67 @@ pub fn mse_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
     try_mse_loss(y_true, y_pred).unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// Fallible zero-allocation Earth Mover's Distance (EMD) across paired 1D column distributions
+/// using pre-allocated [`EmdScratch`] buffers.
+#[verified_engine::verified]
+pub fn try_earth_movers_distance_into<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
+    z1: &Matrix<f32, Dyn, Dyn, S1>,
+    z2: &Matrix<f32, Dyn, Dyn, S2>,
+    scratch: &mut EmdScratch,
+) -> Result<f32, ClimateError> {
+    if z1.shape() != z2.shape() {
+        return Err(ClimateError::ShapeMismatch {
+            context: "Matrices must have the same shape for EMD.",
+            expected: z1.shape(),
+            actual: z2.shape(),
+        });
+    }
+    let nrows = z1.nrows();
+    let ncols = z1.ncols();
+    if ncols == 0 || nrows == 0 {
+        return Ok(0.0);
+    }
+    if scratch.max_rows() < nrows {
+        return Err(ClimateError::ShapeMismatch {
+            context: "EmdScratch capacity is smaller than distribution row count.",
+            expected: (nrows, ncols),
+            actual: (scratch.max_rows(), ncols),
+        });
+    }
+
+    let s1 = &mut scratch.col1[..nrows];
+    let s2 = &mut scratch.col2[..nrows];
+    let mut total_emd = 0.0_f32;
+    for c in 0..ncols {
+        for r in 0..nrows {
+            s1[r] = z1[(r, c)];
+            s2[r] = z2[(r, c)];
+        }
+        s1.sort_unstable_by(|a, b| a.total_cmp(b));
+        s2.sort_unstable_by(|a, b| a.total_cmp(b));
+        let mut emd_col = 0.0_f32;
+        for r in 0..nrows {
+            emd_col += (s1[r] - s2[r]).abs();
+        }
+        total_emd += emd_col / nrows as f32;
+    }
+    Ok(total_emd / ncols as f32)
+}
+
+/// Computes zero-allocation Earth Mover's Distance (EMD) using pre-allocated [`EmdScratch`].
+#[verified_engine::verified]
+pub fn earth_movers_distance_into<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
+    z1: &Matrix<f32, Dyn, Dyn, S1>,
+    z2: &Matrix<f32, Dyn, Dyn, S2>,
+    scratch: &mut EmdScratch,
+) -> f32 {
+    try_earth_movers_distance_into(z1, z2, scratch).unwrap_or_else(|e| panic!("{e}"))
+}
+
 /// Fallible Earth Mover's Distance (EMD) across paired 1D column distributions.
 ///
 /// Returns [`ClimateError::ShapeMismatch`] if `z1` and `z2` differ in dimensions.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "convenience EMD wrapper allocates temporary sort buffers")]
 pub fn try_earth_movers_distance<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
     z1: &Matrix<f32, Dyn, Dyn, S1>,
     z2: &Matrix<f32, Dyn, Dyn, S2>,
@@ -62,30 +124,8 @@ pub fn try_earth_movers_distance<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dy
     if z1.ncols() == 0 || z1.nrows() == 0 {
         return Ok(0.0);
     }
-
-    let mut total_emd = 0.0;
-    let mut col1 = Vec::with_capacity(z1.nrows());
-    let mut col2 = Vec::with_capacity(z2.nrows());
-
-    for i in 0..z1.ncols() {
-        col1.clear();
-        col1.extend(z1.column(i).iter().copied());
-
-        col2.clear();
-        col2.extend(z2.column(i).iter().copied());
-
-        col1.sort_unstable_by(|a, b| a.total_cmp(b));
-        col2.sort_unstable_by(|a, b| a.total_cmp(b));
-
-        let emd_i: f32 = col1
-            .iter()
-            .zip(col2.iter())
-            .map(|(a, b)| (a - b).abs())
-            .sum();
-        total_emd += emd_i / col1.len() as f32;
-    }
-
-    Ok(total_emd / z1.ncols() as f32)
+    let mut scratch = EmdScratch::new(z1.nrows());
+    try_earth_movers_distance_into(z1, z2, &mut scratch)
 }
 
 /// Computes the Earth Mover's Distance (EMD) for multiple 1D distributions.
@@ -117,7 +157,7 @@ pub fn try_earth_movers_distance<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dy
 /// let total = cera_loss(0.5, 0.25, emd, 0.2, 0.1);
 /// assert!((total - (0.7 * 0.5 + 0.2 * 0.25 + 0.1 * 2.0)).abs() < 1e-6);
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "convenience EMD wrapper allocates temporary sort buffers")]
 pub fn earth_movers_distance<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
     z1: &Matrix<f32, Dyn, Dyn, S1>,
     z2: &Matrix<f32, Dyn, Dyn, S2>,

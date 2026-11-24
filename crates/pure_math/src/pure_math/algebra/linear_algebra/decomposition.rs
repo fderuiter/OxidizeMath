@@ -33,7 +33,7 @@ use nalgebra::DMatrix;
 /// let diag = DMatrix::from_diagonal(&math_explorer::nalgebra::DVector::from_vec(vec![1.0, 0.00000000001, 3.0]));
 /// assert_eq!(effective_rank(&diag, Some(1e-5)), 2);
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates SVD workspace")]
 pub fn effective_rank(matrix: &DMatrix<f64>, tolerance: Option<f64>) -> usize {
     let tol = tolerance.unwrap_or(math_commons::registry::TOLERANCE_HIGH);
     let (m, n) = matrix.shape();
@@ -43,7 +43,7 @@ pub fn effective_rank(matrix: &DMatrix<f64>, tolerance: Option<f64>) -> usize {
 }
 
 /// Checked Eckart-Young rank-`k` SVD matrix approximation returning [`LinearAlgebraError`] on `NaN` or non-convergence.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates SVD workspace and output matrix")]
 pub fn try_low_rank_approximation(
     matrix: &DMatrix<f64>,
     k: usize,
@@ -65,7 +65,7 @@ pub fn try_low_rank_approximation(
 }
 
 /// Computes a rank-`k` SVD approximation of `matrix` without panicking; prefer [`try_low_rank_approximation`] for checked error handling.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates fallback output matrix")]
 pub fn low_rank_approximation(matrix: &DMatrix<f64>, k: usize) -> DMatrix<f64> {
     try_low_rank_approximation(matrix, k)
         .unwrap_or_else(|_| DMatrix::zeros(matrix.nrows(), matrix.ncols()))

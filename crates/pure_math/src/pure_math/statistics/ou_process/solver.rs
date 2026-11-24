@@ -181,7 +181,7 @@ impl EulerMaruyama {
     /// let trajectory = solver.simulate(0.6, 100, &mut rng);
     /// assert_eq!(trajectory.len(), 101);  // Initial + 100 steps
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn simulate<R: Rng>(&self, x0: f64, n_steps: usize, rng: &mut R) -> Vec<f64> {
         let mut trajectory = Vec::with_capacity(n_steps + 1);
         trajectory.push(x0);
@@ -227,7 +227,7 @@ impl EulerMaruyama {
     /// assert_eq!(paths.len(), 1000);  // 1000 paths
     /// assert_eq!(paths[0].len(), 101);  // Each path has 101 points
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn simulate_paths<R: Rng>(
         &self,
         x0: f64,

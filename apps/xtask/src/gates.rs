@@ -275,8 +275,8 @@ fn run_compile_and_doc_gates() {
 }
 
 fn run_audit_gates() {
-    println!("\n--- Step 7: Dependency Vulnerability Check ---");
-    check_vulnerabilities();
+    println!("\n--- Step 7: Supply-Chain & Tier 5 Security Check ---");
+    crate::security::check_security(&[]);
 }
 
 pub fn lint_all() {

@@ -386,7 +386,7 @@ fn project_identifiable_and_feasible(params: &mut [f64], num_teams: usize) {
 }
 
 /// Fits a time-decayed Dixon-Coles league model using any [`Optimizer`] from `pure_math::analysis::optimization`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn fit_dixon_coles_with_optimizer(
     matches: &[HistoricalMatch],
     num_teams: usize,

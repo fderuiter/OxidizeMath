@@ -68,7 +68,7 @@ impl<R: Rng> GillespieSolver<R> {
     }
 
     /// Creates a new solver with the provided random number generator and buffer capacity.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn with_capacity(rng: R, capacity: usize) -> Self {
         Self {
             rng,

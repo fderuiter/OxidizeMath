@@ -26,7 +26,7 @@ pub struct KpzModel1D {
 
 impl KpzModel1D {
     /// Creates a validated 1D KPZ solver with pre-allocated zero-allocation workspace.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates field and SPDE scratch")]
     pub fn try_new(
         n: usize,
         dx: f64,
@@ -193,7 +193,7 @@ pub struct KpzModel2D {
 impl KpzModel2D {
     /// Creates a 2D KPZ solver with pre-allocated zero-allocation workspace.
     #[allow(clippy::too_many_arguments)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates field and SPDE scratch")]
     pub fn new(
         width: usize,
         height: usize,

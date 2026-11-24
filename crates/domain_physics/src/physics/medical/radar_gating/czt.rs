@@ -9,7 +9,7 @@ use rustfft::FftPlanner;
 use std::f64::consts::PI;
 
 /// Calculates direct summation CZT as a zero-overhead fallback for tiny bin counts or signals.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn direct_chirp_z_transform(
     signal: &[Complex<f64>],
     start_freq: f64,
@@ -61,7 +61,7 @@ fn direct_chirp_z_transform(
 /// # Returns
 ///
 /// A vector of complex numbers representing the frequency spectrum in the specified band.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn chirp_z_transform(
     signal: &[Complex<f64>],
     start_freq: f64,

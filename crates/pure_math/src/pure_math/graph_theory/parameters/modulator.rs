@@ -8,7 +8,7 @@ use std::collections::HashSet;
 /// is incident to at least one vertex of the set. This function returns
 /// a vertex cover.
 /// Finding the minimum vertex cover is an NP-hard problem.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn vertex_cover<N, E>(g: &Graph<N, E>) -> HashSet<NodeIndex>
 where
     N: Clone,

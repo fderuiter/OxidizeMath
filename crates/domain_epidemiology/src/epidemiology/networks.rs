@@ -46,7 +46,7 @@ pub struct NetworkEpidemicModel {
     pub(super) gamma: f64,
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub(super) fn canonical_edges_from_adjacency(
     num_nodes: usize,
     adjacency: &[Vec<usize>],
@@ -139,7 +139,7 @@ impl NetworkEpidemicModel {
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn set_beta(&mut self, beta: f64) -> Result<(), NetworkModelError> {
-        if beta < 0.0 {
+        if !beta.is_finite() || beta < 0.0 {
             return Err(NetworkModelError::InvalidParameters);
         }
         self.beta = beta;
@@ -149,7 +149,7 @@ impl NetworkEpidemicModel {
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn set_gamma(&mut self, gamma: f64) -> Result<(), NetworkModelError> {
-        if gamma < 0.0 {
+        if !gamma.is_finite() || gamma < 0.0 {
             return Err(NetworkModelError::InvalidParameters);
         }
         self.gamma = gamma;
@@ -288,7 +288,7 @@ impl NetworkEpidemicModel {
 
     /// Creates a new network epidemic model and initializes it with a geometric graph
     /// using an injected RNG.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new_with_rng<R: Rng>(num_nodes: usize, beta: f64, gamma: f64, rng: &mut R) -> Self {
         let mut model = Self {
             num_nodes,
@@ -332,7 +332,7 @@ impl NetworkEpidemicModel {
     }
 
     /// Initializes a geometric graph using an injected RNG.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn initialize_geometric_graph_with_rng<R: Rng>(&mut self, rng: &mut R) {
         self.states = vec![NodeState::Susceptible; self.num_nodes];
         self.scratch_states = vec![NodeState::Susceptible; self.num_nodes];

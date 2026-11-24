@@ -30,7 +30,7 @@ impl FeedForward {
     /// # Arguments
     /// * `d_model`: The input and output dimension of the network.
     /// * `d_ff`: The inner-layer dimension.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(d_model: usize, d_ff: usize) -> Self {
         Self {
             w1: DMatrix::zeros(d_model, d_ff),

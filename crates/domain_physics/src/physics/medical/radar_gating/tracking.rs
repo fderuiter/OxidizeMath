@@ -32,26 +32,26 @@ impl ConstantVelocityModel {
 }
 
 impl KalmanModel<f64> for ConstantVelocityModel {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn transition_matrix(&self, dt: f64) -> DMatrix<f64> {
         // [1, dt]
         // [0, 1 ]
         DMatrix::from_row_slice(2, 2, &[1.0, dt, 0.0, 1.0])
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn measurement_matrix(&self) -> DMatrix<f64> {
         // [1, 0] -> Measure position only
         DMatrix::from_row_slice(1, 2, &[1.0, 0.0])
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn process_noise(&self, _dt: f64) -> DMatrix<f64> {
         // Simplified Q: I * var
         DMatrix::identity(2, 2) * self.process_noise_var
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn measurement_noise(&self) -> DMatrix<f64> {
         // R is 1x1 matrix for scalar measurement
         DMatrix::from_row_slice(1, 1, &[self.measurement_noise_var])
@@ -71,7 +71,7 @@ impl TrackingFilter {
     ///
     /// Returns [`RadarError::InvalidTrackingParameter`] if `initial_amplitude` is non-finite,
     /// `dt <= 0.0`, `model.process_noise_var < 0.0`, or `model.measurement_noise_var < 0.0`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn try_new(
         initial_amplitude: f64,
         dt: f64,
@@ -136,7 +136,7 @@ impl TrackingFilter {
     }
 
     /// Updates the state with a new measurement.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn update(&mut self, measured_amplitude: f64) {
         // Optimization: Use from_column_slice to avoid extra allocation if vector was larger,
         // though here we just need a 1-element vector. from_element is cleaner.

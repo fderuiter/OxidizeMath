@@ -209,7 +209,7 @@ impl Diagnostic for Error {
         }
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = match self.classify() {
             Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().metadata(),

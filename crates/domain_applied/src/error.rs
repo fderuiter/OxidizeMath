@@ -131,7 +131,7 @@ impl Diagnostic for PharmacokineticsError {
     fn severity(&self) -> Severity {
         Severity::Error
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert(
@@ -148,7 +148,7 @@ impl Diagnostic for BatteryError {
     fn severity(&self) -> Severity {
         Severity::Error
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "BatteryError".to_string());
@@ -165,7 +165,7 @@ impl Diagnostic for GameTheoryError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "GameTheoryError".to_string());
@@ -185,7 +185,7 @@ impl Diagnostic for EngineeringError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "EngineeringError".to_string());
@@ -202,7 +202,7 @@ impl Diagnostic for LoraError {
     fn severity(&self) -> Severity {
         Severity::Error
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "LoraError".to_string());
@@ -219,7 +219,7 @@ impl Diagnostic for IsosurfaceError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "IsosurfaceError".to_string());

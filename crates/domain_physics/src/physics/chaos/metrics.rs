@@ -40,7 +40,7 @@ pub fn logistic_lyapunov(r: f64, x0: f64, n: usize) -> f64 {
     sum_logs / (n as f64)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructs empty NumericalError String on divergence")]
 fn step_and_renormalize_pair<S, Sol>(
     system: &S,
     solver: &mut Sol,
@@ -96,7 +96,7 @@ where
 ///
 /// # Returns
 /// Estimated largest Lyapunov exponent.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn lorenz_lyapunov<S, Sol>(
     system: &S,
     solver: &mut Sol,

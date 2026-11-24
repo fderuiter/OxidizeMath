@@ -7,6 +7,10 @@ use pure_math::pure_math::graph_theory::{
     parameters::{degree::degeneracy, modulator::vertex_cover, treewidth::treewidth},
 };
 
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
 #[test]
 #[verified_engine::verified]
 fn test_degeneracy_k5() {

@@ -65,7 +65,7 @@ pub struct EdwardsWilkinson1D {
 
 impl EdwardsWilkinson1D {
     /// Creates a validated 1D Edwards-Wilkinson solver with pre-allocated zero-allocation workspace.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates field and SPDE scratch")]
     pub fn try_new(
         n: usize,
         dx: f64,
@@ -206,7 +206,7 @@ pub struct EdwardsWilkinson2D {
 
 impl EdwardsWilkinson2D {
     /// Creates a 2D Edwards-Wilkinson solver with pre-allocated zero-allocation workspace.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates field and SPDE scratch")]
     pub fn new(
         width: usize,
         height: usize,

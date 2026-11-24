@@ -204,7 +204,7 @@ impl Permutation {
     /// # Errors
     ///
     /// Returns [`MathError::InvalidPermutation`] if any entry is `>= map.len()` or duplicated.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn try_new(map: Vec<usize>) -> Result<Self, MathError> {
         let n = map.len();
         let mut seen = vec![false; n];
@@ -226,7 +226,7 @@ impl Permutation {
     /// # Errors
     ///
     /// Returns [`MathError::DimensionMismatch`] when `a.map.len() != b.map.len()`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn try_operate(a: &Self, b: &Self) -> Result<Self, MathError> {
         if a.map.len() != b.map.len() {
             return Err(MathError::DimensionMismatch {
@@ -256,7 +256,7 @@ impl Permutation {
     }
 
     #[allow(missing_docs)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn identity(n: usize) -> Self {
         Permutation {
             map: (0..n).collect(),
@@ -278,7 +278,7 @@ impl Semigroup for Permutation {
 /// Checks if a subset H is a subgroup of G.
 /// Requires G to be finite and represented by a list of all elements, or we just check closure/inverse for H.
 /// Here we check if H is closed under operation and inverses.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn is_subgroup<G: Group + Eq + Hash>(subgroup: &[G]) -> bool {
     if subgroup.is_empty() {
         return false;
@@ -304,13 +304,13 @@ pub fn is_subgroup<G: Group + Eq + Hash>(subgroup: &[G]) -> bool {
 }
 
 /// Generates a right coset Ha = { h * a : h in H }.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn generate_right_coset<G: Group>(subgroup: &[G], a: &G) -> Vec<G> {
     subgroup.iter().map(|h| G::operate(h, a)).collect()
 }
 
 /// Generates a left coset aH = { a * h : h in H }.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn generate_left_coset<G: Group>(subgroup: &[G], a: &G) -> Vec<G> {
     subgroup.iter().map(|h| G::operate(a, h)).collect()
 }
@@ -318,7 +318,7 @@ pub fn generate_left_coset<G: Group>(subgroup: &[G], a: &G) -> Vec<G> {
 /// Checks if a subgroup is normal.
 /// A subgroup N is normal if aN = Na for all a in G.
 /// We need the full group G for this check.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn is_normal_subgroup<G: Group + Eq + Hash>(group: &[G], subgroup: &[G]) -> bool {
     if !is_subgroup(subgroup) {
         return false;

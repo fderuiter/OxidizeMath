@@ -1047,6 +1047,9 @@
       "signature": "impl SculptedGridMdp { pub fn transition_outcomes (& self , _ : GridState , _ : Move ,) -> [(GridState , f64) ; 2] }"
     },
     {
+      "signature": "impl SculptedGridMdp { pub fn try_new (_ : i32 , _ : i32 , _ : f64 , _ : f64 ,) -> Result < Self , crate :: error :: AIError > }"
+    },
+    {
       "signature": "pub const MAX_RL_GRID_DIM : i32"
     },
     {
@@ -1371,6 +1374,9 @@
       "signature": "impl RenderContext { pub fn resize (& mut self , _ : usize , _ : usize , _ : usize) }"
     },
     {
+      "signature": "impl RenderContext { pub fn try_resize (& mut self , _ : usize , _ : usize , _ : usize ,) -> Result < () , AIError > }"
+    },
+    {
       "signature": "pub fn generate_ray_bundle (_ : & Matrix4 < f64 > , _ : usize , _ : usize , _ : f64 ,) -> RayBundle"
     },
     {
@@ -1387,6 +1393,12 @@
     },
     {
       "signature": "pub fn stratified_sampling_with_rng < R : Rng + ? Sized > (_ : f64 , _ : f64 , _ : usize , _ : & mut R , _ : & mut [f64] ,)"
+    },
+    {
+      "signature": "pub fn try_generate_ray_bundle (_ : & Matrix4 < f64 > , _ : usize , _ : usize , _ : f64 ,) -> Result < RayBundle , AIError >"
+    },
+    {
+      "signature": "pub fn try_positional_encoding (_ : f64 , _ : usize) -> Result < Vec < f64 > , AIError >"
     },
     {
       "signature": "pub fn volume_integration (_ : & [f64] , _ : & [Vector3 < f64 >] , _ : & [f64] ,) -> Vector3 < f64 >"
@@ -5688,6 +5700,9 @@
       "signature": "impl KuramotoNetwork { pub fn time (& self) -> f64 }"
     },
     {
+      "signature": "impl KuramotoNetwork { pub fn try_new (_ : usize , _ : f64 ,) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "pub struct KuramotoNetwork"
     }
   ],
@@ -6181,7 +6196,16 @@
   ],
   "crates/domain_climate/src/climate/autoencoder.rs": [
     {
+      "signature": "impl Autoencoder { pub fn backward_update_into (& mut self , _ : & DVector < f32 > , _ : & DVector < f32 > , _ : & mut dyn Optimizer < f32 > , _ : & mut AutoencoderScratch ,) -> Result < () , OptimizationError > }"
+    },
+    {
+      "signature": "impl Autoencoder { pub fn encode_into < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > , _ : & mut AutoencoderScratch , _ : & mut DMatrix < f32 > ,) -> Result < () , ClimateError > }"
+    },
+    {
       "signature": "impl Autoencoder { pub fn forward < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > ,) -> (DMatrix < f32 > , DMatrix < f32 >) }"
+    },
+    {
+      "signature": "impl Autoencoder { pub fn forward_into < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > , _ : & mut AutoencoderScratch , _ : & mut DMatrix < f32 > , _ : & mut DMatrix < f32 > ,) -> Result < () , ClimateError > }"
     },
     {
       "signature": "impl Autoencoder { pub fn new (_ : usize , _ : usize) -> Self }"
@@ -6190,13 +6214,19 @@
       "signature": "impl Autoencoder { pub fn new_from_components (_ : Encoder , _ : Decoder) -> Self }"
     },
     {
-      "signature": "impl ConvLayer { pub fn backward_update < O : Optimizer < f32 > > (& mut self , _ : & DMatrix < f32 > , _ : & DMatrix < f32 > , _ : & mut O , _ : usize ,) -> Result < DMatrix < f32 > , pure_math :: pure_math :: analysis :: optimization :: OptimizationError > }"
+      "signature": "impl ConvLayer { pub fn backward_update < O : Optimizer < f32 > > (& mut self , _ : & DMatrix < f32 > , _ : & DMatrix < f32 > , _ : & mut O , _ : usize ,) -> Result < DMatrix < f32 > , OptimizationError > }"
+    },
+    {
+      "signature": "impl ConvLayer { pub fn backward_update_into < O : Optimizer < f32 > > (& mut self , _ : & DMatrix < f32 > , _ : & DMatrix < f32 > , _ : & mut O , _ : usize , _ : & mut ConvLayerScratch , _ : & mut DMatrix < f32 > ,) -> Result < () , ClimateError > }"
     },
     {
       "signature": "impl ConvLayer { pub fn new (_ : usize , _ : usize) -> Self }"
     },
     {
       "signature": "impl Decoder { pub fn forward < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > ,) -> DMatrix < f32 > }"
+    },
+    {
+      "signature": "impl Decoder { pub fn forward_into < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > , _ : & mut DMatrix < f32 > , _ : & mut DMatrix < f32 > , _ : & mut DMatrix < f32 > ,) -> Result < () , ClimateError > }"
     },
     {
       "signature": "impl Decoder { pub fn new (_ : usize , _ : usize) -> Self }"
@@ -6208,13 +6238,13 @@
       "signature": "impl Encoder { pub fn forward < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > ,) -> DMatrix < f32 > }"
     },
     {
+      "signature": "impl Encoder { pub fn forward_into < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > , _ : & mut DMatrix < f32 > , _ : & mut DMatrix < f32 > , _ : & mut DMatrix < f32 > ,) -> Result < () , ClimateError > }"
+    },
+    {
       "signature": "impl Encoder { pub fn new (_ : usize , _ : usize) -> Self }"
     },
     {
       "signature": "impl Encoder { pub fn new_from_layers (_ : [ConvLayer ; 3]) -> Self }"
-    },
-    {
-      "signature": "pub fn leaky_relu (_ : & mut DMatrix < f32 > , _ : f32)"
     },
     {
       "signature": "pub struct Autoencoder"
@@ -6236,6 +6266,9 @@
     },
     {
       "signature": "pub trait AutoencoderModel { fn forward < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > ,) -> (DMatrix < f32 > , DMatrix < f32 >) }"
+    },
+    {
+      "signature": "pub use kernels :: leaky_relu"
     }
   ],
   "crates/domain_climate/src/climate/cera.rs": [
@@ -6249,10 +6282,22 @@
       "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn reshape_for_predictor < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > , _ : usize ,) -> DMatrix < f32 > }"
     },
     {
+      "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn reshape_for_predictor_into < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > , _ : usize , _ : & mut DMatrix < f32 > ,) -> Result < () , ClimateError > }"
+    },
+    {
+      "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn try_predict < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > ,) -> Result < DMatrix < f32 > , ClimateError > }"
+    },
+    {
+      "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn try_reshape_for_predictor < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > , _ : usize ,) -> Result < DMatrix < f32 > , ClimateError > }"
+    },
+    {
       "signature": "impl < P : PredictorModel > Cera < Autoencoder , P > { pub fn new_with_predictor (_ : CeraConfig , _ : P) -> Result < Self , ClimateError > }"
     },
     {
       "signature": "impl Cera < Autoencoder , Predictor > { pub fn new (_ : CeraConfig) -> Result < Self , ClimateError > }"
+    },
+    {
+      "signature": "impl Cera < Autoencoder , Predictor > { pub fn predict_into < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > , _ : & mut CeraScratch , _ : & mut DMatrix < f32 > ,) -> Result < () , ClimateError > }"
     },
     {
       "signature": "pub struct Cera < A : AutoencoderModel , P : PredictorModel >"
@@ -6288,13 +6333,22 @@
       "signature": "pub fn earth_movers_distance < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> f32"
     },
     {
+      "signature": "pub fn earth_movers_distance_into < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > , _ : & mut EmdScratch ,) -> f32"
+    },
+    {
       "signature": "pub fn mse_loss < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> f32"
     },
     {
       "signature": "pub fn try_earth_movers_distance < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> Result < f32 , ClimateError >"
     },
     {
+      "signature": "pub fn try_earth_movers_distance_into < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > , _ : & mut EmdScratch ,) -> Result < f32 , ClimateError >"
+    },
+    {
       "signature": "pub fn try_mse_loss < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> Result < f32 , ClimateError >"
+    },
+    {
+      "signature": "pub use crate :: climate :: scratch :: EmdScratch"
     }
   ],
   "crates/domain_climate/src/climate/mod.rs": [
@@ -6303,6 +6357,12 @@
     }
   ],
   "crates/domain_climate/src/climate/predictor.rs": [
+    {
+      "signature": "impl Predictor { pub fn backward_update_into (& mut self , _ : & DVector < f32 > , _ : & DVector < f32 > , _ : & mut dyn Optimizer < f32 > , _ : & mut PredictorScratch ,) -> Result < () , OptimizationError > }"
+    },
+    {
+      "signature": "impl Predictor { pub fn forward_into < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > , _ : & mut PredictorScratch , _ : & mut DMatrix < f32 > ,) -> Result < () , ClimateError > }"
+    },
     {
       "signature": "impl Predictor { pub fn new (_ : usize , _ : usize) -> Self }"
     },
@@ -6319,6 +6379,53 @@
       "signature": "pub trait PredictorModel { fn forward < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S >) -> DMatrix < f32 > }"
     }
   ],
+  "crates/domain_climate/src/climate/scratch.rs": [
+    {
+      "signature": "impl AutoencoderScratch { pub fn from_autoencoder (_ : usize , _ : & crate :: climate :: autoencoder :: Autoencoder ,) -> Self }"
+    },
+    {
+      "signature": "impl AutoencoderScratch { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl CeraScratch { pub fn from_config (_ : & CeraConfig) -> Result < Self , ClimateError > }"
+    },
+    {
+      "signature": "impl CeraScratch { pub fn new (_ : & CeraConfig , _ : usize) -> Result < Self , ClimateError > }"
+    },
+    {
+      "signature": "impl CeraTrainingScratch { pub fn from_config (_ : & CeraConfig) -> Result < Self , ClimateError > }"
+    },
+    {
+      "signature": "impl ConvLayerScratch { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl EmdScratch { pub fn max_rows (& self) -> usize }"
+    },
+    {
+      "signature": "impl EmdScratch { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl PredictorScratch { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct AutoencoderScratch"
+    },
+    {
+      "signature": "pub struct CeraScratch"
+    },
+    {
+      "signature": "pub struct CeraTrainingScratch"
+    },
+    {
+      "signature": "pub struct ConvLayerScratch"
+    },
+    {
+      "signature": "pub struct EmdScratch"
+    },
+    {
+      "signature": "pub struct PredictorScratch"
+    }
+  ],
   "crates/domain_climate/src/climate/tensor_ops.rs": [
     {
       "signature": "pub fn conv1d < S : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S > , _ : & DMatrix < f32 > , _ : & DVector < f32 > ,) -> DMatrix < f32 >"
@@ -6330,7 +6437,13 @@
       "signature": "pub fn try_conv1d < S : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S > , _ : & DMatrix < f32 > , _ : & DVector < f32 > ,) -> Result < DMatrix < f32 > , ClimateError >"
     },
     {
+      "signature": "pub fn try_conv1d_into < S : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S > , _ : & DMatrix < f32 > , _ : & DVector < f32 > , _ : & mut DMatrix < f32 > ,) -> Result < () , ClimateError >"
+    },
+    {
       "signature": "pub fn try_conv_transpose1d < S : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S > , _ : & DMatrix < f32 > , _ : & DVector < f32 > ,) -> Result < DMatrix < f32 > , ClimateError >"
+    },
+    {
+      "signature": "pub fn try_conv_transpose1d_into < S : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S > , _ : & DMatrix < f32 > , _ : & DVector < f32 > , _ : & mut DMatrix < f32 > ,) -> Result < () , ClimateError >"
     }
   ],
   "crates/domain_climate/src/climate/training.rs": [
@@ -6342,6 +6455,12 @@
     },
     {
       "signature": "impl < 'a , A : AutoencoderModel + Trainable < f32 > , P : PredictorModel + Trainable < f32 > > CeraTrainer < 'a , A , P , SGD < f32 > > { pub fn new (_ : & 'a mut Cera < A , P >) -> Self }"
+    },
+    {
+      "signature": "impl < 'a , O : Optimizer < f32 > > CeraTrainer < 'a , Autoencoder , Predictor , O > { pub fn train_into (& mut self , _ : & DMatrix < f32 > , _ : & DMatrix < f32 > , _ : & DMatrix < f32 > , _ : & mut CeraTrainingScratch , _ : & mut [f32] ,) -> Result < usize , ClimateError > }"
+    },
+    {
+      "signature": "impl < 'a , O : Optimizer < f32 > > CeraTrainer < 'a , Autoencoder , Predictor , O > { pub fn train_step_into < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > , S3 : Storage < f32 , Dyn , Dyn > , > (& mut self , _ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > , _ : & Matrix < f32 , Dyn , Dyn , S3 > , _ : & mut CeraTrainingScratch ,) -> Result < f32 , ClimateError > }"
     },
     {
       "signature": "pub struct CeraTrainer < 'a , A : AutoencoderModel + Trainable < f32 > , P : PredictorModel + Trainable < f32 > , O : Optimizer < f32 > , >"
@@ -8624,6 +8743,9 @@
     },
     {
       "signature": "impl BiQuadraticSurface { pub fn generate_mesh (& self , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize ,) -> Vec < Point3 < f64 > > }"
+    },
+    {
+      "signature": "impl BiQuadraticSurface { pub fn try_generate_mesh (& self , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize ,) -> Result < Vec < Point3 < f64 > > , MathError > }"
     },
     {
       "signature": "pub fn weighted_average_height (_ : & [Point3 < f64 >]) -> f64"
@@ -13197,6 +13319,9 @@
     },
     {
       "signature": "pub fn shannon_entropy_bits (_ : & [u8]) -> f64"
+    },
+    {
+      "signature": "pub fn try_exponents_to_bits (_ : & [u32]) -> Result < Vec < u8 > , math_commons :: error :: MathError >"
     }
   ],
   "crates/pure_math/src/pure_math/algorithmic_information/mod.rs": [
@@ -14404,6 +14529,9 @@
     },
     {
       "signature": "pub fn fourier_transform < F , I > (_ : F , _ : f64 , _ : (f64 , f64) , _ : & I) -> Complex64 where F : Fn (f64) -> f64 + Copy , I : Integrator ,"
+    },
+    {
+      "signature": "pub fn try_calculate_fourier_coefficients_complex < F , I > (_ : F , _ : f64 , _ : usize , _ : & I ,) -> Result < Vec < Complex64 > , math_commons :: error :: MathError > where F : Fn (f64) -> f64 + Copy , I : Integrator ,"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/transforms/fourier/discrete.rs": [
@@ -14494,6 +14622,9 @@
     },
     {
       "signature": "impl BuckledSurfaceFlow { pub fn topology (& self) -> SurfaceTopology }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn try_from_parametric < S : ParametricSurface + ? Sized > (_ : & S , _ : SurfaceTopology , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize ,) -> Result < Self , math_commons :: error :: MathError > }"
     },
     {
       "signature": "impl SurfaceTopology { pub fn grid_spacings (self , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize ,) -> (f64 , f64) }"
@@ -19599,6 +19730,12 @@
       "signature": "pub fn lock_allocations ()"
     },
     {
+      "signature": "pub fn reset_thread_allocation_stats ()"
+    },
+    {
+      "signature": "pub fn thread_allocation_stats () -> (u64 , u64)"
+    },
+    {
       "signature": "pub fn unlock_allocations ()"
     },
     {
@@ -19645,6 +19782,9 @@
     },
     {
       "signature": "pub fn get_metrics () -> ComplexityMetrics"
+    },
+    {
+      "signature": "pub fn increment_allocations (_ : u64)"
     },
     {
       "signature": "pub fn increment_arithmetic (_ : u64)"

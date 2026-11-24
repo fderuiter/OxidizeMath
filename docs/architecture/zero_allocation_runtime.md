@@ -50,7 +50,8 @@ sequenceDiagram
 
 The module [`crates/verified_engine/src/allocator.rs`](../../crates/verified_engine/src/allocator.rs) defines the `MEMORY_LOCK` atomic flag:
 
-- **Initialization Phase**: `MEMORY_LOCK` is `false`. Simulation setups allocate needed memory buffers, look-up tables, and state matrices.
+- **Allocator Probe**: Before locking allocations in unit and integration test binaries, `VerifiedEngine::run_verified` executes a one-time `OnceLock` probe (`ensure_allocator_probe`) verifying that `VerifiedAllocator` is active as `#[global_allocator]` (exempting `rustdoc` `cargo test --doc` executables so documentation snippets still collect `ComplexityMetrics`).
+- **Initialization Phase**: `MEMORY_LOCK` is `false`. Simulation setups allocate needed memory buffers, look-up tables, and state matrices (annotated with `#[verified(alloc_ok = "reason")]` on `#[verified]` constructors and workspace builders; enforced statically by `unified_verification` `batch-ast`).
 - **Verification Phase**: `lock_allocations()` sets `MEMORY_LOCK` to `true`. Any subsequent call to `alloc`, `alloc_zeroed`, or `realloc` immediately triggers a `runtime_violation!` panic when verification is enabled.
 - **Teardown Phase**: `unlock_allocations()` resets `MEMORY_LOCK` to `false` to permit normal deallocation.
 
@@ -63,6 +64,8 @@ The verified runtime also tracks arithmetic and memory complexity during verifie
 | Arithmetic Operations | `ComplexityMetrics.arithmetic_ops` | Counter of floating-point operations executed. |
 | Memory Loads | `ComplexityMetrics.memory_loads` | Counter of memory reads recorded in critical paths. |
 | Function Calls | `ComplexityMetrics.function_calls` | Counter of internal solver invocations. |
+| Heap Allocations | `ComplexityMetrics.allocations` | Exact count of heap allocations observed by `VerifiedAllocator`. |
+| Allocated Bytes | `ComplexityMetrics.allocated_bytes` | Exact total bytes requested across observed heap allocations. |
 
 ## Code Example
 
@@ -88,6 +91,8 @@ let (total, metrics) = VerifiedEngine::run_verified(|| {
 
 assert_eq!(total, 4950.0);
 assert_eq!(metrics.arithmetic_ops, 0);
+assert_eq!(metrics.allocations, 0);
+assert_eq!(metrics.allocated_bytes, 0);
 ```
 
 ## Best Practices for Contributors

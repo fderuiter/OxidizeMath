@@ -63,7 +63,7 @@ pub struct HamiltonianRayTracer {
 
 impl HamiltonianRayTracer {
     /// Pre-allocates trajectory and caustic buffers for up to `max_rays` rays.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(max_rays: usize, max_steps_per_ray: usize, max_caustic_points: usize) -> Self {
         let safe_rays = max_rays.max(2);
         let safe_steps = max_steps_per_ray.max(8);

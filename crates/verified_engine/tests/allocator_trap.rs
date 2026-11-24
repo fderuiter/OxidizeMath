@@ -25,7 +25,29 @@ fn test_zero_alloc_closure_passes_under_verified_allocator() {
     assert!((val - 20.0).abs() < 1e-12);
     assert_eq!(metrics.function_calls, 1);
     assert!(metrics.arithmetic_ops >= 4);
+    assert_eq!(metrics.allocations, 0);
+    assert_eq!(metrics.allocated_bytes, 0);
     assert!(!MEMORY_LOCK.load(Ordering::SeqCst));
+}
+
+#[test]
+fn test_unlocked_verification_records_exact_allocation_counts_and_bytes() {
+    use verified_engine::metrics::{
+        disable_verification, enable_verification, get_metrics, reset_metrics,
+    };
+
+    let _guard = ALLOC_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    assert!(!MEMORY_LOCK.load(Ordering::SeqCst));
+    enable_verification();
+    reset_metrics();
+    let buf: Vec<u64> = std::hint::black_box(Vec::with_capacity(16));
+    let cap_bytes = (buf.capacity() * std::mem::size_of::<u64>()) as u64;
+    let snap = get_metrics();
+    disable_verification();
+    drop(buf);
+
+    assert_eq!(snap.allocations, 1);
+    assert_eq!(snap.allocated_bytes, cap_bytes);
 }
 
 #[cfg(not(target_arch = "wasm32"))]

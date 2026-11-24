@@ -133,7 +133,7 @@ impl HawkDovePopulation {
     ///
     /// Row 0 / Col 0: Hawk
     /// Row 1 / Col 1: Dove
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn to_replicator_dynamics(&self) -> Result<ReplicatorDynamics, GameTheoryError> {
         let e_hh = (self.v - self.c) / 2.0;
         let e_hd = self.v;
@@ -153,7 +153,7 @@ impl HawkDovePopulation {
     ///
     /// # Returns
     /// The new frequency of Hawks.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn update_frequencies(
         &self,
         hawk_freq: UnitInterval,
@@ -184,7 +184,7 @@ impl HawkDovePopulation {
     /// * `hawk_freq` - Current frequency of Hawks.
     /// * `dt` - Time step.
     /// * `solver` - A mutable reference to a generic `Solver`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn update_frequencies_with_solver<S>(
         &self,
         hawk_freq: UnitInterval,

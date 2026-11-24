@@ -10,7 +10,8 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 /// ```
 /// use verified_engine::metrics::{
 ///     ComplexityMetrics, disable_verification, enable_verification, get_metrics,
-///     increment_arithmetic, increment_calls, increment_memory_loads, reset_metrics,
+///     increment_allocations, increment_arithmetic, increment_calls, increment_memory_loads,
+///     reset_metrics,
 /// };
 ///
 /// enable_verification();
@@ -18,6 +19,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 /// increment_calls();
 /// increment_arithmetic(4);
 /// increment_memory_loads(2);
+/// increment_allocations(128);
 ///
 /// let snapshot: ComplexityMetrics = get_metrics();
 /// disable_verification();
@@ -25,8 +27,10 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 /// assert_eq!(snapshot.function_calls, 1);
 /// assert_eq!(snapshot.arithmetic_ops, 4);
 /// assert_eq!(snapshot.memory_loads, 2);
+/// assert_eq!(snapshot.allocations, 1);
+/// assert_eq!(snapshot.allocated_bytes, 128);
 /// ```
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
 pub struct ComplexityMetrics {
     /// Total binary arithmetic and bitwise operations executed inside `#[verified]` blocks.
@@ -35,6 +39,10 @@ pub struct ComplexityMetrics {
     pub memory_loads: u64,
     /// Total invocations of `#[verified]` functions recorded on the current thread.
     pub function_calls: u64,
+    /// Total dynamic heap allocations recorded on the current thread while verification is active.
+    pub allocations: u64,
+    /// Total dynamic heap bytes requested on the current thread while verification is active.
+    pub allocated_bytes: u64,
 }
 
 impl ComplexityMetrics {
@@ -44,6 +52,8 @@ impl ComplexityMetrics {
             arithmetic_ops: 0,
             memory_loads: 0,
             function_calls: 0,
+            allocations: 0,
+            allocated_bytes: 0,
         }
     }
 }
@@ -60,6 +70,10 @@ std::thread_local! {
     pub static MEMORY_LOADS: Cell<u64> = const { Cell::new(0) };
     /// Thread-local accumulator of `#[verified]` function entries in active verification regions.
     pub static FUNCTION_CALLS: Cell<u64> = const { Cell::new(0) };
+    /// Thread-local accumulator of heap allocations recorded while verification is enabled.
+    pub static ALLOCATIONS: Cell<u64> = const { Cell::new(0) };
+    /// Thread-local accumulator of heap bytes requested while verification is enabled.
+    pub static ALLOCATED_BYTES: Cell<u64> = const { Cell::new(0) };
     /// Thread-local flag indicating whether verification instrumentation and allocator checks are active.
     pub static VERIFICATION_MODE: Cell<bool> = const { Cell::new(false) };
 }
@@ -85,7 +99,8 @@ pub fn disable_verification() {
 pub fn is_verification_enabled() -> bool {
     #[cfg(feature = "std")]
     {
-        ACTIVE_VERIFIERS.load(Ordering::Relaxed) != 0 && VERIFICATION_MODE.get()
+        ACTIVE_VERIFIERS.load(Ordering::Relaxed) != 0
+            && VERIFICATION_MODE.try_with(Cell::get).unwrap_or(false)
     }
     #[cfg(not(feature = "std"))]
     {
@@ -93,13 +108,16 @@ pub fn is_verification_enabled() -> bool {
     }
 }
 
-/// Resets all thread-local complexity counters (`ARITHMETIC_OPS`, `MEMORY_LOADS`, `FUNCTION_CALLS`) to zero.
+/// Resets all thread-local complexity counters (`ARITHMETIC_OPS`, `MEMORY_LOADS`, `FUNCTION_CALLS`,
+/// `ALLOCATIONS`, `ALLOCATED_BYTES`) to zero.
 pub fn reset_metrics() {
     #[cfg(feature = "std")]
     {
         ARITHMETIC_OPS.set(0);
         MEMORY_LOADS.set(0);
         FUNCTION_CALLS.set(0);
+        ALLOCATIONS.set(0);
+        ALLOCATED_BYTES.set(0);
     }
 }
 
@@ -111,12 +129,26 @@ pub fn get_metrics() -> ComplexityMetrics {
             arithmetic_ops: ARITHMETIC_OPS.get(),
             memory_loads: MEMORY_LOADS.get(),
             function_calls: FUNCTION_CALLS.get(),
+            allocations: ALLOCATIONS.get(),
+            allocated_bytes: ALLOCATED_BYTES.get(),
         }
     }
     #[cfg(not(feature = "std"))]
     {
         ComplexityMetrics::new()
     }
+}
+
+/// Records one heap allocation of `bytes` on the calling thread when verification is enabled.
+#[inline(always)]
+pub fn increment_allocations(bytes: u64) {
+    #[cfg(feature = "std")]
+    if is_verification_enabled() {
+        let _ = ALLOCATIONS.try_with(|c| c.set(c.get().saturating_add(1)));
+        let _ = ALLOCATED_BYTES.try_with(|c| c.set(c.get().saturating_add(bytes)));
+    }
+    #[cfg(not(feature = "std"))]
+    let _ = bytes;
 }
 
 /// Adds `count` arithmetic operations to the calling thread's counter when verification is enabled.

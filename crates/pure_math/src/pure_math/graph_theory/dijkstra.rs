@@ -102,7 +102,7 @@ impl<W: PartialOrd> PartialOrd for State<W> {
 ///
 /// ## Relaxation Principle
 /// If `d[v] > d[u] + w(u, v)`, then we update `d[v] = d[u] + w(u, v)`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn dijkstra<G, W>(graph: G, start: NodeIndex) -> DijkstraResult<W>
 where
     G: IntoEdges + Visitable<NodeId = NodeIndex> + Data<EdgeWeight = W>,

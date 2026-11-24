@@ -27,7 +27,7 @@ impl<T: RealField + Scalar> GlmDesignQr<T> {
     ///
     /// Returns [`EngineeringError::SingularDesignMatrix`] if `x` is empty, underdetermined (`nrows < ncols`),
     /// non-finite, or numerically rank-deficient (`rank < ncols`).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor factors design matrix into owned QR state")]
     pub fn try_new(x: &DMatrix<T>) -> Result<Self, EngineeringError> {
         let (m, n) = x.shape();
         if m == 0 || n == 0 || m < n {
@@ -77,7 +77,7 @@ impl<T: RealField + Scalar> GlmDesignQr<T> {
     }
 
     /// Estimates ordinary least-squares parameters $\hat{\beta}$ for vertex observation vector `y` using the cached QR factor.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates QR solve staging and output vector")]
     pub fn estimate_beta(&self, y: &DVector<T>) -> Result<DVector<T>, EngineeringError> {
         if y.len() != self.nrows {
             return Err(EngineeringError::DimensionMismatch {
@@ -105,7 +105,7 @@ impl<T: RealField + Scalar> GlmDesignQr<T> {
     }
 
     /// Computes unscaled contrast variance $c^T (X^T X)^{-1} c = \|R^{-T} P^T c\|_2^2$ directly from $R$ without forming $X^T X$.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates triangular solve scratch vector")]
     pub fn contrast_variance_factor(&self, c: &DVector<T>) -> Result<T, EngineeringError> {
         if c.len() != self.ncols {
             return Err(EngineeringError::DimensionMismatch {

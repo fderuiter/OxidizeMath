@@ -19,7 +19,7 @@ impl Diagnostic for NuclearError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "NuclearError".to_string());
@@ -178,7 +178,7 @@ impl Diagnostic for PhysicsError {
         self.as_diagnostic().severity()
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = self.as_diagnostic().metadata();
         map.insert("umbrella_type".to_string(), "PhysicsError".to_string());

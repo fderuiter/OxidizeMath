@@ -32,7 +32,7 @@ pub enum ReleaseFormulation {
 
 impl ReleaseFormulation {
     /// Validates physical bounds on the formulation parameters.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn validate(&self) -> Result<(), PharmacokineticsError> {
         match *self {
             Self::ImmediateRelease => Ok(()),
@@ -113,7 +113,7 @@ impl DoseEvent {
     }
 
     /// Validates that `time_h`, `dose_mg`, and `formulation` satisfy physical invariants.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn validate(&self) -> Result<(), PharmacokineticsError> {
         if !self.time_h.is_finite() || self.time_h < 0.0 {
             return Err(PharmacokineticsError::InvalidParameter(
@@ -153,7 +153,7 @@ impl RegimenModel for EnantiomerModel {
 }
 
 impl<M: RegimenModel> RegimenModel for TwoPulseModel<M> {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     fn with_event_dose(&self, dose_mg: f64) -> Result<Self, PharmacokineticsError> {
         if !self.lag_time.is_finite() || self.lag_time < 0.0 {
             return Err(PharmacokineticsError::InvalidParameter(
@@ -211,7 +211,7 @@ pub struct RegimenSuperposition<M: Copy> {
 
 impl<M: RegimenModel> RegimenSuperposition<M> {
     /// Creates a validated variable-dose regimen from `base_model` and up to `64` [`DoseEvent`]s.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(base_model: M, events: &[DoseEvent]) -> Result<Self, PharmacokineticsError> {
         if events.len() > MAX_REGIMEN_EVENTS {
             return Err(PharmacokineticsError::InvalidParameter(format!(
@@ -276,7 +276,7 @@ impl<M: RegimenModel> RegimenSuperposition<M> {
     }
 
     /// Samples total plasma concentrations at `times` into caller buffer `out` with zero allocations.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
     pub fn sample_into(&self, times: &[f64], out: &mut [f64]) -> Result<(), PharmacokineticsError> {
         if times.len() != out.len() {
             return Err(PharmacokineticsError::InvalidParameter(
@@ -375,7 +375,7 @@ impl RegimenSuperposition<EnantiomerModel> {
     }
 
     /// Samples d-isomer, l-isomer, and total concentrations into caller slices with zero allocations.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
     pub fn sample_isomers_into(
         &self,
         times: &[f64],

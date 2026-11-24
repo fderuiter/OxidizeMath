@@ -13,7 +13,7 @@ pub struct TimeIndex<T: RealField + Copy + ToPrimitive> {
 
 impl<T: RealField + Copy + ToPrimitive> TimeIndex<T> {
     /// Creates a new time index.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(time: T) -> Result<Self, MarkovError> {
         if !time.is_finite() {
             return Err(MarkovError::InvalidState {

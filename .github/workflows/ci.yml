@@ -194,6 +194,9 @@ jobs:
       - name: Security Audit
         run: cargo audit
 
+      - name: Check Tier 5 Security & Supply Chain
+        run: cargo run -p xtask -- check-security
+
       - name: Check Formatting
         run: cargo fmt --all -- --check
 

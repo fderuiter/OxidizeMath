@@ -41,7 +41,7 @@ pub trait AllocationStrategy {
 pub struct SimpleRandomizer;
 
 impl AllocationStrategy for SimpleRandomizer {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn assign<R: Rng + ?Sized>(
         &self,
         rng: &mut R,
@@ -71,11 +71,11 @@ impl BlockRandomizer {
     ///
     /// # Arguments
     /// * `block_size` - The size of each block. Must be even.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(block_size: usize) -> Result<Self, ClinicalTrialError> {
-        if !block_size.is_multiple_of(2) {
+        if block_size == 0 || !block_size.is_multiple_of(2) {
             return Err(ClinicalTrialError::InvalidData(
-                "Block size must be even for 1:1 allocation.".to_string(),
+                "Block size must be positive and even for 1:1 allocation.".to_string(),
             ));
         }
         Ok(Self { block_size })
@@ -114,17 +114,27 @@ impl AllocationStrategy for BlockRandomizer {
     /// let t_count = first_four.iter().filter(|&&g| g == Group::Treatment).count();
     /// assert_eq!(t_count, 2);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates randomized subject assignment vector")]
     fn assign<R: Rng + ?Sized>(
         &self,
         rng: &mut R,
         n_subjects: usize,
     ) -> Result<Vec<Group>, ClinicalTrialError> {
-        // Note: The original implementation didn't strictly check n_subjects % block_size,
-        // it just filled enough blocks and truncated. We preserve that behavior.
-
-        let num_blocks = (n_subjects as f64 / self.block_size as f64).ceil() as usize;
-        let mut assignments = Vec::with_capacity(num_blocks * self.block_size);
+        if self.block_size == 0 || !self.block_size.is_multiple_of(2) {
+            return Err(ClinicalTrialError::InvalidData(
+                "Block size must be positive and even.".to_string(),
+            ));
+        }
+        if n_subjects == 0 {
+            return Ok(Vec::new());
+        }
+        let num_blocks = n_subjects.div_ceil(self.block_size);
+        let total_cap = num_blocks.checked_mul(self.block_size).ok_or_else(|| {
+            ClinicalTrialError::InvalidData(
+                "Block allocation capacity num_blocks * block_size overflowed usize.".to_string(),
+            )
+        })?;
+        let mut assignments = Vec::with_capacity(total_cap);
 
         for _ in 0..num_blocks {
             let mut block = Vec::with_capacity(self.block_size);
@@ -156,7 +166,7 @@ impl<S: AllocationStrategy> StratifiedRandomizer<S> {
     }
 
     /// Assigns patients to groups based on their strata.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn assign_stratified<R: Rng + ?Sized>(
         &self,
         rng: &mut R,

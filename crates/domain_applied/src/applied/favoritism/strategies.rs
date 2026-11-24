@@ -52,7 +52,7 @@ pub struct UnifiedFavoritismModel<I: Integrator + ?Sized> {
 }
 
 impl<I: Integrator + ?Sized> Default for UnifiedFavoritismModel<I> {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     fn default() -> Self {
         Self {
             numerator_strategies: vec![
@@ -135,7 +135,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for EmotionalSupportStrategy {
 #[allow(missing_docs)]
 pub struct GiftStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for GiftStrategy {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn calculate(&self, inputs: &FavoritismInputs, _ctx: &mut ScoringContext<I>) -> f64 {
         let gift_matrix = DMatrix::from_diagonal(&DVector::from_vec(vec![
             inputs.gifts.g_emotional,

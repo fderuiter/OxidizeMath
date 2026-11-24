@@ -4,7 +4,7 @@ use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
 
 /// Calculates the degree centrality for each node in the graph.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn degree_centrality<N, E>(g: &Graph<N, E>) -> HashMap<NodeIndex, f64> {
     let mut centrality = HashMap::new();
     let node_count = g.graph.node_count();
@@ -27,7 +27,7 @@ pub fn degree_centrality<N, E>(g: &Graph<N, E>) -> HashMap<NodeIndex, f64> {
 
 /// Calculates the closeness centrality for each node in the graph.
 /// Assumes unweighted edges (weight = 1.0) for simplicity.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn closeness_centrality<N, E>(g: &Graph<N, E>) -> HashMap<NodeIndex, f64> {
     let mut centrality = HashMap::new();
     let node_count = g.graph.node_count();
@@ -71,7 +71,7 @@ pub fn diameter<N, E>(g: &Graph<N, E>) -> usize {
 }
 
 /// Calculates the local clustering coefficient for each node.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn clustering_coefficients<N, E>(g: &Graph<N, E>) -> HashMap<NodeIndex, f64> {
     let mut clustering = HashMap::new();
 

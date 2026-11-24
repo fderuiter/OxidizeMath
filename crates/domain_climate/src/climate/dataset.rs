@@ -49,7 +49,7 @@ const HISTORICAL_CO2_ANCHORS: [(f64, f64); 19] = [
 
 /// Returns calibrated annual global surface temperature anomalies (`1880..=2023`) in °C
 /// relative to the 1951-1980 NASA GISTEMP v4 baseline.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn get_temperature_anomalies() -> Vec<[f64; 2]> {
     GISTEMP_ANOMALIES_1880_2023
         .iter()
@@ -60,7 +60,7 @@ pub fn get_temperature_anomalies() -> Vec<[f64; 2]> {
 
 /// Generates synthetic global temperature anomaly data using an injected RNG.
 /// Returns a vector of `[year, anomaly]` pairs for exploratory random-walk comparison.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn get_temperature_anomalies_with_rng<R: Rng + ?Sized>(rng: &mut R) -> Vec<[f64; 2]> {
     let mut time_series = Vec::new();
     let mut current_anomaly = -0.5;
@@ -97,7 +97,7 @@ fn interpolate_historical_co2(year: f64) -> f64 {
 ///
 /// `reduction_scenario` in `[0.0, 1.0]` controls annual anthropogenic emissions abatement from
 /// business-as-usual (`0.0`) to rapid net-zero transition (`1.0`).
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn get_co2_projections(reduction_scenario: f64) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
     let scenario = if reduction_scenario.is_finite() {
         reduction_scenario.clamp(0.0, 1.0)
@@ -132,7 +132,7 @@ pub fn get_co2_projections(reduction_scenario: f64) -> (Vec<[f64; 2]>, Vec<[f64;
 }
 
 /// Generates synthetic global $CO_2$ concentration data and projections using an injected RNG.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn get_co2_projections_with_rng<R: Rng + ?Sized>(
     rng: &mut R,
     reduction_scenario: f64,

@@ -26,7 +26,7 @@ pub struct OrbitalQuantumNumbers {
 
 impl OrbitalQuantumNumbers {
     /// Validates and constructs `(n, l, m)` within interactive bounds `1 <= n <= 6`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(n: u32, l: u32, m: i32) -> Result<Self, String> {
         if !(1..=6).contains(&n) {
             return Err(format!("Principal quantum number n={n} must be in 1..=6"));
@@ -152,7 +152,7 @@ pub struct HydrogenicSuperposition3D {
 
 impl HydrogenicSuperposition3D {
     /// Pre-allocates basis buffers up to `max_grid_dim^3` and initializes the two-state propagator.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(
         orbital_a: OrbitalQuantumNumbers,
         orbital_b: OrbitalQuantumNumbers,

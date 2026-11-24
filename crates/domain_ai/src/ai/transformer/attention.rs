@@ -103,7 +103,7 @@ impl MultiHeadAttention {
     /// Fallibly constructs a zero-initialized `MultiHeadAttention` layer.
     ///
     /// Returns [`AIError::InvalidHeadConfiguration`] if `h == 0` or `d_model` is not divisible by `h`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn try_new(d_model: usize, h: usize) -> Result<Self, AIError> {
         if h == 0 || !d_model.is_multiple_of(h) {
             return Err(AIError::InvalidHeadConfiguration { d_model, heads: h });
@@ -134,7 +134,7 @@ impl MultiHeadAttention {
     ///
     /// This provides backward conversion compatibility for models or serialized weights
     /// stored in separate per-head projection format.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn from_head_weights(
         d_model: usize,
         h: usize,
@@ -202,7 +202,7 @@ impl MultiHeadAttention {
     ///
     /// Returns `(w_q, w_k, w_v)` where each vector has length `h` and elements of shape `(d_model, d_k)`.
     #[allow(clippy::type_complexity)]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn to_head_weights(&self) -> (Vec<DMatrix<f64>>, Vec<DMatrix<f64>>, Vec<DMatrix<f64>>) {
         let mut w_q = Vec::with_capacity(self.h);
         let mut w_k = Vec::with_capacity(self.h);
@@ -302,7 +302,7 @@ impl MultiHeadAttention {
     }
 
     /// Performs the forward pass and returns both the output and the per-head attention weights.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn forward_with_weights(
         &self,
         q: &DMatrix<f64>,

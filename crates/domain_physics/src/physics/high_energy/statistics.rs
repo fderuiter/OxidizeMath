@@ -6,7 +6,7 @@ use crate::error::HighEnergyError;
 /// * `n_on` - Counts on source.
 /// * `n_off` - Background counts.
 /// * `alpha` - Ratio of exposure times (t_on / t_off).
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn li_ma_significance(n_on: f64, n_off: f64, alpha: f64) -> Result<f64, HighEnergyError> {
     if n_on < 0.0 || n_off < 0.0 || alpha <= 0.0 {
         return Err(HighEnergyError::InvalidStatisticsParams {

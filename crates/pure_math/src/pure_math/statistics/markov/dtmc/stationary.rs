@@ -34,7 +34,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// assert!((pi[0] - 2.0 / 3.0).abs() < math_explorer::registry::TOLERANCE_HIGH);
     /// assert!((pi[1] - 1.0 / 3.0).abs() < math_explorer::registry::TOLERANCE_HIGH);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates workspace and output vector")]
     pub fn stationary_distribution(&self) -> Option<DVector<T>> {
         let n = self.num_states();
         assert!(n > 0);
@@ -88,7 +88,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// $\pi_{\infty}(t_i) = 0$). For non-absorbing chains, returns the unique stationary distribution
     /// when the unique closed recurrent class is aperiodic, or `Err(MarkovError::InvalidState)`
     /// when periodicity or multiple non-absorbing closed classes prevent convergence.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
     pub fn limiting_distribution(&self, initial: &DVector<T>) -> Result<DVector<T>> {
         let n = self.num_states();
         debug_assert!(n > 0);
@@ -112,7 +112,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
         Ok(pi)
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
     fn validate_initial_distribution(&self, initial: &DVector<T>) -> Result<()> {
         let n = self.num_states();
         debug_assert!(n > 0);
@@ -139,7 +139,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
         Ok(())
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output vector")]
     fn limiting_via_absorption(&self, initial: &DVector<T>) -> Result<DVector<T>> {
         let n = self.num_states();
         debug_assert!(!self.absorbing_indices.is_empty());

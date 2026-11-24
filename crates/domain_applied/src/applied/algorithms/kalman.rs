@@ -159,7 +159,7 @@ impl<T: RealField + Copy, M: KalmanSystem<T>> KalmanFilterBuilder<T, M> {
     /// # Errors
     /// Returns `KalmanError::Math` if state and covariance dimensions do not align.
     /// Returns `KalmanError::InitializationError` if state or covariance are missing.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn build(self) -> Result<KalmanFilter<T, M>, KalmanError> {
         let state = self
             .state
@@ -218,7 +218,7 @@ impl<T: RealField + Copy, M: KalmanSystem<T>> KalmanFilter<T, M> {
     /// # Arguments
     ///
     /// * `measurement` - The measurement vector $z_k$.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn update(&mut self, measurement: &DVector<T>) -> Result<(), KalmanError> {
         // Generalized Update
         let (z_pred, h) = self.model.predict_measurement(&self.state);

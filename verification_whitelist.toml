@@ -4,6 +4,65 @@ allowlist = [
     "egui_plot",
 ]
 
+[supply_chain]
+# Ceiling on duplicate crate families in Cargo.lock (full elimination of all 34 families is out of scope)
+max_duplicate_families = 34
+allowed_registries = [
+    "registry+https://github.com/rust-lang/crates.io-index",
+]
+allowed_licenses = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+[[supply_chain.ignored_advisories]]
+id = "RUSTSEC-2024-0436"
+package = "paste"
+reason = "Informational unmaintained notice; transitive proc-macro dependency required by nalgebra with no security vulnerability"
+
+[[supply_chain.ignored_advisories]]
+id = "RUSTSEC-2024-0370"
+package = "proc-macro-error"
+reason = "Informational unmaintained notice; transitive proc-macro helper with no runtime or memory-safety exposure"
+
+[[supply_chain.ignored_advisories]]
+id = "RUSTSEC-2026-0192"
+package = "ttf-parser"
+reason = "Informational unmaintained notice; transitive font parser required by egui and ab_glyph with no known CVE"
+
+[[supply_chain.ignored_advisories]]
+id = "RUSTSEC-2026-0370"
+package = "zvariant"
+reason = "Informational unmaintained standalone crate notice; merged upstream into the zbus monorepo"
+
+[[supply_chain.ignored_advisories]]
+id = "RUSTSEC-2026-0371"
+package = "zbus_names"
+reason = "Informational unmaintained standalone crate notice; merged upstream into the zbus monorepo"
+
+[[supply_chain.ignored_advisories]]
+id = "RUSTSEC-2026-0372"
+package = "zvariant_derive"
+reason = "Informational unmaintained standalone crate notice; merged upstream into the zbus monorepo"
+
+[[supply_chain.ignored_advisories]]
+id = "RUSTSEC-2026-0543"
+package = "chrono"
+reason = "Informational unmaintained notice on transitive dependency with no exploitable vulnerability in workspace usage"
+
 [doc_verification.approved_ignore_fences]
 # Binary-only math_explorer_gui crate::, out-of-line tab mod, and egui widget snippets that cannot link into library doctests
 "docs/architecture/interactive_tool_walkthrough.md" = 6

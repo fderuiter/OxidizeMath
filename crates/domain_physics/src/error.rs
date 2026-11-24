@@ -23,7 +23,7 @@ impl Diagnostic for ChaosError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "ChaosError".to_string());
@@ -288,7 +288,7 @@ impl Diagnostic for StandardModelError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "StandardModelError".to_string());
@@ -308,7 +308,7 @@ impl Diagnostic for SolidStateError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "SolidStateError".to_string());
@@ -328,7 +328,7 @@ impl Diagnostic for DoseFluenceError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "DoseFluenceError".to_string());
@@ -348,7 +348,7 @@ impl Diagnostic for RadarError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "RadarError".to_string());
@@ -368,7 +368,7 @@ impl Diagnostic for HighEnergyError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "HighEnergyError".to_string());
@@ -388,7 +388,7 @@ impl Diagnostic for FluidError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "FluidError".to_string());
@@ -408,7 +408,7 @@ impl Diagnostic for StatMechError {
             _ => Severity::Error,
         }
     }
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "StatMechError".to_string());

@@ -95,7 +95,7 @@ pub struct Wave2DSolver {
 
 impl Wave2DSolver {
     /// Constructs a pre-allocated 2D solver with explicit cell spacings `dx` and `dy`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(width: usize, height: usize, dx: f64, dy: f64) -> Self {
         assert!(width >= 4 && height >= 4, "Grid dimensions must be >= 4");
         assert!(dx > 0.0 && dy > 0.0, "Grid spacings must be positive");

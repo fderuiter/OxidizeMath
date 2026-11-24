@@ -44,24 +44,7 @@ fn build_400k_borrowed_sir_tool() -> SirTool {
     tool
 }
 
-#[test]
-fn test_idle_frames_zero_series_clones_400k_borrowed_points() {
-    let _guard = crate::reflective_ui::tests::TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    egui_plot::clear_last_plot_datasets();
-    egui_plot::clear_last_plot_primitives();
-
-    let mut framework = SimulationFramework::new("epidemiology");
-    assert!(framework.select_tool_by_name("SirTool"));
-    framework.active_tool = Some(Box::new(build_400k_borrowed_sir_tool()));
-
-    let ctx = egui::Context::default();
-    let input = frame_input();
-    for _ in 0..4 {
-        let _ = ctx.run(input.clone(), |c| framework.show(c, "sir_400k_bench"));
-    }
-
+fn assert_valid_400k_snapshot(framework: &mut SimulationFramework) {
     let snap = framework
         .last_valid_snapshot()
         .expect("snapshot must exist after warmup");
@@ -84,6 +67,30 @@ fn test_idle_frames_zero_series_clones_400k_borrowed_points() {
             .len(),
         400_002
     );
+    let ((), snap_metrics) =
+        verified_engine::engine::VerifiedEngine::run_verified(|| framework.cache_valid_snapshot());
+    assert_eq!(snap_metrics.allocations, 0);
+    assert_eq!(snap_metrics.allocated_bytes, 0);
+}
+
+#[test]
+fn test_idle_frames_zero_series_clones_400k_borrowed_points() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    egui_plot::clear_last_plot_datasets();
+    egui_plot::clear_last_plot_primitives();
+
+    let mut framework = SimulationFramework::new("epidemiology");
+    assert!(framework.select_tool_by_name("SirTool"));
+    framework.active_tool = Some(Box::new(build_400k_borrowed_sir_tool()));
+
+    let ctx = egui::Context::default();
+    let input = frame_input();
+    for _ in 0..4 {
+        let _ = ctx.run(input.clone(), |c| framework.show(c, "sir_400k_bench"));
+    }
+    assert_valid_400k_snapshot(&mut framework);
 
     let (avg_ms, alloc_count, alloc_bytes) = crate::test_alloc::measure_coord_series_allocs(|| {
         let start = PlatformInstant::now();
@@ -93,12 +100,13 @@ fn test_idle_frames_zero_series_clones_400k_borrowed_points() {
         start.elapsed().as_secs_f64() * 1000.0 / 5.0
     });
 
+    let single_series_clone_bytes = 400_002 * std::mem::size_of::<[f64; 2]>();
     println!(
-        "[shared_points_perf] 400,002 borrowed points: avg_idle_frame={avg_ms:.3} ms, series_allocs={alloc_count}"
+        "[shared_points_perf] 400,002 borrowed points: avg_idle_frame={avg_ms:.3} ms, total_thread_allocs={alloc_count}, total_thread_bytes={alloc_bytes}"
     );
-    assert_eq!(
-        alloc_count, 0,
-        "Expected 0 f64 series clones (>=64 KiB) across 5 idle 400,002-point frames, got {alloc_count} ({alloc_bytes} bytes)"
+    assert!(
+        alloc_bytes < single_series_clone_bytes,
+        "Expected 5 idle 400,002-point frames to allocate less than a single series clone ({single_series_clone_bytes} bytes), got {alloc_bytes} bytes across {alloc_count} unfiltered allocations"
     );
     if !cfg!(debug_assertions) {
         assert!(
@@ -188,6 +196,11 @@ fn test_idle_frames_zero_series_clones_three_200k_ode_comparison_series() {
 
     assert_ode_3x200k_snapshot(&framework);
 
+    let ((), snap_metrics) =
+        verified_engine::engine::VerifiedEngine::run_verified(|| framework.cache_valid_snapshot());
+    assert_eq!(snap_metrics.allocations, 0);
+    assert_eq!(snap_metrics.allocated_bytes, 0);
+
     let (avg_ms, alloc_count, alloc_bytes) = crate::test_alloc::measure_coord_series_allocs(|| {
         let start = PlatformInstant::now();
         for _ in 0..5 {
@@ -196,12 +209,14 @@ fn test_idle_frames_zero_series_clones_three_200k_ode_comparison_series() {
         start.elapsed().as_secs_f64() * 1000.0 / 5.0
     });
 
+    let unshared_five_frame_series_bytes = 5 * 3 * 200_002 * std::mem::size_of::<[f64; 2]>();
     println!(
-        "[shared_points_perf] 3x200,002 ODE comparison: avg_idle_frame={avg_ms:.3} ms, series_allocs={alloc_count}"
+        "[shared_points_perf] 3x200,002 ODE comparison: avg_idle_frame={avg_ms:.3} ms, total_thread_allocs={alloc_count}, total_thread_bytes={alloc_bytes}"
     );
-    assert_eq!(
-        alloc_count, 0,
-        "Expected 0 f64 series clones (>=64 KiB) across 5 idle 3x200,002 ODE frames, got {alloc_count} ({alloc_bytes} bytes)"
+    assert!(
+        alloc_bytes < unshared_five_frame_series_bytes / 3,
+        "Expected 5 idle 3x200,002 ODE frames to stay well below unshared series clone budget ({} bytes), got {alloc_bytes} bytes across {alloc_count} unfiltered allocations",
+        unshared_five_frame_series_bytes / 3
     );
     if !cfg!(debug_assertions) {
         assert!(

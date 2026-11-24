@@ -143,7 +143,7 @@ impl<const W: usize, const H: usize> SandpileElement<W, H> {
     /// [`pure_math::pure_math::algebra::is_subgroup`] and partitioned into cosets via
     /// [`pure_math::pure_math::algebra::generate_left_coset`].
     #[must_use]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn cyclic_subgroup(&self, max_order: usize) -> Vec<Self> {
         let e = Self::identity();
         let cap = max_order.max(1);

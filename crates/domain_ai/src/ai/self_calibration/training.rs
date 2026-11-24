@@ -2,7 +2,7 @@ use super::scoring::calculate_soft_self_consistency_scores;
 use super::temperature::{calculate_answer_entropy, map_entropy_to_temperature};
 use super::types::Response;
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn calculate_target_distribution(responses: &[Response]) -> Vec<f64> {
     let scores = calculate_soft_self_consistency_scores(responses);
     let entropy = calculate_answer_entropy(responses);

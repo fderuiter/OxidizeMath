@@ -52,7 +52,7 @@ pub struct GraphSpinSystem {
     rng: OxidizeRng,
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats CSR validation error")]
 fn validate_csr_inputs(
     n_nodes: usize,
     row_ptr: &[usize],
@@ -94,7 +94,7 @@ impl GraphSpinSystem {
     ///
     /// # Errors
     /// Returns [`MathError::NumericalError`] if CSR bounds, monotonicity, or finiteness fail.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates spin state vector")]
     pub fn try_from_csr(
         n_nodes: usize,
         row_ptr: Vec<usize>,

@@ -5,7 +5,7 @@ use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;
 
 /// Validates that a matrix is row-stochastic.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats validation error message")]
 pub fn validate_stochastic_matrix<T: RealField + Copy + ToPrimitive>(
     matrix: &DMatrix<T>,
 ) -> Result<()> {
@@ -39,7 +39,7 @@ pub fn validate_stochastic_matrix<T: RealField + Copy + ToPrimitive>(
 }
 
 /// Validates that a vector is a valid probability distribution.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats validation error message")]
 pub fn validate_probability_vector<T: RealField + Copy + ToPrimitive>(
     vec: &DVector<T>,
 ) -> Result<()> {
@@ -69,7 +69,7 @@ pub fn validate_probability_vector<T: RealField + Copy + ToPrimitive>(
 }
 
 /// Validates that a matrix is a valid continuous-time Markov chain generator.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats validation error message")]
 pub fn validate_generator_matrix<T: RealField + Copy + ToPrimitive>(
     generator: &DMatrix<T>,
 ) -> Result<()> {
@@ -156,7 +156,12 @@ pub(crate) fn rows_to_matrix<T: RealField + Copy>(rows: Vec<Vec<T>>) -> Result<D
             reason: "Matrix rows must contain at least one column".to_string(),
         });
     }
-    let mut flat = Vec::with_capacity(nrows * ncols);
+    let total_cells = nrows.checked_mul(ncols).ok_or(MarkovError::Math(
+        math_commons::error::MathError::CapacityOverflow {
+            context: "rows_to_matrix nrows * ncols",
+        },
+    ))?;
+    let mut flat = Vec::with_capacity(total_cells);
     for row in rows {
         if row.len() != ncols {
             return Err(MarkovError::Math(

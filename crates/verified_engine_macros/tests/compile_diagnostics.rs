@@ -64,7 +64,7 @@ pub fn bad_bare_key() {}
     out.assert_failed_without_panic();
     out.assert_has_error("unknown `#[verified]` attribute key `unknown`");
     out.assert_has_error(
-        "valid keys are `opt_out = \"reason\"` and `allow_recursion = \"reason\"`",
+        "valid keys are `opt_out = \"reason\"`, `allow_recursion = \"reason\"`, and `alloc_ok = \"reason\"`",
     );
     out.assert_has_error("unknown `#[verified]` attribute key `not_opt_out`");
     out.assert_has_error("expected `opt_out = \"reason\"` with a non-empty string literal");
@@ -83,13 +83,18 @@ pub fn empty_opt_out() {}
 
 #[verified(allow_recursion = "   ")]
 pub fn blank_allow_recursion() {}
+
+#[verified(alloc_ok = "")]
+pub fn empty_alloc_ok() {}
 "#;
     let out = compile_snippet("mode_03_empty_reasons", code);
     out.assert_failed_without_panic();
     out.assert_has_error("`opt_out` reason must not be empty");
     out.assert_has_error("`allow_recursion` reason must not be empty");
+    out.assert_has_error("`alloc_ok` reason must not be empty");
     out.assert_has_span(3, 22);
     out.assert_has_span(6, 30);
+    out.assert_has_span(9, 23);
 }
 
 #[test]

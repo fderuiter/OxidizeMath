@@ -88,7 +88,7 @@ pub struct DotStyleOverlay {
 impl InterchangeGraph {
     /// Creates an empty undirected (`directed == false`) or directed (`directed == true`) topology.
     #[must_use]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor initializes empty containers")]
     pub fn new(directed: bool) -> Self {
         Self {
             directed,
@@ -199,7 +199,7 @@ impl InterchangeGraph {
     }
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "interns new symbol token into BTreeMap")]
 pub(super) fn resolve_token_id(
     raw: &str,
     sym_table: &mut BTreeMap<String, usize>,
@@ -230,7 +230,7 @@ pub(super) fn resolve_token_id(
     assigned
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats floating-point scalar as string")]
 pub(super) fn format_f64(val: f64) -> String {
     let rounded = (val * 1e6).round() / 1e6;
     if (rounded - rounded.round()).abs() < 1e-9 {

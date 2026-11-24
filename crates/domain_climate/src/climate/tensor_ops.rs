@@ -5,10 +5,59 @@
 use crate::error::ClimateError;
 use nalgebra::{DMatrix, DVector, Dyn, Matrix, Storage};
 
+/// Writes a 1D convolution with kernel size 1 (`output = input * kernel^T + bias`) into a
+/// pre-allocated `output` matrix without heap allocations.
+///
+/// Returns [`ClimateError::ChannelMismatch`] or [`ClimateError::ShapeMismatch`] if dimensions differ.
+#[verified_engine::verified]
+pub fn try_conv1d_into<S: Storage<f32, Dyn, Dyn>>(
+    input: &Matrix<f32, Dyn, Dyn, S>,
+    kernel: &DMatrix<f32>,
+    bias: &DVector<f32>,
+    output: &mut DMatrix<f32>,
+) -> Result<(), ClimateError> {
+    if input.ncols() != kernel.ncols() {
+        return Err(ClimateError::ChannelMismatch {
+            context: "Input channels must match kernel input channels.",
+            expected: kernel.ncols(),
+            actual: input.ncols(),
+        });
+    }
+    if kernel.nrows() != bias.len() {
+        return Err(ClimateError::ChannelMismatch {
+            context: "Kernel output channels must match bias length.",
+            expected: kernel.nrows(),
+            actual: bias.len(),
+        });
+    }
+    let expected_shape = (input.nrows(), kernel.nrows());
+    if output.shape() != expected_shape {
+        return Err(ClimateError::ShapeMismatch {
+            context: "Pre-allocated conv1d output shape mismatch.",
+            expected: expected_shape,
+            actual: output.shape(),
+        });
+    }
+
+    let n_rows = input.nrows();
+    let in_ch = input.ncols();
+    let out_ch = kernel.nrows();
+    for r in 0..n_rows {
+        for oc in 0..out_ch {
+            let mut acc = bias[oc];
+            for ic in 0..in_ch {
+                acc += input[(r, ic)] * kernel[(oc, ic)];
+            }
+            output[(r, oc)] = acc;
+        }
+    }
+    Ok(())
+}
+
 /// Fallible 1D convolution with kernel size 1 (`output = input * kernel^T + bias`).
 ///
 /// Returns [`ClimateError::ChannelMismatch`] if input channels or bias length do not match `kernel`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "convenience conv1d wrapper allocates output matrix")]
 pub fn try_conv1d<S: Storage<f32, Dyn, Dyn>>(
     input: &Matrix<f32, Dyn, Dyn, S>,
     kernel: &DMatrix<f32>,
@@ -28,11 +77,8 @@ pub fn try_conv1d<S: Storage<f32, Dyn, Dyn>>(
             actual: bias.len(),
         });
     }
-
-    let kernel_t = kernel.transpose();
-    let mut output = input * &kernel_t;
-    let bias_t = bias.transpose();
-    output.row_iter_mut().for_each(|mut row| row += &bias_t);
+    let mut output = DMatrix::zeros(input.nrows(), kernel.nrows());
+    try_conv1d_into(input, kernel, bias, &mut output)?;
     Ok(output)
 }
 
@@ -48,7 +94,7 @@ pub fn try_conv1d<S: Storage<f32, Dyn, Dyn>>(
 /// # Returns
 ///
 /// * The output tensor, with shape (N, out_channels).
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "convenience conv1d wrapper allocates output matrix")]
 pub fn conv1d<S: Storage<f32, Dyn, Dyn>>(
     input: &Matrix<f32, Dyn, Dyn, S>,
     kernel: &DMatrix<f32>,
@@ -57,10 +103,59 @@ pub fn conv1d<S: Storage<f32, Dyn, Dyn>>(
     try_conv1d(input, kernel, bias).unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// Writes a 1D transposed convolution with kernel size 1 (`output = input * kernel + bias`) into
+/// a pre-allocated `output` matrix without heap allocations.
+#[verified_engine::verified]
+pub fn try_conv_transpose1d_into<S: Storage<f32, Dyn, Dyn>>(
+    input: &Matrix<f32, Dyn, Dyn, S>,
+    kernel: &DMatrix<f32>,
+    bias: &DVector<f32>,
+    output: &mut DMatrix<f32>,
+) -> Result<(), ClimateError> {
+    if input.ncols() != kernel.nrows() {
+        return Err(ClimateError::ChannelMismatch {
+            context: "Input channels must match kernel output channels.",
+            expected: kernel.nrows(),
+            actual: input.ncols(),
+        });
+    }
+    if kernel.ncols() != bias.len() {
+        return Err(ClimateError::ChannelMismatch {
+            context: "Kernel input channels must match bias length.",
+            expected: kernel.ncols(),
+            actual: bias.len(),
+        });
+    }
+    let expected_shape = (input.nrows(), kernel.ncols());
+    if output.shape() != expected_shape {
+        return Err(ClimateError::ShapeMismatch {
+            context: "Pre-allocated conv_transpose1d output shape mismatch.",
+            expected: expected_shape,
+            actual: output.shape(),
+        });
+    }
+
+    let n_rows = input.nrows();
+    let in_ch = input.ncols();
+    let out_ch = kernel.ncols();
+    for r in 0..n_rows {
+        for oc in 0..out_ch {
+            let mut acc = bias[oc];
+            for ic in 0..in_ch {
+                acc += input[(r, ic)] * kernel[(ic, oc)];
+            }
+            output[(r, oc)] = acc;
+        }
+    }
+    Ok(())
+}
+
 /// Fallible 1D transposed convolution with kernel size 1 (`output = input * kernel + bias`).
 ///
 /// Returns [`ClimateError::ChannelMismatch`] if input channels or bias length do not match `kernel`.
-#[verified_engine::verified]
+#[verified_engine::verified(
+    alloc_ok = "convenience conv_transpose1d wrapper allocates output matrix"
+)]
 pub fn try_conv_transpose1d<S: Storage<f32, Dyn, Dyn>>(
     input: &Matrix<f32, Dyn, Dyn, S>,
     kernel: &DMatrix<f32>,
@@ -80,10 +175,8 @@ pub fn try_conv_transpose1d<S: Storage<f32, Dyn, Dyn>>(
             actual: bias.len(),
         });
     }
-
-    let mut output = input * kernel;
-    let bias_t = bias.transpose();
-    output.row_iter_mut().for_each(|mut row| row += &bias_t);
+    let mut output = DMatrix::zeros(input.nrows(), kernel.ncols());
+    try_conv_transpose1d_into(input, kernel, bias, &mut output)?;
     Ok(output)
 }
 
@@ -100,7 +193,9 @@ pub fn try_conv_transpose1d<S: Storage<f32, Dyn, Dyn>>(
 /// # Returns
 ///
 /// * The output tensor, with shape (N, out_channels).
-#[verified_engine::verified]
+#[verified_engine::verified(
+    alloc_ok = "convenience conv_transpose1d wrapper allocates output matrix"
+)]
 pub fn conv_transpose1d<S: Storage<f32, Dyn, Dyn>>(
     input: &Matrix<f32, Dyn, Dyn, S>,
     kernel: &DMatrix<f32>, // Shape (out_channels, in_channels) from the original conv

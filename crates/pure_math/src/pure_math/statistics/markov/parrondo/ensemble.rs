@@ -317,7 +317,7 @@ pub struct ParrondoPhasePoint {
 /// # Errors
 ///
 /// Returns [`MarkovError`] if `config` bounds or grid dimensions are invalid.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn scan_parrondo_phase_region(
     config: &ParrondoPhaseGridConfig,
     schedule: &ParrondoSchedule,
@@ -338,7 +338,16 @@ pub fn scan_parrondo_phase_region(
             reason: "Phase grid ranges must be finite and strictly ordered".to_string(),
         });
     }
-    let mut points = Vec::with_capacity(config.p_a_steps * config.epsilon_steps);
+    let grid_cells =
+        config
+            .p_a_steps
+            .checked_mul(config.epsilon_steps)
+            .ok_or(MarkovError::Math(
+                math_commons::error::MathError::CapacityOverflow {
+                    context: "scan_parrondo_phase_region p_a_steps * epsilon_steps",
+                },
+            ))?;
+    let mut points = Vec::with_capacity(grid_cells);
     for iy in 0..config.epsilon_steps {
         let fy = (iy as f64) / ((config.epsilon_steps - 1) as f64);
         let eps = config.epsilon_min + fy * (config.epsilon_max - config.epsilon_min);

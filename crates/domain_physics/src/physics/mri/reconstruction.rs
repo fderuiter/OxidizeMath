@@ -379,7 +379,7 @@ pub fn ifftshift_2d_into(src: &DMatrix<Complex<f64>>, dst: &mut DMatrix<Complex<
     shift_2d_columns(src, dst, rows - (rows / 2), cols - (cols / 2));
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn separable_transform(matrix: &DMatrix<Complex<f64>>, inverse: bool) -> DMatrix<Complex<f64>> {
     let rows = matrix.nrows();
     let cols = matrix.ncols();

@@ -12,7 +12,7 @@ pub trait CrystalSystem {
 pub struct SimpleCubic;
 
 impl CrystalSystem for SimpleCubic {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn generate(&self, a: f64) -> UnitCell {
         let lattice_vectors = [
             Vector3::new(a, 0.0, 0.0),
@@ -32,7 +32,7 @@ impl CrystalSystem for SimpleCubic {
 pub struct BodyCenteredCubic;
 
 impl CrystalSystem for BodyCenteredCubic {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn generate(&self, a: f64) -> UnitCell {
         let lattice_vectors = [
             Vector3::new(a, 0.0, 0.0),
@@ -55,7 +55,7 @@ impl CrystalSystem for BodyCenteredCubic {
 pub struct FaceCenteredCubic;
 
 impl CrystalSystem for FaceCenteredCubic {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn generate(&self, a: f64) -> UnitCell {
         let lattice_vectors = [
             Vector3::new(a, 0.0, 0.0),

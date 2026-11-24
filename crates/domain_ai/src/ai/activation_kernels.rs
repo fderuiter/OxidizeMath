@@ -128,7 +128,7 @@ pub(crate) fn softmax_into<T, R1, C1, S1, R2, C2, S2>(
 
 /// Computes a guarded softmax probability vector with a single output allocation.
 #[inline]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub(crate) fn softmax<T: RealField + Copy>(z: &DVector<T>) -> DVector<T> {
     let mut out = DVector::zeros(z.len());
     softmax_into(z, &mut out);

@@ -31,7 +31,7 @@ impl LayerNorm {
     }
 
     /// Applies layer normalization to the input.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn forward_impl(&self, x: &DMatrix<f64>) -> DMatrix<f64> {
         if x.nrows() == 0 || x.ncols() == 0 {
             return DMatrix::zeros(x.nrows(), x.ncols());

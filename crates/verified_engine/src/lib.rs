@@ -1,6 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![doc = include_str!("../README.md")]
 
+#[cfg(all(test, feature = "std"))]
+#[global_allocator]
+static TEST_ALLOCATOR: crate::allocator::VerifiedAllocator = crate::allocator::VerifiedAllocator;
+
 /// Zero-allocation global allocator guard enforcing NASA Power of 10 Rule 3.
 #[cfg(feature = "std")]
 pub mod allocator;

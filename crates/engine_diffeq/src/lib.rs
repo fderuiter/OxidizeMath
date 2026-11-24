@@ -35,7 +35,7 @@ pub struct OwnedWorkspace<T: math_commons::math_kernel::types::Scalar> {
 #[cfg(feature = "alloc")]
 impl<T: math_commons::math_kernel::types::Scalar> OwnedWorkspace<T> {
     /// Allocates a reusable scratch buffer of `capacity` zero-initialized scalars once up front.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "pre-allocates owned solver workspace")]
     pub fn with_capacity(capacity: usize) -> Self {
         let mut buf = alloc::vec::Vec::new();
         buf.resize(capacity, T::ZERO);

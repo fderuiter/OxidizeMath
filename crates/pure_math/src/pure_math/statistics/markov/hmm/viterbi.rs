@@ -24,7 +24,7 @@ pub struct ViterbiWorkspace<T> {
 
 impl<T: RealField + Copy> ViterbiWorkspace<T> {
     /// Allocates a workspace sized for up to `num_states`, `num_observations`, and `max_len` steps.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(num_states: usize, num_observations: usize, max_len: usize) -> Self {
         let z = T::zero();
         Self {
@@ -285,7 +285,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
     /// let hmm = HiddenMarkovModel::new(initial, transitions, emissions).unwrap();
     /// assert_eq!(hmm.viterbi(&[1, 0]).unwrap(), vec![1, 0]);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn viterbi(&self, observations: &[usize]) -> Result<Vec<usize>> {
         if observations.is_empty() {
             return Err(MarkovError::InvalidObservation {

@@ -55,7 +55,7 @@ pub struct HaltonSequence {
 
 impl HaltonSequence {
     /// Constructs an unshifted `dimension`-dimensional Halton sequence starting at index `1`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates sequence state")]
     pub fn new(dimension: usize) -> Result<Self, MonteCarloError> {
         if dimension == 0 || dimension > MAX_HALTON_DIM {
             return Err(MonteCarloError::InvalidDimension {
@@ -71,7 +71,7 @@ impl HaltonSequence {
     }
 
     /// Constructs a Halton sequence from explicit prime bases.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates sequence state")]
     pub fn with_bases(bases: &[u64]) -> Result<Self, MonteCarloError> {
         if bases.is_empty() || bases.len() > MAX_HALTON_DIM {
             return Err(MonteCarloError::InvalidDimension {

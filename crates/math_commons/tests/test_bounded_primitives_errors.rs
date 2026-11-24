@@ -5,7 +5,11 @@ use diagnostics::Diagnostic;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
+use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static TEST_ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
 fn unit_interval_bounds_methods_and_operators_return_math_error() {

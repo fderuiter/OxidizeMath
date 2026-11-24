@@ -5,7 +5,7 @@ use crate::applied::{
 use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
 fn error_metadata(error_type: &str, description: String) -> HashMap<String, String> {
     let mut map = HashMap::new();
     map.insert("error_type".to_string(), error_type.to_string());
@@ -19,7 +19,7 @@ impl Diagnostic for ClinicalTrialError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("ClinicalTrialError", self.to_string())
     }
@@ -31,7 +31,7 @@ impl Diagnostic for KalmanError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = error_metadata("KalmanError", self.to_string());
         if let Self::Math(math_err) = self {
@@ -49,7 +49,7 @@ impl Diagnostic for VoxelGridError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("VoxelGridError", self.to_string())
     }

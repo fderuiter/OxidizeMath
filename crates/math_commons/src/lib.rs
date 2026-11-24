@@ -4,6 +4,11 @@
 
 extern crate alloc;
 
+#[cfg(all(test, feature = "std"))]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
 #[cfg(feature = "std")]
 #[allow(missing_docs)]
 pub mod ast;

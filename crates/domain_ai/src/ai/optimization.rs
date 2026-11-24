@@ -18,7 +18,7 @@ pub type Adam<T> = GenericAdam<T, (usize, ParamType)>;
 use crate::error::AIError;
 
 #[allow(missing_docs)]
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn mean_squared_error<T: RealField + Copy>(
     y_pred: &DVector<T>,
     y_true: &DVector<T>,
@@ -34,7 +34,7 @@ pub fn mean_squared_error<T: RealField + Copy>(
 
 /// Derivative of MSE with respect to y_pred.
 /// \frac{\partial J}{\partial \hat{y}} = \frac{2}{n} (\hat{y} - y)
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn mse_prime<T: RealField + Copy>(
     y_pred: &DVector<T>,
     y_true: &DVector<T>,
@@ -56,7 +56,7 @@ pub fn mse_prime<T: RealField + Copy>(
 /// J(\theta) = - \sum_{i} y_i \log(\hat{y}_i)
 ///
 /// Note: This implementation assumes y_true is a one-hot vector or probability distribution.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn cross_entropy_loss<T: RealField + Copy>(
     y_pred: &DVector<T>,
     y_true: &DVector<T>,

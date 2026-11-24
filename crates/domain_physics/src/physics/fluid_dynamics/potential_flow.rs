@@ -351,7 +351,7 @@ pub struct PotentialFlowField {
 
 impl PotentialFlowField {
     /// Creates a new, empty potential flow field.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new() -> Self {
         Self {
             elements: Vec::new(),

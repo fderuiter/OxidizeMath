@@ -160,7 +160,7 @@ pub struct WaveField2D {
 
 impl WaveField2D {
     /// Allocates a new 2D FDTD wave solver initialized to a homogeneous $n = 1$ medium at rest.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(config: WaveFieldConfig2D) -> Self {
         assert!(
             config.width >= 8 && config.height >= 8,

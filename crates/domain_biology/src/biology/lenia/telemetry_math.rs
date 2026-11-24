@@ -97,7 +97,7 @@ pub(super) fn run_separable_fft_2d(
     transpose_complex(transpose_buf, freq_buf, width, height);
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
 pub(super) fn build_trig_tables(len: usize) -> (Vec<f64>, Vec<f64>) {
     let mut cosines = Vec::with_capacity(len);
     let mut sines = Vec::with_capacity(len);

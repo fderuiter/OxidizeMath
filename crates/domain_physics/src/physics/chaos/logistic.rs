@@ -62,7 +62,7 @@ impl Iterator for LogisticMap {
 ///
 /// A vector of tuples `(r, x)`, where `r` is the parameter value and `x` is a visited state
 /// on the attractor.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn generate_bifurcation_diagram(r_start: f64, r_end: f64, steps: usize) -> Vec<(f64, f64)> {
     let mut points = Vec::new();
     let step_size = (r_end - r_start) / steps as f64;

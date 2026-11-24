@@ -70,7 +70,7 @@ impl TdaFiltrationWorkspace {
     /// let step = ws.evaluate_radius(pts.len(), 1.1).unwrap();
     /// assert_eq!((step.beta0, step.beta1), (1, 1));
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn with_capacity(max_points: usize) -> Self {
         let cap = max_points.max(1);
         let max_edges = cap.saturating_mul(cap.saturating_sub(1)) / 2;
@@ -114,7 +114,7 @@ impl TdaFiltrationWorkspace {
     /// # Errors
     ///
     /// Returns [`TdaError`] if `points` is empty, exceeds capacity, or has non-finite values.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn load_points_2d(&mut self, points: &[Point2D]) -> Result<(), TdaError> {
         let n = points.len();
         if n == 0 {
@@ -149,7 +149,7 @@ impl TdaFiltrationWorkspace {
     /// # Errors
     ///
     /// Returns [`TdaError`] if `points` is empty, exceeds capacity, or has non-finite values.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn load_points_3d(&mut self, points: &[Point3D]) -> Result<(), TdaError> {
         let n = points.len();
         if n == 0 {
@@ -313,7 +313,7 @@ impl TdaFiltrationWorkspace {
     /// # Errors
     ///
     /// Returns [`TdaError::InvalidRadius`] if `radii` is empty or contains invalid values.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates fallback sort buffer")]
     pub fn compute_persistence_into(
         &mut self,
         n: usize,

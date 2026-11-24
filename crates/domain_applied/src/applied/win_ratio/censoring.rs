@@ -88,7 +88,7 @@ impl RightCensoredComparator {
     ///
     /// # Errors
     /// Returns [`ClinicalTrialError::InvalidData`] if `horizon` is non-finite or `<= 0.0`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn with_horizon(horizon: f64) -> Result<Self, ClinicalTrialError> {
         if !horizon.is_finite() || horizon <= 0.0 {
             return Err(ClinicalTrialError::InvalidData(format!(

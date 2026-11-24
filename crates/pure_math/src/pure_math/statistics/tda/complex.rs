@@ -19,7 +19,7 @@ pub struct SimplicialComplex {
 
 impl SimplicialComplex {
     /// Creates a new empty simplicial complex.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new() -> Self {
         Self {
             simplices: Vec::new(),
@@ -35,7 +35,7 @@ impl SimplicialComplex {
     ///
     /// Returns a [`TdaError::InvalidSimplex`] if generating the faces of the simplex fails
     /// (e.g., due to duplicate vertices or other invalid structural states).
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn add_simplex(&mut self, simplex: Simplex) -> Result<(), TdaError> {
         let mut stack = vec![simplex];
 
@@ -81,7 +81,7 @@ impl SimplicialComplex {
     }
 
     /// Returns all simplices of a given dimension.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn get_simplices(&self, dimension: usize) -> Vec<Simplex> {
         if dimension >= self.simplices.len() {
             Vec::new()
@@ -212,7 +212,7 @@ pub fn vietoris_rips_complex_nd(
 /// Returns [`TdaError::InvalidRadius`] if `radius` is negative or non-finite,
 /// [`TdaError::EmptyPointCloud`] if `dist` is empty, or [`TdaError::MatrixError`] if `dist`
 /// is non-square, exceeds [`MAX_TDA_POINTS`], or contains negative or non-finite distances.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn vietoris_rips_from_distance_matrix(
     dist: &[Vec<f64>],
     radius: f64,
@@ -282,7 +282,7 @@ pub fn vietoris_rips_from_distances(
     Ok(complex)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats validation error message")]
 pub(crate) fn validate_distance_matrix(dist: &[Vec<f64>]) -> Result<(), TdaError> {
     let n = dist.len();
     if n == 0 {
@@ -308,7 +308,7 @@ pub(crate) fn validate_distance_matrix(dist: &[Vec<f64>]) -> Result<(), TdaError
     Ok(())
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn collect_forward_neighbors(dist: &[Vec<f64>], radius: f64) -> (Vec<Vec<usize>>, usize) {
     let n = dist.len();
     let mut neighbors = Vec::with_capacity(n);
@@ -326,7 +326,7 @@ fn collect_forward_neighbors(dist: &[Vec<f64>], radius: f64) -> (Vec<Vec<usize>>
     (neighbors, edge_count)
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
 fn build_edge_set(neighbors: &[Vec<usize>], edge_count: usize) -> HashSet<Simplex> {
     let mut edges = HashSet::with_capacity(edge_count);
     for (i, nbrs) in neighbors.iter().enumerate() {
@@ -339,7 +339,7 @@ fn build_edge_set(neighbors: &[Vec<usize>], edge_count: usize) -> HashSet<Simple
     edges
 }
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
 fn build_triangle_set(
     dist: &[Vec<f64>],
     neighbors: &[Vec<usize>],

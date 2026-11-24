@@ -46,7 +46,7 @@ pub struct LeniaEngine {
 impl LeniaEngine {
     /// Creates a pre-allocated 2D Lenia engine on a `width x height` periodic torus
     /// (dimensions clamped to `32..=256`) and precomputes the normalized spectrum $\hat{K}$.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(
         width: usize,
         height: usize,

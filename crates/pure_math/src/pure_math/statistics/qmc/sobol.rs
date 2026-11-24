@@ -23,7 +23,7 @@ pub struct SobolSequence {
 
 impl SobolSequence {
     /// Constructs an unshifted `dimension`-dimensional Joe-Kuo Sobol sequence starting at index `0`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates direction numbers")]
     pub fn new(dimension: usize) -> Result<Self, MonteCarloError> {
         if dimension == 0 || dimension > MAX_SOBOL_DIM {
             return Err(MonteCarloError::InvalidDimension {

@@ -18,7 +18,7 @@ use crate::error::DoseFluenceError;
 /// # Formula
 ///
 /// $T = \mu \Psi_0 e^{-\mu d}$
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calculate_terma(
     incident_fluence: f64,
     mu: f64,

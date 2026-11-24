@@ -159,7 +159,7 @@ impl OuAnalyzer {
     /// let mut rng = math_explorer::rng::OxidizeRng::default();
     /// let stats = analyzer.monte_carlo_forecast(0.50, 1.0, 10000, Some(0.48), &mut rng);
     /// ```
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn monte_carlo_forecast<R: Rng>(
         &self,
         x0: f64,
@@ -210,7 +210,7 @@ impl OuAnalyzer {
     }
 
     /// Validated fallible variant of [`Self::monte_carlo_forecast`] returning [`OuError`] on invalid inputs.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats validation error")]
     pub fn try_monte_carlo_forecast<R: Rng>(
         &self,
         x0: f64,
@@ -328,7 +328,7 @@ pub fn summarize_terminal_values_with_workspace(
 /// let params = estimate_ou_params(&observations, dt).unwrap();
 /// assert!(params.sigma.value() > 0.0);
 /// ```
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "formats validation error")]
 pub fn estimate_ou_params(observations: &[f64], dt: f64) -> Result<OuParams, OuError> {
     debug_assert!(observations.len() < 3 || observations.len() >= 3);
     if observations.len() < 3 {

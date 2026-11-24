@@ -1,5 +1,10 @@
 //! Integration tests for facade exports.
 
+use math_explorer::verified_engine::allocator::VerifiedAllocator;
+
+#[global_allocator]
+static TEST_ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
+
 #[cfg(all(
     feature = "pure_math",
     feature = "ai",

@@ -12,7 +12,7 @@ pub struct LoraStateDict {
 
 impl LoraStateDict {
     /// Creates a new, empty `LoraStateDict`.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new() -> Self {
         Self {
             tensors: HashMap::new(),

@@ -31,7 +31,7 @@ fn kinetic_couplings(dx: f64, mass: f64, h_bar: f64) -> (f64, f64) {
 /// * `dx` - The spatial step size.
 /// * `mass` - The mass of the particle.
 /// * `h_bar` - The reduced Planck constant.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
 pub fn construct_1d_hamiltonian(
     potential: &DVector<f64>,
     dx: f64,
@@ -47,7 +47,7 @@ pub fn construct_1d_hamiltonian(
 /// Updates an existing [`QuantumOperator`] in place with the 1D finite-difference Hamiltonian
 /// $\hat{H} = -\frac{\hbar^2}{2m}\frac{d^2}{dx^2} + V(x)$, performing zero heap allocations
 /// when `out.matrix` already matches `potential.len()`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "resizes output matrix when dimensions differ")]
 pub fn construct_1d_hamiltonian_into(
     potential: &DVector<f64>,
     dx: f64,
@@ -76,7 +76,7 @@ pub fn construct_1d_hamiltonian_into(
 
 /// Writes a $2 \times 2$ Hamiltonian in the two-eigenstate subspace $\{|\psi_1\rangle, |\psi_2\rangle\}$
 /// into `out` with zero heap allocations when `out.matrix` is already $2 \times 2$.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "resizes output matrix when dimensions differ from 2x2")]
 pub fn construct_two_state_eigen_hamiltonian_into(
     e1: f64,
     e2: f64,
@@ -96,7 +96,7 @@ pub fn construct_two_state_eigen_hamiltonian_into(
 ///
 /// Diagonal elements store the unperturbed eigenenergies $(E_1, E_2)$, while `coupling` adds a
 /// real symmetric off-diagonal dipole interaction $V_{12} = V_{21}$ (e.g. $0.0$ for free phase beating).
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
 pub fn construct_two_state_eigen_hamiltonian(e1: f64, e2: f64, coupling: f64) -> QuantumOperator {
     let mut out = QuantumOperator::new(DMatrix::<Complex<f64>>::zeros(2, 2));
     construct_two_state_eigen_hamiltonian_into(e1, e2, coupling, &mut out);
@@ -106,7 +106,7 @@ pub fn construct_two_state_eigen_hamiltonian(e1: f64, e2: f64, coupling: f64) ->
 /// Populates `out` in place with a normalized Gaussian wavepacket
 /// $\psi(x) \propto \exp\!\left(-\frac{(x - x_0)^2}{2\sigma^2}\right) e^{i k_0 x}$,
 /// performing zero heap allocations when `out.vector.len() == x_grid.len()`.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "resizes output state vector when length differs")]
 pub fn gaussian_wavepacket_into(
     x_grid: &[f64],
     x0: f64,
@@ -152,7 +152,7 @@ pub fn gaussian_wavepacket_into(
 /// * `x0` - The initial position of the packet center.
 /// * `k0` - The initial momentum (wave number).
 /// * `sigma` - The width of the packet.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn gaussian_wavepacket(x_grid: &[f64], x0: f64, k0: f64, sigma: f64) -> QuantumState {
     let mut out = QuantumState::new(DVector::<Complex<f64>>::zeros(x_grid.len()));
     gaussian_wavepacket_into(x_grid, x0, k0, sigma, &mut out);

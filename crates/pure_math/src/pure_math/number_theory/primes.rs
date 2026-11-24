@@ -3,7 +3,7 @@
 //! This module provides functions for generating prime numbers.
 
 /// Generates prime numbers up to a given limit using the Sieve of Eratosthenes.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn primes_up_to(limit: u64) -> Vec<u64> {
     if limit < 2 {
         return Vec::new();

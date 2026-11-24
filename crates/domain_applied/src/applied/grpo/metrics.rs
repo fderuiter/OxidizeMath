@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 fn ngrams(s: &str, n: usize) -> HashSet<String> {
     s.split_whitespace()
         .collect::<Vec<&str>>()

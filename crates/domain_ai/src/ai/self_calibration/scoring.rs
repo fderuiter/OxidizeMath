@@ -10,7 +10,7 @@ use std::collections::HashMap;
 /// # Returns
 ///
 /// A vector of scores corresponding to each response.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calculate_soft_self_consistency_scores(responses: &[Response]) -> Vec<f64> {
     let mut answer_probabilities: HashMap<&Answer, f64> = HashMap::new();
     for response in responses {

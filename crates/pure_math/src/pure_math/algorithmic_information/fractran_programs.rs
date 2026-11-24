@@ -136,6 +136,8 @@ pub enum FractranError {
         /// Prime register that reached `u32::MAX`.
         prime: u64,
     },
+    /// Compiled `num_rules * width` exponent table dimensions overflowed `usize`.
+    TableCapacityOverflow,
 }
 
 fn fmt_rule_error(err: FractranError, f: &mut fmt::Formatter<'_>) -> Option<fmt::Result> {
@@ -216,6 +218,12 @@ impl fmt::Display for FractranError {
                 "register exponent overflow on prime {prime} at rule {}",
                 rule_index + 1
             ),
+            Self::TableCapacityOverflow => {
+                write!(
+                    f,
+                    "compiled FRACTRAN exponent table capacity overflowed usize"
+                )
+            }
             _ => unreachable!(),
         }
     }
@@ -229,7 +237,7 @@ impl Diagnostic for FractranError {
         Severity::Error
     }
 
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "formats diagnostic or export output")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "FractranError".to_string());

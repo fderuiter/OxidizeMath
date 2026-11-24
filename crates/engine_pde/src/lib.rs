@@ -43,7 +43,7 @@ pub struct PdeOwnedWorkspace<T: math_commons::math_kernel::types::Scalar> {
 #[cfg(feature = "alloc")]
 impl<T: math_commons::math_kernel::types::Scalar> PdeOwnedWorkspace<T> {
     /// Allocates a zero-initialized scratch buffer of `capacity` scalars once up front.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "pre-allocates owned PDE workspace")]
     pub fn with_capacity(capacity: usize) -> Self {
         let mut buf = alloc::vec::Vec::new();
         buf.resize(capacity, T::ZERO);

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 /// # Returns
 ///
 /// The entropy value.
-#[verified_engine::verified]
+#[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
 pub fn calculate_answer_entropy(responses: &[Response]) -> f64 {
     if responses.is_empty() {
         return 0.0;

@@ -92,7 +92,7 @@ impl<S: FitnessStrategy> ReplicatorDynamics<S> {
     /// - `time_horizon`: Total time to simulate.
     /// - `dt`: Time step size.
     /// - `solver`: The numerical integrator to use.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn simulate_with_strategy<Solve>(
         &self,
         initial_population: DVector<f64>,
@@ -144,7 +144,7 @@ impl<S: FitnessStrategy> ReplicatorDynamics<S> {
 }
 
 impl<S: FitnessStrategy> OdeSystem<DVector<f64>> for ReplicatorDynamics<S> {
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     fn derivative(&self, t: f64, x: &DVector<f64>) -> DVector<f64> {
         let mut out = DVector::zeros(x.len());
         self.derivative_in_place(t, x, &mut out);

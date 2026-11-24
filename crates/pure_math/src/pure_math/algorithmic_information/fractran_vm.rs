@@ -317,7 +317,7 @@ impl FractranState {
 
     /// Creates a live [`FractranState`] from an initial 64-prime exponent configuration.
     #[must_use]
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn from_exponents(exponents: [u32; MAX_FRACTRAN_PRIMES]) -> Self {
         Self {
             state_primes: vec![11, 13, 17, 19, 23, 29],

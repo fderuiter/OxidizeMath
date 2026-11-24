@@ -14,6 +14,10 @@ use pure_math::pure_math::graph_theory::{
 };
 use verified_engine::engine::VerifiedEngine;
 
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
 #[test]
 #[verified_engine::verified]
 fn test_edmonds_karp_max_flow_equals_min_cut_zero_alloc() {

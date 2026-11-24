@@ -54,7 +54,7 @@ impl Z2BoundaryWorkspace {
     /// # Errors
     ///
     /// Returns [`TdaError::MatrixError`] if dimensions overflow `u32` face indexing.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "constructor pre-allocates state")]
     pub fn new(num_rows: usize, num_cols: usize) -> Result<Self, TdaError> {
         if num_rows >= EMPTY_FACE as usize {
             return Err(TdaError::MatrixError {
@@ -91,7 +91,7 @@ impl Z2BoundaryWorkspace {
     /// # Errors
     ///
     /// Returns [`TdaError::MatrixError`] if `col >= num_cols`, `faces.len() > 3`, or any row index is out of bounds.
-    #[verified_engine::verified]
+    #[verified_engine::verified(alloc_ok = "allocates owned output buffer")]
     pub fn set_column_faces(&mut self, col: usize, faces: &[usize]) -> Result<(), TdaError> {
         if col >= self.num_cols {
             return Err(TdaError::MatrixError {
