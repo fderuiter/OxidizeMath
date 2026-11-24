@@ -49,4 +49,34 @@ fn test_kaplan_meier_bootstrap_percentile_and_bca_bands() {
     assert!(kaplan_meier_bootstrap(&obs, 100, 1.2, BootstrapMethod::Percentile, &mut rng).is_err());
 }
 
+#[cfg(feature = "serde")]
+#[test]
+#[verified_engine::verified]
+fn test_survival_analysis_serde_roundtrip() {
+    let arm_a = vec![
+        Observation {
+            time: SurvivalTime::new(2.0).unwrap(),
+            event_occurred: true,
+        },
+        Observation {
+            time: SurvivalTime::new(5.0).unwrap(),
+            event_occurred: true,
+        },
+    ];
+    let arm_b = vec![
+        Observation {
+            time: SurvivalTime::new(4.0).unwrap(),
+            event_occurred: true,
+        },
+        Observation {
+            time: SurvivalTime::new(8.0).unwrap(),
+            event_occurred: false,
+        },
+    ];
+    let lr = log_rank_test(&arm_a, &arm_b).expect("log-rank result");
+    let json = serde_json::to_string(&lr).expect("serialize LogRankResult");
+    let restored: LogRankResult = serde_json::from_str(&json).expect("deserialize LogRankResult");
+    assert_eq!(lr, restored);
+}
+
 // [cite:clinical_trials_statistics]

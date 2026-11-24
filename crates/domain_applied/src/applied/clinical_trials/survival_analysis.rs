@@ -148,6 +148,7 @@ pub fn try_estimate_hazard_ratio(
 
 /// Summary statistics from a two-arm Mantel-Haenszel survival log-rank test.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LogRankResult {
     /// Mantel-Haenszel chi-square test statistic ($\chi^2$ with 1 degree of freedom).
     pub statistic: f64,
