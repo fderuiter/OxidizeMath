@@ -58,50 +58,8 @@ impl AttractorPlotter {
             }
 
             ui.separator();
-            self.draw_live_coordinates_readout(ui, ctx);
+            self.draw_telemetry_and_handoff(ui, ctx);
         });
-    }
-
-    fn draw_live_coordinates_readout(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let labels = if self.mode == AttractorMode::Custom {
-            ["x₀", "y₀", "z₀"]
-        } else {
-            self.system_kind.coord_labels()
-        };
-        let state = self.system.state.vec;
-        ui.label(format!(
-            "Primary ({}, {}, {}): ({:.2}, {:.2}, {:.2})",
-            labels[0], labels[1], labels[2], state.x, state.y, state.z
-        ));
-        if self.shadow_enabled {
-            if let Some(curr) = self.timeline.current() {
-                let sh = curr.shadow_vec3();
-                ui.label(format!("Shadow: ({:.2}, {:.2}, {:.2})", sh.x, sh.y, sh.z));
-            }
-        }
-        if self.mode == AttractorMode::Custom || self.system_kind == AttractorSystemKind::Lorenz {
-            if let Some(lyap) = self.current_lyapunov_exponent() {
-                let prefix = if self.mode == AttractorMode::Lorenz {
-                    "Lorenz Lyapunov"
-                } else {
-                    "Flow Lyapunov"
-                };
-                ui.label(format!("{prefix} λ₁: {lyap:+.3}"));
-            }
-        }
-        if let Some((c_eps, d2)) = self.current_correlation_invariants() {
-            ui.label(format!("Correlation C(ε): {c_eps:.3} (D₂ ≈ {d2:.2})"));
-        }
-        ui.separator();
-        if ui
-            .add_enabled(
-                !self.diverged() && self.is_finite_state(),
-                egui::Button::new("🕸 Send 3D Landmarks to Vietoris-Rips"),
-            )
-            .clicked()
-        {
-            let _ = self.send_landmarks_to_vietoris_rips(Some(ctx));
-        }
     }
 
     fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {

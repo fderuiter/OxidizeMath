@@ -61,6 +61,8 @@ struct AttractorSaveState<'a> {
     #[serde(skip_serializing_if = "is_default_fixed_callout_offsets")]
     fixed_callout_offsets: [[f32; 2]; 2],
     camera: Camera3D,
+    #[serde(skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    audio: crate::audio::AcousticSettings,
     #[serde(skip_serializing_if = "AttractorMode::is_lorenz")]
     mode: AttractorMode,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -111,6 +113,8 @@ struct AttractorState {
     #[serde(default)]
     zoom: Option<f32>,
     #[serde(default)]
+    audio: crate::audio::AcousticSettings,
+    #[serde(default)]
     mode: AttractorMode,
     #[serde(default)]
     custom_exprs: Option<[String; 3]>,
@@ -139,6 +143,53 @@ struct AttractorState {
 }
 
 impl AttractorPlotter {
+    pub(super) fn compute_state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.mode as u8).hash(&mut h);
+        for bar in self.flow_bank.bars() {
+            bar.raw_text.hash(&mut h);
+        }
+        for &pv in self.flow_bank.param_slice() {
+            pv.to_bits().hash(&mut h);
+        }
+        self.system_kind.hash(&mut h);
+        self.system.sigma.to_bits().hash(&mut h);
+        self.system.rho.to_bits().hash(&mut h);
+        self.system.beta.to_bits().hash(&mut h);
+        self.dt.to_bits().hash(&mut h);
+        self.tube_radius.to_bits().hash(&mut h);
+        self.simulation_speed.hash(&mut h);
+        self.max_points.hash(&mut h);
+        self.shadow_enabled.hash(&mut h);
+        self.epsilon.to_bits().hash(&mut h);
+        self.perturbation_expr.hash(&mut h);
+        for c in self.initial_state {
+            c.to_bits().hash(&mut h);
+        }
+        self.is_paused().hash(&mut h);
+        self.diverged().hash(&mut h);
+        self.show_annotations.hash(&mut h);
+        self.atlas.is_visible().hash(&mut h);
+        self.atlas.axis_keys().hash(&mut h);
+        for offset in &self.fixed_callout_offsets {
+            let xb = if offset.x == 0.0 {
+                0
+            } else {
+                offset.x.to_bits()
+            };
+            let yb = if offset.y == 0.0 {
+                0
+            } else {
+                offset.y.to_bits()
+            };
+            (xb, yb).hash(&mut h);
+        }
+        self.camera.hash_state(&mut h);
+        self.hash_twin_revision(&mut h);
+        h.finish().max(1)
+    }
+
     pub(super) fn serialize_state(&self) -> Option<String> {
         let fork = self.twin.as_ref().map(|t| t.to_descriptor(self.step_count));
         let expr_vec = self.flow_bank.expressions();
@@ -183,6 +234,7 @@ impl AttractorPlotter {
             show_annotations: self.show_annotations,
             fixed_callout_offsets: self.fixed_callout_offsets.map(|v| [v.x, v.y]),
             camera: self.camera,
+            audio: self.audio_settings,
             mode: self.mode,
             custom_exprs,
             custom_params,
@@ -203,6 +255,7 @@ impl AttractorPlotter {
     fn validate_deserialized_state(
         s: &AttractorState,
     ) -> Result<(ExtraChaosParams, [[f32; 2]; 2]), String> {
+        s.audio.validate()?;
         if !s.sigma.is_finite()
             || !s.rho.is_finite()
             || !s.beta.is_finite()
@@ -274,6 +327,7 @@ impl AttractorPlotter {
         self.tube_radius = s.tube_radius;
         self.simulation_speed = s.simulation_speed;
         self.show_annotations = s.show_annotations;
+        self.audio_settings = s.audio;
         self.fixed_callout_offsets = offsets.map(egui::Vec2::from);
         self.system_kind = s.system_kind;
         self.initial_state = s.initial_state;

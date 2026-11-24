@@ -437,6 +437,7 @@ impl AttractorPlotter {
             self.shadow_history.push_back(item.shadow_vec3());
         }
         self.metrics_cache.update_windowed_ftle(&self.timeline);
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     pub(crate) fn seek_timeline_frame(&mut self, frame_idx: usize, ctx: &egui::Context) {

@@ -182,8 +182,22 @@ impl AttractorPlotter {
         self.sync_local_branch_engine();
     }
 
-    fn hash_twin_revision(&self, h: &mut impl std::hash::Hasher) {
+    pub(super) fn hash_twin_revision(&self, h: &mut impl std::hash::Hasher) {
         use std::hash::Hash;
+        self.audio_settings.gain.to_bits().hash(h);
+        self.audio_settings.pitch_scale.to_bits().hash(h);
+        for v in [
+            self.extra_params.rossler_a,
+            self.extra_params.rossler_b,
+            self.extra_params.rossler_c,
+            self.extra_params.pendulum_m1,
+            self.extra_params.pendulum_m2,
+            self.extra_params.pendulum_l1,
+            self.extra_params.pendulum_l2,
+            self.extra_params.pendulum_g,
+        ] {
+            v.to_bits().hash(h);
+        }
         if let Some(ref twin) = self.twin {
             (
                 true,
@@ -278,51 +292,7 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.mode as u8).hash(&mut h);
-        for bar in self.flow_bank.bars() {
-            bar.raw_text.hash(&mut h);
-        }
-        for &pv in self.flow_bank.param_slice() {
-            pv.to_bits().hash(&mut h);
-        }
-        self.system_kind.hash(&mut h);
-        self.system.sigma.to_bits().hash(&mut h);
-        self.system.rho.to_bits().hash(&mut h);
-        self.system.beta.to_bits().hash(&mut h);
-        self.dt.to_bits().hash(&mut h);
-        self.tube_radius.to_bits().hash(&mut h);
-        self.simulation_speed.hash(&mut h);
-        self.max_points.hash(&mut h);
-        self.shadow_enabled.hash(&mut h);
-        self.epsilon.to_bits().hash(&mut h);
-        self.perturbation_expr.hash(&mut h);
-        for c in self.initial_state {
-            c.to_bits().hash(&mut h);
-        }
-        self.is_paused().hash(&mut h);
-        self.diverged().hash(&mut h);
-        self.show_annotations.hash(&mut h);
-        self.atlas.is_visible().hash(&mut h);
-        self.atlas.axis_keys().hash(&mut h);
-        for offset in &self.fixed_callout_offsets {
-            let x_bits = if offset.x == 0.0 {
-                0
-            } else {
-                offset.x.to_bits()
-            };
-            let y_bits = if offset.y == 0.0 {
-                0
-            } else {
-                offset.y.to_bits()
-            };
-            x_bits.hash(&mut h);
-            y_bits.hash(&mut h);
-        }
-        self.camera.hash_state(&mut h);
-        self.hash_twin_revision(&mut h);
-        h.finish().max(1)
+        self.compute_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -358,6 +328,7 @@ impl InteractiveTool for AttractorPlotter {
         }
         self.metrics_cache.update_windowed_ftle(&self.timeline);
         self.sync_local_branch_engine();
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
@@ -370,7 +341,7 @@ impl InteractiveTool for AttractorPlotter {
         &mut self,
         action: crate::framework::BranchControlAction,
     ) -> bool {
-        match action {
+        let changed = match action {
             crate::framework::BranchControlAction::ForkHere => self.fork_here(),
             crate::framework::BranchControlAction::SwapBranches => self.swap_branches(),
             crate::framework::BranchControlAction::ClearFork => self.clear_fork(),
@@ -378,11 +349,32 @@ impl InteractiveTool for AttractorPlotter {
                 self.branch_engine.set_effective_delta(delta);
                 true
             }
-        }
+        };
+        self.latest_sonification = self.current_sonification_frame();
+        changed
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot().with_3d_solid()
+        ExportCapabilities::plot().with_audio().with_3d_solid()
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(self.current_sonification_frame())
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(
+        &mut self,
+        frame_count: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.render_wav_frames(frame_count)
     }
 
     fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {

@@ -65,6 +65,9 @@ mod tool_impl;
 #[path = "attractors/preset.rs"]
 mod preset;
 
+#[path = "attractors/sonification.rs"]
+mod sonification;
+
 #[path = "attractors/export.rs"]
 pub mod export;
 
@@ -86,7 +89,7 @@ pub struct AttractorPlotter {
     pub(crate) max_points: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
-    pub(super) trajectory_scratch: Vec<Point3<f64>>,
+    pub(crate) trajectory_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     /// Whether Lorenz equilibrium callouts ($C_+$, $C_-$) are displayed.
@@ -104,10 +107,11 @@ pub struct AttractorPlotter {
     pub(crate) last_eval_error_announced: Option<String>,
     pub(crate) extra_params: ExtraChaosParams,
     pub(crate) metrics_cache: ChaosMetricsCache,
+    pub(crate) audio_settings: crate::audio::AcousticSettings,
     pub(crate) twin: Option<AttractorTwinState>,
     /// Counterfactual branch controller for mid-flight shadow twin forks.
     pub branch_engine: crate::framework::CounterfactualBranchEngine,
-    pub(super) latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
     pub(crate) atlas: ParameterAtlasController,
     pub(crate) bus_cache: dataflow::AttractorBusCache,
@@ -163,6 +167,7 @@ impl Default for AttractorPlotter {
             last_eval_error_announced: None,
             extra_params: ExtraChaosParams::default(),
             metrics_cache: ChaosMetricsCache::default(),
+            audio_settings: crate::audio::AcousticSettings::default(),
             twin: None,
             branch_engine: crate::framework::CounterfactualBranchEngine::default(),
             latest_sonification: crate::audio::mappings::attractor_frame(
@@ -307,6 +312,8 @@ impl AttractorPlotter {
     pub fn on_slider_changed(&mut self) {
         self.write_shared_params();
         self.metrics_cache.wolf_dirty = true;
+        self.invariants_cache.invalidate();
+        self.latest_sonification = self.current_sonification_frame();
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
         }
@@ -377,11 +384,13 @@ impl AttractorPlotter {
         self.metrics_cache.wolf_dirty = true;
         self.metrics_cache.windowed_ftle = 0.0;
         self.metrics_cache.correlation_result = None;
+        self.invariants_cache.invalidate();
         self.write_shared_params();
 
         let params = Arc::clone(&self.params);
         self.worker
             .reset_or_respawn(|| AttractorRunner::from_params(params));
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     pub fn reset_parameters(&mut self) {
@@ -435,6 +444,10 @@ mod attractor_tests;
 #[cfg(test)]
 #[path = "attractors/twin_tests.rs"]
 mod twin_tests;
+
+#[cfg(test)]
+#[path = "attractors/lyapunov_bridge_tests.rs"]
+mod lyapunov_bridge_tests;
 
 #[cfg(test)]
 #[path = "attractors/counterfactual_tests.rs"]
