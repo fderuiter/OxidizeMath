@@ -1,18 +1,15 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-#[path = "runner_types.rs"]
-mod runner_types;
-
 use super::presets::{
-    barrier_interval_for_preset, compute_tunneling_observables_slice, evaluate_potential_grid,
-    DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_X0, GRID_POINTS, GRID_X_MAX, GRID_X_MIN,
-    SIGMA_MAX, SIGMA_MIN,
+    barrier_interval_for_preset, compute_tunneling_observables_slice, default_compiled_expr,
+    evaluate_potential_grid, WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA,
+    DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS, GRID_X_MAX,
+    GRID_X_MIN, SIGMA_MAX, SIGMA_MIN,
 };
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use math_explorer::physics::quantum::{
-    gaussian_wavepacket_into, state_norm_squared, CrankNicolson1D, QuantumState,
-};
+use math_commons::ast::Expr;
+use math_explorer::physics::quantum::{gaussian_wavepacket_into, CrankNicolson1D, QuantumState};
 use math_explorer::registry::MAX_GRID_SIZE;
 use nalgebra::DVector;
 use num_complex::Complex;
@@ -23,7 +20,84 @@ use std::sync::{Arc, RwLock};
 pub const CN_SUBSTEPS: usize = 4;
 
 pub use super::presets::{TunnelingObservables, BARRIER_TRANSIT_THRESHOLD, WALL_ARRIVAL_THRESHOLD};
-pub use runner_types::{WaveData, WaveSimConfig};
+
+/// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`WaveRunner`].
+#[derive(Clone, Debug)]
+pub struct WaveSimConfig {
+    /// Selected potential profile or custom AST mode.
+    pub preset: WavePotentialPreset,
+    /// Initial Gaussian packet center $x_0$.
+    pub x0: f64,
+    /// Initial wave number $k_0$ ($E_0 = k_0^2 / 2$).
+    pub k0: f64,
+    /// Initial Gaussian spatial width $\sigma$.
+    pub sigma: f64,
+    /// Potential barrier scale $V_0$.
+    pub v0: f64,
+    /// Potential barrier width $w$.
+    pub width: f64,
+    /// Unitary propagation time step $\Delta t$.
+    pub dt: f64,
+    /// Worker steps executed per visual frame.
+    pub steps_per_frame: usize,
+    /// Last valid compiled AST expression for `V(x)`.
+    pub custom_expr: Expr,
+    /// Optional sparse `(index, value)` sculpted potential overrides.
+    pub sparse_potential: Vec<(u16, f64)>,
+}
+
+impl Default for WaveSimConfig {
+    fn default() -> Self {
+        Self {
+            preset: WavePotentialPreset::InfiniteWell,
+            x0: DEFAULT_X0,
+            k0: DEFAULT_K0,
+            sigma: DEFAULT_SIGMA,
+            v0: DEFAULT_V0,
+            width: DEFAULT_WIDTH,
+            dt: DEFAULT_DT,
+            steps_per_frame: DEFAULT_STEPS_PER_FRAME,
+            custom_expr: default_compiled_expr(),
+            sparse_potential: Vec::new(),
+        }
+    }
+}
+
+/// Structured snapshot payload emitted by [`WaveRunner`] to the UI thread.
+#[derive(Clone, Debug)]
+pub struct WaveData {
+    /// Current simulation time $t$.
+    pub time: f64,
+    /// Spatial coordinate grid $x_i \in [-5, 5]$.
+    pub x_axis: Vec<f64>,
+    /// Sanitized Born probability density $|\psi(x_i, t)|^2$.
+    pub prob_density: Vec<f64>,
+    /// Clamped physical potential $V(x_i) \in [-500, 500]$.
+    pub potential: Vec<f64>,
+    /// Live reflection probability $R(t)$.
+    pub reflection: f64,
+    /// Live barrier interior probability $B(t)$.
+    pub barrier_prob: f64,
+    /// Live transmission probability $T(t)$.
+    pub transmission: f64,
+    /// Right-wall boundary probability $\sum_{x > 4.25} |\psi|^2$.
+    #[cfg(test)]
+    pub right_wall_prob: f64,
+    /// Latched post-scattering, pre-wall transmission readout $T_{\text{scatter}}$.
+    pub latched_transmission: Option<f64>,
+    /// Whether the wavepacket has reached either Dirichlet guard wall (`|x| > 4.25`).
+    pub wall_arrived: bool,
+    /// Whether `latched_transmission` was captured from a quasi-bound resonance at pre-wall arrival.
+    pub quasi_bound_latched: bool,
+    /// Left edge of the barrier integration interval.
+    pub x_left: f64,
+    /// Right edge of the barrier integration interval.
+    pub x_right: f64,
+    /// Incident wavepacket kinetic energy $E_0 = k_0^2 / 2$.
+    pub kinetic_energy: f64,
+    /// Unitary state norm squared $\|\psi\|^2$.
+    pub norm_sq: f64,
+}
 
 /// Background worker runner evolving the 1D time-dependent Schrödinger equation with zero per-step allocations.
 pub struct WaveRunner {
@@ -323,55 +397,6 @@ impl WaveRunner {
         }
         self.update_observables_in_place();
         self.refresh_sonification(dt);
-    }
-
-    /// Builds a structured [`WaveData`] snapshot integrating [`QuantumState::probability_density_in_place`].
-    #[must_use]
-    pub fn build_wave_data(&self) -> WaveData {
-        let mut safe_prob = vec![0.0; self.psi.vector.len()];
-        self.psi.probability_density_in_place(&mut safe_prob);
-        let obs = compute_tunneling_observables_slice(
-            &self.x_axis,
-            &safe_prob,
-            self.x_left,
-            self.x_right,
-        );
-        for p in &mut safe_prob {
-            if !p.is_finite() {
-                *p = 0.0;
-            }
-        }
-        let safe_potential: Vec<f64> = self
-            .potential
-            .iter()
-            .map(|&v| if v.is_finite() { v } else { 0.0 })
-            .collect();
-
-        WaveData {
-            time: self.time,
-            x_axis: self.x_axis.clone(),
-            prob_density: safe_prob,
-            potential: safe_potential,
-            reflection: obs.reflection,
-            barrier_prob: obs.barrier_prob,
-            transmission: obs.transmission,
-            #[cfg(test)]
-            right_wall_prob: obs.right_wall_prob,
-            latched_transmission: self.latched_transmission,
-            wall_arrived: self.wall_arrived,
-            quasi_bound_latched: self.quasi_bound_latched,
-            x_left: self.x_left,
-            x_right: self.x_right,
-            kinetic_energy: self.kinetic_energy,
-            norm_sq: state_norm_squared(&self.psi),
-        }
-    }
-
-    /// Current latched pre-wall transmission readout $T_{\text{scatter}}$, if latched.
-    #[cfg(test)]
-    #[must_use]
-    pub fn latched_transmission(&self) -> Option<f64> {
-        self.latched_transmission
     }
 }
 
