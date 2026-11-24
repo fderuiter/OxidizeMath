@@ -131,13 +131,36 @@ pub enum KellyError {
         /// Actual number of bets provided.
         actual: usize,
     },
-    /// Mismatched slice lengths across probabilities, odds, stakes, or outcomes.
+    /// Mismatched slice or matrix dimensions across probabilities, odds, stakes, or covariances.
     #[error("Slice length mismatch: expected {expected}, got {actual}")]
     DimensionMismatch {
-        /// Expected slice length.
+        /// Expected slice or matrix dimension.
         expected: usize,
-        /// Actual slice length provided.
+        /// Actual slice or matrix dimension provided.
         actual: usize,
+    },
+    /// Covariance matrix is not symmetric positive-definite.
+    #[error("Covariance matrix is not positive definite")]
+    NotPositiveDefinite,
+    /// Insufficient observations or assets for portfolio estimation.
+    #[error("Insufficient data: required at least {required}, got {actual}")]
+    InsufficientData {
+        /// Minimum required observation or asset count.
+        required: usize,
+        /// Actual observation or asset count provided.
+        actual: usize,
+    },
+    /// Confidence level for VaR/CVaR must lie strictly inside `(0, 1)`.
+    #[error("Invalid confidence level: {value} (must be in (0, 1))")]
+    InvalidConfidenceLevel {
+        /// Rejected confidence level input.
+        value: f64,
+    },
+    /// Non-finite or out-of-range portfolio / horizon parameter.
+    #[error("Invalid portfolio parameter: {reason}")]
+    InvalidParameter {
+        /// Static diagnostic describing the invalid parameter.
+        reason: &'static str,
     },
     /// Root-finding or adjustment-coefficient solver failed to bracket or converge.
     #[error("Solvency root solver failed to converge: {reason}")]
@@ -374,7 +397,10 @@ pub use crate::pure_math::{
     graph_theory::GraphTheoryError,
     hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
-    statistics::{monte_carlo::MonteCarloError, poisson::PoissonError, queueing::QueueingError},
+    statistics::{
+        black_scholes::OptionPricingError, monte_carlo::MonteCarloError, poisson::PoissonError,
+        queueing::QueueingError,
+    },
     tensor::types::TensorError,
 };
 pub use sports::{EloError, MatchModelError};

@@ -150,6 +150,7 @@ fn test_math_contract_audits_extracted_engine_crates_steppers_and_dimension_suff
     let linalg_src = "/// Missing contract.\npub fn lu_solve() {}\n";
     let pde_src = "/// Missing contract.\npub struct SemiImplicitFourierStepper;\n";
     let phys_src = "/// Missing contract.\npub struct KpzModel1D;\n";
+    let fin_src = "/// Missing contract.\npub struct GaussianCopula;\n/// Missing contract.\npub fn black_scholes_merton() {}\n/// Missing contract.\npub fn parametric_lognormal_tail_risk() {}\n";
 
     let mut members = Vec::new();
     members.extend(setup_math_crate(
@@ -159,10 +160,11 @@ fn test_math_contract_audits_extracted_engine_crates_steppers_and_dimension_suff
     ));
     members.extend(setup_math_crate(&dir, "crates/engine_pde", pde_src));
     members.extend(setup_math_crate(&dir, "crates/domain_physics", phys_src));
+    members.extend(setup_math_crate(&dir, "crates/pure_math", fin_src));
 
     let mut cache = AstCache::new();
     let violations = audit_math_contracts_with_cache(&dir, &members, &mut cache);
-    assert_eq!(violations.len(), 3, "Got: {violations:?}");
+    assert_eq!(violations.len(), 6, "Got: {violations:?}");
     assert!(violations.iter().any(|v| v.contains("fn lu_solve")));
     assert!(
         violations
@@ -170,4 +172,19 @@ fn test_math_contract_audits_extracted_engine_crates_steppers_and_dimension_suff
             .any(|v| v.contains("struct SemiImplicitFourierStepper"))
     );
     assert!(violations.iter().any(|v| v.contains("struct KpzModel1D")));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("struct GaussianCopula"))
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("fn black_scholes_merton"))
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("fn parametric_lognormal_tail_risk"))
+    );
 }

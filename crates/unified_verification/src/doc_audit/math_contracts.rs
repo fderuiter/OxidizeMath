@@ -76,6 +76,7 @@ const EXPLICIT_MATH_TYPES: &[&str] = &[
     "SchwarzschildGeodesicBundle",
     "HamiltonianRayTracer",
     "EikonalRaySystem",
+    "GaussianCopula",
 ];
 
 /// Audits all `11` mathematical and solver crates present in `members` using the shared single-pass `AstCache`.
@@ -367,6 +368,10 @@ fn is_math_fn_target(fn_name: &str, self_ident: Option<&str>, attrs: &[syn::Attr
                 || fn_name.contains("_solve_")
                 || fn_name.starts_with("levenberg_marquardt")
                 || fn_name.starts_with("fit_model")
+                || matches!(
+                    fn_name,
+                    "black_scholes_merton" | "parametric_lognormal_tail_risk"
+                )
         }
         Some("Integer") => matches!(fn_name, "pow_mod" | "invert"),
         Some(_) => false,
