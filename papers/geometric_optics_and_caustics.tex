@@ -1,0 +1,75 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath, amssymb}
+\usepackage{geometry}
+\usepackage{accessibility}
+
+\geometry{margin=1in}
+
+\title{Zero-Allocation Geometric Ray Tracing, Caustic Envelopes, and Fraunhofer Diffraction in Rust}
+\author{OxidizeMath Project}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present the mathematical formulation and zero-allocation numerical architecture of \texttt{domain\_physics::physics::optics} and its interactive laboratory in \texttt{math\_explorer\_gui}. The engine unifies exact vector Snell refraction, polarized Fresnel reflection and transmission coefficients ($R_s + T_s = 1$, $R_p + T_p = 1$, Brewster extinction $R_p(\theta_B) = 0$), three-term Cauchy wavelength dispersion, fourth-order Runge--Kutta (\texttt{RungeKutta4}) canonical eikonal integration across Luneburg, Maxwell fisheye, Eaton, and parabolic graded-index (GRIN) media, adjacent-ray caustic envelope extraction (nephroid and spherical-aberration cusps), and closed-form Fraunhofer single-slit, multi-slit grating, and circular Airy diffraction. All hot-path ray-fan, caustic, and diffraction kernels operate strictly on pre-allocated workspace slices under \texttt{VerifiedAllocator}.
+\end{abstract}
+
+\section{Dielectric Refraction, Polarized Fresnel Equations, and Cauchy Dispersion}
+
+At a smooth interface separating isotropic dielectrics with refractive indices $n_1$ and $n_2$ and unit normal $\hat{\mathbf{n}}$ oriented against the incident unit ray $\hat{\mathbf{d}}$ ($\cos\theta_i = -\hat{\mathbf{d}}\cdot\hat{\mathbf{n}} \ge 0$), Snell's law $n_1\sin\theta_i = n_2\sin\theta_t$ yields the vector discriminant $k = 1 - (n_1/n_2)^2(1 - \cos^2\theta_i)$ \cite{born1999principles}. When $k < 0$ ($n_1 > n_2$ and $\theta_i > \theta_c = \arcsin(n_2/n_1)$), total internal reflection occurs along $\hat{\mathbf{r}} = \hat{\mathbf{d}} + 2\cos\theta_i\,\hat{\mathbf{n}}$ with $R_s = R_p = 1$ and $T_s = T_p = 0$. For $k \ge 0$ ($\cos\theta_t = \sqrt{k}$), the transmitted ray direction is
+\begin{equation}
+\hat{\mathbf{t}} = \frac{n_1}{n_2}\hat{\mathbf{d}} + \left(\frac{n_1}{n_2}\cos\theta_i - \cos\theta_t\right)\hat{\mathbf{n}},
+\end{equation}
+and the transverse-electric ($s$) and transverse-magnetic ($p$) Fresnel amplitude coefficients are
+\begin{equation}
+r_s = \frac{n_1\cos\theta_i - n_2\cos\theta_t}{n_1\cos\theta_i + n_2\cos\theta_t}, \quad
+t_s = \frac{2 n_1\cos\theta_i}{n_1\cos\theta_i + n_2\cos\theta_t}, \quad
+r_p = \frac{n_2\cos\theta_i - n_1\cos\theta_t}{n_2\cos\theta_i + n_1\cos\theta_t}, \quad
+t_p = \frac{2 n_1\cos\theta_i}{n_2\cos\theta_i + n_1\cos\theta_t}.
+\end{equation}
+Power reflectance $R_{s,p} = |r_{s,p}|^2$ and impedance-weighted transmittance $T_{s,p} = \frac{n_2\cos\theta_t}{n_1\cos\theta_i}|t_{s,p}|^2$ satisfy $R_s + T_s = 1$ and $R_p + T_p = 1$ identically, with $p$-polarized reflectance vanishing at Brewster's angle $\theta_B = \arctan(n_2 / n_1)$. Normal chromatic dispersion across optical glasses is modeled via Cauchy's empirical expansion in vacuum wavelength $\lambda$ ($\mu\text{m}$),
+\begin{equation}
+n(\lambda) = A + \frac{B}{\lambda^2} + \frac{C}{\lambda^4}.
+\end{equation}
+
+\section{Canonical Eikonal Ray Tracing in Graded-Index Metamaterials}
+
+In an inhomogeneous medium with spatially varying refractive index $n(\mathbf{r})$, Fermat's principle $\delta\int n(\mathbf{r})\,ds = 0$ yields the eikonal ray equation $\frac{d}{ds}(n\frac{d\mathbf{r}}{ds}) = \nabla n$ \cite{luneburg1964mathematical}. Reparameterizing by canonical optical path variable $d\tau = ds / n(\mathbf{r})$ with optical momentum $\mathbf{p} = n(\mathbf{r})\frac{d\mathbf{r}}{ds}$ ($|\mathbf{p}|^2 = n^2(\mathbf{r})$) removes square-root denominators and produces a four-dimensional first-order ODE system on \texttt{ArrayState<4>}:
+\begin{equation}
+\frac{d\mathbf{r}}{d\tau} = \mathbf{p}, \qquad
+\frac{d\mathbf{p}}{d\tau} = \frac{1}{2}\nabla\bigl(n^2(\mathbf{r})\bigr) = n(\mathbf{r})\nabla n(\mathbf{r}).
+\end{equation}
+Integrating via \texttt{RungeKutta4<ArrayState<4>>} accurately resolves:
+\begin{enumerate}
+\item \textbf{Luneburg lens} ($r \le R$): $n(r) = \sqrt{2 - (r/R)^2}$ with linear harmonic restoring gradient $\frac{1}{2}\nabla(n^2) = -\mathbf{r}/R^2$, focusing any collimated incident bundle onto the opposite rim $(R, 0)$ \cite{luneburg1964mathematical}.
+\item \textbf{Maxwell fisheye}: $n(r) = \frac{2 n_0}{1 + (r/R)^2}$ with $\frac{1}{2}\nabla(n^2) = -8 n_0^2 \mathbf{r} / [R^2(1 + r^2/R^2)^3]$, mapping rays into closed circles passing through antipodal conjugate points.
+\item \textbf{Eaton $180^\circ$ retroreflector}: regularized core $r_{\text{eff}} = \sqrt{r^2 + \epsilon^2 R^2}$ with $n^2(r) = 2R/r_{\text{eff}} - 1$, bending rays by $\pi$ back parallel to their incoming direction.
+\item \textbf{Parabolic GRIN waveguide}: $n^2(y) = n_0^2(1 - g^2 y^2)$, supporting sinusoidal modal ray oscillations of pitch $2\pi / g$.
+\end{enumerate}
+
+\section{Caustic Envelopes: Coffee-Cup Nephroids and Aberration Cusps}
+
+A caustic is the singular envelope of a smooth one-parameter ray family $\mathbf{L}(\phi, t) = \mathbf{o}(\phi) + t\,\hat{\mathbf{d}}(\phi)$ where the Jacobian determinant $\det[\partial_\phi \mathbf{L}, \partial_t \mathbf{L}]$ vanishes \cite{berry1980catastrophe}. For collimated $+x$ rays striking a concave circular mirror $x = R\cos\phi, y = R\sin\phi$ ($\phi \in (-\pi/2, \pi/2)$), specular reflection yields $\hat{\mathbf{d}}(\phi) = (-\cos 2\phi, -\sin 2\phi)$ and envelope parameter $t(\phi) = \frac{1}{2}R\cos\phi$, tracing the nephroid curve
+\begin{equation}
+x_c(\phi) = \frac{R}{4}(3\cos\phi - \cos 3\phi), \qquad y_c(\phi) = R\sin^3\phi,
+\end{equation}
+with an $A_3$ axial cusp at $(R/2, 0)$. Numerically, \texttt{extract\_caustic\_envelope} intersects adjacent monochromatic rays in \texttt{RayFanWorkspace} and bins transverse crossings at $x = x_{\text{det}}$ into a pre-allocated detector intensity histogram.
+
+\section{Fraunhofer Far-Field Diffraction}
+
+In the Fraunhofer regime ($L \gg D^2 / \lambda$), the far-field irradiance is proportional to the squared modulus of the spatial Fourier transform of the aperture transmission function \cite{born1999principles}:
+\begin{align}
+I_{\text{slit}}(\theta) &= I_0 \left(\frac{\sin\beta}{\beta}\right)^2, & \beta &= \frac{\pi a \sin\theta}{\lambda}, \\
+I_{\text{grating}}(\theta) &= I_0 \left(\frac{\sin\beta}{\beta}\right)^2 \left(\frac{\sin(N\gamma)}{N\sin\gamma}\right)^2, & \gamma &= \frac{\pi d \sin\theta}{\lambda}, \\
+I_{\text{Airy}}(\theta) &= I_0 \left(\frac{2 J_1(x)}{x}\right)^2, & x &= \frac{\pi D \sin\theta}{\lambda}.
+\end{align}
+Here \texttt{airy\_normalized\_intensity} evaluates $J_1(x)$ via \texttt{pure\_math::special\_functions::bessel::bessel\_j} on $[10^{-6}, 20]$ with an analytic Taylor expansion near $x = 0$ and Hankel's asymptotic series for $|x| > 20$, resolving the first three dark rings at $j_{1,1} \approx 3.831706$, $j_{1,2} \approx 7.015587$, and $j_{1,3} \approx 10.173468$.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

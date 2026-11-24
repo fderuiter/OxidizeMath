@@ -187,9 +187,20 @@ impl InteractiveTool for PotentialFlowTool {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::plot().with_shader()
+        crate::framework::ExportCapabilities::plot_with_shader()
     }
 
+    fn export_shader_source(
+        &self,
+        format: crate::framework::ShaderExportFormat,
+    ) -> Result<String, String> {
+        match format {
+            crate::framework::ShaderExportFormat::Wgsl => self.build_wgsl_shader(),
+            crate::framework::ShaderExportFormat::Glsl => {
+                self.build_glsl_shader(crate::framework::ShaderDialect::WebGl2Es300)
+            }
+        }
+    }
     fn export_glsl_shader(
         &self,
         dialect: crate::framework::ShaderDialect,

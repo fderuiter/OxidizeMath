@@ -89,6 +89,20 @@ fn verify_shader_capability(
         caps.shader_disabled_reason.is_empty(),
         "{meta_id} advertises shader export but has non-empty disabled reason"
     );
+    let wgsl = tool
+        .export_shader_source(ShaderExportFormat::Wgsl)
+        .unwrap_or_else(|e| panic!("WGSL shader failed for {meta_id}: {e}"));
+    assert!(
+        wgsl.contains("@fragment") && wgsl.contains("fn fs_main("),
+        "Invalid WGSL shader entrypoint for {meta_id}"
+    );
+    let glsl = tool
+        .export_shader_source(ShaderExportFormat::Glsl)
+        .unwrap_or_else(|e| panic!("GLSL shader failed for {meta_id}: {e}"));
+    assert!(
+        glsl.starts_with("#version 300 es"),
+        "Invalid GLSL shader header for {meta_id}"
+    );
     let webgl2 = tool
         .export_glsl_shader(ShaderDialect::WebGl2Es300)
         .unwrap_or_else(|e| panic!("WebGL2 shader failed for {meta_id}: {e}"));
@@ -257,6 +271,7 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let extra = usize::from(has_riemannian) + usize::from(has_surface_morpho);
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
     let stochastic_extra = if cfg!(feature = "pure_math") { 3 } else { 0 };
+    let optics_bonus = if cfg!(feature = "physics") { 2 } else { 0 };
     let extra_su11_hyp = if cfg!(feature = "pure_math") { 2 } else { 0 };
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
         + usize::from(cfg!(feature = "physics")) * 3
@@ -266,9 +281,10 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let expected_plot = 77 + extra + bio_extra + stochastic_extra + extra_su11_hyp;
+    let expected_plot = 78 + extra + bio_extra + stochastic_extra + optics_bonus + extra_su11_hyp;
     let expected_solid = 7 + extra;
-    let expected_non_shader = 91 + extra + bio_extra + stochastic_extra + extra_su11_hyp;
+    let expected_non_shader =
+        92 + extra + bio_extra + stochastic_extra + optics_bonus + extra_su11_hyp;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"
@@ -281,7 +297,7 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         "Expected {expected_solid} solid 3D geometric tools"
     );
     assert_eq!(splat_3d, 1, "Expected 1 3DGS splat PLY tool");
-    assert_eq!(shader, 3, "Expected 3 analytical GLSL shader tools");
+    assert_eq!(shader, 3, "Expected 3 analytical GPU shader tools");
     assert_eq!(
         non_shader, expected_non_shader,
         "Expected {expected_non_shader} non-shader tools"

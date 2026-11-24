@@ -8,7 +8,7 @@ pub mod high_energy;
 pub mod medical;
 pub mod mri;
 pub mod nuclear;
-#[allow(missing_docs)]
+/// Geometric ray tracing, polarized Fresnel refraction, caustics, Fraunhofer diffraction, and optical sensing.
 pub mod optics;
 pub mod quantum;
 pub mod solid_state;

@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
-
 use super::billiards_tool::HyperbolicBilliardsTool;
 use super::disk_tool::HyperbolicDiskTool;
 use super::HyperbolicGeometryTab;

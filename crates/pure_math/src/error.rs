@@ -101,9 +101,21 @@ pub enum KellyError {
     /// Empty or insufficient bet ledger for statistical estimation.
     #[error("Insufficient bets: required at least {required}, got {actual}")]
     InsufficientBets { required: usize, actual: usize },
-    /// Mismatched slice lengths across probabilities, odds, stakes, or outcomes.
+    /// Mismatched slice or matrix dimensions across probabilities, odds, stakes, or covariances.
     #[error("Slice length mismatch: expected {expected}, got {actual}")]
     DimensionMismatch { expected: usize, actual: usize },
+    /// Covariance matrix is not symmetric positive-definite.
+    #[error("Covariance matrix is not positive definite")]
+    NotPositiveDefinite,
+    /// Insufficient observations or assets for portfolio estimation.
+    #[error("Insufficient data: required at least {required}, got {actual}")]
+    InsufficientData { required: usize, actual: usize },
+    /// Confidence level for VaR/CVaR must lie strictly inside `(0, 1)`.
+    #[error("Invalid confidence level: {value} (must be in (0, 1))")]
+    InvalidConfidenceLevel { value: f64 },
+    /// Non-finite or out-of-range portfolio / horizon parameter.
+    #[error("Invalid portfolio parameter: {reason}")]
+    InvalidParameter { reason: &'static str },
     /// Root-finding or adjustment-coefficient solver failed to bracket or converge.
     #[error("Solvency root solver failed to converge: {reason}")]
     ConvergenceFailed { reason: &'static str },
@@ -464,7 +476,10 @@ pub use crate::pure_math::{
     graph_theory::GraphTheoryError,
     hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
-    statistics::{monte_carlo::MonteCarloError, poisson::PoissonError, queueing::QueueingError},
+    statistics::{
+        black_scholes::OptionPricingError, monte_carlo::MonteCarloError, poisson::PoissonError,
+        queueing::QueueingError,
+    },
     tensor::types::TensorError,
 };
 pub use sports::{EloError, MatchModelError};

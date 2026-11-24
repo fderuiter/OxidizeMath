@@ -1,4 +1,4 @@
-//! Verifies that all 38 public error enums tested from `math_explorer::error`
+//! Verifies that all 39 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -17,9 +17,9 @@ use math_explorer::error::{
     EloError, EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError,
     Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError, IsosurfaceError,
     KellyError, LoraError, MarketPricingError, MarkovError, MatchModelError, MathError,
-    MonteCarloError, NumberTheoryError, OuError, PharmacokineticsError, PoissonError,
-    QueueingError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
-    Su11HyperbolicError, TdaError, ZipError,
+    MonteCarloError, NumberTheoryError, OptionPricingError, OuError, PharmacokineticsError,
+    PoissonError, QueueingError, RadarError, SandpileError, SolidStateError, StandardModelError,
+    StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -101,6 +101,10 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
             effective_sample_size: 1.0,
         },
     );
+    assert_readable_diagnostic(
+        "OptionPricingError",
+        &OptionPricingError::InvalidVolatility { value: 0.0 },
+    );
 }
 
 #[test]
@@ -159,6 +163,27 @@ fn kelly_solvency_errors_emit_readable_display_and_metadata() {
             KellyError::DimensionMismatch {
                 expected: 3,
                 actual: 2,
+            },
+        ),
+        (
+            "KellyError::NotPositiveDefinite",
+            KellyError::NotPositiveDefinite,
+        ),
+        (
+            "KellyError::InsufficientData",
+            KellyError::InsufficientData {
+                required: 3,
+                actual: 1,
+            },
+        ),
+        (
+            "KellyError::InvalidConfidenceLevel",
+            KellyError::InvalidConfidenceLevel { value: 1.0 },
+        ),
+        (
+            "KellyError::InvalidParameter",
+            KellyError::InvalidParameter {
+                reason: "leverage cap must be finite",
             },
         ),
         (

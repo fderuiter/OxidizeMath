@@ -1,6 +1,7 @@
 use super::{
     DebtSources, IntegrityReport, ReportMode, analyze_files_with_cache, collect_rs_files,
-    evaluate_integrity_gates, find_unverified_crates_with_cache, load_verify_suite_config_strict,
+    evaluate_integrity_gates, find_unverified_crates_with_cache,
+    load_suite_and_debt_configs_strict,
 };
 use oxidize_core::traceability::AstCache;
 use std::fs;
@@ -34,17 +35,32 @@ fn replace_coverage_badge(readme: &str, new_badge: &str) -> String {
     format!("{}{}{}", &readme[..start], new_badge, &readme[end..])
 }
 
-pub fn write_certificate_and_readme(
-    report: &IntegrityReport,
-    cert_path: &Path,
-    readme_path: &Path,
-) -> Result<(), String> {
+pub fn write_certificate_only(report: &IntegrityReport, cert_path: &Path) -> Result<(), String> {
+    if let Some(parent) = cert_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "Failed to create certificate directory {}: {err}",
+                parent.display()
+            )
+        })?;
+    }
     let mut json_report = serde_json::to_string_pretty(report)
         .map_err(|err| format!("Failed to serialize certificate: {err}"))?;
     json_report.push('\n');
     fs::write(cert_path, json_report)
         .map_err(|err| format!("Failed to write {}: {err}", cert_path.display()))?;
     println!("Generated {}", cert_path.display());
+    Ok(())
+}
+
+pub fn write_certificate_and_readme(
+    report: &IntegrityReport,
+    cert_path: &Path,
+    readme_path: &Path,
+) -> Result<(), String> {
+    write_certificate_only(report, cert_path)?;
 
     if readme_path.exists() {
         let readme = fs::read_to_string(readme_path)
@@ -218,8 +234,8 @@ pub fn sync_ast_certificate_with_cache(
     mode: ReportMode,
     cache: &mut AstCache,
 ) -> bool {
-    let config = match load_verify_suite_config_strict(None) {
-        Ok(cfg) => cfg,
+    let (config, debt_caps) = match load_suite_and_debt_configs_strict(None) {
+        Ok(pair) => pair,
         Err(err) => {
             eprintln!("[!] {err}");
             return false;
@@ -238,6 +254,10 @@ pub fn sync_ast_certificate_with_cache(
     let unverified = find_unverified_crates_with_cache(members, cache);
     let file_len_debt = crate::utils::check_file_lengths(members);
     let entropy_debt = crate::entropy_guard::check_entropy_with_cache(&[], cache);
+    let cap_violations = debt_caps
+        .as_ref()
+        .map(|cfg| crate::whitelist::debt::evaluate_opt_out_caps(cfg, &metrics.opt_outs))
+        .unwrap_or_default();
     let wasm_cov_pct = if metrics.wasm_paths > 0 {
         (metrics.wasm_covered as f64 / metrics.wasm_paths as f64) * 100.0
     } else {
@@ -248,7 +268,7 @@ pub fn sync_ast_certificate_with_cache(
         unverified_crates: &unverified,
         file_length_debt: &file_len_debt,
         entropy_debt: &entropy_debt,
-        extra_debt: &[],
+        extra_debt: &cap_violations,
     };
     let eval = evaluate_integrity_gates(cert_cov, wasm_cov_pct, &metrics, &debt, &config);
     if !eval.report.passed {
