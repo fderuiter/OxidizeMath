@@ -24,6 +24,8 @@ mod legacy_runner;
 pub mod lenia;
 /// Theme-aware concentration, vorticity, and dual composite pixel overlays.
 pub mod overlay;
+/// Deterministic L-system vascular branching and Vogel golden-angle phyllotaxis studio.
+pub mod phyllotaxis_lsystem;
 /// Starter gallery registrations, PRNG helper, and dynamic theory adapter.
 pub mod presets;
 /// Background simulation runner coupling LBM / PotentialFlow, microfluidics, and `K = 16` checkpoints.
@@ -58,6 +60,8 @@ pub use gray_scott_atlas::{
 pub use lenia::LeniaTool;
 #[cfg(test)]
 pub use overlay::render_morphogenesis_overlay;
+#[cfg(test)]
+pub use phyllotaxis_lsystem::PhyllotaxisLSystemTool;
 #[cfg(test)]
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
@@ -195,4 +199,4 @@ mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
-// [cite:favorite_child]
+// [cite:biology]
