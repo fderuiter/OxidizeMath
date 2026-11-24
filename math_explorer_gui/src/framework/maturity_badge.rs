@@ -28,52 +28,15 @@ pub struct MaturityBadgeColors {
 pub fn badge_colors_for_tier(visuals: &egui::Visuals, tier: MaturityTier) -> MaturityBadgeColors {
     let mode = ThemeMode::from_visuals(visuals);
     let palette = SemanticPalette::for_theme(mode);
-    match (mode, tier) {
-        (ThemeMode::Dark, MaturityTier::Certified) => MaturityBadgeColors {
-            bg_fill: egui::Color32::from_rgb(14, 48, 26),
-            fg_text: palette.success,
-            border_stroke: palette.success,
-        },
-        (ThemeMode::Dark, MaturityTier::Validated) => MaturityBadgeColors {
-            bg_fill: egui::Color32::from_rgb(12, 38, 66),
-            fg_text: palette.info,
-            border_stroke: palette.info,
-        },
-        (ThemeMode::Dark, MaturityTier::Experimental) => MaturityBadgeColors {
-            bg_fill: egui::Color32::from_rgb(52, 36, 8),
-            fg_text: palette.warning,
-            border_stroke: palette.warning,
-        },
-        (ThemeMode::Light, MaturityTier::Certified) => MaturityBadgeColors {
-            bg_fill: egui::Color32::from_rgb(232, 248, 237),
-            fg_text: palette.success,
-            border_stroke: palette.success,
-        },
-        (ThemeMode::Light, MaturityTier::Validated) => MaturityBadgeColors {
-            bg_fill: egui::Color32::from_rgb(232, 243, 255),
-            fg_text: palette.info,
-            border_stroke: palette.info,
-        },
-        (ThemeMode::Light, MaturityTier::Experimental) => MaturityBadgeColors {
-            bg_fill: egui::Color32::from_rgb(255, 246, 226),
-            fg_text: palette.warning,
-            border_stroke: palette.warning,
-        },
-        (ThemeMode::HighContrast, MaturityTier::Certified) => MaturityBadgeColors {
-            bg_fill: egui::Color32::BLACK,
-            fg_text: palette.success,
-            border_stroke: palette.success,
-        },
-        (ThemeMode::HighContrast, MaturityTier::Validated) => MaturityBadgeColors {
-            bg_fill: egui::Color32::BLACK,
-            fg_text: palette.info,
-            border_stroke: palette.info,
-        },
-        (ThemeMode::HighContrast, MaturityTier::Experimental) => MaturityBadgeColors {
-            bg_fill: egui::Color32::BLACK,
-            fg_text: palette.warning,
-            border_stroke: palette.warning,
-        },
+    let accent = match tier {
+        MaturityTier::Certified => palette.success,
+        MaturityTier::Validated => palette.info,
+        MaturityTier::Experimental => palette.warning,
+    };
+    MaturityBadgeColors {
+        bg_fill: SemanticPalette::maturity_badge_bg(mode, tier),
+        fg_text: accent,
+        border_stroke: accent,
     }
 }
 
