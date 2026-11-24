@@ -230,7 +230,9 @@ pub fn eval_ode_final_state_planar(
     spec: &super::comparison::OdeSimSpec<'_>,
     p_map: &HashMap<String, f64>,
 ) -> f64 {
-    let Some(steps) = crate::presets::checked_ode_step_count(spec.dt, spec.total_time) else {
+    let Some((steps, eff_dt)) =
+        spec.budgeted_steps_and_dt(super::budget::MAX_ODE_SYNC_INSTRUCTIONS)
+    else {
         return f64::NAN;
     };
     let y0 = p_map.get("y0").copied().unwrap_or(spec.ic_y0);
@@ -244,17 +246,25 @@ pub fn eval_ode_final_state_planar(
         .unwrap_or(spec.param_cap_k);
 
     match spec.preset {
-        OdePreset::Exponential => step_final(ArrayState([y0]), &ExponentialOde { k }, spec, steps),
+        OdePreset::Exponential => step_final(
+            ArrayState([y0]),
+            &ExponentialOde { k },
+            spec.method,
+            eff_dt,
+            steps,
+        ),
         OdePreset::HarmonicOscillator => step_final(
             ArrayState([y0, v0]),
             &HarmonicOscillatorOde { k },
-            spec,
+            spec.method,
+            eff_dt,
             steps,
         ),
         OdePreset::LogisticGrowth => step_final(
             ArrayState([y0]),
             &LogisticGrowthOde { r, cap_k },
-            spec,
+            spec.method,
+            eff_dt,
             steps,
         ),
         OdePreset::LinearSystem2D => {
@@ -270,10 +280,12 @@ pub fn eval_ode_final_state_planar(
                     ],
                 ],
             };
-            step_final(ArrayState([y0, v0]), &dyn_sys, spec, steps)
+            step_final(ArrayState([y0, v0]), &dyn_sys, spec.method, eff_dt, steps)
         }
-        OdePreset::PlanarCustom => eval_planar_custom_final([y0, v0], cap_k, spec, p_map, steps),
-        OdePreset::Custom => eval_custom_spec_final([y0, v0], spec, p_map, steps),
+        OdePreset::PlanarCustom => {
+            eval_planar_custom_final([y0, v0], cap_k, spec, p_map, eff_dt, steps)
+        }
+        OdePreset::Custom => eval_custom_spec_final([y0, v0], spec, p_map, eff_dt, steps),
     }
 }
 
@@ -281,6 +293,7 @@ fn eval_custom_spec_final(
     ic: [f64; 2],
     spec: &super::comparison::OdeSimSpec<'_>,
     p_map: &HashMap<String, f64>,
+    dt: f64,
     steps: usize,
 ) -> f64 {
     let Some(cspec) = spec.custom_spec else {
@@ -288,9 +301,9 @@ fn eval_custom_spec_final(
     };
     let dynamics = cspec.with_param_overrides(p_map);
     if dynamics.is_coupled() {
-        step_final(ArrayState(ic), &dynamics, spec, steps)
+        step_final(ArrayState(ic), &dynamics, spec.method, dt, steps)
     } else {
-        step_final(ArrayState([ic[0]]), &dynamics, spec, steps)
+        step_final(ArrayState([ic[0]]), &dynamics, spec.method, dt, steps)
     }
 }
 
@@ -299,6 +312,7 @@ fn eval_planar_custom_final(
     cap_k: f64,
     spec: &super::comparison::OdeSimSpec<'_>,
     p_map: &HashMap<String, f64>,
+    dt: f64,
     steps: usize,
 ) -> f64 {
     let (Some(x_expr), Some(y_expr)) = (spec.planar_x_expr, spec.planar_y_expr) else {
@@ -312,17 +326,17 @@ fn eval_planar_custom_final(
         y_expr,
         params,
     };
-    step_final(ArrayState(ic), &dyn_sys, spec, steps)
+    step_final(ArrayState(ic), &dyn_sys, spec.method, dt, steps)
 }
 
 fn step_final<const N: usize, D: OdeSystem<ArrayState<N>>>(
     mut state: ArrayState<N>,
     dyn_sys: &D,
-    spec: &super::comparison::OdeSimSpec<'_>,
+    method: IntegrationMethod,
+    dt: f64,
     steps: usize,
 ) -> f64 {
-    let dt = spec.dt;
-    match spec.method {
+    match method {
         IntegrationMethod::RungeKutta4 => {
             let mut solver = RungeKutta4::new(&state);
             for i in 0..steps {
@@ -380,13 +394,14 @@ impl OdeSolverTool {
 
     fn reusable_baseline_final_y(
         &self,
+        primary_dt: f64,
         custom_spec: Option<&CustomOdeSpec>,
         param_refs: &[(&str, f64)],
     ) -> Option<f64> {
         if self.diverged || self.has_custom_input_error() {
             return None;
         }
-        let steps = crate::presets::checked_ode_step_count(self.dt, self.total_time)?;
+        let steps = crate::presets::checked_ode_step_count(primary_dt, self.total_time)?;
         if self.y_series.len() != steps + 1
             || (self.has_second_state() && self.v_series.len() != steps + 1)
         {
@@ -417,12 +432,17 @@ impl OdeSolverTool {
             .map(|(k, v)| (k.as_str(), *v))
             .collect();
 
+        let primary_dt = self.budget_state.effective_dt.max(self.dt);
+        let (sens_dt, inst_per_eval) = self.prepare_sensitivity_budget(param_refs.len());
+
         let custom_spec = self.build_custom_ode_spec();
-        let baseline_hint = self.reusable_baseline_final_y(custom_spec.as_ref(), &param_refs);
+        let baseline_hint = ((sens_dt - primary_dt).abs() <= 1e-15)
+            .then(|| self.reusable_baseline_final_y(primary_dt, custom_spec.as_ref(), &param_refs))
+            .flatten();
         let base_spec = super::comparison::OdeSimSpec {
             preset: self.preset,
             method: self.method,
-            dt: self.dt,
+            dt: sens_dt,
             total_time: self.total_time,
             param_k: self.param_k,
             param_r: self.param_r,
@@ -449,10 +469,11 @@ impl OdeSolverTool {
             planar_ctx,
         );
 
-        self.sensitivity_engine.compute_with_baseline(
+        self.sensitivity_engine.compute_budgeted_with_baseline(
             &param_refs,
             &context,
             baseline_hint,
+            inst_per_eval,
             |p_map| eval_ode_final_state_planar(&base_spec, p_map),
         );
     }
