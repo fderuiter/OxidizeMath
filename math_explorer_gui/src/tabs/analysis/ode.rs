@@ -79,7 +79,7 @@ pub struct OdeSolverTool {
     pub(crate) budget_state: budget::OdeBudgetState,
 }
 
-fn default_scalar_ode_input() -> MathExpressionInputBar {
+pub(super) fn default_scalar_ode_input() -> MathExpressionInputBar {
     MathExpressionInputBar::new(
         "y'",
         "-k * y * sin(t)",
@@ -109,7 +109,7 @@ fn default_scalar_ode_input() -> MathExpressionInputBar {
     .with_param_spec("K", "K (Carrying Capacity)", 1.0..=100.0, 10.0)
 }
 
-fn default_ode_math_inputs() -> (
+pub(super) fn default_ode_math_inputs() -> (
     MathExpressionInputBar,
     MathExpressionInputBar,
     MathExpressionInputBar,
