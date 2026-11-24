@@ -45,22 +45,19 @@ mod tests {
         }
         #[cfg(feature = "applied")]
         {
-            check_one::<crate::tabs::game_theory::auction::MyersonAuctionTool>(ctx);
-            check_one::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(ctx);
-            check_one::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(ctx);
-            check_one::<crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool>(
-                ctx,
-            );
-            check_one::<crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::survival::SurvivalAnalysisTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::randomization::RandomizationTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::composite_win_ratio::WinRatioTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool>(
-                ctx,
-            );
+            use crate::tabs::{battery_degradation as bd, clinical_trials as ct, game_theory};
+            check_one::<game_theory::auction::MyersonAuctionTool>(ctx);
+            check_one::<game_theory::glicko2::Glicko2TournamentTool>(ctx);
+            check_one::<game_theory::markov::MarkovSequenceWorkbenchTool>(ctx);
+            check_one::<bd::lifetime_estimator::LifetimeEstimatorTool>(ctx);
+            check_one::<bd::capacity_fade::CapacityFadeTool>(ctx);
+            check_one::<ct::pharmacokinetics::PharmacokineticsTool>(ctx);
+            check_one::<ct::survival::SurvivalAnalysisTool>(ctx);
+            check_one::<ct::sample_size::SampleSizeCalculatorTool>(ctx);
+            check_one::<ct::randomization::RandomizationTool>(ctx);
+            check_one::<ct::win_ratio::WinRatioStressTesterTool>(ctx);
+            check_one::<ct::composite_win_ratio::WinRatioTool>(ctx);
+            check_one::<ct::win_ratio_workbench::WinRatioWorkbenchTool>(ctx);
         }
     }
 
@@ -75,6 +72,7 @@ mod tests {
         #[cfg(feature = "ai")]
         {
             check_one::<crate::tabs::ai::q_table_inspector::QTableInspectorTool>(ctx);
+            check_one::<crate::tabs::ai::calibration_workbench::CalibrationWorkbenchTool>(ctx);
             check_one::<crate::tabs::ai::attention_maps::AttentionMapsTool>(ctx);
             check_one::<crate::tabs::ai::tokenization::TokenizationTool>(ctx);
             check_one::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(ctx);

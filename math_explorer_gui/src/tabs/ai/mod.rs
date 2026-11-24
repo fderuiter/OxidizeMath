@@ -5,6 +5,7 @@ use eframe::egui;
 
 pub mod activation_functions;
 pub mod attention_maps;
+pub mod calibration_workbench;
 pub mod closed_loop_control;
 pub mod gaussian_splatting;
 pub mod grid_world;
