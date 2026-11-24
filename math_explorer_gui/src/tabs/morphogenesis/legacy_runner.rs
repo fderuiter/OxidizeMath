@@ -3,6 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
+use super::brush::{apply_brush_sim_command, apply_mask_rle_to_kinetics};
 use super::runner::{
     apply_uniform_noise, MorphoSnapshotData, MorphogenesisSharedParams, DEFAULT_MORPHOGENESIS_SEED,
 };
@@ -10,13 +11,13 @@ use super::MorphogenesisTool;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use math_explorer::biology::morphogenesis::{SpatialSchnakenbergKinetics, TuringSystem};
 use oxidize_core::rng::OxidizeRng;
 use std::sync::Arc;
 
 /// Legacy Schnakenberg-only 2D reaction-diffusion runner used in baseline unit tests.
 pub struct MorphogenesisRunner {
-    pub(crate) system: TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    pub(crate) system: TuringSystem<2, SpatialSchnakenbergKinetics, FiniteDifference2D>,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
@@ -57,11 +58,7 @@ impl MorphogenesisRunner {
         if dt.is_finite() && dt > 0.0 && is_pattern_forming_regime(a, b, d_u, d_v, dt) {
             let var_u = grid_u_variance(self.system.u());
             if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
-                MorphogenesisTool::initialize_schnakenberg(
-                    &mut self.system,
-                    self.width,
-                    self.height,
-                );
+                MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
             }
         }
         (dt.is_finite() && dt > 0.0).then_some(dt)
@@ -70,13 +67,32 @@ impl MorphogenesisRunner {
 
 impl SimulationRunner for MorphogenesisRunner {
     fn process_command(&mut self, cmd: SimCommand) {
-        if matches!(cmd, SimCommand::Reset)
-            || matches!(cmd, SimCommand::Custom(ref s) if s == "reinit")
-        {
-            let _ = self.sync_system_params();
-            MorphogenesisTool::initialize_schnakenberg(&mut self.system, self.width, self.height);
-            self.step_count = 0;
-            self.rng = OxidizeRng::new(DEFAULT_MORPHOGENESIS_SEED);
+        match cmd {
+            SimCommand::Reset => {
+                let _ = self.sync_system_params();
+                let mask_rle = self
+                    .params
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .mask_rle
+                    .clone();
+                apply_mask_rle_to_kinetics(
+                    &mut self.system.kinetics,
+                    self.width,
+                    self.height,
+                    mask_rle.as_deref(),
+                );
+                MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+                self.step_count = 0;
+                self.rng = OxidizeRng::new(DEFAULT_MORPHOGENESIS_SEED);
+            }
+            SimCommand::Custom(ref s) if s == "reinit" => {
+                let _ = self.sync_system_params();
+                MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+                self.step_count = 0;
+                self.rng = OxidizeRng::new(DEFAULT_MORPHOGENESIS_SEED);
+            }
+            other => apply_brush_sim_command(&mut self.system, self.width, self.height, &other),
         }
     }
 

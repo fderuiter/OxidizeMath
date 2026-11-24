@@ -76,6 +76,7 @@ impl Drop for TrackingResetGuard {
 
 /// Executes `f` under `VERIFIED_ALLOC_TEST_MUTEX` while reading exact thread-local allocation
 /// counts and requested byte totals from [`verified_engine::allocator::thread_allocation_stats`].
+#[cfg(any(feature = "epidemiology", feature = "pure_math"))]
 pub(crate) fn measure_coord_series_allocs<R>(f: impl FnOnce() -> R) -> (R, usize, usize) {
     let _lock = crate::VERIFIED_ALLOC_TEST_MUTEX
         .lock()

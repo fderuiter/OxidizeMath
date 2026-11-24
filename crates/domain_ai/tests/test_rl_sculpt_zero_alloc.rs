@@ -21,6 +21,7 @@ fn test_sculpted_mdp_bounce_walls_wind_probabilities_and_legacy_from() {
         start: GridState { x: 0, y: 0 },
         goal: GridState { x: 4, y: 4 },
         traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
+        walls: Vec::new(),
         gamma: 0.9,
     };
     let mut mdp = SculptedGridMdp::from(&legacy);
@@ -84,6 +85,7 @@ fn test_bellman_solver_matches_converged_tabular_q() {
         start: GridState { x: 0, y: 0 },
         goal: GridState { x: 3, y: 3 },
         traps: vec![GridState { x: 1, y: 2 }],
+        walls: vec![GridState { x: 2, y: 1 }],
         gamma: 0.9,
     };
     let mdp = SculptedGridMdp::from(&env);

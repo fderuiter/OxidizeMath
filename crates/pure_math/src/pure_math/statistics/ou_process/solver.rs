@@ -1,9 +1,11 @@
 //! Euler-Maruyama numerical solver for the Ornstein-Uhlenbeck process.
 
 use super::core::OuParams;
+pub use super::exact_solver::ExactOuSolver;
 use crate::error::OuError;
 use engine_diffeq::{EulerMaruyamaSolver, SdeSystem, StochasticCalculus};
 use math_commons::math_kernel::types::SolverWorkspace;
+use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
 
 struct ScalarOuSde {
@@ -250,6 +252,20 @@ impl EulerMaruyama {
     #[verified_engine::verified]
     pub fn time_step(&self) -> TimeStep {
         self.dt
+    }
+
+    /// Fills `out` in-place using `OxidizeRng` with **zero heap allocations**.
+    #[verified_engine::verified]
+    pub fn simulate_into(&self, x0: f64, out: &mut [f64], rng: &mut OxidizeRng) {
+        if out.is_empty() {
+            return;
+        }
+        out[0] = x0;
+        let mut x = x0;
+        for slot in out.iter_mut().skip(1) {
+            x = self.step(x, rng);
+            *slot = x;
+        }
     }
 }
 

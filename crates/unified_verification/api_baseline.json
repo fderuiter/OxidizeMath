@@ -1041,6 +1041,9 @@
       "signature": "impl SculptedGridMdp { pub fn set_cell_role (& mut self , _ : GridState , _ : GridCellRole) }"
     },
     {
+      "signature": "impl SculptedGridMdp { pub fn set_start (& mut self , _ : GridState) }"
+    },
+    {
       "signature": "impl SculptedGridMdp { pub fn step_deterministic (& self , _ : GridState , _ : Move) -> GridState }"
     },
     {
@@ -2976,6 +2979,12 @@
       "signature": "pub use thickness :: cortical_thickness"
     },
     {
+      "signature": "pub use thickness :: cortical_thickness_batch"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_batch_into"
+    },
+    {
       "signature": "pub use thickness :: cortical_thickness_indexed"
     },
     {
@@ -3070,6 +3079,12 @@
   "crates/domain_applied/src/applied/freesurfer/thickness.rs": [
     {
       "signature": "pub fn cortical_thickness (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & Surface , _ : & Surface ,) -> f64"
+    },
+    {
+      "signature": "pub fn cortical_thickness_batch (_ : & Surface , _ : & Surface) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn cortical_thickness_batch_into (_ : & Surface , _ : & Surface , _ : & mut [f64] ,)"
     },
     {
       "signature": "pub fn cortical_thickness_indexed (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & FlatSpatialGrid < '_ > , _ : & FlatSpatialGrid < '_ > ,) -> f64"
@@ -4834,6 +4849,26 @@
       "signature": "pub struct LaplaceBeltramiDiffusion2D"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/manifold.rs": [
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn from_indexed (_ : & [[f64 ; 3]] , _ : & [[usize ; 3]]) -> Self }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn from_mesh (_ : & Mesh) -> Self }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn laplacian (& self) -> & CotangentLaplacian }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn new (_ : CotangentLaplacian) -> Self }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn num_vertices (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct CotangentMeshDiffusion"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/mod.rs": [
     {
       "signature": "pub trait SpatialDiffusion < const N : usize >"
@@ -4870,6 +4905,9 @@
     },
     {
       "signature": "pub use laplace_beltrami :: LaplaceBeltramiDiffusion2D"
+    },
+    {
+      "signature": "pub use manifold :: CotangentMeshDiffusion"
     }
   ],
   "crates/domain_biology/src/biology/evolution.rs": [
@@ -5540,6 +5578,9 @@
       "signature": "pub use solvers :: TuringSolverStrategy"
     },
     {
+      "signature": "pub use spatial_reaction :: SpatialSchnakenbergKinetics"
+    },
+    {
       "signature": "pub use state :: TuringState"
     }
   ],
@@ -5567,6 +5608,9 @@
     },
     {
       "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction (& self , _ : [f64 ; N]) -> [f64 ; N] }"
+    },
+    {
+      "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction_at (& self , _ : usize , _ : [f64 ; N]) -> [f64 ; N] }"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/solvers.rs": [
@@ -5601,6 +5645,35 @@
       "signature": "pub trait TuringSolverStrategy < const N : usize = 2 > { fn step < K : ReactionKinetics < N > , D : SpatialDiffusion < N > > (& mut self , _ : & TuringState < N > , _ : & mut TuringState < N > , _ : & TuringDynamics < N , K , D > , _ : f64 ,) }"
     }
   ],
+  "crates/domain_biology/src/biology/morphogenesis/spatial_reaction.rs": [
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn clear_cell_override (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn clear_mask (& mut self) }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn grid_size (& self) -> usize }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn has_spatial_mask (& self) -> bool }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn is_overridden (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn new (_ : f64 , _ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn rates_at (& self , _ : usize) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl SpatialSchnakenbergKinetics { pub fn set_cell_rates (& mut self , _ : usize , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "pub struct SpatialSchnakenbergKinetics"
+    }
+  ],
   "crates/domain_biology/src/biology/morphogenesis/state.rs": [
     {
       "signature": "impl < const N : usize > TuringState < N > { pub fn is_empty (& self) -> bool }"
@@ -5628,6 +5701,56 @@
     },
     {
       "signature": "pub struct TuringState < const N : usize = 2 >"
+    }
+  ],
+  "crates/domain_biology/src/biology/neuroscience/cortical_sheet.rs": [
+    {
+      "signature": "impl CorticalSheetRunner { pub fn add_stimulus (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn clear_stimulus (& mut self) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn depolarize_vertex (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn laplacian (& self) -> & CotangentLaplacian }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn neuron (& self , _ : usize) -> & HodgkinHuxleyNeuron }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn new (_ : CotangentLaplacian , _ : & [f64] , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn num_vertices (& self) -> usize }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn potentials (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn set_laplacian (& mut self , _ : CotangentLaplacian) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn set_sheet_conductance (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn set_stimulus (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn sheet_conductance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn thickness_weights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn update_thickness_map (& mut self , _ : & [f64] , _ : f64 ,) }"
+    },
+    {
+      "signature": "pub struct CorticalSheetRunner"
     }
   ],
   "crates/domain_biology/src/biology/neuroscience/kinetics.rs": [
@@ -5708,6 +5831,9 @@
   ],
   "crates/domain_biology/src/biology/neuroscience/mod.rs": [
     {
+      "signature": "pub use cortical_sheet :: CorticalSheetRunner"
+    },
+    {
       "signature": "pub use kinetics :: GatingKinetics"
     },
     {
@@ -5770,6 +5896,9 @@
     },
     {
       "signature": "impl HodgkinHuxleyNeuron { pub fn set_n (& mut self , _ : f64) -> Result < () , HodgkinHuxleyError > }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyNeuron { pub fn set_v (& mut self , _ : f64) }"
     },
     {
       "signature": "impl HodgkinHuxleyNeuron { pub fn try_new_with_params (_ : f64 , _ : HodgkinHuxleyParameters ,) -> Result < Self , HodgkinHuxleyError > }"
@@ -7457,6 +7586,9 @@
       "signature": "impl FigureEightThreeBody { pub fn figure_eight_initial_state () -> ArrayState < 12 > }"
     },
     {
+      "signature": "impl FigureEightThreeBody { pub fn perturbed_figure_eight (_ : f64 , _ : f64) -> ArrayState < 12 > }"
+    },
+    {
       "signature": "impl FigureEightThreeBody { pub fn seed_on_poincare_section (& self , _ : f64 , _ : f64) -> Option < ArrayState < 12 > > }"
     },
     {
@@ -7722,6 +7854,9 @@
     },
     {
       "signature": "pub struct HenonHeiles"
+    },
+    {
+      "signature": "pub type HenonHeilesSystem = HenonHeiles"
     }
   ],
   "crates/domain_physics/src/physics/chaos/logistic.rs": [
@@ -7781,13 +7916,57 @@
   ],
   "crates/domain_physics/src/physics/chaos/metrics.rs": [
     {
+      "signature": "pub fn array_lyapunov_exponent < const N : usize , S , Sol > (_ : & S , _ : & mut Sol , _ : ArrayState < N > , _ : f64 , _ : usize , _ : f64 ,) -> Option < f64 > where S : OdeSystem < ArrayState < N > > + ? Sized , Sol : Solver < ArrayState < N > > ,"
+    },
+    {
       "signature": "pub fn logistic_lyapunov (_ : f64 , _ : f64 , _ : usize) -> f64"
     },
     {
       "signature": "pub fn lorenz_lyapunov < S , Sol > (_ : & S , _ : & mut Sol , _ : Vector3 < f64 > , _ : f64 , _ : usize , _ : f64 ,) -> Result < f64 , ChaosError > where S : OdeSystem < Vector3 < f64 > > + ? Sized , Sol : Solver < Vector3 < f64 > > ,"
+    },
+    {
+      "signature": "pub fn lyapunov_exponent_4d < S , Sol > (_ : & S , _ : & mut Sol , _ : ArrayState < 4 > , _ : f64 , _ : usize , _ : f64 ,) -> Option < f64 > where S : OdeSystem < ArrayState < 4 > > + ? Sized , Sol : Solver < ArrayState < 4 > > ,"
+    },
+    {
+      "signature": "pub fn lyapunov_exponent_6d < S , Sol > (_ : & S , _ : & mut Sol , _ : ArrayState < 6 > , _ : f64 , _ : usize , _ : f64 ,) -> Option < f64 > where S : OdeSystem < ArrayState < 6 > > + ? Sized , Sol : Solver < ArrayState < 6 > > ,"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/mod.rs": [
+    {
+      "signature": "pub use double_pendulum :: DoublePendulum"
+    },
+    {
+      "signature": "pub use henon_heiles :: HenonHeiles"
+    },
+    {
+      "signature": "pub use henon_heiles :: HenonHeilesSystem"
+    },
+    {
+      "signature": "pub use three_body :: ThreeBodyChoreography"
     }
   ],
   "crates/domain_physics/src/physics/chaos/poincare.rs": [
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub const fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub const fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub fn get (& self , _ : usize) -> Option < PoincarePoint > }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub fn push (& mut self , _ : PoincarePoint) }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub fn push_crossing < const N : usize > (& mut self , _ : & PoincareCrossing < N >) }"
+    },
     {
       "signature": "impl < const N : usize > PoincareSection < N > { pub fn detect_crossing (& self , _ : f64 , _ : f64 , _ : & ArrayState < N > , _ : & ArrayState < N > , _ : & ArrayState < N > , _ : & ArrayState < N > ,) -> Option < PoincareCrossing < N > > }"
     },
@@ -7807,7 +7986,24 @@
       "signature": "pub struct PoincareCrossing < const N : usize >"
     },
     {
+      "signature": "pub struct PoincarePoint"
+    },
+    {
+      "signature": "pub struct PoincareRingBuffer < const CAP : usize >"
+    },
+    {
       "signature": "pub struct PoincareSection < const N : usize >"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/three_body.rs": [
+    {
+      "signature": "pub use crate :: physics :: astrophysics :: nbody :: FIGURE_EIGHT_PERIOD"
+    },
+    {
+      "signature": "pub use crate :: physics :: astrophysics :: nbody :: FigureEightThreeBody"
+    },
+    {
+      "signature": "pub use crate :: physics :: astrophysics :: nbody :: FigureEightThreeBody as ThreeBodyChoreography"
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/analysis.rs": [
@@ -8168,6 +8364,62 @@
       "signature": "pub fn specific_enthalpy (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
     }
   ],
+  "crates/domain_physics/src/physics/high_energy/general_relativity/geodesic_bundle.rs": [
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn copy_newtonian_trail (& self , _ : & mut [[f64 ; 2]]) -> usize }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn copy_trajectory_trail (& self , _ : usize , _ : & mut [[f64 ; 2]]) -> usize }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn max_killing_drift (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn new (_ : f64 , _ : usize , _ : usize) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn newtonian_state (& self) -> & NewtonianOrbitState }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn probe_photon_deflection_rad (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn seed_mixed_ensemble (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn seed_photon_lensing_fan (& mut self , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn seed_timelike_isco_comparison (& mut self , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn step_n (& mut self , _ : f64 , _ : usize) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn step_n_verified (& mut self , _ : f64 , _ : usize) -> (u64 , u64) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn step_once (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl SchwarzschildGeodesicBundle { pub fn trajectories (& self) -> & [GeodesicTrajectoryState] }"
+    },
+    {
+      "signature": "pub const MAX_GEODESIC_TRAJECTORIES : usize"
+    },
+    {
+      "signature": "pub fn newtonian_periapsis_radius (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct GeodesicTrajectoryState"
+    },
+    {
+      "signature": "pub struct NewtonianOrbitState"
+    },
+    {
+      "signature": "pub struct SchwarzschildGeodesicBundle"
+    }
+  ],
   "crates/domain_physics/src/physics/high_energy/general_relativity/kerr.rs": [
     {
       "signature": "impl KerrEquatorialMetric { pub fn ergosphere_radius (& self) -> f64 }"
@@ -8190,6 +8442,21 @@
   ],
   "crates/domain_physics/src/physics/high_energy/general_relativity/mod.rs": [
     {
+      "signature": "pub use geodesic_bundle :: GeodesicTrajectoryState"
+    },
+    {
+      "signature": "pub use geodesic_bundle :: MAX_GEODESIC_TRAJECTORIES"
+    },
+    {
+      "signature": "pub use geodesic_bundle :: NewtonianOrbitState"
+    },
+    {
+      "signature": "pub use geodesic_bundle :: SchwarzschildGeodesicBundle"
+    },
+    {
+      "signature": "pub use geodesic_bundle :: newtonian_periapsis_radius"
+    },
+    {
       "signature": "pub use kerr :: KerrEquatorialMetric"
     },
     {
@@ -8200,6 +8467,9 @@
     },
     {
       "signature": "pub use schwarzschild :: combined_clock_rate"
+    },
+    {
+      "signature": "pub use schwarzschild :: critical_impact_parameter"
     },
     {
       "signature": "pub use schwarzschild :: effective_potential"
@@ -8219,7 +8489,16 @@
       "signature": "impl GeodesicKind { pub fn kappa (self) -> f64 }"
     },
     {
+      "signature": "impl SchwarzschildBlackHole { pub fn circular_shell_beta (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
+    },
+    {
       "signature": "impl SchwarzschildBlackHole { pub fn combined_clock_rate (& self , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildBlackHole { pub fn connection_4d (& self) -> Result < SchwarzschildConnection4D , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildBlackHole { pub fn critical_impact_parameter (& self) -> Result < f64 , HighEnergyError > }"
     },
     {
       "signature": "impl SchwarzschildBlackHole { pub fn effective_potential (& self , _ : f64 , _ : f64 , _ : GeodesicKind ,) -> Result < f64 , HighEnergyError > }"
@@ -8237,6 +8516,12 @@
       "signature": "impl SchwarzschildBlackHole { pub fn isco (& self) -> Result < f64 , HighEnergyError > }"
     },
     {
+      "signature": "impl SchwarzschildBlackHole { pub fn isco_specific_angular_momentum (& self) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl SchwarzschildBlackHole { pub fn killing_invariants (& self , _ : & Vector4 < f64 > , _ : & Vector4 < f64 >) -> (f64 , f64) }"
+    },
+    {
       "signature": "impl SchwarzschildBlackHole { pub fn new (_ : f64) -> Result < Self , HighEnergyError > }"
     },
     {
@@ -8246,10 +8531,16 @@
       "signature": "impl SchwarzschildBlackHole { pub fn schwarzschild_radius (& self) -> Result < f64 , HighEnergyError > }"
     },
     {
+      "signature": "impl SchwarzschildBlackHole { pub fn step_geodesic_rk4 (& self , _ : & mut Vector4 < f64 > , _ : & mut Vector4 < f64 > , _ : f64 ,) -> GeodesicStepStatus }"
+    },
+    {
       "signature": "pub enum GeodesicKind"
     },
     {
       "signature": "pub fn combined_clock_rate (_ : & SchwarzschildBlackHole , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn critical_impact_parameter (_ : f64) -> Result < f64 , HighEnergyError >"
     },
     {
       "signature": "pub fn effective_potential (_ : f64 , _ : f64 , _ : f64 , _ : GeodesicKind ,) -> Result < f64 , HighEnergyError >"
@@ -8289,22 +8580,40 @@
       "signature": "pub use general_relativity :: GeodesicKind"
     },
     {
+      "signature": "pub use general_relativity :: GeodesicTrajectoryState"
+    },
+    {
       "signature": "pub use general_relativity :: KerrEquatorialMetric"
+    },
+    {
+      "signature": "pub use general_relativity :: MAX_GEODESIC_TRAJECTORIES"
     },
     {
       "signature": "pub use general_relativity :: MorrisThorneWormhole"
     },
     {
+      "signature": "pub use general_relativity :: NewtonianOrbitState"
+    },
+    {
       "signature": "pub use general_relativity :: SchwarzschildBlackHole"
     },
     {
+      "signature": "pub use general_relativity :: SchwarzschildGeodesicBundle"
+    },
+    {
       "signature": "pub use general_relativity :: combined_clock_rate"
+    },
+    {
+      "signature": "pub use general_relativity :: critical_impact_parameter"
     },
     {
       "signature": "pub use general_relativity :: effective_potential"
     },
     {
       "signature": "pub use general_relativity :: flamm_paraboloid_z"
+    },
+    {
+      "signature": "pub use general_relativity :: newtonian_periapsis_radius"
     },
     {
       "signature": "pub use general_relativity :: photon_sphere_radius"
@@ -8320,6 +8629,36 @@
     },
     {
       "signature": "pub use math_commons :: constants :: SOLAR_MASS"
+    },
+    {
+      "signature": "pub use observer :: apparent_superluminal_beta"
+    },
+    {
+      "signature": "pub use observer :: calculate_lorentz_factor_from_beta"
+    },
+    {
+      "signature": "pub use observer :: relativistic_doppler_factor"
+    },
+    {
+      "signature": "pub use radiation :: JetKnotConfig"
+    },
+    {
+      "signature": "pub use radiation :: JetKnotObservables"
+    },
+    {
+      "signature": "pub use radiation :: accretion_ring_beaming_factor"
+    },
+    {
+      "signature": "pub use radiation :: accretion_ring_flux_asymmetry"
+    },
+    {
+      "signature": "pub use radiation :: beamed_synchrotron_flux_factor"
+    },
+    {
+      "signature": "pub use radiation :: evaluate_jet_knot_observables"
+    },
+    {
+      "signature": "pub use radiation :: twin_jet_flux_asymmetry"
     }
   ],
   "crates/domain_physics/src/physics/high_energy/observer.rs": [
@@ -8330,10 +8669,25 @@
       "signature": "impl FourVector { pub fn is_valid_momentum (& self , _ : f64) -> Result < bool , HighEnergyError > }"
     },
     {
+      "signature": "impl FourVector { pub fn lorentz_boost (& self , _ : [f64 ; 3]) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl FourVector { pub fn lorentz_boost_z (& self , _ : f64) -> Result < Self , HighEnergyError > }"
+    },
+    {
       "signature": "impl FourVector { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
     },
     {
+      "signature": "pub fn apparent_superluminal_beta (_ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
       "signature": "pub fn calculate_lorentz_factor (_ : f64) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn calculate_lorentz_factor_from_beta (_ : f64) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn relativistic_doppler_factor (_ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
     },
     {
       "signature": "pub struct FourVector"
@@ -8341,10 +8695,31 @@
   ],
   "crates/domain_physics/src/physics/high_energy/radiation.rs": [
     {
+      "signature": "pub fn accretion_ring_beaming_factor (_ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn accretion_ring_flux_asymmetry (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn beamed_synchrotron_flux_factor (_ : f64 , _ : f64 , _ : bool ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn evaluate_jet_knot_observables (_ : & JetKnotConfig ,) -> Result < JetKnotObservables , HighEnergyError >"
+    },
+    {
       "signature": "pub fn inverse_compton_spectral_index (_ : f64) -> Result < f64 , HighEnergyError >"
     },
     {
       "signature": "pub fn synchrotron_power (_ : f64 , _ : f64 , _ : f64) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn twin_jet_flux_asymmetry (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub struct JetKnotConfig"
+    },
+    {
+      "signature": "pub struct JetKnotObservables"
     }
   ],
   "crates/domain_physics/src/physics/high_energy/statistics.rs": [
@@ -10026,6 +10401,9 @@
   ],
   "crates/domain_physics/src/physics/stat_mech/ising.rs": [
     {
+      "signature": "impl SpinLattice { pub fn clear_pinned (& mut self) }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn evolve (& mut self , _ : usize , _ : f64 , _ : f64 , _ : f64) }"
     },
     {
@@ -10044,6 +10422,9 @@
       "signature": "impl SpinLattice { pub fn height (& self) -> usize }"
     },
     {
+      "signature": "impl SpinLattice { pub fn is_pinned (& self , _ : usize , _ : usize) -> bool }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn magnetization (& self) -> i64 }"
     },
     {
@@ -10056,6 +10437,9 @@
       "signature": "impl SpinLattice { pub fn new_with_rng (_ : usize , _ : usize , _ : oxidize_core :: rng :: OxidizeRng ,) -> Self }"
     },
     {
+      "signature": "impl SpinLattice { pub fn pinned (& self) -> & [bool] }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn reseed (& mut self , _ : u64) }"
     },
     {
@@ -10063,6 +10447,9 @@
     },
     {
       "signature": "impl SpinLattice { pub fn set (& mut self , _ : usize , _ : usize , _ : i8) }"
+    },
+    {
+      "signature": "impl SpinLattice { pub fn set_pinned (& mut self , _ : usize , _ : usize , _ : bool) }"
     },
     {
       "signature": "impl SpinLattice { pub fn spins (& self) -> & [i8] }"
@@ -11874,6 +12261,9 @@
       "signature": "pub trait Sample2D"
     },
     {
+      "signature": "pub trait Sample2D { fn advance_slice_plateau (_ : & [Self] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) -> usize where Self : Sized , }"
+    },
+    {
       "signature": "pub trait Sample2D { fn sample_x (& self) -> f64 }"
     },
     {
@@ -11973,6 +12363,12 @@
   "crates/oxidize_core/src/ast_visitor.rs": [
     {
       "signature": "impl AstVisitor { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl AstVisitor { pub fn with_test_scope (_ : bool) -> Self }"
+    },
+    {
+      "signature": "pub fn is_dedicated_test_path (_ : & Path) -> bool"
     },
     {
       "signature": "pub struct AstVisitor"
@@ -12435,6 +12831,12 @@
     },
     {
       "signature": "pub use crate :: pure_math :: statistics :: monte_carlo :: MonteCarloError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: statistics :: poisson :: PoissonError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: statistics :: queueing :: QueueingError"
     },
     {
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
@@ -13579,15 +13981,50 @@
       "signature": "pub struct PhasePoint2D"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/ode/implicit_midpoint.rs": [
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const DEFAULT_MAX_ITERS : usize }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const MAX_ALLOWED_ITERS : usize }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const fn max_iters (& self) -> usize }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub fn with_max_iters (_ : & State , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > ImplicitMidpoint < ArrayState < N > > { pub fn try_step_array < S > (& mut self , _ : & S , _ : f64 , _ : & mut ArrayState < N > , _ : f64 ,) -> bool where S : OdeSystem < ArrayState < N > > + ? Sized , }"
+    },
+    {
+      "signature": "pub const MAX_FIXED_POINT_ITERS : usize"
+    },
+    {
+      "signature": "pub struct ImplicitMidpoint < State >"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/ode/mod.rs": [
     {
-      "signature": "impl IntegrationMethod { pub const ALL : [Self ; 3] }"
+      "signature": "impl IntegrationMethod { pub const ALL : [Self ; 5] }"
+    },
+    {
+      "signature": "impl IntegrationMethod { pub const fn is_symplectic (& self) -> bool }"
     },
     {
       "signature": "impl IntegrationMethod { pub fn name (& self) -> & 'static str }"
     },
     {
       "signature": "pub enum IntegrationMethod"
+    },
+    {
+      "signature": "pub use implicit_midpoint :: ImplicitMidpoint"
+    },
+    {
+      "signature": "pub use implicit_midpoint :: MAX_FIXED_POINT_ITERS"
     },
     {
       "signature": "pub use model :: OdeModel"
@@ -13667,6 +14104,15 @@
     },
     {
       "signature": "pub struct RungeKutta4 < State >"
+    },
+    {
+      "signature": "pub use super :: symplectic :: GaussLegendre4"
+    },
+    {
+      "signature": "pub use super :: symplectic :: ImplicitMidpoint"
+    },
+    {
+      "signature": "pub use super :: symplectic :: MAX_FIXED_POINT_ITERS"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/state.rs": [
@@ -13735,6 +14181,9 @@
       "signature": "impl < State : Clone > GaussLegendre4 < State > { pub const MAX_ALLOWED_SUBSTEPS : usize }"
     },
     {
+      "signature": "impl < State : Clone > GaussLegendre4 < State > { pub const fn max_iters (& self) -> usize }"
+    },
+    {
       "signature": "impl < State : Clone > GaussLegendre4 < State > { pub fn new (_ : & State) -> Self }"
     },
     {
@@ -13744,7 +14193,10 @@
       "signature": "impl < State : Clone > GaussLegendre4 < State > { pub fn with_max_iters (_ : & State , _ : usize) -> Self }"
     },
     {
-      "signature": "impl SymplecticMethod { pub const ALL : [Self ; 3] }"
+      "signature": "impl < const N : usize > GaussLegendre4 < ArrayState < N > > { pub fn try_step_array < S > (& mut self , _ : & S , _ : f64 , _ : & mut ArrayState < N > , _ : f64 ,) -> bool where S : OdeSystem < ArrayState < N > > + ? Sized , }"
+    },
+    {
+      "signature": "impl SymplecticMethod { pub const ALL : [Self ; 4] }"
     },
     {
       "signature": "impl SymplecticMethod { pub fn name (& self) -> & 'static str }"
@@ -13760,6 +14212,12 @@
     },
     {
       "signature": "pub struct Yoshida4 < Coord >"
+    },
+    {
+      "signature": "pub use super :: implicit_midpoint :: ImplicitMidpoint"
+    },
+    {
+      "signature": "pub use super :: implicit_midpoint :: MAX_FIXED_POINT_ITERS"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/traits.rs": [
@@ -14642,6 +15100,53 @@
       "signature": "pub struct BuckledSurfaceFlow"
     }
   ],
+  "crates/pure_math/src/pure_math/differential_geometry/cotangent_mesh.rs": [
+    {
+      "signature": "impl CotangentLaplacian { pub fn apply (& self , _ : & [f64] , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn apply_at (& self , _ : & [f64] , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn compute_mean_curvature (& self , _ : & [[f64 ; 3]] , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn from_indexed (_ : & [[f64 ; 3]] , _ : & [[usize ; 3]]) -> Self }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn from_mesh (_ : & Mesh) -> Self }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn inv_vertex_area (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn mean_edge_length (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn neighbors (& self , _ : usize) -> & [usize] }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn nnz (& self) -> usize }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn num_vertices (& self) -> usize }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn row_weights (& self , _ : usize) -> & [f64] }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn step_heat_euler (& self , _ : & [f64] , _ : & mut [f64] , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn vertex_area (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn vertex_areas (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub struct CotangentLaplacian"
+    }
+  ],
   "crates/pure_math/src/pure_math/differential_geometry/heat_equation.rs": [
     {
       "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn new (_ : & 'a S , _ : f64 , _ : (f64 , f64) , _ : (f64 , f64) , _ : (usize , usize) , _ : impl Fn (f64 , f64) -> f64 ,) -> Self }"
@@ -14680,6 +15185,11 @@
     },
     {
       "signature": "pub use super :: buckled_flow :: SurfaceTopology"
+    }
+  ],
+  "crates/pure_math/src/pure_math/differential_geometry/mod.rs": [
+    {
+      "signature": "pub use cotangent_mesh :: CotangentLaplacian"
     }
   ],
   "crates/pure_math/src/pure_math/differential_geometry/operators.rs": [
@@ -17444,15 +17954,6 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn num_states (& self) -> usize }"
     },
     {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn simulate_trajectory < R : rand :: Rng > (& self , _ : usize , _ : T , _ : & mut R ,) -> Result < Vec < (T , usize) > > }"
-    },
-    {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state (& self) -> Option < DVector < T > > }"
-    },
-    {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state_with_workspace (& self , _ : & mut math_commons :: stochastic :: SolverWorkspace , _ : & mut DVector < T > ,) -> bool }"
-    },
-    {
       "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn transition_probabilities (& self , _ : T) -> Result < DMatrix < T > > }"
     },
     {
@@ -17460,6 +17961,36 @@
     },
     {
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/ctmc/simulation.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn simulate_trajectory < R : rand :: Rng > (& self , _ : usize , _ : T , _ : & mut R ,) -> Result < Vec < (T , usize) > > }"
+    },
+    {
+      "signature": "impl ContinuousMarkovChain < f64 > { pub fn simulate_gillespie_into (& self , _ : usize , _ : f64 , _ : & mut [f64] , _ : & mut [usize] , _ : & mut [f64] , _ : & mut OxidizeRng ,) -> Result < usize > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/ctmc/steady_state.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn closed_classes (& self) -> Vec < CommunicatingClass > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn communicating_classes (& self) -> Vec < CommunicatingClass > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state (& self) -> Option < DVector < T > > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state_with_workspace (& self , _ : & mut SolverWorkspace , _ : & mut DVector < T > ,) -> bool }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/dtmc/hitting.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn mean_hitting_times (& self , _ : usize) -> Result < DVector < T > > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn mean_hitting_times_to_set (& self , _ : & [usize]) -> Result < DVector < T > > }"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/dtmc/mod.rs": [
@@ -17509,7 +18040,57 @@
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
     },
     {
+      "signature": "pub use scc :: CommunicatingClass"
+    },
+    {
       "signature": "pub use types :: StateType"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/dtmc/period.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn is_aperiodic (& self) -> bool }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn period (& self) -> Option < usize > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn state_period (& self , _ : usize) -> Result < usize > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/dtmc/scc.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn closed_classes (& self) -> Vec < CommunicatingClass > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn communicating_classes (& self) -> Vec < CommunicatingClass > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn is_irreducible (& self) -> bool }"
+    },
+    {
+      "signature": "pub struct CommunicatingClass"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/dtmc/simulation.rs": [
+    {
+      "signature": "impl MarkovChain < f64 > { pub fn simulate_visits_into (& self , _ : usize , _ : usize , _ : & mut [usize] , _ : & mut OxidizeRng ,) -> Result < usize > }"
+    },
+    {
+      "signature": "impl MarkovChain < f64 > { pub fn step_state (& self , _ : usize , _ : & mut OxidizeRng) -> usize }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/dtmc/stationary.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn limiting_distribution (& self , _ : & DVector < T >) -> Result < DVector < T > > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn limiting_distribution_from_state (& self , _ : usize) -> Option < DVector < T > > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn stationary_distribution (& self) -> Option < DVector < T > > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn stationary_distribution_with_workspace (& self , _ : & mut SolverWorkspace , _ : & mut DVector < T > ,) -> bool }"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/dtmc/types.rs": [
@@ -17523,6 +18104,9 @@
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch_into (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > , _ : & mut BaumWelchWorkspace < T > , _ : & mut [T] ,) -> Result < BaumWelchReport < T > , MarkovError > }"
+    },
+    {
+      "signature": "pub use super :: baum_welch_types :: BaumWelchResult"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch_types.rs": [
@@ -17542,6 +18126,9 @@
       "signature": "pub struct BaumWelchReport < T >"
     },
     {
+      "signature": "pub struct BaumWelchResult < T >"
+    },
+    {
       "signature": "pub struct BaumWelchWorkspace < T >"
     }
   ],
@@ -17551,6 +18138,9 @@
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn forward (& self , _ : & [usize]) -> Result < T > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn forward_log_likelihood (& self , _ : & [usize]) -> Result < T > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn log_likelihood (& self , _ : & [usize]) -> Result < T > }"
@@ -17576,6 +18166,9 @@
     },
     {
       "signature": "pub use baum_welch_types :: BaumWelchReport"
+    },
+    {
+      "signature": "pub use baum_welch_types :: BaumWelchResult"
     },
     {
       "signature": "pub use baum_welch_types :: BaumWelchWorkspace"
@@ -17653,6 +18246,9 @@
       "signature": "pub use ctmc :: ContinuousMarkovChain"
     },
     {
+      "signature": "pub use dtmc :: CommunicatingClass"
+    },
+    {
       "signature": "pub use dtmc :: MarkovChain"
     },
     {
@@ -17663,6 +18259,9 @@
     },
     {
       "signature": "pub use hmm :: BaumWelchReport"
+    },
+    {
+      "signature": "pub use hmm :: BaumWelchResult"
     },
     {
       "signature": "pub use hmm :: BaumWelchWorkspace"
@@ -18424,6 +19023,38 @@
       "signature": "pub struct OuParams"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/ou_process/exact_solver.rs": [
+    {
+      "signature": "impl ExactOuSolver { pub fn conditional_mean (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn conditional_variance (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn new (_ : OuParams , _ : TimeStep) -> Self }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn params (& self) -> OuParams }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn simulate < R : Rng > (& self , _ : f64 , _ : usize , _ : & mut R) -> Vec < f64 > }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn simulate_into (& self , _ : f64 , _ : & mut [f64] , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn simulate_paths < R : Rng > (& self , _ : f64 , _ : usize , _ : usize , _ : & mut R ,) -> Vec < Vec < f64 > > }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn step < R : Rng > (& self , _ : f64 , _ : & mut R) -> f64 }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn time_step (& self) -> TimeStep }"
+    },
+    {
+      "signature": "pub struct ExactOuSolver"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/ou_process/mod.rs": [
     {
       "signature": "pub use analysis :: MomentumType"
@@ -18447,6 +19078,9 @@
       "signature": "pub use core :: OuParams"
     },
     {
+      "signature": "pub use exact_solver :: ExactOuSolver"
+    },
+    {
       "signature": "pub use solver :: EulerMaruyama"
     },
     {
@@ -18462,6 +19096,9 @@
     },
     {
       "signature": "impl EulerMaruyama { pub fn simulate < R : Rng > (& self , _ : f64 , _ : usize , _ : & mut R) -> Vec < f64 > }"
+    },
+    {
+      "signature": "impl EulerMaruyama { pub fn simulate_into (& self , _ : f64 , _ : & mut [f64] , _ : & mut OxidizeRng) }"
     },
     {
       "signature": "impl EulerMaruyama { pub fn simulate_paths < R : Rng > (& self , _ : f64 , _ : usize , _ : usize , _ : & mut R ,) -> Vec < Vec < f64 > > }"
@@ -18483,6 +19120,74 @@
     },
     {
       "signature": "pub struct TimeStep"
+    },
+    {
+      "signature": "pub use super :: exact_solver :: ExactOuSolver"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/poisson.rs": [
+    {
+      "signature": "impl HomogeneousPoisson { pub fn mean (& self , _ : f64) -> Result < f64 , PoissonError > }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn new (_ : f64) -> Result < Self , PoissonError > }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn pmf (& self , _ : usize , _ : f64) -> Result < f64 , PoissonError > }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn sample_interarrival (& self , _ : & mut OxidizeRng) -> f64 }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn simulate_arrivals (& self , _ : f64 , _ : usize , _ : & mut OxidizeRng ,) -> Result < Vec < f64 > , PoissonError > }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn simulate_arrivals_into (& self , _ : f64 , _ : & mut [f64] , _ : & mut OxidizeRng ,) -> Result < usize , PoissonError > }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn variance (& self , _ : f64) -> Result < f64 , PoissonError > }"
+    },
+    {
+      "signature": "impl InhomogeneousPoisson { pub fn expected_count (& self , _ : f64) -> Result < f64 , PoissonError > }"
+    },
+    {
+      "signature": "impl InhomogeneousPoisson { pub fn new (_ : IntensityProfile) -> Result < Self , PoissonError > }"
+    },
+    {
+      "signature": "impl InhomogeneousPoisson { pub fn profile (& self) -> IntensityProfile }"
+    },
+    {
+      "signature": "impl InhomogeneousPoisson { pub fn simulate_arrivals (& self , _ : f64 , _ : usize , _ : & mut OxidizeRng ,) -> Result < Vec < f64 > , PoissonError > }"
+    },
+    {
+      "signature": "impl InhomogeneousPoisson { pub fn simulate_arrivals_into (& self , _ : f64 , _ : & mut [f64] , _ : & mut OxidizeRng ,) -> Result < usize , PoissonError > }"
+    },
+    {
+      "signature": "impl IntensityProfile { pub fn integrated_mean (self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl IntensityProfile { pub fn rate_at (self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl IntensityProfile { pub fn upper_bound (self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl IntensityProfile { pub fn validate (self) -> Result < Self , PoissonError > }"
+    },
+    {
+      "signature": "pub enum IntensityProfile"
+    },
+    {
+      "signature": "pub enum PoissonError"
+    },
+    {
+      "signature": "pub struct HomogeneousPoisson"
+    },
+    {
+      "signature": "pub struct InhomogeneousPoisson"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/qmc/halton.rs": [
@@ -18578,6 +19283,77 @@
   "crates/pure_math/src/pure_math/statistics/qmc/sobol_data.rs": [
     {
       "signature": "pub const MAX_SOBOL_DIM : usize"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/queueing.rs": [
+    {
+      "signature": "impl Mm1Queue { pub fn arrival_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn metrics (& self) -> QueueMetrics }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn new (_ : f64 , _ : f64) -> Result < Self , QueueingError > }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn service_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn simulate_trajectory_into (& self , _ : usize , _ : f64 , _ : & mut [f64] , _ : & mut [usize] , _ : & mut OxidizeRng ,) -> usize }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn state_probability (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn to_truncated_ctmc (& self , _ : usize ,) -> Result < ContinuousMarkovChain < f64 > , QueueingError > }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn utilization (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn arrival_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn idle_and_erlang_c (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn metrics (& self) -> QueueMetrics }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn new (_ : f64 , _ : f64 , _ : usize ,) -> Result < Self , QueueingError > }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn servers (& self) -> usize }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn service_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn simulate_trajectory_into (& self , _ : usize , _ : f64 , _ : & mut [f64] , _ : & mut [usize] , _ : & mut OxidizeRng ,) -> usize }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn state_probability (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn to_truncated_ctmc (& self , _ : usize ,) -> Result < ContinuousMarkovChain < f64 > , QueueingError > }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn traffic_intensity (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn utilization (& self) -> f64 }"
+    },
+    {
+      "signature": "pub enum QueueingError"
+    },
+    {
+      "signature": "pub struct Mm1Queue"
+    },
+    {
+      "signature": "pub struct MmcQueue"
+    },
+    {
+      "signature": "pub struct QueueMetrics"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/regression.rs": [
@@ -19509,6 +20285,35 @@
       "signature": "pub trait GeodesicState < const N : usize > { fn zero_all (& mut self) }"
     }
   ],
+  "crates/pure_math/src/pure_math/tensor/lorentzian.rs": [
+    {
+      "signature": "impl SchwarzschildConnection4D { pub fn new (_ : f64) -> Result < Self , TensorError > }"
+    },
+    {
+      "signature": "pub struct SchwarzschildConnection4D"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn christoffel_tensors (& self , _ : & Vector4 < f64 >) -> Result < [Matrix4 < f64 > ; 4] , TensorError > }"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn geodesic_acceleration (& self , _ : & Vector4 < f64 > , _ : & Vector4 < f64 > ,) -> Result < Vector4 < f64 > , TensorError > }"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn interval_norm (& self , _ : & Vector4 < f64 > , _ : & Vector4 < f64 > ,) -> Result < f64 , TensorError > }"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn inverse_metric_tensor (& self , _ : & Vector4 < f64 >) -> Result < Matrix4 < f64 > , TensorError > }"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn is_outside_horizon (& self , _ : & Vector4 < f64 >) -> bool }"
+    },
+    {
+      "signature": "pub trait LorentzianConnection4D { fn metric_tensor (& self , _ : & Vector4 < f64 >) -> Result < Matrix4 < f64 > , TensorError > }"
+    }
+  ],
   "crates/pure_math/src/pure_math/tensor/metric.rs": [
     {
       "signature": "impl < F > RiemannianMetric < F > where F : Fn (& DVector < f64 >) -> DMatrix < f64 > , { pub fn new (_ : F) -> Self }"
@@ -19547,6 +20352,12 @@
     },
     {
       "signature": "pub use geodesic :: GeodesicSystem"
+    },
+    {
+      "signature": "pub use lorentzian :: LorentzianConnection4D"
+    },
+    {
+      "signature": "pub use lorentzian :: SchwarzschildConnection4D"
     },
     {
       "signature": "pub use metric :: Metric"
@@ -20004,7 +20815,13 @@
       "signature": "pub use pure_math :: error :: OuError"
     },
     {
+      "signature": "pub use pure_math :: error :: PoissonError"
+    },
+    {
       "signature": "pub use pure_math :: error :: PureMathError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: QueueingError"
     },
     {
       "signature": "pub use pure_math :: error :: StochasticError"
@@ -20125,6 +20942,15 @@
       "signature": "pub use diagnostics :: Severity"
     },
     {
+      "signature": "pub use domain_applied :: applied :: freesurfer :: cortical_thickness_batch"
+    },
+    {
+      "signature": "pub use domain_biology :: biology :: diffusion :: CotangentMeshDiffusion"
+    },
+    {
+      "signature": "pub use domain_biology :: biology :: neuroscience :: CorticalSheetRunner"
+    },
+    {
       "signature": "pub use math_commons :: fit :: FitModel"
     },
     {
@@ -20152,10 +20978,16 @@
       "signature": "pub use nalgebra :: self"
     },
     {
+      "signature": "pub use oxidize_core :: mesh :: ColoredMesh"
+    },
+    {
       "signature": "pub use oxidize_core :: mesh :: Mesh"
     },
     {
       "signature": "pub use oxidize_core :: mesh :: Point3D"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: VertexColor"
     },
     {
       "signature": "pub use oxidize_core :: rng :: OxidizeRng"
@@ -20168,6 +21000,9 @@
     },
     {
       "signature": "pub use pure_math :: math_types :: Rational"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: differential_geometry :: CotangentLaplacian"
     }
   ]
 }

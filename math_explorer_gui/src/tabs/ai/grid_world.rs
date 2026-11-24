@@ -4,12 +4,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::rl_sculpt::{
-    apply_rl_brush_stroke, mean_bellman_residual, new_rl_brush_kit, render_rl_sculpt_toolbar,
-    solve_bellman_with_policy, RlMazePreset, RlOverlayMode, RlSolverMode,
+    apply_rl_brush_stroke, mean_bellman_residual, new_rl_brush_kit, solve_bellman_with_policy,
+    RlMazePreset, RlOverlayMode, RlSolverMode,
 };
-use crate::accessibility::AccessibleHoverText;
-use crate::audio::{mappings::rl_td_surprise_frame, render_sonification_panel, SonificationFrame};
-use crate::framework::{InputMode, InteractionContext, InteractiveTool, SpatialBrushKit};
+use crate::audio::{mappings::rl_td_surprise_frame, SonificationFrame};
+use crate::framework::{
+    InputMode, InteractionContext, InteractiveTool, RasterBrushState, RasterBrushStroke,
+    SpatialBrushKit,
+};
 use eframe::egui;
 use math_commons::primitives::UnitInterval;
 use math_explorer::ai::reinforcement_learning::{
@@ -24,6 +26,41 @@ mod preset;
 #[cfg(test)]
 #[path = "grid_world/tests.rs"]
 mod tests;
+#[path = "grid_world/ui.rs"]
+mod ui;
+
+/// Interactive brush modes for sculpting [`GridWorldTool`] environments.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GridBrushMode {
+    /// Paints impassable wall cells blocking agent transitions.
+    #[default]
+    Wall,
+    /// Paints terminal `-10.0` penalty trap cells.
+    Trap,
+    /// Relocates the episode `start` state.
+    Start,
+    /// Relocates the terminal `+10.0` reward `goal` state.
+    Goal,
+    /// Clears walls or traps back to open navigable floor.
+    Empty,
+}
+
+impl GridBrushMode {
+    /// All selectable GridWorld sculpting modes in UI display order.
+    pub const ALL: [Self; 5] = [Self::Wall, Self::Trap, Self::Start, Self::Goal, Self::Empty];
+
+    /// User-facing label for side-panel sculpting controls.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Wall => "Paint Wall (Impassable)",
+            Self::Trap => "Paint Trap (-10 Penalty)",
+            Self::Start => "Place Start (S)",
+            Self::Goal => "Place Goal (+10 Reward)",
+            Self::Empty => "Erase Cell",
+        }
+    }
+}
 
 /// Interactive GridWorld RL tool with live maze sculpting, Bellman overlays, and sonification.
 pub struct GridWorldTool {
@@ -35,6 +72,8 @@ pub struct GridWorldTool {
     pub(super) overlay_mode: RlOverlayMode,
     pub(super) maze_preset: RlMazePreset,
     pub(super) brush_kit: SpatialBrushKit,
+    pub(crate) brush_state: RasterBrushState,
+    pub(crate) brush_mode: GridBrushMode,
     pub(super) learning_rate: f64,
     pub(super) discount_factor: f64,
     pub(super) exploration_rate: f64,
@@ -69,6 +108,8 @@ impl Default for GridWorldTool {
             overlay_mode: RlOverlayMode::EmpiricalPolicy,
             maze_preset: RlMazePreset::BaselineTraps,
             brush_kit: new_rl_brush_kit(),
+            brush_state: RasterBrushState::with_radius(0),
+            brush_mode: GridBrushMode::default(),
             learning_rate,
             discount_factor,
             exploration_rate,
@@ -196,131 +237,70 @@ impl GridWorldTool {
         }
     }
 
-    fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "grid_world_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                self.draw_transport_and_solver_controls(ui);
-                ui.separator();
-                ui.heading("Maze Sculpting");
-                if render_rl_sculpt_toolbar(
-                    ui,
-                    "grid_world",
-                    &mut self.mdp,
-                    &mut self.brush_kit,
-                    &mut self.maze_preset,
-                ) {
-                    if self.mdp.cell_role(self.current_state) == GridCellRole::SolidWall {
+    /// Applies a [`RasterBrushStroke`] to sculpt walls, traps, start, or goal cells live.
+    pub fn apply_brush_stroke(&mut self, stroke: RasterBrushStroke) {
+        let mode = if stroke.secondary {
+            GridBrushMode::Empty
+        } else {
+            self.brush_mode
+        };
+        if matches!(mode, GridBrushMode::Start | GridBrushMode::Goal) {
+            let target = GridState {
+                x: stroke.focus_cell.0 as i32,
+                y: stroke.focus_cell.1 as i32,
+            };
+            if self.mdp.in_bounds(target) {
+                if mode == GridBrushMode::Start && target != self.mdp.goal {
+                    self.mdp.set_start(target);
+                    if self.steps == 0 {
                         self.current_state = self.mdp.start;
                     }
-                    self.bellman_dirty = true;
-                    self.ensure_bellman_up_to_date();
-                    self.revision = self.revision.wrapping_add(1);
+                } else if mode == GridBrushMode::Goal && target != self.mdp.start {
+                    self.mdp.set_cell_role(target, GridCellRole::Goal);
                 }
-                ui.separator();
-                self.draw_hyperparameter_controls(ui);
-                ui.separator();
-                render_sonification_panel(ui, "grid_world", &self.latest_audio, !self.is_playing);
-            });
-        });
-    }
-
-    fn draw_transport_and_solver_controls(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Controls");
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("▶ Step")
-                .accessible_hover_text("Advance the agent by one step")
-                .clicked()
-            {
-                self.step_agent();
+                self.bellman_dirty = true;
+                self.ensure_bellman_up_to_date();
+                self.revision = self.revision.wrapping_add(1);
             }
-            let (label, hover) = if self.is_playing {
-                ("⏸ Pause", "Pause continuous RL playback")
-            } else {
-                ("▶ Play", "Start continuous RL playback")
+            return;
+        }
+
+        let role = match mode {
+            GridBrushMode::Wall => GridCellRole::SolidWall,
+            GridBrushMode::Trap => GridCellRole::Trap,
+            GridBrushMode::Empty | GridBrushMode::Start | GridBrushMode::Goal => GridCellRole::Free,
+        };
+        for &(cx, cy) in &stroke.cells {
+            let cell = GridState {
+                x: cx as i32,
+                y: cy as i32,
             };
-            if ui.button(label).accessible_hover_text(hover).clicked() {
-                self.is_playing = !self.is_playing;
-                if self.is_playing {
-                    self.last_tick = crate::web_io::PlatformInstant::now();
+            if !self.mdp.in_bounds(cell) || cell == self.mdp.start || cell == self.mdp.goal {
+                continue;
+            }
+            self.mdp.set_cell_role(cell, role);
+        }
+        if self.mdp.cell_role(self.current_state) == GridCellRole::SolidWall {
+            self.current_state = self.mdp.start;
+        }
+        self.bellman_dirty = true;
+        self.ensure_bellman_up_to_date();
+        self.revision = self.revision.wrapping_add(1);
+    }
+
+    /// Clears all sculpted non-goal cells while preserving `start` and `goal`.
+    pub fn clear_sculpted_obstacles(&mut self) {
+        for y in 0..self.mdp.height {
+            for x in 0..self.mdp.width {
+                let st = GridState { x, y };
+                if st != self.mdp.goal {
+                    self.mdp.set_cell_role(st, GridCellRole::Free);
                 }
             }
-        });
-        if ui
-            .button("▶ Train (100 Episodes)")
-            .accessible_hover_text("Train the agent for 100 episodes instantly")
-            .clicked()
-        {
-            self.train_batch();
         }
-        if ui
-            .button("↻ Reset Agent")
-            .accessible_hover_text("Clear learned values and reset agent state")
-            .clicked()
-        {
-            self.reset_agent();
-        }
-        self.draw_solver_and_overlay_selectors(ui);
-    }
-
-    fn draw_solver_and_overlay_selectors(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Solver:");
-            egui::ComboBox::from_id_salt("grid_world_solver")
-                .selected_text(self.solver_mode.label())
-                .show_ui(ui, |ui| {
-                    for mode in [RlSolverMode::TabularQ, RlSolverMode::PolicyGradient] {
-                        if ui
-                            .selectable_value(&mut self.solver_mode, mode, mode.label())
-                            .changed()
-                        {
-                            self.bellman_dirty = true;
-                            self.ensure_bellman_up_to_date();
-                            self.revision = self.revision.wrapping_add(1);
-                        }
-                    }
-                });
-        });
-        ui.horizontal(|ui| {
-            ui.label("Overlay:");
-            egui::ComboBox::from_id_salt("grid_world_overlay")
-                .selected_text(self.overlay_mode.label())
-                .show_ui(ui, |ui| {
-                    for mode in [
-                        RlOverlayMode::EmpiricalPolicy,
-                        RlOverlayMode::BellmanVStar,
-                        RlOverlayMode::PolicyValueVPi,
-                        RlOverlayMode::BellmanResidual,
-                    ] {
-                        if ui
-                            .selectable_value(&mut self.overlay_mode, mode, mode.label())
-                            .changed()
-                        {
-                            self.bellman_dirty = true;
-                            self.ensure_bellman_up_to_date();
-                            self.revision = self.revision.wrapping_add(1);
-                        }
-                    }
-                });
-        });
-    }
-
-    fn draw_hyperparameter_controls(&mut self, ui: &mut egui::Ui) {
-        ui.heading("RL Hyperparameters");
-        let mut hp_changed = ui
-            .add(egui::Slider::new(&mut self.learning_rate, 0.01..=1.0).text("Learning Rate (α)"))
-            .changed();
-        hp_changed |= ui
-            .add(egui::Slider::new(&mut self.discount_factor, 0.0..=1.0).text("Discount (γ)"))
-            .changed();
-        hp_changed |= ui
-            .add(egui::Slider::new(&mut self.exploration_rate, 0.0..=1.0).text("Exploration (ε)"))
-            .changed();
-        if hp_changed {
-            self.sync_agent_hyperparameters();
-        }
-        ui.add(egui::Slider::new(&mut self.playback_speed, 1.0..=20.0).text("Speed (Hz)"));
+        self.bellman_dirty = true;
+        self.ensure_bellman_up_to_date();
+        self.revision = self.revision.wrapping_add(1);
     }
 }
 
@@ -336,6 +316,9 @@ impl InteractiveTool for GridWorldTool {
     }
     fn domain(&self) -> &'static str {
         "ai"
+    }
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_state.focused_id
     }
     fn state_revision(&self) -> u64 {
         self.revision

@@ -6,16 +6,38 @@
 #[path = "sim_bus/topology.rs"]
 mod topology;
 
-#[cfg(any(feature = "biology", test))]
+#[cfg(feature = "biology")]
 pub use topology::MAX_NEURAL_SHARED_NODES;
-#[cfg(any(feature = "physics", test))]
+#[cfg(any(
+    feature = "pure_math",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
+pub use topology::MAX_SHARED_GRAPH_EDGES;
+#[cfg(any(
+    feature = "pure_math",
+    feature = "epidemiology",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
+pub use topology::MAX_SHARED_GRAPH_NODES;
+#[cfg(any(feature = "physics", all(test, feature = "pure_math")))]
 pub use topology::MAX_SHARED_LANDMARKS;
-pub use topology::{
-    SharedGraphTopology, SharedPointCloud3D, TopologySource, MAX_SHARED_GRAPH_EDGES,
-    MAX_SHARED_GRAPH_NODES,
-};
+pub use topology::{SharedGraphTopology, SharedPointCloud3D, TopologySource};
 
+#[cfg(any(
+    feature = "applied",
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 use crate::accessibility::announce_live_status;
+#[cfg(any(
+    feature = "applied",
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 use crate::app::theme::{contrasting_text_color, SemanticPalette};
 use eframe::egui;
 use std::sync::{Arc, RwLock};
@@ -105,12 +127,24 @@ impl SharedSimulationBus {
     }
 
     /// Retrieves the workspace [`SharedSimulationBus`] bound to `ctx`, if installed.
+    #[cfg(any(
+        feature = "applied",
+        feature = "biology",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn from_context(ctx: &egui::Context) -> Option<Self> {
         ctx.data(|d| d.get_temp::<Self>(egui::Id::new(SIM_BUS_CONTEXT_KEY)))
     }
 
     /// Retrieves the workspace [`SharedSimulationBus`] from `ctx`, inserting a context-local bus if absent.
+    #[cfg(any(
+        feature = "physics",
+        feature = "pure_math",
+        all(test, feature = "biology")
+    ))]
     #[must_use]
     pub fn from_context_or_insert(ctx: &egui::Context) -> Self {
         ctx.data_mut(|d| {
@@ -125,6 +159,13 @@ impl SharedSimulationBus {
     }
 
     /// Returns `true` when workspace `Link Topology` synchronization is enabled on `ctx`.
+    #[cfg(any(
+        feature = "applied",
+        feature = "biology",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn is_link_topology_enabled(ctx: &egui::Context) -> bool {
         ctx.data(|d| {
@@ -134,6 +175,13 @@ impl SharedSimulationBus {
     }
 
     /// Resolves the active [`SharedGraphTopology`] for a consumer pane given its [`TopologySource`].
+    #[cfg(any(
+        feature = "applied",
+        feature = "biology",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn active_graph_for(
         ctx: &egui::Context,
@@ -146,6 +194,10 @@ impl SharedSimulationBus {
     }
 
     /// Publishes a copy-on-write CSR graph snapshot when `fingerprint` differs from the current revision.
+    #[cfg(any(
+        feature = "pure_math",
+        all(test, any(feature = "biology", feature = "physics"))
+    ))]
     pub fn publish_graph_if_changed(
         &self,
         fingerprint: u64,
@@ -170,13 +222,20 @@ impl SharedSimulationBus {
     }
 
     /// Returns the latest published [`SharedGraphTopology`] snapshot, if any.
+    #[cfg(any(
+        feature = "applied",
+        feature = "biology",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn latest_graph(&self) -> Option<Arc<SharedGraphTopology>> {
         self.inner.read().ok()?.graph.clone()
     }
 
     /// Publishes a live 3D landmark point-cloud frame into this workspace bus.
-    #[cfg(any(feature = "physics", test))]
+    #[cfg(feature = "physics")]
     pub fn publish_point_cloud_3d(
         &self,
         mut points: Vec<[f64; 3]>,
@@ -202,6 +261,7 @@ impl SharedSimulationBus {
     }
 
     /// Returns the latest live 3D landmark point-cloud frame if newer than `after_revision`.
+    #[cfg(any(feature = "pure_math", all(test, feature = "physics")))]
     #[must_use]
     pub fn latest_point_cloud_3d_since(
         &self,
@@ -213,7 +273,7 @@ impl SharedSimulationBus {
     }
 
     /// Submits a one-click 3D landmark handoff payload and optionally requests opening `VietorisRipsTool`.
-    #[cfg(any(feature = "physics", test))]
+    #[cfg(any(feature = "physics", all(test, feature = "pure_math")))]
     pub fn submit_vr_handoff(
         &self,
         mut points: Vec<[f64; 3]>,
@@ -244,13 +304,14 @@ impl SharedSimulationBus {
     }
 
     /// Consumes a pending one-click `VietorisRipsTool` landmark handoff payload.
+    #[cfg(feature = "pure_math")]
     #[must_use]
     pub fn take_vr_handoff(&self) -> Option<Arc<SharedPointCloud3D>> {
         self.inner.write().ok()?.pending_vr_handoff.take()
     }
 
     /// Marks a pending cross-tab navigation request to open `VietorisRipsTool`.
-    #[cfg(any(feature = "physics", test))]
+    #[cfg(all(feature = "pure_math", feature = "physics"))]
     pub fn request_open_vietoris_rips(&self) {
         if let Ok(mut guard) = self.inner.write() {
             guard.pending_open_vr = true;
@@ -258,6 +319,7 @@ impl SharedSimulationBus {
     }
 
     /// Consumes any pending request to open `VietorisRipsTool`.
+    #[cfg(feature = "pure_math")]
     #[must_use]
     pub fn take_open_vietoris_rips_request(&self) -> bool {
         let Ok(mut guard) = self.inner.write() else {
@@ -270,6 +332,13 @@ impl SharedSimulationBus {
 }
 
 /// Renders an accessible `Topology Source` selector with WCAG 2.2 AA status and clamping badges.
+#[cfg(any(
+    feature = "applied",
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 pub fn render_topology_source_bar(
     ui: &mut egui::Ui,
     id_salt: &'static str,
@@ -325,6 +394,13 @@ pub fn render_topology_source_bar(
     changed
 }
 
+#[cfg(any(
+    feature = "applied",
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 fn paint_accessible_pill(ui: &mut egui::Ui, bg: egui::Color32, text: &str, strong: bool) {
     let fg = contrasting_text_color(bg);
     egui::Frame::NONE

@@ -7,6 +7,7 @@ use crate::async_sim::SimulationRunner;
 use crate::framework::{
     BranchControlAction, ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework,
 };
+#[cfg(feature = "physics")]
 use crate::tabs::mri::MriTool;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -27,6 +28,7 @@ fn run_framework_export(fw: &mut SimulationFramework, domain: &str, format: Expo
     });
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_mri_1000_step_parity_and_spin_echo_180_refocusing_gain() {
     let mut mri_parity = MriTool::default();
@@ -64,6 +66,7 @@ fn test_mri_1000_step_parity_and_spin_echo_180_refocusing_gain() {
     assert!(echo_tool.counterfactual_snapshot().is_none());
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_mri_t2_intervention_zero_alloc_and_twin_exports() {
     let mut fw = SimulationFramework::new("mri");
@@ -121,6 +124,7 @@ fn test_morphogenesis_1000_step_zero_perturbation_parity_and_zero_alloc() {
         high_contrast: false,
         theme_mode: ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
+        mask_rle: None,
     }));
     let mut runner = MorphogenesisKineticsRunner::new_seeded(&params, 24, 24);
     for _ in 0..10 {
@@ -231,6 +235,7 @@ fn test_morphogenesis_sculpted_maze_twin_parity_and_zero_alloc() {
         high_contrast: false,
         theme_mode: ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
+        mask_rle: None,
     }));
     let mut runner = MorphogenesisKineticsRunner::new_seeded(&params, 32, 32);
     runner.process_command(crate::async_sim::SimCommand::Custom("stamp_maze".into()));

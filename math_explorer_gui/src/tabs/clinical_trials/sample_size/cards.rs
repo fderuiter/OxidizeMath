@@ -1,5 +1,5 @@
 //! Interactive `TTestIndependent`, `ChiSquare2x2`, and `calculate_risk_metrics`
-//! hypothesis and 2x2 contingency analysis cards for [`super::sample_size::SampleSizeCalculatorTool`].
+//! hypothesis and 2x2 contingency analysis cards for [`super::SampleSizeCalculatorTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

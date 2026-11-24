@@ -118,22 +118,29 @@ impl Default for SculptedGridMdp {
 impl From<&GridWorldEnv> for SculptedGridMdp {
     #[verified_engine::verified]
     fn from(env: &GridWorldEnv) -> Self {
-        let width = env.width.clamp(MIN_RL_GRID_DIM, MAX_RL_GRID_DIM);
-        let height = env.height.clamp(MIN_RL_GRID_DIM, MAX_RL_GRID_DIM);
-        let mut mdp = Self::new(width, height, env.gamma, 0.0);
+        let (w, h) = (
+            env.width.clamp(MIN_RL_GRID_DIM, MAX_RL_GRID_DIM),
+            env.height.clamp(MIN_RL_GRID_DIM, MAX_RL_GRID_DIM),
+        );
+        let mut mdp = Self::new(w, h, env.gamma, 0.0);
         mdp.cells.fill(GridCellRole::Free);
         mdp.start = GridState {
-            x: env.start.x.clamp(0, width - 1),
-            y: env.start.y.clamp(0, height - 1),
+            x: env.start.x.clamp(0, w - 1),
+            y: env.start.y.clamp(0, h - 1),
         };
         mdp.goal = GridState {
-            x: env.goal.x.clamp(0, width - 1),
-            y: env.goal.y.clamp(0, height - 1),
+            x: env.goal.x.clamp(0, w - 1),
+            y: env.goal.y.clamp(0, h - 1),
         };
-        for trap in &env.traps {
-            if mdp.in_bounds(*trap) && *trap != mdp.start && *trap != mdp.goal {
-                let idx = mdp.cell_index(*trap);
-                mdp.cells[idx] = GridCellRole::Trap;
+        for (list, role) in [
+            (&env.walls, GridCellRole::SolidWall),
+            (&env.traps, GridCellRole::Trap),
+        ] {
+            for &cell in list {
+                if mdp.in_bounds(cell) && cell != mdp.start && cell != mdp.goal {
+                    let idx = mdp.cell_index(cell);
+                    mdp.cells[idx] = role;
+                }
             }
         }
         let goal_idx = mdp.cell_index(mdp.goal);
@@ -165,6 +172,22 @@ impl SculptedGridMdp {
         Ok(Self::new(width, height, gamma, wind_slip_prob))
     }
 
+    /// Relocates `start` to an in-bounds non-goal cell, clearing any wall or trap at `state`.
+    #[verified_engine::verified]
+    pub fn set_start(&mut self, state: GridState) {
+        if !self.in_bounds(state) || state == self.goal {
+            return;
+        }
+        self.start = state;
+        let idx = self.cell_index(state);
+        if matches!(
+            self.cells[idx],
+            GridCellRole::SolidWall | GridCellRole::Trap
+        ) {
+            self.cells[idx] = GridCellRole::Free;
+        }
+    }
+
     /// Creates an empty `width x height` sculpted grid with `start = (0, 0)` and `goal = (width - 1, height - 1)`.
     #[must_use]
     #[verified_engine::verified(alloc_ok = "allocates RL grid cell vector")]
@@ -178,23 +201,14 @@ impl SculptedGridMdp {
             .expect("clamped RL grid dimensions fit in usize");
         let mut cells = vec![GridCellRole::Free; total];
         cells[flatten_2d_index(goal.x as usize, goal.y as usize, w as usize)] = GridCellRole::Goal;
-        let clean_gamma = if gamma.is_finite() {
-            gamma.clamp(0.0, 1.0)
-        } else {
-            0.9
-        };
-        let clean_wind = if wind_slip_prob.is_finite() {
-            wind_slip_prob.clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
+        let clamp01 = |v: f64, d: f64| if v.is_finite() { v.clamp(0.0, 1.0) } else { d };
         Self {
             width: w,
             height: h,
             start,
             goal,
-            gamma: clean_gamma,
-            wind_slip_prob: clean_wind,
+            gamma: clamp01(gamma, 0.9),
+            wind_slip_prob: clamp01(wind_slip_prob, 0.0),
             cells,
         }
     }

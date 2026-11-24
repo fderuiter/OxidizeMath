@@ -123,6 +123,7 @@ fn test_verification_gates() {
     for cmd in [
         "check-api-drift",
         "check-benches",
+        "check-certificate",
         "check-duplicates",
         "check-profiles",
         "check-release-tag",

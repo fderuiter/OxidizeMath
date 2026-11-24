@@ -1,12 +1,11 @@
 //! Stationary and limiting distribution solvers for [`MarkovChain`].
-// [cite:clinical_trials_statistics]
 
 use super::{MarkovChain, Result};
 use crate::error::MarkovError;
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::Dimension;
+use math_commons::math_kernel::types::{Dimension, flatten_2d_index};
 use math_commons::stochastic::SolverWorkspace;
-use nalgebra::{DMatrix, DVector, RealField};
+use nalgebra::{DVector, RealField};
 use num_traits::ToPrimitive;
 
 impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
@@ -34,6 +33,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// assert!((pi[0] - 2.0 / 3.0).abs() < math_explorer::registry::TOLERANCE_HIGH);
     /// assert!((pi[1] - 1.0 / 3.0).abs() < math_explorer::registry::TOLERANCE_HIGH);
     /// ```
+    #[must_use]
     #[verified_engine::verified(alloc_ok = "allocates workspace and output vector")]
     pub fn stationary_distribution(&self) -> Option<DVector<T>> {
         let n = self.num_states();
@@ -64,7 +64,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
                     let Some(v) = self.transition_matrix[(r, c)].to_f64() else {
                         return false;
                     };
-                    staged[math_commons::math_kernel::types::flatten_2d_index(c, r, n)] = v;
+                    staged[flatten_2d_index(c, r, n)] = v;
                 }
             }
         }
@@ -88,6 +88,12 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// $\pi_{\infty}(t_i) = 0$). For non-absorbing chains, returns the unique stationary distribution
     /// when the unique closed recurrent class is aperiodic, or `Err(MarkovError::InvalidState)`
     /// when periodicity or multiple non-absorbing closed classes prevent convergence.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `initial` is not a valid probability vector on `self.num_states()`,
+    /// $(I - Q)$ is singular, or the chain has no limiting distribution due to periodicity or
+    /// multiple non-absorbing closed classes.
     #[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
     pub fn limiting_distribution(&self, initial: &DVector<T>) -> Result<DVector<T>> {
         let n = self.num_states();
@@ -104,12 +110,26 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
                     .to_string(),
             });
         };
-        if !self.has_aperiodic_unique_sink() {
+        if self.period() != Some(1) {
             return Err(MarkovError::InvalidState {
                 reason: "Periodic Markov chain has no limiting distribution".to_string(),
             });
         }
         Ok(pi)
+    }
+
+    /// Convenience wrapper computing [`Self::limiting_distribution`] starting deterministically
+    /// in `initial_state`, returning `None` when `initial_state` is out of bounds or no limit exists.
+    #[must_use]
+    #[verified_engine::verified(alloc_ok = "allocates basis vector and output distribution")]
+    pub fn limiting_distribution_from_state(&self, initial_state: usize) -> Option<DVector<T>> {
+        let n = self.num_states();
+        if initial_state >= n {
+            return None;
+        }
+        let mut e = DVector::zeros(n);
+        e[initial_state] = T::one();
+        self.limiting_distribution(&e).ok()
     }
 
     #[verified_engine::verified(alloc_ok = "formats error message on invalid input")]
@@ -157,59 +177,6 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
         }
         Ok(limiting)
     }
-
-    fn has_aperiodic_unique_sink(&self) -> bool {
-        let n = self.num_states();
-        let mut flat = vec![0.0_f64; n * n];
-        for r in 0..n {
-            for c in 0..n {
-                let Some(v) = self.transition_matrix[(r, c)].to_f64() else {
-                    return false;
-                };
-                flat[math_commons::math_kernel::types::flatten_2d_index(c, r, n)] = v;
-            }
-        }
-        let mut ws = SolverWorkspace::new(n, 0);
-        let Some(scc) = ws.analyze_scc(&flat, n) else {
-            return false;
-        };
-        if scc.num_sink_components != 1 || scc.unique_sink_size == 0 {
-            return false;
-        }
-        let sink = ws.unique_sink_members(scc.unique_sink_size);
-        is_sink_primitive(&flat, n, sink)
-    }
 }
 
-/// Checks primitivity (aperiodicity) of an irreducible $m \times m$ sink submatrix via
-/// Wielandt's bound $k = m^2 - 2m + 2$ using repeated squaring.
-fn is_sink_primitive(flat: &[f64], n: usize, sink: &[usize]) -> bool {
-    let m = sink.len();
-    if m <= 1 {
-        return m == 1;
-    }
-    let mut base = DMatrix::<f64>::zeros(m, m);
-    for (r, &sr) in sink.iter().enumerate() {
-        for (c, &sc) in sink.iter().enumerate() {
-            let prob = flat[math_commons::math_kernel::types::flatten_2d_index(sc, sr, n)];
-            base[(r, c)] = if prob > 1e-14 { 1.0 } else { 0.0 };
-        }
-    }
-    let mut exp = m * m - 2 * m + 2;
-    let mut acc = DMatrix::<f64>::identity(m, m);
-    while exp > 0 {
-        if exp & 1 == 1 {
-            acc = boolean_matmul(&acc, &base);
-        }
-        exp >>= 1;
-        if exp > 0 {
-            base = boolean_matmul(&base, &base);
-        }
-    }
-    acc.iter().all(|&v| v > 0.0)
-}
-
-fn boolean_matmul(a: &DMatrix<f64>, b: &DMatrix<f64>) -> DMatrix<f64> {
-    let p = a * b;
-    p.map(|v| if v > 0.0 { 1.0 } else { 0.0 })
-}
+// [cite:clinical_trials_statistics]
