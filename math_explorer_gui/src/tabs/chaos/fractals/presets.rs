@@ -4,6 +4,7 @@ use super::{
     FractalMode, FractalViewer, COORD_MAX, COORD_MIN, DEFAULT_FRACTAL_EXPR, DEFAULT_JULIA_CENTER,
     DEFAULT_MANDELBROT_CENTER, ZOOM_MAX, ZOOM_MIN,
 };
+use num_complex::Complex;
 use std::collections::BTreeMap;
 
 const MAX_CUSTOM_FRACTAL_EXPR_BYTES: usize = 256;
@@ -24,6 +25,8 @@ pub(super) struct FractalState {
     pub(super) julia_im: f64,
     #[serde(default, skip_serializing_if = "is_false")]
     pub(super) c_pinned: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(super) linked_explorer: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) mandelbrot_center_re: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -105,6 +108,23 @@ impl FractalViewer {
         self.dirty = true;
     }
 
+    /// Teleports `julia_c` to `c` and switches into progressive Julia rendering while preserving viewports.
+    pub fn teleport_to_julia(&mut self, c: Complex<f64>) {
+        if !c.re.is_finite() || !c.im.is_finite() {
+            return;
+        }
+        self.julia_c = Complex::new(
+            c.re.clamp(COORD_MIN, COORD_MAX),
+            c.im.clamp(COORD_MIN, COORD_MAX),
+        );
+        let target = if self.mode.is_custom() {
+            FractalMode::CustomJulia
+        } else {
+            FractalMode::Julia
+        };
+        self.switch_mode(target);
+    }
+
     pub(crate) fn sync_active_plane_view(&mut self) {
         if self.mode.uses_julia_c() {
             self.z_plane_view = (self.center, self.zoom);
@@ -153,6 +173,7 @@ impl FractalViewer {
             julia_re: self.julia_c.re,
             julia_im: self.julia_c.im,
             c_pinned: self.c_pinned,
+            linked_explorer: self.linked_explorer,
             mandelbrot_center_re: m_re,
             mandelbrot_center_im: m_im,
             mandelbrot_zoom: m_z,

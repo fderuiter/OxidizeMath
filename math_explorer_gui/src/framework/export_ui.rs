@@ -109,6 +109,7 @@ impl SimulationFramework {
         if export_action_button(ui, caps.figure, "Export PNG Image", fig_tip, close_on_click) {
             self.open_export_modal_for_active_tool();
         }
+        self.render_audio_export_items(ui, caps, close_on_click);
         let code_tip = if caps.code {
             "Preview, copy, and download calibrated LaTeX, Rust (.rs), and Python (.py) model code"
         } else {

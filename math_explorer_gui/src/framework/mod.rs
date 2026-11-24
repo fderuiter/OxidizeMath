@@ -1,4 +1,5 @@
 pub mod atlas_host;
+mod audio_sync;
 pub mod brush_codec;
 pub mod brush_dispatch;
 #[cfg(all(test, feature = "physics", feature = "biology"))]
@@ -31,6 +32,7 @@ pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_3d;
+mod export_audio;
 mod export_dataset;
 mod export_figure;
 mod export_gif_job;
@@ -147,11 +149,7 @@ pub trait InteractiveTool {
 
     /// Show the tool at the root `egui::Context` level by delegating to [`Self::show_inside`].
     fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| {
-                self.show_inside(ui);
-            });
+        pane_scope::render_default_tool_root(self, ctx);
     }
 
     /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
@@ -169,14 +167,10 @@ pub trait InteractiveTool {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
-
     /// Optional: UI rendering for the tool's specific side-panel controls.
     fn show_ui(&mut self, _ui: &mut egui::Ui) {}
-
     /// Optional: Context-based drawing.
     fn draw(&mut self, _ui: &mut egui::Ui, _response: &egui::Response, _painter: &egui::Painter) {}
-
-    // Normalized event hooks
     #[allow(missing_docs)]
     fn on_hover(&mut self, _ctx: &InteractionContext) {}
     #[allow(missing_docs)]
@@ -450,6 +444,23 @@ pub trait InteractiveTool {
         num_frames: usize,
     ) -> Vec<egui_plot::export::DatasetFrame> {
         export_figure::sample_tool_animation_frames(self, num_frames)
+    }
+    /// Optional hook emitting a zero-allocation [`crate::audio::SonificationFrame`] for live Web Audio and `.wav` export.
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        None
+    }
+    /// Returns persisted non-mute [`crate::audio::AcousticSettings`] for presets and share URLs.
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        crate::audio::AcousticSettings::default()
+    }
+    /// Applies persisted non-mute [`crate::audio::AcousticSettings`] without unmuting playback.
+    fn set_acoustic_settings(&mut self, _settings: crate::audio::AcousticSettings) {}
+    /// Samples deterministic multi-step [`crate::audio::SonificationFrame`] trajectories for 16-bit `.wav` export.
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        audio_sync::sample_tool_sonification_frames(self, num_frames)
     }
 
     /// Returns a type-erased reference for concrete tool state inspection.

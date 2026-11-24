@@ -7,17 +7,17 @@ use super::{
 };
 use eframe::egui;
 
-/// Static registration record for an auto-discovered [`InteractiveTool`].
+/// Compile-time inventory registration metadata for an [`InteractiveTool`] implementation.
 pub struct ToolMetadata {
-    /// Canonical stable identifier for the tool.
+    /// Stable tool identifier used in URLs, presets, and `#[register_tool]` inventory entries.
     pub id: &'static str,
-    /// Human-readable display label shown in the tool selector.
+    /// Human-readable display title shown in the sub-tool picker and command palette.
     pub display_name: &'static str,
-    /// Owning scientific domain slug.
+    /// Parent domain tab title owning this interactive tool.
     pub domain: &'static str,
-    /// Searchable keyword tags associated with the tool.
+    /// Searchable domain and topic keywords used by the command palette and gallery.
     pub tags: &'static [&'static str],
-    /// Constructor building a fresh boxed tool instance.
+    /// Zero-argument constructor creating a default instance of the tool.
     pub build: fn() -> Box<dyn InteractiveTool>,
 }
 
@@ -90,6 +90,8 @@ pub struct SimulationFramework {
     pub branch_engine: super::CounterfactualBranchEngine,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    /// Scoped Web Audio / gain-ramp / divergence-silence controller for this framework pane.
+    pub audio_controller: crate::audio::AudioEngineController,
     /// Declarative guided story and AST challenge HUD state.
     pub challenge_hud: ChallengeHudState,
     /// Active inverse challenge contract displayed in the Challenge HUD, if any.
@@ -105,7 +107,6 @@ pub struct SimulationFramework {
     /// Host state for the collapsible 2D parameter regime atlas panel.
     pub atlas_host: atlas_host::FrameworkAtlasHost,
 }
-
 #[derive(Default, Clone, Copy)]
 pub(crate) struct FrameworkSyncState {
     pub(super) theory_portal: Option<bool>,
@@ -427,6 +428,7 @@ impl SimulationFramework {
             step_counter: 0,
             branch_engine: super::CounterfactualBranchEngine::default(),
             start_time: crate::web_io::PlatformInstant::now(),
+            audio_controller: crate::audio::AudioEngineController::new(),
             challenge_hud: super::ChallengeHudState::default(),
             active_challenge: None,
             challenge_was_passed: false,

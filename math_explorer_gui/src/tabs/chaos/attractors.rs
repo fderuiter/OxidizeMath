@@ -45,6 +45,9 @@ mod timeline;
 #[path = "attractors/ui.rs"]
 mod ui;
 
+#[path = "attractors/sonification.rs"]
+mod sonification;
+
 #[path = "attractors/export.rs"]
 pub mod export;
 
@@ -63,15 +66,16 @@ pub struct AttractorPlotter {
     pub(crate) max_points: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
-    trajectory_scratch: Vec<Point3<f64>>,
+    pub(crate) trajectory_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
+    pub(crate) audio_settings: crate::audio::AcousticSettings,
     pub(crate) twin: Option<AttractorTwinState>,
     pub branch_engine: crate::framework::CounterfactualBranchEngine,
-    pub(super) latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
     pub(crate) atlas: ParameterAtlasController,
     pub(crate) bus_cache: dataflow::AttractorBusCache,
@@ -116,6 +120,7 @@ impl Default for AttractorPlotter {
             show_annotations: true,
             fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
+            audio_settings: crate::audio::AcousticSettings::default(),
             twin: None,
             branch_engine: crate::framework::CounterfactualBranchEngine::default(),
             latest_sonification: crate::audio::mappings::attractor_frame(
@@ -173,19 +178,21 @@ impl AttractorPlotter {
         Ok(())
     }
 
-    pub fn on_slider_changed(&mut self) {
+    fn sync_shared_params(&self) {
         let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.sigma = self.system.sigma;
-            p.rho = self.system.rho;
-            p.beta = self.system.beta;
-            p.dt = self.dt;
-            p.simulation_speed = self.simulation_speed;
-            p.max_points = self.max_points;
-            p.mode = self.mode;
-            p.custom_flow = Some(job);
-        }
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.sigma = self.system.sigma;
+        p.rho = self.system.rho;
+        p.beta = self.system.beta;
+        p.dt = self.dt;
+        p.simulation_speed = self.simulation_speed;
+        p.max_points = self.max_points;
+        p.mode = self.mode;
+        p.custom_flow = Some(job);
+    }
+
+    pub fn on_slider_changed(&mut self) {
+        self.sync_shared_params();
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
         }
@@ -222,32 +229,12 @@ impl AttractorPlotter {
         self.twin = None;
         self.branch_engine.clear();
         self.execution_state = SolverExecutionState::Ready;
-        let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.sigma = sigma;
-            p.rho = rho;
-            p.beta = beta;
-            p.dt = self.dt;
-            p.simulation_speed = self.simulation_speed;
-            p.max_points = self.max_points;
-            p.mode = self.mode;
-            p.custom_flow = Some(job);
-        }
+        self.invariants_cache.invalidate();
+        self.sync_shared_params();
         let params = Arc::clone(&self.params);
         self.worker
             .reset_or_respawn(|| AttractorRunner::from_params(params));
-    }
-
-    pub fn reset_parameters(&mut self) {
-        self.system.sigma = 10.0;
-        self.system.rho = 28.0;
-        self.system.beta = 8.0 / 3.0;
-        self.flow_bank = default_flow_bank();
-        self.dt = 0.01;
-        self.tube_radius = export::DEFAULT_TUBE_RADIUS;
-        self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
-        self.reset();
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     /// Projects 3D point to 2D screen space based on rotation, pan, zoom, and projection mode.
@@ -259,6 +246,41 @@ impl AttractorPlotter {
         let p_centered = p - center_offset;
         self.camera
             .project(&[p_centered.x, p_centered.y, p_centered.z])
+    }
+
+    fn sync_worker_snapshot(&mut self) {
+        let current_vec = self.system.state.vec;
+        if (!current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite())
+            && !self.diverged()
+        {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: current_vec,
+                diverged_at_step: self.step_count,
+            };
+        }
+        let ui_diverged = self.diverged();
+        let was_paused = self.is_paused();
+        if let Some(snapshot) = self.worker.update() {
+            self.latest_sonification = snapshot.sonification;
+            if !ui_diverged {
+                if let Some(data) = snapshot
+                    .structured_data
+                    .as_ref()
+                    .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
+                {
+                    self.history = data.history.clone();
+                    self.system.state.vec = data.current_vec;
+                    self.step_count = data.step_count;
+                    self.twin = data.twin.clone();
+                    if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
+                        || !was_paused
+                    {
+                        self.execution_state = data.execution_state;
+                    }
+                }
+                self.sync_local_branch_engine();
+            }
+        }
     }
 
     fn sync_worker_playback(&mut self, ctx: &egui::Context) {
@@ -292,6 +314,29 @@ impl InteractiveTool for AttractorPlotter {
         "chaos"
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_audio().with_3d_solid()
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(self.current_sonification_frame())
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(
+        &mut self,
+        frame_count: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.render_wav_frames(frame_count)
+    }
+
     fn state_revision(&self) -> u64 {
         self.compute_state_revision()
     }
@@ -322,7 +367,7 @@ impl InteractiveTool for AttractorPlotter {
         &mut self,
         action: crate::framework::BranchControlAction,
     ) -> bool {
-        match action {
+        let changed = match action {
             crate::framework::BranchControlAction::ForkHere => self.fork_here(),
             crate::framework::BranchControlAction::SwapBranches => self.swap_branches(),
             crate::framework::BranchControlAction::ClearFork => self.clear_fork(),
@@ -330,11 +375,9 @@ impl InteractiveTool for AttractorPlotter {
                 self.branch_engine.set_effective_delta(delta);
                 true
             }
-        }
-    }
-
-    fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot().with_3d_solid()
+        };
+        self.latest_sonification = self.current_sonification_frame();
+        changed
     }
 
     fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
@@ -364,39 +407,7 @@ impl InteractiveTool for AttractorPlotter {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.bind_sim_bus(&ctx);
-        let current_vec = self.system.state.vec;
-        if (!current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite())
-            && !self.diverged()
-        {
-            self.execution_state = SolverExecutionState::Diverged {
-                invalid_vec: current_vec,
-                diverged_at_step: self.step_count,
-            };
-        }
-
-        let ui_diverged = self.diverged();
-        let was_paused = self.is_paused();
-        if let Some(snapshot) = self.worker.update() {
-            self.latest_sonification = snapshot.sonification;
-            if !ui_diverged {
-                if let Some(data) = snapshot
-                    .structured_data
-                    .as_ref()
-                    .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
-                {
-                    self.history = data.history.clone();
-                    self.system.state.vec = data.current_vec;
-                    self.step_count = data.step_count;
-                    self.twin = data.twin.clone();
-                    if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
-                        || !was_paused
-                    {
-                        self.execution_state = data.execution_state;
-                    }
-                }
-                self.sync_local_branch_engine();
-            }
-        }
+        self.sync_worker_snapshot();
 
         self.sync_worker_playback(&ctx);
         self.publish_bus_landmarks(&ctx);
@@ -421,6 +432,10 @@ mod preset;
 #[cfg(test)]
 #[path = "attractors/attractor_tests.rs"]
 mod attractor_tests;
+
+#[cfg(test)]
+#[path = "attractors/lyapunov_bridge_tests.rs"]
+mod lyapunov_bridge_tests;
 
 #[cfg(test)]
 #[path = "attractors/counterfactual_tests.rs"]
