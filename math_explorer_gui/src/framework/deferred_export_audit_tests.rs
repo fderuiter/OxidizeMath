@@ -256,6 +256,7 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
     let extra = usize::from(has_riemannian) + usize::from(has_surface_morpho);
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
+    let stochastic_extra = if cfg!(feature = "pure_math") { 3 } else { 0 };
     let electrophys_tools =
         usize::from(cfg!(feature = "biology")) + usize::from(cfg!(feature = "physics"));
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
@@ -266,9 +267,9 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let expected_plot = 74 + extra + bio_extra + electrophys_tools;
+    let expected_plot = 74 + extra + bio_extra + stochastic_extra + electrophys_tools;
     let expected_solid = 7 + extra;
-    let expected_non_shader = 88 + extra + bio_extra + electrophys_tools;
+    let expected_non_shader = 88 + extra + bio_extra + stochastic_extra + electrophys_tools;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"

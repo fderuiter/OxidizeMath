@@ -1,7 +1,6 @@
 //! Integration tests verifying zero-allocation hot-path stepping under `VerifiedAllocator`
 //! across 100 steps of `CotangentMeshDiffusion` (`SchnakenbergKinetics` & `GrayScottKinetics`)
 //! and `CorticalSheetRunner` (`HodgkinHuxleyNeuron` + FreeSurfer `cortical_thickness_batch`).
-#![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use domain_applied::applied::freesurfer::{Surface, cortical_thickness_batch};
 use domain_biology::biology::diffusion::{CotangentMeshDiffusion, SpatialDiffusion};
