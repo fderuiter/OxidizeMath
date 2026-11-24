@@ -110,6 +110,8 @@ impl_error_from!(@cfg "pure_math":
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,
     OuError => Ou,
+    PoissonError => Poisson,
+    QueueingError => Queueing,
     RiskError => Risk,
     StochasticError => Stochastic,
     TdaError => Tda,

@@ -22,6 +22,8 @@
 //!     Essential for modeling state transitions in sports (e.g., possession value) or finance.
 //! *   **[Ornstein-Uhlenbeck](ou_process)**: Mean-reverting processes for modeling "momentum" or "hot hands"
 //!     where performance fluctuates around a long-term average.
+//! *   **[Poisson Arrival Processes](poisson)**: Homogeneous and thinning-based inhomogeneous Poisson arrival processes.
+//! *   **[Queueing Systems](queueing)**: Markovian $M/M/1$ and $M/M/c$ Erlang-C birth-death steady-state models.
 //!
 //! ###  Risk & Decision Theory
 //! *   **[Kelly Criterion](kelly)**: Optimal capital allocation strategy to maximize logarithmic wealth growth.
@@ -121,7 +123,11 @@ pub mod markov;
 pub mod match_models;
 pub mod monte_carlo;
 pub mod ou_process;
+/// Homogeneous and inhomogeneous Poisson arrival processes.
+pub mod poisson;
 pub mod qmc;
+/// Markovian birth-death queueing models ($M/M/1$ and $M/M/c$ Erlang-C).
+pub mod queueing;
 pub mod regression;
 pub mod risk;
 pub mod ruin;

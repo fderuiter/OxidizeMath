@@ -1,6 +1,5 @@
 //! Integration tests verifying zero-allocation hot-path execution of FreeSurfer
 //! `internal_energy`, `external_energy`, and `evolve_surface` under `VerifiedAllocator` across 100 steps.
-#![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use domain_applied::applied::freesurfer::{
     Surface, ThicknessWorkspace, cortical_thickness_batch, cortical_thickness_map_into,

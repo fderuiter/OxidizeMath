@@ -255,7 +255,9 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let has_riemannian = cfg!(feature = "pure_math");
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
     let extra = usize::from(has_riemannian) + usize::from(has_surface_morpho);
-    let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
+    let bio_extra = usize::from(cfg!(feature = "biology")) * 3;
+    let pure_extra = usize::from(cfg!(feature = "pure_math")) * 4
+        + usize::from(cfg!(all(feature = "pure_math", feature = "applied")));
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
         + usize::from(cfg!(feature = "physics")) * 3
         + usize::from(cfg!(feature = "pure_math"))
@@ -264,11 +266,9 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let fin_extra = usize::from(cfg!(feature = "pure_math"))
-        + usize::from(cfg!(all(feature = "pure_math", feature = "applied")));
-    let expected_plot = 74 + extra + bio_extra + fin_extra;
+    let expected_plot = 74 + extra + bio_extra + pure_extra;
     let expected_solid = 7 + extra;
-    let expected_non_shader = 88 + extra + bio_extra + fin_extra;
+    let expected_non_shader = 88 + extra + bio_extra + pure_extra;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"
@@ -481,20 +481,19 @@ fn test_financial_math_tools_csv_json_png_svg_exports() {
         let meta = inventory::iter::<crate::framework::ToolMetadata>
             .into_iter()
             .find(|m| m.id == id)
-            .unwrap_or_else(|| panic!("Missing financial_math tool {id}"));
+            .expect("registered financial_math tool");
         verify_single_figure_tool(id, (meta.build)());
         let mut fw = SimulationFramework::new("__audit_fin_data__");
         fw.active_tool = Some((meta.build)());
-        run_deferred_export_frame(&mut fw, ExportFormat::Csv, true);
-        assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-        let csv = fw.export_queue.last_exported_content.as_deref();
-        assert!(
-            csv.is_some_and(|s| s.lines().count() >= 5),
-            "Short CSV {id}"
-        );
-        run_deferred_export_frame(&mut fw, ExportFormat::Json, true);
-        assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-        let json = fw.export_queue.last_exported_content.as_deref();
-        assert!(json.is_some_and(|s| serde_json::from_str::<serde_json::Value>(s).is_ok()));
+        for fmt in [ExportFormat::Csv, ExportFormat::Json] {
+            run_deferred_export_frame(&mut fw, fmt, true);
+            assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+            let text = fw.export_queue.last_exported_content.as_deref().unwrap();
+            if fmt == ExportFormat::Csv {
+                assert!(text.lines().count() >= 5);
+            } else {
+                assert!(serde_json::from_str::<serde_json::Value>(text).is_ok());
+            }
+        }
     }
 }
