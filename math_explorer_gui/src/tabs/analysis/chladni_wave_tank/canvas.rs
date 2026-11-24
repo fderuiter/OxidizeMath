@@ -77,7 +77,7 @@ impl ChladniWaveTankTool {
         self.paint_canvas_overlays(&painter, rect, raster_palette);
         self.paint_sculpt_reticle(ui, &painter, &response, rect);
         crate::accessibility::paint_canvas_focus_ring(ui, &response);
-        ui.small("Sculpt / Driver / Pickup modes • Arrows move • Space stamps • Enter pulses");
+        ui.small("Sculpt / Driver / L-R & Pickup mics • Arrows move • Space stamps • Enter pulses");
     }
 
     fn handle_canvas_input(&mut self, ui: &mut egui::Ui, response: &egui::Response, rect: Rect) {
@@ -129,10 +129,13 @@ impl ChladniWaveTankTool {
         response: &egui::Response,
         rect: Rect,
     ) {
-        if !(response.clicked() || response.dragged())
-            || rect.width() <= 1.0
-            || rect.height() <= 1.0
-        {
+        if rect.width() <= 1.0 || rect.height() <= 1.0 {
+            return;
+        }
+        if self.try_handle_pickup_drag(response, rect) {
+            return;
+        }
+        if !(response.clicked() || response.dragged()) {
             return;
         }
         let Some(pos) = response.interact_pointer_pos() else {
@@ -213,6 +216,7 @@ impl ChladniWaveTankTool {
         let pkp_pos = to_screen(self.state.pickup_x, self.state.pickup_y);
         painter.circle_stroke(pkp_pos, 4.5_f32, Stroke::new(1.8_f32, palette.axis_y));
         painter.circle_filled(pkp_pos, 1.8_f32, palette.axis_y);
+        self.paint_stereo_pickups(painter, rect, palette);
     }
 
     fn draw_secondary_analysis_plot(&mut self, ui: &mut egui::Ui) {

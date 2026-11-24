@@ -2,9 +2,7 @@
 
 // [cite:graph_parameters_rust]
 
-use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_point_clamp, BoundaryMode2D, Wave2DMedium,
-};
+use math_explorer::pure_math::analysis::pde::wave_2d::{BoundaryMode2D, Wave2DMedium};
 
 use super::sculpt::is_valid_sculpt_rle;
 use super::{
@@ -71,6 +69,7 @@ pub(super) fn is_valid_state(s: &ChladniWaveTankState) -> bool {
         && (0.0..=1.0).contains(&s.pickup_y)
         && is_valid_sculpt_rle(&s.sculpt_rle)
         && super::sonification::are_custom_clamps_valid(&s.custom_clamps)
+        && super::ir_export::are_ir_fields_valid(s)
         && super::refractive::are_refractive_fields_valid(s)
 }
 
@@ -96,22 +95,8 @@ pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
         s.sculpt_rle.clear();
     }
     super::sonification::sanitize_custom_clamps(&mut s.custom_clamps);
+    super::ir_export::clamp_ir_fields(s);
     super::refractive::sanitize_refractive_fields(s);
-}
-
-pub(super) fn apply_clamp_pins(wall_mask: &mut [f64], state: &ChladniWaveTankState) {
-    let (pins, radius): (&[(f64, f64)], f64) = match state.clamp_layout {
-        ClampLayout::None => (&[], 0.0),
-        ClampLayout::CenterPin => (&[(0.5, 0.5)], 2.0),
-        ClampLayout::QuadSymmetry => (&[(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)], 1.8),
-        ClampLayout::EdgeMidpoints => (&[(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)], 2.2),
-    };
-    for &(cx, cy) in pins {
-        apply_point_clamp(wall_mask, GRID_SIZE, GRID_SIZE, cx, cy, radius);
-    }
-    for &[cx, cy] in &state.custom_clamps {
-        apply_point_clamp(wall_mask, GRID_SIZE, GRID_SIZE, cx, cy, 1.8);
-    }
 }
 
 fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
@@ -150,6 +135,11 @@ fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
         pickup_y: default_pickup_y(),
         sculpt_rle: Vec::new(),
         custom_clamps: Vec::new(),
+        pickup_left: super::ir_export::default_pickup_left(),
+        pickup_right: super::ir_export::default_pickup_right(),
+        ir_duration_secs: super::ir_export::default_ir_duration_secs(),
+        ir_sample_rate: crate::audio::wav::WavSampleRate::Hz48000,
+        ir_format: crate::audio::wav::WavSampleFormat::Float32,
         refractive_mode: super::RefractiveMode::Biconvex,
         refractive_expr: String::new(),
         refractive_params: std::collections::BTreeMap::new(),

@@ -259,21 +259,72 @@ impl ChladniWaveTankTool {
 }
 
 pub(crate) fn replay_sculpt_mask_on_solver(sculpt_mask: &[u8], solver: &mut Wave2DSolver) {
-    let n = sculpt_mask
-        .len()
-        .min(solver.wall_mask.len())
-        .min(solver.wave_speed_mask.len());
-    for (idx, &raw) in sculpt_mask.iter().enumerate().take(n) {
-        let role = AcousticCellRole::from_u8(raw);
-        match role {
-            AcousticCellRole::Baseline => {}
-            AcousticCellRole::RigidClamp => {
-                solver.wall_mask[idx] = 0.0;
-            }
-            _ => {
-                solver.wall_mask[idx] = 1.0;
-                solver.wave_speed_mask[idx] = role.speed_scale();
-            }
+    if sculpt_mask.len() < GRID_SIZE * GRID_SIZE || sculpt_mask.iter().all(|&b| b == 0) {
+        return;
+    }
+    let (w, h) = (solver.width(), solver.height());
+    if w == 0 || h == 0 {
+        return;
+    }
+    if w == GRID_SIZE && h == GRID_SIZE {
+        let n = sculpt_mask
+            .len()
+            .min(solver.wall_mask.len())
+            .min(solver.wave_speed_mask.len());
+        for (idx, &raw) in sculpt_mask.iter().enumerate().take(n) {
+            apply_role_at_cell(solver, idx, AcousticCellRole::from_u8(raw));
+        }
+        return;
+    }
+    for y in 0..h {
+        let y0 = (y * GRID_SIZE) / h;
+        let y1 = ((y + 1) * GRID_SIZE).div_ceil(h).clamp(y0 + 1, GRID_SIZE);
+        for x in 0..w {
+            let x0 = (x * GRID_SIZE) / w;
+            let x1 = ((x + 1) * GRID_SIZE).div_ceil(w).clamp(x0 + 1, GRID_SIZE);
+            let role = sample_sculpt_window_role(sculpt_mask, x0, x1, y0, y1);
+            apply_role_at_cell(solver, flatten_2d_index(x, y, w), role);
         }
     }
+}
+
+fn apply_role_at_cell(solver: &mut Wave2DSolver, idx: usize, role: AcousticCellRole) {
+    match role {
+        AcousticCellRole::Baseline => {}
+        AcousticCellRole::RigidClamp => {
+            solver.wall_mask[idx] = 0.0;
+        }
+        _ => {
+            solver.wall_mask[idx] = 1.0;
+            solver.wave_speed_mask[idx] = role.speed_scale();
+        }
+    }
+}
+
+fn sample_sculpt_window_role(
+    sculpt_mask: &[u8],
+    x0: usize,
+    x1: usize,
+    y0: usize,
+    y1: usize,
+) -> AcousticCellRole {
+    let mut counts = [0_u16; 8];
+    for gy in y0..y1 {
+        for gx in x0..x1 {
+            let r = sculpt_mask[flatten_2d_index(gx, gy, GRID_SIZE)].min(7) as usize;
+            counts[r] = counts[r].saturating_add(1);
+        }
+    }
+    if counts[AcousticCellRole::RigidClamp as usize] > 0 {
+        return AcousticCellRole::RigidClamp;
+    }
+    let mut best_role = 0_u8;
+    let mut best_cnt = 0_u16;
+    for (role, &cnt) in counts.iter().enumerate().skip(2) {
+        if cnt > best_cnt {
+            best_cnt = cnt;
+            best_role = role as u8;
+        }
+    }
+    AcousticCellRole::from_u8(best_role)
 }

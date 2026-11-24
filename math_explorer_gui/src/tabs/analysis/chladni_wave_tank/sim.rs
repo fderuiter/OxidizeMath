@@ -2,12 +2,41 @@
 
 //! Domain mask assembly, physics stepping, and spectral/contour analysis refresh for [`super::ChladniWaveTankTool`].
 
-use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_sponge_layer, BoundaryMode2D,
-    Wave2DSolver,
-};
+use math_explorer::pure_math::analysis::pde::wave_2d::{BoundaryMode2D, Wave2DSolver};
 
-use super::{eigenmodes, presets, sculpt, ChladniWaveTankTool, TankPreset, GRID_SIZE};
+use super::{eigenmodes, ir_export, presets, sculpt, ChladniWaveTankTool, TankPreset, GRID_SIZE};
+
+pub(crate) fn max_mask_speed(mask: &[f64]) -> f64 {
+    mask.iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(1.0_f64, f64::max)
+}
+
+#[derive(Default)]
+pub(crate) struct WorkbenchMaskContext<'a> {
+    pub refractive: Option<&'a super::refractive::RefractiveSandbox>,
+    #[cfg(feature = "physics")]
+    pub metamaterial: Option<&'a super::metamaterial::MetamaterialWorkbench>,
+    pub sculpt_mask: &'a [u8],
+}
+
+impl WorkbenchMaskContext<'_> {
+    pub(crate) fn apply_to_solver(
+        &self,
+        solver: &mut Wave2DSolver,
+        state: &super::ChladniWaveTankState,
+    ) {
+        let (w, h) = (solver.width(), solver.height());
+        ir_export::configure_solver_masks(solver, state, self.refractive);
+        #[cfg(feature = "physics")]
+        if let Some(meta) = self.metamaterial {
+            meta.apply_ast_to_wave_speed_mask(&mut solver.wave_speed_mask, w, h);
+        }
+        let _ = (w, h);
+        sculpt::replay_sculpt_mask_on_solver(self.sculpt_mask, solver);
+    }
+}
 
 impl ChladniWaveTankTool {
     pub(crate) fn apply_preset(&mut self, preset: TankPreset) {
@@ -60,40 +89,25 @@ impl ChladniWaveTankTool {
         }
     }
 
-    pub(crate) fn rebuild_masks(&mut self) {
-        self.solver.wall_mask.fill(1.0);
-        self.solver.sponge_mask.fill(0.0);
-        self.solver.wave_speed_mask.fill(1.0);
+    pub(super) fn prepare_studio_ir(&mut self, total_samples: usize) {
+        let ctx = WorkbenchMaskContext {
+            refractive: Some(&self.refractive),
+            #[cfg(feature = "physics")]
+            metamaterial: Some(&self.metamaterial),
+            sculpt_mask: &self.sculpt_mask,
+        };
+        self.ir_studio
+            .prepare_ir_capture(&self.state, &ctx, total_samples);
+    }
 
-        if self.state.preset == TankPreset::CircularDrumhead {
-            apply_circular_drumhead_mask(&mut self.solver.wall_mask, GRID_SIZE, GRID_SIZE, 0.45);
-        }
-        if self.state.boundary == BoundaryMode2D::Sponge {
-            apply_sponge_layer(&mut self.solver.sponge_mask, GRID_SIZE, GRID_SIZE, 12, 1.8);
-        }
-        presets::apply_clamp_pins(&mut self.solver.wall_mask, &self.state);
-        if self.state.barrier_enabled {
-            apply_multi_slit_barrier(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                self.state.barrier_x,
-                2,
-                self.state.slit_count,
-                self.state.slit_width,
-                self.state.slit_separation,
-            );
-        }
-        if self.state.lens_enabled {
-            self.apply_active_lens_mask();
-        }
-        #[cfg(feature = "physics")]
-        self.metamaterial.apply_ast_to_wave_speed_mask(
-            &mut self.solver.wave_speed_mask,
-            GRID_SIZE,
-            GRID_SIZE,
-        );
-        sculpt::replay_sculpt_mask_on_solver(&self.sculpt_mask, &mut self.solver);
+    pub(crate) fn rebuild_masks(&mut self) {
+        let ctx = WorkbenchMaskContext {
+            refractive: Some(&self.refractive),
+            #[cfg(feature = "physics")]
+            metamaterial: Some(&self.metamaterial),
+            sculpt_mask: &self.sculpt_mask,
+        };
+        ctx.apply_to_solver(&mut self.solver, &self.state);
     }
 
     pub(crate) fn advance_physics_step(&mut self) {

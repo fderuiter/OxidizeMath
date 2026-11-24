@@ -295,6 +295,8 @@ impl ChladniWaveTankTool {
         if mask_dirty {
             self.rebuild_masks();
             self.solver.reset_detector();
+            self.analysis_dirty = true;
+            self.state_rev = self.state_rev.wrapping_add(1);
         }
     }
 

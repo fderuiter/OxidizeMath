@@ -12,6 +12,7 @@ use math_explorer::pure_math::analysis::pde::wave_2d::{
 };
 
 use crate::async_sim::atlas::ParameterAtlasController;
+use crate::audio::wav::{WavSampleFormat, WavSampleRate};
 use crate::framework::{
     CalloutManager, CalloutSpec, ChallengeEvaluation, ExportCapabilities, InteractionContext,
     InteractiveTool, SpatialBrushKit, ToolStateBounds,
@@ -22,6 +23,7 @@ mod canvas;
 pub(crate) mod challenge;
 mod eigenmodes;
 mod export;
+pub(crate) mod ir_export;
 pub(crate) mod lock_in;
 #[cfg(feature = "physics")]
 mod metamaterial;
@@ -37,6 +39,8 @@ pub(crate) use refractive::RefractiveMode;
 
 #[cfg(test)]
 mod atlas_tests;
+#[cfg(test)]
+mod ir_tests;
 #[cfg(test)]
 mod modal_and_lens_tests;
 #[cfg(test)]
@@ -147,6 +151,25 @@ pub(crate) struct ChladniWaveTankState {
     pub sculpt_rle: Vec<[u32; 2]>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_clamps: Vec<[f64; 2]>,
+    #[serde(
+        default = "ir_export::default_pickup_left",
+        skip_serializing_if = "ir_export::is_default_pickup_left"
+    )]
+    pub pickup_left: [f64; 2],
+    #[serde(
+        default = "ir_export::default_pickup_right",
+        skip_serializing_if = "ir_export::is_default_pickup_right"
+    )]
+    pub pickup_right: [f64; 2],
+    #[serde(
+        default = "ir_export::default_ir_duration_secs",
+        skip_serializing_if = "ir_export::is_default_ir_duration_secs"
+    )]
+    pub ir_duration_secs: f64,
+    #[serde(default, skip_serializing_if = "ir_export::is_default_ir_sample_rate")]
+    pub ir_sample_rate: WavSampleRate,
+    #[serde(default, skip_serializing_if = "ir_export::is_default_ir_format")]
+    pub ir_format: WavSampleFormat,
     #[serde(default, skip_serializing_if = "RefractiveMode::is_default")]
     pub refractive_mode: RefractiveMode,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -165,6 +188,7 @@ pub struct ChladniWaveTankTool {
     pub(crate) last_brush_grid_pos: Option<[f64; 2]>,
     pub(crate) pickup_drag_mode: bool,
     pub(crate) audio: sonification::ChladniSonificationState,
+    pub(crate) ir_studio: ir_export::ChladniIrStudio,
     pub(crate) solver: Wave2DSolver,
     pub(crate) sand: ChladniSandSystem,
     pub(crate) fft: SpectralAnalyzer2D,
@@ -212,6 +236,7 @@ impl Default for ChladniWaveTankTool {
             last_brush_grid_pos: None,
             pickup_drag_mode: false,
             audio: sonification::ChladniSonificationState::default(),
+            ir_studio: ir_export::ChladniIrStudio::default(),
             solver,
             sand,
             fft: SpectralAnalyzer2D::new(GRID_SIZE, GRID_SIZE),
@@ -370,6 +395,7 @@ impl InteractiveTool for ChladniWaveTankTool {
         } else if self.analysis_dirty {
             self.refresh_analysis_outputs();
         }
+        self.advance_cooperative_ir_slice(parent_ui.ctx());
         self.draw_controls_panel(parent_ui);
         self.draw_central_workspace(parent_ui);
     }

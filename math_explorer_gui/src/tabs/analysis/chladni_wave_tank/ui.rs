@@ -24,6 +24,8 @@ impl ChladniWaveTankTool {
                 ui.separator();
                 self.draw_sonification_section(ui);
                 ui.separator();
+                self.draw_ir_studio_section(ui);
+                ui.separator();
                 self.draw_sculpt_controls(ui);
                 #[cfg(feature = "physics")]
                 {
