@@ -1,5 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+#[path = "tests_atlas_challenges.rs"]
+mod tests_atlas_challenges;
+
 use super::presets::{evaluate_potential_grid, POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN};
 use super::*;
 use crate::async_sim::SimulationRunner;

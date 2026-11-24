@@ -86,6 +86,8 @@ pub struct WaveData {
     pub right_wall_prob: f64,
     /// Latched post-scattering, pre-wall transmission readout $T_{\text{scatter}}$.
     pub latched_transmission: Option<f64>,
+    /// Exact zero-allocation tight-binding lattice transmission $T_{\text{steady}}(k_0)$.
+    pub steady_transmission: f64,
     /// Whether the wavepacket has reached either Dirichlet guard wall (`|x| > 4.25`).
     pub wall_arrived: bool,
     /// Whether `latched_transmission` was captured from a quasi-bound resonance at pre-wall arrival.
@@ -136,7 +138,6 @@ pub struct WaveRunner {
 
 impl WaveRunner {
     /// Creates and initializes a new 1D Schrödinger runner from shared configuration.
-    #[cfg(test)]
     #[must_use]
     pub fn new(config: Arc<RwLock<WaveSimConfig>>) -> Self {
         Self::new_with_counter(config, Arc::new(std::sync::atomic::AtomicUsize::new(0)))
