@@ -3,7 +3,9 @@
 use super::cache::MAX_CONFORMAL_SYNC_INSTRUCTIONS;
 use super::*;
 use crate::accessibility::{all_announcements, clear_test_announcements};
-use crate::framework::SimulationFramework;
+use crate::app::MathExplorerApp;
+use crate::framework::{InteractiveTool, SimulationFramework};
+use crate::tabs::analysis::ode::budget::build_test_balanced_expr;
 use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
 use crate::web_io::PlatformInstant;
 
@@ -145,4 +147,79 @@ fn test_complex_mapping_rejects_oversized_url_and_state_custom_formulas() {
     assert!(all_announcements()
         .iter()
         .any(|(m, p)| p == "assertive" && m.contains("Invalid complex mapping formula")));
+}
+
+#[test]
+fn test_complex_mapping_rejects_balanced_custom_expr_atomically_and_bounds_255_node_preset() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let expr_h8 = build_test_balanced_expr("z", 8);
+    let expr_h10 = build_test_balanced_expr("z", 10);
+
+    for bad in ["z +", "x + y", &expr_h8, &expr_h10] {
+        let state = format!(
+            r#"{{"function":"Custom","grid_min":-2.0,"grid_max":2.0,"grid_density":100,"inspection_point":[1.0,0.5],"custom_expr":"{bad}"}}"#
+        );
+        let preset = format!(
+            r#"{{"metadata":{{"schema_version":"1.0","title":"BadComplex","domain":"analysis","timestamp":"2026-11-23T00:00:00Z"}},"config":{state}}}"#
+        );
+        let mut tool = ComplexMappingTool::default();
+        let t0 = PlatformInstant::now();
+        assert!(tool.import_preset_json(&preset).is_err());
+        assert!(t0.elapsed().as_millis() < 250);
+        assert_eq!(tool.function, MappingFunction::ZSquared);
+        assert!(tool.math_input.is_valid());
+    }
+
+    let dormant_huge = format!(
+        r#"{{"function":"ZSquared","grid_min":-2.0,"grid_max":2.0,"grid_density":10,"inspection_point":[1.0,0.5],"custom_expr":"{expr_h10}"}}"#
+    );
+    assert!(ComplexMappingTool::default()
+        .try_load_state(&dormant_huge)
+        .is_err());
+    let dormant_draft = r#"{"function":"ZSquared","grid_min":-2.0,"grid_max":2.0,"grid_density":10,"inspection_point":[1.0,0.5],"custom_expr":"z +"}"#;
+    assert!(ComplexMappingTool::default()
+        .try_load_state(dormant_draft)
+        .is_ok());
+
+    let encoded_h10 = crate::url_state::encode_base64url(
+        format!(
+            r#"{{"function":"Custom","grid_min":-2.0,"grid_max":2.0,"grid_density":1000,"inspection_point":[1.0,0.5],"custom_expr":"{expr_h10}"}}"#
+        )
+        .as_bytes(),
+    );
+    let mut app = MathExplorerApp::default();
+    assert!(app
+        .apply_share_location_strings(
+            &format!("#tab=analysis&tool=ComplexMappingTool&state={encoded_h10}"),
+            "",
+            None,
+        )
+        .is_err());
+
+    assert_bounded_255_node_complex_preset();
+}
+
+fn assert_bounded_255_node_complex_preset() {
+    let expr_h7 = build_test_balanced_expr("z", 7);
+    let valid_preset = format!(
+        r#"{{"metadata":{{"schema_version":"1.0","title":"BoundedComplex255","domain":"analysis","timestamp":"2026-11-23T00:00:00Z"}},"config":{{"function":"Custom","grid_min":-0.6,"grid_max":0.6,"grid_density":1000,"inspection_point":[0.25,0.15],"custom_expr":"{expr_h7}"}}}}"#
+    );
+    let mut bounded = ComplexMappingTool::default();
+    bounded
+        .import_preset_json(&valid_preset)
+        .expect("255-node custom ComplexMapping should load under contour budget");
+    assert_eq!(bounded.math_input.instruction_count(), 255);
+    let (eff_density, eff_res, notice) = bounded.effective_contour_grid();
+    assert!(notice.is_some());
+    assert!(2 * eff_density * eff_res * 255 <= MAX_CONFORMAL_SYNC_INSTRUCTIONS);
+    let prims = bounded.export_plot_primitives();
+    let png = egui_plot::export_primitives::export_primitives_png(
+        &prims,
+        &egui_plot::export::ExportOptions::default(),
+    )
+    .expect("bounded ComplexMapping PNG export");
+    let _ = std::fs::write("/tmp/complex_mapping_bounded_ast_budget.png", png);
 }

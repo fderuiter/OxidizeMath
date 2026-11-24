@@ -1,11 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::budget::{
-    MAX_ODE_COMPARISON_SYNC_INSTRUCTIONS, MAX_ODE_SYNC_INSTRUCTIONS, MIN_ODE_BUDGET_STEPS,
+    build_test_balanced_expr, MAX_ODE_COMPARISON_SYNC_INSTRUCTIONS, MAX_ODE_SYNC_INSTRUCTIONS,
+    MIN_ODE_BUDGET_STEPS,
 };
 use super::*;
 use crate::accessibility::{all_announcements, clear_test_announcements};
-use crate::framework::{SimulationFramework, MAX_TOOL_STATE_BYTES};
+use crate::app::MathExplorerApp;
+use crate::framework::{InteractiveTool, SimulationFramework, MAX_TOOL_STATE_BYTES};
 use crate::presets::ReplicatorPresetConfig;
 use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
 use crate::web_io::PlatformInstant;
@@ -214,8 +216,8 @@ fn test_url_4096b_and_2mib_state_payloads_reject_abusive_formulas_and_bound_hydr
     );
     assert!(state_json.len() < MAX_TOOL_STATE_BYTES);
     let mut hydrated = OdeSolverTool::default();
-    let res = hydrated.try_load_state(&state_json);
-    assert!(res.is_err());
+    assert!(hydrated.try_load_state(&state_json).is_err());
+    assert_eq!(hydrated.preset, OdePreset::Exponential);
 
     // 3. Valid multi-node formula within 4,096-byte URL cap at MAX_ODE_STEPS hydrates rapidly under budget.
     let valid_heavy = multi_node_scalar_ode_expr();
@@ -288,4 +290,86 @@ fn test_builtin_ode_presets_unscaled_and_replicator_symbolic_validation() {
         .validate()
         .expect_err("symbolic payoff formula exceeding compiled param cap must fail validation");
     assert!(rep_err.contains("Symbolic payoff") && rep_err.contains("(0, 0)"));
+}
+
+#[test]
+fn test_ode_rejects_balanced_and_planar_payloads_atomically_and_bounds_255_node_preset() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let expr_h8 = build_test_balanced_expr("y", 8);
+    let expr_h19 = build_test_balanced_expr("y", 19);
+
+    for bad in ["sin(", "x + y", &expr_h8, &expr_h19] {
+        let state = format!(
+            r#"{{"preset":"Custom","dt":0.01,"total_time":10.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"custom_expr":"{bad}"}}"#
+        );
+        let preset = format!(
+            r#"{{"metadata":{{"schema_version":"1.0","title":"Balanced","domain":"analysis","timestamp":"2026-11-23T00:00:00Z"}},"config":{state}}}"#
+        );
+        let mut tool = OdeSolverTool::default();
+        let t0 = PlatformInstant::now();
+        assert!(tool.import_preset_json(&preset).is_err());
+        assert!(t0.elapsed().as_millis() < 250);
+        assert_eq!(tool.preset, OdePreset::Exponential);
+        assert!(tool.math_input.is_valid());
+    }
+
+    // Oversized dormant custom_expr on Exponential must fail, while short draft roundtrips cleanly.
+    let dormant_huge = format!(
+        r#"{{"preset":"Exponential","dt":0.01,"total_time":10.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"custom_expr":"{expr_h19}"}}"#
+    );
+    assert!(OdeSolverTool::default()
+        .try_load_state(&dormant_huge)
+        .is_err());
+    let dormant_draft = r#"{"preset":"Exponential","dt":0.01,"total_time":10.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"custom_expr":"sin("}"#;
+    assert!(OdeSolverTool::default()
+        .try_load_state(dormant_draft)
+        .is_ok());
+
+    let encoded_h8 = crate::url_state::encode_base64url(
+        format!(
+            r#"{{"preset":"Custom","dt":0.001,"total_time":100.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"custom_expr":"{expr_h8}"}}"#
+        )
+        .as_bytes(),
+    );
+    let mut app = MathExplorerApp::default();
+    assert!(app
+        .apply_share_location_strings(
+            &format!("#tab=analysis&tool=OdeSolverTool&state={encoded_h8}"),
+            "",
+            None,
+        )
+        .is_err());
+
+    let bad_planar = format!(
+        r#"{{"preset":"PlanarCustom","dt":0.01,"total_time":10.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"planar_x_expr":"y","planar_y_expr":"{expr_h8}"}}"#
+    );
+    let mut planar_tool = OdeSolverTool::default();
+    assert!(planar_tool.try_load_state(&bad_planar).is_err());
+    assert_eq!(planar_tool.preset, OdePreset::Exponential);
+
+    assert_bounded_255_node_ode_preset();
+}
+
+fn assert_bounded_255_node_ode_preset() {
+    let expr_h7 = build_test_balanced_expr("y", 7);
+    let valid_preset = format!(
+        r#"{{"metadata":{{"schema_version":"1.0","title":"Bounded255","domain":"analysis","timestamp":"2026-11-23T00:00:00Z"}},"config":{{"preset":"Custom","dt":0.001,"total_time":10.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":0.15,"ic_v0":0.0,"comparison_mode":true,"custom_expr":"{expr_h7}"}}}}"#
+    );
+    let mut bounded = OdeSolverTool::default();
+    bounded
+        .import_preset_json(&valid_preset)
+        .expect("255-node custom ODE should load under instruction budget");
+    assert_eq!(bounded.rhs_instruction_cost(), 255);
+    let steps = bounded.y_series.len().saturating_sub(1);
+    assert!(steps * 4 * 255 <= MAX_ODE_SYNC_INSTRUCTIONS);
+    let datasets = bounded.export_datasets();
+    let png = egui_plot::export::export_custom_png(
+        &datasets,
+        &egui_plot::export::ExportOptions::default(),
+    )
+    .expect("bounded ODE PNG export");
+    let _ = std::fs::write("/tmp/ode_bounded_ast_budget.png", png);
 }

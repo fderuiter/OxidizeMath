@@ -15,6 +15,8 @@ mod parser_diagnostics;
 #[cfg(test)]
 mod arity_tests;
 #[cfg(test)]
+mod budget_tests;
+#[cfg(test)]
 mod codegen_tests;
 #[cfg(test)]
 mod compiled_tests;

@@ -7,6 +7,9 @@ use super::limits::{MAX_AST_NODES, MAX_LATEX_FALLBACK_NODES, MAX_LATEX_OUTPUT_BY
 use std::collections::HashMap;
 use std::fmt::Write;
 
+/// Soft byte threshold in infallible [`Expr::to_latex`] reserving headroom for closing delimiters.
+const MAX_LATEX_EXPAND_BYTES: usize = MAX_LATEX_OUTPUT_BYTES - 2_560;
+
 enum LatexFrame<'a> {
     Eval {
         expr: &'a Expr,
@@ -42,22 +45,24 @@ fn format_latex_bounded_infallible(root: &Expr, initial_prec: u8) -> String {
     }];
     while let Some(frame) = stack.pop() {
         match frame {
-            LatexFrame::Literal(lit) => out.push_str(lit),
+            LatexFrame::Literal(lit) => push_bounded_str(&mut out, lit),
             LatexFrame::Eval {
                 expr,
                 parent_prec,
                 depth,
             } => {
-                if visited_nodes >= MAX_LATEX_FALLBACK_NODES || out.len() >= MAX_LATEX_OUTPUT_BYTES
+                if visited_nodes >= MAX_LATEX_FALLBACK_NODES || out.len() >= MAX_LATEX_EXPAND_BYTES
                 {
-                    out.push_str(r"\dots");
+                    push_bounded_str(&mut out, r"\dots");
                     continue;
                 }
                 visited_nodes += 1;
                 let _ = eval_latex_frame(expr, parent_prec, depth, None, &mut stack, &mut out);
+                truncate_utf8(&mut out, MAX_LATEX_OUTPUT_BYTES);
             }
         }
     }
+    truncate_utf8(&mut out, MAX_LATEX_OUTPUT_BYTES);
     out
 }
 
@@ -102,6 +107,24 @@ pub(super) fn format_latex_iterative(
         }
     }
     Ok(out)
+}
+
+fn push_bounded_str(out: &mut String, text: &str) {
+    let remaining = MAX_LATEX_OUTPUT_BYTES.saturating_sub(out.len());
+    if remaining == 0 || text.is_empty() {
+        return;
+    }
+    if text.len() <= remaining {
+        out.push_str(text);
+    } else {
+        out.push_str(&text[..text.floor_char_boundary(remaining)]);
+    }
+}
+
+fn truncate_utf8(out: &mut String, max_bytes: usize) {
+    if out.len() > max_bytes {
+        out.truncate(out.floor_char_boundary(max_bytes));
+    }
 }
 
 fn eval_latex_frame<'a>(
@@ -203,10 +226,17 @@ pub(super) fn write_variable(out: &mut String, name: &str) {
         out.push_str(r"\pi");
     } else if name.eq_ignore_ascii_case("tau") {
         out.push_str(r"\tau");
-    } else if name.contains('_') {
-        out.push_str(&name.replace('_', r"\_"));
     } else {
-        out.push_str(name);
+        for ch in name.chars() {
+            if out.len() > MAX_LATEX_OUTPUT_BYTES {
+                break;
+            }
+            if ch == '_' {
+                out.push_str(r"\_");
+            } else {
+                out.push(ch);
+            }
+        }
     }
 }
 
@@ -278,7 +308,11 @@ fn push_function_frames<'a>(
             out.push_str(latex_func_name(func));
             out.push_str(r"\left(");
             stack.push(LatexFrame::Literal(r"\right)"));
-            for (idx, arg) in args.iter().enumerate().rev() {
+            let capped_len = args.len().min(MAX_AST_NODES);
+            if args.len() > capped_len {
+                stack.push(LatexFrame::Literal(r", \dots"));
+            }
+            for (idx, arg) in args[..capped_len].iter().enumerate().rev() {
                 stack.push(LatexFrame::Eval {
                     expr: arg,
                     parent_prec: 0,
