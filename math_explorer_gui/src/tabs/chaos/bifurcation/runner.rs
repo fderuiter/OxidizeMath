@@ -124,20 +124,30 @@ pub fn burned_logistic_lyapunov(r: f64, x0: f64, n: usize) -> Option<f64> {
 /// Request payload dispatched from [`super::BifurcationDiagram`] to [`BifurcationRunner`].
 #[derive(Clone, Copy, Debug)]
 pub struct BifurcationSweepRequest {
+    /// Monotonic request generation for mid-sweep cancellation.
     pub generation: u64,
+    /// Logistic or custom map mode.
     pub map_mode: BifurcationMapMode,
+    /// Lower `r` bound.
     pub r_min: f64,
+    /// Upper `r` bound.
     pub r_max: f64,
+    /// Number of parameter subdivisions.
     pub steps: usize,
+    /// Initial seed $x_0$.
     pub x0: f64,
 }
 
 /// Progressive sweep payload emitted by [`BifurcationRunner`].
 #[derive(Clone, Debug)]
 pub struct BifurcationSweepSnapshot {
+    /// Request generation that produced this snapshot.
     pub generation: u64,
+    /// `true` once all columns have finished for `generation`.
     pub is_final: bool,
+    /// Accumulated `(r, x)` attractor points.
     pub points: Vec<PlotPoint>,
+    /// Accumulated `(r, lambda)` Lyapunov points.
     pub lyapunov_points: Vec<PlotPoint>,
 }
 
@@ -233,7 +243,8 @@ impl BifurcationRunner {
         for offset in 0..count {
             let r = self.active.r_min + step_size * ((start_idx + offset) as f64);
             if let Some(lam) = burned_logistic_lyapunov(r, seed, LYAPUNOV_STEPS) {
-                self.lyapunov_buf.push(PlotPoint::new(r, lam));
+                self.lyapunov_buf
+                    .push(PlotPoint::new(r, super::compute::clamp_lyapunov_value(lam)));
             }
         }
         self.next_step_idx += count;

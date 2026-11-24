@@ -194,6 +194,11 @@ impl BankrollEnsembleLab {
                 med_color,
                 format!("W_median({num_bets}): {:.4}", self.last_median_terminal),
             );
+            ui.separator();
+            ui.label(format!(
+                "95% BCa CI: [{:.3}, {:.3}]",
+                self.last_empirical_median_ci_lower, self.last_empirical_median_ci_upper
+            ));
             if let Some(frc) = self.last_drawdown_f {
                 ui.separator();
                 ui.label(format!(
