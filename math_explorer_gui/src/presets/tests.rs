@@ -164,7 +164,7 @@ fn test_replicator_preset_rejects_invalid_ode_and_simplex_bounds() {
         strategy_names: vec!["A".to_string(), "B".to_string()],
         symbolic_payoffs: None,
         symbolic_params: std::collections::BTreeMap::new(),
-        topology_source: crate::app::TopologySource::default(),
+        topology_source: crate::app::TopologySource::SharedBus,
     };
 
     for (dt, horizon) in [
