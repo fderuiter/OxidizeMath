@@ -45,6 +45,7 @@ impl Error {
             Self::MarketPricing(err) => Some(err),
             Self::Markov(err) => Some(err),
             Self::MatchModel(err) => Some(err),
+            Self::MonteCarlo(err) => Some(err),
             Self::NumberTheory(err) => Some(err),
             Self::Optimization(err) => Some(err),
             Self::Ou(err) => Some(err),

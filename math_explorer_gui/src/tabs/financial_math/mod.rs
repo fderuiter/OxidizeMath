@@ -11,6 +11,7 @@ pub mod market_devig;
 pub mod market_execution;
 #[cfg(feature = "applied")]
 pub mod markowitz;
+pub mod monte_carlo_workbench;
 pub mod parrondo;
 pub mod tail_risk;
 #[cfg(test)]

@@ -15,6 +15,7 @@ mod ui;
 
 use crate::framework::CalloutManager;
 use egui_plot::PlotPoint;
+use math_explorer::pure_math::statistics::bootstrap::{sample_median_in_place, BootstrapWorkspace};
 use math_explorer::pure_math::statistics::kelly::{
     drawdown_constrained_kelly, expected_growth_rate, expected_value, kelly_fraction,
     BankrollFraction, DrawdownConstraint, Odds, UnitInterval,
@@ -33,6 +34,8 @@ use rand::RngCore;
 pub const MAX_ENSEMBLE_BETS: usize = 1000;
 /// Number of Monte Carlo ensemble trajectories simulated per rerun.
 pub const ENSEMBLE_PATH_COUNT: usize = 1000;
+/// Number of nonparametric bootstrap resamples for terminal median confidence bounds.
+pub const BOOTSTRAP_REPLICATES: usize = 256;
 /// Number of preallocated trajectories used for push/drawdown median overlays.
 pub(super) const PUSH_PREVIEW_PATH_COUNT: usize = 128;
 /// Upper bound on custom wager fraction `f` so `ln(1 - f)` remains finite.
@@ -113,6 +116,7 @@ pub struct BankrollEnsembleLab {
     /// Median-trajectory underwater percentage curve (`-100 * dd_t`).
     pub underwater_points: Vec<PlotPoint>,
     workspace: BankrollEnsembleWorkspace,
+    bootstrap_ws: BootstrapWorkspace,
     pub(super) path_wealths: Vec<f64>,
     pub(super) peak_wealths: Vec<f64>,
     pub(super) max_drawdowns: Vec<f64>,
@@ -134,7 +138,11 @@ pub struct BankrollEnsembleLab {
     pub last_expected_terminal: f64,
     /// Latest terminal median wealth $W_{\text{median}}(T)$.
     pub last_median_terminal: f64,
-    /// Latest terminal median wealth for the drawdown-constrained strategy.
+    /// Lower 95% BCa bootstrap confidence bound on terminal empirical median wealth.
+    pub last_empirical_median_ci_lower: f64,
+    /// Upper 95% BCa bootstrap confidence bound on terminal empirical median wealth.
+    pub last_empirical_median_ci_upper: f64,
+    /// Latest terminal empirical median wealth for the drawdown-constrained strategy.
     pub last_drawdown_terminal: f64,
     /// Peak-to-trough fractional maximum drawdown along the empirical median trajectory.
     pub last_max_drawdown: f64,
@@ -182,6 +190,8 @@ impl BankrollEnsembleLab {
             fan_25_75_poly: Vec::with_capacity(2 * cap),
             underwater_points: Vec::with_capacity(cap),
             workspace,
+            bootstrap_ws: BootstrapWorkspace::new(ENSEMBLE_PATH_COUNT, BOOTSTRAP_REPLICATES)
+                .expect("valid preallocated bootstrap capacity"),
             path_wealths: vec![0.0; ENSEMBLE_PATH_COUNT],
             peak_wealths: vec![0.0; PUSH_PREVIEW_PATH_COUNT],
             max_drawdowns: vec![0.0; PUSH_PREVIEW_PATH_COUNT],
@@ -197,6 +207,8 @@ impl BankrollEnsembleLab {
             last_drawdown_f: None,
             last_expected_terminal: 0.0,
             last_median_terminal: 0.0,
+            last_empirical_median_ci_lower: 0.0,
+            last_empirical_median_ci_upper: 0.0,
             last_drawdown_terminal: 0.0,
             last_max_drawdown: 0.0,
             last_underwater_duration: 0,
@@ -315,11 +327,11 @@ impl BankrollEnsembleLab {
         let g_rc = f_rc
             .and_then(|fr| BankrollFraction::new(fr).ok())
             .map(|bf| expected_growth_rate(p, o, &bf));
-
         self.reset_step_zero(w0, barrier_floor, steps);
         self.populate_quantile_series(w0, p, o, g_rc, steps, seed);
         self.rebuild_fan_polygons_and_tail_risk(steps, w0, ENSEMBLE_PATH_COUNT);
         self.update_terminal_readouts(w0);
+        self.update_terminal_median_bca(false, &mut ws_rng);
     }
 
     fn populate_quantile_series(
@@ -437,6 +449,26 @@ impl BankrollEnsembleLab {
         self.last_expected_terminal = self.expected_points.last().map_or(w0, |pt| pt.y);
         self.last_median_terminal = self.median_points.last().map_or(w0, |pt| pt.y);
         self.last_drawdown_terminal = self.drawdown_median_points.last().map_or(w0, |pt| pt.y);
+    }
+    pub(super) fn update_terminal_median_bca(&mut self, push_mode: bool, rng: &mut OxidizeRng) {
+        let samples = if push_mode {
+            &self.path_wealths[..PUSH_PREVIEW_PATH_COUNT]
+        } else {
+            self.workspace.terminal_wealths()
+        };
+        if let Ok(ci) = self.bootstrap_ws.bca_ci_with_scratch(
+            samples,
+            BOOTSTRAP_REPLICATES,
+            0.95,
+            rng,
+            sample_median_in_place,
+        ) {
+            self.last_empirical_median_ci_lower = ci.ci_lower;
+            self.last_empirical_median_ci_upper = ci.ci_upper;
+        } else {
+            self.last_empirical_median_ci_lower = self.last_median_terminal;
+            self.last_empirical_median_ci_upper = self.last_median_terminal;
+        }
     }
 }
 

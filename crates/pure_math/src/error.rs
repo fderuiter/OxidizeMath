@@ -463,7 +463,7 @@ pub use crate::pure_math::{
     graph_theory::GraphTheoryError,
     hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
-    statistics::risk::RiskError,
+    statistics::{monte_carlo::MonteCarloError, risk::RiskError},
     tensor::types::TensorError,
 };
 pub use sports::{EloError, MatchModelError};

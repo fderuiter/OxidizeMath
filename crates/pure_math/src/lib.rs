@@ -20,7 +20,7 @@ pub mod __doctest_facade {
         pub use crate::error::{
             AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
             FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
-            LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
+            LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError, MonteCarloError,
             NumberTheoryError, OptimizationError, OuError, PureMathError, PureMathError as Error,
             RiskError, StochasticError, TdaError, TensorError, TransformError, ZipError,
         };
@@ -41,6 +41,7 @@ pub mod __doctest_facade {
         pub use oxidize_core::mesh::{Mesh, Point3D};
         pub use oxidize_core::rng::OxidizeRng;
     }
+    pub use crate::pure_math::statistics::{bootstrap, monte_carlo, qmc};
     pub use crate::{math_types, pure_math};
     pub use diagnostics;
     pub use math_commons::{

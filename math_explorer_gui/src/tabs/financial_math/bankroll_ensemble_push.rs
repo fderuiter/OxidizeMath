@@ -105,6 +105,7 @@ impl BankrollEnsembleLab {
         self.rebuild_fan_polygons_and_tail_risk(steps, w0, PUSH_PREVIEW_PATH_COUNT);
         self.last_solvency_report = self.build_push_solvency_report(steps);
         self.update_terminal_readouts(w0);
+        self.update_terminal_median_bca(true, &mut rng);
     }
 
     fn step_push_quantiles(

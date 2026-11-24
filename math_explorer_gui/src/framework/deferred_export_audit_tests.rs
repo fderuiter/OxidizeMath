@@ -235,7 +235,7 @@ fn assert_expected_capability_counts(counts: [usize; 8]) {
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
     let extra_plot = usize::from(has_surface_morpho)
         + bio_extra
-        + usize::from(cfg!(feature = "pure_math"))
+        + 2 * usize::from(cfg!(feature = "pure_math"))
         + usize::from(cfg!(all(feature = "pure_math", feature = "applied")));
     let expected_plot = 73 + extra_plot;
     let expected_solid = if has_surface_morpho { 8 } else { 7 };

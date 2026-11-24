@@ -122,6 +122,9 @@ fn test_f_030_overbetting_divergence_callout_and_zero_allocation() {
     assert!(lab.last_underwater_duration > 0);
     assert!(lab.last_terminal_var_95 > 0.50);
     assert!(lab.last_terminal_cvar_95 >= lab.last_terminal_var_95);
+    assert!(lab.last_empirical_median_ci_lower.is_finite());
+    assert!(lab.last_empirical_median_ci_upper.is_finite());
+    assert!(lab.last_empirical_median_ci_lower <= lab.last_empirical_median_ci_upper);
     for required_tag in ["ruin_warning", "var_95", "cvar_95"] {
         assert!(
             lab.callout_manager
