@@ -33,6 +33,7 @@ export default function mathExplorerInitializer() {
     let lastAnnouncedBucket = 0;
     let pendingPoliteMessages = [];
     let politeTimerId = null;
+    let politeDrainResolvers = [];
     let boundAbortSignal = null;
 
     function getElements() {
@@ -64,12 +65,24 @@ export default function mathExplorerInitializer() {
         return false;
     }
 
+    function resolvePoliteDrainWaiters() {
+        if (politeDrainResolvers.length === 0) {
+            return;
+        }
+        const waiters = politeDrainResolvers;
+        politeDrainResolvers = [];
+        for (let i = 0; i < waiters.length; i += 1) {
+            waiters[i]();
+        }
+    }
+
     function clearPendingPoliteAnnouncements() {
         if (politeTimerId !== null && typeof window !== 'undefined') {
             window.clearTimeout(politeTimerId);
             politeTimerId = null;
         }
         pendingPoliteMessages = [];
+        resolvePoliteDrainWaiters();
     }
 
     function bindAbortCleanup() {
@@ -101,9 +114,11 @@ export default function mathExplorerInitializer() {
         politeTimerId = null;
         if (isStartupSettledOrFailed()) {
             pendingPoliteMessages = [];
+            resolvePoliteDrainWaiters();
             return;
         }
         if (pendingPoliteMessages.length === 0) {
+            resolvePoliteDrainWaiters();
             return;
         }
         const nextMessage = pendingPoliteMessages.shift();
@@ -111,8 +126,11 @@ export default function mathExplorerInitializer() {
         if (boot && typeof boot.announce === 'function') {
             boot.announce(nextMessage, 'polite');
         }
-        if (pendingPoliteMessages.length > 0 && typeof window !== 'undefined') {
+        if (typeof window !== 'undefined') {
             politeTimerId = window.setTimeout(drainNextPoliteAnnouncement, POLITE_TASK_PACE_MS);
+        } else {
+            pendingPoliteMessages = [];
+            resolvePoliteDrainWaiters();
         }
     }
 
@@ -324,6 +342,19 @@ export default function mathExplorerInitializer() {
 
         cancelPendingAnnouncements() {
             clearPendingPoliteAnnouncements();
+        },
+
+        waitForPoliteDrain() {
+            if (
+                typeof window === 'undefined' ||
+                isStartupSettledOrFailed() ||
+                (politeTimerId === null && pendingPoliteMessages.length === 0)
+            ) {
+                return Promise.resolve();
+            }
+            return new Promise((resolve) => {
+                politeDrainResolvers.push(resolve);
+            });
         },
 
         isSettled() {

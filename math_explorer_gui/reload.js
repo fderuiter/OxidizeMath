@@ -1080,6 +1080,14 @@
                 if (tag === 'SCRIPT' || (tag === 'LINK' && (rel === 'modulepreload' || rel === 'preload'))) {
                     const assetUrl = target.src || target.href || 'startup resource';
                     const statusCode = getFailedResourceStatus(assetUrl);
+                    if (
+                        tag === 'LINK' &&
+                        rel === 'preload' &&
+                        currentPhase === 'compile' &&
+                        statusCode < 400
+                    ) {
+                        return;
+                    }
                     const suffix = statusCode >= 400 ? ' (HTTP ' + statusCode + ')' : '';
                     showError('network', 'Failed to load required startup asset: ' + assetUrl + suffix);
                     if (statusCode < 400) {

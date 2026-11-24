@@ -579,6 +579,7 @@ async function fetchWasmWithProgress(source, hooks, signal, recordStreamError) {
             );
             hooks?.onProgress?.({ current: reconciled.total, total: reconciled.total });
             window.__mathExplorerBoot?.enterPhase?.('compile', 'Compiling WebAssembly module');
+            await hooks?.waitForPoliteDrain?.();
         } else {
             hooks?.cancelPendingAnnouncements?.();
         }
@@ -696,7 +697,22 @@ async function fetchWasmWithProgress(source, hooks, signal, recordStreamError) {
                                 'compile',
                                 'Compiling WebAssembly module',
                             );
-                            controller.close();
+                            Promise.resolve(hooks?.waitForPoliteDrain?.()).then(() => {
+                                if (isBootAborted(signal)) {
+                                    try {
+                                        controller.error(
+                                            new DOMException(
+                                                'WebAssembly stream aborted.',
+                                                'AbortError',
+                                            ),
+                                        );
+                                    } catch (_) {
+                                        // Controller already closed or errored
+                                    }
+                                    return;
+                                }
+                                controller.close();
+                            });
                             return;
                         }
 
@@ -826,6 +842,16 @@ function createStartupProgressProxy(boot, onTransferActivity) {
             bufferedEvent = null;
             activeHooks?.cancelPendingAnnouncements?.();
         },
+        waitForPoliteDrain() {
+            if (
+                cancelled ||
+                !activeHooks ||
+                typeof activeHooks.waitForPoliteDrain !== 'function'
+            ) {
+                return Promise.resolve();
+            }
+            return activeHooks.waitForPoliteDrain();
+        },
         isSettled() {
             return activeHooks ? Boolean(activeHooks.isSettled?.()) : false;
         },
@@ -941,6 +967,7 @@ async function bootstrap() {
         currentAssetPath = WASM_PATH;
         if (hooksProxy.isTransferComplete()) {
             armLocalFallbackTimer(compileTimeoutMs, 'Compiling WebAssembly module');
+            await hooksProxy.waitForPoliteDrain();
         }
 
         const wasm = await init({ module_or_path: wasmResponse });
