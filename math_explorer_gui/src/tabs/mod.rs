@@ -49,6 +49,8 @@ pub mod neuroscience;
 #[cfg(feature = "pure_math")]
 pub mod number_theory;
 #[cfg(feature = "physics")]
+pub mod optics;
+#[cfg(feature = "physics")]
 pub mod optics_waves;
 #[cfg(feature = "applied")]
 pub mod paradox_lab;
@@ -201,6 +203,7 @@ pub trait ExplorerTab {
             | "General Relativity"
             | "Medical Physics"
             | "MRI Physics"
+            | "Optics & Caustics"
             | "Optics & Waves"
             | "Quantum Mechanics"
             | "Solid State Physics" => "Physics",
@@ -298,6 +301,7 @@ pub trait ExplorerTab {
             "MRI Physics" => "mri",
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
+            "Optics & Caustics" => "optics",
             "Optics & Waves" => "optics_waves",
             "Paradox Lab" => "paradox_lab",
             "Population Structure" => "cannibalism",
