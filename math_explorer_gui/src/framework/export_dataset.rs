@@ -1,4 +1,4 @@
-//! Dataset (`CSV`, `JSON`) and text-clipboard export serialization for [`super::SimulationFramework`].
+//! Dataset (`CSV`, `JSON`) export serialization and modal source adapter for [`super::SimulationFramework`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
