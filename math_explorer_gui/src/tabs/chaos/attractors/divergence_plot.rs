@@ -241,7 +241,8 @@ impl AttractorPlotter {
     pub fn populate_scene(&mut self, series_color: egui::Color32) {
         self.begin_attractor_scene();
         if self.twin.is_some() {
-            self.populate_counterfactual_scene(series_color, egui::Color32::GRAY, series_color);
+            let palette = SemanticPalette::for_theme(crate::app::ThemeMode::Dark);
+            self.populate_counterfactual_scene(series_color, palette.muted_text, palette.accent);
         } else {
             self.add_trajectory_curve("Trajectory", true, series_color, 1.8_f32);
         }

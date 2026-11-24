@@ -181,6 +181,26 @@ impl FiniteStateGuard for WaveRunner {
 }
 
 impl WaveRunner {
+    pub(crate) fn record_divergence(&mut self, param: &'static str, message: impl Into<String>) {
+        self.diverged = true;
+        self.sonification = crate::audio::SonificationFrame::silent();
+        self.diagnostic_report = Some(DiagnosticReport::new(
+            self.time,
+            self.step_count,
+            param,
+            message.into(),
+        ));
+    }
+
+    pub(crate) fn refresh_sonification(&mut self, dt: f64) {
+        let modes = self.psi.project_spatial_modes::<8>();
+        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
+            &modes,
+            &mut self.prev_mode_phases,
+            dt.max(1.0e-4),
+        );
+    }
+
     pub(crate) fn checked_dx(&self) -> Option<f64> {
         let span = self.x_max - self.x_min;
         if self.n_points < 2 || !span.is_finite() || span <= 0.0 {
