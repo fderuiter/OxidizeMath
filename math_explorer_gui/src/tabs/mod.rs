@@ -12,6 +12,8 @@ pub mod analysis;
 pub mod astrophysics;
 #[cfg(feature = "applied")]
 pub mod battery_degradation;
+#[cfg(feature = "biology")]
+pub mod biochemical;
 #[cfg(feature = "applied")]
 pub mod cannibalism;
 #[cfg(feature = "physics")]

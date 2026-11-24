@@ -106,6 +106,21 @@ fn verify_shader_capability(
     true
 }
 
+fn verify_audio_capability(meta_id: &str, caps: ExportCapabilities) -> bool {
+    if !caps.audio {
+        assert!(
+            !caps.audio_disabled_reason.is_empty(),
+            "{meta_id} disables audio export without an explanatory reason"
+        );
+        return false;
+    }
+    assert!(
+        caps.audio_disabled_reason.is_empty(),
+        "{meta_id} advertises audio export but has non-empty disabled reason"
+    );
+    true
+}
+
 #[derive(Default)]
 struct ExportCapabilityCounts {
     total_tools: usize,
@@ -117,6 +132,8 @@ struct ExportCapabilityCounts {
     splat_3d_count: usize,
     shader_tool_count: usize,
     non_shader_tool_count: usize,
+    audio_tool_count: usize,
+    non_audio_tool_count: usize,
 }
 
 fn assert_export_capability_partitions(c: &ExportCapabilityCounts) {
@@ -147,6 +164,19 @@ fn assert_export_capability_partitions(c: &ExportCapabilityCounts) {
         c.shader_tool_count + c.non_shader_tool_count,
         c.total_tools,
         "Shader capability buckets must exhaustively partition registered tools"
+    );
+    if cfg!(any(
+        feature = "biology",
+        feature = "physics",
+        feature = "pure_math"
+    )) {
+        assert!(c.audio_tool_count > 0, "Expected WAV audio-capable tools");
+    }
+    assert!(c.non_audio_tool_count > 0, "Expected non-audio tools");
+    assert_eq!(
+        c.audio_tool_count + c.non_audio_tool_count,
+        c.total_tools,
+        "Audio capability buckets must exhaustively partition registered tools"
     );
 }
 
@@ -231,6 +261,11 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         counts.total_tools += 1;
         let tool = (meta.build)();
         let caps = tool.export_capabilities();
+        if verify_audio_capability(meta.id, caps) {
+            counts.audio_tool_count += 1;
+        } else {
+            counts.non_audio_tool_count += 1;
+        }
         if caps.stl && caps.ply && caps.obj {
             counts.solid_3d_count += 1;
         } else if caps.ply {
@@ -381,7 +416,7 @@ fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
 }
 
 #[test]
-fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
+fn test_all_eight_3d_tools_deferred_stl_ply_payloads_and_live_region() {
     let solid_ids = [
         "SurfaceViewer",
         "CurvatureHeatmap",
@@ -405,17 +440,30 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         .into_iter()
         .find(|m| m.id == "Gaussian Splatting")
         .expect("Gaussian Splatting registered");
-    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
-    gs_fw.active_tool = Some((gs_meta.build)());
+    verify_splat_mode_ply_and_assertive_stl_obj_warnings((gs_meta.build)());
 
-    clear_test_announcements();
-    run_deferred_export_frame(&mut gs_fw, ExportFormat::Stl, false);
-    assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
-    assert!(
-        all_announcements()
-            .iter()
-            .any(|(_, prio)| prio == "assertive")
-    );
+    let mut vol_splat =
+        crate::tabs::quantum::volumetric_studio::VolumetricFieldStudioTool::default();
+    vol_splat.config.render_mode =
+        crate::tabs::quantum::volumetric_studio::state::VolumetricRenderMode::GaussianRadianceCloud;
+    vol_splat.refresh_zero_alloc();
+    verify_splat_mode_ply_and_assertive_stl_obj_warnings(Box::new(vol_splat));
+}
+
+fn verify_splat_mode_ply_and_assertive_stl_obj_warnings(tool: Box<dyn InteractiveTool>) {
+    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
+    gs_fw.active_tool = Some(tool);
+
+    for blocked_fmt in [ExportFormat::Stl, ExportFormat::Obj] {
+        clear_test_announcements();
+        run_deferred_export_frame(&mut gs_fw, blocked_fmt, false);
+        assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
+        assert!(
+            all_announcements()
+                .iter()
+                .any(|(_, prio)| prio == "assertive")
+        );
+    }
 
     clear_test_announcements();
     let slot_before = with_live_region(|r| r.active_slot);

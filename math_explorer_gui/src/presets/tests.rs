@@ -109,6 +109,7 @@ fn test_replicator_matrix_validation() {
         strategy_names: vec!["A".to_string(), "B".to_string()],
         symbolic_payoffs: None,
         symbolic_params: std::collections::BTreeMap::new(),
+        topology_source: crate::app::TopologySource::SharedBus,
     };
     assert!(valid.validate().is_ok());
 
@@ -120,6 +121,7 @@ fn test_replicator_matrix_validation() {
         strategy_names: vec!["A".to_string(), "B".to_string()],
         symbolic_payoffs: None,
         symbolic_params: std::collections::BTreeMap::new(),
+        topology_source: crate::app::TopologySource::SharedBus,
     };
     assert!(non_square.validate().is_err());
 
@@ -131,6 +133,7 @@ fn test_replicator_matrix_validation() {
         strategy_names: vec!["A".to_string()],
         symbolic_payoffs: None,
         symbolic_params: std::collections::BTreeMap::new(),
+        topology_source: crate::app::TopologySource::SharedBus,
     };
     assert!(strategy_mismatch.validate().is_err());
 
@@ -148,8 +151,57 @@ fn test_replicator_matrix_validation() {
             vec!["0".to_string(), "v / 2".to_string()],
         ]),
         symbolic_params: params,
+        topology_source: crate::app::TopologySource::SharedBus,
     };
     assert!(valid_symbolic.validate().is_ok());
+}
+
+#[test]
+fn test_replicator_preset_rejects_invalid_ode_and_simplex_bounds() {
+    let base = ReplicatorPresetConfig {
+        payoff_matrix: vec![vec![-1.0, 2.0], vec![0.0, 1.0]],
+        initial_population: vec![0.5, 0.5],
+        time_horizon: 20.0,
+        dt: 0.05,
+        strategy_names: vec!["A".to_string(), "B".to_string()],
+        symbolic_payoffs: None,
+        symbolic_params: std::collections::BTreeMap::new(),
+        topology_source: crate::app::TopologySource::SharedBus,
+    };
+
+    for (dt, horizon) in [
+        (0.0, 20.0),
+        (-0.01, 20.0),
+        (0.05, 0.0),
+        (1e-5, 5000.0),
+        (f64::NAN, 20.0),
+        (0.05, 20_000.0),
+    ] {
+        let mut bad = base.clone();
+        bad.dt = dt;
+        bad.time_horizon = horizon;
+        assert!(
+            bad.validate().is_err(),
+            "expected dt={dt}, T={horizon} to fail"
+        );
+    }
+
+    for bad_payoff in [f64::NAN, f64::INFINITY, 25_000.0, -25_000.0] {
+        let mut bad = base.clone();
+        bad.payoff_matrix[0][1] = bad_payoff;
+        assert!(bad.validate().is_err());
+    }
+
+    for bad_pop in [
+        vec![0.0, 0.0],
+        vec![-0.1, 1.1],
+        vec![0.5, 1.5],
+        vec![f64::NAN, 0.5],
+    ] {
+        let mut bad = base.clone();
+        bad.initial_population = bad_pop;
+        assert!(bad.validate().is_err());
+    }
 }
 
 #[test]

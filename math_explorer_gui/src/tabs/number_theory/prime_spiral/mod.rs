@@ -4,6 +4,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod playhead;
+mod sonification;
 
 use std::hash::{Hash, Hasher};
 
@@ -52,6 +53,7 @@ pub struct PrimeSpiralWidget {
     pub(crate) is_prime_lookup: Vec<bool>,
     pub(crate) coord_lookup: Vec<(u16, u16)>,
     pub(crate) spiral_grid: Vec<u32>,
+    pub(crate) audio_settings: crate::audio::AcousticSettings,
 }
 
 impl Default for PrimeSpiralWidget {
@@ -74,6 +76,7 @@ impl Default for PrimeSpiralWidget {
             is_prime_lookup: Vec::new(),
             coord_lookup: Vec::new(),
             spiral_grid: Vec::new(),
+            audio_settings: crate::audio::AcousticSettings::default(),
         }
     }
 }
@@ -92,6 +95,11 @@ struct PrimeSpiralState {
     cursor_step: usize,
     #[serde(default = "default_tempo_bpm")]
     tempo_bpm: f64,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
+    audio: crate::audio::AcousticSettings,
 }
 
 impl PrimeSpiralWidget {
@@ -123,6 +131,8 @@ impl InteractiveTool for PrimeSpiralWidget {
             self.ray_c,
             self.cursor_step,
             self.tempo_bpm.to_bits(),
+            self.audio_settings.gain.to_bits(),
+            self.audio_settings.pitch_scale.to_bits(),
         )
             .hash(&mut h);
         h.finish().max(1)
@@ -160,6 +170,7 @@ impl InteractiveTool for PrimeSpiralWidget {
             ray_c: self.ray_c,
             cursor_step: self.cursor_step,
             tempo_bpm: self.tempo_bpm,
+            audio: self.audio_settings,
         })
         .ok()
     }
@@ -179,6 +190,7 @@ impl InteractiveTool for PrimeSpiralWidget {
         {
             return Err("Ulam playhead parameters out of allowed bounds".into());
         }
+        parsed.audio.validate()?;
         let grid_changed = self.grid_size != parsed.grid_size;
         self.grid_size = parsed.grid_size;
         self.playhead_mode = parsed.playhead_mode;
@@ -186,6 +198,7 @@ impl InteractiveTool for PrimeSpiralWidget {
         self.ray_c = parsed.ray_c;
         self.cursor_step = parsed.cursor_step;
         self.tempo_bpm = parsed.tempo_bpm;
+        self.audio_settings = parsed.audio;
         self.is_playing = false;
         self.pulse_gate = true;
         if grid_changed {
@@ -199,7 +212,26 @@ impl InteractiveTool for PrimeSpiralWidget {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        ExportCapabilities::raster_only().with_audio()
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(self.current_sonification_frame())
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(
+        &mut self,
+        frame_count: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.render_wav_frames(frame_count)
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {

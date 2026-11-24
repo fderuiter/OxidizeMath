@@ -1,14 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::WaveSimulatorTool;
 use super::presets::{
     DEFAULT_CUSTOM_EXPR, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME,
     DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, DT_MAX, DT_MIN, DT_RECOVERY_MIN, GRID_POINTS, K0_MAX,
     K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN,
     SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN, WavePotentialPreset, X0_MAX,
-    X0_MIN,
+    X0_MIN, compute_tunneling_observables_slice,
 };
+use super::runner::WaveData;
+use super::{WaveRunner, WaveSimulatorTool};
 use crate::async_sim::SimWorkerState;
+use math_explorer::physics::quantum::state_norm_squared;
 use std::hash::{Hash, Hasher};
 
 fn default_x0() -> f64 {
@@ -60,6 +62,8 @@ struct WaveSimStateRef<'a> {
     dt: f64,
     steps_per_frame: usize,
     custom_expr: &'a str,
+    #[serde(skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    audio: crate::audio::AcousticSettings,
     #[serde(skip_serializing_if = "<[_]>::is_empty")]
     sparse_potential: &'a [(u16, f64)],
     #[serde(skip_serializing_if = "super::atlas::is_false")]
@@ -91,6 +95,8 @@ struct WaveSimState {
     steps_per_frame: usize,
     #[serde(default = "default_custom_expr")]
     custom_expr: String,
+    #[serde(default)]
+    audio: crate::audio::AcousticSettings,
     #[serde(default)]
     sparse_potential: Vec<(u16, f64)>,
     #[serde(default)]
@@ -140,6 +146,7 @@ impl WaveSimState {
                 MAX_CUSTOM_EXPR_BYTES
             ));
         }
+        self.audio.validate()?;
         if self.sparse_potential.len() > GRID_POINTS
             || self.sparse_potential.iter().any(|&(idx, val)| {
                 usize::from(idx) >= GRID_POINTS
@@ -166,6 +173,8 @@ impl WaveSimulatorTool {
         self.dt.to_bits().hash(&mut hasher);
         self.steps_per_frame.hash(&mut hasher);
         self.math_input.raw_text.hash(&mut hasher);
+        self.audio_settings.gain.to_bits().hash(&mut hasher);
+        self.audio_settings.pitch_scale.to_bits().hash(&mut hasher);
         self.atlas.is_visible().hash(&mut hasher);
         self.atlas.axis_keys().hash(&mut hasher);
         self.active_challenge.hash(&mut hasher);
@@ -210,6 +219,7 @@ impl WaveSimulatorTool {
             dt: self.dt,
             steps_per_frame: self.steps_per_frame,
             custom_expr: bounded_expr,
+            audio: self.audio_settings,
             sparse_potential: &self.sparse_potential,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [ax_x.to_string(), ax_y.to_string()],
@@ -233,6 +243,7 @@ impl WaveSimulatorTool {
         self.width = parsed.width;
         self.dt = parsed.dt;
         self.steps_per_frame = parsed.steps_per_frame;
+        self.audio_settings = parsed.audio;
         self.sparse_potential = parsed.sparse_potential;
         self.math_input.set_expression(&parsed.custom_expr);
         if let Some(expr) = self.math_input.expr() {
@@ -291,5 +302,56 @@ impl WaveSimulatorTool {
         }
         self.enforce_challenge_locks();
         self.sync_config_and_reset(None);
+    }
+}
+
+impl WaveRunner {
+    /// Builds a structured [`WaveData`] snapshot integrating [`math_explorer::physics::quantum::QuantumState::probability_density_in_place`].
+    #[must_use]
+    pub fn build_wave_data(&self) -> WaveData {
+        let mut safe_prob = vec![0.0; self.psi.vector.len()];
+        self.psi.probability_density_in_place(&mut safe_prob);
+        let obs = compute_tunneling_observables_slice(
+            &self.x_axis,
+            &safe_prob,
+            self.x_left,
+            self.x_right,
+        );
+        for p in &mut safe_prob {
+            if !p.is_finite() {
+                *p = 0.0;
+            }
+        }
+        let safe_potential: Vec<f64> = self
+            .potential
+            .iter()
+            .map(|&v| if v.is_finite() { v } else { 0.0 })
+            .collect();
+
+        WaveData {
+            time: self.time,
+            x_axis: self.x_axis.clone(),
+            prob_density: safe_prob,
+            potential: safe_potential,
+            reflection: obs.reflection,
+            barrier_prob: obs.barrier_prob,
+            transmission: obs.transmission,
+            #[cfg(test)]
+            right_wall_prob: obs.right_wall_prob,
+            latched_transmission: self.latched_transmission,
+            wall_arrived: self.wall_arrived,
+            quasi_bound_latched: self.quasi_bound_latched,
+            x_left: self.x_left,
+            x_right: self.x_right,
+            kinetic_energy: self.kinetic_energy,
+            norm_sq: state_norm_squared(&self.psi),
+        }
+    }
+
+    /// Current latched pre-wall transmission readout $T_{\text{scatter}}$, if latched.
+    #[cfg(test)]
+    #[must_use]
+    pub fn latched_transmission(&self) -> Option<f64> {
+        self.latched_transmission
     }
 }

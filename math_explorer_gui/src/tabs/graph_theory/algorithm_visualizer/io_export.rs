@@ -36,6 +36,7 @@ pub fn visualizer_state_json_from_shared(topo: &SharedGraphTopology) -> Option<S
         sink_node: topo.sink_node,
         playback_speed: 2.0,
         custom_topology: Some(topo.to_compact_state()),
+        topology_source: crate::app::TopologySource::LocalPreset,
     };
     serde_json::to_string(&state).ok()
 }
@@ -64,12 +65,15 @@ impl AlgorithmVisualizerTool {
         if topo.is_empty() {
             return;
         }
+        self.synced_bus_revision = None;
+        self.topology_source = crate::app::TopologySource::LocalPreset;
         self.load_compact_topology(&topo.to_compact_state());
         if let Some(s) = topo
             .source_node
             .filter(|id| self.node_positions.contains_key(id))
         {
             self.start_node = Some(s);
+            self.local_start_node = Some(s);
             self.focused_node = s;
         }
         if let Some(t) = topo
@@ -123,6 +127,7 @@ impl AlgorithmVisualizerTool {
 
     /// Resets the visualizer back to its canonical 4x4 undirected grid sample graph.
     pub fn reset_to_sample_grid(&mut self) {
+        self.synced_bus_revision = None;
         self.build_sample_graph();
         self.bump_revision();
     }

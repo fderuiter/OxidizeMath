@@ -71,6 +71,7 @@ fn configure_multi_pane_case(app: &mut MathExplorerApp, layout: ViewportLayout, 
         link_axes: true,
         link_cursors: focused % 2 == 1,
         sync_playback: true,
+        link_topology: focused >= 2,
     };
 
     assert!(app.tabs[chaos_idx].select_tool_by_name("FractalViewer"));

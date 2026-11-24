@@ -25,6 +25,12 @@ pub struct GraphSnapshot {
 /// Maximum undo history entries retained per `GraphEditorTool`.
 pub const MAX_SNAPSHOTS: usize = 50;
 
+/// Reserved headroom below `u32::MAX` for loaded graph node counters.
+pub(crate) const NODE_ID_HEADROOM: usize = 65_536;
+
+/// Maximum `next_node_id` accepted when loading serialized graph states.
+pub(crate) const MAX_NEXT_NODE_ID: usize = (u32::MAX as usize) - NODE_ID_HEADROOM;
+
 pub(super) struct BorrowedNodePositions<'a>(pub(super) &'a BTreeMap<usize, Pos2>);
 
 impl Serialize for BorrowedNodePositions<'_> {
@@ -70,8 +76,22 @@ pub struct SerializedGraphState {
 }
 
 impl SerializedGraphState {
-    /// Validates finiteness, node index existence, and affine latency bounds.
+    /// Validates finiteness, node counter headroom, node index existence, and affine latency bounds.
     pub fn validate(&self) -> Result<(), String> {
+        if self.next_node_id > MAX_NEXT_NODE_ID {
+            return Err(format!(
+                "next_node_id ({}) exceeds safe headroom limit ({MAX_NEXT_NODE_ID})",
+                self.next_node_id
+            ));
+        }
+        if let Some(&max_id) = self.node_positions.keys().next_back()
+            && self.next_node_id <= max_id
+        {
+            return Err(format!(
+                "next_node_id ({}) must exceed maximum node ID ({max_id})",
+                self.next_node_id
+            ));
+        }
         if !self
             .node_positions
             .values()
@@ -143,9 +163,16 @@ impl GraphEditorTool {
     }
 
     pub(crate) fn check_finite_graph(&self) -> bool {
-        self.node_positions
-            .values()
-            .all(|p| p.x.is_finite() && p.y.is_finite())
+        self.next_node_id <= MAX_NEXT_NODE_ID
+            && self
+                .node_positions
+                .keys()
+                .next_back()
+                .is_none_or(|&max_id| self.next_node_id > max_id)
+            && self
+                .node_positions
+                .values()
+                .all(|p| p.x.is_finite() && p.y.is_finite())
             && self.edges.iter().all(|&(_, _, w)| w.is_finite())
             && self.braess.edge_latencies.iter().all(|l| l.is_valid())
             && self.braess.config.total_demand.is_finite()

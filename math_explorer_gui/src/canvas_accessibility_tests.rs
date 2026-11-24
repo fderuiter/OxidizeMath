@@ -137,6 +137,12 @@ fn test_neuroscience_canvas_receives_tab_focus_and_accesskit_label() {
         &mut lenia,
         "Lenia Studio Continuous Automaton Canvas",
     );
+
+    let mut botanical = crate::tabs::morphogenesis::PhyllotaxisLSystemTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut botanical,
+        "Botanical Phyllotaxis and L-System Morphogenesis Canvas",
+    );
 }
 
 #[cfg(feature = "epidemiology")]

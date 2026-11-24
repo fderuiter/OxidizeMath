@@ -19,6 +19,9 @@ pub struct ComparisonSyncConfig {
     /// Broadcasts `Play`, `Pause`, `Step`, and `Reset` across all active `PlaybackTransport` panes.
     #[serde(default)]
     pub sync_playback: bool,
+    /// Streams immutable CSR graph topologies from `GraphEditorTool` to linked sibling panes.
+    #[serde(default)]
+    pub link_topology: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -70,6 +73,7 @@ fn detect_workspace_sync_key(ctx: &egui::Context) -> Option<PendingSyncKey> {
 /// Publishes multi-pane plot and playback comparison sync state into `egui::Context` for the frame.
 pub(crate) fn publish_multi_pane_sync_context(app: &MathExplorerApp, ctx: &egui::Context) {
     let cfg = app.compare_sync;
+    app.sim_bus.install_in_context(ctx, cfg.link_topology);
     egui_plot::set_ambient_plot_link_config(
         ctx,
         egui_plot::AmbientPlotLinkConfig {
@@ -226,6 +230,10 @@ pub(crate) fn render_comparison_sync_checkboxes(
     if ui.checkbox(&mut sync_playback, "Sync Playback").changed() {
         app.set_sync_playback(Some(ctx), sync_playback);
     }
+    let mut link_topology = app.compare_sync.link_topology;
+    if ui.checkbox(&mut link_topology, "Link Topology").changed() {
+        app.set_link_topology(Some(ctx), link_topology);
+    }
 }
 
 impl MathExplorerApp {
@@ -274,6 +282,24 @@ impl MathExplorerApp {
                 "Synchronized simulation playback enabled across panes"
             } else {
                 "Synchronized simulation playback disabled"
+            };
+            crate::accessibility::announce_live_status(c, msg);
+            c.request_repaint();
+        }
+    }
+
+    /// Updates `Link Topology` and emits a polite ARIA live announcement when `ctx` is provided.
+    pub fn set_link_topology(&mut self, ctx: Option<&egui::Context>, enabled: bool) {
+        if self.compare_sync.link_topology == enabled {
+            return;
+        }
+        self.compare_sync.link_topology = enabled;
+        if let Some(c) = ctx {
+            self.sim_bus.install_in_context(c, enabled);
+            let msg = if enabled {
+                "Shared topology linking enabled across comparison panes"
+            } else {
+                "Shared topology linking disabled"
             };
             crate::accessibility::announce_live_status(c, msg);
             c.request_repaint();

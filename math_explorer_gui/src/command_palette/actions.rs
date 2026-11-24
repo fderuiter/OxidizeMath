@@ -203,10 +203,15 @@ static WORKSPACE_AND_VIEW_SPECS: &[BuiltinCommandSpec] = &[
         || PaletteAction::OpenStarterGallery,
         "Open Starter Gallery",
         "View",
-        None,
+        Some(cmd_key("Cmd+Shift+G", "Ctrl+Shift+G")),
         "Browse and filter pre-configured starter templates across all domains",
-        &["starter gallery", "starter templates", "presets gallery"],
-        None,
+        &[
+            "starter gallery",
+            "explore catalog",
+            "starter templates",
+            "presets gallery",
+        ],
+        Some(("Global", "Open Starter Gallery")),
     ),
     spec(
         || PaletteAction::ToggleTheoryPortal,

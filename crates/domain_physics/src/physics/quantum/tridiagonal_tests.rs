@@ -28,14 +28,19 @@ fn test_crank_nicolson_unitarity_and_dense_parity() {
 
     let mut psi_prop = psi0.clone();
     let mut psi_solver = psi0.clone();
-    let (ok_steps, _) = VerifiedEngine::run_verified(|| {
-        let mut all_ok = true;
-        for _ in 0..10 {
-            cn_prop.evolve_substeps_in_place(&mut psi_prop, substeps);
-            all_ok &= cn_solver.step_substeps_in_place(&mut psi_solver, substeps);
-        }
-        all_ok
-    });
+    let (ok_steps, _) = {
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        VerifiedEngine::run_verified(|| {
+            let mut all_ok = true;
+            for _ in 0..10 {
+                cn_prop.evolve_substeps_in_place(&mut psi_prop, substeps);
+                all_ok &= cn_solver.step_substeps_in_place(&mut psi_solver, substeps);
+            }
+            all_ok
+        })
+    };
     assert!(ok_steps);
     assert!((psi_prop.norm() - 1.0).abs() < 1e-13);
     assert!((psi_solver.norm() - 1.0).abs() < 1e-13);

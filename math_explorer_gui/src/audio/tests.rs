@@ -1,24 +1,32 @@
+#![cfg_attr(any(), verified(opt_out = "tests"))]
+
 use num_complex::Complex;
 use rustfft::FftPlanner;
 use verified_engine::engine::VerifiedEngine;
 
 use super::backend::{MuteReason, SonificationBackend};
-use super::frame::{
-    FLOOR_DBFS, LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR, SonificationFrame, VoiceSpec,
-    WaveformPreset,
+#[cfg(feature = "pure_math")]
+use super::chladni_tests::sample_chladni_step_frame;
+use super::controller::{
+    AudioEngineController, AutoSilenceReason, silence_all_audio_on_webgl_loss,
 };
-#[cfg(feature = "pure_math")]
-use super::frame::{MAX_FREQ_HZ, MIN_FREQ_HZ};
-#[cfg(feature = "pure_math")]
-use super::mappings::chladni_wave_tank_frame;
+use super::frame::{
+    FLOOR_DBFS, HarmonicWeights, LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR, MAX_FREQ_HZ,
+    MIN_FREQ_HZ, SonificationFrame, VoiceSpec, WaveformPreset,
+};
+use super::limiter::{GainRampEnvelope, soft_clip_sample};
 use super::mappings::{
     LinacGatePhase, attractor_frame, bifurcation_frame, hodgkin_huxley_frame, imrt_delivery_frame,
     just_intonation_ratio, neural_ring_frame, prime_chord_frame, quantum_wavepacket_frame,
     radar_linac_frame, spike_analysis_frame,
 };
+use super::settings::AcousticSettings;
 use super::synth::OfflinePcmSynthesizer;
 use super::ui::{format_meter_readout, meter_fill_fraction, render_sonification_panel};
-use super::wav::{encode_wav_stereo_pcm16, synthesize_frames_to_wav};
+use super::wav::{
+    DEFAULT_WAV_SAMPLE_RATE, WAV_HEADER_BYTES, encode_wav_stereo_pcm16, synthesize_frames_to_wav,
+    synthesize_wav_16bit,
+};
 
 pub(super) fn compute_mono_fft_magnitudes(interleaved_stereo: &[f32], fft_len: usize) -> Vec<f32> {
     let mut planner = FftPlanner::<f32>::new();
@@ -45,6 +53,82 @@ pub(super) fn peak_magnitude_around(
     let lo = center.saturating_sub(2);
     let hi = (center + 2).min(mags.len().saturating_sub(1));
     mags[lo..=hi].iter().copied().fold(0.0_f32, f32::max)
+}
+
+#[test]
+fn test_sonification_frame_sanitize_pitch_scale_and_settings_validation() {
+    let mut dirty = SonificationFrame::silent();
+    dirty.active_voices = 99;
+    dirty.master_gain = 5.0;
+    dirty.noise_gain = f32::NAN;
+    dirty.noise_cutoff_hz = 2.0;
+    dirty.custom_harmonics = Some(HarmonicWeights {
+        cos_a: [f32::NAN, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        sin_b: [0.0, 4.0, f32::INFINITY, 0.0, 0.0, 0.0, 0.0, 0.0],
+    });
+    dirty.voices[0] = VoiceSpec {
+        freq_hz: 99_999.0,
+        gain: 3.0,
+        pan: -9.0,
+        fm_mod_hz: -10.0,
+        fm_index: 50.0,
+        filter_cutoff_hz: 5.0,
+        transient_impulse: 3.0,
+    };
+    let clean = dirty.sanitize();
+    assert_eq!(clean.active_voices, 8);
+    assert_eq!(clean.master_gain, 1.0);
+    assert_eq!(clean.noise_gain, 0.0);
+    assert_eq!(clean.noise_cutoff_hz, MIN_FREQ_HZ);
+    assert_eq!(clean.voices[0].freq_hz, MAX_FREQ_HZ);
+    assert_eq!(clean.voices[0].gain, 1.0);
+    assert_eq!(clean.voices[0].pan, -1.0);
+    assert_eq!(clean.voices[0].fm_mod_hz, 0.0);
+    assert_eq!(clean.voices[0].fm_index, 8.0);
+    assert_eq!(clean.voices[0].filter_cutoff_hz, MIN_FREQ_HZ);
+    assert_eq!(clean.voices[0].transient_impulse, 1.0);
+
+    let transposed = spike_analysis_frame(15.0, -10.0, 0.0, 40.0).with_pitch_scale(1.5);
+    assert!(transposed.is_audible());
+    assert!(
+        (AcousticSettings {
+            gain: 0.7,
+            pitch_scale: 1.5
+        })
+        .validate()
+        .is_ok()
+    );
+    assert!(
+        (AcousticSettings {
+            gain: 1.5,
+            pitch_scale: 1.0
+        })
+        .validate()
+        .is_err()
+    );
+}
+
+#[test]
+fn test_soft_clip_tanh_limiter_and_20ms_silence_ramp() {
+    assert_eq!(soft_clip_sample(f32::NAN), 0.0);
+    assert_eq!(soft_clip_sample(f32::INFINITY), 0.0);
+    assert!(soft_clip_sample(10.0) <= 1.0);
+    assert!(soft_clip_sample(-10.0) >= -1.0);
+    assert!((soft_clip_sample(0.5) - 0.5_f32.tanh()).abs() < 1e-6);
+
+    let mut env = GainRampEnvelope::new_muted();
+    assert_eq!(env.advance(), 0.0);
+    env.ramp_to(0.8);
+    assert!((env.sample_after_elapsed(std::time::Duration::from_millis(20)) - 0.8).abs() < 1e-5);
+
+    std::thread::sleep(std::time::Duration::from_millis(18));
+    let _ = env.advance();
+    env.ramp_to_zero();
+    assert_eq!(
+        env.sample_after_elapsed(std::time::Duration::from_millis(20)),
+        0.0,
+        "GainRampEnvelope must reach exact 0.0 within 20 ms"
+    );
 }
 
 #[test]
@@ -118,7 +202,7 @@ fn test_rustfft_fundamental_overtones_and_limiter_ceiling() {
         transient_impulse: 0.0,
     });
     synth.apply_frame(&frame);
-    let _ = synth.render_frames(1024); // settle 15ms smoothing
+    let _ = synth.render_frames(1024);
     let rendered = synth.render_frames(fft_len);
     for &sample in rendered {
         assert!(sample.abs() <= LIMITER_CEILING_LINEAR + 1e-6);
@@ -148,7 +232,6 @@ fn test_rustfft_quantum_beats_and_prime_chord_just_intonation() {
     let mut synth = OfflinePcmSynthesizer::new(sr, fft_len + 1024);
     let _ = synth.set_muted_from_user_gesture(false);
 
-    // n = 2^1 * 3^4 * 5^1 -> 220*2 = 440 Hz, 220*1.5 = 330 Hz (dominant), 220*1.25 = 275 Hz
     let chord = prime_chord_frame(&[(2, 1), (3, 4), (5, 1)], WaveformPreset::Sine);
     synth.apply_frame(&chord);
     let _ = synth.render_frames(1024);
@@ -160,7 +243,6 @@ fn test_rustfft_quantum_beats_and_prime_chord_just_intonation() {
     assert!(m_fifth > m_third && m_fifth > m_oct);
     assert!(m_third > m_void * 8.0 && m_oct > m_void * 8.0);
 
-    // Quantum two-mode superposition produces detuned beat sideband
     let mut prev_phases = [0.0_f64; 8];
     let mut modes = [Complex::new(0.0, 0.0); 8];
     modes[0] = Complex::from_polar(0.75, 0.2);
@@ -207,7 +289,6 @@ fn test_rustfft_period_doubling_subharmonic_and_lorenz_stereo_balance() {
         "expected audible f0/2 subharmonic peak, got {sub_mag}"
     );
 
-    // Lorenz negative-x vs positive-x stereo panning
     let left_lobe = attractor_frame([-18.0, -12.0, 26.0], [10.0, 15.0, 5.0], false);
     synth.apply_frame(&left_lobe);
     let _ = synth.render_frames(1024);
@@ -242,8 +323,8 @@ fn test_mute_within_30ms_wav_encoding_and_accessible_ui_themes() {
     let _ = synth.render_frames(1024);
 
     synth.mute_and_suspend(MuteReason::WebGlContextLost);
-    let tail = synth.render_frames(1350); // ~30.6 ms at 44.1 kHz
-    let after_30ms_peak = tail[2640..] // samples >= 29.93 ms (1320 stereo frames * 2)
+    let tail = synth.render_frames(1350);
+    let after_30ms_peak = tail[2640..]
         .iter()
         .copied()
         .fold(0.0_f32, |a, b| a.max(b.abs()));
@@ -260,10 +341,18 @@ fn test_mute_within_30ms_wav_encoding_and_accessible_ui_themes() {
     assert_eq!(&wav[36..40], b"data");
     assert_eq!(encode_wav_stereo_pcm16(44_100, &[0.25, -0.25]).len(), 48);
 
+    let wav_16 = synthesize_wav_16bit(
+        &[ring; 16],
+        AcousticSettings::default(),
+        DEFAULT_WAV_SAMPLE_RATE,
+        0.25,
+        42,
+    );
+    assert!(wav_16.len() > WAV_HEADER_BYTES);
+
     assert_eq!(meter_fill_fraction(FLOOR_DBFS, false), 0.0);
     assert!(format_meter_readout(&synth.meter_reading(), true).contains("MUTED"));
 
-    // Render sonification panel across Dark, Light, and HighContrast visuals
     let ctx = eframe::egui::Context::default();
     for mode in [
         crate::app::theme::ThemeMode::Dark,
@@ -310,161 +399,41 @@ fn sample_medical_step_frame(step: usize, phase: f64) -> SonificationFrame {
     }
 }
 
-#[cfg(feature = "pure_math")]
-fn sample_chladni_step_frame(phase: f64, det: &[f64], strike: bool) -> SonificationFrame {
-    use math_explorer::pure_math::analysis::pde::wave_2d::{SpectralMode2D, Wave2DParams};
-    let modes = [
-        SpectralMode2D {
-            kx: 2,
-            ky: 1,
-            k_radial: 5.0_f64.sqrt(),
-            magnitude: 0.04,
-            phase,
-        },
-        SpectralMode2D {
-            kx: -3,
-            ky: 2,
-            k_radial: 13.0_f64.sqrt(),
-            magnitude: 0.025,
-            phase: -0.5 * phase,
-        },
-    ];
-    let params = Wave2DParams {
-        plate_stiffness: 0.0004,
-        ..Wave2DParams::default()
-    };
-    chladni_wave_tank_frame(&modes, &params, 1.0, det, if strike { 0.9 } else { 0.0 })
-}
-
-#[cfg(feature = "pure_math")]
-fn build_free_and_pinned_plate_solvers(
-    n: usize,
-    params: &math_explorer::pure_math::analysis::pde::wave_2d::Wave2DParams,
-) -> (
-    math_explorer::pure_math::analysis::pde::wave_2d::Wave2DSolver,
-    math_explorer::pure_math::analysis::pde::wave_2d::Wave2DSolver,
-) {
-    use math_explorer::pure_math::analysis::pde::wave_2d::{Wave2DSolver, apply_point_clamp};
-    let mut free_solver = Wave2DSolver::new_unit_square(n);
-    let mut pinned_solver = Wave2DSolver::new_unit_square(n);
-    for (cx, cy) in [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)] {
-        apply_point_clamp(&mut pinned_solver.wall_mask, n, n, cx, cy, 5.0);
-    }
-    let init: Vec<f64> = (0..(n * n))
-        .map(|idx| {
-            let x = (idx % n) as f64 / ((n - 1) as f64);
-            let y = (idx / n) as f64 / ((n - 1) as f64);
-            (2.0 * std::f64::consts::PI * x).sin() * (2.0 * std::f64::consts::PI * y).sin()
-                + 0.72
-                    * (4.0 * std::f64::consts::PI * x).sin()
-                    * (4.0 * std::f64::consts::PI * y).sin()
-        })
-        .collect();
-    let pinned_init: Vec<f64> = init
-        .iter()
-        .zip(pinned_solver.wall_mask.iter())
-        .map(|(&u, &w)| if w > 0.5 { u } else { 0.0 })
-        .collect();
-    free_solver.set_stationary_displacement(&init);
-    pinned_solver.set_stationary_displacement(&pinned_init);
-    for _ in 0..80 {
-        free_solver.step(params, 0.004);
-        pinned_solver.step(params, 0.004);
-    }
-    (free_solver, pinned_solver)
-}
-
-#[cfg(feature = "pure_math")]
 #[test]
-fn test_chladni_plate_clamp_pitch_shift_fringes_limiter_and_wav() {
-    use math_explorer::pure_math::analysis::pde::wave_2d::{
-        BoundaryMode2D, SpectralAnalyzer2D, SpectralMode2D, Wave2DMedium, Wave2DParams,
-    };
+fn test_controller_default_muted_divergence_and_webgl_loss_guards() {
+    crate::accessibility::clear_test_announcements();
+    let mut ctrl = AudioEngineController::new();
+    assert!(ctrl.is_muted());
+    assert!(!ctrl.has_user_gesture());
+    assert!(!ctrl.has_audio_context());
 
-    let n = 64_usize;
-    let params = Wave2DParams {
-        medium: Wave2DMedium::BiharmonicPlate,
-        boundary: BoundaryMode2D::Dirichlet,
-        wave_speed: 0.0,
-        plate_stiffness: 0.0016,
-        damping: 0.35,
-    };
-    let (free_solver, pinned_solver) = build_free_and_pinned_plate_solvers(n, &params);
+    ctrl.unmute_from_user_gesture("Test Tool");
+    assert!(!ctrl.is_muted());
+    assert!(ctrl.has_user_gesture());
 
-    let mut fft = SpectralAnalyzer2D::new(n, n);
-    let mut free_modes = [SpectralMode2D::default(); 6];
-    let mut pinned_modes = [SpectralMode2D::default(); 6];
-    let _ = fft.compute_spectrum(free_solver.displacement());
-    let fc = fft.extract_top_modes(&mut free_modes);
-    let _ = fft.compute_spectrum(pinned_solver.displacement());
-    let pc = fft.extract_top_modes(&mut pinned_modes);
+    ctrl.auto_mute_on_divergence("Test Tool");
+    assert!(ctrl.is_muted());
+    assert_eq!(
+        ctrl.last_silence_reason(),
+        AutoSilenceReason::SolverDiverged
+    );
+    assert_eq!(
+        ctrl.current_gain_after_elapsed(std::time::Duration::from_millis(20)),
+        0.0
+    );
+    assert!(
+        crate::accessibility::all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg.contains("solver divergence") && prio == "assertive")
+    );
 
-    let flat_det = [0.0_f64; 64];
-    let fringe_det: Vec<f64> = (0..64)
-        .map(|y| (std::f64::consts::PI * (y as f64) / 5.0).cos().powi(2))
-        .collect();
-    let free_frame = chladni_wave_tank_frame(&free_modes[..fc], &params, 1.0, &flat_det, 0.0);
-    let pinned_frame =
-        chladni_wave_tank_frame(&pinned_modes[..pc], &params, 0.93, &fringe_det, 1.0);
-    assert!(pinned_frame.voices[0].freq_hz > free_frame.voices[0].freq_hz);
-    assert!(pinned_frame.voices[0].fm_mod_hz > free_frame.voices[0].fm_mod_hz);
-    assert!(pinned_frame.voices[0].transient_impulse > 0.9);
-    assert!(pinned_frame.custom_harmonics.is_some());
-
-    verify_chladni_dispersion_safety_and_wav(&pinned_modes[..pc], &fringe_det, &pinned_frame);
-}
-
-#[cfg(feature = "pure_math")]
-fn verify_chladni_dispersion_safety_and_wav(
-    modes: &[math_explorer::pure_math::analysis::pde::wave_2d::SpectralMode2D],
-    det: &[f64],
-    active_frame: &SonificationFrame,
-) {
-    use math_explorer::pure_math::analysis::pde::wave_2d::{
-        BoundaryMode2D, Wave2DMedium, Wave2DParams,
-    };
-    for stiffness in [0.0, 0.05] {
-        let extreme = Wave2DParams {
-            medium: Wave2DMedium::BiharmonicPlate,
-            boundary: BoundaryMode2D::Neumann,
-            wave_speed: 0.0,
-            plate_stiffness: stiffness,
-            damping: 0.05,
-        };
-        let f = chladni_wave_tank_frame(modes, &extreme, 1.0, det, 0.0);
-        for v in &f.voices[..f.active_voices as usize] {
-            assert!((MIN_FREQ_HZ..=MAX_FREQ_HZ).contains(&v.freq_hz));
-        }
-    }
-    let slow_wave = Wave2DParams {
-        medium: Wave2DMedium::AcousticWave,
-        boundary: BoundaryMode2D::Dirichlet,
-        wave_speed: 1.0,
-        plate_stiffness: 0.0,
-        damping: 0.01,
-    };
-    let fast_wave = Wave2DParams {
-        wave_speed: 2.0,
-        ..slow_wave
-    };
-    let f_slow = chladni_wave_tank_frame(modes, &slow_wave, 1.0, det, 0.0);
-    let f_fast = chladni_wave_tank_frame(modes, &fast_wave, 1.0, det, 0.0);
-    assert!(f_fast.voices[0].freq_hz > f_slow.voices[0].freq_hz * 1.8);
-
-    assert!(!chladni_wave_tank_frame(&[], &slow_wave, 1.0, det, 0.0).is_audible());
-    let nan_params = Wave2DParams {
-        wave_speed: f64::NAN,
-        ..slow_wave
-    };
-    assert!(!chladni_wave_tank_frame(modes, &nan_params, 1.0, det, 0.0).is_audible());
-
-    let mut synth = OfflinePcmSynthesizer::new(16_384, 2048);
-    let _ = synth.set_muted_from_user_gesture(false);
-    synth.set_master_volume(1.0);
-    synth.apply_frame(active_frame);
-    let pcm = synth.render_frames(2048);
-    assert!(pcm.iter().all(|s| s.abs() <= LIMITER_CEILING_LINEAR + 1e-6));
-    let wav = synthesize_frames_to_wav(&[*active_frame], 44_100, 512, 0.9);
-    assert_eq!(&wav[0..4], b"RIFF");
-    assert!(wav.len() > 2_000);
+    ctrl.unmute_from_user_gesture("Test Tool");
+    assert!(!ctrl.is_muted());
+    silence_all_audio_on_webgl_loss();
+    ctrl.update_frame(Some(spike_analysis_frame(20.0, -5.0, 0.0, 35.0)));
+    assert!(ctrl.is_muted());
+    assert_eq!(
+        ctrl.last_silence_reason(),
+        AutoSilenceReason::WebGlContextLost
+    );
 }

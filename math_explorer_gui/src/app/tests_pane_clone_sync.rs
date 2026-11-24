@@ -200,6 +200,7 @@ fn test_session_envelope_recovery_and_undo_preserve_comparison_sync_toggles() {
             link_axes: true,
             link_cursors: true,
             sync_playback: true,
+            link_topology: false,
         }
     );
 

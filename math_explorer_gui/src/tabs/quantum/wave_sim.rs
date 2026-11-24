@@ -18,6 +18,8 @@ pub mod presets;
 pub mod runner;
 #[path = "wave_sim/sculpt.rs"]
 pub mod sculpt;
+#[path = "wave_sim/sonification.rs"]
+mod sonification;
 #[cfg(test)]
 #[path = "wave_sim/tests.rs"]
 mod tests;
@@ -74,6 +76,7 @@ pub struct WaveSimulatorTool {
     pub(crate) worker: BackgroundWorker<WaveRunner>,
     pub(crate) export_runner: Option<WaveRunner>,
     pub(crate) export_data: Option<WaveData>,
+    pub(crate) audio_settings: crate::audio::AcousticSettings,
     pub(crate) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) atlas: ParameterAtlasController,
     pub(crate) pending_slider_reset: bool,
@@ -138,6 +141,7 @@ impl WaveSimulatorTool {
             worker,
             export_runner: None,
             export_data: None,
+            audio_settings: crate::audio::AcousticSettings::default(),
             latest_sonification,
             atlas: ParameterAtlasController::new(WAVE_ATLAS_AXIS_PAIRS.to_vec()),
             pending_slider_reset: false,
@@ -253,7 +257,7 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_audio()
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
@@ -280,6 +284,7 @@ impl InteractiveTool for WaveSimulatorTool {
         for _ in 0..self.steps_per_frame.max(1) {
             runner.step_with_dt(self.dt);
         }
+        self.latest_sonification = runner.sonification_frame();
         self.export_data = Some(runner.build_wave_data());
     }
 
@@ -388,6 +393,28 @@ impl InteractiveTool for WaveSimulatorTool {
     #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        if !self.has_finite_parameters() {
+            return Some(crate::audio::SonificationFrame::silent());
+        }
+        Some(self.latest_sonification.sanitize())
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.sample_wave_sonification_frames(num_frames)
     }
 }
 

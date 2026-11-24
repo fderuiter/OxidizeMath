@@ -159,6 +159,27 @@ pub(crate) fn resolve_domain_tab_index(
         .unwrap_or(0)
 }
 
+fn score_preset_tool_association(best: &mut Option<usize>, tool_name: &str, query: &str) {
+    if let Some(s) = fuzzy_match_score(tool_name, query) {
+        let weighted = s.saturating_add(18);
+        *best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
+    }
+    for meta in inventory::iter::<crate::framework::ToolMetadata> {
+        if meta.id == tool_name || meta.display_name == tool_name {
+            if let Some(s) = fuzzy_match_score(meta.display_name, query) {
+                let weighted = s.saturating_add(18);
+                *best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
+            }
+            for &tag in meta.tags {
+                if let Some(s) = fuzzy_match_score(tag, query) {
+                    let weighted = s.saturating_add(24);
+                    *best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
+                }
+            }
+        }
+    }
+}
+
 fn score_preset_metadata(
     preset: &crate::starter_gallery::StarterPresetMetadata,
     query: &str,
@@ -179,6 +200,9 @@ fn score_preset_metadata(
             let weighted = s.saturating_add(penalty);
             best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
         }
+    }
+    if let Some(tool_name) = preset.tool_name {
+        score_preset_tool_association(&mut best, tool_name, query);
     }
     best.map(|s| if s == 0 { 0 } else { s.saturating_add(5) })
 }

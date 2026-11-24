@@ -63,16 +63,37 @@ impl MathExplorerApp {
     }
 
     pub(crate) fn can_trigger_command_palette_shortcut(&self, ctx: &egui::Context) -> bool {
-        if egui::Popup::is_any_open(ctx) || self.show_help_menu || self.show_starter_gallery {
+        if egui::Popup::is_any_open(ctx) || self.show_help_menu {
             return false;
         }
         let palette_layer = egui::LayerId::new(
             egui::Order::Foreground,
             egui::Id::new("command_palette_modal"),
         );
+        let gallery_layer = egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("global_workspace_starter_gallery_overlay"),
+        );
         match egui_plot::active_top_modal_layer(ctx) {
             None => true,
-            Some(layer) => self.command_palette.is_open && layer == palette_layer,
+            Some(layer) => {
+                (self.command_palette.is_open && layer == palette_layer)
+                    || (self.show_starter_gallery && layer == gallery_layer)
+            }
+        }
+    }
+
+    pub(crate) fn can_trigger_starter_gallery_shortcut(&self, ctx: &egui::Context) -> bool {
+        if egui::Popup::is_any_open(ctx) || self.command_palette.is_open || self.show_help_menu {
+            return false;
+        }
+        let gallery_layer = egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("global_workspace_starter_gallery_overlay"),
+        );
+        match egui_plot::active_top_modal_layer(ctx) {
+            None => true,
+            Some(layer) => self.show_starter_gallery && layer == gallery_layer,
         }
     }
 
@@ -109,6 +130,9 @@ impl MathExplorerApp {
             None,
             palette_allowed,
         ) {
+            if !self.command_palette.is_open {
+                self.show_starter_gallery = false;
+            }
             self.command_palette.toggle();
             let msg = if self.command_palette.is_open {
                 "Command palette opened"
@@ -118,9 +142,36 @@ impl MathExplorerApp {
             crate::accessibility::announce_live_status(ctx, msg);
         }
 
+        self.register_and_handle_starter_gallery_shortcut(ctx, modifiers);
         self.register_and_handle_help_and_diagnostics_shortcuts(ctx, modifiers);
         self.poll_share_shortcut_and_clipboard(ctx);
         self.poll_duplicate_pane_shortcut(ctx);
+    }
+
+    fn register_and_handle_starter_gallery_shortcut(
+        &mut self,
+        ctx: &egui::Context,
+        modifiers: egui::Modifiers,
+    ) {
+        let gallery_allowed = self.can_trigger_starter_gallery_shortcut(ctx);
+        if register_and_check_shortcut_if_allowed(
+            ctx,
+            DesktopShortcutSpec {
+                name: "Open Starter Gallery",
+                description: "Browse and filter pre-configured starter templates across all domains",
+                trigger: CommandTrigger::Shortcut(modifiers | egui::Modifiers::SHIFT, egui::Key::G),
+                context_name: "Global",
+            },
+            None,
+            gallery_allowed,
+        ) {
+            if self.show_starter_gallery {
+                self.show_starter_gallery = false;
+                crate::accessibility::announce_live_status(ctx, "Starter template gallery closed");
+            } else {
+                self.open_starter_gallery(ctx);
+            }
+        }
     }
 
     fn register_and_handle_help_and_diagnostics_shortcuts(

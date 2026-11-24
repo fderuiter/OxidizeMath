@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 
 pub mod braess;
 mod braess_host;
+mod bus_bridge;
 mod dataflow;
 mod io_export;
 mod keyboard;
@@ -49,6 +50,8 @@ pub struct GraphEditorTool {
     redo_stack: Vec<GraphSnapshot>,
     canvas_id: Option<egui::Id>,
     pub(crate) revision: u64,
+    /// Publishes edges as directed `u -> v` connections on `SharedSimulationBus`.
+    pub directed_edges: bool,
     /// Hosted Braess's paradox congestion routing laboratory.
     pub braess: BraessCongestionLab,
     pub(crate) file_io: super::io_helpers::GraphFileIoState,
@@ -120,6 +123,7 @@ impl InteractiveTool for GraphEditorTool {
         ui.separator();
         ui.label(format!("Nodes: {}", self.node_positions.len()));
         ui.label(format!("Edges: {}", self.edges.len()));
+        self.show_bus_bridge_controls(ui);
         ui.separator();
         self.render_interchange_and_handoff_ui(ui);
         ui.separator();
@@ -185,6 +189,7 @@ impl InteractiveTool for GraphEditorTool {
             self.braess
                 .draw_canvas_banner(painter, response.rect, &palette);
         }
+        let _ = self.publish_shared_topology(ui.ctx());
         self.publish_dataflow_topology(ui.ctx());
     }
 }
@@ -260,11 +265,22 @@ impl GraphEditorTool {
 
     fn click_add_node(&mut self, pos: Pos2) {
         if self.hovered_node.is_none() {
+            let Some(next_id) = self
+                .next_node_id
+                .checked_add(1)
+                .filter(|_| self.next_node_id < u32::MAX as usize)
+            else {
+                crate::accessibility::announce_status(
+                    "Cannot add node: node identifier limit reached",
+                );
+                return;
+            };
             self.push_undo_snapshot();
+            let node_id = self.next_node_id;
             let node_index = self.graph.add_node(pos);
-            self.node_indices.insert(self.next_node_id, node_index);
-            self.node_positions.insert(self.next_node_id, pos);
-            self.next_node_id += 1;
+            self.node_indices.insert(node_id, node_index);
+            self.node_positions.insert(node_id, pos);
+            self.next_node_id = next_id;
         }
     }
 
@@ -454,5 +470,7 @@ impl GraphEditorTool {
 
 // [cite:graph_parameters_rust]
 
+#[cfg(test)]
+mod bounds_tests;
 #[cfg(test)]
 mod tests;

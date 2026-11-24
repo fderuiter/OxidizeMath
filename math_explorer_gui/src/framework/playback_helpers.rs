@@ -158,3 +158,45 @@ pub(super) fn button_min_size(ctx: &egui::Context) -> egui::Vec2 {
         egui::Vec2::ZERO
     }
 }
+
+pub(super) fn render_step_and_reset_buttons(
+    ui: &mut egui::Ui,
+    base_id: egui::Id,
+    tool_name: &str,
+    labels: (&str, &str, &str),
+    flags: (bool, bool, bool),
+    min_size: egui::Vec2,
+) -> Option<PlaybackAction> {
+    let mut action = None;
+    let specs = [
+        (
+            "step_back_button_info",
+            labels.0,
+            format!("Step {tool_name} simulation backward one step (Comma)"),
+            flags.0,
+            PlaybackAction::StepBack,
+        ),
+        (
+            "step_button_info",
+            labels.1,
+            format!("Step {tool_name} simulation forward one step (Period)"),
+            flags.1,
+            PlaybackAction::Step,
+        ),
+        (
+            "reset_button_info",
+            labels.2,
+            format!("Reset {tool_name} simulation"),
+            flags.2,
+            PlaybackAction::Reset,
+        ),
+    ];
+    for (salt, label, a11y, enabled, act) in &specs {
+        if render_action_button(ui, base_id.with(*salt), label, a11y, *enabled, min_size)
+            && action.is_none()
+        {
+            action = Some(*act);
+        }
+    }
+    action
+}

@@ -2,6 +2,7 @@
 
 use super::shared_topology::CompactTopologyState;
 use crate::accessibility::AccessibleHoverText;
+use crate::app::{TopologySource, render_topology_source_bar};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use eframe::egui::Pos2;
@@ -49,6 +50,8 @@ pub(crate) struct NetworkMetricsState {
     pub(crate) highlight_vertex_cover: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) custom_topology: Option<CompactTopologyState>,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    pub(crate) topology_source: TopologySource,
 }
 
 /// Interactive network centrality and parameterized complexity invariant analyzer.
@@ -61,6 +64,8 @@ pub struct NetworkMetricsTool {
     is_custom_topology: bool,
 
     selected_metric: MetricType,
+    pub topology_source: TopologySource,
+    synced_bus_revision: Option<u64>,
     highlight_vertex_cover: bool,
     metric_values: HashMap<usize, f64>,
     global_diameter: Option<usize>,
@@ -83,6 +88,8 @@ impl Default for NetworkMetricsTool {
             directed: false,
             is_custom_topology: false,
             selected_metric: MetricType::DegreeCentrality,
+            topology_source: TopologySource::SharedBus,
+            synced_bus_revision: None,
             highlight_vertex_cover: true,
             metric_values: HashMap::new(),
             global_diameter: None,
@@ -139,7 +146,6 @@ impl NetworkMetricsTool {
         self.edges.clear();
         self.directed = false;
         self.is_custom_topology = false;
-
         let center = Pos2::new(300.0, 300.0);
         let center_id = 0;
         let center_idx = self.graph.add_node(center);
@@ -237,9 +243,20 @@ impl NetworkMetricsTool {
     }
 
     fn render_side_panel(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "network_metrics_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Network Metrics");
+            if render_topology_source_bar(
+                ui,
+                "network_metrics",
+                &mut self.topology_source,
+                self.synced_bus_revision,
+                None,
+            ) {
+                self.bump_revision();
+                self.sync_shared_topology(&ctx);
+            }
             ui.separator();
             self.render_metric_selector(ui);
             ui.separator();
@@ -395,6 +412,16 @@ impl InteractiveTool for NetworkMetricsTool {
     fn domain(&self) -> &'static str {
         "graph_theory"
     }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("node_count", self.node_positions.len() as f64),
+            ("edge_count", self.edges.len() as f64),
+            (
+                "synced_bus_revision",
+                self.synced_bus_revision.unwrap_or(0) as f64,
+            ),
+        ]
+    }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::plot()
     }
@@ -415,13 +442,14 @@ impl InteractiveTool for NetworkMetricsTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let custom_topology = self
-            .is_custom_topology
+        let on_bus = self.synced_bus_revision.is_some();
+        let custom_topology = (!on_bus && self.is_custom_topology)
             .then(|| self.export_shared_topology().to_compact_state());
         serde_json::to_string(&NetworkMetricsState {
             selected_metric: self.selected_metric,
             highlight_vertex_cover: self.highlight_vertex_cover,
             custom_topology,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -431,18 +459,22 @@ impl InteractiveTool for NetworkMetricsTool {
             .map_err(|e| format!("Invalid NetworkMetrics state: {e}"))?;
         if let Some(compact) = &loaded.custom_topology {
             compact.validate()?;
+            self.synced_bus_revision = None;
             self.load_compact_topology(compact);
-        } else if self.is_custom_topology {
+        } else if self.is_custom_topology || self.synced_bus_revision.take().is_some() {
             self.build_sample_graph();
         }
         self.selected_metric = loaded.selected_metric;
         self.highlight_vertex_cover = loaded.highlight_vertex_cover;
+        self.topology_source = loaded.topology_source;
         self.bump_revision();
         self.compute_metrics();
         Ok(())
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
+        self.sync_shared_topology(&ctx);
         self.render_side_panel(parent_ui);
         self.render_canvas(parent_ui);
     }

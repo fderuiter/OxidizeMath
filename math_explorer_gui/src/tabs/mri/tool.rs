@@ -2,9 +2,7 @@
 
 use super::counterfactual::step_bloch_rotating_frame;
 use super::pulse::{MriPulseMode, MriPulseWorkspace, RfPulseConfig, sync_mri_callouts};
-use super::runner::{
-    MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE, MriRunner, MriSharedParams, MriSnapshot,
-};
+use super::runner::{MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE, MriRunner, MriSharedParams};
 use super::theory::MriBlochTheory;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool};
@@ -50,6 +48,12 @@ pub struct MriToolState {
     /// Legacy boolean pause flag accepted on deserialization.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused: Option<bool>,
+    /// Persisted non-mute acoustic synthesis settings.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
+    pub audio: crate::audio::AcousticSettings,
     /// Optional compact counterfactual fork descriptor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork: Option<super::MriForkDescriptor>,
@@ -81,6 +85,7 @@ impl MriToolState {
                 ));
             }
         }
+        self.audio.validate()?;
         if let Some(ref pulse) = self.pulse {
             pulse.validate()?;
         }
@@ -118,6 +123,8 @@ pub struct MriTool {
     pub params: Arc<std::sync::RwLock<MriSharedParams>>,
     /// Background Bloch worker controller.
     pub worker: BackgroundWorker<MriRunner>,
+    /// Persisted non-mute acoustic synthesis settings.
+    pub audio_settings: crate::audio::AcousticSettings,
     /// Optional counterfactual shadow twin state (`Branch A` + spin-echo ensemble).
     pub twin: Option<super::MriTwinState>,
     /// Shared framework `CounterfactualBranchEngine` state.
@@ -185,6 +192,7 @@ impl Default for MriTool {
             mz_points: Vec::new(),
             params,
             worker,
+            audio_settings: crate::audio::AcousticSettings::default(),
             twin: None,
             branch_engine: crate::framework::CounterfactualBranchEngine::with_delta(0.0),
             callout_manager,
@@ -293,7 +301,26 @@ impl InteractiveTool for MriTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_audio()
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(self.current_sonification_frame())
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(
+        &mut self,
+        frame_count: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.render_wav_frames(frame_count)
     }
 
     fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
@@ -308,54 +335,7 @@ impl InteractiveTool for MriTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let map_xyz = |hist: &VecDeque<(f64, Vector3<f64>)>, labels: [&str; 3]| {
-            vec![
-                (
-                    labels[0].to_string(),
-                    hist.iter().map(|(t, m)| [*t, m.x]).collect(),
-                ),
-                (
-                    labels[1].to_string(),
-                    hist.iter().map(|(t, m)| [*t, m.y]).collect(),
-                ),
-                (
-                    labels[2].to_string(),
-                    hist.iter().map(|(t, m)| [*t, m.z]).collect(),
-                ),
-            ]
-        };
-        let std_labels = ["Mx (Transverse)", "My (Transverse)", "Mz (Longitudinal)"];
-        if let Some(ref twin) = self.twin
-            && !self.history.is_empty()
-        {
-            let mut out = map_xyz(
-                &self.history,
-                ["Mx (Branch B)", "My (Branch B)", "Mz (Branch B)"],
-            );
-            out.extend(map_xyz(
-                &twin.history_a,
-                ["Mx (Branch A)", "My (Branch A)", "Mz (Branch A)"],
-            ));
-            return out;
-        }
-        if !self.history.is_empty() {
-            return map_xyz(&self.history, std_labels);
-        }
-        if let Some(data) = self
-            .worker
-            .latest_snapshot()
-            .and_then(|s| s.structured_data.as_ref())
-            .and_then(|d| d.downcast_ref::<MriSnapshot>())
-            .filter(|d| !d.history.is_empty())
-        {
-            return map_xyz(&data.history, std_labels);
-        }
-        let m = self.simulator.magnetization;
-        vec![
-            (std_labels[0].to_string(), vec![[self.current_time, m.x]]),
-            (std_labels[1].to_string(), vec![[self.current_time, m.y]]),
-            (std_labels[2].to_string(), vec![[self.current_time, m.z]]),
-        ]
+        self.collect_mri_export_datasets()
     }
 
     fn step_simulation(&mut self) {
@@ -408,6 +388,8 @@ impl InteractiveTool for MriTool {
         self.simulator.b_field.y.to_bits().hash(&mut h);
         self.simulator.b_field.z.to_bits().hash(&mut h);
         self.time_scale.to_bits().hash(&mut h);
+        self.audio_settings.gain.to_bits().hash(&mut h);
+        self.audio_settings.pitch_scale.to_bits().hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         if let Some(ref twin) = self.twin {
             true.hash(&mut h);

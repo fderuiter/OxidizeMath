@@ -18,6 +18,7 @@ pub mod kspace_ui;
 pub mod kspace_worker;
 pub mod pulse;
 pub mod runner;
+pub mod sonification;
 mod state;
 pub mod theory;
 pub mod tool;

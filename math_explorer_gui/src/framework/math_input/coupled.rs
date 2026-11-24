@@ -3,9 +3,14 @@
 
 use super::{MAX_SYNTHESIZED_PARAMS, MathExpressionInputBar, ParameterSliderBank};
 use eframe::egui;
-use math_commons::ast::{CompiledExpr, Expr, is_universal_constant, parse};
+use math_commons::ast::{
+    CompiledExpr, Expr, MAX_COMPILED_INSTRUCTIONS, is_universal_constant, parse,
+};
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
+
+/// Maximum combined bytecode instruction count permitted across all equations in a [`CoupledExpressionBank`].
+pub const MAX_COUPLED_BANK_INSTRUCTIONS: usize = 384;
 
 /// Multi-equation input bank where every equation shares the same coordinate axes,
 /// one deduplicated [`ParameterSliderBank`], and aligned [`CompiledExpr`] parameter slots.
@@ -19,6 +24,9 @@ pub struct CoupledExpressionBank {
     slider_bank: ParameterSliderBank,
     active_compiled: Vec<CompiledExpr>,
     bank_error: Option<String>,
+    had_bank_error: bool,
+    last_announced_bank_error: Option<String>,
+    max_total_instructions: usize,
     system_presets: Vec<(&'static str, Vec<&'static str>)>,
 }
 
@@ -41,10 +49,42 @@ impl CoupledExpressionBank {
             slider_bank: ParameterSliderBank::new(),
             active_compiled: fallback,
             bank_error: None,
+            had_bank_error: false,
+            last_announced_bank_error: None,
+            max_total_instructions: MAX_COUPLED_BANK_INSTRUCTIONS,
             system_presets: Vec::new(),
         };
         bank.recompile();
         bank
+    }
+
+    /// Configures the bank-wide maximum combined bytecode instruction count.
+    #[must_use]
+    pub fn with_max_total_instructions(mut self, max_total: usize) -> Self {
+        let cap = (self.bars.len().max(1)) * MAX_COMPILED_INSTRUCTIONS;
+        self.max_total_instructions = max_total.clamp(1, cap);
+        self.recompile();
+        self
+    }
+
+    /// Configures a per-row bytecode instruction limit across every bar in the bank.
+    #[must_use]
+    pub fn with_max_row_instructions(mut self, max_per_row: usize) -> Self {
+        self.bars = std::mem::take(&mut self.bars)
+            .into_iter()
+            .map(|b| b.with_max_instructions(max_per_row))
+            .collect();
+        self.recompile();
+        self
+    }
+
+    /// Total compiled instruction count across [`Self::active_compiled`].
+    #[must_use]
+    pub fn total_instruction_count(&self) -> usize {
+        self.active_compiled
+            .iter()
+            .map(CompiledExpr::instruction_count)
+            .sum()
     }
 
     /// Configures range bounds and default value for newly discovered shared parameters.
@@ -209,10 +249,11 @@ impl CoupledExpressionBank {
     pub fn recompile(&mut self) {
         let mut parsed: Vec<&Expr> = Vec::with_capacity(self.bars.len());
         for bar in &self.bars {
-            match &bar.parsed_expr {
-                Ok(expr) => parsed.push(expr),
-                Err(_) => return,
-            }
+            let Some(expr) = bar.expr() else {
+                self.bank_error = None;
+                return;
+            };
+            parsed.push(expr);
         }
 
         let discovered = collect_union_params(&parsed, &self.axes);
@@ -235,6 +276,17 @@ impl CoupledExpressionBank {
                     return;
                 }
             }
+        }
+        let total_insts: usize = next_compiled
+            .iter()
+            .map(CompiledExpr::instruction_count)
+            .sum();
+        if total_insts > self.max_total_instructions {
+            self.bank_error = Some(format!(
+                "Coupled equations compile to {total_insts} total instructions (maximum {}). Simplify one or more equations",
+                self.max_total_instructions
+            ));
+            return;
         }
 
         self.bank_error = None;
@@ -268,8 +320,18 @@ impl CoupledExpressionBank {
             }
 
             if let Some(ref err) = self.bank_error {
+                let announced = format!("Syntax Error: {err}");
+                if self.last_announced_bank_error.as_deref() != Some(&announced) {
+                    crate::accessibility::announce_status_with_priority(&announced, "assertive");
+                    self.had_bank_error = true;
+                    self.last_announced_bank_error = Some(announced);
+                }
                 let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-                ui.colored_label(palette.error, format!("⚠️ {err}"));
+                ui.colored_label(palette.error, format!("⚠️ Syntax Error: {err}"));
+            } else if self.had_bank_error && self.is_valid() {
+                crate::accessibility::announce_status("Coupled mathematical expressions are valid");
+                self.had_bank_error = false;
+                self.last_announced_bank_error = None;
             }
             changed
         })

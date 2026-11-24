@@ -9,7 +9,10 @@ use eframe::egui;
 impl NetworkPropagationTool {
     pub(super) fn draw_controls_column(&mut self, ui: &mut egui::Ui) {
         ui.heading("Controls");
-        ui.separator();
+        if !self.upstream_linked {
+            self.render_topology_sync_bar(ui);
+            ui.separator();
+        }
 
         self.render_transport_controls(ui);
         ui.separator();
@@ -68,14 +71,19 @@ impl NetworkPropagationTool {
             );
             return;
         }
-        let mut num_nodes = self.model.num_nodes();
+        let mut num_nodes = if locked {
+            self.model.num_nodes()
+        } else {
+            self.local_num_nodes
+        };
         if ui
             .add_enabled(
-                !locked,
+                !locked && self.synced_bus_revision.is_none(),
                 egui::Slider::new(&mut num_nodes, 10..=200).text("Nodes"),
             )
             .changed()
         {
+            self.local_num_nodes = num_nodes;
             let _ = self.model.set_num_nodes(num_nodes);
             self.vaccinated_nodes.clear();
             self.quarantined_edges.clear();

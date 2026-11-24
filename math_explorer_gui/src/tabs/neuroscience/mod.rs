@@ -13,4 +13,4 @@ crate::declare_simulation_tab!(
     order: 41,
 );
 
-// [cite:graph_parameters_rust]
+// [cite:biology]

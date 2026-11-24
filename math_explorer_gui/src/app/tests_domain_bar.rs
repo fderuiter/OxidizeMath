@@ -57,6 +57,7 @@ fn test_all_modules_categorized_into_academic_domains() {
     assert!(domain_counts[&AcademicDomain::Physics].contains(&"Optics & Waves"));
     assert!(domain_counts[&AcademicDomain::AppliedMath].contains(&"Game Theory"));
     assert!(domain_counts[&AcademicDomain::AppliedMath].contains(&"Traceability Portal"));
+    assert!(domain_counts[&AcademicDomain::Biology].contains(&"Biochemical Dynamics"));
     assert!(domain_counts[&AcademicDomain::Biology].contains(&"Epidemiology"));
     assert!(domain_counts[&AcademicDomain::Climate].contains(&"Climate"));
     assert!(domain_counts[&AcademicDomain::Ai].contains(&"Artificial Intelligence"));

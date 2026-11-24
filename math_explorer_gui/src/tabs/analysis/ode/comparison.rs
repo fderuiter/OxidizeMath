@@ -108,7 +108,7 @@ pub fn simulate_ode(spec: &OdeSimSpec<'_>) -> SolverTrajectory {
         method: spec.method,
         ..Default::default()
     };
-    let Some(num_steps) = validate_initial_state(&mut traj, spec) else {
+    let Some((num_steps, eff_dt)) = validate_initial_state(&mut traj, spec) else {
         return traj;
     };
     let Some(point_cap) = num_steps.checked_add(1) else {
@@ -122,27 +122,32 @@ pub fn simulate_ode(spec: &OdeSimSpec<'_>) -> SolverTrajectory {
         return traj;
     }
 
-    dispatch_sim_preset(&mut traj, spec, num_steps);
+    dispatch_sim_preset(&mut traj, spec, eff_dt, num_steps);
     traj
 }
 
-fn dispatch_sim_preset(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps: usize) {
+fn dispatch_sim_preset(
+    traj: &mut SolverTrajectory,
+    spec: &OdeSimSpec<'_>,
+    dt: f64,
+    num_steps: usize,
+) {
     if spec.preset.is_2d() {
-        dispatch_sim_2d(traj, spec, num_steps);
+        dispatch_sim_2d(traj, spec, dt, num_steps);
         return;
     }
     let init_1d = ArrayState([spec.ic_y0]);
     match spec.preset {
         OdePreset::Exponential => {
             let dyn_sys = ExponentialOde { k: spec.param_k };
-            run_loop_1d(traj, init_1d, &dyn_sys, spec.method, spec.dt, num_steps);
+            run_loop_1d(traj, init_1d, &dyn_sys, spec.method, dt, num_steps);
         }
         OdePreset::LogisticGrowth => {
             let dyn_sys = LogisticGrowthOde {
                 r: spec.param_r,
                 cap_k: spec.param_cap_k,
             };
-            run_loop_1d(traj, init_1d, &dyn_sys, spec.method, spec.dt, num_steps);
+            run_loop_1d(traj, init_1d, &dyn_sys, spec.method, dt, num_steps);
         }
         OdePreset::Custom => {
             if let Some(cspec) = spec.custom_spec {
@@ -152,12 +157,12 @@ fn dispatch_sim_preset(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_s
                         ArrayState([spec.ic_y0, spec.ic_v0]),
                         cspec,
                         spec.method,
-                        spec.dt,
+                        dt,
                         num_steps,
                         ("y(t)", "v(t)"),
                     );
                 } else {
-                    run_loop_1d(traj, init_1d, cspec, spec.method, spec.dt, num_steps);
+                    run_loop_1d(traj, init_1d, cspec, spec.method, dt, num_steps);
                 }
             }
         }
@@ -165,7 +170,7 @@ fn dispatch_sim_preset(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_s
     }
 }
 
-fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps: usize) {
+fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, dt: f64, num_steps: usize) {
     let init_2d = ArrayState([spec.ic_y0, spec.ic_v0]);
     match spec.preset {
         OdePreset::HarmonicOscillator => {
@@ -175,7 +180,7 @@ fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps
                 init_2d,
                 &dyn_sys,
                 spec.method,
-                spec.dt,
+                dt,
                 num_steps,
                 ("y(t)", "y'(t)"),
             );
@@ -189,7 +194,7 @@ fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps
                 init_2d,
                 &dyn_sys,
                 spec.method,
-                spec.dt,
+                dt,
                 num_steps,
                 ("x(t)", "y(t)"),
             );
@@ -206,7 +211,7 @@ fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps
                     init_2d,
                     &dyn_sys,
                     spec.method,
-                    spec.dt,
+                    dt,
                     num_steps,
                     ("x(t)", "y(t)"),
                 );
@@ -216,8 +221,12 @@ fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps
     }
 }
 
-fn validate_initial_state(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>) -> Option<usize> {
-    let num_steps = crate::presets::checked_ode_step_count(spec.dt, spec.total_time)?;
+fn validate_initial_state(
+    traj: &mut SolverTrajectory,
+    spec: &OdeSimSpec<'_>,
+) -> Option<(usize, f64)> {
+    let (num_steps, eff_dt) =
+        spec.budgeted_steps_and_dt(super::budget::MAX_ODE_SYNC_INSTRUCTIONS)?;
     let (v0_name, v1_name, _, _) = spec.state_labels();
     if !spec.ic_y0.is_finite() {
         traj.diverged = true;
@@ -236,7 +245,7 @@ fn validate_initial_state(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>) ->
         traj.divergence_info = Some((0.0, 0, "A".to_string()));
         return None;
     }
-    Some(num_steps)
+    Some((num_steps, eff_dt))
 }
 
 fn run_loop_1d<D: OdeSystem<ArrayState<1>>>(

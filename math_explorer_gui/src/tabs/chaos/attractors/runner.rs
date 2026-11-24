@@ -2,11 +2,14 @@
 
 use super::flow::{AttractorMode, CompiledFlowJob};
 use super::serde_vec3;
+use crate::app::SharedSimulationBus;
 use crate::async_sim::{
     CheckpointParams, SimCommand, SimulationRunner, StateSnapshot, TimeTravelCheckpoint,
 };
 use crate::framework::recovery::DiagnosticReport;
+use crate::tabs::geometry_topology::vietoris_rips::MAX_CHAOS_LANDMARKS;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
+use math_explorer::pure_math::statistics::tda::{Point3D, farthest_point_landmarks};
 use nalgebra::Vector3;
 use oxidize_core::rng::OxidizeRng;
 use std::collections::VecDeque;
@@ -37,6 +40,21 @@ pub struct AttractorSharedParams {
     pub max_points: usize,
     pub mode: AttractorMode,
     pub custom_flow: Option<Arc<CompiledFlowJob>>,
+    pub sim_bus: Option<SharedSimulationBus>,
+}
+
+impl super::AttractorPlotter {
+    pub(crate) fn bind_sim_bus(&self, ctx: &eframe::egui::Context) {
+        let bus = SharedSimulationBus::from_context_or_insert(ctx);
+        let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
+        let needs_update = match &guard.sim_bus {
+            Some(existing) => !existing.ptr_eq(&bus),
+            None => true,
+        };
+        if needs_update {
+            guard.sim_bus = Some(bus);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -175,6 +193,33 @@ impl AttractorRunner {
         }
         true
     }
+
+    fn publish_live_landmarks(&self, dt: f64) {
+        let sim_bus = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .sim_bus
+            .clone();
+        let Some(bus) = sim_bus else {
+            return;
+        };
+        let pts: Vec<Point3D> = self
+            .history
+            .iter()
+            .map(|v| Point3D::new(v.x, v.y, v.z))
+            .collect();
+        if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
+            let raw_pts = landmarks.into_iter().map(|p| [p.x, p.y, p.z]).collect();
+            let _ = bus.publish_point_cloud_3d(
+                raw_pts,
+                self.system.sigma,
+                self.system.rho,
+                self.system.beta,
+                dt,
+            );
+        }
+    }
 }
 
 impl SimulationRunner for AttractorRunner {
@@ -269,6 +314,9 @@ impl SimulationRunner for AttractorRunner {
             if !self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), true) {
                 break;
             }
+        }
+        if self.history.len() >= 16 && self.step_count % 15 < simulation_speed {
+            self.publish_live_landmarks(dt);
         }
     }
 
@@ -401,6 +449,11 @@ impl SimulationRunner for AttractorRunner {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
-        let _ = self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), true);
+        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), true)
+            && self.history.len() >= 16
+            && self.step_count.is_multiple_of(15)
+        {
+            self.publish_live_landmarks(dt);
+        }
     }
 }

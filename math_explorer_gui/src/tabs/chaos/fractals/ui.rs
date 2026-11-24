@@ -18,6 +18,10 @@ impl FractalViewer {
             ui.separator();
             self.draw_mode_selector(ui);
             let _ = self.atlas.show_toggle_button(ui);
+            ui.checkbox(&mut self.linked_explorer, "Click teleports to Julia")
+                .accessible_hover_text(
+                    "When enabled, clicking or pressing Enter on Mandelbrot opens the full Julia set",
+                );
 
             if self.mode.is_custom() {
                 ui.separator();
@@ -27,27 +31,42 @@ impl FractalViewer {
             }
 
             ui.separator();
-            if self.mode.uses_julia_c() {
-                ui.label("Julia Constant (c):");
-                let re_drag = bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.01)
-                    .prefix("Re: ");
-                let im_drag = bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.01)
-                    .prefix("Im: ");
-                if ui.add(re_drag).changed() | ui.add(im_drag).changed() {
-                    self.dirty = true;
-                }
-            } else {
-                ui.label(format!(
-                    "Probe c: {:+.4} {:+.4}i",
-                    self.julia_c.re, self.julia_c.im
-                ));
-                ui.checkbox(&mut self.c_pinned, "Pin c crosshair")
-                    .accessible_hover_text(
-                        "Freeze c against hover; click Mandelbrot canvas or press Enter to toggle",
-                    );
-            }
+            self.draw_julia_c_controls(ui);
             self.draw_view_controls(ui);
         });
+    }
+
+    fn draw_julia_c_controls(&mut self, ui: &mut egui::Ui) {
+        if self.mode.uses_julia_c() {
+            ui.label("Julia Constant (c):");
+            let re_drag = bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.01)
+                .prefix("Re: ");
+            let im_drag = bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.01)
+                .prefix("Im: ");
+            if ui.add(re_drag).changed() | ui.add(im_drag).changed() {
+                self.dirty = true;
+            }
+            if ui.button("← Back to Mandelbrot Atlas").clicked() {
+                let target = if self.mode.is_custom() {
+                    FractalMode::CustomMandelbrot
+                } else {
+                    FractalMode::Mandelbrot
+                };
+                self.switch_mode(target);
+            }
+        } else {
+            ui.label(format!(
+                "Probe c: {:+.4} {:+.4}i",
+                self.julia_c.re, self.julia_c.im
+            ));
+            ui.checkbox(&mut self.c_pinned, "Pin c crosshair")
+                .accessible_hover_text(
+                    "Freeze c against hover; click Mandelbrot canvas or press Enter to toggle",
+                );
+            if ui.button("Open Julia Set (J_c) →").clicked() {
+                self.teleport_to_julia(self.julia_c);
+            }
+        }
     }
 
     fn draw_mode_selector(&mut self, ui: &mut egui::Ui) {
@@ -117,7 +136,7 @@ impl FractalViewer {
         ui.label("Navigation:");
         ui.label("- Hover/Click: Probe/Pin c (Mandelbrot)");
         ui.label("- Drag to Pan | Scroll/Pinch to Zoom");
-        ui.label("- Arrows + Enter: Step/Pin c");
+        ui.label("- Arrows + Enter: Step/Pin or Teleport c");
     }
 
     fn pan_by_pixels(&mut self, delta: egui::Vec2, view_w: f64, view_h: f64) {
@@ -165,22 +184,32 @@ impl FractalViewer {
         }
     }
 
-    fn handle_mandelbrot_pointer(&mut self, ui: &egui::Ui, response: &egui::Response) -> bool {
+    fn handle_mandelbrot_pointer(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        pointer_released: bool,
+    ) -> bool {
         if self.mode.uses_julia_c() {
             return false;
         }
         let rect = response.rect;
-        if response.clicked() && !response.dragged() {
+        if response.clicked() && !response.dragged() && pointer_released {
             response.request_focus();
             if let Some(pos) = response
                 .interact_pointer_pos()
                 .or_else(|| response.hover_pos())
             {
+                let target_c = screen_to_complex(pos, rect, self.center, self.zoom);
+                if self.linked_explorer {
+                    self.teleport_to_julia(target_c);
+                    return true;
+                }
                 let current_px = complex_to_screen(self.julia_c, rect, self.center, self.zoom);
                 if self.c_pinned && current_px.distance(pos) <= 5.0 {
                     self.c_pinned = false;
                 } else {
-                    self.julia_c = screen_to_complex(pos, rect, self.center, self.zoom);
+                    self.julia_c = target_c;
                     self.c_pinned = true;
                 }
                 return true;
@@ -194,11 +223,16 @@ impl FractalViewer {
         false
     }
 
-    fn handle_focused_canvas_keys(&mut self, ui: &egui::Ui, response: &egui::Response) -> bool {
+    fn handle_focused_canvas_keys(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        pointer_released: bool,
+    ) -> bool {
         if !response.has_focus() {
             return false;
         }
-        let (left, right, up, down, enter) = ui.ctx().input_mut(|i| {
+        let (left, right, up, down, enter_key) = ui.ctx().input_mut(|i| {
             (
                 i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft),
                 i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight),
@@ -207,42 +241,35 @@ impl FractalViewer {
                 i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
             )
         });
-        if left || right || up || down {
+        let any_ptr_released = ui.input(|i| i.pointer.any_released());
+        let enter = enter_key || (response.clicked() && !pointer_released && !any_ptr_released);
+        let c_changed = left || right || up || down;
+        if c_changed {
             ui.ctx()
                 .memory_mut(|m| m.move_focus(egui::FocusDirection::None));
-        }
-        let step = (0.01 / self.zoom.clamp(ZOOM_MIN, ZOOM_MAX)).clamp(1e-6, 0.25);
-        let mut c_changed = false;
-        if left {
-            self.julia_c = Complex::new(
-                (self.julia_c.re - step).clamp(COORD_MIN, COORD_MAX),
-                self.julia_c.im,
-            );
-            c_changed = true;
-        }
-        if right {
-            self.julia_c = Complex::new(
-                (self.julia_c.re + step).clamp(COORD_MIN, COORD_MAX),
-                self.julia_c.im,
-            );
-            c_changed = true;
-        }
-        if up {
-            self.julia_c = Complex::new(
-                self.julia_c.re,
-                (self.julia_c.im + step).clamp(COORD_MIN, COORD_MAX),
-            );
-            c_changed = true;
-        }
-        if down {
-            self.julia_c = Complex::new(
-                self.julia_c.re,
-                (self.julia_c.im - step).clamp(COORD_MIN, COORD_MAX),
-            );
-            c_changed = true;
+            let step = (0.01 / self.zoom.clamp(ZOOM_MIN, ZOOM_MAX)).clamp(1e-6, 0.25);
+            let mut re = self.julia_c.re;
+            let mut im = self.julia_c.im;
+            if left {
+                re = (re - step).clamp(COORD_MIN, COORD_MAX);
+            }
+            if right {
+                re = (re + step).clamp(COORD_MIN, COORD_MAX);
+            }
+            if up {
+                im = (im + step).clamp(COORD_MIN, COORD_MAX);
+            }
+            if down {
+                im = (im - step).clamp(COORD_MIN, COORD_MAX);
+            }
+            self.julia_c = Complex::new(re, im);
         }
         if enter {
-            self.c_pinned = !self.c_pinned;
+            if self.linked_explorer && !self.mode.uses_julia_c() {
+                self.teleport_to_julia(self.julia_c);
+            } else {
+                self.c_pinned = !self.c_pinned;
+            }
         }
         if c_changed && self.mode.uses_julia_c() {
             self.dirty = true;
@@ -270,6 +297,8 @@ impl FractalViewer {
         }
         if let Some(texture) = self.texture.clone() {
             let alt_label = self.theory_description();
+            let pointer_released =
+                ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
             let response = ui
                 .add(
                     egui::Image::new(&texture)
@@ -286,8 +315,10 @@ impl FractalViewer {
                 f64::from(response.rect.width()),
                 f64::from(response.rect.height()),
             );
-            let mut announce = self.handle_mandelbrot_pointer(ui, &response);
-            announce |= self.handle_focused_canvas_keys(ui, &response);
+            let mut announce = self.handle_focused_canvas_keys(ui, &response, pointer_released);
+            if !announce {
+                announce = self.handle_mandelbrot_pointer(ui, &response, pointer_released);
+            }
             self.draw_mandelbrot_overlays(ui, ctx, response.rect);
 
             ui.painter().rect_stroke(

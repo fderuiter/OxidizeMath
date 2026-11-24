@@ -1,7 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{ReplicatorDynamicsTool, build_static_symbolic_grid};
+use super::{
+    ReplicatorDynamicsTool, SymbolicGrid, build_static_symbolic_grid, compile_symbolic_exprs,
+};
 use crate::framework::math_input::{MathExpressionInputBar, ParameterSliderBank};
+use crate::presets::ReplicatorPresetConfig;
 use math_commons::ast::Expr;
 use nalgebra::{DMatrix, DVector};
 use std::collections::BTreeMap;
@@ -140,6 +143,113 @@ impl ReplicatorDynamicsTool {
         self.reset_symbolic_from_numeric_matrix();
         self.run_simulation();
     }
+
+    pub(super) fn export_config(&self) -> ReplicatorPresetConfig {
+        let rows = self.payoff_matrix.nrows();
+        let cols = self.payoff_matrix.ncols();
+        let mut matrix = Vec::with_capacity(rows);
+        for i in 0..rows {
+            let mut row = Vec::with_capacity(cols);
+            for j in 0..cols {
+                row.push(self.payoff_matrix[(i, j)]);
+            }
+            matrix.push(row);
+        }
+        let initial_pop: Vec<f64> = self.initial_population.iter().copied().collect();
+        let (symbolic_payoffs, symbolic_params) = if self.symbolic_mode {
+            let sym_rows = self
+                .symbolic_bars
+                .iter()
+                .map(|row| row.iter().map(|b| b.raw_text.trim().to_string()).collect())
+                .collect();
+            (Some(sym_rows), self.symbolic_sliders.export_active_map())
+        } else {
+            (None, BTreeMap::new())
+        };
+
+        ReplicatorPresetConfig {
+            payoff_matrix: matrix,
+            initial_population: initial_pop,
+            time_horizon: self.time_horizon,
+            dt: self.dt,
+            strategy_names: self.strategy_names.clone(),
+            symbolic_payoffs,
+            symbolic_params,
+            topology_source: self.topology_source,
+        }
+    }
+
+    pub(super) fn apply_config(&mut self, config: ReplicatorPresetConfig) -> Result<(), String> {
+        config.validate()?;
+        self.topology_source = config.topology_source;
+        self.synced_bus_revision = None;
+        self.shared_mean_degree = None;
+
+        let rows = config.payoff_matrix.len();
+        let mut sliders = self.symbolic_sliders.clone();
+        let (sym_mode, bars, exprs, compiled) = if let Some(ref sym_rows) = config.symbolic_payoffs
+        {
+            let (bars, exprs) = build_dynamic_symbolic_grid(sym_rows)?;
+            sliders.set_params_map(&config.symbolic_params);
+            let compiled = compile_symbolic_exprs(&exprs, &mut sliders)?;
+            (true, bars, exprs, compiled)
+        } else {
+            let formatted: Vec<Vec<String>> = config
+                .payoff_matrix
+                .iter()
+                .map(|r| r.iter().map(|v| format!("{v}")).collect())
+                .collect();
+            let (bars, exprs) = build_dynamic_symbolic_grid(&formatted)?;
+            (false, bars, exprs, vec![vec![None; rows]; rows])
+        };
+
+        let mut flat = Vec::with_capacity(rows * rows);
+        for row in &config.payoff_matrix {
+            flat.extend_from_slice(row);
+        }
+
+        self.payoff_matrix = DMatrix::from_row_slice(rows, rows, &flat);
+        self.initial_population = DVector::from_vec(config.initial_population);
+        self.time_horizon = config.time_horizon;
+        self.dt = config.dt;
+        self.strategy_names = config.strategy_names;
+        self.symbolic_mode = sym_mode;
+        self.symbolic_bars = bars;
+        self.last_valid_exprs = exprs;
+        self.symbolic_compiled = compiled;
+        self.symbolic_sliders = sliders;
+        self.symbolic_error = None;
+        if self.symbolic_mode {
+            self.evaluate_symbolic_matrix();
+        }
+        self.run_simulation();
+        Ok(())
+    }
+}
+
+fn build_dynamic_symbolic_grid(formulas: &[Vec<String>]) -> Result<SymbolicGrid, String> {
+    let mut bars = Vec::with_capacity(formulas.len());
+    let mut exprs = Vec::with_capacity(formulas.len());
+    for (i, row) in formulas.iter().enumerate() {
+        let mut bar_row = Vec::with_capacity(row.len());
+        let mut expr_row = Vec::with_capacity(row.len());
+        for (j, cell) in row.iter().enumerate() {
+            let bar = MathExpressionInputBar::new("", cell, Vec::new())
+                .with_axes(&[])
+                .with_inline_sliders(false);
+            let Some(expr) = bar.expr().cloned() else {
+                let reason = bar
+                    .error_message()
+                    .unwrap_or_else(|| "invalid expression".to_string());
+                return Err(format!("Invalid symbolic payoff at ({i}, {j}): {reason}"));
+            };
+            bar_row.push(bar);
+            expr_row.push(expr);
+        }
+        bars.push(bar_row);
+        exprs.push(expr_row);
+    }
+    Ok((bars, exprs))
 }
 
 inventory::submit! {

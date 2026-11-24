@@ -20,18 +20,26 @@ pub fn render_sonification_panel(
     frame: &SonificationFrame,
     is_paused: bool,
 ) {
-    super::submit_tool_frame(tool_id, *frame, is_paused);
+    let bridge_id = crate::framework::scoped_audio_bridge_id();
+    let bridge_snap = ui
+        .ctx()
+        .data(|d| d.get_temp::<crate::framework::ScopedAudioUiBridge>(bridge_id));
+    let pitched_frame =
+        bridge_snap.map_or(*frame, |b| frame.with_pitch_scale(b.settings.pitch_scale));
+    super::submit_tool_frame(tool_id, pitched_frame, is_paused);
     let state = super::snapshot_ui_state();
+    let effective_muted = bridge_snap.map_or(state.muted, |b| b.muted);
+    let effective_vol = bridge_snap.map_or(state.master_volume, |b| b.settings.gain);
 
     ui.group(|ui| {
         ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new("Sonification").strong());
-            render_mute_button(ui, state.muted);
+            render_mute_button(ui, effective_muted);
             render_wav_export_button(ui, tool_id);
         });
 
         ui.horizontal_wrapped(|ui| {
-            let mut vol_pct = (state.master_volume * 100.0).round();
+            let mut vol_pct = (effective_vol * 100.0).round();
             ui.label("Gain:");
             let slider = egui::Slider::new(&mut vol_pct, 0.0..=100.0)
                 .suffix("%")
@@ -41,12 +49,22 @@ pub fn render_sonification_panel(
                 .accessible_hover_text("Master sonification volume percentage")
                 .changed()
             {
-                super::set_user_master_volume(vol_pct * 0.01);
+                let next_vol = vol_pct * 0.01;
+                super::set_user_master_volume(next_vol);
+                ui.ctx().data_mut(|d| {
+                    if let Some(mut b) =
+                        d.get_temp::<crate::framework::ScopedAudioUiBridge>(bridge_id)
+                    {
+                        b.settings.gain = next_vol;
+                        b.settings_changed = true;
+                        d.insert_temp(bridge_id, b);
+                    }
+                });
             }
         });
 
         render_timbre_selector(ui, state.waveform_override, frame.waveform);
-        render_visual_meter(ui, &state.meter, state.muted);
+        render_visual_meter(ui, &state.meter, effective_muted);
     });
 }
 
@@ -62,7 +80,16 @@ fn render_mute_button(ui: &mut egui::Ui, is_muted: bool) {
         "Mute live mathematical sonification immediately"
     };
     if ui.button(label).accessible_hover_text(tip).clicked() {
-        super::toggle_mute_from_user_gesture();
+        let next_muted = !is_muted;
+        super::set_muted_from_user_gesture_target(next_muted);
+        let bridge_id = crate::framework::scoped_audio_bridge_id();
+        ui.ctx().data_mut(|d| {
+            if let Some(mut b) = d.get_temp::<crate::framework::ScopedAudioUiBridge>(bridge_id) {
+                b.muted = next_muted;
+                b.toggled_mute = true;
+                d.insert_temp(bridge_id, b);
+            }
+        });
     }
 }
 

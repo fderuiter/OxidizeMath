@@ -32,6 +32,7 @@ impl OdeSolverTool {
             crate::reflective_ui::slider::current_pass_active_sweep_count(ui.ctx()) > sweeps_before;
         self.apply_sidebar_changes(changed, sweep_active);
         self.sync_series_cache();
+        self.render_budget_notices(ui);
 
         if self.comparison_mode {
             self.render_discrepancy_panel(ui);

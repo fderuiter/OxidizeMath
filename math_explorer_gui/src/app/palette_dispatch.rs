@@ -11,18 +11,53 @@ use eframe::egui;
 impl MathExplorerApp {
     /// Opens the global cross-domain `StarterGallery` modal overlay.
     pub fn open_starter_gallery(&mut self, ctx: &egui::Context) {
+        self.command_palette.close();
+        self.close_pane_starter_galleries(ctx);
         self.show_starter_gallery = true;
         crate::accessibility::announce_live_status(ctx, "Starter template gallery opened");
         ctx.request_repaint();
     }
 
+    fn close_pane_starter_galleries(&mut self, ctx: &egui::Context) {
+        let mut closed_ids = Vec::new();
+        for tab in &mut self.tabs {
+            let slug = tab.url_slug().to_string();
+            if let Some(fw) = tab.framework_mut()
+                && fw.show_starter_gallery
+            {
+                fw.show_starter_gallery = false;
+                closed_ids.push(format!("{slug}_starter_gallery_overlay"));
+                for p in 0..4 {
+                    closed_ids.push(format!("pane_{p}_{slug}_starter_gallery_overlay"));
+                }
+            }
+        }
+        for pane_idx in 1..4 {
+            if let Some(slot) = self.pane_slots.slot_mut(pane_idx)
+                && let Some((_, ref mut tab)) = slot.active
+            {
+                let slug = tab.url_slug().to_string();
+                if let Some(fw) = tab.framework_mut()
+                    && fw.show_starter_gallery
+                {
+                    fw.show_starter_gallery = false;
+                    closed_ids.push(format!("pane_{pane_idx}_{slug}_starter_gallery_overlay"));
+                }
+            }
+        }
+        for id in closed_ids {
+            let mut open = false;
+            crate::ModalLifecycle::new(egui::Id::new(id)).show(ctx, &mut open, |_, _| {});
+        }
+    }
+
     /// Renders the global workspace `StarterGallery` modal when opened via `View` or `CommandPalette`.
     pub(super) fn render_global_starter_gallery(&mut self, ctx: &egui::Context) {
         if !self.show_starter_gallery {
-            crate::starter_gallery::filter_ui::clear_gallery_filter_state(
-                ctx,
-                egui::Id::new("global_workspace_starter_gallery_overlay"),
-            );
+            let modal_id = egui::Id::new("global_workspace_starter_gallery_overlay");
+            let mut closed = false;
+            crate::ModalLifecycle::new(modal_id).show(ctx, &mut closed, |_, _| {});
+            crate::starter_gallery::filter_ui::clear_gallery_filter_state(ctx, modal_id);
             return;
         }
         let cards = crate::starter_gallery::get_all_starter_cards();
@@ -118,6 +153,7 @@ impl MathExplorerApp {
         };
         if cur_tab != target_tab {
             self.select_pane_tab(ctx, pane_idx, target_tab);
+            self.prune_incompatible_pipeline_links();
         }
         if let Some(tab) = self.pane_tab_mut(pane_idx) {
             let slug = tab.url_slug();
@@ -160,6 +196,7 @@ impl MathExplorerApp {
         };
         if cur_tab != target_tab {
             self.select_pane_tab(ctx, pane_idx, target_tab);
+            self.prune_incompatible_pipeline_links();
         }
         let card_title = card.title;
         let mut tab_label = "Simulation";
