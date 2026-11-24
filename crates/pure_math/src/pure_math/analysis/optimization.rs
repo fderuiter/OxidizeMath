@@ -14,6 +14,20 @@ pub enum OptimizationError {
     #[error("Failed to convert numerical value")]
     #[allow(missing_docs)]
     ConversionError,
+    /// Dimension mismatch between prediction and target tensors during optimization.
+    #[error("Dimension mismatch during optimization: expected {expected}, actual {actual}")]
+    DimensionMismatch {
+        /// Expected vector/matrix dimension.
+        expected: usize,
+        /// Actual vector/matrix dimension encountered.
+        actual: usize,
+    },
+    /// Non-finite or out-of-domain input encountered during optimization or loss evaluation.
+    #[error("Invalid optimization input: {reason}")]
+    InvalidInput {
+        /// Description of the violated input invariant.
+        reason: String,
+    },
     /// Wrapped evolution engine error preserving causal source.
     #[error("Evolution solver error: {0}")]
     Evolution(#[from] EvolutionError),
@@ -430,20 +444,11 @@ impl<T: RealField + Copy, O> ModelOptimizer<T> for O where O: Optimizer<T, (usiz
 
 /// Defines a Trainable Model that can perform forward passes and handle backpropagation.
 pub trait Trainable<T: nalgebra::RealField + Copy = f64> {
-    /// Performs a forward pass through the network.
-    /// Returns the logits (pre-softmax outputs).
+    /// Performs a forward pass through the network and returns pre-softmax logits.
     #[verified_engine::verified]
     fn forward(&self, x: &nalgebra::DVector<T>) -> nalgebra::DVector<T>;
 
-    /// Performs the backward pass and updates parameters.
-    ///
-    /// # Arguments
-    /// * `x` - Input vector.
-    /// * `loss_grad` - Gradient of the loss with respect to the output logits (dJ/dz).
-    /// * `optimizer` - The optimizer strategy to update parameters.
-    ///
-    /// # Errors
-    /// Returns an `OptimizationError` if the parameter updates fail during optimization.
+    /// Performs the backward pass and updates parameters via `optimizer`.
     #[verified_engine::verified]
     fn backward_update(
         &mut self,

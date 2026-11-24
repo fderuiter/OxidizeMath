@@ -72,3 +72,108 @@ pub fn calculate_risk_metrics(
         or_ci: (or_lower, or_upper),
     })
 }
+
+/// Prognostic probability calibration and discrimination summary for clinical risk models.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrognosticCalibrationMetrics {
+    /// Mean squared risk error $\frac{1}{N}\sum_{i=1}^N (p_i - y_i)^2$.
+    pub brier_score: f64,
+    /// Murphy reliability (calibration error) component.
+    pub reliability: f64,
+    /// Murphy resolution (case-separation variance) component.
+    pub resolution: f64,
+    /// Marginal event prevalence variance $\bar{y}(1 - \bar{y})$.
+    pub uncertainty: f64,
+    /// Symmetrically clipped binary dataset log-loss.
+    pub log_loss: f64,
+    /// Expected Calibration Error (`ECE`) across `num_bins` equal-width risk strata.
+    pub ece: f64,
+    /// Maximum Calibration Error (`MCE`) across non-empty risk strata.
+    pub mce: f64,
+    /// Concordance statistic (`ROC-AUC`) for prognostic discrimination.
+    pub roc_auc: f64,
+    /// Average-precision (`Step` `PR-AUC`) across risk thresholds.
+    pub pr_auc: f64,
+}
+
+fn map_clinical_math_err(err: math_commons::error::MathError) -> ClinicalTrialError {
+    ClinicalTrialError::InvalidData(err.to_string())
+}
+
+/// Evaluates proper scoring rules, Murphy decomposition, `ECE`/`MCE`, and `ROC`/`PR-AUC`
+/// for prognostic patient event probabilities in `[0.0, 1.0]`.
+#[verified_engine::verified]
+pub fn evaluate_prognostic_calibration(
+    predicted_risks: &[f64],
+    events: &[bool],
+    num_bins: usize,
+) -> Result<PrognosticCalibrationMetrics, ClinicalTrialError> {
+    use math_commons::primitives::UnitInterval;
+    use pure_math::pure_math::statistics::calibration::{
+        BinningStrategy, DEFAULT_LOG_LOSS_EPSILON, PrIntegration, binary_log_loss,
+        calibration_summary, murphy_decomposition, pr_auc, roc_auc,
+    };
+
+    if predicted_risks.len() != events.len() {
+        return Err(ClinicalTrialError::InvalidData(format!(
+            "Risk count ({}) must match event count ({})",
+            predicted_risks.len(),
+            events.len()
+        )));
+    }
+    if predicted_risks.is_empty() {
+        return Err(ClinicalTrialError::InsufficientSampleSize {
+            required: 2,
+            actual: 0,
+        });
+    }
+
+    let mut unit_risks = Vec::with_capacity(predicted_risks.len());
+    for &r in predicted_risks {
+        let ui = UnitInterval::new(r).map_err(map_clinical_math_err)?;
+        unit_risks.push(ui);
+    }
+
+    let decomp = murphy_decomposition(&unit_risks, events).map_err(map_clinical_math_err)?;
+    let nll = binary_log_loss(&unit_risks, events, DEFAULT_LOG_LOSS_EPSILON)
+        .map_err(map_clinical_math_err)?;
+    let summary = calibration_summary(&unit_risks, events, num_bins, BinningStrategy::Uniform)
+        .map_err(map_clinical_math_err)?;
+    let c_stat = roc_auc(predicted_risks, events).map_err(map_clinical_math_err)?;
+    let ap = pr_auc(predicted_risks, events, PrIntegration::Step).map_err(map_clinical_math_err)?;
+
+    Ok(PrognosticCalibrationMetrics {
+        brier_score: decomp.brier_score,
+        reliability: decomp.reliability,
+        resolution: decomp.resolution,
+        uncertainty: decomp.uncertainty,
+        log_loss: nll,
+        ece: summary.ece,
+        mce: summary.mce,
+        roc_auc: c_stat,
+        pr_auc: ap,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_evaluate_prognostic_calibration() {
+        let risks = [0.08, 0.12, 0.25, 0.72, 0.88, 0.93];
+        let events = [false, false, false, true, true, true];
+        let metrics =
+            evaluate_prognostic_calibration(&risks, &events, 3).expect("valid clinical risks");
+        assert!(metrics.brier_score < 0.05);
+        assert!((metrics.roc_auc - 1.0).abs() < 1e-9);
+        assert!(
+            (metrics.brier_score
+                - (metrics.reliability - metrics.resolution + metrics.uncertainty))
+                .abs()
+                < math_commons::registry::TOLERANCE_STANDARD
+        );
+        assert!(evaluate_prognostic_calibration(&[1.2], &[true], 2).is_err());
+    }
+}

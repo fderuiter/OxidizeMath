@@ -57,6 +57,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
     }
     let explicit: &[&str] = match tool_id.trim() {
         "AttentionMapsTool" => &["attention_is_all_you_need_rust"],
+        "CalibrationWorkbenchTool" => &["clinical_trials_statistics", "self_calibration_paper"],
         "CeraTool" => &["cera_framework"],
         "Co2ProjectionsTool" => &["isosurface_extraction"],
         "TurbulenceTool" => &["generative_turbulence"],
