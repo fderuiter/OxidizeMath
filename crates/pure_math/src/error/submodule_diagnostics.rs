@@ -1,6 +1,7 @@
 use super::{
-    CopulaError, EloError, Glicko2Error, KellyError, MarketPricingError, MarkovError,
-    MatchModelError, NumberTheoryError, OuError, TdaError, ZipError,
+    BayesianError, CopulaError, DistributionError, EloError, Glicko2Error, KellyError,
+    MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OuError, TdaError,
+    ZipError,
 };
 use crate::pure_math::{
     algebra::linear_algebra::numerical::LinearAlgebraError,
@@ -290,6 +291,30 @@ impl Diagnostic for TransformError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("TransformError", self.to_string())
+    }
+}
+
+impl Diagnostic for DistributionError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("DistributionError", self.to_string())
+    }
+}
+
+impl Diagnostic for BayesianError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("BayesianError", self.to_string())
     }
 }
 

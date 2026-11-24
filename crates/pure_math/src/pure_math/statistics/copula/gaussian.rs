@@ -1,8 +1,11 @@
-//! Gaussian copula implementation with stack-buffered, caller-scratch, and randomized Genz-Sobol evaluation.
+//! Gaussian copula implementation with stack-buffered, caller-scratch, seeded Richtmyer QMC, and randomized Genz-Sobol evaluation.
 
 use super::bivariate::bivariate_copula_cdf;
 use super::core::{Correlation, CorrelationMatrix, Probability};
-use super::multivariate::{evaluate_copula_cdf_with_scratch, required_scratch_len};
+use super::multivariate::{
+    evaluate_copula_cdf_with_rng_and_scratch, evaluate_copula_cdf_with_scratch,
+    required_scratch_len,
+};
 use super::qmc::{CopulaQmcWorkspace, multivariate_cdf_qmc, multivariate_cdf_with_workspace};
 use crate::error::CopulaError;
 use crate::pure_math::analysis::integration::MultivariateIntegrator;
@@ -11,6 +14,7 @@ use crate::pure_math::statistics::qmc::MAX_SOBOL_DIM;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use nalgebra::DMatrix;
+use oxidize_core::rng::OxidizeRng;
 
 /// Maximum number of parlay legs evaluated entirely on the stack by [`GaussianCopula::cdf`]
 /// and [`sgp_joint_probability`].
@@ -53,10 +57,11 @@ pub(crate) fn evaluate_copula_cdf(
 /// Multivariate Gaussian copula `C(u_1, ..., u_d; Sigma) = Phi_Sigma(Phi^-1(u_1), ..., Phi^-1(u_d))`.
 ///
 /// Uses exact copula boundary reduction, 20-point Genz (2004) Gauss-Legendre quadrature for two
-/// active legs, and Genz (1992) separation-of-variables over a deterministic Richtmyer QMC
-/// sequence for three or more active legs in [`Self::cdf`], plus replicated Cranley-Patterson
-/// Joe-Kuo [`SobolSequence`](crate::pure_math::statistics::qmc::SobolSequence) error estimation
-/// in [`Self::multivariate_cdf_with_error`].
+/// active legs, and Genz (1992) separation-of-variables over a deterministic or Cranley-Patterson
+/// shifted Richtmyer QMC sequence for three or more active legs in [`Self::cdf`] and
+/// [`Self::cdf_with_rng`], plus replicated Cranley-Patterson Joe-Kuo
+/// [`SobolSequence`](crate::pure_math::statistics::qmc::SobolSequence) error estimation in
+/// [`Self::multivariate_cdf_with_error`].
 ///
 /// # Example
 ///
@@ -74,6 +79,7 @@ pub(crate) fn evaluate_copula_cdf(
 /// let joint_prob = copula.cdf(&[u1, u2]).unwrap();
 /// assert!(joint_prob.value() < 0.01 * 0.60);
 /// ```
+#[derive(Debug, Clone, PartialEq)]
 pub struct GaussianCopula {
     correlation: CorrelationMatrix,
 }
@@ -115,6 +121,46 @@ impl GaussianCopula {
     #[verified_engine::verified]
     pub fn cdf(&self, u: &[Probability]) -> Result<Probability, CopulaError> {
         evaluate_copula_cdf(u, &self.correlation)
+    }
+
+    /// Computes `C(u_1, ..., u_d)` using Cranley-Patterson `rng` shifts and `n_qmc_pairs`
+    /// antithetic QMC pairs for 3+ active legs (zero heap allocation up to [`MAX_STACK_LEGS`] legs).
+    #[verified_engine::verified]
+    pub fn cdf_with_rng(
+        &self,
+        u: &[Probability],
+        rng: &mut OxidizeRng,
+        n_qmc_pairs: usize,
+    ) -> Result<Probability, CopulaError> {
+        let d = self.correlation.dimension();
+        if u.len() != d {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(d),
+                actual: Dimension(u.len()),
+            }));
+        }
+        if d <= MAX_STACK_LEGS {
+            let mut stack_scratch = [0.0_f64; MAX_STACK_SCRATCH];
+            let mut stack_shifts = [0.0_f64; MAX_STACK_LEGS];
+            return evaluate_copula_cdf_with_rng_and_scratch(
+                u,
+                &self.correlation,
+                rng,
+                n_qmc_pairs,
+                &mut stack_scratch[..required_scratch_len(d)],
+                &mut stack_shifts[..d],
+            );
+        }
+        let mut heap_scratch = vec![0.0_f64; required_scratch_len(d)];
+        let mut heap_shifts = vec![0.0_f64; d];
+        evaluate_copula_cdf_with_rng_and_scratch(
+            u,
+            &self.correlation,
+            rng,
+            n_qmc_pairs,
+            &mut heap_scratch,
+            &mut heap_shifts,
+        )
     }
 
     /// Computes the copula CDF `C(u_1, ..., u_d)` for arbitrary leg counts with zero heap

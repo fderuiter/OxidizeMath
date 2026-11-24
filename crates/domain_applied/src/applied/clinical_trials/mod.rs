@@ -72,6 +72,7 @@
 
 #[allow(missing_docs)]
 pub mod analysis;
+pub mod bayesian_testing;
 #[allow(missing_docs)]
 pub mod design;
 #[allow(missing_docs)]
@@ -82,6 +83,9 @@ pub mod sample_size;
 pub mod survival_analysis;
 pub mod types;
 
+pub use bayesian_testing::{
+    BayesianTwoArmResult, bayesian_two_arm_continuous, bayesian_two_arm_proportions,
+};
 pub use types::ClinicalTrialError;
 
 // [cite:clinical_trials_statistics]

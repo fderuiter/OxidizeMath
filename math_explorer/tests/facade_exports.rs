@@ -156,6 +156,8 @@ fn assert_pure_math_twenty_one_errors() {
         e::ZipError::InvalidCount { value: -1.0 }.severity(),
         e::TdaError::EmptyPointCloud.severity(),
         e::CopulaError::NotSymmetric.severity(),
+        e::DistributionError::InvalidProbability { value: 1.5 }.severity(),
+        e::BayesianError::InvalidCredibleLevel { level: 1.0 }.severity(),
         e::EloError::InvalidScale { value: 0.0 }.severity(),
         e::Glicko2Error::EmptyMatchResults.severity(),
         e::GraphTheoryError::UnknownEndpoint { node: 7 }.severity(),

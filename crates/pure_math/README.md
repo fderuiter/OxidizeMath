@@ -23,7 +23,7 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 - **`hyperbolic`**: Poincaré disk and upper half-plane models, `PSU(1,1)` / `PSL(2,R)` Möbius isometries, `{p,q}` / `{infinity,q}` tilings, and chaotic geodesic billiards.
 - **`elliptic_curves`**: Zero-allocation short-Weierstrass curve group arithmetic ($P + Q$, $\[k\]P$, cyclic orbits) over $\mathbb{R}$ and prime fields $\mathbb{F}_p$, Frobenius traces $a_p$, Hasse-Weil verification, Breuer modular polynomial valuation bounds, and bridges to binary quadratic forms (`BQF`), Hurwitz-Kronecker class numbers, and modular $q$-series (`QSeries<i64>`).
 - **`graph_theory`**: Network graph structures, centrality metrics, structural parameters (`degeneracy`, 2-approx `vertex_cover`, and exact bitmask branch-and-bound elimination `treewidth` for `|V| <= 24` with preallocated min-fill fallback), traversal and combinatorial optimization solvers (`dijkstra`, `bfs`, `dfs`, zero-allocation Edmonds-Karp `max_flow_min_cut`, and Kruskal `minimum_spanning_tree`), and deterministic `.dot`, `.graphml`, and `.csv` graph interchange codecs.
-- **`statistics`**: Proper scoring rules and probabilistic calibration (`calibration`: Brier score with Murphy decomposition, dataset `log_loss`, Gaussian and ensemble `CRPS`, `ECE`/`MCE`, `ROC`/`PR-AUC`, Platt/temperature/`PAVA` recalibrators), preallocated Monte Carlo and variance-reduction workspaces (`monte_carlo::MonteCarloWorkspace` with antithetic, optimal-beta control variates, Kong-`ESS` self-normalized importance sampling, and Latin Hypercube), low-discrepancy quasi-Monte Carlo (`qmc::HaltonSequence` and Joe-Kuo `qmc::SobolSequence` with Cranley-Patterson shifts), nonparametric `Percentile` and jackknife-accelerated `BCa` bootstrap (`bootstrap::BootstrapWorkspace`), multivariate Gaussian copula integration (`copula::GaussianCopula::multivariate_cdf` and `cdf_with_seed`), closed-form Black-Scholes-Merton option pricing and Greeks (`black_scholes`), stochastic processes (Markov chains, Parrondo ensembles, Ornstein-Uhlenbeck), rating systems (Glicko-2, venue-adjusted sports Elo), calibrated 2D match score grids (Maher Poisson, Karlis-Ntzoufras bivariate Poisson, Dixon-Coles MLE), single-wager, multi-state, and multi-asset covariance Kelly criterion models with `VaR`/`CVaR` tail risk (`kelly`), solvency and drawdown ruin bounds (`ruin`), CLV and calibration validation (`validation`), and zero-allocation bookmaker market pricing (`market_pricing` for Multiplicative, Additive, Power, and Shin devigging, `+EV`, arbitrage, Dutching, middles, and hedging).
+- **`statistics`**: Verified univariate continuous and discrete probability distributions (`distributions`: Normal, Beta, Gamma, Student-$t$, Chi-Squared, Exponential, Uniform, Log-Normal, Weibull, Bernoulli, Binomial, Poisson, Geometric, Negative Binomial) with safeguarded quantiles and MLE/MoM fitters; conjugate Bayesian inference and zero-allocation Metropolis-Hastings MCMC (`bayesian`); proper scoring rules and probabilistic calibration (`calibration`: Brier score with Murphy decomposition, dataset `log_loss`, Gaussian and ensemble `CRPS`, `ECE`/`MCE`, `ROC`/`PR-AUC`, Platt/temperature/`PAVA` recalibrators); preallocated Monte Carlo and variance-reduction workspaces (`monte_carlo::MonteCarloWorkspace` with antithetic, optimal-beta control variates, Kong-`ESS` self-normalized importance sampling, and Latin Hypercube); low-discrepancy quasi-Monte Carlo (`qmc::HaltonSequence` and Joe-Kuo `qmc::SobolSequence` with Cranley-Patterson shifts); nonparametric `Percentile` and jackknife-accelerated `BCa` bootstrap (`bootstrap::BootstrapWorkspace`); Cholesky-validated multivariate Gaussian copulas (`copula::GaussianCopula` with Genz Gauss-Legendre quadrature, Richtmyer/Halton QMC via `cdf_with_seed`, `multivariate_cdf` Sobol integration, and Same Game Parlay pricing); closed-form Black-Scholes-Merton option pricing and Greeks (`black_scholes`); Expectation-Maximization Zero-Inflated Poisson covariate regression (`zip_regression`); topological data analysis (`tda`); stochastic processes (Markov chains, Parrondo ensembles, Ornstein-Uhlenbeck); rating systems (Glicko-2, venue-adjusted sports Elo); calibrated 2D match score grids (Maher Poisson, Karlis-Ntzoufras bivariate Poisson, Dixon-Coles MLE); single-wager, multi-state, and multi-asset covariance Kelly criterion models with `VaR`/`CVaR` tail risk (`kelly`), solvency and drawdown ruin bounds (`ruin`), CLV and calibration validation (`validation`); and zero-allocation bookmaker market pricing (`market_pricing` for Multiplicative, Additive, Power, and Shin devigging, `+EV`, arbitrage, Dutching, middles, and hedging).
 - **`special_functions`**: Classical mathematical functions (Bessel functions, Legendre polynomials).
 
 ---
@@ -58,6 +58,29 @@ let sum = p1 + q1;
 assert_eq!(sum.coeffs[0], Fp::<7>::new(6));
 assert_eq!(sum.coeffs[1], Fp::<7>::new(2));
 assert_eq!(sum.coeffs[2], Fp::<7>::new(3));
+```
+
+### Parametric Distributions and Conjugate Bayesian Updating
+
+Evaluate exact quantiles, fit parameters, and compute conjugate Highest Posterior Density (HPD) intervals:
+
+```rust
+# use pure_math::__doctest_facade as math_explorer;
+use math_explorer::pure_math::statistics::bayesian::BetaBinomial;
+use math_explorer::pure_math::statistics::distributions::{
+    ContinuousDistribution, GammaDist,
+};
+
+# fn main() -> math_explorer::error::Result<()> {
+let gamma = GammaDist::new(3.0, 1.5)?;
+let median = gamma.quantile(0.5)?;
+assert!((gamma.cdf(median) - 0.5).abs() < 1e-10);
+
+let posterior = BetaBinomial::uniform().update(16, 20)?;
+let hpd95 = posterior.hpd_interval(0.95)?;
+assert!(hpd95.contains(posterior.posterior_mean()));
+# Ok(())
+# }
 ```
 
 ---

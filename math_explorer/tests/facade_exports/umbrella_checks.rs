@@ -53,24 +53,45 @@ fn verify_core_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     ]
 }
 
-pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
-    let mut leaves = verify_core_leaves(bus);
-    leaves.extend([
+fn verify_pure_math_algebra_and_geometry_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+    vec![
         check_leaf(error::AmbsError::ConversionError, bus),
         check_leaf(error::AnalysisError::ConvergenceError(1.0), bus),
-        check_leaf(error::CopulaError::NotSymmetric, bus),
         check_leaf(error::EllipticCurveError::InvalidDegree, bus),
-        check_leaf(error::EloError::InvalidScale { value: 0.0 }, bus),
         check_leaf(error::EvolutionError::BoundsError, bus),
         check_leaf(error::FractranError::InvalidFractionSyntax, bus),
-        check_leaf(error::Glicko2Error::EmptyMatchResults, bus),
         check_leaf(error::GraphTheoryError::UnknownEndpoint { node: 9 }, bus),
         check_leaf(
             error::HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
             bus,
         ),
-        check_leaf(error::KellyError::InvalidBankroll { value: -1.0 }, bus),
         check_leaf(error::LinearAlgebraError::SingularMatrix, bus),
+        check_leaf(error::NumberTheoryError::ConversionError, bus),
+        check_leaf(error::OptimizationError::ConversionError, bus),
+        check_leaf(error::StochasticError::InvalidReactionIndex(2), bus),
+        check_leaf(
+            error::Su11HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
+            bus,
+        ),
+        check_leaf(error::TensorError::SingularMetric, bus),
+        check_leaf(error::TransformError::EmptyInput, bus),
+    ]
+}
+
+fn verify_pure_math_statistics_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+    vec![
+        check_leaf(
+            error::BayesianError::InvalidCredibleLevel { level: 1.1 },
+            bus,
+        ),
+        check_leaf(error::CopulaError::NotSymmetric, bus),
+        check_leaf(
+            error::DistributionError::InvalidProbability { value: 2.0 },
+            bus,
+        ),
+        check_leaf(error::EloError::InvalidScale { value: 0.0 }, bus),
+        check_leaf(error::Glicko2Error::EmptyMatchResults, bus),
+        check_leaf(error::KellyError::InvalidBankroll { value: -1.0 }, bus),
         check_leaf(
             error::MarketPricingError::NoArbitrage {
                 reciprocal_sum: 1.05,
@@ -85,8 +106,6 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         ),
         check_leaf(error::MatchModelError::InvalidGoalRate { value: 0.0 }, bus),
         check_leaf(error::MonteCarloError::ZeroReplicates, bus),
-        check_leaf(error::NumberTheoryError::ConversionError, bus),
-        check_leaf(error::OptimizationError::ConversionError, bus),
         check_leaf(
             error::OptionPricingError::InvalidVolatility { value: 0.0 },
             bus,
@@ -94,16 +113,15 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::OuError::InvalidVolatility { value: -0.1 }, bus),
         check_leaf(error::PoissonError::InvalidRate { rate: -1.0 }, bus),
         check_leaf(error::QueueingError::InvalidServerCount { servers: 0 }, bus),
-        check_leaf(error::StochasticError::InvalidReactionIndex(2), bus),
-        check_leaf(
-            error::Su11HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
-            bus,
-        ),
         check_leaf(error::TdaError::EmptyPointCloud, bus),
-        check_leaf(error::TensorError::SingularMetric, bus),
-        check_leaf(error::TransformError::EmptyInput, bus),
         check_leaf(error::ZipError::InvalidRate { value: 0.0 }, bus),
-    ]);
+    ]
+}
+
+pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+    let mut leaves = verify_core_leaves(bus);
+    leaves.extend(verify_pure_math_algebra_and_geometry_leaves(bus));
+    leaves.extend(verify_pure_math_statistics_leaves(bus));
     leaves
 }
 
@@ -230,21 +248,23 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 62);
-    assert_eq!(*events.lock().unwrap(), 62);
+    assert_eq!(converted.len(), 64);
+    assert_eq!(*events.lock().unwrap(), 64);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 68);
+    assert_eq!(*events.lock().unwrap(), 70);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
         let y: f64 = Ok::<f64, error::BatteryError>(0.5)?;
+        let _: f64 = Ok::<f64, error::BayesianError>(0.0)?;
+        let _: f64 = Ok::<f64, error::DistributionError>(0.0)?;
         Ok(x + y)
     });
     assert_eq!(ok_run.unwrap(), 1.0);
 
     let (err_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
-        let _: f64 = Err(error::NuclearError::VolumeZero)?;
+        let _: f64 = Err(error::DistributionError::InvalidProbability { value: -1.0 })?;
         Ok(0.0)
     });
     assert!(err_run.is_err());
@@ -273,6 +293,43 @@ fn verify_prelude_domain_leaves() {
         p::SolidStateError,
         p::StandardModelError,
         p::StatMechError,
+    )>();
+}
+
+fn verify_prelude_pure_math_leaves() {
+    use math_explorer::prelude as p;
+
+    let _pure = core::mem::size_of::<(
+        p::AmbsError,
+        p::AnalysisError,
+        p::BayesianError,
+        p::CopulaError,
+        p::DistributionError,
+        p::EllipticCurveError,
+        p::EloError,
+        p::EvolutionError,
+        p::FractranError,
+        p::Glicko2Error,
+        p::GraphTheoryError,
+        p::HyperbolicError,
+        p::KellyError,
+        p::LinearAlgebraError,
+        p::MarketPricingError,
+        p::MarkovError,
+        p::MatchModelError,
+        p::MonteCarloError,
+        p::NumberTheoryError,
+        p::OptimizationError,
+        p::OptionPricingError,
+        p::OuError,
+        p::PoissonError,
+        p::QueueingError,
+        p::StochasticError,
+        p::Su11HyperbolicError,
+        p::TdaError,
+        p::TensorError,
+        p::TransformError,
+        p::ZipError,
     )>();
 }
 
@@ -307,35 +364,6 @@ pub fn verify_prelude_error_reexports() {
         p::EpidemiologyError,
         p::NetworkModelError,
     )>();
-    let _pure = core::mem::size_of::<(
-        p::AmbsError,
-        p::AnalysisError,
-        p::CopulaError,
-        p::EllipticCurveError,
-        p::EloError,
-        p::EvolutionError,
-        p::FractranError,
-        p::Glicko2Error,
-        p::GraphTheoryError,
-        p::HyperbolicError,
-        p::KellyError,
-        p::LinearAlgebraError,
-        p::MarketPricingError,
-        p::MarkovError,
-        p::MatchModelError,
-        p::MonteCarloError,
-        p::NumberTheoryError,
-        p::OptimizationError,
-        p::OptionPricingError,
-        p::OuError,
-        p::PoissonError,
-        p::QueueingError,
-        p::StochasticError,
-        p::Su11HyperbolicError,
-        p::TdaError,
-        p::TensorError,
-        p::TransformError,
-        p::ZipError,
-    )>();
+    verify_prelude_pure_math_leaves();
     verify_prelude_domain_leaves();
 }

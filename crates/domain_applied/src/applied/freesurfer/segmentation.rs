@@ -1,6 +1,10 @@
 use super::surface::MriVolume;
 use std::f64::consts::TAU;
 
+#[path = "segmentation_posteriors.rs"]
+mod segmentation_posteriors;
+pub use segmentation_posteriors::{bayesian_classify_labels, normalized_bayesian_posteriors};
+
 /// Maximum number of simultaneous tissue classes supported in stack-allocated MRF segmentation.
 pub const MAX_TISSUE_CLASSES: usize = 16;
 
@@ -298,3 +302,5 @@ pub fn mrf_segment_volume(
     }
     executed
 }
+
+// [cite:freesurfer]

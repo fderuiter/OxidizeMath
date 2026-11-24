@@ -116,6 +116,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Unify AST Verification Metrics, Ratcheted Debt Caps, and Read-Only Suite Outputs](adr/20261123-unify-ast-metrics-and-ratcheted-debt-caps.md)
 - [ADR 20261123: Unify `verify-suite` onto `AstCache`, Item-Scoped Opt-Outs, and Read-Only `--check` Mode](adr/20261123-unify-verify-suite-ast-cache-and-check-mode.md)
 - [ADR 20261123: Validate Tool Loaders and Harden Solver Arithmetic Against 32-Bit Overflow](adr/20261123-validate-tool-loaders-and-harden-solver-arithmetic.md)
+- [ADR 20261123: Verified Probability Distributions, Conjugate & Zero-Allocation Bayesian Engine, and Probability & Statistics Tab](adr/20261123-verified-distributions-bayesian-engine-and-gui-tab.md)
 - [ADR 20261123: Volumetric 3D Implicit Formulas, Boundary-Padded Solid Closure, and Unified 3D Exports](adr/20261123-volumetric-implicit-formulas-and-solid-exports.md)
 - [ADR 20261123: Quantum Tunneling and 2D Chladni Resonance Parameter Atlases](adr/20261123-wave-and-chladni-resonance-atlases.md)
 - [ADR 20261123: Pre-Allocated 2D FDTD Wave Solver, Hamiltonian Ray Caustics, and Optics Playground](adr/20261123-wave-optics-fdtd-and-ray-caustics.md)

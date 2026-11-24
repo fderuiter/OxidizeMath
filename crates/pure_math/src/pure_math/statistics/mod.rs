@@ -41,6 +41,8 @@
 //!     `Delta`, `Gamma`, `Vega`, `Theta`, and `Rho` sensitivities.
 //!
 //! ###  Advanced Data Analysis
+//! *   **[Probability Distributions](distributions)**: Verified continuous and discrete univariate distributions with safeguarded quantiles and MLE/MoM fitters.
+//! *   **[Bayesian Inference](bayesian)**: Exact conjugate families (`BetaBinomial`, `GammaPoisson`, `NormalNormal`, `NormalInverseGamma`, `DirichletMultinomial`) and zero-allocation Metropolis-Hastings MCMC.
 //! *   **[Monte Carlo & Variance Reduction](monte_carlo)**: Preallocated workspaces for IID, antithetic, control-variate, Kong-`ESS` importance sampling, Latin Hypercube, and randomized QMC.
 //! *   **[Quasi-Monte Carlo (QMC)](qmc)**: Prime-base Halton and Joe-Kuo Sobol low-discrepancy sequences with Cranley-Patterson shifts.
 //! *   **[Nonparametric Bootstrap](bootstrap)**: Preallocated `Percentile` and jackknife-accelerated `BCa` confidence intervals.
@@ -116,10 +118,12 @@
 //! }
 //! ```
 
+pub mod bayesian;
 pub mod black_scholes;
 pub mod bootstrap;
 pub mod calibration;
 pub mod copula;
+pub mod distributions;
 pub mod elo;
 pub mod glicko2;
 pub mod kelly;

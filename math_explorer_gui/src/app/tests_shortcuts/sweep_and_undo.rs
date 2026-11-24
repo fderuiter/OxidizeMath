@@ -326,7 +326,7 @@ fn test_single_layout_ctrl_z_and_ctrl_y_across_all_explorer_tabs_and_strip_short
         feature = "physics",
         feature = "pure_math"
     ))]
-    assert_eq!(app.tabs.len(), 32);
+    assert_eq!(app.tabs.len(), 33);
     app.set_layout(ViewportLayout::Single);
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
     for tab_idx in 0..app.tabs.len() {

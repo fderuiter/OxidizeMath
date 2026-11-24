@@ -166,10 +166,14 @@ pub fn resolve_tool_maturity_tier(
         select_module_tiers(&registry, super::theory_links::tool_module_tokens(tool_id));
 
     if matched.is_empty() {
-        let skip_tab_stub = dom_clean.eq_ignore_ascii_case("stochastic_processes");
+        let skip_tab_stub = dom_clean.eq_ignore_ascii_case("stochastic_processes")
+            || dom_clean.eq_ignore_ascii_case("probability_statistics");
         let dom_tokens: Vec<String> = super::theory_links::domain_module_tokens(dom_clean)
             .into_iter()
-            .filter(|tok| !(skip_tab_stub && tok == "stochastic_processes"))
+            .filter(|tok| {
+                !(skip_tab_stub
+                    && (tok == "stochastic_processes" || tok == "probability_statistics"))
+            })
             .collect();
         matched = select_module_tiers(&registry, dom_tokens);
     }

@@ -3,6 +3,7 @@ use crate::pure_math::analysis::integration::{ClenshawCurtis, Integrator};
 use crate::pure_math::statistics::monte_carlo::{normal_cdf_fast, normal_inv_cdf_fast};
 use approx::assert_relative_eq;
 use math_commons::registry::TOLERANCE_HIGH;
+use verified_engine::engine::VerifiedEngine;
 
 /// Exact 1D factor integral for equicorrelated Gaussian copula ($\rho \in [0, 1)$):
 /// $\Phi_\Sigma(b) = \int_{-\infty}^\infty \phi(z) \prod_{i=1}^d \Phi((b_i - \sqrt{\rho} z)/\sqrt{1 - \rho}) dz$.
@@ -208,6 +209,46 @@ fn test_multivariate_gaussian_copula_3d_5d_10d_accuracy() {
 
 #[test]
 #[verified_engine::verified]
+fn test_deep_tail_frechet_hoeffding_and_zero_alloc_cdf_with_rng() {
+    let copula_indep = GaussianCopula::bivariate(Correlation::new(0.0).unwrap()).unwrap();
+    let deep_u = Probability::new(1e-25).unwrap();
+    let u2 = Probability::new(0.8).unwrap();
+    assert_relative_eq!(
+        copula_indep.cdf(&[deep_u, u2]).unwrap().value(),
+        0.8e-25,
+        max_relative = 1e-6
+    );
+
+    for dim in 2..=5 {
+        let probs: Vec<Probability> = (0..dim)
+            .map(|i| Probability::new(0.55 + 0.07 * (i as f64)).unwrap())
+            .collect();
+        for &r in &[-0.18, 0.45, 0.8] {
+            let corr =
+                CorrelationMatrix::equicorrelated(dim, Correlation::new(r).unwrap()).unwrap();
+            let c_val = GaussianCopula::new(corr).cdf(&probs).unwrap().value();
+            let fh_lower =
+                (probs.iter().map(Probability::value).sum::<f64>() - (dim as f64) + 1.0).max(0.0);
+            let fh_upper = probs.iter().map(Probability::value).fold(1.0_f64, f64::min);
+            assert!(c_val >= fh_lower - 1e-12 && c_val <= fh_upper + 1e-12);
+        }
+    }
+
+    let corr4 = CorrelationMatrix::equicorrelated(4, Correlation::new(0.4).unwrap()).unwrap();
+    let copula4 = GaussianCopula::new(corr4);
+    let u4 = [
+        Probability::new(0.6).unwrap(),
+        Probability::new(0.7).unwrap(),
+        Probability::new(0.5).unwrap(),
+        Probability::new(0.8).unwrap(),
+    ];
+    let mut rng = OxidizeRng::from_seed(123);
+    let (res, _) = VerifiedEngine::run_verified(|| copula4.cdf_with_rng(&u4, &mut rng, 128));
+    assert!(res.unwrap().value() > 0.0);
+}
+
+#[test]
+#[verified_engine::verified]
 fn test_three_leg_parlay_and_tail_crash_benchmarks() {
     let corr = CorrelationMatrix::equicorrelated(3, Correlation::new(0.60).unwrap()).unwrap();
     let copula = GaussianCopula::new(corr.clone());
@@ -234,7 +275,6 @@ fn test_three_leg_parlay_and_tail_crash_benchmarks() {
 #[verified_engine::verified]
 fn test_cdf_with_seed_and_workspace_zero_allocation_3_to_12_legs() {
     use super::super::DEFAULT_COPULA_QMC_PAIRS;
-    use verified_engine::engine::VerifiedEngine;
 
     for &legs in &[3_usize, 4, 6, 8, 10, 12] {
         let corr =

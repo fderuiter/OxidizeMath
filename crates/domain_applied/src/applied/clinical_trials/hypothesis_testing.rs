@@ -1,3 +1,6 @@
+pub use super::bayesian_testing::{
+    BayesianTwoArmResult, bayesian_two_arm_continuous, bayesian_two_arm_proportions,
+};
 use super::types::{ClinicalTrialError, ContingencyTable, GroupData};
 use statrs::distribution::{ChiSquared, ContinuousCDF, StudentsT};
 

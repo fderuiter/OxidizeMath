@@ -34,6 +34,7 @@ pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
         "optics" => Cow::Borrowed("Optics & Caustics"),
         "optics_waves" => Cow::Borrowed("Optics & Waves"),
         "paradox_lab" => Cow::Borrowed("Paradox Lab"),
+        "probability_statistics" => Cow::Borrowed("Probability & Statistics"),
         "quantum" => Cow::Borrowed("Quantum Mechanics"),
         "relativity" => Cow::Borrowed("General Relativity"),
         "solid_state" => Cow::Borrowed("Solid State Physics"),

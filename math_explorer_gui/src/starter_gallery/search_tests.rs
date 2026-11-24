@@ -165,6 +165,14 @@ fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
         "Hyperbolic Geometry"
     );
     assert_eq!(
+        card_academic_domain("probability_statistics"),
+        AcademicDomain::PureMath
+    );
+    assert_eq!(
+        crate::command_palette::format_domain_title("probability_statistics").as_ref(),
+        "Probability & Statistics"
+    );
+    assert_eq!(
         card_academic_domain("stochastic_processes"),
         AcademicDomain::PureMath
     );
@@ -177,7 +185,7 @@ fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
         + usize::from(cfg!(feature = "climate"))
         + usize::from(cfg!(feature = "epidemiology"))
         + usize::from(cfg!(feature = "physics")) * 10
-        + usize::from(cfg!(feature = "pure_math")) * 9;
+        + usize::from(cfg!(feature = "pure_math")) * 10;
     assert_eq!(tabs.len(), expected_tabs);
     for tab in &tabs {
         let slug = tab.url_slug();

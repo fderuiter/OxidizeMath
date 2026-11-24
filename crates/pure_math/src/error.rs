@@ -461,6 +461,7 @@ pub enum Glicko2Error {
 }
 
 mod sports;
+mod statistics_errors;
 mod submodule_diagnostics;
 mod umbrella;
 
@@ -483,6 +484,7 @@ pub use crate::pure_math::{
     tensor::types::TensorError,
 };
 pub use sports::{EloError, MatchModelError};
+pub use statistics_errors::{BayesianError, DistributionError};
 pub use umbrella::PureMathError;
 
 #[cfg(test)]

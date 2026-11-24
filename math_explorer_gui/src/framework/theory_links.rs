@@ -45,17 +45,8 @@ fn camel_or_space_to_snake(input: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
-pub(crate) fn tool_module_tokens(tool_id: &str) -> Vec<String> {
-    let snake = camel_or_space_to_snake(tool_id);
-    let mut tokens = vec![tool_id.trim().to_ascii_lowercase(), snake.clone()];
-    for suffix in ["_tool", "_widget", "_viewer", "_plotter", "_simulator"] {
-        if let Some(stem) = snake.strip_suffix(suffix) {
-            if !stem.is_empty() {
-                tokens.push(stem.to_string());
-            }
-        }
-    }
-    let explicit: &[&str] = match tool_id.trim() {
+fn explicit_tool_papers(tool_id: &str) -> &'static [&'static str] {
+    match tool_id.trim() {
         "AttentionMapsTool" => &["attention_is_all_you_need_rust"],
         "CalibrationWorkbenchTool" => &["clinical_trials_statistics", "self_calibration_paper"],
         "CeraTool" => &["cera_framework"],
@@ -84,23 +75,45 @@ pub(crate) fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         | "ChristoffelInspectorTool"
         | "BlackHoleGeodesicWorkbench"
         | "RelativisticJetBeamingLab" => &["general_relativity_geodesics"],
+        "DistributionExplorerTool" | "CopulaDependenceTool" => {
+            &["clinical_trials_statistics", "clinical_trials"]
+        }
+        "BayesianInferenceTool" => &[
+            "freesurfer",
+            "clinical_trials_statistics",
+            "clinical_trials",
+        ],
         "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" | "RiemannianPdeStudio" => &["freesurfer"],
         "PhyllotaxisLSystemTool" | "BiochemicalDynamicsTool" | "EvolutionaryBiologyTool" => {
             &["computational_biology", "biology"]
         }
         _ => &[],
-    };
-    tokens.extend(explicit.iter().map(|s| (*s).to_string()));
+    }
+}
+
+pub(crate) fn tool_module_tokens(tool_id: &str) -> Vec<String> {
+    let snake = camel_or_space_to_snake(tool_id);
+    let mut tokens = vec![tool_id.trim().to_ascii_lowercase(), snake.clone()];
+    for suffix in ["_tool", "_widget", "_viewer", "_plotter", "_simulator"] {
+        if let Some(stem) = snake.strip_suffix(suffix).filter(|s| !s.is_empty()) {
+            tokens.push(stem.to_string());
+        }
+    }
+    tokens.extend(
+        explicit_tool_papers(tool_id)
+            .iter()
+            .map(|s| (*s).to_string()),
+    );
     tokens
 }
 
 pub(crate) fn domain_module_tokens(domain: &str) -> Vec<String> {
     let clean = domain.trim().to_ascii_lowercase();
-    let mut tokens = Vec::new();
-    if !clean.is_empty() {
-        tokens.push(clean.clone());
-    }
+    let mut tokens: Vec<String> = (!clean.is_empty())
+        .then(|| clean.clone())
+        .into_iter()
+        .collect();
     let aliases: &[&str] = match clean.as_str() {
         "algorithmic_information" => &["algorithmic_information_rust", "pure_math", "algorithms"],
         "chaos" => &["chaos_theory"],
@@ -113,6 +126,12 @@ pub(crate) fn domain_module_tokens(domain: &str) -> Vec<String> {
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
         "hyperbolic_geometry" => &["modular_polynomials_review", "pure_math"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
+        "probability_statistics" => &[
+            "clinical_trials_statistics",
+            "clinical_trials",
+            "freesurfer",
+            "pure_math",
+        ],
         "financial_math" => &["clinical_trials_statistics"],
         "stochastic_processes" => &[
             "clinical_trials_statistics",

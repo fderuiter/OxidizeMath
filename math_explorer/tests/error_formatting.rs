@@ -1,4 +1,4 @@
-//! Verifies that all 39 public error enums tested from `math_explorer::error`
+//! Verifies that all 41 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -13,13 +13,13 @@
 
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
-    AIError, BatteryError, BotanicalError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
-    EloError, EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError,
-    Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError, IsosurfaceError,
-    KellyError, LoraError, MarketPricingError, MarkovError, MatchModelError, MathError,
-    MonteCarloError, NumberTheoryError, OptionPricingError, OuError, PharmacokineticsError,
-    PoissonError, QueueingError, RadarError, SandpileError, SolidStateError, StandardModelError,
-    StatMechError, Su11HyperbolicError, TdaError, ZipError,
+    AIError, BatteryError, BayesianError, BotanicalError, ChaosError, ClimateError, CopulaError,
+    DistributionError, DoseFluenceError, EloError, EngineeringError, EpidemiologyError, FitError,
+    FluidError, GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError,
+    HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarketPricingError, MarkovError,
+    MatchModelError, MathError, MonteCarloError, NumberTheoryError, OptionPricingError, OuError,
+    PharmacokineticsError, PoissonError, QueueingError, RadarError, SandpileError, SolidStateError,
+    StandardModelError, StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -40,6 +40,41 @@ fn assert_readable_diagnostic<E: Diagnostic>(name: &str, err: &E) {
     assert!(
         !desc.contains('{') && !desc.contains('}') && !desc.contains("Dimension("),
         "{name} Diagnostic description must not contain Debug struct formatting: `{desc}`"
+    );
+}
+
+fn assert_pure_math_statistics_errors() {
+    assert_readable_diagnostic(
+        "BayesianError",
+        &BayesianError::InvalidCredibleLevel { level: 1.1 },
+    );
+    assert_readable_diagnostic(
+        "DistributionError",
+        &DistributionError::InvalidProbability { value: 1.5 },
+    );
+    assert_readable_diagnostic("CopulaError", &CopulaError::NotPositiveDefinite);
+    assert_readable_diagnostic("EloError", &EloError::InvalidScale { value: 0.0 });
+    assert_readable_diagnostic(
+        "Glicko2Error",
+        &Glicko2Error::InvalidSystemConstant { value: 0.0 },
+    );
+    assert_readable_diagnostic(
+        "GraphTheoryError",
+        &GraphTheoryError::SourceEqualsSink { node: 2 },
+    );
+    assert_readable_diagnostic(
+        "MatchModelError",
+        &MatchModelError::InvalidGoalRate { value: 0.0 },
+    );
+    assert_readable_diagnostic(
+        "MonteCarloError",
+        &MonteCarloError::DegenerateWeights {
+            effective_sample_size: 1.0,
+        },
+    );
+    assert_readable_diagnostic(
+        "OptionPricingError",
+        &OptionPricingError::InvalidVolatility { value: 0.0 },
     );
 }
 
@@ -77,34 +112,11 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
     );
     assert_readable_diagnostic("ZipError", &ZipError::InvalidRate { value: -0.5 });
     assert_readable_diagnostic("TdaError", &TdaError::EmptyPointCloud);
-    assert_readable_diagnostic("CopulaError", &CopulaError::NotPositiveDefinite);
-    assert_readable_diagnostic("EloError", &EloError::InvalidScale { value: 0.0 });
-    assert_readable_diagnostic(
-        "Glicko2Error",
-        &Glicko2Error::InvalidSystemConstant { value: 0.0 },
-    );
-    assert_readable_diagnostic(
-        "GraphTheoryError",
-        &GraphTheoryError::SourceEqualsSink { node: 2 },
-    );
     assert_readable_diagnostic(
         "Su11HyperbolicError",
         &Su11HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
     );
-    assert_readable_diagnostic(
-        "MatchModelError",
-        &MatchModelError::InvalidGoalRate { value: 0.0 },
-    );
-    assert_readable_diagnostic(
-        "MonteCarloError",
-        &MonteCarloError::DegenerateWeights {
-            effective_sample_size: 1.0,
-        },
-    );
-    assert_readable_diagnostic(
-        "OptionPricingError",
-        &OptionPricingError::InvalidVolatility { value: 0.0 },
-    );
+    assert_pure_math_statistics_errors();
 }
 
 #[test]

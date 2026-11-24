@@ -1,9 +1,10 @@
 use super::{
-    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-    FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
-    MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
-    OptimizationError, OptionPricingError, OuError, PoissonError, QueueingError, StochasticError,
-    Su11HyperbolicError, TdaError, TensorError, TransformError, ZipError,
+    AmbsError, AnalysisError, BayesianError, CopulaError, DistributionError, EllipticCurveError,
+    EloError, EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError,
+    KellyError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
+    MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
+    PoissonError, QueueingError, StochasticError, Su11HyperbolicError, TdaError, TensorError,
+    TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -16,9 +17,15 @@ use thiserror::Error;
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum PureMathError {
+    /// Bayesian inference and MCMC error.
+    #[error("{0}")]
+    Bayesian(#[from] BayesianError),
     /// Copula modeling error.
     #[error("{0}")]
     Copula(#[from] CopulaError),
+    /// Probability distribution and fitting error.
+    #[error("{0}")]
+    Distribution(#[from] DistributionError),
     /// Sports Elo rating error.
     #[error("{0}")]
     Elo(#[from] EloError),
@@ -147,7 +154,9 @@ impl PureMathError {
     #[verified_engine::verified]
     fn as_diagnostic(&self) -> &dyn Diagnostic {
         match self {
+            Self::Bayesian(err) => err,
             Self::Copula(err) => err,
+            Self::Distribution(err) => err,
             Self::Elo(err) => err,
             Self::Glicko2(err) => err,
             Self::Kelly(err) => err,

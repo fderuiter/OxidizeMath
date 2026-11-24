@@ -1,4 +1,4 @@
-//! Core types for copula operations.
+//! Core types for copula operations with Cholesky positive-definiteness verification.
 
 use crate::error::CopulaError;
 use crate::pure_math::algebra::linear_algebra::numerical::dmatrix_to_row_major;
@@ -263,6 +263,11 @@ mod tests {
             Err(CopulaError::NotPositiveDefinite)
         );
 
+        assert_eq!(
+            CorrelationMatrix::equicorrelated(3, Correlation::new(-0.6).unwrap()),
+            Err(CopulaError::NotPositiveDefinite)
+        );
+
         let near_indefinite =
             DMatrix::from_row_slice(3, 3, &[1.0, 0.8, 0.8, 0.8, 1.0, -0.3, 0.8, -0.3, 1.0]);
         assert_eq!(
@@ -271,6 +276,7 @@ mod tests {
         );
 
         assert!(CorrelationMatrix::new(DMatrix::zeros(0, 0)).is_err());
+        assert!(CorrelationMatrix::equicorrelated(0, Correlation::new(0.0).unwrap()).is_err());
         assert!(
             CorrelationMatrix::new(DMatrix::from_row_slice(2, 2, &[0.5, 0.3, 0.3, 1.0])).is_err()
         );

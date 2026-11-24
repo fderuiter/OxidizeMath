@@ -5,8 +5,10 @@ use super::bivariate::bivariate_copula_cdf;
 use super::core::{Correlation, CorrelationMatrix, Probability};
 use super::transforms::{fast_norm_cdf, fast_norm_inv};
 use crate::error::CopulaError;
+use crate::pure_math::statistics::distributions::special::sample_uniform_open;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::{Dimension, flatten_2d_index};
+use oxidize_core::rng::OxidizeRng;
 use std::f64::consts::TAU;
 
 /// Number of antithetic Richtmyer quasi-Monte Carlo pairs (`8,192` total integrand evaluations).
@@ -152,6 +154,7 @@ struct QmcProblem<'a> {
     chol: &'a [f64],
     bounds: &'a [f64],
     alphas: &'a [f64],
+    shifts: &'a [f64],
     k: usize,
     e0: f64,
 }
@@ -168,7 +171,8 @@ fn evaluate_single_qmc_point(
     for i in 1..k {
         let prev_diag = prob.chol[flatten_2d_index(i - 1, i - 1, k)];
         if prev_diag > 0.0 {
-            let raw = (step_offset * prob.alphas[i - 1]).fract();
+            let shift = prob.shifts.get(i - 1).copied().unwrap_or(0.0);
+            let raw = (shift + step_offset * prob.alphas[i - 1]).fract();
             let tent = 1.0 - (2.0 * raw - 1.0).abs();
             let u_draw = if antithetic { 1.0 - tent } else { tent };
             let scaled = (u_draw.clamp(1e-15, 1.0 - 1e-15) * prev_e).clamp(1e-16, 1.0 - 1e-16);
@@ -177,14 +181,14 @@ fn evaluate_single_qmc_point(
             y_buf[i - 1] = 0.0;
         }
 
-        let mut shift = 0.0;
+        let mut mean_shift = 0.0;
         for (j, &y_val) in y_buf.iter().enumerate().take(i) {
-            shift += prob.chol[flatten_2d_index(j, i, k)] * y_val;
+            mean_shift += prob.chol[flatten_2d_index(j, i, k)] * y_val;
         }
         let diag = prob.chol[flatten_2d_index(i, i, k)];
         let ei = if diag > 0.0 {
-            fast_norm_cdf((prob.bounds[i] - shift) / diag)
-        } else if shift <= prob.bounds[i] {
+            fast_norm_cdf((prob.bounds[i] - mean_shift) / diag)
+        } else if mean_shift <= prob.bounds[i] {
             1.0
         } else {
             0.0
@@ -198,12 +202,14 @@ fn evaluate_single_qmc_point(
     prod
 }
 
-fn run_richtmyer_genz_qmc(
+fn run_shifted_richtmyer_genz_qmc(
     chol: &[f64],
     bounds: &[f64],
     alphas: &mut [f64],
+    shifts: &[f64],
     y_buf: &mut [f64],
     k: usize,
+    n_pairs: usize,
 ) -> f64 {
     for (j, alpha_slot) in alphas.iter_mut().take(k - 1).enumerate() {
         *alpha_slot = f64::from(prime_at(j)).sqrt().fract();
@@ -220,20 +226,22 @@ fn run_richtmyer_genz_qmc(
         return 0.0;
     }
 
+    let pairs = n_pairs.max(1);
     let prob = QmcProblem {
         chol,
         bounds,
         alphas,
+        shifts,
         k,
         e0,
     };
     let mut total = 0.0;
-    for n in 1..=RICHTMYER_PAIRS {
+    for n in 1..=pairs {
         let offset = n as f64 - 0.5;
         total += evaluate_single_qmc_point(&prob, y_buf, offset, false);
         total += evaluate_single_qmc_point(&prob, y_buf, offset, true);
     }
-    total / ((2 * RICHTMYER_PAIRS) as f64)
+    total / ((2 * pairs) as f64)
 }
 
 fn populate_active_subproblem(
@@ -268,6 +276,39 @@ fn populate_active_subproblem(
     (k, frechet_lo, min_u)
 }
 
+fn check_active_boundary_reduction(
+    u: &[Probability],
+    corr: &CorrelationMatrix,
+) -> Option<Result<Probability, CopulaError>> {
+    if u.iter().any(|p| p.value() == 0.0) {
+        return Some(Probability::new(0.0));
+    }
+    let mut active_first = [0_usize; 2];
+    let mut active_count = 0_usize;
+    for (idx, p) in u.iter().enumerate() {
+        if p.value() < 1.0 {
+            if active_count < 2 {
+                active_first[active_count] = idx;
+            }
+            active_count += 1;
+        }
+    }
+    match active_count {
+        0 => Some(Probability::new(1.0)),
+        1 => Some(Ok(u[active_first[0]])),
+        2 => {
+            let i0 = active_first[0];
+            let i1 = active_first[1];
+            let rho = match Correlation::new(corr.matrix()[(i0, i1)].clamp(-1.0, 1.0)) {
+                Ok(r) => r,
+                Err(e) => return Some(Err(e)),
+            };
+            Some(bivariate_copula_cdf(u[i0], u[i1], rho))
+        }
+        _ => None,
+    }
+}
+
 /// Evaluates `C(u_1, ..., u_d; Sigma)` with zero heap allocations using `scratch`.
 #[verified_engine::verified]
 pub(crate) fn evaluate_copula_cdf_with_scratch(
@@ -289,31 +330,8 @@ pub(crate) fn evaluate_copula_cdf_with_scratch(
             actual: Dimension(scratch.len()),
         }));
     }
-    if u.iter().any(|p| p.value() == 0.0) {
-        return Probability::new(0.0);
-    }
-
-    let mut active_first = [0_usize; 2];
-    let mut active_count = 0_usize;
-    for (idx, p) in u.iter().enumerate() {
-        if p.value() < 1.0 {
-            if active_count < 2 {
-                active_first[active_count] = idx;
-            }
-            active_count += 1;
-        }
-    }
-    if active_count == 0 {
-        return Probability::new(1.0);
-    }
-    if active_count == 1 {
-        return Ok(u[active_first[0]]);
-    }
-    if active_count == 2 {
-        let i0 = active_first[0];
-        let i1 = active_first[1];
-        let rho = Correlation::new(corr.matrix()[(i0, i1)].clamp(-1.0, 1.0))?;
-        return bivariate_copula_cdf(u[i0], u[i1], rho);
+    if let Some(boundary) = check_active_boundary_reduction(u, corr) {
+        return boundary;
     }
 
     let (bounds, rest1) = scratch.split_at_mut(d);
@@ -324,6 +342,50 @@ pub(crate) fn evaluate_copula_cdf_with_scratch(
     if !factorize_genz_pivoted(chol, bounds, y_mean, k) {
         return Probability::new(frechet_lo);
     }
-    let est = run_richtmyer_genz_qmc(chol, bounds, alphas, y_buf, k);
+    let est = run_shifted_richtmyer_genz_qmc(chol, bounds, alphas, &[], y_buf, k, RICHTMYER_PAIRS);
+    Probability::new(est.clamp(frechet_lo, frechet_hi))
+}
+
+/// Evaluates `C(u_1, ..., u_d; Sigma)` via Cranley-Patterson shifted Richtmyer QMC with zero heap allocations.
+#[verified_engine::verified]
+pub(crate) fn evaluate_copula_cdf_with_rng_and_scratch(
+    u: &[Probability],
+    corr: &CorrelationMatrix,
+    rng: &mut OxidizeRng,
+    n_qmc_pairs: usize,
+    scratch: &mut [f64],
+    shifts: &mut [f64],
+) -> Result<Probability, CopulaError> {
+    let d = corr.dimension();
+    if u.len() != d {
+        return Err(CopulaError::Math(MathError::DimensionMismatch {
+            expected: Dimension(d),
+            actual: Dimension(u.len()),
+        }));
+    }
+    if let Some(boundary) = check_active_boundary_reduction(u, corr) {
+        return boundary;
+    }
+
+    let (bounds, rest1) = scratch.split_at_mut(d);
+    let (y_mean, rest2) = rest1.split_at_mut(d);
+    let (y_buf, rest3) = rest2.split_at_mut(d);
+    let (alphas, chol) = rest3.split_at_mut(d);
+    let (k, frechet_lo, frechet_hi) = populate_active_subproblem(u, corr, bounds, y_buf, chol);
+    if !factorize_genz_pivoted(chol, bounds, y_mean, k) {
+        return Probability::new(frechet_lo);
+    }
+    for shift_slot in shifts.iter_mut().take(k - 1) {
+        *shift_slot = sample_uniform_open(rng);
+    }
+    let est = run_shifted_richtmyer_genz_qmc(
+        chol,
+        bounds,
+        alphas,
+        &shifts[..k - 1],
+        y_buf,
+        k,
+        n_qmc_pairs,
+    );
     Probability::new(est.clamp(frechet_lo, frechet_hi))
 }
