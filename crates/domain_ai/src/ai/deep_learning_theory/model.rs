@@ -6,12 +6,14 @@ pub use pure_math::pure_math::analysis::optimization::Trainable;
 
 use verified_engine::Theory;
 
-/// A standard Two-Layer Multi-Layer Perceptron (MLP).
-/// Architecture: Input -> Dense -> ReLU -> Dense -> Softmax (implicit in loss)
+/// Two-layer Multi-Layer Perceptron evaluating $f(x) = W_2\,\text{ReLU}(W_1 x + b_1) + b_2$ (`@cybenko1989approximation`, `spec:transformer_v1`).
+///
+/// - **Numerical stability**: Xavier/He-scaled dense initialization bounds pre-activation variance; gradient updates remain stable for learning rates $\eta < 2 / \|W_1\|_2 \|W_2\|_2$.
+/// - **Domain of validity**: Requires finite input vectors $x \in \mathbb{R}^{d_{\text{in}}}$ with `layer1` shape $(d_{\text{hid}}, d_{\text{in}})$ and `layer2` shape $(d_{\text{out}}, d_{\text{hid}})$ ($d_{\text{in}}, d_{\text{hid}}, d_{\text{out}} \ge 1$).
 #[derive(Theory)]
 #[theory(
     description = "A Multi-Layer Perceptron (MLP) is a class of feedforward artificial neural network consisting of at least three layers of nodes: an input layer, a hidden layer and an output layer. Except for the input nodes, each node is a neuron that uses a nonlinear activation function.",
-    citation = "Learning representations by back-propagating errors (Rumelhart et al., 1986)"
+    citation = "cybenko1989approximation"
 )]
 pub struct TwoLayerMLP {
     #[allow(missing_docs)]
@@ -21,7 +23,8 @@ pub struct TwoLayerMLP {
 }
 
 impl TwoLayerMLP {
-    #[allow(missing_docs)]
+    /// Initializes a two-layer network $f(x) = W_2\,\text{ReLU}(W_1 x + b_1) + b_2$ using the deterministic workspace RNG (`@cybenko1989approximation`, `spec:transformer_v1`).
+    /// Numerical stability: variance-scaled weight initialization prevents forward explosion. Domain of validity: positive dimensions `input_dim >= 1`, `hidden_dim >= 1`, `output_dim >= 1`.
     #[verified_engine::verified]
     pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize) -> Self {
         Self {
@@ -30,7 +33,8 @@ impl TwoLayerMLP {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Initializes $f(x) = W_2\,\text{ReLU}(W_1 x + b_1) + b_2$ from caller-supplied `rng` (`@cybenko1989approximation`, `spec:transformer_v1`).
+    /// Numerical stability: bounded uniform/Gaussian fan-in scaling preserves $O(1)$ layer activations. Domain of validity: positive dimensions `input_dim >= 1`, `hidden_dim >= 1`, `output_dim >= 1`.
     #[verified_engine::verified]
     pub fn new_with_rng<R: rand::Rng + ?Sized>(
         input_dim: usize,

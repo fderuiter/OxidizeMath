@@ -108,6 +108,7 @@ pub(super) fn is_module_in_registry_toml(registry_content: &str, module_name: &s
 pub(super) fn apply_registry_table(
     value: &toml::Table,
     valid_papers: &HashSet<String>,
+    verified_specs: &HashSet<String>,
     registered_modules: &mut HashSet<String>,
     registry_links: &mut HashMap<String, String>,
     report: &mut TraceabilityReport,
@@ -126,7 +127,7 @@ pub(super) fn apply_registry_table(
         let paper_str = paper_name.to_string();
         registry_links.insert(module_name.clone(), paper_str.clone());
         if valid_papers.contains(&paper_str)
-            || paper_str.starts_with("spec:")
+            || verified_specs.contains(&paper_str)
             || paper_str.starts_with("registry:")
         {
             report
@@ -134,7 +135,7 @@ pub(super) fn apply_registry_table(
                 .entry(paper_str)
                 .or_default()
                 .push(module_name.clone());
-        } else {
+        } else if !paper_str.starts_with("spec:") {
             report.invalid_links.push((module_name.clone(), paper_str));
         }
     }

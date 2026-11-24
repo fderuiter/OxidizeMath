@@ -22,9 +22,16 @@ pub fn run_traceability_with_cache(auto_fix: bool, cache: &mut AstCache) -> bool
 
 pub fn run_traceability_in_process(args: &[String]) -> bool {
     let _root_guard = crate::manifest_cache::WorkspaceRootGuard::enter();
+    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
     let auto_fix = args.iter().any(|arg| arg == "--auto-fix");
     let mut cache = AstCache::new();
-    run_traceability_with_cache(auto_fix, &mut cache)
+    let trace_ok = run_traceability_with_cache(auto_fix, &mut cache);
+    let math_ok = crate::math_doc_contract::run_math_doc_contract_in_workspace(
+        &workspace_root,
+        &members,
+        &mut cache,
+    );
+    trace_ok && math_ok
 }
 
 pub fn run_batch_ast_with_cache(members: &[String], cache: &mut AstCache) -> bool {
@@ -168,11 +175,17 @@ pub(crate) fn select_touched_policy_members(
     }
 
     let any_md_staged = all_staged.iter().any(|p| p.ends_with(".md"));
+    let math_refs_staged = all_staged.iter().any(|p| {
+        p == "papers/references.bib"
+            || p == "traceability.toml"
+            || p.starts_with("docs/math_specs/")
+    });
     let mut touched = Vec::new();
     for member in workspace_members {
         let prefix = format!("{member}/");
         let manifest = format!("{member}/Cargo.toml");
         let is_touched = (any_md_staged && member == "crates/markdown_tests")
+            || (math_refs_staged && crate::math_doc_contract::is_math_contract_member(member))
             || all_staged.iter().any(|p| {
                 p == &manifest
                     || (p.starts_with(&prefix)

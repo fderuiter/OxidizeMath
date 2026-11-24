@@ -310,8 +310,13 @@ pub fn lint_workflows() {
 }
 
 pub fn check_docs() {
-    println!("=== Check Crate Documentation ===");
+    println!("=== Check Crate & Math Contract Documentation ===");
     run_verification("check-docs");
+}
+
+pub fn check_math_docs() {
+    println!("=== Check Math Rustdoc & BibTeX Contract ===");
+    run_verification("check-math-docs");
 }
 
 pub const CARGO_DOC_ARGS: &[&str] = &["doc", "--workspace", "--no-deps", "--all-features"];

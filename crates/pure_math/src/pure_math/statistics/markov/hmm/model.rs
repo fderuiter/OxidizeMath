@@ -55,10 +55,18 @@ use verified_engine::Theory;
 /// let states = hmm.viterbi(&observations).unwrap();
 /// println!("Most likely states: {:?}", states);
 /// ```
+///
+/// # Governing Joint Distribution & Verification
+///
+/// $$P(X_{1:T}, Y_{1:T}) = \pi_{X_1} B_{X_1, Y_1} \prod_{t=2}^{T} A_{X_{t-1}, X_t} B_{X_t, Y_t}$$
+///
+/// - **Citation**: `@rabiner1989tutorial` (`spec:pure_math_v1`).
+/// - **Numerical stability**: Log-space Viterbi and scaled forward-backward recurrences prevent floating-point underflow on long observation horizons $T \gg 1$.
+/// - **Domain of validity**: Requires $N \ge 1$ hidden states, $M \ge 1$ observation symbols, $\sum_i \pi_i = 1$, and row-stochastic matrices $A \in [0, 1]^{N \times N}$, $B \in [0, 1]^{N \times M}$.
 #[derive(Debug, Clone, Theory)]
 #[theory(
     description = "A Hidden Markov Model (HMM) is a statistical Markov model in which the system being modeled is assumed to be a Markov process with unobservable (hidden) states.",
-    citation = "A tutorial on hidden Markov models and selected applications in speech recognition (Rabiner, 1989)"
+    citation = "rabiner1989tutorial"
 )]
 pub struct HiddenMarkovModel<T: RealField + Copy + ToPrimitive> {
     /// Initial state probabilities π.
@@ -74,7 +82,10 @@ pub struct HiddenMarkovModel<T: RealField + Copy + ToPrimitive> {
 }
 
 impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
-    /// Creates a new Hidden Markov Model.
+    /// Creates a validated Hidden Markov Model $\lambda = (\pi, A, B)$ (`@rabiner1989tutorial`, `spec:pure_math_v1`).
+    ///
+    /// - **Numerical stability**: Validates row sums within floating-point tolerance before downstream forward/Viterbi inference.
+    /// - **Domain of validity**: Requires `initial.len() == N >= 1`, `transitions` shape $(N, N)$, `emissions` shape $(N, M)$ with $M \ge 1$, and non-negative unit-sum probability rows.
     ///
     /// # Arguments
     ///
@@ -138,31 +149,31 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         })
     }
 
-    /// Returns the number of hidden states.
+    /// Returns hidden state cardinality $N = |S|$ (`@rabiner1989tutorial`, `spec:pure_math_v1`). Numerical stability: exact integer copy. Domain of validity: $N \ge 1$.
     #[verified_engine::verified]
     pub fn num_states(&self) -> usize {
         self.num_states
     }
 
-    /// Returns the number of observable symbols.
+    /// Returns observation alphabet cardinality $M = |O|$ (`@rabiner1989tutorial`, `spec:pure_math_v1`). Numerical stability: exact integer copy. Domain of validity: $M \ge 1$.
     #[verified_engine::verified]
     pub fn num_observations(&self) -> usize {
         self.num_observations
     }
 
-    /// Returns the initial state probabilities.
+    /// Borrows initial state distribution $\pi \in \Delta^{N-1}$ (`@rabiner1989tutorial`, `spec:pure_math_v1`). Numerical stability: zero-cost borrow. Domain of validity: $\pi_i \in [0, 1], \sum_i \pi_i = 1$.
     #[verified_engine::verified]
     pub fn initial(&self) -> &DVector<T> {
         &self.initial
     }
 
-    /// Returns the transition matrix.
+    /// Borrows row-stochastic transition matrix $A \in [0, 1]^{N \times N}$ (`@rabiner1989tutorial`, `spec:pure_math_v1`). Numerical stability: zero-cost borrow. Domain of validity: $\sum_j A_{ij} = 1$ for all $1 \le i \le N$.
     #[verified_engine::verified]
     pub fn transitions(&self) -> &DMatrix<T> {
         &self.transitions
     }
 
-    /// Returns the emission matrix.
+    /// Borrows row-stochastic emission matrix $B \in [0, 1]^{N \times M}$ (`@rabiner1989tutorial`, `spec:pure_math_v1`). Numerical stability: zero-cost borrow. Domain of validity: $\sum_k B_{ik} = 1$ for all $1 \le i \le N$.
     #[verified_engine::verified]
     pub fn emissions(&self) -> &DMatrix<T> {
         &self.emissions

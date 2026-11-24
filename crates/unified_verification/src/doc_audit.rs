@@ -311,10 +311,17 @@ pub fn list_registered_examples_cli() -> bool {
     true
 }
 
-/// Main entrypoint to audit all discovered workspace crates.
+/// Main entrypoint to audit all discovered workspace crates and public math rustdoc contracts.
 pub fn run_doc_audit(args: &[String]) -> bool {
     let (workspace_root, members) = crate::manifest_cache::discover_workspace();
-    run_doc_audit_in_base(&workspace_root, &members, args)
+    let crate_ok = run_doc_audit_in_base(&workspace_root, &members, args);
+    let mut cache = oxidize_core::traceability::AstCache::new();
+    let math_ok = crate::math_doc_contract::run_math_doc_contract_in_workspace(
+        &workspace_root,
+        &members,
+        &mut cache,
+    );
+    crate_ok && math_ok
 }
 
 /// Audits an explicit slice of `members` relative to the active workspace root.

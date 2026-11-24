@@ -2,10 +2,10 @@ use super::stepper::TimeStepper;
 use super::traits::{OdeSystem, Solver, VectorOperations};
 use verified_engine::Theory;
 
-/// A generic container for an ODE model, combining State, Dynamics, and a Solver.
+/// Generic initial-value problem facade integrating $\dot{\mathbf{y}}(t) = \mathbf{f}(t, \mathbf{y}(t))$ (`@dormand1980family`, `spec:pure_math_v1`).
 ///
-/// This struct implements the Facade pattern, providing a unified interface
-/// to simulate a system defined by `Dynamics` using a `Solver`.
+/// - **Numerical stability**: Local truncation error $O(\Delta t^{p+1})$ and linear stability domain are determined by the injected `Solver` `S` (e.g. $p = 4$ for RK4); accumulated time `t` advances via `f64` addition.
+/// - **Domain of validity**: Requires locally Lipschitz right-hand side `Dynamics` on $[t_0, t_{\max}]$ and step sizes $\Delta t$ inside the stability region of `S`.
 ///
 /// # Generics
 /// * `State` - The state vector type (must implement `VectorOperations`).
@@ -14,7 +14,7 @@ use verified_engine::Theory;
 #[derive(Debug, Clone, Theory)]
 #[theory(
     description = "An Ordinary Differential Equation (ODE) model encapsulates a dynamical system's state, its governing differential equations, and a numerical solver to simulate its evolution over time.",
-    citation = "Numerical Recipes: The Art of Scientific Computing (Press et al., 2007)"
+    citation = "dormand1980family"
 )]
 pub struct OdeModel<State, Dynamics, S> {
     /// The current state of the system.
@@ -28,7 +28,8 @@ pub struct OdeModel<State, Dynamics, S> {
 }
 
 impl<State, Dynamics, S> OdeModel<State, Dynamics, S> {
-    /// Constructs a new OdeModel initialized at `t = 0.0`.
+    /// Constructs a new [`OdeModel`] for $\dot{\mathbf{y}}(t) = \mathbf{f}(t, \mathbf{y}(t))$ initialized at $t_0 = 0$ (`@dormand1980family`, `spec:pure_math_v1`).
+    /// Numerical stability: exact `t = 0.0` initialization with zero rounding error. Domain of validity: `state` and `solver` workspaces must share matching vector dimensions.
     #[verified_engine::verified]
     pub fn new(state: State, dynamics: Dynamics, solver: S) -> Self {
         Self {

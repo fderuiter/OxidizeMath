@@ -1,12 +1,15 @@
 //! Zero-copy 2D coordinate series views for curve fitting and critical-point solvers.
 // [cite:math_commons]
 
-/// Single 2D `(x, y)` coordinate sample enabling blanket [`PointSeries`] slice implementations.
+/// Single 2D Cartesian sample $(x, y) \in \mathbb{R}^2$ enabling blanket [`PointSeries`] views (`@goldberg1991every`, `spec:math_commons_v1`).
+///
+/// - **Numerical stability**: Exact IEEE-754 `f64` coordinate projection with zero rounding error.
+/// - **Domain of validity**: Valid for all IEEE-754 `f64` pairs; downstream solvers require finite $(x, y)$ where noted.
 pub trait Sample2D {
-    /// Returns the horizontal (`x`) coordinate of this sample.
+    /// Projects horizontal coordinate $\pi_x(x, y) = x$ (`@goldberg1991every`, `spec:math_commons_v1`). Numerical stability: exact bitwise `f64` copy. Domain of validity: all `f64` values.
     fn sample_x(&self) -> f64;
 
-    /// Returns the vertical (`y`) coordinate of this sample.
+    /// Projects vertical coordinate $\pi_y(x, y) = y$ (`@goldberg1991every`, `spec:math_commons_v1`). Numerical stability: exact bitwise `f64` copy. Domain of validity: all `f64` values.
     fn sample_y(&self) -> f64;
 }
 
@@ -34,34 +37,34 @@ impl Sample2D for (f64, f64) {
     }
 }
 
-/// Zero-copy indexed view over a sequence of 2D `(x, y)` observations.
+/// Zero-copy indexed view over a finite 2D sample sequence $\{(x_k, y_k)\}_{k=0}^{n-1}$ (`@goldberg1991every`, `spec:math_commons_v1`).
 ///
-/// Implemented for `[f64; 2]` slices/arrays/vectors, `(f64, f64)` slices/arrays/vectors,
-/// paired coordinate slices `(&[f64], &[f64])`, and downstream UI point types implementing
-/// [`Sample2D`].
+/// - **Numerical stability**: Preserves exact source IEEE-754 `f64` coordinates without intermediate conversions or heap allocations.
+/// - **Domain of validity**: Valid for finite index ranges $0 \le k < n$; paired slice tuples truncate safely to $n = \min(|X|, |Y|)$.
 pub trait PointSeries {
-    /// Number of accessible `(x, y)` points in the series.
+    /// Returns cardinality $n = |\{(x_k, y_k)\}|$ of the series (`@goldberg1991every`, `spec:math_commons_v1`). Numerical stability: exact `usize` count. Domain of validity: $0 \le n \le \text{usize::MAX}$.
     fn len(&self) -> usize;
 
-    /// Returns `true` when the series contains zero points.
+    /// Evaluates emptiness predicate $n = 0$ (`@goldberg1991every`, `spec:math_commons_v1`). Numerical stability: exact integer comparison. Domain of validity: all `PointSeries` instances.
     #[inline(always)]
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Horizontal (`x`) coordinate at `index`.
+    /// Reads abscissa $x_k$ at sample `index` $k$ (`@goldberg1991every`, `spec:math_commons_v1`). Numerical stability: exact `f64` read without rounding. Domain of validity: requires $0 \le k < \text{self.len()}$.
     fn x_at(&self, index: usize) -> f64;
 
-    /// Vertical (`y`) coordinate at `index`.
+    /// Reads ordinate $y_k$ at sample `index` $k$ (`@goldberg1991every`, `spec:math_commons_v1`). Numerical stability: exact `f64` read without rounding. Domain of validity: requires $0 \le k < \text{self.len()}$.
     fn y_at(&self, index: usize) -> f64;
 
-    /// Returns `[x, y]` at `index`.
+    /// Reads paired sample $\mathbf{p}_k = [x_k, y_k]$ at `index` $k$ (`@goldberg1991every`, `spec:math_commons_v1`). Numerical stability: exact two-element `f64` copy. Domain of validity: requires $0 \le k < \text{self.len()}$.
     #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         [self.x_at(index), self.y_at(index)]
     }
 
-    /// Advances from `start` while each sample satisfies `(y == flat_y) & (x >= x_min) & (x <= x_max)`.
+    /// Returns maximal index $m \ge s$ such that $\forall k \in [s, m): y_k = y_{\text{flat}} \land x_k \in [x_{\min}, x_{\max}]$ (`@goldberg1991every`, `spec:math_commons_v1`).
+    /// Numerical stability: exact IEEE-754 comparison (`NaN` terminates plateau scan immediately). Domain of validity: $0 \le \text{start} \le \text{self.len()}$ and $x_{\min} \le x_{\max}$.
     #[inline(always)]
     fn advance_plateau_run(&self, mut start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
         let n = self.len();

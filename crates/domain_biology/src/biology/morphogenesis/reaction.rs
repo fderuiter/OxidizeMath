@@ -1,9 +1,15 @@
 use crate::biology::reaction_diffusion::ReactionModel;
 use verified_engine::Theory;
 
-/// Defines the reaction kinetics for an N-component reaction-diffusion system.
+/// Defines local reaction kinetics $\mathbf{R}(\mathbf{c}) = [R_1(\mathbf{c}), \dots, R_N(\mathbf{c})]$ for an $N$-component reaction-diffusion system (`@turing1952chemical`, `spec:biology_v1`).
+///
+/// - **Numerical stability**: Pointwise polynomial evaluation must avoid division by zero and remain Lipschitz-bounded on compact concentration intervals.
+/// - **Domain of validity**: Valid for finite non-negative species concentrations $c_i \ge 0$ ($i = 1, \dots, N$).
 pub trait ReactionKinetics<const N: usize = 2> {
-    /// Calculates the reaction rates for the given species concentrations.
+    /// Evaluates instantaneous reaction rates $\dot{c}_i = R_i(c_1, \dots, c_N)$ (`@turing1952chemical`, `spec:biology_v1`).
+    ///
+    /// - **Numerical stability**: Accumulates at most $O(N \varepsilon_{\text{mach}})$ rounding error for low-degree mass-action polynomials.
+    /// - **Domain of validity**: Requires finite concentrations $c_i \ge 0$ within the physical state box of the chosen kinetic law.
     ///
     /// # Arguments
     /// * `concentrations` - Array of concentrations for each species.
@@ -27,10 +33,13 @@ pub trait ReactionKinetics<const N: usize = 2> {
 /// - $a$: Production rate of the activator.
 /// - $b$: Production rate of the inhibitor.
 /// - $u^2 v$: Non-linear autocatalysis term (Activator requires Inhibitor to grow, but consumes it).
+/// - **Citation**: `@schnakenberg1979simple` (`spec:biology_v1`).
+/// - **Numerical stability**: Cubic nonlinearity $u^2 v$ restricts explicit time steps to $\Delta t < \min(1, (2 u_{\max} v_{\max} + 1)^{-1})$.
+/// - **Domain of validity**: Non-negative feed rates $a \ge 0, b > 0$ with positive steady state $(u^*, v^*) = (a + b, b / (a + b)^2)$.
 #[derive(Debug, Clone, Copy, Theory)]
 #[theory(
     description = "Schnakenberg kinetics (often used for Turing patterns).",
-    citation = "Schnakenberg, J. (1979). Simple chemical reaction systems with limit cycle behaviour. Journal of theoretical biology, 81(3), 389-400."
+    citation = "schnakenberg1979simple"
 )]
 pub struct SchnakenbergKinetics {
     /// Production rate of activator ($a$).
@@ -42,7 +51,8 @@ pub struct SchnakenbergKinetics {
 }
 
 impl SchnakenbergKinetics {
-    /// Creates a new Schnakenberg kinetics model.
+    /// Creates a Schnakenberg kinetics model with rates $(a, b)$ governing $\dot{u} = a - u + u^2 v, \dot{v} = b - u^2 v$ (`@schnakenberg1979simple`, `spec:biology_v1`).
+    /// Numerical stability: exact `f64` construction; explicit solvers require $\Delta t$ bounded by local Jacobian spectral radius. Domain of validity: finite $a \in [0, 1], b \in (0, 2]$.
     #[verified_engine::verified]
     pub fn new(a: f64, b: f64) -> Self {
         Self { a, b }
@@ -122,10 +132,13 @@ impl ReactionModel for SchnakenbergKinetics {
 /// Where:
 /// - $f$: Dimensionless feed rate replenishing substrate $u$.
 /// - $k$: Dimensionless kill rate removing autocatalyst $v$.
+/// - **Citation**: `@pearson1993complex` (`spec:biology_v1`).
+/// - **Numerical stability**: Explicit integration remains stable for $\Delta t \le 1.0$ when $u, v \in [0, 1]$ and $f, k \in [0, 0.1]$.
+/// - **Domain of validity**: Dimensionless concentrations $u, v \in [0, 1]$ and feed/kill rates $f, k \in [0, 0.1]$.
 #[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "Gray-Scott autocatalytic reaction kinetics generating spot mitosis and coral morphologies.",
-    citation = "Pearson, J. E. (1993). Complex patterns in a simple system. Science, 261(5118), 189-192."
+    citation = "pearson1993complex"
 )]
 pub struct GrayScottKinetics {
     /// Feed rate ($f$) replenishing substrate $u$.
@@ -137,13 +150,15 @@ pub struct GrayScottKinetics {
 }
 
 impl GrayScottKinetics {
-    /// Creates a new Gray-Scott kinetics model with feed rate `f` and kill rate `k`.
+    /// Creates a Gray-Scott model for $\dot{u} = -u v^2 + f(1-u), \dot{v} = u v^2 - (f+k)v$ (`@pearson1993complex`, `spec:biology_v1`).
+    /// Numerical stability: exact `f64` parameter capture; stable under RK4/Euler for $\Delta t \le 1$. Domain of validity: finite $f, k \in [0, 0.1]$.
     #[verified_engine::verified]
     pub fn new(f: f64, k: f64) -> Self {
         Self { f, k }
     }
 
-    /// Canonical Pearson (1993) spot-division (`Mitosis`) regime (`f = 0.0367`, `k = 0.0649`).
+    /// Canonical Pearson spot-division (`Mitosis`) regime $(f, k) = (0.0367, 0.0649)$ (`@pearson1993complex`, `spec:biology_v1`).
+    /// Numerical stability: well-conditioned away from saddle-node fold for $\Delta t \le 1.0$. Domain of validity: concentrations $(u, v) \in [0, 1]^2$ with $D_u / D_v = 2$.
     #[verified_engine::verified]
     pub fn mitosis() -> Self {
         Self {
@@ -152,7 +167,8 @@ impl GrayScottKinetics {
         }
     }
 
-    /// Canonical Pearson (1993) dendritic branching (`Coral`) regime (`f = 0.0545`, `k = 0.0620`).
+    /// Canonical Pearson dendritic branching (`Coral`) regime $(f, k) = (0.0545, 0.0620)$ (`@pearson1993complex`, `spec:biology_v1`).
+    /// Numerical stability: bounded cubic reaction rates on $[0, 1]^2$ for $\Delta t \le 1.0$. Domain of validity: concentrations $(u, v) \in [0, 1]^2$ with $D_u / D_v = 2$.
     #[verified_engine::verified]
     pub fn coral() -> Self {
         Self {

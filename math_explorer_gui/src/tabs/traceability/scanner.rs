@@ -170,20 +170,19 @@ pub(super) fn revalidate_repo_path(raw: &str, _user_picked: bool) -> Option<Stri
 #[cfg(not(target_arch = "wasm32"))]
 struct RootedVfs {
     root: PathBuf,
-    fallback_registry: Option<PathBuf>,
+    fallback_workspace: Option<PathBuf>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl RootedVfs {
     fn new(root: &Path) -> Result<Self, std::io::Error> {
         let canonical = root.canonicalize()?;
-        let fallback_registry = canonical_workspace_root()
+        let fallback_workspace = canonical_workspace_root()
             .filter(|ws| canonical.starts_with(ws) && canonical != *ws)
-            .map(|ws| ws.join("traceability.toml"))
-            .filter(|p| p.is_file());
+            .filter(|ws| ws.join("traceability.toml").is_file());
         Ok(Self {
             root: canonical,
-            fallback_registry,
+            fallback_workspace,
         })
     }
 
@@ -225,11 +224,15 @@ impl VirtualFileSystem for RootedVfs {
                     let clean = path
                         .trim_start_matches("./")
                         .trim_start_matches(['/', '\\']);
-                    if clean == "traceability.toml"
+                    let is_shared_registry_asset = clean == "traceability.toml"
+                        || clean == "papers/references.bib"
+                        || (clean.starts_with("docs/math_specs/") && clean.ends_with(".md"));
+                    if is_shared_registry_asset
+                        && !has_traversal_sequence(clean)
                         && matches!(err.kind(), std::io::ErrorKind::NotFound)
                     {
-                        if let Some(fallback) = &self.fallback_registry {
-                            return std::fs::read_to_string(fallback);
+                        if let Some(ws) = &self.fallback_workspace {
+                            return std::fs::read_to_string(join_relative_segments(ws, clean));
                         }
                     }
                     Err(err)

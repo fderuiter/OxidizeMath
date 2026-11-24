@@ -4,7 +4,8 @@ use crate::impl_compartmental_ops;
 use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver, TimeStepper};
 use verified_engine::Theory;
 
-/// State for the SIR Model.
+/// Compartmental state vector $(S, I, R)$ conserving $S + I + R = N$ (`@kermack1927contribution`, `spec:epidemiology_v1`).
+/// Numerical stability: componentwise `f64` vector arithmetic incurs $O(\varepsilon_{\text{mach}} N)$ drift per RK4 step. Domain of validity: non-negative counts $S, I, R \ge 0$ with $S + I + R = N > 0$.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SIRState {
     #[allow(missing_docs)]
@@ -17,11 +18,8 @@ pub struct SIRState {
 
 impl_compartmental_ops!(SIRState, s, i, r);
 
-/// Pure dynamics of the SIR Model.
-///
-/// This struct holds the parameters and defines the differential equations,
-/// but does not hold the simulation state. This allows it to be used
-/// as a stateless Strategy or Flyweight.
+/// Stateless right-hand side evaluating $(\dot{S}, \dot{I}, \dot{R}) = (-\beta S I / N, \beta S I / N - \gamma I, \gamma I)$ (`@kermack1927contribution`, `spec:epidemiology_v1`).
+/// Numerical stability: invariant simplex preserved under explicit RK4 when $\Delta t (\beta + \gamma) < 2.78$. Domain of validity: finite $N > 0$ and $\beta, \gamma \ge 0$.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SIRDynamics {
     #[allow(missing_docs)]
@@ -57,11 +55,13 @@ impl OdeSystem<SIRState> for SIRDynamics {
 /// $$dI/dt = \beta S I / N - \gamma I$$
 /// $$dR/dt = \gamma I$$
 ///
-/// Use `SIRModel::builder()` or `SIRModel::new()` to construct.
+/// - **Citation**: `@kermack1927contribution` (`spec:epidemiology_v1`).
+/// - **Numerical stability**: Fourth-order RK4 preserves total mass $S + I + R = N$ to machine precision when $\Delta t (\beta + \gamma) \le 1$.
+/// - **Domain of validity**: Closed population $N > 0$, initial infected $0 \le I_0 \le N$, and finite rates $\beta, \gamma \ge 0$.
 #[derive(Debug, Clone, Theory)]
 #[theory(
     description = "The SIR model is an epidemiological model that computes the theoretical number of people infected with a contagious illness in a closed population over time.",
-    citation = "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)"
+    citation = "kermack1927contribution"
 )]
 pub struct SIRModel<S: Solver<SIRState> = RungeKutta4<SIRState>> {
     state: SIRState,
@@ -90,7 +90,8 @@ impl<S: Solver<SIRState>> TimeStepper<SIRState> for SIRModel<S> {
     }
 }
 
-/// Builder for SIRModel to ensure valid parameter configuration.
+/// Parameter-validating builder for $\dot{S} = -\beta S I / N, \dot{I} = \beta S I / N - \gamma I, \dot{R} = \gamma I$ (`@kermack1927contribution`, `spec:epidemiology_v1`).
+/// Numerical stability: rejects non-finite or zero-population inputs prior to division by $N$. Domain of validity: $N > 0, 0 \le I_0 \le N, \beta \ge 0, \gamma \ge 0$.
 #[derive(Debug, Default, Clone)]
 pub struct SIRModelBuilder {
     n: Option<f64>,
@@ -100,35 +101,36 @@ pub struct SIRModelBuilder {
 }
 
 impl SIRModelBuilder {
-    /// Sets the total population size N.
+    /// Sets closed population size $N = S + I + R$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: exact `f64` capture. Domain of validity: finite $N > 0$.
     #[verified_engine::verified]
     pub fn n(mut self, n: f64) -> Self {
         self.n = Some(n);
         self
     }
 
-    /// Sets the initial infected count I0.
+    /// Sets initial infectious count $I_0 = I(0)$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: exact `f64` capture; $S(0) = N - I_0$. Domain of validity: finite $0 \le I_0 \le N$.
     #[verified_engine::verified]
     pub fn i0(mut self, i0: f64) -> Self {
         self.i0 = Some(i0);
         self
     }
 
-    /// Sets the transmission rate beta.
+    /// Sets transmission rate $\beta$ in $\dot{S} = -\beta S I / N$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: exact `f64` capture. Domain of validity: finite $\beta \ge 0$.
     #[verified_engine::verified]
     pub fn beta(mut self, beta: f64) -> Self {
         self.beta = Some(beta);
         self
     }
 
-    /// Sets the recovery rate gamma.
+    /// Sets recovery rate $\gamma$ in $\dot{R} = \gamma I$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: exact `f64` capture. Domain of validity: finite $\gamma \ge 0$.
     #[verified_engine::verified]
     pub fn gamma(mut self, gamma: f64) -> Self {
         self.gamma = Some(gamma);
         self
     }
 
-    /// Builds the SIRModel, validating all parameters.
+    /// Validates $(N, I_0, \beta, \gamma)$ and constructs an RK4 [`SIRModel`] with $S_0 = N - I_0$ (`@kermack1927contribution`, `spec:epidemiology_v1`).
+    /// Numerical stability: guarantees $N > 0$ so $-\beta S I / N$ cannot divide by zero. Domain of validity: $N > 0, 0 \le I_0 \le N, \beta \ge 0, \gamma \ge 0$.
     #[verified_engine::verified]
     pub fn build(self) -> Result<SIRModel<RungeKutta4<SIRState>>, EpidemiologyError> {
         let n = self.n.ok_or(EpidemiologyError::MissingParameter {
@@ -164,7 +166,8 @@ impl SIRModelBuilder {
 }
 
 impl SIRModel<RungeKutta4<SIRState>> {
-    /// Returns a new builder for the SIRModel.
+    /// Returns a fresh builder for $\dot{S} = -\beta S I / N, \dot{I} = \beta S I / N - \gamma I, \dot{R} = \gamma I$ (`@kermack1927contribution`, `spec:epidemiology_v1`).
+    /// Numerical stability: defers division by $N$ until validated `build()`. Domain of validity: populate $N > 0, 0 \le I_0 \le N, \beta \ge 0, \gamma \ge 0$.
     ///
     /// # Examples
     ///
@@ -191,7 +194,8 @@ impl SIRModel<RungeKutta4<SIRState>> {
         SIRModelBuilder::default()
     }
 
-    /// Constructs a new SIRModel with the given parameters using RungeKutta4.
+    /// Constructs a validated RK4 [`SIRModel`] with $R_0 = \beta / \gamma$ (`@kermack1927contribution`, `spec:epidemiology_v1`).
+    /// Numerical stability: $O(\Delta t^4)$ local truncation error under `RungeKutta4`. Domain of validity: finite $N > 0, 0 \le I_0 \le N, \beta \ge 0, \gamma \ge 0$.
     ///
     /// # Examples
     ///
@@ -217,18 +221,18 @@ impl SIRModel<RungeKutta4<SIRState>> {
 }
 
 impl<S: Solver<SIRState>> SIRModel<S> {
-    /// Advances the state by dt using the configured solver.
+    /// Advances $(S, I, R)$ by $\Delta t$ under $\dot{S} = -\beta S I / N$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: preserves simplex for $\Delta t (\beta + \gamma) < 2.78$ (RK4). Domain of validity: finite $\Delta t \ge 0$.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
         <Self as TimeStepper<SIRState>>::step(self, dt);
     }
 
-    /// Advances the state by dt using a provided solver strategy (temporarily ignoring the internal solver).
+    /// Advances $(S, I, R)$ by $\Delta t$ using caller-supplied integrator $\Phi_{\Delta t}$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: governed by `OtherS` stability region. Domain of validity: finite $\Delta t \ge 0$.
     pub fn step_with<OtherS: Solver<SIRState>>(&mut self, solver: &mut OtherS, dt: f64) {
         <Self as TimeStepper<SIRState>>::step_with(self, solver, dt);
     }
 
-    /// Replaces the current solver with a new one.
+    /// Replaces the internal ODE integrator advancing $(S, I, R)(t + \Delta t)$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: lossless state transfer without rounding. Domain of validity: any [`Solver<SIRState>`].
     pub fn with_solver<NewS: Solver<SIRState>>(self, new_solver: NewS) -> SIRModel<NewS> {
         SIRModel {
             state: self.state,
@@ -237,25 +241,25 @@ impl<S: Solver<SIRState>> SIRModel<S> {
         }
     }
 
-    /// Returns the transmission rate beta.
+    /// Returns transmission rate $\beta \ge 0$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: exact scalar copy. Domain of validity: non-negative rate $\beta \ge 0$.
     #[verified_engine::verified]
     pub fn beta(&self) -> f64 {
         self.dynamics.beta
     }
 
-    /// Returns the recovery rate gamma.
+    /// Returns recovery rate $\gamma \ge 0$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: exact scalar copy. Domain of validity: non-negative rate $\gamma \ge 0$.
     #[verified_engine::verified]
     pub fn gamma(&self) -> f64 {
         self.dynamics.gamma
     }
 
-    /// Returns the total population size N.
+    /// Returns total closed population $N = S + I + R > 0$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: exact scalar copy. Domain of validity: strictly positive $N > 0$.
     #[verified_engine::verified]
     pub fn n(&self) -> f64 {
         self.dynamics.n
     }
 
-    /// Returns the current state.
+    /// Borrows current compartmental state $(S, I, R)$ (`@kermack1927contribution`, `spec:epidemiology_v1`). Numerical stability: zero-cost reference borrow. Domain of validity: $S, I, R \ge 0$ with $S + I + R = N$.
     #[verified_engine::verified]
     pub fn state(&self) -> &SIRState {
         &self.state

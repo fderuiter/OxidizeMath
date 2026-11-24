@@ -37,7 +37,7 @@ use verified_engine_macros::Theory;
 #[theory(
     description = "Gravitational acceleration model",
     phonetic = "Gravitational acceleration model",
-    citation = "Newton, I. (1687). Philosophiae Naturalis Principia Mathematica."
+    citation = "landau1976mechanics"
 )]
 pub struct GravityModel {
     #[theory(min = 0.0, max = 100.0, step = 0.1)]
@@ -48,10 +48,7 @@ pub struct GravityModel {
 
 let model = GravityModel { g: 9.81, substeps: 4 };
 assert_eq!(model.theory_description(), "Gravitational acceleration model");
-assert_eq!(
-    model.theory_citation(),
-    "Newton, I. (1687). Philosophiae Naturalis Principia Mathematica."
-);
+assert_eq!(model.theory_citation(), "landau1976mechanics");
 let params = model.theory_parameters();
 assert_eq!(params["g"].max, 100.0);
 assert_eq!(params["substeps"].max, 64.0);

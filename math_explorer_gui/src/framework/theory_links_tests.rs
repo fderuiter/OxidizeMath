@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::theory_links::{resolve_citation_reference_links, resolve_portal_paper_links};
+use super::theory_links::{
+    resolve_citation_reference_links, resolve_portal_paper_links, resolve_portal_spec_links,
+};
 use super::*;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::StateSnapshot;
@@ -151,6 +153,20 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
     assert!(part_ext
         .iter()
         .any(|e| e.url == "https://doi.org/10.1007/s40065-022-00360-6"));
+}
+
+#[test]
+fn test_migrated_bibtex_keys_and_portal_spec_links_resolve() {
+    let bib_key_cera = resolve_citation_reference_links("Liu2025CERA");
+    assert!(bib_key_cera
+        .iter()
+        .any(|e| e.url == "https://arxiv.org/abs/2509.00010"));
+    let bib_key_battery = resolve_citation_reference_links("ning2004cycle, bloom2001accelerated");
+    assert_eq!(bib_key_battery.len(), 2);
+
+    let epi_specs = resolve_portal_spec_links("SIRSimulator", "epidemiology");
+    assert!(epi_specs.iter().any(|s| s.spec_stem == "epidemiology_v1"
+        && s.spec_url.ends_with("/docs/math_specs/epidemiology_v1.md")));
 }
 
 #[test]

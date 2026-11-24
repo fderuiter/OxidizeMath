@@ -304,4 +304,67 @@ mod ast_analysis_tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    #[test]
+    fn test_traceability_engine_rejects_missing_spec_file_and_missing_bibtex_doi() {
+        let mut dirs = HashMap::new();
+        dirs.insert("papers".to_string(), vec!["essay.tex".to_string()]);
+        dirs.insert("src".to_string(), vec!["lib.rs".to_string()]);
+
+        let mut files = HashMap::new();
+        files.insert(
+            "traceability.toml".to_string(),
+            Ok(
+                "[links]\nessay = \"essay.tex\"\nmissing_mod = \"spec:missing_v1\"\nbad_bib_mod = \"spec:bad_bib_v1\"\nvalid_mod = \"spec:valid_v1\"\n"
+                    .to_string(),
+            ),
+        );
+        files.insert(
+            "papers/essay.tex".to_string(),
+            Ok(
+                "\\documentclass{article}\\begin{document}\\cite{no_doi_key}\\end{document}"
+                    .to_string(),
+            ),
+        );
+        files.insert(
+            "papers/references.bib".to_string(),
+            Ok(
+                "@article{no_doi_key, author={A}, title={B}, year={2020}}\n@article{good_key, author={A}, title={B}, year={2024}, doi={10.1000/xyz}}\n"
+                    .to_string(),
+            ),
+        );
+        files.insert(
+            "docs/math_specs/bad_bib_v1.md".to_string(),
+            Ok(
+                "# Bad Spec\n$$ x = 1 $$\n## Stability\nBounded.\n## Validity\nx > 0.\n## References\n- `@no_doi_key`\n"
+                    .to_string(),
+            ),
+        );
+        files.insert(
+            "docs/math_specs/valid_v1.md".to_string(),
+            Ok(
+                "# Valid Spec\n$$ x = 1 $$\n## Stability\nBounded.\n## Validity\nx > 0.\n## References\n- `@good_key`\n"
+                    .to_string(),
+            ),
+        );
+        files.insert(
+            "src/lib.rs".to_string(),
+            Ok(
+                "// [cite:essay] [cite:valid_mod]\n#[verified]\npub fn ok() { assert!(true); }\n"
+                    .to_string(),
+            ),
+        );
+
+        let engine = TraceabilityEngine::new(MockVfs { dirs, files });
+        let report = futures::executor::block_on(engine.scan_repository(&["src"], "papers", false))
+            .expect("scan mock spec repo");
+        assert!(report.paper_coverage.contains_key("spec:valid_v1"));
+        assert!(!report.paper_coverage.contains_key("spec:missing_v1"));
+        assert!(!report.paper_coverage.contains_key("spec:bad_bib_v1"));
+        let (failed, lines) = oxidize_core::traceability::format_traceability_errors(&report);
+        assert!(failed);
+        let joined = lines.join("\n");
+        assert!(joined.contains("missing `docs/math_specs/missing_v1.md`"));
+        assert!(joined.contains("no_doi_key"));
+    }
 }

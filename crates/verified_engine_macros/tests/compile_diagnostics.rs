@@ -284,3 +284,60 @@ pub struct NonNumericModel {
     out.assert_has_error("the trait bound `String: TheoryNumeric` is not satisfied");
     out.assert_has_span(7, 15);
 }
+
+#[test]
+fn mode_14_theory_rejects_prose_unknown_and_missing_doi_bibtex_citations() {
+    let bib = r#"
+@article{valid2024,
+  author = {Ada Lovelace},
+  title = {Verified Solver},
+  year = {2024},
+  doi = {10.1000/valid.2024}
+}
+@book{nodoi1999,
+  author = {Missing Persistent Id},
+  title = {Unlinked Book},
+  year = {1999}
+}
+"#;
+    let code = r#"use verified_engine_macros::Theory;
+
+#[derive(Theory)]
+#[theory(description = "Prose", citation = "Newton (1687)")]
+pub struct ProseCitationModel {
+    #[theory(min = 0.0, max = 1.0, step = 0.1)]
+    pub x: f64,
+}
+
+#[derive(Theory)]
+#[theory(description = "Unknown", citation = "missing2099")]
+pub struct UnknownBibKeyModel {
+    #[theory(min = 0.0, max = 1.0, step = 0.1)]
+    pub x: f64,
+}
+
+#[derive(Theory)]
+#[theory(description = "No DOI", citation = "nodoi1999")]
+pub struct MissingDoiBibKeyModel {
+    #[theory(min = 0.0, max = 1.0, step = 0.1)]
+    pub x: f64,
+}
+"#;
+    let out = support::compile_in_workspace(
+        "mode_14_bibtex_citations",
+        "crates/sub",
+        &[("papers/references.bib", bib)],
+        code,
+    );
+    out.assert_failed_without_panic();
+    out.assert_has_error(
+        "Invalid BibTeX key `Newton (1687)`: expected compact citation key without whitespace",
+    );
+    out.assert_has_error("BibTeX key `missing2099` not found in `papers/references.bib`");
+    out.assert_has_error(
+        "BibTeX entry `nodoi1999` (line 8) must define a non-empty `doi` or `eprint` field",
+    );
+    out.assert_has_span(4, 44);
+    out.assert_has_span(11, 46);
+    out.assert_has_span(18, 45);
+}

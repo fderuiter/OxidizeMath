@@ -3,6 +3,7 @@
 //! This module implements the Chirp Z-Transform algorithm as verified in the Bressler et al. (2024) analysis.
 //! It allows for high-resolution spectral analysis within a specific frequency band (zoom FFT),
 //! overcoming the resolution limits of the standard FFT.
+// [cite:mmwave_radiotherapy_setup]
 
 use num_complex::Complex;
 use rustfft::FftPlanner;
@@ -61,6 +62,12 @@ fn direct_chirp_z_transform(
 /// # Returns
 ///
 /// A vector of complex numbers representing the frequency spectrum in the specified band.
+///
+/// # Verification Contract
+///
+/// - **Citation**: `@bluestein1970linear` (`spec:medical_v1`, `papers/mmwave_radiotherapy_setup.tex`).
+/// - **Numerical stability**: Unitary chirp phase factors $|e^{-j\theta}| = 1$ and power-of-two radix-2 FFT convolution bound relative spectral error to $O(\log(N + K)\,\varepsilon_{\text{mach}})$.
+/// - **Domain of validity**: Requires non-empty finite `signal`, positive sampling rate `sample_rate > 0.0`, finite `[start_freq, start_freq + bandwidth]`, and `output_bins >= 1` (returns zeros/empty safely on degenerate inputs).
 #[verified_engine::verified]
 pub fn chirp_z_transform(
     signal: &[Complex<f64>],
@@ -149,7 +156,10 @@ pub fn chirp_z_transform(
     output
 }
 
-/// Helper struct to configure CZT using Spatial Parameters ("Fonzi" Step 1).
+/// Spatial-to-spectral FMCW range-zoom configuration mapping $f_b(R) = \frac{2 B}{c T_c} R$ onto the Chirp Z-Transform (`@bluestein1970linear`, `spec:medical_v1`).
+///
+/// - **Numerical stability**: Well-conditioned linear range-to-beat-frequency scaling when $c > 0$ and $T_c > 0$.
+/// - **Domain of validity**: Requires positive speed of light $c > 0$, positive sweep duration $T_c > 0$, positive bandwidth $B > 0$, and `step_distance > 0`.
 pub struct SpatialCztConfig {
     /// Start distance in meters ($A$ parameter equivalent).
     pub start_distance: f64,
@@ -166,7 +176,10 @@ pub struct SpatialCztConfig {
 }
 
 impl SpatialCztConfig {
-    /// Converts spatial parameters to frequency parameters and runs the CZT.
+    /// Evaluates the spatial range-zoom spectrum over $f \in [S_f R_0, S_f(R_0 + K \Delta R)]$ where $S_f = \frac{2 B}{c T_c}$ (`@bluestein1970linear`, `spec:medical_v1`).
+    ///
+    /// - **Numerical stability**: Inherits $O(\log(N + K)\,\varepsilon_{\text{mach}})$ Bluestein FFT convolution error bounds when $c T_c$ is bounded away from zero.
+    /// - **Domain of validity**: Requires `self.c > 0.0`, `self.chirp_time > 0.0`, `sample_rate > 0.0`, and non-empty finite `signal`.
     ///
     /// # Arguments
     ///

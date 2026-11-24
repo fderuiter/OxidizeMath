@@ -23,6 +23,8 @@ pub(crate) struct VerificationWhitelist {
     #[serde(default)]
     pub entropy_guard: Option<EntropyGuardConfig>,
     #[serde(default)]
+    pub math_doc_contract: Option<MathDocContractConfig>,
+    #[serde(default)]
     pub missing_docs: Option<MissingDocsConfig>,
     #[serde(default)]
     pub workflow_linter: Option<WorkflowLinterConfig>,
@@ -40,6 +42,15 @@ pub(crate) struct MissingDocsConfig {
     #[serde(default, alias = "vendored_allowlist")]
     pub vendored_crates: Vec<String>,
     /// Per-file maximum `#[allow(missing_docs)]` counts (`>= 1`).
+    #[serde(default, alias = "caps", alias = "max_counts")]
+    pub files: BTreeMap<String, usize>,
+}
+
+/// Configuration for `math_doc_contract` ratcheted violation caps loaded from `[math_doc_contract]`.
+#[derive(Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MathDocContractConfig {
+    /// Per-file maximum legacy math-doc-contract violation counts (`>= 1`).
     #[serde(default, alias = "caps", alias = "max_counts")]
     pub files: BTreeMap<String, usize>,
 }
@@ -156,6 +167,21 @@ fn validate_missing_docs_config(cfg: &MissingDocsConfig, path: &Path) -> Result<
     Ok(())
 }
 
+fn validate_math_doc_contract_config(
+    cfg: &MathDocContractConfig,
+    path: &Path,
+) -> Result<(), String> {
+    for (file, &cap) in &cfg.files {
+        if file.trim().is_empty() || cap == 0 {
+            return Err(format!(
+                "Invalid [math_doc_contract.files] entry `{file}` in {}: path must be non-empty and cap must be >= 1",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String> {
     let content = fs::read_to_string(path)
         .map_err(|err| format!("Failed to read {}: {}", path.display(), err))?;
@@ -174,6 +200,9 @@ fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String
     }
     if let Some(cfg) = &parsed.missing_docs {
         validate_missing_docs_config(cfg, path)?;
+    }
+    if let Some(cfg) = &parsed.math_doc_contract {
+        validate_math_doc_contract_config(cfg, path)?;
     }
     if let Some(fences) = parsed
         .doc_verification
@@ -281,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn test_strict_and_fallback_loaders_preserve_aliases_and_errors() {
+    fn test_strict_and_fallback_loaders_preserve_aliases() {
         let dir = TempTestDir::new("whitelist_loaders");
         let valid = dir.join("valid.toml");
         fs::write(
@@ -293,6 +322,7 @@ mod tests {
                 "file_extensions = [\"rs\"]\npath_exemptions = [\"allow.rs\"]\n",
                 "[missing_docs]\nvendored_crates = [\"egui_plot\"]\n",
                 "[missing_docs.files]\n\"crates/demo/src/lib.rs\" = 2\n",
+                "[math_doc_contract.files]\n\"crates/pure_math/src/lib.rs\" = 3\n",
                 "[[workflow_linter.allowed_job_permissions]]\n",
                 "workflow = \".github/workflows/ci.yml\"\njob = \"deploy\"\nwrite_scopes = [\"pages\"]\n",
                 "[[dead_code]]\nfile = \"crates/demo/src/lib.rs\"\nidentifier = \"Item\"\n",
@@ -323,7 +353,11 @@ mod tests {
         let md_cfg = parsed.missing_docs.unwrap();
         assert_eq!(md_cfg.vendored_crates, vec!["egui_plot".to_string()]);
         assert_eq!(md_cfg.files.get("crates/demo/src/lib.rs"), Some(&2));
+    }
 
+    #[test]
+    fn test_strict_and_fallback_loaders_reject_malformed_inputs() {
+        let dir = TempTestDir::new("whitelist_loader_errors");
         let zero_cap = dir.join("zero_cap.toml");
         fs::write(
             &zero_cap,
@@ -346,6 +380,28 @@ mod tests {
         let fallback = load_whitelist_or_default(Some(&invalid), &[] as &[&Path]);
         assert!(fallback.doc_verification.is_none());
         assert!(fallback.dead_code.is_empty());
+    }
+
+    #[test]
+    fn test_math_doc_contract_whitelist_validation() {
+        let dir = TempTestDir::new("whitelist_math_doc_contract");
+        let valid = dir.join("valid_mdc.toml");
+        fs::write(
+            &valid,
+            "[math_doc_contract.files]\n\"crates/pure_math/src/lib.rs\" = 3\n",
+        )
+        .unwrap();
+        let parsed = load_whitelist_strict(Some(&valid), &[] as &[&Path]).unwrap();
+        let mdc_cfg = parsed.math_doc_contract.unwrap();
+        assert_eq!(mdc_cfg.files.get("crates/pure_math/src/lib.rs"), Some(&3));
+
+        let zero_mdc_cap = dir.join("zero_mdc_cap.toml");
+        fs::write(
+            &zero_mdc_cap,
+            "[math_doc_contract.files]\n\"crates/pure_math/src/lib.rs\" = 0\n",
+        )
+        .unwrap();
+        assert!(load_whitelist_strict(Some(&zero_mdc_cap), &[] as &[&Path]).is_err());
     }
 
     #[test]

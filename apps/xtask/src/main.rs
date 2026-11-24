@@ -38,6 +38,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-benches" => smoke::check_benches(),
         "check-cargo-docs" | "check-workspace-docs" => gates::check_cargo_docs(),
         "check-docs" => gates::check_docs(),
+        "check-math-docs" => gates::check_math_docs(),
         "check-entropy" => gates::check_entropy(),
         "smoke-examples" => smoke::smoke_examples(),
         "test-features" => test_features(rest),
@@ -72,7 +73,8 @@ fn print_help() {
     println!(
         "  check-cargo-docs         - Verify workspace documentation builds with --all-features and zero warnings"
     );
-    println!("  check-docs               - Run crate documentation audit");
+    println!("  check-docs               - Run crate and math rustdoc/BibTeX contract audit");
+    println!("  check-math-docs          - Verify 4-part math rustdoc and BibTeX citations");
     println!("  check-duplicates         - Run AST-level code clone detector across crates");
     println!("  check-entropy            - Scan codebase for high entropy strings and secrets");
     println!(
