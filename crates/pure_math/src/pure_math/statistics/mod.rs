@@ -28,6 +28,8 @@
 //! ###  Risk & Decision Theory
 //! *   **[Kelly Criterion](kelly)**: Optimal capital allocation strategy to maximize logarithmic wealth growth.
 //! *   **[Market Pricing & Devigging](market_pricing)**: Zero-allocation bookmaker overround removal (`Multiplicative`, `Additive`, `Power`, `Shin`), `+EV` valuation, arbitrage, subset Dutching, middling, and live hedging.
+//! *   **[Statistical Risk & Drawdown](risk)**: Zero-allocation Historical (Acerbi-Tasche), Parametric Gaussian,
+//!     and 4th-order Cornish-Fisher `VaR`/`CVaR`, `Sharpe`/`Sortino`/`Calmar` ratios, and underwater drawdown metrics.
 //! *   **[Risk of Ruin & Solvency](ruin)**: Exact Gambler's Ruin, Cramér-Lundberg adjustment coefficients,
 //!     proportional-Kelly drawdown barrier bounds, and zero-allocation Monte Carlo bankroll ensembles.
 //! *   **[Edge Validation & Calibration](validation)**: Closing Line Value (CLV), market vigorish removal,
@@ -130,6 +132,7 @@ pub mod qmc;
 /// Markovian birth-death queueing models ($M/M/1$ and $M/M/c$ Erlang-C).
 pub mod queueing;
 pub mod regression;
+pub mod risk;
 pub mod ruin;
 pub mod tda;
 pub mod validation;

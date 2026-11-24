@@ -2,8 +2,8 @@ use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
     FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
     MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
-    OptimizationError, OptionPricingError, OuError, PoissonError, QueueingError, StochasticError,
-    TdaError, TensorError, TransformError, ZipError,
+    OptimizationError, OptionPricingError, OuError, PoissonError, QueueingError, RiskError,
+    StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -55,6 +55,9 @@ pub enum PureMathError {
     /// Birth-death queueing model error.
     #[error("{0}")]
     Queueing(#[from] QueueingError),
+    /// Statistical tail-risk, drawdown, and return-ratio error.
+    #[error("{0}")]
+    Risk(#[from] RiskError),
     /// Topological data analysis error.
     #[error("{0}")]
     Tda(#[from] TdaError),
@@ -155,6 +158,7 @@ impl PureMathError {
             Self::Ou(err) => err,
             Self::Poisson(err) => err,
             Self::Queueing(err) => err,
+            Self::Risk(err) => err,
             Self::Tda(err) => err,
             Self::Zip(err) => err,
             Self::Ambs(err) => err,

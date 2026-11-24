@@ -24,7 +24,7 @@ mod tests {
     fn check_math_and_applied_tools(ctx: &eframe::egui::Context) {
         #[cfg(feature = "pure_math")]
         {
-            use crate::tabs::financial_math as fm;
+            use crate::tabs::{financial_math as fm, geometry_topology as gt, number_theory as nt};
             check_one::<fm::bet_size::BetSizeCalculatorTool>(ctx);
             check_one::<fm::bankroll_growth::BankrollGrowthTool>(ctx);
             check_one::<fm::correlated_risk::CorrelatedRiskScenarioTool>(ctx);
@@ -32,35 +32,33 @@ mod tests {
             check_one::<fm::market_execution::MarketExecutionTool>(ctx);
             check_one::<fm::monte_carlo_workbench::MonteCarloWorkbenchTool>(ctx);
             check_one::<fm::portfolio_workbench::PortfolioCopulaWorkbenchTool>(ctx);
+            check_one::<fm::tail_risk::TailRiskDrawdownTool>(ctx);
+            #[cfg(feature = "applied")]
+            check_one::<fm::markowitz::MarkowitzFrontierTool>(ctx);
             check_one::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(ctx);
-            check_one::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(ctx);
-            check_one::<crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool>(
-                ctx,
-            );
+            check_one::<gt::vietoris_rips::VietorisRipsTool>(ctx);
+            check_one::<gt::hyperbolic_geometry::HyperbolicGeometryTool>(ctx);
             check_one::<crate::tabs::algorithmic_information::state::FractranMachineTool>(ctx);
-            check_one::<crate::tabs::number_theory::fractran_machine::FractranMachineTool>(ctx);
-            check_one::<crate::tabs::number_theory::ualbf_widget::UalbfWidget>(ctx);
-            check_one::<crate::tabs::number_theory::partitions_widget::PartitionsWidget>(ctx);
-            check_one::<crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget>(ctx);
+            check_one::<nt::fractran_machine::FractranMachineTool>(ctx);
+            check_one::<nt::ualbf_widget::UalbfWidget>(ctx);
+            check_one::<nt::partitions_widget::PartitionsWidget>(ctx);
+            check_one::<nt::prime_spiral::PrimeSpiralWidget>(ctx);
         }
         #[cfg(feature = "applied")]
         {
-            check_one::<crate::tabs::game_theory::auction::MyersonAuctionTool>(ctx);
-            check_one::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(ctx);
-            check_one::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(ctx);
-            check_one::<crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool>(
-                ctx,
-            );
-            check_one::<crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::survival::SurvivalAnalysisTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::randomization::RandomizationTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::composite_win_ratio::WinRatioTool>(ctx);
-            check_one::<crate::tabs::clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool>(
-                ctx,
-            );
+            use crate::tabs::{battery_degradation as bd, clinical_trials as ct, game_theory as g};
+            check_one::<g::auction::MyersonAuctionTool>(ctx);
+            check_one::<g::glicko2::Glicko2TournamentTool>(ctx);
+            check_one::<g::markov::MarkovSequenceWorkbenchTool>(ctx);
+            check_one::<bd::lifetime_estimator::LifetimeEstimatorTool>(ctx);
+            check_one::<bd::capacity_fade::CapacityFadeTool>(ctx);
+            check_one::<ct::pharmacokinetics::PharmacokineticsTool>(ctx);
+            check_one::<ct::survival::SurvivalAnalysisTool>(ctx);
+            check_one::<ct::sample_size::SampleSizeCalculatorTool>(ctx);
+            check_one::<ct::randomization::RandomizationTool>(ctx);
+            check_one::<ct::win_ratio::WinRatioStressTesterTool>(ctx);
+            check_one::<ct::composite_win_ratio::WinRatioTool>(ctx);
+            check_one::<ct::win_ratio_workbench::WinRatioWorkbenchTool>(ctx);
         }
     }
 

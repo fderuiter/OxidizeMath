@@ -1,13 +1,13 @@
 use super::{
     BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError, IsosurfaceError,
-    KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+    KalmanError, LoraError, PharmacokineticsError, PortfolioError, VoxelGridError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
     EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
 };
 use pure_math::error::{
-    AnalysisError, EvolutionError, LinearAlgebraError, OptimizationError, PureMathError,
+    AnalysisError, EvolutionError, LinearAlgebraError, OptimizationError, PureMathError, RiskError,
     StochasticError,
 };
 use std::collections::HashMap;
@@ -41,6 +41,9 @@ pub enum AppliedError {
     /// Pharmacokinetics modeling error.
     #[error("{0}")]
     Pharmacokinetics(#[from] PharmacokineticsError),
+    /// Markowitz mean-variance portfolio optimization error.
+    #[error("{0}")]
+    Portfolio(#[from] PortfolioError),
     /// Volumetric voxel grid construction error.
     #[error("{0}")]
     VoxelGrid(#[from] VoxelGridError),
@@ -86,6 +89,13 @@ impl From<LinearAlgebraError> for AppliedError {
 impl From<StochasticError> for AppliedError {
     #[verified_engine::verified]
     fn from(err: StochasticError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<RiskError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: RiskError) -> Self {
         Self::PureMath(PureMathError::from(err))
     }
 }
@@ -137,6 +147,7 @@ impl AppliedError {
             Self::Kalman(err) => err,
             Self::Lora(err) => err,
             Self::Pharmacokinetics(err) => err,
+            Self::Portfolio(err) => err,
             Self::VoxelGrid(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,

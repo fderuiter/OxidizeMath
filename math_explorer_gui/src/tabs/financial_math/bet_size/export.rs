@@ -5,8 +5,12 @@ use crate::accessibility::{announce_live_assertive_status, announce_live_status}
 use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
 use eframe::egui;
 use egui_plot::export::{copy_text_to_clipboard, escape_csv_field};
-use egui_plot::PlotPoint;
+use egui_plot::{ExportPrimitive, PlotPoint};
 use std::sync::mpsc::channel;
+
+fn to_pairs(pts: &[PlotPoint]) -> Vec<[f64; 2]> {
+    pts.iter().map(|p| [p.x, p.y]).collect()
+}
 
 const CSV_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
     filter_name: "CSV Sizing Table (*.csv)",
@@ -164,4 +168,38 @@ impl BetSizeCalculatorTool {
             );
         }
     }
+
+    pub(super) fn build_export_primitives(&self) -> Vec<ExportPrimitive> {
+        let pal = crate::app::palette::DARK_PALETTE;
+        let mut prims = Vec::new();
+        if self.growth_curve_points.len() >= 2 {
+            prims.push(ExportPrimitive::Polyline {
+                name: "Logarithmic Growth Rate g(f)".to_string(),
+                points: to_pairs(&self.growth_curve_points).into(),
+                color: pal.series[0],
+                stroke_width: 2.0,
+                closed: false,
+                fill: None,
+            });
+        }
+        let markers: Vec<[f64; 2]> = self
+            .quarter_marker
+            .iter()
+            .chain(self.half_marker.iter())
+            .chain(self.full_marker.iter())
+            .chain(self.drawdown_marker.iter())
+            .map(|p| [p.x, p.y])
+            .collect();
+        if !markers.is_empty() {
+            prims.push(ExportPrimitive::Points {
+                name: "Kelly Fraction Tiers".to_string(),
+                points: markers.into(),
+                color: pal.accent,
+                radius: 5.5,
+            });
+        }
+        prims
+    }
 }
+
+// [cite:modular_polynomials_review]

@@ -52,6 +52,7 @@ impl Error {
             Self::Ou(err) => Some(err),
             Self::Poisson(err) => Some(err),
             Self::Queueing(err) => Some(err),
+            Self::Risk(err) => Some(err),
             Self::Stochastic(err) => Some(err),
             Self::Tda(err) => Some(err),
             Self::Tensor(err) => Some(err),
@@ -74,6 +75,7 @@ impl Error {
             Self::Kalman(err) => Some(err),
             Self::Lora(err) => Some(err),
             Self::Pharmacokinetics(err) => Some(err),
+            Self::Portfolio(err) => Some(err),
             Self::VoxelGrid(err) => Some(err),
             _ => None,
         }

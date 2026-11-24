@@ -6,11 +6,14 @@ use super::state::{
     BetSizingMode, OddsFormat, DECIMAL_ODDS_MAX, DECIMAL_ODDS_MIN, FRACTIONAL_MAX_DENOMINATOR,
 };
 use super::BetSizeCalculatorTool;
-use crate::accessibility::AccessibleHoverText;
+use crate::accessibility::{
+    paint_canvas_focus_ring, register_canvas_accessibility, AccessibleHoverText,
+};
 use crate::app::SemanticPalette;
 use crate::framework::bounded_drag_value;
 use eframe::egui;
-use egui_plot::{Legend, Line, LineStyle, MarkerShape, Plot, Points};
+use eframe::egui::accesskit::Role;
+use egui_plot::{Legend, Line, LineStyle, MarkerShape, Plot, Points, VLine};
 use math_explorer::pure_math::statistics::kelly::Odds;
 
 impl BetSizeCalculatorTool {
@@ -211,7 +214,7 @@ impl BetSizeCalculatorTool {
         }
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.heading("Expected Logarithmic Growth Curve g(f)");
-        Plot::new("bet_size_growth_plot")
+        let resp = Plot::new("bet_size_growth_plot")
             .view_aspect(2.2)
             .legend(Legend::default())
             .x_axis_label("Wager Fraction (f)")
@@ -229,6 +232,20 @@ impl BetSizeCalculatorTool {
                 );
                 self.render_plot_markers(plot_ui, &palette);
             });
+        let summary = format!(
+            "Kelly growth curve g(f) with {} samples; optimal f* = {:.3}, g(f*) = {:+.5}",
+            self.growth_curve_points.len(),
+            self.optimal_f_star.unwrap_or(0.0),
+            self.optimal_growth_rate
+        );
+        register_canvas_accessibility(
+            ui,
+            &resp.response,
+            Role::GraphicsDocument,
+            "Logarithmic Capital Growth Rate g(f) vs Wager Fraction f",
+            Some(&summary),
+        );
+        paint_canvas_focus_ring(ui, &resp.response);
     }
 
     fn render_plot_markers<'a>(
@@ -236,6 +253,24 @@ impl BetSizeCalculatorTool {
         plot_ui: &mut egui_plot::PlotUi<'a>,
         palette: &SemanticPalette,
     ) {
+        if let Some(fs) = self.optimal_f_star {
+            plot_ui.vline(
+                VLine::new("Optimal Kelly f*", fs)
+                    .color(palette.success)
+                    .style(LineStyle::Dashed { length: 6.0 }),
+            );
+            if matches!(
+                self.mode,
+                BetSizingMode::Binary | BetSizingMode::PushSpread | BetSizingMode::QuarterLine
+            ) && 2.0 * fs < 0.98
+            {
+                plot_ui.vline(
+                    VLine::new("Over-Allocation Boundary 2f*", 2.0 * fs)
+                        .color(palette.error)
+                        .style(LineStyle::Dotted { spacing: 5.0 }),
+                );
+            }
+        }
         if !self.quarter_marker.is_empty() {
             plot_ui.points(
                 Points::new("Quarter Kelly (0.25 f*)", &self.quarter_marker[..])

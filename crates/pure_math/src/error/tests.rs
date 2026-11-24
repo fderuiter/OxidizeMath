@@ -51,6 +51,7 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         OuError::InvalidTimeStep { value: 0.0 }.into(),
         PoissonError::InvalidRate { rate: -1.0 }.into(),
         QueueingError::InvalidServerCount { servers: 0 }.into(),
+        RiskError::EmptySeries.into(),
         TdaError::EmptyPointCloud.into(),
         ZipError::InvalidRate { value: -1.0 }.into(),
         AmbsError::ConversionError.into(),
@@ -92,6 +93,7 @@ fn propagate_pure_math_question_mark(trigger_err: bool) -> std::result::Result<f
     }
     let _: f64 = Ok::<f64, KellyError>(0.25)?;
     let _: f64 = Ok::<f64, MarketPricingError>(0.5)?;
+    let _: f64 = Ok::<f64, RiskError>(0.75)?;
     Ok(1.0)
 }
 
@@ -170,6 +172,23 @@ fn test_option_pricing_error_umbrella_and_zero_alloc() {
     assert_eq!(
         umbrella.metadata().get("error_type").map(String::as_str),
         Some("OptionPricingError")
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_risk_error_umbrella_and_zero_alloc() {
+    let (err_res, _) =
+        VerifiedEngine::run_verified(|| -> std::result::Result<f64, PureMathError> {
+            let _: f64 = Err(RiskError::ZeroVolatility)?;
+            Ok(0.0)
+        });
+    let umbrella = err_res.expect_err("must convert RiskError");
+    assert!(umbrella.source().is_some());
+    assert_eq!(umbrella.severity(), Severity::Error);
+    assert_eq!(
+        umbrella.metadata().get("error_type").map(String::as_str),
+        Some("RiskError")
     );
 }
 

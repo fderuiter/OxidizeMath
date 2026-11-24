@@ -14,7 +14,7 @@ use crate::pure_math::{
     number_theory::ambs::AmbsError,
     statistics::{
         black_scholes::OptionPricingError, monte_carlo::MonteCarloError, poisson::PoissonError,
-        queueing::QueueingError,
+        queueing::QueueingError, risk::RiskError,
     },
     tensor::types::TensorError,
 };
@@ -350,5 +350,17 @@ impl Diagnostic for QueueingError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("QueueingError", self.to_string())
+    }
+}
+
+impl Diagnostic for RiskError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("RiskError", self.to_string())
     }
 }
