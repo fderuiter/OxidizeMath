@@ -417,8 +417,8 @@ pub struct BraessCongestionLab {
     pub status: Result<WardropSummary, WardropError>,
     /// Counterfactual latency without the `u -> v` (`1 -> 2`) shortcut when present.
     pub without_shortcut_latency: Option<f64>,
-    active_curve: Vec<PlotPoint>,
-    no_shortcut_curve: Vec<PlotPoint>,
+    pub(super) active_curve: Vec<PlotPoint>,
+    pub(super) no_shortcut_curve: Vec<PlotPoint>,
 }
 
 impl Default for BraessCongestionLab {

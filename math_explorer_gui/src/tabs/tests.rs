@@ -53,7 +53,7 @@ fn test_inventory_tabs_preserve_deterministic_slug_order() {
         feature = "physics"
     ))]
     {
-        assert_eq!(tabs.len(), 29, "All 29 GUI domain tabs must register");
+        assert_eq!(tabs.len(), 30, "All 30 GUI domain tabs must register");
         assert_eq!(slugs.first().copied(), Some("quantum"));
         assert_eq!(slugs.last().copied(), Some("ai"));
     }
@@ -87,6 +87,7 @@ fn test_build_script_emits_scoped_rerun_directives() {
     for expected in [
         "build.rs",
         "build_snapshot.rs",
+        "build_stage.rs",
         "src/tabs/mod.rs",
         "../traceability.toml",
         "../papers",
@@ -144,7 +145,8 @@ fn collect_static_mod_gates(mod_rs: &str) -> std::collections::BTreeMap<String, 
 
 #[test]
 fn test_static_tab_modules_match_filesystem_tabs_and_inventory_descriptors() {
-    let tabs_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/tabs");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
+    let tabs_dir = Path::new(&manifest_dir).join("src/tabs");
     let mod_rs = fs::read_to_string(tabs_dir.join("mod.rs")).expect("read src/tabs/mod.rs");
     let declared = collect_static_mod_gates(&mod_rs);
     let mut discovered = std::collections::BTreeSet::new();
@@ -181,8 +183,8 @@ fn test_static_tab_modules_match_filesystem_tabs_and_inventory_descriptors() {
     let declared_names: std::collections::BTreeSet<String> = declared.keys().cloned().collect();
     assert_eq!(
         discovered.len(),
-        29,
-        "Expected all 29 local GUI tab modules"
+        30,
+        "Expected all 30 local GUI tab modules"
     );
     assert_eq!(
         declared_names, discovered,

@@ -167,15 +167,15 @@ fn test_cortical_thickness() {
 }
 
 #[test]
-#[verified_engine::verified]
 fn test_cortical_thickness_exact_distance_equivalence() {
-    let mut white_verts = Vec::new();
-    let mut pial_verts = Vec::new();
+    let mut white_verts = Vec::with_capacity(50);
+    let mut pial_verts = Vec::with_capacity(50);
     for i in 0..50 {
         let x = (i as f64) * 0.2;
         let y = ((i * 7) % 13) as f64 * 0.3;
-        white_verts.push([x, y, 0.0]);
-        pial_verts.push([x, y, 2.5]);
+        let z = ((i * 5) % 9) as f64 * 0.15;
+        white_verts.push([x, y, z]);
+        pial_verts.push([x, y, z + 2.5]);
     }
     let white_surface = Surface::from_vertices(white_verts);
     let pial_surface = Surface::from_vertices(pial_verts);
@@ -195,14 +195,97 @@ fn test_cortical_thickness_exact_distance_equivalence() {
     let batch_map = cortical_thickness_map(&white_surface, &pial_surface);
     assert_eq!(batch_map.len(), 50);
 
-    for i in (0..50).step_by(5) {
+    let mut workspace = ThicknessWorkspace::with_max_vertices(50);
+    let mut map_into = vec![0.0_f64; 50];
+    let mut direct_samples = [0.0_f64; 10];
+    let mut indexed_samples = [0.0_f64; 10];
+
+    let (written, metrics) = VerifiedEngine::run_verified(|| {
+        let count = cortical_thickness_map_into(
+            &white_surface,
+            &pial_surface,
+            &mut workspace,
+            &mut map_into,
+        );
+        let (white_grid, pial_grid) = workspace
+            .build_grids(&white_surface, &pial_surface)
+            .expect("preallocated workspace has sufficient capacity");
+        for (slot, i) in (0..50).step_by(5).enumerate() {
+            let v_w = white_surface.vertices[i];
+            let v_p = pial_surface.vertices[i];
+            direct_samples[slot] = cortical_thickness(&v_w, &v_p, &white_surface, &pial_surface);
+            indexed_samples[slot] = cortical_thickness_indexed(&v_w, &v_p, &white_grid, &pial_grid);
+        }
+        count
+    });
+
+    assert_eq!(written, 50);
+    assert!(metrics.function_calls > 0);
+    assert_eq!(batch_map, map_into);
+
+    for (slot, i) in (0..50).step_by(5).enumerate() {
         let v_w = white_surface.vertices[i];
         let v_p = pial_surface.vertices[i];
         let expected = 0.5 * (naive_dist(&v_w, &pial_surface) + naive_dist(&v_p, &white_surface));
-        let actual = cortical_thickness(&v_w, &v_p, &white_surface, &pial_surface);
-        assert_eq!(expected, actual);
-        assert_eq!(expected, batch_map[i]);
+        assert_eq!(expected, direct_samples[slot]);
+        assert_eq!(expected, indexed_samples[slot]);
+        assert_eq!(expected, map_into[i]);
     }
+}
+
+#[test]
+fn test_zero_alloc_cortical_thickness_edge_cases() {
+    let empty = Surface::from_vertices(Vec::new());
+    let single_w = Surface::from_vertices(vec![[1.0, 2.0, 3.0]]);
+    let single_p = Surface::from_vertices(vec![[1.0, 2.0, 6.0]]);
+    let mut empty_ws = ThicknessWorkspace::new();
+    let mut ws = ThicknessWorkspace::with_max_vertices(1);
+    let mut out = [0.0_f64; 1];
+
+    let ((empty_t, nan_t, undercap, ok_count), metrics) = VerifiedEngine::run_verified(|| {
+        let d_empty = cortical_thickness(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0], &empty, &empty);
+        let (wg, pg) = ws.build_grids(&single_w, &single_p).unwrap();
+        let d_nan = cortical_thickness_indexed(&[f64::NAN, 0.0, 0.0], &[1.0, 2.0, 6.0], &wg, &pg);
+        let bad = cortical_thickness_map_into(&single_w, &single_p, &mut empty_ws, &mut out);
+        let good = cortical_thickness_map_into(&single_w, &single_p, &mut ws, &mut out);
+        (d_empty, d_nan, bad, good)
+    });
+
+    assert_eq!(empty_t, f64::INFINITY);
+    assert!(nan_t.is_nan());
+    assert_eq!(undercap, 0);
+    assert_eq!(ok_count, 1);
+    assert_eq!(out[0], 3.0);
+    assert!(metrics.function_calls > 0);
+}
+
+#[test]
+fn test_zero_alloc_10k_vertex_mesh_thickness_map_into() {
+    let n = 10_000_usize;
+    let mut white_verts = Vec::with_capacity(n);
+    let mut pial_verts = Vec::with_capacity(n);
+    for i in 0..n {
+        let u = (i % 100) as f64 * 0.0628;
+        let v = (i / 100) as f64 * 0.0314;
+        let (su, cu) = u.sin_cos();
+        let (sv, cv) = v.sin_cos();
+        let r_w = 20.0 + 1.5 * (3.0 * u).cos() * sv;
+        let r_p = r_w + 2.5;
+        white_verts.push([r_w * sv * cu, r_w * sv * su, r_w * cv]);
+        pial_verts.push([r_p * sv * cu, r_p * sv * su, r_p * cv]);
+    }
+    let white = Surface::from_vertices(white_verts);
+    let pial = Surface::from_vertices(pial_verts);
+    let mut workspace = ThicknessWorkspace::with_max_vertices(n);
+    let mut thicknesses = vec![0.0_f64; n];
+
+    let (written, metrics) = VerifiedEngine::run_verified(|| {
+        cortical_thickness_map_into(&white, &pial, &mut workspace, &mut thicknesses)
+    });
+
+    assert_eq!(written, n);
+    assert!(metrics.function_calls > 0);
+    assert!(thicknesses.iter().all(|&t| t > 1.5 && t <= 2.6));
 }
 
 #[test]

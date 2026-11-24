@@ -17,7 +17,7 @@
 git clone https://github.com/fderuiter/OxidizeMath.git
 cd OxidizeMath
 
-# Configure Git hooks (.githooks/pre-commit), check prerequisites, and run cargo check --workspace
+# Configure Git hooks (.githooks/pre-commit and .githooks/pre-push), check prerequisites, and run cargo check --workspace
 # (Pass `--hooks-only` to configure hooks immediately, or `--web` to enforce WASM/Playwright browser tools)
 # Note: To compile academic papers (`cargo run -p xtask -- compile-papers`), ensure TeXLive `pdflatex` and `bibtex` are installed:
 # sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science texlive-binaries
@@ -31,7 +31,7 @@ Alternatively, you can manually build the library using Cargo:
 cargo build --release --package math_explorer
 ```
 
-**Note:** `cargo run -p xtask -- setup` configures Git hooks (`.githooks/pre-commit`) first, adds the `wasm32-unknown-unknown` target, warns if optional browser tools are absent (use `--web` to require them or `--hooks-only` for instant hook setup), and runs `cargo check --workspace`. At commit time, `.githooks/pre-commit` runs `cargo run -p xtask -- lint-staged` on staged files for fast offline feedback. Before opening or updating a pull request, run `cargo run -p xtask -- lint-all` to execute the full workspace verification suite.
+**Note:** `cargo run -p xtask -- setup` configures version-controlled Git hooks with executable permissions (`.githooks/pre-commit` and `.githooks/pre-push`) first, adds the `wasm32-unknown-unknown` target, warns if optional browser tools are absent (use `--web` to require them or `--hooks-only` for instant hook setup), and runs `cargo check --workspace` (unless `--check-only` is passed). At commit time, `.githooks/pre-commit` runs `cargo run -p xtask -- lint-staged` scoped to staged files and directly touched crates for fast offline feedback, while `.githooks/pre-push` runs `cargo run -p xtask -- lint-push` for offline reverse-dependent host/`wasm32` Clippy and full workspace traceability before pushing. Before opening or updating a pull request, run `cargo run -p xtask -- lint-all` to execute the full workspace verification suite.
 
 ## Usage
 

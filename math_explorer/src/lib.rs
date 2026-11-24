@@ -7,7 +7,7 @@ pub use diagnostics;
 pub use engine_graph;
 pub use engine_prob;
 pub use math_commons::{
-    ast, constants, fit, math_kernel, poi, primitives, registry, series, wigner,
+    ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
 };
 pub use scientific_metadata;
 pub use verified_engine;
