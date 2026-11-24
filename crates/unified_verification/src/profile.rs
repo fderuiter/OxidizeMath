@@ -12,6 +12,8 @@ const RELEASE_WORKSPACE_MEMBERS: &[&str] = &[
     "crates/02_engines/engine_graph",
     "crates/math_commons",
     "crates/scientific_metadata",
+    "crates/engine_diffeq",
+    "crates/engine_pde",
     "crates/pure_math",
     "crates/domain_ai",
     "crates/domain_physics",

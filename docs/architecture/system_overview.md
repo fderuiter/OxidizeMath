@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 23 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 25 workspace crates:
 
 ```mermaid
 graph TD
@@ -70,6 +70,8 @@ graph TD
         Pure[pure_math]
         Prob[engine_prob]
         Graph[engine_graph]
+        DiffEq[engine_diffeq]
+        Pde[engine_pde]
         Commons[math_commons]
         Meta[scientific_metadata]
         Registry[federated_registry]
@@ -93,16 +95,18 @@ graph TD
     Explorer --> AI & Phys & Bio & App & Clim & Epi
     Explorer --> Pure & Prob & Graph & Commons
 
-    AI --> Commons & Engine & Meta & Prob
-    Phys --> Commons & Engine & Meta & Pure & Prob & Linalg
-    Bio --> Commons & Engine & Meta & Pure & Prob
-    App --> Commons & Engine & Meta & Pure & Prob & Graph & Linalg
+    AI --> Commons & Engine & Meta & Prob & DiffEq
+    Phys --> Commons & Engine & Meta & Pure & Prob & DiffEq & Pde & Linalg
+    Bio --> Commons & Engine & Meta & Pure & Prob & Pde
+    App --> Commons & Engine & Meta & Pure & Prob & Graph & Pde & Linalg
     Clim --> Commons & Engine & Meta & Prob
     Epi --> Commons & Engine & Meta & Pure & Prob
 
-    Pure --> Commons & Meta & Prob & Graph & Linalg
+    Pure --> Commons & Meta & Prob & Graph & DiffEq & Pde & Linalg
     Prob --> Engine
     Graph --> Engine
+    DiffEq --> Commons & Engine
+    Pde --> Commons & Engine
     Commons --> CoreCrate & Linalg
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
@@ -116,7 +120,7 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 23 member crates declared in `Cargo.toml`:
+The workspace contains all 25 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
@@ -128,6 +132,8 @@ The workspace contains all 23 member crates declared in `Cargo.toml`:
 | `crates/02_engines/engine_prob` | `#![no_std]` special functions, distributions, conjugate Bayes, conformal & OT | [engine_prob](../../crates/02_engines/engine_prob/README.md) |
 | `crates/02_engines/engine_graph` | `#![no_std]` factor graphs, sum-product/max-product BP, chain & Potts MRF | [engine_graph](../../crates/02_engines/engine_graph/README.md) |
 | `crates/math_commons` | Tolerances, constant registries, numeric traits | [math_commons](../../crates/math_commons/README.md) |
+| `crates/engine_diffeq` | `#![no_std]` Itô/Stratonovich SDE and BAOAB Langevin solvers | [engine_diffeq](../../crates/engine_diffeq/README.md) |
+| `crates/engine_pde` | `#![no_std]` 1D/2D/3D stencils, SPDE steppers, and radix-2 Fourier solvers | [engine_pde](../../crates/engine_pde/README.md) |
 | `crates/pure_math` | Pure mathematics and numerical algorithms | [pure_math](../../crates/pure_math/README.md) |
 | `crates/scientific_metadata` | Theory descriptors and citation metadata | [scientific_metadata](../../crates/scientific_metadata/src/lib.rs) |
 | `crates/federated_registry` | Distributed model discovery and registration | [federated_registry](../../crates/federated_registry/README.md) |

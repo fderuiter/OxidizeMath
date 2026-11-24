@@ -10,6 +10,8 @@ members = [
     "crates/scientific_metadata",
     "crates/02_engines/engine_prob",
     "crates/02_engines/engine_graph",
+    "crates/engine_diffeq",
+    "crates/engine_pde",
     "crates/pure_math",
     "crates/domain_ai",
     "crates/domain_physics",

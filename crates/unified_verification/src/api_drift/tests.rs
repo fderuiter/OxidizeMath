@@ -229,12 +229,14 @@ fn test_check_api_drift_runs_and_verifies_workspace_invariants() {
     let math_explorer_items = apis
         .get("math_explorer/src/lib.rs")
         .expect("math_explorer/src/lib.rs must be tracked in baseline");
-    assert_eq!(math_explorer_items.len(), 29);
+    assert_eq!(math_explorer_items.len(), 32);
     assert!(apis.contains_key("math_explorer/src/error.rs"));
     assert!(apis.contains_key("math_explorer/src/prelude.rs"));
     assert!(apis.contains_key("crates/02_engines/engine_linalg/src/lib.rs"));
     assert!(apis.contains_key("crates/02_engines/engine_prob/src/lib.rs"));
     assert!(apis.contains_key("crates/02_engines/engine_graph/src/lib.rs"));
+    assert!(apis.contains_key("crates/engine_diffeq/src/lib.rs"));
+    assert!(apis.contains_key("crates/engine_pde/src/lib.rs"));
 
     for private_mod in [
         "crates/verified_engine_macros/src/crate_paths.rs",

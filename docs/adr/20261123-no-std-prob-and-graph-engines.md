@@ -27,4 +27,4 @@ Prior to this decision, probability special functions, continuous and discrete d
 ## Consequences
 - **Positive**: Core probability, Bayesian updating, conformal calibration, optimal transport, and factor-graph belief propagation execute in `#![no_std]` environments and pass `VerifiedEngine` zero-allocation invariants on native and `wasm32` targets.
 - **Positive**: Consolidating stochastic samplers and special functions eliminates `rand_distr` across the workspace while keeping `mechanism_design.rs` trait bounds backward-compatible.
-- **Neutral**: Adding `engine_prob`, `engine_graph`, and `ProbabilityWorkbenchTab` expands the workspace to `23` member crates, `30` GUI tabs, `97` interactive tools, and `166` starter presets.
+- **Neutral**: Adding `engine_prob`, `engine_graph`, and `ProbabilityWorkbenchTab` expands the workspace to `25` member crates, `30` GUI tabs, `98` interactive tools, and `168` starter presets.

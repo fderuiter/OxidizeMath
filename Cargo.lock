@@ -1057,6 +1057,7 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "diagnostics",
+ "engine_diffeq",
  "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
@@ -1075,6 +1076,7 @@ dependencies = [
  "diagnostics",
  "engine_graph",
  "engine_linalg",
+ "engine_pde",
  "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
@@ -1092,6 +1094,7 @@ version = "0.4.0"
 dependencies = [
  "diagnostics",
  "domain_applied",
+ "engine_pde",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",
@@ -1140,13 +1143,16 @@ dependencies = [
  "approx",
  "diagnostics",
  "domain_applied",
+ "engine_diffeq",
  "engine_linalg",
+ "engine_pde",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",
  "oxidize_core",
  "pure_math",
  "rand",
+ "rand_core",
  "rustfft",
  "scientific_metadata",
  "serde",
@@ -1358,6 +1364,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
+name = "engine_diffeq"
+version = "0.4.0"
+dependencies = [
+ "math_commons",
+ "oxidize_core",
+ "rand_core",
+ "verified_engine",
+]
+
+[[package]]
 name = "engine_graph"
 version = "0.4.0"
 dependencies = [
@@ -1371,6 +1387,16 @@ dependencies = [
 name = "engine_linalg"
 version = "0.4.0"
 dependencies = [
+ "verified_engine",
+]
+
+[[package]]
+name = "engine_pde"
+version = "0.4.0"
+dependencies = [
+ "math_commons",
+ "oxidize_core",
+ "rand_core",
  "verified_engine",
 ]
 
@@ -2465,6 +2491,8 @@ dependencies = [
  "libm",
  "num-complex",
  "num-traits",
+ "oxidize_core",
+ "rand_core",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -3423,8 +3451,10 @@ dependencies = [
  "approx",
  "dashu",
  "diagnostics",
+ "engine_diffeq",
  "engine_graph",
  "engine_linalg",
+ "engine_pde",
  "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
