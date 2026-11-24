@@ -13,6 +13,7 @@ use crate::pure_math::{
     hyperbolic::HyperbolicError,
     knot_theory::KnotError,
     number_theory::ambs::AmbsError,
+    statistics::monte_carlo::MonteCarloError,
     tensor::types::TensorError,
 };
 use diagnostics::{Diagnostic, Severity};
@@ -323,5 +324,17 @@ impl Diagnostic for KnotError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("KnotError", self.to_string())
+    }
+}
+
+impl Diagnostic for MonteCarloError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("MonteCarloError", self.to_string())
     }
 }
