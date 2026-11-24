@@ -179,7 +179,7 @@ impl NetworkPropagationTool {
         self.canvas_id
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "physics", feature = "biology"))]
     pub(crate) fn current_effective_r0(&self) -> f64 {
         super::compute_network_analytics(&self.model).effective_r0
     }

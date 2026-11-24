@@ -24,7 +24,7 @@ mod wasm_tests;
 /// - **Attractor Plotter**: Streams 3D Lorenz trajectories alongside live `lorenz_lyapunov` and
 ///   zero-allocation `correlation_dimension_in_place` readouts plus a 2D $(\rho, \sigma)$ regime map.
 /// - **Hamiltonian Chaos Lab**: Pairs zero-allocation symplectic solvers (`StormerVerlet`,
-///   `Yoshida4`, `GaussLegendre4`) with cubic-Hermite Poincaré sections and `RungeKutta4` drift comparisons.
+///   `ImplicitMidpoint`, `Yoshida4`, `GaussLegendre4`) with cubic-Hermite Poincaré sections and `RungeKutta4` drift comparisons.
 /// - **Kuramoto Oscillators**: Integrates coupled phase-oscillator networks over CSR topologies,
 ///   subscribes to `SharedWorkspaceBus` graphs, and streams order-parameter coherence $R(t)$.
 pub struct ChaosTab {

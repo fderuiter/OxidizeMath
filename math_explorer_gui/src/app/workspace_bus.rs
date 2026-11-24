@@ -270,12 +270,7 @@ pub(crate) fn with_pane_bus_scope<R>(
 
 /// Invokes `f` with mutable access to the active pane's linked [`SharedWorkspaceBus`],
 /// or returns `None` when the current pane is unlinked (or running standalone).
-#[cfg(any(
-    feature = "pure_math",
-    feature = "physics",
-    feature = "epidemiology",
-    test
-))]
+#[cfg(any(feature = "pure_math", feature = "physics", feature = "epidemiology"))]
 pub(crate) fn with_linked_bus<R>(f: impl FnOnce(&mut SharedWorkspaceBus) -> R) -> Option<R> {
     ACTIVE_LINKED_BUS.with(|slot| {
         let mut borrow = slot.borrow_mut();
@@ -284,7 +279,7 @@ pub(crate) fn with_linked_bus<R>(f: impl FnOnce(&mut SharedWorkspaceBus) -> R) -
 }
 
 /// Returns `true` when the currently rendering pane is linked to [`SharedWorkspaceBus`].
-#[cfg(any(feature = "pure_math", test))]
+#[cfg(feature = "pure_math")]
 #[must_use]
 pub(crate) fn is_current_pane_linked() -> bool {
     ACTIVE_LINKED_BUS.with(|slot| slot.borrow().is_some())

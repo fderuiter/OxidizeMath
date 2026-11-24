@@ -188,5 +188,3 @@ impl UrlSyncController {
         }
     }
 }
-
-// theory_verification!

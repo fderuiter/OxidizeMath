@@ -34,8 +34,9 @@
 //! *   **[Kuramoto Oscillators](kuramoto)**: Coupled phase-oscillator network synchronization dynamics.
 //! *   **[Logistic Map](logistic)**: Discrete-time demographic model $x_{n+1} = r x_n (1 - x_n)$.
 //! *   **[Lorenz System](lorenz)**: Continuous-time atmospheric convection model (The "Butterfly" attractor).
-//! *   **[Metrics](metrics)**: Tools to quantify chaos (Lyapunov Exponents, Correlation Dimension).
-//! *   **[Poincaré Sections](poincare)**: Zero-allocation cubic-Hermite surface-of-section detector.
+//! *   **[Metrics](metrics)**: Tools to quantify chaos (3D, 4D, and 6D+ Lyapunov Exponents, Correlation Dimension).
+//! *   **[Poincaré Sections](poincare)**: Zero-allocation cubic-Hermite surface-of-section detector and ring buffer.
+//! *   **[Three-Body Choreography](three_body)**: Planar gravitational Figure-8 choreography (`ThreeBodyChoreography`).
 //!
 //! ##  Deep Dive: The Lorenz Attractor
 //!
@@ -81,6 +82,11 @@ pub mod logistic;
 pub mod lorenz;
 pub mod metrics;
 pub mod poincare;
+pub mod three_body;
+
+pub use double_pendulum::DoublePendulum;
+pub use henon_heiles::{HenonHeiles, HenonHeilesSystem};
+pub use three_body::ThreeBodyChoreography;
 
 #[cfg(test)]
 mod tests {

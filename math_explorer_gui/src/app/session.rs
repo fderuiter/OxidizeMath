@@ -109,7 +109,21 @@ impl WorkspaceSessionManager {
         !self.undo_stack.is_empty()
     }
 
-    #[cfg(test)]
+    #[cfg(all(
+        test,
+        any(
+            all(target_arch = "wasm32", feature = "physics"),
+            all(
+                feature = "ai",
+                feature = "applied",
+                feature = "biology",
+                feature = "climate",
+                feature = "epidemiology",
+                feature = "physics",
+                feature = "pure_math"
+            )
+        )
+    ))]
     #[must_use]
     pub fn undo_depth(&self) -> usize {
         self.undo_stack.len()
