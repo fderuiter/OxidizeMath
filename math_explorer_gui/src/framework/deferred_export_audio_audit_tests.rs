@@ -105,19 +105,34 @@ fn test_all_audio_midi_and_scala_tools_deferred_exports_and_capabilities() {
         verify_audio_tool_exports(meta.id, tool, caps);
     }
 
-    assert!(wav_count >= 9, "Expected >= 9 WAV tools, got {wav_count}");
-    assert!(
-        midi_count >= 9,
-        "Expected >= 9 MIDI tools, got {midi_count}"
+    let expected_wav = usize::from(cfg!(feature = "biology")) * 3
+        + usize::from(cfg!(feature = "physics")) * 4
+        + usize::from(cfg!(feature = "pure_math")) * 4;
+    let expected_midi = usize::from(cfg!(feature = "biology")) * 3
+        + usize::from(cfg!(feature = "physics")) * 3
+        + usize::from(cfg!(feature = "pure_math")) * 3;
+    assert_eq!(
+        wav_count, expected_wav,
+        "Expected {expected_wav} WAV tools, got {wav_count}"
     );
-    for required in [
-        "ChladniWaveTankTool",
-        "FractranMachineTool",
-        "FactorizationTool",
-    ] {
-        assert!(
-            scala_ids.contains(&required),
-            "Missing microtonal studio exports on {required} (found {scala_ids:?})"
-        );
+    assert_eq!(
+        midi_count, expected_midi,
+        "Expected {expected_midi} MIDI tools, got {midi_count}"
+    );
+    if cfg!(feature = "pure_math") {
+        for required in [
+            "ChladniWaveTankTool",
+            "FractranMachineTool",
+            "FactorizationTool",
+        ] {
+            assert!(
+                scala_ids.contains(&required),
+                "Missing microtonal studio exports on {required} (found {scala_ids:?})"
+            );
+        }
+    } else {
+        assert!(scala_ids.is_empty());
     }
+    crate::audio::set_offline_duration_secs(crate::audio::wav::DEFAULT_OFFLINE_DURATION_SECS);
+    crate::audio::set_offline_sample_rate(crate::audio::wav::WAV_EXPORT_SAMPLE_RATE);
 }

@@ -42,20 +42,22 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
         let (mut model, params) = self.build_deterministic_export_model()?;
         let substeps = self.steps_per_frame.max(1);
-        let pitch_scale = self.audio_settings.pitch_scale;
-        Ok(crate::audio::render_frames_wav(
+        let settings = self.audio_settings.sanitized();
+        let cfg = crate::audio::OfflineRenderConfig {
             sample_rate,
             duration_secs,
-            |_, _| {
-                for _ in 0..substeps {
-                    model.step(&params);
-                }
-                model
-                    .sonification_frame()
-                    .unwrap_or_else(|| model.get_snapshot().sonification)
-                    .with_pitch_scale(pitch_scale)
-            },
-        ))
+            master_volume: crate::audio::snapshot_ui_state().master_volume,
+        }
+        .with_tool_gain(settings.gain);
+        Ok(crate::audio::wav::synthesize_offline_wav(cfg, |_, _| {
+            for _ in 0..substeps {
+                model.step(&params);
+            }
+            model
+                .sonification_frame()
+                .unwrap_or_else(|| model.get_snapshot().sonification)
+                .with_pitch_scale(settings.pitch_scale)
+        }))
     }
 
     pub(super) fn render_unified_midi(&self, duration_secs: f32) -> Result<Vec<u8>, String> {

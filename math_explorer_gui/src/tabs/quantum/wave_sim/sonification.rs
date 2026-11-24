@@ -55,12 +55,20 @@ impl WaveSimulatorTool {
         let mut runner = WaveRunner::new(Arc::clone(&self.shared_config));
         let dt = self.dt.clamp(1.0e-4, 0.25);
         let substeps = self.steps_per_frame.max(1);
-        let pitch_scale = self.audio_settings.pitch_scale;
-        crate::audio::render_frames_wav(sample_rate, duration_secs, |_, _| {
+        let settings = self.audio_settings.sanitized();
+        let cfg = crate::audio::OfflineRenderConfig {
+            sample_rate,
+            duration_secs,
+            master_volume: crate::audio::snapshot_ui_state().master_volume,
+        }
+        .with_tool_gain(settings.gain);
+        crate::audio::wav::synthesize_offline_wav(cfg, |_, _| {
             for _ in 0..substeps {
                 runner.step_with_dt(dt);
             }
-            runner.sonification_frame().with_pitch_scale(pitch_scale)
+            runner
+                .sonification_frame()
+                .with_pitch_scale(settings.pitch_scale)
         })
     }
 

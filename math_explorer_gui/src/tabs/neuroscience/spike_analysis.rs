@@ -64,9 +64,14 @@ impl InteractiveTool for SpikeAnalysisTool {
     }
 
     fn export_wav_audio(&self, sample_rate: u32, duration_secs: f32) -> Result<Vec<u8>, String> {
-        Ok(crate::audio::render_frames_wav(
+        let cfg = crate::audio::OfflineRenderConfig {
             sample_rate,
             duration_secs,
+            master_volume: crate::audio::snapshot_ui_state().master_volume,
+        }
+        .with_tool_gain(self.audio_settings.sanitized().gain);
+        Ok(crate::audio::wav::synthesize_offline_wav(
+            cfg,
             self.offline_spike_stepper(),
         ))
     }

@@ -182,11 +182,13 @@ impl AttractorPlotter {
         duration_secs: f32,
     ) -> Result<Vec<u8>, String> {
         let stepper = self.build_offline_sonification_stepper()?;
-        Ok(crate::audio::render_frames_wav(
+        let cfg = crate::audio::OfflineRenderConfig {
             sample_rate,
             duration_secs,
-            stepper,
-        ))
+            master_volume: crate::audio::snapshot_ui_state().master_volume,
+        }
+        .with_tool_gain(self.audio_settings.sanitized().gain);
+        Ok(crate::audio::wav::synthesize_offline_wav(cfg, stepper))
     }
 
     pub(super) fn export_attractor_midi(&self, duration_secs: f32) -> Result<Vec<u8>, String> {

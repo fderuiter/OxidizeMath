@@ -86,6 +86,18 @@ impl OfflineRenderConfig {
         let clean = self.sanitized();
         ((clean.sample_rate as usize) / OFFLINE_CONTROL_RATE_HZ).max(64)
     }
+
+    /// Scales `master_volume` relative to [`super::settings::DEFAULT_AUDIO_GAIN`] (`0.5`).
+    #[must_use]
+    pub fn with_tool_gain(mut self, tool_gain: f32) -> Self {
+        let ratio = if tool_gain.is_finite() {
+            (tool_gain.clamp(0.0, 1.0) / super::settings::DEFAULT_AUDIO_GAIN).clamp(0.0, 2.0)
+        } else {
+            1.0
+        };
+        self.master_volume = (self.master_volume * ratio).clamp(0.0, 1.0);
+        self
+    }
 }
 
 /// Renders deterministic offline PCM stereo samples into pre-allocated `out_interleaved`
