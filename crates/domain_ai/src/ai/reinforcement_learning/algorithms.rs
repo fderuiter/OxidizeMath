@@ -30,12 +30,12 @@ where
     A: Action,
     Q: QFunction<S, A>,
 {
-    #[allow(missing_docs)]
+    /// Underlying action-value function representation $Q(s, a)$.
     pub q_func: Q,
     learning_rate: UnitInterval,
     discount_factor: UnitInterval,
     strategy: Box<dyn ExplorationStrategy<S, A> + Send>,
-    #[allow(missing_docs)]
+    /// Deterministic pseudo-random number generator driving exploration policies.
     pub rng: oxidize_core::rng::OxidizeRng,
 }
 
@@ -73,13 +73,13 @@ where
         }
     }
 
-    #[allow(missing_docs)]
+    /// Returns the current action-value estimate $Q(s, a)$ for `(state, action)`.
     #[verified_engine::verified]
     pub fn get_q_value(&self, state: &S, action: &A) -> f64 {
         self.q_func.value(state, action)
     }
 
-    #[allow(missing_docs)]
+    /// Applies one off-policy Bellman temporal-difference update from transition $(s, a, r, s')$.
     #[verified_engine::verified]
     pub fn update(
         &mut self,

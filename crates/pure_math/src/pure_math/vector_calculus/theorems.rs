@@ -4,9 +4,9 @@ use nalgebra::Vector3;
 
 /// A rectangular domain in the coordinate space defined by min and max bounds.
 pub struct Domain {
-    #[allow(missing_docs)]
+    /// Value for `min` (min).
     pub min: Vector3<f64>,
-    #[allow(missing_docs)]
+    /// Value for `max` (max).
     pub max: Vector3<f64>,
 }
 

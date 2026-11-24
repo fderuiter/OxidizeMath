@@ -10,20 +10,20 @@ use nalgebra::Matrix3;
 /// $$u = \bar{u} + u'$$
 #[derive(Debug, Clone, Copy)]
 pub struct ReynoldsDecomposition {
-    #[allow(missing_docs)]
+    /// Ensemble- or time-averaged velocity component $\bar{u}$.
     pub mean: f64,
-    #[allow(missing_docs)]
+    /// Zero-mean turbulent velocity fluctuation $u'$.
     pub fluctuating: f64,
 }
 
 impl ReynoldsDecomposition {
-    #[allow(missing_docs)]
+    /// Constructs a Reynolds decomposition from mean $\bar{u}$ and fluctuation $u'$.
     #[verified_engine::verified]
     pub fn new(mean: f64, fluctuating: f64) -> Self {
         Self { mean, fluctuating }
     }
 
-    #[allow(missing_docs)]
+    /// Reconstructs the instantaneous turbulent field value $u = \bar{u} + u'$.
     #[verified_engine::verified]
     pub fn instantaneous(&self) -> f64 {
         self.mean + self.fluctuating

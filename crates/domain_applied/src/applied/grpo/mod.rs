@@ -1,10 +1,10 @@
 #![doc = include_str!("README.md")]
 
-#[allow(missing_docs)]
+/// Group-relative advantage, clipped surrogate objective, and KL penalty formulas.
 pub mod formulas;
-#[allow(missing_docs)]
+/// Policy evaluation and rollout aggregation metrics for GRPO.
 pub mod metrics;
-#[allow(missing_docs)]
+/// Verifiable reward shaping and rule-based scoring utilities.
 pub mod rewards;
 
 // [cite:grpo]

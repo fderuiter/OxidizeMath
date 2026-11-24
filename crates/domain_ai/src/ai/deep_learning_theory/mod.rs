@@ -92,15 +92,15 @@
 //! *   **[Model](model)**: The `Trainable` trait and `TwoLayerMLP` implementation.
 //! *   **[Cycle](cycle)**: The `TrainingLoop` that ties it all together.
 
-#[allow(missing_docs)]
+/// Activation derivatives and reverse-mode linear backpropagation primitives.
 pub mod calculus;
-#[allow(missing_docs)]
+/// End-to-end forward, cross-entropy loss, backward, and parameter update loop.
 pub mod cycle;
-#[allow(missing_docs)]
+/// Dense affine layer parameters and vector-matrix linear algebra primitives.
 pub mod linear_algebra;
-#[allow(missing_docs)]
+/// Trainable multi-layer perceptron architectures.
 pub mod model;
-#[allow(missing_docs)]
+/// Numerically guarded softmax and categorical probability primitives.
 pub mod probability;
 
 // [cite:dwarf_galaxy_empirical_dependencies]

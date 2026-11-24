@@ -108,7 +108,23 @@ pub struct TracerProbeReadout {
     pub predicted_state: FlowState,
 }
 
-/// Lagrangian dye tracer advected through a [`PotentialFlowField`] via `RungeKutta4`.
+/// Lagrangian dye tracer advected through a 2D [`PotentialFlowField`] via fourth-order `RungeKutta4`,
+/// coupling irrotational kinematics with steady Bernoulli pressure and inviscid Euler acceleration:
+/// $$\frac{d\mathbf{x}}{dt} = \mathbf{u}(\mathbf{x}) = \nabla\phi(\mathbf{x}) = \left(\frac{\partial\psi}{\partial y}, -\frac{\partial\psi}{\partial x}\right), \qquad p + \frac{1}{2}\rho|\mathbf{u}|^2 = H_0.$$
+///
+/// Reference: Batchelor (2000), *An Introduction to Fluid Dynamics*, Cambridge Univ. Press,
+/// DOI: 10.1017/CBO9780511800955;
+/// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Halts advection inside singularity exclusion cores (`is_near_singularity`) and clamps speed to
+/// `max_speed >= 1e-3`, preventing `RungeKutta4` overshoot near $O(1/r)$ vortex/source poles and
+/// $O(1/r^2)$ doublet cores while retaining $O(\Delta t^4)$ accuracy on smooth streamlines.
+///
+/// # Domain of Validity
+/// Models steady, inviscid, incompressible, irrotational 2D potential flow away from point
+/// singularities, requiring finite tracer coordinates, finite `dt`, and positive fluid density
+/// $\rho > 0$ when evaluating Bernoulli/Euler probe readouts.
 pub struct PotentialTracerSystem<'a> {
     /// Underlying potential flow superposition field.
     pub field: &'a PotentialFlowField,

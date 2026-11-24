@@ -36,7 +36,7 @@
 
 // Define QSeries as a type alias for QSeries<i64> to preserve backward compatibility
 // and allow specific usage in this module.
-#[allow(missing_docs)]
+/// Type alias `QSeries` used across this module.
 pub type QSeries = crate::pure_math::number_theory::q_series::QSeries<i64>;
 
 /// Computes the q-series for $f_k = (q^k; q^k)_\infty$ up to a given precision.

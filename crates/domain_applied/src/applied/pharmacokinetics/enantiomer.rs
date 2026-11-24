@@ -6,9 +6,20 @@ use super::two_pulse::TwoPulseModel;
 
 use crate::error::PharmacokineticsError;
 
-/// A model for a drug composed of two enantiomers (e.g., d- and l-amphetamine).
+/// Chiral mixture pharmacokinetic model summing independent $d$- and $l$-enantiomer Bateman profiles.
 ///
-/// Constructed via [`EnantiomerModel::new`] to ensure valid parameter states.
+/// $$
+/// C(t) = C_d(t; f_d D) + C_l(t; f_l D)
+/// $$
+///
+/// Reference: Bateman (1910), DOI: 10.1017/S0305004100019988;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Delegates each enantiomer compartment to [`BatemanModel`], inheriting confluent-rate $k_a \approx k_e$ regularization.
+///
+/// # Domain of Validity
+/// Valid for enantiomer dose fractions $f_d, f_l \in (0, 1)$ (or boundary $0, 1$) without in-vivo chiral inversion.
 #[derive(Debug, Clone, Copy)]
 pub struct EnantiomerModel {
     d_base: PKParameters,

@@ -1,11 +1,11 @@
-#[allow(missing_docs)]
+/// Resolves 2D discrete lattice coordinates `(x, y)` into flattened grid indices under a boundary rule.
 pub trait BoundaryCondition {
     /// Given a coordinate (x, y) and grid dimensions (width, height),
     /// resolve the target index based on boundary logic.
     fn resolve(&self, x: isize, y: isize, width: usize, height: usize) -> Option<usize>;
 }
 
-#[allow(missing_docs)]
+/// Zero-flux (clamped-edge) discrete Neumann boundary condition on a `width * height` grid.
 pub struct NeumannBoundary;
 impl BoundaryCondition for NeumannBoundary {
     fn resolve(&self, x: isize, y: isize, width: usize, height: usize) -> Option<usize> {

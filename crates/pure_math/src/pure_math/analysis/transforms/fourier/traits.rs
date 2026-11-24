@@ -4,11 +4,11 @@ use thiserror::Error;
 /// Errors that can occur during spectral transforms.
 #[derive(Error, Debug, PartialEq)]
 pub enum TransformError {
+    /// Variant `InvalidDimension` (InvalidDimension).
     #[error("Input dimensions must be a power of 2")]
-    #[allow(missing_docs)]
     InvalidDimension,
+    /// Variant `EmptyInput` (EmptyInput).
     #[error("Input buffer is empty")]
-    #[allow(missing_docs)]
     EmptyInput,
 }
 

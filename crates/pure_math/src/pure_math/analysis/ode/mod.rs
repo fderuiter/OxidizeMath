@@ -8,18 +8,18 @@
 //! avoiding heap allocations when fixed-size arrays are sufficient.
 
 pub mod implicit_midpoint;
-#[allow(missing_docs)]
+/// Submodule providing `macros` types, traits, and algorithms.
 pub mod macros;
-#[allow(missing_docs)]
+/// Submodule providing `model` types, traits, and algorithms.
 pub mod model;
-#[allow(missing_docs)]
+/// Submodule providing `solvers` types, traits, and algorithms.
 pub mod solvers;
-#[allow(missing_docs)]
+/// Submodule providing `state` types, traits, and algorithms.
 pub mod state;
-#[allow(missing_docs)]
+/// Submodule providing `stepper` types, traits, and algorithms.
 pub mod stepper;
 pub mod symplectic;
-#[allow(missing_docs)]
+/// Submodule providing `traits` types, traits, and algorithms.
 pub mod traits;
 
 use serde::{Deserialize, Serialize};

@@ -1,21 +1,23 @@
 #![doc = include_str!("../README.md")]
 pub mod ai;
-#[allow(missing_docs)]
+/// Domain-specific error types and diagnostic metadata for AI models.
 pub mod error;
 
-#[allow(missing_docs)]
+/// Convenience re-exports of core AI modules and error types.
 pub mod prelude {
     pub use crate::ai::*;
     pub use crate::error::*;
 }
 
+/// Hidden facade re-exporting workspace modules under `math_explorer` for doctests.
 #[doc(hidden)]
-#[allow(missing_docs)]
 pub mod __doctest_facade {
+    /// Doctest error re-exports.
     pub mod error {
         pub use crate::error::AIError;
         pub use ::pure_math::__doctest_facade::error::*;
     }
+    /// Doctest prelude re-exports.
     pub mod prelude {
         pub use crate::error::AIError;
         pub use ::pure_math::__doctest_facade::prelude::*;

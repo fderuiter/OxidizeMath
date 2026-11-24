@@ -185,7 +185,15 @@ fn evaluate_market_metrics(
     (ev, growth, max_res)
 }
 
-/// Solves a mutually exclusive `N`-way market exactly via Smoczynski & Tomkins (2010).
+/// Solves a mutually exclusive `N`-way market $\max_{\mathbf{f} \ge \mathbf{0},\,\sum_i f_i \le 1} \sum_{i=1}^N p_i \ln(1 - F + f_i O_i)$ exactly via Smoczynski & Tomkins (2010) water-filling.
+///
+/// Reference: Smoczynski & Tomkins (2010), *Math. Scientist* 35(1), 10–17; Kelly (1956), DOI: 10.1002/j.1538-7305.1956.tb03809.x; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Exact active-set sorting by edge $p_i O_i$ computes closed-form reserve rate $r = (1 - S_p)/(1 - S_o)$ in $O(N \log N)$ operations with zero iterative drift.
+///
+/// # Domain of Validity
+/// Requires $1 \le N \le$ [`MAX_MARKET_OUTCOMES`] mutually exclusive outcomes with $\sum_{i=1}^N p_i \le 1 + 10^{-9}$ and decimal odds $O_i > 1$.
 ///
 /// # Example
 ///

@@ -20,14 +20,14 @@ pub struct VoxelGrid {
     origin: Point3D,
 }
 
+/// Validation errors returned when constructing or reconfiguring a [`VoxelGrid`].
 #[derive(Debug)]
-#[allow(missing_docs)]
 pub enum VoxelGridError {
-    #[allow(missing_docs)]
+    /// Grid width, height, or depth was zero or overflowed `usize`.
     InvalidDimensions,
-    #[allow(missing_docs)]
+    /// Scalar buffer length did not equal `width * height * depth`.
     DataSizeMismatch,
-    #[allow(missing_docs)]
+    /// One or more voxel spacing components were non-positive.
     InvalidVoxelSize,
 }
 
@@ -46,7 +46,7 @@ impl std::fmt::Display for VoxelGridError {
 
 impl std::error::Error for VoxelGridError {}
 
-#[allow(missing_docs)]
+/// Builder for constructing a validated [`VoxelGrid`].
 pub struct VoxelGridBuilder {
     width: Option<usize>,
     height: Option<usize>,
@@ -64,7 +64,7 @@ impl Default for VoxelGridBuilder {
 }
 
 impl VoxelGridBuilder {
-    #[allow(missing_docs)]
+    /// Creates an uninitialized builder with unit voxel spacing and zero origin.
     #[verified_engine::verified]
     pub fn new() -> Self {
         Self {
@@ -77,7 +77,7 @@ impl VoxelGridBuilder {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Sets the `(width, height, depth)` voxel counts along the X, Y, and Z axes.
     #[verified_engine::verified]
     pub fn dimensions(mut self, width: usize, height: usize, depth: usize) -> Self {
         self.width = Some(width);
@@ -86,28 +86,28 @@ impl VoxelGridBuilder {
         self
     }
 
-    #[allow(missing_docs)]
+    /// Sets the flat scalar sample buffer ordered `z -> y -> x`.
     #[verified_engine::verified]
     pub fn data(mut self, data: Vec<f32>) -> Self {
         self.data = Some(data);
         self
     }
 
-    #[allow(missing_docs)]
+    /// Sets the physical spacing `(dx, dy, dz)` of each voxel.
     #[verified_engine::verified]
     pub fn voxel_size(mut self, size: Point3D) -> Self {
         self.voxel_size = size;
         self
     }
 
-    #[allow(missing_docs)]
+    /// Sets the world-space coordinate of grid index `(0, 0, 0)`.
     #[verified_engine::verified]
     pub fn origin(mut self, origin: Point3D) -> Self {
         self.origin = origin;
         self
     }
 
-    #[allow(missing_docs)]
+    /// Validates dimensions, buffer size, and spacing and returns a [`VoxelGrid`].
     #[verified_engine::verified]
     pub fn build(self) -> Result<VoxelGrid, VoxelGridError> {
         let width = self.width.ok_or(VoxelGridError::InvalidDimensions)?;
@@ -139,28 +139,28 @@ impl VoxelGridBuilder {
 }
 
 impl VoxelGrid {
-    #[allow(missing_docs)]
+    /// Returns a new [`VoxelGridBuilder`] for constructing a [`VoxelGrid`].
     #[verified_engine::verified]
     pub fn builder() -> VoxelGridBuilder {
         VoxelGridBuilder::new()
     }
 
-    #[allow(missing_docs)]
+    /// Returns the number of voxels along the X axis.
     #[verified_engine::verified]
     pub fn width(&self) -> usize {
         self.width
     }
-    #[allow(missing_docs)]
+    /// Returns the number of voxels along the Y axis.
     #[verified_engine::verified]
     pub fn height(&self) -> usize {
         self.height
     }
-    #[allow(missing_docs)]
+    /// Returns the number of voxels along the Z axis.
     #[verified_engine::verified]
     pub fn depth(&self) -> usize {
         self.depth
     }
-    #[allow(missing_docs)]
+    /// Returns an immutable slice of the flat scalar sample buffer (`z -> y -> x` order).
     #[verified_engine::verified]
     pub fn data(&self) -> &[f32] {
         &self.data
@@ -211,18 +211,18 @@ impl VoxelGrid {
         self.data.resize(total, 0.0);
         Ok(())
     }
-    #[allow(missing_docs)]
+    /// Returns the physical spacing `(dx, dy, dz)` of each voxel.
     #[verified_engine::verified]
     pub fn voxel_size(&self) -> &Point3D {
         &self.voxel_size
     }
-    #[allow(missing_docs)]
+    /// Returns the world-space coordinate of grid index `(0, 0, 0)`.
     #[verified_engine::verified]
     pub fn origin(&self) -> &Point3D {
         &self.origin
     }
 
-    #[allow(missing_docs)]
+    /// Updates the physical voxel spacing after verifying all components are strictly positive.
     #[verified_engine::verified]
     pub fn set_voxel_size(&mut self, size: Point3D) -> Result<(), VoxelGridError> {
         if size.x <= 0.0 || size.y <= 0.0 || size.z <= 0.0 {
@@ -232,7 +232,7 @@ impl VoxelGrid {
         Ok(())
     }
 
-    #[allow(missing_docs)]
+    /// Updates the world-space origin coordinate of grid index `(0, 0, 0)`.
     #[verified_engine::verified]
     pub fn set_origin(&mut self, origin: Point3D) {
         self.origin = origin;

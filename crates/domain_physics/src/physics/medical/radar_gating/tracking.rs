@@ -10,18 +10,29 @@ use crate::error::RadarError;
 use domain_applied::applied::algorithms::kalman::{KalmanError, KalmanFilter, KalmanModel};
 use nalgebra::{DMatrix, DVector};
 
-/// Constant Velocity (CV) Model.
-/// State: [Position, Velocity]
+/// 1D discrete-time Constant-Velocity (CV) state-space model for respiratory radar gating:
+/// $$\mathbf{x}_{k+1} = \begin{pmatrix} 1 & \Delta t \\ 0 & 1 \end{pmatrix} \mathbf{x}_k + \mathbf{w}_k, \qquad z_k = \begin{pmatrix} 1 & 0 \end{pmatrix} \mathbf{x}_k + v_k$$
+///
+/// Reference: Kalman (1960), DOI: `10.1115/1.3662552`; see
+/// [`docs/math_specs/domain_physics.md`](../../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Detectable and stabilizable for $\Delta t > 0$ with $Q = \sigma_w^2 I_2 \succeq 0$ and
+/// $R = \sigma_v^2 > 0$, ensuring positive innovation variance $S_k = P_{k|k-1}^{(0,0)} + \sigma_v^2 > 0$.
+///
+/// # Domain of Validity
+/// Quasi-linear inter-sample chest-wall motion over $\Delta t > 0$ with finite variances
+/// $\sigma_w^2 \ge 0$ and $\sigma_v^2 > 0$.
 #[derive(Debug, Clone)]
 pub struct ConstantVelocityModel {
-    #[allow(missing_docs)]
+    /// Isotropic state-transition process noise variance $\sigma_w^2 \ge 0$.
     pub process_noise_var: f64,
-    #[allow(missing_docs)]
+    /// Scalar position measurement noise variance $\sigma_v^2 \ge 0$.
     pub measurement_noise_var: f64,
 }
 
 impl ConstantVelocityModel {
-    #[allow(missing_docs)]
+    /// Creates a constant-velocity Kalman dynamics model with process and measurement noise variances.
     #[verified_engine::verified]
     pub fn new(process_noise_var: f64, measurement_noise_var: f64) -> Self {
         Self {

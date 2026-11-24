@@ -56,7 +56,7 @@ impl Tokenizer for CharTokenizer {
 /// In a real system, this would be a learnable parameter matrix `[vocab_size, d_model]`.
 /// Here, we use a deterministic hash to generate a pseudo-embedding for any token.
 pub struct PseudoEmbedding {
-    #[allow(missing_docs)]
+    /// Target token embedding vector dimension $d_{\mathrm{model}}$.
     pub d_model: usize,
 }
 

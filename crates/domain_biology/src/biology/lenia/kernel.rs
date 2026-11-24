@@ -141,7 +141,19 @@ where
     points
 }
 
-/// Parameters governing the continuous Gaussian growth mapping $G(u; \mu, \sigma)$.
+/// Parameters governing the continuous Gaussian growth mapping:
+/// $$G(u; \mu, \sigma) = 2 \exp\!\left(-\frac{(u - \mu)^2}{2\sigma^2}\right) - 1 \in [-1, 1]$$
+///
+/// Reference: Chan (2019), arXiv:`1812.05433`, DOI: `10.25088/ComplexSystems.28.3.251`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// `GrowthParams::new` clamps $\sigma \ge 10^{-4}$ and sanitizes non-finite inputs, guaranteeing
+/// bounded output $G(u) \in [-1, 1]$ without division by zero.
+///
+/// # Domain of Validity
+/// Normalized neighborhood convolution potential $u \in [0, 1]$ with center $\mu \in [0.001, 1.0]$
+/// and niche width $\sigma \in [10^{-4}, 0.5]$.
 #[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "Gaussian growth response curve mapping neighborhood potential u to local growth rate in [-1, 1].",

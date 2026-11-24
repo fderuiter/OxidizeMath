@@ -18,6 +18,14 @@ pub const MAX_FIXED_POINT_ITERS: usize = 12;
 /// $$k_1 = f\!\left(t + \tfrac{1}{2}\Delta t,\; y_n + \tfrac{1}{2}\Delta t\, k_1\right), \qquad y_{n+1} = y_n + \Delta t\, k_1$$
 /// via bounded fixed-point iteration in pre-allocated buffers with zero heap allocations.
 ///
+/// Reference: Hairer, Lubich & Wanner (2006), *Geometric Numerical Integration*, DOI: 10.1007/3-540-30666-8; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Unconditionally A-stable, algebraically B-stable, symmetric, and canonical symplectic ($dq \wedge dp$-preserving) on general Hamiltonian systems; fixed-point stage iteration contracts when $\frac{1}{2} L |\Delta t| < 1$.
+///
+/// # Domain of Validity
+/// Valid for smooth stiff or Hamiltonian ODEs where $f$ is locally Lipschitz with $\frac{1}{2} L |\Delta t| < 1$ so stage fixed-point iteration converges within `max_iters` (`<= 12`).
+///
 /// # Example
 ///
 /// ```

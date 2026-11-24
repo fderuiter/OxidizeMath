@@ -43,12 +43,12 @@
 
 pub mod algebra;
 pub mod algorithmic_information;
-#[allow(missing_docs)]
+/// Submodule providing `analysis` types, traits, and algorithms.
 pub mod analysis;
-#[allow(missing_docs)]
+/// Submodule providing `differential_geometry` types, traits, and algorithms.
 pub mod differential_geometry;
 pub mod elliptic_curves;
-#[allow(missing_docs)]
+/// Submodule providing `graph_theory` types, traits, and algorithms.
 pub mod graph_theory;
 pub mod hyperbolic;
 pub mod logic;
@@ -56,7 +56,7 @@ pub mod number_theory;
 pub mod special_functions;
 pub mod statistics;
 pub mod tensor;
-#[allow(missing_docs)]
+/// Submodule providing `vector_calculus` types, traits, and algorithms.
 pub mod vector_calculus;
 
 /// Error types for pure mathematics modules.

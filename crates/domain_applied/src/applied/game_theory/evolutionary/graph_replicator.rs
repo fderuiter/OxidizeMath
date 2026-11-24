@@ -88,6 +88,14 @@ fn build_ohtsuki_nowak_matrix(
 /// Precomputes the Ohtsuki-Nowak effective payoff matrix $A_{\text{eff}} = A + B(A, k)$ at construction
 /// so [`FitnessStrategy::fitness`] executes a single zero-allocation `mul_to` matrix-vector product.
 ///
+/// Reference: Ohtsuki & Nowak (2006), *J. Theor. Biol.* 243(1), 86–97, DOI: 10.1016/j.jtbi.2006.06.004; Ohtsuki et al. (2006), *Nature* 441, 502–505, DOI: 10.1038/nature04605; [`docs/math_specs/domain_applied.md`](../../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Clamps active degree $k \le 2$ away from the pair-approximation pole $(k - 2)^{-1}$ so `effective_payoff` remains finite for sparse or degenerate graphs.
+///
+/// # Domain of Validity
+/// Requires a square payoff matrix $A \in \mathbb{R}^{n \times n}$ with finite entries and finite mean active degree $k > 2$ for exact pair-approximation validity.
+///
 /// # Examples
 ///
 /// ```

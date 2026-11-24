@@ -50,7 +50,7 @@ pub trait Ring:
     #[verified_engine::verified]
     fn one() -> Self;
 
-    #[allow(missing_docs)]
+    /// Returns `true` if `self` equals the additive identity [`Self::zero`].
     #[verified_engine::verified]
     fn is_zero(&self) -> bool {
         *self == Self::zero()

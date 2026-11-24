@@ -14133,9 +14133,6 @@
   ],
   "crates/pure_math/src/error.rs": [
     {
-      "signature": "pub enum CopulaError"
-    },
-    {
       "signature": "pub enum Glicko2Error"
     },
     {
@@ -14145,19 +14142,7 @@
       "signature": "pub enum MarketPricingError"
     },
     {
-      "signature": "pub enum MarkovError"
-    },
-    {
       "signature": "pub enum NumberTheoryError"
-    },
-    {
-      "signature": "pub enum OuError"
-    },
-    {
-      "signature": "pub enum TdaError"
-    },
-    {
-      "signature": "pub enum ZipError"
     },
     {
       "signature": "pub type Result < T > = math_commons :: error :: MathResult < T >"
@@ -14220,6 +14205,21 @@
       "signature": "pub use sports :: MatchModelError"
     },
     {
+      "signature": "pub use stochastic :: CopulaError"
+    },
+    {
+      "signature": "pub use stochastic :: MarkovError"
+    },
+    {
+      "signature": "pub use stochastic :: OuError"
+    },
+    {
+      "signature": "pub use stochastic :: TdaError"
+    },
+    {
+      "signature": "pub use stochastic :: ZipError"
+    },
+    {
       "signature": "pub use umbrella :: PureMathError"
     }
   ],
@@ -14229,6 +14229,23 @@
     },
     {
       "signature": "pub enum MatchModelError"
+    }
+  ],
+  "crates/pure_math/src/error/stochastic.rs": [
+    {
+      "signature": "pub enum CopulaError"
+    },
+    {
+      "signature": "pub enum MarkovError"
+    },
+    {
+      "signature": "pub enum OuError"
+    },
+    {
+      "signature": "pub enum TdaError"
+    },
+    {
+      "signature": "pub enum ZipError"
     }
   ],
   "crates/pure_math/src/error/umbrella.rs": [

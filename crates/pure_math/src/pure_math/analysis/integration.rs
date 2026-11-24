@@ -21,7 +21,15 @@ pub struct IntegrationResult {
     pub error: f64,
 }
 
-/// A trait for scalar numerical integration strategies.
+/// Numerical quadrature interface approximating definite integrals $I(f) = \int_a^b f(x)\,dx \approx \sum_{i=1}^n w_i f(x_i)$.
+///
+/// Reference: Davis & Rabinowitz (1984), *Methods of Numerical Integration*, DOI: 10.1016/C2013-0-10566-1; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Positive quadrature weights $w_i > 0$ summing to $b - a$ guarantee bounded rounding amplification $\sum_i |w_i| = |b - a|$.
+///
+/// # Domain of Validity
+/// Valid for Riemann-integrable functions $f$ on finite intervals $(a, b)$ without interior non-integrable singularities.
 pub trait Integrator: Send + Sync {
     /// Integrates the function `f` over the interval `[min, max]` with a target error `eps`.
     #[verified_engine::verified]
@@ -138,7 +146,15 @@ pub enum MultivariateRule {
     MonteCarlo,
 }
 
-/// Preallocated hyperrectangle integrator mapping `(0, 1)^d` QMC/MC rules onto $[a_1, b_1] \times \dots \times [a_d, b_d]$.
+/// Preallocated hyperrectangle integrator approximating $\int_{\prod_{j=1}^d [a_j, b_j]} f(\mathbf{x})\,d\mathbf{x} \approx \operatorname{vol}(\Omega)\frac{1}{N}\sum_{i=1}^N f(\mathbf{a} + \mathbf{u}_i \odot (\mathbf{b} - \mathbf{a}))$.
+///
+/// Reference: Joe & Kuo (2008), *SIAM J. Sci. Comput.* 30(5), 2635–2654, DOI: 10.1137/070709359; Cranley & Patterson (1976), DOI: 10.1137/0713071; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Equal-weight sample averaging with Welford/replicate variance estimation avoids catastrophic cancellation and executes with zero post-construction heap allocations.
+///
+/// # Domain of Validity
+/// Requires finite hyperrectangle bounds $a_j \le b_j$, positive sample count $N \ge 1$, and dimension $1 \le d \le 32$ for Sobol or $1 \le d \le 64$ for Halton, LHS, and IID Monte Carlo.
 #[derive(Debug, Clone)]
 pub struct MultivariateIntegrator {
     rule: MultivariateRule,

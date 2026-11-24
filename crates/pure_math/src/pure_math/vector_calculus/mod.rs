@@ -1,8 +1,8 @@
-#[allow(missing_docs)]
+/// Submodule providing `coordinates` types, traits, and algorithms.
 pub mod coordinates;
-#[allow(missing_docs)]
+/// Submodule providing `operators` types, traits, and algorithms.
 pub mod operators;
-#[allow(missing_docs)]
+/// Submodule providing `theorems` types, traits, and algorithms.
 pub mod theorems;
 
 // [cite:quasiperfect_alcf]

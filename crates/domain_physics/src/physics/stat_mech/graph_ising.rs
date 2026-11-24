@@ -21,11 +21,19 @@ pub const MAX_GRAPH_SPIN_NODES: usize = 256;
 /// Maximum supported directed/symmetric CSR half-edge count (`2 * 2_048 = 4_096`).
 pub const MAX_GRAPH_SPIN_CSR_ENTRIES: usize = 4_096;
 
-/// Discrete spin (`+1` or `-1`) system defined over a weighted Compressed Sparse Row (CSR) graph.
+/// Discrete spin ($s_i \in \{-1, +1\}$) system governed by Hamiltonian $\mathcal{H}(\mathbf{s}) = -\sum_{(i,j)} J_{ij} w_{ij} s_i s_j - h \sum_i s_i$ over a weighted Compressed Sparse Row (CSR) graph.
 ///
 /// Supports both ferromagnetic/antiferromagnetic Metropolis-Hastings dynamics ([`Self::evolve`])
 /// and spatial 2x2 evolutionary games under pairwise Fermi imitation ([`Self::evolve_fermi_game`])
 /// with zero post-initialization heap allocations.
+///
+/// Reference: Metropolis et al. (1953), *J. Chem. Phys.* 21, 1087, DOI: 10.1063/1.1699114; Szabó & Tőke (1998), *Phys. Rev. E* 58, 69, DOI: 10.1103/PhysRevE.58.69; [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Detailed-balance acceptance probabilities $\min(1, e^{-\beta \Delta E})$ and logistic Fermi probabilities $(1 + e^{\Delta \pi / K})^{-1}$ clamp extreme exponents to prevent IEEE-754 overflow.
+///
+/// # Domain of Validity
+/// Requires validated CSR topology with `n_nodes <= 256`, `col_idx.len() <= 4_096`, finite edge weights $w_{ij}$, and strictly positive temperature $T > 0$ (or noise $K > 0$).
 ///
 /// # Examples
 ///

@@ -4,10 +4,21 @@ use math_commons::math_kernel::types::StepSize;
 use nalgebra::{DMatrix, DVector};
 use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 
-/// Strategy trait for solving Mean Field Games.
+/// Strategy trait for solving coupled Hamilton-Jacobi-Bellman / Fokker-Planck Mean Field Games.
 ///
-/// Implementors of this trait provide a specific algorithm (e.g., Fixed Point, Newton-Raphson, Deep Learning)
-/// to solve the coupled HJB-FP system defined by the `MFGConfig`.
+/// $$
+/// -\partial_t u + H(x, \nabla u) - \nu \Delta u = F(x, m), \qquad \partial_t m - \nabla \cdot (m \nabla_p H) - \nu \Delta m = 0
+/// $$
+///
+/// Reference: Lasry & Lions (2007), DOI: 10.1007/s11537-007-0657-8;
+/// [`docs/math_specs/domain_applied.md`](../../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Implementations must preserve non-negativity and unit mass $\int m(x, t)\,dx = 1$ across forward sweeps
+/// while respecting parabolic CFL bounds when explicit time-stepping is used.
+///
+/// # Domain of Validity
+/// Valid for viscosity $\nu \ge 0$, positive horizon $T > 0$, and $N_x \ge 2$ spatial nodes.
 pub trait MFGSolver {
     /// Solves the Mean Field Game coupled system.
     ///
@@ -29,14 +40,24 @@ pub trait MFGSolver {
     ) -> (DMatrix<f64>, DMatrix<f64>);
 }
 
-/// A Fixed-Point Iteration solver for Mean Field Games.
+/// Fixed-point Picard iteration solver for 1D Mean Field Games.
 ///
-/// Iterates back and forth between the HJB (backward) and Fokker-Planck (forward) equations
-/// until convergence (or for a fixed number of iterations).
+/// Alternates backward HJB sweeps ($u^{n}$ from $u^{n+1}$) and forward upwind Fokker-Planck sweeps
+/// ($m^{n+1}$ from $m^n$) for `-\partial_t u + H(\partial_x u) - \nu \partial_{xx} u = F(x, m)`.
+///
+/// Reference: Lasry & Lions (2007), DOI: 10.1007/s11537-007-0657-8; Achdou & Capuzzo-Dolcetta (2010),
+/// DOI: 10.1137/090758477; [`docs/math_specs/domain_applied.md`](../../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Explicit stencil stepping requires $\Delta t \le \Delta x^2 / (2\nu + |v|_{\max}\Delta x)$ and normalizes
+/// discrete mass after each forward step under homogeneous Neumann boundary conditions.
+///
+/// # Domain of Validity
+/// Valid on bounded 1D intervals $x_{\min} < x_{\max}$ with $\nu \ge 0$ and convex differentiable Hamiltonians $H(p)$.
 pub struct FixedPointSolver<H: Hamiltonian> {
-    #[allow(missing_docs)]
+    /// Number of backward-HJB / forward-FP fixed-point iterations to execute.
     pub iterations: usize,
-    #[allow(missing_docs)]
+    /// Hamiltonian strategy $H(p)$ governing optimal agent drift $-H'(p)$.
     pub hamiltonian: H,
 }
 

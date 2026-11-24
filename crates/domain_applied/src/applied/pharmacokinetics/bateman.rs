@@ -3,10 +3,24 @@ use super::traits::PharmacokineticModel;
 use crate::error::PharmacokineticsError;
 use pure_math::pure_math::analysis::roots::NewtonRaphson;
 
-/// A model representing a single dose with first-order absorption and elimination (Bateman function).
+/// One-compartment extravascular pharmacokinetic model governed by the Bateman equation.
+///
+/// $$
+/// C(t) = \frac{F D k_a}{V(k_a - k_e)}\left(e^{-k_e t} - e^{-k_a t}\right), \qquad C_{k_a = k_e}(t) = \frac{F D k_a t}{V}e^{-k_a t}
+/// $$
+///
+/// Reference: Bateman (1910), DOI: 10.1017/S0305004100019988;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Switches smoothly to the secular confluent limit $(F D k_a t / V)e^{-k_a t}$ whenever
+/// $|k_a - k_e| < \text{TOLERANCE\_STANDARD}$, eliminating catastrophic cancellation near $k_a = k_e$.
+///
+/// # Domain of Validity
+/// Valid for $t \ge 0$ (returning $0$ for $t < 0$) and validated [`PKParameters`] with $V > 0$, $k_a > 0$, $k_e > 0$.
 #[derive(Debug, Clone, Copy)]
 pub struct BatemanModel {
-    #[allow(missing_docs)]
+    /// Validated one-compartment ADME parameter set $(F, D, k_a, k_e, V)$.
     pub params: PKParameters,
 }
 
@@ -75,16 +89,19 @@ pub fn t_max(ka: f64, ke: f64) -> f64 {
     }
 }
 
-/// Solves for the absorption rate constant (ka) given T_max and ke.
+/// Solves for the absorption rate constant $k_a$ given target $T_{\max}$ and elimination rate $k_e$.
 ///
-/// Uses the Newton-Raphson method to find the root of the equation $T_{max}(ka) - T_{target} = 0$.
+/// Uses Newton-Raphson iteration on $T_{\max}(k_a) - T_{\text{target}} = \frac{\ln k_a - \ln k_e}{k_a - k_e} - T_{\text{target}} = 0$.
 ///
-/// # Arguments
-/// * `t_max_target` - The target time to maximum concentration.
-/// * `ke` - The elimination rate constant.
-/// * `initial_guess` - Initial guess for ka.
-/// * `max_iter` - Maximum number of iterations.
-/// * `tolerance` - Convergence tolerance.
+/// Reference: Bateman (1910), DOI: 10.1017/S0305004100019988;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Uses the analytic removable-singularity derivative $-1 / (2 k_e^2)$ when $|k_a - k_e|$ falls below
+/// `TOLERANCE_STANDARD` and clamps non-positive `initial_guess` values to $2 k_e$.
+///
+/// # Domain of Validity
+/// Requires $T_{\text{target}} > 0$ and $k_e > 0$; returns [`PharmacokineticsError::InvalidParameter`] otherwise.
 #[verified_engine::verified]
 pub fn solve_ka(
     t_max_target: f64,

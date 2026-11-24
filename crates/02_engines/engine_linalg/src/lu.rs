@@ -90,7 +90,17 @@ pub fn lu_factor_in_place<T: Scalar>(
 }
 
 /// Solves $A x = b$ given an in-place $P A = L U$ factorization from [`lu_factor_in_place`].
-/// `[cite:engine_linalg]`
+///
+/// Reference: Higham (2002), *Accuracy and Stability of Numerical Algorithms*, DOI: 10.1137/1.9780898718027;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:engine_linalg]`
+///
+/// # Stability
+/// Partial pivoting bounds unit-lower multipliers $|L_{ij}| \le 1$, yielding backward error
+/// $\|\Delta A\|_\infty \le O(n\,\rho_n\,\varepsilon_{\text{mach}})\|A\|_\infty$.
+///
+/// # Domain of Validity
+/// Requires `lu.len() == n * n`, `pivots.len() == n` (valid permutation indices), finite `b` (`n`),
+/// `x` (`n`), and non-zero upper-triangular pivots $U_{ii} \ne 0$ (`LinalgError::SingularMatrix`).
 pub fn lu_solve_factored<T: Scalar>(
     lu: &[T],
     n: usize,
@@ -128,7 +138,16 @@ pub fn lu_solve_factored<T: Scalar>(
 /// Solves the transposed system $A^T x = b$ given an in-place $P A = L U$ factorization.
 ///
 /// Since $P A = L U$, $A^T = U^T L^T P$: solves $U^T y = b$, $L^T z = y$, and sets $x = P^T z$.
-/// `[cite:engine_linalg]`
+/// Reference: Higham (2002), DOI: 10.1137/1.9780898718027;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:engine_linalg]`
+///
+/// # Stability
+/// Shares the partial-pivoting multiplier bound $|L_{ij}| \le 1$ of [`lu_factor_in_place`], providing
+/// backward-stable transposed triangular solves for Hager-Higham condition estimation.
+///
+/// # Domain of Validity
+/// Requires `lu.len() == n * n`, `pivots.len() == n`, finite `b` (`n`), `x` (`n`), `work.len() >= n`,
+/// and non-zero diagonal pivots $U_{ii} \ne 0$.
 pub fn lu_solve_transpose_factored<T: Scalar>(
     lu: &[T],
     n: usize,
@@ -174,8 +193,18 @@ pub fn lu_solve_transpose_factored<T: Scalar>(
     Ok(())
 }
 
-/// Solves a square linear system $A x = b$ using LU with partial pivoting in `ws`.
-/// `[cite:engine_linalg]`
+/// Solves a square linear system $A x = b$ using $P A = L U$ with partial pivoting in `ws`.
+///
+/// Reference: Higham (2002), DOI: 10.1137/1.9780898718027;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:engine_linalg]`
+///
+/// # Stability
+/// Partial row pivoting bounds $|L_{ij}| \le 1$ and rejects singular or near-singular pivots below
+/// $n\,\varepsilon_{\text{mach}}\max_{i,j}|A_{ij}|$.
+///
+/// # Domain of Validity
+/// Requires finite nonsingular `a` (`n * n`), finite `b` (`n`), `x` (`n`), `pivots` (`n`), and `ws`
+/// capacity at least [`lu_workspace_len`]`(n)`.
 pub fn lu_solve<T: Scalar>(
     a: &[T],
     b: &[T],

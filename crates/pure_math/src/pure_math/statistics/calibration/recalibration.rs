@@ -35,7 +35,7 @@ impl Default for PlattConfig {
     }
 }
 
-/// Logistic Platt recalibrator $p(y = 1 \mid z) = \sigma(\text{scale} \cdot z + \text{bias})$.
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/platt_scaler.md")]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PlattScaler {
     /// Learned multiplicative logit slope $a$.
@@ -236,7 +236,7 @@ impl PlattScaler {
     }
 }
 
-/// Learned post-hoc temperature scaler $p = \text{softmax}(z / T)$ (or $\sigma(z / T)$) with $T > 0$.
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/temperature_scaler.md")]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TemperatureScaler {
     /// Strictly positive temperature parameter $T > 0$ minimizing held-out `log_loss`.
