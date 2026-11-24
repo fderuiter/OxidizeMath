@@ -206,3 +206,104 @@ fn test_trace_overlay_buttons_announce_and_dismiss_on_escape() {
         verify_trace_hover_and_escape(&ctx, &mut full_manager, btn, tooltip);
     }
 }
+
+#[test]
+fn test_legacy_snapshot_deserialization_and_deny_unknown_fields() {
+    let legacy_json = r#"{
+        "snapshots": [{
+            "id": 1,
+            "label": "Baseline 1",
+            "param_summary": "dose=100",
+            "series": [{"name": "C(t)", "points": [[0.0, 0.0], [1.0, 2.5]]}],
+            "visible": true,
+            "color_rgb": [255, 127, 14]
+        }],
+        "history_runs": [],
+        "next_id": 2,
+        "history_counter": 0
+    }"#;
+    let restored: TraceSnapshotManager =
+        serde_json::from_str(legacy_json).expect("legacy JSON without kpis must deserialize");
+    assert_eq!(restored.len(), 1);
+    assert!(restored.snapshots()[0].kpis.is_empty());
+
+    let unknown_snapshot_field = r#"{
+        "id": 1,
+        "label": "Bad",
+        "param_summary": "",
+        "series": [],
+        "visible": true,
+        "color_rgb": [0, 0, 0],
+        "unexpected": 123
+    }"#;
+    assert!(serde_json::from_str::<TraceSnapshot>(unknown_snapshot_field).is_err());
+
+    let unknown_kpi_field = r#"{"name": "AUC", "value": 12.0, "extra": true}"#;
+    assert!(serde_json::from_str::<ScenarioKpi>(unknown_kpi_field).is_err());
+}
+
+#[test]
+fn test_kpi_comparison_rows_and_csv_export() {
+    let mut manager = TraceSnapshotManager::new();
+    manager.add_snapshot_with_kpis(
+        "Baseline 1",
+        "dose=100, ke=0.1",
+        vec![TraceSeries::new("C(t)", vec![[0.0, 10.0]])],
+        vec![
+            ScenarioKpi::new("AUC", 100.0, "mg*h/L"),
+            ScenarioKpi::new("Residual", 0.0, ""),
+        ],
+    );
+    manager.add_snapshot_with_kpis(
+        "High, Dose",
+        "dose=150",
+        vec![TraceSeries::new("C(t)", vec![[0.0, 15.0]])],
+        vec![
+            ScenarioKpi::new("AUC", 150.0, "mg*h/L"),
+            ScenarioKpi::new("Residual", 0.25, ""),
+        ],
+    );
+    let live = vec![ScenarioKpi::new("AUC", 80.0, "mg*h/L")];
+    let rows = manager.kpi_comparison_rows(&live);
+    assert_eq!(rows.len(), 5);
+    assert!(rows[0].is_reference);
+    assert_eq!(rows[0].abs_delta, 0.0);
+    assert_eq!(rows[0].pct_delta, Some(0.0));
+
+    let high_auc = rows
+        .iter()
+        .find(|r| r.scenario_label.starts_with("High, Dose") && r.kpi_name == "AUC")
+        .expect("High Dose AUC row");
+    assert!((high_auc.abs_delta - 50.0).abs() < 1e-9);
+    assert_eq!(high_auc.pct_delta, Some(50.0));
+
+    let zero_base = rows
+        .iter()
+        .find(|r| r.scenario_label.starts_with("High, Dose") && r.kpi_name == "Residual")
+        .expect("zero baseline row");
+    assert!((zero_base.abs_delta - 0.25).abs() < 1e-9);
+    assert_eq!(zero_base.pct_delta, None);
+
+    let live_auc = rows
+        .iter()
+        .find(|r| r.scenario_label == "Current" && r.kpi_name == "AUC")
+        .expect("Current AUC row");
+    assert!((live_auc.abs_delta + 20.0).abs() < 1e-9);
+    assert_eq!(live_auc.pct_delta, Some(-20.0));
+
+    let csv = manager.export_kpi_csv(&live);
+    assert!(csv.starts_with("scenario,kpi,unit,value,baseline,abs_delta,pct_delta\n"));
+    assert!(
+        csv.contains("\"High, Dose: dose=150\",AUC,mg*h/L,150.000000,100.000000,50.000000,50.0000")
+    );
+    assert!(csv.contains("Current,AUC,mg*h/L,80.000000,100.000000,-20.000000,-20.0000"));
+
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    verify_trace_hover_and_escape(
+        &ctx,
+        &mut manager,
+        "⬇ Export KPI CSV",
+        "Export scenario KPI comparison table to CSV",
+    );
+}

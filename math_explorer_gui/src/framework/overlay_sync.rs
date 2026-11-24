@@ -1,7 +1,110 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::SimulationFramework;
+use super::{
+    atlas_host, plot_persistence, ChallengeHudState, ChallengeMetadata,
+    CooperativeSensitivityState, CrossToolBus, DiagnosticReport, ExportQueue, ExportStatusSeverity,
+    InputMode, InteractiveTool, StateSnapshot,
+};
 use eframe::egui;
+
+/// Static registration record for an auto-discovered [`InteractiveTool`].
+pub struct ToolMetadata {
+    /// Canonical stable identifier for the tool.
+    pub id: &'static str,
+    /// Human-readable display label shown in the tool selector.
+    pub display_name: &'static str,
+    /// Owning scientific domain slug.
+    pub domain: &'static str,
+    /// Searchable keyword tags associated with the tool.
+    pub tags: &'static [&'static str],
+    /// Constructor building a fresh boxed tool instance.
+    pub build: fn() -> Box<dyn InteractiveTool>,
+}
+
+inventory::collect!(ToolMetadata);
+
+/// Domain-scoped host container managing tool selection, overlays, recovery, exports, and cross-tool routing.
+pub struct SimulationFramework {
+    /// Tools registered for this framework's domain.
+    pub available_tools: Vec<&'static ToolMetadata>,
+    /// Currently mounted interactive tool instance, if any.
+    pub active_tool: Option<Box<dyn InteractiveTool>>,
+    /// Index of `active_tool` inside `available_tools`.
+    pub selected_tool_index: Option<usize>,
+    /// Active pointer/touch/keyboard input modality.
+    pub input_mode: InputMode,
+    /// Whether the inline theory & traceability portal is open.
+    pub show_theory_portal: bool,
+    /// Whether the cooperative sensitivity & uncertainty panel is open.
+    pub show_sensitivity_panel: bool,
+    /// Whether the starter preset & challenge gallery modal is open.
+    pub show_starter_gallery: bool,
+    /// Per-tool serialized JSON state cache keyed by tool name.
+    pub saved_tool_states: std::collections::HashMap<String, String>,
+    /// Per-tool serialized plot viewport/trace state cache.
+    pub saved_plot_states: plot_persistence::SavedPlotStatesMap,
+    pub(super) plot_sync_generation: u64,
+    /// Filter query applied to `available_tools` in the side panel.
+    pub search_query: String,
+    pub(super) last_announced_count: Option<usize>,
+    pub(super) last_announced_query: String,
+    /// Whether the figure/dataset export modal is open.
+    pub show_export_modal: bool,
+    /// Whether the unified LaTeX/Rust/Python code export modal is open.
+    pub show_code_export_modal: bool,
+    /// Active language tab in the unified code export modal.
+    pub code_export_tab: super::CodeExportTab,
+    /// Active figure export options (dimensions, title, labels, legend).
+    pub export_options: egui_plot::export::ExportOptions,
+    /// Whether exported figures use a dark background palette.
+    pub export_bg_dark: bool,
+    /// Target frame rate for animated GIF exports.
+    pub export_gif_fps: u32,
+    /// Number of sampled frames for animated GIF exports.
+    pub export_gif_frames: u32,
+    /// Latest user-facing export status or error banner text.
+    pub export_status_message: Option<String>,
+    /// Severity level of `export_status_message`.
+    pub export_status_severity: ExportStatusSeverity,
+    /// Domain slug managed by this framework instance.
+    pub domain: String,
+    /// State for JSON preset import/export modal dialogs.
+    pub preset_dialog: crate::presets::PresetDialogState,
+    pub(crate) export_queue: ExportQueue,
+    pub(super) gif_job: Option<super::export_gif_job::FrameworkGifJob>,
+    /// Cached state snapshot before divergence for step-back rollback.
+    pub last_valid_snapshot: Option<StateSnapshot>,
+    /// Baseline parameters snapshot on tool load.
+    pub baseline_tool_state: Option<String>,
+    /// Last validated finite plot datasets.
+    pub current_valid_plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
+    /// Last validated finite 3D world-coordinate plot datasets.
+    pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
+    /// Whether divergence has been detected in the active tool.
+    pub is_diverged: bool,
+    /// Diagnostic report for divergence.
+    pub diagnostic_report: Option<DiagnosticReport>,
+    /// Simulation frame / step counter.
+    pub step_counter: usize,
+    /// Counterfactual shadow twin engine state synchronized with the active tool.
+    pub branch_engine: super::CounterfactualBranchEngine,
+    /// Start time of current active session.
+    pub start_time: crate::web_io::PlatformInstant,
+    /// Declarative guided story and AST challenge HUD state.
+    pub challenge_hud: ChallengeHudState,
+    /// Active inverse challenge contract displayed in the Challenge HUD, if any.
+    pub active_challenge: Option<&'static ChallengeMetadata>,
+    pub(super) challenge_was_passed: bool,
+    /// Instance-scoped cross-tool pipeline and live-stream message bus.
+    pub cross_tool_bus: CrossToolBus,
+    /// Cooperative finite-difference, tornado, and Monte Carlo sensitivity state.
+    pub cooperative_sensitivity: CooperativeSensitivityState,
+    pub(super) instance_id: u64,
+    pub(super) sync_state: FrameworkSyncState,
+    pub(super) rev_cache: FrameworkRevisionCache,
+    /// Host state for the collapsible 2D parameter regime atlas panel.
+    pub atlas_host: atlas_host::FrameworkAtlasHost,
+}
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct FrameworkSyncState {
@@ -294,6 +397,7 @@ impl SimulationFramework {
             selected_tool_index: None,
             input_mode: super::InputMode::Mouse,
             show_theory_portal: false,
+            show_sensitivity_panel: false,
             show_starter_gallery: false,
             saved_tool_states: std::collections::HashMap::new(),
             saved_plot_states: std::collections::BTreeMap::new(),
@@ -326,10 +430,12 @@ impl SimulationFramework {
             challenge_hud: super::ChallengeHudState::default(),
             active_challenge: None,
             challenge_was_passed: false,
+            cross_tool_bus: super::CrossToolBus::new(),
+            cooperative_sensitivity: super::CooperativeSensitivityState::default(),
             instance_id: next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: FrameworkRevisionCache::default(),
-            atlas_host: super::atlas_host::FrameworkAtlasHost::default(),
+            atlas_host: atlas_host::FrameworkAtlasHost::default(),
         };
         if !framework.available_tools.is_empty() {
             framework.select_tool(0);

@@ -24,13 +24,14 @@ pub mod __doctest_facade {
             ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
             PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
         };
+        pub use crate::physics::chaos::lorenz::{LorenzState, LorenzSystem};
         pub use ::domain_applied::__doctest_facade::prelude::*;
     }
     pub use crate::physics;
     pub use ::domain_applied::applied;
     pub use ::pure_math::__doctest_facade::{
         ast, constants, diagnostics, fit, math_kernel, math_types, mesh, nalgebra, num_complex,
-        petgraph, poi, primitives, pure_math, rand, registry, rng, series, wigner,
+        petgraph, poi, primitives, pure_math, rand, registry, rng, sensitivity, series, wigner,
     };
 }
 

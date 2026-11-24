@@ -159,6 +159,65 @@ impl InteractiveTool for Glicko2TournamentTool {
         changed
     }
 
+    fn sensitivity_parameters(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        use crate::framework::SensitivityParamSpec;
+        if self.competitors.is_empty() {
+            return Vec::new();
+        }
+        let r0 = self.competitors[0].initial.rating.value();
+        vec![
+            SensitivityParamSpec::new("tau", "System Constant (τ)", self.tau, 0.3, 1.2),
+            SensitivityParamSpec::new("seed_rating", "Top Seed Initial Rating", r0, 1200.0, 2200.0),
+        ]
+    }
+
+    fn evaluate_sensitivity_observable(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        use math_explorer::pure_math::statistics::glicko2::{
+            evaluate_rating_period, GlickoPlayer, PeriodMatch, Rating, SystemConstant,
+        };
+        if self.competitors.is_empty() {
+            return None;
+        }
+        let mut tau_val = self.tau;
+        let mut top_r0 = self.competitors[0].initial.rating.value();
+        for &(k, v) in params {
+            if !v.is_finite() {
+                return None;
+            }
+            match k {
+                "tau" => tau_val = v.clamp(0.3, 1.2),
+                "seed_rating" => top_r0 = v.clamp(800.0, 2800.0),
+                _ => {}
+            }
+        }
+        let tau = SystemConstant::new(tau_val).ok()?;
+        let mut roster: Vec<GlickoPlayer> = self.competitors.iter().map(|c| c.initial).collect();
+        roster[0] = GlickoPlayer::new(
+            Rating::new(top_r0).ok()?,
+            roster[0].rating_deviation,
+            roster[0].volatility,
+        );
+        for period in &self.completed_periods {
+            let matches: Vec<PeriodMatch> = period
+                .matches
+                .iter()
+                .map(|m| PeriodMatch::new(m.player_a, m.player_b, m.score_a))
+                .collect::<Result<_, _>>()
+                .ok()?;
+            roster = evaluate_rating_period(&roster, &matches, &tau).ok()?;
+        }
+        let leader = roster
+            .iter()
+            .map(|p| p.rating.value())
+            .fold(f64::NEG_INFINITY, f64::max);
+        leader
+            .is_finite()
+            .then_some(("Leader Posterior Rating", leader))
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&self.export_config()).ok()
     }

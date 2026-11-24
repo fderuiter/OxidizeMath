@@ -6,7 +6,9 @@ use super::lattice_boltzmann_sculpt::{
     export_solver_rle, record_stroke_in_rle, reset_solver_preserving_obstacles,
     seed_initial_lbm_geometry, sync_lbm_parameters,
 };
-use super::lbm_atlas::{resolve_inlet_velocity, LbmCartographer, LBM_ATLAS_AXIS_PAIRS};
+use super::lbm_atlas::{
+    evaluate_lbm_observable, resolve_inlet_velocity, LbmCartographer, LBM_ATLAS_AXIS_PAIRS,
+};
 use super::lbm_fairing::{
     decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0,
 };
@@ -454,6 +456,10 @@ impl UnifiedModel for LbmUnified {
 
     fn name() -> &'static str {
         "Lattice Boltzmann (Demo)"
+    }
+
+    fn evaluate_observable(params: &HashMap<String, f64>) -> Option<(&'static str, f64)> {
+        evaluate_lbm_observable(params)
     }
 }
 

@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::AttractorPlotter;
+use crate::framework::CrossToolEnvelope;
 use crate::tabs::geometry_topology::vietoris_rips::{
-    handoff::{request_open_vietoris_rips, submit_chaos_landmark_handoff, ChaosLandmarkHandoff},
-    MAX_CHAOS_LANDMARKS,
+    handoff::ChaosLandmarkHandoff, MAX_CHAOS_LANDMARKS,
 };
 use eframe::egui;
 use math_explorer::physics::chaos::fractals::correlation_dimension;
@@ -13,13 +13,15 @@ use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
 use nalgebra::Vector3;
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 pub(crate) struct CachedAttractorInvariants {
     param_key: Option<u64>,
     lyapunov: Option<f64>,
     corr_key: Option<(u64, usize)>,
     correlation_sum: Option<f64>,
     correlation_dim: Option<f64>,
+    pending_envelopes: Vec<CrossToolEnvelope>,
+    handoff_seq: u64,
 }
 
 impl AttractorPlotter {
@@ -172,9 +174,9 @@ impl AttractorPlotter {
         out
     }
 
-    /// Extracts up to `MAX_CHAOS_LANDMARKS` 3D landmarks and sends them to `VietorisRipsTool`.
+    /// Extracts up to `MAX_CHAOS_LANDMARKS` 3D landmarks and queues a typed `CrossToolBus` handoff to `VietorisRipsTool`.
     pub fn send_landmarks_to_vietoris_rips(
-        &self,
+        &mut self,
         ctx: Option<&egui::Context>,
     ) -> Result<ChaosLandmarkHandoff, String> {
         if !self.is_finite_state() || self.diverged() {
@@ -194,9 +196,16 @@ impl AttractorPlotter {
             beta: self.system.beta,
             dt: self.dt,
         };
+        self.invariants_cache.handoff_seq =
+            self.invariants_cache.handoff_seq.wrapping_add(1).max(1);
+        let env = payload.clone().into_envelope(
+            "AttractorPlotter",
+            true,
+            self.invariants_cache.handoff_seq,
+        );
+        self.invariants_cache.pending_envelopes.push(env);
         if let Some(c) = ctx {
-            submit_chaos_landmark_handoff(c, payload.clone());
-            request_open_vietoris_rips(c);
+            c.request_repaint();
         } else if let Some(bus) = self
             .params
             .read()
@@ -204,9 +213,8 @@ impl AttractorPlotter {
             .sim_bus
             .clone()
         {
-            let raw_pts = payload.points.iter().map(|p| [p.x, p.y, p.z]).collect();
             let _ = bus.submit_vr_handoff(
-                raw_pts,
+                payload.raw_points(),
                 payload.sigma,
                 payload.rho,
                 payload.beta,
@@ -215,5 +223,26 @@ impl AttractorPlotter {
             );
         }
         Ok(payload)
+    }
+
+    pub(crate) fn drain_queued_envelopes(&mut self) -> Vec<CrossToolEnvelope> {
+        std::mem::take(&mut self.invariants_cache.pending_envelopes)
+    }
+
+    pub(crate) fn poll_live_envelope(&self, last_seq: u64) -> Option<CrossToolEnvelope> {
+        let sim_bus = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .sim_bus
+            .clone()?;
+        let cloud = sim_bus.latest_point_cloud_3d_since(last_seq)?;
+        Some(
+            ChaosLandmarkHandoff::from_shared_cloud(&cloud).into_envelope(
+                "AttractorPlotter",
+                false,
+                cloud.revision,
+            ),
+        )
     }
 }

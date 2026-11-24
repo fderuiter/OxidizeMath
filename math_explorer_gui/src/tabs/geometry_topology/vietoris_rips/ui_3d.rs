@@ -48,6 +48,9 @@ impl VietorisRipsTool {
             }
             return;
         }
+        if std::mem::take(&mut self.chaos.cross_tool_live_frame) {
+            return;
+        }
         if self.mode == VrSourceMode::Lorenz3D && self.chaos.playing {
             if let Some((seq, live)) =
                 poll_live_attractor_landmarks(ctx, self.chaos.live_stream_seq)

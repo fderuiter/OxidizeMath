@@ -312,7 +312,10 @@ impl SimulationFramework {
         self.render_challenge_hud_panel(ui, &ctx, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
+        self.show_cooperative_sensitivity_panel(ui, id_source);
         self.show_framework_atlas_panel(ui, id_source);
+
+        let _ = self.deliver_tool_bus_inbox(Some(&ctx));
         self.begin_plot_scope(&ctx);
         if !self.is_diverged {
             self.cache_valid_snapshot();
@@ -336,6 +339,8 @@ impl SimulationFramework {
             tool.show_inside(ui);
         }
         self.end_plot_scope(&ctx);
+        self.collect_tool_bus_outbox(Some(&ctx));
+
         if !interactive_input
             && crate::reflective_ui::slider::live_sweep_mutation_count(&ctx) > sweep_mut_before
         {

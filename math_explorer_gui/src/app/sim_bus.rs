@@ -250,7 +250,7 @@ impl SharedSimulationBus {
     }
 
     /// Marks a pending cross-tab navigation request to open `VietorisRipsTool`.
-    #[cfg(any(feature = "physics", test))]
+    #[cfg(test)]
     pub fn request_open_vietoris_rips(&self) {
         if let Ok(mut guard) = self.inner.write() {
             guard.pending_open_vr = true;

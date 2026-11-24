@@ -15,8 +15,8 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
 ### Module Structure
 
 - **Core Always-On Modules**:
-  - `error` & `prelude`: Unified `MathError`, `MathResult`, bounded numeric primitives (`PositiveFloat`, `NonNegativeFloat`, `UnitInterval`), and `Diagnostic` traits.
-  - `ast`, `constants`, `fit`, `math_kernel`, `poi`, `primitives`, `registry`, `series`, `wigner`: Expression parsing/compilation, zero-allocation curve fitting and critical-point solvers, physical constants, tolerances, and Clebsch-Gordan coefficients.
+  - `error` & `prelude`: Unified `MathError`, `MathResult`, bounded numeric primitives (`PositiveFloat`, `NonNegativeFloat`, `UnitInterval`), curated numerical & domain solvers, and `Diagnostic` traits.
+  - `ast`, `constants`, `fit`, `math_kernel`, `poi`, `primitives`, `registry`, `sensitivity`, `series`, `wigner`: Expression parsing/compilation, zero-allocation curve fitting and critical-point solvers, cooperative sensitivity (`SensitivityEngine` with tornado sweeps & seeded `SplitMix64` Monte Carlo), physical constants, tolerances, and Clebsch-Gordan coefficients.
   - `verified_engine` & `scientific_metadata`: Zero-allocation runtime verification harness (`VerifiedEngine`), `#[verified]`, `#[derive(Theory)]`, and `#[embed_theory]`.
 - **Feature-Gated Domain Modules**:
   - **`ai`**: Artificial Intelligence primitives, including Transformer components (Attention, Encoder/Decoder), Reinforcement Learning, NeRF-Diffusion, and Self-Calibration loops.
@@ -26,6 +26,7 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
   - **`epidemiology`**: Disease transmission modeling across **SIR/SEIR** compartmental ODEs, stochastic Gillespie processes, and contact networks.
   - **`physics`**: Physical simulations spanning **Quantum Mechanics**, **Fluid Dynamics**, **Solid State** (BCS Superconductivity, Ising), **Chaos Theory** (Lorenz System), and **MRI Physics**.
   - **`pure_math`**: Foundational mathematics covering **Abstract Algebra**, **Number Theory** (Partitions, Q-Series), **Graph Theory**, **Analysis** (`MultivariateIntegrator`), **Statistics** (`monte_carlo`, `qmc`, `bootstrap`, Multivariate Copulas, Glicko-2, Markov, TDA), and **Differential Geometry**.
+  - **`cli`**: Opt-in headless `math_explorer` binary exposing `sensitivity` and `calibrate` subcommands.
 
 ---
 

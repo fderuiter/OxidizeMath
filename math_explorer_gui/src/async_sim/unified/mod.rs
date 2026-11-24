@@ -5,6 +5,7 @@ mod canvas;
 mod controls;
 mod persistence;
 pub mod sculpt;
+mod sensitivity;
 pub mod tool;
 pub use sculpt::UnifiedSimRunner;
 pub use tool::*;
@@ -108,6 +109,30 @@ pub trait UnifiedUiExtension: Send {
 
     fn state_revision_salt(&self) -> u64 {
         0
+    }
+}
+
+/// Cooperative uncertainty sweep state (`<= 8` model evaluations/frame) for [`UnifiedSimTool`].
+#[derive(Clone, Debug)]
+pub struct UnifiedUncertaintyState {
+    /// Cached observable label returned by [`UnifiedModel::evaluate_observable`].
+    pub cached_label: Option<&'static str>,
+    /// Whether wide-range Tornado & `SplitMix64` Monte Carlo sweeps are enabled.
+    pub enabled: bool,
+    /// Explicit `u64` `SplitMix64` PRNG seed.
+    pub seed: u64,
+    /// Target Monte Carlo sample count.
+    pub target_samples: usize,
+}
+
+impl Default for UnifiedUncertaintyState {
+    fn default() -> Self {
+        Self {
+            cached_label: None,
+            enabled: false,
+            seed: crate::sensitivity::DEFAULT_MONTE_CARLO_SEED,
+            target_samples: crate::sensitivity::DEFAULT_MONTE_CARLO_SAMPLES,
+        }
     }
 }
 

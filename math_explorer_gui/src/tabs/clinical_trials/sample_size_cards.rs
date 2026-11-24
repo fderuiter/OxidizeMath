@@ -333,4 +333,64 @@ pub fn draw_required_n_curve_plot(
         });
 }
 
+impl super::sample_size::SampleSizeCalculatorTool {
+    pub(super) fn build_sensitivity_specs(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        use super::sample_size::CalculationMode;
+        use crate::framework::SensitivityParamSpec;
+        match self.mode {
+            CalculationMode::Means => vec![
+                SensitivityParamSpec::new("alpha", "Type I Error (α)", self.alpha, 0.005, 0.20),
+                SensitivityParamSpec::new("power", "Statistical Power", self.power, 0.55, 0.99),
+                SensitivityParamSpec::new("delta", "Effect Size (δ)", self.delta, 0.05, 5.0),
+                SensitivityParamSpec::new("sigma", "Std Deviation (σ)", self.sigma, 0.1, 10.0),
+            ],
+            CalculationMode::Proportions => vec![
+                SensitivityParamSpec::new("alpha", "Type I Error (α)", self.alpha, 0.005, 0.20),
+                SensitivityParamSpec::new("power", "Statistical Power", self.power, 0.55, 0.99),
+                SensitivityParamSpec::new("p1", "Control Proportion (p1)", self.p1, 0.05, 0.95),
+                SensitivityParamSpec::new("p2", "Treatment Proportion (p2)", self.p2, 0.05, 0.95),
+            ],
+        }
+    }
+
+    pub(super) fn eval_sensitivity_from_pairs(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        use super::sample_size::CalculationMode;
+        use math_explorer::applied::clinical_trials::sample_size::{
+            calculate_sample_size_means, calculate_sample_size_proportions,
+        };
+        let mut alpha = self.alpha;
+        let mut power = self.power;
+        let mut delta = self.delta;
+        let mut sigma = self.sigma;
+        let mut p1 = self.p1;
+        let mut p2 = self.p2;
+        for &(k, v) in params {
+            if !v.is_finite() {
+                return None;
+            }
+            match k {
+                "alpha" => alpha = v.clamp(0.001, 0.20),
+                "power" => power = v.clamp(0.50, 0.999),
+                "delta" => delta = v.clamp(0.01, 5.0),
+                "sigma" => sigma = v.clamp(0.1, 10.0),
+                "p1" => p1 = v.clamp(0.01, 0.99),
+                "p2" => p2 = v.clamp(0.01, 0.99),
+                _ => {}
+            }
+        }
+        let n = match self.mode {
+            CalculationMode::Means => {
+                calculate_sample_size_means(alpha, power, delta, sigma).ok()?
+            }
+            CalculationMode::Proportions => {
+                calculate_sample_size_proportions(alpha, power, p1, p2).ok()?
+            }
+        };
+        Some(("Required Sample Size per Arm", n as f64))
+    }
+}
+
 // [cite:clinical_trials_statistics]

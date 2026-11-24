@@ -7,7 +7,7 @@
 
 use super::CapacityFadeTool;
 use crate::web_io::strip_utf8_bom;
-use math_explorer::applied::battery_degradation::DepthOfDischarge;
+use math_explorer::applied::battery_degradation::{Cycles, DepthOfDischarge};
 
 /// Maximum finite `(cycles, capacity)` rows imported from a lab `.csv` file.
 pub const MAX_CALIBRATION_CSV_ROWS: usize = 2_000;
@@ -179,5 +179,72 @@ impl CapacityFadeTool {
                 Err(err) => self.io_status = Some((true, err)),
             }
         }
+    }
+
+    pub(super) fn build_sensitivity_specs(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        use crate::framework::SensitivityParamSpec;
+        vec![
+            SensitivityParamSpec::new(
+                "dod",
+                "Depth of Discharge (%)",
+                self.dod.clamp(1.0, 100.0),
+                5.0,
+                100.0,
+            ),
+            SensitivityParamSpec::new(
+                "cycles_to_simulate",
+                "Simulation Horizon (cycles)",
+                self.cycles_to_simulate.clamp(100.0, 10_000.0),
+                100.0,
+                10_000.0,
+            ),
+        ]
+    }
+
+    pub(super) fn eval_sensitivity_from_pairs(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        let mut dod = self.dod;
+        let mut horizon = self.cycles_to_simulate;
+        for &(k, v) in params {
+            if !v.is_finite() {
+                return None;
+            }
+            match k {
+                "dod" => dod = v.clamp(0.5, 100.0),
+                "cycles_to_simulate" => horizon = v.clamp(10.0, 20_000.0),
+                _ => {}
+            }
+        }
+        let model = self.active_model();
+        let c = Cycles::new(horizon).ok()?;
+        let d = DepthOfDischarge::new(dod).ok()?;
+        let cap = model.capacity(c, d).as_f64();
+        cap.is_finite()
+            .then_some(("Remaining Capacity at Horizon", cap))
+    }
+
+    pub(super) fn calibrate_from_imported_datasets(
+        &mut self,
+        datasets: &[egui_plot::ImportedDataset],
+    ) -> Result<bool, String> {
+        use crate::framework::{
+            extract_calibration_series, fit_bounded_parameters, CalibratableParamSpec,
+        };
+        let points = extract_calibration_series(datasets)?;
+        let model = self.active_model();
+        let specs = [CalibratableParamSpec::new("dod", 50.0, 1.0, 100.0)];
+        let fitted = fit_bounded_parameters(points, &specs, |cycle, theta| {
+            let c = Cycles::new(cycle.max(0.0)).ok()?;
+            let d = DepthOfDischarge::new(theta[0]).ok()?;
+            Some(model.capacity(c, d).as_f64())
+        })?;
+        self.dod = fitted[0].clamp(1.0, 100.0);
+        let max_x = points.iter().fold(0.0_f64, |acc, pt| acc.max(pt[0]));
+        if max_x >= 100.0 {
+            self.cycles_to_simulate = max_x.clamp(100.0, 10_000.0);
+        }
+        Ok(true)
     }
 }

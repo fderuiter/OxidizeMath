@@ -35,6 +35,7 @@ fn render_sidebar_contents(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) {
     ui.heading("ADME Regimen Planner");
     let prev_summary = tool.last_param_summary.clone();
     let prev_series = export::build_active_trace_series(tool);
+    let prev_kpis = tool.scenario_kpis();
 
     let locked = tool.active_challenge.is_some();
     let mut changed = false;
@@ -51,7 +52,7 @@ fn render_sidebar_contents(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) {
     if changed {
         if !prev_series.is_empty() {
             tool.snapshot_manager
-                .push_history_run(prev_summary, prev_series);
+                .push_history_run_with_kpis(prev_summary, prev_series, prev_kpis);
         }
         tool.recalculate();
     }
@@ -409,9 +410,21 @@ fn render_trace_and_card_actions(tool: &mut PharmacokineticsTool, ui: &mut egui:
     let summary = tool.param_summary();
     let next_idx = tool.snapshot_manager.len() + 1;
     let active_series = export::build_active_trace_series(tool);
-    if tool.snapshot_manager.render_ui(ui, move || {
-        (!active_series.is_empty()).then(|| (format!("Regimen {next_idx}"), summary, active_series))
-    }) {
+    let current_kpis = tool.scenario_kpis();
+    let active_kpis = current_kpis.clone();
+    if tool
+        .snapshot_manager
+        .render_ui_with_kpis(ui, &current_kpis, move || {
+            (!active_series.is_empty()).then(|| {
+                (
+                    format!("Regimen {next_idx}"),
+                    summary,
+                    active_series,
+                    active_kpis,
+                )
+            })
+        })
+    {
         tool.revision = tool.revision.wrapping_add(1).max(1);
     }
 

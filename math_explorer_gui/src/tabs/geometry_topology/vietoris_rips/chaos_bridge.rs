@@ -28,6 +28,7 @@ pub struct VrChaosState {
     pub playing: bool,
     /// Monotonic sequence counter for external `AttractorRunner` live stream frames.
     pub live_stream_seq: u64,
+    pub(crate) cross_tool_live_frame: bool,
     /// Cross-platform timestamp of the most recent live stream update (`wasm32`-safe).
     pub last_stream_tick: PlatformInstant,
     current_state: Point3D,
@@ -53,6 +54,7 @@ impl Default for VrChaosState {
             takens_lag: 8,
             playing: false,
             live_stream_seq: 0,
+            cross_tool_live_frame: false,
             last_stream_tick: PlatformInstant::now(),
             current_state: Point3D::new(1.0, 1.0, 1.0),
             trajectory_buf: Vec::with_capacity(TRACE_LEN),

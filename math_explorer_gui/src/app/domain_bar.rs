@@ -100,10 +100,11 @@ pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize
     }
 }
 
-/// Polls cross-domain handoff triggers (e.g., `AttractorPlotter -> VietorisRipsTool` and elliptic torus handoffs).
+/// Polls cross-domain handoff triggers (e.g., `AttractorPlotter -> VietorisRipsTool`, `CrossToolBus`, and elliptic torus handoffs).
 pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Context) {
     app.sim_bus
         .install_in_context(ctx, app.compare_sync.link_topology);
+    super::cross_tool_routing::poll_cross_tab_tool_handoffs(app, ctx);
     #[cfg(feature = "pure_math")]
     {
         if app.sim_bus.take_open_vietoris_rips_request()
@@ -126,8 +127,6 @@ pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Conte
             apply_elliptic_torus_handoff(app, ctx, payload);
         }
     }
-    #[cfg(not(feature = "pure_math"))]
-    let _ = (app, ctx);
 }
 
 #[cfg(feature = "pure_math")]

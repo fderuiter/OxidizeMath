@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod hooks;
 mod simulation;
 mod state;
 #[cfg(test)]
@@ -191,6 +192,33 @@ impl InteractiveTool for BankrollGrowthTool {
         ]
         .iter()
         .all(|v| v.is_finite())
+            && self.error_msg.is_none()
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        self.clamp_bankroll_params()
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.export_kelly_datasets()
+    }
+
+    fn sensitivity_parameters(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        self.build_sensitivity_specs()
+    }
+
+    fn evaluate_sensitivity_observable(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        self.eval_sensitivity_from_pairs(params)
+    }
+
+    fn calibrate_from_datasets(
+        &mut self,
+        datasets: &[egui_plot::ImportedDataset],
+    ) -> Result<bool, String> {
+        self.calibrate_from_csv(datasets)
     }
 
     fn observables(&self) -> Vec<(&'static str, f64)> {

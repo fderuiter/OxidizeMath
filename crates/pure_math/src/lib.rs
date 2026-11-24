@@ -33,9 +33,32 @@ pub mod __doctest_facade {
     pub mod prelude {
         pub use super::error::*;
         pub use crate::math_types::{Float, Integer, Rational};
+        pub use crate::pure_math::analysis::ode::{
+            ArrayState, Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, Solver,
+            SolverExt, TimeStepper, VecState,
+        };
+        pub use crate::pure_math::statistics::glicko2::{
+            GlickoPlayer, MatchResult, Rating, RatingDeviation, SystemConstant, Volatility,
+            update_rating,
+        };
+        pub use crate::pure_math::statistics::kelly::{
+            BankrollFraction, Odds, expected_growth_rate, kelly_fraction,
+        };
+        pub use crate::pure_math::statistics::tda::{
+            PersistenceInterval, RipsPersistenceResult, SimplicialComplex, TdaFiltrationWorkspace,
+            betti_numbers, compute_rips_persistence,
+        };
         pub use diagnostics::{Diagnostic, Severity};
-        pub use math_commons::fit::FitModel;
+        pub use math_commons::fit::{
+            CurveFit, FitModel, MAX_FIT_PARAMS, fit_model, levenberg_marquardt_numeric,
+            sum_squared_errors_numeric,
+        };
+        pub use math_commons::poi::{closest_threshold_crossing, intersect_polylines};
         pub use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
+        pub use math_commons::sensitivity::{
+            MonteCarloSummary, ParameterUncertainty, SensitivityEngine, SensitivityMetric,
+            SplitMix64, TornadoBounds, TornadoInterval,
+        };
         pub use math_commons::series::{PointSeries, Sample2D};
         pub use nalgebra::{self, DMatrix, DVector};
         pub use oxidize_core::mesh::{Mesh, Point3D};
@@ -45,7 +68,8 @@ pub mod __doctest_facade {
     pub use crate::{math_types, pure_math};
     pub use diagnostics;
     pub use math_commons::{
-        ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
+        ast, constants, fit, math_kernel, poi, primitives, registry, sensitivity, series,
+        stochastic, wigner,
     };
     pub use nalgebra;
     pub use num_complex;

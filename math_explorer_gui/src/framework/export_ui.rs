@@ -43,6 +43,7 @@ impl SimulationFramework {
             self.render_starter_gallery_toggle(ctx, ui);
             self.render_atlas_bar_toggle(ui);
             self.render_theory_portal_toggle(ctx, ui);
+            self.render_sensitivity_bar_toggle(ui);
             if compact {
                 self.render_compact_preset_controls(ui, &file_slug, bar_width >= 420.0);
             } else {

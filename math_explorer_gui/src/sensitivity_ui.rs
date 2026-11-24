@@ -2,7 +2,7 @@
 
 //! UI rendering and live-region status announcements for [`super::SensitivityEngine`].
 
-use super::{SensitivityEngine, SensitivityMetric};
+use super::{MonteCarloSummary, SensitivityEngine, SensitivityMetric, TornadoInterval};
 use eframe::egui;
 
 /// Renders the collapsible Sensitivity & Perturbation analysis panel in the UI sidebar.
@@ -25,10 +25,12 @@ pub fn render_labeled_sensitivity_panel_ui(
         format!("Baseline {}: {:.4}", metric_label, engine.baseline_output)
     };
 
-    if !engine.is_converged() && !engine.gesture_deferred {
+    if engine.has_pending_work() {
         ui.ctx().request_repaint();
     }
-    sync_sensitivity_budget_announcement(engine);
+    if let Some(msg) = engine.take_unannounced_budget_notice() {
+        crate::accessibility::announce_status(&msg);
+    }
 
     ui.add_space(6.0);
     egui::CollapsingHeader::new("Sensitivity & Perturbation Analysis")
@@ -43,7 +45,7 @@ pub fn render_labeled_sensitivity_panel_ui(
             ui.label(baseline_heading);
             ui.label(
                 egui::RichText::new(
-                    "Normalized elasticity |(dY/dP) * (P/Y)| via central finite diff (±1% delta)",
+                    "Normalized elasticity |(dY/dP) * (P/Y)| (±1% diff), tornado bounds & Monte Carlo quantiles",
                 )
                 .weak()
                 .small(),
@@ -55,31 +57,26 @@ pub fn render_labeled_sensitivity_panel_ui(
                 return;
             }
 
-            for metric in &engine.metrics {
-                render_sensitivity_metric_card(ui, metric, &palette);
+            let tornado = engine.tornado_intervals();
+            for (idx, metric) in engine.metrics.iter().enumerate() {
+                let interval = tornado
+                    .get(idx)
+                    .filter(|iv| iv.swing > 0.0 || iv.low_param != iv.high_param);
+                render_sensitivity_metric_card(ui, metric, interval, &palette);
                 ui.add_space(2.0);
             }
-        });
-}
 
-fn sync_sensitivity_budget_announcement(engine: &SensitivityEngine) {
-    let mut last = engine.last_announced_budget.borrow_mut();
-    match engine.budget_notice() {
-        Some(msg) => {
-            if last.as_deref() != Some(msg) {
-                crate::accessibility::announce_status(msg);
-                *last = Some(msg.to_string());
+            if let Some(mc) = engine.monte_carlo_summary() {
+                ui.add_space(4.0);
+                render_monte_carlo_summary_card(ui, mc, &palette);
             }
-        }
-        None => {
-            *last = None;
-        }
-    }
+        });
 }
 
 fn render_sensitivity_metric_card(
     ui: &mut egui::Ui,
     metric: &SensitivityMetric,
+    tornado: Option<&TornadoInterval>,
     palette: &crate::app::SemanticPalette,
 ) {
     ui.group(|ui| {
@@ -103,5 +100,40 @@ fn render_sensitivity_metric_card(
             .fill(color)
             .text(format!("{:.2} elasticity", metric.elasticity));
         ui.add(progress_bar);
+
+        if let Some(iv) = tornado {
+            ui.label(
+                egui::RichText::new(format!(
+                    "Tornado [{:.3}..{:.3}] → [{:.4}, {:.4}] (Δ {:.4})",
+                    iv.low_param, iv.high_param, iv.min_output, iv.max_output, iv.swing
+                ))
+                .small()
+                .color(palette.series_color(1)),
+            );
+        }
+    });
+}
+
+fn render_monte_carlo_summary_card(
+    ui: &mut egui::Ui,
+    mc: &MonteCarloSummary,
+    palette: &crate::app::SemanticPalette,
+) {
+    ui.group(|ui| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Monte Carlo Uncertainty").strong());
+            ui.colored_label(
+                palette.series_color(2),
+                format!("(n = {}/{})", mc.sample_count, mc.target_samples),
+            );
+        });
+        ui.label(format!("Mean ± σ: {:.4} ± {:.4}", mc.mean, mc.std_dev));
+        ui.label(
+            egui::RichText::new(format!(
+                "Quantiles: P5 = {:.4} | P50 = {:.4} | P95 = {:.4}",
+                mc.p05, mc.p50, mc.p95
+            ))
+            .small(),
+        );
     });
 }

@@ -16,7 +16,7 @@ use super::sample_size_cards::{
 };
 
 #[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum CalculationMode {
+pub(super) enum CalculationMode {
     Means,
     Proportions,
 }
@@ -29,14 +29,14 @@ enum PowerPlotView {
 }
 
 pub struct SampleSizeCalculatorTool {
-    mode: CalculationMode,
+    pub(super) mode: CalculationMode,
     plot_view: PowerPlotView,
-    alpha: f64,
-    power: f64,
-    delta: f64,
-    sigma: f64,
-    p1: f64,
-    p2: f64,
+    pub(super) alpha: f64,
+    pub(super) power: f64,
+    pub(super) delta: f64,
+    pub(super) sigma: f64,
+    pub(super) p1: f64,
+    pub(super) p2: f64,
     cards: HypothesisCardsState,
     result: Result<usize, String>,
     per_arm_curve: Vec<[f64; 2]>,
@@ -275,6 +275,25 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             out.push(("Total Study Size (2n)".into(), self.total_curve.clone()));
         }
         out
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        [
+            self.alpha, self.power, self.delta, self.sigma, self.p1, self.p2,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
+    }
+
+    fn sensitivity_parameters(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        self.build_sensitivity_specs()
+    }
+
+    fn evaluate_sensitivity_observable(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        self.eval_sensitivity_from_pairs(params)
     }
 
     fn save_state(&self) -> Option<String> {

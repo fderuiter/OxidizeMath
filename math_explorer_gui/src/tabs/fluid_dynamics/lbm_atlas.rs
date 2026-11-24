@@ -162,3 +162,42 @@ pub(crate) fn resolve_inlet_velocity(params: &HashMap<String, f64>) -> f64 {
         .filter(|u| u.is_finite() && (0.005..=0.35).contains(u))
         .unwrap_or(LBM_INLET_U)
 }
+pub(super) fn evaluate_lbm_observable(
+    params: &HashMap<String, f64>,
+) -> Option<(&'static str, f64)> {
+    use super::lbm_fairing::{LBM_INLET_COLS, LBM_RHO_0};
+    use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
+        compute_drag_coefficient, LatticeBoltzmannD2Q9,
+    };
+
+    let raw_visc = params.get("viscosity").copied().unwrap_or(0.02);
+    if !raw_visc.is_finite() {
+        return None;
+    }
+    let viscosity = raw_visc.clamp(0.002, 0.5);
+    let u_in = resolve_inlet_velocity(params);
+    let width = 32_usize;
+    let height = 16_usize;
+    let tau = 3.0 * viscosity + 0.5;
+    let mut probe = LatticeBoltzmannD2Q9::new(width, height, tau);
+    let cx = 10_i32;
+    let cy = 8_i32;
+    let radius = 2_i32;
+    for y in 0..height {
+        for x in 0..width {
+            let dx = x as i32 - cx;
+            let dy = y as i32 - cy;
+            if dx * dx + dy * dy <= radius * radius {
+                probe.set_obstacle(x, y, true);
+            }
+        }
+    }
+    probe.set_inlet(0, 0, LBM_INLET_COLS, height, u_in, 0.0);
+    for _ in 0..20 {
+        probe.set_inlet(0, 0, LBM_INLET_COLS, height, u_in, 0.0);
+        probe.step();
+    }
+    let (f_drag, _) = probe.hydrodynamic_forces();
+    let c_d = compute_drag_coefficient(f_drag, LBM_RHO_0, u_in, 5.0);
+    c_d.is_finite().then_some(("Drag Coefficient (C_D)", c_d))
+}

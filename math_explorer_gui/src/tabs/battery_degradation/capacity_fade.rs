@@ -218,6 +218,44 @@ impl InteractiveTool for CapacityFadeTool {
         out
     }
 
+    fn clamp_parameters(&mut self) -> bool {
+        if !self.dod.is_finite() {
+            self.dod = 80.0;
+        }
+        if !self.temperature.is_finite() {
+            self.temperature = 25.0;
+        }
+        if !self.c_rate.is_finite() {
+            self.c_rate = 1.0;
+        }
+        if !self.exponent_z.is_finite() {
+            self.exponent_z = self.chemistry.to_preset().default_exponent_z();
+        }
+        if !self.cycles_to_simulate.is_finite() {
+            self.cycles_to_simulate = 2000.0;
+        }
+        self.clamp_operating_bounds();
+        true
+    }
+
+    fn sensitivity_parameters(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        self.build_sensitivity_specs()
+    }
+
+    fn evaluate_sensitivity_observable(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        self.eval_sensitivity_from_pairs(params)
+    }
+
+    fn calibrate_from_datasets(
+        &mut self,
+        datasets: &[egui_plot::ImportedDataset],
+    ) -> Result<bool, String> {
+        self.calibrate_from_imported_datasets(datasets)
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.clamp_operating_bounds();
         self.poll_dialog_channels();

@@ -375,6 +375,7 @@ impl SimulationFramework {
         self.atlas_host.reset_for_tool_switch();
         self.active_challenge = None;
         self.challenge_was_passed = false;
+        self.cooperative_sensitivity = CooperativeSensitivityState::default();
         self.selected_tool_index = Some(index);
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();

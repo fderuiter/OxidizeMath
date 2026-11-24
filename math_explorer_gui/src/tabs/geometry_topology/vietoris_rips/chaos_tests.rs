@@ -150,7 +150,7 @@ fn test_vietoris_rips_zero_allocation_hot_path_under_verified_allocator() {
 
 #[cfg(feature = "physics")]
 #[test]
-fn test_attractor_plotter_invariants_and_one_click_handoff_to_vietoris_rips() {
+fn test_attractor_plotter_invariants_regimes() {
     let mut plotter = crate::tabs::chaos::attractors::AttractorPlotter::default();
     let lyap = plotter
         .current_lyapunov_exponent()
@@ -173,23 +173,57 @@ fn test_attractor_plotter_invariants_and_one_click_handoff_to_vietoris_rips() {
         sub_lyap < 0.0,
         "Subcritical Lorenz rho=14 must have negative lambda_1, got {sub_lyap}"
     );
+}
 
-    plotter.system.rho = 28.0;
+#[cfg(feature = "physics")]
+#[test]
+fn test_attractor_plotter_one_click_handoff_to_vietoris_rips() {
     let ctx = egui::Context::default();
     let mut app = crate::app::MathExplorerApp::default();
-    let mut vr = VietorisRipsTool::default();
+    let mut isolated_vr = VietorisRipsTool::default();
     let t0 = crate::web_io::PlatformInstant::now();
-    let payload = plotter
-        .send_landmarks_to_vietoris_rips(Some(&ctx))
-        .expect("handoff succeeds");
+
+    let chaos_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.name() == "Chaos Theory")
+        .expect("Chaos Theory tab registered");
+    app.tabs[chaos_idx].select_tool_by_name("AttractorPlotter");
+    let payload = {
+        let fw = app.tabs[chaos_idx].framework_mut().unwrap();
+        let active_plotter = fw
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .unwrap()
+            .downcast_mut::<crate::tabs::chaos::attractors::AttractorPlotter>()
+            .unwrap();
+        active_plotter
+            .send_landmarks_to_vietoris_rips(Some(&ctx))
+            .expect("handoff succeeds")
+    };
     assert_eq!(payload.points.len(), MAX_CHAOS_LANDMARKS);
 
     crate::app::domain_bar::poll_cross_tab_tool_handoffs(&mut app, &ctx);
     assert_eq!(app.tabs[app.selected_tab].name(), "Geometry & Topology");
 
+    // Separate standalone tool instance must remain untouched (no global OnceLock leakage).
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| vr.show_inside(ui));
+        egui::CentralPanel::default().show(ctx, |ui| isolated_vr.show_inside(ui));
     });
+    assert_eq!(isolated_vr.mode, VrSourceMode::Points2D);
+
+    let vr = app.tabs[app.selected_tab]
+        .framework()
+        .unwrap()
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .as_any()
+        .unwrap()
+        .downcast_ref::<VietorisRipsTool>()
+        .unwrap();
     assert_eq!(vr.mode, VrSourceMode::Points3D);
     assert_eq!(vr.points_3d.len(), MAX_CHAOS_LANDMARKS);
     assert!(vr.chaos.lyapunov_exponent().is_some_and(|v| v.is_finite()));
@@ -200,4 +234,154 @@ fn test_attractor_plotter_invariants_and_one_click_handoff_to_vietoris_rips() {
             .as_secs_f64()
             < 5.0
     );
+}
+
+#[test]
+fn test_handoff_module_contains_zero_static_or_oncelock_items() {
+    let src = include_str!("handoff.rs");
+    for line in src.lines() {
+        let code = line.split("//").next().unwrap_or("").trim();
+        assert!(
+            !code.contains("OnceLock"),
+            "handoff.rs must not reference OnceLock: {code}"
+        );
+        let tokens: Vec<&str> = code
+            .split(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '\'')
+            .filter(|t| !t.is_empty())
+            .collect();
+        for (idx, tok) in tokens.iter().enumerate() {
+            if *tok == "static" {
+                let prev = idx.checked_sub(1).and_then(|i| tokens.get(i)).copied();
+                assert_eq!(
+                    prev,
+                    Some("&'static").or(prev.filter(|p| p.ends_with('\''))),
+                    "handoff.rs must not declare static items: {code}"
+                );
+            }
+        }
+    }
+    assert!(!src.contains("static SLOT"));
+    assert!(!src.contains("static STREAM"));
+}
+
+#[cfg(feature = "physics")]
+fn publish_pane0_to_vr(
+    app: &mut crate::app::MathExplorerApp,
+    ctx: &egui::Context,
+    focus_target: bool,
+    payload: crate::framework::CrossToolPayload,
+) {
+    app.pane_tab_mut(0)
+        .unwrap()
+        .framework_mut()
+        .unwrap()
+        .cross_tool_bus
+        .publish_action(crate::framework::CrossToolEnvelope {
+            source_tool: "AttractorPlotter",
+            target_tab: Some("Geometry & Topology"),
+            target_tool: Some("VietorisRipsTool"),
+            focus_target,
+            seq: 0,
+            payload,
+        });
+    crate::app::domain_bar::poll_cross_tab_tool_handoffs(app, ctx);
+}
+
+#[cfg(feature = "physics")]
+fn pane1_vr(app: &crate::app::MathExplorerApp) -> &VietorisRipsTool {
+    app.pane_tab(1)
+        .unwrap()
+        .framework()
+        .unwrap()
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .as_any()
+        .unwrap()
+        .downcast_ref::<VietorisRipsTool>()
+        .unwrap()
+}
+
+#[cfg(feature = "physics")]
+fn setup_chaos_and_vr_split_app(ctx: &egui::Context) -> crate::app::MathExplorerApp {
+    let mut app = crate::app::MathExplorerApp::default();
+    let chaos_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.name() == "Chaos Theory")
+        .unwrap();
+    let gt_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.name() == "Geometry & Topology")
+        .unwrap();
+    app.set_layout(crate::app::ViewportLayout::SplitHorizontal);
+    crate::app::domain_bar::select_primary_tab(&mut app, ctx, chaos_idx);
+    app.set_pane_tab(1, gt_idx);
+    let _ = app
+        .pane_tab_mut(1)
+        .unwrap()
+        .select_tool_by_name("VietorisRipsTool");
+    app
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn test_cross_tool_bus_routes_all_payload_variants_across_split_panes() {
+    use crate::framework::CrossToolPayload;
+
+    let ctx = egui::Context::default();
+    let mut app = setup_chaos_and_vr_split_app(&ctx);
+
+    let circle_2d: Vec<[f64; 2]> = (0..16)
+        .map(|i| {
+            let a = std::f64::consts::TAU * (i as f64 / 16.0);
+            [a.cos(), a.sin()]
+        })
+        .collect();
+    publish_pane0_to_vr(
+        &mut app,
+        &ctx,
+        true,
+        CrossToolPayload::TimeSeries2D {
+            series_name: "LimitCycle".to_string(),
+            points: circle_2d,
+        },
+    );
+    assert_eq!(app.tabs[app.selected_tab].name(), "Chaos Theory");
+    assert_eq!(pane1_vr(&app).points.len(), 16);
+    assert_eq!(pane1_vr(&app).mode, VrSourceMode::Points2D);
+
+    publish_pane0_to_vr(
+        &mut app,
+        &ctx,
+        false,
+        CrossToolPayload::ParameterSet {
+            parameters: vec![
+                ("rho".to_string(), 35.5),
+                ("sigma".to_string(), 12.0),
+                ("radius".to_string(), 1.25),
+            ],
+        },
+    );
+    assert!((pane1_vr(&app).chaos.rho - 35.5).abs() < 1e-9);
+    assert!((pane1_vr(&app).chaos.sigma - 12.0).abs() < 1e-9);
+    assert!((pane1_vr(&app).radius - 1.25).abs() < 1e-9);
+
+    publish_pane0_to_vr(
+        &mut app,
+        &ctx,
+        true,
+        CrossToolPayload::PointCloud3D {
+            points: vec![
+                [0.0, 0.0, 0.0],
+                [4.0, 0.0, 0.0],
+                [4.0, 4.0, 0.0],
+                [0.0, 4.0, 0.0],
+            ],
+            parameters: vec![("rho".to_string(), 28.0)],
+        },
+    );
+    assert_eq!(pane1_vr(&app).mode, VrSourceMode::Points3D);
+    assert_eq!(pane1_vr(&app).points_3d.len(), 4);
 }

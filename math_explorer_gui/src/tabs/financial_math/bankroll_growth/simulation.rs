@@ -53,7 +53,7 @@ fn settle_raw_fraction(bankroll: f64, stake_fraction: f64, net_b: f64, win: bool
     }
 }
 
-fn finite_binary_growth_rate(p: &UnitInterval, o: &Odds, stake_fraction: f64) -> f64 {
+pub(super) fn finite_binary_growth_rate(p: &UnitInterval, o: &Odds, stake_fraction: f64) -> f64 {
     let clamped = stake_fraction.clamp(0.0, 0.9999);
     if let Ok(bf) = BankrollFraction::new(clamped) {
         let g = expected_growth_rate(p, o, &bf);

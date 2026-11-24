@@ -40,7 +40,6 @@ pub mod plot3d_viewport;
 mod plot_chrome_tests;
 pub mod presets;
 mod reflective_ui;
-#[allow(missing_docs)]
 pub mod sensitivity;
 pub mod starter_gallery;
 mod tabs;

@@ -16,9 +16,10 @@ use crate::framework::{ExportCapabilities, InteractiveTool};
 use duty::{validate_duty_segments, DutyPhaseKind, DutySegmentSpec};
 use eframe::egui;
 use math_explorer::applied::battery_degradation::{
-    estimate_duty_lifetime, evaluate_duty_point, Capacity, ChemistryPreset, DutyLifetimeSummary,
-    DutySegment, ElectrochemicalAgingModel, DAYS_PER_YEAR, MAX_C_RATE, MAX_DUTY_SEGMENTS,
-    MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z, MIN_TEMPERATURE_C,
+    estimate_duty_lifetime, evaluate_duty_point, Capacity, ChemistryPreset, DepthOfDischarge,
+    DutyLifetimeSummary, DutySegment, ElectrochemicalAgingModel, DAYS_PER_YEAR, MAX_C_RATE,
+    MAX_DUTY_SEGMENTS, MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z,
+    MIN_TEMPERATURE_C,
 };
 
 const PLOT_SAMPLES: usize = 240;
@@ -100,6 +101,96 @@ impl InteractiveTool for LifetimeEstimatorTool {
     }
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.target_capacity.is_finite()
+            && self.dod.is_finite()
+            && self.cycles_per_day.is_finite()
+            && self.cycles_per_day > 0.0
+            && self.temperature.is_finite()
+            && self.c_rate.is_finite()
+            && self.exponent_z.is_finite()
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        if !self.target_capacity.is_finite() {
+            self.target_capacity = 80.0;
+        }
+        if !self.dod.is_finite() {
+            self.dod = 50.0;
+        }
+        if !self.cycles_per_day.is_finite() || self.cycles_per_day <= 0.0 {
+            self.cycles_per_day = 1.0;
+        }
+        if !self.temperature.is_finite() {
+            self.temperature = 25.0;
+        }
+        if !self.c_rate.is_finite() {
+            self.c_rate = 1.0;
+        }
+        if !self.exponent_z.is_finite() {
+            self.exponent_z = self.chemistry.to_preset().default_exponent_z();
+        }
+        self.clamp_bounds();
+        self.dod = self.dod.max(0.1);
+        self.cycles_per_day = self.cycles_per_day.max(0.1);
+        true
+    }
+
+    fn sensitivity_parameters(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        use crate::framework::SensitivityParamSpec;
+        vec![
+            SensitivityParamSpec::new(
+                "dod",
+                "Depth of Discharge (%)",
+                self.dod.clamp(1.0, 100.0),
+                5.0,
+                100.0,
+            ),
+            SensitivityParamSpec::new(
+                "target_capacity",
+                "Target Capacity (%)",
+                self.target_capacity.clamp(10.0, 99.0),
+                50.0,
+                95.0,
+            ),
+            SensitivityParamSpec::new(
+                "cycles_per_day",
+                "Cycles per Day",
+                self.cycles_per_day.clamp(0.1, 10.0),
+                0.1,
+                10.0,
+            ),
+        ]
+    }
+
+    fn evaluate_sensitivity_observable(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        let mut dod = self.dod;
+        let mut cap_pct = self.target_capacity;
+        let mut cpd = self.cycles_per_day;
+        for &(k, v) in params {
+            if !v.is_finite() {
+                return None;
+            }
+            match k {
+                "dod" => dod = v.clamp(0.5, 100.0),
+                "target_capacity" => cap_pct = v.clamp(10.0, 99.5),
+                "cycles_per_day" => cpd = v.clamp(0.05, 20.0),
+                _ => {}
+            }
+        }
+        let model = self.active_model();
+        let c = Capacity::new(cap_pct / 100.0).ok()?;
+        let d = DepthOfDischarge::new(dod).ok()?;
+        let total_cycles = model.cycles_to_capacity(c, d).as_f64();
+        let years = (total_cycles / cpd) / DAYS_PER_YEAR;
+        years
+            .is_finite()
+            .then_some(("Estimated Lifetime (years)", years))
     }
 
     fn save_state(&self) -> Option<String> {

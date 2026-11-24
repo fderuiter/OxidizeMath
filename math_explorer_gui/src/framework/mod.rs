@@ -3,6 +3,7 @@ pub mod brush_codec;
 pub mod brush_dispatch;
 #[cfg(all(test, feature = "physics", feature = "biology"))]
 mod brush_dispatch_tests;
+pub mod calibration;
 pub mod callout_overlay;
 pub mod challenge;
 mod challenge_hud;
@@ -21,7 +22,11 @@ pub mod code_export_modal;
     feature = "epidemiology"
 ))]
 mod code_export_tests;
+pub mod cooperative_hooks;
+#[cfg(all(test, feature = "applied", feature = "pure_math"))]
+mod cooperative_hooks_tests;
 pub mod counterfactual;
+pub mod cross_tool_bus;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
@@ -91,12 +96,15 @@ mod url_share;
 
 pub use brush_codec::*;
 pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
+pub use calibration::*;
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
 pub use code_export::*;
 pub use code_export_modal::CodeExportTab;
+pub use cooperative_hooks::*;
 pub use counterfactual::*;
+pub use cross_tool_bus::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
@@ -125,22 +133,11 @@ pub use story_hud::*;
 pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
-use eframe::egui;
-pub(super) use overlay_sync::{
-    FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache,
-};
-use scientific_metadata::theory::TheoryDescribable;
-
-pub struct ToolMetadata {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub domain: &'static str,
-    pub tags: &'static [&'static str],
-    pub build: fn() -> Box<dyn InteractiveTool>,
-}
-
-inventory::collect!(ToolMetadata);
 pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
+use eframe::egui;
+pub(super) use overlay_sync::UntrackedUrlDigestCache;
+pub use overlay_sync::{SimulationFramework, ToolMetadata};
+use scientific_metadata::theory::TheoryDescribable;
 
 pub trait InteractiveTool {
     fn name(&self) -> &'static str;
@@ -216,6 +213,53 @@ pub trait InteractiveTool {
     /// Named scalar observables exposed to the Challenge HUD and `math_commons::ast` evaluator.
     fn observables(&self) -> Vec<(&'static str, f64)> {
         Vec::new()
+    }
+
+    /// Bounded scalar parameters exposed to cooperative sensitivity, tornado, and Monte Carlo hooks.
+    fn sensitivity_parameters(&self) -> Vec<SensitivityParamSpec> {
+        Vec::new()
+    }
+
+    /// Evaluates a named scalar observable `(label, value)` at perturbed parameter values.
+    fn evaluate_sensitivity_observable(
+        &self,
+        _params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        None
+    }
+
+    /// Calibrates bounded tool parameters against imported `PlotMemory` CSV datasets.
+    fn calibrate_from_datasets(
+        &mut self,
+        _datasets: &[egui_plot::ImportedDataset],
+    ) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    /// Drains outgoing one-shot [`CrossToolEnvelope`] messages queued by this tool.
+    fn drain_cross_tool_envelopes(&mut self) -> Vec<CrossToolEnvelope> {
+        Vec::new()
+    }
+
+    /// Polls a newer live-stream [`CrossToolEnvelope`] when `seq > last_seq`.
+    fn poll_live_cross_tool_envelope(&mut self, _last_seq: u64) -> Option<CrossToolEnvelope> {
+        None
+    }
+
+    /// Consumes a one-shot [`CrossToolEnvelope`] routed to this tool.
+    fn receive_cross_tool_envelope(
+        &mut self,
+        _envelope: CrossToolEnvelope,
+    ) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    /// Consumes a live-stream [`CrossToolEnvelope`] routed to this tool.
+    fn receive_live_cross_tool_envelope(
+        &mut self,
+        _envelope: CrossToolEnvelope,
+    ) -> Result<bool, String> {
+        Ok(false)
     }
 
     /// Synchronizes declarative guided story or challenge callout pins onto the tool's plot.
@@ -417,62 +461,6 @@ pub trait InteractiveTool {
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
-}
-
-#[allow(missing_docs)]
-pub struct SimulationFramework {
-    pub available_tools: Vec<&'static ToolMetadata>,
-    pub active_tool: Option<Box<dyn InteractiveTool>>,
-    pub selected_tool_index: Option<usize>,
-    pub input_mode: InputMode,
-    pub show_theory_portal: bool,
-    pub show_starter_gallery: bool,
-    pub saved_tool_states: std::collections::HashMap<String, String>,
-    pub saved_plot_states: plot_persistence::SavedPlotStatesMap,
-    pub(super) plot_sync_generation: u64,
-    pub search_query: String,
-    pub(super) last_announced_count: Option<usize>,
-    pub(super) last_announced_query: String,
-    pub show_export_modal: bool,
-    pub show_code_export_modal: bool,
-    pub code_export_tab: CodeExportTab,
-    pub export_options: egui_plot::export::ExportOptions,
-    pub export_bg_dark: bool,
-    pub export_gif_fps: u32,
-    pub export_gif_frames: u32,
-    pub export_status_message: Option<String>,
-    pub export_status_severity: ExportStatusSeverity,
-    pub domain: String,
-    pub preset_dialog: crate::presets::PresetDialogState,
-    pub(crate) export_queue: ExportQueue,
-    gif_job: Option<export_gif_job::FrameworkGifJob>,
-    /// Cached state snapshot before divergence for step-back rollback.
-    pub last_valid_snapshot: Option<StateSnapshot>,
-    /// Baseline parameters snapshot on tool load.
-    pub baseline_tool_state: Option<String>,
-    /// Last validated finite plot datasets.
-    pub current_valid_plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
-    /// Last validated finite 3D world-coordinate plot datasets.
-    pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
-    /// Whether divergence has been detected in the active tool.
-    pub is_diverged: bool,
-    /// Diagnostic report for divergence.
-    pub diagnostic_report: Option<DiagnosticReport>,
-    /// Simulation frame / step counter.
-    pub step_counter: usize,
-    /// Counterfactual shadow twin engine state synchronized with the active tool.
-    pub branch_engine: CounterfactualBranchEngine,
-    /// Start time of current active session.
-    pub start_time: crate::web_io::PlatformInstant,
-    /// Declarative guided story and AST challenge HUD state.
-    pub challenge_hud: ChallengeHudState,
-    /// Active inverse challenge contract displayed in the Challenge HUD, if any.
-    pub active_challenge: Option<&'static ChallengeMetadata>,
-    pub(super) challenge_was_passed: bool,
-    pub(super) instance_id: u64,
-    pub(super) sync_state: FrameworkSyncState,
-    pub(super) rev_cache: FrameworkRevisionCache,
-    pub atlas_host: atlas_host::FrameworkAtlasHost,
 }
 
 pub use crate::camera::{

@@ -1,3 +1,4 @@
+pub(crate) mod cross_tool_routing;
 pub mod dataflow_bus;
 pub mod domain_bar;
 pub(crate) mod global_shortcuts;
@@ -311,6 +312,7 @@ impl MathExplorerApp {
         } else {
             viewport::render_single_pane_viewport(self, ctx, frame);
         }
+        cross_tool_routing::poll_cross_tab_tool_handoffs(self, ctx);
         self.drain_workspace_history_bridge(ctx);
     }
 }

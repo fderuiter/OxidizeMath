@@ -4,8 +4,12 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+#[path = "trace_overlay/kpi.rs"]
+mod kpi;
 #[path = "trace_overlay/ui.rs"]
 mod ui;
+
+pub use kpi::{KpiComparisonRow, ScenarioKpi};
 
 /// Maximum pinned trace snapshots permitted per tool instance.
 pub const MAX_SNAPSHOTS: usize = 10;
@@ -108,6 +112,8 @@ pub struct TraceSnapshot {
     pub series: Vec<TraceSeries>,
     pub visible: bool,
     pub color_rgb: [u8; 3],
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub kpis: Vec<ScenarioKpi>,
 }
 
 impl TraceSnapshot {
@@ -176,6 +182,16 @@ impl TraceSnapshotManager {
         param_summary: impl Into<String>,
         series: Vec<TraceSeries>,
     ) -> bool {
+        self.add_snapshot_with_kpis(label, param_summary, series, Vec::new())
+    }
+
+    pub fn add_snapshot_with_kpis(
+        &mut self,
+        label: impl Into<String>,
+        param_summary: impl Into<String>,
+        series: Vec<TraceSeries>,
+        kpis: Vec<ScenarioKpi>,
+    ) -> bool {
         if self.is_full() {
             return false;
         }
@@ -184,6 +200,7 @@ impl TraceSnapshotManager {
         self.next_id += 1;
         let palette_idx = self.snapshots.len() % SNAPSHOT_PALETTE.len();
         let color_rgb = SNAPSHOT_PALETTE[palette_idx];
+        let finite_kpis = kpis.into_iter().filter(|k| k.value.is_finite()).collect();
 
         self.snapshots.push(TraceSnapshot {
             id,
@@ -192,6 +209,7 @@ impl TraceSnapshotManager {
             series,
             visible: true,
             color_rgb,
+            kpis: finite_kpis,
         });
         true
     }
@@ -213,6 +231,15 @@ impl TraceSnapshotManager {
     }
 
     pub fn push_history_run(&mut self, param_summary: impl Into<String>, series: Vec<TraceSeries>) {
+        self.push_history_run_with_kpis(param_summary, series, Vec::new());
+    }
+
+    pub fn push_history_run_with_kpis(
+        &mut self,
+        param_summary: impl Into<String>,
+        series: Vec<TraceSeries>,
+        kpis: Vec<ScenarioKpi>,
+    ) {
         if series.is_empty() || series.iter().all(|s| s.points.is_empty()) {
             return;
         }
@@ -223,6 +250,7 @@ impl TraceSnapshotManager {
         self.next_id += 1;
         self.history_counter += 1;
         let color_rgb = SNAPSHOT_PALETTE[self.history_counter % SNAPSHOT_PALETTE.len()];
+        let finite_kpis = kpis.into_iter().filter(|k| k.value.is_finite()).collect();
         self.history_runs.push(TraceSnapshot {
             id,
             label: format!("Run {}", self.history_counter),
@@ -230,6 +258,7 @@ impl TraceSnapshotManager {
             series,
             visible: true,
             color_rgb,
+            kpis: finite_kpis,
         });
     }
 
@@ -271,7 +300,7 @@ impl TraceSnapshotManager {
         }
         let run = self.history_runs[index].clone();
         let label = format!("Baseline {}", self.snapshots.len() + 1);
-        self.add_snapshot(label, run.param_summary, run.series)
+        self.add_snapshot_with_kpis(label, run.param_summary, run.series, run.kpis)
     }
 
     pub fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {

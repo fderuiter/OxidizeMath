@@ -3,7 +3,8 @@
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::{
-    Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
+    Camera3D, CoupledExpressionBank, CrossToolEnvelope, ExportCapabilities, InteractiveTool,
+    Scene3DBuilder,
 };
 use eframe::egui;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
@@ -350,6 +351,14 @@ impl InteractiveTool for AttractorPlotter {
 
     fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
         self.collect_export_datasets_3d()
+    }
+
+    fn drain_cross_tool_envelopes(&mut self) -> Vec<CrossToolEnvelope> {
+        self.drain_queued_envelopes()
+    }
+
+    fn poll_live_cross_tool_envelope(&mut self, last_seq: u64) -> Option<CrossToolEnvelope> {
+        self.poll_live_envelope(last_seq)
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {

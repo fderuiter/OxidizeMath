@@ -17,6 +17,7 @@ pub mod poi;
 #[allow(missing_docs)]
 pub mod primitives;
 pub mod registry;
+pub mod sensitivity;
 pub mod series;
 pub mod stochastic;
 #[allow(missing_docs)]
